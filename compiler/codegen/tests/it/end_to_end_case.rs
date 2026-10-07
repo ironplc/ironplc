@@ -3,7 +3,7 @@
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 
-use crate::common::assert_run_i32_with;
+use crate::common::assert_run_with;
 
 e2e_i32!(
     end_to_end_when_case_matches_first_arm_then_executes_body,
@@ -20,7 +20,7 @@ PROGRAM main
   END_CASE;
 END_PROGRAM
 ",
-    &[(0, 1), (1, 10)],
+    &[("x", 1), ("y", 10)],
 );
 
 e2e_i32!(
@@ -38,10 +38,10 @@ PROGRAM main
   END_CASE;
 END_PROGRAM
 ",
-    &[(0, 2), (1, 20)],
+    &[("x", 2), ("y", 20)],
 );
 
-// vars[1] (y) is untouched when there is no match and no ELSE.
+// y is untouched when there is no match and no ELSE.
 e2e_i32!(
     end_to_end_when_case_no_match_and_no_else_then_skips,
     "
@@ -57,7 +57,7 @@ PROGRAM main
   END_CASE;
 END_PROGRAM
 ",
-    &[(0, 99), (1, 0)],
+    &[("x", 99), ("y", 0)],
 );
 
 e2e_i32!(
@@ -77,7 +77,7 @@ PROGRAM main
   END_CASE;
 END_PROGRAM
 ",
-    &[(0, 99), (1, 99)],
+    &[("x", 99), ("y", 99)],
 );
 
 e2e_i32!(
@@ -95,7 +95,7 @@ PROGRAM main
   END_CASE;
 END_PROGRAM
 ",
-    &[(0, 3), (1, 30)],
+    &[("x", 3), ("y", 30)],
 );
 
 e2e_i32!(
@@ -113,7 +113,7 @@ PROGRAM main
   END_CASE;
 END_PROGRAM
 ",
-    &[(0, 3), (1, 50)],
+    &[("x", 3), ("y", 50)],
 );
 
 /// Options enabling only the bit-string CASE label extension, on the
@@ -146,7 +146,7 @@ PROGRAM main
   END_CASE;
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("y", 1)],
 );
 
 e2e_i32_with!(
@@ -165,7 +165,7 @@ PROGRAM main
   END_CASE;
 END_PROGRAM
 ",
-    &[(1, 2)],
+    &[("y", 2)],
 );
 
 e2e_i32_with!(
@@ -184,7 +184,7 @@ PROGRAM main
   END_CASE;
 END_PROGRAM
 ",
-    &[(1, 99)],
+    &[("y", 99)],
 );
 
 /// A label is narrowed to the selector's width by its value, whatever radix
@@ -220,5 +220,33 @@ END_PROGRAM
 "
     );
 
-    assert_run_i32_with(&source, &opts_with_bit_string_case_labels(), &[(0, 1)]);
+    assert_run_with::<i32>(&source, &opts_with_bit_string_case_labels(), &[("y", 1)]);
+}
+
+/// A label on a signed 64-bit selector is narrowed to the selector's width as
+/// a signed value, so one beyond 32 bits, a negative one, and a negative
+/// subrange each match the selector value they name.
+#[rstest]
+#[case::beyond_32_bits("5000000000", "5000000000")]
+#[case::negative("-5000000000", "-5000000000")]
+#[case::negative_subrange("-5000000000", "-6000000000..-4000000000")]
+fn end_to_end_when_case_label_on_lint_selector_then_matches(
+    #[case] selector_value: &str,
+    #[case] label: &str,
+) {
+    let source = format!(
+        "
+PROGRAM main
+  VAR
+    y : DINT;
+    x : LINT := {selector_value};
+  END_VAR
+  CASE x OF
+    {label}: y := 1;
+  END_CASE;
+END_PROGRAM
+"
+    );
+
+    assert_run_with::<i32>(&source, &CompilerOptions::default(), &[("y", 1)]);
 }

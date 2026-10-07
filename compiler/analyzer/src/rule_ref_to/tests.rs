@@ -1,39 +1,23 @@
-use crate::stages::analyze;
-use ironplc_dsl::core::FileId;
-use ironplc_parser::{
-    options::{CompilerOptions, Dialect},
-    parse_program,
-};
-
-fn edition3_options() -> CompilerOptions {
-    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3)
-}
+use crate::test_helpers::{edition3_options, rule_codes};
+use ironplc_parser::options::CompilerOptions;
+use ironplc_problems::Problem;
 
 fn ref_arithmetic_options() -> CompilerOptions {
-    let mut options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
+    let mut options = edition3_options();
     options.allow_ref_arithmetic = true;
     options
 }
 
-fn parse_with_options(program: &str, options: &CompilerOptions) -> Result<(), String> {
-    let library =
-        parse_program(program, &FileId::default(), options).map_err(|e| format!("{e:?}"))?;
-    let (_library, context) = analyze(&[&library], options).map_err(|e| format!("{e:?}"))?;
-    if context.has_diagnostics() {
-        Err(format!("{:?}", context.diagnostics()))
-    } else {
-        Ok(())
-    }
-}
-
 fn assert_ok(program: &str) {
-    let result = parse_with_options(program, &edition3_options());
-    assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
+    let codes = rule_codes(super::apply, program, &edition3_options());
+    assert!(codes.is_empty(), "{codes:?}");
 }
 
-fn assert_err(program: &str) {
-    let result = parse_with_options(program, &edition3_options());
-    assert!(result.is_err(), "Expected error but got OK");
+fn assert_problem(program: &str, problem: Problem) {
+    assert_eq!(
+        rule_codes(super::apply, program, &edition3_options()),
+        [problem.code()]
+    );
 }
 
 // P2036: No nested REF_TO
@@ -68,7 +52,7 @@ END_PROGRAM",
 // P2029: No REF of ephemeral variables - VAR_TEMP
 #[test]
 fn ref_when_operand_is_var_temp_then_error() {
-    assert_err(
+    assert_problem(
         "FUNCTION_BLOCK FB1
 VAR_TEMP
 temp : INT;
@@ -78,13 +62,14 @@ r : REF_TO INT;
 END_VAR
 r := REF(temp);
 END_FUNCTION_BLOCK",
+        Problem::RefOfEphemeralVariable,
     );
 }
 
 // P2029: No REF of FUNCTION VAR_INPUT
 #[test]
 fn ref_when_operand_is_function_var_input_then_error() {
-    assert_err(
+    assert_problem(
         "FUNCTION MyFunc : INT
 VAR_INPUT
 inVal : INT;
@@ -95,6 +80,7 @@ END_VAR
 r := REF(inVal);
 MyFunc := 0;
 END_FUNCTION",
+        Problem::RefOfEphemeralVariable,
     );
 }
 
@@ -117,7 +103,7 @@ END_FUNCTION_BLOCK",
 // P2030: No REF of array elements
 #[test]
 fn ref_when_operand_is_array_element_then_error() {
-    assert_err(
+    assert_problem(
         "PROGRAM Main
 VAR
 arr : ARRAY [0..9] OF INT;
@@ -125,13 +111,14 @@ r : REF_TO INT;
 END_VAR
 r := REF(arr[3]);
 END_PROGRAM",
+        Problem::RefOfArrayElement,
     );
 }
 
 // P2031: Deref requires reference type
 #[test]
 fn deref_when_type_is_not_reference_then_error() {
-    assert_err(
+    assert_problem(
         "PROGRAM Main
 VAR
 x : INT := 42;
@@ -139,6 +126,7 @@ y : INT;
 END_VAR
 y := x^;
 END_PROGRAM",
+        Problem::DerefRequiresReferenceType,
     );
 }
 
@@ -159,7 +147,7 @@ END_PROGRAM",
 // P2033: No arithmetic on references
 #[test]
 fn arithmetic_when_operand_is_reference_then_error() {
-    assert_err(
+    assert_problem(
         "PROGRAM Main
 VAR
 x : INT;
@@ -168,19 +156,21 @@ y : INT;
 END_VAR
 y := r + 1;
 END_PROGRAM",
+        Problem::ArithmeticOnReference,
     );
 }
 
 // P2034: NULL only for reference types
 #[test]
 fn null_when_assigned_to_non_reference_then_error() {
-    assert_err(
+    assert_problem(
         "PROGRAM Main
 VAR
 x : INT;
 END_VAR
 x := NULL;
 END_PROGRAM",
+        Problem::NullRequiresReferenceType,
     );
 }
 
@@ -215,7 +205,7 @@ END_PROGRAM",
 
 #[test]
 fn compare_when_ordering_on_reference_then_error() {
-    assert_err(
+    assert_problem(
         "PROGRAM Main
 VAR
 x : INT;
@@ -225,6 +215,7 @@ result : BOOL;
 END_VAR
 result := r1 > r2;
 END_PROGRAM",
+        Problem::OrderingOnReference,
     );
 }
 
@@ -244,7 +235,7 @@ END_PROGRAM",
 
 #[test]
 fn assign_when_ref_types_incompatible_then_error() {
-    assert_err(
+    assert_problem(
         "PROGRAM Main
 VAR
 x : REAL;
@@ -252,6 +243,7 @@ r : REF_TO INT;
 END_VAR
 r := REF(x);
 END_PROGRAM",
+        Problem::ReferenceTypeMismatch,
     );
 }
 
@@ -292,7 +284,8 @@ END_PROGRAM",
 // --allow-ref-arithmetic tests: negative (flag not set)
 #[test]
 fn arithmetic_when_ref_arithmetic_not_allowed_then_error() {
-    let result = parse_with_options(
+    let codes = rule_codes(
+        super::apply,
         "PROGRAM Main
 VAR
 x : INT;
@@ -303,12 +296,13 @@ y := r + 1;
 END_PROGRAM",
         &edition3_options(),
     );
-    assert!(result.is_err(), "Expected error but got OK");
+    assert_eq!(codes, [Problem::ArithmeticOnReference.code()]);
 }
 
 #[test]
 fn compare_when_ordering_without_ref_arithmetic_then_error() {
-    let result = parse_with_options(
+    let codes = rule_codes(
+        super::apply,
         "PROGRAM Main
 VAR
 x : INT;
@@ -320,13 +314,14 @@ result := r1 > r2;
 END_PROGRAM",
         &edition3_options(),
     );
-    assert!(result.is_err(), "Expected error but got OK");
+    assert_eq!(codes, [Problem::OrderingOnReference.code()]);
 }
 
 // --allow-ref-arithmetic tests: positive (flag set)
 #[test]
 fn arithmetic_when_ref_arithmetic_allowed_then_ok() {
-    let result = parse_with_options(
+    let codes = rule_codes(
+        super::apply,
         "PROGRAM Main
 VAR
 x : INT;
@@ -337,12 +332,13 @@ y := r + 1;
 END_PROGRAM",
         &ref_arithmetic_options(),
     );
-    assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
+    assert!(codes.is_empty(), "{codes:?}");
 }
 
 #[test]
 fn compare_when_ordering_with_ref_arithmetic_allowed_then_ok() {
-    let result = parse_with_options(
+    let codes = rule_codes(
+        super::apply,
         "PROGRAM Main
 VAR
 x : INT;
@@ -354,12 +350,13 @@ result := r1 > r2;
 END_PROGRAM",
         &ref_arithmetic_options(),
     );
-    assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
+    assert!(codes.is_empty(), "{codes:?}");
 }
 
 #[test]
 fn compare_when_equality_with_ref_arithmetic_allowed_then_ok() {
-    let result = parse_with_options(
+    let codes = rule_codes(
+        super::apply,
         "PROGRAM Main
 VAR
 x : INT;
@@ -371,7 +368,7 @@ result := r1 = r2;
 END_PROGRAM",
         &ref_arithmetic_options(),
     );
-    assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
+    assert!(codes.is_empty(), "{codes:?}");
 }
 
 // P2029: allow_ref_stack_variables suppresses REF of FUNCTION VAR_INPUT
@@ -382,7 +379,8 @@ fn ref_when_allow_ref_stack_variables_and_function_var_input_then_ok() {
         allow_ref_stack_variables: true,
         ..CompilerOptions::default()
     };
-    let result = parse_with_options(
+    let codes = rule_codes(
+        super::apply,
         "FUNCTION MyFunc : INT
 VAR_INPUT
 inVal : INT;
@@ -395,7 +393,7 @@ MyFunc := 0;
 END_FUNCTION",
         &options,
     );
-    assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
+    assert!(codes.is_empty(), "{codes:?}");
 }
 
 // P2029: allow_ref_stack_variables suppresses REF of VAR_TEMP
@@ -406,7 +404,8 @@ fn ref_when_allow_ref_stack_variables_and_var_temp_then_ok() {
         allow_ref_stack_variables: true,
         ..CompilerOptions::default()
     };
-    let result = parse_with_options(
+    let codes = rule_codes(
+        super::apply,
         "FUNCTION_BLOCK FB1
 VAR_TEMP
 temp : INT;
@@ -418,7 +417,7 @@ r := REF(temp);
 END_FUNCTION_BLOCK",
         &options,
     );
-    assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
+    assert!(codes.is_empty(), "{codes:?}");
 }
 
 // P2032: allow_ref_type_punning suppresses type mismatch
@@ -429,7 +428,8 @@ fn assign_when_allow_ref_type_punning_and_types_incompatible_then_ok() {
         allow_ref_type_punning: true,
         ..CompilerOptions::default()
     };
-    let result = parse_with_options(
+    let codes = rule_codes(
+        super::apply,
         "PROGRAM Main
 VAR
 x : REAL;
@@ -439,13 +439,14 @@ r := REF(x);
 END_PROGRAM",
         &options,
     );
-    assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
+    assert!(codes.is_empty(), "{codes:?}");
 }
 
 // P2032: type mismatch still fires without allow_ref_type_punning
 #[test]
 fn assign_when_no_allow_ref_type_punning_and_types_incompatible_then_error() {
-    let result = parse_with_options(
+    let codes = rule_codes(
+        super::apply,
         "PROGRAM Main
 VAR
 x : REAL;
@@ -455,7 +456,7 @@ r := REF(x);
 END_PROGRAM",
         &edition3_options(),
     );
-    assert!(result.is_err(), "Expected error but got OK");
+    assert_eq!(codes, [Problem::ReferenceTypeMismatch.code()]);
 }
 
 // P2032: allow_ref_stack_variables alone does NOT suppress type mismatch
@@ -466,7 +467,8 @@ fn assign_when_allow_ref_stack_variables_only_and_types_incompatible_then_error(
         allow_ref_stack_variables: true,
         ..CompilerOptions::default()
     };
-    let result = parse_with_options(
+    let codes = rule_codes(
+        super::apply,
         "PROGRAM Main
 VAR
 x : REAL;
@@ -476,7 +478,7 @@ r := REF(x);
 END_PROGRAM",
         &options,
     );
-    assert!(result.is_err(), "Expected error but got OK");
+    assert_eq!(codes, [Problem::ReferenceTypeMismatch.code()]);
 }
 
 #[test]
@@ -533,7 +535,7 @@ END_FUNCTION_BLOCK",
 
 #[test]
 fn assign_when_sibling_method_declares_reference_then_not_visible() {
-    assert_err(
+    assert_problem(
         "FUNCTION_BLOCK FB
 VAR
 r : INT;
@@ -547,12 +549,13 @@ METHOD B
 r := NULL;
 END_METHOD
 END_FUNCTION_BLOCK",
+        Problem::NullRequiresReferenceType,
     );
 }
 
 #[test]
 fn assign_when_named_reference_type_targets_other_type_then_error() {
-    assert_err(
+    assert_problem(
         "TYPE IntRef : REF_TO INT; END_TYPE
 PROGRAM Main
 VAR
@@ -561,6 +564,7 @@ VAR
 END_VAR
     r := REF(y);
 END_PROGRAM",
+        Problem::ReferenceTypeMismatch,
     );
 }
 
@@ -576,3 +580,124 @@ END_VAR
 END_PROGRAM",
     );
 }
+
+// An element of an array of references is a reference.
+#[test]
+fn assign_when_array_element_is_reference_then_ok() {
+    assert_ok(
+        "PROGRAM Main
+VAR
+    val : INT := 77;
+    refs : ARRAY[0..2] OF REF_TO INT;
+    result : INT;
+END_VAR
+    refs[0] := REF(val);
+    result := refs[0]^;
+END_PROGRAM",
+    );
+}
+
+#[test]
+fn assign_when_named_array_type_element_is_reference_then_ok() {
+    assert_ok(
+        "TYPE IntRefs : ARRAY[0..2] OF REF_TO INT; END_TYPE
+PROGRAM Main
+VAR
+    val : INT := 77;
+    refs : IntRefs;
+    result : INT;
+END_VAR
+    refs[0] := REF(val);
+    result := refs[0]^;
+END_PROGRAM",
+    );
+}
+
+#[test]
+fn assign_when_array_element_is_reference_to_then_ok() {
+    let options = CompilerOptions {
+        allow_reference_to: true,
+        ..edition3_options()
+    };
+    let codes = rule_codes(
+        super::apply,
+        "PROGRAM Main
+VAR
+    val : INT := 77;
+    refs : ARRAY[0..2] OF REFERENCE TO INT;
+    result : INT;
+END_VAR
+    refs[0] REF= val;
+    result := refs[0]^;
+END_PROGRAM",
+        &options,
+    );
+    assert!(codes.is_empty(), "{codes:?}");
+}
+
+#[test]
+fn assign_when_array_element_ref_types_incompatible_then_error() {
+    assert_problem(
+        "PROGRAM Main
+VAR
+    val : REAL;
+    refs : ARRAY[0..2] OF REF_TO INT;
+END_VAR
+    refs[0] := REF(val);
+END_PROGRAM",
+        Problem::ReferenceTypeMismatch,
+    );
+}
+
+#[test]
+fn null_when_assigned_to_array_element_reference_then_ok() {
+    assert_ok(
+        "PROGRAM Main
+VAR
+    refs : ARRAY[0..2] OF REF_TO INT;
+END_VAR
+    refs[0] := NULL;
+END_PROGRAM",
+    );
+}
+
+#[test]
+fn deref_when_array_element_is_not_reference_then_error() {
+    assert_problem(
+        "PROGRAM Main
+VAR
+    values : ARRAY[0..2] OF INT;
+    result : INT;
+END_VAR
+    result := values[0]^;
+END_PROGRAM",
+        Problem::DerefRequiresReferenceType,
+    );
+}
+
+#[test]
+fn arithmetic_when_operand_is_array_element_reference_then_error() {
+    assert_problem(
+        "PROGRAM Main
+VAR
+    refs : ARRAY[0..2] OF REF_TO INT;
+    other : REF_TO INT;
+END_VAR
+    other := refs[0] + 1;
+END_PROGRAM",
+        Problem::ArithmeticOnReference,
+    );
+}
+
+rule_err_at!(
+    null_when_assigned_to_non_reference_then_error_at_null,
+    "PROGRAM Main
+VAR
+x : INT;
+END_VAR
+x := NULL;
+END_PROGRAM",
+    Problem::NullRequiresReferenceType,
+    "NULL",
+    edition3_options()
+);

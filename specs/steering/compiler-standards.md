@@ -67,6 +67,63 @@ Examples:
 - Include both positive and negative test cases
 - Test edge cases and boundary conditions
 
+### Rule Tests
+
+A rule's tests (the `#[cfg(test)]` module of an analyzer `rule_*.rs` or parser
+token `rule_*.rs`, and any `rule_*/` test files) assert **exactly the
+problems the rule reports**:
+
+- **Call the rule's own `apply`**, not the `analyze` pipeline: a pipeline
+  assertion passes when another rule reports something. That every rule runs
+  in the pipeline is checked once, by `test_rule_conventions.rs`, which
+  requires each `rule_*` module's `apply` to be called from `stages.rs`
+  (analyzer) or `lib.rs` (parser).
+- **Assert the exact list** of problem codes, in order: an empty list for a
+  program the rule accepts, `[P]` or `[P; n]` otherwise. Never `.is_err()`,
+  `has_diagnostics()`, or "some diagnostic has code P", which also hold
+  when the rule reports a problem twice or reports a different one too.
+- **Name codes as `Problem` variants**, never `"P####"` strings. The
+  compiler-located `P9xxx` variants are deprecated so that only their
+  `Diagnostic` constructors build them; compare against
+  `test_helpers::NOT_IMPLEMENTED_CODE` instead.
+- **Use the context the rule sees.** Every helper and macro below runs the
+  rule against the context resolution builds. Never hand a rule an empty
+  `SemanticContextBuilder` context: a rule that reads its context is then
+  tested against nothing.
+- **One-liners**, in `analyzer/src/test_macros.rs`, each with an optional
+  trailing `CompilerOptions` argument:
+  - `rule_ok!(name, program)`: the rule reports nothing.
+  - `rule_err!(name, program, [P])`: exactly the listed problems, in order:
+    `[P]`, `[P, Q]` or `[P; n]`.
+  - `rule_err_at!(name, program, P, "text")`: one `P`, labelled at the first
+    `"text"` in the program.
+- **Hand-written and `#[rstest]` bodies**, for a test the macros cannot
+  express (a message, a parameterised case), use the shared helpers in
+  `analyzer/src/test_helpers.rs` rather than their own setup:
+  `rule_codes(apply, program, &options)` and `rule_diagnostics(...)` resolve
+  the program and run the rule against the resolved context; compare with
+  `codes(&[Problem::…])`, or `diagnostic_codes(&diagnostics)` when the test
+  also checks a message. `fb_inheritance_options()` and `edition3_options()`
+  build the common options. A rule `stages::analyze` runs after
+  `xform_insert_implicit_conversions` (`rule_constant_range`) sees the
+  library the pass returns, which the macros do not build; its tests use
+  `rule_codes_after_conversions` and `rule_diagnostics_after_conversions`.
+  Parser token rules use `token_rule_ok!(name, tokens)` and
+  `token_rule_err!(name, tokens, [P])` in `parser/src/test_rule_macros.rs`,
+  with `token` and `result_codes` in `parser/src/test_rule_helpers.rs` for
+  the tests the macros cannot express.
+- **Messages and labels** are asserted only when they are the feature (a
+  "did you mean" hint, the location of the offending text), and alongside
+  the code, never instead of it.
+- Every rule has a test where it reports nothing and a test naming each
+  problem it reports.
+
+`test_rule_conventions.rs` in the analyzer and parser checks these by reading
+the rule tests (see `ironplc_test::rule_conventions`). When an exact
+assertion would encode a result that is wrong (a second, cascaded
+diagnostic), keep the weaker assertion, say why in a comment, and opt the
+line out with `// rule-test-conventions: allow(<check>)`.
+
 For where each kind of test lives (VM, codegen, plc2plc, parser) and which leg
 asserts what, see [compiler-architecture.md](compiler-architecture.md#testing-architecture)
 and [syntax-support-guide.md](syntax-support-guide.md).

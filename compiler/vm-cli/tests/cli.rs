@@ -804,8 +804,7 @@ fn write_compiled_container(path: &Path, source: &str) {
             .unwrap();
     let (analyzed, context) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
     let container = ironplc_codegen::compile(
-        &analyzed,
-        &context,
+        ironplc_analyzer::CleanAnalysis::new(&analyzed, &context).unwrap(),
         &ironplc_codegen::CodegenOptions::default(),
         &ironplc_codegen::EmptyLookup,
     )

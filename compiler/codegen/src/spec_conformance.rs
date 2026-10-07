@@ -11,16 +11,16 @@
 //! See `specs/design/spec-conformance-testing.md` for full design.
 //! See `specs/design/enumeration-codegen.md` for the enumeration codegen spec.
 
+use ironplc_analyzer::CleanAnalysis;
 use ironplc_container::debug_section::iec_type_tag;
+use ironplc_container::VarIndex;
 use ironplc_dsl::core::FileId;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_vm::test_support::load_and_start;
 use ironplc_vm::VmBuffers;
 use spec_test_macro::spec_test;
 
-use crate::compile_enum::{
-    build_enum_ordinal_map, enum_var_type_info, resolve_enum_default_ordinal, resolve_enum_ordinal,
-};
+use crate::compile_enum::enum_var_type_info;
 
 // ---------------------------------------------------------------------------
 // Meta-test: completeness check
@@ -44,12 +44,17 @@ fn parse_library(source: &str) -> ironplc_dsl::common::Library {
 }
 
 /// Parse, analyze, compile, and run one scan cycle.
-fn compile_and_run(source: &str) -> (ironplc_container::Container, VmBuffers) {
+pub(crate) fn compile_and_run(source: &str) -> (ironplc_container::Container, VmBuffers) {
     let library = parse_library(source);
     let (analyzed, ctx) =
         ironplc_analyzer::stages::analyze(&[&library], &CompilerOptions::default()).unwrap();
     let codegen_options = crate::CodegenOptions::default();
-    let container = crate::compile(&analyzed, &ctx, &codegen_options, &crate::EmptyLookup).unwrap();
+    let container = crate::compile(
+        CleanAnalysis::new(&analyzed, &ctx).unwrap(),
+        &codegen_options,
+        &crate::EmptyLookup,
+    )
+    .unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
@@ -58,13 +63,38 @@ fn compile_and_run(source: &str) -> (ironplc_container::Container, VmBuffers) {
     (container, bufs)
 }
 
+/// The slot of the program or global variable `name`, from the debug
+/// section, so a test does not assume the order codegen assigns slots in.
+fn var_index(container: &ironplc_container::Container, name: &str) -> VarIndex {
+    container
+        .debug_section
+        .as_ref()
+        .and_then(|debug| debug.program_variable(name))
+        .unwrap_or_else(|| panic!("the program declares no variable `{name}`"))
+        .var_index
+}
+
+/// The value of the program or global variable `name` after a scan.
+pub(crate) fn read_i32(
+    container: &ironplc_container::Container,
+    bufs: &VmBuffers,
+    name: &str,
+) -> i32 {
+    bufs.vars[usize::from(var_index(container, name).raw())].as_i32()
+}
+
 /// Parse, analyze, and compile (no execution).
-fn compile_only(source: &str) -> ironplc_container::Container {
+pub(crate) fn compile_only(source: &str) -> ironplc_container::Container {
     let library = parse_library(source);
     let (analyzed, ctx) =
         ironplc_analyzer::stages::analyze(&[&library], &CompilerOptions::default()).unwrap();
     let codegen_options = crate::CodegenOptions::default();
-    crate::compile(&analyzed, &ctx, &codegen_options, &crate::EmptyLookup).unwrap()
+    crate::compile(
+        CleanAnalysis::new(&analyzed, &ctx).unwrap(),
+        &codegen_options,
+        &crate::EmptyLookup,
+    )
+    .unwrap()
 }
 
 // ---------------------------------------------------------------------------
@@ -74,19 +104,20 @@ fn compile_only(source: &str) -> ironplc_container::Container {
 /// REQ-EN-codegen-001: Ordinals are 0-based, assigned by declaration order.
 #[spec_test(REQ_EN_codegen_001)]
 fn enum_spec_req_en_001_ordinals_are_zero_based_by_declaration_order() {
-    let lib = parse_library(
-        "TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
-         PROGRAM main END_PROGRAM",
-    );
-    let map = build_enum_ordinal_map(&lib);
-
-    let red = ironplc_dsl::common::EnumeratedValue::new("RED");
-    let green = ironplc_dsl::common::EnumeratedValue::new("GREEN");
-    let blue = ironplc_dsl::common::EnumeratedValue::new("BLUE");
-
-    assert_eq!(resolve_enum_ordinal(&map, &red).unwrap(), 0);
-    assert_eq!(resolve_enum_ordinal(&map, &green).unwrap(), 1);
-    assert_eq!(resolve_enum_ordinal(&map, &blue).unwrap(), 2);
+    let source = "
+TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
+PROGRAM main
+  VAR
+    r : COLOR := RED;
+    g : COLOR := GREEN;
+    b : COLOR := BLUE;
+  END_VAR
+END_PROGRAM
+";
+    let (_c, bufs) = compile_and_run(source);
+    assert_eq!(bufs.vars[0].as_i32(), 0);
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+    assert_eq!(bufs.vars[2].as_i32(), 2);
 }
 
 /// REQ-EN-codegen-002: The ordinal is the runtime value stored in the variable slot.
@@ -100,9 +131,9 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run(source);
+    let (container, bufs) = compile_and_run(source);
     // GREEN is ordinal 1 — the raw slot value must be 1.
-    assert_eq!(bufs.vars[0].as_i32(), 1);
+    assert_eq!(read_i32(&container, &bufs, "c"), 1);
 }
 
 /// REQ-EN-codegen-003: Enums use DINT (W32, Signed, 32-bit) at codegen level.
@@ -131,8 +162,8 @@ PROGRAM main
 END_PROGRAM
 ";
     // Initialization with enum value succeeds (no arithmetic operators used).
-    let (_c, bufs) = compile_and_run(source);
-    assert_eq!(bufs.vars[0].as_i32(), 2); // HIGH = ordinal 2
+    let (container, bufs) = compile_and_run(source);
+    assert_eq!(read_i32(&container, &bufs, "x"), 2); // HIGH = ordinal 2
 }
 
 // ---------------------------------------------------------------------------
@@ -152,8 +183,8 @@ END_PROGRAM
 ";
     // If the variable didn't have correct VarTypeInfo, the STORE_VAR
     // would use the wrong opcode and the value would be wrong.
-    let (_c, bufs) = compile_and_run(source);
-    assert_eq!(bufs.vars[0].as_i32(), 1);
+    let (container, bufs) = compile_and_run(source);
+    assert_eq!(read_i32(&container, &bufs, "c"), 1);
 }
 
 /// REQ-EN-codegen-011: Enum variable occupies one slot, same as any scalar integer.
@@ -170,11 +201,14 @@ PROGRAM main
   b := 42;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run(source);
-    // Each variable occupies one slot: a=slot 0, b=slot 1, c=slot 2.
-    assert_eq!(bufs.vars[0].as_i32(), 0); // RED
-    assert_eq!(bufs.vars[1].as_i32(), 42); // DINT
-    assert_eq!(bufs.vars[2].as_i32(), 2); // BLUE
+    let (container, bufs) = compile_and_run(source);
+    assert_eq!(read_i32(&container, &bufs, "a"), 0); // RED
+    assert_eq!(read_i32(&container, &bufs, "b"), 42); // DINT
+    assert_eq!(read_i32(&container, &bufs, "c"), 2); // BLUE
+                                                     // One slot each, so the declared neighbours sit in neighbouring slots.
+    let slot = |name| var_index(&container, name).raw();
+    assert_eq!(slot("b"), slot("a") + 1);
+    assert_eq!(slot("c"), slot("b") + 1);
 }
 
 /// REQ-EN-codegen-012: Debug VarNameEntry uses iec_type_tag::DINT and user type name.
@@ -211,8 +245,8 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run(source);
-    assert_eq!(bufs.vars[0].as_i32(), 2); // BLUE = ordinal 2
+    let (container, bufs) = compile_and_run(source);
+    assert_eq!(read_i32(&container, &bufs, "c"), 2); // BLUE = ordinal 2
 }
 
 /// REQ-EN-codegen-021: No explicit init uses type declaration default.
@@ -226,9 +260,9 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run(source);
+    let (container, bufs) = compile_and_run(source);
     // Type default is MEDIUM = ordinal 1.
-    assert_eq!(bufs.vars[0].as_i32(), 1);
+    assert_eq!(read_i32(&container, &bufs, "x"), 1);
 }
 
 /// REQ-EN-codegen-022: No type default means initial ordinal is 0 (first value).
@@ -242,8 +276,8 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run(source);
-    assert_eq!(bufs.vars[0].as_i32(), 0); // STOPPED = ordinal 0
+    let (container, bufs) = compile_and_run(source);
+    assert_eq!(read_i32(&container, &bufs, "s"), 0); // STOPPED = ordinal 0
 }
 
 /// REQ-EN-codegen-023: Function-local enum variables are re-initialized on every call.
@@ -287,36 +321,41 @@ PROGRAM main
   c := GREEN;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run(source);
-    assert_eq!(bufs.vars[0].as_i32(), 1); // GREEN = ordinal 1
+    let (container, bufs) = compile_and_run(source);
+    assert_eq!(read_i32(&container, &bufs, "c"), 1); // GREEN = ordinal 1
 }
 
 /// REQ-EN-codegen-031: Qualified enum reference (COLOR#GREEN) resolves correctly.
 #[spec_test(REQ_EN_codegen_031)]
 fn enum_spec_req_en_031_qualified_reference_resolves() {
-    let lib = parse_library(
-        "TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
-         PROGRAM main END_PROGRAM",
-    );
-    let map = build_enum_ordinal_map(&lib);
-
-    let mut ev = ironplc_dsl::common::EnumeratedValue::new("GREEN");
-    ev.type_name = Some(ironplc_dsl::common::TypeName::from("COLOR"));
-
-    assert_eq!(resolve_enum_ordinal(&map, &ev).unwrap(), 1);
+    let source = "
+TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
+PROGRAM main
+  VAR
+    c : COLOR := COLOR#GREEN;
+  END_VAR
+END_PROGRAM
+";
+    let (_c, bufs) = compile_and_run(source);
+    assert_eq!(bufs.vars[0].as_i32(), 1);
 }
 
-/// REQ-EN-codegen-032: Unqualified enum reference (GREEN) resolves via reverse lookup.
+/// REQ-EN-codegen-032: Unqualified enum reference (GREEN) resolves in the
+/// type the analyzer gave it.
 #[spec_test(REQ_EN_codegen_032)]
 fn enum_spec_req_en_032_unqualified_reference_resolves() {
-    let lib = parse_library(
-        "TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
-         PROGRAM main END_PROGRAM",
-    );
-    let map = build_enum_ordinal_map(&lib);
-
-    let ev = ironplc_dsl::common::EnumeratedValue::new("BLUE");
-    assert_eq!(resolve_enum_ordinal(&map, &ev).unwrap(), 2);
+    let source = "
+TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
+TYPE LIGHT : (BLUE, OFF); END_TYPE
+PROGRAM main
+  VAR
+    c : COLOR;
+  END_VAR
+  c := BLUE;
+END_PROGRAM
+";
+    let (_c, bufs) = compile_and_run(source);
+    assert_eq!(bufs.vars[0].as_i32(), 2);
 }
 
 /// REQ-EN-codegen-033: Enum equality comparison uses integer comparison.
@@ -336,8 +375,8 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run(source);
-    assert_eq!(bufs.vars[1].as_i32(), 42);
+    let (container, bufs) = compile_and_run(source);
+    assert_eq!(read_i32(&container, &bufs, "result"), 42);
 }
 
 /// REQ-EN-codegen-034: Assignment of enum value compiles to LOAD_CONST + STORE_VAR.
@@ -352,8 +391,8 @@ PROGRAM main
   x := HIGH;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run(source);
-    assert_eq!(bufs.vars[0].as_i32(), 2); // HIGH = ordinal 2
+    let (container, bufs) = compile_and_run(source);
+    assert_eq!(read_i32(&container, &bufs, "x"), 2); // HIGH = ordinal 2
 }
 
 // ---------------------------------------------------------------------------
@@ -378,8 +417,8 @@ PROGRAM main
   END_CASE;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run(source);
-    assert_eq!(bufs.vars[1].as_i32(), 20);
+    let (container, bufs) = compile_and_run(source);
+    assert_eq!(read_i32(&container, &bufs, "result"), 20);
 }
 
 /// REQ-EN-codegen-041: Multiple enum values in a CASE arm combine with boolean OR.
@@ -399,8 +438,8 @@ PROGRAM main
   END_CASE;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run(source);
-    assert_eq!(bufs.vars[1].as_i32(), 20);
+    let (container, bufs) = compile_and_run(source);
+    assert_eq!(read_i32(&container, &bufs, "result"), 20);
 }
 
 // ---------------------------------------------------------------------------
@@ -426,8 +465,8 @@ PROGRAM main
   result := s.v;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run(source);
-    assert_eq!(bufs.vars[1].as_i32(), 42);
+    let (container, bufs) = compile_and_run(source);
+    assert_eq!(read_i32(&container, &bufs, "result"), 42);
 }
 
 /// REQ-EN-codegen-051: Struct field enum type gets correct op_type via resolve_field_op_type.
@@ -538,7 +577,7 @@ fn enum_spec_req_en_063_unknown_tags_skippable() {
 
 /// REQ-EN-codegen-064: Only named enum types are emitted in ENUM_DEF.
 #[spec_test(REQ_EN_codegen_064)]
-fn enum_spec_req_en_064_only_named_types_in_enum_def() {
+fn enum_spec_req_en_064_only_enumerations_in_enum_def() {
     let source = "
 TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
 PROGRAM main
@@ -549,7 +588,7 @@ END_PROGRAM
 ";
     let container = compile_only(source);
     let debug = container.debug_section.as_ref().unwrap();
-    // Only the named type COLOR appears, no anonymous types.
+    // Only the enumeration COLOR appears.
     assert_eq!(debug.enum_defs.len(), 1);
     assert_eq!(debug.enum_defs[0].type_name, "COLOR");
 }
@@ -619,68 +658,98 @@ fn enum_spec_req_en_072_missing_enum_def_falls_back() {
 // Section 9: Ordinal Map Construction (REQ-EN-codegen-080 through REQ-EN-codegen-083)
 // ---------------------------------------------------------------------------
 
-/// REQ-EN-codegen-080: Ordinal map built from DataTypeDeclaration(Enumeration) entries.
+/// REQ-EN-codegen-080: Ordinals come from the members the analyzer records
+/// with the type, explicit values included.
 #[spec_test(REQ_EN_codegen_080)]
-fn enum_spec_req_en_080_ordinal_map_from_type_declarations() {
-    let lib = parse_library(
-        "TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
-         TYPE LEVEL : (LOW, HIGH) := LOW; END_TYPE
-         PROGRAM main END_PROGRAM",
-    );
-    let map = build_enum_ordinal_map(&lib);
-    // Both type declarations are in the map.
-    assert!(map.definitions.contains_key("COLOR"));
-    assert!(map.definitions.contains_key("LEVEL"));
-    assert_eq!(
-        resolve_enum_ordinal(&map, &ironplc_dsl::common::EnumeratedValue::new("RED")).unwrap(),
-        0
-    );
-    assert_eq!(
-        resolve_enum_ordinal(&map, &ironplc_dsl::common::EnumeratedValue::new("HIGH")).unwrap(),
-        1
-    );
+fn enum_spec_req_en_080_ordinals_from_type_members() {
+    let options = CompilerOptions::from_dialect(ironplc_parser::options::Dialect::Iec61131_3Ed3);
+    let library = ironplc_parser::parse_program(
+        "TYPE LEVEL : (LOW, MEDIUM := 5, HIGH); END_TYPE
+         PROGRAM main VAR m : LEVEL := MEDIUM; h : LEVEL := HIGH; END_VAR END_PROGRAM",
+        &FileId::default(),
+        &options,
+    )
+    .unwrap();
+    let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
+    let container = crate::compile(
+        CleanAnalysis::new(&analyzed, &ctx).unwrap(),
+        &crate::CodegenOptions::default(),
+        &crate::EmptyLookup,
+    )
+    .unwrap();
+    let mut bufs = VmBuffers::from_container(&container);
+    {
+        let mut vm = load_and_start(&container, &mut bufs).unwrap();
+        vm.run_round(0).unwrap();
+    }
+    assert_eq!(bufs.vars[0].as_i32(), 5);
+    assert_eq!(bufs.vars[1].as_i32(), 6);
 }
 
-/// REQ-EN-codegen-081: Reverse lookup from unqualified value names.
+/// REQ-EN-codegen-081: An unqualified value's ordinal is looked up in the
+/// type of its expression: two enumerations may share a value name.
 #[spec_test(REQ_EN_codegen_081)]
-fn enum_spec_req_en_081_reverse_lookup_for_unqualified() {
-    let lib = parse_library(
-        "TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
-         PROGRAM main END_PROGRAM",
-    );
-    let map = build_enum_ordinal_map(&lib);
-    // Unqualified lookup resolves correctly.
-    let ev = ironplc_dsl::common::EnumeratedValue::new("GREEN");
-    assert_eq!(resolve_enum_ordinal(&map, &ev).unwrap(), 1);
-}
-
-/// REQ-EN-codegen-082: Type declaration default stored as pre-resolved ordinal.
-#[spec_test(REQ_EN_codegen_082)]
-fn enum_spec_req_en_082_default_ordinal_from_type_declaration() {
-    let lib = parse_library(
-        "TYPE LEVEL : (LOW, MEDIUM, HIGH) := HIGH; END_TYPE
-         PROGRAM main END_PROGRAM",
-    );
-    let map = build_enum_ordinal_map(&lib);
-    assert_eq!(resolve_enum_default_ordinal(&map, "LEVEL"), 2);
-}
-
-/// REQ-EN-codegen-083: Ordinal map built once at codegen entry, stored in CompileContext.
-#[spec_test(REQ_EN_codegen_083)]
-fn enum_spec_req_en_083_map_built_once_at_codegen_entry() {
-    // Verify the map is available by compiling a program with enum types.
-    // The compile function internally calls build_enum_ordinal_map and stores
-    // the result in CompileContext. If this path was broken, compilation would
-    // fail.
+fn enum_spec_req_en_081_lookup_by_expression_type() {
     let source = "
-TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
+TYPE A : (X, Y); B : (W, X, Z); END_TYPE
 PROGRAM main
   VAR
-    c : COLOR := GREEN;
+    a : A;
+    b : B;
+  END_VAR
+  a := X;
+  b := X;
+END_PROGRAM
+";
+    let (_c, bufs) = compile_and_run(source);
+    assert_eq!(bufs.vars[0].as_i32(), 0);
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+}
+
+/// REQ-EN-codegen-082: The default comes from the type's members; an alias
+/// may declare its own.
+#[spec_test(REQ_EN_codegen_082)]
+fn enum_spec_req_en_082_default_ordinal_from_type() {
+    let source = "
+TYPE LEVEL : (LOW, MEDIUM, HIGH) := HIGH; END_TYPE
+TYPE LEVEL2 : LEVEL := MEDIUM; END_TYPE
+PROGRAM main
+  VAR
+    l : LEVEL;
+    m : LEVEL2;
   END_VAR
 END_PROGRAM
 ";
-    let _container = compile_only(source);
+    let (_c, bufs) = compile_and_run(source);
+    assert_eq!(bufs.vars[0].as_i32(), 2);
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+}
+
+/// REQ-EN-codegen-083: A value outside an expression is a member of the type
+/// of where it appears: a CASE label of the selector's type, a structure
+/// field initializer of the field's type.
+#[spec_test(REQ_EN_codegen_083)]
+fn enum_spec_req_en_083_value_outside_expression_uses_its_place_type() {
+    let source = "
+TYPE A : (X, Y); B : (W, X, Z); END_TYPE
+TYPE S : STRUCT f : B; END_STRUCT; END_TYPE
+PROGRAM main
+  VAR
+    b : B := X;
+    d : DINT;
+    s : S := (f := X);
+    e : B;
+  END_VAR
+  CASE b OF
+    W: d := 10;
+    X: d := 20;
+  END_CASE;
+  e := s.f;
+END_PROGRAM
+";
+    let (_c, bufs) = compile_and_run(source);
+    assert_eq!(bufs.vars[1].as_i32(), 20);
+    assert_eq!(bufs.vars[3].as_i32(), 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -700,7 +769,7 @@ fn reference_to_options() -> CompilerOptions {
 }
 
 /// Parse, analyze, compile, and run one scan cycle with the given options.
-fn compile_and_run_with(
+pub(crate) fn compile_and_run_with(
     source: &str,
     options: &CompilerOptions,
 ) -> (ironplc_container::Container, VmBuffers) {
@@ -715,7 +784,12 @@ fn compile_and_try_run_with(
     let library = ironplc_parser::parse_program(source, &FileId::default(), options).unwrap();
     let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], options).unwrap();
     let codegen_options = crate::CodegenOptions::default();
-    let container = crate::compile(&analyzed, &ctx, &codegen_options, &crate::EmptyLookup).unwrap();
+    let container = crate::compile(
+        CleanAnalysis::new(&analyzed, &ctx).unwrap(),
+        &codegen_options,
+        &crate::EmptyLookup,
+    )
+    .unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs)?;
@@ -739,9 +813,8 @@ PROGRAM main
   y := r^;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
-    // vars: x=0, r=1, y=2
-    assert_eq!(bufs.vars[2].as_i32(), 42);
+    let (container, bufs) = compile_and_run_with(source, &reference_to_options());
+    assert_eq!(read_i32(&container, &bufs, "y"), 42);
 }
 
 /// REQ-RTO-codegen-401: Writing through `^` stores to the referenced variable.
@@ -757,9 +830,9 @@ PROGRAM main
   r^ := 99;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
+    let (container, bufs) = compile_and_run_with(source, &reference_to_options());
     // Writing through r must update x (var 0).
-    assert_eq!(bufs.vars[0].as_i32(), 99);
+    assert_eq!(read_i32(&container, &bufs, "x"), 99);
 }
 
 /// REQ-RTO-codegen-402: Dereferencing an unbound `REFERENCE TO` variable traps
@@ -794,9 +867,8 @@ PROGRAM main
   result := refs[0]^;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
-    // vars: val=0, refs=1, result=2
-    assert_eq!(bufs.vars[2].as_i32(), 77);
+    let (container, bufs) = compile_and_run_with(source, &reference_to_options());
+    assert_eq!(read_i32(&container, &bufs, "result"), 77);
 }
 
 /// REQ-RTO-codegen-500: A bare read of a `REFERENCE TO` variable (no `^`)
@@ -814,9 +886,9 @@ PROGRAM main
   y := r;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
-    // vars: x=0, r=1, y=2. Bare `y := r` must read *through* r (== x).
-    assert_eq!(bufs.vars[2].as_i32(), 42);
+    let (container, bufs) = compile_and_run_with(source, &reference_to_options());
+    // Bare `y := r` must read *through* r (== x).
+    assert_eq!(read_i32(&container, &bufs, "y"), 42);
 }
 
 /// REQ-RTO-codegen-501: A bare write to a `REFERENCE TO` variable (no `^`)
@@ -833,9 +905,9 @@ PROGRAM main
   r := 99;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
+    let (container, bufs) = compile_and_run_with(source, &reference_to_options());
     // Bare `r := 99` must store *through* r, updating x (var 0).
-    assert_eq!(bufs.vars[0].as_i32(), 99);
+    assert_eq!(read_i32(&container, &bufs, "x"), 99);
 }
 
 /// REQ-RTO-codegen-503: `__ISVALIDREF(r)` is FALSE for an unbound reference and
@@ -855,10 +927,17 @@ PROGRAM main
   after := __ISVALIDREF(r);
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
-    // vars: x=0, r=1, before=2, after=3.
-    assert_eq!(bufs.vars[2].as_i32(), 0, "unbound reference is not valid");
-    assert_eq!(bufs.vars[3].as_i32(), 1, "bound reference is valid");
+    let (container, bufs) = compile_and_run_with(source, &reference_to_options());
+    assert_eq!(
+        read_i32(&container, &bufs, "before"),
+        0,
+        "unbound reference is not valid"
+    );
+    assert_eq!(
+        read_i32(&container, &bufs, "after"),
+        1,
+        "bound reference is valid"
+    );
 }
 
 /// REQ-RTO-codegen-504: Two `REFERENCE TO` variables bound to the same target
@@ -879,9 +958,9 @@ PROGRAM main
   y := r2;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
-    // vars: x=0, r1=1, r2=2, y=3. Writing through r1 is observed through r2.
-    assert_eq!(bufs.vars[3].as_i32(), 55);
+    let (container, bufs) = compile_and_run_with(source, &reference_to_options());
+    // Writing through r1 is observed through r2.
+    assert_eq!(read_i32(&container, &bufs, "y"), 55);
 }
 
 /// REQ-RTO-codegen-510: Arithmetic on a bare `REFERENCE TO` operand uses the
@@ -899,9 +978,9 @@ PROGRAM main
   y := r + 2;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
-    // vars: x=0, r=1, y=2. `r + 2` must use r's dereferenced value (40 + 2).
-    assert_eq!(bufs.vars[2].as_i32(), 42);
+    let (container, bufs) = compile_and_run_with(source, &reference_to_options());
+    // `r + 2` must use r's dereferenced value (40 + 2).
+    assert_eq!(read_i32(&container, &bufs, "y"), 42);
 }
 
 /// REQ-RTO-codegen-421: A reference whose target is a named array type is
@@ -922,7 +1001,6 @@ PROGRAM main
   v := r^[1];
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
-    // vars: arr=0, r=1, v=2
-    assert_eq!(bufs.vars[2].as_i32(), 77);
+    let (container, bufs) = compile_and_run_with(source, &reference_to_options());
+    assert_eq!(read_i32(&container, &bufs, "v"), 77);
 }

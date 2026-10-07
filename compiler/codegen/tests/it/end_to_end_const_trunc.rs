@@ -1,63 +1,11 @@
-//! End-to-end tests pairing the two paths a narrow store can take.
+//! End-to-end tests of the narrow stores the compiler settles itself.
 //!
 //! When the value comes from a constant load the compiler settles the
 //! truncation itself and emits no `TRUNC_*`; when it is computed during the
-//! scan the VM executes one. Each test below drives the same out-of-range
-//! value down both paths in one program and asserts the two slots agree, so
-//! the compile-time fold cannot drift from the VM's wrapping semantics
-//! without a test failing.
-//!
-//! `a + a` keeps the run-time path honest: the analyzer folds
-//! literal-op-literal before codegen, so a computed value needs variable
-//! operands to survive as far as the VM.
-
-// SINT: 100 + 100 = 200, wrapped to i8 = -56.
-e2e_i32!(
-    end_to_end_when_sint_overflow_then_folded_matches_computed,
-    "PROGRAM main
-       VAR live : SINT; folded : SINT; a : SINT; END_VAR
-       a := 100;
-       live := a + a;
-       folded := 200;
-     END_PROGRAM",
-    &[(0, -56), (1, -56)],
-);
-
-// USINT: 150 + 150 = 300, wrapped to u8 = 44.
-e2e_i32!(
-    end_to_end_when_usint_overflow_then_folded_matches_computed,
-    "PROGRAM main
-       VAR live : USINT; folded : USINT; a : USINT; END_VAR
-       a := 150;
-       live := a + a;
-       folded := 300;
-     END_PROGRAM",
-    &[(0, 44), (1, 44)],
-);
-
-// INT: 20000 + 20000 = 40000, wrapped to i16 = -25536.
-e2e_i32!(
-    end_to_end_when_int_overflow_then_folded_matches_computed,
-    "PROGRAM main
-       VAR live : INT; folded : INT; a : INT; END_VAR
-       a := 20000;
-       live := a + a;
-       folded := 40000;
-     END_PROGRAM",
-    &[(0, -25536), (1, -25536)],
-);
-
-// UINT: 40000 + 40000 = 80000, wrapped to u16 = 14464.
-e2e_i32!(
-    end_to_end_when_uint_overflow_then_folded_matches_computed,
-    "PROGRAM main
-       VAR live : UINT; folded : UINT; a : UINT; END_VAR
-       a := 40000;
-       live := a + a;
-       folded := 80000;
-     END_PROGRAM",
-    &[(0, 14464), (1, 14464)],
-);
+//! scan the VM executes one. Analysis rejects a constant its type cannot hold
+//! (P2026), bit strings included, so every constant that reaches the fold is
+//! in range, and these tests pin that the fold keeps its value. Wrapping a
+//! value computed at run time is covered by `end_to_end_bitstring.rs`.
 
 // A constant already inside the narrow range keeps its value: the fold drops
 // the TRUNC rather than changing what is stored.
@@ -70,7 +18,7 @@ e2e_i32!(
        i := 32767;
        w := WORD#16#FFFF;
      END_PROGRAM",
-    &[(0, -128), (1, 255), (2, 32767), (3, 65535)],
+    &[("s", -128), ("u", 255), ("i", 32767), ("w", 65535)],
 );
 
 // Structure field initialization is constant loads too, and the narrow
@@ -85,7 +33,7 @@ e2e_i32!(
        a := m.speed;
        b := m.fault;
      END_PROGRAM",
-    &[(1, 100), (2, -3)],
+    &[("a", 100), ("b", -3)],
 );
 
 e2e_i32!(
@@ -96,5 +44,5 @@ e2e_i32!(
        a := m.speed;
        b := m.fault;
      END_PROGRAM",
-    &[(1, 0), (2, 0)],
+    &[("a", 0), ("b", 0)],
 );

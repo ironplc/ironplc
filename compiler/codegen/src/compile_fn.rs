@@ -17,9 +17,9 @@ use ironplc_analyzer::{FunctionEnvironment, TypeEnvironment};
 
 use super::compile::{
     char_width_for_string_type, finalize_function, string_region_size, CompileContext,
-    CompiledFunction, CurrentFunctionReturn, OpWidth, ParamPassing, SavedFbScope, Signedness,
-    StringParamInfo, StringReturnInfo, StringVarInfo, UserFunctionInfo, VarTypeInfo,
-    DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH, WIDE_CHAR_WIDTH,
+    CompiledFunction, CurrentFunctionReturn, OpWidth, ParamPassing, Signedness, StringParamInfo,
+    StringReturnInfo, StringVarInfo, UserFunctionInfo, VarTypeInfo, DEFAULT_OP_TYPE,
+    NARROW_CHAR_WIDTH, WIDE_CHAR_WIDTH,
 };
 use super::compile_expr::emit_load_var;
 use super::compile_setup::{
@@ -28,6 +28,7 @@ use super::compile_setup::{
 use super::compile_stmt::{
     compile_body, compile_statements, resolve_string_max_length, resolve_string_spec_max_length,
 };
+use super::scope::Scope;
 use super::type_info::{decl_type_info, resolve_type_name};
 use crate::emit::Emitter;
 
@@ -101,53 +102,10 @@ pub(crate) fn compile_user_function(
     types: &TypeEnvironment,
     num_globals: u16,
 ) -> Result<CompiledFunction, Diagnostic> {
-    // Save the program's variable mappings.
-    let saved_variables = std::mem::take(&mut ctx.variables);
-    let saved_var_types = std::mem::take(&mut ctx.var_types);
-    let saved_string_vars = std::mem::take(&mut ctx.string_vars);
-    let saved_array_vars = std::mem::take(&mut ctx.array_vars);
-    let saved_struct_vars = std::mem::take(&mut ctx.struct_vars);
-    let saved_struct_array_vars = std::mem::take(&mut ctx.struct_array_vars);
-    let saved_in_out_params = std::mem::take(&mut ctx.in_out_params);
-
-    // Re-insert global variable mappings so the function body can access them.
-    for (id, index) in &saved_variables {
-        if index.raw() < num_globals {
-            ctx.variables.insert(id.clone(), *index);
-        }
-    }
-    for (id, info) in &saved_var_types {
-        if saved_variables
-            .get(id)
-            .is_some_and(|i| i.raw() < num_globals)
-        {
-            ctx.var_types.insert(id.clone(), *info);
-        }
-    }
-    for (id, info) in &saved_string_vars {
-        if saved_variables
-            .get(id)
-            .is_some_and(|i| i.raw() < num_globals)
-        {
-            ctx.string_vars.insert(id.clone(), info.clone());
-        }
-    }
-    for (id, info) in &saved_struct_vars {
-        if saved_variables
-            .get(id)
-            .is_some_and(|i| i.raw() < num_globals)
-        {
-            ctx.struct_vars.insert(id.clone(), info.clone());
-        }
-    }
-    for (id, info) in &saved_struct_array_vars {
-        if saved_variables
-            .get(id)
-            .is_some_and(|i| i.raw() < num_globals)
-        {
-            ctx.struct_array_vars.insert(id.clone(), info.clone());
-        }
-    }
+    // Swap the program's variable mappings for the function's own; the
+    // program's are put back once the function is compiled.
+    let program_scope = ctx.swap_scope(Scope::default());
+    ctx.swap_scope(Scope::for_function_body(&program_scope, num_globals));
 
     // Assign variable slots for the function's parameters and locals,
     // starting at var_offset. Input parameters come first (declaration order),
@@ -467,13 +425,7 @@ pub(crate) fn compile_user_function(
     );
 
     // Restore the program's variable mappings.
-    ctx.variables = saved_variables;
-    ctx.var_types = saved_var_types;
-    ctx.string_vars = saved_string_vars;
-    ctx.array_vars = saved_array_vars;
-    ctx.struct_vars = saved_struct_vars;
-    ctx.struct_array_vars = saved_struct_array_vars;
-    ctx.in_out_params = saved_in_out_params;
+    ctx.swap_scope(program_scope);
 
     Ok(CompiledFunction {
         function_id,
@@ -503,7 +455,7 @@ pub(crate) fn compile_user_function_block(
     builder: &mut ContainerBuilder,
     types: &TypeEnvironment,
     num_globals: u16,
-) -> Result<(CompiledFunction, SavedFbScope), Diagnostic> {
+) -> Result<(CompiledFunction, Scope), Diagnostic> {
     let fb_name = fb_decl.name.name.to_string().to_uppercase();
 
     // Collect fields in a stable order: inputs first, then outputs, then locals.
@@ -525,53 +477,9 @@ pub(crate) fn compile_user_function_block(
         }
     }
 
-    // Save the program's variable mappings.
-    let saved_variables = std::mem::take(&mut ctx.variables);
-    let saved_var_types = std::mem::take(&mut ctx.var_types);
-    let saved_string_vars = std::mem::take(&mut ctx.string_vars);
-    let saved_array_vars = std::mem::take(&mut ctx.array_vars);
-    let saved_struct_vars = std::mem::take(&mut ctx.struct_vars);
-    let saved_struct_array_vars = std::mem::take(&mut ctx.struct_array_vars);
-    let saved_fb_instances = std::mem::take(&mut ctx.fb_instances);
-
-    // Re-insert global variable mappings so the FB body can access them.
-    for (id, index) in &saved_variables {
-        if index.raw() < num_globals {
-            ctx.variables.insert(id.clone(), *index);
-        }
-    }
-    for (id, info) in &saved_var_types {
-        if saved_variables
-            .get(id)
-            .is_some_and(|i| i.raw() < num_globals)
-        {
-            ctx.var_types.insert(id.clone(), *info);
-        }
-    }
-    for (id, info) in &saved_string_vars {
-        if saved_variables
-            .get(id)
-            .is_some_and(|i| i.raw() < num_globals)
-        {
-            ctx.string_vars.insert(id.clone(), info.clone());
-        }
-    }
-    for (id, info) in &saved_struct_vars {
-        if saved_variables
-            .get(id)
-            .is_some_and(|i| i.raw() < num_globals)
-        {
-            ctx.struct_vars.insert(id.clone(), info.clone());
-        }
-    }
-    for (id, info) in &saved_struct_array_vars {
-        if saved_variables
-            .get(id)
-            .is_some_and(|i| i.raw() < num_globals)
-        {
-            ctx.struct_array_vars.insert(id.clone(), info.clone());
-        }
-    }
+    // Swap the program's variable mappings for the FB type's own.
+    let program_scope = ctx.swap_scope(Scope::default());
+    ctx.swap_scope(Scope::for_fb_body(&program_scope, num_globals));
 
     // Assign variable slots for all FB fields, in the same order as field_decls.
     let mut current_index = VarIndex::new(var_offset);
@@ -643,18 +551,9 @@ pub(crate) fn compile_user_function_block(
     // here (unlike `compile_user_function`). This type's METHODs (OOP
     // extension, ADR-0041 Phase 1) are compiled next, right after this
     // function returns, and need `ctx.variables` to still hold this
-    // type's field mappings for `self` access. The caller
-    // (`compile_program_with_functions`) restores from the returned
-    // `SavedFbScope` once both this body and its methods are compiled.
-    let saved = SavedFbScope {
-        variables: saved_variables,
-        var_types: saved_var_types,
-        string_vars: saved_string_vars,
-        array_vars: saved_array_vars,
-        struct_vars: saved_struct_vars,
-        struct_array_vars: saved_struct_array_vars,
-        fb_instances: saved_fb_instances,
-    };
+    // type's field mappings for `self` access. The program-level scope is
+    // returned instead, and the caller (`compile_program_with_functions`)
+    // swaps it back in once both this body and its methods are compiled.
 
     Ok((
         CompiledFunction {
@@ -667,6 +566,6 @@ pub(crate) fn compile_user_function_block(
             name: fb_name,
             line_map: finalized.line_map,
         },
-        saved,
+        program_scope,
     ))
 }

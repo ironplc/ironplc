@@ -3,8 +3,11 @@ use ironplc_dsl::common::{DeclarationQualifier, TypeName, VariableType};
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::scope::ScopeNode;
+use ironplc_dsl::textual::SelfRefKind;
 use ironplc_dsl::type_id::TypeId;
 use ironplc_problems::Problem;
+
+use crate::enumeration_values::EnumerationValues;
 
 /// A scope's position in the nesting tree: the chain of declaration
 /// names from the library root.
@@ -50,14 +53,23 @@ pub(crate) struct ScopeTracker {
 }
 
 impl ScopeTracker {
-    /// Enters the scope `node` opens.
-    pub(crate) fn enter(&mut self, node: &ScopeNode<'_>) {
-        self.path.push(match node {
+    /// The name `node`'s scope is known by in a [`ScopePath`]. Every pass
+    /// that keys symbols by scope tracks scopes with this type, so they all
+    /// name a scope the same way.
+    fn name_of(node: &ScopeNode<'_>) -> Id {
+        match node {
             ScopeNode::Function(node) => node.name.clone(),
             ScopeNode::FunctionBlock(node) => node.name.name.clone(),
             ScopeNode::Program(node) => node.name.clone(),
             ScopeNode::Method(node) => node.name.clone(),
-        });
+            ScopeNode::MethodPrototype(node) => node.name.clone(),
+            ScopeNode::Interface(node) => node.name.clone(),
+        }
+    }
+
+    /// Enters the scope `node` opens.
+    pub(crate) fn enter(&mut self, node: &ScopeNode<'_>) {
+        self.path.push(Self::name_of(node));
     }
 
     /// Leaves the innermost scope.
@@ -72,6 +84,21 @@ impl ScopeTracker {
         } else {
             ScopeKind::Named(ScopePath::new(self.path.clone()))
         }
+    }
+
+    /// The scope `node` opens when the traversal enters it from the
+    /// current scope, for a pass that declares into it before entering.
+    pub(crate) fn scope_of(&self, node: &ScopeNode<'_>) -> ScopeKind {
+        let mut path = self.path.clone();
+        path.push(Self::name_of(node));
+        ScopeKind::Named(ScopePath::new(path))
+    }
+
+    /// The outermost declaration the traversal is inside, such as the
+    /// function block a method belongs to, or `None` outside every
+    /// declaration.
+    pub(crate) fn unit(&self) -> Option<&Id> {
+        self.path.first()
     }
 }
 
@@ -106,8 +133,6 @@ pub enum SymbolKind {
     /// Constant declaration
     #[allow(unused)]
     Constant,
-    /// Enumeration value
-    EnumerationValue,
     /// Structure element
     StructureElement,
     /// Edge variable (rising/falling edge)
@@ -134,13 +159,6 @@ pub struct SymbolInfo {
     /// environment. `None` for symbols that are not variables and for a
     /// variable whose type the analyzer could not resolve.
     pub type_id: Option<TypeId>,
-    /// For enumeration values, the type name of the enumeration
-    /// TODO this should probably be a new struct that is a TypeRef
-    /// so that we can distinguish between the actual place of the declaration
-    /// and a reference to the declaration.
-    pub enum_type: Option<TypeName>,
-    /// For structure fields, the type name of the structure
-    pub struct_type: Option<TypeName>,
     /// The variable type qualifier (VAR, VAR_INPUT, VAR_OUTPUT, etc.)
     pub variable_type: Option<VariableType>,
     /// The qualifier the declaration was written with (CONSTANT, RETAIN,
@@ -171,8 +189,6 @@ impl SymbolInfo {
             visibility_scope: scope,
             is_external: false,
             type_id: None,
-            enum_type: None,
-            struct_type: None,
             variable_type: None,
             qualifier: None,
             address: None,
@@ -202,18 +218,6 @@ impl SymbolInfo {
 
     pub fn with_external(mut self, is_external: bool) -> Self {
         self.is_external = is_external;
-        self
-    }
-
-    /// Set the enumeration type for enumeration value symbols
-    pub fn with_enum_type(mut self, enum_type: TypeName) -> Self {
-        self.enum_type = Some(enum_type);
-        self
-    }
-
-    /// Set the structure type for structure field symbols
-    pub fn with_struct_type(mut self, struct_type: TypeName) -> Self {
-        self.struct_type = Some(struct_type);
         self
     }
 
@@ -335,6 +339,13 @@ pub struct SymbolEnvironment {
     global_symbols: IndexMap<Id, SymbolInfo>,
     /// Scoped symbols (variables within functions, function blocks, etc.)
     scoped_symbols: IndexMap<ScopeKind, IndexMap<Id, SymbolInfo>>,
+    /// The values of each enumeration type, in declaration order, and the
+    /// enumeration each alias names.
+    ///
+    /// Kept apart from the named symbols: an enumeration value is always
+    /// read through its type (`Colors#Red`), and two enumerations, or an
+    /// enumeration and a variable, may use the same name.
+    enumeration_values: EnumerationValues,
 }
 
 impl SymbolEnvironment {
@@ -342,6 +353,7 @@ impl SymbolEnvironment {
         Self {
             global_symbols: IndexMap::new(),
             scoped_symbols: IndexMap::new(),
+            enumeration_values: EnumerationValues::default(),
         }
     }
 
@@ -446,107 +458,15 @@ impl SymbolEnvironment {
         Ok(())
     }
 
-    /// Insert an enumeration value with its type information
-    pub fn insert_enumeration_value(
-        &mut self,
-        name: &Id,
-        enum_type: &TypeName,
-        scope: &ScopeKind,
-    ) -> Result<(), Diagnostic> {
-        let symbol_info = SymbolInfo::new(SymbolKind::EnumerationValue, scope.clone(), name.span())
-            .with_enum_type(enum_type.clone());
-
-        match scope {
-            ScopeKind::Global => {
-                self.global_symbols.insert(name.clone(), symbol_info);
-            }
-            ScopeKind::Named(_) => {
-                let scope_symbols = self.scoped_symbols.entry(scope.clone()).or_default();
-
-                scope_symbols.insert(name.clone(), symbol_info);
-            }
-        }
-
-        Ok(())
+    /// Records `name` as a value of the enumeration type `enum_type`.
+    pub fn insert_enumeration_value(&mut self, name: &Id, enum_type: &TypeName) {
+        self.enumeration_values.insert(enum_type, name);
     }
 
-    /// Insert a structure field with its type information
-    pub fn insert_structure_field(
-        &mut self,
-        name: &Id,
-        struct_type: &TypeName,
-        scope: &ScopeKind,
-    ) -> Result<(), Diagnostic> {
-        let symbol_info = SymbolInfo::new(SymbolKind::StructureElement, scope.clone(), name.span())
-            .with_struct_type(struct_type.clone());
-
-        match scope {
-            ScopeKind::Global => {
-                self.global_symbols.insert(name.clone(), symbol_info);
-            }
-            ScopeKind::Named(_) => {
-                let scope_symbols = self.scoped_symbols.entry(scope.clone()).or_default();
-
-                scope_symbols.insert(name.clone(), symbol_info);
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Duplicate enumeration values from one type to another (for aliases)
-    pub fn duplicate_enumeration_values_for_alias(
-        &mut self,
-        source_type: &TypeName,
-        alias_type: &TypeName,
-    ) -> Result<(), Diagnostic> {
-        // Find all enumeration values for the source type and collect them
-        let source_values: Vec<Id> = self
-            .get_enumeration_values_for_type(source_type)
-            .iter()
-            .map(|id| (*id).clone())
-            .collect();
-
-        // Duplicate each value with the alias type
-        for value_name in source_values {
-            self.insert_enumeration_value(&value_name, alias_type, &ScopeKind::Global)?;
-        }
-
-        Ok(())
-    }
-
-    /// Duplicate structure field symbols from one type to another (for aliases)
-    pub fn duplicate_structure_fields_for_alias(
-        &mut self,
-        source_type: &TypeName,
-        alias_type: &TypeName,
-    ) -> Result<(), Diagnostic> {
-        // Find all structure field symbols for the source type and collect them
-        let source_fields: Vec<Id> = self
-            .get_structure_fields_for_type(source_type)
-            .iter()
-            .map(|id| (*id).clone())
-            .collect();
-
-        // Duplicate each field with the alias type
-        for field_name in source_fields {
-            self.insert_structure_field(&field_name, alias_type, &ScopeKind::Global)?;
-        }
-
-        Ok(())
-    }
-
-    /// Duplicate array element type information from one type to another (for aliases)
-    pub fn duplicate_array_elements_for_alias(
-        &mut self,
-        _source_type: &TypeName,
-        _alias_type: &TypeName,
-    ) -> Result<(), Diagnostic> {
-        // For arrays, we don't need to duplicate symbols like we do for enumerations
-        // and structures, since arrays don't have named elements that need to be
-        // accessible through the alias. The array type itself is what gets aliased.
-        // Array elements are accessed by index, not by name.
-        Ok(())
+    /// Records that the enumeration `alias` is declared as an alias of
+    /// `base`, so it has the values of `base`.
+    pub fn insert_enumeration_alias(&mut self, alias: &TypeName, base: &TypeName) {
+        self.enumeration_values.insert_alias(alias, base);
     }
 
     /// Finds a symbol visible from the given scope.
@@ -561,6 +481,32 @@ impl SymbolEnvironment {
         self.visible_scopes(scope)
             .iter()
             .find_map(|scope| self.symbols_in(scope)?.get(name))
+    }
+
+    /// The function block `THIS^` or `SUPER^` names from `scope`.
+    ///
+    /// Inside a function block's body, its methods and its property
+    /// accessors, `THIS^` names that block and `SUPER^` the block it
+    /// `EXTENDS`. `None` outside a function block (in a program or a
+    /// function), and for `SUPER^` in a block that extends nothing.
+    pub fn self_type(&self, scope: &ScopeKind, kind: SelfRefKind) -> Option<TypeName> {
+        let ScopeKind::Named(path) = scope else {
+            return None;
+        };
+        let unit = &path.segments()[0];
+        let block = self.function_block(unit)?;
+        match kind {
+            SelfRefKind::This => Some(TypeName::from_id(unit)),
+            SelfRefKind::Super => block.extends.clone(),
+        }
+    }
+
+    /// The symbol of the function block named `name`, or `None` when
+    /// `name` is not a function block.
+    fn function_block(&self, name: &Id) -> Option<&SymbolInfo> {
+        self.global_symbols
+            .get(name)
+            .filter(|info| info.kind == SymbolKind::FunctionBlock)
     }
 
     /// The scopes a name is looked up in from `scope`, innermost first:
@@ -578,9 +524,7 @@ impl SymbolEnvironment {
             let mut seen = vec![segments[0].clone()];
             let mut unit = &segments[0];
             while let Some(base) = self
-                .global_symbols
-                .get(unit)
-                .filter(|info| info.kind == SymbolKind::FunctionBlock)
+                .function_block(unit)
                 .and_then(|info| info.extends.as_ref())
             {
                 if seen.contains(&base.name) {
@@ -670,35 +614,18 @@ impl SymbolEnvironment {
 
     /// Iterate over every symbol in the environment: the global symbols
     /// first, followed by every scoped symbol across all named scopes.
-    ///
-    /// This is the shared traversal used by the read-only lookups that need
-    /// to consider both global and scoped declarations.
-    fn all_symbols(&self) -> impl Iterator<Item = (&Id, &SymbolInfo)> {
+    #[cfg(test)]
+    pub(crate) fn all_symbols(&self) -> impl Iterator<Item = (&Id, &SymbolInfo)> {
         self.global_symbols
             .iter()
             .chain(self.scoped_symbols.values().flat_map(|scope| scope.iter()))
     }
 
-    /// Get all enumeration values for a specific enumeration type
+    /// Get all enumeration values for a specific enumeration type, in
+    /// declaration order; for an alias, the values of the enumeration it
+    /// names.
     pub fn get_enumeration_values_for_type(&self, enum_type: &TypeName) -> Vec<&Id> {
-        self.all_symbols()
-            .filter(|(_, symbol)| {
-                matches!(symbol.kind, SymbolKind::EnumerationValue)
-                    && symbol.enum_type.as_ref() == Some(enum_type)
-            })
-            .map(|(name, _)| name)
-            .collect()
-    }
-
-    /// Get all structure fields for a specific structure type
-    pub fn get_structure_fields_for_type(&self, struct_type: &TypeName) -> Vec<&Id> {
-        self.all_symbols()
-            .filter(|(_, symbol)| {
-                matches!(symbol.kind, SymbolKind::StructureElement)
-                    && symbol.struct_type.as_ref() == Some(struct_type)
-            })
-            .map(|(name, _)| name)
-            .collect()
+        self.enumeration_values.values_of(enum_type)
     }
 }
 

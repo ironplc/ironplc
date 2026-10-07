@@ -4,32 +4,14 @@
 //! The parenthesis form is a vendor extension gated behind
 //! `allow_paren_string_length` (see
 //! `parser/src/rule_token_no_paren_string_length.rs`). These tests pin that
-//! the element-type position produces the same layout the bracket form does:
-//! a length that was parsed but dropped would silently fall back to the
-//! default 254, so each case runs the program and reads the stride back.
+//! the element-type position declares the length the bracket form does: a
+//! length that was parsed but dropped would silently fall back to the default
+//! 254, so the cases assign values longer than the declared length and check
+//! that they are cut to it.
 
-use ironplc_container::STRING_HEADER_BYTES;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{parse_and_run, read_string};
-
-/// Reads the `max_length` header field (code units).
-fn read_max_length(data_region: &[u8], offset: usize) -> u16 {
-    u16::from_le_bytes([data_region[offset], data_region[offset + 1]])
-}
-
-/// Reads a WSTRING value (UTF-16LE code units) from the data region.
-fn read_wstring(data_region: &[u8], offset: usize) -> String {
-    let cur_len = u16::from_le_bytes([data_region[offset + 2], data_region[offset + 3]]) as usize;
-    let data_start = offset + STRING_HEADER_BYTES;
-    let units: Vec<u16> = (0..cur_len)
-        .map(|i| {
-            let b = data_start + i * 2;
-            u16::from_le_bytes([data_region[b], data_region[b + 1]])
-        })
-        .collect();
-    String::from_utf16(&units).unwrap()
-}
+use crate::common::Snapshot;
 
 fn paren_string_length_options() -> CompilerOptions {
     CompilerOptions {
@@ -44,25 +26,23 @@ fn array_of_string_paren_length_when_assign_then_stores_value() {
 PROGRAM main
   VAR
     names : ARRAY[1..3] OF STRING(10);
+    r1 : STRING[20];
+    r2 : STRING[20];
+    r3 : STRING[20];
   END_VAR
   names[1] := 'hello';
   names[2] := 'world';
+  names[3] := 'abcdefghijklmnop';
+  r1 := names[1];
+  r2 := names[2];
+  r3 := names[3];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &paren_string_length_options());
+    let snapshot = Snapshot::run(source, &paren_string_length_options());
 
-    let base_offset = bufs.vars[0].as_i32() as usize;
-    // The stride proves the length came from the parentheses: a dropped
-    // length would leave the default 254 here.
-    let stride = STRING_HEADER_BYTES + 10;
-
-    assert_eq!(read_max_length(&bufs.data_region, base_offset), 10);
-    assert_eq!(read_string(&bufs.data_region, base_offset), "hello");
-    assert_eq!(
-        read_string(&bufs.data_region, base_offset + stride),
-        "world"
-    );
-    assert_eq!(read_string(&bufs.data_region, base_offset + 2 * stride), "");
+    assert_eq!(snapshot.read("r1"), "hello");
+    assert_eq!(snapshot.read("r2"), "world");
+    assert_eq!(snapshot.read("r3"), "abcdefghij");
 }
 
 #[test]
@@ -71,41 +51,38 @@ fn array_of_wstring_paren_length_when_assign_then_stores_value() {
 PROGRAM main
   VAR
     names : ARRAY[1..2] OF WSTRING(8);
+    r1 : WSTRING[20];
+    r2 : WSTRING[20];
   END_VAR
   names[1] := \"hi\";
-  names[2] := \"there\";
+  names[2] := \"there and more\";
+  r1 := names[1];
+  r2 := names[2];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &paren_string_length_options());
+    let snapshot = Snapshot::run(source, &paren_string_length_options());
 
-    let base_offset = bufs.vars[0].as_i32() as usize;
-    // WSTRING stores two bytes per code unit (ADR-0016).
-    let stride = STRING_HEADER_BYTES + 8 * 2;
-
-    assert_eq!(read_max_length(&bufs.data_region, base_offset), 8);
-    assert_eq!(read_wstring(&bufs.data_region, base_offset), "hi");
-    assert_eq!(
-        read_wstring(&bufs.data_region, base_offset + stride),
-        "there"
-    );
+    assert_eq!(snapshot.read("r1"), "hi");
+    assert_eq!(snapshot.read("r2"), "there an");
 }
 
 #[test]
 fn array_of_string_paren_length_when_truncated_then_respects_max_length() {
+    // The copy target is longer than the element, so only the parenthesised
+    // length can cut the value.
     let source = "
 PROGRAM main
   VAR
     arr : ARRAY[1..2] OF STRING(3);
+    r : STRING[10];
   END_VAR
   arr[1] := 'abcdefgh';
+  r := arr[1];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &paren_string_length_options());
+    let snapshot = Snapshot::run(source, &paren_string_length_options());
 
-    let base_offset = bufs.vars[0].as_i32() as usize;
-    // Truncation to 3 characters is only possible if the parenthesised
-    // length reached the layout.
-    assert_eq!(read_string(&bufs.data_region, base_offset), "abc");
+    assert_eq!(snapshot.read("r"), "abc");
 }
 
 #[test]
@@ -114,18 +91,18 @@ fn array_of_string_paren_length_when_initial_values_then_populated() {
 PROGRAM main
   VAR
     days : ARRAY[1..3] OF STRING(10) := ['Mon', 'Tue', 'Wed'];
+    r1 : STRING[10];
+    r2 : STRING[10];
+    r3 : STRING[10];
   END_VAR
+  r1 := days[1];
+  r2 := days[2];
+  r3 := days[3];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &paren_string_length_options());
+    let snapshot = Snapshot::run(source, &paren_string_length_options());
 
-    let base_offset = bufs.vars[0].as_i32() as usize;
-    let stride = STRING_HEADER_BYTES + 10;
-
-    assert_eq!(read_string(&bufs.data_region, base_offset), "Mon");
-    assert_eq!(read_string(&bufs.data_region, base_offset + stride), "Tue");
-    assert_eq!(
-        read_string(&bufs.data_region, base_offset + 2 * stride),
-        "Wed"
-    );
+    assert_eq!(snapshot.read("r1"), "Mon");
+    assert_eq!(snapshot.read("r2"), "Tue");
+    assert_eq!(snapshot.read("r3"), "Wed");
 }

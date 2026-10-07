@@ -13,7 +13,7 @@ PROGRAM main
   y := MAX(x, 7.5);
 END_PROGRAM
 ",
-    &[(1, 7.5)],
+    &[("y", 7.5)],
 );
 
 e2e_f32_near!(
@@ -29,7 +29,7 @@ PROGRAM main
   y := MAX(x, 2.0);
 END_PROGRAM
 ",
-    &[(1, 8.0)],
+    &[("y", 8.0)],
 );
 
 e2e_f64_near!(
@@ -45,5 +45,5 @@ PROGRAM main
   y := MAX(x, 7.5);
 END_PROGRAM
 ",
-    &[(1, 7.5)],
+    &[("y", 7.5)],
 );

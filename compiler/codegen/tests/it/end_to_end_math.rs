@@ -13,7 +13,7 @@ PROGRAM main
   y := LN(x);
 END_PROGRAM
 ",
-    &[(1, 1.0)],
+    &[("y", 1.0)],
 );
 
 e2e_f64_near!(
@@ -29,7 +29,7 @@ PROGRAM main
   y := LN(x);
 END_PROGRAM
 ",
-    &[(1, 0.0)],
+    &[("y", 0.0)],
 );
 
 e2e_f32_near!(
@@ -45,7 +45,7 @@ PROGRAM main
   y := LOG(x);
 END_PROGRAM
 ",
-    &[(1, 2.0)],
+    &[("y", 2.0)],
 );
 
 e2e_f64_near!(
@@ -61,7 +61,7 @@ PROGRAM main
   y := LOG(x);
 END_PROGRAM
 ",
-    &[(1, 3.0)],
+    &[("y", 3.0)],
 );
 
 e2e_f32_near!(
@@ -77,7 +77,7 @@ PROGRAM main
   y := EXP(x);
 END_PROGRAM
 ",
-    &[(1, 1.0)],
+    &[("y", 1.0)],
 );
 
 e2e_f64_near!(
@@ -93,5 +93,5 @@ PROGRAM main
   y := EXP(x);
 END_PROGRAM
 ",
-    &[(1, std::f64::consts::E)],
+    &[("y", std::f64::consts::E)],
 );

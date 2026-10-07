@@ -191,6 +191,85 @@ fn echo_when_semantic_error_file_then_ok() -> Result<(), Box<dyn std::error::Err
 }
 
 #[test]
+fn echo_when_types_then_writes_conversion_comment() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+    let source = temp.path().join("main.st");
+    std::fs::write(
+        &source,
+        "PROGRAM main VAR d : DINT; l : LINT; b : BOOL; END_VAR b := l > d; END_PROGRAM",
+    )?;
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
+    cmd.arg("echo").arg("--types").arg(&source);
+    cmd.assert().success().stdout(predicate::str::contains(
+        "b := ( l (* LINT *) > d (* DINT -> LINT *) ) (* BOOL *) ;",
+    ));
+
+    Ok(())
+}
+
+#[test]
+fn echo_when_types_and_library_then_library_declarations_not_rendered(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+    let source = temp.path().join("main.st");
+    std::fs::write(
+        &source,
+        "PROGRAM main VAR s : STRING; END_VAR s := BOOL_TO_STRING(TRUE); END_PROGRAM",
+    )?;
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
+    cmd.arg("echo")
+        .arg("--types")
+        .arg("--library")
+        .arg("Tc2_BuiltIns")
+        .arg(&source);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "s := BOOL_TO_STRING ( BOOL#TRUE (* CONSTANT BOOL *) ) (* STRING *) ;",
+        ))
+        .stdout(predicate::str::contains("FUNCTION BOOL_TO_STRING").not());
+
+    Ok(())
+}
+
+#[test]
+fn echo_when_types_and_semantic_error_then_renders_and_err(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // An analysis problem is reported, and what was resolved is still shown.
+    let temp = tempfile::tempdir()?;
+    let source = temp.path().join("main.st");
+    std::fs::write(
+        &source,
+        "PROGRAM main VAR i : INT; s : STRING; END_VAR i := i + 1; i := s; END_PROGRAM",
+    )?;
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
+    cmd.arg("echo").arg("--types").arg(&source);
+    cmd.assert().failure().stdout(predicate::str::contains(
+        "i := ( i (* INT *) + 1 (* CONSTANT INT *) ) (* INT *) ;",
+    ));
+
+    Ok(())
+}
+
+#[test]
+fn echo_when_library_without_types_then_err() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
+
+    cmd.arg("echo")
+        .arg("--library")
+        .arg("Tc2_BuiltIns")
+        .arg(shared_resource_path("first_steps.st"));
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("--types"));
+
+    Ok(())
+}
+
+#[test]
 fn tokenize_when_valid_file_then_ok() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
 

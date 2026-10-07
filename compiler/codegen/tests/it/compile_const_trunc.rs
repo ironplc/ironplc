@@ -88,27 +88,6 @@ END_PROGRAM
 }
 
 #[test]
-fn compile_when_constant_out_of_range_then_folded_not_truncated() {
-    // 300 does not fit USINT. The truncation still happens — it happens at
-    // compile time, so the pool holds 44 and no TRUNC_U8 is emitted.
-    let bytecode = scan_bytecode(
-        "
-PROGRAM main
-  VAR
-    x : USINT;
-  END_VAR
-  x := 300;
-END_PROGRAM
-",
-    );
-
-    assert!(
-        !contains_any_trunc(&bytecode),
-        "out-of-range constant should be truncated at compile time; bytecode = {bytecode:?}"
-    );
-}
-
-#[test]
 fn compile_when_narrow_array_element_constant_store_then_no_trunc() {
     let bytecode = scan_bytecode(
         "

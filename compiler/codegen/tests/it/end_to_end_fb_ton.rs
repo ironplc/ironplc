@@ -9,9 +9,9 @@
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 
-use crate::common::{drive_fb, parse_and_compile, FbStep, FbStep::*};
+use crate::common::{drive_fb, expect, parse_and_compile, run, write, Duration, FbStep};
 
-// Plain TIME variable (no timer): elapsed=var0.
+// Plain TIME variable (no timer).
 const TON_TIME_ONLY: &str = "
 PROGRAM main
   VAR
@@ -21,7 +21,7 @@ PROGRAM main
 END_PROGRAM
 ";
 
-// timer=var0, result=var1, with IN wired FALSE.
+// IN wired FALSE.
 const TON_IN_FALSE: &str = "
 PROGRAM main
   VAR
@@ -32,7 +32,7 @@ PROGRAM main
 END_PROGRAM
 ";
 
-// timer=var0, result=var1, with IN wired TRUE.
+// IN wired TRUE.
 const TON_IN_TRUE: &str = "
 PROGRAM main
   VAR
@@ -43,7 +43,6 @@ PROGRAM main
 END_PROGRAM
 ";
 
-// timer=var0, elapsed=var1.
 const TON_ET: &str = "
 PROGRAM main
   VAR
@@ -54,7 +53,6 @@ PROGRAM main
 END_PROGRAM
 ";
 
-// timer=var0, enable=var1, result=var2, elapsed=var3.
 const TON_ENABLE: &str = "
 PROGRAM main
   VAR
@@ -67,7 +65,6 @@ PROGRAM main
 END_PROGRAM
 ";
 
-// timer1=var0, timer2=var1, q1=var2, q2=var3.
 const TON_TWO: &str = "
 PROGRAM main
   VAR
@@ -81,7 +78,7 @@ PROGRAM main
 END_PROGRAM
 ";
 
-// Dot-access read of Q: Button=var0, Buzzer=var1, PulseTimer=var2.
+// Dot-access read of Q.
 const TON_DOT_READ_Q: &str = "
 PROGRAM main
   VAR
@@ -94,7 +91,7 @@ PROGRAM main
 END_PROGRAM
 ";
 
-// Dot-access read of ET: timer=var0, elapsed=var1.
+// Dot-access read of ET.
 const TON_DOT_READ_ET: &str = "
 PROGRAM main
   VAR
@@ -106,7 +103,7 @@ PROGRAM main
 END_PROGRAM
 ";
 
-// Dot-access writes of inputs, bare call, dot-access read: timer=var0, Buzzer=var1.
+// Dot-access writes of inputs, bare call, dot-access read.
 const TON_DOT_WRITE_500MS: &str = "
 PROGRAM main
   VAR
@@ -120,7 +117,7 @@ PROGRAM main
 END_PROGRAM
 ";
 
-// Same as above but PT set to 2s via dot-access: timer=var0, Buzzer=var1.
+// Same as above but PT set to 2s via dot-access.
 const TON_DOT_WRITE_2S: &str = "
 PROGRAM main
   VAR
@@ -134,7 +131,7 @@ PROGRAM main
 END_PROGRAM
 ";
 
-// Dot-access read of Q as an IF condition: timer=var0, done=var1.
+// Dot-access read of Q as an IF condition.
 const TON_DOT_READ_Q_IN_IF: &str = "
 PROGRAM main
   VAR
@@ -148,8 +145,7 @@ PROGRAM main
 END_PROGRAM
 ";
 
-// Dot-access read of Q inside a boolean expression: timer=var0, gate=var1,
-// result=var2.
+// Dot-access read of Q inside a boolean expression.
 const TON_DOT_READ_Q_IN_EXPR: &str = "
 PROGRAM main
   VAR
@@ -166,8 +162,7 @@ PROGRAM main
 END_PROGRAM
 ";
 
-// Dot-access read of the TIME output ET in a comparison: timer=var0,
-// past=var1.
+// Dot-access read of the TIME output ET in a comparison.
 const TON_DOT_READ_ET_IN_IF: &str = "
 PROGRAM main
   VAR
@@ -181,7 +176,7 @@ PROGRAM main
 END_PROGRAM
 ";
 
-// Dot-access read of Q as a WHILE condition guard: timer=var0, count=var1.
+// Dot-access read of Q as a WHILE condition guard.
 const TON_DOT_READ_Q_IN_WHILE: &str = "
 PROGRAM main
   VAR
@@ -196,7 +191,7 @@ END_PROGRAM
 ";
 
 // Member initializer on the instance declaration sets PT, so the invocation
-// need not pass it: timer=var0, result=var1. This is the shape
+// need not pass it. This is the shape
 // docs/reference/compiler/problems/P4043.rst offers as the remedy for P4043.
 const TON_MEMBER_INIT_PT: &str = "
 PROGRAM main
@@ -209,7 +204,7 @@ END_PROGRAM
 ";
 
 // A member initializer that an invocation later overrides: the invocation's
-// own PT wins, because it is stored on every scan. timer=var0, result=var1.
+// own PT wins, because it is stored on every scan.
 const TON_MEMBER_INIT_PT_OVERRIDDEN: &str = "
 PROGRAM main
   VAR
@@ -222,84 +217,84 @@ END_PROGRAM
 
 #[rstest]
 // Plain TIME literal assignment: T#5s stored as 5000 ms (i32).
-#[case::time_value_i32_ms(TON_TIME_ONLY, &[Run(0), Expect(0, 5000)])]
+#[case::time_value_i32_ms(TON_TIME_ONLY, &[run(0), expect("elapsed", Duration::seconds(5))])]
 // IN FALSE: Q stays FALSE.
-#[case::not_triggered(TON_IN_FALSE, &[Run(0), Expect(1, 0)])]
+#[case::not_triggered(TON_IN_FALSE, &[run(0), expect("result", 0)])]
 // Before PT elapses, Q is FALSE.
 #[case::triggered_before_pt(TON_IN_TRUE, &[
-    Run(0), Expect(1, 0), Run(2_000_000), Expect(1, 0),
+    run(0), expect("result", 0), run(2_000_000), expect("result", 0),
 ])]
 // After PT elapses, Q is TRUE.
-#[case::triggered_after_pt(TON_IN_TRUE, &[Run(0), Run(6_000_000), Expect(1, 1)])]
+#[case::triggered_after_pt(TON_IN_TRUE, &[run(0), run(6_000_000), expect("result", 1)])]
 // ET reports 3s of elapsed on-delay.
-#[case::reads_et(TON_ET, &[Run(0), Run(3_000_000), Expect(1, 3000)])]
+#[case::reads_et(TON_ET, &[run(0), run(3_000_000), expect("elapsed", Duration::seconds(3))])]
 // IN dropping resets the timer, which then restarts from the new rising edge.
 #[case::in_reset_restarts(TON_ENABLE, &[
-    Write(1, 1), Run(0), Expect(2, 0),
-    Run(3_000_000), Expect(2, 0),
-    Write(1, 0), Run(4_000_000), Expect(2, 0), Expect(3, 0),
-    Write(1, 1), Run(6_000_000), Expect(2, 0),
-    Run(10_000_000), Expect(2, 0),
-    Run(12_000_000), Expect(2, 1),
+    write("enable", 1), run(0), expect("result", 0),
+    run(3_000_000), expect("result", 0),
+    write("enable", 0), run(4_000_000), expect("result", 0), expect("elapsed", Duration::ZERO),
+    write("enable", 1), run(6_000_000), expect("result", 0),
+    run(10_000_000), expect("result", 0),
+    run(12_000_000), expect("result", 1),
 ])]
 // ET == PT exactly: Q is TRUE.
-#[case::at_exact_pt(TON_IN_TRUE, &[Run(0), Run(5_000_000), Expect(1, 1)])]
+#[case::at_exact_pt(TON_IN_TRUE, &[run(0), run(5_000_000), expect("result", 1)])]
 // Two TON timers with different PT run independently.
 #[case::two_timers(TON_TWO, &[
-    Run(0), Expect(2, 0), Expect(3, 0),
-    Run(4_000_000), Expect(2, 1), Expect(3, 0),
-    Run(8_000_000), Expect(2, 1), Expect(3, 1),
+    run(0), expect("q1", 0), expect("q2", 0),
+    run(4_000_000), expect("q1", 1), expect("q2", 0),
+    run(8_000_000), expect("q1", 1), expect("q2", 1),
 ])]
 // Dot-access read of Q returns TRUE after PT elapses.
 #[case::dot_access_reads_q_after_pt(TON_DOT_READ_Q, &[
-    Run(0), Expect(1, 0), Run(600_000), Expect(1, 1),
+    run(0), expect("Buzzer", 0), run(600_000), expect("Buzzer", 1),
 ])]
 // Dot-access read of Q stays FALSE before PT elapses.
 #[case::dot_access_reads_q_before_pt(TON_DOT_READ_Q, &[
-    Run(0), Run(100_000), Expect(1, 0),
+    run(0), run(100_000), expect("Buzzer", 0),
 ])]
 // Dot-access read of a non-BOOL field (ET) returns elapsed ms.
 #[case::dot_access_reads_et(TON_DOT_READ_ET, &[
-    Run(0), Run(3_000_000), Expect(1, 3000),
+    run(0), run(3_000_000), expect("elapsed", Duration::seconds(3)),
 ])]
 // Dot-access writes of inputs + bare call + dot-access read of Q.
 #[case::dot_access_writes_inputs(TON_DOT_WRITE_500MS, &[
-    Run(0), Expect(1, 0), Run(600_000), Expect(1, 1),
+    run(0), expect("Buzzer", 0), run(600_000), expect("Buzzer", 1),
 ])]
 // Dot-access write of PT uses the new (longer) period.
 #[case::dot_access_writes_pt(TON_DOT_WRITE_2S, &[
-    Run(0), Run(1_000_000), Expect(1, 0), Run(3_000_000), Expect(1, 1),
+    run(0), run(1_000_000), expect("Buzzer", 0), run(3_000_000), expect("Buzzer", 1),
 ])]
 // Dot-access read of Q as an IF condition (issue #1375).
 #[case::dot_access_reads_q_in_if(TON_DOT_READ_Q_IN_IF, &[
-    Run(0), Run(100_000), Expect(1, 0), Run(600_000), Expect(1, 1),
+    run(0), run(100_000), expect("done", 0), run(600_000), expect("done", 1),
 ])]
 // Dot-access read of Q combined with other terms in a boolean expression.
 #[case::dot_access_reads_q_in_expr(TON_DOT_READ_Q_IN_EXPR, &[
     // gate FALSE: result stays FALSE regardless of Q.
-    Run(0), Expect(2, 0),
+    run(0), expect("result", 0),
     // gate TRUE and Q still FALSE: result TRUE.
-    Write(1, 1), Run(100_000), Expect(2, 1),
+    write("gate", 1), run(100_000), expect("result", 1),
     // gate TRUE but Q now TRUE: result back to FALSE.
-    Run(600_000), Expect(2, 0),
+    run(600_000), expect("result", 0),
 ])]
 // Dot-access read of the TIME output ET in a comparison.
 #[case::dot_access_reads_et_in_if(TON_DOT_READ_ET_IN_IF, &[
-    Run(0), Run(1_000_000), Expect(1, 0), Run(3_000_000), Expect(1, 1),
+    run(0), run(1_000_000), expect("past", 0), run(3_000_000), expect("past", 1),
 ])]
 // Dot-access read of Q as a WHILE loop guard.
 #[case::dot_access_reads_q_in_while(TON_DOT_READ_Q_IN_WHILE, &[
     // Q still FALSE, so the loop runs to its count bound.
-    Run(0), Run(100_000), Expect(1, 3),
+    run(0), run(100_000), expect("count", 3),
 ])]
 // A declaration member initializer sets PT: Q stays FALSE before it elapses
 // and goes TRUE after, exactly as an explicit `PT := T#5s` argument would.
 #[case::member_initializer_sets_pt(TON_MEMBER_INIT_PT, &[
-    Run(0), Expect(1, 0), Run(2_000_000), Expect(1, 0), Run(6_000_000), Expect(1, 1),
+    run(0), expect("result", 0), run(2_000_000), expect("result", 0), run(6_000_000), expect("result", 1),
 ])]
 // An invocation argument overrides the declaration's member initializer.
 #[case::member_initializer_overridden_by_invocation(TON_MEMBER_INIT_PT_OVERRIDDEN, &[
-    Run(0), Expect(1, 0), Run(2_000_000), Expect(1, 1),
+    run(0), expect("result", 0), run(2_000_000), expect("result", 1),
 ])]
 fn end_to_end_fb_ton(#[case] source: &str, #[case] steps: &[FbStep]) {
     drive_fb(source, &CompilerOptions::default(), steps);

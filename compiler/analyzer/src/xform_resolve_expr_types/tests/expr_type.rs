@@ -1,8 +1,8 @@
 //! Tests for `Expr::expr_type`, the type of an expression's value by
 //! identity.
 
-use crate::intermediate_type::IntermediateType;
 use crate::semantic_context::SemanticContext;
+use crate::semantic_type::SemanticType;
 use crate::test_helpers::parse_and_resolve_types_with_options;
 use ironplc_dsl::common::{GenericTypeName, Library, TypeName};
 use ironplc_dsl::textual::{Assignment, ExprType};
@@ -89,7 +89,7 @@ fn apply_when_whole_anonymous_array_then_anonymous_array_type() {
     assert_eq!(context.types().name_of(id), None);
     assert!(matches!(
         context.types().get_by_id(id).unwrap().representation,
-        IntermediateType::Array { .. }
+        SemanticType::Array { .. }
     ));
 }
 
@@ -146,7 +146,7 @@ fn apply_when_ref_then_same_reference_type_as_declared_reference() {
     assert_eq!(types.referenced_type(id), Some(dint));
     assert!(matches!(
         types.get_by_id(id).unwrap().representation,
-        IntermediateType::Reference { .. }
+        SemanticType::Reference { .. }
     ));
 }
 
@@ -175,5 +175,60 @@ fn apply_when_deref_then_referenced_type() {
     assert_eq!(
         Some(concrete(first_assigned_type(&library))),
         context.types().id_of(&TypeName::from("DINT"))
+    );
+}
+
+/// Resolves `body` inside a program over a structure, an array of it and a
+/// reference to that array.
+fn resolve_points(body: &str) -> (Library, SemanticContext) {
+    let program = format!(
+        "
+TYPE
+  POINT : STRUCT x : INT; y : INT; END_STRUCT;
+END_TYPE
+PROGRAM main
+VAR
+  n : INT;
+  p : POINT;
+  pts : ARRAY[1..2] OF POINT;
+  rp : REF_TO ARRAY[1..2] OF POINT;
+END_VAR
+  {body}
+END_PROGRAM
+"
+    );
+    parse_and_resolve_types_with_options(
+        &program,
+        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    )
+}
+
+#[test]
+fn apply_when_array_element_then_element_type() {
+    let (library, context) = resolve_points("p := pts[1];");
+
+    assert_eq!(
+        Some(concrete(first_assigned_type(&library))),
+        context.types().id_of(&TypeName::from("POINT"))
+    );
+}
+
+#[test]
+fn apply_when_dereferenced_array_element_then_element_type() {
+    let (library, context) = resolve_points("p := rp^[1];");
+
+    assert_eq!(
+        Some(concrete(first_assigned_type(&library))),
+        context.types().id_of(&TypeName::from("POINT"))
+    );
+}
+
+#[test]
+fn apply_when_field_of_array_element_then_field_type() {
+    let (library, context) = resolve_points("n := pts[1].x;");
+
+    assert_eq!(
+        Some(concrete(first_assigned_type(&library))),
+        context.types().id_of(&TypeName::from("INT"))
     );
 }

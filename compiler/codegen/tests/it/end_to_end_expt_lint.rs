@@ -14,5 +14,5 @@ PROGRAM main
   result := EXPT(base, exp);
 END_PROGRAM
 ",
-    &[(2, 1_099_511_627_776)],
+    &[("result", 1_099_511_627_776)],
 );

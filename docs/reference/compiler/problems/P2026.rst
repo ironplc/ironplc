@@ -4,11 +4,11 @@ P2026
 
 .. problem-summary:: P2026
 
-This error occurs when a constant does not fit the type it is stored into.
+This error occurs when a constant is not a value of the type it is used as.
 
-Every integer type holds a fixed range of values:
+Every integer type and every bit string holds a fixed range of values:
 
-.. list-table:: Integer type ranges
+.. list-table:: Integer and bit string type ranges
    :header-rows: 1
    :stub-columns: 1
 
@@ -27,16 +27,16 @@ Every integer type holds a fixed range of values:
    * - **LINT**
      - -9223372036854775808
      - 9223372036854775807
-   * - **USINT**
+   * - **USINT**, **BYTE**
      - 0
      - 255
-   * - **UINT**
+   * - **UINT**, **WORD**
      - 0
      - 65535
-   * - **UDINT**
+   * - **UDINT**, **DWORD**
      - 0
      - 4294967295
-   * - **ULINT**
+   * - **ULINT**, **LWORD**
      - 0
      - 18446744073709551615
 
@@ -49,11 +49,11 @@ Example
 
 The following code will generate error P2026:
 
-.. code-block::
+.. playground::
 
    PROGRAM main
        VAR
-           count : USINT := 300;
+           count : USINT := 300;  (* Error: a USINT holds 0 to 255 *)
            total : SINT;
        END_VAR
 
@@ -62,7 +62,7 @@ The following code will generate error P2026:
 
 To fix this error, use a value the type can hold:
 
-.. code-block::
+.. playground::
 
    PROGRAM main
        VAR
@@ -72,7 +72,7 @@ To fix this error, use a value the type can hold:
 
 Or declare a type wide enough for the value you want:
 
-.. code-block::
+.. playground::
 
    PROGRAM main
        VAR
@@ -83,22 +83,35 @@ Or declare a type wide enough for the value you want:
 Where the check applies
 -----------------------
 
-The type a value is stored or compared as bounds the constants written for
-it. That includes an operand of an operator, because the operator does not
-widen the type:
+A constant is checked against the type it is used as, wherever it is used.
+An untyped literal such as ``300`` takes its type from where it is used, so
+the same literal can be a ``DINT`` in one place and a ``SINT`` in another.
+
+An operand of an operator is used as the type the operator computes at,
+because the operator does not widen the type. The same holds for an argument
+of a standard function with a generic parameter, such as the ``ANY_NUM``
+inputs of ``ADD``, for the bounds and step of a :code:`FOR` loop, and for the
+count of a shift:
 
 .. code-block::
 
    PROGRAM main
        VAR
            count : USINT;
+           small : SINT;
+           result : DINT;
        END_VAR
 
-       count := 255 + 1;  (* Error: the sum is not a USINT *)
+       count := 255 + 1;           (* Error: the sum is not a USINT *)
+       small := ADD(small, 300);   (* Error: ADD computes at SINT here *)
+       FOR small := 0 TO 300 DO    (* Error: the bounds are SINTs *)
+           result := result + 1;
+       END_FOR;
    END_PROGRAM
 
-It also includes a comparison and a :code:`CASE` label, where a constant the
-variable can never equal makes a branch that can never run:
+A comparison and a :code:`CASE` label are checked against the other operand
+and the selector, where a constant the variable can never equal makes a
+branch that can never run:
 
 .. code-block::
 
@@ -115,7 +128,8 @@ variable can never equal makes a branch that can never run:
 
 A :code:`CASE` label is checked by its value whatever radix it is written in,
 and so is each bound of a subrange label. ``16#FFFFFFFF`` is 4294967295, not
-the -1 its bits would read as in a ``DINT``:
+the -1 its bits would read as in a ``DINT``. A selector that is itself an
+untyped literal has the type its value defaults to, ``DINT`` for an integer:
 
 .. code-block::
 
@@ -132,13 +146,17 @@ the -1 its bits would read as in a ``DINT``:
        CASE small OF
            100..300: result := 2;     (* Error: a SINT is never 300 *)
        END_CASE;
+       CASE 5 OF
+           4294967295: result := 3;   (* Error: the selector is a DINT *)
+       END_CASE;
    END_PROGRAM
 
 The same holds wherever a constant is stored: an element of an array
 initializer (including each repetition, as in ``[2(300)]``), an element of a
 structure or function block instance initializer, the default of a structure
-field or a type declaration, and an argument passed to a function or function
-block input, which is checked against the parameter's type:
+field or a type declaration, a value written through a reference (``p^ := 300``
+on a ``REF_TO SINT``), and an argument passed to a function or function block
+input, which is checked against the parameter's type:
 
 .. code-block::
 
@@ -161,9 +179,6 @@ block input, which is checked against the parameter's type:
 
        result := Scale(value := 300);  (* Error: the parameter is a USINT *)
    END_PROGRAM
-
-A generic parameter of a standard function, such as the ``ANY_NUM`` inputs of
-``ADD``, states no range of its own, so its argument is not checked.
 
 A subrange type states its own range, and a constant outside it is reported
 the same way:
@@ -208,31 +223,37 @@ that the destination alone decides:
        END_VAR
    END_PROGRAM
 
-The two checks are independent. A literal that fits its own type but not the
-destination, such as ``small : SINT := INT#200``, is reported against the
-destination only, and one that fits neither is reported once for each.
+A literal that fits its own type but not the destination, such as
+``small : SINT := INT#200``, is reported against the destination. A constant
+is reported once, so one that fits neither is reported against its own type.
 
-A radix form with an integer type prefix is checked by its value in the same
-way: ``INT#16#FFFF`` is 65535, which no ``INT`` can hold. A bit pattern that
-is meant to fill the word is spelled with a bit-string prefix, such as
-``WORD#16#FFFF``, which is not checked.
+A radix form with a type prefix is checked by its value in the same way:
+``INT#16#FFFF`` is 65535, which no ``INT`` can hold.
 
-Bit strings are not checked
----------------------------
+Bit strings
+-----------
 
-``BYTE``, ``WORD``, ``DWORD`` and ``LWORD`` hold bit patterns rather than
-magnitudes, and wrapping one is a legitimate thing for a program to want. A
-value too large for a bit string keeps its low bits without a diagnostic:
+``BYTE``, ``WORD``, ``DWORD`` and ``LWORD`` hold the unsigned values of their
+width, and a constant of one must be one of those values. ``BYTE#256`` is not
+a byte, and neither is ``-1``:
 
 .. code-block::
 
    PROGRAM main
        VAR
+           mask : DWORD := -1;      (* Error: a DWORD holds 0 to 4294967295 *)
            pattern : BYTE;
        END_VAR
 
-       pattern := 255 + 1;  (* Accepted: a BYTE wraps to 0 *)
+       pattern := BYTE#256;         (* Error: a BYTE holds 0 to 255 *)
    END_PROGRAM
+
+To fill every bit, write the largest value, which is easiest to read in
+hexadecimal: ``DWORD#16#FFFFFFFF``.
+
+A value computed while the program runs still wraps at the width: with
+``--allow-bit-string-arithmetic``, adding 1 to a ``BYTE`` that holds 255 gives
+0. Only a constant is checked.
 
 How a constant was written makes no difference to the check. ``16#1FF`` is
 511 whichever radix it was spelled in, and a ``USINT`` cannot hold 511.

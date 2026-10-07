@@ -4,7 +4,7 @@
 //! Each function is one of a few instruction sequences, chosen by the units
 //! its operands are stored in (ADR-0025): `TIME` and `TIME_OF_DAY` in
 //! milliseconds, `DATE` and `DATE_AND_TIME` in seconds. [`time_arith_for`]
-//! names the sequence for a function and [`compile_time_arith`] emits it for
+//! names the sequence for a [`TimeFunction`] and [`compile_time_arith`] emits it for
 //! two operand expressions, so the sequences do not depend on how the
 //! operands were written.
 //!
@@ -13,6 +13,7 @@
 //! stores the same unit as its short type (ADR-0021, ADR-0025), so a long
 //! form is the same sequence at 64-bit width.
 
+use ironplc_analyzer::TimeFunction;
 use ironplc_container::opcode;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::Expr;
@@ -40,32 +41,25 @@ pub(crate) enum TimeArith {
     Divide,
 }
 
-/// Returns the instruction sequence for the typed time or date function
-/// `name` (lower case) and the width it operates at, or `None` when `name`
-/// is not one.
-///
-/// The width comes from the name: 32-bit for a short form, 64-bit for a
-/// long one.
-pub(crate) fn time_arith_for(name: &str) -> Option<(TimeArith, OpWidth)> {
-    use OpWidth::{W32, W64};
-    let found = match name {
-        "add_time" | "add_tod_time" => (TimeArith::SameUnit(emit_add), W32),
-        "add_ltime" | "add_ltod_ltime" => (TimeArith::SameUnit(emit_add), W64),
-        "sub_time" | "sub_tod_time" | "sub_tod_tod" => (TimeArith::SameUnit(emit_sub), W32),
-        "sub_ltime" | "sub_ltod_ltime" | "sub_ltod_ltod" => (TimeArith::SameUnit(emit_sub), W64),
-        "add_dt_time" | "concat_date_tod" => (TimeArith::SecondsAndMillis(emit_add), W32),
-        "add_ldt_ltime" => (TimeArith::SecondsAndMillis(emit_add), W64),
-        "sub_dt_time" => (TimeArith::SecondsAndMillis(emit_sub), W32),
-        "sub_ldt_ltime" => (TimeArith::SecondsAndMillis(emit_sub), W64),
-        "sub_dt_dt" | "sub_date_date" => (TimeArith::SecondsDifference, W32),
-        "sub_ldt_ldt" | "sub_ldate_ldate" => (TimeArith::SecondsDifference, W64),
-        "mul_time" => (TimeArith::Multiply, W32),
-        "mul_ltime" => (TimeArith::Multiply, W64),
-        "div_time" => (TimeArith::Divide, W32),
-        "div_ltime" => (TimeArith::Divide, W64),
-        _ => return None,
+/// Returns the instruction sequence for the time or date function
+/// `function` and the width it operates at: 32-bit for a short form, 64-bit
+/// for a long one.
+pub(crate) fn time_arith_for(function: TimeFunction, long: bool) -> (TimeArith, OpWidth) {
+    let arith = match function {
+        TimeFunction::AddTime | TimeFunction::AddTodTime => TimeArith::SameUnit(emit_add),
+        TimeFunction::SubTime | TimeFunction::SubTodTime | TimeFunction::SubTodTod => {
+            TimeArith::SameUnit(emit_sub)
+        }
+        TimeFunction::AddDtTime | TimeFunction::ConcatDateTod => {
+            TimeArith::SecondsAndMillis(emit_add)
+        }
+        TimeFunction::SubDtTime => TimeArith::SecondsAndMillis(emit_sub),
+        TimeFunction::SubDtDt | TimeFunction::SubDateDate => TimeArith::SecondsDifference,
+        TimeFunction::MulTime => TimeArith::Multiply,
+        TimeFunction::DivTime => TimeArith::Divide,
     };
-    Some(found)
+    let width = if long { OpWidth::W64 } else { OpWidth::W32 };
+    (arith, width)
 }
 
 /// Compiles `arith` at `width` over the operands `in1` and `in2`, leaving
@@ -321,4 +315,57 @@ fn compile_mul_div_ltime(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    /// Names the instruction sequence `arith`, so a test can compare it.
+    fn sequence(arith: TimeArith) -> &'static str {
+        match arith {
+            TimeArith::SameUnit(_) => "same unit",
+            TimeArith::SecondsAndMillis(_) => "seconds and millis",
+            TimeArith::SecondsDifference => "seconds difference",
+            TimeArith::Multiply => "multiply",
+            TimeArith::Divide => "divide",
+        }
+    }
+
+    /// Every time function compiles as the sequence for the units of its
+    /// operands.
+    #[rstest]
+    #[case::add_time(TimeFunction::AddTime, "same unit")]
+    #[case::sub_time(TimeFunction::SubTime, "same unit")]
+    #[case::mul_time(TimeFunction::MulTime, "multiply")]
+    #[case::div_time(TimeFunction::DivTime, "divide")]
+    #[case::add_tod_time(TimeFunction::AddTodTime, "same unit")]
+    #[case::sub_tod_time(TimeFunction::SubTodTime, "same unit")]
+    #[case::add_dt_time(TimeFunction::AddDtTime, "seconds and millis")]
+    #[case::sub_dt_time(TimeFunction::SubDtTime, "seconds and millis")]
+    #[case::sub_dt_dt(TimeFunction::SubDtDt, "seconds difference")]
+    #[case::sub_date_date(TimeFunction::SubDateDate, "seconds difference")]
+    #[case::sub_tod_tod(TimeFunction::SubTodTod, "same unit")]
+    #[case::concat_date_tod(TimeFunction::ConcatDateTod, "seconds and millis")]
+    fn time_arith_for_when_time_function_then_sequence_for_its_units(
+        #[case] function: TimeFunction,
+        #[case] expected: &str,
+    ) {
+        let (arith, _) = time_arith_for(function, false);
+
+        assert_eq!(sequence(arith), expected);
+    }
+
+    /// A long form is the same sequence at 64-bit width.
+    #[rstest]
+    #[case::short(false, OpWidth::W32)]
+    #[case::long(true, OpWidth::W64)]
+    fn time_arith_for_when_form_then_its_width(#[case] long: bool, #[case] expected: OpWidth) {
+        let (short_arith, _) = time_arith_for(TimeFunction::SubDtDt, false);
+        let (arith, width) = time_arith_for(TimeFunction::SubDtDt, long);
+
+        assert_eq!(width, expected);
+        assert_eq!(sequence(arith), sequence(short_arith));
+    }
 }

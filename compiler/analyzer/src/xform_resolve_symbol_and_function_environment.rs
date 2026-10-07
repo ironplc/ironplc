@@ -23,7 +23,7 @@ use ironplc_dsl::{
     },
     core::{Id, Located},
     diagnostic::Diagnostic,
-    scope::ScopeNode,
+    scope::{ScopeBearing, ScopeNode},
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
@@ -32,9 +32,9 @@ use std::convert::Infallible;
 
 use crate::{
     function_environment::{FunctionEnvironment, FunctionSignature},
-    intermediate_type::IntermediateFunctionParameter,
+    semantic_type::SemanticFunctionParameter,
     symbol_environment::{
-        duplicate_declaration, ScopeKind, ScopePath, SymbolEnvironment, SymbolInfo, SymbolKind,
+        duplicate_declaration, ScopeKind, ScopeTracker, SymbolEnvironment, SymbolInfo, SymbolKind,
     },
     type_environment::TypeEnvironment,
 };
@@ -81,7 +81,7 @@ fn resolve(
         symbol_env,
         function_env,
         type_env,
-        scope: Vec::new(),
+        scope: ScopeTracker::default(),
         diagnostics: Vec::new(),
     };
     let Ok(()) = resolver.walk(lib);
@@ -96,20 +96,14 @@ struct EnvironmentResolver<'a> {
     function_env: &'a mut FunctionEnvironment,
     /// Resolves the return type of a result variable, when given.
     type_env: Option<&'a TypeEnvironment>,
-    /// The chain of declarations the traversal is currently inside,
-    /// outermost first. A stack rather than a single name because
-    /// declarations nest: a method is inside its function block.
-    scope: Vec<Id>,
+    /// The declaration the traversal is currently inside.
+    scope: ScopeTracker,
     diagnostics: Vec<Diagnostic>,
 }
 
 impl<'a> EnvironmentResolver<'a> {
     fn current_scope(&self) -> ScopeKind {
-        if self.scope.is_empty() {
-            ScopeKind::Global
-        } else {
-            ScopeKind::Named(ScopePath::new(self.scope.clone()))
-        }
+        self.scope.current()
     }
 
     /// Keeps the diagnostic an environment returned for a repeated name.
@@ -119,14 +113,12 @@ impl<'a> EnvironmentResolver<'a> {
         }
     }
 
-    /// Declares the implicit result variable of the function or method
-    /// `name` that the traversal is about to enter, in that declaration's
-    /// own scope. A variable the declaration declares with the same name
-    /// replaces it.
-    fn declare_result_variable(&mut self, name: &Id, return_type: &TypeName) {
-        let mut path = self.scope.clone();
-        path.push(name.clone());
-        let scope = ScopeKind::Named(ScopePath::new(path));
+    /// Declares the implicit result variable `name` of the function or
+    /// method `node` that the traversal is about to enter, in that
+    /// declaration's own scope. A variable the declaration declares with
+    /// the same name replaces it.
+    fn declare_result_variable(&mut self, node: ScopeNode<'_>, name: &Id, return_type: &TypeName) {
+        let scope = self.scope.scope_of(&node);
         let type_id = self.type_env.and_then(|types| types.id_of(return_type));
         let info =
             SymbolInfo::new(SymbolKind::ResultVariable, scope, name.span()).with_type_id(type_id);
@@ -164,17 +156,12 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
     /// stack, so the variables it declares are recorded against its own
     /// path rather than the enclosing declaration's.
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
-        self.scope.push(match node {
-            ScopeNode::Function(node) => node.name.clone(),
-            ScopeNode::FunctionBlock(node) => node.name.name.clone(),
-            ScopeNode::Program(node) => node.name.clone(),
-            ScopeNode::Method(node) => node.name.clone(),
-        });
+        self.scope.enter(&node);
         Ok(())
     }
 
     fn exit_scope(&mut self) {
-        self.scope.pop();
+        self.scope.exit();
     }
 
     // TODO fn visit_program_access_decl
@@ -230,7 +217,11 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
         &mut self,
         node: &ironplc_dsl::common::FunctionDeclaration,
     ) -> Result<Self::Value, Infallible> {
-        self.declare_result_variable(&node.name, &node.return_type.to_type_name());
+        self.declare_result_variable(
+            node.as_scope_node(),
+            &node.name,
+            &node.return_type.to_type_name(),
+        );
 
         // Build function signature for function environment
         // (Functions are tracked in FunctionEnvironment, not SymbolEnvironment)
@@ -274,7 +265,7 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
                 _ => continue,
             };
 
-            parameters.push(IntermediateFunctionParameter {
+            parameters.push(SemanticFunctionParameter {
                 name: param_name,
                 param_type,
                 is_input: var_decl.var_type == VariableType::Input,
@@ -326,7 +317,11 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
         // A method without a return type is a procedure: it has no result
         // to assign.
         if let Some(return_type) = &node.return_type {
-            self.declare_result_variable(&node.name, &return_type.to_type_name());
+            self.declare_result_variable(
+                node.as_scope_node(),
+                &node.name,
+                &return_type.to_type_name(),
+            );
         }
         node.recurse_visit(self)
     }
@@ -431,12 +426,8 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
         // Add each enumeration value
         if let ironplc_dsl::common::SpecificationKind::Inline(values) = &node.spec_init.spec {
             for value in &values.values {
-                let result = self.symbol_env.insert_enumeration_value(
-                    &value.value,
-                    &node.type_name,
-                    &ScopeKind::Global,
-                );
-                self.record(result);
+                self.symbol_env
+                    .insert_enumeration_value(&value.value, &node.type_name);
             }
         }
 
@@ -601,7 +592,7 @@ END_FUNCTION";
         // Check function is in function environment with correct signature
         let func_sig = function_env.get(&Id::from("ADD_INTS")).unwrap();
         assert_eq!(func_sig.name.original(), "ADD_INTS");
-        // Return type is now stored as TypeName, not resolved IntermediateType
+        // Return type is now stored as TypeName, not resolved SemanticType
         assert_eq!(
             func_sig.return_type,
             Some(FunctionReturnType::Named(TypeName::from("INT")))
@@ -778,6 +769,67 @@ END_FUNCTION_BLOCK",
     // -----------------------------------------------------------------
 
     /// The problem codes analysis reports for `program`, in order.
+    /// An interface is a scope, so a method prototype's parameters belong
+    /// to `I_Axis.Home` rather than to the library-level scope.
+    #[test]
+    fn apply_when_interface_method_prototype_has_parameter_then_recorded_in_prototype_scope() {
+        let (symbol_env, _) = resolve_with_methods(
+            "
+INTERFACE I_Axis
+METHOD Home : BOOL
+VAR_INPUT
+    x : INT;
+END_VAR
+END_METHOD
+END_INTERFACE",
+        );
+
+        let param = Id::from("x");
+        assert!(symbol_env
+            .get_variables_in_scope(&method_scope("I_Axis", "Home"))
+            .iter()
+            .any(|(name, _)| *name == &param));
+        assert!(!symbol_env
+            .get_variables_in_scope(&ScopeKind::Global)
+            .iter()
+            .any(|(name, _)| *name == &param));
+    }
+
+    /// Were the prototype's scope not nested in its interface, its path
+    /// would be `Home`, the same as the function's, and the shared input
+    /// name would be reported as declared twice.
+    #[test]
+    fn apply_when_method_prototype_shares_name_with_function_then_no_diagnostic() {
+        let options = ironplc_parser::options::CompilerOptions {
+            allow_fb_inheritance: true,
+            ..ironplc_parser::options::CompilerOptions::default()
+        };
+        let (library, _context) = parse_and_resolve_types_with_options(
+            "
+INTERFACE I_Axis
+METHOD Home : BOOL
+VAR_INPUT
+    x : INT;
+END_VAR
+END_METHOD
+END_INTERFACE
+
+FUNCTION Home : BOOL
+VAR_INPUT
+    x : INT;
+END_VAR
+Home := x > 0;
+END_FUNCTION",
+            &options,
+        );
+        let mut symbol_env = SymbolEnvironment::new();
+        let mut function_env = FunctionEnvironment::new();
+
+        let diagnostics = apply_impl(&library, &mut symbol_env, &mut function_env);
+
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    }
+
     fn analyzed_codes(program: &str) -> Vec<String> {
         analyzed_codes_with(
             program,

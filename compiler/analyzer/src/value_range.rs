@@ -6,7 +6,7 @@
 //! the analyzer checking a value and the backend storing it work from one
 //! statement of what the type is.
 
-use crate::intermediate_type::IntermediateType;
+use crate::semantic_type::SemanticType;
 
 /// The inclusive `(minimum, maximum)` of a two's-complement integer.
 ///
@@ -37,19 +37,21 @@ pub fn fits(count: i128, bits: u32, signed: bool) -> bool {
 }
 
 /// The inclusive range of values `representation` can hold, or `None` when it
-/// does not hold integers as numbers.
+/// does not hold integers.
 ///
-/// A bit string (`BYTE`, `WORD`, `DWORD`, `LWORD`) answers `None` even though
-/// it holds an integer: it is a pattern rather than a magnitude, and wrapping
-/// one is a legitimate thing for a program to want.
-pub fn of(representation: &IntermediateType) -> Option<(i128, i128)> {
+/// A bit string (`BYTE`, `WORD`, `DWORD`, `LWORD`) holds the unsigned values
+/// of its width. It wraps at run time, but a constant of one is a value like
+/// any other: `BYTE#256` is not a byte (ADR-0053).
+pub fn of(representation: &SemanticType) -> Option<(i128, i128)> {
     match representation {
-        IntermediateType::Int { size } => Some(for_integer(u32::from(size.as_bytes()) * 8, true)),
-        IntermediateType::UInt { size } => Some(for_integer(u32::from(size.as_bytes()) * 8, false)),
+        SemanticType::Int { size } => Some(for_integer(u32::from(size.as_bytes()) * 8, true)),
+        SemanticType::UInt { size } | SemanticType::Bytes { size } => {
+            Some(for_integer(u32::from(size.as_bytes()) * 8, false))
+        }
         // A subrange states its own bounds, which are narrower than the base
         // type's by construction (`rule_range_limits` rejects the
         // rest).
-        IntermediateType::Subrange {
+        SemanticType::Subrange {
             min_value,
             max_value,
             ..
@@ -61,7 +63,7 @@ pub fn of(representation: &IntermediateType) -> Option<(i128, i128)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intermediate_type::ByteSized;
+    use crate::semantic_type::ByteSized;
     use rstest::rstest;
 
     #[rstest]
@@ -84,7 +86,7 @@ mod tests {
 
     #[test]
     fn of_when_signed_integer_then_signed_range() {
-        let representation = IntermediateType::Int {
+        let representation = SemanticType::Int {
             size: ByteSized::B8,
         };
 
@@ -93,7 +95,7 @@ mod tests {
 
     #[test]
     fn of_when_unsigned_integer_then_unsigned_range() {
-        let representation = IntermediateType::UInt {
+        let representation = SemanticType::UInt {
             size: ByteSized::B8,
         };
 
@@ -102,8 +104,8 @@ mod tests {
 
     #[test]
     fn of_when_subrange_then_declared_bounds() {
-        let representation = IntermediateType::Subrange {
-            base_type: Box::new(IntermediateType::Int {
+        let representation = SemanticType::Subrange {
+            base_type: Box::new(SemanticType::Int {
                 size: ByteSized::B16,
             }),
             min_value: -10,
@@ -113,22 +115,20 @@ mod tests {
         assert_eq!(of(&representation), Some((-10, 10)));
     }
 
-    /// A bit string holds an integer but is a pattern rather than a
-    /// magnitude, so it has no range for this purpose.
     #[test]
-    fn of_when_bit_string_then_none() {
-        let representation = IntermediateType::Bytes {
-            size: ByteSized::B8,
+    fn of_when_bit_string_then_unsigned_range_of_width() {
+        let representation = SemanticType::Bytes {
+            size: ByteSized::B32,
         };
 
-        assert_eq!(of(&representation), None);
+        assert_eq!(of(&representation), Some((0, 4_294_967_295)));
     }
 
     #[test]
     fn of_when_not_an_integer_then_none() {
-        assert_eq!(of(&IntermediateType::Bool), None);
+        assert_eq!(of(&SemanticType::Bool), None);
         assert_eq!(
-            of(&IntermediateType::Real {
+            of(&SemanticType::Real {
                 size: ByteSized::B32
             }),
             None

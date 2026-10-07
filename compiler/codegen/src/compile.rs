@@ -42,9 +42,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use ironplc_container::debug_section::{
-    EnumDefEntry, FuncNameEntry, StringLayoutEntry, VarNameEntry,
-};
+use ironplc_container::debug_section::{FuncNameEntry, StringLayoutEntry, VarNameEntry};
 use ironplc_container::{
     CharWidth, Container, ContainerBuilder, FbTypeId, FunctionId, TaskType, UserFbDescriptor,
     VarIndex,
@@ -66,7 +64,9 @@ use ironplc_parser::options::{CompilerOptions, StringToNumFailure, StringToNumNo
 use ironplc_problems::Problem;
 
 use ironplc_analyzer::system_globals::SYSTEM_UPTIME_GLOBALS;
-use ironplc_analyzer::{FunctionEnvironment, IntermediateType, SemanticContext, TypeEnvironment};
+use ironplc_analyzer::{
+    CleanAnalysis, FunctionEnvironment, Intrinsic, SemanticType, TypeEnvironment,
+};
 
 use crate::emit::Emitter;
 
@@ -194,15 +194,6 @@ pub(crate) fn emit_string_literal_load(
     emitter.emit_load_const_str(pool_index);
 }
 
-/// Compiles a library into a bytecode container.
-///
-/// Finds the first PROGRAM declaration in the library and compiles it
-/// into a container suitable for execution by the VM. Only user-defined
-/// functions reachable from the program root are included; unreachable
-/// functions are automatically excluded.
-///
-/// Returns an error if no program is found or if the program contains
-/// unsupported constructs.
 /// Options that affect code generation.
 ///
 /// Every front end derives this from the project's [`CompilerOptions`] via
@@ -237,12 +228,25 @@ impl From<&CompilerOptions> for CodegenOptions {
     }
 }
 
+/// Compiles a library into a bytecode container.
+///
+/// Finds the first PROGRAM declaration in the library and compiles it
+/// into a container suitable for execution by the VM. Only user-defined
+/// functions reachable from the program root are included; unreachable
+/// functions are automatically excluded.
+///
+/// Takes a [`CleanAnalysis`], which can only be made from a semantic context
+/// that holds no diagnostics.
+///
+/// Returns an error if no program is found or if the program contains
+/// unsupported constructs.
 pub fn compile(
-    library: &Library,
-    context: &SemanticContext,
+    analysis: CleanAnalysis<'_>,
     options: &CodegenOptions,
     sources: &dyn crate::source_lookup::SourceLookup,
 ) -> Result<Container, Diagnostic> {
+    let library = analysis.library();
+    let context = analysis.context();
     let program = find_program(library)?;
     let config = find_configuration(library);
     if let Some(config) = config {
@@ -300,8 +304,6 @@ pub fn compile(
         })
         .collect();
 
-    let enum_map = crate::compile_enum::build_enum_ordinal_map(library);
-
     let mut container = compile_program_with_functions(
         ProgramInputs {
             program,
@@ -311,7 +313,6 @@ pub fn compile(
         },
         context.functions(),
         context.types(),
-        enum_map,
         options.string_to_num,
         *context.compiler_options(),
         sources,
@@ -674,9 +675,9 @@ pub(crate) fn finalize_function(
 ) -> Result<FinalizedFunction, Diagnostic> {
     let raw_line_map = emitter.take_line_map();
     let (optimized, offset_map) =
-        crate::optimize::optimize(emitter.unpatched_code(), &mut ctx.constants);
+        crate::optimize::optimize(emitter.unpatched_code()?, &mut ctx.constants);
     emitter.apply_optimized(optimized, &offset_map);
-    let bytecode = emitter.bytecode().to_vec();
+    let bytecode = emitter.bytecode()?.to_vec();
     let max_stack_depth = emitter.max_stack_depth();
     let max_temp_depth = emitter.max_temp_depth();
     let line_map =
@@ -713,7 +714,6 @@ fn compile_program_with_functions(
     inputs: ProgramInputs<'_>,
     functions: &FunctionEnvironment,
     types: &TypeEnvironment,
-    enum_map: crate::compile_enum::EnumOrdinalMap,
     string_to_num: StringToNumPolicies,
     compiler_options: CompilerOptions,
     sources: &dyn crate::source_lookup::SourceLookup,
@@ -725,9 +725,9 @@ fn compile_program_with_functions(
         global_vars,
     } = inputs;
     let mut ctx = CompileContext::new();
-    ctx.enum_map = enum_map;
     ctx.types = crate::type_info::type_representations(types);
     ctx.operand_names = crate::type_info::operand_names(types);
+    ctx.intrinsics = crate::compile_call::intrinsics_by_name(functions);
     ctx.string_to_num = string_to_num;
     ctx.compiler_options = compiler_options;
     let mut builder = ContainerBuilder::new();
@@ -763,6 +763,7 @@ fn compile_program_with_functions(
         let fb_name = fb_decl.name.name.to_string().to_uppercase();
         let mut field_indices: HashMap<String, u8> = HashMap::new();
         let mut field_op_types: HashMap<String, OpType> = HashMap::new();
+        let mut field_type_ids = HashMap::new();
         let mut field_decls_tmp: Vec<&VarDecl> = Vec::new();
 
         for decl in &fb_decl.variables {
@@ -784,6 +785,9 @@ fn compile_program_with_functions(
             if let Some(id) = decl.identifier.symbolic_id() {
                 let name = id.to_string().to_lowercase();
                 field_indices.insert(name.clone(), i as u8);
+                if let Some(type_id) = decl.type_id {
+                    field_type_ids.insert(name.clone(), type_id);
+                }
                 if let InitialValueAssignmentKind::Simple(_) = &decl.initializer {
                     if let Some(vti) = crate::type_info::decl_type_info(&ctx, decl) {
                         field_op_types.insert(name, (vti.op_width, vti.signedness));
@@ -807,6 +811,7 @@ fn compile_program_with_functions(
                 function_id: FunctionId::new(next_function_id),
                 var_offset: 0, // updated after program vars are assigned
                 field_op_types,
+                field_type_ids,
                 methods: HashMap::new(),
             },
         );
@@ -910,13 +915,19 @@ fn compile_program_with_functions(
     let mut compiled_methods: Vec<CompiledFunction> = Vec::new();
     for fb_decl in fb_decls {
         let fb_name = fb_decl.name.name.to_string().to_uppercase();
-        let fb_func_id = ctx.user_fb_types[&fb_name].function_id;
         let field_var_off = var_offset.raw();
 
         // Update the var_offset in the registered type info.
-        ctx.user_fb_types.get_mut(&fb_name).unwrap().var_offset = field_var_off;
+        let fb_type = ctx.user_fb_types.get_mut(&fb_name).ok_or_else(|| {
+            Diagnostic::internal_error_at(Label::span(
+                fb_decl.name.span(),
+                "Function block was not registered before its body was compiled",
+            ))
+        })?;
+        let fb_func_id = fb_type.function_id;
+        fb_type.var_offset = field_var_off;
 
-        let (compiled, saved_scope) = compile_user_function_block(
+        let (compiled, program_scope) = compile_user_function_block(
             fb_decl,
             fb_func_id,
             field_var_off,
@@ -944,13 +955,7 @@ fn compile_program_with_functions(
         compiled_methods.extend(methods);
 
         // Now restore the program-level view for the next FB type.
-        ctx.variables = saved_scope.variables;
-        ctx.var_types = saved_scope.var_types;
-        ctx.string_vars = saved_scope.string_vars;
-        ctx.array_vars = saved_scope.array_vars;
-        ctx.struct_vars = saved_scope.struct_vars;
-        ctx.struct_array_vars = saved_scope.struct_array_vars;
-        ctx.fb_instances = saved_scope.fb_instances;
+        ctx.swap_scope(program_scope);
     }
 
     let total_variables = var_offset;
@@ -1064,8 +1069,12 @@ fn compile_program_with_functions(
         builder = add_line_map_entries(builder, compiled.function_id, &compiled.line_map);
     }
 
-    // Add user FB type descriptors to the container.
-    for fb_info in ctx.user_fb_types.values() {
+    // Add user FB type descriptors to the container, by type id: the map
+    // iterates in an order that differs between runs, and the same source
+    // must compile to the same bytes.
+    let mut user_fb_types: Vec<&UserFbTypeInfo> = ctx.user_fb_types.values().collect();
+    user_fb_types.sort_by_key(|fb_info| fb_info.type_id);
+    for fb_info in user_fb_types {
         builder = builder.add_user_fb_type(UserFbDescriptor {
             type_id: FbTypeId::new(fb_info.type_id),
             function_id: fb_info.function_id,
@@ -1161,11 +1170,9 @@ fn compile_program_with_functions(
     for entry in ctx.debug_string_layouts {
         builder = builder.add_string_layout(entry);
     }
-    for (type_name, values) in &ctx.enum_map.definitions {
-        builder = builder.add_enum_def(EnumDefEntry {
-            type_name: type_name.clone(),
-            values: values.clone(),
-        });
+    // By type name, for the same reason as the user FB type descriptors.
+    for entry in crate::compile_enum::enum_definitions(types) {
+        builder = builder.add_enum_def(entry);
     }
 
     // Add constants to the pool.
@@ -1261,25 +1268,9 @@ pub(crate) struct UserFunctionInfo {
     pub(crate) max_stack_depth: u16,
 }
 
-/// Snapshot of the program-level variable-mapping state, captured by
-/// `compile_user_function_block` before it repopulates `CompileContext`
-/// for a single FB type's own body (and, in the same scope, that type's
-/// methods -- OOP extension, ADR-0041 Phase 1). The caller restores from
-/// this once *both* the body and its methods have been compiled, since
-/// method bodies need the type's field mappings to still be visible in
-/// `ctx.variables` after the FB body compile returns.
-pub(crate) struct SavedFbScope {
-    pub(crate) variables: HashMap<Id, VarIndex>,
-    pub(crate) var_types: HashMap<Id, VarTypeInfo>,
-    pub(crate) string_vars: HashMap<Id, StringVarInfo>,
-    pub(crate) array_vars: HashMap<Id, crate::compile_array::ArrayVarInfo>,
-    pub(crate) struct_vars: HashMap<Id, crate::compile_struct::StructVarInfo>,
-    pub(crate) struct_array_vars: HashMap<Id, crate::compile_array_struct::StructArrayVarInfo>,
-    pub(crate) fb_instances: HashMap<Id, FbInstanceInfo>,
-}
-
 /// Tracks state during compilation of a single program.
 /// Metadata for a function block instance variable.
+#[derive(Clone)]
 pub(crate) struct FbInstanceInfo {
     /// Variable table index holding the data region offset.
     pub(crate) var_index: VarIndex,
@@ -1305,6 +1296,8 @@ pub(crate) struct UserFbTypeInfo {
     pub(crate) var_offset: u16,
     /// Maps field name (lowercase) to its op type for codegen at call sites.
     pub(crate) field_op_types: HashMap<String, OpType>,
+    /// Maps field name (lowercase) to the type its declaration declares.
+    pub(crate) field_type_ids: HashMap<String, ironplc_dsl::type_id::TypeId>,
     /// Maps method name (lowercase) to compilation metadata (OOP
     /// extension, ADR-0041 Phase 1). Populated in two steps: `function_id`,
     /// `num_params`, `param_op_types`, and `has_return_value` are known
@@ -1363,14 +1356,17 @@ pub(crate) struct CompileContext {
     /// Maps top-level `ARRAY OF <struct>` variable identifiers to their metadata.
     /// Kept apart from `array_vars`, whose elements occupy a single slot each.
     pub(crate) struct_array_vars: HashMap<Id, crate::compile_array_struct::StructArrayVarInfo>,
-    /// Pre-computed ordinal mappings for named enumeration types.
-    pub(crate) enum_map: crate::compile_enum::EnumOrdinalMap,
     /// What every type is, by the id an expression's `expr_type` carries.
     /// See [`crate::type_info::expr_type_info`].
-    pub(crate) types: HashMap<ironplc_dsl::type_id::TypeId, IntermediateType>,
+    pub(crate) types: HashMap<ironplc_dsl::type_id::TypeId, SemanticType>,
     /// The name the arithmetic overloads know a value of each type by.
     /// See [`crate::type_info::expr_operand_name`].
     pub(crate) operand_names: HashMap<ironplc_dsl::type_id::TypeId, ironplc_dsl::common::TypeName>,
+    /// The operation each standard function stands for, by name, as the
+    /// analyzer's function environment states it. A call of a name that is
+    /// not here is a call of a user-defined function.
+    /// See [`crate::compile_call::intrinsics_by_name`].
+    pub(crate) intrinsics: HashMap<Id, Intrinsic>,
     /// The behavior policies `STRING_TO_<numeric>` calls select their
     /// builtin by (ADR-0049).
     pub(crate) string_to_num: StringToNumPolicies,
@@ -1464,9 +1460,9 @@ impl CompileContext {
             user_functions: HashMap::new(),
             user_fb_types: HashMap::new(),
             next_user_fb_type_id: 0x1000,
-            enum_map: crate::compile_enum::EnumOrdinalMap::default(),
             types: HashMap::new(),
             operand_names: HashMap::new(),
+            intrinsics: HashMap::new(),
             string_to_num: StringToNumPolicies::default(),
             compiler_options: CompilerOptions::default(),
             current_function_return: None,
@@ -1507,6 +1503,13 @@ impl CompileContext {
     /// loading or storing it directly would be wrong. Sites that handle one
     /// ask [`Self::in_out_ref_slot`] first; every other site reaches here
     /// and is refused.
+    ///
+    /// A name with no slot is not an undeclared variable: analysis reports
+    /// that first (`rule_use_declared_symbolic_var`, P4007). It is one
+    /// analysis accepts and codegen does not yet give storage to, such as a
+    /// variable inherited through `EXTENDS` or a `RESOURCE`'s `VAR_GLOBAL`, so
+    /// it is reported as not implemented rather than as a mistake in the
+    /// program.
     pub(crate) fn var_index(&self, name: &Id) -> Result<VarIndex, Diagnostic> {
         if self.in_out_params.contains(name) {
             return Err(Diagnostic::not_implemented(Label::span(
@@ -1515,10 +1518,10 @@ impl CompileContext {
             )));
         }
         self.variables.get(name).copied().ok_or_else(|| {
-            Diagnostic::problem(
-                Problem::VariableUndefined,
-                Label::span(name.span(), "Variable reference"),
-            )
+            Diagnostic::not_implemented(Label::span(
+                name.span(),
+                "Variable that code generation does not yet give storage to",
+            ))
             .with_context("variable", &name.to_string())
         })
     }
@@ -1696,8 +1699,7 @@ END_PROGRAM
 ";
         let (library, context) = parse(source);
         let container = compile(
-            &library,
-            &context,
+            CleanAnalysis::new(&library, &context).unwrap(),
             &CodegenOptions::default(),
             &crate::EmptyLookup,
         )
@@ -1739,8 +1741,7 @@ END_FUNCTION_BLOCK
 ";
         let (library, context) = parse(source);
         let result = compile(
-            &library,
-            &context,
+            CleanAnalysis::new(&library, &context).unwrap(),
             &CodegenOptions::default(),
             &crate::EmptyLookup,
         );
@@ -1775,8 +1776,7 @@ END_CONFIGURATION
     fn compile_source(source: &str) -> Result<Container, Diagnostic> {
         let (library, context) = parse(source);
         compile(
-            &library,
-            &context,
+            CleanAnalysis::new(&library, &context).unwrap(),
             &CodegenOptions::default(),
             &crate::EmptyLookup,
         )
@@ -1904,8 +1904,7 @@ END_PROGRAM
 ";
         let (library, context) = parse(source);
         let container = compile(
-            &library,
-            &context,
+            CleanAnalysis::new(&library, &context).unwrap(),
             &CodegenOptions::default(),
             &crate::EmptyLookup,
         )
@@ -1939,8 +1938,7 @@ END_PROGRAM
 ";
         let (library, context) = parse(source);
         let container = compile(
-            &library,
-            &context,
+            CleanAnalysis::new(&library, &context).unwrap(),
             &CodegenOptions::default(),
             &crate::EmptyLookup,
         )
@@ -1964,8 +1962,7 @@ END_PROGRAM
 ";
         let (library, context) = parse(source);
         let container = compile(
-            &library,
-            &context,
+            CleanAnalysis::new(&library, &context).unwrap(),
             &CodegenOptions::default(),
             &crate::EmptyLookup,
         )
@@ -2007,8 +2004,7 @@ END_PROGRAM
 ";
         let (library, context) = parse(source);
         let container = compile(
-            &library,
-            &context,
+            CleanAnalysis::new(&library, &context).unwrap(),
             &CodegenOptions::default(),
             &crate::EmptyLookup,
         )
@@ -2044,37 +2040,12 @@ END_PROGRAM
 ";
         let (library, context) = parse(source);
         let result = compile(
-            &library,
-            &context,
+            CleanAnalysis::new(&library, &context).unwrap(),
             &CodegenOptions::default(),
             &crate::EmptyLookup,
         );
 
         assert!(result.is_ok());
-    }
-
-    #[test]
-    fn compile_when_exit_outside_loop_then_p4021_error() {
-        let source = "
-PROGRAM main
-  VAR
-    x : DINT;
-  END_VAR
-  x := 1;
-  EXIT;
-END_PROGRAM
-";
-        let (library, context) = parse(source);
-        let result = compile(
-            &library,
-            &context,
-            &CodegenOptions::default(),
-            &crate::EmptyLookup,
-        );
-
-        assert!(result.is_err());
-        let diagnostic = result.unwrap_err();
-        assert_eq!(diagnostic.code, Problem::ExitOutsideLoop.code());
     }
 
     #[test]
@@ -2092,8 +2063,7 @@ END_PROGRAM
 ";
         let (library, context) = parse(source);
         let result = compile(
-            &library,
-            &context,
+            CleanAnalysis::new(&library, &context).unwrap(),
             &CodegenOptions::default(),
             &crate::EmptyLookup,
         );
@@ -2110,13 +2080,12 @@ PROGRAM main
   VAR
     x : BYTE;
   END_VAR
-  x := 42;
+  x := BYTE#42;
 END_PROGRAM
 ";
         let (library, context) = parse(source);
         let container = compile(
-            &library,
-            &context,
+            CleanAnalysis::new(&library, &context).unwrap(),
             &CodegenOptions::default(),
             &crate::EmptyLookup,
         )
@@ -2144,8 +2113,7 @@ END_PROGRAM
 ";
         let (library, context) = parse(source);
         let container = compile(
-            &library,
-            &context,
+            CleanAnalysis::new(&library, &context).unwrap(),
             &CodegenOptions::default(),
             &crate::EmptyLookup,
         )
@@ -2179,8 +2147,7 @@ END_PROGRAM
 ";
         let (library, context) = parse(source);
         let container = compile(
-            &library,
-            &context,
+            CleanAnalysis::new(&library, &context).unwrap(),
             &CodegenOptions::default(),
             &crate::EmptyLookup,
         )

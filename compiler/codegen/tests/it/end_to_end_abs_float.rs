@@ -13,7 +13,7 @@ PROGRAM main
   y := ABS(x);
 END_PROGRAM
 ",
-    &[(1, 42.5)],
+    &[("y", 42.5)],
 );
 
 e2e_f32_near!(
@@ -29,7 +29,7 @@ PROGRAM main
   y := ABS(x);
 END_PROGRAM
 ",
-    &[(1, 7.25)],
+    &[("y", 7.25)],
 );
 
 e2e_f64_near!(
@@ -45,5 +45,5 @@ PROGRAM main
   y := ABS(x);
 END_PROGRAM
 ",
-    &[(1, std::f64::consts::PI)],
+    &[("y", std::f64::consts::PI)],
 );

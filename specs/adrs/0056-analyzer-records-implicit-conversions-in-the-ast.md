@@ -117,3 +117,67 @@ codegen tests pass unchanged.
 * Good, because nothing changes.
 * Bad, because the language server cannot see the decision, and every backend
   repeats it.
+
+## More Information
+
+### Arithmetic operands (postscript)
+
+The pass now records the conversions of arithmetic operands too, for the
+operator expression and for the function forms `ADD`, `SUB`, `MUL`, `DIV` and
+`MOD` (see `specs/design/implicit-conversions.md`). Codegen compiles the
+recorded nodes and no longer converts an arithmetic operand itself, or asks
+the analyzer's overload resolver a second time for a numeric fold. A function
+form of three or more inputs is recorded as the nested calls it folds to,
+because each step computes at its own result type and the accumulated value is
+converted between steps, and an accumulator is not an operand a node can wrap.
+Assignments and function arguments are still converted by codegen, and so is
+the conversion of an arithmetic result to the type of its context; each moves
+to the pass in its own change. The decision above is unchanged.
+
+### Assignments (postscript)
+
+The pass also records the conversion of an assigned value to the type its
+target is stored as, where codegen converts it: a variable or an arithmetic
+result of another operation width. The conversions a variable or an arithmetic
+result makes to the type of its context stay in codegen until arguments, the
+remaining context, record them too, since the same code serves both. The
+decision above is unchanged.
+
+### Arguments (postscript)
+
+The pass also records the conversion of an argument to a user-defined
+function to the type its parameter is passed as, and codegen no longer
+converts an argument itself. The recording makes two existing choices visible:
+a parameter of a non-elementary type is passed as a `DINT`, and an untyped
+real literal is a `REAL` converted to an `LREAL` parameter. Correcting either
+is a change to the pass. Function block and method arguments are not recorded
+yet. The decision above is unchanged.
+
+### Literals (postscript)
+
+The pass also gives an untyped numeric literal the type codegen compiles it
+at, in every context: a statement's target or condition, and on the way to
+the literal every construct that passes its context's type on, computes at
+its own, or computes at a fixed one (a selector, a shift count, a string
+position, a subscript). Codegen compiles an integer or real literal at its
+recorded type rather than one passed down, and a typed literal (`DINT#5`) in a
+context of another type is recorded as converted to it. The decision above is
+unchanged.
+
+### A rule after the pass (postscript)
+
+`rule_constant_range` now runs after the pass, on the library it returns, so
+that it can read the type the pass records on a literal (#2071). It still
+checks the program as written: it reads an operand's type through the
+conversion that wraps it, and gives an untyped literal no type of its own. So
+`DINT#300 < s` on a `SINT` still reports P2026, the diagnostic that was lost
+when the pass first ran before the rules. The other rules still run before the
+pass. The decision above is unchanged.
+
+### Literal arguments (postscript)
+
+The second choice the Arguments postscript names is corrected: an untyped
+literal argument now takes its parameter's type rather than its default type
+converted to it (#2071). `f(0.1)` with an `LREAL` parameter passed `0.1`
+rounded to a `REAL`, and `f(1.0E300)` passed infinity; `f(5000000000)` with an
+`LINT` parameter failed. The decision above is unchanged.

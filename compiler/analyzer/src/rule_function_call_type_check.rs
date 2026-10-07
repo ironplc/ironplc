@@ -59,6 +59,7 @@ use std::convert::Infallible;
 use crate::{
     intermediates::operator_function_form::operator_function_form,
     result::SemanticResult,
+    rule_string_encoding_compat,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
     symbol_environment::ScopeTracker,
@@ -134,6 +135,9 @@ impl RuleFunctionCallTypeCheck<'_> {
         let Some(target_type) = self.declared_type_name(&nv.name) else {
             return;
         };
+        if self.generic_return_bound_to_mismatched_argument(func_call) {
+            return;
+        }
 
         if let Err(mismatch) =
             value_type::check(self.context.types(), &target_type, value, self.options)
@@ -148,6 +152,38 @@ impl RuleFunctionCallTypeCheck<'_> {
                 .with_context("target_type", &target_type.to_string()),
             );
         }
+    }
+
+    /// Whether `call`'s return type is a generic category bound by an argument
+    /// that is itself outside that category.
+    ///
+    /// `xform_resolve_expr_types` narrows a generic return type to the type
+    /// of the argument that binds it, even when that argument fails the
+    /// category: `SIN(b)` on a `BOOL` is typed `BOOL`. The argument is already
+    /// reported (P4026, by `visit_function`), so checking the return type
+    /// would report the same mistake a second time.
+    fn generic_return_bound_to_mismatched_argument(&self, call: &Function) -> bool {
+        let Some(signature) = self.context.functions.get(&call.name) else {
+            return false;
+        };
+        let Some(return_type) = signature.return_type.as_ref().map(|t| t.to_type_name()) else {
+            return false;
+        };
+        if GenericTypeName::try_from(&return_type.name).is_err() {
+            return false;
+        }
+        signature
+            .bind_inputs(&call.param_assignment)
+            .any(|(param, argument)| {
+                param.param_type == return_type
+                    && value_type::check(
+                        self.context.types(),
+                        &param.param_type,
+                        argument,
+                        self.options,
+                    )
+                    .is_err()
+            })
     }
 
     /// Checks whether the value assigned in an assignment statement is
@@ -169,6 +205,16 @@ impl RuleFunctionCallTypeCheck<'_> {
         let Variable::Symbolic(SymbolicVariableKind::Named(nv)) = target else {
             return;
         };
+        // A string variable of the other encoding is P4034's business;
+        // reporting it here too would give two diagnostics for one mistake.
+        if rule_string_encoding_compat::mixes_encodings(
+            target,
+            value,
+            self.context,
+            &self.scope.current(),
+        ) {
+            return;
+        }
         let Some(declared) = self.declared_type_name(&nv.name) else {
             return;
         };
@@ -297,12 +343,19 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
 mod composite_tests;
 
 #[cfg(test)]
+mod label_tests;
+
+#[cfg(test)]
+mod string_encoding_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::parse_and_resolve_types_with_context;
+    use crate::test_helpers::{codes, fb_inheritance_options, rule_codes};
+    use crate::test_helpers::{diagnostic_codes, rule_diagnostics};
     use rstest::rstest;
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_matching_types_then_ok,
         "
 FUNCTION ADD_INTS : INT
@@ -323,7 +376,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_int_arg_to_real_param_lossless_then_ok,
         "
 FUNCTION DOUBLE_REAL : REAL
@@ -342,7 +395,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_dint_arg_to_real_param_lossy_then_error,
         "
 FUNCTION DOUBLE_REAL : REAL
@@ -359,10 +412,10 @@ VAR
 END_VAR
     result := DOUBLE_REAL(x);
 END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_stdlib_arg_matches_param_then_ok,
         "
 PROGRAM main
@@ -377,7 +430,7 @@ END_PROGRAM"
     // A standard-library return type is checked against the assignment
     // target like a user-defined one: INT_TO_REAL yields REAL, which does
     // not fit an INT.
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_stdlib_return_type_mismatches_target_then_error,
         "
 PROGRAM main
@@ -387,12 +440,12 @@ VAR
 END_VAR
     result := INT_TO_REAL(x);
 END_PROGRAM",
-        Problem::FunctionCallReturnTypeMismatch
+        [Problem::FunctionCallReturnTypeMismatch]
     );
 
     // Integer widening still applies to a standard-library return
     // (ADR-0029, ADR-0031): INT_TO_DINT yields DINT, which fits a LINT.
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_stdlib_return_widens_to_target_then_ok,
         "
 PROGRAM main
@@ -407,7 +460,7 @@ END_PROGRAM"
     // A generic return type is narrowed by `xform_resolve_expr_types` before
     // this rule runs, so ADD over INT arguments is an INT return and not a
     // false P4027 against the ANY_NUM the signature declares.
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_stdlib_generic_return_resolves_to_target_then_ok,
         "
 PROGRAM main
@@ -445,12 +498,11 @@ END_VAR
     result := {function}(a, b);
 END_PROGRAM"
         );
-        let (library, context) = parse_and_resolve_types_with_context(&program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok(), "{result:?}");
+        let diagnostics = rule_diagnostics(apply, &program, &CompilerOptions::default());
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
 
-    rule_ctx_errn!(
+    rule_err!(
         apply_when_bitwise_function_form_on_int_then_error_per_argument,
         "
 PROGRAM main
@@ -461,13 +513,12 @@ VAR
 END_VAR
     result := AND(a, b);
 END_PROGRAM",
-        2,
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch; 2]
     );
 
     // An extensible call is checked past its declared parameters, so the
     // third input of ADD is checked like the first two (#1618).
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_extensible_call_third_arg_matches_then_ok,
         "
 PROGRAM main
@@ -481,7 +532,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_extensible_call_third_arg_mismatch_then_error,
         "
 PROGRAM main
@@ -493,10 +544,10 @@ VAR
 END_VAR
     result := AND(a, b, c);
 END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_mux_fourth_input_mismatch_then_error,
         "
 PROGRAM main
@@ -507,7 +558,7 @@ VAR
 END_VAR
     result := MUX(0, a, a, a, s);
 END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
     // A VAR_IN_OUT declared before a VAR_INPUT takes the first positional
@@ -530,10 +581,11 @@ VAR
 END_VAR
     result := Scale(total, s);
 END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let errors = apply(&library, &context, &CompilerOptions::default()).unwrap_err();
-        assert_eq!(errors.len(), 1, "{errors:?}");
-        assert_eq!(errors[0].code, Problem::FunctionCallArgTypeMismatch.code());
+        let errors = rule_diagnostics(apply, program, &CompilerOptions::default());
+        assert_eq!(
+            diagnostic_codes(&errors),
+            [Problem::FunctionCallArgTypeMismatch.code()]
+        );
         assert!(
             errors[0].described.contains(&"parameter=factor".to_owned()),
             "{:?}",
@@ -543,7 +595,7 @@ END_PROGRAM";
 
     // NOT(x) parses as the unary operator; the named-argument spelling is the
     // one that reaches the function signature.
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_not_function_form_on_word_then_ok,
         "
 PROGRAM main
@@ -555,7 +607,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_multiple_args_one_mismatch_then_one_error,
         "
 FUNCTION MY_FUNC : INT
@@ -573,10 +625,10 @@ VAR
 END_VAR
     result := MY_FUNC(x, x);
 END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_return_type_mismatch_then_error,
         "
 FUNCTION GET_VALUE : REAL
@@ -593,10 +645,10 @@ VAR
 END_VAR
     result := GET_VALUE(x);
 END_PROGRAM",
-        Problem::FunctionCallReturnTypeMismatch
+        [Problem::FunctionCallReturnTypeMismatch]
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_nested_function_call_types_match_then_ok,
         "
 FUNCTION DOUBLE : INT
@@ -615,7 +667,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_all_args_match_then_ok,
         "
 FUNCTION ADD3 : DINT
@@ -638,7 +690,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_return_type_matches_then_ok,
         "
 FUNCTION GET_REAL : REAL
@@ -657,7 +709,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_bare_literal_arg_to_int_param_then_ok,
         "
 FUNCTION ADD_ONE : INT
@@ -675,7 +727,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_bare_literal_arg_to_sint_param_then_ok,
         "
 FUNCTION INC : SINT
@@ -693,7 +745,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_bare_real_literal_arg_to_lreal_param_then_ok,
         "
 FUNCTION DBL : LREAL
@@ -715,7 +767,7 @@ END_PROGRAM"
     // literal case above, this argument is a typed REAL variable, not
     // an untyped ANY_REAL literal -- a separate code path through
     // ElementaryTypeName::can_widen_to()).
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_typed_real_var_arg_to_lreal_param_then_ok,
         "
 FUNCTION DBL : LREAL
@@ -737,7 +789,7 @@ END_PROGRAM"
     // The reverse direction (LREAL -> REAL) is narrowing and must
     // remain an error -- guards against accidentally allowing both
     // directions.
-    rule_ctx_err!(
+    rule_err!(
         apply_when_typed_lreal_var_arg_to_real_param_then_error,
         "
 FUNCTION SNGL : REAL
@@ -753,10 +805,11 @@ VAR
     result : REAL;
 END_VAR
     result := SNGL(input);
-END_PROGRAM"
+END_PROGRAM",
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_typed_dint_literal_arg_to_int_param_then_error,
         "
 FUNCTION ADD_ONE : INT
@@ -772,10 +825,10 @@ VAR
 END_VAR
     result := ADD_ONE(DINT#5);
 END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_dint_var_arg_to_int_param_then_error,
         "
 FUNCTION ADD_ONE : INT
@@ -792,10 +845,10 @@ VAR
 END_VAR
     result := ADD_ONE(y);
 END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_bare_int_literal_arg_to_real_param_then_ok,
         "
 FUNCTION TAKES_REAL : REAL
@@ -814,7 +867,7 @@ END_PROGRAM
 "
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_bare_int_literal_arg_to_lreal_param_then_ok,
         "
 FUNCTION TAKES_LREAL : LREAL
@@ -835,7 +888,7 @@ END_PROGRAM
 
     // --- Implicit integer widening tests (ADR-0029) ---
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_sint_arg_to_int_param_then_ok,
         "
 FUNCTION TAKES_INT : INT
@@ -854,7 +907,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_int_arg_to_dint_param_then_ok,
         "
 FUNCTION TAKES_DINT : DINT
@@ -873,7 +926,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_sint_arg_to_lint_param_then_ok,
         "
 FUNCTION TAKES_LINT : LINT
@@ -892,7 +945,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_usint_arg_to_uint_param_then_ok,
         "
 FUNCTION TAKES_UINT : UINT
@@ -911,7 +964,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_usint_arg_to_int_param_then_ok,
         "
 FUNCTION TAKES_INT : INT
@@ -930,7 +983,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_uint_arg_to_dint_param_then_ok,
         "
 FUNCTION TAKES_DINT : DINT
@@ -949,7 +1002,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_sint_return_to_dint_var_then_ok,
         "
 FUNCTION GET_SINT : SINT
@@ -968,7 +1021,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err!(
+    rule_err!(
         apply_when_dint_arg_to_int_param_then_error,
         "
 FUNCTION TAKES_INT : INT
@@ -984,10 +1037,11 @@ VAR
     y : DINT;
 END_VAR
     result := TAKES_INT(y);
-END_PROGRAM"
+END_PROGRAM",
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
-    rule_ctx_err!(
+    rule_err!(
         apply_when_int_arg_to_uint_param_then_error,
         "
 FUNCTION TAKES_UINT : UINT
@@ -1003,10 +1057,11 @@ VAR
     y : INT;
 END_VAR
     result := TAKES_UINT(y);
-END_PROGRAM"
+END_PROGRAM",
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
-    rule_ctx_err!(
+    rule_err!(
         apply_when_byte_arg_to_int_param_then_error,
         "
 FUNCTION TAKES_INT : INT
@@ -1022,12 +1077,13 @@ VAR
     y : BYTE;
 END_VAR
     result := TAKES_INT(y);
-END_PROGRAM"
+END_PROGRAM",
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
     // --- Integration tests for new widening cases ---
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_int_arg_to_real_param_then_ok,
         "
 FUNCTION TAKES_REAL : REAL
@@ -1046,7 +1102,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err!(
+    rule_err!(
         apply_when_dint_arg_to_real_param_then_error,
         "
 FUNCTION TAKES_REAL : REAL
@@ -1062,10 +1118,11 @@ VAR
     y : DINT;
 END_VAR
     result := TAKES_REAL(y);
-END_PROGRAM"
+END_PROGRAM",
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_byte_arg_to_word_param_then_ok,
         "
 FUNCTION TAKES_WORD : WORD
@@ -1084,7 +1141,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err!(
+    rule_err!(
         apply_when_word_arg_to_byte_param_then_error,
         "
 FUNCTION TAKES_BYTE : BYTE
@@ -1100,10 +1157,11 @@ VAR
     y : WORD;
 END_VAR
     result := TAKES_BYTE(y);
-END_PROGRAM"
+END_PROGRAM",
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
-    rule_ctx_err!(
+    rule_err!(
         apply_when_real_arg_to_int_param_then_error,
         "
 FUNCTION TAKES_INT : INT
@@ -1119,7 +1177,8 @@ VAR
     y : REAL;
 END_VAR
     result := TAKES_INT(y);
-END_PROGRAM"
+END_PROGRAM",
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
     // --- Cross-family widening tests (ADR-0031, requires flag) ---
@@ -1146,7 +1205,7 @@ VAR
 END_VAR
     result := TAKES_INT(y);
 END_PROGRAM",
-        true
+        ACCEPTED
     )]
     #[case::literal_zero_to_byte_param_ok(
         "
@@ -1163,7 +1222,7 @@ VAR
 END_VAR
     result := TAKES_BYTE(0);
 END_PROGRAM",
-        true
+        ACCEPTED
     )]
     #[case::byte_return_to_int_var_ok(
         "
@@ -1181,7 +1240,7 @@ VAR
 END_VAR
     result := GET_BYTE(y);
 END_PROGRAM",
-        true
+        ACCEPTED
     )]
     // Integer → bit-string is allowed only for the UDINT ↔ DWORD pair, which
     // ElementaryTypeName::can_widen_cross_family_to carves out at equal width.
@@ -1201,7 +1260,7 @@ VAR
 END_VAR
     result := TAKES_DWORD(y);
 END_PROGRAM",
-        true
+        ACCEPTED
     )]
     // INT → BYTE is not that pair, so it stays an error even with the flag.
     #[case::int_arg_to_byte_param_error(
@@ -1220,21 +1279,19 @@ VAR
 END_VAR
     result := TAKES_BYTE(y);
 END_PROGRAM",
-        false
+        ARG_MISMATCH
     )]
     fn apply_when_cross_family_flags_on_call_then_matches_expectation(
         #[case] program: &str,
-        #[case] expect_ok: bool,
+        #[case] expected: &[Problem],
     ) {
-        let (library, context) = parse_and_resolve_types_with_context(program);
         let opts = CompilerOptions {
             allow_cross_family_widening: true,
             allow_cross_family_conversion: true,
             allow_int_literal_to_bit_string: true,
             ..CompilerOptions::default()
         };
-        let result = apply(&library, &context, &opts);
-        assert_eq!(result.is_ok(), expect_ok);
+        assert_eq!(rule_codes(apply, program, &opts), codes(expected));
     }
 
     /// One program per cross-family rule. Each is accepted under exactly one
@@ -1287,6 +1344,10 @@ END_VAR
     result := TAKES_BYTE(0);
 END_PROGRAM";
 
+    const ACCEPTED: &[Problem] = &[];
+    const ARG_MISMATCH: &[Problem] = &[Problem::FunctionCallArgTypeMismatch];
+    const ASSIGNMENT_MISMATCH: &[Problem] = &[Problem::AssignmentTypeMismatch];
+
     fn only(flag: &str) -> CompilerOptions {
         let mut opts = CompilerOptions::default();
         match flag {
@@ -1300,29 +1361,27 @@ END_PROGRAM";
     }
 
     #[rstest]
-    #[case::widening_under_widening(WIDENING_PROGRAM, "widening", true)]
-    #[case::widening_under_conversion(WIDENING_PROGRAM, "conversion", false)]
-    #[case::widening_under_literal(WIDENING_PROGRAM, "literal", false)]
-    #[case::conversion_under_widening(CONVERSION_PROGRAM, "widening", false)]
-    #[case::conversion_under_conversion(CONVERSION_PROGRAM, "conversion", true)]
-    #[case::conversion_under_literal(CONVERSION_PROGRAM, "literal", false)]
-    #[case::literal_under_widening(LITERAL_PROGRAM, "widening", false)]
-    #[case::literal_under_conversion(LITERAL_PROGRAM, "conversion", false)]
-    #[case::literal_under_literal(LITERAL_PROGRAM, "literal", true)]
-    #[case::widening_under_none(WIDENING_PROGRAM, "none", false)]
-    #[case::conversion_under_none(CONVERSION_PROGRAM, "none", false)]
-    #[case::literal_under_none(LITERAL_PROGRAM, "none", false)]
+    #[case::widening_under_widening(WIDENING_PROGRAM, "widening", ACCEPTED)]
+    #[case::widening_under_conversion(WIDENING_PROGRAM, "conversion", ARG_MISMATCH)]
+    #[case::widening_under_literal(WIDENING_PROGRAM, "literal", ARG_MISMATCH)]
+    #[case::conversion_under_widening(CONVERSION_PROGRAM, "widening", ARG_MISMATCH)]
+    #[case::conversion_under_conversion(CONVERSION_PROGRAM, "conversion", ACCEPTED)]
+    #[case::conversion_under_literal(CONVERSION_PROGRAM, "literal", ARG_MISMATCH)]
+    #[case::literal_under_widening(LITERAL_PROGRAM, "widening", ARG_MISMATCH)]
+    #[case::literal_under_conversion(LITERAL_PROGRAM, "conversion", ARG_MISMATCH)]
+    #[case::literal_under_literal(LITERAL_PROGRAM, "literal", ACCEPTED)]
+    #[case::widening_under_none(WIDENING_PROGRAM, "none", ARG_MISMATCH)]
+    #[case::conversion_under_none(CONVERSION_PROGRAM, "none", ARG_MISMATCH)]
+    #[case::literal_under_none(LITERAL_PROGRAM, "none", ARG_MISMATCH)]
     fn apply_when_one_cross_family_flag_on_then_only_its_rule_is_accepted(
         #[case] program: &str,
         #[case] flag: &str,
-        #[case] expect_ok: bool,
+        #[case] expected: &[Problem],
     ) {
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &only(flag));
-        assert_eq!(result.is_ok(), expect_ok, "program under flag {flag:?}");
+        assert_eq!(rule_codes(apply, program, &only(flag)), codes(expected));
     }
 
-    rule_ctx_err!(
+    rule_err!(
         apply_when_literal_zero_to_byte_param_without_flag_then_error,
         "
 FUNCTION TAKES_BYTE : BYTE
@@ -1337,10 +1396,11 @@ VAR
     result : BYTE;
 END_VAR
     result := TAKES_BYTE(0);
-END_PROGRAM"
+END_PROGRAM",
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
-    rule_ctx_err!(
+    rule_err!(
         apply_when_byte_return_to_int_var_without_flag_then_error,
         "
 FUNCTION GET_BYTE : BYTE
@@ -1356,12 +1416,15 @@ VAR
     y : BYTE;
 END_VAR
     result := GET_BYTE(y);
-END_PROGRAM"
+END_PROGRAM",
+        [Problem::FunctionCallReturnTypeMismatch]
     );
 
     // --- Standard-library argument type checks ---
 
-    rule_ctx_err_code!(
+    // Reported once, as the argument: SIN's ANY_REAL return is bound to that
+    // same BOOL argument, so its return type is not checked as well.
+    rule_err!(
         apply_when_stdlib_sin_arg_is_bool_then_arg_type_error,
         "
 PROGRAM main
@@ -1371,10 +1434,50 @@ VAR
 END_VAR
     r := SIN(b);
 END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
-    rule_ctx_ok!(
+    // The argument fits ANY_REAL, so the narrowed REAL return is checked
+    // against the BOOL target.
+    rule_err!(
+        apply_when_stdlib_sin_arg_fits_and_target_differs_then_return_type_error,
+        "
+PROGRAM main
+VAR
+    x : REAL;
+    b : BOOL;
+END_VAR
+    b := SIN(x);
+END_PROGRAM",
+        [Problem::FunctionCallReturnTypeMismatch]
+    );
+
+    // A concrete return type does not come from the argument, so a bad
+    // argument and a mismatched return are two mistakes.
+    rule_err!(
+        apply_when_user_function_arg_and_return_both_mismatch_then_both_reported,
+        "
+FUNCTION TAKES_INT : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+    TAKES_INT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    r : REAL;
+    b : BOOL;
+END_VAR
+    b := TAKES_INT(r);
+END_PROGRAM",
+        [
+            Problem::FunctionCallReturnTypeMismatch,
+            Problem::FunctionCallArgTypeMismatch
+        ]
+    );
+
+    rule_ok!(
         apply_when_stdlib_sin_arg_is_real_then_ok,
         "
 PROGRAM main
@@ -1387,7 +1490,7 @@ END_PROGRAM"
     );
 
     // UINT_TO_REAL expects UINT, but the argument is UDINT.
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_wrong_conversion_function_arg_then_arg_type_error,
         "
 PROGRAM main
@@ -1397,10 +1500,10 @@ VAR
 END_VAR
     r := UINT_TO_REAL(u);
 END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_correct_conversion_function_arg_then_ok,
         "
 PROGRAM main
@@ -1413,7 +1516,7 @@ END_PROGRAM"
     );
 
     // ABS accepts ANY_NUM; a bare integer literal is accepted.
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_stdlib_int_literal_arg_to_real_param_then_ok,
         "
 PROGRAM main
@@ -1426,7 +1529,7 @@ END_PROGRAM"
 
     // Call arguments go through the same resolved type, so a wide literal
     // reaches a WSTRING parameter and a narrow one does not.
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_wstring_parameter_given_wide_literal_then_ok,
         "
 FUNCTION wide_len : INT
@@ -1444,7 +1547,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_wstring_parameter_given_narrow_literal_then_error,
         "
 FUNCTION wide_len : INT
@@ -1460,14 +1563,14 @@ VAR
 END_VAR
     n := wide_len('abc');
 END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
     // --- Assignment statement type checks (P4035) ---
 
     // A character-string literal is typed by its delimiter (IEC 61131-3
     // Table 5), so each spelling belongs to exactly one of the two targets.
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_wstring_target_assigned_wide_literal_then_ok,
         "
 PROGRAM main
@@ -1478,7 +1581,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_wstring_target_assigned_narrow_literal_then_error,
         "
 PROGRAM main
@@ -1487,10 +1590,24 @@ VAR
 END_VAR
     w := 'abc';
 END_PROGRAM",
-        Problem::AssignmentTypeMismatch
+        [Problem::AssignmentTypeMismatch]
     );
 
-    rule_ctx_ok!(
+    // A WSTRING variable assigned to a STRING one is reported once, as
+    // P4034, by rule_string_encoding_compat.
+    rule_ok!(
+        apply_when_string_target_assigned_wstring_variable_then_left_to_encoding_rule,
+        "
+PROGRAM main
+VAR
+    s : STRING[10];
+    w : WSTRING[10];
+END_VAR
+    s := w;
+END_PROGRAM"
+    );
+
+    rule_ok!(
         apply_when_string_target_assigned_narrow_literal_then_ok,
         "
 PROGRAM main
@@ -1501,7 +1618,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_string_target_assigned_wide_literal_then_error,
         "
 PROGRAM main
@@ -1510,10 +1627,10 @@ VAR
 END_VAR
     s := \"abc\";
 END_PROGRAM",
-        Problem::AssignmentTypeMismatch
+        [Problem::AssignmentTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err_at!(
         apply_when_bool_target_assigned_real_expr_then_error,
         "
 PROGRAM main
@@ -1523,10 +1640,11 @@ VAR
 END_VAR
     b := x * 2.0;
 END_PROGRAM",
-        Problem::AssignmentTypeMismatch
+        Problem::AssignmentTypeMismatch,
+        "x * 2.0"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_int_target_assigned_real_var_then_error,
         "
 PROGRAM main
@@ -1536,11 +1654,11 @@ VAR
 END_VAR
     i := r;
 END_PROGRAM",
-        Problem::AssignmentTypeMismatch
+        [Problem::AssignmentTypeMismatch]
     );
 
     // INT widens losslessly to REAL, so this assignment is valid.
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_real_target_assigned_int_var_then_ok,
         "
 PROGRAM main
@@ -1552,7 +1670,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_matching_assignment_then_ok,
         "
 PROGRAM main
@@ -1583,7 +1701,7 @@ VAR
 END_VAR
     dwFromUdint := udValue;
 END_PROGRAM",
-        true
+        ACCEPTED
     )]
     #[case::udint_target_assigned_dword_var_ok(
         "
@@ -1594,7 +1712,7 @@ VAR
 END_VAR
     udFromDword := dwValue;
 END_PROGRAM",
-        true
+        ACCEPTED
     )]
     // Signed integer, equal width -- not part of the verified exception, must
     // stay rejected even with the flag on.
@@ -1607,24 +1725,22 @@ VAR
 END_VAR
     dwFromDint := diValue;
 END_PROGRAM",
-        false
+        ASSIGNMENT_MISMATCH
     )]
     fn apply_when_cross_family_flags_on_assignment_then_matches_expectation(
         #[case] program: &str,
-        #[case] expect_ok: bool,
+        #[case] expected: &[Problem],
     ) {
-        let (library, context) = parse_and_resolve_types_with_context(program);
         let opts = CompilerOptions {
             allow_cross_family_widening: true,
             allow_cross_family_conversion: true,
             allow_int_literal_to_bit_string: true,
             ..CompilerOptions::default()
         };
-        let result = apply(&library, &context, &opts);
-        assert_eq!(result.is_ok(), expect_ok);
+        assert_eq!(rule_codes(apply, program, &opts), codes(expected));
     }
 
-    rule_ctx_err!(
+    rule_err!(
         apply_when_dword_target_assigned_udint_var_without_flag_then_error,
         "
 PROGRAM main
@@ -1633,11 +1749,12 @@ VAR
     udValue : UDINT;
 END_VAR
     dwFromUdint := udValue;
-END_PROGRAM"
+END_PROGRAM",
+        [Problem::AssignmentTypeMismatch]
     );
 
     // Temporal short/long widths are treated as one family.
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_ltime_target_assigned_time_var_then_ok,
         "
 PROGRAM main
@@ -1653,25 +1770,18 @@ END_PROGRAM"
     // METHOD scoping.
     // ---------------------------------------------------------------------
 
-    fn apply_with_methods(program: &str) -> crate::result::SemanticResult {
-        let options = CompilerOptions {
-            allow_fb_inheritance: true,
-            ..CompilerOptions::default()
-        };
-        let (library, context) =
-            crate::test_helpers::parse_and_resolve_types_with_options(program, &options);
-        super::apply(&library, &context, &options)
+    fn apply_with_methods(program: &str) -> Vec<String> {
+        rule_codes(super::apply, program, &fb_inheritance_options())
     }
 
-    /// A method's local belongs to the method. It used to be recorded
-    /// against the enclosing function block, so it overwrote a field of
-    /// the same name for every method compiled after it -- and the
-    /// mismatch below was accepted because `v` was still recorded as the
-    /// `REAL` from `A`.
-    #[test]
-    fn apply_when_method_local_shadows_field_then_sibling_method_uses_field_type() {
-        let errors = apply_with_methods(
-            "
+    rule_err!(
+        /// A method's local belongs to the method. It used to be recorded
+        /// against the enclosing function block, so it overwrote a field of
+        /// the same name for every method compiled after it -- and the
+        /// mismatch below was accepted because `v` was still recorded as the
+        /// `REAL` from `A`.
+        apply_when_method_local_shadows_field_then_sibling_method_uses_field_type,
+        "
 FUNCTION_BLOCK FB_Motor
 VAR
     v : INT;
@@ -1686,23 +1796,15 @@ METHOD B
     v := 2.5;
 END_METHOD
 END_FUNCTION_BLOCK",
-        )
-        .unwrap_err();
+        [Problem::AssignmentTypeMismatch],
+        fb_inheritance_options()
+    );
 
-        assert!(
-            errors
-                .iter()
-                .any(|d| d.code == Problem::AssignmentTypeMismatch.code()),
-            "expected an assignment type mismatch on the INT field, got {errors:?}"
-        );
-    }
-
-    /// A method's locals are still checked against their own declared
-    /// types once they live in the method's own scope.
-    #[test]
-    fn apply_when_method_local_assigned_wrong_type_then_error() {
-        let errors = apply_with_methods(
-            "
+    rule_err!(
+        /// A method's locals are still checked against their own declared
+        /// types once they live in the method's own scope.
+        apply_when_method_local_assigned_wrong_type_then_error,
+        "
 FUNCTION_BLOCK FB_Motor
 METHOD A
 VAR
@@ -1712,13 +1814,9 @@ END_VAR
     b := i;
 END_METHOD
 END_FUNCTION_BLOCK",
-        )
-        .unwrap_err();
-
-        assert!(errors
-            .iter()
-            .any(|d| d.code == Problem::AssignmentTypeMismatch.code()));
-    }
+        [Problem::AssignmentTypeMismatch],
+        fb_inheritance_options()
+    );
 
     /// A method reading the instance's field is not a mismatch: the
     /// method scope nests inside the function block's.
@@ -1738,14 +1836,14 @@ END_VAR
 END_METHOD
 END_FUNCTION_BLOCK",
         )
-        .is_ok());
+        .is_empty());
     }
 
     // ---------------------------------------------------------------------
     // Result variables. A declaration's own name is an assignment target.
     // ---------------------------------------------------------------------
 
-    rule_ctx_err_code!(
+    rule_err!(
         apply_when_function_result_assigned_wrong_type_then_error,
         "
 FUNCTION GetFlag : BOOL
@@ -1754,10 +1852,10 @@ VAR
 END_VAR
     GetFlag := n;
 END_FUNCTION",
-        Problem::AssignmentTypeMismatch,
+        [Problem::AssignmentTypeMismatch]
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_function_result_assigned_correct_type_then_ok,
         "
 FUNCTION GetN : INT
@@ -1768,10 +1866,9 @@ END_VAR
 END_FUNCTION"
     );
 
-    #[test]
-    fn apply_when_method_result_assigned_wrong_type_then_error() {
-        let errors = apply_with_methods(
-            "
+    rule_err!(
+        apply_when_method_result_assigned_wrong_type_then_error,
+        "
 FUNCTION_BLOCK FB_Motor
 METHOD GetFlag : BOOL
 VAR
@@ -1780,13 +1877,9 @@ END_VAR
     GetFlag := n;
 END_METHOD
 END_FUNCTION_BLOCK",
-        )
-        .unwrap_err();
-
-        assert!(errors
-            .iter()
-            .any(|d| d.code == Problem::AssignmentTypeMismatch.code()));
-    }
+        [Problem::AssignmentTypeMismatch],
+        fb_inheritance_options()
+    );
 
     #[test]
     fn apply_when_method_result_assigned_correct_type_then_ok() {
@@ -1801,7 +1894,7 @@ END_VAR
 END_METHOD
 END_FUNCTION_BLOCK",
         )
-        .is_ok());
+        .is_empty());
     }
 
     /// A method with no return type has no result variable, so its name
@@ -1821,6 +1914,6 @@ END_VAR
 END_METHOD
 END_FUNCTION_BLOCK",
         )
-        .is_ok());
+        .is_empty());
     }
 }

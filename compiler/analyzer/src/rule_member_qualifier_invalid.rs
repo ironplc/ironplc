@@ -221,15 +221,11 @@ mod tests {
     /// Runs the rule and returns the label message of each diagnostic.
     fn messages(source: &str) -> Vec<String> {
         let opts = opts_flag();
-        let (library, context) = crate::test_helpers::resolve_fresh_with(source, &opts);
-        match apply(&library, &context, &opts) {
-            Ok(()) => vec![],
-            Err(errors) => errors
-                .into_iter()
-                .inspect(|e| assert_eq!(e.code, Problem::MemberQualifierInvalid.code()))
-                .map(|e| e.primary.message)
-                .collect(),
-        }
+        crate::test_helpers::rule_diagnostics(apply, source, &opts)
+            .into_iter()
+            .inspect(|e| assert_eq!(e.code, Problem::MemberQualifierInvalid.code()))
+            .map(|e| e.primary.message)
+            .collect()
     }
 
     fn fb(header: &str) -> String {
@@ -388,5 +384,18 @@ VAR
     x : INT;
 END_VAR
 END_FUNCTION_BLOCK"
+    );
+
+    rule_err_at!(
+        apply_when_fb_qualifier_invalid_then_error_at_qualifier,
+        "
+FUNCTION_BLOCK PRIVATE FB_Motor
+VAR
+    x : INT;
+END_VAR
+END_FUNCTION_BLOCK",
+        Problem::MemberQualifierInvalid,
+        "PRIVATE",
+        opts_flag()
     );
 }

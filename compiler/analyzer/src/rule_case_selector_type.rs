@@ -74,10 +74,10 @@ use ironplc_problems::Problem;
 use std::convert::Infallible;
 
 use crate::{
-    intermediate_type::IntermediateType,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    semantic_type::SemanticType,
     type_environment::TypeEnvironment,
     value_type,
 };
@@ -98,13 +98,13 @@ pub fn apply(
 
 /// Returns true if a `CASE` may select on a value of this type: `ANY_INT`,
 /// a subrange of one, or an enumeration.
-fn is_selectable(representation: &IntermediateType) -> bool {
+fn is_selectable(representation: &SemanticType) -> bool {
     matches!(
         representation,
-        IntermediateType::Int { .. }
-            | IntermediateType::UInt { .. }
-            | IntermediateType::Subrange { .. }
-            | IntermediateType::Enumeration { .. }
+        SemanticType::Int { .. }
+            | SemanticType::UInt { .. }
+            | SemanticType::Subrange { .. }
+            | SemanticType::Enumeration { .. }
     )
 }
 
@@ -128,7 +128,9 @@ impl RuleCaseSelectorType<'_> {
             return None;
         }
         match selector.expr_type.as_ref()? {
-            ExprType::Concrete(id) => Some(value_type::describe(self.type_environment, *id)),
+            ExprType::Concrete(id) | ExprType::Inferred(id) => {
+                Some(value_type::describe(self.type_environment, *id))
+            }
             ExprType::Literal(_) | ExprType::Null => None,
         }
     }
@@ -154,7 +156,8 @@ impl Visitor<Infallible> for RuleCaseSelectorType<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::parse_and_resolve_types_with_context;
+    use crate::test_helpers::diagnostic_codes;
+    use crate::test_helpers::rule_diagnostics;
     use rstest::rstest;
 
     /// A program whose only `CASE` selects on `sel`, declared as
@@ -175,10 +178,7 @@ END_PROGRAM"
     }
 
     fn diagnostics_for(program: &str) -> Vec<Diagnostic> {
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        apply(&library, &context, &CompilerOptions::default())
-            .err()
-            .unwrap_or_default()
+        rule_diagnostics(apply, program, &CompilerOptions::default())
     }
 
     #[rstest]
@@ -215,11 +215,13 @@ END_PROGRAM"
     fn apply_when_selector_is_not_integer_then_p4053(#[case] declared_type: &str) {
         let diagnostics = diagnostics_for(&program_selecting_on(declared_type));
 
-        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
-        assert_eq!(diagnostics[0].code, Problem::CaseSelectorTypeInvalid.code());
+        assert_eq!(
+            diagnostic_codes(&diagnostics),
+            [Problem::CaseSelectorTypeInvalid.code()]
+        );
     }
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_selector_is_enumeration_then_ok,
         "
 TYPE
@@ -237,7 +239,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_selector_is_named_subrange_then_ok,
         "
 TYPE
@@ -255,7 +257,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         /// An alias of an integer type resolves to the integer type.
         apply_when_selector_is_alias_of_integer_then_ok,
         "
@@ -274,7 +276,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         /// A bare literal resolves to `ANY_INT`, which is not in the type
         /// environment, so the rule leaves it alone.
         apply_when_selector_is_integer_literal_then_ok,
@@ -289,7 +291,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         /// The selector is an expression, and its type is what is judged.
         apply_when_selector_is_integer_expression_then_ok,
         "
@@ -305,7 +307,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_selector_is_alias_of_real_then_p4053,
         "
 TYPE
@@ -321,10 +323,10 @@ END_VAR
         1: y := 1;
     END_CASE;
 END_PROGRAM",
-        Problem::CaseSelectorTypeInvalid
+        [Problem::CaseSelectorTypeInvalid]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_selector_is_real_expression_then_p4053,
         "
 PROGRAM main
@@ -336,7 +338,7 @@ END_VAR
         1: y := 1;
     END_CASE;
 END_PROGRAM",
-        Problem::CaseSelectorTypeInvalid
+        [Problem::CaseSelectorTypeInvalid]
     );
 
     #[test]

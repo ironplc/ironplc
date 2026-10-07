@@ -661,3 +661,141 @@ END_FUNCTION_BLOCK",
     assert_eq!(DeclarationQualifier::Constant, qualifier(&library, "table"));
     assert!(codes.is_empty(), "unexpected diagnostics {codes:?}");
 }
+
+/// A program declaring `k` as `VAR CONSTANT`, with `body` after it.
+fn program_with_constant(body: &str) -> String {
+    format!(
+        "
+FUNCTION_BLOCK FB_Out
+VAR_OUTPUT
+    q : INT;
+END_VAR
+    q := 1;
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_InOut
+VAR_IN_OUT
+    v : INT;
+END_VAR
+    v := v + 1;
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR CONSTANT
+    k : INT := 1;
+END_VAR
+VAR
+    out : FB_Out;
+    in_out : FB_InOut;
+    p : REF_TO INT;
+END_VAR
+    {body}
+END_PROGRAM"
+    )
+}
+
+fn ref_to_options() -> CompilerOptions {
+    CompilerOptions {
+        allow_ref_to: true,
+        allow_adr: true,
+        ..CompilerOptions::default()
+    }
+}
+
+/// REQ-CVI-analyzer-050: A statement that writes a `CONSTANT` is P4064.
+#[rstest]
+#[case::assignment("k := 2;")]
+#[case::for_control("FOR k := 1 TO 3 DO out(); END_FOR;")]
+#[case::output_binding("out(q => k);")]
+#[case::in_out_argument("in_out(v := k);")]
+#[spec_test(REQ_CVI_analyzer_050)]
+fn analyzer_spec_req_cvi_050_statement_write_to_constant_is_p4064(#[case] body: &str) {
+    let (_, codes) = analyze_with(&program_with_constant(body), &ref_to_options());
+    assert!(codes.contains(&"P4064".to_string()), "codes {codes:?}");
+}
+
+/// REQ-CVI-analyzer-051: A write through a `VAR_EXTERNAL` is checked against
+/// that declaration's qualifier, not the global's nor another unit's.
+#[rstest]
+#[case::external_constant_of_constant_global("CONSTANT", "CONSTANT", true)]
+#[case::external_constant_of_non_constant_global("", "CONSTANT", true)]
+#[case::plain_external_while_reader_is_external_constant("", "", false)]
+#[spec_test(REQ_CVI_analyzer_051)]
+fn analyzer_spec_req_cvi_051_write_through_external_uses_its_qualifier(
+    #[case] global: &str,
+    #[case] writer_external: &str,
+    #[case] is_p4064: bool,
+) {
+    let (_, codes) = analyze_default(&format!(
+        "
+PROGRAM reader
+VAR_EXTERNAL CONSTANT
+    g : INT;
+END_VAR
+VAR
+    x : INT;
+END_VAR
+    x := g;
+END_PROGRAM
+
+PROGRAM writer
+VAR_EXTERNAL {writer_external}
+    g : INT;
+END_VAR
+    g := 5;
+END_PROGRAM
+
+CONFIGURATION config
+    VAR_GLOBAL {global}
+        g : INT := 10;
+    END_VAR
+    RESOURCE res ON PLC
+        TASK t(INTERVAL := T#100ms, PRIORITY := 1);
+        PROGRAM r WITH t : reader;
+        PROGRAM w WITH t : writer;
+    END_RESOURCE
+END_CONFIGURATION"
+    ));
+    let expected: Vec<String> = if is_p4064 {
+        vec!["P4064".to_string()]
+    } else {
+        vec![]
+    };
+    assert_eq!(expected, codes);
+}
+
+/// REQ-CVI-analyzer-052: Taking the address of a constant is not P4064.
+#[rstest]
+#[case::ref_function("p := REF(k);")]
+#[case::adr_function("p := ADR(k);")]
+#[spec_test(REQ_CVI_analyzer_052)]
+fn analyzer_spec_req_cvi_052_address_of_constant_is_not_p4064(#[case] body: &str) {
+    let (_, codes) = analyze_with(&program_with_constant(body), &ref_to_options());
+    assert!(!codes.contains(&"P4064".to_string()), "codes {codes:?}");
+}
+
+/// REQ-CVI-analyzer-053: A write through a path that does not resolve to one
+/// declaration is not P4064, even when a constant has the written name.
+#[spec_test(REQ_CVI_analyzer_053)]
+fn analyzer_spec_req_cvi_053_unresolved_write_is_not_p4064() {
+    let (_, codes) = analyze_default(
+        "
+TYPE
+    Item : STRUCT count : INT; END_STRUCT;
+END_TYPE
+
+FUNCTION_BLOCK FB_Counter
+VAR CONSTANT
+    count : INT := 1;
+END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+    items : ARRAY[0..1] OF Item;
+END_VAR
+    items[0].count := 2;
+END_PROGRAM",
+    );
+    assert!(!codes.contains(&"P4064".to_string()), "codes {codes:?}");
+}

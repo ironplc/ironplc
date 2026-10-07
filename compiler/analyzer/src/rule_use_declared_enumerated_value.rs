@@ -1,6 +1,9 @@
 //! Semantic rule that references to enumerations use enumeration values
 //! that are part of the enumeration declaration.
 //!
+//! This holds for an inline enumeration too: `e : (A, B) := C` names a
+//! value its own list does not declare.
+//!
 //! ## Passes
 //!
 //! ```ignore
@@ -140,14 +143,45 @@ impl Visitor<Infallible> for RuleDeclaredEnumeratedValues<'_> {
 
         Ok(())
     }
+
+    fn visit_enumerated_values_initializer(
+        &mut self,
+        init: &EnumeratedValuesInitializer,
+    ) -> Result<Self::Value, Infallible> {
+        // An inline enumeration's initial value must be one of the values
+        // the declaration itself lists.
+        if let Some(value) = &init.initial_value {
+            if !init.values.iter().any(|member| member.value == value.value) {
+                self.diagnostics.push(
+                    Diagnostic::problem(
+                        Problem::EnumValueNotDefined,
+                        Label::span(value.span(), "Expected value in enumeration"),
+                    )
+                    .with_context_id("value", &value.value),
+                );
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::test_helpers::diagnostic_codes;
+    use crate::test_helpers::{rule_codes, rule_diagnostics};
+    use ironplc_dsl::diagnostic::Diagnostic;
+    use ironplc_parser::options::CompilerOptions;
+    use ironplc_problems::Problem;
 
-    use crate::stages::analyze;
-    use ironplc_dsl::core::FileId;
-    use ironplc_parser::{options::CompilerOptions, parse_program};
+    /// The diagnostics this rule reports for `program` under default options.
+    fn diagnostics_of(program: &str) -> Vec<Diagnostic> {
+        rule_diagnostics(super::apply, program, &CompilerOptions::default())
+    }
+
+    fn codes_of(program: &str) -> Vec<String> {
+        rule_codes(super::apply, program, &CompilerOptions::default())
+    }
 
     #[test]
     fn apply_when_two_undefined_enum_values_then_reports_both() {
@@ -163,23 +197,84 @@ B : LEVEL := FATAL;
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let library =
-            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
-        let (_library, context) = analyze(&[&library], &CompilerOptions::default()).unwrap();
+        let diagnostics = diagnostics_of(program);
 
-        let reported: Vec<&String> = context
-            .diagnostics()
+        let codes = diagnostic_codes(&diagnostics);
+        assert_eq!(codes, [Problem::EnumValueNotDefined.code(); 2]);
+        let reported: Vec<&str> = diagnostics
             .iter()
             .flat_map(|d| &d.described)
+            .map(String::as_str)
+            .filter(|d| d.starts_with("value="))
             .collect();
-        assert!(
-            reported.iter().any(|d| d.as_str() == "value=CRITICAL"),
-            "expected CRITICAL, got {reported:?}"
-        );
-        assert!(
-            reported.iter().any(|d| d.as_str() == "value=FATAL"),
-            "expected FATAL, got {reported:?}"
-        );
+        assert_eq!(reported, ["value=CRITICAL", "value=FATAL"]);
+    }
+
+    #[test]
+    fn apply_when_two_enumerations_in_one_block_then_ok_on_every_run() {
+        // Each analysis builds its hash maps with fresh random keys, so a
+        // result that depends on hash iteration order shows up within a
+        // few runs (issue #1945).
+        let program = "
+TYPE A1 : (P, Q, R); A2 : (S0, S1); END_TYPE
+PROGRAM main
+VAR st : A2 := S1; pt : A1 := R; END_VAR
+END_PROGRAM";
+
+        for _ in 0..32 {
+            assert_eq!(codes_of(program), Vec::<String>::new());
+        }
+    }
+
+    #[test]
+    fn apply_when_two_enumerations_declare_same_value_then_each_accepts_it() {
+        let program = "
+TYPE A : (X, Y); B : (X, Z); END_TYPE
+PROGRAM main
+VAR a : A := X; b : B := X; END_VAR
+END_PROGRAM";
+
+        assert_eq!(codes_of(program), Vec::<String>::new());
+    }
+
+    #[test]
+    fn apply_when_value_of_other_enumeration_then_enum_value_not_defined() {
+        let program = "
+TYPE A : (X, Y); B : (X, Z); END_TYPE
+PROGRAM main
+VAR a : A := Z; END_VAR
+END_PROGRAM";
+
+        assert_eq!(codes_of(program), [Problem::EnumValueNotDefined.code()]);
+    }
+
+    #[test]
+    fn apply_when_value_of_enumeration_with_equal_representation_then_enum_value_not_defined_on_every_run(
+    ) {
+        // Every enumeration has the same representation, so neither is an
+        // alias of the other, whichever order the types are visited in.
+        let program = "
+TYPE A1 : (P, Q, R); A2 : (S0, S1); END_TYPE
+PROGRAM main
+VAR b : A2 := P; END_VAR
+END_PROGRAM";
+
+        for _ in 0..32 {
+            assert_eq!(codes_of(program), [Problem::EnumValueNotDefined.code()]);
+        }
+    }
+
+    #[test]
+    fn apply_when_alias_chain_then_values_of_declaring_enumeration() {
+        let program = "
+TYPE LEVEL : (INFO, WARN); LEVEL1 : LEVEL; LEVEL2 : LEVEL1; END_TYPE
+PROGRAM main
+VAR ok : LEVEL2 := WARN; bad : LEVEL2 := FATAL; END_VAR
+END_PROGRAM";
+
+        for _ in 0..32 {
+            assert_eq!(codes_of(program), [Problem::EnumValueNotDefined.code()]);
+        }
     }
 
     #[test]
@@ -196,12 +291,7 @@ B : LEVEL := CRITICAL;
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let library =
-            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
-        let result = analyze(&[&library], &CompilerOptions::default());
-
-        let (_library, context) = result.unwrap();
-        assert!(context.has_diagnostics());
+        assert_eq!(codes_of(program), [Problem::EnumValueNotDefined.code()]);
     }
 
     #[test]
@@ -217,17 +307,12 @@ LEVEL : LEVEL := CRITICAL;
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let library =
-            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
-        let result = analyze(&[&library], &CompilerOptions::default());
-
-        let (_library, context) = result.unwrap();
-        assert!(context.has_diagnostics());
+        assert_eq!(codes_of(program), [Problem::EnumValueNotDefined.code()]);
     }
 
-    #[test]
-    fn apply_when_var_init_valid_enum_value_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_var_init_valid_enum_value_then_ok,
+        "
 TYPE
 LEVEL : (CRITICAL) := CRITICAL;
 END_TYPE
@@ -236,19 +321,12 @@ FUNCTION_BLOCK LOGGER
 VAR_INPUT
 LEVEL : LEVEL := CRITICAL;
 END_VAR
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let library =
-            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
-        let result = analyze(&[&library], &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    #[ignore = "flaky test - needs to be fixed"]
-    fn apply_when_var_init_valid_enum_value_through_alias_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_var_init_valid_enum_value_through_alias_then_ok,
+        "
 TYPE
 LEVEL : (CRITICAL) := CRITICAL;
 LEVEL_ALIAS : LEVEL;
@@ -259,12 +337,94 @@ VAR_INPUT
 NAME : LEVEL_ALIAS := CRITICAL;
 END_VAR
 
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let library =
-            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
-        let result = analyze(&[&library], &CompilerOptions::default());
+    rule_err_at!(
+        apply_when_var_init_undefined_enum_value_through_alias_then_error,
+        "
+TYPE
+LEVEL : (CRITICAL) := CRITICAL;
+LEVEL_ALIAS : LEVEL;
+END_TYPE
 
-        assert!(result.is_ok());
+FUNCTION_BLOCK LOGGER
+VAR_INPUT
+NAME : LEVEL_ALIAS := FATAL;
+END_VAR
+
+END_FUNCTION_BLOCK",
+        Problem::EnumValueNotDefined,
+        "FATAL"
+    );
+
+    #[test]
+    fn apply_when_two_enums_share_value_then_each_value_defined() {
+        let diagnostics = diagnostics_of(
+            "
+TYPE
+  Colors : (Red, Green) := Red;
+  Lights : (Red, Amber) := Red;
+END_TYPE
+
+PROGRAM main
+VAR
+  c : Colors := Colors#Green;
+  l : Lights := Lights#Red;
+END_VAR
+END_PROGRAM",
+        );
+
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
+
+    #[test]
+    fn apply_when_global_shares_enum_value_name_then_value_defined() {
+        let diagnostics = diagnostics_of(
+            "
+TYPE
+  Colors : (Red, Green) := Red;
+END_TYPE
+
+CONFIGURATION config
+  VAR_GLOBAL
+    Red : INT;
+  END_VAR
+  RESOURCE res ON PLC
+    TASK t(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM inst WITH t : main;
+  END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM main
+VAR
+  c : Colors := Colors#Red;
+END_VAR
+END_PROGRAM",
+        );
+
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    }
+
+    rule_err_at!(
+        apply_when_inline_enum_init_not_a_member_then_enum_value_not_defined,
+        "
+PROGRAM main
+VAR
+e : (A, B) := C;
+END_VAR
+END_PROGRAM",
+        Problem::EnumValueNotDefined,
+        "C"
+    );
+
+    rule_ok!(
+        apply_when_inline_enum_init_is_a_member_then_ok,
+        "
+PROGRAM main
+VAR
+e : (A, B) := B;
+END_VAR
+END_PROGRAM"
+    );
 }

@@ -184,6 +184,8 @@ impl Visitor<Infallible> for RuleFunctionBlockUse<'_> {
 
 #[cfg(test)]
 mod tests {
+    use ironplc_problems::Problem;
+
     rule_ok!(
         apply_when_instance_declared_with_member_initializer_then_ok,
         "
@@ -252,7 +254,8 @@ VAR
 FB_INSTANCE : Callee;
 END_VAR
 FB_INSTANCE(IN1 := TRUE, FALSE);
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        [Problem::FunctionCallMixedArgTypes]
     );
 
     rule_err!(
@@ -263,7 +266,8 @@ VAR
 IN1: BOOL;
 END_VAR
 FB_INSTANCE(IN1 := TRUE);
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        [Problem::FunctionBlockNotInScope]
     );
 
     rule_ok!(
@@ -321,7 +325,7 @@ FB_INSTANCE(IN1 := TRUE, IN2 := FALSE);
 END_FUNCTION_BLOCK"
     );
 
-    rule_err!(
+    rule_err_at!(
         apply_when_formal_names_incorrect_then_error,
         "
 FUNCTION_BLOCK Callee
@@ -332,7 +336,9 @@ VAR
 FB_INSTANCE : Callee;
 END_VAR
 FB_INSTANCE(BAR := TRUE);
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        Problem::FunctionInvocationMissingInput,
+        "FB_INSTANCE(BAR := TRUE)"
     );
 
     rule_err!(
@@ -350,7 +356,8 @@ VAR
 FB_INSTANCE : Callee;
 END_VAR
 FB_INSTANCE(TRUE);
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        [Problem::FunctionInvocationRequiresFormal]
     );
 
     rule_err!(
@@ -367,7 +374,8 @@ VAR
 FB_INSTANCE : Callee;
 END_VAR
 FB_INSTANCE(TRUE, FALSE);
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        [Problem::FunctionInvocationRequiresFormal]
     );
 
     rule_err!(
@@ -384,7 +392,8 @@ VAR
 FB_INSTANCE : Callee;
 END_VAR
 FB_INSTANCE(IN1 := TRUE, BAR := TRUE);
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        [Problem::FunctionInvocationMissingInput]
     );
 
     rule_err!(
@@ -402,7 +411,8 @@ FB_INSTANCE : Callee;
 LOCAL: BOOL;
 END_VAR
 FB_INSTANCE(OUT2 => LOCAL);
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        [Problem::FunctionInvocationUndefinedOutput]
     );
 
     rule_ok!(
@@ -422,7 +432,7 @@ FB_INSTANCE(IN1 := TRUE);
 END_PROGRAM"
     );
 
-    rule_errn!(
+    rule_err!(
         apply_when_two_undeclared_function_block_calls_then_reports_both,
         "
 PROGRAM main
@@ -432,11 +442,10 @@ END_VAR
 FIRST();
 SECOND();
 END_PROGRAM",
-        2,
-        ironplc_problems::Problem::FunctionBlockNotInScope
+        [ironplc_problems::Problem::FunctionBlockNotInScope; 2]
     );
 
-    rule_errn!(
+    rule_err!(
         apply_when_call_names_two_undeclared_inputs_then_reports_both,
         "
 FUNCTION_BLOCK Callee
@@ -451,7 +460,6 @@ FB_INSTANCE : Callee;
 END_VAR
 FB_INSTANCE(NOPE1 := TRUE, NOPE2 := TRUE);
 END_PROGRAM",
-        2,
-        ironplc_problems::Problem::FunctionInvocationMissingInput
+        [ironplc_problems::Problem::FunctionInvocationMissingInput; 2]
     );
 }
