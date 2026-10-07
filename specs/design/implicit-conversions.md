@@ -136,6 +136,10 @@ A value assigned to a function block field is converted to the field's declared 
 
 **REQ-IC-analyzer-039** A value assigned through a dereference is converted to the type the reference refers to: in `r^ := d` on a `REF_TO LINT` and a `DINT` the `DINT` is converted to `LINT`.
 
+A reference refers only to a variable of the type it names (P2032), so the conversion stores a value of that variable's own type. A value the referenced type cannot hold without narrowing is rejected, as it is when assigned to the variable itself.
+
+**REQ-IC-analyzer-080** An assignment through a dereference is checked as an assignment to the variable the reference refers to: `p^ := d` on a `REF_TO SINT` and a `DINT` reports P4035, and `p^ := f(d)` with `f` returning a `DINT` reports P4027, as `s := d` and `s := f(d)` on a `SINT` do.
+
 A directly represented variable (`%QW0 := w`) is not recorded yet, and neither is a function block output stored by a call (`fb(OUT => x)`), which codegen stores at the field's operation type without a conversion ([#2125](https://github.com/ironplc/ironplc/issues/2125)).
 
 ### Loops
@@ -250,8 +254,9 @@ context's.
 A field of a user-defined function block and a parameter of a method are
 operated at their declared type, whatever kind of declaration declares them: a
 subrange at its base type. A value stored through a dereference is compiled at
-the type the analyzer gave it, which is the referenced type, and stored
-without being narrowed to a narrower referenced type
+the type the analyzer gave it, which is the referenced type, and stored as it
+is: a result of a type narrower than 32 bits is not truncated to its width, so
+`p^ := a + a` on `SINT`s of 100 stores 200
 ([#2116](https://github.com/ironplc/ironplc/issues/2116)).
 
 **REQ-IC-codegen-005** A value stored in a function block field, a method parameter or through a dereference keeps the value of its declared type: `b(x := 4000000000)` on a field of a subrange of `LINT` stores 4000000000, and `q^ := 1.5` on a `REF_TO REAL` stores 1.5.

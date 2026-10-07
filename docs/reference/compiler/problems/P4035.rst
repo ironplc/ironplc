@@ -14,6 +14,11 @@ A whole array, a structure or an enumeration is never assignable to a variable o
 elementary type, so assigning one is this error too. An enumeration's values are not
 integers.
 
+An assignment through a dereference (``p^ := value``) stores into the variable the
+reference refers to, so it is checked against that variable's type. Assigning a
+``DINT`` through a ``REF_TO SINT`` is this error, as assigning it to the ``SINT``
+itself is.
+
 For the full set of allowed implicit conversions, see
 :doc:`/explanation/type-conversions`.
 

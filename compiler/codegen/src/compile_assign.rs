@@ -53,8 +53,8 @@ pub(crate) fn compile_assignment(
 
         // The analyzer converted the value to the referenced type
         // (REQ-IC-analyzer-039), so it compiles at its own type. It is
-        // stored as it is, without narrowing to a narrower referenced type
-        // (#2116).
+        // stored as it is: a result narrower than 32 bits is not truncated to
+        // its width (#2116).
         let op_type = op_type_from_expr(ctx, &assignment.value).unwrap_or(DEFAULT_OP_TYPE);
         compile_expr(emitter, ctx, &assignment.value, op_type)?;
 
