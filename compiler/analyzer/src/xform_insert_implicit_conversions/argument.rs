@@ -6,10 +6,10 @@
 //! module records that conversion on the argument, as an
 //! [`ExprKind::ImplicitConversion`].
 //!
-//! It records what the code generator did, including a choice a later change
-//! may correct: a parameter whose type is not elementary (an alias, a
-//! subrange, an enumeration) is passed as a `DINT` (#2108), so an argument of
-//! another width is converted to `DINT`.
+//! A parameter is passed at its declared type, whatever kind of declaration
+//! declares it: a subrange at its base type and an alias at the type it
+//! names, so the `DINT` of `f(d)` with a parameter of an alias of `LREAL` is
+//! converted to `LREAL`.
 //!
 //! An untyped literal takes the type of its parameter, as it takes the type
 //! of an assignment's target, so the parameter receives the value the program
@@ -27,16 +27,17 @@
 //! converted to the declared type of its field or parameter, as an assigned
 //! value is to its target's (see `assignment.rs`).
 
-use ironplc_dsl::common::{ElementaryTypeName, TypeName};
+use ironplc_dsl::common::TypeName;
 use ironplc_dsl::textual::{Expr, ExprType, FbCall, Function, MethodCall, ParamAssignmentKind};
 use ironplc_dsl::type_id::TypeId;
 
+use super::declared::elementary_of;
 use super::ImplicitConversions;
 use crate::intermediates::conversion_target::wrap;
 use crate::intermediates::numeric_operation::{
     literal_default_type, operation_width_of, OperationWidth,
 };
-use crate::semantic_type::{SemanticFunctionParameter, SemanticType};
+use crate::semantic_type::SemanticFunctionParameter;
 use crate::type_environment::elementary_type;
 
 impl ImplicitConversions<'_> {
@@ -125,25 +126,19 @@ impl ImplicitConversions<'_> {
     }
 
     /// The type a parameter declared as `param_type` is passed as, and its
-    /// operation width: its own type when it is elementary, and `DINT`
-    /// otherwise (#2108). `None` for a string, which is copied rather than
-    /// passed.
+    /// operation width: the elementary type it is operated as, its own, the
+    /// base type of a subrange, or the type an alias names. `None` for a
+    /// parameter that is not a single numeric value: a string, which is
+    /// copied rather than passed, or an enumeration.
     fn passed_as(&self, param_type: &TypeName) -> Option<(TypeId, OperationWidth)> {
-        let is_string =
-            |representation: &SemanticType| matches!(representation, SemanticType::String { .. });
-        if self
-            .context
-            .types()
-            .get(param_type)
-            .is_some_and(|attributes| is_string(&attributes.representation))
-        {
-            return None;
-        }
-        match elementary_type(param_type) {
-            Some(representation) if is_string(representation) => None,
-            Some(_) => self.elementary(param_type),
-            None => self.elementary(&ElementaryTypeName::DINT.into()),
-        }
+        let types = self.context.types();
+        let representation = match elementary_type(param_type) {
+            Some(representation) => representation,
+            None => &types.get(param_type)?.representation,
+        };
+        let id = elementary_of(types, representation)?;
+        let width = operation_width_of(&types.get_by_id(id)?.representation)?;
+        Some((id, width))
     }
 
     /// The id of the elementary type `name`, and its operation width.

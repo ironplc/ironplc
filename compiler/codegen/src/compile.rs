@@ -895,7 +895,6 @@ fn compile_program_with_functions(
             FunctionId::new(next_function_id),
             var_offset,
             &mut ctx,
-            functions,
             &mut builder,
             types,
             num_globals,

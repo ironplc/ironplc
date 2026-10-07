@@ -583,11 +583,23 @@ fn apply_when_integer_literal_argument_to_real_parameter_then_takes_parameter_ty
 
 #[spec_test(REQ_IC_analyzer_043)]
 #[test]
-fn apply_when_parameter_type_not_elementary_then_passed_as_dint() {
-    let source = "TYPE Big : LINT; END_TYPE
+fn apply_when_argument_to_parameter_of_alias_then_not_converted() {
+    let source = "TYPE Big : LINT; Precise : LREAL; END_TYPE
         FUNCTION f : DINT VAR_INPUT x : Big; END_VAR f := 0; END_FUNCTION
-        PROGRAM main VAR r : DINT; b : Big; END_VAR r := f(b); END_PROGRAM";
-    assert_eq!(call_arguments(source, "f"), vec!["LINT->DINT"]);
+        FUNCTION g : DINT VAR_INPUT x : Precise; END_VAR g := 0; END_FUNCTION
+        PROGRAM main VAR r : DINT; b : Big; p : Precise; END_VAR
+        r := f(b); r := g(p); END_PROGRAM";
+    assert_eq!(call_arguments(source, "f"), vec!["LINT"]);
+    assert_eq!(call_arguments(source, "g"), vec!["LREAL"]);
+}
+
+#[spec_test(REQ_IC_analyzer_043)]
+#[test]
+fn apply_when_argument_to_parameter_of_subrange_then_not_converted() {
+    let source = "TYPE Small : LINT (0..100); END_TYPE
+        FUNCTION f : DINT VAR_INPUT x : Small; END_VAR f := 0; END_FUNCTION
+        PROGRAM main VAR r : DINT; s : Small; END_VAR r := f(s); END_PROGRAM";
+    assert_eq!(call_arguments(source, "f"), vec!["SMALL"]);
 }
 
 #[spec_test(REQ_IC_analyzer_044)]

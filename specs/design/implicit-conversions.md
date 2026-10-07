@@ -146,7 +146,7 @@ A `FOR` loop stores its initial value in its control variable and compares and s
 
 ### Arguments
 
-A call to a user-defined function passes each input by value at the operation width of its parameter. The pass records the conversion of an argument of another width to the type its parameter is passed as, and codegen compiles the argument at the parameter's width without choosing a conversion. It records what codegen did before it, including a choice a later change may correct: a parameter whose type is not elementary (an alias, a subrange, an enumeration) is passed as a `DINT` ([#2108](https://github.com/ironplc/ironplc/issues/2108)). An untyped literal takes its parameter's type, as it takes an assignment target's, so the parameter receives the value the program wrote. Codegen used to operate it at its default type (`DINT` or `REAL`, ADR-0028) and convert it, which rounded `f(0.1)` with an `LREAL` parameter to a `REAL` and failed on `f(5000000000)` with an `LINT` one.
+A call to a user-defined function passes each input by value at the operation width of its parameter. The pass records the conversion of an argument of another width to the type its parameter is passed as, and codegen compiles the argument at the parameter's width without choosing a conversion. A parameter is passed at its declared type, whatever kind of declaration declares it: a subrange at its base type and an alias at the type it names. An untyped literal takes its parameter's type, as it takes an assignment target's, so the parameter receives the value the program wrote. Codegen used to operate it at its default type (`DINT` or `REAL`, ADR-0028) and convert it, which rounded `f(0.1)` with an `LREAL` parameter to a `REAL` and failed on `f(5000000000)` with an `LINT` one.
 
 **REQ-IC-analyzer-040** An argument whose operation width differs from its parameter's is wrapped in an `ImplicitConversion` to the parameter's type: the `DINT` of `f(d)` with an `LINT` parameter is converted to `LINT`, whatever kind of expression the argument is.
 
@@ -154,7 +154,7 @@ A call to a user-defined function passes each input by value at the operation wi
 
 **REQ-IC-analyzer-042** An untyped literal argument takes its parameter's type: the `1` of `f(1)` with an `INT` parameter is an `INT`, the `5000000000` of `f(5000000000)` with an `LINT` one an `LINT`, and the `0.1` of `f(0.1)` with an `LREAL` one an `LREAL`.
 
-**REQ-IC-analyzer-043** A parameter whose type is not elementary is passed as a `DINT`: an argument of an alias of `LINT` to a parameter of that alias is converted to `DINT`.
+**REQ-IC-analyzer-043** A parameter of an alias or a subrange type is passed at the type it is operated as: the type the alias names, or the subrange's base type. An argument of the parameter's own type is not converted: in `f(p)` with `p` and the parameter both of an alias of `LREAL`, `p` is not wrapped.
 
 **REQ-IC-analyzer-044** A named argument is converted as a positional one is.
 
@@ -255,6 +255,10 @@ without being narrowed to a narrower referenced type
 ([#2116](https://github.com/ironplc/ironplc/issues/2116)).
 
 **REQ-IC-codegen-005** A value stored in a function block field, a method parameter or through a dereference keeps the value of its declared type: `b(x := 4000000000)` on a field of a subrange of `LINT` stores 4000000000, and `q^ := 1.5` on a `REF_TO REAL` stores 1.5.
+
+A parameter of a user-defined function is passed at its declared type the same way, whatever kind of declaration declares it.
+
+**REQ-IC-codegen-006** A function's parameter of an alias or a subrange type receives the value of the type it is operated as: `pass(p)` with `p = 2.5` and a parameter of an alias of `LREAL` passes 2.5, and `pass(b)` with `b = 5000000000` and a parameter of an alias or a subrange of `LINT` passes 5000000000.
 
 ## Out of scope
 
