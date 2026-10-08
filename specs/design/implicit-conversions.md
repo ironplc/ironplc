@@ -156,6 +156,14 @@ A reference refers only to a variable of the type it names (P2032), so the conve
 
 A directly represented variable (`%QW0 := w`) is not recorded yet, and neither is a function block output stored by a call (`fb(OUT => x)`), which codegen stores at the field's operation type without a conversion ([#2125](https://github.com/ironplc/ironplc/issues/2125)).
 
+### References
+
+A reference holds the index of the variable it refers to. The analyzer knows its value by `REF_TO` and the name of the type it references (`REF_TO INT`), never as a value of that type: the name the type relations, the conversion pass and the code generator read for it. It used to be known by the referenced type's own name, so a `REF_TO REAL` passed for a `REAL` everywhere an operand's name was asked for: the code generator read the index it holds as float bits, and a `REF_TO INT` assigned to an `INT` was accepted and stored the index. A `REF_TO` parameter records the type it references, and its argument is checked as a reference to that type.
+
+**REQ-IC-analyzer-086** A reference is known by `REF_TO` and the type it references: a `REF_TO DINT` passed to a `REF_TO INT` parameter reports P4026, and a `REF_TO INT` passed to a parameter referencing an alias of `INT` does not.
+
+**REQ-IC-analyzer-087** A reference variable assigned to a variable that is not a reference reports P2032, and so does one assigned to a reference to another type unless type punning is allowed (`--allow-ref-type-punning`): `i := ri` and `ri := rd` on a `REF_TO INT` and a `REF_TO DINT` report P2032, and `ri2 := ri` does not.
+
 ### Loops
 
 A `FOR` loop stores its initial value in its control variable and compares and steps it at the control variable's type.
@@ -262,6 +270,10 @@ of its context. A call without a recorded type is reported, not compiled at its
 context's.
 
 **REQ-IC-codegen-003** An operation on one value assigned to a wider target computes at its operand's type: `lw := SHL(dw, 1)` with `dw = 16#80000000` stores 0, `lw := NOT dw` with `dw = 0` stores `16#FFFFFFFF`, and `l := -d` with `d` the least `DINT` stores that `DINT`.
+
+A variable is read at its own type and converted to its context's where that differs. A variable of a reference type holds the index of the variable it refers to, and its own type is the reference, which the analyzer knows by `REF_TO` and the type it references (see References), so it is read as that 64-bit index whatever it refers to. A read through it is a dereference, which the analyzer spells as one even for a bare `REFERENCE TO` read.
+
+**REQ-IC-codegen-010** A variable of a reference type is read as the 64-bit index it holds, whatever type it refers to: with `q := REF(r)` on a `REAL` `r` that is not the first variable, `q^` reads `r`, and so does `q2^` after `q2 := q`; a `REF_TO LREAL` reads its target the same way.
 
 **REQ-IC-codegen-004** A function of several inputs of one type selects its builtin at the type the analyzer recorded for the call, whatever the type of its context: `MAX` of the `UDINT`s 3000000000 and 1 passed to a `DINT` input of a function block selects 3000000000, and `l := MAX(i, l2)` with `l2 = 5000000000` stores 5000000000.
 
