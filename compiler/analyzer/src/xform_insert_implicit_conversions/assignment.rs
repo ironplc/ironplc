@@ -8,15 +8,18 @@
 //! refers to. The bounds and step of a `FOR` loop are converted to the type
 //! of its control variable the same way.
 //!
-//! It records the conversions the code generator makes today, and only
-//! those. A value converts to its context when it is a variable, an
+//! It records a conversion where the value has a type of its own, which a
+//! literal does not. A value converts to its context when it is a variable, an
 //! operation that computes at its own result type, or a parenthesized one of
 //! those, and its operation width differs from the target's. An operation
 //! computes at its own type when it is arithmetic, a negation or `NOT`, or a
 //! standard function on one value or of several inputs of one type
-//! ([`Intrinsic::computes_at_own_type`]). Any other value -- a literal, a call
-//! to `TRUNC` or to a user-defined function -- is compiled at the target's
-//! width rather than converted to it, so there is no conversion to record.
+//! ([`Intrinsic::computes_at_own_type`]). A call to a user-defined function
+//! or a method, and a dereference, have the type the function or method
+//! returns or the referenced variable has, and convert to their context too.
+//! Any other value -- a literal, a call to `TRUNC` -- is compiled at the
+//! target's width rather than converted to it, so there is no conversion to
+//! record.
 //!
 //! A directly represented target is not recorded yet.
 
@@ -140,19 +143,21 @@ impl ImplicitConversions<'_> {
             // its context's.
             ExprKind::ImplicitConversion(_) => true,
             ExprKind::Expression(inner) => self.converts_to_its_context(inner),
-            // The function form of an arithmetic operator, an operation on
-            // one value and a function of several inputs of one type compute
-            // at their own type. Any other standard function computes at its
-            // context's, and a user-defined function's result is not
-            // converted (#2126).
-            ExprKind::Function(func) => {
-                self.is_numeric_pair(func, expr)
-                    || self
-                        .intrinsic_of(func)
-                        .is_some_and(|intrinsic| intrinsic.computes_at_own_type())
-            }
-            // Computed or read at its own type and not converted (#2126).
-            ExprKind::Compare(_) | ExprKind::MethodCall(_) | ExprKind::Deref(_) => false,
+            // A user-defined function returns its declared type. The function
+            // form of an arithmetic operator, an operation on one value and a
+            // function of several inputs of one type compute at their own
+            // type, and any other standard function at its context's.
+            ExprKind::Function(func) => match self.intrinsic_of(func) {
+                None => true,
+                Some(intrinsic) => {
+                    self.is_numeric_pair(func, expr) || intrinsic.computes_at_own_type()
+                }
+            },
+            // A method returns its declared type, and a dereference reads the
+            // referenced variable at its own.
+            ExprKind::MethodCall(_) | ExprKind::Deref(_) => true,
+            // Computed at its own type and not converted (#2126).
+            ExprKind::Compare(_) => false,
             // A literal compiles at the type the literal pass gives it, and a
             // late-bound name is read at its context's type.
             ExprKind::Const(_) | ExprKind::LateBound(_) => false,
