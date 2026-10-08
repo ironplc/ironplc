@@ -43,6 +43,33 @@ proptest! {
     }
 }
 
+/// A `u64` biased toward the edges where scheduler arithmetic can overflow.
+fn edge_biased_u64() -> impl Strategy<Value = u64> {
+    prop_oneof![
+        Just(0),
+        Just(1),
+        Just(1 << 63),
+        Just(u64::MAX - 1),
+        Just(u64::MAX),
+        any::<u64>(),
+    ]
+}
+
+proptest! {
+    #[test]
+    fn run_round_when_cyclic_interval_and_uptime_arbitrary_then_never_panics(
+        interval_us in edge_biased_u64(),
+        uptimes_us in proptest::collection::vec(edge_biased_u64(), 1..8),
+    ) {
+        let c = crate::scenarios::cyclic_task_container(interval_us);
+        let mut b = VmBuffers::from_container(&c);
+        let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+        for uptime_us in uptimes_us {
+            prop_assert!(vm.run_round(uptime_us).is_ok());
+        }
+    }
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(10_000))]
 

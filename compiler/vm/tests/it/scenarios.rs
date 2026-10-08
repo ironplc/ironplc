@@ -463,6 +463,53 @@ fn scenario_when_scope_violation_then_trap() {
     );
 }
 
+/// Builds a container with one enabled cyclic task (id 0, no watchdog) that
+/// runs one program instance whose scan function is `RET_VOID`.
+///
+/// `interval_us` comes straight from the task table, as it would from a
+/// container file on disk, so callers can drive the scheduler's arithmetic
+/// with any `u64`.
+pub(crate) fn cyclic_task_container(interval_us: u64) -> ironplc_container::Container {
+    ContainerBuilder::new()
+        .num_variables(0)
+        .add_function(FunctionId::new(0), &[0x8C], 0, 0, 0) // init: RET_VOID
+        .add_function(FunctionId::new(1), &[0x8C], 0, 0, 0) // scan: RET_VOID
+        .add_task(TaskEntry {
+            task_id: TaskId::new(0),
+            priority: 0,
+            task_type: TaskType::Cyclic,
+            flags: 0x01, // enabled
+            interval_us,
+            single_var_index: VarIndex::NO_SINGLE_VAR,
+            watchdog_us: 0,
+            input_image_offset: 0,
+            output_image_offset: 0,
+            reserved: [0; 4],
+        })
+        .add_program_instance(program_instance(0, 0, 1, 0, 0))
+        .max_call_depth(1)
+        .build()
+}
+
+/// A cyclic task whose next due time would pass `u64::MAX` saturates there
+/// instead of overflowing: it is not due again until uptime reaches
+/// `u64::MAX`.
+#[test]
+fn scenario_when_cyclic_due_time_exceeds_u64_then_saturates_without_panic() {
+    let c = cyclic_task_container(1 << 63);
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = load_and_start(&c, &mut b).unwrap();
+
+    vm.run_round(1 << 63).unwrap();
+    assert_eq!(vm.scan_count(), 1);
+
+    vm.run_round(u64::MAX - 1).unwrap();
+    assert_eq!(vm.scan_count(), 1);
+
+    vm.run_round(u64::MAX).unwrap();
+    assert_eq!(vm.scan_count(), 2);
+}
+
 /// A program instance whose variable range ends at the last index (`0xFFFF`)
 /// is checked without overflowing `instance_offset + instance_count`.
 ///
