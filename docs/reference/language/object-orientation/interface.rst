@@ -25,9 +25,10 @@ object-oriented programming introduced in IEC 61131-3 Edition 3.
    * - **IEC 61131-3**
      - Edition 3 (object-oriented programming)
    * - **Support**
-     - Parsed only — not yet analyzed or executed
-       (:doc:`P9999 </reference/compiler/problems/P9999>`). Enable with
-       ``--allow-fb-inheritance``; see
+     - Parsed and analyzed. Calling a method through an interface, and
+       compiling a program with a variable of an interface type, are not
+       yet supported (:doc:`P9999 </reference/compiler/problems/P9999>`).
+       Enable with ``--allow-fb-inheritance``; see
        :doc:`/explanation/enabling-dialects-and-features`.
 
 Syntax
@@ -98,12 +99,37 @@ Example
        END_PROPERTY
    END_FUNCTION_BLOCK
 
+Interface variables
+-------------------
+
+A variable can have an interface type. It refers to an instance of a
+function block type that implements the interface, directly, through a base
+type it :doc:`extends <extends>`, or through an interface that extends the
+one required. A variable of an interface type starts out referring to
+nothing and cannot have an initial value. Assigning ``0`` makes it refer to
+nothing again, and comparing it with ``0`` tells whether it refers to an
+instance.
+
+.. code-block::
+
+   PROGRAM main
+       VAR
+           motor : FB_Motor;
+           drive : I_Drivable;
+       END_VAR
+       drive := motor;
+   END_PROGRAM
+
+Assigning a value that does not implement the interface, or passing one as
+an argument to an input of an interface type, is
+:doc:`P4066 </reference/compiler/problems/P4066>`.
+
 .. note::
 
-   Interface declarations and their member prototypes are parsed, but
-   IronPLC does not yet check that a function block provides what the
-   interfaces it implements declare, and a variable cannot yet have an
-   interface type.
+   IronPLC does not yet check that a function block provides the methods
+   and properties of the interfaces it implements. Calling a method through
+   an interface variable (``drive.Start(10)``) needs dynamic dispatch and
+   is reported as not yet supported.
 
 See Also
 --------

@@ -139,6 +139,14 @@ pub enum SemanticType {
         /// Ordered list of fields (variables) in the function block instance
         fields: Vec<SemanticStructField>,
     },
+    /// Interface type (OOP extension). A value of this type refers to a
+    /// function block instance that implements the interface. Its runtime
+    /// representation is not decided yet (ADR-0041 Phase 2), so it has no
+    /// size and cannot be laid out.
+    Interface {
+        /// Name of the interface type
+        name: String,
+    },
     /// Function type with return type and parameters
     Function {
         /// Return type of the function, None for procedures
@@ -195,6 +203,11 @@ impl SemanticType {
     /// Returns if the type is a function block.
     pub fn is_function_block(&self) -> bool {
         matches!(self, SemanticType::FunctionBlock { .. })
+    }
+
+    /// Returns if the type is an interface.
+    pub fn is_interface(&self) -> bool {
+        matches!(self, SemanticType::Interface { .. })
     }
 
     /// Returns if the type is a function.
@@ -347,6 +360,8 @@ impl SemanticType {
                 // Functions don't have memory layout in the traditional sense
                 None
             }
+            // No runtime representation yet (ADR-0041 Phase 2)
+            SemanticType::Interface { .. } => None,
             SemanticType::Reference { .. } => {
                 // References are stored as 64-bit variable-table indices
                 Some(8)
@@ -399,6 +414,7 @@ impl SemanticType {
                     .unwrap_or(1)
             }
             SemanticType::Function { .. } => 1, // Default alignment (functions don't have memory layout)
+            SemanticType::Interface { .. } => 1, // No runtime representation yet
             SemanticType::Reference { .. } => 8, // References are 64-bit variable-table indices
         }
     }
@@ -439,6 +455,7 @@ impl SemanticType {
             }
             SemanticType::FunctionBlock { .. } => true, // Function block instances have explicit size
             SemanticType::Function { .. } => true, // Functions have explicit size (no variable size)
+            SemanticType::Interface { .. } => true, // Not inferred from context
             SemanticType::Reference { .. } => true, // References are always 8 bytes
         }
     }
@@ -686,9 +703,9 @@ impl SemanticType {
             }
 
             // Not yet supported in data region
-            SemanticType::FunctionBlock { .. } | SemanticType::Function { .. } => {
-                Err(SlotCountError::UnsupportedFieldType)
-            }
+            SemanticType::FunctionBlock { .. }
+            | SemanticType::Function { .. }
+            | SemanticType::Interface { .. } => Err(SlotCountError::UnsupportedFieldType),
         }
     }
 }

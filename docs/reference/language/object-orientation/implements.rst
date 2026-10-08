@@ -18,8 +18,9 @@ part of the object-oriented programming introduced in IEC 61131-3 Edition 3.
    * - **IEC 61131-3**
      - Edition 3 (object-oriented programming)
    * - **Support**
-     - Parsed only — not yet analyzed or executed
-       (:doc:`P9999 </reference/compiler/problems/P9999>`). Enable with
+     - Parsed and analyzed: an instance can be used where an interface it
+       implements is required. Whether the function block provides the
+       interface's members is not yet checked. Enable with
        ``--allow-fb-inheritance``; see
        :doc:`/explanation/enabling-dialects-and-features`.
 

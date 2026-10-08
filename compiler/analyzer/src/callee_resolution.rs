@@ -108,9 +108,12 @@ impl<'a> FunctionBlocks<'a> {
 /// Instances are declared per unit, so a walk records each declaration as
 /// it meets it and calls [`InstanceTypes::clear`] when it leaves the unit,
 /// exactly as the rules that own a walk have always done.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct InstanceTypes {
     var_to_fb: HashMap<Id, TypeName>,
+    /// The variables of an interface type, which refer to an instance
+    /// rather than being one.
+    var_to_interface: HashMap<Id, TypeName>,
 }
 
 impl InstanceTypes {
@@ -119,10 +122,18 @@ impl InstanceTypes {
     /// instance declaration, member-initialized or not, into a
     /// function-block initializer, so the initializer kind is the whole test.
     pub(crate) fn declare(&mut self, decl: &VarDecl) {
-        if let InitialValueAssignmentKind::FunctionBlock(init) = &decl.initializer {
-            if let Some(name) = decl.identifier.symbolic_id() {
+        let Some(name) = decl.identifier.symbolic_id() else {
+            return;
+        };
+        match &decl.initializer {
+            InitialValueAssignmentKind::FunctionBlock(init) => {
                 self.var_to_fb.insert(name.clone(), init.type_name.clone());
             }
+            InitialValueAssignmentKind::Interface(init) => {
+                self.var_to_interface
+                    .insert(name.clone(), init.type_name.clone());
+            }
+            _ => {}
         }
     }
 
@@ -131,9 +142,23 @@ impl InstanceTypes {
         self.var_to_fb.get(instance)
     }
 
+    /// The declared interface type of the variable `name`, when it is a
+    /// variable of an interface type.
+    pub(crate) fn interface_of(&self, name: &Id) -> Option<&TypeName> {
+        self.var_to_interface.get(name)
+    }
+
+    /// Forgets the variable `name`, when a nearer scope (a method) declares
+    /// a variable of that name that is neither an instance nor an interface.
+    pub(crate) fn forget(&mut self, name: &Id) {
+        self.var_to_fb.remove(name);
+        self.var_to_interface.remove(name);
+    }
+
     /// Forgets every instance, on leaving the unit that declared them.
     pub(crate) fn clear(&mut self) {
         self.var_to_fb.clear();
+        self.var_to_interface.clear();
     }
 }
 

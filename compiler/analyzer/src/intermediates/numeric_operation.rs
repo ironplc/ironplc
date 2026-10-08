@@ -73,6 +73,7 @@ pub(crate) fn operation_width_of(representation: &SemanticType) -> Option<Operat
         | SemanticType::Structure { .. }
         | SemanticType::Array { .. }
         | SemanticType::FunctionBlock { .. }
+        | SemanticType::Interface { .. }
         | SemanticType::Function { .. } => None,
     }
 }

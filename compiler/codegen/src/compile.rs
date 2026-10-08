@@ -247,6 +247,7 @@ pub fn compile(
 ) -> Result<Container, Diagnostic> {
     let library = analysis.library();
     let context = analysis.context();
+    crate::compile_interface::reject_interface_variables(library)?;
     let program = find_program(library)?;
     let config = find_configuration(library);
     if let Some(config) = config {
