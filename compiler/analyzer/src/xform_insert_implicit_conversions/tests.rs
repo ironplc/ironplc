@@ -877,4 +877,5 @@ fn apply_when_untyped_literal_typed_then_type_recorded_as_inferred() {
     assert_eq!(literal_type_origins(source), vec!["inferred", "stated"]);
 }
 
+mod call_result;
 mod inputs_of_one_type;

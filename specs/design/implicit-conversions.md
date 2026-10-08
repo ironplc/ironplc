@@ -114,7 +114,7 @@ The pass records, for each call, the conversion of every input of the function's
 
 ### Assignments
 
-An assignment stores its value at the type of its target. The pass records the conversion of the value to the type the target is stored as: its own elementary type, or its base type for a subrange. It records the conversions the code generator makes, and only those: a value converts to its context when it is a variable, an operation that computes at its own result type, or a parenthesized one of those, and its operation width differs from the target's. An operation computes at its own type when it is arithmetic (operator or function form), an operation on one value (see Codegen), or a function of several inputs of one type (see Standard functions). Any other value is compiled at the target's width rather than converted to it, so there is nothing to record: a literal takes the target's type (ADR-0028), and `TRUNC` of a `REAL` assigned to an `LINT` truncates to the target's width.
+An assignment stores its value at the type of its target. The pass records the conversion of the value to the type the target is stored as: its own elementary type, or its base type for a subrange. A value converts to its context when it has a type of its own -- a variable, an operation that computes at its own result type, a call to a user-defined function or a method, a dereference, or a parenthesized one of those -- and its operation width differs from the target's. An operation computes at its own type when it is arithmetic (operator or function form), an operation on one value (see Codegen), or a function of several inputs of one type (see Standard functions). A call returns the type its function or method declares, and a dereference reads the referenced variable at its own type. Any other value is compiled at the target's width rather than converted to it, so there is nothing to record: a literal takes the target's type (ADR-0028), and `TRUNC` of a `REAL` assigned to an `LINT` truncates to the target's width.
 
 **REQ-IC-analyzer-030** A variable assigned to a target of another operation width is wrapped in an `ImplicitConversion` to the target's type: in `l := d` on an `LINT` and a `DINT` the `DINT` is converted to `LINT`.
 
@@ -123,6 +123,8 @@ An assignment stores its value at the type of its target. The pass records the c
 **REQ-IC-analyzer-032** A value of the target's operation width is not converted, whatever its signedness: in `i := s` on an `INT` and a `SINT` the `SINT` is not wrapped.
 
 **REQ-IC-analyzer-037** An operation on one value is converted from its own type: in `l := -d` on an `LINT` and a `DINT` the negation is converted to `LINT`, and so are `NOT`, `ABS` and the other numeric functions of one input, `MOVE`, and a shift or rotate.
+
+**REQ-IC-analyzer-085** The result of a call to a user-defined function or a method, and a dereference, are converted to the type of a target of another operation width: in `l := big(u)` with `big` returning a `UDINT` the result is converted to `LINT`, in `lr := half(r)` with `half` returning a `REAL` to `LREAL`, and so are `l := k.Big()` and `l := p^` on a `REF_TO UDINT`. The code generator used to store the result unconverted, which sign-extended an unsigned result and read a `REAL`'s bits as an `LREAL` ([#2126](https://github.com/ironplc/ironplc/issues/2126)).
 
 **REQ-IC-analyzer-034** An array element or structure field target converts the value to the element's or field's type.
 
@@ -267,6 +269,8 @@ is: a result of a type narrower than 32 bits is not truncated to its width, so
 ([#2116](https://github.com/ironplc/ironplc/issues/2116)).
 
 **REQ-IC-codegen-005** A value stored in a function block field, a method parameter or through a dereference keeps the value of its declared type: `b(x := 4000000000)` on a field of a subrange of `LINT` stores 4000000000, and `q^ := 1.5` on a `REF_TO REAL` stores 1.5.
+
+**REQ-IC-codegen-009** The result of a call to a user-defined function or a method, and a dereference, stored in a wider target keep their value: `l := big(u)` with `big` returning the `UDINT` 4000000000 stores 4000000000, as do `l := k.Big()` and `l := p^`, and `lr := half(3.0)` with `half` returning a `REAL` stores 1.5.
 
 A parameter of a user-defined function is passed at its declared type the same way, whatever kind of declaration declares it.
 

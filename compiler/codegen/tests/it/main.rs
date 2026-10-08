@@ -67,6 +67,7 @@ mod end_to_end_bit_access;
 mod end_to_end_bit_access_nested;
 mod end_to_end_bitstring;
 mod end_to_end_bool;
+mod end_to_end_call_result_width;
 mod end_to_end_case;
 mod end_to_end_cmp;
 mod end_to_end_comparison_width;
