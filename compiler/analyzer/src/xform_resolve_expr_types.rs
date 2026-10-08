@@ -133,8 +133,9 @@ fn positional_inputs(f: &Function) -> Option<Vec<&Expr>> {
 }
 
 /// The type of an operation on two operands that keeps their type: the
-/// concrete operand's when the other is an untyped literal (`d AND 16#FF` on
-/// a `DWORD` is a `DWORD`), else the left operand's, else the right's.
+/// concrete operand's when the other is an untyped literal (an untyped
+/// literal and a `DWORD` give a `DWORD`), else the left operand's, else the
+/// right's.
 fn prefer_concrete(left: &Option<ExprType>, right: &Option<ExprType>) -> Option<ExprType> {
     match (left, right) {
         (Some(ExprType::Literal(_)), Some(concrete @ ExprType::Concrete(_))) => {
@@ -217,14 +218,19 @@ impl ExprTypeResolver<'_> {
             }
             ExprKind::UnaryOp(op) => op.term.expr_type.clone(),
             ExprKind::Compare(compare) => match compare.op {
-                // Bitwise/logical operators preserve operand type. When one
-                // operand is an untyped literal and the other is concrete
-                // (e.g. a DWORD variable), use the concrete type.
-                CompareOp::And
-                | CompareOp::Or
-                | CompareOp::Xor
-                | CompareOp::AndThen
-                | CompareOp::OrElse => {
+                // AND, OR and XOR have the type both operands widen to, as
+                // their function forms do: `w OR lw` on a `WORD` and an
+                // `LWORD` is an `LWORD`, and `d AND 16#FF` on a `DWORD` is a
+                // `DWORD`.
+                CompareOp::And | CompareOp::Or | CompareOp::Xor => self.inputs_of_one_type_result(
+                    &[&compare.left, &compare.right],
+                    InputsOfOneType {
+                        first: 0,
+                        result: OneTypeResult::Common,
+                    },
+                ),
+                // Only `BOOL`s.
+                CompareOp::AndThen | CompareOp::OrElse => {
                     prefer_concrete(&compare.left.expr_type, &compare.right.expr_type)
                 }
                 CompareOp::Eq

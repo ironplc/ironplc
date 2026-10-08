@@ -517,15 +517,17 @@ fn apply_when_typed_literal_converted_then_checked_against_conversion(
     );
 }
 
-/// `AND`, `OR` and `XOR` operate at the type of their left operand, and a
-/// wider literal on the right is used at that type although the pass
-/// records no conversion of it.
+/// `AND`, `OR` and `XOR` operate at the type every operand widens to
+/// (REQ-IC-analyzer-081), so a literal wider than the other operand is used
+/// at its own type rather than narrowed to the other operand's. Assigning
+/// the wider result to a narrower target is a type mismatch, which
+/// `rule_function_call_type_check` reports (REQ-IC-analyzer-084).
 #[rstest]
-#[case::xor_wider("w : DWORD;\n", "w := w XOR LWORD#16#FFFFFFFFF;\n", OVERFLOW)]
-#[case::and_wider("w : WORD;\n", "w := w AND DWORD#16#1FFFF;\n", OVERFLOW)]
+#[case::xor_wider("w : DWORD;\n", "w := w XOR LWORD#16#FFFFFFFFF;\n", OK)]
+#[case::and_wider("w : WORD;\n", "w := w AND DWORD#16#1FFFF;\n", OK)]
 #[case::or_fits("w : WORD;\n", "w := w OR DWORD#16#FFFF;\n", OK)]
 #[case::left_wider("l : LWORD;\nw : DWORD;\n", "l := LWORD#16#FFFFFFFFF OR w;\n", OK)]
-fn apply_when_bitwise_operand_literal_then_checked_against_operator_type(
+fn apply_when_bitwise_operand_literal_wider_than_other_operand_then_at_its_own_type(
     #[case] declarations: &str,
     #[case] body: &str,
     #[case] expected: &[Problem],

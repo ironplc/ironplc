@@ -12,14 +12,14 @@
 //! literal does not. A value converts to its context when it is a variable, an
 //! operation that computes at its own result type, or a parenthesized one of
 //! those, and its operation width differs from the target's. An operation
-//! computes at its own type when it is arithmetic, a negation or `NOT`, or a
-//! standard function on one value or of several inputs of one type
-//! ([`Intrinsic::computes_at_own_type`]). A call to a user-defined function
-//! or a method, and a dereference, have the type the function or method
-//! returns or the referenced variable has, and convert to their context too.
-//! Any other value -- a literal, a call to `TRUNC` -- is compiled at the
-//! target's width rather than converted to it, so there is no conversion to
-//! record.
+//! computes at its own type when it is arithmetic, a negation or `NOT`, an
+//! `AND`, `OR` or `XOR`, or a standard function on one value or of several
+//! inputs of one type ([`Intrinsic::computes_at_own_type`]). A call to a
+//! user-defined function or a method, and a dereference, have the type the
+//! function or method returns or the referenced variable has, and convert to
+//! their context too. Any other value -- a literal, a call to `TRUNC` -- is
+//! compiled at the target's width rather than converted to it, so there is
+//! no conversion to record.
 //!
 //! A directly represented target is not recorded yet.
 
@@ -32,7 +32,7 @@ use ironplc_dsl::type_id::TypeId;
 use super::arithmetic::arithmetic_operator;
 use super::ImplicitConversions;
 use crate::intermediates::numeric_operation::{numeric_operation_width, OperationWidth};
-use crate::intrinsic::Intrinsic;
+use crate::intrinsic::{is_bitwise, Intrinsic};
 use crate::semantic_type::{ByteSized, SemanticType};
 use crate::variable_type;
 
@@ -156,8 +156,9 @@ impl ImplicitConversions<'_> {
             // A method returns its declared type, and a dereference reads the
             // referenced variable at its own.
             ExprKind::MethodCall(_) | ExprKind::Deref(_) => true,
-            // Computed at its own type and not converted (#2126).
-            ExprKind::Compare(_) => false,
+            // `AND`, `OR` and `XOR` compute at their own type, as an
+            // arithmetic operation does; a comparison is a `BOOL`.
+            ExprKind::Compare(compare) => is_bitwise(&compare.op),
             // A literal compiles at the type the literal pass gives it, and a
             // late-bound name is read at its context's type.
             ExprKind::Const(_) | ExprKind::LateBound(_) => false,

@@ -14,6 +14,7 @@
 //! of a conversion, and whether a typed time function is the long form.
 
 use ironplc_dsl::common::ElementaryTypeName;
+use ironplc_dsl::textual::CompareOp;
 
 use crate::intermediates::operator_function_form::FormOf;
 
@@ -74,7 +75,8 @@ impl Intrinsic {
     /// * a function of several inputs of one type
     ///   ([`Intrinsic::inputs_of_one_type`]), whose result the analyzer types
     ///   by those inputs and converts them to. `MAX` of two `UDINT`s compares
-    ///   them unsigned wherever it is used.
+    ///   them unsigned wherever it is used, and `AND` of two `DWORD`s
+    ///   assigned to an `LWORD` is widened as a `DWORD`.
     pub fn computes_at_own_type(&self) -> bool {
         match self {
             Intrinsic::Operator(FormOf::Not)
@@ -84,7 +86,8 @@ impl Intrinsic {
             Intrinsic::Numeric(function) => {
                 function.has_one_input() || function.inputs_of_one_type().is_some()
             }
-            Intrinsic::Operator(FormOf::Arithmetic(_) | FormOf::Compare(_))
+            Intrinsic::Operator(FormOf::Compare(op)) => is_bitwise(op),
+            Intrinsic::Operator(FormOf::Arithmetic(_))
             | Intrinsic::Trunc
             | Intrinsic::BcdToInt
             | Intrinsic::IntToBcd
@@ -98,15 +101,22 @@ impl Intrinsic {
     }
 
     /// For a function of several inputs of one type -- `MIN`, `MAX`,
-    /// `LIMIT`, `SEL`, `MUX`, `EXPT`, `ATAN2` -- which of its inputs have that
-    /// type and which type of theirs its result has; `None` for any other
-    /// operation.
+    /// `LIMIT`, `SEL`, `MUX`, `EXPT`, `ATAN2`, and the function forms of
+    /// `AND`, `OR` and `XOR` -- which of its inputs have that type and which
+    /// type of theirs its result has; `None` for any other operation.
     pub fn inputs_of_one_type(&self) -> Option<InputsOfOneType> {
         match self {
             Intrinsic::Numeric(function) => function.inputs_of_one_type(),
             // `K` selects between the others.
             Intrinsic::Mux => Some(InputsOfOneType {
                 first: 1,
+                result: OneTypeResult::Common,
+            }),
+            // Boolean on `BOOL`s and bitwise on bit strings, at the bit
+            // string every input widens to: `OR(w, lw)` on a `WORD` and an
+            // `LWORD` is an `LWORD`.
+            Intrinsic::Operator(FormOf::Compare(op)) if is_bitwise(op) => Some(InputsOfOneType {
+                first: 0,
                 result: OneTypeResult::Common,
             }),
             Intrinsic::Operator(_)
@@ -122,6 +132,24 @@ impl Intrinsic {
             | Intrinsic::DtToDate
             | Intrinsic::DtToTod => None,
         }
+    }
+}
+
+/// Returns `true` for `AND`, `OR` and `XOR`, whose result has the type of
+/// their operands -- a `BOOL` of `BOOL`s, a bit string of bit strings -- and
+/// `false` for `AND_THEN` and `OR_ELSE`, which take only `BOOL`s, and for the
+/// comparisons, whose result is a `BOOL` whatever they compare.
+pub(crate) fn is_bitwise(op: &CompareOp) -> bool {
+    match op {
+        CompareOp::And | CompareOp::Or | CompareOp::Xor => true,
+        CompareOp::AndThen
+        | CompareOp::OrElse
+        | CompareOp::Eq
+        | CompareOp::Ne
+        | CompareOp::Lt
+        | CompareOp::Gt
+        | CompareOp::LtEq
+        | CompareOp::GtEq => false,
     }
 }
 
@@ -300,6 +328,8 @@ mod tests {
     #[case::sel(Intrinsic::Numeric(NumericFunction::Sel))]
     #[case::expt(Intrinsic::Numeric(NumericFunction::Expt))]
     #[case::mux(Intrinsic::Mux)]
+    #[case::and(Intrinsic::Operator(FormOf::Compare(CompareOp::And)))]
+    #[case::xor(Intrinsic::Operator(FormOf::Compare(CompareOp::Xor)))]
     fn computes_at_own_type_when_operation_on_one_value_or_inputs_of_one_type_then_true(
         #[case] intrinsic: Intrinsic,
     ) {
@@ -311,6 +341,7 @@ mod tests {
     #[case::trunc(Intrinsic::Trunc)]
     #[case::bcd_to_int(Intrinsic::BcdToInt)]
     #[case::mod_real(Intrinsic::Numeric(NumericFunction::ModReal))]
+    #[case::gt(Intrinsic::Operator(FormOf::Compare(CompareOp::Gt)))]
     fn computes_at_own_type_when_result_not_typed_by_its_inputs_then_false(
         #[case] intrinsic: Intrinsic,
     ) {
@@ -325,6 +356,21 @@ mod tests {
     #[case::sel(Intrinsic::Numeric(NumericFunction::Sel), 1, OneTypeResult::Common)]
     #[case::mux(Intrinsic::Mux, 1, OneTypeResult::Common)]
     #[case::expt(Intrinsic::Numeric(NumericFunction::Expt), 0, OneTypeResult::First)]
+    #[case::and(
+        Intrinsic::Operator(FormOf::Compare(CompareOp::And)),
+        0,
+        OneTypeResult::Common
+    )]
+    #[case::or(
+        Intrinsic::Operator(FormOf::Compare(CompareOp::Or)),
+        0,
+        OneTypeResult::Common
+    )]
+    #[case::xor(
+        Intrinsic::Operator(FormOf::Compare(CompareOp::Xor)),
+        0,
+        OneTypeResult::Common
+    )]
     fn inputs_of_one_type_when_function_of_several_inputs_of_one_type_then_its_shape(
         #[case] intrinsic: Intrinsic,
         #[case] first: usize,
@@ -339,7 +385,8 @@ mod tests {
     #[rstest]
     #[case::abs(Intrinsic::Numeric(NumericFunction::Abs))]
     #[case::mod_real(Intrinsic::Numeric(NumericFunction::ModReal))]
-    #[case::and(Intrinsic::Operator(FormOf::Compare(CompareOp::And)))]
+    #[case::eq(Intrinsic::Operator(FormOf::Compare(CompareOp::Eq)))]
+    #[case::not(Intrinsic::Operator(FormOf::Not))]
     #[case::trunc(Intrinsic::Trunc)]
     fn inputs_of_one_type_when_other_operation_then_none(#[case] intrinsic: Intrinsic) {
         assert_eq!(intrinsic.inputs_of_one_type(), None);

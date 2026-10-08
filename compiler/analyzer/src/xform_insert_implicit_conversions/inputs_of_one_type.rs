@@ -13,6 +13,10 @@
 //! * the result type on an untyped literal: the `5` of `MAX(d, 5)` is a
 //!   `DINT`.
 //!
+//! The operator forms of `AND`, `OR` and `XOR` compute at their result type
+//! too, the type both operands widen to, and their operands are recorded the
+//! same way: `w OR lw` on a `WORD` and an `LWORD` is `LWORD(w) OR lw`.
+//!
 //! `MUX`'s selector `K` is converted to `DINT` when its width differs, and
 //! `SEL`'s `G` stays a `BOOL`. A call whose inputs are all untyped literals
 //! has a literal's category until the literal pass gives it its context's
@@ -25,7 +29,7 @@ use ironplc_dsl::type_id::TypeId;
 
 use super::ImplicitConversions;
 use crate::intermediates::numeric_operation::{operation_width_of, OperationWidth};
-use crate::intrinsic::Intrinsic;
+use crate::intrinsic::{is_bitwise, Intrinsic};
 
 impl ImplicitConversions<'_> {
     /// Records the conversions of the inputs of `expr` when it is a call to a
@@ -37,6 +41,25 @@ impl ImplicitConversions<'_> {
         if let ExprKind::Function(func) = &mut expr.kind {
             self.record_one_type_call(func, result);
         }
+    }
+
+    /// Records the conversions of the operands of `expr` when it is an `AND`,
+    /// `OR` or `XOR` whose own type is settled, to that type.
+    pub(super) fn record_bitwise_operands(&self, expr: &mut Expr) {
+        let Some(result) = expr.expr_type.as_ref().and_then(ExprType::type_id) else {
+            return;
+        };
+        let ExprKind::Compare(compare) = &mut expr.kind else {
+            return;
+        };
+        if !is_bitwise(&compare.op) {
+            return;
+        }
+        let Some(width) = self.operation_width(result) else {
+            return;
+        };
+        self.record_one_type_input(&mut compare.left, (result, width));
+        self.record_one_type_input(&mut compare.right, (result, width));
     }
 
     /// Records the conversions of the inputs of `func`, when it is a call to
