@@ -34,9 +34,9 @@ impl TypeCategory {
                 TypeCategory::UserDefined
             }
             SemanticType::Subrange { .. } | SemanticType::Array { .. } => TypeCategory::Derived,
-            SemanticType::FunctionBlock { .. } | SemanticType::Function { .. } => {
-                TypeCategory::UserDefined
-            }
+            SemanticType::FunctionBlock { .. }
+            | SemanticType::Function { .. }
+            | SemanticType::Interface { .. } => TypeCategory::UserDefined,
             SemanticType::Reference { .. } => TypeCategory::Derived,
         }
     }

@@ -109,6 +109,7 @@ fn operand_type_info(representation: &SemanticType) -> Option<VarTypeInfo> {
         | SemanticType::Structure { .. }
         | SemanticType::Array { .. }
         | SemanticType::FunctionBlock { .. }
+        | SemanticType::Interface { .. }
         | SemanticType::Function { .. } => None,
     }
 }
@@ -203,6 +204,7 @@ fn var_type_info(representation: &SemanticType) -> Option<VarTypeInfo> {
         | SemanticType::Array { .. }
         | SemanticType::Subrange { .. }
         | SemanticType::FunctionBlock { .. }
+        | SemanticType::Interface { .. }
         | SemanticType::Function { .. }
         | SemanticType::Reference { .. } => return None,
     };

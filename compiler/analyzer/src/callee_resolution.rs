@@ -16,7 +16,7 @@ use std::collections::{HashMap, HashSet};
 
 use ironplc_dsl::common::{
     FunctionBlockDeclaration, InitialValueAssignmentKind, Library, LibraryElementKind,
-    MethodDeclaration, TypeName, VarDecl,
+    MethodDeclaration, PropertyDeclaration, TypeName, VarDecl,
 };
 use ironplc_dsl::core::Id;
 
@@ -87,6 +87,18 @@ impl<'a> FunctionBlocks<'a> {
         })
     }
 
+    /// Resolves the property `property_name` against `fb_name`'s own
+    /// properties, then its `EXTENDS` chain, as [`Self::resolve_method`]
+    /// does for methods.
+    pub(crate) fn resolve_property(
+        &self,
+        fb_name: &TypeName,
+        property_name: &Id,
+    ) -> Option<&'a PropertyDeclaration> {
+        self.chain(fb_name)
+            .find_map(|fb| fb.properties.iter().find(|p| &p.name == property_name))
+    }
+
     /// The block in `fb_name`'s `EXTENDS` chain -- `fb_name` itself first --
     /// that declares the variable `field`, if any does.
     pub(crate) fn declaring_block(
@@ -108,9 +120,12 @@ impl<'a> FunctionBlocks<'a> {
 /// Instances are declared per unit, so a walk records each declaration as
 /// it meets it and calls [`InstanceTypes::clear`] when it leaves the unit,
 /// exactly as the rules that own a walk have always done.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct InstanceTypes {
     var_to_fb: HashMap<Id, TypeName>,
+    /// The variables of an interface type, which refer to an instance
+    /// rather than being one.
+    var_to_interface: HashMap<Id, TypeName>,
 }
 
 impl InstanceTypes {
@@ -119,10 +134,18 @@ impl InstanceTypes {
     /// instance declaration, member-initialized or not, into a
     /// function-block initializer, so the initializer kind is the whole test.
     pub(crate) fn declare(&mut self, decl: &VarDecl) {
-        if let InitialValueAssignmentKind::FunctionBlock(init) = &decl.initializer {
-            if let Some(name) = decl.identifier.symbolic_id() {
+        let Some(name) = decl.identifier.symbolic_id() else {
+            return;
+        };
+        match &decl.initializer {
+            InitialValueAssignmentKind::FunctionBlock(init) => {
                 self.var_to_fb.insert(name.clone(), init.type_name.clone());
             }
+            InitialValueAssignmentKind::Interface(init) => {
+                self.var_to_interface
+                    .insert(name.clone(), init.type_name.clone());
+            }
+            _ => {}
         }
     }
 
@@ -131,9 +154,23 @@ impl InstanceTypes {
         self.var_to_fb.get(instance)
     }
 
+    /// The declared interface type of the variable `name`, when it is a
+    /// variable of an interface type.
+    pub(crate) fn interface_of(&self, name: &Id) -> Option<&TypeName> {
+        self.var_to_interface.get(name)
+    }
+
+    /// Forgets the variable `name`, when a nearer scope (a method) declares
+    /// a variable of that name that is neither an instance nor an interface.
+    pub(crate) fn forget(&mut self, name: &Id) {
+        self.var_to_fb.remove(name);
+        self.var_to_interface.remove(name);
+    }
+
     /// Forgets every instance, on leaving the unit that declared them.
     pub(crate) fn clear(&mut self) {
         self.var_to_fb.clear();
+        self.var_to_interface.clear();
     }
 }
 
