@@ -98,36 +98,24 @@ pub(crate) fn unresolved_expr_type(expr: &Expr) -> Diagnostic {
     Diagnostic::not_implemented(Label::span(expr.span(), "Expression has no resolved type"))
 }
 
-/// Returns the operation type for compiling a condition expression.
+/// Compiles the condition of an `IF`, `ELSIF`, `WHILE` or `REPEAT`, leaving
+/// its value on the stack.
 ///
-/// For comparison operators (`>`, `<`, `=`, etc.), returns the type of the
-/// left operand, which the analyzer made the comparison's operand type
-/// (ADR-0056). For boolean combinations (AND,
-/// OR, XOR), recurses into the first operand. For other expressions (bare
-/// boolean variables, parenthesized expressions), returns the expression's
-/// own resolved type.
-pub(crate) fn condition_op_type(ctx: &CompileContext, expr: &Expr) -> Result<OpType, Diagnostic> {
-    match &expr.kind {
-        ExprKind::Compare(compare) => match compare.op {
-            CompareOp::And
-            | CompareOp::Or
-            | CompareOp::Xor
-            | CompareOp::AndThen
-            | CompareOp::OrElse => condition_op_type(ctx, &compare.left),
-            _ => {
-                // String comparisons take a dedicated path in compile_expr
-                // that emits an i32 boolean; the operand op_type is unused.
-                if expr_is_string(ctx, &compare.left) {
-                    return Ok(DEFAULT_OP_TYPE);
-                }
-                op_type(ctx, &compare.left)
-            }
-        },
-        ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Not => condition_op_type(ctx, &unary.term),
-        ExprKind::Expression(inner) => condition_op_type(ctx, inner),
-        _ => op_type(ctx, expr),
-    }
+/// A condition compiles at its own type, the `BOOL` the analyzer gave it, as
+/// any other expression does. A comparison in it compiles at the type of its
+/// operands, which it reads from the operands themselves (ADR-0056), so the
+/// condition has no operand type to pass down: passing one let `NOT` of a
+/// comparison of `DWORD`s negate the bits of the `BOOL` rather than the
+/// `BOOL`.
+pub(crate) fn compile_condition(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    condition: &Expr,
+) -> Result<(), Diagnostic> {
+    let own = op_type(ctx, condition)?;
+    compile_expr(emitter, ctx, condition, own)
 }
+
 /// Compiles an expression, leaving the result on the stack.
 ///
 /// The `op_type` determines which width (i32/i64) and signedness to use
