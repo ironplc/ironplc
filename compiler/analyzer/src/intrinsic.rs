@@ -77,12 +77,14 @@ impl Intrinsic {
     ///   by those inputs and converts them to. `MAX` of two `UDINT`s compares
     ///   them unsigned wherever it is used, and `AND` of two `DWORD`s
     ///   assigned to an `LWORD` is widened as a `DWORD`.
+    /// * `INT_TO_BCD`, whose result is the bit string as wide as its input.
     pub fn computes_at_own_type(&self) -> bool {
         match self {
             Intrinsic::Operator(FormOf::Not)
             | Intrinsic::Move
             | Intrinsic::BitShift(_)
-            | Intrinsic::Mux => true,
+            | Intrinsic::Mux
+            | Intrinsic::IntToBcd => true,
             Intrinsic::Numeric(function) => {
                 function.has_one_input() || function.inputs_of_one_type().is_some()
             }
@@ -90,8 +92,30 @@ impl Intrinsic {
             Intrinsic::Operator(FormOf::Arithmetic(_))
             | Intrinsic::Trunc
             | Intrinsic::BcdToInt
-            | Intrinsic::IntToBcd
             | Intrinsic::Sizeof
+            | Intrinsic::String(_)
+            | Intrinsic::Conversion { .. }
+            | Intrinsic::Time { .. }
+            | Intrinsic::DtToDate
+            | Intrinsic::DtToTod => false,
+        }
+    }
+
+    /// Returns `true` for an operation whose result is an integer of the type
+    /// its context stores it at, as an untyped integer literal is (ADR-0028):
+    /// `TRUNC`, `BCD_TO_INT` and `SIZEOF`, whose signatures return `ANY_INT`
+    /// and whose inputs say nothing of which integer. `TRUNC` of a `REAL`
+    /// assigned to an `LINT` truncates to 64 bits, and one assigned to a
+    /// `REAL` truncates to a `DINT` that is converted to the `REAL`.
+    pub fn result_is_integer_of_context(&self) -> bool {
+        match self {
+            Intrinsic::Trunc | Intrinsic::BcdToInt | Intrinsic::Sizeof => true,
+            Intrinsic::Operator(_)
+            | Intrinsic::Numeric(_)
+            | Intrinsic::BitShift(_)
+            | Intrinsic::Mux
+            | Intrinsic::Move
+            | Intrinsic::IntToBcd
             | Intrinsic::String(_)
             | Intrinsic::Conversion { .. }
             | Intrinsic::Time { .. }

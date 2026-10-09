@@ -22,6 +22,7 @@ use crate::intermediates::arithmetic_overload::{
 };
 use crate::intermediates::common_operand::common_operand_of;
 use crate::intermediates::inherited_fields::collect_inherited_fields;
+use crate::intermediates::numeric_operation::literal_default_type;
 use crate::intermediates::operator_function_form::{operator_function_form, FormOf};
 use crate::intrinsic::{InputsOfOneType, Intrinsic, OneTypeResult};
 use crate::semantic_type::SemanticType;
@@ -249,6 +250,15 @@ impl ExprTypeResolver<'_> {
                 if !is_generic_type(&return_type) {
                     return self.expr_type_named(return_type);
                 }
+                match &sig.intrinsic {
+                    // An integer of whichever type its context stores it
+                    // at, which the literal pass gives it (ADR-0028).
+                    Some(intrinsic) if intrinsic.result_is_integer_of_context() => {
+                        return Some(ExprType::Literal(GenericTypeName::AnyInt));
+                    }
+                    Some(Intrinsic::IntToBcd) => return self.bcd_result(f),
+                    _ => {}
+                }
                 if let Some(shape) = sig
                     .intrinsic
                     .as_ref()
@@ -470,6 +480,26 @@ impl ExprTypeResolver<'_> {
             Ok(Overload::Numeric { result } | Overload::Typed { result, .. }) => Some(result),
             Ok(Overload::Unchecked { .. }) | Err(_) => None,
         }
+    }
+
+    /// The type of a call to `INT_TO_BCD`: the bit string as wide as its
+    /// input, which it encodes digit by digit. `INT_TO_BCD(i)` on an `INT` is
+    /// a `WORD`, and an untyped literal input is a `DINT` (ADR-0028), so
+    /// `INT_TO_BCD(42)` is a `DWORD`.
+    fn bcd_result(&self, f: &Function) -> Option<ExprType> {
+        let input = *positional_inputs(f)?.first()?;
+        let name = match &input.expr_type {
+            Some(ExprType::Literal(generic)) => literal_default_type(generic)?.into(),
+            _ => self.operand_name(input)?,
+        };
+        let bit_string = match ElementaryTypeName::try_from(&name.name).ok()? {
+            ElementaryTypeName::SINT | ElementaryTypeName::USINT => ElementaryTypeName::BYTE,
+            ElementaryTypeName::INT | ElementaryTypeName::UINT => ElementaryTypeName::WORD,
+            ElementaryTypeName::DINT | ElementaryTypeName::UDINT => ElementaryTypeName::DWORD,
+            ElementaryTypeName::LINT | ElementaryTypeName::ULINT => ElementaryTypeName::LWORD,
+            _ => return None,
+        };
+        self.expr_type_named(bit_string.into())
     }
 
     /// The type of a call to a function of several inputs of one type, whose

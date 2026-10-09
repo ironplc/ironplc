@@ -86,7 +86,10 @@ fn compile_intrinsic(
 ) -> Result<(), Diagnostic> {
     let result = expr_operand_name(ctx, call);
     let result = result.as_ref();
-    if intrinsic.inputs_of_one_type().is_some() {
+    // `MAX` of several inputs of one type, and `TRUNC`, `BCD_TO_INT` and
+    // `SIZEOF`, whose integer result takes the type of its context, compute at
+    // the type the analyzer recorded for the call (ADR-0056).
+    if intrinsic.inputs_of_one_type().is_some() || intrinsic.result_is_integer_of_context() {
         let at = self::op_type(ctx, call)?;
         return compile_at(emitter, ctx, at, op_type, |emitter, ctx, at| {
             compile_intrinsic_at(emitter, ctx, func, result, at, intrinsic)
@@ -134,7 +137,7 @@ fn compile_intrinsic_at(
             compile_int_to_bcd(emitter, ctx, fixed_args(func)?, &func.name.span(), op_type)
         }
         // SIZEOF operator (extension)
-        Intrinsic::Sizeof => compile_sizeof(emitter, ctx, fixed_args(func)?),
+        Intrinsic::Sizeof => compile_sizeof(emitter, ctx, fixed_args(func)?, op_type),
         Intrinsic::String(StringFunction::Len) => {
             compile_len(emitter, ctx, fixed_args(func)?, &func.name.span())
         }
@@ -434,7 +437,8 @@ fn compile_move(
     Ok(())
 }
 
-/// Compiles TRUNC(IN) — truncates a real value toward zero.
+/// Compiles TRUNC(IN) — truncates a real value toward zero to an integer of
+/// `target_op_type`, the type the analyzer recorded for the call.
 ///
 /// The argument is compiled using its own (float) op_type derived from the
 /// argument's resolved type. The result is converted to the target integer
@@ -483,6 +487,7 @@ fn compile_sizeof(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     args: [&Expr; 1],
+    op_type: OpType,
 ) -> Result<(), Diagnostic> {
     // Check if the argument is a variable that maps to an array.
     let size: u32 =
@@ -499,8 +504,18 @@ fn compile_sizeof(
             sizeof_from_expr_type(ctx, args[0])?
         };
 
-    let pool_index = ctx.add_i32_constant(size as i32);
-    emitter.emit_load_const_i32(pool_index);
+    // The size is pushed at the integer type the analyzer recorded for the
+    // call, which is the type of its context.
+    match op_type.0 {
+        OpWidth::W64 => {
+            let pool_index = ctx.add_i64_constant(i64::from(size));
+            emitter.emit_load_const_i64(pool_index);
+        }
+        OpWidth::W32 | OpWidth::F32 | OpWidth::F64 => {
+            let pool_index = ctx.add_i32_constant(size as i32);
+            emitter.emit_load_const_i32(pool_index);
+        }
+    }
     Ok(())
 }
 
@@ -511,7 +526,8 @@ fn sizeof_from_expr_type(ctx: &CompileContext, expr: &Expr) -> Result<u32, Diagn
     Ok((bits as u32).div_ceil(8))
 }
 
-/// Compiles BCD_TO_INT(IN) — converts a BCD-encoded bit string to an integer.
+/// Compiles BCD_TO_INT(IN) — converts a BCD-encoded bit string to an integer
+/// of `target_op_type`, the type the analyzer recorded for the call.
 ///
 /// The argument is compiled using its own (bit-string) op_type. The BCD
 /// decoding opcode is selected based on the argument's storage bit width.
@@ -520,7 +536,7 @@ fn compile_bcd_to_int(
     ctx: &mut CompileContext,
     args: [&Expr; 1],
     span: &SourceSpan,
-    _target_op_type: OpType,
+    target_op_type: OpType,
 ) -> Result<(), Diagnostic> {
     let arg_op_type = op_type(ctx, args[0])?;
     let bits = storage_bits(ctx, args[0])?;
@@ -534,6 +550,14 @@ fn compile_bcd_to_int(
         _ => return Err(Diagnostic::todo_with_span(span.clone())),
     };
     emitter.emit_builtin(func_id);
+    // The builtin decodes into a 64-bit integer for a 64-bit input and a
+    // 32-bit one otherwise; the result is the integer type the analyzer
+    // recorded for the call.
+    let decoded = match bits {
+        64 => (OpWidth::W64, Signedness::Signed),
+        _ => (OpWidth::W32, Signedness::Signed),
+    };
+    crate::compile_arith::convert(emitter, decoded, target_op_type);
     Ok(())
 }
 

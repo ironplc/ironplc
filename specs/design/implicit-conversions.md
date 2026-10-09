@@ -112,6 +112,16 @@ The pass records, for each call, the conversion of every input of the function's
 
 **REQ-IC-analyzer-078** A result assigned to a narrower target is a type mismatch: `i := MAX(i, l)` on an `INT` and an `LINT` reports P4027.
 
+`TRUNC`, `BCD_TO_INT` and `SIZEOF` return an integer, and nothing about their inputs says which. Such a call is an integer of whichever type its context stores it at, as an untyped integer literal is (ADR-0028), and the pass records that type on it. Unlike a literal it stays an integer: in a context that is not an integer type it takes `DINT`, the type an untyped integer literal defaults to, and is converted to the context's type. The code generator used to compile `TRUNC` at its context's type, so `r := TRUNC(x)` with a `REAL` target did not truncate. `INT_TO_BCD` encodes its input digit by digit in the bit string as wide as it, and computes at that type as an operation on one value does.
+
+**REQ-IC-analyzer-088** A call to `TRUNC`, `BCD_TO_INT` or `SIZEOF` in an integer context takes the context's type: the `TRUNC(lr)` of `l := TRUNC(lr)` on an `LINT` is an `LINT`, and of `i := TRUNC(r)` on an `INT` an `INT`.
+
+**REQ-IC-analyzer-089** A call to `TRUNC`, `BCD_TO_INT` or `SIZEOF` in a context that is not an integer type takes `DINT` and is converted to the context's type, wherever the context is: in `x := TRUNC(r)` on a `REAL`, in `TRUNC(r) < r`, in `TRUNC(r) * r` and as an argument to a `REAL` parameter, the `DINT` is converted to `REAL`.
+
+**REQ-IC-analyzer-090** `INT_TO_BCD` has the type of the bit string as wide as its input, and its result is converted to a wider target: `INT_TO_BCD(i)` on an `INT` is a `WORD`, `INT_TO_BCD(l)` on an `LINT` an `LWORD`, `INT_TO_BCD(42)` a `DWORD`, and `lw := INT_TO_BCD(i)` converts the `WORD` to `LWORD`.
+
+**REQ-IC-analyzer-091** `TRUNC` assigned to a bit string, and `INT_TO_BCD` assigned to an integer or to a narrower bit string, report P4027: `w := TRUNC(r)`, `j := INT_TO_BCD(i)` and `w := INT_TO_BCD(l)` on a `WORD`, an `INT` and an `LINT`.
+
 ### Bitwise operators
 
 `AND`, `OR` and `XOR` are boolean on `BOOL`s and bitwise on bit strings. Each computes at the type every operand widens to, by the relation a comparison chooses its operand type by, as a function of several inputs of one type does: `w OR lw` on a `WORD` and an `LWORD` is an `LWORD`. Their function forms are functions of several inputs of one type (see Standard functions). The pass converts an operand of another width to the operation's type, and records the conversion of the result to the type of its context, as it does an arithmetic result's. The analyzer used to type the operator by its left operand, so `w OR lw` truncated the `LWORD` to 32 bits, and a `DWORD` result stored in an `LWORD` was sign-extended.
@@ -295,6 +305,8 @@ is: a result of a type narrower than 32 bits is not truncated to its width, so
 **REQ-IC-codegen-005** A value stored in a function block field, a method parameter or through a dereference keeps the value of its declared type: `b(x := 4000000000)` on a field of a subrange of `LINT` stores 4000000000, and `q^ := 1.5` on a `REF_TO REAL` stores 1.5.
 
 **REQ-IC-codegen-009** The result of a call to a user-defined function or a method, and a dereference, stored in a wider target keep their value: `l := big(u)` with `big` returning the `UDINT` 4000000000 stores 4000000000, as do `l := k.Big()` and `l := p^`, and `lr := half(3.0)` with `half` returning a `REAL` stores 1.5.
+
+**REQ-IC-codegen-011** `TRUNC`, `BCD_TO_INT` and `SIZEOF` compute at the integer type the analyzer recorded for the call: `x := TRUNC(r)` with `r = 2.75` and a `REAL` target stores 2.0, `l := TRUNC(lr)` with `lr = 5000000000.5` stores 5000000000, and `SIZEOF` and `BCD_TO_INT` assigned to an `LINT` store their value at 64 bits.
 
 A parameter of a user-defined function is passed at its declared type the same way, whatever kind of declaration declares it.
 

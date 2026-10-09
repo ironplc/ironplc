@@ -120,6 +120,7 @@ mod end_to_end_if;
 mod end_to_end_implicit_widening;
 mod end_to_end_inputs_of_one_type;
 mod end_to_end_insert;
+mod end_to_end_integer_result;
 mod end_to_end_ldate;
 mod end_to_end_left;
 mod end_to_end_len;

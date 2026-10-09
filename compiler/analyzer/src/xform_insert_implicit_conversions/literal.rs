@@ -40,7 +40,11 @@ impl ImplicitConversions<'_> {
     pub(super) fn type_literals(&self, expr: &mut Expr, context: Option<TypeId>) {
         match (&expr.expr_type, context) {
             (Some(ExprType::Literal(generic)), Some(context)) if is_numeric_category(generic) => {
-                expr.expr_type = Some(ExprType::Inferred(context));
+                if self.is_integer_result_in_other_context(expr, context) {
+                    self.settle_integer_result(expr, context);
+                } else {
+                    expr.expr_type = Some(ExprType::Inferred(context));
+                }
             }
             // A typed numeric literal (`DINT#5`) keeps its type and is
             // converted to its context's, which codegen compiled it at.
@@ -579,7 +583,7 @@ impl ImplicitConversions<'_> {
     }
 
     /// The type `DINT`.
-    fn dint(&self) -> Option<TypeId> {
+    pub(super) fn dint(&self) -> Option<TypeId> {
         let dint: TypeName = ElementaryTypeName::DINT.into();
         self.context.types().id_of(&dint)
     }

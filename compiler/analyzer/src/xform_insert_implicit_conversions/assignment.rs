@@ -72,7 +72,7 @@ impl ImplicitConversions<'_> {
         if self.converts_to_its_context(value)
             && self.width_of(value).is_some_and(|own| own != width)
         {
-            self.conversions.convert(value, target);
+            self.convert(value, target);
         }
     }
 

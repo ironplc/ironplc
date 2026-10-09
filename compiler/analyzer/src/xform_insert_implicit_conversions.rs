@@ -29,6 +29,7 @@ mod arithmetic;
 mod assignment;
 mod declared;
 mod inputs_of_one_type;
+mod integer_result;
 mod literal;
 
 use std::convert::Infallible;
@@ -85,8 +86,8 @@ impl ImplicitConversions<'_> {
         let Some(target) = self.operand_type(left, right) else {
             return;
         };
-        self.conversions.convert(left, target);
-        self.conversions.convert(right, target);
+        self.convert(left, target);
+        self.convert(right, target);
     }
 
     /// The type a comparison of `left` and `right` compares at: the type one
