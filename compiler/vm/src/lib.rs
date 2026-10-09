@@ -38,3 +38,10 @@ pub use vm::{
     ExecuteOutcome, FaultContext, Phase, RoundOutcome, VariableView, Vm, VmFaulted, VmReady,
     VmRunning, VmStopped,
 };
+
+/// Spec-conformance requirements generated from the design documents
+/// `vm/build.rs` lists, for the `#[spec_test(...)]` unit tests in `src/`.
+#[cfg(test)]
+mod spec_requirements {
+    include!(concat!(env!("OUT_DIR"), "/spec_requirements.rs"));
+}
