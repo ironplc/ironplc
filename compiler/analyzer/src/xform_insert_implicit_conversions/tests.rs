@@ -882,3 +882,4 @@ mod call_result;
 mod inputs_of_one_type;
 mod integer_result;
 mod subrange;
+mod time;

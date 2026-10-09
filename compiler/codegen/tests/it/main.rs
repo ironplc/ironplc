@@ -43,6 +43,7 @@ mod compile_struct;
 mod compile_system_uptime;
 mod compile_temp_bufs;
 mod compile_types;
+mod compile_unrecorded_conversion;
 mod compile_wstring;
 mod end_to_end;
 mod end_to_end_abs;
