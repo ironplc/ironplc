@@ -1036,7 +1036,6 @@ version = "0.248.0"
 dependencies = [
  "ironplc-dsl",
  "ironplc-spec-requirements-gen",
- "spec_test_macro",
  "time",
 ]
 

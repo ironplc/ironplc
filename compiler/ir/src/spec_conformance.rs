@@ -1,17 +1,12 @@
 //! Spec conformance tests for the execution model's types.
 //!
-//! Each test is annotated with `#[spec_test(REQ_XX_NNN)]` which:
-//! 1. Adds `#[test]`
-//! 2. References a build-script-generated constant — compilation fails if the
-//!    requirement was removed from the spec markdown.
-//!
-//! The `all_spec_requirements_have_tests` meta-test ensures every requirement
-//! in the spec owned by this crate has at least one test here.
-//!
-//! See `specs/design/execution-model.md`.
+//! The tests check the requirements this crate owns in
+//! `specs/design/execution-model.md`, and each names its requirement in a
+//! comment. They become `#[spec_test(REQ_EM_ir_NNN)]` when `build.rs` lists
+//! that document (see the comment there); until then the
+//! `all_spec_requirements_have_tests` meta-test has no requirement to check.
 
 use ironplc_dsl::core::SourceSpan;
-use spec_test_macro::spec_test;
 
 use crate::execution::{
     Configuration, DebugName, Execution, ExecutionModelBuilder, Global, GlobalKind, GlobalScope,
@@ -97,7 +92,8 @@ fn trait_probe_when_type_lacks_trait_then_false() {
     assert!(!probe.ord());
 }
 
-#[spec_test(REQ_EM_ir_001)]
+// REQ-EM-ir-001
+#[test]
 fn debug_name_when_probed_then_implements_no_comparison_or_hash() {
     let probe = &Probe::<DebugName>::new();
 
@@ -116,7 +112,8 @@ fn dsl_items(source: &str) -> Vec<&str> {
         .collect()
 }
 
-#[spec_test(REQ_EM_ir_001)]
+// REQ-EM-ir-001
+#[test]
 fn execution_module_when_scanned_then_names_only_source_span_from_dsl() {
     // A declaration node, an `Id` or a `TypeId` would have to be named
     // through `ironplc_dsl`; the only item the module names is the span a
@@ -133,14 +130,16 @@ fn holds_no_reference<T: 'static>(_value: &T) -> bool {
     true
 }
 
-#[spec_test(REQ_EM_ir_001)]
+// REQ-EM-ir-001
+#[test]
 fn execution_when_built_then_borrows_nothing_from_a_library() {
     let execution = Execution::NotExecutable(NotExecutable::NoProgram);
 
     assert!(holds_no_reference(&execution));
 }
 
-#[spec_test(REQ_EM_ir_001)]
+// REQ-EM-ir-001
+#[test]
 fn execution_model_when_built_then_every_id_names_an_entry_of_the_model() {
     let name = |text: &str| DebugName::new(text, SourceSpan::range(0, text.len()));
     let mut builder = ExecutionModelBuilder::new();
@@ -194,7 +193,8 @@ fn workspace_dependencies(manifest: &str) -> Vec<&str> {
         .collect()
 }
 
-#[spec_test(REQ_EM_ir_002)]
+// REQ-EM-ir-002
+#[test]
 fn ir_manifest_when_read_then_depends_on_no_compiler_crate_but_dsl() {
     // Build and dev dependencies do not reach a crate that depends on
     // `ironplc-ir`, so only `[dependencies]` counts.
