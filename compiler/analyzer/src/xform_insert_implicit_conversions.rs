@@ -188,11 +188,13 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
                 self.record_one_type_inputs(&mut node);
             }
             ExprKind::MethodCall(call) => self.record_method_arguments(call),
-            // A comparison's operands are recorded by `fold_compare_expr`
-            // and a function's arguments by `fold_function`; nothing else
-            // has operands or arguments a context converts.
-            ExprKind::Compare(_)
-            | ExprKind::UnaryOp(_)
+            // A comparison's operands are recorded by `fold_compare_expr`;
+            // the operands of `AND`, `OR` and `XOR` here, since they are
+            // converted to the operation's own type.
+            ExprKind::Compare(_) => self.record_bitwise_operands(&mut node),
+            // A function's arguments are recorded by `fold_function`;
+            // nothing else has operands or arguments a context converts.
+            ExprKind::UnaryOp(_)
             | ExprKind::Expression(_)
             | ExprKind::Const(_)
             | ExprKind::EnumeratedValue(_)

@@ -112,6 +112,18 @@ The pass records, for each call, the conversion of every input of the function's
 
 **REQ-IC-analyzer-078** A result assigned to a narrower target is a type mismatch: `i := MAX(i, l)` on an `INT` and an `LINT` reports P4027.
 
+### Bitwise operators
+
+`AND`, `OR` and `XOR` are boolean on `BOOL`s and bitwise on bit strings. Each computes at the type every operand widens to, by the relation a comparison chooses its operand type by, as a function of several inputs of one type does: `w OR lw` on a `WORD` and an `LWORD` is an `LWORD`. Their function forms are functions of several inputs of one type (see Standard functions). The pass converts an operand of another width to the operation's type, and records the conversion of the result to the type of its context, as it does an arithmetic result's. The analyzer used to type the operator by its left operand, so `w OR lw` truncated the `LWORD` to 32 bits, and a `DWORD` result stored in an `LWORD` was sign-extended.
+
+**REQ-IC-analyzer-081** `AND`, `OR` and `XOR`, in the operator and the function form, have the type every operand widens to, whichever side it is on: `w OR lw` and `lw OR w` on a `WORD` and an `LWORD` are `LWORD`s, `OR(b, lw, w)` is an `LWORD`, and `g AND h` on `BOOL`s is a `BOOL`.
+
+**REQ-IC-analyzer-082** An operand of `AND`, `OR` or `XOR` whose operation width differs from the operation's is wrapped in an `ImplicitConversion` to the operation's type, in the operator and the function form: the `WORD` of `w OR lw` is converted to `LWORD`, and in `w AND d` on a `WORD` and a `DWORD` neither is wrapped.
+
+**REQ-IC-analyzer-083** The result of `AND`, `OR` or `XOR` is converted to the type of a target of another operation width: in `lw := d OR e` on an `LWORD` and two `DWORD`s the `DWORD` result is converted to `LWORD`.
+
+**REQ-IC-analyzer-084** `AND`, `OR` or `XOR` assigned to a target narrower than its widest operand is a type mismatch: `w := w OR lw` on a `WORD` and an `LWORD` reports P4035, and `w := AND(w, lw)` reports P4027.
+
 ### Assignments
 
 An assignment stores its value at the type of its target. The pass records the conversion of the value to the type the target is stored as: its own elementary type, or its base type for a subrange. A value converts to its context when it has a type of its own -- a variable, an operation that computes at its own result type, a call to a user-defined function or a method, a dereference, or a parenthesized one of those -- and its operation width differs from the target's. An operation computes at its own type when it is arithmetic (operator or function form), an operation on one value (see Codegen), or a function of several inputs of one type (see Standard functions). A call returns the type its function or method declares, and a dereference reads the referenced variable at its own type. Any other value is compiled at the target's width rather than converted to it, so there is nothing to record: a literal takes the target's type (ADR-0028), and `TRUNC` of a `REAL` assigned to an `LINT` truncates to the target's width.
@@ -275,6 +287,10 @@ is: a result of a type narrower than 32 bits is not truncated to its width, so
 A parameter of a user-defined function is passed at its declared type the same way, whatever kind of declaration declares it.
 
 **REQ-IC-codegen-006** A function's parameter of an alias or a subrange type receives the value of the type it is operated as: `pass(p)` with `p = 2.5` and a parameter of an alias of `LREAL` passes 2.5, and `pass(b)` with `b = 5000000000` and a parameter of an alias or a subrange of `LINT` passes 5000000000.
+
+`AND`, `OR` and `XOR` compute at the type the analyzer recorded for the operation, to which it converted an operand of another width, and their result is converted to the type of its context.
+
+**REQ-IC-codegen-008** `AND`, `OR` and `XOR` keep every bit of their widest operand and widen their result by its own type: with `lw = 16#100000000` and `w = 1`, `w OR lw` and `lw OR w` give `16#100000001`, and with the `DWORD`s `d1 = 16#80000000` and `d2 = 1`, `lw := d1 OR d2` stores `16#80000001`.
 
 ## Out of scope
 

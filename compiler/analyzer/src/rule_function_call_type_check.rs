@@ -366,6 +366,9 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
 }
 
 #[cfg(test)]
+mod bitwise_tests;
+
+#[cfg(test)]
 mod composite_tests;
 
 #[cfg(test)]
