@@ -52,10 +52,14 @@ pub enum Execution {
 }
 
 pub struct ExecutionModel {
-    pub configuration: Option<DebugName>, // None: the library declares none
-    pub resources: Vec<Resource>,         // declaration order; implicit one last
+    pub configuration: Configuration,     // declared, or the implicit one
     pub programs: Vec<ProgramType>,       // indexed by ProgramId
     pub globals: Vec<Global>,             // indexed by GlobalId: variable-table order
+}
+
+pub struct Configuration {
+    pub name: Option<DebugName>,          // None: the implicit configuration
+    pub resources: Vec<Resource>,         // declaration order; implicit one last
 }
 
 pub struct Resource {
@@ -133,6 +137,7 @@ pub enum NotExecutable {
 
 | Relationship | Held by | Why it cannot be wrong |
 |---|---|---|
+| A resource belongs to the configuration | `Configuration::resources` | Ownership; there is always exactly one configuration |
 | A task belongs to a resource | `Resource::tasks` | Ownership |
 | An instance runs under a task | `Task::instances` | Ownership: an instance cannot name a task of another resource, or none |
 | An instance instantiates a program | `ProgramId` | Allocated by `resolve`, only for a declared `PROGRAM`; an instance of anything else makes the library `NotExecutable` |
@@ -163,9 +168,10 @@ Ownership goes to scheduling, which is what this model is for.
   `Execution` once. Inside `ExecutionModel` every instance has a program
   declared as a `PROGRAM`, every task has a schedule and every trigger names
   a global, with no `Option` to handle.
-- **Implicit objects are present, not inferred.** A program nothing binds runs
-  under a task the model lists, in a resource the model lists. Only its name
-  is absent.
+- **Implicit objects are present, not inferred.** A library with no
+  `CONFIGURATION` gets an implicit one, so every executable model has exactly
+  one configuration. A program nothing binds runs under a task the model
+  lists, in a resource the model lists. Only their names are absent.
 - **A system global is named by what it is.** `SystemGlobal::UpTime` tells a
   backend what the runtime writes into it. The backend does not recognise the
   global by its name, or by its type.
@@ -212,15 +218,15 @@ unchanged in shape:
 Until `ironplc-ir` exists, the types live in the analyzer, which builds them,
 and codegen depends on the analyzer as it does today. Nothing in them is the
 analyzer's own. A `DebugName` holds the name as written and its span, not an
-`Id`. The one type from `ironplc-dsl` is `SourceSpan`, which a diagnostic
-needs; `ironplc-ir` re-exports it for a backend, as the lowered program design
-does for spans and diagnostics.
+`Id`. The one type from `ironplc-dsl` is `SourceSpan` (see
+[Open questions](#open-questions)).
 
 The lowered program design says that a library with no configuration lowers
 nothing, because only POUs reachable from a program instance are lowered
-(REQ-LOW-lowering-025). With this model, a library whose only `PROGRAM` no
-configuration binds has an implicit instance, so that program is reachable
-and lowers, as it compiles today.
+(REQ-LOW-lowering-025). With this model a library has no configuration only in
+its source: the model gives it an implicit one, whose instance makes the only
+`PROGRAM` reachable, so it lowers as it compiles today. That sentence of the
+lowered program design should read "a library with no program instance".
 
 ### Alternatives for review
 
@@ -235,9 +241,17 @@ and lowers, as it compiles today.
 - **The `SINGLE` trigger by `GlobalId` or carried on the task as the global's
   slot.** A slot is the backend's layout, so the model gives the global and
   the backend's layout gives the slot.
-- **Where the types live before `ironplc-ir` exists.** The analyzer, as
-  proposed, or a small crate now that `ironplc-ir` later absorbs, so codegen
-  can depend on the model without depending on the analyzer.
+- **Where the types live before `ironplc-ir` exists.** A small crate now,
+  which `ironplc-ir` later absorbs, would let codegen depend on the model
+  without depending on the analyzer. Decided against for now: the types live
+  in the analyzer, which builds them.
+
+### Open questions
+
+- **`SourceSpan`.** It is the one `ironplc-dsl` type in the model, reached
+  through `DebugName` and `Interval`, for diagnostics. Whether it stays, is
+  hidden inside an opaque type, or becomes a type of the model's own is not
+  decided.
 
 ## Behaviour
 
@@ -251,7 +265,12 @@ against it (see [Backend capability checks](#backend-capability-checks)).
 
 ### Binding programs to tasks
 
-**REQ-EM-analyzer-010** With no `CONFIGURATION`, the only `PROGRAM` runs as an implicit instance under an implicit freewheeling task, in an implicit resource the model lists.
+**REQ-EM-analyzer-010** With no `CONFIGURATION`, the model has an implicit configuration holding one implicit resource, which holds one implicit freewheeling task of priority 0, which runs one implicit instance of the only `PROGRAM`.
+
+This is what codegen does today, and the model keeps it. The default
+configuration sketched in [Task Support](61131-task-support.md) has a cyclic
+task of 10 ms; the compiler has never built that, and this design does not
+adopt it.
 
 **REQ-EM-analyzer-011** An instance with no `WITH` clause is owned by an implicit freewheeling task of its resource, listed after the declared tasks and shared by every such instance of that resource.
 
