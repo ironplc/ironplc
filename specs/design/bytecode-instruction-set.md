@@ -1203,6 +1203,7 @@ Verification runs on the bytecode that ships, independently of the emitter's own
 | V9016 | ProgramExceedsCallDepth | Declared call depth exceeds the VM's frame capacity |
 | V9017 | ZeroCallDepth | Container declares a call depth of zero |
 | V9019 | VariableTableTooSmall | Variable table has fewer slots than the container requires |
+| V9020 | CallStackUnderflow | Dispatch loop found no call frame where it requires one |
 
 V4xxx codes are user errors (exit code 1); V9xxx codes are internal errors (exit code 3).
 

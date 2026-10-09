@@ -11,6 +11,8 @@
 //!
 //! [`DebugHook`]: crate::debug_hook::DebugHook
 
+use core::convert::Infallible;
+
 use ironplc_container::FunctionId;
 
 use crate::debug_hook::{DebugHook, HookAction};
@@ -35,6 +37,15 @@ pub enum PauseReason {
     Step,
     /// Stopped on entry, before executing the first instruction.
     Entry,
+}
+
+/// A hook that cannot pause ([`NoopDebugHook`](crate::NoopDebugHook)) has
+/// [`Infallible`] as its pause type; this lets the debug driver, which
+/// reports a [`PauseReason`], drive it too. There is no value to convert.
+impl From<Infallible> for PauseReason {
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 /// One breakpoint: a `(function_id, offset)` location plus an enabled flag.
@@ -351,6 +362,8 @@ impl<'a> DebuggerHook<'a> {
 }
 
 impl DebugHook for DebuggerHook<'_> {
+    type Pause = PauseReason;
+
     fn before_instruction(&mut self, function_id: FunctionId, pc: usize, _op: u8) -> HookAction {
         self.last_offset = pc;
         if self.stop_on_entry {
