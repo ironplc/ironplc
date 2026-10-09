@@ -178,7 +178,8 @@ pub(crate) fn compile_numeric(
     let func_id = lookup_builtin(function, op_type.0, op_type.1)
         .ok_or_else(|| Diagnostic::todo_with_span(func.name.span()))?;
 
-    let expected_args = opcode::builtin::arg_count(func_id) as usize;
+    let expected_args =
+        opcode::builtin::arg_count_opt(func_id).ok_or_else(Diagnostic::internal_error)? as usize;
 
     let args = collect_positional_args(func);
 
@@ -196,7 +197,7 @@ pub(crate) fn compile_numeric(
         compile_expr(emitter, ctx, arg, arg_op_type)?;
     }
 
-    emitter.emit_builtin(func_id);
+    emitter.emit_builtin(func_id)?;
     Ok(())
 }
 
@@ -250,7 +251,7 @@ pub(crate) fn compile_shift_rotate(
     // Determine storage bits for narrow-type ROL/ROR selection
     let bits = storage_bits(ctx, args[0])?;
 
-    emitter.emit_builtin(shift_builtin(shift, op_type.0, bits));
+    emitter.emit_builtin(shift_builtin(shift, op_type.0, bits))?;
     Ok(())
 }
 

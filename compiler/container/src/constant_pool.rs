@@ -21,20 +21,36 @@ pub struct ConstEntry {
 }
 
 impl ConstEntry {
-    /// Constructs a primitive entry from little-endian bytes.
-    ///
-    /// `bytes` must be at most 8 bytes; the source slice is interpreted as
-    /// the native little-endian encoding of the primitive.
-    pub fn primitive_le(const_type: ConstType, bytes: &[u8]) -> Self {
-        debug_assert!(!const_type.is_string_like());
-        debug_assert!(bytes.len() <= 8);
-        let mut primitive = [0u8; 8];
-        primitive[..bytes.len()].copy_from_slice(bytes);
+    /// Constructs a primitive entry from the 8-byte inline storage. The
+    /// typed constructors below are the public way in: each fixes both the
+    /// type and the width, so an entry can hold neither a string type nor
+    /// more bytes than the inline storage.
+    fn primitive(const_type: ConstType, primitive: [u8; 8]) -> Self {
         Self {
             const_type,
             primitive,
             str_value: Box::default(),
         }
+    }
+
+    /// Constructs a [`ConstType::I32`] entry.
+    pub fn i32(value: i32) -> Self {
+        Self::primitive(ConstType::I32, u64::from(value as u32).to_le_bytes())
+    }
+
+    /// Constructs a [`ConstType::F32`] entry.
+    pub fn f32(value: f32) -> Self {
+        Self::primitive(ConstType::F32, u64::from(value.to_bits()).to_le_bytes())
+    }
+
+    /// Constructs a [`ConstType::I64`] entry.
+    pub fn i64(value: i64) -> Self {
+        Self::primitive(ConstType::I64, value.to_le_bytes())
+    }
+
+    /// Constructs a [`ConstType::F64`] entry.
+    pub fn f64(value: f64) -> Self {
+        Self::primitive(ConstType::F64, value.to_le_bytes())
     }
 
     /// Constructs a narrow string entry (Latin-1, 1 byte per character).
@@ -249,14 +265,8 @@ mod tests {
     #[test]
     fn constant_pool_write_read_when_i32_constants_then_roundtrips() {
         let mut pool = ConstantPool::default();
-        pool.push(ConstEntry::primitive_le(
-            ConstType::I32,
-            &10i32.to_le_bytes(),
-        ));
-        pool.push(ConstEntry::primitive_le(
-            ConstType::I32,
-            &32i32.to_le_bytes(),
-        ));
+        pool.push(ConstEntry::i32(10));
+        pool.push(ConstEntry::i32(32));
 
         let mut buf = Vec::new();
         pool.write_to(&mut buf).unwrap();
@@ -270,12 +280,41 @@ mod tests {
     }
 
     #[test]
+    fn const_entry_i32_when_negative_then_four_le_bytes() {
+        let entry = ConstEntry::i32(-2);
+
+        assert_eq!(entry.const_type, ConstType::I32);
+        assert_eq!(entry.bytes(), &(-2i32).to_le_bytes());
+    }
+
+    #[test]
+    fn const_entry_f32_when_constructed_then_four_le_bytes() {
+        let entry = ConstEntry::f32(1.5);
+
+        assert_eq!(entry.const_type, ConstType::F32);
+        assert_eq!(entry.bytes(), &1.5f32.to_le_bytes());
+    }
+
+    #[test]
+    fn const_entry_i64_when_constructed_then_eight_le_bytes() {
+        let entry = ConstEntry::i64(-3);
+
+        assert_eq!(entry.const_type, ConstType::I64);
+        assert_eq!(entry.bytes(), &(-3i64).to_le_bytes());
+    }
+
+    #[test]
+    fn const_entry_f64_when_constructed_then_eight_le_bytes() {
+        let entry = ConstEntry::f64(2.5);
+
+        assert_eq!(entry.const_type, ConstType::F64);
+        assert_eq!(entry.bytes(), &2.5f64.to_le_bytes());
+    }
+
+    #[test]
     fn constant_pool_get_i32_when_valid_index_then_returns_value() {
         let mut pool = ConstantPool::default();
-        pool.push(ConstEntry::primitive_le(
-            ConstType::I32,
-            &42i32.to_le_bytes(),
-        ));
+        pool.push(ConstEntry::i32(42));
 
         assert_eq!(pool.get_i32(ConstantIndex::new(0)).unwrap(), 42);
     }
@@ -293,14 +332,8 @@ mod tests {
     #[test]
     fn constant_pool_iter_when_two_entries_then_returns_both() {
         let mut pool = ConstantPool::default();
-        pool.push(ConstEntry::primitive_le(
-            ConstType::I32,
-            &10i32.to_le_bytes(),
-        ));
-        pool.push(ConstEntry::primitive_le(
-            ConstType::F64,
-            &2.72f64.to_le_bytes(),
-        ));
+        pool.push(ConstEntry::i32(10));
+        pool.push(ConstEntry::f64(2.72));
 
         let entries: Vec<_> = pool.iter().collect();
         assert_eq!(entries.len(), 2);
@@ -327,10 +360,7 @@ mod tests {
     #[test]
     fn constant_pool_when_push_then_is_empty_returns_false() {
         let mut pool = ConstantPool::default();
-        pool.push(ConstEntry::primitive_le(
-            ConstType::I32,
-            &1i32.to_le_bytes(),
-        ));
+        pool.push(ConstEntry::i32(1));
         assert!(!pool.is_empty());
     }
 
@@ -338,23 +368,23 @@ mod tests {
     // a typed accessor that should reject the type mismatch.
     #[rstest]
     #[case::i32_accessor_on_f32(
-        (|| ConstEntry::primitive_le(ConstType::F32, &1.0f32.to_le_bytes())) as fn() -> ConstEntry,
+        (|| ConstEntry::f32(1.0)) as fn() -> ConstEntry,
         (|p: &ConstantPool| matches!(p.get_i32(ConstantIndex::new(0)), Err(ContainerError::InvalidConstantType(_)))) as fn(&ConstantPool) -> bool
     )]
     #[case::f32_accessor_on_i32(
-        (|| ConstEntry::primitive_le(ConstType::I32, &1i32.to_le_bytes())) as fn() -> ConstEntry,
+        (|| ConstEntry::i32(1)) as fn() -> ConstEntry,
         (|p: &ConstantPool| matches!(p.get_f32(ConstantIndex::new(0)), Err(ContainerError::InvalidConstantType(_)))) as fn(&ConstantPool) -> bool
     )]
     #[case::f64_accessor_on_i32(
-        (|| ConstEntry::primitive_le(ConstType::I32, &1i32.to_le_bytes())) as fn() -> ConstEntry,
+        (|| ConstEntry::i32(1)) as fn() -> ConstEntry,
         (|p: &ConstantPool| matches!(p.get_f64(ConstantIndex::new(0)), Err(ContainerError::InvalidConstantType(_)))) as fn(&ConstantPool) -> bool
     )]
     #[case::i64_accessor_on_f64(
-        (|| ConstEntry::primitive_le(ConstType::F64, &1.0f64.to_le_bytes())) as fn() -> ConstEntry,
+        (|| ConstEntry::f64(1.0)) as fn() -> ConstEntry,
         (|p: &ConstantPool| matches!(p.get_i64(ConstantIndex::new(0)), Err(ContainerError::InvalidConstantType(_)))) as fn(&ConstantPool) -> bool
     )]
     #[case::str_accessor_on_i32(
-        (|| ConstEntry::primitive_le(ConstType::I32, &1i32.to_le_bytes())) as fn() -> ConstEntry,
+        (|| ConstEntry::i32(1)) as fn() -> ConstEntry,
         (|p: &ConstantPool| matches!(p.get_str(ConstantIndex::new(0)), Err(ContainerError::InvalidConstantType(_)))) as fn(&ConstantPool) -> bool
     )]
     fn constant_pool_get_when_type_mismatch_then_returns_error(
@@ -381,10 +411,7 @@ mod tests {
     #[test]
     fn constant_pool_write_when_mixed_entries_then_char_width_byte_tags_each() {
         let mut pool = ConstantPool::default();
-        pool.push(ConstEntry::primitive_le(
-            ConstType::I32,
-            &7i32.to_le_bytes(),
-        ));
+        pool.push(ConstEntry::i32(7));
         pool.push(ConstEntry::string(b"hi".to_vec()));
         pool.push(ConstEntry::wstring(vec![0x68, 0x00, 0x69, 0x00]));
 
@@ -408,9 +435,9 @@ mod tests {
 
     #[test]
     fn constant_pool_bytes_when_primitive_then_returns_typed_length() {
-        let i32_entry = ConstEntry::primitive_le(ConstType::I32, &7i32.to_le_bytes());
+        let i32_entry = ConstEntry::i32(7);
         assert_eq!(i32_entry.bytes(), &7i32.to_le_bytes());
-        let f64_entry = ConstEntry::primitive_le(ConstType::F64, &1.5f64.to_le_bytes());
+        let f64_entry = ConstEntry::f64(1.5);
         assert_eq!(f64_entry.bytes(), &1.5f64.to_le_bytes());
     }
 
@@ -456,10 +483,7 @@ mod tests {
     #[test]
     fn constant_pool_char_width_when_non_string_then_error() {
         let mut pool = ConstantPool::default();
-        pool.push(ConstEntry::primitive_le(
-            ConstType::I32,
-            &7i32.to_le_bytes(),
-        ));
+        pool.push(ConstEntry::i32(7));
         assert!(matches!(
             pool.char_width(ConstantIndex::new(0)),
             Err(ContainerError::InvalidConstantType(0))

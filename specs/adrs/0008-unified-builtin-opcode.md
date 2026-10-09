@@ -3,6 +3,7 @@
 status: accepted
 date: 2026-02-19
 amended: 2026-09-11 (Scope and Confirmation described a string func_id split that was never built)
+amended: 2026-10-09 (`arg_count` cross-references now name `arg_count_opt`, its only remaining form)
 
 ## Context and Problem Statement
 
@@ -157,7 +158,7 @@ Each BUILTIN instruction is 3 bytes (1 opcode + 2 func_id), compared to 1 byte f
 The decision this ADR makes — one `BUILTIN` opcode with a u16 `func_id` operand,
 instead of an opcode per standard library function — is in force and is what the
 compiler emits. `compiler/container/src/builtin.rs` is the single declaration of
-every built-in, and `arg_count` from that table is what codegen and the stack
+every built-in, and `arg_count_opt` from that table is what codegen and the stack
 verifier both read. That part needs no correction.
 
 Two supporting claims do.
@@ -189,7 +190,7 @@ reaching for.
 Items 4 and 5 hold. An undefined func_id is rejected by the verifier
 (`StackImbalance::UnknownBuiltin`, rule R0510) and trapped by the VM at runtime
 (`V9007 InvalidBuiltinFunction`); the numeric func_ids are accepted with their
-declared argument counts, which `builtin::arg_count` is the single source of.
+declared argument counts, which `builtin::arg_count_opt` is the single source of.
 
 ### The opcode census is pre-ADR-0033
 

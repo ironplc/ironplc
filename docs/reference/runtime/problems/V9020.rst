@@ -1,0 +1,17 @@
+=====
+V9020
+=====
+
+.. problem-summary:: V9020
+
+The VM needed the topmost call frame and the call frame stack was empty.
+The dispatch loop stores the program counter back into the topmost frame
+after each instruction and before a call, and pops that frame on a
+return. It runs only while a frame is live, so an empty frame stack at
+one of those points means the VM broke its own invariant: no program,
+well-formed or not, is expected to cause it. The VM halts the program
+rather than continue with no frame to execute.
+
+.. include:: ../../../includes/internal-vm-error-cause.rst
+
+.. include:: ../../../includes/report-internal-vm-error.rst

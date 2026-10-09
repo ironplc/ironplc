@@ -1,5 +1,21 @@
 #![no_std]
 #![allow(clippy::result_large_err)]
+// Production code must have no reachable panic path (compiler-standards.md,
+// Rust Best Practices). The lints are off under `test-support`, whose
+// helpers are meant to panic; `just lint` enforces them with a `--lib`
+// pass, which builds without that feature.
+#![cfg_attr(
+    not(feature = "test-support"),
+    deny(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::todo,
+        clippy::unimplemented,
+        clippy::panic_in_result_fn
+    )
+)]
 
 #[cfg(feature = "std")]
 extern crate std;
