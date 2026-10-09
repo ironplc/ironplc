@@ -87,6 +87,20 @@ fn end_to_end_when_structure_field_of_subrange_then_starts_at_its_default() {
     assert_eq!(snapshot.read("out"), 5);
 }
 
+#[spec_test(REQ_IV_codegen_015)]
+fn end_to_end_when_structure_field_of_inline_subrange_states_value_then_starts_at_it() {
+    let snapshot = run("
+TYPE T : STRUCT level : INT (0..15) := 3; other : INT (2..15); END_STRUCT; END_TYPE
+PROGRAM main
+VAR t : T; out : INT; low : INT; END_VAR
+out := t.level;
+low := t.other;
+END_PROGRAM");
+
+    assert_eq!(snapshot.read("out"), 3);
+    assert_eq!(snapshot.read("low"), 2);
+}
+
 #[spec_test(REQ_IV_codegen_013)]
 fn end_to_end_when_structure_string_field_then_default_or_initializer_stored() {
     let snapshot = run("

@@ -224,6 +224,8 @@ is, since it overwrites what the last call left.
 
 **REQ-IV-codegen-014** An `ARRAY` field's elements start at its declared default, or at the values a structure initializer gives them.
 
+**REQ-IV-codegen-015** A structure field of an inline subrange type starts at the value its declaration states, and at the lower bound when it states none.
+
 **REQ-IV-codegen-020** A program variable of an alias type starts at the alias's declared default.
 
 **REQ-IV-codegen-021** A variable of a subrange type with a declared default starts at the default.
@@ -265,6 +267,12 @@ container bytes, with three exceptions:
   to an unrelated variable.
 - A function's `VAR_TEMP` is reset on every call, as its `VAR` is; it kept
   the value the last call left.
+
+A program that states a subrange value its subrange cannot hold -- a
+subrange type's declared default (`TYPE R : DINT(10..100) := 500`) or a
+structure field's value (`x : INT (0..15) := 20`) -- is now reported as a
+constant overflow. Both values were ignored, the variable starting at the
+lower bound.
 
 ## Out of scope
 
