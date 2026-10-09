@@ -270,10 +270,10 @@ Lowering is two new crates:
 
 - **`ironplc-ir`** is the IR: its data model, the
   constructors that check it ([Invariants by construction](#39-invariants-by-construction)),
-  the `Intrinsic` and `StandardBlock` enums, and the expansions a backend may
-  call instead of implementing a node (REQ-LOW-ir-068,
-  REQ-LOW-ir-077). It depends only on `ironplc-dsl`, for ids, source
-  spans and diagnostics, and re-exports what a backend needs from it.
+  the `Intrinsic` enum, and the expansions a backend may call instead of
+  implementing a node (REQ-LOW-ir-068). It depends only on `ironplc-dsl`, for
+  ids, source spans and diagnostics, and re-exports what a backend needs from
+  it.
 - **`ironplc-lowering`** is the pass that builds a lowered program, a program
   in the IR, from a clean analysis.
 
@@ -493,7 +493,7 @@ pub enum TypeKind {
     String(StringShape),
     Array { element: TypeId, dimensions: Vec<(i32, i32)> },
     Structure { fields: Vec<Field> },
-    FunctionBlock { fields: Vec<Field>, block: Block },
+    FunctionBlock { fields: Vec<Field>, body: PouId },
     Program { fields: Vec<Field>, body: PouId },
     Reference { target: TypeId, nullability: Nullability }, // Nullable or NonNull (see §3.4)
     Interface,                         // a value referring to an instance of any implementer (see §3.8)
@@ -815,10 +815,9 @@ place the backend keeps in a register costs nothing to read.
 `RoundTime` is the time the host gave the current round: an unsigned 64-bit
 count of microseconds, the `uptime_us` that the bytecode VM's `run_round`
 receives. No source program names it. Lowering reads it where what a construct
-means depends on time: the expansions of the timers among the standard
-function blocks (see
-[Callees, arguments and intrinsics](#38-callees-arguments-and-intrinsics)), and
-the step times and timed action qualifiers of a sequential function chart.
+means depends on time: the timers among the standard function blocks, which
+lowering generates (see [Standard function blocks](#standard-function-blocks)),
+and the step times and timed action qualifiers of a sequential function chart.
 Today the time reaches only the VM's timer intrinsics (`vm.rs`), so without a
 node every backend would need its own route to it. The system uptime variables
 of [ADR-0030](../adrs/0030-dual-uptime-system-variables.md) hold the same time
@@ -975,7 +974,7 @@ pub enum StmtKind {
     AssignStr { place: Place, value: StrExpr },
     Copy { dst: Place, src: Place },                          // whole aggregate
     Call { callee: Callee, args: Vec<Arg> },                  // result discarded
-    FbCall { instance: Place, block: Block },                 // runs the body; inputs and outputs are assignments around it
+    FbCall { instance: Place, block: PouId },                 // runs the body; inputs and outputs are assignments around it
     If { cond: Expr, then: Vec<Stmt>, otherwise: Vec<Stmt> },
     Case { selector: Expr, arms: Vec<CaseArm>, otherwise: Vec<Stmt> },
     For { id: LoopId, control: Place, from: Expr, to: Expr, step: Const, body: Vec<Stmt> },
@@ -1080,7 +1079,6 @@ pub struct InterfaceCallee {
 }
 
 pub struct Implementer { pub ty: TypeId, pub method: PouId }
-pub enum Block  { User(PouId), Standard(StandardBlock) }   // ADR-0003
 
 pub enum Arg {
     Value(Expr),        // scalar, by value
@@ -1246,19 +1244,9 @@ backend that compiles handles every combination. The analyzer resolves a
 generic function such as `ADD` on `ANY_NUM` to one type before lowering sees
 it.
 
-`StandardBlock` follows the same rule: `CTU_INT` and `CTU_LINT` are different
-variants. Today codegen sends `CTU_INT`, `CTU_DINT`, `CTU_UDINT`, `CTU_LINT`
-and `CTU_ULINT` to one VM intrinsic, which reads and writes `PV` and `CV` as
-signed 32-bit values (`compile_call.rs`, `vm/src/intrinsic.rs`). With a
-variant each, a backend has to say how it implements `CtuLint`, and cannot
-inherit `CtuInt`'s width by a shared name match.
-
 **REQ-LOW-ir-145** Each `Intrinsic` variant names one operation at one set of
 operand types, and a call's arguments have exactly the types its variant
 names.
-
-**REQ-LOW-ir-146** Each `StandardBlock` variant names one function block at one
-set of field types.
 
 **REQ-LOW-analyzer-070** Every built-in function signature in the
 `FunctionEnvironment` identifies its `BuiltinFunction`.
@@ -1289,25 +1277,46 @@ policy options.
 with a match that has no wildcard arm, so adding a variant fails to compile
 until the backend handles it.
 
-`Block::Standard` names a standard function block (ADR-0003). What each one
-does is stated today only by the bytecode VM's own code (`vm/src/intrinsic.rs`):
-REQ-LOW-codegen-089 specifies the standard functions, not the blocks. A second
-backend would need a second implementation of all ten, which is the
-duplication this design exists to remove. So each standard block has an
-expansion in `ironplc-ir`: lowered statements over the fields of its
-instance, with its hidden state among them as synthesized fields (see
-[Synthesized state](#synthesized-state)), and `RoundTime`. The expansion is
-the block's meaning. A backend implements `Block::Standard` natively, as the
-bytecode VM keeps doing for speed, or by calling the expansion, as an LLVM
-backend would, compiling it to native code like a user block.
+#### Standard function blocks
 
-**REQ-LOW-ir-077** `ironplc-ir` provides, for every
-`StandardBlock`, an expansion into lowered statements over the block's
-instance, so a backend can implement `Block::Standard` by expanding it.
+The standard function blocks are `TON`, `TOF`, `TP`, `SR`, `RS`, `R_TRIG`,
+`F_TRIG`, and the counters `CTU`, `CTD` and `CTUD`, each with a form for every
+integer width it takes (`CTU_INT` to `CTU_ULINT`). Today the bytecode VM runs
+them natively ([ADR-0003](../adrs/0003-plc-standard-function-blocks-as-intrinsics.md)),
+and what each does is stated only by the VM's own code (`vm/src/intrinsic.rs`).
+A second backend would need a second implementation of every one, which is
+the duplication this design exists to remove.
 
-**REQ-LOW-codegen-078** For every `StandardBlock`, running its expansion leaves
-the instance's visible fields with the values the bytecode VM's intrinsic
-leaves, for the same inputs and round times.
+What kept a block out of reach of the lowered program was time: a timer reads
+the time of the round, which no source program can name. `RoundTime` gives
+lowering that time. So lowering lowers each standard function block the
+program uses to an ordinary function block of the lowered program: a POU and
+a type, as for a block the program declares. The block's hidden state is
+among its fields as synthesized fields (see
+[Synthesized state](#synthesized-state)), and a timer reads `RoundTime`. A
+call is an `FbCall` like any other.
+
+No backend sees a standard function block, so none implements one, and the
+lowered program has no name for one. Each counter's forms come from one
+template in lowering, generated for each width the program uses.
+
+**REQ-LOW-lowering-077** Lowering lowers every standard function block the
+program uses to a function block POU of the lowered program, and no node of
+the lowered program names a standard function block.
+
+The lowered blocks start from what the bytecode VM's intrinsics do today, so
+the move changes no program, with one exception. Today codegen sends
+`CTU_INT`, `CTU_DINT`, `CTU_UDINT`, `CTU_LINT` and `CTU_ULINT` to one VM
+intrinsic, which reads and writes `PV` and `CV` as signed 32-bit values
+(`compile_call.rs`, `vm/src/intrinsic.rs`), and the down and up-down counters
+do the same. A lowered counter computes at its own width, so a wide counter
+past the 32-bit range behaves differently. That is a correction, like those
+under [Backend Contract](#7-backend-contract).
+
+**REQ-LOW-codegen-078** For every standard function block, the block lowering
+generates leaves the instance's visible fields with the values the bytecode
+VM's intrinsic leaves, for the same inputs and round times, except where a
+wide counter's value lies outside the 32-bit range.
 
 ### 3.9 Invariants by construction
 
@@ -1598,6 +1607,7 @@ implements it.
 | Comparison of strings | `Call` of a string comparison `Intrinsic` |
 | Named argument | Positional `Arg` |
 | `SIZEOF(x)` | A `Const`: the bytes of `x`'s storage width, or the element bytes times the element count for an array, as codegen computes it today (`compile_sizeof`) |
+| Standard function block (`TON`, `CTU_DINT`, ...) | A function block POU of the lowered program, generated by lowering (REQ-LOW-lowering-077) |
 
 `FOR` is not desugared; it is the `For` node, whose expansion
 `ironplc-ir` provides (REQ-LOW-ir-068).
@@ -1717,7 +1727,6 @@ How the three targets are expected to realise the same node:
 | `Place` | One of seven load and store opcode families, chosen by layout; a field of the current instance is the slot the VM copied it into, until [issue 2120](https://github.com/ironplc/ironplc/issues/2120) | An address in linear memory, from the instance parameter for a field of the current instance | A `getelementptr` from the variable's `alloca` or global, or from the instance parameter |
 | `Intrinsic` | `BUILTIN func_id` (ADR-0008) | A call to a runtime function, or inline instructions | An LLVM intrinsic such as `llvm.sqrt`, or a call to a runtime function |
 | `Callee::Interface` | As pull request 1870 decides; it proposes a table of instances read by `LOAD_INSTANCE`, then a branch to a `METHOD_CALL` per implementer | `br_table` or a branch over the implementers | A `switch` over the implementers, or a call through a table of functions |
-| `Block::Standard` | `FB_CALL` with a standard type id (ADR-0003) | A call to a runtime function, or its expansion | Its expansion, compiled like a user block |
 | `RoundTime` | The `uptime_us` of `run_round` | A value the host passes in | A global the runtime writes before each round |
 
 ## 8. Existing Structures
@@ -1852,10 +1861,10 @@ crate manifest. REQ-LOW-lowering-082 is enforced by clippy; its conformance
 test asserts that each crate root carries the `deny` attribute, since a test
 cannot observe a lint that is not configured.
 
-**Standard block expansions are tested against the VM.** REQ-LOW-codegen-078
+**Standard function blocks are tested against the VM.** REQ-LOW-codegen-078
 is asserted by running each standard function block both ways, through the
-bytecode VM's intrinsic and through its expansion, over the same inputs and
-round times.
+bytecode VM's intrinsic and through the block lowering generates, over the
+same inputs and round times.
 
 **Backends are tested against each other.** Once a second backend exists, the
 end-to-end helpers run each program on both and compare variable values by
@@ -2159,9 +2168,12 @@ This section constrains the order of work; it is not a work breakdown.
 - **The routes check each other.** While both routes exist, the end-to-end
   helpers compile each program both ways and compare the values of its
   variables by name (REQ-LOW-codegen-131). A disagreement fails the test. The
-  corrections named under [Backend Contract](#7-backend-contract) are the
-  exception: they differ only for a selector or subscript with a side effect,
-  and the programs that show them are listed as known differences.
+  corrections named under [Backend Contract](#7-backend-contract) and the
+  width of the wide counters
+  ([Standard function blocks](#standard-function-blocks)) are the exception:
+  they differ only for a selector or subscript with a side effect, or a counter
+  past the 32-bit range, and the programs that show them are listed as known
+  differences.
 - **Progress cannot fall.** CI reports how many top-level statements of the
   end-to-end programs took the lowered route. The number does not fall.
 - **The IR is readable from its first commit.** `ironplc-ir` writes a lowered
@@ -2169,8 +2181,8 @@ This section constrains the order of work; it is not a work breakdown.
   that text.
 - **Behaviour preserving.** Each stage is behaviour preserving and is
   delivered as a prefactor, apart from the two corrections named under
-  [Backend Contract](#7-backend-contract). The lowered route makes those
-  corrections by construction.
+  [Backend Contract](#7-backend-contract) and the width of the wide counters.
+  The lowered route makes those corrections by construction.
 - **Target neutrality shown early.** A minimal WebAssembly path (one
   `PROGRAM`, integer arithmetic, assignment) is built as soon as a program of
   that shape lowers. Its purpose is to show that nothing in the lowered
@@ -2277,10 +2289,11 @@ ADR of its own:
    the IR. The analyzer's `BuiltinFunction` and the IR's `Intrinsic` are
    separate enums, and lowering maps one to the other
    ([Position in the Pipeline](#1-position-in-the-pipeline)).
-4. Each standard function block has one meaning, given by its expansion in
-   `ironplc-ir`, which a backend may implement natively instead.
-5. `Intrinsic` and `StandardBlock` have one variant per operation and operand
-   type, so a combination the language does not allow cannot be written.
+4. Lowering lowers each standard function block to an ordinary function block
+   of the lowered program, so no backend implements one
+   ([Standard function blocks](#standard-function-blocks)).
+5. `Intrinsic` has one variant per operation and operand type, so a
+   combination the language does not allow cannot be written.
 6. A body works on its instance's fields in place. Each instance has one
    storage for its fields; a reference to a field stays valid for the life of
    the program; and writes made before a trap stay. Safety decides this: a
