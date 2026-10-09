@@ -223,7 +223,7 @@ fn compile_numeric_pair(
     compile_expr(emitter, ctx, left, natural)?;
     compile_expr(emitter, ctx, right, natural)?;
     emit_arithmetic_op(emitter, op, natural);
-    convert(emitter, natural, op_type);
+    convert_to_context(emitter, natural, op_type);
     Ok(())
 }
 
@@ -244,9 +244,34 @@ pub(crate) fn compile_at_operand_type(
     compile: impl FnOnce(&mut Emitter, &mut CompileContext, OpType) -> Result<(), Diagnostic>,
 ) -> Result<(), Diagnostic> {
     let at = numeric_op_type(result).unwrap_or(op_type);
+    compile_at(emitter, ctx, at, op_type, compile)
+}
+
+/// Compiles, by `compile`, an operation at the operation type `at`, then
+/// converts the result to `op_type`, the operation type of the enclosing
+/// expression.
+pub(crate) fn compile_at(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    at: OpType,
+    op_type: OpType,
+    compile: impl FnOnce(&mut Emitter, &mut CompileContext, OpType) -> Result<(), Diagnostic>,
+) -> Result<(), Diagnostic> {
     compile(emitter, ctx, at)?;
-    convert(emitter, at, op_type);
+    convert_to_context(emitter, at, op_type);
     Ok(())
+}
+
+/// Converts the value on the stack, computed at its own operation type
+/// `own`, to `context`, the operation type of the expression that encloses
+/// it.
+///
+/// This is the one place codegen converts a value without the analyzer
+/// having recorded the conversion (ADR-0056). Every other conversion is
+/// one the analyzer recorded in an `ImplicitConversion`, or one the
+/// program wrote, such as `INT_TO_REAL`.
+pub(crate) fn convert_to_context(emitter: &mut Emitter, own: OpType, context: OpType) {
+    convert(emitter, own, context);
 }
 
 /// Emits the conversion of the value on the stack from `from` to `to`, or

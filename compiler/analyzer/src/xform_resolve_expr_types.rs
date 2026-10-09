@@ -20,8 +20,11 @@ use crate::function_environment::FunctionEnvironment;
 use crate::intermediates::arithmetic_overload::{
     resolve_arithmetic_fold, resolve_arithmetic_overload, Overload,
 };
+use crate::intermediates::common_operand::common_operand_of;
 use crate::intermediates::inherited_fields::collect_inherited_fields;
+use crate::intermediates::numeric_operation::literal_default_type;
 use crate::intermediates::operator_function_form::{operator_function_form, FormOf};
+use crate::intrinsic::{InputsOfOneType, Intrinsic, OneTypeResult};
 use crate::semantic_type::SemanticType;
 use crate::symbol_environment::{ScopeTracker, SymbolEnvironment};
 use crate::type_environment::TypeEnvironment;
@@ -118,9 +121,22 @@ fn is_generic_type(tn: &TypeName) -> bool {
     GENERIC_TYPES.iter().any(|name| TypeName::from(name) == *tn)
 }
 
+/// The inputs of `f` when every argument is a positional input, as the
+/// named-argument pass leaves a call it accepted.
+fn positional_inputs(f: &Function) -> Option<Vec<&Expr>> {
+    f.param_assignment
+        .iter()
+        .map(|p| match p {
+            ParamAssignmentKind::PositionalInput(input) => Some(&input.expr),
+            ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
+        })
+        .collect()
+}
+
 /// The type of an operation on two operands that keeps their type: the
-/// concrete operand's when the other is an untyped literal (`d AND 16#FF` on
-/// a `DWORD` is a `DWORD`), else the left operand's, else the right's.
+/// concrete operand's when the other is an untyped literal (an untyped
+/// literal and a `DWORD` give a `DWORD`), else the left operand's, else the
+/// right's.
 fn prefer_concrete(left: &Option<ExprType>, right: &Option<ExprType>) -> Option<ExprType> {
     match (left, right) {
         (Some(ExprType::Literal(_)), Some(concrete @ ExprType::Concrete(_))) => {
@@ -203,14 +219,19 @@ impl ExprTypeResolver<'_> {
             }
             ExprKind::UnaryOp(op) => op.term.expr_type.clone(),
             ExprKind::Compare(compare) => match compare.op {
-                // Bitwise/logical operators preserve operand type. When one
-                // operand is an untyped literal and the other is concrete
-                // (e.g. a DWORD variable), use the concrete type.
-                CompareOp::And
-                | CompareOp::Or
-                | CompareOp::Xor
-                | CompareOp::AndThen
-                | CompareOp::OrElse => {
+                // AND, OR and XOR have the type both operands widen to, as
+                // their function forms do: `w OR lw` on a `WORD` and an
+                // `LWORD` is an `LWORD`, and `d AND 16#FF` on a `DWORD` is a
+                // `DWORD`.
+                CompareOp::And | CompareOp::Or | CompareOp::Xor => self.inputs_of_one_type_result(
+                    &[&compare.left, &compare.right],
+                    InputsOfOneType {
+                        first: 0,
+                        result: OneTypeResult::Common,
+                    },
+                ),
+                // Only `BOOL`s.
+                CompareOp::AndThen | CompareOp::OrElse => {
                     prefer_concrete(&compare.left.expr_type, &compare.right.expr_type)
                 }
                 CompareOp::Eq
@@ -228,6 +249,24 @@ impl ExprTypeResolver<'_> {
                 let return_type = sig.return_type.as_ref()?.to_type_name();
                 if !is_generic_type(&return_type) {
                     return self.expr_type_named(return_type);
+                }
+                match &sig.intrinsic {
+                    // An integer of whichever type its context stores it
+                    // at, which the literal pass gives it (ADR-0028).
+                    Some(intrinsic) if intrinsic.result_is_integer_of_context() => {
+                        return Some(ExprType::Literal(GenericTypeName::AnyInt));
+                    }
+                    Some(Intrinsic::IntToBcd) => return self.bcd_result(f),
+                    _ => {}
+                }
+                if let Some(shape) = sig
+                    .intrinsic
+                    .as_ref()
+                    .and_then(Intrinsic::inputs_of_one_type)
+                {
+                    if let Some(inputs) = positional_inputs(f) {
+                        return self.inputs_of_one_type_result(&inputs, shape);
+                    }
                 }
                 // Generic return type: infer concrete type from the first argument
                 // whose parameter declaration type matches the generic return type.
@@ -441,6 +480,64 @@ impl ExprTypeResolver<'_> {
             Ok(Overload::Numeric { result } | Overload::Typed { result, .. }) => Some(result),
             Ok(Overload::Unchecked { .. }) | Err(_) => None,
         }
+    }
+
+    /// The type of a call to `INT_TO_BCD`: the bit string as wide as its
+    /// input, which it encodes digit by digit. `INT_TO_BCD(i)` on an `INT` is
+    /// a `WORD`, and an untyped literal input is a `DINT` (ADR-0028), so
+    /// `INT_TO_BCD(42)` is a `DWORD`.
+    fn bcd_result(&self, f: &Function) -> Option<ExprType> {
+        let input = *positional_inputs(f)?.first()?;
+        let name = match &input.expr_type {
+            Some(ExprType::Literal(generic)) => literal_default_type(generic)?.into(),
+            _ => self.operand_name(input)?,
+        };
+        let bit_string = match ElementaryTypeName::try_from(&name.name).ok()? {
+            ElementaryTypeName::SINT | ElementaryTypeName::USINT => ElementaryTypeName::BYTE,
+            ElementaryTypeName::INT | ElementaryTypeName::UINT => ElementaryTypeName::WORD,
+            ElementaryTypeName::DINT | ElementaryTypeName::UDINT => ElementaryTypeName::DWORD,
+            ElementaryTypeName::LINT | ElementaryTypeName::ULINT => ElementaryTypeName::LWORD,
+            _ => return None,
+        };
+        self.expr_type_named(bit_string.into())
+    }
+
+    /// The type of a call to a function of several inputs of one type, whose
+    /// inputs are `inputs`: the type every input of that type widens to, or
+    /// for `EXPT` its first input's (see [`Intrinsic::inputs_of_one_type`]).
+    /// `MAX(i, l)` on an `INT` and an `LINT` is an `LINT`.
+    ///
+    /// When no input's type accepts every other one -- a `DINT` and a `UDINT`
+    /// -- the call has the type of its first concrete input, else of its
+    /// first, as a comparison of such a pair compares at its concrete left
+    /// operand's (#1931).
+    fn inputs_of_one_type_result(
+        &self,
+        inputs: &[&Expr],
+        shape: InputsOfOneType,
+    ) -> Option<ExprType> {
+        let inputs = inputs.get(shape.first..)?;
+        let index = match shape.result {
+            OneTypeResult::First => 0,
+            OneTypeResult::Common => {
+                let names: Vec<Option<TypeName>> = inputs
+                    .iter()
+                    .map(|input| self.operand_name(input))
+                    .collect();
+                let names: Vec<Option<&TypeName>> = names.iter().map(Option::as_ref).collect();
+                common_operand_of(&names, &self.options)
+                    .or_else(|| {
+                        inputs.iter().position(|input| {
+                            matches!(
+                                input.expr_type,
+                                Some(ExprType::Concrete(_) | ExprType::Inferred(_))
+                            )
+                        })
+                    })
+                    .unwrap_or(0)
+            }
+        };
+        inputs.get(index)?.expr_type.clone()
     }
 
     /// The id of the type the variable `name` names from the current scope

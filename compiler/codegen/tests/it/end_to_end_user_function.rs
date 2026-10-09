@@ -189,6 +189,29 @@ e2e_i64!(
     &[("a", 4_000_000_000), ("b", -5)],
 );
 
+// A parameter of an alias or a subrange is passed at the type the function
+// reads it as: the type the alias names, or the subrange's base type. Passed
+// as a DINT, the 2.5 would arrive as the bits of the integer 2.
+e2e_f64!(
+    #[spec_test(REQ_IC_codegen_006)]
+    end_to_end_when_parameter_of_alias_of_lreal_then_passed_whole,
+    "TYPE Precise : LREAL; END_TYPE
+     FUNCTION pass : LREAL VAR_INPUT x : Precise; END_VAR pass := x; END_FUNCTION
+     PROGRAM main VAR p : Precise := 2.5; a : LREAL; END_VAR a := pass(p); END_PROGRAM",
+    &[("a", 2.5)],
+);
+
+e2e_i64!(
+    #[spec_test(REQ_IC_codegen_006)]
+    end_to_end_when_parameter_of_alias_or_subrange_of_lint_then_passed_whole,
+    "TYPE Big : LINT; Wide : LINT (0..10000000000); END_TYPE
+     FUNCTION pass : LINT VAR_INPUT x : Big; END_VAR pass := x; END_FUNCTION
+     FUNCTION within : LINT VAR_INPUT x : Wide; END_VAR within := x; END_FUNCTION
+     PROGRAM main VAR b : Big := 5000000000; w : Wide := 5000000000; a : LINT; c : LINT; END_VAR
+     a := pass(b); c := within(w); END_PROGRAM",
+    &[("a", 5_000_000_000), ("c", 5_000_000_000)],
+);
+
 e2e_f64!(
     end_to_end_when_real_argument_to_lreal_parameter_then_widened,
     "FUNCTION widen : LREAL VAR_INPUT x : LREAL; END_VAR widen := x; END_FUNCTION

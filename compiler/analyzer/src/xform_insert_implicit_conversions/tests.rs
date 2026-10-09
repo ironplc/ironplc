@@ -30,7 +30,7 @@ impl ComparisonOperands<'_> {
 
 /// An operand as the type it is operated at: `DINT->LINT` for a `DINT`
 /// converted to `LINT`, `LINT` for an operand operated on as it is.
-fn describe(types: &TypeEnvironment, expr: &Expr) -> String {
+pub(super) fn describe(types: &TypeEnvironment, expr: &Expr) -> String {
     let name = |expr: &Expr| {
         expr.expr_type
             .as_ref()
@@ -154,9 +154,13 @@ impl Visitor<Infallible> for AssignedValues<'_> {
 /// Analyzes `source`, which must be free of diagnostics, and returns the
 /// values of its assignments.
 fn assigned_values(source: &str) -> Vec<String> {
-    let options = CompilerOptions::default();
-    let library = ironplc_parser::parse_program(source, &FileId::default(), &options).unwrap();
-    let (library, context) = analyze(&[&library], &options).unwrap();
+    assigned_values_with(source, &CompilerOptions::default())
+}
+
+/// [`assigned_values`] under `options`.
+pub(super) fn assigned_values_with(source: &str, options: &CompilerOptions) -> Vec<String> {
+    let library = ironplc_parser::parse_program(source, &FileId::default(), options).unwrap();
+    let (library, context) = analyze(&[&library], options).unwrap();
     assert!(
         !context.has_diagnostics(),
         "unexpected diagnostics: {:?}",
@@ -459,12 +463,6 @@ fn apply_when_operation_on_one_value_assigned_to_wider_target_then_result_conver
     assert_eq!(assigned_values(&source), vec![expected]);
 }
 
-#[test]
-fn apply_when_selection_function_assigned_to_wider_target_then_unchanged() {
-    let source = arithmetic_program("LINT", "d : DINT; e : DINT;", "MAX(d, e)");
-    assert_eq!(assigned_values(&source), vec!["DINT"]);
-}
-
 #[spec_test(REQ_IC_analyzer_034)]
 #[test]
 fn apply_when_array_element_and_structure_field_targets_then_converted_to_their_types() {
@@ -585,11 +583,23 @@ fn apply_when_integer_literal_argument_to_real_parameter_then_takes_parameter_ty
 
 #[spec_test(REQ_IC_analyzer_043)]
 #[test]
-fn apply_when_parameter_type_not_elementary_then_passed_as_dint() {
-    let source = "TYPE Big : LINT; END_TYPE
+fn apply_when_argument_to_parameter_of_alias_then_not_converted() {
+    let source = "TYPE Big : LINT; Precise : LREAL; END_TYPE
         FUNCTION f : DINT VAR_INPUT x : Big; END_VAR f := 0; END_FUNCTION
-        PROGRAM main VAR r : DINT; b : Big; END_VAR r := f(b); END_PROGRAM";
-    assert_eq!(call_arguments(source, "f"), vec!["LINT->DINT"]);
+        FUNCTION g : DINT VAR_INPUT x : Precise; END_VAR g := 0; END_FUNCTION
+        PROGRAM main VAR r : DINT; b : Big; p : Precise; END_VAR
+        r := f(b); r := g(p); END_PROGRAM";
+    assert_eq!(call_arguments(source, "f"), vec!["LINT"]);
+    assert_eq!(call_arguments(source, "g"), vec!["LREAL"]);
+}
+
+#[spec_test(REQ_IC_analyzer_043)]
+#[test]
+fn apply_when_argument_to_parameter_of_subrange_then_not_converted() {
+    let source = "TYPE Small : LINT (0..100); END_TYPE
+        FUNCTION f : DINT VAR_INPUT x : Small; END_VAR f := 0; END_FUNCTION
+        PROGRAM main VAR r : DINT; s : Small; END_VAR r := f(s); END_PROGRAM";
+    assert_eq!(call_arguments(source, "f"), vec!["SMALL"]);
 }
 
 #[spec_test(REQ_IC_analyzer_044)]
@@ -616,7 +626,7 @@ fn literal_types(source: &str) -> Vec<String> {
 }
 
 /// [`literal_types`] under `options`.
-fn literal_types_with(source: &str, options: &CompilerOptions) -> Vec<String> {
+pub(super) fn literal_types_with(source: &str, options: &CompilerOptions) -> Vec<String> {
     struct Literals<'a> {
         types: &'a TypeEnvironment,
         literals: Vec<String>,
@@ -675,23 +685,27 @@ fn apply_when_for_loop_then_bounds_and_step_take_control_type() {
 
 #[spec_test(REQ_IC_analyzer_054)]
 #[test]
-fn apply_when_function_block_input_then_takes_field_type_or_default() {
-    let source = "FUNCTION_BLOCK Acc VAR_INPUT n : LINT; END_VAR END_FUNCTION_BLOCK
+fn apply_when_function_block_input_then_takes_declared_type_of_its_field() {
+    let source = "TYPE R : LINT (0..5000000000); END_TYPE
+        FUNCTION_BLOCK Acc VAR_INPUT n : LINT; r : R; END_VAR END_FUNCTION_BLOCK
         PROGRAM main VAR a : Acc; c : CTU; END_VAR
-        a(n := 1); c(CU := TRUE, PV := 5); END_PROGRAM";
-    assert_eq!(literal_types(source), vec!["LINT", "BOOL", "DINT"]);
+        a(n := 1, r := 4000000000); a(2, 3); c(CU := TRUE, PV := 5); END_PROGRAM";
+    assert_eq!(
+        literal_types(source),
+        vec!["LINT", "LINT", "LINT", "LINT", "BOOL", "INT"]
+    );
 }
 
 #[spec_test(REQ_IC_analyzer_055)]
 #[test]
-fn apply_when_dereferenced_target_then_literal_takes_default_type() {
+fn apply_when_dereferenced_target_then_literal_takes_referenced_type() {
     let source = "PROGRAM main VAR l : LINT; r : REF_TO LINT; END_VAR
         r := REF(l); r^ := 5; END_PROGRAM";
     let options = CompilerOptions {
         allow_ref_to: true,
         ..CompilerOptions::default()
     };
-    assert_eq!(literal_types_with(source, &options), vec!["DINT"]);
+    assert_eq!(literal_types_with(source, &options), vec!["LINT"]);
 }
 
 #[spec_test(REQ_IC_analyzer_056)]
@@ -704,9 +718,10 @@ fn apply_when_subrange_target_then_literal_takes_base_type() {
 
 #[spec_test(REQ_IC_analyzer_057)]
 #[test]
-fn apply_when_literal_input_of_standard_function_then_takes_context_type() {
+fn apply_when_literal_input_of_function_of_inputs_of_one_type_then_takes_its_type() {
     let source = arithmetic_program("LINT", "d : DINT;", "MAX(d, 5)");
-    assert_eq!(literal_types(&source), vec!["LINT"]);
+    assert_eq!(literal_types(&source), vec!["DINT"]);
+    assert_eq!(assigned_values(&source), vec!["DINT->LINT"]);
 }
 
 #[spec_test(REQ_IC_analyzer_058)]
@@ -765,16 +780,19 @@ fn apply_when_comparison_of_two_literals_then_both_take_left_default_type() {
 
 #[spec_test(REQ_IC_analyzer_063)]
 #[test]
-fn apply_when_method_argument_then_takes_parameter_type() {
-    let source = "FUNCTION_BLOCK Acc
+fn apply_when_method_argument_then_takes_declared_type_of_its_parameter() {
+    let source = "TYPE R : LINT (0..5000000000); END_TYPE
+        FUNCTION_BLOCK Acc
         METHOD add : LINT VAR_INPUT n : LINT; END_VAR add := n; END_METHOD
+        METHOD addr : LINT VAR_INPUT n : R; END_VAR addr := n; END_METHOD
         END_FUNCTION_BLOCK
-        PROGRAM main VAR a : Acc; r : LINT; END_VAR r := a.add(1); END_PROGRAM";
+        PROGRAM main VAR a : Acc; r : LINT; END_VAR
+        r := a.add(1); r := a.addr(4000000000); END_PROGRAM";
     let options = CompilerOptions {
         allow_fb_inheritance: true,
         ..CompilerOptions::default()
     };
-    assert_eq!(literal_types_with(source, &options), vec!["LINT"]);
+    assert_eq!(literal_types_with(source, &options), vec!["LINT", "LINT"]);
 }
 
 #[spec_test(REQ_IC_analyzer_064)]
@@ -858,3 +876,8 @@ fn apply_when_untyped_literal_typed_then_type_recorded_as_inferred() {
     let source = "PROGRAM main VAR l : LINT; END_VAR l := 1; l := LINT#1; END_PROGRAM";
     assert_eq!(literal_type_origins(source), vec!["inferred", "stated"]);
 }
+
+mod bitwise;
+mod call_result;
+mod inputs_of_one_type;
+mod integer_result;

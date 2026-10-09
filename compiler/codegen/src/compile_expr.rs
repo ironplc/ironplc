@@ -10,8 +10,7 @@ use ironplc_dsl::common::{BitStringLiteral, Boolean, ConstantKind, SignedInteger
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
-    CompareExpr, CompareOp, Expr, ExprKind, ExprType, Operator, SymbolicVariableKind, UnaryOp,
-    Variable,
+    CompareExpr, CompareOp, Expr, ExprKind, Operator, SymbolicVariableKind, UnaryOp, Variable,
 };
 use paste::paste;
 
@@ -48,23 +47,6 @@ pub(crate) fn op_type_from_expr(ctx: &CompileContext, expr: &Expr) -> Option<OpT
     Some((info.op_width, info.signedness))
 }
 
-/// Returns the operation type only when the expression has a type, stated
-/// or inferred, not an untyped literal's generic category.
-///
-/// Generic types like `ANY_INT` map to a signed default (`DINT`) which is
-/// wrong when the other operand is unsigned (e.g. `DWORD`). Returning
-/// `None` for generic types lets callers prefer a concrete type from
-/// another operand.
-pub(crate) fn concrete_op_type_from_expr(ctx: &CompileContext, expr: &Expr) -> Option<OpType> {
-    if !matches!(
-        expr.expr_type,
-        Some(ExprType::Concrete(_) | ExprType::Inferred(_))
-    ) {
-        return None;
-    }
-    op_type_from_expr(ctx, expr)
-}
-
 /// Returns `true` if the expression's value is a BOOL.
 pub(crate) fn expr_is_bool(ctx: &CompileContext, expr: &Expr) -> bool {
     matches!(expr_representation(ctx, expr), Some(SemanticType::Bool))
@@ -98,36 +80,24 @@ pub(crate) fn unresolved_expr_type(expr: &Expr) -> Diagnostic {
     Diagnostic::not_implemented(Label::span(expr.span(), "Expression has no resolved type"))
 }
 
-/// Returns the operation type for compiling a condition expression.
+/// Compiles the condition of an `IF`, `ELSIF`, `WHILE` or `REPEAT`, leaving
+/// its value on the stack.
 ///
-/// For comparison operators (`>`, `<`, `=`, etc.), returns the type of the
-/// left operand, which the analyzer made the comparison's operand type
-/// (ADR-0056). For boolean combinations (AND,
-/// OR, XOR), recurses into the first operand. For other expressions (bare
-/// boolean variables, parenthesized expressions), returns the expression's
-/// own resolved type.
-pub(crate) fn condition_op_type(ctx: &CompileContext, expr: &Expr) -> Result<OpType, Diagnostic> {
-    match &expr.kind {
-        ExprKind::Compare(compare) => match compare.op {
-            CompareOp::And
-            | CompareOp::Or
-            | CompareOp::Xor
-            | CompareOp::AndThen
-            | CompareOp::OrElse => condition_op_type(ctx, &compare.left),
-            _ => {
-                // String comparisons take a dedicated path in compile_expr
-                // that emits an i32 boolean; the operand op_type is unused.
-                if expr_is_string(ctx, &compare.left) {
-                    return Ok(DEFAULT_OP_TYPE);
-                }
-                op_type(ctx, &compare.left)
-            }
-        },
-        ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Not => condition_op_type(ctx, &unary.term),
-        ExprKind::Expression(inner) => condition_op_type(ctx, inner),
-        _ => op_type(ctx, expr),
-    }
+/// A condition compiles at its own type, the `BOOL` the analyzer gave it, as
+/// any other expression does. A comparison in it compiles at the type of its
+/// operands, which it reads from the operands themselves (ADR-0056), so the
+/// condition has no operand type to pass down: passing one let `NOT` of a
+/// comparison of `DWORD`s negate the bits of the `BOOL` rather than the
+/// `BOOL`.
+pub(crate) fn compile_condition(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    condition: &Expr,
+) -> Result<(), Diagnostic> {
+    let own = op_type(ctx, condition)?;
+    compile_expr(emitter, ctx, condition, own)
 }
+
 /// Compiles an expression, leaving the result on the stack.
 ///
 /// The `op_type` determines which width (i32/i64) and signedness to use
@@ -158,7 +128,7 @@ pub(crate) fn compile_expr(
             match crate::compile_arith::numeric_op_type(expr_operand_name(ctx, expr).as_ref()) {
                 Some(own) if own.0 != op_type.0 => {
                     compile_variable_read(emitter, ctx, variable, own)?;
-                    crate::compile_arith::convert(emitter, own, op_type);
+                    crate::compile_arith::convert_to_context(emitter, own, op_type);
                     Ok(())
                 }
                 _ => compile_variable_read(emitter, ctx, variable, op_type),
@@ -197,7 +167,7 @@ pub(crate) fn compile_expr(
             Ok(())
         }
         ExprKind::Expression(inner) => compile_expr(emitter, ctx, inner, op_type),
-        ExprKind::Compare(compare) => compile_compare(emitter, ctx, compare, op_type),
+        ExprKind::Compare(compare) => compile_compare(emitter, ctx, expr, compare, op_type),
         ExprKind::EnumeratedValue(enum_val) => {
             // REQ-EN-codegen-030: Push the enum value's ordinal as an i32
             // constant, looked up in the type the analyzer gave the value.
@@ -207,10 +177,7 @@ pub(crate) fn compile_expr(
             emitter.emit_load_const_i32(pool_index);
             Ok(())
         }
-        ExprKind::Function(func) => {
-            let result = expr_operand_name(ctx, expr);
-            compile_function_call(emitter, ctx, func, result.as_ref(), op_type)
-        }
+        ExprKind::Function(func) => compile_function_call(emitter, ctx, expr, func, op_type),
         ExprKind::MethodCall(call) => compile_method_call_expression(emitter, ctx, call),
         ExprKind::Ref(variable) => {
             // REF(param) of a VAR_IN_OUT parameter is the reference its slot
@@ -240,7 +207,7 @@ pub(crate) fn compile_expr(
             let to = self::op_type(ctx, expr)?;
             compile_expr(emitter, ctx, inner, from)?;
             crate::compile_arith::convert(emitter, from, to);
-            crate::compile_arith::convert(emitter, to, op_type);
+            crate::compile_arith::convert_to_context(emitter, to, op_type);
             Ok(())
         }
         ExprKind::Null(_) => {
@@ -252,15 +219,17 @@ pub(crate) fn compile_expr(
     }
 }
 
-/// Compiles a comparison, logical, or bitwise binary expression, leaving the
-/// result on the stack.
+/// Compiles `expr`, the comparison, logical, or bitwise binary expression
+/// `compare`, leaving the result on the stack.
 ///
-/// `op_type` is the type context the enclosing expression supplies; it is only
-/// a fallback, because a comparison's own result is BOOL while its operands may
-/// be any type.
+/// `op_type` is the type context the enclosing expression supplies. A
+/// comparison's own result is BOOL while its operands may be any type, so it
+/// uses `op_type` only as a fallback; `AND`, `OR` and `XOR` convert their
+/// result to it.
 fn compile_compare(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
+    expr: &Expr,
     compare: &CompareExpr,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
@@ -283,17 +252,15 @@ fn compile_compare(
     }
 
     // AND, OR and XOR are boolean on BOOL operands and bitwise on a bit
-    // string. Their result has the operand type, derived from a concrete
-    // (non-generic) resolved type, preferring the left operand: when one
-    // side is a literal (generic type like ANY_INT) and the other is a typed
-    // variable (e.g. DWORD), the concrete type gives the right width.
-    let operand_op_type = concrete_op_type_from_expr(ctx, &compare.left)
-        .or_else(|| concrete_op_type_from_expr(ctx, &compare.right))
-        .or_else(|| op_type_from_expr(ctx, &compare.left))
-        .unwrap_or(op_type);
-    compile_expr(emitter, ctx, &compare.left, operand_op_type)?;
-    compile_expr(emitter, ctx, &compare.right, operand_op_type)?;
-    emit_compare_op(emitter, &compare.op, operand_op_type);
+    // string. They compute at their own type, the type both operands widen
+    // to, to which the analyzer converted an operand of another width
+    // (ADR-0056), and their result is converted to the enclosing operation
+    // type as an arithmetic result is.
+    let at = self::op_type(ctx, expr)?;
+    compile_expr(emitter, ctx, &compare.left, at)?;
+    compile_expr(emitter, ctx, &compare.right, at)?;
+    emit_compare_op(emitter, &compare.op, at);
+    crate::compile_arith::convert_to_context(emitter, at, op_type);
     Ok(())
 }
 

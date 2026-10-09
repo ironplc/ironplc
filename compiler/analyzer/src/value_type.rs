@@ -55,8 +55,9 @@ pub(crate) struct Mismatch {
 /// - an untyped literal is its generic category (`ANY_INT`);
 /// - an elementary type, or an alias of one, is the elementary type's name;
 /// - a string is `STRING` or `WSTRING`, sized or not;
-/// - a reference is known by the type it references, as a `REF_TO`
-///   parameter records its type;
+/// - a reference is known by the type it references, behind `REF_TO`
+///   ([`reference_name`]): `REF_TO INT`, so that it is neither a value of
+///   that type nor a reference to another;
 /// - a subrange is its own name, or its base type's when it has none;
 /// - any other type is its own name, and has none when it is anonymous.
 ///
@@ -86,7 +87,9 @@ fn operand_name_of(types: &TypeEnvironment, id: TypeId) -> Option<TypeName> {
         } else {
             "string"
         })),
-        SemanticType::Reference { .. } => operand_name_of(types, types.referenced_type(id)?),
+        SemanticType::Reference { .. } => {
+            operand_name_of(types, types.referenced_type(id)?).map(|name| reference_name(&name))
+        }
         // A named subrange is known by its name; one spelled out in place
         // (`x : INT(-100..100)`) by its base type's.
         SemanticType::Subrange { base_type, .. } => types
@@ -99,6 +102,36 @@ fn operand_name_of(types: &TypeEnvironment, id: TypeId) -> Option<TypeName> {
         | SemanticType::FunctionBlock { .. }
         | SemanticType::Function { .. } => types.name_of(id).cloned(),
     }
+}
+
+/// The name a reference to a value known as `referenced` is known by:
+/// `REF_TO INT` for a reference to an `INT`.
+///
+/// A reference used to be known by the referenced type's own name, so a
+/// `REF_TO REAL` was taken for a `REAL` by everything that asks for an
+/// operand's name: the code generator read the variable index it holds as
+/// float bits, and a `REF_TO INT` assigned to an `INT` passed as an `INT`.
+pub(crate) fn reference_name(referenced: &TypeName) -> TypeName {
+    TypeName::from(format!("REF_TO {referenced}").as_str())
+}
+
+/// The name the value of a parameter declared with the type `declared` is
+/// known by, as [`operand_type_name`] knows an argument's: an alias by the
+/// type it names, and a `REF_TO` parameter, whose `declared` is the type it
+/// references, by [`reference_name`].
+pub(crate) fn parameter_type_name(
+    types: &TypeEnvironment,
+    declared: &TypeName,
+    is_reference: bool,
+) -> TypeName {
+    if !is_reference {
+        return declared.clone();
+    }
+    let referenced = types
+        .id_of(declared)
+        .and_then(|id| operand_name_of(types, id))
+        .unwrap_or_else(|| declared.clone());
+    reference_name(&referenced)
 }
 
 /// Classifies the value of `expr`, or `None` when the analyzer resolved no
@@ -188,10 +221,14 @@ pub(crate) fn check(
 /// same shape is, as a whole-aggregate assignment is (P2037): an inline
 /// `ARRAY[1..2] OF DINT` passes for a parameter declared with a named array
 /// type of that shape. An enumeration or a function block instance is only
-/// ever its own type. No composite is accepted for a generic category.
+/// ever its own type. Every composite is accepted for `ANY`, the category
+/// of every data type (`SIZEOF(a)`), and none for a narrower generic
+/// category such as `ANY_NUM`.
 fn composite_accepted(types: &TypeEnvironment, expected: &TypeName, id: TypeId) -> bool {
-    if GenericTypeName::try_from(&expected.name).is_ok() {
-        return false;
+    match GenericTypeName::try_from(&expected.name) {
+        Ok(GenericTypeName::Any) => return true,
+        Ok(_) => return false,
+        Err(_) => {}
     }
     let (Some(expected), Some(actual)) = (types.get(expected), types.get_by_id(id)) else {
         return false;
