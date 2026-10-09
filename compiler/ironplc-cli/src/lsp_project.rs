@@ -44,7 +44,8 @@ impl UriKey {
     ///
     /// Returns `None` for `FileId::BuiltIn`, for `FileId::File` with an
     /// empty path (which the analyzer uses as a placeholder for
-    /// whole-project diagnostics like "no source files"), and when the
+    /// whole-project diagnostics like "no source files"), for a node the
+    /// compiler synthesized, and when the
     /// path cannot be turned into a valid URI. Paths from
     /// `FileId::from_path` use OS-native separators; this normalises
     /// them and validates the result through `Uri::from_str` before
@@ -53,7 +54,7 @@ impl UriKey {
         match file_id {
             FileId::File(path) => {
                 let s = path.as_ref();
-                if s.is_empty() {
+                if s.is_empty() || file_id.is_synthesized() {
                     return None;
                 }
                 let normalised = s.replace('\\', "/");

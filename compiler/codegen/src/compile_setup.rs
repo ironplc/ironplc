@@ -233,7 +233,7 @@ pub(crate) fn assign_variables(
                 InitialValueAssignmentKind::Subrange(ref spec) => {
                     // Subrange variable (e.g., x : MY_RANGE or x : INT (1..100))
                     // Resolve VarTypeInfo from the subrange's base type.
-                    let subrange_type = match spec {
+                    let subrange_type = match &spec.spec {
                         SpecificationKind::Named(type_name) => {
                             types.resolve_subrange_type(type_name)
                         }
@@ -252,7 +252,7 @@ pub(crate) fn assign_variables(
                     let tag = subrange_type
                         .map(|st| subrange_iec_type_tag(types, st))
                         .unwrap_or(iec_type_tag::OTHER);
-                    (tag, subrange_debug_type_name(spec))
+                    (tag, subrange_debug_type_name(&spec.spec))
                 }
                 InitialValueAssignmentKind::LateResolvedType(_) => {
                     // LateResolvedType should have been resolved before codegen.
@@ -373,13 +373,13 @@ pub(crate) fn debug_type_for_decl(decl: &VarDecl, types: &TypeEnvironment) -> (u
             crate::compile_enum::debug_name(types, decl.type_id),
         ),
         InitialValueAssignmentKind::Subrange(spec) => {
-            let tag = match spec {
+            let tag = match &spec.spec {
                 SpecificationKind::Named(type_name) => resolve_iec_type_tag(types, type_name),
                 SpecificationKind::Inline(inline) => {
                     resolve_iec_type_tag(types, &inline.type_name.clone().into())
                 }
             };
-            (tag, subrange_debug_type_name(spec))
+            (tag, subrange_debug_type_name(&spec.spec))
         }
         _ => (iec_type_tag::OTHER, String::new()),
     }
@@ -619,7 +619,7 @@ pub(crate) fn emit_initial_values(
                         .unwrap_or(DEFAULT_OP_TYPE);
 
                     // Extract min_value from the type environment or inline spec
-                    let min_value: Option<i128> = match spec {
+                    let min_value: Option<i128> = match &spec.spec {
                         SpecificationKind::Named(type_name) => {
                             _types.get(type_name).and_then(|attrs| {
                                 if let SemanticType::Subrange { min_value, .. } =

@@ -1728,6 +1728,13 @@ pub enum ArrayInitialElementKind {
     Constant(ConstantKind),
     EnumValue(EnumeratedValue),
     Repeated(Repeated),
+    /// The fields of an element that is a structure or function block
+    /// instance. Only the analyzer makes one, when it completes an
+    /// initializer (see `xform_resolve_initial_values`).
+    Structure(Vec<StructureElementInit>),
+    /// An element that is not a literal: `NULL`, or a reference to a
+    /// variable. Only the analyzer makes one.
+    Expression(Expr),
 }
 
 impl ArrayInitialElementKind {
@@ -2075,6 +2082,12 @@ pub struct VarDecl {
     /// derived from `initializer`.
     #[recurse(ignore)]
     pub type_id: Option<TypeId>,
+    /// Whether the variable starts again at its initial value every time
+    /// its POU is called -- a function's or method's `VAR`, `VAR_TEMP` and
+    /// result -- rather than once, when the program starts. Set by the
+    /// analyzer and left out of `PartialEq` like `type_id`.
+    #[recurse(ignore)]
+    pub reset_on_call: bool,
 }
 
 impl PartialEq for VarDecl {
@@ -2099,6 +2112,7 @@ impl VarDecl {
             )),
             block: next_block_id(),
             type_id: None,
+            reset_on_call: false,
         }
     }
 
@@ -2115,6 +2129,7 @@ impl VarDecl {
             }),
             block: next_block_id(),
             type_id: None,
+            reset_on_call: false,
         }
     }
 
@@ -2133,6 +2148,7 @@ impl VarDecl {
             ),
             block: next_block_id(),
             type_id: None,
+            reset_on_call: false,
         }
     }
 
@@ -2151,6 +2167,7 @@ impl VarDecl {
             }),
             block: next_block_id(),
             type_id: None,
+            reset_on_call: false,
         }
     }
 
@@ -2173,6 +2190,7 @@ impl VarDecl {
             ),
             block: next_block_id(),
             type_id: None,
+            reset_on_call: false,
         }
     }
 
@@ -2191,6 +2209,7 @@ impl VarDecl {
             ),
             block: next_block_id(),
             type_id: None,
+            reset_on_call: false,
         }
     }
 
@@ -2208,6 +2227,7 @@ impl VarDecl {
             ),
             block: next_block_id(),
             type_id: None,
+            reset_on_call: false,
         }
     }
 
@@ -2226,6 +2246,7 @@ impl VarDecl {
             ),
             block: next_block_id(),
             type_id: None,
+            reset_on_call: false,
         }
     }
 
@@ -2583,7 +2604,7 @@ pub enum InitialValueAssignmentKind {
     /// `init` sets the instance's own member values -- see
     /// [`FunctionBlockCallInitializer`].
     FunctionBlockCall(FunctionBlockCallInitializer),
-    Subrange(SubrangeSpecificationKind),
+    Subrange(SubrangeInitialValueAssignment),
     Structure(StructureInitializationDeclaration),
     Array(ArrayInitialValueAssignment),
     /// Reference type initializer (REF_TO).
@@ -2657,12 +2678,10 @@ impl InitialValueAssignmentKind {
             InitialValueAssignmentKind::FunctionBlockCall(function_block_call_initializer) => {
                 TypeReference::Named(function_block_call_initializer.type_name.clone())
             }
-            InitialValueAssignmentKind::Subrange(subrange_specification_kind) => {
-                match subrange_specification_kind {
-                    SpecificationKind::Inline(_subrange_specification) => TypeReference::Inline,
-                    SpecificationKind::Named(type_name) => TypeReference::Named(type_name.clone()),
-                }
-            }
+            InitialValueAssignmentKind::Subrange(subrange) => match &subrange.spec {
+                SpecificationKind::Inline(_subrange_specification) => TypeReference::Inline,
+                SpecificationKind::Named(type_name) => TypeReference::Named(type_name.clone()),
+            },
             InitialValueAssignmentKind::Structure(structure_initialization_declaration) => {
                 TypeReference::Named(structure_initialization_declaration.type_name.clone())
             }
@@ -2696,10 +2715,10 @@ impl InitialValueAssignmentKind {
             InitialValueAssignmentKind::Array(arr) => !arr.initial_values.is_empty(),
             InitialValueAssignmentKind::Structure(st) => !st.elements_init.is_empty(),
             InitialValueAssignmentKind::Reference(re) => re.initial_value.is_some(),
+            InitialValueAssignmentKind::Subrange(sr) => sr.initial_value.is_some(),
             InitialValueAssignmentKind::None(_)
             | InitialValueAssignmentKind::FunctionBlock(_)
             | InitialValueAssignmentKind::FunctionBlockCall(_)
-            | InitialValueAssignmentKind::Subrange(_)
             | InitialValueAssignmentKind::LateResolvedType(_)
             | InitialValueAssignmentKind::SimpleExpr(_) => false,
         }
@@ -2911,6 +2930,28 @@ pub struct ArrayInitialValueAssignment {
     pub initial_values: Vec<ArrayInitialElementKind>,
 }
 
+/// A variable or field declared with a subrange type, named or inline
+/// (`x : INT (0..15) := 3`).
+///
+/// See section 2.4.3.2 (`subrange_spec_init`).
+#[derive(Clone, PartialEq, Debug, Recurse)]
+pub struct SubrangeInitialValueAssignment {
+    pub spec: SubrangeSpecificationKind,
+    /// The value written after `:=`, if any. Without one, the variable
+    /// starts at the lower bound of the range.
+    pub initial_value: Option<SignedInteger>,
+}
+
+impl SubrangeInitialValueAssignment {
+    /// A subrange initializer with no initial value.
+    pub fn bare(spec: SubrangeSpecificationKind) -> Self {
+        Self {
+            spec,
+            initial_value: None,
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Debug, Recurse)]
 pub enum VariableSpecificationKind {
     Simple(TypeName),
@@ -3010,6 +3051,33 @@ pub struct FunctionDeclaration {
     pub variables: Vec<VarDecl>,
     pub edge_variables: Vec<EdgeVarDecl>,
     pub body: Vec<StmtKind>,
+    /// The variable that holds the result (see [`ResultVariable`]).
+    #[recurse(ignore)]
+    pub result: ResultVariable,
+}
+
+/// The variable that holds a function's or method's result.
+///
+/// The source declares it only by naming the POU and its return type, so
+/// the parser leaves it empty. The analyzer makes it, with the value it
+/// starts with, so that a back end initializes the result as it does any
+/// other variable. Traversals do not visit it: it is not a declaration the
+/// program wrote. It takes no part in comparing declarations, so
+/// `PartialEq` is always true, as for `VarDecl::type_id`.
+#[derive(Clone, Debug, Default)]
+pub struct ResultVariable(pub Option<Box<VarDecl>>);
+
+impl ResultVariable {
+    /// The result variable, once the analyzer has made it.
+    pub fn variable(&self) -> Option<&VarDecl> {
+        self.0.as_deref()
+    }
+}
+
+impl PartialEq for ResultVariable {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
 }
 
 impl HasVariables for FunctionDeclaration {
@@ -3165,6 +3233,7 @@ mod tests {
             initializer: InitialValueAssignmentKind::None(SourceSpan::default()),
             block,
             type_id: None,
+            reset_on_call: false,
         }
     }
 
