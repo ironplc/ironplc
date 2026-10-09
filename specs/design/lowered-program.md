@@ -1806,8 +1806,8 @@ Two renames remain, each one mechanical prefactor:
   [Position in the Pipeline](#1-position-in-the-pipeline)).
 - ADR-0056 and the doc comment of `xform_insert_implicit_conversions` call
   that transform "a lowering pass". The doc comment is reworded to call it the
-  recording pass, as below, and the ADR that amends ADR-0056 records the new
-  name (see [Relationship to ADR-0056](#relationship-to-adr-0056)).
+  recording pass, as below, and ADR-0058 and a postscript to ADR-0056 record
+  the new name (see [Relationship to ADR-0056](#relationship-to-adr-0056)).
 
 With the word free:
 
@@ -2272,48 +2272,27 @@ backends that lower rather than decide. This design shares all three and builds 
 - ADR-0056 calls the pass "a lowering pass"; it is renamed the recording pass
   (see [Names](#names)).
 
-The ADR that records this design's decisions amends ADR-0056 to say so; it
-does not supersede it.
+[ADR-0058](../adrs/0058-the-analyzer-decides-and-lowering-translates.md)
+records this, and a postscript to ADR-0056 says so; it does not supersede
+ADR-0056.
 
-## Decisions to Record
+## Recorded Decisions
 
-The choice among the alternatives above is a decision, and belongs in ADRs
-that this document then cites. Eight decisions are separable, and each gets an
-ADR of its own:
+The choice among the alternatives above is a decision, and is recorded in
+these ADRs:
 
-1. Code generation consumes a separate, target-neutral lowered program.
-2. The analyzer makes and records every decision whose outcome can make a
-   program invalid, extending ADR-0056. Lowering makes the rest, reports no
-   problem with the program, and is part of `check`.
-3. A backend depends only on `ironplc-ir`, and the analyzer does not depend on
-   the IR. The analyzer's `BuiltinFunction` and the IR's `Intrinsic` are
-   separate enums, and lowering maps one to the other
-   ([Position in the Pipeline](#1-position-in-the-pipeline)).
-4. Lowering lowers each standard function block to an ordinary function block
-   of the lowered program, so no backend implements one
-   ([Standard function blocks](#standard-function-blocks)).
-5. `Intrinsic` has one variant per operation and operand type, so a
-   combination the language does not allow cannot be written.
-6. A body works on its instance's fields in place. Each instance has one
-   storage for its fields; a reference to a field stays valid for the life of
-   the program; and writes made before a trap stay. Safety decides this: a
-   reference must never be able to outlive what it names. The bytecode VM's
-   copy of the fields is removed by a VM change of its own
-   ([issue 2120](https://github.com/ironplc/ironplc/issues/2120)), and until
-   then the refactor keeps the copy unchanged
-   ([Instance fields](#instance-fields)).
-7. A call through an interface is one call in the IR. It lists the methods of
-   every concrete type the interface value can hold, and how it dispatches is
-   each backend's choice
-   ([Calls through an interface](#calls-through-an-interface)).
-8. Every string in the IR has an explicit capacity. The analyzer applies the
-   default capacity, lowering decides the capacity of an intermediate result,
-   and no backend sizes a string from other declarations
-   ([String capacity](#string-capacity)). The bytecode VM sizes its temporary
-   buffers that way only after a container change of its own
-   ([issue 2118](https://github.com/ironplc/ironplc/issues/2118)).
+| ADR | Decision |
+|---|---|
+| [ADR-0057](../adrs/0057-backends-consume-a-target-neutral-lowered-program.md) | Code generation consumes a separate, target-neutral lowered program. |
+| [ADR-0058](../adrs/0058-the-analyzer-decides-and-lowering-translates.md) | The analyzer makes and records every decision whose outcome can make a program invalid, extending ADR-0056. Lowering makes the rest, reports no problem with the program, and is part of `check`. |
+| [ADR-0059](../adrs/0059-backends-depend-only-on-the-ir-crate.md) | A backend depends only on `ironplc-ir`, and the analyzer does not depend on the IR. The analyzer's `BuiltinFunction` and the IR's `Intrinsic` are separate enums, and lowering maps one to the other ([Position in the Pipeline](#1-position-in-the-pipeline)). |
+| [ADR-0060](../adrs/0060-lowering-generates-the-standard-function-blocks.md) | Lowering generates each standard function block as an ordinary function block of the lowered program, so no backend implements one ([Standard function blocks](#standard-function-blocks)). |
+| [ADR-0061](../adrs/0061-one-name-per-built-in-operation-and-operand-type.md) | `Intrinsic` has one variant per operation and operand type. |
+| [ADR-0062](../adrs/0062-a-body-works-on-its-instances-fields-in-place.md) | A body works on its instance's fields in place; the bytecode VM's copy is removed by a change of its own ([Instance fields](#instance-fields)). |
+| [ADR-0063](../adrs/0063-a-call-through-an-interface-lists-its-implementers.md) | A call through an interface lists its implementers, and each backend chooses how to dispatch ([Calls through an interface](#calls-through-an-interface)). |
+| [ADR-0064](../adrs/0064-every-string-has-an-explicit-capacity.md) | Every string in the IR has an explicit capacity ([String capacity](#string-capacity)). |
 
-Two parts of this design are described but not yet decided, so neither gets an
+Two parts of this design are described but not yet decided, so neither has an
 ADR:
 
 - **How sequential function charts and the graphical languages lower**
