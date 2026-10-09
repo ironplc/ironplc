@@ -27,6 +27,8 @@
 mod argument;
 mod arithmetic;
 mod assignment;
+mod declared;
+mod inputs_of_one_type;
 mod literal;
 
 use std::convert::Infallible;
@@ -48,10 +50,10 @@ use crate::semantic_context::SemanticContext;
 use crate::symbol_environment::ScopeTracker;
 
 pub fn apply(lib: Library, context: &SemanticContext, options: &CompilerOptions) -> Library {
-    let methods = literal::method_parameters(&lib, context.types());
+    let declarations = declared::Declarations::collect(&lib, context.types());
     let mut inserter = ImplicitConversions {
         conversions: ConversionTarget::new(context.types()),
-        methods,
+        declarations,
         context,
         scope: ScopeTracker::default(),
         options,
@@ -62,9 +64,9 @@ pub fn apply(lib: Library, context: &SemanticContext, options: &CompilerOptions)
 
 struct ImplicitConversions<'a> {
     conversions: ConversionTarget<'a>,
-    /// The parameters of every method, to type the literals of its
-    /// arguments.
-    methods: literal::MethodParameters,
+    /// The declared types of the fields and method parameters of every
+    /// user-defined function block, and the order of its inputs.
+    declarations: declared::Declarations,
     context: &'a SemanticContext,
     /// Where the traversal is, to look an assignment's target up in the
     /// symbol environment.
@@ -155,6 +157,7 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
     fn fold_stmt_kind(&mut self, node: StmtKind) -> Result<StmtKind, Infallible> {
         let mut node = node.recurse_fold(self)?;
         if let StmtKind::MethodCall(call) = &mut node {
+            self.record_method_arguments(call);
             self.type_method_call_statement_literals(call);
         }
         Ok(node)
@@ -162,12 +165,14 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
 
     fn fold_for(&mut self, node: For) -> Result<For, Infallible> {
         let mut node = node.recurse_fold(self)?;
+        self.record_for_bounds(&mut node);
         self.type_for_literals(&mut node);
         Ok(node)
     }
 
     fn fold_fb_call(&mut self, node: FbCall) -> Result<FbCall, Infallible> {
         let mut node = node.recurse_fold(self)?;
+        self.record_fb_call_inputs(&mut node);
         self.type_fb_call_literals(&mut node);
         Ok(node)
     }
@@ -178,17 +183,22 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
             ExprKind::BinaryOp(binary) => {
                 self.record_binary_operands(binary, node.expr_type.as_ref());
             }
-            ExprKind::Function(_) => self.record_fold_operands(&mut node),
-            // A comparison's operands are recorded by `fold_compare_expr`
-            // and a call's arguments by `fold_function`; nothing else has
-            // operands an operation converts.
-            ExprKind::Compare(_)
-            | ExprKind::UnaryOp(_)
+            ExprKind::Function(_) => {
+                self.record_fold_operands(&mut node);
+                self.record_one_type_inputs(&mut node);
+            }
+            ExprKind::MethodCall(call) => self.record_method_arguments(call),
+            // A comparison's operands are recorded by `fold_compare_expr`;
+            // the operands of `AND`, `OR` and `XOR` here, since they are
+            // converted to the operation's own type.
+            ExprKind::Compare(_) => self.record_bitwise_operands(&mut node),
+            // A function's arguments are recorded by `fold_function`;
+            // nothing else has operands or arguments a context converts.
+            ExprKind::UnaryOp(_)
             | ExprKind::Expression(_)
             | ExprKind::Const(_)
             | ExprKind::EnumeratedValue(_)
             | ExprKind::Variable(_)
-            | ExprKind::MethodCall(_)
             | ExprKind::LateBound(_)
             | ExprKind::Ref(_)
             | ExprKind::Deref(_)
@@ -223,5 +233,7 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
     }
 }
 
+#[cfg(test)]
+mod stored_tests;
 #[cfg(test)]
 mod tests;

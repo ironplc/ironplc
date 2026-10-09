@@ -979,6 +979,7 @@ name = "ironplc-cli-support"
 version = "0.248.0"
 dependencies = [
  "env_logger",
+ "ironplc-vm",
  "log",
  "tempfile",
  "time",
@@ -1037,6 +1038,7 @@ dependencies = [
  "base64",
  "env_logger",
  "ironplc-analyzer",
+ "ironplc-cli-support",
  "ironplc-codegen",
  "ironplc-container",
  "ironplc-dsl",

@@ -26,10 +26,16 @@ impl VariableScope {
     }
 
     /// Checks whether a variable index is within this scope's allowed range.
+    ///
+    /// The instance range is tested by its distance from `instance_offset`
+    /// rather than against `instance_offset + instance_count`: the sum
+    /// overflows `u16` for a range ending at the last index, and both fields
+    /// come from the container. The left conjunct guarantees
+    /// `raw >= instance_offset`, so the subtraction cannot underflow.
     pub fn check_access(&self, index: VarIndex) -> Result<(), Trap> {
         let raw = index.raw();
         if raw < self.shared_globals_size
-            || (raw >= self.instance_offset && raw < self.instance_offset + self.instance_count)
+            || (raw >= self.instance_offset && raw - self.instance_offset < self.instance_count)
         {
             Ok(())
         } else {
@@ -185,6 +191,58 @@ mod tests {
             instance_count: 5,
         };
         assert!(scope.check_access(VarIndex::new(15)).is_err());
+    }
+
+    #[test]
+    fn scope_check_when_instance_range_ends_at_last_index_then_last_index_ok() {
+        let scope = VariableScope {
+            shared_globals_size: 0,
+            instance_offset: 0xFFFF,
+            instance_count: 1,
+        };
+        assert_eq!(scope.check_access(VarIndex::new(0xFFFF)), Ok(()));
+    }
+
+    #[test]
+    fn scope_check_when_empty_instance_range_at_last_index_then_error() {
+        let scope = VariableScope {
+            shared_globals_size: 0,
+            instance_offset: 0xFFFF,
+            instance_count: 0,
+        };
+        assert_eq!(
+            scope.check_access(VarIndex::new(0xFFFF)),
+            Err(Trap::InvalidVariableIndex(VarIndex::new(0xFFFF)))
+        );
+    }
+
+    #[test]
+    fn scope_check_when_index_one_past_instance_range_end_then_error() {
+        let scope = VariableScope {
+            shared_globals_size: 0,
+            instance_offset: 0xFFFE,
+            instance_count: 1,
+        };
+        assert_eq!(scope.check_access(VarIndex::new(0xFFFE)), Ok(()));
+        assert_eq!(
+            scope.check_access(VarIndex::new(0xFFFF)),
+            Err(Trap::InvalidVariableIndex(VarIndex::new(0xFFFF)))
+        );
+    }
+
+    #[test]
+    fn scope_check_when_empty_instance_range_at_zero_then_only_shared_globals_ok() {
+        let scope = VariableScope {
+            shared_globals_size: 2,
+            instance_offset: 0,
+            instance_count: 0,
+        };
+        assert_eq!(scope.check_access(VarIndex::new(0)), Ok(()));
+        assert_eq!(scope.check_access(VarIndex::new(1)), Ok(()));
+        assert_eq!(
+            scope.check_access(VarIndex::new(2)),
+            Err(Trap::InvalidVariableIndex(VarIndex::new(2)))
+        );
     }
 
     #[test]
