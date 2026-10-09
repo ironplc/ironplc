@@ -341,12 +341,16 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
                 if param.is_inout {
                     continue;
                 }
-                if let Err(mismatch) = value_type::check(
+                // A `REF_TO INT` parameter records `INT`, the type it
+                // references; the argument is a reference, known as one.
+                let expected = value_type::parameter_type_name(
                     self.context.types(),
                     &param.param_type,
-                    arg_expr,
-                    self.options,
-                ) {
+                    param.is_reference,
+                );
+                if let Err(mismatch) =
+                    value_type::check(self.context.types(), &expected, arg_expr, self.options)
+                {
                     self.diagnostics.push(
                         Diagnostic::problem(
                             Problem::FunctionCallArgTypeMismatch,
@@ -354,7 +358,7 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
                         )
                         .with_context("function", &node.name.original().to_string())
                         .with_context("parameter", &param.name.original().to_string())
-                        .with_context("expected", &param.param_type.to_string())
+                        .with_context("expected", &expected.to_string())
                         .with_context("actual", &mismatch.actual),
                     );
                 }
@@ -379,6 +383,9 @@ mod inputs_of_one_type_tests;
 
 #[cfg(test)]
 mod label_tests;
+
+#[cfg(test)]
+mod ref_to_argument_tests;
 
 #[cfg(test)]
 mod string_encoding_tests;
