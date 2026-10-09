@@ -1151,7 +1151,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
     // Restore the temp-buffer bump position captured at the last pause. On a
     // fresh run this is 0 (nothing allocated yet).
     temp_alloc.rewind_to(*temp_alloc_next);
-    let mut frame_stack = FrameStack::resume(frames, *frame_count);
+    let mut frame_stack = FrameStack::resume(frames, *frame_count)?;
     if frame_stack.is_empty() {
         // Fresh run: push the entry frame. When resuming a paused instance
         // the frame stack is non-empty and the entry frame (plus any deeper

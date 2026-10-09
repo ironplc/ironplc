@@ -3,7 +3,6 @@ use std::vec;
 use std::vec::Vec;
 
 use crate::code_section::{CodeSection, FuncEntry};
-use crate::const_type::ConstType;
 use crate::constant_pool::{ConstEntry, ConstantPool};
 use crate::container::Container;
 use crate::debug_section::{
@@ -104,28 +103,19 @@ impl ContainerBuilder {
 
     /// Adds an i32 constant to the constant pool.
     pub fn add_i32_constant(mut self, value: i32) -> Self {
-        self.constant_pool.push(ConstEntry::primitive_le(
-            ConstType::I32,
-            &value.to_le_bytes(),
-        ));
+        self.constant_pool.push(ConstEntry::i32(value));
         self
     }
 
     /// Adds an f32 constant to the constant pool.
     pub fn add_f32_constant(mut self, value: f32) -> Self {
-        self.constant_pool.push(ConstEntry::primitive_le(
-            ConstType::F32,
-            &value.to_le_bytes(),
-        ));
+        self.constant_pool.push(ConstEntry::f32(value));
         self
     }
 
     /// Adds an f64 constant to the constant pool.
     pub fn add_f64_constant(mut self, value: f64) -> Self {
-        self.constant_pool.push(ConstEntry::primitive_le(
-            ConstType::F64,
-            &value.to_le_bytes(),
-        ));
+        self.constant_pool.push(ConstEntry::f64(value));
         self
     }
 
@@ -144,10 +134,7 @@ impl ContainerBuilder {
 
     /// Adds an i64 constant to the constant pool.
     pub fn add_i64_constant(mut self, value: i64) -> Self {
-        self.constant_pool.push(ConstEntry::primitive_le(
-            ConstType::I64,
-            &value.to_le_bytes(),
-        ));
+        self.constant_pool.push(ConstEntry::i64(value));
         self
     }
 
