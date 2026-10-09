@@ -1612,6 +1612,7 @@ parser! {
       let (start, qualifiers, name, return_type) = header;
       MethodDeclaration {
         qualifiers,
+        accessor: None,
         name,
         return_type,
         implicit_variables: vec![],

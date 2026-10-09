@@ -1,5 +1,5 @@
 use indexmap::IndexMap;
-use ironplc_dsl::common::{DeclarationQualifier, TypeName, VariableType};
+use ironplc_dsl::common::{Accessor, DeclarationQualifier, TypeName, VariableType};
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::scope::ScopeNode;
@@ -61,7 +61,20 @@ impl ScopeTracker {
             ScopeNode::Function(node) => node.name.clone(),
             ScopeNode::FunctionBlock(node) => node.name.name.clone(),
             ScopeNode::Program(node) => node.name.clone(),
-            ScopeNode::Method(node) => node.name.clone(),
+            // An accessor is named after its property, so GET and SET would
+            // share a scope; the accessor keeps them apart. `.` cannot
+            // appear in an identifier, so this never names a method.
+            ScopeNode::Method(node) => match node.accessor {
+                None => node.name.clone(),
+                Some(accessor) => {
+                    let suffix = match accessor {
+                        Accessor::Get => "GET",
+                        Accessor::Set => "SET",
+                    };
+                    Id::from(&format!("{}.{suffix}", node.name.original()))
+                        .with_position(node.name.span.clone())
+                }
+            },
             ScopeNode::MethodPrototype(node) => node.name.clone(),
             ScopeNode::Interface(node) => node.name.clone(),
         }
@@ -142,6 +155,9 @@ pub enum SymbolKind {
     /// body (`F := ...` inside `FUNCTION F`). A declared variable of the
     /// same name replaces it.
     ResultVariable,
+    /// A `PROPERTY` of a function block, recorded in the block's scope.
+    /// Reading or writing it by name is not implemented yet.
+    Property,
 }
 
 /// Metadata associated with a symbol
@@ -262,10 +278,12 @@ fn is_variable(kind: &SymbolKind) -> bool {
 }
 
 /// The problem a second declaration of a name in one scope is: `P4014` for
-/// a variable repeating a variable, otherwise whatever a repeated global
+/// a variable or property repeating a variable or property, otherwise whatever a repeated global
 /// declaration is.
 fn repeated_symbol(existing: &SymbolKind, repeat: &SymbolKind) -> Option<Problem> {
-    if is_variable(existing) && is_variable(repeat) {
+    // A property shares its block's scope with the block's variables.
+    let is_member = |kind: &SymbolKind| is_variable(kind) || *kind == SymbolKind::Property;
+    if is_member(existing) && is_member(repeat) {
         return Some(Problem::SymbolDeclDuplicated);
     }
     repeated_declaration(existing, repeat)
