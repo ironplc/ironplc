@@ -460,6 +460,10 @@ fn apply_when_partial_access_assignment_then_checked_against_part(
 #[case::move_input("s : SINT;\n", "s := MOVE(300);\n")]
 #[case::abs_input("s : SINT;\n", "s := ABS(300);\n")]
 #[case::mux_input("s : SINT;\n", "s := MUX(0, 300, 1);\n")]
+// A literal input of MAX takes the type its inputs widen to, not its
+// context's, as a comparison operand takes the other operand's.
+#[case::max_input_with_narrower_input("s : SINT;\nx : DINT;\n", "x := MAX(s, 300);\n")]
+#[case::max_input_with_dint_input("d : DINT;\nl : LINT;\n", "l := MAX(d, 5000000000);\n")]
 #[case::comparison_of_literals("b : BOOL;\n", "b := 1 = 5000000000;\n")]
 fn apply_when_literal_outside_recorded_type_then_err(
     #[case] declarations: &str,
@@ -476,6 +480,7 @@ fn apply_when_literal_outside_recorded_type_then_err(
 #[case::for_bound_narrow("s : SINT;\nx : DINT;\n", "FOR s := 0 TO 127 DO x := 1; END_FOR;\n")]
 #[case::shift_count("w : DWORD;\n", "w := SHL(w, 31);\n")]
 #[case::wide_operation("l : LINT;\nd : DINT;\n", "l := l + 5000000000;\n")]
+#[case::max_of_literals_in_wide_context("l : LINT;\n", "l := MAX(1, 5000000000);\n")]
 fn apply_when_literal_inside_recorded_type_then_ok(#[case] declarations: &str, #[case] body: &str) {
     assert_eq!(problems_of(&program_with(declarations, body)), codes(OK));
 }
@@ -512,15 +517,17 @@ fn apply_when_typed_literal_converted_then_checked_against_conversion(
     );
 }
 
-/// `AND`, `OR` and `XOR` operate at the type of their left operand, and a
-/// wider literal on the right is used at that type although the pass
-/// records no conversion of it.
+/// `AND`, `OR` and `XOR` operate at the type every operand widens to
+/// (REQ-IC-analyzer-081), so a literal wider than the other operand is used
+/// at its own type rather than narrowed to the other operand's. Assigning
+/// the wider result to a narrower target is a type mismatch, which
+/// `rule_function_call_type_check` reports (REQ-IC-analyzer-084).
 #[rstest]
-#[case::xor_wider("w : DWORD;\n", "w := w XOR LWORD#16#FFFFFFFFF;\n", OVERFLOW)]
-#[case::and_wider("w : WORD;\n", "w := w AND DWORD#16#1FFFF;\n", OVERFLOW)]
+#[case::xor_wider("w : DWORD;\n", "w := w XOR LWORD#16#FFFFFFFFF;\n", OK)]
+#[case::and_wider("w : WORD;\n", "w := w AND DWORD#16#1FFFF;\n", OK)]
 #[case::or_fits("w : WORD;\n", "w := w OR DWORD#16#FFFF;\n", OK)]
 #[case::left_wider("l : LWORD;\nw : DWORD;\n", "l := LWORD#16#FFFFFFFFF OR w;\n", OK)]
-fn apply_when_bitwise_operand_literal_then_checked_against_operator_type(
+fn apply_when_bitwise_operand_literal_wider_than_other_operand_then_at_its_own_type(
     #[case] declarations: &str,
     #[case] body: &str,
     #[case] expected: &[Problem],

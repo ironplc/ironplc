@@ -115,6 +115,31 @@ impl RuleFunctionCallTypeCheck<'_> {
         self.context.types().name_of(type_id).cloned()
     }
 
+    /// The type name an assignment to `id` stores its value at: the type `id`
+    /// was declared with, or for a dereference (`deref`) the elementary type
+    /// the reference `id` refers to.
+    fn assigned_type_name(&self, id: &Id, deref: bool) -> Option<TypeName> {
+        if deref {
+            self.referenced_type_name(id)
+        } else {
+            self.declared_type_name(id)
+        }
+    }
+
+    /// The elementary type the reference variable `id` refers to, or `None`
+    /// when `id` is not a reference or refers to a type that is not
+    /// elementary.
+    fn referenced_type_name(&self, id: &Id) -> Option<TypeName> {
+        let type_id = self
+            .context
+            .symbols()
+            .find(id, &self.scope.current())?
+            .type_id?;
+        let types = self.context.types();
+        let referenced = types.get_by_id(type_id)?.representation.referenced_type()?;
+        types.elementary_type_name_for(referenced)
+    }
+
     /// Checks whether a function call expression assigned to a variable has a
     /// matching return type. Emits P4027 if there is a mismatch.
     ///
@@ -125,14 +150,14 @@ impl RuleFunctionCallTypeCheck<'_> {
     /// the call is skipped below. A call naming a function the environment
     /// does not hold resolves to `None` the same way, so the signature
     /// itself is never needed here.
-    fn check_return_type(&mut self, target: &Variable, value: &Expr) {
+    fn check_return_type(&mut self, target: &Variable, deref: bool, value: &Expr) {
         let ExprKind::Function(ref func_call) = value.kind else {
             return;
         };
         let Variable::Symbolic(SymbolicVariableKind::Named(ref nv)) = target else {
             return;
         };
-        let Some(target_type) = self.declared_type_name(&nv.name) else {
+        let Some(target_type) = self.assigned_type_name(&nv.name, deref) else {
             return;
         };
         if self.generic_return_bound_to_mismatched_argument(func_call) {
@@ -193,10 +218,11 @@ impl RuleFunctionCallTypeCheck<'_> {
     /// the right-hand side is a user-function call. Here we handle every other
     /// right-hand side (arithmetic, variables, literals, stdlib calls) by
     /// comparing the target's declared type against the resolved expression type.
-    /// Only simple named targets that resolve to an elementary type are checked;
-    /// user-defined targets (enums, structures, arrays, function blocks) are
-    /// skipped to avoid false positives.
-    fn check_assignment_type(&mut self, target: &Variable, value: &Expr) {
+    /// Only simple named targets that resolve to an elementary type are checked,
+    /// and the dereference of one (`deref`), which stores into the variable
+    /// the reference refers to; user-defined targets (enums, structures,
+    /// arrays, function blocks) are skipped to avoid false positives.
+    fn check_assignment_type(&mut self, target: &Variable, deref: bool, value: &Expr) {
         // Function-call right-hand sides are validated by `check_return_type`.
         if matches!(value.kind, ExprKind::Function(_)) {
             return;
@@ -215,7 +241,7 @@ impl RuleFunctionCallTypeCheck<'_> {
         ) {
             return;
         }
-        let Some(declared) = self.declared_type_name(&nv.name) else {
+        let Some(declared) = self.assigned_type_name(&nv.name, deref) else {
             return;
         };
         // Resolve aliases/subranges to the underlying elementary type so the
@@ -269,8 +295,8 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
     }
 
     fn visit_assignment(&mut self, node: &Assignment) -> Result<Self::Value, Infallible> {
-        self.check_return_type(&node.target, &node.value);
-        self.check_assignment_type(&node.target, &node.value);
+        self.check_return_type(&node.target, node.deref, &node.value);
+        self.check_assignment_type(&node.target, node.deref, &node.value);
         node.recurse_visit(self)
     }
 
@@ -315,12 +341,16 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
                 if param.is_inout {
                     continue;
                 }
-                if let Err(mismatch) = value_type::check(
+                // A `REF_TO INT` parameter records `INT`, the type it
+                // references; the argument is a reference, known as one.
+                let expected = value_type::parameter_type_name(
                     self.context.types(),
                     &param.param_type,
-                    arg_expr,
-                    self.options,
-                ) {
+                    param.is_reference,
+                );
+                if let Err(mismatch) =
+                    value_type::check(self.context.types(), &expected, arg_expr, self.options)
+                {
                     self.diagnostics.push(
                         Diagnostic::problem(
                             Problem::FunctionCallArgTypeMismatch,
@@ -328,7 +358,7 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
                         )
                         .with_context("function", &node.name.original().to_string())
                         .with_context("parameter", &param.name.original().to_string())
-                        .with_context("expected", &param.param_type.to_string())
+                        .with_context("expected", &expected.to_string())
                         .with_context("actual", &mismatch.actual),
                     );
                 }
@@ -340,10 +370,22 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
 }
 
 #[cfg(test)]
+mod bitwise_tests;
+
+#[cfg(test)]
 mod composite_tests;
 
 #[cfg(test)]
+mod deref_tests;
+
+#[cfg(test)]
+mod inputs_of_one_type_tests;
+
+#[cfg(test)]
 mod label_tests;
+
+#[cfg(test)]
+mod ref_to_argument_tests;
 
 #[cfg(test)]
 mod string_encoding_tests;

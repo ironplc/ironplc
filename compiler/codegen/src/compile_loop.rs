@@ -9,7 +9,7 @@ use ironplc_dsl::textual::{Expr, StmtKind};
 
 use super::compile::{CompileContext, OpType, OpWidth, Signedness, VarTypeInfo};
 use super::compile_expr::{
-    compile_expr, condition_op_type, constant_i64, emit_add, emit_classified_cmp_br, emit_ge,
+    compile_condition, compile_expr, constant_i64, emit_add, emit_classified_cmp_br, emit_ge,
     emit_le, emit_load_var, emit_store_var, emit_truncation, try_classify_cmp, ClassifiedCmp,
 };
 use super::compile_stmt::compile_stmts;
@@ -104,8 +104,7 @@ pub(crate) fn compile_while(
     let end_label = emitter.create_label();
 
     emitter.bind_label(loop_label);
-    let cond_type = condition_op_type(ctx, &while_stmt.condition)?;
-    compile_expr(emitter, ctx, &while_stmt.condition, cond_type)?;
+    compile_condition(emitter, ctx, &while_stmt.condition)?;
     emitter.emit_jmp_if_not(end_label);
     let next = compile_loop_body(emitter, ctx, &while_stmt.body, end_label)?;
     bind_next(emitter, next);
@@ -143,8 +142,7 @@ pub(crate) fn compile_repeat(
     if let Some(classified) = classified_until {
         emit_classified_cmp_br(emitter, classified, false, loop_label)?;
     } else {
-        let cond_type = condition_op_type(ctx, &repeat_stmt.until)?;
-        compile_expr(emitter, ctx, &repeat_stmt.until, cond_type)?;
+        compile_condition(emitter, ctx, &repeat_stmt.until)?;
         emitter.emit_jmp_if_not(loop_label);
     }
     emitter.bind_label(end_label);
