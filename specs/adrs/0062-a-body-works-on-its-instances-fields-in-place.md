@@ -32,7 +32,6 @@ What does an instance's field mean while its body runs?
 * **One meaning on every target.**
 * **What other targets do naturally:** WebAssembly and LLVM address an
   instance's fields where they are.
-* **The move to the lowered program changes no behaviour.**
 
 ## Considered Options
 
@@ -59,8 +58,7 @@ field cannot outlive what it names on any target.
 The bytecode VM does not do this yet. Removing its copy is a change to the VM
 with a design of its own
 ([issue 2120](https://github.com/ironplc/ironplc/issues/2120)). Until then the
-bytecode backend keeps the copy, so the move to the lowered program changes no
-behaviour. No stop-gap is planned.
+bytecode backend keeps the copy. No stop-gap is planned.
 
 ### Consequences
 
@@ -89,5 +87,4 @@ behaviour. No stop-gap is planned.
 For example, rejecting a reference to a field that may outlive its body.
 
 * Good, because the unsafe case would be closed sooner.
-* Bad, because the stop-gap is work that the VM change then deletes, and it
-  changes behaviour during a move meant to change none.
+* Bad, because the stop-gap is work that the VM change then deletes.

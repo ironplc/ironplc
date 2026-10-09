@@ -28,7 +28,6 @@ Who decides each capacity?
   program.
 * **A value is cut only** where it goes into something smaller than itself.
 * **The default can become a compiler option** that a dialect sets.
-* **The move to the lowered program changes no behaviour.**
 
 ## Considered Options
 

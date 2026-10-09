@@ -65,8 +65,6 @@ the standard blocks natively.
   behave differently. That is a correction.
 * Bad, because the bytecode VM runs the standard blocks as bytecode rather than
   native code, which is slower by an amount not yet measured.
-* Bad, because the generated blocks must do what the VM's native code does
-  today, and tests must show that they do.
 
 ## Pros and Cons of the Options
 
