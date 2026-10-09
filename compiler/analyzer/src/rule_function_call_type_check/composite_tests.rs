@@ -88,6 +88,10 @@ fn apply_when_composite_assigned_to_elementary_then_p4035(#[case] body: &str) {
 #[case::subrange_for_numeric_parameter("l := ABS(q);")]
 #[case::subrange_for_its_type("n := TAKES_BIG(q);")]
 #[case::subrange_widened("l := q;")]
+#[case::sizeof_of_inline_array("n := SIZEOF(a);")]
+#[case::sizeof_of_named_array("n := SIZEOF(na);")]
+#[case::sizeof_of_structure("n := SIZEOF(r);")]
+#[case::sizeof_of_inline_enumeration("n := SIZEOF(e);")]
 fn apply_when_value_of_accepted_type_then_ok(#[case] body: &str) {
     assert_eq!(problem_codes(body), Vec::<String>::new());
 }

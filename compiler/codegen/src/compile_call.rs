@@ -495,7 +495,8 @@ fn compile_sizeof(
             args[0].kind
         {
             if let Some(array_info) = ctx.array_vars.get(&named.name) {
-                let elem_bytes = array_info.element_var_type_info.storage_bits as u32 / 8;
+                // Ceiling division, as for a scalar: a BOOL element occupies 1 byte.
+                let elem_bytes = (array_info.element_var_type_info.storage_bits as u32).div_ceil(8);
                 array_info.total_elements * elem_bytes
             } else {
                 sizeof_from_expr_type(ctx, args[0])?
