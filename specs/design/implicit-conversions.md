@@ -160,6 +160,10 @@ A value assigned to a function block field is converted to the field's declared 
 
 **REQ-IC-analyzer-039** A value assigned through a dereference is converted to the type the reference refers to: in `r^ := d` on a `REF_TO LINT` and a `DINT` the `DINT` is converted to `LINT`.
 
+A time or date is converted as a number is, between the short and the long type of its family. The pass used to record only the conversions of numbers and bit strings, so the code generator read a short time or date at its long target's 64 bits, which sign-extended the unsigned seconds of a date after 2038.
+
+**REQ-IC-analyzer-099** A time or date stored in a target of the other width of its family is converted to the target's type, as an assigned value, a function block input, a method argument and a `FOR` bound are: in `ld := d`, `lt := t`, `ltod := tod` and `ldt := dt` the short value is converted to the long type, and `b(x := d)` on an `LDATE` input converts the `DATE`.
+
 A reference refers only to a variable of the type it names (P2032), so the conversion stores a value of that variable's own type. A value the referenced type cannot hold without narrowing is rejected, as it is when assigned to the variable itself.
 
 **REQ-IC-analyzer-080** An assignment through a dereference is checked as an assignment to the variable the reference refers to: `p^ := d` on a `REF_TO SINT` and a `DINT` reports P4035, and `p^ := f(d)` with `f` returning a `DINT` reports P4027, as `s := d` and `s := f(d)` on a `SINT` do.
@@ -317,6 +321,8 @@ is: a result of a type narrower than 32 bits is not truncated to its width, so
 ([#2116](https://github.com/ironplc/ironplc/issues/2116)).
 
 **REQ-IC-codegen-005** A value stored in a function block field, a method parameter or through a dereference keeps the value of its declared type: `b(x := 4000000000)` on a field of a subrange of `LINT` stores 4000000000, and `q^ := 1.5` on a `REF_TO REAL` stores 1.5.
+
+**REQ-IC-codegen-014** A time or date stored in a variable or input of its long type keeps its value: `ld := d` with `d = D#2100-01-01` stores `LDATE#2100-01-01` where it stored a date thousands of millennia away, and so do `ldt := dt` after 2038, `keep(x := d)` on an `LDATE` input, `lt := t` with `t = T#-5s` and `ltod := tod`.
 
 **REQ-IC-codegen-009** The result of a call to a user-defined function or a method, and a dereference, stored in a wider target keep their value: `l := big(u)` with `big` returning the `UDINT` 4000000000 stores 4000000000, as do `l := k.Big()` and `l := p^`, and `lr := half(3.0)` with `half` returning a `REAL` stores 1.5.
 

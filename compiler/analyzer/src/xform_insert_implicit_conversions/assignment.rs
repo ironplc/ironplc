@@ -31,7 +31,10 @@ use ironplc_dsl::type_id::TypeId;
 
 use super::arithmetic::arithmetic_operator;
 use super::ImplicitConversions;
-use crate::intermediates::numeric_operation::{numeric_operation_width, OperationWidth};
+use crate::intermediates::conversion_target::concrete;
+use crate::intermediates::numeric_operation::{
+    numeric_operation_width, operation_width_of, OperationWidth,
+};
 use crate::intrinsic::{is_bitwise, Intrinsic};
 use crate::semantic_type::{ByteSized, SemanticType};
 use crate::variable_type;
@@ -66,13 +69,50 @@ impl ImplicitConversions<'_> {
     /// stores it at, where the code generator converts it: `value` converts
     /// to its context and its operation width differs from the target's.
     pub(super) fn record_conversion_to(&self, value: &mut Expr, target: TypeId) {
-        let Some(width) = self.width_of_type(target) else {
+        let Some(width) = self.stored_width(target) else {
             return;
         };
-        if self.converts_to_its_context(value)
-            && self.width_of(value).is_some_and(|own| own != width)
-        {
+        let own = concrete(value).and_then(|own| self.stored_width(own));
+        if self.converts_to_its_context(value) && own.is_some_and(|own| own != width) {
             self.convert(value, target);
+        }
+    }
+
+    /// The operation width of a value of type `id` when it is a number, a bit
+    /// string or a time or date, the types a value is converted between when
+    /// stored, and of a subrange's base type.
+    ///
+    /// A time or date is converted as a number is: `ld := d` on an `LDATE`
+    /// and a `DATE` widens the unsigned seconds of the `DATE`. The code
+    /// generator used to read the `DATE` at the target's 64 bits, which
+    /// sign-extended a date after 2038.
+    fn stored_width(&self, id: TypeId) -> Option<OperationWidth> {
+        let representation = self
+            .context
+            .types()
+            .get_by_id(id)?
+            .representation
+            .operated_as();
+        match representation {
+            SemanticType::Int { .. }
+            | SemanticType::UInt { .. }
+            | SemanticType::Real { .. }
+            | SemanticType::Bytes { .. }
+            | SemanticType::Time { .. }
+            | SemanticType::Date { .. }
+            | SemanticType::TimeOfDay { .. }
+            | SemanticType::DateAndTime { .. } => operation_width_of(representation),
+            // A `BOOL` or an enumeration is one width, a reference is stored as
+            // the reference it is, and anything else is not a single value.
+            SemanticType::Bool
+            | SemanticType::Enumeration { .. }
+            | SemanticType::Reference { .. }
+            | SemanticType::Subrange { .. }
+            | SemanticType::String { .. }
+            | SemanticType::Structure { .. }
+            | SemanticType::Array { .. }
+            | SemanticType::FunctionBlock { .. }
+            | SemanticType::Function { .. } => None,
         }
     }
 
@@ -107,8 +147,8 @@ impl ImplicitConversions<'_> {
             | SymbolicVariableKind::SelfRef(_) => self.type_of(kind)?,
         };
         let types = self.context.types();
-        let name = types.elementary_type_name_for(representation.operated_as())?;
-        Some((types.id_of(&name)?, numeric_operation_width(&name)?))
+        let id = types.id_of(&types.elementary_type_name_for(representation.operated_as())?)?;
+        Some((id, self.stored_width(id)?))
     }
 
     pub(super) fn type_of(&self, kind: &SymbolicVariableKind) -> Option<SemanticType> {
