@@ -44,26 +44,20 @@ use std::collections::{HashMap, HashSet};
 
 use ironplc_container::debug_section::{FuncNameEntry, StringLayoutEntry, VarNameEntry};
 use ironplc_container::{
-    CharWidth, Container, ContainerBuilder, FbTypeId, FunctionId, TaskType, UserFbDescriptor,
-    VarIndex,
+    CharWidth, Container, ContainerBuilder, FbTypeId, FunctionId, UserFbDescriptor, VarIndex,
 };
 // The string data-region layout lives in `ironplc-container` so the analyzer
 // and codegen size strings the same way. Re-exported here because the rest of
 // codegen reaches for these through `compile`.
 pub(crate) use ironplc_container::{string_region_size, DEFAULT_STRING_MAX_LENGTH};
 use ironplc_dsl::common::{
-    FunctionBlockDeclaration, FunctionDeclaration, Library, LibraryElementKind, ProgramDeclaration,
+    FunctionBlockDeclaration, FunctionDeclaration, LibraryElementKind, ProgramDeclaration,
     StringType, VarDecl, VariableType,
 };
-use ironplc_dsl::configuration::{
-    ConfigurationDeclaration, ProgramConfiguration, TaskConfiguration,
-};
-use ironplc_dsl::core::{FileId, Id, Located};
+use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_parser::options::{CompilerOptions, StringToNumFailure, StringToNumNonNumeric};
-use ironplc_problems::Problem;
 
-use ironplc_analyzer::system_globals::SYSTEM_UPTIME_GLOBALS;
 use ironplc_analyzer::{
     CleanAnalysis, FunctionEnvironment, Intrinsic, SemanticType, TypeEnvironment,
 };
@@ -201,9 +195,6 @@ pub(crate) fn emit_string_literal_load(
 /// it has exactly one definition.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CodegenOptions {
-    /// When `true`, inject `__SYSTEM_UP_TIME` (TIME) and `__SYSTEM_UP_LTIME`
-    /// (LTIME) as implicit globals at the start of the variable table.
-    pub system_uptime_global: bool,
     /// The behavior policies `STRING_TO_<numeric>` calls are compiled under
     /// (ADR-0049). They select the builtin func_id the call emits.
     pub string_to_num: StringToNumPolicies,
@@ -219,7 +210,6 @@ pub struct StringToNumPolicies {
 impl From<&CompilerOptions> for CodegenOptions {
     fn from(options: &CompilerOptions) -> Self {
         CodegenOptions {
-            system_uptime_global: options.allow_system_uptime_global,
             string_to_num: StringToNumPolicies {
                 non_numeric: options.policy_string_to_num_non_numeric,
                 failure: options.policy_string_to_num_failure,
@@ -230,15 +220,17 @@ impl From<&CompilerOptions> for CodegenOptions {
 
 /// Compiles a library into a bytecode container.
 ///
-/// Finds the first PROGRAM declaration in the library and compiles it
-/// into a container suitable for execution by the VM. Only user-defined
-/// functions reachable from the program root are included; unreachable
-/// functions are automatically excluded.
+/// Compiles the program instance the analyzer's execution model runs, under
+/// the task it binds it to, with the globals the model lists, into a
+/// container suitable for execution by the VM. Only user-defined functions
+/// reachable from the program root are included; unreachable functions are
+/// automatically excluded.
 ///
 /// Takes a [`CleanAnalysis`], which can only be made from a semantic context
 /// that holds no diagnostics.
 ///
-/// Returns an error if no program is found or if the program contains
+/// Returns an error if the model is not executable, asks for more than the VM
+/// supports (see [`crate::execution`]), or if the program contains
 /// unsupported constructs.
 pub fn compile(
     analysis: CleanAnalysis<'_>,
@@ -247,32 +239,7 @@ pub fn compile(
 ) -> Result<Container, Diagnostic> {
     let library = analysis.library();
     let context = analysis.context();
-    let program = find_program(library)?;
-    let config = find_configuration(library);
-    if let Some(config) = config {
-        check_single_program_instance(config)?;
-    }
-    let user_globals: &[VarDecl] = config.map(|c| c.global_var.as_slice()).unwrap_or(&[]);
-
-    // Prepend system uptime globals when the feature is enabled.
-    let mut synthetic_globals: Vec<VarDecl> = Vec::new();
-    if options.system_uptime_global {
-        for global in &SYSTEM_UPTIME_GLOBALS {
-            synthetic_globals.push(
-                VarDecl::simple(global.name, global.type_name).with_type(VariableType::Global),
-            );
-        }
-    }
-
-    // Collect top-level VAR_GLOBAL declarations (outside CONFIGURATION blocks).
-    for element in &library.elements {
-        if let LibraryElementKind::GlobalVarDeclarations(decls) = element {
-            synthetic_globals.extend_from_slice(decls);
-        }
-    }
-
-    synthetic_globals.extend_from_slice(user_globals);
-    let global_vars = &synthetic_globals;
+    let runnable = crate::execution::runnable(&analysis)?;
 
     let reachable = context.reachable();
 
@@ -306,10 +273,10 @@ pub fn compile(
 
     let mut container = compile_program_with_functions(
         ProgramInputs {
-            program,
+            program: runnable.program,
             func_decls: &func_decls,
             fb_decls: &fb_decls,
-            global_vars,
+            global_vars: &runnable.globals,
         },
         context.functions(),
         context.types(),
@@ -318,255 +285,13 @@ pub fn compile(
         sources,
     )?;
 
-    if options.system_uptime_global {
+    if runnable.has_system_uptime {
         container.header.flags |= ironplc_container::FLAG_HAS_SYSTEM_UPTIME;
     }
 
-    if let Some(config) = config {
-        apply_task_configuration(&mut container, config, &program.name)?;
-    }
+    crate::execution::apply_task_schedule(&mut container, runnable.schedule);
 
     Ok(container)
-}
-
-/// Applies the `TASK` that the configuration binds to the compiled program.
-///
-/// `ContainerBuilder` synthesizes a freewheeling task and a single program
-/// instance. The VM is single-instance in v1; [`find_program`] and
-/// [`check_single_program_instance`] reject a second `PROGRAM` or instance
-/// before this runs, so the table keeps that one task and one instance —
-/// only the task entry's scheduling fields change. A program with no
-/// `CONFIGURATION`, or one that no resource instantiates, or an instance
-/// declared without a `WITH` clause, keeps the synthesized freewheeling task.
-fn apply_task_configuration(
-    container: &mut Container,
-    config: &ConfigurationDeclaration,
-    program_name: &Id,
-) -> Result<(), Diagnostic> {
-    let Some(task) = find_bound_task(config, program_name) else {
-        return Ok(());
-    };
-
-    // The VM stubs event-triggered tasks out of `collect_ready_tasks`, so
-    // emitting one would produce a program whose task body never runs. Reject
-    // it rather than compile something that silently does nothing.
-    if task.single.is_some() {
-        return Err(Diagnostic::problem(
-            Problem::TaskSingleNotSupported,
-            Label::span(task.name.span(), "Task declares SINGLE"),
-        ));
-    }
-
-    let priority = u16::try_from(task.priority).map_err(|_| {
-        Diagnostic::problem(
-            Problem::TaskParameterOutOfRange,
-            Label::span(
-                task.name.span(),
-                format!(
-                    "Task declares PRIORITY := {}, which exceeds the maximum of {}",
-                    task.priority,
-                    u16::MAX
-                ),
-            ),
-        )
-    })?;
-
-    let interval_us = task_interval_us(task)?;
-
-    if let Some(entry) = container.task_table.tasks.first_mut() {
-        entry.priority = priority;
-        entry.interval_us = interval_us;
-        // A zero interval means "as fast as possible", which is what a
-        // freewheeling task already does. A cyclic task with `interval_us` of
-        // zero would instead be permanently overdue, inflating `overrun_count`
-        // on every round.
-        entry.task_type = if interval_us > 0 {
-            TaskType::Cyclic
-        } else {
-            TaskType::Freewheeling
-        };
-    }
-
-    Ok(())
-}
-
-/// Converts a task's `INTERVAL` to microseconds, or 0 when it declares none.
-fn task_interval_us(task: &TaskConfiguration) -> Result<u64, Diagnostic> {
-    let Some(interval) = &task.interval else {
-        return Ok(0);
-    };
-
-    let micros = interval.interval.whole_microseconds();
-    u64::try_from(micros).map_err(|_| {
-        Diagnostic::problem(
-            Problem::TaskParameterOutOfRange,
-            Label::span(
-                interval.span.clone(),
-                format!("Task declares an INTERVAL of {micros} microseconds"),
-            ),
-        )
-    })
-}
-
-/// Finds the `TASK` that `config` binds to the program type `program_name`.
-///
-/// `PROGRAM <instance> WITH <task> : <type>` names the program *type*, so the
-/// match is on `type_name`. Returns `None` when no resource instantiates the
-/// program or the instance has no `WITH` clause. A `WITH` naming a task that
-/// does not exist cannot reach here — the analyzer rejects it first (see
-/// `rule_program_task_definition_exists`).
-fn find_bound_task<'a>(
-    config: &'a ConfigurationDeclaration,
-    program_name: &Id,
-) -> Option<&'a TaskConfiguration> {
-    config.resource_decl.iter().find_map(|resource| {
-        let program = resource
-            .programs
-            .iter()
-            .find(|program| &program.type_name == program_name)?;
-        let task_name = program.task_name.as_ref()?;
-        resource.tasks.iter().find(|task| &task.name == task_name)
-    })
-}
-
-/// Finds the one PROGRAM declaration that the container runs.
-///
-/// The VM runs a single program instance, so a library with two or more
-/// `PROGRAM` declarations cannot be compiled faithfully. Keeping one of them
-/// silently is worse than refusing: which one survived depended on the
-/// analyzer's toposort order rather than on the source (issue #1588). Every
-/// declaration beyond the first is therefore reported as not yet implemented.
-fn find_program(library: &Library) -> Result<&ProgramDeclaration, Diagnostic> {
-    let mut programs: Vec<&ProgramDeclaration> = library
-        .elements
-        .iter()
-        .filter_map(|element| match element {
-            LibraryElementKind::ProgramDeclaration(program) => Some(program),
-            _ => None,
-        })
-        .collect();
-    sort_by_source_position(&mut programs, |program| &program.name);
-
-    match programs.as_slice() {
-        [] => Err(Diagnostic::problem(
-            Problem::NoProgramDeclaration,
-            Label::file(
-                FileId::default(),
-                "Source does not contain a PROGRAM declaration",
-            ),
-        )),
-        [program] => Ok(program),
-        _ => Err(multiple_programs_not_implemented(
-            "PROGRAM declaration",
-            &programs
-                .iter()
-                .map(|program| &program.name)
-                .collect::<Vec<_>>(),
-        )),
-    }
-}
-
-/// Rejects a configuration that instantiates more than one program.
-///
-/// `PROGRAM <instance> WITH <task> : <type>` lines are counted across every
-/// `RESOURCE` in the configuration. Two instances of the same program type
-/// are as unsupported as two different types: the VM has one variable table
-/// and one program instance, so the second instance would be dropped.
-fn check_single_program_instance(config: &ConfigurationDeclaration) -> Result<(), Diagnostic> {
-    let mut instances: Vec<&ProgramConfiguration> = config
-        .resource_decl
-        .iter()
-        .flat_map(|resource| resource.programs.iter())
-        .collect();
-    if instances.len() < 2 {
-        return Ok(());
-    }
-    sort_by_source_position(&mut instances, |instance| &instance.name);
-
-    Err(multiple_programs_not_implemented(
-        "program instance",
-        &instances
-            .iter()
-            .map(|instance| &instance.name)
-            .collect::<Vec<_>>(),
-    ))
-}
-
-/// Orders `items` by where their identifier appears in the source.
-///
-/// The analyzer's toposort reorders library elements, and for POUs with no
-/// dependency edges between them the order comes out reversed. Sorting by
-/// file and offset lets a diagnostic call a program "the second" in the sense
-/// the reader expects: the second one in the file.
-fn sort_by_source_position<T>(items: &mut [&T], id: impl Fn(&T) -> &Id) {
-    items.sort_by_key(|item| {
-        let span = &id(item).span;
-        (span.file_id.to_string(), span.start)
-    });
-}
-
-/// Builds the P9999 diagnostic for a second (or later) program.
-///
-/// `names` are in source order. The primary label sits on the second name,
-/// the first one the compiler cannot honour. The first name and any later
-/// ones get secondary labels so the diagnostic points at every program it is
-/// about, not only the one that tipped the count.
-fn multiple_programs_not_implemented(what: &str, names: &[&Id]) -> Diagnostic {
-    let Some(second) = names.get(1) else {
-        // Callers only get here with two or more names, so the first name,
-        // when there is one, is the best location for the violation.
-        return Diagnostic::internal_error_at(Label::span(
-            names.first().map(|name| name.span()).unwrap_or_default(),
-            format!("Fewer than two {what}s reported as too many"),
-        ));
-    };
-    let mut diagnostic = Diagnostic::not_implemented(Label::span(
-        second.span(),
-        format!(
-            "{} {what}; the compiler currently runs only one PROGRAM",
-            ordinal(2)
-        ),
-    ))
-    .with_help(
-        "Compile a single PROGRAM for now. Support for more than one PROGRAM is tracked in \
-         https://github.com/ironplc/ironplc/issues/1613",
-    );
-    for (index, name) in names.iter().enumerate() {
-        if index == 1 {
-            continue;
-        }
-        diagnostic = diagnostic.with_secondary(Label::span(
-            name.span(),
-            format!("{} {what}", ordinal(index + 1)),
-        ));
-    }
-    diagnostic
-}
-
-/// Formats a 1-based position as an English ordinal: `1st`, `2nd`, `3rd`, `11th`.
-fn ordinal(position: usize) -> String {
-    let suffix = if (11..=13).contains(&(position % 100)) {
-        "th"
-    } else {
-        match position % 10 {
-            1 => "st",
-            2 => "nd",
-            3 => "rd",
-            _ => "th",
-        }
-    };
-    format!("{position}{suffix}")
-}
-
-/// Finds the first CONFIGURATION declaration in the library, if any.
-fn find_configuration(library: &Library) -> Option<&ConfigurationDeclaration> {
-    library.elements.iter().find_map(|e| {
-        if let LibraryElementKind::ConfigurationDeclaration(config) = e {
-            Some(config)
-        } else {
-            None
-        }
-    })
 }
 
 /// Idempotently registers a POU's source file with the debug section's
@@ -1635,6 +1360,7 @@ impl CompileContext {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ironplc_dsl::common::Library;
     use ironplc_dsl::core::FileId;
     use ironplc_parser::options::CompilerOptions;
     use ironplc_parser::parse_program;
@@ -1719,169 +1445,6 @@ END_PROGRAM
             .get_function_bytecode(ironplc_container::FunctionId::new(1))
             .unwrap();
         assert_eq!(scan_bytecode, &[0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x8C]);
-    }
-
-    #[test]
-    fn compile_when_no_program_then_p4020_error() {
-        let source = "
-FUNCTION_BLOCK MyBlock
-  VAR
-    x : INT;
-  END_VAR
-END_FUNCTION_BLOCK
-";
-        let (library, context) = parse(source);
-        let result = compile(
-            CleanAnalysis::new(&library, &context).unwrap(),
-            &CodegenOptions::default(),
-            &crate::EmptyLookup,
-        );
-
-        assert!(result.is_err());
-        let diagnostic = result.unwrap_err();
-        assert_eq!(diagnostic.code, Problem::NoProgramDeclaration.code());
-    }
-
-    /// Builds a program whose CONFIGURATION declares one task with the given
-    /// initialization parameters and binds the program to it.
-    fn program_with_task(task_init: &str) -> String {
-        format!(
-            "
-PROGRAM main
-  VAR
-    x : INT;
-  END_VAR
-  x := 1;
-END_PROGRAM
-
-CONFIGURATION config
-  RESOURCE resource1 ON PLC
-    TASK task1({task_init});
-    PROGRAM instance1 WITH task1 : main;
-  END_RESOURCE
-END_CONFIGURATION
-"
-        )
-    }
-
-    fn compile_source(source: &str) -> Result<Container, Diagnostic> {
-        let (library, context) = parse(source);
-        compile(
-            CleanAnalysis::new(&library, &context).unwrap(),
-            &CodegenOptions::default(),
-            &crate::EmptyLookup,
-        )
-    }
-
-    #[test]
-    fn compile_when_task_has_interval_then_cyclic_task_with_interval_us() {
-        let source = program_with_task("INTERVAL := T#100ms, PRIORITY := 3");
-        let container = compile_source(&source).unwrap();
-
-        let task = &container.task_table.tasks[0];
-        assert_eq!(task.task_type, TaskType::Cyclic);
-        assert_eq!(task.interval_us, 100_000);
-        assert_eq!(task.priority, 3);
-    }
-
-    #[test]
-    fn compile_when_task_interval_is_sub_millisecond_then_interval_us_keeps_precision() {
-        let source = program_with_task("INTERVAL := T#0.5ms, PRIORITY := 0");
-        let container = compile_source(&source).unwrap();
-
-        assert_eq!(container.task_table.tasks[0].interval_us, 500);
-    }
-
-    #[test]
-    fn compile_when_no_configuration_then_freewheeling_task() {
-        let source = "
-PROGRAM main
-  VAR
-    x : INT;
-  END_VAR
-  x := 1;
-END_PROGRAM
-";
-        let container = compile_source(source).unwrap();
-
-        let task = &container.task_table.tasks[0];
-        assert_eq!(task.task_type, TaskType::Freewheeling);
-        assert_eq!(task.interval_us, 0);
-    }
-
-    #[test]
-    fn compile_when_program_instance_has_no_task_then_freewheeling_task() {
-        let source = "
-PROGRAM main
-  VAR
-    x : INT;
-  END_VAR
-  x := 1;
-END_PROGRAM
-
-CONFIGURATION config
-  RESOURCE resource1 ON PLC
-    TASK task1(INTERVAL := T#100ms, PRIORITY := 1);
-    PROGRAM instance1 : main;
-  END_RESOURCE
-END_CONFIGURATION
-";
-        let container = compile_source(source).unwrap();
-
-        let task = &container.task_table.tasks[0];
-        assert_eq!(task.task_type, TaskType::Freewheeling);
-        assert_eq!(task.interval_us, 0);
-    }
-
-    #[test]
-    fn compile_when_task_interval_is_zero_then_freewheeling_task() {
-        let source = program_with_task("INTERVAL := T#0ms, PRIORITY := 1");
-        let container = compile_source(&source).unwrap();
-
-        let task = &container.task_table.tasks[0];
-        assert_eq!(task.task_type, TaskType::Freewheeling);
-        assert_eq!(task.interval_us, 0);
-    }
-
-    #[test]
-    fn compile_when_task_has_single_then_p4047_error() {
-        let source = "
-PROGRAM main
-  VAR
-    x : INT;
-  END_VAR
-  x := 1;
-END_PROGRAM
-
-CONFIGURATION config
-  VAR_GLOBAL
-    Trigger : BOOL;
-  END_VAR
-  RESOURCE resource1 ON PLC
-    TASK task1(SINGLE := Trigger, PRIORITY := 1);
-    PROGRAM instance1 WITH task1 : main;
-  END_RESOURCE
-END_CONFIGURATION
-";
-        let result = compile_source(source);
-
-        assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().code,
-            Problem::TaskSingleNotSupported.code()
-        );
-    }
-
-    #[test]
-    fn compile_when_task_priority_exceeds_u16_then_p4048_error() {
-        let source = program_with_task("INTERVAL := T#100ms, PRIORITY := 100000");
-        let result = compile_source(&source);
-
-        assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().code,
-            Problem::TaskParameterOutOfRange.code()
-        );
     }
 
     #[test]

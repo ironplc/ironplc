@@ -1,7 +1,7 @@
 # Design: The Resolved Execution Model
 
-status: proposed
-date: 2026-10-07
+status: implemented
+date: 2026-10-09
 
 ## Overview
 
@@ -12,7 +12,7 @@ instances bound to those tasks, and the `VAR_GLOBAL`s they share (see
 program runs under which task, what a task's parameters mean, and which globals
 exist are language decisions.
 
-Today codegen's driver makes these decisions while it compiles, reading
+Codegen's driver used to make these decisions while it compiled, reading
 `ConfigurationDeclaration`, `ResourceDeclaration`, `TaskConfiguration` and
 `ProgramConfiguration` nodes from the library. This design moves them out of
 codegen, and makes them the first part of the
@@ -48,7 +48,7 @@ everything in `ironplc-ir`, and the analyzer not depend on `ironplc-ir` at all
 get wrong (proposed ADR-0058), and which instance runs under which task, how a
 task is scheduled and which global goes where are decisions of that kind.
 
-This design departs from both, on purpose and for now. `ironplc-lowering` does
+This design departs from both, on purpose and for now (ADR-0065). `ironplc-lowering` does
 not exist yet, and creating it to hold one function would be a crate with no
 other reason to exist. So the analyzer depends on `ironplc-ir` and builds the
 model itself.
@@ -96,10 +96,19 @@ pub enum Execution {
     NotExecutable(NotExecutable),
 }
 
+/// The fields are private, so `ExecutionModelBuilder` is the only way to
+/// make one.
 pub struct ExecutionModel {
-    pub configuration: Configuration,     // declared, or the implicit one
-    pub programs: Vec<ProgramType>,       // indexed by ProgramId
-    pub globals: Vec<Global>,             // indexed by GlobalId: variable-table order
+    configuration: Configuration,         // declared, or the implicit one
+    programs: Vec<ProgramType>,           // indexed by ProgramId
+    globals: Vec<Global>,                 // indexed by GlobalId: variable-table order
+}
+impl ExecutionModel {
+    pub fn configuration(&self) -> &Configuration;
+    pub fn program(&self, id: ProgramId) -> Option<&ProgramType>; // None: another model's id
+    pub fn global(&self, id: GlobalId) -> Option<&Global>;        // None: another model's id
+    pub fn programs(&self) -> impl Iterator<Item = (ProgramId, &ProgramType)>; // in added order
+    pub fn globals(&self) -> impl Iterator<Item = (GlobalId, &Global)>;        // variable-table order
 }
 
 pub struct Configuration {
@@ -154,8 +163,8 @@ pub enum SystemGlobal { UpTime, UpLTime }
 pub enum GlobalScope { TopLevel, Configuration, Resource }
 
 /// Allocated by `ExecutionModelBuilder`; valid only for the model it builds.
-pub struct ProgramId(u32);
-pub struct GlobalId(u32);
+pub struct ProgramId(usize);              // private field: a position
+pub struct GlobalId(usize);               // private field: a position
 
 /// The only way to make a model. Adding a program or a global returns its id,
 /// so every id names an entry the model holds.
@@ -170,6 +179,7 @@ impl ExecutionModelBuilder {
 /// `Hash` or `Ord`, so it cannot be compared or used as a key.
 pub struct DebugName { text: String, span: SourceSpan }
 impl DebugName {
+    pub fn new(text: impl Into<String>, span: SourceSpan) -> Self;
     pub fn span(&self) -> SourceSpan;
 }
 impl Display for DebugName { /* the name as written */ }
@@ -375,7 +385,7 @@ instance cannot be bound to no task, or to a task of another resource.
 
 **REQ-EM-analyzer-030** Every resource, task and program instance of the configuration is resolved: a configuration of two resources with several tasks and several instances resolves completely.
 
-The structured text grammar accepts one `RESOURCE` per configuration today; the
+The structured text grammar accepts one `RESOURCE` per configuration; the
 PLCopen XML front end gives a configuration as many as it declares.
 
 ### Globals
@@ -413,14 +423,14 @@ recorded rather than reported.
 These are errors in the library whatever backend compiles it, so they are
 analyzer rules, reported by `check` and in the editor.
 
-**REQ-EM-analyzer-060** A task whose `INTERVAL` is negative is reported as P4073.
+**REQ-EM-analyzer-060** A task whose `INTERVAL` is negative is reported as P4078.
 
 **REQ-EM-analyzer-061** A task whose `SINGLE` names a variable that is not a declared global is reported as P4007.
 
-**REQ-EM-analyzer-062** A task whose `SINGLE` names a global that is not `BOOL` is reported as P4074.
+**REQ-EM-analyzer-062** A task whose `SINGLE` names a global that is not `BOOL` is reported as P4079.
 
-Today codegen rejects a negative interval as out of range (P4048), and accepts
-an undeclared or non-`BOOL` `SINGLE` until it rejects the event task.
+Codegen used to reject a negative interval as out of range (P4048), and to
+accept an undeclared or non-`BOOL` `SINGLE` until it rejected the event task.
 
 ### Backend capability checks
 
@@ -431,22 +441,26 @@ never emitted.
 
 **REQ-EM-codegen-001** The task table entry takes its priority, its type and its interval in microseconds from the task the program instance runs under: a cyclic task's interval, and 0 for a freewheeling task.
 
+The container counts the interval in whole microseconds, so a cyclic interval
+shorter than one microsecond is 0 there, and the entry is freewheeling rather
+than cyclic with a period of 0, as before the model.
+
 **REQ-EM-codegen-002** A model with more than one program instance, or a library with more than one `PROGRAM` declaration, is P9999 with the help naming #1613. The VM runs one program instance; lifting that limit removes this check.
 
 **REQ-EM-codegen-003** An event task is P4047: the VM does not schedule event tasks.
 
 **REQ-EM-codegen-004** A priority above 65535 or an interval that does not fit 64-bit microseconds is P4048, labelled at the task's name: the container stores them in those widths.
 
-**REQ-EM-codegen-005** A model recorded as not executable is reported for its reason: no `PROGRAM` is P4020, several `PROGRAM`s is P9999 with the help naming #1613, several `CONFIGURATION`s is P4076, and an instance of a type that is not a `PROGRAM` is P4075.
+**REQ-EM-codegen-005** A model recorded as not executable is reported for its reason: no `PROGRAM` is P4020, several `PROGRAM`s is P9999 with the help naming #1613, several `CONFIGURATION`s is P4081, and an instance of a type that is not a `PROGRAM` is P4080.
 
-Today codegen compiles the only `PROGRAM` freewheeling and ignores an instance
-of a function block or of an undeclared program; such a library will report
-P4075 instead of compiling. Today codegen also builds the last of several
-configurations without a word; that will report P4076.
+Codegen used to compile the only `PROGRAM` freewheeling and ignore an instance
+of a function block or of an undeclared program; such a library now reports
+P4080 instead of compiling. Codegen also used to build the last of several
+configurations without a word; that now reports P4081.
 
 **REQ-EM-codegen-006** The container header's system-uptime flag is set exactly when the model lists `SystemGlobal::UpTime`.
 
 **REQ-EM-codegen-007** `ironplc-codegen` builds the task table and the global variables from the execution model, and reaches a declaration only through `CleanAnalysis::program_declaration` and `CleanAnalysis::global_declaration`.
 
-A program that compiles today compiles to the same container bytes under the
-model.
+A program that compiled before the model compiles to the same container bytes
+under it.

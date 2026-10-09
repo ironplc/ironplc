@@ -12,11 +12,13 @@
 
 use std::collections::HashSet;
 
+use crate::execution_model::Declarations;
 use crate::function_environment::{FunctionEnvironment, FunctionEnvironmentBuilder};
 use crate::symbol_environment::SymbolEnvironment;
 use crate::type_environment::{TypeEnvironment, TypeEnvironmentBuilder};
 use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_ir::execution::{Execution, NotExecutable};
 use ironplc_parser::options::CompilerOptions;
 
 /// Contains all environments needed for semantic analysis.
@@ -44,6 +46,13 @@ pub struct SemanticContext {
     reachable: HashSet<Id>,
     /// Compiler options that affect semantic validation (e.g., allow flags).
     compiler_options: CompilerOptions,
+    /// What runs, and when: the configuration, its tasks and program
+    /// instances, and the globals in scope. Codegen builds from this rather
+    /// than reading the configuration's declarations.
+    execution: Execution,
+    /// Where the declaration behind each id in `execution` is in the
+    /// library, recorded by the walk that allocated the ids.
+    execution_declarations: Declarations,
 }
 
 impl SemanticContext {
@@ -62,7 +71,21 @@ impl SemanticContext {
             diagnostics: Vec::new(),
             reachable,
             compiler_options,
+            // Until a library is resolved there is nothing to run.
+            execution: Execution::NotExecutable(NotExecutable::NoProgram),
+            execution_declarations: Declarations::default(),
         }
+    }
+
+    /// Records the execution model resolved from the library, and where the
+    /// declaration behind each of its ids is.
+    pub(crate) fn with_execution(
+        mut self,
+        (execution, declarations): (Execution, Declarations),
+    ) -> Self {
+        self.execution = execution;
+        self.execution_declarations = declarations;
+        self
     }
 
     /// Adds diagnostics to the context.
@@ -98,6 +121,17 @@ impl SemanticContext {
     /// Returns the set of declarations reachable from PROGRAM roots.
     pub fn reachable(&self) -> &HashSet<Id> {
         &self.reachable
+    }
+
+    /// Returns the execution model resolved from the library: what runs, and
+    /// when, or why nothing can.
+    pub fn execution(&self) -> &Execution {
+        &self.execution
+    }
+
+    /// Where the declaration behind each id of [`Self::execution`] is.
+    pub(crate) fn execution_declarations(&self) -> &Declarations {
+        &self.execution_declarations
     }
 
     /// Provides read-only access to the compiler options.
