@@ -182,6 +182,17 @@ When writing compiler code:
 - Never use `panic!`, `unwrap`, `expect`, `todo!`, `unreachable!`, or similar
   panicking constructs. Return `Result<T, E>` and propagate; for a violated
   compiler invariant use `Diagnostic::internal_error()` instead of panicking
+  - `ironplc-vm` and `ironplc-container` enforce this with Clippy: their
+    `lib.rs` denies `unwrap_used`, `expect_used`, `panic`, `unreachable`,
+    `todo`, `unimplemented` and `panic_in_result_fn`, checked by the
+    `cargo clippy -p ironplc-vm -p ironplc-container --lib` pass in
+    `just lint`. The attribute is conditional on the `test-support` feature
+    being off, because the `test_support` helpers are meant to panic and
+    `#[allow]` is not an option; the `--all-targets` pass turns that feature
+    on (each crate dev-depends on itself with it), so only the `--lib` pass
+    sees these lints
+  - `debug_assert!` is not covered by any of those lints. Do not use it on a
+    VM runtime path: return an error, or make the type rule the case out
 - Use appropriate visibility modifiers (`pub`, `pub(crate)`, etc.)
 - Follow Rust naming conventions and idioms
 
