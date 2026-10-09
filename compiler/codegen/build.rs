@@ -23,5 +23,7 @@ fn main() {
         "implicit-conversions.md",
         // The post-emission peephole optimizer (`REQ-PEEP-codegen-*`).
         "bytecode-peephole-optimizer.md",
+        // Initial values (`REQ-IV-codegen-*`): storing each resolved starting value.
+        "initial-values.md",
     ]);
 }

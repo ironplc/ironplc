@@ -7,7 +7,7 @@ use ironplc_dsl::common::{
     ConstantKind, FunctionBlockDeclaration, FunctionDeclaration, InitialValueAssignmentKind,
     Library, LibraryElementKind, ProgramDeclaration, TypeReference, VarDecl, VariableType,
 };
-use ironplc_dsl::core::FileId;
+use ironplc_dsl::core::{FileId, Located};
 use ironplc_project::project::{MemoryBackedProject, Project};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -215,20 +215,34 @@ fn direction_of(vt: &VariableType) -> String {
 /// returns `None` otherwise. Per REQ-TOL-mcp-220 the rendering is for display
 /// only and is not guaranteed to be a parseable expression.
 fn render_initial_value(init: &InitialValueAssignmentKind) -> Option<String> {
+    // The analyzer completes every initializer with the value the variable
+    // starts with; a value it supplied (a synthesized span) is not one the
+    // declaration declares.
     match init {
-        InitialValueAssignmentKind::Simple(s) => s.initial_value.as_ref().map(|c| c.to_string()),
+        InitialValueAssignmentKind::Simple(s) => s
+            .initial_value
+            .as_ref()
+            .filter(|c| !c.span().is_synthesized())
+            .map(|c| c.to_string()),
         InitialValueAssignmentKind::String(s) => s
             .initial_value
             .as_ref()
+            .filter(|lit| !lit.span.is_synthesized())
             .map(|lit| ConstantKind::CharacterString(lit.clone()).to_string()),
-        InitialValueAssignmentKind::EnumeratedType(e) => {
-            e.initial_value.as_ref().map(|v| v.value.to_string())
-        }
-        InitialValueAssignmentKind::EnumeratedValues(e) => {
-            e.initial_value.as_ref().map(|v| v.value.to_string())
-        }
+        InitialValueAssignmentKind::EnumeratedType(e) => e
+            .initial_value
+            .as_ref()
+            .filter(|v| !v.value.span.is_synthesized())
+            .map(|v| v.value.to_string()),
+        InitialValueAssignmentKind::EnumeratedValues(e) => e
+            .initial_value
+            .as_ref()
+            .filter(|v| !v.value.span.is_synthesized())
+            .map(|v| v.value.to_string()),
         InitialValueAssignmentKind::Reference(r) => match &r.initial_value {
-            Some(ironplc_dsl::common::ReferenceInitialValue::Null(_)) => Some("NULL".into()),
+            Some(ironplc_dsl::common::ReferenceInitialValue::Null(span)) => {
+                (!span.is_synthesized()).then(|| "NULL".into())
+            }
             Some(ironplc_dsl::common::ReferenceInitialValue::Ref(_)) => Some("REF".into()),
             None => None,
         },

@@ -281,11 +281,19 @@ pub(crate) fn compile_user_function(
                 // Return type is a struct — allocate data region space and
                 // register the return variable so field assignments
                 // (e.g. FUNC.X := val) work inside the function body.
+                let struct_type =
+                    types
+                        .resolve_struct_type(&return_type_name)
+                        .ok_or_else(|| {
+                            Diagnostic::internal_error_at(Label::span(
+                                func_decl.name.span(),
+                                "Structure return type is absent from the type environment",
+                            ))
+                        })?;
                 crate::compile_struct::allocate_struct_variable(
                     ctx,
                     builder,
-                    types,
-                    &return_type_name,
+                    struct_type,
                     &return_id,
                     return_var_index,
                     &func_decl.name.span(),
@@ -313,13 +321,14 @@ pub(crate) fn compile_user_function(
     let mut func_emitter = Emitter::new();
 
     // Emit initialization prologue: IEC 61131-3 functions are stateless, so
-    // local variables must be re-initialized on every call. The flat variable
-    // table (ADR-0046) retains stale values between calls, so the prologue
-    // resets non-parameter locals to their declared initial values (or zero).
+    // the locals the analyzer flags, and the result, start again at their
+    // resolved values on every call. The flat variable table (ADR-0046)
+    // retains stale values between calls otherwise.
     emit_function_local_prologue(
         &mut func_emitter,
         ctx,
         &func_decl.variables,
+        Some(&func_decl.result),
         &func_decl.name,
         return_var_index,
         return_op_type,

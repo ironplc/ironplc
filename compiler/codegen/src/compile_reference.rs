@@ -32,6 +32,19 @@ pub(crate) fn register_reference_variable(
     var_index: VarIndex,
     ref_init: &ReferenceInitializer,
 ) -> Result<(), Diagnostic> {
+    let declaring = TypeName { name: id.clone() };
+    let target = types.resolve_reference_target(&declaring, &ref_init.target)?;
+    register_reference_of_type(ctx, builder, id, var_index, &target)
+}
+
+/// Registers a `REF_TO` variable whose target is of type `target`.
+pub(crate) fn register_reference_of_type(
+    ctx: &mut CompileContext,
+    builder: &mut ContainerBuilder,
+    id: &Id,
+    var_index: VarIndex,
+    target: &SemanticType,
+) -> Result<(), Diagnostic> {
     // References are stored as 64-bit variable-table indices (unsigned).
     ctx.var_types.insert(
         id.clone(),
@@ -42,12 +55,10 @@ pub(crate) fn register_reference_variable(
         },
     );
 
-    let declaring = TypeName { name: id.clone() };
-    let target = types.resolve_reference_target(&declaring, &ref_init.target)?;
     if let SemanticType::Array {
         element_type,
         dimensions,
-    } = &target
+    } = target
     {
         let spec = array_spec_from_named(element_type, dimensions, &id.span())?;
         register_ref_to_array_metadata(ctx, builder, id, var_index, &spec)?;

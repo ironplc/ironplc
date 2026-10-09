@@ -110,6 +110,13 @@ impl EnumerationMembers {
             .map(|m| m.ordinal)
     }
 
+    /// The member a variable of this type starts at when its declaration
+    /// gives no initial value. `None` for an enumeration without members,
+    /// which the grammar does not allow.
+    pub fn default_member(&self) -> Option<&EnumerationMember> {
+        self.members.get(self.default)
+    }
+
     /// The ordinal a variable of this type starts at when its declaration
     /// gives no initial value: the default member's. 0 for an enumeration
     /// without members, which the grammar does not allow.

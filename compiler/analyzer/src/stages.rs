@@ -15,11 +15,11 @@ use crate::{
     function_environment::FunctionEnvironmentBuilder,
     ironplc_dsl::common::Library,
     result::SemanticResult,
-    rule_abstract_not_instantiated, rule_array_index_range, rule_assignment_aggregate_type_compat,
-    rule_bit_and_partial_access_range, rule_case_bit_string_label, rule_case_selector_type,
-    rule_condition_type, rule_constant_not_written, rule_constant_range,
-    rule_decl_struct_element_unique_names, rule_enum_base_type_allowed,
-    rule_enum_explicit_value_allowed, rule_enumeration_values_unique,
+    rule_abstract_not_instantiated, rule_array_index_range, rule_array_initializer_length,
+    rule_assignment_aggregate_type_compat, rule_bit_and_partial_access_range,
+    rule_case_bit_string_label, rule_case_selector_type, rule_condition_type,
+    rule_constant_not_written, rule_constant_range, rule_decl_struct_element_unique_names,
+    rule_enum_base_type_allowed, rule_enum_explicit_value_allowed, rule_enumeration_values_unique,
     rule_extends_field_duplicated, rule_function_block_call_unsupported,
     rule_function_block_invocation, rule_function_call_declared,
     rule_function_call_in_out_argument, rule_function_call_type_check,
@@ -41,7 +41,7 @@ use crate::{
     xform_insert_implicit_conversions, xform_insert_implicit_deref, xform_int_to_bool_initializer,
     xform_mark_unwritten_constants, xform_named_to_positional_args, xform_remove_unsigned_abs,
     xform_resolve_adr, xform_resolve_constant_expressions, xform_resolve_decl_types,
-    xform_resolve_expr_types, xform_resolve_late_bound_expr_kind,
+    xform_resolve_expr_types, xform_resolve_initial_values, xform_resolve_late_bound_expr_kind,
     xform_resolve_late_bound_type_initializer, xform_resolve_symbol_and_function_environment,
     xform_resolve_type_aliases, xform_resolve_type_decl_environment, xform_toposort_declarations,
 };
@@ -82,6 +82,13 @@ pub fn analyze(
     if let Err(diagnostics) = rule_constant_range::apply(&library, &context, options) {
         context.add_diagnostics(diagnostics);
     }
+
+    // Complete every declaration's initializer with the value it starts
+    // with, which the backends store without deciding anything. After the
+    // conversions, so that an expression a member initializer holds carries
+    // them, and after the range rule, so that it checks the literals the
+    // program wrote.
+    let library = xform_resolve_initial_values::apply(library, &context);
 
     // TODO this is currently in progress. It isn't clear to me yet how this will influence
     // semantic analysis, but it should because the type table should influence rule checking.
@@ -288,6 +295,11 @@ pub fn resolve_types(
         xform_resolve_decl_types::apply(lib, &mut type_environment)
     });
 
+    // Resolve the default of every declared type while the declarations
+    // still name the types they were written with: resolving expression
+    // types rewrites an alias in an initializer to the type it aliases.
+    let type_defaults = xform_resolve_initial_values::TypeDefaults::of(&type_environment, &library);
+
     // Best effort: a repeated declaration name is diagnosed here, by the
     // environments, and the first declaration is kept, so the rest of the
     // library still resolves instead of reverting on the first repeat.
@@ -360,7 +372,8 @@ pub fn resolve_types(
         symbol_environment,
         reachable,
         *options,
-    );
+    )
+    .with_type_defaults(type_defaults);
     context.add_diagnostics(diagnostics);
 
     Ok((library, context))
@@ -377,6 +390,7 @@ pub(crate) fn semantic(
 ) -> SemanticResult {
     let functions: Vec<fn(&Library, &SemanticContext, &CompilerOptions) -> SemanticResult> = vec![
         rule_abstract_not_instantiated::apply,
+        rule_array_initializer_length::apply,
         rule_assignment_aggregate_type_compat::apply,
         rule_decl_struct_element_unique_names::apply,
         rule_range_limits::apply,

@@ -16,14 +16,14 @@
 //! One copy of the sequence is what makes those two observably the same
 //! thing at runtime.
 
-use ironplc_dsl::common::{StructInitialValueAssignmentKind, StructureElementInit};
+use crate::initial_value::{InitialValue, ScalarValue};
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{Expr, ExprKind, ExprType};
-use ironplc_dsl::type_id::TypeId;
+use ironplc_dsl::textual::Expr;
 
 use super::compile::{CompileContext, OpType, DEFAULT_OP_TYPE};
-use super::compile_expr::compile_expr;
+use super::compile_expr::{compile_expr, op_type};
+use super::compile_initial_value::{emit_reference, emit_scalar, is_cleared};
 use crate::emit::Emitter;
 
 /// Resolves the operand type for a function block field.
@@ -62,8 +62,27 @@ pub(crate) fn compile_fb_field_store(
     field: &Id,
     value: &Expr,
 ) -> Result<bool, Diagnostic> {
+    let Some(type_id) = ctx.fb_instances.get(instance_name).map(|fb| fb.type_id) else {
+        return Ok(false);
+    };
+    let op_type = resolve_fb_field_op_type(ctx, type_id, &field.to_string().to_lowercase());
+    compile_fb_field_store_with(emitter, ctx, instance_name, field, |emitter, ctx| {
+        compile_expr(emitter, ctx, value, op_type)
+    })
+}
+
+/// Emits a store into `field` of the function block instance named
+/// `instance_name` of the value `push` leaves on the stack. `Ok(false)`, and
+/// nothing emitted, when `instance_name` is not a function block instance.
+fn compile_fb_field_store_with(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    instance_name: &Id,
+    field: &Id,
+    push: impl FnOnce(&mut Emitter, &mut CompileContext) -> Result<(), Diagnostic>,
+) -> Result<bool, Diagnostic> {
     let field_name = field.to_string().to_lowercase();
-    let (field_idx, var_index, type_id) = match ctx.fb_instances.get(instance_name) {
+    let (field_idx, var_index) = match ctx.fb_instances.get(instance_name) {
         Some(fb_info) => {
             let field_idx = fb_info
                 .field_indices
@@ -78,86 +97,106 @@ pub(crate) fn compile_fb_field_store(
                         ),
                     ))
                 })?;
-            (field_idx, fb_info.var_index, fb_info.type_id)
+            (field_idx, fb_info.var_index)
         }
         None => return Ok(false),
     };
 
-    let op_type = resolve_fb_field_op_type(ctx, type_id, &field_name);
     emitter.emit_fb_load_instance(var_index);
-    compile_expr(emitter, ctx, value, op_type)?;
+    push(emitter, ctx)?;
     emitter.emit_fb_store_param(field_idx);
     emitter.emit_pop();
     Ok(true)
 }
 
-/// The declared type of `field` of the function block instance
-/// `instance_name`.
-fn fb_field_type_id(ctx: &CompileContext, instance_name: &Id, field: &Id) -> Option<TypeId> {
-    let fb_type = ctx.fb_instances.get(instance_name)?.type_id;
-    ctx.user_fb_types
-        .values()
-        .find(|user_fb| user_fb.type_id == fb_type)?
-        .field_type_ids
-        .get(&field.to_string().to_lowercase())
-        .copied()
-}
-
-/// Emits the member initializers of a function block instance declaration
-/// (`timer : TON := (PT := T#100MS);`).
+/// Emits the stores that give a function block instance its starting value
+/// (`timer : TON := (PT := T#100MS);`): `value` holds every input, output and
+/// internal variable of the instance, the block's defaults with the
+/// declaration's member initializers applied over them.
 ///
-/// Each member is stored exactly as the equivalent assignment statement
-/// would store it, so the instance is already initialized before the first
-/// scan invokes it.
+/// The instance's data region starts cleared, so only a member whose value
+/// would not leave it so is stored, exactly as the equivalent assignment
+/// statement would store it. The instance is then initialized before the
+/// first scan invokes it.
 pub(crate) fn emit_fb_instance_member_initializers(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     instance_name: &Id,
-    init: &[StructureElementInit],
+    value: &InitialValue,
 ) -> Result<(), Diagnostic> {
-    for element in init {
-        let value = match &element.init {
-            // The value is stored in the field: at its declared type in a
-            // user-defined block, and at the default slot type in a standard
-            // one, which records no field types.
-            StructInitialValueAssignmentKind::Constant(constant) => {
-                let mut expr = Expr::new(ExprKind::Const(constant.clone()));
-                expr.expr_type =
-                    fb_field_type_id(ctx, instance_name, &element.name).map(ExprType::Concrete);
-                expr
+    let InitialValue::Structure(fields) = value else {
+        return Err(Diagnostic::internal_error_at(Label::span(
+            instance_name.span(),
+            "Function block instance value is not a structure of its members",
+        )));
+    };
+    for field in fields {
+        if is_cleared(&field.value) {
+            continue;
+        }
+        match &field.value {
+            InitialValue::Scalar(scalar) => {
+                // The member is stored at the type its value is stored as;
+                // a standard block records no types of its own.
+                let op_type = scalar_op_type(scalar, &field.name)?;
+                compile_fb_field_store_with(emitter, ctx, instance_name, &field.name, |e, c| {
+                    emit_scalar(e, c, scalar, op_type, &field.name.span())
+                })?;
             }
-            // The value is a member of the field's type.
-            StructInitialValueAssignmentKind::EnumeratedValue(value) => {
-                let mut expr = Expr::new(ExprKind::EnumeratedValue(value.clone()));
-                expr.expr_type =
-                    fb_field_type_id(ctx, instance_name, &element.name).map(ExprType::Concrete);
-                expr
+            InitialValue::Reference(reference) => {
+                compile_fb_field_store_with(emitter, ctx, instance_name, &field.name, |e, c| {
+                    emit_reference(e, c, reference)
+                })?;
             }
-            StructInitialValueAssignmentKind::Expression(expr) => expr.clone(),
-            // `xform_resolve_late_bound_expr_kind` replaces every one of
-            // these with an enumerated value or an expression, so reaching
-            // codegen with one means that pass did not run.
-            StructInitialValueAssignmentKind::LateBound(late_bound) => {
-                return Err(Diagnostic::internal_error_at(Label::span(
-                    late_bound.value.span(),
-                    "Unresolved function block instance member initializer",
-                )))
+            // An expression member (an extension) is evaluated when the
+            // instance is initialized, at the member's type in a
+            // user-defined block and at its own type in a standard one,
+            // which records no member types.
+            InitialValue::Expression(expr) => {
+                let op_type = match user_field_op_type(ctx, instance_name, &field.name) {
+                    Some(op_type) => op_type,
+                    None => op_type(ctx, expr)?,
+                };
+                compile_fb_field_store_with(emitter, ctx, instance_name, &field.name, |e, c| {
+                    compile_expr(e, c, expr, op_type)
+                })?;
             }
-            // An array or nested structure value initializes several slots
-            // at once, which the single-slot FB_STORE_PARAM path cannot
-            // express. Refuse rather than silently leave the member zeroed.
-            StructInitialValueAssignmentKind::Array(_)
-            | StructInitialValueAssignmentKind::Structure(_) => {
+            // A string, array, structure or block member lives outside the
+            // member's slot, which the single-slot FB_STORE_PARAM path cannot
+            // express. Refuse rather than silently leave the member cleared.
+            InitialValue::String(_) | InitialValue::Array(_) | InitialValue::Structure(_) => {
                 return Err(Diagnostic::not_implemented(Label::span(
-                    element.name.span(),
+                    field.name.span(),
                     format!(
-                        "Array or structure value initializing field '{}' of function block instance '{instance_name}'",
-                        element.name
+                        "Array, string or structure value initializing field '{}' of function block instance '{instance_name}'",
+                        field.name
                     ),
                 )))
             }
-        };
-        compile_fb_field_store(emitter, ctx, instance_name, &element.name, &value)?;
+        }
     }
     Ok(())
+}
+
+/// The operation type of `field` of the instance `instance_name` of a
+/// user-defined function block, which records one for each of its fields.
+fn user_field_op_type(ctx: &CompileContext, instance_name: &Id, field: &Id) -> Option<OpType> {
+    let type_id = ctx.fb_instances.get(instance_name)?.type_id;
+    ctx.user_fb_types
+        .values()
+        .find(|user_fb| user_fb.type_id == type_id)?
+        .field_op_types
+        .get(&field.to_string().to_lowercase())
+        .copied()
+}
+
+/// The operation type a scalar member value is stored at: the type of its
+/// representation.
+fn scalar_op_type(scalar: &ScalarValue, field: &Id) -> Result<OpType, Diagnostic> {
+    crate::compile_struct::resolve_field_op_type(&scalar.storage).ok_or_else(|| {
+        Diagnostic::internal_error_at(Label::span(
+            field.span(),
+            "Function block member value has no storage type",
+        ))
+    })
 }

@@ -23,10 +23,14 @@ The design builds on:
 
 **Out of scope (deferred):**
 - Runtime bounds checking (clamping or trapping on out-of-range assignment)
-- Type-declared default values (`:= 50` in `TYPE MY_RANGE : INT (1..100) := 50; END_TYPE` — the `50` is parsed but not propagated to codegen; default is always `min_value` for now)
-- Subrange-typed function/FB parameters (VAR_INPUT, VAR_OUTPUT, VAR_IN_OUT)
-- Subrange-typed array elements
+- Subrange-typed function/FB parameters (VAR_INPUT, VAR_OUTPUT, VAR_IN_OUT) other than their starting value
 - Subrange types in structure field declarations (already works via `compile_struct.rs`)
+
+The starting value of a subrange variable, field or element -- a type-declared
+default (`:= 50` in `TYPE MY_RANGE : INT (1..100) := 50; END_TYPE`) or else
+the lower bound -- is resolved by the analyzer for every place a subrange
+appears, including function locals, function block fields and array elements
+([Initial Values](initial-values.md)).
 
 ---
 
@@ -62,11 +66,11 @@ The design builds on:
 
 ## 4. Initialization
 
-**REQ-SR-030** When a subrange variable has no explicit initial value and arrives as `InitialValueAssignmentKind::Subrange(Named(type_name))`, the codegen emits `LOAD_CONST` with the subrange's `min_value` (lower bound) followed by `STORE_VAR`.
+**REQ-SR-030** A subrange variable without an explicit initial value starts at the default its type declares, else at the subrange's `min_value` (lower bound), whether the subrange is named or spelled in place. The analyzer completes the declaration's initializer with that value, and codegen emits `LOAD_CONST` with it followed by `STORE_VAR`; it no longer reads the bound from the declaration.
 
-**REQ-SR-031** When a subrange variable has no explicit initial value and arrives as `InitialValueAssignmentKind::Subrange(Inline(spec))`, the codegen extracts the lower bound from `spec.subrange.start` and emits it as the default.
+**REQ-SR-031** A subrange variable is stored its starting value in the init function even when the value is zero, as an enumeration is, and a function's subrange local is stored its starting value on every call.
 
-**REQ-SR-032** When a subrange variable has an explicit initial value (`VAR x : MY_RANGE := 75; END_VAR`), it arrives as `InitialValueAssignmentKind::Simple` and the existing Simple initialization path emits the constant.
+**REQ-SR-032** When a subrange variable has an explicit initial value (`VAR x : MY_RANGE := 75; END_VAR`), the analyzer keeps that value as its starting value, and codegen stores it as it stores any other.
 
 **REQ-SR-033** For base types narrower than the register width (e.g., SINT is 8-bit in a 32-bit register), truncation instructions are emitted after loading the default value, following the same pattern as `compile_struct::emit_truncation_for_field()`.
 
