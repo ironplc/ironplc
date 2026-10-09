@@ -880,3 +880,4 @@ fn apply_when_untyped_literal_typed_then_type_recorded_as_inferred() {
 mod bitwise;
 mod call_result;
 mod inputs_of_one_type;
+mod integer_result;

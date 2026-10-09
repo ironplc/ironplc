@@ -110,7 +110,7 @@ impl ImplicitConversions<'_> {
             Some(ExprType::Null) | None => false,
         };
         if differs {
-            self.conversions.convert(input, target);
+            self.convert(input, target);
         }
     }
 

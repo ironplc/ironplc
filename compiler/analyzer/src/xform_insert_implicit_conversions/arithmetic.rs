@@ -199,7 +199,7 @@ impl ImplicitConversions<'_> {
             Some(ExprType::Null) | None => false,
         };
         if differs {
-            self.conversions.convert(operand, target);
+            self.convert(operand, target);
         }
     }
 }
