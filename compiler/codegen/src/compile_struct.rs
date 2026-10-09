@@ -13,10 +13,8 @@ use ironplc_dsl::textual::{StructuredVariable, SymbolicVariableKind};
 use ironplc_analyzer::semantic_type::{
     ByteSized, SemanticStructField, SemanticType, SlotCountError,
 };
-use ironplc_analyzer::TypeEnvironment;
 use ironplc_container::FieldType;
 use ironplc_container::{ContainerBuilder, SlotIndex, VarIndex};
-use ironplc_dsl::common::TypeName;
 
 use super::compile::{
     CompileContext, OpType, OpWidth, Signedness, VarTypeInfo, DEFAULT_STRING_MAX_LENGTH,
@@ -64,9 +62,6 @@ pub(crate) struct StructFieldInfo {
     pub slot_offset: SlotIndex,
     /// The field's semantic type (for nested resolution).
     pub field_type: SemanticType,
-    /// Op type for leaf (primitive/enum) fields. `None` for structure/array
-    /// fields (which are accessed via further resolution).
-    pub op_type: Option<OpType>,
     /// For STRING fields, the maximum character length. `None` for non-STRING fields.
     pub string_max_length: Option<u16>,
 }
@@ -146,7 +141,6 @@ pub(crate) fn build_struct_fields(
             Diagnostic::not_implemented(Label::span(span.clone(), msg))
         })?;
         let name = field.name.to_string().to_lowercase();
-        let op_type = resolve_field_op_type(&field.field_type);
         let string_max_length = match &field.field_type {
             SemanticType::String { max_len, .. } => {
                 Some(max_len.unwrap_or(DEFAULT_STRING_MAX_LENGTH as u128) as u16)
@@ -172,7 +166,6 @@ pub(crate) fn build_struct_fields(
             name,
             slot_offset,
             field_type: field.field_type.clone(),
-            op_type,
             string_max_length,
         });
         slot_offset = SlotIndex::new(slot_offset.raw() + field_slots);
@@ -362,31 +355,16 @@ pub(crate) fn emit_truncation_for_field(emitter: &mut Emitter, field_type: &Sema
     }
 }
 
-/// Allocates data region space for a structure variable and registers metadata.
-///
-/// Called from both the `Structure` and `LateResolvedType` match arms in
-/// `assign_variables`.
-///
-/// A function-block type never reaches here, even though `x : T := (a := 1)`
-/// parses as a structure initializer for every `T`: the parser has no type
-/// declarations in scope, so `xform_resolve_late_bound_type_initializer`
-/// rewrites the ones naming a function block into
-/// `InitialValueAssignmentKind::FunctionBlock` before codegen runs. Reaching
-/// here with a function-block type name therefore means that rewrite did not
-/// happen, and the "Unknown structure type" diagnostic below is the symptom.
+/// Allocates data region space for a variable of the structure type
+/// `struct_type` and registers metadata.
 pub(crate) fn allocate_struct_variable(
     ctx: &mut CompileContext,
     builder: &mut ContainerBuilder,
-    types: &TypeEnvironment,
-    type_name: &TypeName,
+    struct_type: &SemanticType,
     id: &Id,
     index: VarIndex,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
-    let struct_type = types.resolve_struct_type(type_name).ok_or_else(|| {
-        Diagnostic::not_implemented(Label::span(span.clone(), "Unknown structure type"))
-    })?;
-
     let SemanticType::Structure { fields } = struct_type else {
         return Err(Diagnostic::internal_error_at(Label::span(
             span.clone(),
@@ -621,7 +599,6 @@ mod tests {
         assert_eq!(field_list[0].name, "s");
         assert_eq!(field_list[0].slot_offset, SlotIndex::new(0));
         assert_eq!(field_list[0].string_max_length, Some(255));
-        assert!(field_list[0].op_type.is_none());
     }
 
     #[test]

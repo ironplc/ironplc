@@ -15,5 +15,9 @@ fn main() {
         // Inspecting the expression type annotation (`REQ-ETR-plc2plc-*`):
         // the annotated rendering.
         "expression-type-resolution.md",
+        // Initial values (`REQ-IV-plc2plc-*`): an analyzed library renders
+        // the initializers as written, without the values the analyzer
+        // supplied.
+        "initial-values.md",
     ]);
 }

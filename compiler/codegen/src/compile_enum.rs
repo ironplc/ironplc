@@ -8,9 +8,9 @@
 //! See `specs/design/enumeration-codegen.md` for the full design.
 
 use ironplc_analyzer::enumeration_members::EnumerationMembers;
-use ironplc_analyzer::{SemanticType, TypeEnvironment};
+use ironplc_analyzer::TypeEnvironment;
 use ironplc_container::debug_section::EnumDefEntry;
-use ironplc_dsl::common::{EnumeratedValue, InitialValueAssignmentKind, VarDecl};
+use ironplc_dsl::common::EnumeratedValue;
 use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::Expr;
@@ -51,42 +51,6 @@ pub(crate) fn members_of_expr<'a>(
     expr: &Expr,
 ) -> Option<&'a EnumerationMembers> {
     members_of(ctx, expr.expr_type.as_ref()?.type_id())
-}
-
-/// The ordinal a variable declared by `decl` starts at, or `None` when
-/// `decl` does not declare an enumeration.
-///
-/// An explicit initial value gives its own ordinal (REQ-EN-codegen-020);
-/// otherwise the enumeration's default applies (REQ-EN-codegen-021/022).
-/// Both are looked up in the declared type, `decl.type_id`
-/// (REQ-EN-codegen-093).
-pub(crate) fn initial_ordinal(
-    ctx: &CompileContext,
-    decl: &VarDecl,
-) -> Result<Option<i32>, Diagnostic> {
-    let initial_value = match &decl.initializer {
-        InitialValueAssignmentKind::EnumeratedType(init) => init.initial_value.as_ref(),
-        InitialValueAssignmentKind::EnumeratedValues(init) => init.initial_value.as_ref(),
-        _ => return Ok(None),
-    };
-    let members = members_of(ctx, decl.type_id).ok_or_else(|| {
-        Diagnostic::internal_error_at(Label::span(
-            decl.identifier.span(),
-            "Enumeration variable without an enumeration type",
-        ))
-    })?;
-    match initial_value {
-        Some(value) => ordinal_in(Some(members), value).map(Some),
-        None => Ok(Some(members.default_ordinal() as i32)),
-    }
-}
-
-/// The default ordinal of a structure field of type `field_type`, when it is
-/// an enumeration.
-pub(crate) fn field_default_ordinal(field_type: &SemanticType) -> Option<i32> {
-    field_type
-        .enumeration_members()
-        .map(|members| members.default_ordinal() as i32)
 }
 
 /// The name the debug section knows the enumeration type `id` by: its

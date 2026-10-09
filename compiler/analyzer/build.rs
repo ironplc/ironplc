@@ -23,5 +23,7 @@ fn main() {
         // Inspecting the expression type annotation (`REQ-ETR-analyzer-*`):
         // how a type is spelled in the annotated rendering.
         "expression-type-resolution.md",
+        // Initial values (`REQ-IV-analyzer-*`): the starting value of each declaration.
+        "initial-values.md",
     ]);
 }

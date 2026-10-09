@@ -423,9 +423,9 @@ END_PROGRAM
 }
 
 // --- Subrange struct field default value ---
-// The default for a subrange is its lower bound (IEC 61131-3 §2.4.3.1).
-// Exercises `emit_default_for_field` — W32 branch for INT-based subranges
-// and W64 branch for LINT-based subranges.
+// The default for a subrange is its lower bound (IEC 61131-3 §2.4.3.1),
+// which the analyzer resolves; a field of an INT-based subrange is stored at
+// 32 bits and one of a LINT-based subrange at 64.
 
 e2e_i32!(
     end_to_end_when_struct_field_subrange_int_default_then_lower_bound,

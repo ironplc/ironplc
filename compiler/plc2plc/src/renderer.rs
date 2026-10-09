@@ -13,6 +13,7 @@ use ironplc_dsl::{diagnostic::Diagnostic, visitor::Visitor};
 use paste::paste;
 
 use crate::type_comment::{self, TypeNamer};
+use crate::written;
 
 /// Defines a macro for creating a comma separated list of items where
 /// each item in the list is created by visiting the item.
@@ -102,6 +103,48 @@ impl<'a> LibraryRenderer<'a> {
             self.buffer.push(' ');
         }
         self.buffer.push_str(val);
+    }
+
+    /// Writes the members of a structure initializer the program wrote, in
+    /// parentheses after `prefix` (`:=` for a declaration's own
+    /// initializer). A declaration's initializer the program wrote none of
+    /// is left out, prefix and all.
+    fn write_members(
+        &mut self,
+        members: &[StructureElementInit],
+        prefix: &str,
+    ) -> Result<(), Diagnostic> {
+        let members = written::members(members);
+        if members.is_empty() && !prefix.is_empty() {
+            return Ok(());
+        }
+        if !prefix.is_empty() {
+            self.write_ws(prefix);
+        }
+        self.write_ws("(");
+        visit_comma_separated!(self, members.into_iter(), StructureElementInit);
+        self.write_ws(")");
+        Ok(())
+    }
+
+    /// Writes the elements of an array initializer the program wrote, in
+    /// brackets after `prefix`, as [`Self::write_members`] writes members.
+    fn write_elements(
+        &mut self,
+        elements: &[ArrayInitialElementKind],
+        prefix: &str,
+    ) -> Result<(), Diagnostic> {
+        let elements = written::elements(elements);
+        if elements.is_empty() && !prefix.is_empty() {
+            return Ok(());
+        }
+        if !prefix.is_empty() {
+            self.write_ws(prefix);
+        }
+        self.write_ws("[");
+        visit_comma_separated!(self, elements.iter(), ArrayInitialElementKind);
+        self.write_ws("]");
+        Ok(())
     }
 
     fn newline(&mut self) {
@@ -605,17 +648,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         node: &StructureInitializationDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_type_name(&node.type_name)?;
-
-        if !node.elements_init.is_empty() {
-            self.write_ws(":=");
-            self.write_ws("(");
-
-            visit_comma_separated!(self, node.elements_init.iter(), StructureElementInit);
-
-            self.write_ws(")");
-        }
-
-        Ok(())
+        self.write_members(&node.elements_init, ":=")
     }
 
     fn visit_late_resolved_initializer(
@@ -904,7 +937,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_type_name(&node.type_name)?;
 
-        if let Some(iv) = &node.initial_value {
+        if let Some(iv) = node.initial_value.as_ref().filter(written::constant) {
             self.write_ws(":=");
             self.visit_constant_kind(iv)?;
         }
@@ -919,7 +952,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_subrange_specification_kind(&node.spec)?;
 
-        if let Some(iv) = &node.initial_value {
+        if let Some(iv) = node.initial_value.as_ref().filter(written::signed_integer) {
             self.write_ws(":=");
             self.visit_signed_integer(iv)?;
         }
@@ -954,8 +987,10 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         }
 
         if let Some(init) = &node.initial_value {
-            self.write_ws(":=");
-            self.write(&character_string_text(&init.width, &init.value));
+            if !init.span.is_synthesized() {
+                self.write_ws(":=");
+                self.write(&character_string_text(&init.width, &init.value));
+            }
         }
 
         Ok(())
@@ -970,7 +1005,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         visit_comma_separated!(self, node.values.iter(), EnumeratedValue);
         self.write_ws(")");
 
-        if let Some(init) = &node.initial_value {
+        if let Some(init) = node.initial_value.as_ref().filter(written::enumerated) {
             self.write_ws(":=");
 
             self.visit_enumerated_value(init)?;
@@ -984,7 +1019,8 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         &mut self,
         node: &FunctionBlockInitialValueAssignment,
     ) -> Result<Self::Value, Diagnostic> {
-        self.visit_type_name(&node.type_name)
+        self.visit_type_name(&node.type_name)?;
+        self.write_members(&node.init, ":=")
     }
 
     // CODESYS/TwinCAT call-style FB instance initializer:
@@ -1007,16 +1043,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         node: &ArrayInitialValueAssignment,
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_array_specification_kind(&node.spec)?;
-
-        if !node.initial_values.is_empty() {
-            self.write_ws(":=");
-
-            self.write_ws("[");
-            visit_comma_separated!(self, node.initial_values.iter(), ArrayInitialElementKind);
-            self.write_ws("]");
-        }
-
-        Ok(())
+        self.write_elements(&node.initial_values, ":=")
     }
 
     fn visit_array_initial_element_kind(
@@ -1024,12 +1051,18 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         node: &ArrayInitialElementKind,
     ) -> Result<Self::Value, Diagnostic> {
         match node {
-            ArrayInitialElementKind::Structure(elements) => {
-                self.write_ws("(");
-                visit_comma_separated!(self, elements.iter(), StructureElementInit);
-                self.write_ws(")");
-                Ok(())
-            }
+            ArrayInitialElementKind::Structure(elements) => self.write_members(elements, ""),
+            _ => node.recurse_visit(self),
+        }
+    }
+
+    fn visit_struct_initial_value_assignment_kind(
+        &mut self,
+        node: &StructInitialValueAssignmentKind,
+    ) -> Result<Self::Value, Diagnostic> {
+        match node {
+            StructInitialValueAssignmentKind::Array(elements) => self.write_elements(elements, ""),
+            StructInitialValueAssignmentKind::Structure(members) => self.write_members(members, ""),
             _ => node.recurse_visit(self),
         }
     }
@@ -1054,7 +1087,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_type_name(&node.type_name)?;
 
-        if let Some(init) = &node.initial_value {
+        if let Some(init) = node.initial_value.as_ref().filter(written::enumerated) {
             self.write_ws(":=");
             self.visit_enumerated_value(init)?;
         }
@@ -1996,7 +2029,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         self.write_ref_keyword(&node.syntax);
         self.visit_reference_target(&node.target)?;
 
-        if let Some(init) = &node.initial_value {
+        if let Some(init) = node.initial_value.as_ref().filter(written::reference) {
             self.write_ws(":=");
             self.visit_reference_initial_value(init)?;
         }

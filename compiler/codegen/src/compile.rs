@@ -63,7 +63,6 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_parser::options::{CompilerOptions, StringToNumFailure, StringToNumNonNumeric};
 use ironplc_problems::Problem;
 
-use ironplc_analyzer::system_globals::SYSTEM_UPTIME_GLOBALS;
 use ironplc_analyzer::{
     CleanAnalysis, FunctionEnvironment, Intrinsic, SemanticType, TypeEnvironment,
 };
@@ -71,7 +70,7 @@ use ironplc_analyzer::{
 use crate::emit::Emitter;
 
 use super::compile_fn::{compile_user_function, compile_user_function_block};
-use super::compile_setup::{assign_variables, emit_initial_values};
+use super::compile_setup::{assign_system_uptime_globals, assign_variables, emit_initial_values};
 use super::compile_stmt::compile_body;
 
 /// The native operation width used for arithmetic and comparisons.
@@ -254,25 +253,16 @@ pub fn compile(
     }
     let user_globals: &[VarDecl] = config.map(|c| c.global_var.as_slice()).unwrap_or(&[]);
 
-    // Prepend system uptime globals when the feature is enabled.
-    let mut synthetic_globals: Vec<VarDecl> = Vec::new();
-    if options.system_uptime_global {
-        for global in &SYSTEM_UPTIME_GLOBALS {
-            synthetic_globals.push(
-                VarDecl::simple(global.name, global.type_name).with_type(VariableType::Global),
-            );
-        }
-    }
-
     // Collect top-level VAR_GLOBAL declarations (outside CONFIGURATION blocks).
+    let mut library_globals: Vec<VarDecl> = Vec::new();
     for element in &library.elements {
         if let LibraryElementKind::GlobalVarDeclarations(decls) = element {
-            synthetic_globals.extend_from_slice(decls);
+            library_globals.extend_from_slice(decls);
         }
     }
 
-    synthetic_globals.extend_from_slice(user_globals);
-    let global_vars = &synthetic_globals;
+    library_globals.extend_from_slice(user_globals);
+    let global_vars = &library_globals;
 
     let reachable = context.reachable();
 
@@ -309,6 +299,7 @@ pub fn compile(
             program,
             func_decls: &func_decls,
             fb_decls: &fb_decls,
+            system_uptime_globals: options.system_uptime_global,
             global_vars,
         },
         context.functions(),
@@ -697,6 +688,8 @@ struct ProgramInputs<'a> {
     program: &'a ProgramDeclaration,
     func_decls: &'a [&'a FunctionDeclaration],
     fb_decls: &'a [&'a FunctionBlockDeclaration],
+    /// Whether the implicit uptime globals precede the program's globals.
+    system_uptime_globals: bool,
     global_vars: &'a [VarDecl],
 }
 
@@ -722,10 +715,12 @@ fn compile_program_with_functions(
         program,
         func_decls,
         fb_decls,
+        system_uptime_globals,
         global_vars,
     } = inputs;
     let mut ctx = CompileContext::new();
     ctx.types = crate::type_info::type_representations(types);
+    ctx.block_members = crate::initial_value::block_members(fb_decls, &ctx.types);
     ctx.operand_names = crate::type_info::operand_names(types);
     ctx.intrinsics = crate::compile_call::intrinsics_by_name(functions);
     ctx.string_to_num = string_to_num;
@@ -748,7 +743,11 @@ fn compile_program_with_functions(
         register_pou_source_file(&mut ctx, &fb.name.name.span.file_id, sources);
     }
 
-    // Assign global variable indices first (indices 0..G).
+    // Assign global variable indices first (indices 0..G), the implicit
+    // uptime globals before any other.
+    if system_uptime_globals {
+        assign_system_uptime_globals(&mut ctx, types);
+    }
     assign_variables(&mut ctx, &mut builder, global_vars, types)?;
     let num_globals = ctx.variables.len() as u16;
 
@@ -763,7 +762,6 @@ fn compile_program_with_functions(
         let fb_name = fb_decl.name.name.to_string().to_uppercase();
         let mut field_indices: HashMap<String, u8> = HashMap::new();
         let mut field_op_types: HashMap<String, OpType> = HashMap::new();
-        let mut field_type_ids = HashMap::new();
         let mut field_decls_tmp: Vec<&VarDecl> = Vec::new();
 
         for decl in &fb_decl.variables {
@@ -785,9 +783,6 @@ fn compile_program_with_functions(
             if let Some(id) = decl.identifier.symbolic_id() {
                 let name = id.to_string().to_lowercase();
                 field_indices.insert(name.clone(), i as u8);
-                if let Some(type_id) = decl.type_id {
-                    field_type_ids.insert(name.clone(), type_id);
-                }
                 // A field is operated at its declared type, whatever kind of
                 // declaration declares it: a subrange at its base type.
                 let op_type = crate::type_info::decl_type_info(&ctx, decl)
@@ -807,7 +802,6 @@ fn compile_program_with_functions(
                 function_id: FunctionId::new(next_function_id),
                 var_offset: 0, // updated after program vars are assigned
                 field_op_types,
-                field_type_ids,
                 methods: HashMap::new(),
             },
         );
@@ -1287,8 +1281,6 @@ pub(crate) struct UserFbTypeInfo {
     pub(crate) var_offset: u16,
     /// Maps field name (lowercase) to its op type for codegen at call sites.
     pub(crate) field_op_types: HashMap<String, OpType>,
-    /// Maps field name (lowercase) to the type its declaration declares.
-    pub(crate) field_type_ids: HashMap<String, ironplc_dsl::type_id::TypeId>,
     /// Maps method name (lowercase) to compilation metadata (OOP
     /// extension, ADR-0041 Phase 1). Populated in two steps: `function_id`,
     /// `num_params`, `param_op_types`, and `has_return_value` are known
@@ -1350,6 +1342,10 @@ pub(crate) struct CompileContext {
     /// What every type is, by the id an expression's `expr_type` carries.
     /// See [`crate::type_info::expr_type_info`].
     pub(crate) types: HashMap<ironplc_dsl::type_id::TypeId, SemanticType>,
+    /// The type of every variable of each user-defined function block, which
+    /// an instance's starting value is read against.
+    /// See [`crate::initial_value::block_members`].
+    pub(crate) block_members: crate::initial_value::BlockMembers,
     /// The name the arithmetic overloads know a value of each type by.
     /// See [`crate::type_info::expr_operand_name`].
     pub(crate) operand_names: HashMap<ironplc_dsl::type_id::TypeId, ironplc_dsl::common::TypeName>,
@@ -1452,6 +1448,7 @@ impl CompileContext {
             user_fb_types: HashMap::new(),
             next_user_fb_type_id: 0x1000,
             types: HashMap::new(),
+            block_members: HashMap::new(),
             operand_names: HashMap::new(),
             intrinsics: HashMap::new(),
             string_to_num: StringToNumPolicies::default(),
