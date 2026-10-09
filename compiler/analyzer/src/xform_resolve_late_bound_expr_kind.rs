@@ -1,42 +1,48 @@
-//! Transformation rule that changes late bound expression elements
-//! specific types.
+//! Transformation rule that decides what a bare identifier in an expression
+//! is: a variable or an enumerated value.
 //!
-//! Late bound types are those where the type is ambiguous until
-//! after parsing.
+//! The parser cannot tell `x := g;` (a variable) from `x := RUNNING;` (an
+//! enumerated value), so it records the right-hand side as
+//! `ExprKind::LateBound`. This pass decides, once, after the symbol
+//! environment exists, with one rule:
 //!
-//! The transformation succeeds when all ambiguous expression elements
-//! resolve to a declared type.
+//! 1. If the symbol environment finds a variable, parameter or result
+//!    variable of that name from the current scope (searching outward, then
+//!    the `EXTENDS` chain, then the globals), it is a variable. A variable in
+//!    scope hides an enumerated value of the same name.
+//! 2. Otherwise, if the name is a known enumeration value, it is an
+//!    `EnumeratedValue` with no type name. The expression type pass gives it
+//!    its type from the context it is used in.
+//! 3. Otherwise it is a variable, so the undeclared-variable rule reports it.
+//!
+//! The same rule decides a bare identifier used as a structure or function
+//! block member initializer, `(x := g)`.
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
+use ironplc_dsl::scope::ScopeNode;
 use ironplc_dsl::textual::*;
 use ironplc_dsl::{
     common::*,
     core::{Id, Located},
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
-use crate::type_environment::TypeEnvironment;
+use crate::symbol_environment::{ScopeTracker, SymbolEnvironment, SymbolKind};
 
 pub fn apply(
     lib: Library,
-    type_environment: &mut TypeEnvironment,
+    symbols: &SymbolEnvironment,
 ) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>> {
     let enum_values = collect_enum_values(&lib);
 
-    // Resolve the types. This is a single fold of the library
-    let mut resolver = DeclarationResolver {
-        names_to_types: HashMap::new(),
-        current_type: VariableType::None,
-        diagnostics: Vec::new(),
-        type_environment,
+    let mut resolver = LateBoundResolver {
+        symbols,
+        scope: ScopeTracker::default(),
         enum_values,
     };
-    // A resolution failure on one declaration is diagnosed but does not
-    // stop the fold, so unrelated declarations still resolve. Only a
-    // genuine fold failure (a compiler bug) discards the result.
     let result = resolver.fold_library(lib).map_err(|e| vec![e])?;
 
-    Ok((result, resolver.diagnostics))
+    Ok((result, Vec::new()))
 }
 
 /// Pre-scans the library to collect all known enumeration value names.
@@ -89,77 +95,34 @@ fn collect_enum_values_from_vars(variables: &[VarDecl], values: &mut HashSet<Id>
     }
 }
 
-#[derive(Clone)]
-enum VariableType {
-    None,
-    Simple,
-    String,
-    EnumeratedValues,
-    EnumeratedType,
-    FunctionBlock,
-    Subrange,
-    Structure,
-    Array,
-    Reference,
-    /// Late resolved type with the type name for lookup in type environment
-    LateResolvedType(TypeName),
-}
-
-struct DeclarationResolver<'a> {
-    // Defines the desired type for each identifier
-    names_to_types: HashMap<Id, VariableType>,
-    current_type: VariableType,
-    diagnostics: Vec<Diagnostic>,
-    type_environment: &'a TypeEnvironment,
+struct LateBoundResolver<'a> {
+    symbols: &'a SymbolEnvironment,
+    scope: ScopeTracker,
     // Known enumeration value names collected from type declarations
     enum_values: HashSet<Id>,
 }
 
-impl DeclarationResolver<'_> {
-    fn insert(&mut self, node: &VarDecl) {
-        let var_type = match &node.initializer {
-            InitialValueAssignmentKind::None(_) => VariableType::None,
-            InitialValueAssignmentKind::Simple(_) => VariableType::Simple,
-            InitialValueAssignmentKind::String(_) => VariableType::String,
-            InitialValueAssignmentKind::EnumeratedValues(_) => VariableType::EnumeratedValues,
-            InitialValueAssignmentKind::EnumeratedType(_) => VariableType::EnumeratedType,
-            InitialValueAssignmentKind::FunctionBlock(_) => VariableType::FunctionBlock,
-            InitialValueAssignmentKind::FunctionBlockCall(_) => VariableType::FunctionBlock,
-            InitialValueAssignmentKind::Subrange(_) => VariableType::Subrange,
-            InitialValueAssignmentKind::Structure(_) => VariableType::Structure,
-            InitialValueAssignmentKind::Array(_) => VariableType::Array,
-            InitialValueAssignmentKind::Reference(_) => VariableType::Reference,
-            InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
-                type_name,
-                ..
-            }) => VariableType::LateResolvedType(type_name.clone()),
-            // Not yet folded to a literal (extension, folded by a
-            // later pass); treat like `Simple` for type-inference purposes.
-            InitialValueAssignmentKind::SimpleExpr(_) => VariableType::Simple,
-        };
-        match &node.identifier {
-            VariableIdentifier::Symbol(id) => {
-                self.names_to_types.insert(id.clone(), var_type);
-            }
-            VariableIdentifier::Direct(direct) => {
-                if let Some(name) = &direct.name {
-                    self.names_to_types.insert(name.clone(), var_type);
-                }
-            }
-        }
-    }
-
-    fn find_type(&self, name: &Id) -> &VariableType {
-        self.names_to_types.get(name).unwrap_or(&VariableType::None)
+impl LateBoundResolver<'_> {
+    /// Whether `name` names a variable from the current scope.
+    fn is_variable_in_scope(&self, name: &Id) -> bool {
+        self.symbols
+            .find(name, &self.scope.current())
+            .is_some_and(|symbol| {
+                matches!(
+                    symbol.kind,
+                    SymbolKind::Variable
+                        | SymbolKind::Parameter
+                        | SymbolKind::OutputParameter
+                        | SymbolKind::InOutParameter
+                        | SymbolKind::EdgeVariable
+                        | SymbolKind::ResultVariable
+                )
+            })
     }
 
     /// Resolves a late-bound identifier as either an enum value or variable.
-    ///
-    /// If the identifier is not a declared variable in the current scope but
-    /// is a known enumeration value, resolves as `EnumeratedValue`. Otherwise,
-    /// resolves as a variable reference.
     fn resolve_late_bound(&self, value: Id) -> ExprKind {
-        if !self.names_to_types.contains_key(&value) && self.enum_values.contains(&value) {
+        if !self.is_variable_in_scope(&value) && self.enum_values.contains(&value) {
             ExprKind::EnumeratedValue(EnumeratedValue {
                 type_name: None,
                 value,
@@ -173,15 +136,23 @@ impl DeclarationResolver<'_> {
     }
 }
 
-impl Fold<Diagnostic> for DeclarationResolver<'_> {
+impl Fold<Diagnostic> for LateBoundResolver<'_> {
+    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Diagnostic> {
+        self.scope.enter(&node);
+        Ok(())
+    }
+
+    fn exit_scope(&mut self) {
+        self.scope.exit();
+    }
+
     /// Resolves a bare identifier used as a structure or function-block
     /// member initializer value.
     ///
     /// `(x := g)` is one token in a position that accepts both an enumerated
     /// value and a variable reference, so the parser records it as
-    /// `LateBound` rather than guessing. Deciding it needs the declarations,
-    /// which is what this pass has: `resolve_late_bound` already makes
-    /// exactly this call for every other bare identifier.
+    /// `LateBound` rather than guessing. It is decided by the same rule as
+    /// every other bare identifier.
     ///
     /// A variable reference becomes an `Expression` -- a value read at
     /// instantiation time, gated by `--allow-struct-initializer-expressions`
@@ -202,474 +173,274 @@ impl Fold<Diagnostic> for DeclarationResolver<'_> {
         node.recurse_fold(self)
     }
 
-    fn fold_function_declaration(
-        &mut self,
-        node: FunctionDeclaration,
-    ) -> Result<FunctionDeclaration, Diagnostic> {
-        node.variables.iter().for_each(|v| self.insert(v));
-        let result = node.recurse_fold(self);
-        self.names_to_types.clear();
-        result
-    }
-
-    fn fold_function_block_declaration(
-        &mut self,
-        node: FunctionBlockDeclaration,
-    ) -> Result<FunctionBlockDeclaration, Diagnostic> {
-        node.variables.iter().for_each(|v| self.insert(v));
-        let result = node.recurse_fold(self);
-        self.names_to_types.clear();
-        result
-    }
-    fn fold_program_declaration(
-        &mut self,
-        node: ProgramDeclaration,
-    ) -> Result<ProgramDeclaration, Diagnostic> {
-        node.variables.iter().for_each(|v| self.insert(v));
-        let result = node.recurse_fold(self);
-        self.names_to_types.clear();
-        result
-    }
-    fn fold_assignment(
-        &mut self,
-        node: ironplc_dsl::textual::Assignment,
-    ) -> Result<ironplc_dsl::textual::Assignment, Diagnostic> {
-        // Check the type of the target. We will later use that to assign
-        // any late types in the expression.
-        match &node.target {
-            Variable::Direct(_) => self.current_type = VariableType::None,
-            Variable::Symbolic(symbolic_kind) => {
-                match symbolic_kind {
-                    SymbolicVariableKind::Named(named) => {
-                        // An assignment to a named variable. Look up the variable
-                        // that we should have found earlier to identify the type
-                        self.current_type = self.find_type(&named.name).clone();
-                    }
-                    SymbolicVariableKind::Array(_arr) => {
-                        // Assignment to an array element like data[i] := value
-                        // Determining the element type requires looking up the array
-                        // declaration which isn't available here. Default to None.
-                        self.current_type = VariableType::None;
-                    }
-                    SymbolicVariableKind::Structured(_st) => {
-                        // Assignment to a structure member like s.field := value
-                        // Determining the field type requires looking up the struct
-                        // declaration which isn't available here. Default to None.
-                        self.current_type = VariableType::None;
-                    }
-                    SymbolicVariableKind::SelfRef(self_ref) => {
-                        // Assignment through THIS^/SUPER^. The target's type
-                        // comes from the enclosing function block's members,
-                        // which are not resolved yet -- report instead of
-                        // defaulting to None, which would silently bind any
-                        // late-bound value on the right-hand side to the
-                        // wrong type once the construct is supported.
-                        // See issue #1406.
-                        return Err(Diagnostic::not_implemented(Label::span(
-                            self_ref.span(),
-                            format!(
-                                "{} is recognized but its members are not yet resolved by IronPLC",
-                                self_ref.kind.spelling()
-                            ),
-                        )));
-                    }
-                    SymbolicVariableKind::BitAccess(_ba) => {
-                        // Assignment to a bit access like w.0 := value
-                        // Determining the type requires looking up the variable
-                        // declaration which isn't available here. Default to None.
-                        self.current_type = VariableType::None;
-                    }
-                    SymbolicVariableKind::PartialAccess(_pa) => {
-                        self.current_type = VariableType::None;
-                    }
-                    SymbolicVariableKind::Deref(_d) => {
-                        // Assignment through dereference like PT^[0] := value
-                        // Determining the type requires resolving the reference.
-                        // Default to None.
-                        self.current_type = VariableType::None;
-                    }
-                }
-            }
+    fn fold_assignment(&mut self, node: Assignment) -> Result<Assignment, Diagnostic> {
+        // A bare THIS^/SUPER^ is not a value IronPLC supports as a target.
+        // Report it, so the construct is not silently accepted.
+        // See issue #1406.
+        if let Variable::Symbolic(SymbolicVariableKind::SelfRef(self_ref)) = &node.target {
+            return Err(Diagnostic::not_implemented(Label::span(
+                self_ref.span(),
+                format!(
+                    "{} is recognized but its members are not yet resolved by IronPLC",
+                    self_ref.kind.spelling()
+                ),
+            )));
         }
-
-        // Now recurse into the node so that we can replace any late bound expression elements
-        let result = node.recurse_fold(self);
-
-        // Done with this assignment, so reset the current type
-        self.current_type = VariableType::None;
-
-        result
+        node.recurse_fold(self)
     }
 
-    fn fold_expr_kind(
-        &mut self,
-        node: ironplc_dsl::textual::ExprKind,
-    ) -> Result<ironplc_dsl::textual::ExprKind, Diagnostic> {
+    fn fold_expr_kind(&mut self, node: ExprKind) -> Result<ExprKind, Diagnostic> {
         match node {
-            ExprKind::Compare(node) => node
-                .recurse_fold(self)
-                .map(|v| Ok(ExprKind::Compare(Box::new(v))))?,
-            ExprKind::BinaryOp(node) => node
-                .recurse_fold(self)
-                .map(|v| Ok(ExprKind::BinaryOp(Box::new(v))))?,
-            ExprKind::UnaryOp(node) => node
-                .recurse_fold(self)
-                .map(|v| Ok(ExprKind::UnaryOp(Box::new(v))))?,
-            ExprKind::Expression(node) => {
-                let folded = self.fold_expr(*node)?;
-                Ok(ExprKind::Expression(Box::new(folded)))
-            }
-            ExprKind::Const(node) => node
-                .recurse_fold(self)
-                .map(|v: ConstantKind| Ok(ExprKind::Const(v)))?,
-            ExprKind::EnumeratedValue(node) => node
-                .recurse_fold(self)
-                .map(|v| Ok(ExprKind::EnumeratedValue(v)))?,
-            ExprKind::Variable(node) => {
-                node.recurse_fold(self).map(|v| Ok(ExprKind::Variable(v)))?
-            }
-            ExprKind::Function(node) => {
-                node.recurse_fold(self).map(|v| Ok(ExprKind::Function(v)))?
-            }
-            ExprKind::MethodCall(node) => node
-                .recurse_fold(self)
-                .map(|v| Ok(ExprKind::MethodCall(v)))?,
-            ExprKind::Ref(node) => node
-                .recurse_fold(self)
-                .map(|v| Ok(ExprKind::Ref(Box::new(v))))?,
-            ExprKind::Deref(node) => {
-                let folded = self.fold_expr(*node)?;
-                Ok(ExprKind::Deref(Box::new(folded)))
-            }
-            ExprKind::ImplicitConversion(node) => {
-                let folded = self.fold_expr(*node)?;
-                Ok(ExprKind::ImplicitConversion(Box::new(folded)))
-            }
-            ExprKind::Null(span) => Ok(ExprKind::Null(span)),
-            ExprKind::LateBound(node) => match self.current_type {
-                VariableType::None => Ok(self.resolve_late_bound(node.value)),
-                VariableType::Simple => Ok(self.resolve_late_bound(node.value)),
-                VariableType::String => Ok(self.resolve_late_bound(node.value)),
-                VariableType::EnumeratedValues => {
-                    // Inline enumeration like (Red, Green) - the value is an enum constant
-                    Ok(ExprKind::EnumeratedValue(EnumeratedValue {
-                        type_name: None,
-                        value: node.value,
-                        explicit_value: None,
-                    }))
-                }
-                VariableType::EnumeratedType => Ok(ExprKind::EnumeratedValue(EnumeratedValue {
-                    type_name: None,
-                    value: node.value,
-                    explicit_value: None,
-                })),
-                VariableType::FunctionBlock => {
-                    // Function block variables are parsed as LateResolvedType, not FunctionBlock.
-                    // If we reach this branch, it indicates an internal error.
-                    Err(Diagnostic::internal_error())
-                }
-                VariableType::Subrange => Ok(self.resolve_late_bound(node.value)),
-                VariableType::Structure => Ok(self.resolve_late_bound(node.value)),
-                VariableType::Array => Ok(self.resolve_late_bound(node.value)),
-                VariableType::Reference => Ok(self.resolve_late_bound(node.value)),
-                VariableType::LateResolvedType(ref type_name) => {
-                    // Look up the type in the type environment to determine how to
-                    // handle the late-bound expression.
-                    if self.type_environment.is_enumeration(type_name) {
-                        // The type is an enumeration, so treat the value as an enum constant
-                        Ok(ExprKind::EnumeratedValue(EnumeratedValue {
-                            type_name: None,
-                            value: node.value,
-                            explicit_value: None,
-                        }))
-                    } else {
-                        // Not an enumeration (or type not found), check enum values
-                        Ok(self.resolve_late_bound(node.value))
-                    }
-                }
-            },
+            ExprKind::LateBound(late_bound) => Ok(self.resolve_late_bound(late_bound.value)),
+            other => other.recurse_fold(self),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::type_environment::TypeEnvironmentBuilder;
+    use std::convert::Infallible;
 
-    use super::apply;
-    use ironplc_dsl::core::FileId;
+    use ironplc_dsl::common::*;
+    use ironplc_dsl::textual::*;
+    use ironplc_dsl::visitor::Visitor;
     use ironplc_parser::options::CompilerOptions;
+    use rstest::rstest;
 
-    #[test]
-    fn apply_when_assign_enum_variant_then_ok() {
-        let program = "
-TYPE
-    MyColors: (Red, Green);
-END_TYPE
+    use crate::test_helpers::parse_and_resolve_types_with_options;
 
-FUNCTION_BLOCK FB_EXAMPLE
-    VAR
-        Color: MyColors := Red;
-    END_VAR
-    Color := Green;
-END_FUNCTION_BLOCK";
-
-        let library =
-            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
-                .unwrap();
-        let mut type_environment = TypeEnvironmentBuilder::new()
-            .with_elementary_types()
-            .build()
-            .unwrap();
-        let result = apply(library, &mut type_environment);
-
-        assert!(result.is_ok());
+    /// What a bare identifier became.
+    #[derive(Debug, PartialEq)]
+    enum Became {
+        EnumeratedValue,
+        Variable,
+        /// A variable read through its reference (`REFERENCE TO`).
+        Dereferenced,
+        /// A variable whose address is taken (`ADR(x)`).
+        Referenced,
+        /// A structure initializer value that reads a variable.
+        InitializerExpression,
+        /// A structure initializer value that is an enumerated value.
+        InitializerEnumeratedValue,
     }
 
+    fn options() -> CompilerOptions {
+        CompilerOptions {
+            allow_fb_inheritance: true,
+            allow_top_level_var_global: true,
+            allow_reference_to: true,
+            allow_adr: true,
+            allow_pointer_to: true,
+            allow_struct_initializer_expressions: true,
+            ..CompilerOptions::default()
+        }
+    }
+
+    /// What the value of each assignment and each structure initializer
+    /// element of `program` became, in source order.
+    fn became(program: &str) -> Vec<Became> {
+        struct Collect(Vec<Became>);
+        impl Visitor<Infallible> for Collect {
+            type Value = ();
+            fn visit_assignment(&mut self, node: &Assignment) -> Result<(), Infallible> {
+                self.0.push(match &node.value.kind {
+                    ExprKind::EnumeratedValue(_) => Became::EnumeratedValue,
+                    ExprKind::Variable(_) => Became::Variable,
+                    ExprKind::Deref(inner) if matches!(inner.kind, ExprKind::Variable(_)) => {
+                        Became::Dereferenced
+                    }
+                    ExprKind::Ref(_) => Became::Referenced,
+                    other => panic!("unexpected value {other:?}"),
+                });
+                Ok(())
+            }
+            fn visit_struct_initial_value_assignment_kind(
+                &mut self,
+                node: &StructInitialValueAssignmentKind,
+            ) -> Result<(), Infallible> {
+                match node {
+                    StructInitialValueAssignmentKind::Expression(_) => {
+                        self.0.push(Became::InitializerExpression)
+                    }
+                    StructInitialValueAssignmentKind::EnumeratedValue(_) => {
+                        self.0.push(Became::InitializerEnumeratedValue)
+                    }
+                    _ => {}
+                }
+                Ok(())
+            }
+        }
+        let (library, _) = parse_and_resolve_types_with_options(program, &options());
+        let mut collect = Collect(vec![]);
+        let _ = collect.walk(&library);
+        collect.0
+    }
+
+    #[rstest]
+    #[case::inline_enumeration(
+        "FUNCTION_BLOCK FB VAR Color : (Red, Green, Blue); END_VAR Color := Green; END_FUNCTION_BLOCK"
+    )]
+    #[case::named_enumeration(
+        "TYPE Colors : (Red, Green); END_TYPE
+         FUNCTION_BLOCK FB VAR Color : Colors; END_VAR Color := Green; END_FUNCTION_BLOCK"
+    )]
+    #[case::enumeration_with_initial_value(
+        "TYPE Colors : (Red, Green); END_TYPE
+         FUNCTION_BLOCK FB VAR Color : Colors := Red; END_VAR Color := Green; END_FUNCTION_BLOCK"
+    )]
+    #[case::inline_enumeration_in_a_method(
+        "FUNCTION_BLOCK FB METHOD M VAR t : (T0, T1) := T1; END_VAR t := T0; END_METHOD END_FUNCTION_BLOCK"
+    )]
+    fn apply_when_no_variable_has_the_name_then_enumerated_value(#[case] program: &str) {
+        assert_eq!(vec![Became::EnumeratedValue], became(program));
+    }
+
+    /// A variable in scope hides an enumerated value of the same name,
+    /// wherever the variable is declared.
+    #[rstest]
+    #[case::own_variable(
+        "FUNCTION_BLOCK FB VAR b : BOOL; Error : BOOL; END_VAR b := Error; END_FUNCTION_BLOCK"
+    )]
+    #[case::method_input(
+        "FUNCTION_BLOCK FB VAR b : BOOL; END_VAR METHOD M VAR_INPUT Error : BOOL; END_VAR b := Error; END_METHOD END_FUNCTION_BLOCK"
+    )]
+    #[case::method_local(
+        "FUNCTION_BLOCK FB VAR b : BOOL; END_VAR METHOD M VAR Error : BOOL; END_VAR b := Error; END_METHOD END_FUNCTION_BLOCK"
+    )]
+    #[case::global(
+        "VAR_GLOBAL Error : BOOL; END_VAR
+         PROGRAM main VAR b : BOOL; END_VAR b := Error; END_PROGRAM"
+    )]
+    #[case::inherited_field(
+        "FUNCTION_BLOCK FB_Base VAR Error : BOOL; END_VAR END_FUNCTION_BLOCK
+         FUNCTION_BLOCK FB EXTENDS FB_Base VAR b : BOOL; END_VAR METHOD M b := Error; END_METHOD END_FUNCTION_BLOCK"
+    )]
+    #[case::property_set_input(
+        "FUNCTION_BLOCK FB VAR b : BOOL; END_VAR PROPERTY Error : BOOL SET b := Error; END_SET END_PROPERTY END_FUNCTION_BLOCK"
+    )]
+    #[case::function_input(
+        "FUNCTION F : BOOL VAR_INPUT Error : BOOL; END_VAR F := Error; END_FUNCTION"
+    )]
+    fn apply_when_a_variable_has_the_name_then_variable(#[case] program: &str) {
+        // The enumeration is declared in front of every program.
+        let program = format!("TYPE E_State : (Idle, Error); END_TYPE\n{program}");
+        assert_eq!(vec![Became::Variable], became(&program));
+    }
+
+    /// The target being an enumeration does not make the name an enumerated
+    /// value: the variable in scope still wins.
     #[test]
-    fn apply_when_assign_to_array_member_then_ok() {
-        let program = "FUNCTION_BLOCK _BUFFER_INSERT
-
-VAR_IN_OUT
-	data : ARRAY[1..2] OF INT;
-END_VAR
-
+    fn apply_when_target_is_enumeration_and_variable_has_the_name_then_variable() {
+        let program = "
+TYPE E_State : (Idle, Error); END_TYPE
+FUNCTION_BLOCK FB
 VAR
-	i :	INT;
-	i2 : INT;
+    s : E_State;
+    Error : E_State;
 END_VAR
-
-data[i] := data[i2];
-
-END_FUNCTION_BLOCK
-";
-
-        let library =
-            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
-                .unwrap();
-        let mut type_environment = TypeEnvironmentBuilder::new()
-            .with_elementary_types()
-            .build()
-            .unwrap();
-        let result = apply(library, &mut type_environment);
-        assert!(result.is_ok());
-    }
-
-    // Test: String variable type - assignment from another variable
-    // Does this trigger VariableType::String?
-    #[test]
-    fn apply_when_string_var_assign_from_other_var() {
-        let program = "
-FUNCTION_BLOCK FB_TEST
-    VAR
-        s1 : STRING;
-        s2 : STRING;
-    END_VAR
-    s1 := s2;
+    s := Error;
 END_FUNCTION_BLOCK";
-
-        let library =
-            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
-                .unwrap();
-        let mut type_environment = TypeEnvironmentBuilder::new()
-            .with_elementary_types()
-            .build()
-            .unwrap();
-        let result = apply(library, &mut type_environment);
-        assert!(result.is_ok());
+        assert_eq!(vec![Became::Variable], became(program));
     }
 
-    // Test: Inline enumerated values
-    // Does this trigger VariableType::EnumeratedValues?
     #[test]
-    fn apply_when_inline_enum_assign_value() {
+    fn apply_when_name_is_neither_variable_nor_enumerated_value_then_variable() {
         let program = "
-FUNCTION_BLOCK FB_TEST
-    VAR
-        Color : (Red, Green, Blue);
-    END_VAR
-    Color := Green;
-END_FUNCTION_BLOCK";
-
-        let library =
-            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
-                .unwrap();
-        let mut type_environment = TypeEnvironmentBuilder::new()
-            .with_elementary_types()
-            .build()
-            .unwrap();
-        let result = apply(library, &mut type_environment);
-        assert!(result.is_ok());
-    }
-
-    // Test: Subrange type - inline subrange in VAR_IN_OUT
-    // Does this trigger VariableType::Subrange?
-    #[test]
-    fn apply_when_subrange_assign_from_var() {
-        // VAR_IN_OUT allows inline subrange specification
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR_IN_OUT
-    x : INT(-100..100);
-END_VAR
+FUNCTION_BLOCK FB
 VAR
-    y : INT;
+    b : BOOL;
 END_VAR
-    x := y;
+    b := Undeclared;
 END_FUNCTION_BLOCK";
-
-        let library =
-            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
-                .unwrap();
-        let mut type_environment = TypeEnvironmentBuilder::new()
-            .with_elementary_types()
-            .build()
-            .unwrap();
-        let result = apply(library, &mut type_environment);
-        assert!(result.is_ok());
+        assert_eq!(vec![Became::Variable], became(program));
     }
 
-    // Test: Structure type
-    // Does this trigger VariableType::Structure?
-    #[test]
-    fn apply_when_structure_assign_from_var() {
-        let program = "
-TYPE
-    MyStruct : STRUCT
-        field : INT;
-    END_STRUCT;
-END_TYPE
-
-FUNCTION_BLOCK FB_TEST
-    VAR
-        s1 : MyStruct;
-        s2 : MyStruct;
-    END_VAR
-    s1 := s2;
-END_FUNCTION_BLOCK";
-
-        let library =
-            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
-                .unwrap();
-        let mut type_environment = TypeEnvironmentBuilder::new()
-            .with_elementary_types()
-            .build()
-            .unwrap();
-        let result = apply(library, &mut type_environment);
-        assert!(result.is_ok());
+    #[rstest]
+    #[case::global(
+        "VAR_GLOBAL Error : E_State; END_VAR
+         PROGRAM main VAR s : S := (x := Error); END_VAR END_PROGRAM",
+        Became::InitializerExpression
+    )]
+    #[case::method_variable(
+        "FUNCTION_BLOCK FB METHOD M VAR Error : E_State; s : S := (x := Error); END_VAR END_METHOD END_FUNCTION_BLOCK",
+        Became::InitializerExpression
+    )]
+    #[case::enumerated_value(
+        "PROGRAM main VAR s : S := (x := Error); END_VAR END_PROGRAM",
+        Became::InitializerEnumeratedValue
+    )]
+    fn apply_when_structure_initializer_names_something_then_decided_like_any_name(
+        #[case] program: &str,
+        #[case] expected: Became,
+    ) {
+        let program = format!(
+            "TYPE E_State : (Idle, Error); END_TYPE
+             TYPE S : STRUCT x : E_State; END_STRUCT; END_TYPE
+             {program}"
+        );
+        assert_eq!(vec![expected], became(&program));
     }
 
-    // Test: LateResolvedType - enum without initializer
-    // Does this trigger VariableType::LateResolvedType?
+    /// Implicit dereference and `ADR` need bare names to already be
+    /// variables, so a variable named like an enumerated value must be one
+    /// before they run.
     #[test]
-    fn apply_when_enum_without_init_assign_value() {
+    fn apply_when_reference_to_variable_has_the_name_then_read_through_the_reference() {
         let program = "
-TYPE
-    MyColors: (Red, Green);
-END_TYPE
-
-FUNCTION_BLOCK FB_TEST
-    VAR
-        Color: MyColors;
-    END_VAR
-    Color := Green;
-END_FUNCTION_BLOCK";
-
-        let library =
-            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
-                .unwrap();
-        let mut type_environment = TypeEnvironmentBuilder::new()
-            .with_elementary_types()
-            .build()
-            .unwrap();
-        let result = apply(library, &mut type_environment);
-        assert!(result.is_ok());
-    }
-
-    // Test: Function block assignment.
-    // Note: Function block variables are parsed as LateResolvedType (not FunctionBlock),
-    // so this exercises the LateResolvedType handling which treats the RHS as a variable.
-    #[test]
-    fn apply_when_function_block_assign_from_var_then_ok() {
-        let program = "
-FUNCTION_BLOCK MyFB
-END_FUNCTION_BLOCK
-
-FUNCTION_BLOCK FB_TEST
-    VAR
-        fb1 : MyFB;
-        fb2 : MyFB;
-    END_VAR
-    fb1 := fb2;
-END_FUNCTION_BLOCK";
-
-        let library =
-            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
-                .unwrap();
-        let mut type_environment = TypeEnvironmentBuilder::new()
-            .with_elementary_types()
-            .build()
-            .unwrap();
-        let result = apply(library, &mut type_environment);
-        // This succeeds because FB variables are parsed as LateResolvedType,
-        // and we handle that by treating the RHS as a variable reference.
-        // Semantic analysis later will catch invalid FB assignments.
-        assert!(result.is_ok());
+TYPE E_State : (Idle, Error); END_TYPE
+PROGRAM main
+VAR
+    b : BOOL;
+    target : BOOL;
+    Error : REFERENCE TO BOOL;
+END_VAR
+    Error REF= target;
+    b := Error;
+END_PROGRAM";
+        // `Error REF= target` binds the reference, then `b := Error` reads
+        // through it.
+        assert_eq!(
+            vec![Became::Referenced, Became::Dereferenced],
+            became(program)
+        );
     }
 
     #[test]
-    fn apply_when_enum_value_in_comparison_then_ok() {
+    fn apply_when_method_reference_to_variable_has_the_name_then_read_through_the_reference() {
         let program = "
-TYPE
-    MotorState : (STOPPED, RUNNING, FAULTED);
-END_TYPE
-
-FUNCTION_BLOCK FB_MotorControl
-    VAR
-        State : MotorState := STOPPED;
-        CONTACTOR : BOOL;
-        Seal : BOOL;
-    END_VAR
-    CONTACTOR := (State = RUNNING) AND Seal;
+TYPE E_State : (Idle, Error); END_TYPE
+FUNCTION_BLOCK FB
+VAR
+    b : BOOL;
+END_VAR
+METHOD M
+VAR
+    target : BOOL;
+    Error : REFERENCE TO BOOL;
+END_VAR
+    Error REF= target;
+    b := Error;
+END_METHOD
 END_FUNCTION_BLOCK";
-
-        let library =
-            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
-                .unwrap();
-        let mut type_environment = TypeEnvironmentBuilder::new()
-            .with_elementary_types()
-            .build()
-            .unwrap();
-        let result = apply(library, &mut type_environment);
-        assert!(result.is_ok());
+        assert!(became(program).contains(&Became::Dereferenced));
     }
 
     #[test]
-    fn apply_when_enum_value_in_if_condition_then_ok() {
+    fn apply_when_adr_operand_has_the_name_then_address_of_the_variable() {
         let program = "
-TYPE
-    COLOR : (RED, GREEN, BLUE);
-END_TYPE
-
-FUNCTION_BLOCK FB_TEST
-    VAR
-        c : COLOR;
-        result : INT;
-    END_VAR
-    IF c = GREEN THEN
-        result := 1;
-    END_IF;
+TYPE E_State : (Idle, Error); END_TYPE
+FUNCTION_BLOCK FB
+VAR
+    p : POINTER TO BOOL;
+END_VAR
+METHOD M
+VAR
+    Error : BOOL;
+END_VAR
+    p := ADR(Error);
+END_METHOD
 END_FUNCTION_BLOCK";
-
-        let library =
-            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
-                .unwrap();
-        let mut type_environment = TypeEnvironmentBuilder::new()
-            .with_elementary_types()
-            .build()
-            .unwrap();
-        let result = apply(library, &mut type_environment);
-        assert!(result.is_ok());
+        assert_eq!(vec![Became::Referenced], became(program));
     }
 
     #[test]
@@ -689,10 +460,10 @@ END_FUNCTION_BLOCK";
             allow_fb_inheritance: true,
             ..CompilerOptions::default()
         };
-        let library = ironplc_parser::parse_program(program, &FileId::default(), &options).unwrap();
-
+        let library =
+            ironplc_parser::parse_program(program, &ironplc_dsl::core::FileId::default(), &options)
+                .unwrap();
         let values = super::collect_enum_values(&library);
-
         assert!(values.contains(&ironplc_dsl::core::Id::from("T0")));
         assert!(values.contains(&ironplc_dsl::core::Id::from("T1")));
     }

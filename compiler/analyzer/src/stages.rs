@@ -233,37 +233,13 @@ pub fn resolve_types(
     // discard the rest of the library's successfully resolved declarations.
     let recoverable_xforms: Vec<
         fn(Library, &mut TypeEnvironment) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>>,
-    > = vec![
-        xform_resolve_late_bound_expr_kind::apply,
-        xform_resolve_late_bound_type_initializer::apply,
-    ];
+    > = vec![xform_resolve_late_bound_type_initializer::apply];
 
     for xform in recoverable_xforms {
         library = run_best_effort(library, &mut diagnostics, |lib| {
             xform(lib, &mut type_environment)
         });
     }
-
-    // Give TwinCAT `REFERENCE TO` variables their auto-dereferencing semantics
-    // (bare reads/writes go through the reference) and lower `__ISVALIDREF`.
-    // Runs after late-bound expression resolution (so bare identifiers are
-    // already `ExprKind::Variable`) but before symbol/function resolution (so
-    // `__ISVALIDREF` is lowered before it would be flagged as undeclared) and
-    // before the reference semantic rules. See
-    // specs/design/reference-to-twincat.md (PR 2).
-    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
-        xform_insert_implicit_deref::apply(lib, options)
-    });
-
-    // Rewrite the `ADR(x)` address-of operator into `ExprKind::Ref` when
-    // `allow_adr` is set. Runs after implicit-deref (so a `REFERENCE TO`
-    // operand is not mis-addressed) and before symbol/function resolution
-    // (so a recognized `ADR` is not reported as an undeclared function).
-    // Best effort: a diagnosed call is lowered to a placeholder, so the
-    // transformed library is kept even when diagnostics are present.
-    library = run_best_effort(library, &mut diagnostics, |lib| {
-        xform_resolve_adr::apply(lib, options)
-    });
 
     // Fold constant-expression VAR initializers (e.g. `scaled : LREAL := SCALE*4.0;`)
     // back into ordinary literal initializers, or diagnose. Must run before
@@ -298,6 +274,38 @@ pub fn resolve_types(
             &mut function_environment,
             &type_environment,
         )
+    });
+
+    // Decide what each bare identifier in an expression is: a variable, or an
+    // enumerated value. It needs the symbol environment: a name is a variable
+    // when the environment finds one from the current scope, however it is
+    // declared (a method's variable, a global, an inherited field, the
+    // implicit input of a property accessor). Runs before the passes that
+    // need bare names to already be variables.
+    library = run_best_effort(library, &mut diagnostics, |lib| {
+        xform_resolve_late_bound_expr_kind::apply(lib, &symbol_environment)
+    });
+
+    // Give TwinCAT `REFERENCE TO` variables their auto-dereferencing semantics
+    // (bare reads/writes go through the reference) and lower `__ISVALIDREF`.
+    // Runs after late-bound expression resolution (so bare identifiers are
+    // already `ExprKind::Variable`) but before named-to-positional conversion
+    // and expression typing (so `__ISVALIDREF` is lowered before either sees
+    // it as a call to an undeclared function) and before the reference
+    // semantic rules. See specs/design/reference-to-twincat.md (PR 2).
+    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
+        xform_insert_implicit_deref::apply(lib, options)
+    });
+
+    // Rewrite the `ADR(x)` address-of operator into `ExprKind::Ref` when
+    // `allow_adr` is set. Runs after implicit-deref (so a `REFERENCE TO`
+    // operand is not mis-addressed) and before named-to-positional conversion
+    // and expression typing (so a recognized `ADR` is not seen as a call to an
+    // undeclared function).
+    // Best effort: a diagnosed call is lowered to a placeholder, so the
+    // transformed library is kept even when diagnostics are present.
+    library = run_best_effort(library, &mut diagnostics, |lib| {
+        xform_resolve_adr::apply(lib, options)
     });
 
     // Convert named function call arguments to positional.
