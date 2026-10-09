@@ -128,3 +128,16 @@ gap is in code generation rather than in the program. The two `P4007`
 failures in the table above read `P9999` from then on. The decision is
 unaffected: inherited fields are still not laid out, and a derived type still
 may not redeclare one.
+
+**Postscript (2026-10-09).** The table's "Function local hides global:
+Correct" row was not true in codegen. A function local replaced only the
+name-keyed map for its own kind of variable, so it kept the type of a global
+of the same name when their kinds differed (a local `x : BIG` hiding a global
+`x : INT` was truncated to `INT`), and a local structure could read a program's
+function block instance of the same name. ADR-0058 has the analyzer bind every
+reference to its declaration and codegen key storage by declaration, which
+makes function, function block and method locals that hide an outer name
+correct for every kind of variable. The decision is unaffected: `P4044` and
+`P4050` still apply, and relaxing `P4050` behind a dialect flag, which this ADR
+left for when the back end resolved names per scope, can now be considered on
+its own merits.

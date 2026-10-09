@@ -27,6 +27,7 @@ use super::compile_fb_init::resolve_fb_field_op_type;
 use super::compile_loop::{compile_for, compile_repeat, compile_while};
 use super::compile_method::compile_method_call_statement;
 use crate::emit::Emitter;
+use crate::storage::Binding;
 
 /// Compiles a function block body.
 ///
@@ -164,9 +165,10 @@ fn compile_fb_call(
     ctx: &mut CompileContext,
     fb_call: &FbCall,
 ) -> Result<(), Diagnostic> {
+    let instance = Binding::new(fb_call.instance_decl_id, &fb_call.var_name)?;
     let fb_info = ctx
         .fb_instances
-        .get(&fb_call.var_name)
+        .get(&instance.decl)
         .ok_or_else(|| Diagnostic::todo_with_span(fb_call.span()))?;
     let type_id = fb_info.type_id;
     let field_indices = fb_info.field_indices.clone();

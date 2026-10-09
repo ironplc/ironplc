@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 
 use ironplc_dsl::core::{Id, Located, SourceSpan};
+use ironplc_dsl::decl_id::DeclId;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{StructuredVariable, SymbolicVariableKind};
 
@@ -23,6 +24,7 @@ use super::compile::{
 };
 use super::compile_expr::emit_truncation;
 use crate::emit::Emitter;
+use crate::storage::Binding;
 
 /// Metadata for a structure variable, stored in CompileContext.
 #[derive(Clone)]
@@ -226,13 +228,13 @@ pub(crate) fn resolve_struct_field_access(
     ctx: &CompileContext,
     structured: &StructuredVariable,
 ) -> Result<(VarIndex, u16, SlotIndex, OpType, SemanticType), Diagnostic> {
-    let (root_name, slot_offset, field_type) =
+    let (root, slot_offset, field_type) =
         walk_struct_chain(ctx, &structured.record, &structured.field, 0)?;
 
-    let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
+    let struct_info = ctx.struct_vars.get(&root.decl).ok_or_else(|| {
         Diagnostic::not_implemented(Label::span(
             structured.span(),
-            format!("Variable '{}' is not a structure", root_name),
+            format!("Variable '{}' is not a structure", root.name),
         ))
     })?;
 
@@ -252,19 +254,19 @@ pub(crate) fn resolve_struct_field_access(
     ))
 }
 
-/// Walks a `StructuredVariable` AST chain to resolve the root variable name,
-/// accumulated slot offset, and leaf field type.
+/// Walks a `StructuredVariable` AST chain to resolve the root variable's
+/// binding, accumulated slot offset, and leaf field type.
 ///
 /// - **Base case** (`Named`): looks up the field in `ctx.struct_vars`.
 /// - **Recursive case** (`Structured`): recurses to resolve the parent, then
 ///   uses `find_field_in_type` to resolve the current field within the parent
 ///   type, accumulating slot offsets.
-pub(crate) fn walk_struct_chain(
+pub(crate) fn walk_struct_chain<'a>(
     ctx: &CompileContext,
-    record: &SymbolicVariableKind,
+    record: &'a SymbolicVariableKind,
     field: &Id,
     depth: u32,
-) -> Result<(Id, SlotIndex, SemanticType), Diagnostic> {
+) -> Result<(Binding<'a>, SlotIndex, SemanticType), Diagnostic> {
     if depth > MAX_STRUCT_CHAIN_DEPTH {
         return Err(Diagnostic::not_implemented(Label::span(
             field.span(),
@@ -274,7 +276,8 @@ pub(crate) fn walk_struct_chain(
 
     match record {
         SymbolicVariableKind::Named(named) => {
-            let struct_info = ctx.struct_vars.get(&named.name).ok_or_else(|| {
+            let root = Binding::of(named)?;
+            let struct_info = ctx.struct_vars.get(&root.decl).ok_or_else(|| {
                 Diagnostic::not_implemented(Label::span(
                     named.name.span(),
                     format!("Variable '{}' is not a structure", named.name),
@@ -288,11 +291,7 @@ pub(crate) fn walk_struct_chain(
                 ))
             })?;
             let field_info = &struct_info.fields[field_idx];
-            Ok((
-                named.name.clone(),
-                field_info.slot_offset,
-                field_info.field_type.clone(),
-            ))
+            Ok((root, field_info.slot_offset, field_info.field_type.clone()))
         }
         SymbolicVariableKind::Structured(inner) => {
             let (root, parent_offset, parent_type) =
@@ -379,7 +378,7 @@ pub(crate) fn allocate_struct_variable(
     builder: &mut ContainerBuilder,
     types: &TypeEnvironment,
     type_name: &TypeName,
-    id: &Id,
+    decl: DeclId,
     index: VarIndex,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
@@ -476,7 +475,7 @@ pub(crate) fn allocate_struct_variable(
                     })?;
                 // Allocate scratch variable once for all STRING/WSTRING array fields.
                 if scratch_var_index.is_none() {
-                    let scratch_idx = ctx.allocate_scratch_variable(&id.to_string());
+                    let scratch_idx = ctx.allocate_scratch_variable();
                     scratch_var_index = Some(scratch_idx);
                 }
                 let element_field_type = if char_width.is_wide() {
@@ -513,12 +512,12 @@ pub(crate) fn allocate_struct_variable(
         &mut element_strings,
     )?;
     if !element_strings.is_empty() && scratch_var_index.is_none() {
-        scratch_var_index = Some(ctx.allocate_scratch_variable(&id.to_string()));
+        scratch_var_index = Some(ctx.allocate_scratch_variable());
     }
 
     // Store metadata
     ctx.struct_vars.insert(
-        id.clone(),
+        decl,
         StructVarInfo {
             var_index: index,
             data_offset,

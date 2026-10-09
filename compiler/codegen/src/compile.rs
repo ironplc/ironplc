@@ -59,11 +59,11 @@ use ironplc_dsl::configuration::{
     ConfigurationDeclaration, ProgramConfiguration, TaskConfiguration,
 };
 use ironplc_dsl::core::{FileId, Id, Located};
+use ironplc_dsl::decl_id::DeclId;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_parser::options::{CompilerOptions, StringToNumFailure, StringToNumNonNumeric};
 use ironplc_problems::Problem;
 
-use ironplc_analyzer::system_globals::SYSTEM_UPTIME_GLOBALS;
 use ironplc_analyzer::{
     CleanAnalysis, FunctionEnvironment, Intrinsic, SemanticType, TypeEnvironment,
 };
@@ -254,14 +254,14 @@ pub fn compile(
     }
     let user_globals: &[VarDecl] = config.map(|c| c.global_var.as_slice()).unwrap_or(&[]);
 
-    // Prepend system uptime globals when the feature is enabled.
+    // Prepend system uptime globals when the feature is enabled. The
+    // analyzer declared them, so each carries the identity every reference
+    // to it is bound to.
     let mut synthetic_globals: Vec<VarDecl> = Vec::new();
     if options.system_uptime_global {
-        for global in &SYSTEM_UPTIME_GLOBALS {
-            synthetic_globals.push(
-                VarDecl::simple(global.name, global.type_name).with_type(VariableType::Global),
-            );
-        }
+        synthetic_globals.extend(ironplc_analyzer::system_globals::declarations(
+            context.symbols(),
+        ));
     }
 
     // Collect top-level VAR_GLOBAL declarations (outside CONFIGURATION blocks).
@@ -750,7 +750,6 @@ fn compile_program_with_functions(
 
     // Assign global variable indices first (indices 0..G).
     assign_variables(&mut ctx, &mut builder, global_vars, types)?;
-    let num_globals = ctx.variables.len() as u16;
 
     // Pre-scan user-defined FB declarations to register type metadata
     // (field indices, field op types, type IDs) before assign_variables runs.
@@ -860,8 +859,9 @@ fn compile_program_with_functions(
         }
     }
 
-    // Collect program-local variables, skipping VAR_EXTERNAL declarations
-    // since they alias the corresponding global variables.
+    // Collect program-local variables, skipping VAR_EXTERNAL declarations:
+    // the analyzer binds every reference through one to the global it names,
+    // so an external needs no storage of its own.
     let local_vars: Vec<VarDecl> = program
         .variables
         .iter()
@@ -872,7 +872,7 @@ fn compile_program_with_functions(
     // Assign program-local variable indices (indices G..N).
     // This can now resolve user-defined FB instances via ctx.user_fb_types.
     assign_variables(&mut ctx, &mut builder, &local_vars, types)?;
-    let program_var_count = ctx.variables.len() as u16;
+    let program_var_count = ctx.next_slot;
 
     // Now compile the FB bodies with correct var_offsets.
     let mut compiled_functions = Vec::new();
@@ -897,7 +897,6 @@ fn compile_program_with_functions(
             &mut ctx,
             &mut builder,
             types,
-            num_globals,
         )?;
         var_offset = VarIndex::new(var_offset.raw() + compiled.num_locals);
         compiled_functions.push(compiled);
@@ -918,22 +917,21 @@ fn compile_program_with_functions(
         let fb_func_id = fb_type.function_id;
         fb_type.var_offset = field_var_off;
 
-        let (compiled, program_scope) = compile_user_function_block(
+        let compiled = compile_user_function_block(
             fb_decl,
             fb_func_id,
             field_var_off,
             &mut ctx,
             &mut builder,
             types,
-            num_globals,
         )?;
         var_offset = VarIndex::new(var_offset.raw() + compiled.num_locals);
         compiled_fb_bodies.push(compiled);
 
         // Compile this type's methods (OOP extension, ADR-0041 Phase 1)
-        // while `ctx.variables` still holds this type's field mappings
-        // (that's the whole reason `compile_user_function_block` didn't
-        // restore them itself -- see its doc comment).
+        // while the fields still have their storage (that's the whole
+        // reason `compile_user_function_block` didn't release it itself --
+        // see its doc comment).
         let methods = crate::compile_method::compile_user_fb_methods(
             fb_decl,
             &fb_name,
@@ -945,8 +943,9 @@ fn compile_program_with_functions(
         )?;
         compiled_methods.extend(methods);
 
-        // Now restore the program-level view for the next FB type.
-        ctx.swap_scope(program_scope);
+        // The fields' storage is this type's frame, which no other body can
+        // address -- not even a type that `EXTENDS` this one.
+        ctx.release(crate::compile_fn::declared_ids(&fb_decl.variables));
     }
 
     let total_variables = var_offset;
@@ -1259,7 +1258,6 @@ pub(crate) struct UserFunctionInfo {
     pub(crate) max_stack_depth: u16,
 }
 
-/// Tracks state during compilation of a single program.
 /// Metadata for a function block instance variable.
 #[derive(Clone)]
 pub(crate) struct FbInstanceInfo {
@@ -1325,28 +1323,38 @@ pub(crate) struct UserMethodInfo {
     pub(crate) max_stack_depth: u16,
 }
 
+/// Tracks state during compilation of a single program.
+///
+/// Every map of a variable's storage is keyed by the [`DeclId`] of its
+/// declaration, which the analyzer records on the declaration and on every
+/// reference to it (ADR-0058). Codegen never resolves a name: a body looks up
+/// the declaration each reference names, so nothing is copied from one body
+/// into another. See [`crate::storage`].
 pub(crate) struct CompileContext {
-    /// Maps variable identifiers to their variable table indices.
-    pub(crate) variables: HashMap<Id, VarIndex>,
-    /// Maps variable identifiers to their type information.
-    pub(crate) var_types: HashMap<Id, VarTypeInfo>,
+    /// The variable table slot of each declaration given one.
+    pub(crate) variables: HashMap<DeclId, VarIndex>,
+    /// The type information of each declaration whose value one slot holds.
+    pub(crate) var_types: HashMap<DeclId, VarTypeInfo>,
+    /// The next variable table slot of the frame being laid out; see
+    /// [`CompileContext::allocate_slot`].
+    pub(crate) next_slot: u16,
     /// Ordered list of constants added to the constant pool.
     pub(crate) constants: Vec<PoolConstant>,
     /// Stack of the labels of the enclosing loops, for EXIT and CONTINUE
     /// statement compilation. Each loop pushes its labels; EXIT and CONTINUE
     /// jump to those of the top.
     pub(crate) loop_labels: Vec<crate::compile_loop::LoopLabels>,
-    /// Maps STRING variable identifiers to their data region metadata.
-    pub(crate) string_vars: HashMap<Id, StringVarInfo>,
-    /// Maps FB instance variable identifiers to their metadata.
-    pub(crate) fb_instances: HashMap<Id, FbInstanceInfo>,
-    /// Maps array variable identifiers to their metadata.
-    pub(crate) array_vars: HashMap<Id, crate::compile_array::ArrayVarInfo>,
-    /// Maps structure variable identifiers to their metadata.
-    pub(crate) struct_vars: HashMap<Id, crate::compile_struct::StructVarInfo>,
-    /// Maps top-level `ARRAY OF <struct>` variable identifiers to their metadata.
-    /// Kept apart from `array_vars`, whose elements occupy a single slot each.
-    pub(crate) struct_array_vars: HashMap<Id, crate::compile_array_struct::StructArrayVarInfo>,
+    /// The data region metadata of each STRING declaration.
+    pub(crate) string_vars: HashMap<DeclId, StringVarInfo>,
+    /// The metadata of each function block instance declaration.
+    pub(crate) fb_instances: HashMap<DeclId, FbInstanceInfo>,
+    /// The metadata of each array declaration.
+    pub(crate) array_vars: HashMap<DeclId, crate::compile_array::ArrayVarInfo>,
+    /// The metadata of each structure declaration.
+    pub(crate) struct_vars: HashMap<DeclId, crate::compile_struct::StructVarInfo>,
+    /// The metadata of each top-level `ARRAY OF <struct>` declaration. Kept
+    /// apart from `array_vars`, whose elements occupy a single slot each.
+    pub(crate) struct_array_vars: HashMap<DeclId, crate::compile_array_struct::StructArrayVarInfo>,
     /// What every type is, by the id an expression's `expr_type` carries.
     /// See [`crate::type_info::expr_type_info`].
     pub(crate) types: HashMap<ironplc_dsl::type_id::TypeId, SemanticType>,
@@ -1406,14 +1414,14 @@ pub(crate) struct CompileContext {
     ///
     /// [`record_call_edge`]: CompileContext::record_call_edge
     pub(crate) call_graph: HashMap<FunctionId, HashSet<FunctionId>>,
-    /// The `VAR_IN_OUT` parameters of the function being compiled. Each
-    /// one's slot holds a reference to the caller's variable (a
-    /// variable-table index, as `REF_TO` stores) rather than a value, so it
-    /// is reached through [`in_out_ref_slot`], never [`var_index`].
+    /// The `VAR_IN_OUT` parameter declarations. Each one's slot holds a
+    /// reference to the caller's variable (a variable-table index, as
+    /// `REF_TO` stores) rather than a value, so it is reached through
+    /// [`in_out_ref_slot`], never [`var_index`].
     ///
     /// [`in_out_ref_slot`]: CompileContext::in_out_ref_slot
     /// [`var_index`]: CompileContext::var_index
-    pub(crate) in_out_params: HashSet<Id>,
+    pub(crate) in_out_params: HashSet<DeclId>,
 }
 
 /// Describes how a `RETURN` statement should yield the function's value.
@@ -1434,6 +1442,7 @@ impl CompileContext {
         CompileContext {
             variables: HashMap::new(),
             var_types: HashMap::new(),
+            next_slot: 0,
             constants: Vec::new(),
             loop_labels: Vec::new(),
             string_vars: HashMap::new(),
@@ -1486,69 +1495,6 @@ impl CompileContext {
         if let Some(caller) = self.current_function_id {
             self.call_graph.entry(caller).or_default().insert(callee);
         }
-    }
-
-    /// Looks up a variable index by identifier, using the provided span for error reporting.
-    ///
-    /// A `VAR_IN_OUT` parameter's slot holds a reference, not the value, so
-    /// loading or storing it directly would be wrong. Sites that handle one
-    /// ask [`Self::in_out_ref_slot`] first; every other site reaches here
-    /// and is refused.
-    ///
-    /// A name with no slot is not an undeclared variable: analysis reports
-    /// that first (`rule_use_declared_symbolic_var`, P4007). It is one
-    /// analysis accepts and codegen does not yet give storage to, such as a
-    /// variable inherited through `EXTENDS` or a `RESOURCE`'s `VAR_GLOBAL`, so
-    /// it is reported as not implemented rather than as a mistake in the
-    /// program.
-    pub(crate) fn var_index(&self, name: &Id) -> Result<VarIndex, Diagnostic> {
-        if self.in_out_params.contains(name) {
-            return Err(Diagnostic::not_implemented(Label::span(
-                name.span(),
-                "VAR_IN_OUT parameter used where only a local or global variable is supported",
-            )));
-        }
-        self.variables.get(name).copied().ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(
-                name.span(),
-                "Variable that code generation does not yet give storage to",
-            ))
-            .with_context("variable", &name.to_string())
-        })
-    }
-
-    /// Returns the slot holding the reference when `name` is a `VAR_IN_OUT`
-    /// parameter of the function being compiled, or `None` for any other
-    /// variable.
-    pub(crate) fn in_out_ref_slot(&self, name: &Id) -> Option<VarIndex> {
-        if !self.in_out_params.contains(name) {
-            return None;
-        }
-        self.variables.get(name).copied()
-    }
-
-    /// Looks up type information for a variable by identifier.
-    pub(crate) fn var_type_info(&self, name: &Id) -> Option<VarTypeInfo> {
-        self.var_types.get(name).copied()
-    }
-
-    /// Returns the op_type for a variable by identifier, falling back to defaults.
-    pub(crate) fn var_op_type(&self, name: &Id) -> OpType {
-        self.var_types
-            .get(name)
-            .map(|info| (info.op_width, info.signedness))
-            .unwrap_or(DEFAULT_OP_TYPE)
-    }
-
-    /// Allocates a scratch variable with a synthetic name and returns its index.
-    ///
-    /// The name uses a `$` prefix which is illegal in IEC 61131-3 identifiers,
-    /// guaranteeing no collision with user-defined variables.
-    pub(crate) fn allocate_scratch_variable(&mut self, suffix: &str) -> VarIndex {
-        let idx = VarIndex::new(self.variables.len() as u16);
-        self.variables
-            .insert(Id::from(&format!("$scratch_{}", suffix)), idx);
-        idx
     }
 
     /// Returns the index of an existing constant matching `matches`, or

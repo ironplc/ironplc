@@ -94,6 +94,7 @@ impl From<IncomplVarDecl> for VarDecl {
             initializer: init,
             block: next_block_id(),
             type_id: None,
+            decl_id: None,
         }
     }
 }
@@ -119,6 +120,7 @@ impl UntypedVarDecl {
             // collected together.
             block: next_block_id(),
             type_id: None,
+            decl_id: None,
         }
     }
 }

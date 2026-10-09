@@ -23,5 +23,8 @@ fn main() {
         // Inspecting the expression type annotation (`REQ-ETR-analyzer-*`):
         // how a type is spelled in the annotated rendering.
         "expression-type-resolution.md",
+        // Variable binding (`REQ-VB-analyzer-*`): the declaration identity
+        // and what each reference records.
+        "variable-binding.md",
     ]);
 }

@@ -7,10 +7,11 @@
 use ironplc_analyzer::SemanticType;
 use ironplc_container::{opcode, VarIndex};
 use ironplc_dsl::common::{BitStringLiteral, Boolean, ConstantKind, SignedInteger};
-use ironplc_dsl::core::{Id, Located, SourceSpan};
+use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
-    CompareExpr, CompareOp, Expr, ExprKind, Operator, SymbolicVariableKind, UnaryOp, Variable,
+    CompareExpr, CompareOp, Expr, ExprKind, NamedVariable, Operator, SymbolicVariableKind, UnaryOp,
+    Variable,
 };
 use paste::paste;
 
@@ -26,6 +27,7 @@ use super::compile_partial_access::{compile_partial_access_read, PartialAccess};
 use super::compile_short_circuit::{compile_short_circuit, ShortCircuitOp};
 use super::type_info::{expr_operand_name, expr_representation, expr_type_info};
 use crate::emit::Emitter;
+use crate::storage::Binding;
 
 /// Returns the operation type of an expression's value, from its
 /// `expr_type`.
@@ -157,15 +159,13 @@ pub(crate) fn compile_expr(
                 },
             )
         }
-        ExprKind::LateBound(late_bound) => {
-            if let Some(ref_slot) = ctx.in_out_ref_slot(&late_bound.value) {
-                emit_load_in_out(emitter, ref_slot);
-                return Ok(());
-            }
-            let var_index = ctx.var_index(&late_bound.value)?;
-            emit_load_var(emitter, var_index, op_type);
-            Ok(())
-        }
+        // `xform_resolve_late_bound_expr_kind` rewrites every late-bound
+        // name into a variable reference or an enumerated value, so one that
+        // reaches codegen was never resolved.
+        ExprKind::LateBound(late_bound) => Err(Diagnostic::internal_error_at(Label::span(
+            late_bound.value.span(),
+            "Name was not resolved to a variable or an enumerated value",
+        ))),
         ExprKind::Expression(inner) => compile_expr(emitter, ctx, inner, op_type),
         ExprKind::Compare(compare) => compile_compare(emitter, ctx, expr, compare, op_type),
         ExprKind::EnumeratedValue(enum_val) => {
@@ -182,7 +182,7 @@ pub(crate) fn compile_expr(
         ExprKind::Ref(variable) => {
             // REF(param) of a VAR_IN_OUT parameter is the reference its slot
             // already holds: the caller's variable.
-            if let Some(ref_slot) = in_out_ref_slot(ctx, variable) {
+            if let Some(ref_slot) = in_out_ref_slot(ctx, variable)? {
                 emitter.emit_load_var_i64(ref_slot);
                 return Ok(());
             }
@@ -580,7 +580,7 @@ pub(crate) fn compile_variable_read(
             // their fields are stored in the data region addressed via
             // FB_LOAD_PARAM.
             if let SymbolicVariableKind::Named(named) = structured.record.as_ref() {
-                if let Some(fb_info) = ctx.fb_instances.get(&named.name) {
+                if let Some(fb_info) = ctx.fb_instances.get(&Binding::of(named)?.decl) {
                     let field_name = structured.field.to_string().to_lowercase();
                     let field_idx =
                         fb_info
@@ -609,7 +609,7 @@ pub(crate) fn compile_variable_read(
             // STRING fields are composite (multi-slot) and stored in the data
             // region, so we intercept before resolve_struct_field_access which
             // only supports single-slot (primitive/enum) fields.
-            let (root_name, slot_offset, field_type) = crate::compile_struct::walk_struct_chain(
+            let (root, slot_offset, field_type) = crate::compile_struct::walk_struct_chain(
                 ctx,
                 &structured.record,
                 &structured.field,
@@ -620,10 +620,10 @@ pub(crate) fn compile_variable_read(
                 ironplc_analyzer::semantic_type::SemanticType::String { .. }
             ) {
                 // `walk_struct_chain` found this structure variable above.
-                let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
+                let struct_info = ctx.struct_vars.get(&root.decl).ok_or_else(|| {
                     Diagnostic::internal_error_at(Label::span(
                         structured.span(),
-                        format!("Variable '{}' is not a structure", root_name),
+                        format!("Variable '{}' is not a structure", root.name),
                     ))
                 })?;
                 let byte_offset = struct_info.data_offset + slot_offset.raw() * 8;
@@ -642,8 +642,8 @@ pub(crate) fn compile_variable_read(
             // Check if this is a string variable (stored in data region).
             // String reads emit str_load_var to produce a buf_idx on the stack,
             // which is consumed by string assignment or string function args.
-            if let Some(var_name) = resolve_variable_name(variable) {
-                if let Some(info) = ctx.string_vars.get(var_name) {
+            if let Some(binding) = Binding::of_variable(variable)? {
+                if let Some(info) = ctx.string_vars.get(&binding.decl) {
                     let data_offset = info.data_offset;
                     emitter.emit_str_load_var(data_offset);
                     return Ok(());
@@ -742,11 +742,11 @@ pub(crate) fn compile_variable_read(
 
 /// Returns the slot holding the reference when `variable` names a
 /// `VAR_IN_OUT` parameter of the function being compiled.
-pub(crate) fn in_out_ref_slot(ctx: &CompileContext, variable: &Variable) -> Option<VarIndex> {
-    match variable {
-        Variable::Symbolic(SymbolicVariableKind::Named(named)) => ctx.in_out_ref_slot(&named.name),
-        _ => None,
-    }
+pub(crate) fn in_out_ref_slot(
+    ctx: &CompileContext,
+    variable: &Variable,
+) -> Result<Option<VarIndex>, Diagnostic> {
+    Ok(Binding::of_variable(variable)?.and_then(|binding| ctx.in_out_ref_slot(binding.decl)))
 }
 
 /// Loads the value of the variable a `VAR_IN_OUT` parameter refers to.
@@ -762,7 +762,7 @@ pub(crate) fn resolve_variable(
 ) -> Result<VarIndex, Diagnostic> {
     match variable {
         Variable::Symbolic(symbolic) => match symbolic {
-            SymbolicVariableKind::Named(named) => ctx.var_index(&named.name),
+            SymbolicVariableKind::Named(named) => ctx.var_index(Binding::of(named)?),
             SymbolicVariableKind::Array(array) => Err(Diagnostic::todo_with_span(array.span())),
             SymbolicVariableKind::Structured(structured) => {
                 Err(Diagnostic::todo_with_span(structured.span()))
@@ -777,14 +777,6 @@ pub(crate) fn resolve_variable(
             }
         },
         Variable::Direct(direct) => Err(Diagnostic::todo_with_span(direct.position.clone())),
-    }
-}
-
-/// Extracts the variable name `Id` from a variable reference, if it is a named symbolic variable.
-pub(crate) fn resolve_variable_name(variable: &Variable) -> Option<&Id> {
-    match variable {
-        Variable::Symbolic(SymbolicVariableKind::Named(named)) => Some(&named.name),
-        _ => None,
     }
 }
 
@@ -831,28 +823,29 @@ pub(crate) fn try_classify_cmp(ctx: &mut CompileContext, expr: &Expr) -> Option<
     let right_kind = peel(&compare.right);
 
     // Try `var <cmp> const`.
-    if let (Some(name), Some(value)) = (named_variable_name(left_kind), constant_i64(right_kind)) {
-        return classify_with_named(ctx, name, value, cmp_op_byte);
+    if let (Some(named), Some(value)) = (named_variable(left_kind), constant_i64(right_kind)) {
+        return classify_with_named(ctx, named, value, cmp_op_byte);
     }
     // Try `const <cmp> var` — commute to `var <cmp> const`.
-    if let (Some(value), Some(name)) = (constant_i64(left_kind), named_variable_name(right_kind)) {
+    if let (Some(value), Some(named)) = (constant_i64(left_kind), named_variable(right_kind)) {
         let commuted = opcode::cmp_op::commute(cmp_op_byte)?;
-        return classify_with_named(ctx, name, value, commuted);
+        return classify_with_named(ctx, named, value, commuted);
     }
     None
 }
 
 fn classify_with_named(
     ctx: &mut CompileContext,
-    name: &Id,
+    named: &NamedVariable,
     value: i64,
     cmp_op_byte: u8,
 ) -> Option<ClassifiedCmp> {
-    let info = ctx.var_type_info(name)?;
+    let binding = Binding::of(named).ok()?;
+    let info = ctx.var_type_info(binding.decl)?;
     if info.signedness != Signedness::Signed {
         return None;
     }
-    let var_index = ctx.var_index(name).ok()?;
+    let var_index = ctx.var_index(binding).ok()?;
     match info.op_width {
         OpWidth::W32 => {
             let v32 = i32::try_from(value).ok()?;
@@ -920,15 +913,12 @@ fn peel(expr: &Expr) -> &ExprKind {
     current
 }
 
-/// Returns the identifier of a simple named scalar variable reference,
-/// or `None` for any other variable shape (array element, struct field,
-/// bit access, dereference, etc.).
-fn named_variable_name(kind: &ExprKind) -> Option<&Id> {
+/// Returns a simple named scalar variable reference, or `None` for any
+/// other variable shape (array element, struct field, bit access,
+/// dereference, etc.).
+fn named_variable(kind: &ExprKind) -> Option<&NamedVariable> {
     match kind {
-        ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(named))) => {
-            Some(&named.name)
-        }
-        ExprKind::LateBound(late) => Some(&late.value),
+        ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(named))) => Some(named),
         _ => None,
     }
 }

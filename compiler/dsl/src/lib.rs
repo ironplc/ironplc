@@ -4,6 +4,7 @@
 pub mod common;
 pub mod configuration;
 pub mod core;
+pub mod decl_id;
 pub mod diagnostic;
 pub mod extension;
 pub mod fold;

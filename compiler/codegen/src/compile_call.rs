@@ -32,6 +32,7 @@ use super::compile_string::{
 use super::compile_time_arith::{compile_time_arith, time_arith_for, Operand};
 use super::type_info::{elementary_type_info, expr_operand_name};
 use crate::emit::Emitter;
+use crate::storage::Binding;
 
 /// Returns the operation each standard function in `functions` stands for,
 /// by name.
@@ -274,33 +275,31 @@ fn compile_reference_arg(
     ctx: &mut CompileContext,
     arg: &Expr,
 ) -> Result<(), Diagnostic> {
-    let name = match &arg.kind {
-        ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(named))) => {
-            Some(&named.name)
-        }
-        ExprKind::LateBound(late_bound) => Some(&late_bound.value),
+    let binding = match &arg.kind {
+        ExprKind::Variable(variable) => Binding::of_variable(variable)?,
         _ => None,
     };
     // An elementary variable has type info and lives in its own slot; a
     // string, array, structure or instance lives in the data region.
-    let single_slot = |name: &&Id| {
-        ctx.var_type_info(name).is_some()
-            && !ctx.string_vars.contains_key(*name)
-            && !ctx.array_vars.contains_key(*name)
-            && !ctx.struct_vars.contains_key(*name)
-            && !ctx.struct_array_vars.contains_key(*name)
-            && !ctx.fb_instances.contains_key(*name)
+    let single_slot = |binding: &Binding<'_>| {
+        let decl = binding.decl;
+        ctx.var_type_info(decl).is_some()
+            && !ctx.string_vars.contains_key(&decl)
+            && !ctx.array_vars.contains_key(&decl)
+            && !ctx.struct_vars.contains_key(&decl)
+            && !ctx.struct_array_vars.contains_key(&decl)
+            && !ctx.fb_instances.contains_key(&decl)
     };
-    let Some(name) = name.filter(single_slot) else {
+    let Some(binding) = binding.filter(single_slot) else {
         return Err(Diagnostic::not_implemented(Label::span(
             arg.span(),
             "VAR_IN_OUT argument that is not a named variable of an elementary type",
         )));
     };
-    if let Some(ref_slot) = ctx.in_out_ref_slot(name) {
+    if let Some(ref_slot) = ctx.in_out_ref_slot(binding.decl) {
         emitter.emit_load_var_i64(ref_slot);
     } else {
-        let var_index = ctx.var_index(name)?;
+        let var_index = ctx.var_index(binding)?;
         let pool_index = ctx.add_i64_constant(var_index.into());
         emitter.emit_load_const_i64(pool_index);
     }
@@ -494,7 +493,7 @@ fn compile_sizeof(
         if let ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(ref named))) =
             args[0].kind
         {
-            if let Some(array_info) = ctx.array_vars.get(&named.name) {
+            if let Some(array_info) = ctx.array_vars.get(&Binding::of(named)?.decl) {
                 // Ceiling division, as for a scalar: a BOOL element occupies 1 byte.
                 let elem_bytes = (array_info.element_var_type_info.storage_bits as u32).div_ceil(8);
                 array_info.total_elements * elem_bytes

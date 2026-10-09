@@ -11,14 +11,16 @@
 //! Separate from `compile_stmt.rs` to keep module sizes within the 1000-line
 //! guideline.
 
-use ironplc_dsl::core::{Id, Located};
+use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Assignment, ExprKind, SymbolicVariableKind, Variable};
 
 use super::compile::{CompileContext, DEFAULT_OP_TYPE};
-use super::compile_expr::{compile_expr, resolve_variable_name};
+use super::compile_expr::compile_expr;
 use crate::emit::Emitter;
+use crate::storage::Binding;
 use ironplc_container::VarIndex;
+use ironplc_dsl::decl_id::DeclId;
 
 /// One end of a whole-aggregate copy: where its data region starts and which
 /// array descriptor gives its size.
@@ -60,11 +62,11 @@ pub(crate) fn try_compile_whole_assignment(
     ) {
         return Ok(false);
     }
-    let Some(target_name) = resolve_variable_name(&assignment.target) else {
+    let Some(target) = Binding::of_variable(&assignment.target)? else {
         return Ok(false);
     };
 
-    let Some(dst) = resolve_region(ctx, target_name)? else {
+    let Some(dst) = resolve_region(ctx, target.decl)? else {
         return Ok(false);
     };
 
@@ -86,16 +88,16 @@ pub(crate) fn try_compile_whole_assignment(
     Ok(true)
 }
 
-/// Resolves a variable name to the region it occupies, or `None` when it is
+/// Resolves a declaration to the region it occupies, or `None` when it is
 /// not a whole aggregate.
-fn resolve_region(ctx: &CompileContext, name: &Id) -> Result<Option<Region>, Diagnostic> {
-    if let Some(info) = ctx.struct_vars.get(name) {
+fn resolve_region(ctx: &CompileContext, decl: DeclId) -> Result<Option<Region>, Diagnostic> {
+    if let Some(info) = ctx.struct_vars.get(&decl) {
         return Ok(Some(Region {
             var_index: info.var_index,
             desc_index: info.desc_index,
         }));
     }
-    if let Some(info) = ctx.array_vars.get(name) {
+    if let Some(info) = ctx.array_vars.get(&decl) {
         // A `REF_TO ARRAY` parameter's slot holds the target's variable index
         // rather than a data-region offset, and it owns no region. Assigning
         // one is a reference copy, which the scalar path already does
@@ -122,8 +124,8 @@ fn resolve_source_descriptor(
 ) -> Option<u16> {
     match &value.kind {
         ExprKind::Variable(variable) => {
-            let name = resolve_variable_name(variable)?;
-            resolve_region(ctx, name)
+            let decl = Binding::of_variable(variable).ok()??.decl;
+            resolve_region(ctx, decl)
                 .ok()
                 .flatten()
                 .map(|r| r.desc_index)

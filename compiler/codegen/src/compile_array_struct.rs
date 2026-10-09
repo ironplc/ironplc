@@ -10,6 +10,7 @@
 //! keep module sizes within the 1000-line guideline.
 
 use ironplc_dsl::core::{Id, Located, SourceSpan};
+use ironplc_dsl::decl_id::DeclId;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, SymbolicVariableKind};
 
@@ -21,6 +22,7 @@ use ironplc_dsl::common::SpecificationKind;
 
 use super::compile::CompileContext;
 use super::compile_array::{dimensions_from_semantic_type, ResolvedAccess, StructStringElement};
+use crate::storage::Binding;
 
 /// Metadata for a top-level `ARRAY OF <struct>` variable.
 ///
@@ -176,7 +178,9 @@ fn locate_array_of_struct<'ctx, 'ast>(
         match current.subscripted_variable.as_ref() {
             SymbolicVariableKind::Array(inner) => current = inner,
             SymbolicVariableKind::Structured(base) => break ArrayOfStructBase::Field(base),
-            SymbolicVariableKind::Named(named) => break ArrayOfStructBase::Variable(&named.name),
+            SymbolicVariableKind::Named(named) => {
+                break ArrayOfStructBase::Variable(Binding::of(named)?)
+            }
             other => {
                 return Err(Diagnostic::todo_with_span(other.span()));
             }
@@ -187,7 +191,7 @@ fn locate_array_of_struct<'ctx, 'ast>(
 
     match base {
         ArrayOfStructBase::Field(base) => {
-            let (root_name, field_slot_offset, field_type) =
+            let (root, field_slot_offset, field_type) =
                 crate::compile_struct::walk_struct_chain(ctx, &base.record, &base.field, 0)?;
 
             let SemanticType::Array {
@@ -201,10 +205,10 @@ fn locate_array_of_struct<'ctx, 'ast>(
                 )));
             };
 
-            let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
+            let struct_info = ctx.struct_vars.get(&root.decl).ok_or_else(|| {
                 Diagnostic::not_implemented(Label::span(
                     structured.span(),
-                    format!("Variable '{}' is not a structure", root_name),
+                    format!("Variable '{}' is not a structure", root.name),
                 ))
             })?;
 
@@ -222,8 +226,9 @@ fn locate_array_of_struct<'ctx, 'ast>(
                 span: base.field.span(),
             })
         }
-        ArrayOfStructBase::Variable(name) => {
-            let info = ctx.struct_array_vars.get(name).ok_or_else(|| {
+        ArrayOfStructBase::Variable(binding) => {
+            let name = binding.name;
+            let info = ctx.struct_array_vars.get(&binding.decl).ok_or_else(|| {
                 Diagnostic::not_implemented(Label::span(
                     name.span(),
                     format!("Variable '{}' is not an array of structures", name),
@@ -252,7 +257,7 @@ enum ArrayOfStructBase<'ast> {
     /// An array field of a structure, as in `holder.items[i]`.
     Field(&'ast ironplc_dsl::textual::StructuredVariable),
     /// A variable that is itself an array of structures, as in `items[i]`.
-    Variable(&'ast Id),
+    Variable(Binding<'ast>),
 }
 
 /// Builds the access for `<array-of-struct>[i].field`.
@@ -637,7 +642,7 @@ pub(crate) fn struct_array_declaration(
 pub(crate) fn register_struct_array_variable(
     ctx: &mut CompileContext,
     builder: &mut ContainerBuilder,
-    id: &Id,
+    decl: DeclId,
     var_index: VarIndex,
     element_type: &SemanticType,
     debug_type_name: &str,
@@ -687,11 +692,10 @@ pub(crate) fn register_struct_array_variable(
         span,
         &mut element_strings,
     )?;
-    let scratch_var_index =
-        (!element_strings.is_empty()).then(|| ctx.allocate_scratch_variable(&id.to_string()));
+    let scratch_var_index = (!element_strings.is_empty()).then(|| ctx.allocate_scratch_variable());
 
     ctx.struct_array_vars.insert(
-        id.clone(),
+        decl,
         StructArrayVarInfo {
             var_index,
             desc_index,

@@ -49,6 +49,7 @@ fn parse_when_first_steps_function_block_counter_fbd_then_builds_structure() {
                     }),
                     block: next_block_id(),
                     type_id: None,
+                    decl_id: None,
                 },
                 VarDecl::simple("_TMP_ADD4_OUT", "INT"),
                 VarDecl::simple("_TMP_SEL7_OUT", "INT"),
@@ -94,6 +95,7 @@ fn parse_when_first_steps_func_avg_val_then_builds_structure() {
                     }),
                     block: next_block_id(),
                     type_id: None,
+                    decl_id: None,
                 },
             ],
             edge_variables: vec![],
@@ -124,6 +126,7 @@ fn parse_when_first_steps_func_avg_val_then_builds_structure() {
                     ExprKind::late_bound("InputsNumber"),
                 ),
             )],
+            result_decl_id: None,
         },
     ));
     assert_eq!(actual, expected)
@@ -188,6 +191,7 @@ fn parse_when_first_steps_configuration_then_builds_structure() {
                 }),
                 block: next_block_id(),
                 type_id: None,
+                decl_id: None,
             }],
             resource_decl: vec![ResourceDeclaration {
                 name: Id::from("resource1"),
@@ -278,6 +282,7 @@ fn parse_when_first_steps_function_block_counter_sfc_then_builds_structure() {
                     }),
                     block: next_block_id(),
                     type_id: None,
+                    decl_id: None,
                 },
             ],
             edge_variables: vec![],

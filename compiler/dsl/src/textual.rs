@@ -6,6 +6,7 @@ use crate::common::{
     IntegerLiteral, SignedInteger, Subrange,
 };
 use crate::core::{Id, Located, SourceSpan};
+use crate::decl_id::DeclId;
 use crate::type_id::TypeId;
 use std::fmt;
 
@@ -123,25 +124,48 @@ impl Located for Variable {
 
 impl Variable {
     pub fn named(name: &str) -> Variable {
-        Variable::Symbolic(SymbolicVariableKind::Named(NamedVariable {
-            name: Id::from(name),
-        }))
+        Variable::Symbolic(SymbolicVariableKind::Named(NamedVariable::new(Id::from(
+            name,
+        ))))
     }
 
     pub fn structured(record: &str, field: &str) -> Variable {
         Variable::Symbolic(SymbolicVariableKind::Structured(StructuredVariable {
-            record: Box::new(SymbolicVariableKind::Named(NamedVariable {
-                name: Id::from(record),
-            })),
+            record: Box::new(SymbolicVariableKind::Named(NamedVariable::new(Id::from(
+                record,
+            )))),
             field: Id::from(field),
         }))
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Recurse, Located)]
+#[derive(Debug, Clone, Recurse, Located)]
 pub struct NamedVariable {
     #[located(delegate)]
     pub name: Id,
+    /// The declaration the name refers to, as the analyzer's scope rules
+    /// resolve it from where the reference is written (see [`DeclId`]).
+    /// `None` before the analyzer binds it and for a name that declares no
+    /// variable. Left out of `PartialEq`: it is derived from `name` and the
+    /// scope the reference is in.
+    #[recurse(ignore)]
+    pub decl_id: Option<DeclId>,
+}
+
+impl NamedVariable {
+    /// A reference to the variable `name` that is not bound yet.
+    pub fn new(name: Id) -> Self {
+        Self {
+            name,
+            decl_id: None,
+        }
+    }
+}
+
+impl PartialEq for NamedVariable {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
 }
 
 impl fmt::Display for NamedVariable {
@@ -354,13 +378,25 @@ impl crate::extension::LanguageExtension for SelfRefVariable {
 /// Function block invocation.
 ///
 /// See section 3.2.3.
-#[derive(Debug, PartialEq, Clone, Recurse, Located)]
+#[derive(Debug, Clone, Recurse, Located)]
 pub struct FbCall {
     /// Name of the variable that is associated with the function block
     /// call.
     pub var_name: Id,
     pub params: Vec<ParamAssignmentKind>,
     pub position: SourceSpan,
+    /// The declaration of the instance `var_name` refers to, bound as a
+    /// [`NamedVariable`] is. Left out of `PartialEq` likewise.
+    #[recurse(ignore)]
+    pub instance_decl_id: Option<DeclId>,
+}
+
+impl PartialEq for FbCall {
+    fn eq(&self, other: &Self) -> bool {
+        self.var_name == other.var_name
+            && self.params == other.params
+            && self.position == other.position
+    }
 }
 
 /// The instance a [`MethodCall`] is invoked on.
@@ -395,7 +431,7 @@ impl Located for MethodReceiver {
 /// ([`StmtKind::MethodCall`]), where any return value is discarded, and in
 /// an expression ([`ExprKind::MethodCall`]), where the method must declare
 /// a return type and the call's value is that return value.
-#[derive(Debug, PartialEq, Clone, Recurse, Located)]
+#[derive(Debug, Clone, Recurse, Located)]
 pub struct MethodCall {
     /// The function block instance the method is called on.
     pub receiver: MethodReceiver,
@@ -403,6 +439,20 @@ pub struct MethodCall {
     pub method: Id,
     pub params: Vec<ParamAssignmentKind>,
     pub position: SourceSpan,
+    /// For a [`MethodReceiver::Instance`] receiver, the declaration of the
+    /// instance it names, bound as a [`NamedVariable`] is. `None` for
+    /// `THIS^` and `SUPER^`. Left out of `PartialEq` likewise.
+    #[recurse(ignore)]
+    pub receiver_decl_id: Option<DeclId>,
+}
+
+impl PartialEq for MethodCall {
+    fn eq(&self, other: &Self) -> bool {
+        self.receiver == other.receiver
+            && self.method == other.method
+            && self.params == other.params
+            && self.position == other.position
+    }
 }
 
 /// A binary expression that produces a Boolean result by comparing operands.
@@ -1023,6 +1073,7 @@ impl StmtKind {
             var_name: Id::from(fb_instance_name),
             params: assignments,
             position: SourceSpan::default(),
+            instance_decl_id: None,
         })
     }
 
@@ -1054,9 +1105,9 @@ impl StmtKind {
 
     pub fn structured_assignment(target: &str, record: &str, field: &str) -> StmtKind {
         let variable = Variable::Symbolic(SymbolicVariableKind::Structured(StructuredVariable {
-            record: Box::new(SymbolicVariableKind::Named(NamedVariable {
-                name: Id::from(record),
-            })),
+            record: Box::new(SymbolicVariableKind::Named(NamedVariable::new(Id::from(
+                record,
+            )))),
             field: Id::from(field),
         }));
         StmtKind::Assignment(Assignment {
@@ -1158,7 +1209,7 @@ pub enum CaseSelectionKind {
 /// The for loop statement.
 ///
 /// See section 3.3.2.4.
-#[derive(Debug, PartialEq, Clone, Recurse, Located)]
+#[derive(Debug, Clone, Recurse, Located)]
 pub struct For {
     /// The variable that is assigned and contains the value for each loop iteration.
     pub control: Id,
@@ -1168,6 +1219,21 @@ pub struct For {
     pub body: Vec<StmtKind>,
     #[located(position)]
     pub span: SourceSpan,
+    /// The declaration of the variable `control` refers to, bound as a
+    /// [`NamedVariable`] is. Left out of `PartialEq` likewise.
+    #[recurse(ignore)]
+    pub control_decl_id: Option<DeclId>,
+}
+
+impl PartialEq for For {
+    fn eq(&self, other: &Self) -> bool {
+        self.control == other.control
+            && self.from == other.from
+            && self.to == other.to
+            && self.step == other.step
+            && self.body == other.body
+            && self.span == other.span
+    }
 }
 
 /// The while loop statement.
@@ -1199,9 +1265,9 @@ mod tests {
     #[test]
     fn array_variable_display_when_single_subscript_then_formats_with_brackets() {
         let array_var = ArrayVariable {
-            subscripted_variable: Box::new(SymbolicVariableKind::Named(NamedVariable {
-                name: Id::from("data"),
-            })),
+            subscripted_variable: Box::new(SymbolicVariableKind::Named(NamedVariable::new(
+                Id::from("data"),
+            ))),
             subscripts: vec![Expr::new(ExprKind::integer_literal("0"))],
         };
 
@@ -1213,9 +1279,9 @@ mod tests {
     #[test]
     fn array_variable_display_when_multiple_subscripts_then_formats_with_comma_separated() {
         let array_var = ArrayVariable {
-            subscripted_variable: Box::new(SymbolicVariableKind::Named(NamedVariable {
-                name: Id::from("matrix"),
-            })),
+            subscripted_variable: Box::new(SymbolicVariableKind::Named(NamedVariable::new(
+                Id::from("matrix"),
+            ))),
             subscripts: vec![
                 Expr::new(ExprKind::integer_literal("1")),
                 Expr::new(ExprKind::integer_literal("2")),
@@ -1230,9 +1296,9 @@ mod tests {
     #[test]
     fn array_variable_display_when_variable_subscript_then_formats_variable_name() {
         let array_var = ArrayVariable {
-            subscripted_variable: Box::new(SymbolicVariableKind::Named(NamedVariable {
-                name: Id::from("arr"),
-            })),
+            subscripted_variable: Box::new(SymbolicVariableKind::Named(NamedVariable::new(
+                Id::from("arr"),
+            ))),
             subscripts: vec![Expr::new(ExprKind::named_variable("i"))],
         };
 
@@ -1256,9 +1322,9 @@ mod tests {
     #[test]
     fn display_when_bit_access_variable_then_dot_index() {
         let ba = BitAccessVariable {
-            variable: Box::new(SymbolicVariableKind::Named(NamedVariable {
-                name: Id::from("val"),
-            })),
+            variable: Box::new(SymbolicVariableKind::Named(NamedVariable::new(Id::from(
+                "val",
+            )))),
             index: Integer::new("3", SourceSpan::default()).unwrap(),
         };
         assert_eq!(format!("{ba}"), "val.3");
@@ -1267,9 +1333,9 @@ mod tests {
     #[test]
     fn display_when_deref_variable_then_caret() {
         let d = DerefVariable {
-            variable: Box::new(SymbolicVariableKind::Named(NamedVariable {
-                name: Id::from("ptr"),
-            })),
+            variable: Box::new(SymbolicVariableKind::Named(NamedVariable::new(Id::from(
+                "ptr",
+            )))),
         };
         assert_eq!(format!("{d}"), "ptr^");
     }
@@ -1392,9 +1458,7 @@ mod tests {
 
     #[test]
     fn display_when_symbolic_variable_kind_named_then_name() {
-        let svk = SymbolicVariableKind::Named(NamedVariable {
-            name: Id::from("foo"),
-        });
+        let svk = SymbolicVariableKind::Named(NamedVariable::new(Id::from("foo")));
         assert_eq!(format!("{svk}"), "foo");
     }
 

@@ -18,6 +18,7 @@
 
 use ironplc_dsl::common::{StructInitialValueAssignmentKind, StructureElementInit};
 use ironplc_dsl::core::{Id, Located};
+use ironplc_dsl::decl_id::DeclId;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, ExprKind, ExprType};
 use ironplc_dsl::type_id::TypeId;
@@ -25,6 +26,7 @@ use ironplc_dsl::type_id::TypeId;
 use super::compile::{CompileContext, OpType, DEFAULT_OP_TYPE};
 use super::compile_expr::compile_expr;
 use crate::emit::Emitter;
+use crate::storage::Binding;
 
 /// Resolves the operand type for a function block field.
 ///
@@ -49,21 +51,22 @@ pub(crate) fn resolve_fb_field_op_type(
 }
 
 /// Emits a store of `value` into `field` of the function block instance
-/// named `instance_name`.
+/// `instance` names.
 ///
-/// Returns `Ok(false)` without emitting anything when `instance_name` is not
+/// Returns `Ok(false)` without emitting anything when `instance` is not
 /// a function block instance, so a caller that cannot tell the two apart
 /// (an assignment target may equally be a structure field) can fall through
 /// to its own handling.
 pub(crate) fn compile_fb_field_store(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    instance_name: &Id,
+    instance: Binding<'_>,
     field: &Id,
     value: &Expr,
 ) -> Result<bool, Diagnostic> {
+    let instance_name = instance.name;
     let field_name = field.to_string().to_lowercase();
-    let (field_idx, var_index, type_id) = match ctx.fb_instances.get(instance_name) {
+    let (field_idx, var_index, type_id) = match ctx.fb_instances.get(&instance.decl) {
         Some(fb_info) => {
             let field_idx = fb_info
                 .field_indices
@@ -91,10 +94,9 @@ pub(crate) fn compile_fb_field_store(
     Ok(true)
 }
 
-/// The declared type of `field` of the function block instance
-/// `instance_name`.
-fn fb_field_type_id(ctx: &CompileContext, instance_name: &Id, field: &Id) -> Option<TypeId> {
-    let fb_type = ctx.fb_instances.get(instance_name)?.type_id;
+/// The declared type of `field` of the function block instance `instance`.
+fn fb_field_type_id(ctx: &CompileContext, instance: DeclId, field: &Id) -> Option<TypeId> {
+    let fb_type = ctx.fb_instances.get(&instance)?.type_id;
     ctx.user_fb_types
         .values()
         .find(|user_fb| user_fb.type_id == fb_type)?
@@ -112,9 +114,10 @@ fn fb_field_type_id(ctx: &CompileContext, instance_name: &Id, field: &Id) -> Opt
 pub(crate) fn emit_fb_instance_member_initializers(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    instance_name: &Id,
+    instance: Binding<'_>,
     init: &[StructureElementInit],
 ) -> Result<(), Diagnostic> {
+    let instance_name = instance.name;
     for element in init {
         let value = match &element.init {
             // The value is stored in the field: at its declared type in a
@@ -123,14 +126,14 @@ pub(crate) fn emit_fb_instance_member_initializers(
             StructInitialValueAssignmentKind::Constant(constant) => {
                 let mut expr = Expr::new(ExprKind::Const(constant.clone()));
                 expr.expr_type =
-                    fb_field_type_id(ctx, instance_name, &element.name).map(ExprType::Concrete);
+                    fb_field_type_id(ctx, instance.decl, &element.name).map(ExprType::Concrete);
                 expr
             }
             // The value is a member of the field's type.
             StructInitialValueAssignmentKind::EnumeratedValue(value) => {
                 let mut expr = Expr::new(ExprKind::EnumeratedValue(value.clone()));
                 expr.expr_type =
-                    fb_field_type_id(ctx, instance_name, &element.name).map(ExprType::Concrete);
+                    fb_field_type_id(ctx, instance.decl, &element.name).map(ExprType::Concrete);
                 expr
             }
             StructInitialValueAssignmentKind::Expression(expr) => expr.clone(),
@@ -157,7 +160,7 @@ pub(crate) fn emit_fb_instance_member_initializers(
                 )))
             }
         };
-        compile_fb_field_store(emitter, ctx, instance_name, &element.name, &value)?;
+        compile_fb_field_store(emitter, ctx, instance, &element.name, &value)?;
     }
     Ok(())
 }

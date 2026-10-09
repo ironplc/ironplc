@@ -22,6 +22,7 @@ use ironplc_dsl::{
         TypeName, TypeReference, VariableType,
     },
     core::{Id, Located},
+    decl_id::DeclId,
     diagnostic::Diagnostic,
     scope::{ScopeBearing, ScopeNode},
     visitor::Visitor,
@@ -117,11 +118,18 @@ impl<'a> EnvironmentResolver<'a> {
     /// method `node` that the traversal is about to enter, in that
     /// declaration's own scope. A variable the declaration declares with
     /// the same name replaces it.
-    fn declare_result_variable(&mut self, node: ScopeNode<'_>, name: &Id, return_type: &TypeName) {
+    fn declare_result_variable(
+        &mut self,
+        node: ScopeNode<'_>,
+        name: &Id,
+        return_type: &TypeName,
+        decl_id: Option<DeclId>,
+    ) {
         let scope = self.scope.scope_of(&node);
         let type_id = self.type_env.and_then(|types| types.id_of(return_type));
-        let info =
-            SymbolInfo::new(SymbolKind::ResultVariable, scope, name.span()).with_type_id(type_id);
+        let info = SymbolInfo::new(SymbolKind::ResultVariable, scope, name.span())
+            .with_type_id(type_id)
+            .with_decl_id(decl_id);
         let result = self.symbol_env.insert_info(name, info);
         self.record(result);
     }
@@ -172,27 +180,31 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
     ) -> Result<Self::Value, Infallible> {
         match &node.identifier {
             ironplc_dsl::common::VariableIdentifier::Symbol(id) => {
-                let result = self.symbol_env.insert_variable(
-                    id,
+                let info = SymbolInfo::variable(
                     &self.current_scope(),
+                    id.span(),
                     node.var_type.clone(),
                     node.qualifier.clone(),
                     node.type_id,
                     None,
-                );
+                )
+                .with_decl_id(node.decl_id);
+                let result = self.symbol_env.insert_info(id, info);
                 self.record(result);
             }
             ironplc_dsl::common::VariableIdentifier::Direct(direct) => {
                 if let Some(name) = &direct.name {
                     let address = format_address(&direct.address_assignment);
-                    let result = self.symbol_env.insert_variable(
-                        name,
+                    let info = SymbolInfo::variable(
                         &self.current_scope(),
+                        name.span(),
                         node.var_type.clone(),
                         node.qualifier.clone(),
                         node.type_id,
                         Some(address),
-                    );
+                    )
+                    .with_decl_id(node.decl_id);
+                    let result = self.symbol_env.insert_info(name, info);
                     self.record(result);
                 }
             }
@@ -204,11 +216,13 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
         &mut self,
         node: &ironplc_dsl::common::EdgeVarDecl,
     ) -> Result<Self::Value, Infallible> {
-        let result = self.symbol_env.insert(
-            &node.identifier,
+        let info = SymbolInfo::new(
             SymbolKind::EdgeVariable,
-            &self.current_scope(),
-        );
+            self.current_scope(),
+            node.identifier.span(),
+        )
+        .with_decl_id(node.decl_id);
+        let result = self.symbol_env.insert_info(&node.identifier, info);
         self.record(result);
         node.recurse_visit(self)
     }
@@ -221,6 +235,7 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
             node.as_scope_node(),
             &node.name,
             &node.return_type.to_type_name(),
+            node.result_decl_id,
         );
 
         // Build function signature for function environment
@@ -321,6 +336,7 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
                 node.as_scope_node(),
                 &node.name,
                 &return_type.to_type_name(),
+                node.result_decl_id,
             );
         }
         node.recurse_visit(self)

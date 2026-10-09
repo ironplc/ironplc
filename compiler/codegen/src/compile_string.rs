@@ -11,8 +11,9 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{CompareOp, Expr, ExprKind};
 
 use super::compile::{string_region_size, CompileContext, DEFAULT_OP_TYPE};
-use super::compile_expr::{compile_expr, resolve_variable_name};
+use super::compile_expr::compile_expr;
 use crate::emit::Emitter;
+use crate::storage::Binding;
 use crate::string_width::{
     compile_string_value, encoding_mismatch, resolve_operand_char_width, string_operand_capacity,
 };
@@ -142,8 +143,8 @@ pub(crate) fn resolve_string_arg(
     // (`rule_function_call_type_check`, P4026), so reaching here is a compiler
     // bug.
     if let ExprKind::Variable(variable) = &arg.kind {
-        if let Some(var_name) = resolve_variable_name(variable) {
-            if let Some(info) = ctx.string_vars.get(var_name) {
+        if let Some(binding) = Binding::of_variable(variable)? {
+            if let Some(info) = ctx.string_vars.get(&binding.decl) {
                 if info.char_width != char_width {
                     return Err(encoding_mismatch(char_width, info.char_width, func_span));
                 }

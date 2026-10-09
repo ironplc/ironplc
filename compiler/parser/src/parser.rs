@@ -1067,7 +1067,7 @@ parser! {
       }
     rule symbolic_variable_head() -> SymbolicVariableKind =
       s:self_ref() { SymbolicVariableKind::SelfRef(s) }
-      / name:variable_identifier() { SymbolicVariableKind::Named(NamedVariable { name }) }
+      / name:variable_identifier() { SymbolicVariableKind::Named(NamedVariable::new(name)) }
     rule symbolic_variable_element() -> Element =
       tok(TokenType::Period) _ n:integer() { Element::Bit(n) }
       / tok(TokenType::Period) _ pa:tok(TokenType::PartialAccessBit) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(Element::Bit) }
@@ -1169,7 +1169,7 @@ parser! {
       }
     rule edge_declaration() -> Vec<EdgeVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ tok(TokenType::Bool) _ edge:(tok(TokenType::REdge) { EdgeDirection::Rising } / tok(TokenType::FEdge) { EdgeDirection::Falling }) {
       names.into_iter().map(|name| {
-        EdgeVarDecl { identifier: name, direction: edge.clone(), qualifier: DeclarationQualifier::Unspecified, }
+        EdgeVarDecl { identifier: name, direction: edge.clone(), qualifier: DeclarationQualifier::Unspecified, decl_id: None, }
       }).collect()
     }
     // We have to first handle the special case of enumeration or fb_name without an initializer
@@ -1377,6 +1377,7 @@ parser! {
         initializer,
         block: next_block_id(),
         type_id: None,
+        decl_id: None,
       }
     }
     // We use the same type as in other places for VarInit, but the external always omits the initializer
@@ -1404,6 +1405,7 @@ parser! {
         initializer: spec,
         block: next_block_id(),
         type_id: None,
+        decl_id: None,
       }
     }
     rule global_var_name() -> Id = i:identifier() { i }
@@ -1430,6 +1432,7 @@ parser! {
           initializer: init,
           block: next_block_id(),
           type_id: None,
+          decl_id: None,
         }
       }).collect()
      }
@@ -1542,6 +1545,7 @@ parser! {
         variables,
         edge_variables,
         body,
+        result_decl_id: None,
       }
     }
     rule io_var_declarations() -> Vec<VarDeclarations> = input_declarations() / o:output_declarations() { vec![VarDeclarations::Outputs(o)] } / io:input_output_declarations() { vec![VarDeclarations::Inouts(io)] }
@@ -1619,6 +1623,7 @@ parser! {
         edge_variables,
         body: body.unwrap_or_default(),
         span: SourceSpan::join(&start.span, &end.span),
+        result_decl_id: None,
       }
     }
 
@@ -2264,6 +2269,7 @@ parser! {
         var_name: name,
         params,
         position: span,
+        instance_decl_id: None,
       })
     }
     // OOP extension: `instance.MethodName(args);` (ADR-0041 Phase 1).
@@ -2285,6 +2291,7 @@ parser! {
         method,
         params,
         position: span,
+        receiver_decl_id: None,
       }
     }
     rule method_invocation() -> StmtKind = call:method_call() { StmtKind::MethodCall(call) }
@@ -2358,6 +2365,7 @@ parser! {
         step: range.2,
         body,
         span: SourceSpan::join(&start.span, &end.span),
+        control_decl_id: None,
       }
     }
     rule control_variable() -> Id = identifier()

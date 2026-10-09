@@ -225,7 +225,7 @@ impl TypeResolver<'_> {
                 InitialValueAssignmentKind::SimpleExpr(SimpleExprInitializer {
                     type_name: name,
                     initial_value: Expr::new(ExprKind::Variable(Variable::Symbolic(
-                        SymbolicVariableKind::Named(NamedVariable { name: value }),
+                        SymbolicVariableKind::Named(NamedVariable::new(value)),
                     ))),
                 })
             }
