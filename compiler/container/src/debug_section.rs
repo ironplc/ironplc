@@ -66,9 +66,10 @@ pub mod iec_type_tag {
     /// data-region offset.
     pub const FB_INSTANCE: u8 = 27;
     /// Anything else. The slot may or may not hold the value; `type_name`
-    /// carries whatever the compiler knew. Named subrange types land here and
-    /// *do* hold their value, which is why the aggregate tags above are
-    /// distinct rather than folded into this one.
+    /// carries whatever the compiler knew. A variable tagged here may hold its
+    /// value, which is why the aggregate tags above are distinct rather than
+    /// folded into this one. (A subrange carries its base type's tag, not
+    /// this one.)
     pub const OTHER: u8 = 255;
 }
 
