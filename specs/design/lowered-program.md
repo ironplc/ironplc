@@ -88,11 +88,14 @@ describe:
   raises no `ConstantOverflow`.
 - Codegen takes a clean analysis, so no caller can skip the check (see
   [The Clean-Analysis Gate](#2-the-clean-analysis-gate)).
-- The analyzer records the conversions of comparison and arithmetic operands,
-  of most assigned values and of the arguments of user-defined functions, and
-  the types of untyped literals (ADR-0056). Codegen asks the overload
-  resolver a second time only for an operand pair with a typed overload, such
-  as time arithmetic.
+- The analyzer records most implicit conversions and the types of untyped
+  literals (ADR-0056): those of operands, assigned values, the arguments of
+  functions, methods and function block calls, loop bounds, and the results
+  of calls and dereferences. It types a function of several inputs, such as
+  `MAX`, and the bitwise operators by the type every input widens to. The
+  conversions codegen still makes itself go through one function,
+  `convert_to_context`. Codegen asks the overload resolver a second time only
+  for an operand pair with a typed overload, such as time arithmetic.
 - Bit and partial access, and assignments to most targets that occupy one
   slot, compile through one addressing path (`Place`).
 
@@ -405,10 +408,12 @@ the AST is deleted.
 
 Which states analysis rules out is established case by case, not assumed.
 Some of what codegen handles is reached by programs analysis accepts. The
-analyzer does not record the conversion of a function block or method argument
-yet, so a `DINT` passed to an `LINT` input reaches codegen unconverted, and
-codegen converts it ([Implicit Conversions](implicit-conversions.md)). A path
-like that does not become a P9998 in lowering. The analyzer first either
+analyzer does not record a function block output stored by a call yet, so
+`fb(OUT => x)` reaches codegen with no conversion, and codegen stores the
+output at the field's operation type
+([Implicit Conversions](implicit-conversions.md),
+[issue 2125](https://github.com/ironplc/ironplc/issues/2125)). A path like
+that does not become a P9998 in lowering. The analyzer first either
 rejects the program or records a decision for it.
 
 ## 3. The Lowered Program
@@ -1500,7 +1505,7 @@ today.
 | Decision | Made today in | Recorded as | In the lowered program |
 |---|---|---|---|
 | Type of an untyped literal | The analyzer (ADR-0056), except a member initializer of a function block instance, which codegen builds itself | The literal's `expr_type`, as `ExprType::Inferred` | A `Const` of that type |
-| Implicit conversion | The analyzer for comparison and arithmetic operands, most assigned values and the arguments of user-defined functions (ADR-0056); codegen for the arguments of function block and method calls, and for the other contexts the analyzer does not record yet | `ExprKind::ImplicitConversion` | `Convert` |
+| Implicit conversion | The analyzer for operands, assigned values, the arguments of functions, methods and function block calls, loop bounds, and the results of calls and dereferences (ADR-0056); codegen, through `convert_to_context`, for the contexts the analyzer does not record yet, such as a condition, a subscript and a function block output | `ExprKind::ImplicitConversion` | `Convert` |
 | Arithmetic overload | Analyzer's `resolve_arithmetic_overload` | The expression's `expr_type`, and its operands' conversions | A `Binary` at the result type, or the desugared time arithmetic |
 | Operand type of a comparison | The analyzer ([Comparison Operand Type](comparison-operand-type.md)), with a codegen fallback for a pair without one | Its operands' conversions | A `Compare` at that type |
 | Argument order and count | `xform_named_to_positional_args` for a function call, then re-checked at 27 sites in codegen; codegen for a method call (`compile_method.rs`) and, by name, for a function block call (`compile_stmt.rs`) | Positional arguments | `Vec<Arg>` matched to parameters |
@@ -2100,10 +2105,11 @@ This section constrains the order of work; it is not a work breakdown.
 - **Decisions recorded first.** The analyzer records each decision in the
   first table of [Decisions](#4-decisions), and each check only codegen makes
   moves to an analyzer rule, before lowering covers a construct that depends
-  on it. The recording pass already covers comparisons, arithmetic operands,
-  most assignments, the arguments of user-defined functions and the types of
-  literals. The arguments of function block and method calls and the other
-  remaining contexts come next
+  on it. The recording pass already covers most contexts: operands,
+  assignments, the arguments of functions, methods and function block calls,
+  loop bounds, the results of calls and dereferences, and the types of
+  literals. The contexts it does not record yet, such as a condition, a
+  subscript and a function block output, come next
   ([issue 2050](https://github.com/ironplc/ironplc/issues/2050)). A statement
   that needs a decision the analyzer does not record yet stays on the route
   that reads the AST.
@@ -2254,10 +2260,10 @@ representable.
 
 ADR-0056 records implicit conversions in the analyzer. It began with the
 operands of a comparison, and its postscripts have since extended the pass to
-arithmetic operands, assignments, the arguments of user-defined functions and
-the types of literals. Its drivers were one recorded answer per expression,
-a language server that can show the answer without running codegen, and
-backends that lower rather than decide. This design shares all three and builds on ADR-0056:
+most other contexts and to the types of literals. Its drivers were one recorded
+answer per expression, a language server that can show the answer without
+running codegen, and backends that lower rather than decide. This design shares
+all three and builds on ADR-0056:
 
 - ADR-0056 stands, and its pass is extended until it records every implicit
   conversion and the type of every untyped literal (REQ-LOW-analyzer-091).
