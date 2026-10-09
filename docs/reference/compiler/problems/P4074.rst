@@ -1,0 +1,53 @@
+=====
+P4074
+=====
+
+.. problem-summary:: P4074
+
+This error occurs when ``THIS^`` is used outside a function block, or
+``SUPER^`` is used in a function block that has no base type.
+
+``THIS^`` names the function block instance that the code is running on, so
+it only has a meaning inside a function block: in its body, its methods and
+its property accessors. A program or a function has no such instance.
+``SUPER^`` names the same instance seen as its base type, so it also needs a
+function block that ``EXTENDS`` another.
+
+Example
+-------
+
+The following code will generate error P4074:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Motor
+       VAR
+           speed : INT;
+       END_VAR
+       METHOD Stop
+           SUPER^.Stop();  (* Error: FB_Motor has no base type *)
+       END_METHOD
+   END_FUNCTION_BLOCK
+
+``FB_Motor`` does not extend another function block, so there is no base
+implementation for ``SUPER^`` to call.
+
+To fix this error, call the function block's own member with ``THIS^``, or
+derive the function block from the base type that declares the member:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Motor
+       VAR
+           speed : INT;
+       END_VAR
+       METHOD Stop
+           THIS^.speed := 0;
+       END_METHOD
+   END_FUNCTION_BLOCK
+
+See Also
+--------
+
+- :doc:`/reference/language/object-orientation/this-and-super` — ``THIS`` and ``SUPER``
+- :doc:`/reference/language/object-orientation/extends` — ``EXTENDS``

@@ -228,6 +228,8 @@ SUPER^.Start();
 
 **Design:** Add `This` and `Super` as keyword tokens. Both are promoted from identifiers by the token transform, ensuring consistent treatment. The parser recognizes `THIS^` and `SUPER^` as primary expressions (like variable references) that can be followed by member access (`.`). The `^` is the existing dereference operator in IEC 61131-3. In the AST, these map to new expression variants.
 
+**As shipped (analysis):** `THIS^` has the type of the enclosing function block (in its body, methods and property accessors) and `SUPER^` that of its `EXTENDS` base (`SymbolEnvironment::self_type`). `THIS^.x` is the block's own or inherited field even where a method parameter or local named `x` hides it; `SUPER^.x` looks only at inherited fields. `THIS^.M()` resolves along the block's `EXTENDS` chain and `SUPER^.M()` along the base's. `THIS^` outside a function block and `SUPER^` without a base are P4074. A value of the wrong type assigned to a member, and a bit or partial access or array subscript through one, are checked like any other variable. Not yet supported (P9999): code generation for both, and `THIS^`/`SUPER^` used as a value on its own. `SUPER^()` is a syntax error (P0002). As with any instance, a member that doesn't exist is not reported yet.
+
 ### Priority 2: Type System Extensions
 
 #### 2.1 `POINTER TO` / `REFERENCE TO`

@@ -371,4 +371,33 @@ END_VAR
 END_FUNCTION",
         [Problem::ArrayIndexOutOfBounds]
     );
+
+    fn through_this(body: &str) -> Vec<String> {
+        let program = format!(
+            "
+FUNCTION_BLOCK FB_A
+VAR
+    arr : ARRAY[1..10] OF INT;
+END_VAR
+METHOD M
+{body}
+END_METHOD
+END_FUNCTION_BLOCK"
+        );
+        rule_codes(
+            apply,
+            &program,
+            &crate::test_helpers::fb_inheritance_options(),
+        )
+    }
+
+    #[rstest]
+    #[case::in_range("    THIS^.arr[1] := 1;", OK)]
+    #[case::above_upper_bound("    THIS^.arr[11] := 1;", OUT_OF_BOUNDS)]
+    fn apply_when_subscript_through_this_then_checked_against_dimension(
+        #[case] body: &str,
+        #[case] expected: &[Problem],
+    ) {
+        assert_eq!(codes(expected), through_this(body));
+    }
 }

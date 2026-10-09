@@ -18,7 +18,9 @@
 use ironplc_dsl::{common::*, core::Id, textual::*};
 
 use crate::{
-    semantic_context::SemanticContext, semantic_type::SemanticType, symbol_environment::ScopeKind,
+    semantic_context::SemanticContext,
+    semantic_type::SemanticType,
+    symbol_environment::{ScopeKind, ScopePath, SymbolEnvironment, SymbolInfo},
     type_environment::TypeEnvironment,
 };
 
@@ -76,6 +78,17 @@ pub(crate) fn of(
     match kind {
         SymbolicVariableKind::Named(named) => declared(&named.name, context, scope).cloned(),
         SymbolicVariableKind::Structured(structured) => {
+            if let SymbolicVariableKind::SelfRef(self_ref) = structured.record.as_ref() {
+                let member =
+                    self_member(self_ref.kind, &structured.field, context.symbols(), scope)?;
+                return Some(
+                    context
+                        .types()
+                        .get_by_id(member.type_id?)?
+                        .representation
+                        .clone(),
+                );
+            }
             let record_type = of(&structured.record, context, scope)?;
             struct_field_type(&record_type, &structured.field)
         }
@@ -90,11 +103,9 @@ pub(crate) fn of(
         // note on this function.
         SymbolicVariableKind::BitAccess(bit_access) => of(&bit_access.variable, context, scope),
         SymbolicVariableKind::PartialAccess(partial) => of(&partial.variable, context, scope),
-        SymbolicVariableKind::SelfRef(_) => {
-            // Typing a member of THIS^/SUPER^ needs function-block member
-            // resolution, which does not exist yet. See issue #1406.
-            None
-        }
+        // A bare `THIS^` or `SUPER^` is a function block instance, not a
+        // value with a type of its own; its members are typed above.
+        SymbolicVariableKind::SelfRef(_) => None,
         // `p^` is the variable `p` references, so it has the referenced
         // type, not `REF_TO`.
         SymbolicVariableKind::Deref(deref) => match of(&deref.variable, context, scope)? {
@@ -102,6 +113,40 @@ pub(crate) fn of(
             _ => None,
         },
     }
+}
+
+/// The symbol of the member `field` of what `THIS^` or `SUPER^` names from
+/// `scope`.
+///
+/// The field is looked up from the function block's own scope, not from
+/// `scope`, so a method parameter or local that hides it does not answer for
+/// it. `find` walks the `EXTENDS` chain, and for `SUPER^` it starts at the
+/// base so only inherited fields are seen. `None` outside a function block,
+/// for `SUPER^` without a base, and for a field the block does not have.
+pub(crate) fn self_member<'a>(
+    kind: SelfRefKind,
+    field: &Id,
+    symbols: &'a SymbolEnvironment,
+    scope: &ScopeKind,
+) -> Option<&'a SymbolInfo> {
+    let block = symbols.self_type(scope, kind)?;
+    member_of_block(&block, field, symbols)
+}
+
+/// The symbol of the member `field` of the function block `block`, found in
+/// its own scope and then those of its `EXTENDS` chain.
+///
+/// `find` falls back to the globals, which are not members. Neither is a
+/// `VAR_EXTERNAL` declaration, which is a view of a global: TwinCAT reports
+/// `THIS^.g` as no component of the block.
+pub(crate) fn member_of_block<'a>(
+    block: &TypeName,
+    field: &Id,
+    symbols: &'a SymbolEnvironment,
+) -> Option<&'a SymbolInfo> {
+    let block_scope = ScopeKind::Named(ScopePath::from(block.name.clone()));
+    let member = symbols.find(field, &block_scope)?;
+    (member.scope != ScopeKind::Global && !member.is_external).then_some(member)
 }
 
 /// The declared type of the variable `name` names from `scope`: a variable,

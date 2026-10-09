@@ -252,7 +252,17 @@ impl WriteCollector<'_> {
                     self.mark_member(&fb_type, field);
                 }
             }
-            SymbolicVariableKind::SelfRef(_) => self.mark(field),
+            // The member is looked up on the block `THIS^`/`SUPER^` names, not
+            // from the method's scope, so a parameter or local of the same
+            // name does not answer for it.
+            SymbolicVariableKind::SelfRef(self_ref) => {
+                let block = self
+                    .symbol_environment
+                    .self_type(&self.current_scope(), self_ref.kind);
+                if let Some(block) = block {
+                    self.mark_member(&block, field);
+                }
+            }
             _ => self.mark_any_scope(field),
         }
     }

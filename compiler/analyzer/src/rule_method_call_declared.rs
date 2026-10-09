@@ -45,6 +45,7 @@ use ironplc_dsl::{
     common::*,
     core::{Id, Located},
     diagnostic::{Diagnostic, Label},
+    scope::ScopeNode,
     textual::*,
     visitor::Visitor,
 };
@@ -55,17 +56,20 @@ use crate::{
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    semantic_type::SemanticType,
+    symbol_environment::ScopeTracker,
+    variable_type,
 };
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
     lib: &Library,
-    _context: &SemanticContext,
+    context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
     let function_blocks = FunctionBlocks::from_library(lib);
 
-    run_rule(RuleMethodCallDeclared::new(&function_blocks), lib)
+    run_rule(RuleMethodCallDeclared::new(&function_blocks, context), lib)
 }
 
 struct RuleMethodCallDeclared<'a> {
@@ -73,6 +77,11 @@ struct RuleMethodCallDeclared<'a> {
 
     /// The instances declared in the unit being walked.
     instances: InstanceTypes,
+
+    context: &'a SemanticContext,
+
+    /// Where the walk is, to find the function block `THIS^`/`SUPER^` name.
+    scope: ScopeTracker,
 
     /// Whether the method call being visited is in expression position,
     /// where its value is used and the method must have a return type.
@@ -82,10 +91,12 @@ struct RuleMethodCallDeclared<'a> {
 }
 
 impl<'a> RuleMethodCallDeclared<'a> {
-    fn new(function_blocks: &'a FunctionBlocks<'a>) -> Self {
+    fn new(function_blocks: &'a FunctionBlocks<'a>, context: &'a SemanticContext) -> Self {
         Self {
             function_blocks,
             instances: InstanceTypes::default(),
+            context,
+            scope: ScopeTracker::default(),
             in_expression: false,
             diagnostics: Vec::new(),
         }
@@ -130,6 +141,15 @@ impl DiagnosticVisitor for RuleMethodCallDeclared<'_> {
 
 impl Visitor<Infallible> for RuleMethodCallDeclared<'_> {
     type Value = ();
+
+    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
+        self.scope.enter(&node);
+        Ok(())
+    }
+
+    fn exit_scope(&mut self) {
+        self.scope.exit();
+    }
 
     fn visit_function_block_declaration(
         &mut self,
@@ -181,22 +201,20 @@ impl Visitor<Infallible> for RuleMethodCallDeclared<'_> {
 
 impl RuleMethodCallDeclared<'_> {
     fn check_call(&mut self, call: &MethodCall, in_expression: bool) {
-        // `THIS^.M()` / `SUPER^.M()` resolve against the enclosing function
-        // block (and, for SUPER^, its base) rather than a variable's declared
-        // type. That resolution is not implemented yet, so say so rather than
-        // skipping the call: a silent skip would keep quietly passing once
-        // the receiver becomes resolvable. Tracked in issue #1406.
+        // `THIS^.M()` resolves against the enclosing function block and
+        // `SUPER^.M()` against its base, so a `SUPER^` call starts the
+        // `EXTENDS` walk one block up. Where there is nothing to name,
+        // `rule_self_reference_context` reports the receiver.
         let instance = match &call.receiver {
             MethodReceiver::Instance(id) => id,
             MethodReceiver::SelfRef(self_ref) => {
-                self.diagnostics
-                    .push(Diagnostic::not_implemented(Label::span(
-                        self_ref.span(),
-                        format!(
-                            "{} method invocation is recognized but not yet resolved by IronPLC",
-                            self_ref.kind.spelling()
-                        ),
-                    )));
+                let scope = self.scope.current();
+                if let Some(fb_type) = self.context.symbols().self_type(&scope, self_ref.kind) {
+                    if self.is_member_instance(call, &fb_type) {
+                        return;
+                    }
+                    self.check_on_type(call, in_expression, &fb_type);
+                }
                 return;
             }
         };
@@ -214,13 +232,41 @@ impl RuleMethodCallDeclared<'_> {
             return;
         }
 
-        match self.function_blocks.resolve_method(&fb_type, &call.method) {
+        if self.is_member_instance(call, &fb_type) {
+            return;
+        }
+        self.check_on_type(call, in_expression, &fb_type);
+    }
+
+    /// Whether `receiver.name(...)` invokes a function block instance that
+    /// `fb_type` declares rather than a method: `THIS^.inner(i := 1)` and
+    /// `inst.inner(i := 1)`. TwinCAT accepts both. The arguments are not
+    /// checked against the instance's inputs here.
+    fn is_member_instance(&self, call: &MethodCall, fb_type: &TypeName) -> bool {
+        if self
+            .function_blocks
+            .resolve_method(fb_type, &call.method)
+            .is_some()
+        {
+            return false;
+        }
+        variable_type::member_of_block(fb_type, &call.method, self.context.symbols())
+            .and_then(|member| member.type_id)
+            .and_then(|id| self.context.types().get_by_id(id))
+            .is_some_and(|ty| matches!(ty.representation, SemanticType::FunctionBlock { .. }))
+    }
+
+    /// Checks `call` against the methods of `fb_type` and its `EXTENDS`
+    /// chain: the method exists, has a result where one is used, and gets
+    /// the arguments it declares.
+    fn check_on_type(&mut self, call: &MethodCall, in_expression: bool, fb_type: &TypeName) {
+        match self.function_blocks.resolve_method(fb_type, &call.method) {
             None => self.diagnostics.push(
                 Diagnostic::problem(
                     Problem::MethodNotFound,
                     Label::span(call.span(), "Method invocation"),
                 )
-                .with_context_type("function block", &fb_type)
+                .with_context_type("function block", fb_type)
                 .with_context_id("method", &call.method),
             ),
             Some((owning_fb, method)) => {
@@ -309,6 +355,62 @@ VAR
 END_VAR
 m.Start();
 END_PROGRAM",
+        fb_inheritance_options()
+    );
+
+    rule_ok!(
+        apply_when_this_and_super_methods_called_then_ok,
+        "
+FUNCTION_BLOCK FB_Base
+METHOD Stop : BOOL
+    Stop := TRUE;
+END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Motor EXTENDS FB_Base
+VAR
+    ok : BOOL;
+END_VAR
+METHOD Start
+VAR_INPUT
+    speed : INT;
+END_VAR
+END_METHOD
+METHOD Run
+    THIS^.Start(speed := 3);
+    ok := THIS^.Stop();
+    ok := SUPER^.Stop();
+END_METHOD
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
+    );
+
+    rule_err!(
+        apply_when_this_method_not_declared_then_error,
+        "
+FUNCTION_BLOCK FB_Motor
+METHOD Run
+    THIS^.Nope();
+END_METHOD
+END_FUNCTION_BLOCK",
+        [Problem::MethodNotFound],
+        fb_inheritance_options()
+    );
+
+    rule_err!(
+        apply_when_super_method_only_on_derived_then_error,
+        "
+FUNCTION_BLOCK FB_Base
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Motor EXTENDS FB_Base
+METHOD Start
+END_METHOD
+METHOD Run
+    SUPER^.Start();
+END_METHOD
+END_FUNCTION_BLOCK",
+        [Problem::MethodNotFound],
         fb_inheritance_options()
     );
 

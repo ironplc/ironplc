@@ -258,17 +258,15 @@ impl Fold<Diagnostic> for DeclarationResolver<'_> {
                         self.current_type = VariableType::None;
                     }
                     SymbolicVariableKind::SelfRef(self_ref) => {
-                        // Assignment through THIS^/SUPER^. The target's type
-                        // comes from the enclosing function block's members,
-                        // which are not resolved yet -- report instead of
-                        // defaulting to None, which would silently bind any
-                        // late-bound value on the right-hand side to the
-                        // wrong type once the construct is supported.
-                        // See issue #1406.
+                        // A bare THIS^/SUPER^ is the target: it has no type of
+                        // its own, so report instead of defaulting to None,
+                        // which would silently bind a late-bound value on the
+                        // right-hand side to the wrong type. A member
+                        // (THIS^.x) is a structured variable, handled above.
                         return Err(Diagnostic::not_implemented(Label::span(
                             self_ref.span(),
                             format!(
-                                "{} is recognized but its members are not yet resolved by IronPLC",
+                                "{} used as a value on its own is recognized but not yet supported by IronPLC",
                                 self_ref.kind.spelling()
                             ),
                         )));

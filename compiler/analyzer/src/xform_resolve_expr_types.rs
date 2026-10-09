@@ -7,7 +7,7 @@
 //! `value_type::operand_type_name`.
 use ironplc_dsl::common::*;
 use ironplc_dsl::core::{Id, Located};
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::scope::ScopeNode;
 use ironplc_dsl::textual::*;
@@ -29,6 +29,7 @@ use crate::semantic_type::SemanticType;
 use crate::symbol_environment::{ScopeTracker, SymbolEnvironment};
 use crate::type_environment::TypeEnvironment;
 use crate::value_type::operand_type_name;
+use crate::variable_type;
 use ironplc_parser::options::CompilerOptions;
 
 /// Returns the library with every expression's type, and the unqualified
@@ -296,19 +297,21 @@ impl ExprTypeResolver<'_> {
                     ParamAssignmentKind::Output(_) => None,
                 })
             }
-            // The method's return type. A call on `THIS^`/`SUPER^`, or to a
-            // method without a return type, has no type here; the method
-            // call rule reports both.
+            // The method's return type. A call to a method without a return
+            // type has no type here; the method call rule reports it.
             ExprKind::MethodCall(call) => {
-                let MethodReceiver::Instance(instance) = &call.receiver else {
-                    return None;
+                let fb_type = match &call.receiver {
+                    MethodReceiver::Instance(instance) => self
+                        .type_environment
+                        .name_of(self.declared_type_id(instance)?)?
+                        .clone(),
+                    MethodReceiver::SelfRef(self_ref) => self
+                        .symbols
+                        .self_type(&self.scope.current(), self_ref.kind)?,
                 };
-                let fb_type = self
-                    .type_environment
-                    .name_of(self.declared_type_id(instance)?)?;
                 let return_type = self
                     .method_return_types
-                    .get(fb_type)?
+                    .get(&fb_type)?
                     .get(&call.method)?
                     .clone()?;
                 self.expr_type_named(return_type)
@@ -610,6 +613,11 @@ impl ExprTypeResolver<'_> {
     /// The type of the member `sv` accesses, as its representation: a field's
     /// type is known by its representation only.
     fn field_type<'b>(&'b self, sv: &StructuredVariable) -> Option<&'b SemanticType> {
+        // A member of what `THIS^` or `SUPER^` names.
+        if let SymbolicVariableKind::SelfRef(self_ref) = sv.record.as_ref() {
+            let id = self.self_member_type_id(self_ref.kind, &sv.field)?;
+            return Some(&self.type_environment.get_by_id(id)?.representation);
+        }
         let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
         parent_type
             .member_fields()?
@@ -656,6 +664,17 @@ impl ExprTypeResolver<'_> {
             SemanticType::Array { element_type, .. } => Some(element_type),
             _ => None,
         }
+    }
+
+    /// The id of the declared type of `field` on what `THIS^` (the enclosing
+    /// function block and the blocks it `EXTENDS`) or `SUPER^` (only the
+    /// blocks its base `EXTENDS`, so inherited fields alone) names. The
+    /// lookup starts from the block's own scope, not the method's, so a
+    /// method parameter that hides the field does not answer for it. `None`
+    /// outside a function block, for `SUPER^` without a base, and for a
+    /// field the block doesn't have.
+    fn self_member_type_id(&self, kind: SelfRefKind, field: &Id) -> Option<TypeId> {
+        variable_type::self_member(kind, field, self.symbols, &self.scope.current())?.type_id
     }
 
     /// Resolves the element type of an array that lives inside a struct field.
@@ -708,10 +727,10 @@ impl ExprTypeResolver<'_> {
                 self.type_environment.referenced_type(reference)
             }
             SymbolicVariableKind::SelfRef(_) => {
-                // THIS^/SUPER^ has no resolvable type until function-block
-                // member resolution exists. Unreachable in practice:
-                // `fold_self_ref_variable` rejects the construct before any
-                // type resolution runs. See issue #1406.
+                // A bare THIS^/SUPER^ is a function block instance with no
+                // value type of its own, and `rule_unsupported_extension`
+                // reports it. Its members are typed through
+                // `field_type`.
                 None
             }
         }
@@ -732,17 +751,10 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
         &mut self,
         node: SelfRefVariable,
     ) -> Result<SelfRefVariable, Diagnostic> {
-        // Fail rather than resolve to "unknown": every downstream consumer
-        // of this pass treats an unresolved type as a fact about the
-        // program, and silently producing one here would let THIS^/SUPER^
-        // through unnoticed once it is otherwise supported. See issue #1406.
-        Err(Diagnostic::not_implemented(Label::span(
-            node.span(),
-            format!(
-                "{} is recognized but its type cannot be resolved by IronPLC yet",
-                node.kind.spelling()
-            ),
-        )))
+        // `THIS^`/`SUPER^` with nothing to refer to (outside a function
+        // block, or `SUPER^` without a base) is reported by
+        // `rule_self_reference_context`; its members then have no type.
+        Ok(node)
     }
 
     fn fold_expr(&mut self, node: Expr) -> Result<Expr, Diagnostic> {

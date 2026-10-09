@@ -27,8 +27,8 @@ use crate::{
     rule_method_call_declared, rule_mixed_located_var_declarations, rule_no_top_level_var_global,
     rule_operator_operand_type_check, rule_pou_hierarchy, rule_program_task_definition_exists,
     rule_program_var_hides_global, rule_range_limits, rule_real_literal_range, rule_ref_to,
-    rule_return_type_declared, rule_stdlib_type_redefinition, rule_string_encoding_compat,
-    rule_string_length_range, rule_string_literal_char_range,
+    rule_return_type_declared, rule_self_reference_context, rule_stdlib_type_redefinition,
+    rule_string_encoding_compat, rule_string_length_range, rule_string_literal_char_range,
     rule_struct_initializer_expression_allowed, rule_task_names_unique,
     rule_temporal_literal_range, rule_unsupported_extension, rule_use_declared_enumerated_value,
     rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
@@ -399,6 +399,7 @@ pub(crate) fn semantic(
         rule_no_top_level_var_global::apply,
         rule_operator_operand_type_check::apply,
         rule_task_names_unique::apply,
+        rule_self_reference_context::apply,
         rule_stdlib_type_redefinition::apply,
         rule_string_encoding_compat::apply,
         rule_string_length_range::apply,
@@ -715,27 +716,28 @@ END_FUNCTION_BLOCK";
     }
 
     // ---------------------------------------------------------------------
-    // THIS^ / SUPER^ (parsed, not analyzed or executed).
+    // THIS^ / SUPER^.
     // ---------------------------------------------------------------------
 
-    /// A program using `THIS^` is rejected, and P9999 is among the reasons.
-    ///
-    /// Deliberately asserts presence rather than an exact diagnostic set:
-    /// several passes meet the construct and each says so, and pinning the
-    /// set would turn every later improvement into a test edit. What must
-    /// hold is that no pass quietly accepts it.
-    #[rstest::rstest]
-    #[case::this_field_write("    THIS^.count := 1;")]
-    #[case::super_field_read("    count := SUPER^.count;")]
-    #[case::this_method_call("    THIS^.Start();")]
-    fn analyze_when_self_ref_then_rejected_with_not_implemented(#[case] body: &str) {
+    /// Diagnostic codes of the whole analysis of `body`, written in a
+    /// method of `FB_Motor`, which `EXTENDS` `FB_Base`.
+    fn self_ref_codes(body: &str) -> Vec<String> {
         let options = CompilerOptions {
             allow_fb_inheritance: true,
             ..CompilerOptions::default()
         };
         let program = format!(
             "
-FUNCTION_BLOCK FB_Motor
+FUNCTION_BLOCK FB_Base
+VAR
+    level : INT;
+END_VAR
+METHOD Stop
+    level := 0;
+END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Motor EXTENDS FB_Base
 VAR
     count : INT;
 END_VAR
@@ -743,22 +745,425 @@ METHOD Start
     count := 1;
 END_METHOD
 METHOD Run
+VAR_INPUT
+    count : INT;
+END_VAR
 {body}
 END_METHOD
 END_FUNCTION_BLOCK"
         );
         let lib = parse_program(&program, &FileId::default(), &options).unwrap();
-        let (_library, context) = analyze(&[&lib], &options).unwrap();
+        match analyze(&[&lib], &options) {
+            Ok((_library, context)) => context
+                .diagnostics()
+                .iter()
+                .map(|d| d.code.clone())
+                .collect(),
+            Err(errors) => errors.iter().map(|d| d.code.clone()).collect(),
+        }
+    }
 
-        let codes: Vec<&str> = context
-            .diagnostics()
-            .iter()
-            .map(|d| d.code.as_str())
-            .collect();
-        assert!(
-            codes.contains(&"P9999"),
-            "expected P9999 among diagnostics, got: {codes:?}"
+    /// Member access and method calls through `THIS^`/`SUPER^` are
+    /// analyzed: `THIS^.count` is the block's field even where the
+    /// parameter `count` shadows it, and `SUPER^` reaches the base.
+    #[rstest::rstest]
+    #[case::this_field_write("    THIS^.count := count;")]
+    #[case::this_inherited_field("    THIS^.level := 2;")]
+    #[case::super_field_read("    THIS^.count := SUPER^.level;")]
+    #[case::this_method_call("    THIS^.Start();")]
+    #[case::super_method_call("    SUPER^.Stop();")]
+    fn analyze_when_self_ref_member_then_ok(#[case] body: &str) {
+        assert_eq!(Vec::<String>::new(), self_ref_codes(body));
+    }
+
+    /// Diagnostic codes of the whole analysis of `program`.
+    fn analysis_codes(program: &str) -> Vec<String> {
+        let options = CompilerOptions {
+            allow_fb_inheritance: true,
+            allow_top_level_var_global: true,
+            ..CompilerOptions::default()
+        };
+        let lib = parse_program(program, &FileId::default(), &options).unwrap();
+        match analyze(&[&lib], &options) {
+            Ok((_library, context)) => context
+                .diagnostics()
+                .iter()
+                .map(|d| d.code.clone())
+                .collect(),
+            Err(errors) => errors.iter().map(|d| d.code.clone()).collect(),
+        }
+    }
+
+    /// `body`, written in a method of `FB_Leaf`, which `EXTENDS` `FB_Mid`,
+    /// which `EXTENDS` `FB_Root`. `FB_Mid` overrides `Describe`.
+    ///
+    /// XAE confirms the nearest override is used (`SUPER^.Describe()` is
+    /// BOOL, from `FB_Mid`). XAE also rejects `FB_Mid` itself, because its
+    /// `Describe` returns BOOL where the base returns INT (`Interface of
+    /// overridden method 'DESCRIBE' ... doesn't match declaration`). Gap: the
+    /// analysis does not compare an override's signature with its base.
+    fn leaf_codes(body: &str) -> Vec<String> {
+        analysis_codes(&format!(
+            "
+TYPE Pair : STRUCT f : INT; g : BOOL; END_STRUCT; END_TYPE
+
+FUNCTION_BLOCK FB_Inner
+VAR_OUTPUT
+    out : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Root
+VAR
+    x : INT;
+    words : ARRAY[1..3] OF INT;
+END_VAR
+METHOD Describe : INT
+    Describe := 1;
+END_METHOD
+METHOD Stop : BOOL
+    Stop := TRUE;
+END_METHOD
+METHOD Start
+END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Mid EXTENDS FB_Root
+METHOD Describe : BOOL
+    Describe := TRUE;
+END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Leaf EXTENDS FB_Mid
+VAR_INPUT
+    in_val : INT;
+END_VAR
+VAR_OUTPUT
+    out_val : INT;
+END_VAR
+VAR_IN_OUT
+    io_val : INT;
+END_VAR
+VAR
+    s : Pair;
+    inner : FB_Inner;
+    n : INT;
+    flag : BOOL;
+END_VAR
+METHOD Run
+{body}
+END_METHOD
+END_FUNCTION_BLOCK"
+        ))
+    }
+
+    #[rstest::rstest]
+    #[case::inherited_method_return_matches("    flag := THIS^.Stop();")]
+    #[case::grandparent_field("    n := SUPER^.x;")]
+    #[case::grandparent_method("    THIS^.Start();")]
+    #[case::nearest_override_through_super("    flag := SUPER^.Describe();")]
+    #[case::nested_struct_member("    n := THIS^.s.f;")]
+    #[case::nested_instance_output("    n := THIS^.inner.out;")]
+    #[case::input_output_and_in_out("    THIS^.out_val := THIS^.in_val + THIS^.io_val;")]
+    #[case::case_insensitive("    this^.N := this^.IN_VAL;")]
+    fn analyze_when_self_ref_member_of_chain_then_ok(#[case] body: &str) {
+        assert_eq!(Vec::<String>::new(), leaf_codes(body));
+    }
+
+    #[rstest::rstest]
+    #[case::inherited_method_return("    n := THIS^.Stop();", "P4035")]
+    #[case::nearest_override_through_super("    n := SUPER^.Describe();", "P4035")]
+    #[case::nested_struct_member("    flag := THIS^.s.f;", "P4035")]
+    #[case::nested_instance_output("    flag := THIS^.inner.out;", "P4035")]
+    #[case::array_element("    flag := THIS^.words[1];", "P4035")]
+    #[case::unknown_argument("    THIS^.Start(nope := 1);", "P4002")]
+    #[case::no_return_value("    n := THIS^.Start();", "P4057")]
+    fn analyze_when_self_ref_misused_then_reported(#[case] body: &str, #[case] code: &str) {
+        assert_eq!(vec![code.to_string()], leaf_codes(body));
+    }
+
+    /// Typing `THIS^` must not stop the pass: an expression elsewhere in the
+    /// same block still gets its type and its error is reported.
+    #[test]
+    fn analyze_when_self_ref_and_type_error_then_error_still_reported() {
+        let codes = leaf_codes("    THIS^.n := 1;\n    flag := n;");
+        assert_eq!(vec!["P4035".to_string()], codes);
+    }
+
+    /// A program has no `THIS^`. Only the rule reports it: the type pass
+    /// must not add a second diagnostic for the same use.
+    #[test]
+    fn analyze_when_self_ref_in_program_then_only_p4074() {
+        let codes = analysis_codes(
+            "
+PROGRAM main
+VAR
+    n : INT;
+    arr : ARRAY[1..3] OF INT;
+END_VAR
+    n := THIS^.n;
+    THIS^.arr[2] := 1;
+    THIS^.Go();
+END_PROGRAM",
         );
+        assert_eq!(vec!["P4074".to_string(); 3], codes);
+    }
+
+    /// `body`, written in a method `Run` of `FB_Motor`, which `EXTENDS`
+    /// `FB_Base`. `FB_Base` declares the constant `base_limit` and the
+    /// variable `base_free`, `FB_Motor` the constant `limit` and the
+    /// variable `free`. `locals` is the method's own declarations.
+    fn constant_write_codes(locals: &str, body: &str) -> Vec<String> {
+        analysis_codes(&format!(
+            "
+FUNCTION_BLOCK FB_Base
+VAR CONSTANT
+    base_limit : INT := 1;
+END_VAR
+VAR
+    base_free : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Motor EXTENDS FB_Base
+VAR CONSTANT
+    limit : INT := 1;
+END_VAR
+VAR
+    free : INT;
+END_VAR
+METHOD Run
+{locals}
+{body}
+END_METHOD
+END_FUNCTION_BLOCK"
+        ))
+    }
+
+    #[rstest::rstest]
+    #[case::own_constant("", "    THIS^.limit := 2;")]
+    #[case::inherited_constant("", "    THIS^.base_limit := 2;")]
+    #[case::inherited_constant_through_super("", "    SUPER^.base_limit := 2;")]
+    #[case::constant_hidden_by_parameter(
+        "VAR_INPUT\n    limit : INT;\nEND_VAR",
+        "    THIS^.limit := 2;"
+    )]
+    #[case::constant_hidden_by_local("VAR\n    limit : INT;\nEND_VAR", "    THIS^.limit := 2;")]
+    fn analyze_when_constant_written_through_self_ref_then_p4064(
+        #[case] locals: &str,
+        #[case] body: &str,
+    ) {
+        assert_eq!(
+            vec!["P4064".to_string()],
+            constant_write_codes(locals, body)
+        );
+    }
+
+    #[rstest::rstest]
+    #[case::own_variable("", "    THIS^.free := 2;")]
+    #[case::inherited_variable("", "    THIS^.base_free := 2;")]
+    #[case::inherited_variable_through_super("", "    SUPER^.base_free := 2;")]
+    #[case::variable_hidden_by_constant_local(
+        "VAR CONSTANT\n    free : INT := 1;\nEND_VAR",
+        "    THIS^.free := 2;"
+    )]
+    #[case::own_field_through_super_is_not_the_constant("", "    SUPER^.base_free := THIS^.limit;")]
+    fn analyze_when_variable_written_through_self_ref_then_no_p4064(
+        #[case] locals: &str,
+        #[case] body: &str,
+    ) {
+        assert_eq!(Vec::<String>::new(), constant_write_codes(locals, body));
+    }
+
+    // ---------------------------------------------------------------------
+    // `THIS^`/`SUPER^` cases checked against TwinCAT XAE. Each says what XAE
+    // reports and what the analysis does. Where they differ, the test pins
+    // today's behaviour so that fixing it shows up as a failing test; the
+    // difference is a known gap, not an intended answer.
+    // ---------------------------------------------------------------------
+
+    /// `body` in a method of `FB_A`, which declares an external, a
+    /// temporary, a property, an instance and a second method.
+    fn pinned_codes(body: &str) -> Vec<String> {
+        analysis_codes(&format!(
+            "
+VAR_GLOBAL
+    g : INT;
+END_VAR
+
+FUNCTION_BLOCK FB_Inner
+VAR_INPUT
+    i : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_A
+VAR_EXTERNAL
+    g : INT;
+END_VAR
+VAR_TEMP
+    t : INT;
+END_VAR
+VAR
+    inner : FB_Inner;
+    _p : INT;
+END_VAR
+PROPERTY Prop : INT
+GET
+    Prop := _p;
+END_GET
+END_PROPERTY
+METHOD Other
+VAR
+    other_local : INT;
+END_VAR
+END_METHOD
+METHOD Run
+VAR
+    n : INT;
+    flag : BOOL;
+END_VAR
+{body}
+END_METHOD
+END_FUNCTION_BLOCK"
+        ))
+    }
+
+    /// XAE: `No definition found for base class 'FB_Missing'`. Gap: the
+    /// missing base is not reported for itself. `SUPER^.x` finds no member
+    /// and passes, and a call is reported as an undeclared method of the
+    /// missing block.
+    #[rstest::rstest]
+    #[case::member("    SUPER^.x := 1;", &[])]
+    #[case::call("    SUPER^.Go();", &["P4046"])]
+    fn analyze_when_super_of_undeclared_base_then_pinned(
+        #[case] body: &str,
+        #[case] expected: &[&str],
+    ) {
+        let codes = analysis_codes(&format!(
+            "
+FUNCTION_BLOCK FB_A EXTENDS FB_Missing
+METHOD Run
+{body}
+END_METHOD
+END_FUNCTION_BLOCK"
+        ));
+        assert_eq!(expected, codes.as_slice());
+    }
+
+    /// XAE accepts `THIS^.t` of a `VAR_TEMP`, and so does the analysis,
+    /// typing it. XAE rejects `THIS^.g` of a `VAR_EXTERNAL` (`'g' is no
+    /// component of ...`). Gap: the analysis does not type it, but it does
+    /// not report it either, so a wrong-typed assignment is not caught.
+    #[rstest::rstest]
+    #[case::external_in_range("    n := THIS^.g;", &[])]
+    #[case::external_wrong_type("    flag := THIS^.g;", &[])]
+    #[case::temporary_in_range("    n := THIS^.t;", &[])]
+    #[case::temporary_wrong_type("    flag := THIS^.t;", &["P4035"])]
+    fn analyze_when_self_ref_names_external_or_temporary_then_pinned(
+        #[case] body: &str,
+        #[case] expected: &[&str],
+    ) {
+        assert_eq!(expected, pinned_codes(body).as_slice());
+    }
+
+    /// XAE types `THIS^.Prop` (`Cannot convert type 'INT' to type 'BOOL'`)
+    /// and rejects `THIS^.other_local` (`'other_local' is no component of
+    /// ...`) and `THIS^.Other` without a call (`Cannot convert type 'OTHER'
+    /// to type 'INT'`). Gap: the analysis reports none of the three and the
+    /// access has no type, so a wrong-typed assignment is not caught.
+    #[rstest::rstest]
+    #[case::property("    flag := THIS^.Prop;")]
+    #[case::local_of_another_method("    flag := THIS^.other_local;")]
+    #[case::method_name_without_call("    flag := THIS^.Other;")]
+    fn analyze_when_self_ref_names_a_non_field_then_pinned_untyped_and_unreported(
+        #[case] body: &str,
+    ) {
+        assert_eq!(Vec::<String>::new(), pinned_codes(body));
+    }
+
+    /// XAE accepts `THIS^.inner(i := 1)`, so the analysis does too. The
+    /// arguments are not checked against the instance's inputs.
+    #[test]
+    fn analyze_when_member_instance_called_through_self_ref_then_ok() {
+        assert_eq!(
+            Vec::<String>::new(),
+            pinned_codes("    THIS^.inner(i := 1);")
+        );
+    }
+
+    /// XAE accepts `inst.inner(i := 1)` where `inst` is an instance of a
+    /// block that declares the function block instance `inner`, from a
+    /// program and from another block. A name that is neither a method nor a
+    /// function block instance is still an undeclared method.
+    #[rstest::rstest]
+    #[case::from_program(
+        "PROGRAM main\nVAR o : FB_Outer; END_VAR\n    o.inner(i := 1);\nEND_PROGRAM",
+        &[]
+    )]
+    #[case::from_block(
+        "FUNCTION_BLOCK FB_User\nVAR o : FB_Outer; END_VAR\nMETHOD Run\n    o.inner(i := 1);\nEND_METHOD\nEND_FUNCTION_BLOCK",
+        &[]
+    )]
+    #[case::inherited_instance(
+        "PROGRAM main\nVAR d : FB_Derived; END_VAR\n    d.inner(i := 1);\nEND_PROGRAM",
+        &[]
+    )]
+    #[case::undeclared_name(
+        "PROGRAM main\nVAR o : FB_Outer; END_VAR\n    o.bogus(i := 1);\nEND_PROGRAM",
+        &["P4046"]
+    )]
+    #[case::member_that_is_not_an_instance(
+        "PROGRAM main\nVAR o : FB_Outer; END_VAR\n    o.count(i := 1);\nEND_PROGRAM",
+        &["P4046"]
+    )]
+    fn analyze_when_member_instance_called_through_named_instance_then_xae(
+        #[case] user: &str,
+        #[case] expected: &[&str],
+    ) {
+        let codes = analysis_codes(&format!(
+            "
+FUNCTION_BLOCK FB_Inner
+VAR_INPUT
+    i : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Outer
+VAR
+    inner : FB_Inner;
+    count : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Outer
+END_FUNCTION_BLOCK
+
+{user}"
+        ));
+        assert_eq!(expected, codes.as_slice());
+    }
+
+    /// A bit access through `THIS^` in a program is reported once, as P4074.
+    #[test]
+    fn analyze_when_bit_access_through_self_ref_in_program_then_only_p4074() {
+        let codes = analysis_codes(
+            "
+PROGRAM main
+VAR
+    flags : WORD;
+END_VAR
+    THIS^.flags.0 := TRUE;
+END_PROGRAM",
+        );
+        assert_eq!(vec!["P4074".to_string()], codes);
+    }
+
+    /// A bare `THIS^`, used as a value on its own, is not analyzed yet.
+    #[test]
+    fn analyze_when_bare_self_ref_then_not_implemented() {
+        let codes = self_ref_codes("    THIS^ := THIS^;");
+        assert!(codes.contains(&"P9999".to_string()), "{codes:?}");
     }
 
     /// The same function block without `THIS^` analyzes cleanly -- the new

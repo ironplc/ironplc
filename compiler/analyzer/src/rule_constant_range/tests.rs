@@ -858,3 +858,31 @@ fn apply_when_assignment_out_of_range_then_error_at_literal() {
     let location = &diagnostics[0].primary.location;
     assert_eq!((location.start, location.end), (start, start + "128".len()));
 }
+
+#[rstest]
+#[case::in_range("    THIS^.small := 100;", OK)]
+#[case::out_of_range("    THIS^.small := 1000;", OVERFLOW)]
+fn apply_when_assignment_through_this_then_checked_against_field_type(
+    #[case] body: &str,
+    #[case] expected: &[Problem],
+) {
+    let program = format!(
+        "
+FUNCTION_BLOCK FB_A
+VAR
+    small : SINT;
+END_VAR
+METHOD M
+{body}
+END_METHOD
+END_FUNCTION_BLOCK"
+    );
+    assert_eq!(
+        codes(expected),
+        crate::test_helpers::rule_codes(
+            super::apply,
+            &program,
+            &crate::test_helpers::fb_inheritance_options()
+        )
+    );
+}
