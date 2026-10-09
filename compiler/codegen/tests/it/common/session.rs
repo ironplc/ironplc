@@ -1,7 +1,8 @@
 //! A program driven across several scans, read and written by name.
 
 use ironplc_container::Container;
-use ironplc_vm::{FaultContext, Slot, VmRunning};
+use ironplc_vm::test_support::TestVm;
+use ironplc_vm::{FaultContext, Slot};
 
 use super::run::assert_stack_balanced;
 use super::value::{FromValue, Value};
@@ -13,11 +14,11 @@ use super::variables::Variables;
 /// [`Snapshot`](super::Snapshot); values persist from one scan to the next.
 pub struct Session<'s, 'vm> {
     container: &'s Container,
-    vm: &'s mut VmRunning<'vm>,
+    vm: &'s mut TestVm<'vm>,
 }
 
 impl<'s, 'vm> Session<'s, 'vm> {
-    pub(super) fn new(container: &'s Container, vm: &'s mut VmRunning<'vm>) -> Self {
+    pub(super) fn new(container: &'s Container, vm: &'s mut TestVm<'vm>) -> Self {
         Session { container, vm }
     }
 

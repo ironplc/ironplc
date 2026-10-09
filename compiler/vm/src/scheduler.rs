@@ -90,19 +90,28 @@ impl<'a> TaskScheduler<'a> {
     }
 
     /// Records that a task executed, updating timing and overrun tracking.
+    ///
+    /// All arithmetic saturates at `u64::MAX`, so no `interval_us` (which a
+    /// container file controls) or `uptime_us` can panic or wrap:
+    ///
+    /// * A cyclic task's next due time that would pass `u64::MAX` is
+    ///   `u64::MAX`. The task is then not due again until uptime reaches
+    ///   `u64::MAX` (over 584,000 years of uptime); from there it is due every
+    ///   round and each execution counts as an overrun.
+    /// * `scan_count` and `overrun_count` stop at `u64::MAX`.
     pub fn record_execution(&mut self, task_index: usize, elapsed_us: u64, uptime_us: u64) {
         let task = &mut self.task_states[task_index];
-        task.scan_count += 1;
+        task.scan_count = task.scan_count.saturating_add(1);
         task.last_execute_us = elapsed_us;
         if elapsed_us > task.max_execute_us {
             task.max_execute_us = elapsed_us;
         }
 
         if task.task_type == TaskType::Cyclic {
-            task.next_due_us += task.interval_us;
+            task.next_due_us = task.next_due_us.saturating_add(task.interval_us);
             if task.next_due_us <= uptime_us {
-                task.overrun_count += 1;
-                task.next_due_us = uptime_us + task.interval_us;
+                task.overrun_count = task.overrun_count.saturating_add(1);
+                task.next_due_us = uptime_us.saturating_add(task.interval_us);
             }
         }
     }
@@ -318,6 +327,73 @@ mod tests {
         sched.record_execution(1, 100, 25_000);
         assert_eq!(sched.task_states[1].next_due_us, 35_000);
         assert_eq!(sched.task_states[1].overrun_count, 1);
+    }
+
+    /// Builds a single enabled cyclic task with the given interval.
+    fn cyclic_task_state(interval_us: u64) -> TaskState {
+        TaskState {
+            task_type: TaskType::Cyclic,
+            interval_us,
+            enabled: true,
+            ..TaskState::default()
+        }
+    }
+
+    #[test]
+    fn record_execution_when_overrun_realign_exceeds_u64_then_saturates() {
+        let mut task_states = [cyclic_task_state(1 << 63)];
+        let mut sched = TaskScheduler::new(&mut task_states);
+
+        sched.record_execution(0, 0, 1 << 63);
+
+        assert_eq!(sched.task_states[0].next_due_us, u64::MAX);
+        assert_eq!(sched.task_states[0].overrun_count, 1);
+    }
+
+    #[test]
+    fn record_execution_when_next_due_advance_exceeds_u64_then_saturates() {
+        let mut task_states = [cyclic_task_state(u64::MAX)];
+        task_states[0].next_due_us = 1;
+        let mut sched = TaskScheduler::new(&mut task_states);
+
+        sched.record_execution(0, 0, 0);
+
+        assert_eq!(sched.task_states[0].next_due_us, u64::MAX);
+        assert_eq!(sched.task_states[0].overrun_count, 0);
+    }
+
+    #[test]
+    fn record_execution_when_next_due_saturated_then_task_due_only_at_u64_max() {
+        let mut task_states = [cyclic_task_state(1 << 63)];
+        let mut sched = TaskScheduler::new(&mut task_states);
+        sched.record_execution(0, 0, 1 << 63);
+
+        let mut buf = [0usize; 1];
+        assert!(sched.collect_ready_tasks(u64::MAX - 1, &mut buf).is_empty());
+        assert_eq!(sched.collect_ready_tasks(u64::MAX, &mut buf), &[0]);
+    }
+
+    #[test]
+    fn record_execution_when_scan_count_at_u64_max_then_saturates() {
+        let mut task_states = [cyclic_task_state(10)];
+        task_states[0].scan_count = u64::MAX;
+        let mut sched = TaskScheduler::new(&mut task_states);
+
+        sched.record_execution(0, 0, 0);
+
+        assert_eq!(sched.task_states[0].scan_count, u64::MAX);
+    }
+
+    #[test]
+    fn record_execution_when_overrun_count_at_u64_max_then_saturates() {
+        let mut task_states = [cyclic_task_state(10)];
+        task_states[0].overrun_count = u64::MAX;
+        let mut sched = TaskScheduler::new(&mut task_states);
+
+        sched.record_execution(0, 0, 1_000);
+
+        assert_eq!(sched.task_states[0].overrun_count, u64::MAX);
+        assert_eq!(sched.task_states[0].next_due_us, 1_010);
     }
 
     #[test]

@@ -128,9 +128,11 @@ pub use intermediates::arithmetic_overload::{
     resolve_arithmetic_fold, resolve_arithmetic_overload, typed_overload, FoldFailure, Overload,
 };
 pub use intermediates::enumeration::resolve_ordinal_values;
-pub use intermediates::numeric_operation::literal_default_type;
 pub use intermediates::operator_function_form::FormOf;
-pub use intrinsic::{BitShift, Intrinsic, NumericFunction, StringFunction, TimeFunction};
+pub use intrinsic::{
+    BitShift, InputsOfOneType, Intrinsic, NumericFunction, OneTypeResult, StringFunction,
+    TimeFunction,
+};
 pub use semantic_context::{SemanticContext, SemanticContextBuilder};
 pub use semantic_type::SemanticType;
 pub use type_attributes::TypeAttributes;

@@ -1,5 +1,6 @@
 mod buffers;
 pub(crate) mod builtin;
+mod clock;
 pub mod debug;
 pub mod debug_hook;
 pub mod error;
@@ -20,6 +21,7 @@ pub(crate) mod variable_table;
 mod vm;
 
 pub use buffers::VmBuffers;
+pub use clock::Clock;
 pub use debug::{BreakpointId, BreakpointTable, DebuggerHook, PauseReason, StepMode};
 pub use debug_hook::{DebugHook, HookAction, NoopDebugHook};
 pub use error::StringPreview;

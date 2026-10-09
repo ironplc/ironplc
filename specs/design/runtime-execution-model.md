@@ -129,7 +129,7 @@ The scan mode and `scan_interval` are VM configuration parameters, not encoded i
 
 ### Scan Cycle Counter
 
-The VM maintains a `scan_count` (u64) that increments by 1 at the start of each cycle (before INPUT_FREEZE). The counter starts at 0 for the first scan cycle after entering RUNNING state (or after a restart from FAULTED). The counter is available to the diagnostic interface but is not directly accessible from bytecode.
+The VM maintains a `scan_count` (u64) that increments by 1 at the start of each cycle (before INPUT_FREEZE). The counter starts at 0 for the first scan cycle after entering RUNNING state (or after a restart from FAULTED). The counter saturates at `u64::MAX` rather than wrapping. The counter is available to the diagnostic interface but is not directly accessible from bytecode.
 
 ### Scan Cycle Timing
 

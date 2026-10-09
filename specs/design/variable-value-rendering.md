@@ -110,7 +110,10 @@ real zero, which is what made the original defect worse than an omission.
   when an unrelated declaration changes size.
 
 These three tags are distinct from `OTHER` rather than folded into it because
-`OTHER` also carries named subrange types, whose slot *does* hold their value.
+a variable tagged `OTHER` may hold its value in its slot, and must keep showing
+it. A subrange variable carries its base type's tag rather than `OTHER`
+([Subrange Code Generation](subrange-codegen.md), REQ-SR-023), so a `LINT` or
+`UDINT` subrange renders at its base type's width and signedness.
 
 ## Aggregates with a recorded layout
 

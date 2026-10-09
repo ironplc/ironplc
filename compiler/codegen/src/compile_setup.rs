@@ -10,7 +10,7 @@ use ironplc_container::debug_section::{
 use ironplc_container::{ContainerBuilder, VarIndex};
 use ironplc_dsl::common::{
     ConstantKind, FunctionReturnType, InitialValueAssignmentKind, ReferenceInitialValue,
-    SpecificationKind, TypeName, VarDecl, VariableType,
+    SpecificationKind, SubrangeSpecificationKind, TypeName, VarDecl, VariableType,
 };
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -68,7 +68,7 @@ pub(crate) fn assign_variables(
                             ctx.var_types.insert(id.clone(), type_info);
                         }
                         let name = simple.type_name.to_string().to_uppercase();
-                        (iec_type_tag::OTHER, name)
+                        (subrange_iec_type_tag(types, subrange_type), name)
                     } else {
                         if let Some(type_info) = crate::type_info::decl_type_info(ctx, decl) {
                             ctx.var_types.insert(id.clone(), type_info);
@@ -249,13 +249,10 @@ pub(crate) fn assign_variables(
                             ctx.var_types.insert(id.clone(), type_info);
                         }
                     }
-                    let name = match spec {
-                        SpecificationKind::Named(tn) => tn.to_string().to_uppercase(),
-                        SpecificationKind::Inline(inline) => {
-                            format!("{}", inline.type_name)
-                        }
-                    };
-                    (iec_type_tag::OTHER, name)
+                    let tag = subrange_type
+                        .map(|st| subrange_iec_type_tag(types, st))
+                        .unwrap_or(iec_type_tag::OTHER);
+                    (tag, subrange_debug_type_name(spec))
                 }
                 InitialValueAssignmentKind::LateResolvedType(_) => {
                     // LateResolvedType should have been resolved before codegen.
@@ -298,12 +295,45 @@ pub(crate) fn map_var_section(vt: &VariableType) -> u8 {
 }
 
 /// The debug type tag of the type `type_name` names: the type's id when it
-/// is elementary, else `OTHER`.
+/// is elementary, its base type's tag when it is a subrange (or an alias of
+/// one), else `OTHER`.
 fn resolve_iec_type_tag(types: &TypeEnvironment, type_name: &TypeName) -> u8 {
-    types
+    if let Some(tag) = types
         .id_of(type_name)
         .and_then(ironplc_analyzer::type_id::elementary_debug_tag)
+    {
+        return tag;
+    }
+    match types.resolve_subrange_type(type_name) {
+        Some(subrange) => subrange_iec_type_tag(types, subrange),
+        None => iec_type_tag::OTHER,
+    }
+}
+
+/// The debug type tag of a subrange type: the tag of the elementary type it
+/// is a range of (REQ-SR-023). A subrange's slot holds its value at the base
+/// type's width and signedness, so it must render as that type -- a `LINT`
+/// subrange rendered as 32 bits shows only the low word. `OTHER` when the
+/// base type is not elementary.
+fn subrange_iec_type_tag(types: &TypeEnvironment, subrange: &SemanticType) -> u8 {
+    let mut base = subrange;
+    while let SemanticType::Subrange { base_type, .. } = base {
+        base = base_type;
+    }
+    types
+        .elementary_type_name_for(base)
+        .and_then(|name| types.id_of(&name))
+        .and_then(ironplc_analyzer::type_id::elementary_debug_tag)
         .unwrap_or(iec_type_tag::OTHER)
+}
+
+/// The debug type name of a subrange variable: the declared type's name, or
+/// the base type's name for an inline subrange.
+fn subrange_debug_type_name(spec: &SubrangeSpecificationKind) -> String {
+    match spec {
+        SpecificationKind::Named(tn) => tn.to_string().to_uppercase(),
+        SpecificationKind::Inline(inline) => format!("{}", inline.type_name),
+    }
 }
 
 /// Computes the debug `(iec_type_tag, type_name)` pair for a function- or
@@ -342,6 +372,15 @@ pub(crate) fn debug_type_for_decl(decl: &VarDecl, types: &TypeEnvironment) -> (u
             iec_type_tag::DINT,
             crate::compile_enum::debug_name(types, decl.type_id),
         ),
+        InitialValueAssignmentKind::Subrange(spec) => {
+            let tag = match spec {
+                SpecificationKind::Named(type_name) => resolve_iec_type_tag(types, type_name),
+                SpecificationKind::Inline(inline) => {
+                    resolve_iec_type_tag(types, &inline.type_name.clone().into())
+                }
+            };
+            (tag, subrange_debug_type_name(spec))
+        }
         _ => (iec_type_tag::OTHER, String::new()),
     }
 }

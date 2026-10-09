@@ -58,7 +58,7 @@ The design builds on:
 
 **REQ-SR-022** A variable declared with `InitialValueAssignmentKind::Simple` whose type name resolves to a subrange in the type environment receives `VarTypeInfo` from the subrange's base type.
 
-**REQ-SR-023** The `VarNameEntry` in the debug section uses the base type's `iec_type_tag` and the user-defined type name as `type_name`.
+**REQ-SR-023** The `VarNameEntry` in the debug section uses the base type's `iec_type_tag` and the user-defined type name as `type_name`. This holds for a program, function and function block variable, for a type alias of a subrange (following the alias chain to the elementary base type), and for a 64-bit or unsigned base type, so the value renders at the base type's width and signedness rather than as a 32-bit signed integer.
 
 ## 4. Initialization
 

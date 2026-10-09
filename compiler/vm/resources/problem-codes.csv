@@ -23,3 +23,4 @@ V9015,InvalidCharWidth,String header or constant pool entry has an invalid char_
 V9016,ProgramExceedsCallDepth,Container declares a call depth that exceeds the VM frame-stack buffer,struct
 V9017,ZeroCallDepth,Container declares a maximum call depth of zero which is invalid,none
 V9018,RegionSizeMismatch,Region copy source and destination differ in size,struct
+V9019,VariableTableTooSmall,Variable table has fewer slots than the container requires,struct

@@ -24,9 +24,10 @@ Signature
      END_VAR
    END_FUNCTION
 
-The return type matches the input type. ``MIN`` accepts ``SINT``,
-``INT``, ``DINT``, ``LINT``, ``USINT``, ``UINT``, ``UDINT``, ``ULINT``,
-``REAL``, ``LREAL``. Both inputs must share the same type.
+``MIN`` accepts ``SINT``, ``INT``, ``DINT``, ``LINT``, ``USINT``,
+``UINT``, ``UDINT``, ``ULINT``, ``REAL``, ``LREAL``.
+
+.. include:: ../../../includes/widest-input-return-type.rst
 
 .. rubric:: Inputs
 
@@ -57,7 +58,7 @@ The return type matches the input type. ``MIN`` accepts ``SINT``,
      - Description
    * - Return value
      - ``ANY_MAGNITUDE``
-     - The smaller of IN1 and IN2. If both inputs are equal, returns that value. Same type as the inputs.
+     - The smaller of IN1 and IN2. If both inputs are equal, returns that value.
 
 Description
 -----------

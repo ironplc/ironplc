@@ -204,3 +204,48 @@ END_PROGRAM
 ",
     &[("count", 100)],
 );
+
+// A condition is a BOOL whatever its comparison compares, so NOT negates the
+// BOOL rather than the bits of the comparison's DWORD operands: 5 > 3 is
+// TRUE, and NOT of it ends the loop before its first pass.
+e2e_i32!(
+    end_to_end_when_while_not_of_dword_comparison_true_then_body_not_executed,
+    "
+PROGRAM main
+  VAR
+    a : DWORD := 5;
+    b : DWORD := 3;
+    n : DINT;
+  END_VAR
+  WHILE NOT (a > b) DO
+    n := n + 1;
+    IF n >= 3 THEN
+      EXIT;
+    END_IF;
+  END_WHILE;
+END_PROGRAM
+",
+    &[("n", 0)],
+);
+
+// NOT of the TRUE 5 > 3 is FALSE, so the loop repeats until the EXIT.
+e2e_i32!(
+    end_to_end_when_repeat_until_not_of_dword_comparison_true_then_repeats,
+    "
+PROGRAM main
+  VAR
+    a : DWORD := 5;
+    b : DWORD := 3;
+    n : DINT;
+  END_VAR
+  REPEAT
+    n := n + 1;
+    IF n >= 3 THEN
+      EXIT;
+    END_IF;
+  UNTIL NOT (a > b)
+  END_REPEAT;
+END_PROGRAM
+",
+    &[("n", 3)],
+);

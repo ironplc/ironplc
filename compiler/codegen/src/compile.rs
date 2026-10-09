@@ -52,8 +52,8 @@ use ironplc_container::{
 // codegen reaches for these through `compile`.
 pub(crate) use ironplc_container::{string_region_size, DEFAULT_STRING_MAX_LENGTH};
 use ironplc_dsl::common::{
-    FunctionBlockDeclaration, FunctionDeclaration, InitialValueAssignmentKind, Library,
-    LibraryElementKind, ProgramDeclaration, StringType, VarDecl, VariableType,
+    FunctionBlockDeclaration, FunctionDeclaration, Library, LibraryElementKind, ProgramDeclaration,
+    StringType, VarDecl, VariableType,
 };
 use ironplc_dsl::configuration::{
     ConfigurationDeclaration, ProgramConfiguration, TaskConfiguration,
@@ -788,15 +788,11 @@ fn compile_program_with_functions(
                 if let Some(type_id) = decl.type_id {
                     field_type_ids.insert(name.clone(), type_id);
                 }
-                if let InitialValueAssignmentKind::Simple(_) = &decl.initializer {
-                    if let Some(vti) = crate::type_info::decl_type_info(&ctx, decl) {
-                        field_op_types.insert(name, (vti.op_width, vti.signedness));
-                    } else {
-                        field_op_types.insert(name, DEFAULT_OP_TYPE);
-                    }
-                } else {
-                    field_op_types.insert(name, DEFAULT_OP_TYPE);
-                }
+                // A field is operated at its declared type, whatever kind of
+                // declaration declares it: a subrange at its base type.
+                let op_type = crate::type_info::decl_type_info(&ctx, decl)
+                    .map_or(DEFAULT_OP_TYPE, |vti| (vti.op_width, vti.signedness));
+                field_op_types.insert(name, op_type);
             }
         }
 
@@ -839,12 +835,8 @@ fn compile_program_with_functions(
                 if let Some(id) = decl.identifier.symbolic_id() {
                     param_names_in_order.push(id.to_string().to_lowercase());
                 }
-                let op_type = if let InitialValueAssignmentKind::Simple(_) = &decl.initializer {
-                    crate::type_info::decl_type_info(&ctx, decl)
-                        .map_or(DEFAULT_OP_TYPE, |vti| (vti.op_width, vti.signedness))
-                } else {
-                    DEFAULT_OP_TYPE
-                };
+                let op_type = crate::type_info::decl_type_info(&ctx, decl)
+                    .map_or(DEFAULT_OP_TYPE, |vti| (vti.op_width, vti.signedness));
                 param_op_types.push(op_type);
             }
 
@@ -903,7 +895,6 @@ fn compile_program_with_functions(
             FunctionId::new(next_function_id),
             var_offset,
             &mut ctx,
-            functions,
             &mut builder,
             types,
             num_globals,

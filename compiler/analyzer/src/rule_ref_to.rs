@@ -345,6 +345,72 @@ impl RuleRefTo<'_> {
         }
     }
 
+    /// P2032: A reference variable assigned where it does not fit: to a
+    /// variable that is not a reference, which would store the variable
+    /// index the reference holds (`x := ri`), or to a reference to another
+    /// type (`ri := rd`), unless type punning is allowed.
+    ///
+    /// A read through a reference is a dereference (`ri^`), which the
+    /// analyzer spells as one even for a bare `REFERENCE TO` read, so the
+    /// value here is the reference itself.
+    fn check_reference_value_assignment(&mut self, node: &Assignment) {
+        if node.deref || node.ref_bind || node.set_bind || node.reset_bind {
+            return;
+        }
+        let ExprKind::Variable(value) = &node.value.kind else {
+            return;
+        };
+        let Some(value_reference) = self.reference_type_id(value) else {
+            return;
+        };
+        let span = variable_span(value);
+        match self.reference_type_id(&node.target) {
+            Some(_) if self.allow_ref_type_punning => {}
+            Some(target_reference) => {
+                let referenced = |id| {
+                    let target = self.type_environment.referenced_type(id)?;
+                    self.type_environment.name_of(target)?;
+                    Some(target)
+                };
+                if let (Some(target), Some(value)) =
+                    (referenced(target_reference), referenced(value_reference))
+                {
+                    if target != value {
+                        self.diagnostics.push(Diagnostic::problem(
+                            Problem::ReferenceTypeMismatch,
+                            Label::span(span, "Reference type mismatch in assignment"),
+                        ));
+                    }
+                }
+            }
+            // Only a named variable whose declared type is known can be
+            // said not to be a reference; a field's type is not looked up.
+            None if self.declared_type_known(&node.target) => {
+                self.diagnostics.push(Diagnostic::problem(
+                    Problem::ReferenceTypeMismatch,
+                    Label::span(
+                        span,
+                        "Reference assigned to a variable that is not a reference",
+                    ),
+                ));
+            }
+            None => {}
+        }
+    }
+
+    /// Returns true when `var` is a named variable whose declared type is
+    /// known.
+    fn declared_type_known(&self, var: &Variable) -> bool {
+        match var {
+            Variable::Symbolic(SymbolicVariableKind::Named(named)) => self
+                .symbol(&named.name)
+                .and_then(|symbol| symbol.type_id)
+                .and_then(|id| self.type_environment.get_by_id(id))
+                .is_some(),
+            _ => false,
+        }
+    }
+
     /// Returns the id of the type a REF_TO variable references, when that
     /// type has a name the type can be compared by.
     fn get_reference_target_type(&self, var: &Variable) -> Option<TypeId> {
@@ -434,9 +500,13 @@ impl Visitor<Infallible> for RuleRefTo<'_> {
     fn visit_assignment(&mut self, node: &Assignment) -> Result<(), Infallible> {
         self.check_null_assignment(&node.target, &node.value);
         self.check_ref_assignment(&node.target, &node.value);
+        self.check_reference_value_assignment(node);
         node.recurse_visit(self)
     }
 }
+
+#[cfg(test)]
+mod reference_value_tests;
 
 #[cfg(test)]
 mod tests;

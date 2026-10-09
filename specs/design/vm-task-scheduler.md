@@ -117,17 +117,18 @@ Each `run_round()`:
    - Skip disabled tasks
 3. Sort ready by `(priority ASC, task_id ASC)`
 4. For each ready task:
-   a. `start_time = monotonic_clock_us()`
+   a. `start_time = clock.now_us()` — `clock` is the `Clock` the embedder passes to `run_round`; the VM reads no operating-system clock itself
    b. `input_freeze()` — stub no-op
    c. For each program instance belonging to this task (in declaration order):
       - `execute(instance.entry_function_id, ...)`
    d. `output_flush()` — stub no-op
-   e. `elapsed = monotonic_clock_us() - start_time`
+   e. `elapsed = clock.now_us().saturating_sub(start_time)` (a clock that goes backwards measures 0)
    f. Update task_state: `last_execute_us`, `max_execute_us`, `scan_count`
    g. Watchdog: if `watchdog_us > 0 && elapsed > watchdog_us` → Trap
 5. Update `next_due_us` for cyclic tasks that ran:
    - `next_due_us += interval_us`
    - If `next_due_us <= current_time`: increment `overrun_count`, realign to `current_time + interval_us`
+   - All of this arithmetic, and the `scan_count` increment, saturates at `u64::MAX` because `interval_us` comes from the container and `current_time` from the caller. A task whose next due time would pass `u64::MAX` is not due again until `current_time` reaches `u64::MAX` (over 584,000 years of uptime).
 6. If no tasks were ready: sleep until earliest `next_due_us`
 
 Traps from any program instance abort the entire round. No further tasks execute and OUTPUT_FLUSH is skipped. This matches standard PLC behavior (Siemens, CODESYS, B&R all default to stopping on fault).

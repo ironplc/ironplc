@@ -6,6 +6,7 @@
 use crate::common::{parse_and_try_run, Snapshot};
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use ironplc_vm::error::Trap;
+use spec_test_macro::spec_test;
 
 e2e_i32_with!(
     end_to_end_when_ref_read_then_dereferences_value,
@@ -457,4 +458,49 @@ END_VAR
 END_PROGRAM
 ",
     &[("check", 99)],
+);
+
+// A reference holds the index of the variable it refers to, and is read as
+// that index whatever it refers to. Read as its REAL, the index of `r` came
+// back as 0, so `q^` read `u` instead.
+e2e_f32_with!(
+    #[spec_test(REQ_IC_codegen_010)]
+    end_to_end_when_ref_to_real_not_first_variable_then_reads_its_target,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
+PROGRAM main
+  VAR
+    u : UDINT := 7;
+    r : REAL := 1.5;
+    q : REF_TO REAL;
+    q2 : REF_TO REAL;
+    deref : REAL;
+    copied : REAL;
+  END_VAR
+  q := REF(r);
+  deref := q^;
+  q2 := q;
+  copied := q2^;
+END_PROGRAM
+",
+    &[("deref", 1.5), ("copied", 1.5)],
+);
+
+e2e_f64_with!(
+    #[spec_test(REQ_IC_codegen_010)]
+    end_to_end_when_ref_to_lreal_not_first_variable_then_reads_its_target,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
+PROGRAM main
+  VAR
+    u : UDINT := 7;
+    lr : LREAL := 2.5;
+    q : REF_TO LREAL;
+    deref : LREAL;
+  END_VAR
+  q := REF(lr);
+  deref := q^;
+END_PROGRAM
+",
+    &[("deref", 2.5)],
 );

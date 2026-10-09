@@ -1,10 +1,26 @@
 //! Property-based tests for VM robustness.
 //!
-//! These tests verify that the VM never panics on arbitrary input
-//! and that arithmetic identities hold across the full value range.
+//! These tests verify that the VM never panics on arbitrary input -- bytecode
+//! and the container fields around it -- and that arithmetic identities hold
+//! across the full value range.
 
-use ironplc_vm::VmBuffers;
+use crate::common::ManualClock;
+use ironplc_container::opcode;
+use ironplc_vm::{Slot, Vm, VmBuffers};
 use proptest::prelude::*;
+
+/// A `u16` drawn mostly from the boundaries where index arithmetic goes
+/// wrong (0, 1 and the top of the range), and otherwise from anywhere.
+fn edge_u16() -> impl Strategy<Value = u16> {
+    prop_oneof![
+        Just(0u16),
+        Just(1u16),
+        Just(0xFFFEu16),
+        Just(0xFFFFu16),
+        0u16..8,
+        any::<u16>(),
+    ]
+}
 
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(10_000))]
@@ -23,6 +39,105 @@ proptest! {
             // We don't care whether it succeeds or traps --
             // only that it doesn't panic.
             let _ = vm.run_round(0);
+        }
+    }
+}
+
+/// A `u64` biased toward the edges where scheduler arithmetic can overflow.
+fn edge_biased_u64() -> impl Strategy<Value = u64> {
+    prop_oneof![
+        Just(0),
+        Just(1),
+        Just(1 << 63),
+        Just(u64::MAX - 1),
+        Just(u64::MAX),
+        any::<u64>(),
+    ]
+}
+
+proptest! {
+    #[test]
+    fn run_round_when_cyclic_interval_and_uptime_arbitrary_then_never_panics(
+        interval_us in edge_biased_u64(),
+        uptimes_us in proptest::collection::vec(edge_biased_u64(), 1..8),
+    ) {
+        let c = crate::scenarios::cyclic_task_container(interval_us);
+        let mut b = VmBuffers::from_container(&c);
+        let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+        for uptime_us in uptimes_us {
+            prop_assert!(vm.run_round(uptime_us).is_ok());
+        }
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(10_000))]
+
+    /// The header and task table come from the file as much as the bytecode
+    /// does, so they are randomised too: header `flags`, a small variable
+    /// count, the shared-globals size and the program instance's variable
+    /// range. Each program starts with a variable access at an edge index so
+    /// the scope check sees those values.
+    ///
+    /// The VM is loaded with `Vm::load` directly rather than
+    /// `load_and_start`, because rejecting the container at load is one of
+    /// the outcomes the property accepts.
+    #[test]
+    fn execute_when_arbitrary_header_and_instance_range_then_never_panics(
+        access_opcode in prop_oneof![Just(opcode::LOAD_VAR_I32), Just(opcode::STORE_VAR_I32)],
+        access_index in edge_u16(),
+        tail in proptest::collection::vec(any::<u8>(), 0..64),
+        flags in any::<u8>(),
+        num_variables in 0u16..8,
+        shared_globals_size in edge_u16(),
+        var_table_offset in edge_u16(),
+        var_table_count in edge_u16(),
+    ) {
+        let [lo, hi] = access_index.to_le_bytes();
+        let mut bytecode = vec![access_opcode, lo, hi];
+        bytecode.extend_from_slice(&tail);
+        let constants: Vec<i32> = (0..16).collect();
+        let mut c = crate::common::single_function_container(&bytecode, num_variables, &constants);
+        c.header.flags = flags;
+        c.task_table.shared_globals_size = shared_globals_size;
+        c.task_table.programs[0].var_table_offset = var_table_offset;
+        c.task_table.programs[0].var_table_count = var_table_count;
+
+        let mut b = VmBuffers::from_container(&c);
+        if let Ok(ready) = Vm::new().load(&c, &mut b) {
+            if let Ok(mut vm) = ready.start() {
+                // Succeeding and trapping are both fine; panicking is not.
+                let _ = vm.run_round(0, &mut ManualClock::default());
+            }
+        }
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(1_000))]
+
+    // The header flags, the declared variable count and the embedder's
+    // variable buffer all come from outside the VM, and `resume` lets the
+    // embedder pick the starting scan count. Whatever their combination,
+    // loading either rejects the container or every scan runs without
+    // panicking.
+    #[test]
+    fn run_round_when_arbitrary_flags_and_variable_slots_then_never_panics(
+        flags in any::<u8>(),
+        num_vars in 0u16..4,
+        var_capacity in 0usize..4,
+        initial_scan_count in prop_oneof![Just(u64::MAX), any::<u64>()],
+        uptime_us in any::<u64>(),
+    ) {
+        let mut c = crate::common::single_function_container(&[opcode::RET_VOID], num_vars, &[]);
+        c.header.flags = flags;
+        let mut b = VmBuffers::from_container(&c);
+        b.vars.resize(var_capacity, Slot::default());
+        if let Ok(ready) = Vm::new().load(&c, &mut b) {
+            let mut vm = ready.resume(initial_scan_count);
+            let mut clock = ManualClock::default();
+            let _ = vm.run_round(uptime_us, &mut clock);
+            let _ = vm.run_round(uptime_us, &mut clock);
         }
     }
 }

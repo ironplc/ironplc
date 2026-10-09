@@ -12,14 +12,18 @@
 //!   to, `ADD(ADD(a, b), c)`, because each step computes at its own result
 //!   type and the accumulated value is converted between steps.
 //!
-//! A pair with a typed overload on the time and date types is left alone: it
-//! compiles through the routine that knows the units of each type. So is an
-//! operation whose result is not an elementary numeric type.
+//! A pair with a typed overload on the time and date types compiles through
+//! the routine that knows the units of each type, and its operands are
+//! converted to the width the routine computes at (see `time.rs`); a function
+//! form of three or more inputs whose steps are typed overloads is written as
+//! the calls it folds to the same way. An operation whose result is not an
+//! elementary numeric type is left alone.
 //!
 //! The conversion of the result to the type of its context is recorded where
 //! that context is: the assignment, the argument or the comparison.
 
 use ironplc_dsl::common::TypeName;
+use ironplc_dsl::core::Id;
 use ironplc_dsl::textual::{
     BinaryExpr, Expr, ExprKind, ExprType, Function, Operator, ParamAssignmentKind, PositionalInput,
 };
@@ -43,7 +47,8 @@ impl ImplicitConversions<'_> {
         binary: &mut BinaryExpr,
         result: Option<&ExprType>,
     ) {
-        if self.has_typed_overload(&binary.op, &binary.left, &binary.right) {
+        if let Some(name) = self.typed_overload_of(&binary.op, &binary.left, &binary.right) {
+            self.record_time_inputs(&name, &mut binary.left, &mut binary.right);
             return;
         }
         let Some(step) = self.step_of(result) else {
@@ -55,7 +60,7 @@ impl ImplicitConversions<'_> {
 
     /// Records the conversions of the inputs of `expr`, a call to the function
     /// form of an arithmetic operator, when every step of the fold is the
-    /// numeric overload.
+    /// numeric overload or every step a typed one.
     pub(super) fn record_fold_operands(&self, expr: &mut Expr) {
         let ExprKind::Function(func) = &expr.kind else {
             return;
@@ -66,7 +71,33 @@ impl ImplicitConversions<'_> {
         let Some(inputs) = positional_inputs(func) else {
             return;
         };
-        let Some(steps) = self.numeric_steps(&op, &inputs, expr.expr_type.as_ref()) else {
+        if let Some(steps) = self.numeric_steps(&op, &inputs, expr.expr_type.as_ref()) {
+            let types = steps.iter().map(|step| Some(ExprType::Concrete(step.0)));
+            self.fold_into_calls(expr, types.collect(), |accumulated, input, index| {
+                self.record_operand(accumulated, steps[index]);
+                self.record_operand(input, steps[index]);
+            });
+        } else if let Some(steps) = self.typed_steps(&op, &inputs) {
+            let types = steps
+                .iter()
+                .map(|(_, result)| self.conversions.id_of(result).map(ExprType::Concrete));
+            self.fold_into_calls(expr, types.collect(), |accumulated, input, index| {
+                self.record_time_inputs(&steps[index].0, accumulated, input);
+            });
+        }
+    }
+
+    /// Writes `expr`, a call of two or more inputs, as the calls its inputs
+    /// fold to from the left, each step's call of the type in `types` and the
+    /// last of the type of `expr` itself, recording each step's operands by
+    /// `record` (the accumulated value, the input, the step's index).
+    fn fold_into_calls(
+        &self,
+        expr: &mut Expr,
+        types: Vec<Option<ExprType>>,
+        record: impl Fn(&mut Expr, &mut Expr, usize),
+    ) {
+        let ExprKind::Function(func) = &expr.kind else {
             return;
         };
         let name = func.name.clone();
@@ -84,11 +115,10 @@ impl ImplicitConversions<'_> {
         let Some(mut accumulated) = inputs.next() else {
             return;
         };
-        let last = steps.len() - 1;
-        for (index, (input, step)) in inputs.zip(steps).enumerate() {
+        let last = types.len() - 1;
+        for (index, (input, step_type)) in inputs.zip(types).enumerate() {
             let mut input = input;
-            self.record_operand(&mut accumulated, step);
-            self.record_operand(&mut input, step);
+            record(&mut accumulated, &mut input, index);
             let call = Function {
                 name: name.clone(),
                 param_assignment: vec![positional(accumulated), positional(input)],
@@ -96,7 +126,7 @@ impl ImplicitConversions<'_> {
             let step_result = if index == last {
                 result.clone()
             } else {
-                Some(ExprType::Concrete(step.0))
+                step_type
             };
             accumulated = Expr {
                 kind: ExprKind::Function(call),
@@ -159,6 +189,28 @@ impl ImplicitConversions<'_> {
         Some(steps)
     }
 
+    /// The typed time or date function each step of the fold of `inputs`
+    /// computes as, with the step's result type, or `None` unless there are
+    /// two or more inputs and every step has a typed overload.
+    fn typed_steps(&self, op: &Operator, inputs: &[&Expr]) -> Option<Vec<(Id, TypeName)>> {
+        let (first, rest) = inputs.split_first()?;
+        if rest.is_empty() {
+            return None;
+        }
+        let mut accumulated = self.conversions.operand_name(first)?;
+        rest.iter()
+            .map(|input| {
+                let right = self.conversions.operand_name(input)?;
+                let Overload::Typed { name, result } = typed_overload(op, &accumulated, &right)?
+                else {
+                    return None;
+                };
+                accumulated = result.clone();
+                Some((Id::from(name), result))
+            })
+            .collect()
+    }
+
     /// The type an operation of result type `result` computes at, and its
     /// width, when it is an elementary numeric type.
     fn step_of(&self, result: Option<&ExprType>) -> Option<Step> {
@@ -199,7 +251,7 @@ impl ImplicitConversions<'_> {
             Some(ExprType::Null) | None => false,
         };
         if differs {
-            self.conversions.convert(operand, target);
+            self.convert(operand, target);
         }
     }
 }

@@ -11,33 +11,35 @@
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{CompareOp, Expr};
 
-use super::compile::{CompileContext, OpType};
-use super::compile_expr::{compile_expr, emit_compare_op, expr_is_string, op_type_from_expr};
+use super::compile::CompileContext;
+use super::compile_expr::{
+    compile_expr, emit_compare_op, expr_is_string, op_type_from_expr, unresolved_expr_type,
+};
 use super::compile_string::compile_string_compare;
 use crate::emit::Emitter;
 
 /// Compiles the comparison `op` of `left` and `right`, leaving the `BOOL`
 /// result on the stack. Strings compare through `compile_string_compare`.
 ///
-/// `op_type` is the operation type of the enclosing expression. It is used
-/// only when neither operand has a type codegen can place, such as a direct
-/// address the analyzer does not type yet.
+/// A pair of which neither operand has a type codegen can place is one the
+/// analyzer did not resolve, and is reported rather than compiled at a type
+/// the enclosing expression supplies.
 pub(crate) fn compile_comparison(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     op: &CompareOp,
     left: &Expr,
     right: &Expr,
-    op_type: OpType,
 ) -> Result<(), Diagnostic> {
     // Strings live in the data region, not on the operand stack, and
     // compare through their own builtin.
     if expr_is_string(ctx, left) {
         return compile_string_compare(emitter, ctx, op, left, right);
     }
-    let operand_type = op_type_from_expr(ctx, left)
-        .or_else(|| op_type_from_expr(ctx, right))
-        .unwrap_or(op_type);
+    let Some(operand_type) = op_type_from_expr(ctx, left).or_else(|| op_type_from_expr(ctx, right))
+    else {
+        return Err(unresolved_expr_type(left));
+    };
     compile_expr(emitter, ctx, left, operand_type)?;
     compile_expr(emitter, ctx, right, operand_type)?;
     emit_compare_op(emitter, op, operand_type);

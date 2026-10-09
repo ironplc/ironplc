@@ -580,8 +580,8 @@ mod tests {
         assert!(!rendered.valid);
     }
 
-    /// The aggregate tags are distinct from `OTHER` precisely so that a named
-    /// subrange, which does hold its value in the slot, keeps rendering it.
+    /// The aggregate tags are distinct from `OTHER` precisely so that a
+    /// variable that does hold its value in the slot keeps rendering it.
     #[test]
     fn render_when_other_tag_with_type_name_then_still_shows_the_value() {
         let renderer = renderer_for(vec![var(0, iec_type_tag::OTHER, "lvl", "LEVEL")]);

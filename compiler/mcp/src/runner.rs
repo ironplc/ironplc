@@ -22,6 +22,7 @@ use std::time::Duration;
 
 use ironplc_analyzer::symbol_environment::ScopeKind;
 use ironplc_analyzer::SemanticContext;
+use ironplc_cli_support::clock::InstantClock;
 use ironplc_container::debug_section::{iec_type_tag, DebugSection, VarNameEntry};
 use ironplc_container::Container;
 use ironplc_vm::{resolve_cycle_time, Vm, VmBuffers};
@@ -288,6 +289,7 @@ pub fn execute(
     };
 
     let wall_start = std::time::Instant::now();
+    let mut execution_clock = InstantClock::new();
     let mut simulated_us: u64 = 0;
     let mut trace: Vec<TraceSample> = Vec::new();
     let mut prev_scan_counts: Vec<u64> = vec![0; task_names.len()];
@@ -347,7 +349,7 @@ pub fn execute(
         // this attribution is accurate.
         let before_total = running.scan_count();
 
-        if let Err(ctx) = running.run_round(uptime_us) {
+        if let Err(ctx) = running.run_round(uptime_us, &mut execution_clock) {
             let trap_msg = ctx.trap.to_string();
             let faulted = running.fault(ctx);
             let final_values =

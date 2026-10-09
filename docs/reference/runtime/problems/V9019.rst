@@ -1,0 +1,30 @@
+=====
+V9019
+=====
+
+.. problem-summary:: V9019
+
+The VM's variable table has fewer slots than the container requires. The
+VM rejects the container when it is loaded, before any code runs, so no
+PLC instructions execute.
+
+The slots available are the smaller of the variable count the container
+declares (``FileHeader.num_variables``) and the size of the variable buffer
+the embedder provided to the VM. The trap message reports both the number
+of slots required and the number available.
+
+The VM requires slots for variables it writes itself. A container that sets
+the system uptime flag (``FileHeader.flags`` bit 0,
+``FLAG_HAS_SYSTEM_UPTIME``) requires two slots, because the VM writes
+``__SYSTEM_UP_TIME`` to slot 0 and ``__SYSTEM_UP_LTIME`` to slot 1 at the
+start of every scan. Codegen always declares those variables when it sets
+the flag, so a container that is too small was built by hand or modified
+after it was compiled.
+
+To resolve:
+
+* Recompile the program so codegen writes a consistent header.
+* If you build containers by hand, declare the variables the header
+  promises, or clear the flag that promises them.
+* If you embed the VM, size the variable buffer from the container's
+  ``num_variables``.

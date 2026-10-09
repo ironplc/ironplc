@@ -776,14 +776,6 @@ impl Visitor<Infallible> for OwnTypes<'_, '_> {
         match &node.kind {
             ExprKind::Const(constant) => self.rule.check_recorded_type(constant, node),
             ExprKind::ImplicitConversion(inner) => self.rule.check_operand(inner, node),
-            // A bitwise operator takes the type of its left operand, and the
-            // pass records no conversion of a wider literal on its right.
-            ExprKind::Compare(compare)
-                if matches!(compare.op, CompareOp::And | CompareOp::Or | CompareOp::Xor) =>
-            {
-                self.rule.check_operand(&compare.left, node);
-                self.rule.check_operand(&compare.right, node);
-            }
             _ => {}
         }
         Ok(())

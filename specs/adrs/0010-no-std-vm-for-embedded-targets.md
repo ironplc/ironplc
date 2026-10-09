@@ -4,6 +4,7 @@ status: proposed
 date: 2026-02-25
 amended: 2026-08-31 (Implementation Status added; status unchanged)
 amended: 2026-09-05 (host `no_std` gate recorded; status unchanged)
+amended: 2026-10-06 (`Instant` removed from the VM recorded; status unchanged)
 
 ## Context and Problem Statement
 
@@ -119,6 +120,12 @@ What did not:
 
 * **`ironplc-vm` is not `no_std`.** There is no `#![no_std]` attribute on its
   `lib.rs`, and `vm.rs` imports `std::time::Instant` for scan timing.
+
+  Partly closed since (2026-10-06): `run_round` takes the clock that times
+  task execution as an argument (the `Clock` trait), so `vm.rs` no longer
+  imports `Instant`. The `Instant`-based implementation the command line
+  programs share lives in `ironplc-cli-support`. The `#![no_std]` attribute
+  is still absent.
 * `VmBuffers` is `Vec`-backed, so the default construction path needs an
   allocator even though the engine itself only borrows slices.
 * Confirmation items 1 and 2 — the bare-metal cross-compile and the Arduino Due

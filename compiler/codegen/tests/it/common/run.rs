@@ -8,7 +8,7 @@ use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_parser::parse_program;
-use ironplc_vm::test_support::load_and_start;
+use ironplc_vm::test_support::{load_and_start, TestVm};
 use ironplc_vm::{FaultContext, VmBuffers};
 
 use super::session::Session;
@@ -117,7 +117,7 @@ pub fn assert_stack_balanced(vm: &ironplc_vm::VmRunning<'_>, phase: &str) {
 pub fn parse_and_run_rounds(
     source: &str,
     options: &CompilerOptions,
-    f: impl FnOnce(&Container, &mut ironplc_vm::VmRunning<'_>),
+    f: impl FnOnce(&Container, &mut TestVm<'_>),
 ) {
     let container = parse_and_compile(source, options);
     let mut bufs = VmBuffers::from_container(&container);

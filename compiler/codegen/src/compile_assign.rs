@@ -9,7 +9,9 @@ use ironplc_dsl::textual::{Assignment, Expr, SymbolicVariableKind, Variable};
 
 use super::compile::{CompileContext, DEFAULT_OP_TYPE};
 use super::compile_array::{emit_flat_index, resolve_access, ResolvedAccess};
-use super::compile_expr::{compile_expr, emit_truncation, resolve_variable_name, variable_span};
+use super::compile_expr::{
+    compile_expr, emit_truncation, op_type_from_expr, resolve_variable_name, variable_span,
+};
 use super::compile_fb_init::compile_fb_field_store;
 use super::compile_partial_access::{compile_partial_access_assignment, PartialAccess};
 use super::compile_place::Place;
@@ -49,9 +51,12 @@ pub(crate) fn compile_assignment(
                 ))
             })?;
 
-        // Compile the value expression (use DEFAULT_OP_TYPE; the referenced
-        // type determines the actual width at runtime).
-        compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
+        // The analyzer converted the value to the referenced type
+        // (REQ-IC-analyzer-039), so it compiles at its own type. It is
+        // stored as it is: a result narrower than 32 bits is not truncated to
+        // its width (#2116).
+        let op_type = op_type_from_expr(ctx, &assignment.value).unwrap_or(DEFAULT_OP_TYPE);
+        compile_expr(emitter, ctx, &assignment.value, op_type)?;
 
         // Load the reference (variable index stored in the ref variable).
         emitter.emit_load_var_i64(target_index);
