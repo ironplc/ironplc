@@ -222,14 +222,14 @@ fn apply_when_neither_widens_then_right_converted_to_left() {
     assert_eq!(comparison_operands(&source), pair("DINT", "UDINT->DINT"));
 }
 
-/// The widening relation does not see through a named subrange to its base
-/// type, so the comparison falls back to the left operand's type and narrows
-/// the `LINT`, as codegen did before the analyzer chose.
+/// A named subrange is compared at its base type, so it is the `INT` that
+/// widens, not the `LINT` that narrows to it.
+#[spec_test(REQ_IC_analyzer_092)]
 #[test]
-fn apply_when_named_subrange_and_wider_integer_then_wider_converted_to_subrange() {
+fn apply_when_named_subrange_and_wider_integer_then_subrange_converted_to_wider() {
     let source = "TYPE Small : INT (0..10); END_TYPE
         PROGRAM main VAR b : BOOL; s : Small; l : LINT; END_VAR b := s < l; END_PROGRAM";
-    assert_eq!(comparison_operands(source), pair("SMALL", "LINT->SMALL"));
+    assert_eq!(comparison_operands(source), pair("INT->LINT", "LINT"));
 }
 
 #[spec_test(REQ_IC_analyzer_003)]
@@ -599,7 +599,7 @@ fn apply_when_argument_to_parameter_of_subrange_then_not_converted() {
     let source = "TYPE Small : LINT (0..100); END_TYPE
         FUNCTION f : DINT VAR_INPUT x : Small; END_VAR f := 0; END_FUNCTION
         PROGRAM main VAR r : DINT; s : Small; END_VAR r := f(s); END_PROGRAM";
-    assert_eq!(call_arguments(source, "f"), vec!["SMALL"]);
+    assert_eq!(call_arguments(source, "f"), vec!["LINT"]);
 }
 
 #[spec_test(REQ_IC_analyzer_044)]
@@ -881,3 +881,4 @@ mod bitwise;
 mod call_result;
 mod inputs_of_one_type;
 mod integer_result;
+mod subrange;

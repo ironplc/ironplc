@@ -66,12 +66,8 @@ impl ImplicitConversions<'_> {
         let Some(attributes) = self.context.types().get_by_id(id) else {
             return false;
         };
-        let representation = match &attributes.representation {
-            SemanticType::Subrange { base_type, .. } => base_type.as_ref(),
-            other => other,
-        };
         matches!(
-            representation,
+            attributes.representation.operated_as(),
             SemanticType::Int { .. } | SemanticType::UInt { .. }
         )
     }

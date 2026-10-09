@@ -15,10 +15,12 @@
 //!
 //! The analyzer decided which operand converts (ADR-0056): an operand of
 //! another width arrives wrapped in an `ImplicitConversion` to the result
-//! type, and a function form of three or more inputs arrives as the calls it
-//! folds to. Both compile here as the pair of operands they are. An
-//! expression whose result type codegen cannot place (a literal's category, a
-//! subrange, an enumeration) compiles at the enclosing operation type.
+//! type, and a function form of three or more inputs whose steps compute at
+//! different types arrives as the calls it folds to. Every operation compiles
+//! at its own result type, a subrange's being its base type. One without a
+//! typed overload or a numeric result type, or with an input of another
+//! width, is one the analyzer did not resolve, and is an internal error
+//! rather than compiled at the type of its context.
 //!
 //! See `specs/design/arithmetic-operator-overloads.md`.
 
@@ -36,19 +38,18 @@ use super::compile_time_arith::{compile_time_arith, time_arith_for, Operand};
 use super::type_info::{expr_operand_name, resolve_type_name};
 use crate::emit::Emitter;
 
-/// Compiles the arithmetic operator expression `binary`, leaving the result
-/// on the stack.
+/// Compiles `expr`, the arithmetic operator expression `binary`, leaving the
+/// result on the stack.
 ///
 /// A pair with a typed overload compiles through its typed routine. A pair
-/// whose result type `result` is numeric computes at that type and converts
-/// the result to `op_type`, the operation type of the enclosing expression.
-/// Any other pair compiles both operands at `op_type` with the operator's
-/// opcode.
+/// whose result type is numeric computes at that type and converts the
+/// result to `op_type`, the operation type of the enclosing expression. The
+/// analyzer resolves every pair to one or the other.
 pub(crate) fn compile_binary_arith(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
+    expr: &Expr,
     binary: &BinaryExpr,
-    result: Option<&TypeName>,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
     if let Some(left) = expr_operand_name(ctx, &binary.left) {
@@ -64,20 +65,18 @@ pub(crate) fn compile_binary_arith(
             );
         }
     }
-    if let Some(natural) = numeric_op_type(result) {
-        return compile_numeric_pair(
-            emitter,
-            ctx,
-            &binary.op,
-            (&binary.left, &binary.right),
-            natural,
-            op_type,
-        );
-    }
-    compile_expr(emitter, ctx, &binary.left, op_type)?;
-    compile_expr(emitter, ctx, &binary.right, op_type)?;
-    emit_arithmetic_op(emitter, &binary.op, op_type);
-    Ok(())
+    let operands = [&binary.left, &binary.right];
+    let Some(natural) =
+        numeric_inputs_op_type(ctx, expr_operand_name(ctx, expr).as_ref(), &operands)
+    else {
+        return Err(unresolved_operation(expr.span()));
+    };
+    compile_at(emitter, ctx, natural, op_type, |emitter, ctx, at| {
+        compile_expr(emitter, ctx, &binary.left, at)?;
+        compile_expr(emitter, ctx, &binary.right, at)?;
+        emit_arithmetic_op(emitter, &binary.op, at);
+        Ok(())
+    })
 }
 
 /// Compiles a call to the function form of the arithmetic operator `op`,
@@ -85,10 +84,11 @@ pub(crate) fn compile_binary_arith(
 ///
 /// When the first two inputs have a typed overload, every step compiles
 /// through its typed routine, the left operand of each step after the first
-/// being the previous step's result on the stack. When every step has a
-/// numeric result type, each step computes at its own, as the operator
-/// expression does. Otherwise every step compiles with the operator's opcode
-/// at `op_type`.
+/// being the previous step's result on the stack. Otherwise every step
+/// computes at the call's numeric result type `result`, at whose width the
+/// analyzer placed every input, and the result is converted to `op_type`. A
+/// fold whose steps compute at different types arrives as the two-input calls
+/// it folds to, each its own call.
 pub(crate) fn compile_arith_fold(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -114,13 +114,13 @@ pub(crate) fn compile_arith_fold(
             }
         }
     }
-    if let [left, right] = args.as_slice() {
-        if let Some(natural) = numeric_pair_op_type(ctx, result, left, right) {
-            return compile_numeric_pair(emitter, ctx, op, (left, right), natural, op_type);
-        }
-    }
-    compile_left_fold(emitter, ctx, func, op_type, |emitter, op_type| {
-        emit_arithmetic_op(emitter, op, op_type)
+    let Some(natural) = numeric_inputs_op_type(ctx, result, &args) else {
+        return Err(unresolved_operation(func.name.span()));
+    };
+    compile_at(emitter, ctx, natural, op_type, |emitter, ctx, at| {
+        compile_left_fold(emitter, ctx, func, at, |emitter, at| {
+            emit_arithmetic_op(emitter, op, at)
+        })
     })
 }
 
@@ -190,41 +190,31 @@ fn compile_typed(
     compile_time_arith(emitter, ctx, arith, width, left, right)
 }
 
-/// Returns the operation type the two inputs of a call compile at: that of
-/// the call's `result` when it is numeric and each input, which the analyzer
-/// converted to it where its width differed, is a numeric type of that
-/// width. `None` for any other pair, which compiles at the enclosing
-/// operation type.
-fn numeric_pair_op_type(
+/// Returns the operation type the inputs of an arithmetic operation compile
+/// at: that of its `result` when it is numeric and each input, which the
+/// analyzer converted to it where its width differed, is a numeric type of
+/// that width. `None` for any other operation, which the analyzer did not
+/// resolve.
+fn numeric_inputs_op_type(
     ctx: &CompileContext,
     result: Option<&TypeName>,
-    left: &Expr,
-    right: &Expr,
+    inputs: &[&Expr],
 ) -> Option<OpType> {
     let natural = numeric_op_type(result)?;
-    let at_natural = |input: &Expr| {
+    let at_natural = |input: &&Expr| {
         numeric_op_type(expr_operand_name(ctx, input).as_ref())
             .is_some_and(|own| own.0 == natural.0)
     };
-    (at_natural(left) && at_natural(right)).then_some(natural)
+    inputs.iter().all(at_natural).then_some(natural)
 }
 
-/// Compiles the two operands of a numeric operation at `natural`, the
-/// operation type of its result, then the operator, and converts the result
-/// to `op_type`.
-fn compile_numeric_pair(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    op: &Operator,
-    (left, right): (&Expr, &Expr),
-    natural: OpType,
-    op_type: OpType,
-) -> Result<(), Diagnostic> {
-    compile_expr(emitter, ctx, left, natural)?;
-    compile_expr(emitter, ctx, right, natural)?;
-    emit_arithmetic_op(emitter, op, natural);
-    convert_to_context(emitter, natural, op_type);
-    Ok(())
+/// The internal error for an arithmetic operation the analyzer resolved to
+/// neither a typed overload nor a numeric type its inputs are placed at.
+fn unresolved_operation(span: SourceSpan) -> Diagnostic {
+    Diagnostic::internal_error_at(Label::span(
+        span,
+        "Arithmetic operation has no typed overload or numeric type its inputs are converted to",
+    ))
 }
 
 /// Compiles, by `compile`, an operation whose result has the type of its

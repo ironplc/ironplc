@@ -184,6 +184,7 @@ mod end_to_end_string_to_udint;
 mod end_to_end_struct;
 mod end_to_end_sub;
 mod end_to_end_subrange;
+mod end_to_end_subrange_operand;
 mod end_to_end_system_uptime;
 mod end_to_end_tc2_math;
 mod end_to_end_tc2_utilities;

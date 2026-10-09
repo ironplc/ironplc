@@ -174,6 +174,20 @@ A reference holds the index of the variable it refers to. The analyzer knows its
 
 **REQ-IC-analyzer-087** A reference variable assigned to a variable that is not a reference reports P2032, and so does one assigned to a reference to another type unless type punning is allowed (`--allow-ref-type-punning`): `i := ri` and `ri := rd` on a `REF_TO INT` and a `REF_TO DINT` report P2032, and `ri2 := ri` does not.
 
+### Subranges and fields
+
+A value of a subrange type is operated at its base type: the name the type relations, the conversion pass and the code generator read for it is its base type's. It used to be known by the subrange's own name, which no relation judged, so a comparison fell back to the left operand's type and narrowed a wider right operand to the subrange, an arithmetic operation took the left operand's subrange type, and codegen computed both at the type of their context. A subrange parameter takes a value of its base type, as a subrange variable does when assigned.
+
+A field of a structure has its declared type, a subrange field its base type, whether the structure is a variable, an element of an array variable or an element of an array that is itself a field. A field reached through an element of an array field (`h.items[1].a`), and a subrange field, used to have no type.
+
+**REQ-IC-analyzer-092** A subrange operand is operated at its base type, in a comparison, an arithmetic operation and a function of several inputs of one type: in `s < l` on a subrange of `INT` and an `LINT` the subrange is converted to `LINT` where the `LINT` used to be narrowed to the subrange, `s + i` on an `INT` is an `INT`, in `s + b` on a subrange of `LINT` the subrange is converted to `LINT`, and in `l := MAX(u, u)` on a subrange of `UINT` the `UINT` result is converted to `LINT`.
+
+**REQ-IC-analyzer-093** An operation on a subrange assigned to a target narrower than its result is a type mismatch: `d := s + b` on a `DINT`, a subrange of `INT` and a subrange of `LINT` reports P4035, as `d := i + l` does.
+
+**REQ-IC-analyzer-094** An argument of a subrange parameter's base type is accepted, and a wider one is not: `f(i)` and `f(s + 1)` with a parameter of a subrange of `INT` report nothing, and `f(d)` on a `DINT` reports P4026.
+
+**REQ-IC-analyzer-095** A field of a structure has its declared type wherever the structure is, and a subrange field its base type: `h.items[1].a` on an array field of structures with a `DINT` field `a` is a `DINT`, converted to `LINT` in `l := h.items[1].a`, and the subrange field `it.r` of a subrange of `INT` is an `INT`.
+
 ### Loops
 
 A `FOR` loop stores its initial value in its control variable and compares and steps it at the control variable's type.
@@ -305,6 +319,15 @@ is: a result of a type narrower than 32 bits is not truncated to its width, so
 **REQ-IC-codegen-005** A value stored in a function block field, a method parameter or through a dereference keeps the value of its declared type: `b(x := 4000000000)` on a field of a subrange of `LINT` stores 4000000000, and `q^ := 1.5` on a `REF_TO REAL` stores 1.5.
 
 **REQ-IC-codegen-009** The result of a call to a user-defined function or a method, and a dereference, stored in a wider target keep their value: `l := big(u)` with `big` returning the `UDINT` 4000000000 stores 4000000000, as do `l := k.Big()` and `l := p^`, and `lr := half(3.0)` with `half` returning a `REAL` stores 1.5.
+
+An arithmetic operation, in the operator and the function form, computes at
+its own result type: a typed overload's routine, or the numeric type at whose
+width the analyzer placed every operand, a subrange's being its base type. An
+operation with neither, or with an operand of another width, is an internal
+error rather than compiled at the type of its context, which is how a subrange
+operand and a field reached through an array of structures used to compile.
+
+**REQ-IC-codegen-012** An operation on a subrange or on a field reached through an array of structures computes at its own type, as on a variable of the base or field type: `gt := s > l` with `s = 10` on a subrange of `INT` and `l = 4294967297` stores `FALSE`, `l := s * s` with `s = 100000` on a subrange of `DINT` wraps at 32 bits as `DINT * DINT` does, `l := MAX(u, v)` with `u = 4000000000` on a subrange of `UDINT` stores 4000000000, and `l := h.items[1].a * h.items[2].a` on `DINT` fields of 100000 wraps at 32 bits.
 
 **REQ-IC-codegen-011** `TRUNC`, `BCD_TO_INT` and `SIZEOF` compute at the integer type the analyzer recorded for the call: `x := TRUNC(r)` with `r = 2.75` and a `REAL` target stores 2.0, `l := TRUNC(lr)` with `lr = 5000000000.5` stores 5000000000, and `SIZEOF` and `BCD_TO_INT` assigned to an `LINT` store their value at 64 bits.
 

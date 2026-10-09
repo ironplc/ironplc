@@ -134,10 +134,7 @@ pub(crate) fn compile_expr(
                 _ => compile_variable_read(emitter, ctx, variable, op_type),
             }
         }
-        ExprKind::BinaryOp(binary) => {
-            let result = expr_operand_name(ctx, expr);
-            compile_binary_arith(emitter, ctx, binary, result.as_ref(), op_type)
-        }
+        ExprKind::BinaryOp(binary) => compile_binary_arith(emitter, ctx, expr, binary, op_type),
         ExprKind::UnaryOp(unary) => {
             let result = expr_operand_name(ctx, expr);
             compile_at_operand_type(
