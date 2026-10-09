@@ -12,7 +12,7 @@
 //! See `specs/design/arithmetic-operator-overloads.md`.
 
 use ironplc_analyzer::{
-    typed_overload, CleanAnalysis, FunctionEnvironmentBuilder, Intrinsic, Overload,
+    typed_overload, CleanAnalysis, FunctionEnvironmentBuilder, Intrinsic, TypedOverload,
 };
 use ironplc_container::FunctionId;
 use ironplc_dsl::common::TypeName;
@@ -193,7 +193,7 @@ fn typed_overload_when_any_pair_then_names_a_registered_time_function() {
         for left in types {
             for right in types {
                 let answer = typed_overload(&op, &TypeName::from(left), &TypeName::from(right));
-                if let Some(Overload::Typed { name, .. }) = answer {
+                if let Some(TypedOverload { name, .. }) = answer {
                     assert!(
                         matches!(
                             intrinsics.get(&Id::from(name)),

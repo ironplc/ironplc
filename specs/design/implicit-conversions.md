@@ -280,7 +280,7 @@ Every construct a literal can sit in either passes the type of its context on, c
 
 **REQ-IC-codegen-002** An integer or real literal compiles at the type the analyzer recorded for it, not at a type its context passes down: `l := 5000000000` stores 5000000000, and `l := UDINT#4000000000` stores 4000000000.
 
-A literal codegen builds itself has no recorded type: a member initializer of a function block instance takes the field's type in a user-defined block and is stored as a `DINT` in a standard one. A time, date, string, boolean or bit-string literal names its own type and is compiled for the storage its context gives it.
+A time, date, boolean or bit-string literal names its own type and compiles at it, as a typed numeric literal does. A literal codegen builds itself has no recorded type: a member initializer of a function block instance takes the field's type in a user-defined block, and in a standard one a number is stored as a `DINT` and any other literal at the field's type.
 
 A literal a standard function does not give a type to (`TRUNC`, a typed time function such as `MUL_TIME`) takes its default type, as does a literal argument of a user-defined function whose parameter the argument pass did not give it, before the argument's conversion. The member initializers of a function block instance, which codegen compiles as expressions it builds itself, are not typed by the pass.
 
@@ -295,9 +295,11 @@ comparison's operand type, and does not decide which operand to convert.
 
 An operation on one value -- a negation, `NOT`, a numeric function of one
 input (`ABS`, `SQRT`, ...), `MOVE`, or a shift or rotate, whose count only
-says how far -- has its operand's type, and computes at that type when it is
-numeric, as an arithmetic operation computes at its result's. Its result is
-converted to the type of its context.
+says how far -- has its operand's type, and computes at that type, as an
+arithmetic operation computes at its result's: `NOT` of a `BOOL` at `BOOL`, a
+negation of a `TIME` at `TIME`. Its result is converted to the type of its
+context. One the analyzer gave no type is reported rather than computed at
+its context's.
 
 A function of several inputs of one type (`MAX`, `MIN`, `LIMIT`, `SEL`, `MUX`,
 `EXPT`, `ATAN2`) computes at the type the analyzer recorded for the call, and
