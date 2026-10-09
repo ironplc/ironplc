@@ -233,7 +233,7 @@ pub(crate) fn assign_variables(
                 InitialValueAssignmentKind::Subrange(ref spec) => {
                     // Subrange variable (e.g., x : MY_RANGE or x : INT (1..100))
                     // Resolve VarTypeInfo from the subrange's base type.
-                    let subrange_type = match spec {
+                    let subrange_type = match &spec.spec {
                         SpecificationKind::Named(type_name) => {
                             types.resolve_subrange_type(type_name)
                         }
@@ -249,7 +249,7 @@ pub(crate) fn assign_variables(
                             ctx.var_types.insert(id.clone(), type_info);
                         }
                     }
-                    let name = match spec {
+                    let name = match &spec.spec {
                         SpecificationKind::Named(tn) => tn.to_string().to_uppercase(),
                         SpecificationKind::Inline(inline) => {
                             format!("{}", inline.type_name)
@@ -580,7 +580,7 @@ pub(crate) fn emit_initial_values(
                         .unwrap_or(DEFAULT_OP_TYPE);
 
                     // Extract min_value from the type environment or inline spec
-                    let min_value: Option<i128> = match spec {
+                    let min_value: Option<i128> = match &spec.spec {
                         SpecificationKind::Named(type_name) => {
                             _types.get(type_name).and_then(|attrs| {
                                 if let SemanticType::Subrange { min_value, .. } =

@@ -815,6 +815,9 @@ pub(crate) fn flatten_array_initial_values(
                     }
                 }
             }
+            ArrayInitialElementKind::Structure(_) | ArrayInitialElementKind::Expression(_) => {
+                return Err(Diagnostic::internal_error());
+            }
         }
     }
     Ok(result)

@@ -545,7 +545,9 @@ impl RuleConstantRange<'_> {
                     self.check_array_element(inner, expected);
                 }
             }
-            ArrayInitialElementKind::EnumValue(_) => {}
+            ArrayInitialElementKind::EnumValue(_)
+            | ArrayInitialElementKind::Structure(_)
+            | ArrayInitialElementKind::Expression(_) => {}
         }
     }
 
