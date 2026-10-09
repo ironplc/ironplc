@@ -1031,6 +1031,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ironplc-ir"
+version = "0.248.0"
+dependencies = [
+ "ironplc-dsl",
+ "ironplc-spec-requirements-gen",
+ "time",
+]
+
+[[package]]
 name = "ironplc-mcp"
 version = "0.248.0"
 dependencies = [
