@@ -208,6 +208,14 @@ A `FOR` loop stores its initial value in its control variable and compares and s
 
 **REQ-IC-analyzer-079** The initial value, final value and step of a `FOR` loop are converted to the type of its control variable as an assigned value is: in `FOR l := d TO e` on an `LINT` and two `DINT`s both bounds are converted to `LINT`.
 
+### Subscripts and shift counts
+
+An array subscript is compiled at `DINT`, and the count of a shift or rotate at `LINT` when the shifted value is operated at 64 bits and at `DINT` otherwise, whatever their own types: the literals of both already take those types (see Literals). The pass converts a subscript or count of another width to that type as an assigned value is converted. A 64-bit subscript, or a 64-bit count of a 32-bit value, is narrowed: the code generator narrowed it before the conversion was recorded, and recording it makes the narrowing visible. Whether a subscript should index at 64 bits, and whether a count beyond the value's width should shift every bit out, are separate decisions.
+
+**REQ-IC-analyzer-100** A subscript whose width differs from `DINT`'s is converted to `DINT`, in a value and in an assignment target: the `LINT` of `a[l]` and the `LINT` sum of `a[d + l]` are converted to `DINT`, and the `SINT` of `a[s]` is not converted.
+
+**REQ-IC-analyzer-101** A shift or rotate count whose width differs from the count's type is converted to it: the `LINT` count of `SHL(dw, l)` on a `DWORD` is converted to `DINT`, the `DINT` count of `SHL(lw, d)` and `ROR(lw, d)` on an `LWORD` to `LINT`, and a `SINT` count of a `DWORD` and a `ULINT` count of an `LWORD` are not converted.
+
 ### Arguments
 
 A call to a user-defined function passes each input by value at the operation width of its parameter. The pass records the conversion of an argument of another width to the type its parameter is passed as, and codegen compiles the argument at the parameter's width without choosing a conversion. A parameter is passed at its declared type, whatever kind of declaration declares it: a subrange at its base type and an alias at the type it names. An untyped literal takes its parameter's type, as it takes an assignment target's, so the parameter receives the value the program wrote. Codegen used to operate it at its default type (`DINT` or `REAL`, ADR-0028) and convert it, which rounded `f(0.1)` with an `LREAL` parameter to a `REAL` and failed on `f(5000000000)` with an `LINT` one.
@@ -354,6 +362,10 @@ A parameter of a user-defined function is passed at its declared type the same w
 `AND`, `OR` and `XOR` compute at the type the analyzer recorded for the operation, to which it converted an operand of another width, and their result is converted to the type of its context.
 
 A typed time or date function compiles each operand at the type the analyzer recorded for it, which is the width the routine computes at. An operand of another width is an internal error (P9998), not widened as the code generator used to widen a short operand of a long form and the number a duration is scaled by. The analyzer writes a typed fold as the calls it folds to, so no step widens the previous step's result on the stack.
+
+An array subscript and a shift or rotate count compile at the type the analyzer recorded for them, which is `DINT`, or `LINT` for the count of a value operated at 64 bits. One of another width is an internal error, not narrowed or widened as the code generator used to.
+
+**REQ-IC-codegen-015** A subscript or shift count whose conversion the analyzer did not record is an internal error: with the recorded conversions removed, `a[l]`, `a[d + l]`, `SHL(dw, l)` and `SHL(lw, d)` report P9998, and `a[d]` and `SHL(dw, d)` compile.
 
 **REQ-IC-codegen-013** A typed time or date operation whose operand conversion the analyzer did not record is an internal error: with the recorded conversions removed, `lt + t`, `SUB_LDATE_LDATE(lda, da)`, `lt * d`, `MUL_LTIME(lt, r)` and `t * l` report P9998, and `lt + lt` compiles.
 

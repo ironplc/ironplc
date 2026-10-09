@@ -6,7 +6,8 @@
 //! the elementary type it is operated as: its own, or its base type for a
 //! subrange. The target of a dereference is the variable the reference
 //! refers to. The bounds and step of a `FOR` loop are converted to the type
-//! of its control variable the same way.
+//! of its control variable the same way, and an array subscript to `DINT`,
+//! the type a subscript is compiled at.
 //!
 //! It records a conversion where the value has a type of its own, which a
 //! literal does not. A value converts to its context when it is a variable, an
@@ -24,8 +25,8 @@
 //! A directly represented target is not recorded yet.
 
 use ironplc_dsl::textual::{
-    Assignment, Expr, ExprKind, For, Function, ParamAssignmentKind, PartialAccessSize,
-    SymbolicVariableKind, Variable,
+    ArrayVariable, Assignment, Expr, ExprKind, For, Function, ParamAssignmentKind,
+    PartialAccessSize, SymbolicVariableKind, Variable,
 };
 use ironplc_dsl::type_id::TypeId;
 
@@ -113,6 +114,19 @@ impl ImplicitConversions<'_> {
             | SemanticType::Array { .. }
             | SemanticType::FunctionBlock { .. }
             | SemanticType::Function { .. } => None,
+        }
+    }
+
+    /// Records the conversion of each subscript of `array` to `DINT`, the
+    /// type a subscript is compiled at. A 64-bit subscript is narrowed to it,
+    /// as the code generator narrowed it before the conversion was recorded;
+    /// whether a subscript should index at 64 bits is a separate decision.
+    pub(super) fn record_subscript_conversions(&self, array: &mut ArrayVariable) {
+        let Some(dint) = self.dint() else {
+            return;
+        };
+        for subscript in &mut array.subscripts {
+            self.record_conversion_to(subscript, dint);
         }
     }
 
