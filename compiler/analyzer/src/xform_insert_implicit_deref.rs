@@ -132,6 +132,29 @@ impl Fold<Diagnostic> for ImplicitDeref {
         result
     }
 
+    /// A method's own declarations (parameters, locals, the implicit input of
+    /// a property's `SET` accessor) are in scope in its body, and hide a
+    /// function block variable of the same name.
+    fn fold_method_declaration(
+        &mut self,
+        node: MethodDeclaration,
+    ) -> Result<MethodDeclaration, Diagnostic> {
+        let outer = self.reference_to_vars.clone();
+        let declared: Vec<VarDecl> = node.all_variables().cloned().collect();
+        for var in &declared {
+            if let VariableIdentifier::Symbol(id) = &var.identifier {
+                self.reference_to_vars.remove(id);
+            }
+        }
+        for edge in &node.edge_variables {
+            self.reference_to_vars.remove(&edge.identifier);
+        }
+        self.collect_reference_to_vars(&declared);
+        let result = node.recurse_fold(self);
+        self.reference_to_vars = outer;
+        result
+    }
+
     fn fold_assignment(&mut self, node: Assignment) -> Result<Assignment, Diagnostic> {
         // A bare `:=` write to a REFERENCE TO variable stores *through* the
         // reference. Skip `REF=` bindings (which rebind the reference itself)
@@ -193,5 +216,107 @@ impl Fold<Diagnostic> for ImplicitDeref {
             }
             other => other.recurse_fold(self),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ironplc_dsl::visitor::Visitor;
+    use ironplc_parser::options::CompilerOptions;
+    use std::convert::Infallible;
+
+    /// Whether the value of the first assignment of `source` is read through
+    /// a reference, after this pass.
+    fn first_value_is_deref(source: &str) -> bool {
+        let options = CompilerOptions {
+            allow_reference_to: true,
+            allow_fb_inheritance: true,
+            ..CompilerOptions::default()
+        };
+        let (library, _) =
+            crate::test_helpers::parse_and_resolve_types_with_options(source, &options);
+
+        struct First(Option<bool>);
+        impl Visitor<Infallible> for First {
+            type Value = ();
+            fn visit_assignment(&mut self, node: &Assignment) -> Result<(), Infallible> {
+                if self.0.is_none() && !node.ref_bind {
+                    self.0 = Some(matches!(node.value.kind, ExprKind::Deref(_)));
+                }
+                Ok(())
+            }
+        }
+        let mut first = First(None);
+        let _ = first.walk(&library);
+        first.0.expect("an assignment")
+    }
+
+    fn in_method(declaration: &str, locals: &str, body: &str) -> String {
+        format!(
+            "
+FUNCTION_BLOCK FB_A
+VAR
+    b : INT;
+    target : INT;
+    {declaration}
+END_VAR
+METHOD M
+{locals}
+{body}
+END_METHOD
+END_FUNCTION_BLOCK"
+        )
+    }
+
+    #[test]
+    fn apply_when_reference_to_declared_in_method_then_bare_read_is_dereferenced() {
+        let source = in_method(
+            "",
+            "VAR r : REFERENCE TO INT; END_VAR",
+            "    r REF= target;\n    b := r;",
+        );
+        assert!(first_value_is_deref(&source));
+    }
+
+    #[test]
+    fn apply_when_reference_to_is_method_input_then_bare_read_is_dereferenced() {
+        let source = in_method("", "VAR_INPUT r : REFERENCE TO INT; END_VAR", "    b := r;");
+        assert!(first_value_is_deref(&source));
+    }
+
+    #[test]
+    fn apply_when_method_local_hides_function_block_reference_then_read_is_not_dereferenced() {
+        let source = in_method(
+            "r : REFERENCE TO INT;",
+            "VAR r : INT; END_VAR",
+            "    b := r;",
+        );
+        assert!(!first_value_is_deref(&source));
+    }
+
+    #[test]
+    fn apply_when_function_block_reference_used_in_method_then_read_is_dereferenced() {
+        let source = in_method("r : REFERENCE TO INT;", "", "    b := r;");
+        assert!(first_value_is_deref(&source));
+    }
+
+    #[test]
+    fn apply_when_method_ends_then_its_reference_is_not_in_scope_in_the_next_method() {
+        let source = "
+FUNCTION_BLOCK FB_A
+VAR
+    b : INT;
+END_VAR
+METHOD First
+VAR r : REFERENCE TO INT; END_VAR
+    ;
+END_METHOD
+METHOD Second
+VAR r : INT; END_VAR
+    b := r;
+END_METHOD
+END_FUNCTION_BLOCK";
+        assert!(!first_value_is_deref(source));
     }
 }

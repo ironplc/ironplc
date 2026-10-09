@@ -75,7 +75,7 @@ Per-file source integrity lives in the debug section's `SOURCE_FILE_TABLE` (tag 
 | **REQ-CF-container-002** | 0 | magic | u32 | `0x49504C43` ("IPLC" in ASCII) |
 | **REQ-CF-container-003** | 4 | format_version | u16 | Container format version (currently 4; bumped to 2 from 1 by ADR-0033 opcode-encoding migration, then to 3 by ADR-0035 WSTRING string-header/constant-pool encoding tags, then to 4 by ADR-0054 explicit array element stride) |
 | | 6 | profile | u8 | Reserved for future VM profile definitions; must be zero |
-| **REQ-CF-container-007** | 7 | flags | u8 | Bit 0: has system uptime variables (`FLAG_HAS_SYSTEM_UPTIME`); Bit 1: has debug section (`FLAG_HAS_DEBUG_SECTION`); Bit 2: has type section (`FLAG_HAS_TYPE_SECTION`); bits 3–7 reserved. No bit indicates a signature section (see below) |
+| **REQ-CF-container-007** | 7 | flags | u8 | Bit 0: has system uptime variables (`FLAG_HAS_SYSTEM_UPTIME`), which occupy variable slots 0 and 1, so a container setting it must declare at least two variables (rejected at load with trap `V9019` otherwise); Bit 1: has debug section (`FLAG_HAS_DEBUG_SECTION`); Bit 2: has type section (`FLAG_HAS_TYPE_SECTION`); bits 3–7 reserved. No bit indicates a signature section (see below) |
 | | 8 | content_hash | [u8; 32] | BLAKE3 over the masked header, task table, type section, constant pool and code section (see Content Hash Scope). All zeros means no hash was computed |
 | | 40 | reserved_hash_slot | [u8; 32] | Reserved (formerly `source_hash`); must be zero. Per-file source integrity is now in the debug section's `SOURCE_FILE_TABLE` (tag 6). |
 | | 72 | debug_hash | [u8; 32] | BLAKE3 over debug section (all zeros if no debug section, or if no hash was computed) |
@@ -470,8 +470,9 @@ iec_type_tag encoding:
 
 Tags 25-27 mark a variable whose slot holds a data-region offset rather than
 its value, so a reader knows not to display the slot. They are distinct from
-`OTHER` because `OTHER` also carries named subrange types, whose slot does hold
-their value. See [Variable Value Rendering](variable-value-rendering.md).
+`OTHER` because a variable tagged `OTHER` may hold its value in its slot. A
+subrange variable is not tagged `OTHER`: it carries its base type's tag
+(REQ-SR-023), so it renders at its base type's width and signedness. See [Variable Value Rendering](variable-value-rendering.md).
 Format version 4 retires them: the type reference's `kind` says what the slot
 holds, and the COMPOSITE_TYPE and ARRAY_TYPE tables say what is at the offset
 ([Variable Inspection Model](variable-inspection-model.md) §1.1).

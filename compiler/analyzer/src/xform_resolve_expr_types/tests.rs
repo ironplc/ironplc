@@ -15,8 +15,11 @@ use ironplc_dsl::textual::*;
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
 
+mod bitwise;
 mod enumerated_value;
 mod expr_type;
+mod inputs_of_one_type;
+mod member;
 mod single_assignment;
 
 /// A library after the expression type resolution pass, with the type

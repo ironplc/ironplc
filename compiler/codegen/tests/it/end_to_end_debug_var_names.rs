@@ -185,3 +185,91 @@ END_PROGRAM
     // frame without ambiguity.
     assert_ne!(p.var_index, q.var_index);
 }
+
+/// Returns the entry named `name` (case-insensitive) owned by `owner`.
+fn named<'a>(
+    container: &'a ironplc_container::Container,
+    owner: FunctionId,
+    name: &str,
+) -> &'a VarNameEntry {
+    vars_for(container, owner)
+        .into_iter()
+        .find(|v| v.name.eq_ignore_ascii_case(name))
+        .unwrap_or_else(|| panic!("var name {name} present in debug section"))
+}
+
+/// REQ-SR-023: a subrange variable carries its base type's tag, so a
+/// renderer reads its slot at the base type's width and signedness.
+#[test]
+fn var_names_when_subrange_variables_then_tag_is_base_type_tag() {
+    let source = "
+TYPE
+  BIG : LINT (0..10000000000);
+  BIG_ALIAS : BIG;
+  HUGE : ULINT (0..18446744073709551615);
+  WIDE : UDINT (0..4294967295);
+END_TYPE
+FUNCTION f : BIG
+  VAR_INPUT p : BIG; END_VAR
+  VAR t : WIDE; END_VAR
+  f := p;
+END_FUNCTION
+FUNCTION_BLOCK fb
+  VAR m : BIG_ALIAS := 5; END_VAR
+END_FUNCTION_BLOCK
+PROGRAM main
+  VAR
+    b : BIG := 4294967297;
+    n : BIG;
+    a : BIG_ALIAS;
+    h : HUGE := 18446744073709551615;
+    w : WIDE;
+    r : BIG;
+    inst : fb;
+  END_VAR
+  r := f(b);
+  inst();
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let global = FunctionId::GLOBAL_SCOPE;
+
+    let b = named(&container, global, "b");
+    assert_eq!(b.iec_type_tag, iec_type_tag::LINT);
+    assert_eq!(b.type_name, "BIG");
+    assert_eq!(
+        named(&container, global, "n").iec_type_tag,
+        iec_type_tag::LINT
+    );
+    let a = named(&container, global, "a");
+    assert_eq!(a.iec_type_tag, iec_type_tag::LINT);
+    assert_eq!(a.type_name, "BIG_ALIAS");
+    assert_eq!(
+        named(&container, global, "h").iec_type_tag,
+        iec_type_tag::ULINT
+    );
+    assert_eq!(
+        named(&container, global, "w").iec_type_tag,
+        iec_type_tag::UDINT
+    );
+
+    let f_id = function_id_of(&container, "f");
+    assert_eq!(
+        named(&container, f_id, "p").iec_type_tag,
+        iec_type_tag::LINT
+    );
+    assert_eq!(
+        named(&container, f_id, "t").iec_type_tag,
+        iec_type_tag::UDINT
+    );
+    assert_eq!(
+        named(&container, f_id, "f").iec_type_tag,
+        iec_type_tag::LINT
+    );
+
+    let fb_id = function_id_of(&container, "fb");
+    assert_eq!(
+        named(&container, fb_id, "m").iec_type_tag,
+        iec_type_tag::LINT
+    );
+}

@@ -59,12 +59,3 @@ e2e_i64!(
      END_PROGRAM",
     &[("r", 0)],
 );
-
-// A function of several inputs computes at the type of its context, because
-// its own type is that of its first input.
-e2e_i64!(
-    end_to_end_when_max_of_int_and_lint_assigned_to_lint_then_computed_at_lint,
-    "PROGRAM main VAR i : INT := 2; l : LINT := 5000000000; m : LINT; END_VAR
-     m := MAX(i, l); END_PROGRAM",
-    &[("m", 5_000_000_000)],
-);

@@ -17,6 +17,14 @@ fn reference_to_options() -> CompilerOptions {
     }
 }
 
+fn reference_to_method_options() -> CompilerOptions {
+    CompilerOptions {
+        allow_reference_to: true,
+        allow_fb_inheritance: true,
+        ..CompilerOptions::default()
+    }
+}
+
 // vars: x=0, r=1, y=2
 e2e_i32_with!(
     end_to_end_when_reference_to_bound_then_reads_through_caret,
@@ -181,3 +189,35 @@ END_PROGRAM
     let err = parse_and_try_run(source, &reference_to_options()).unwrap_err();
     assert_eq!(err.trap, Trap::NullDereference);
 }
+
+// A `REFERENCE TO` declared in a method is read through its bare name, as one
+// declared in the function block or program is.
+e2e_i32_with!(
+    end_to_end_when_reference_to_is_method_local_then_bare_read_reads_through_it,
+    reference_to_method_options(),
+    "
+FUNCTION_BLOCK FB_A
+VAR
+    b : INT := 1;
+END_VAR
+METHOD M
+VAR
+    target : INT := 42;
+    r : REFERENCE TO INT;
+END_VAR
+    r REF= target;
+    b := r;
+END_METHOD
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+    a : FB_A;
+    result : INT;
+END_VAR
+    a.M();
+    result := a.b;
+END_PROGRAM
+",
+    &[("result", 42)],
+);

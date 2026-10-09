@@ -181,3 +181,42 @@ literal argument now takes its parameter's type rather than its default type
 converted to it (#2071). `f(0.1)` with an `LREAL` parameter passed `0.1`
 rounded to a `REAL`, and `f(1.0E300)` passed infinity; `f(5000000000)` with an
 `LINT` parameter failed. The decision above is unchanged.
+
+### Functions of several inputs of one type (postscript)
+
+`MIN`, `MAX`, `LIMIT`, `SEL`, `MUX`, `EXPT` and `ATAN2` computed at the
+type of their context, because the analyzer typed the result by the first
+input, which need not be the widest: `i2 := MAX(i, l)` on `INT`s and an
+`LINT` passed analysis and truncated the `LINT` (#2127), and `MAX` of two
+`UDINT`s passed to a `DINT` input compared them signed. The resolver now types
+such a call by the type every input widens to (`EXPT` by its base), the pass
+converts each input to it and records the conversion of the result to its
+context, and codegen selects the builtin from the call's recorded type rather
+than from its context. The decision above is unchanged.
+
+### Function block inputs, method arguments and loop bounds (postscript)
+
+The pass also records the conversion of a value stored into a variable of a
+function block or a loop: an input of a function block call, named or
+positional, an argument of a method call, an assignment to a function block
+field or through a dereference, and the bounds and step of a `FOR` loop. Each
+is converted to the declared type of the variable it is stored in, not to a
+storage type of a backend: codegen used to store a field or parameter declared
+with anything but a simple type, and a dereferenced target, as a `DINT`, and
+now stores the field and parameter at their declared types too. The first
+choice the Arguments postscript names is corrected the same way: a function's
+parameter of an alias or a subrange type is passed at the type it is operated
+as, not as a `DINT` (#2108), so an argument of an alias of `LREAL` no longer
+arrives as the bits of an integer. The decision above is unchanged.
+
+### Lowering (postscript)
+
+[ADR-0058](0058-the-analyzer-decides-and-lowering-translates.md) builds on
+this decision. The analyzer makes and records every decision whose outcome can
+make a program invalid, and a lowering stage between analysis and code
+generation translates what it recorded into a target-neutral program. That ADR
+extends this one and does not supersede it.
+
+The pass this ADR calls "a lowering pass" records decisions rather than
+lowering anything, so it is now called the **recording pass**. "Lowering"
+names only the stage after analysis. The decision above is unchanged.

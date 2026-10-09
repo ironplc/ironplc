@@ -20,7 +20,7 @@ use super::compile::{
 };
 use super::compile_assign::compile_assignment;
 use super::compile_expr::{
-    compile_expr, condition_op_type, emit_classified_cmp_br, emit_eq, emit_ge, emit_le,
+    compile_condition, compile_expr, emit_classified_cmp_br, emit_eq, emit_ge, emit_le,
     emit_load_var, emit_store_var, op_type, resolve_variable, try_classify_cmp,
 };
 use super::compile_fb_init::resolve_fb_field_op_type;
@@ -254,8 +254,7 @@ fn compile_if(
     if let Some(classified) = try_classify_cmp(ctx, &if_stmt.expr) {
         emit_classified_cmp_br(emitter, classified, false, next_label)?;
     } else {
-        let cond_type = condition_op_type(ctx, &if_stmt.expr)?;
-        compile_expr(emitter, ctx, &if_stmt.expr, cond_type)?;
+        compile_condition(emitter, ctx, &if_stmt.expr)?;
         emitter.emit_jmp_if_not(next_label);
     }
 
@@ -275,8 +274,7 @@ fn compile_if(
         if let Some(classified) = try_classify_cmp(ctx, &elsif.expr) {
             emit_classified_cmp_br(emitter, classified, false, elsif_next)?;
         } else {
-            let elsif_op_type = condition_op_type(ctx, &elsif.expr)?;
-            compile_expr(emitter, ctx, &elsif.expr, elsif_op_type)?;
+            compile_condition(emitter, ctx, &elsif.expr)?;
             emitter.emit_jmp_if_not(elsif_next);
         }
 
@@ -325,12 +323,11 @@ fn compile_case(
     case_stmt: &ironplc_dsl::textual::Case,
 ) -> Result<(), Diagnostic> {
     let end_label = emitter.create_label();
-    // Enum selectors have a resolved type that is the enum name (e.g. "COLOR"),
-    // which resolve_type_name doesn't handle. Fall back to W32/Signed (DINT)
-    // since all enums use DINT at codegen level (REQ-EN-codegen-003).
+    // An enumeration selector operates as a DINT (REQ-EN-codegen-003), which
+    // `op_type` answers from its type.
     let selector = CaseSelector {
         expr: &case_stmt.selector,
-        op_type: op_type(ctx, &case_stmt.selector).unwrap_or(crate::compile::DEFAULT_OP_TYPE),
+        op_type: op_type(ctx, &case_stmt.selector)?,
     };
 
     for group in &case_stmt.statement_groups {

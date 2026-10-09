@@ -24,8 +24,9 @@ Signature
      END_VAR
    END_FUNCTION
 
-The return type matches the type of *IN1*. ``EXPT`` accepts ``REAL``,
-``LREAL`` for the base and any numeric type for the exponent.
+The return type matches the type of *IN1*. The compiler converts *IN2* to
+that type first. ``EXPT`` accepts ``REAL``, ``LREAL`` for the base and any
+numeric type for the exponent.
 
 .. rubric:: Inputs
 

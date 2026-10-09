@@ -11,6 +11,7 @@ repository.workspace = true
 maintenance = { status = "experimental" }
 
 [dependencies]
+ironplc-vm = { path = "../vm", version = "0.248.0" }
 env_logger = "0.11.10"
 log = "0.4.29"
 time = "0.3.47"
