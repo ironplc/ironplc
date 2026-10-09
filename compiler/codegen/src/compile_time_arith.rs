@@ -20,7 +20,7 @@ use ironplc_dsl::textual::Expr;
 
 use super::compile::{CompileContext, OpType, OpWidth, Signedness};
 use super::compile_expr::{
-    compile_expr, emit_add, emit_div, emit_mul, emit_sub, op_type_from_expr,
+    compile_expr, emit_add, emit_div, emit_mul, emit_sub, op_type, op_type_from_expr,
 };
 use crate::emit::Emitter;
 
@@ -240,7 +240,7 @@ fn compile_mul_div_time(
 ) -> Result<(), Diagnostic> {
     let time_op = (OpWidth::W32, Signedness::Signed);
 
-    let in2_op = op_type_from_expr(ctx, in2).unwrap_or(time_op);
+    let in2_op = op_type(ctx, in2)?;
 
     match in2_op.0 {
         OpWidth::W32 => {
@@ -295,7 +295,7 @@ fn compile_mul_div_ltime(
     emit_fn: fn(&mut Emitter, OpType),
 ) -> Result<(), Diagnostic> {
     let ltime_op = (OpWidth::W64, Signedness::Signed);
-    let in2_op = op_type_from_expr(ctx, in2).unwrap_or(ltime_op);
+    let in2_op = op_type(ctx, in2)?;
 
     compile_left(emitter, ctx, ltime_op, in1)?;
     match in2_op.0 {

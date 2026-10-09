@@ -161,8 +161,7 @@ codegen, and kept in step by comments and tests:
 
 A second backend would add a third copy of each. The operand type of a
 comparison shows the way out: since ADR-0056 the analyzer records it on the
-operands, and codegen compiles what is recorded, keeping a fallback only for a
-pair the analyzer leaves without one (`compile_comparison.rs`).
+operands, and codegen compiles what is recorded (`compile_comparison.rs`).
 
 Two further consequences:
 
@@ -1507,7 +1506,7 @@ today.
 | Type of an untyped literal | The analyzer (ADR-0056), except a member initializer of a function block instance, which codegen builds itself | The literal's `expr_type`, as `ExprType::Inferred` | A `Const` of that type |
 | Implicit conversion | The analyzer for operands, assigned values, the arguments of functions, methods and function block calls, loop bounds, and the results of calls and dereferences (ADR-0056); codegen, through `convert_to_context`, for the contexts the analyzer does not record yet, such as a condition, a subscript and a function block output | `ExprKind::ImplicitConversion` | `Convert` |
 | Arithmetic overload | Analyzer's `resolve_arithmetic_overload` | The expression's `expr_type`, and its operands' conversions | A `Binary` at the result type, or the desugared time arithmetic |
-| Operand type of a comparison | The analyzer ([Comparison Operand Type](comparison-operand-type.md)), with a codegen fallback for a pair without one | Its operands' conversions | A `Compare` at that type |
+| Operand type of a comparison | The analyzer ([Comparison Operand Type](comparison-operand-type.md)) | Its operands' conversions | A `Compare` at that type |
 | Argument order and count | `xform_named_to_positional_args` for a function call, then re-checked at 27 sites in codegen; codegen for a method call (`compile_method.rs`) and, by name, for a function block call (`compile_stmt.rs`) | Positional arguments | `Vec<Arg>` matched to parameters |
 | Whether an interface value can hold only one concrete type | Not made; calls through an interface are not compiled | The concrete types the value can hold (REQ-LOW-analyzer-107) | A direct method call, or a `Callee::Interface` |
 | Capacity of a string declared without one | Codegen and `slot_count`, from `DEFAULT_STRING_MAX_LENGTH` | The string type's capacity (REQ-LOW-analyzer-053) | The capacity of its `StringShape` |

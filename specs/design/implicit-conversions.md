@@ -279,9 +279,9 @@ A literal a standard function does not give a type to (`TRUNC`, a typed time fun
 An `ImplicitConversion` compiles its operand at the operand's own type and
 converts it to the type the node records. A comparison compiles at the type of
 its left operand, else of its right one when the left one has no type codegen
-can place (a direct address the analyzer does not type yet). Codegen does not
-choose a comparison's operand type, and does not decide which operand to
-convert.
+can place. A pair of which neither operand has one is reported (P9999) rather
+than compiled at the type of its context. Codegen does not choose a
+comparison's operand type, and does not decide which operand to convert.
 
 An operation on one value -- a negation, `NOT`, a numeric function of one
 input (`ABS`, `SQRT`, ...), `MOVE`, or a shift or rotate, whose count only

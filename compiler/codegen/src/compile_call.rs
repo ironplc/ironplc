@@ -332,7 +332,7 @@ fn compile_operator_form(
         // enclosing `op_type`, which is the type of the BOOL it yields.
         FormOf::Compare(op) if op.is_comparison() => {
             let [left, right] = fixed_args::<2>(func)?;
-            compile_comparison(emitter, ctx, op, left, right, op_type)
+            compile_comparison(emitter, ctx, op, left, right)
         }
         FormOf::Compare(op) => {
             compile_left_fold(emitter, ctx, func, op_type, |emitter, op_type| {

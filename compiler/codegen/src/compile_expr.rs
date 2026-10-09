@@ -220,9 +220,8 @@ pub(crate) fn compile_expr(
 /// `compare`, leaving the result on the stack.
 ///
 /// `op_type` is the type context the enclosing expression supplies. A
-/// comparison's own result is BOOL while its operands may be any type, so it
-/// uses `op_type` only as a fallback; `AND`, `OR` and `XOR` convert their
-/// result to it.
+/// comparison computes at the type of its operands and ignores it; `AND`,
+/// `OR` and `XOR` convert their result to it.
 fn compile_compare(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -238,14 +237,7 @@ fn compile_compare(
     }
 
     if compare.op.is_comparison() {
-        return compile_comparison(
-            emitter,
-            ctx,
-            &compare.op,
-            &compare.left,
-            &compare.right,
-            op_type,
-        );
+        return compile_comparison(emitter, ctx, &compare.op, &compare.left, &compare.right);
     }
 
     // AND, OR and XOR are boolean on BOOL operands and bitwise on a bit
