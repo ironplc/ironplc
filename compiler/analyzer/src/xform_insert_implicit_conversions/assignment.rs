@@ -106,12 +106,8 @@ impl ImplicitConversions<'_> {
             | SymbolicVariableKind::Deref(_)
             | SymbolicVariableKind::SelfRef(_) => self.type_of(kind)?,
         };
-        let representation = match representation {
-            SemanticType::Subrange { base_type, .. } => *base_type,
-            other => other,
-        };
         let types = self.context.types();
-        let name = types.elementary_type_name_for(&representation)?;
+        let name = types.elementary_type_name_for(representation.operated_as())?;
         Some((types.id_of(&name)?, numeric_operation_width(&name)?))
     }
 

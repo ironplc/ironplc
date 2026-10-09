@@ -189,8 +189,8 @@ operator is not defined for the pair. It is a pure function of its arguments,
 so calling it from more than one pass needs no annotation on the tree.
 
 1. If either operand has no resolved type, or a type the compatibility
-   predicate cannot judge (a subrange, an enumeration, a structure, a user
-   type), return `Unchecked`
+   predicate cannot judge (an enumeration, a structure, a user type), return
+   `Unchecked`
    with the left operand's type. This is today's behaviour, and the operator
    rule already skips such operands. It is a separate answer from `Numeric`
    so that nothing downstream mistakes "not judged" for "judged numeric".
@@ -344,11 +344,10 @@ operands and a `DINT` target divides signed; it now divides unsigned, as its
 operands are. An expression whose operands and target share both width and
 signedness compiles to the same bytecode as before.
 
-Codegen applies this only when the expression's resolved type is a concrete
-elementary numeric or bit-string type. An expression typed otherwise (a
-generic literal type, a subrange, an enumeration, or no type) compiles at the
-enclosing operation type, as it does today, because codegen cannot place its
-width.
+Codegen applies this when the expression's resolved type is a concrete
+elementary numeric or bit-string type, a subrange being known by its base
+type's name. An expression the analyzer resolved to neither that nor a typed
+overload is an internal error, not compiled at the enclosing operation type.
 
 The function form follows the same rule at each step of its fold, so
 `ADD(i, r)` and `i + r` compute the same value, and `ADD(a, b, c)` compiles
@@ -505,7 +504,7 @@ Programs that keep working: `t1 + t2`, `t + lt`, `lt + LTIME#1s`, `dt + t`,
 
 **REQ-AO-codegen-011** A call to the function form of a numeric operator computes each fold step as the operator expression does, so `ADD(i, r)` gives 4.5 for `INT` 3 and `REAL` 1.5.
 
-**REQ-AO-codegen-012** An arithmetic expression whose resolved type is not a concrete elementary numeric or bit-string type, such as a subrange, compiles at the enclosing operation type as before this design.
+**REQ-AO-codegen-012** An arithmetic expression on a subrange computes at the subrange's base type, and its result is converted to the enclosing operation type: `l := s + s` on a subrange of `INT` adds at 32 bits and widens the sum.
 
 ## Out of scope
 
