@@ -82,7 +82,10 @@ pub enum Schedule {
 
 pub struct Interval {
     pub duration: time::Duration,         // positive for a cyclic task
-    pub span: SourceSpan,                 // diagnostics only
+    span: SourceSpan,                     // diagnostics only
+}
+impl Interval {
+    pub fn span(&self) -> SourceSpan;
 }
 
 pub enum Trigger {
@@ -219,7 +222,7 @@ Until `ironplc-ir` exists, the types live in the analyzer, which builds them,
 and codegen depends on the analyzer as it does today. Nothing in them is the
 analyzer's own. A `DebugName` holds the name as written and its span, not an
 `Id`. The one type from `ironplc-dsl` is `SourceSpan` (see
-[Open questions](#open-questions)).
+[Source positions](#source-positions)).
 
 The lowered program design says that a library with no configuration lowers
 nothing, because only POUs reachable from a program instance are lowered
@@ -245,13 +248,36 @@ lowered program design should read "a library with no program instance".
   which `ironplc-ir` later absorbs, would let codegen depend on the model
   without depending on the analyzer. Decided against for now: the types live
   in the analyzer, which builds them.
+- **A source position type of the model's own.** Rejected; see
+  [Source positions](#source-positions).
 
-### Open questions
+### Source positions
 
-- **`SourceSpan`.** It is the one `ironplc-dsl` type in the model, reached
-  through `DebugName` and `Interval`, for diagnostics. Whether it stays, is
-  hidden inside an opaque type, or becomes a type of the model's own is not
-  decided.
+The model keeps `SourceSpan` rather than a position type of its own, and a
+backend reaches one only through `DebugName::span` and `Interval::span`.
+
+- **A span is not what the identity rule is about.** `SourceSpan` is a file id
+  and two offsets. It is not syntax, and nothing is looked up by it. The rule
+  keeps declaration nodes and source names from being used as keys, and a
+  span is neither.
+- **A type of the model's own would be converted straight back.** Every
+  problem a backend reports is an `ironplc-dsl` `Diagnostic`, whose labels are
+  built by `Label::span(SourceSpan)`, and the debug section finds a source
+  file by the span's `FileId`. A position type of the model's own would be
+  turned back into a `SourceSpan` at every diagnostic, and the two would be
+  one thing under two names, free to drift apart.
+- **A span is reachable, not stored.** It is a private field of `DebugName` and
+  of `Interval`, read through an accessor, so a backend uses it to label a
+  diagnostic and has no field it could keep or compare.
+
+For a backend to drop `ironplc-dsl` altogether (REQ-LOW-codegen-002 in the
+lowered program design), it is not the span alone that has to come from
+elsewhere: `SourceSpan`, `FileId`, `Label` and `Diagnostic` go together. The
+way to get there is to move those four types into a small crate of their own,
+which `ironplc-dsl` re-exports so that nothing else changes, and which
+`ironplc-ir` and every backend depend on in place of `ironplc-dsl`. That move
+is mechanical, independent of this design, and a prefactor of its own. Until
+it lands, the model's types import `SourceSpan` from `ironplc-dsl`.
 
 ## Behaviour
 
