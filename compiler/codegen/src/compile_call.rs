@@ -336,7 +336,8 @@ fn compile_operator_form(
         }
         FormOf::Compare(op) => {
             compile_left_fold(emitter, ctx, func, op_type, |emitter, op_type| {
-                emit_compare_op(emitter, op, op_type)
+                emit_compare_op(emitter, op, op_type);
+                Ok(())
             })
         }
         FormOf::Not => {
@@ -354,7 +355,7 @@ pub(crate) fn compile_left_fold(
     ctx: &mut CompileContext,
     func: &Function,
     op_type: OpType,
-    emit_fn: impl Fn(&mut Emitter, OpType),
+    emit_fn: impl Fn(&mut Emitter, OpType) -> Result<(), Diagnostic>,
 ) -> Result<(), Diagnostic> {
     let args = collect_positional_args(func);
     let [first, rest @ ..] = args.as_slice() else {
@@ -366,7 +367,7 @@ pub(crate) fn compile_left_fold(
     compile_expr(emitter, ctx, first, op_type)?;
     for arg in rest {
         compile_expr(emitter, ctx, arg, op_type)?;
-        emit_fn(emitter, op_type);
+        emit_fn(emitter, op_type)?;
     }
     Ok(())
 }
@@ -473,7 +474,7 @@ fn compile_trunc(
             _ => 32,
         },
     };
-    emit_conversion_opcode(emitter, &source, &target);
+    emit_conversion_opcode(emitter, &source, &target)?;
 
     Ok(())
 }
@@ -550,7 +551,7 @@ fn compile_bcd_to_int(
         64 => opcode::builtin::BCD_TO_INT_64,
         _ => return Err(Diagnostic::todo_with_span(span.clone())),
     };
-    emitter.emit_builtin(func_id);
+    emitter.emit_builtin(func_id)?;
     // The builtin decodes into a 64-bit integer for a 64-bit input and a
     // 32-bit one otherwise; the result is the integer type the analyzer
     // recorded for the call.
@@ -558,7 +559,7 @@ fn compile_bcd_to_int(
         64 => (OpWidth::W64, Signedness::Signed),
         _ => (OpWidth::W32, Signedness::Signed),
     };
-    crate::compile_arith::convert(emitter, decoded, target_op_type);
+    crate::compile_arith::convert(emitter, decoded, target_op_type)?;
     Ok(())
 }
 
@@ -591,7 +592,7 @@ fn compile_int_to_bcd(
             }
         }
     };
-    emitter.emit_builtin(func_id);
+    emitter.emit_builtin(func_id)?;
     Ok(())
 }
 
@@ -635,7 +636,7 @@ fn compile_mux(
         compile_expr(emitter, ctx, arg, self::op_type(ctx, arg)?)?;
     }
 
-    emitter.emit_builtin(func_id);
+    emitter.emit_builtin(func_id)?;
     Ok(())
 }
 
@@ -662,8 +663,8 @@ fn compile_type_conversion(
     // truncation would only keep the lowest bit instead of testing for zero.
     if target.storage_bits == 1 {
         match source.op_width {
-            OpWidth::W32 => emitter.emit_builtin(opcode::builtin::CONV_I32_TO_BOOL),
-            OpWidth::W64 => emitter.emit_builtin(opcode::builtin::CONV_I64_TO_BOOL),
+            OpWidth::W32 => emitter.emit_builtin(opcode::builtin::CONV_I32_TO_BOOL)?,
+            OpWidth::W64 => emitter.emit_builtin(opcode::builtin::CONV_I64_TO_BOOL)?,
             _ => {
                 return Err(Diagnostic::internal_error_at(Label::span(
                     span.clone(),
@@ -672,7 +673,7 @@ fn compile_type_conversion(
             }
         }
     } else {
-        emit_conversion_opcode(emitter, &source, &target);
+        emit_conversion_opcode(emitter, &source, &target)?;
         emit_truncation(emitter, target);
     }
 
@@ -686,56 +687,59 @@ pub(crate) fn emit_conversion_opcode(
     emitter: &mut Emitter,
     source: &VarTypeInfo,
     target: &VarTypeInfo,
-) {
+) -> Result<(), Diagnostic> {
+    use opcode::builtin::*;
     use OpWidth::*;
     use Signedness::*;
 
-    match (
+    let func_id = match (
         source.op_width,
         source.signedness,
         target.op_width,
         target.signedness,
     ) {
         // Same OpWidth: no conversion needed (truncation handles sub-width)
-        (W32, _, W32, _) | (W64, _, W64, _) => {}
+        (W32, _, W32, _) | (W64, _, W64, _) => None,
 
         // W32 signed -> W64: sign extension already in Slot, no-op
-        (W32, Signed, W64, _) => {}
+        (W32, Signed, W64, _) => None,
 
         // W32 unsigned -> W64: need zero-extension
-        (W32, Unsigned, W64, _) => {
-            emitter.emit_builtin(opcode::builtin::CONV_U32_TO_I64);
-        }
+        (W32, Unsigned, W64, _) => Some(CONV_U32_TO_I64),
 
         // W64 -> W32: as_i32() truncation at store time, no-op
-        (W64, _, W32, _) => {}
+        (W64, _, W32, _) => None,
 
         // Integer -> Float
-        (W32, Signed, F32, _) => emitter.emit_builtin(opcode::builtin::CONV_I32_TO_F32),
-        (W32, Signed, F64, _) => emitter.emit_builtin(opcode::builtin::CONV_I32_TO_F64),
-        (W64, Signed, F32, _) => emitter.emit_builtin(opcode::builtin::CONV_I64_TO_F32),
-        (W64, Signed, F64, _) => emitter.emit_builtin(opcode::builtin::CONV_I64_TO_F64),
-        (W32, Unsigned, F32, _) => emitter.emit_builtin(opcode::builtin::CONV_U32_TO_F32),
-        (W32, Unsigned, F64, _) => emitter.emit_builtin(opcode::builtin::CONV_U32_TO_F64),
-        (W64, Unsigned, F32, _) => emitter.emit_builtin(opcode::builtin::CONV_U64_TO_F32),
-        (W64, Unsigned, F64, _) => emitter.emit_builtin(opcode::builtin::CONV_U64_TO_F64),
+        (W32, Signed, F32, _) => Some(CONV_I32_TO_F32),
+        (W32, Signed, F64, _) => Some(CONV_I32_TO_F64),
+        (W64, Signed, F32, _) => Some(CONV_I64_TO_F32),
+        (W64, Signed, F64, _) => Some(CONV_I64_TO_F64),
+        (W32, Unsigned, F32, _) => Some(CONV_U32_TO_F32),
+        (W32, Unsigned, F64, _) => Some(CONV_U32_TO_F64),
+        (W64, Unsigned, F32, _) => Some(CONV_U64_TO_F32),
+        (W64, Unsigned, F64, _) => Some(CONV_U64_TO_F64),
 
         // Float -> Integer
-        (F32, _, W32, Signed) => emitter.emit_builtin(opcode::builtin::CONV_F32_TO_I32),
-        (F32, _, W64, Signed) => emitter.emit_builtin(opcode::builtin::CONV_F32_TO_I64),
-        (F64, _, W32, Signed) => emitter.emit_builtin(opcode::builtin::CONV_F64_TO_I32),
-        (F64, _, W64, Signed) => emitter.emit_builtin(opcode::builtin::CONV_F64_TO_I64),
-        (F32, _, W32, Unsigned) => emitter.emit_builtin(opcode::builtin::CONV_F32_TO_U32),
-        (F32, _, W64, Unsigned) => emitter.emit_builtin(opcode::builtin::CONV_F32_TO_U64),
-        (F64, _, W32, Unsigned) => emitter.emit_builtin(opcode::builtin::CONV_F64_TO_U32),
-        (F64, _, W64, Unsigned) => emitter.emit_builtin(opcode::builtin::CONV_F64_TO_U64),
+        (F32, _, W32, Signed) => Some(CONV_F32_TO_I32),
+        (F32, _, W64, Signed) => Some(CONV_F32_TO_I64),
+        (F64, _, W32, Signed) => Some(CONV_F64_TO_I32),
+        (F64, _, W64, Signed) => Some(CONV_F64_TO_I64),
+        (F32, _, W32, Unsigned) => Some(CONV_F32_TO_U32),
+        (F32, _, W64, Unsigned) => Some(CONV_F32_TO_U64),
+        (F64, _, W32, Unsigned) => Some(CONV_F64_TO_U32),
+        (F64, _, W64, Unsigned) => Some(CONV_F64_TO_U64),
 
         // Float -> Float
-        (F32, _, F64, _) => emitter.emit_builtin(opcode::builtin::CONV_F32_TO_F64),
-        (F64, _, F32, _) => emitter.emit_builtin(opcode::builtin::CONV_F64_TO_F32),
+        (F32, _, F64, _) => Some(CONV_F32_TO_F64),
+        (F64, _, F32, _) => Some(CONV_F64_TO_F32),
 
         // Same float width (shouldn't happen, but handle gracefully)
-        (F32, _, F32, _) | (F64, _, F64, _) => {}
+        (F32, _, F32, _) | (F64, _, F64, _) => None,
+    };
+    match func_id {
+        Some(func_id) => emitter.emit_builtin(func_id),
+        None => Ok(()),
     }
 }
 
@@ -917,7 +921,7 @@ fn compile_string_conversion(
                     )));
                 }
             };
-            emitter.emit_builtin(func_id);
+            emitter.emit_builtin(func_id)?;
             Ok(())
         }
         StringConversion::StringToNum { target } => {
@@ -972,7 +976,7 @@ fn compile_string_conversion(
                     )));
                 }
             };
-            emitter.emit_builtin(func_id);
+            emitter.emit_builtin(func_id)?;
             Ok(())
         }
     }

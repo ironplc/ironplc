@@ -590,18 +590,24 @@ impl Emitter {
 
     /// Emits BUILTIN with a function ID.
     /// All builtins pop `arg_count` values and push one result.
-    /// The arg count is looked up from `opcode::builtin::arg_count()`.
-    pub fn emit_builtin(&mut self, func_id: u16) {
+    /// The arg count is looked up from `opcode::builtin::arg_count_opt()`.
+    ///
+    /// Returns an internal error, emitting nothing, when `func_id` is not a
+    /// known built-in: every caller passes a `builtin` constant or an ID
+    /// from codegen's own lookup tables, so an unknown one is a codegen bug.
+    pub fn emit_builtin(&mut self, func_id: u16) -> Result<(), Diagnostic> {
+        let arg_count =
+            opcode::builtin::arg_count_opt(func_id).ok_or_else(Diagnostic::internal_error)?;
         self.emit_opcode(opcode::BUILTIN);
         self.bytecode.extend_from_slice(&func_id.to_le_bytes());
         // Net effect: pop arg_count, push 1 = pop (arg_count - 1)
-        let arg_count = opcode::builtin::arg_count(func_id);
         if arg_count > 1 {
             self.pop_stack(arg_count - 1);
         }
         if opcode::builtin::allocates_temp_buf(func_id) {
             self.alloc_temp_buf();
         }
+        Ok(())
     }
 
     /// Creates a new unbound label for use as a jump target.
@@ -1388,7 +1394,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_load_const_i32(0);
         em.emit_load_const_i32(1);
-        em.emit_builtin(opcode::builtin::EXPT_I32);
+        em.emit_builtin(opcode::builtin::EXPT_I32).unwrap();
 
         // LOAD_CONST pool:0, LOAD_CONST pool:1, BUILTIN 0x0340
         assert_eq!(
@@ -1413,7 +1419,7 @@ mod tests {
         // y := x ** 5
         em.emit_load_var_i32(VarIndex::new(0)); // stack: 1
         em.emit_load_const_i32(0); // stack: 2
-        em.emit_builtin(opcode::builtin::EXPT_I32); // stack: 1
+        em.emit_builtin(opcode::builtin::EXPT_I32).unwrap(); // stack: 1
         em.emit_store_var_i32(VarIndex::new(1)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 2);
@@ -1424,7 +1430,7 @@ mod tests {
         let mut em = Emitter::new();
         // y := ABS(x)
         em.emit_load_var_i32(VarIndex::new(0)); // stack: 1
-        em.emit_builtin(opcode::builtin::ABS_I32); // stack: 1 (pop 1, push 1)
+        em.emit_builtin(opcode::builtin::ABS_I32).unwrap(); // stack: 1 (pop 1, push 1)
         em.emit_store_var_i32(VarIndex::new(1)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 1);
@@ -1437,7 +1443,7 @@ mod tests {
         em.emit_load_const_i32(0); // stack: 1
         em.emit_load_var_i32(VarIndex::new(0)); // stack: 2
         em.emit_load_const_i32(1); // stack: 3
-        em.emit_builtin(opcode::builtin::LIMIT_I32); // stack: 1 (pop 3, push 1)
+        em.emit_builtin(opcode::builtin::LIMIT_I32).unwrap(); // stack: 1 (pop 3, push 1)
         em.emit_store_var_i32(VarIndex::new(1)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 3);
@@ -2177,7 +2183,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_load_const_i32(0);
         em.emit_store_var_i32(VarIndex::new(0));
-        em.emit_builtin(opcode::builtin::EXPT_I32);
+        em.emit_builtin(opcode::builtin::EXPT_I32).unwrap();
 
         assert_eq!(em.max_temp_depth(), 0);
     }
@@ -2195,7 +2201,7 @@ mod tests {
         em.emit_right_str(0); // 8
         em.emit_mid_str(0); // 9
         em.emit_concat_str(0, 0); // 10
-        em.emit_builtin(opcode::builtin::CONV_I32_TO_STR); // 11
+        em.emit_builtin(opcode::builtin::CONV_I32_TO_STR).unwrap(); // 11
 
         assert_eq!(em.max_temp_depth(), 11);
     }
@@ -2205,8 +2211,8 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_len_str(0);
         em.emit_find_str(0, 0);
-        em.emit_builtin(opcode::builtin::CMP_STR);
-        em.emit_builtin(opcode::builtin::CONV_STR_TO_I32);
+        em.emit_builtin(opcode::builtin::CMP_STR).unwrap();
+        em.emit_builtin(opcode::builtin::CONV_STR_TO_I32).unwrap();
 
         assert_eq!(em.max_temp_depth(), 0);
     }
@@ -2263,5 +2269,23 @@ mod tests {
         let diagnostic = em.unpatched_code().err().unwrap();
 
         assert_eq!(diagnostic.code, "P9998");
+    }
+
+    #[test]
+    fn emit_builtin_when_unknown_function_id_then_internal_error() {
+        let mut em = Emitter::new();
+
+        let diagnostic = em.emit_builtin(0xFFFF).unwrap_err();
+
+        assert_eq!(diagnostic.code, "P9998");
+    }
+
+    #[test]
+    fn emit_builtin_when_unknown_function_id_then_emits_nothing() {
+        let mut em = Emitter::new();
+
+        let _ = em.emit_builtin(0xFFFF);
+
+        assert!(em.bytecode().unwrap().is_empty());
     }
 }

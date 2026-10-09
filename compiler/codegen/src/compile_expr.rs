@@ -128,7 +128,7 @@ pub(crate) fn compile_expr(
             match crate::compile_arith::numeric_op_type(expr_operand_name(ctx, expr).as_ref()) {
                 Some(own) if own.0 != op_type.0 => {
                     compile_variable_read(emitter, ctx, variable, own)?;
-                    crate::compile_arith::convert_to_context(emitter, own, op_type);
+                    crate::compile_arith::convert_to_context(emitter, own, op_type)?;
                     Ok(())
                 }
                 _ => compile_variable_read(emitter, ctx, variable, op_type),
@@ -203,8 +203,8 @@ pub(crate) fn compile_expr(
             let from = self::op_type(ctx, inner)?;
             let to = self::op_type(ctx, expr)?;
             compile_expr(emitter, ctx, inner, from)?;
-            crate::compile_arith::convert(emitter, from, to);
-            crate::compile_arith::convert_to_context(emitter, to, op_type);
+            crate::compile_arith::convert(emitter, from, to)?;
+            crate::compile_arith::convert_to_context(emitter, to, op_type)?;
             Ok(())
         }
         ExprKind::Null(_) => {
@@ -249,7 +249,7 @@ fn compile_compare(
     compile_expr(emitter, ctx, &compare.left, at)?;
     compile_expr(emitter, ctx, &compare.right, at)?;
     emit_compare_op(emitter, &compare.op, at);
-    crate::compile_arith::convert_to_context(emitter, at, op_type);
+    crate::compile_arith::convert_to_context(emitter, at, op_type)?;
     Ok(())
 }
 
@@ -1093,15 +1093,20 @@ emit_logical_op!(xor);
 /// The operator expression and the function form of the operator (`ADD`,
 /// `SUB`, ...) both come through here, so the two spellings cannot emit
 /// differently.
-pub(crate) fn emit_arithmetic_op(emitter: &mut Emitter, op: &Operator, op_type: OpType) {
+pub(crate) fn emit_arithmetic_op(
+    emitter: &mut Emitter,
+    op: &Operator,
+    op_type: OpType,
+) -> Result<(), Diagnostic> {
     match op {
         Operator::Add => emit_add(emitter, op_type),
         Operator::Sub => emit_sub(emitter, op_type),
         Operator::Mul => emit_mul(emitter, op_type),
         Operator::Div => emit_div(emitter, op_type),
         Operator::Mod => emit_mod(emitter, op_type),
-        Operator::Pow => emit_pow(emitter, op_type),
+        Operator::Pow => return emit_pow(emitter, op_type),
     }
+    Ok(())
 }
 
 /// Emits the opcode of a comparison, logical or bitwise operator for
@@ -1181,11 +1186,11 @@ pub(crate) fn emit_mod(emitter: &mut Emitter, op_type: OpType) {
 
 /// POW dispatch. Width-only shape, but emits `EXPT_*` builtins rather than
 /// dedicated `emit_pow_*` opcodes, so it stays hand-written.
-pub(crate) fn emit_pow(emitter: &mut Emitter, op_type: OpType) {
-    match op_type.0 {
-        OpWidth::W32 => emitter.emit_builtin(opcode::builtin::EXPT_I32),
-        OpWidth::W64 => emitter.emit_builtin(opcode::builtin::EXPT_I64),
-        OpWidth::F32 => emitter.emit_builtin(opcode::builtin::EXPT_F32),
-        OpWidth::F64 => emitter.emit_builtin(opcode::builtin::EXPT_F64),
-    }
+pub(crate) fn emit_pow(emitter: &mut Emitter, op_type: OpType) -> Result<(), Diagnostic> {
+    emitter.emit_builtin(match op_type.0 {
+        OpWidth::W32 => opcode::builtin::EXPT_I32,
+        OpWidth::W64 => opcode::builtin::EXPT_I64,
+        OpWidth::F32 => opcode::builtin::EXPT_F32,
+        OpWidth::F64 => opcode::builtin::EXPT_F64,
+    })
 }

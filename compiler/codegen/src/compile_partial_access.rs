@@ -130,7 +130,7 @@ pub(crate) fn compile_partial_access_read(
             if access.shifts() {
                 let shift_const = ctx.add_i64_constant(access.shift as i64);
                 emitter.emit_load_const_i64(shift_const);
-                emitter.emit_builtin(opcode::builtin::SHR_I64);
+                emitter.emit_builtin(opcode::builtin::SHR_I64)?;
             }
             if access.bits < 64 {
                 let mask_const = ctx.add_i64_constant(access.mask() as i64);
@@ -142,7 +142,7 @@ pub(crate) fn compile_partial_access_read(
             if access.shifts() {
                 let shift_const = ctx.add_i32_constant(access.shift as i32);
                 emitter.emit_load_const_i32(shift_const);
-                emitter.emit_builtin(opcode::builtin::SHR_I32);
+                emitter.emit_builtin(opcode::builtin::SHR_I32)?;
             }
             if access.bits < 32 {
                 let mask_const = ctx.add_i32_constant(access.mask() as i32);
@@ -183,12 +183,12 @@ pub(crate) fn compile_partial_access_assignment(
                 let mask_const = ctx.add_i32_constant(access.mask() as u32 as i32);
                 emitter.emit_load_const_i32(mask_const);
                 emitter.emit_bit_and_32();
-                emitter.emit_builtin(opcode::builtin::CONV_U32_TO_I64);
+                emitter.emit_builtin(opcode::builtin::CONV_U32_TO_I64)?;
             }
             if access.shifts() {
                 let shift_const = ctx.add_i32_constant(access.shift as i32);
                 emitter.emit_load_const_i32(shift_const);
-                emitter.emit_builtin(opcode::builtin::SHL_I64);
+                emitter.emit_builtin(opcode::builtin::SHL_I64)?;
             }
             emitter.emit_bit_or_64();
         }
@@ -205,7 +205,7 @@ pub(crate) fn compile_partial_access_assignment(
             if access.shifts() {
                 let shift_const = ctx.add_i32_constant(access.shift as i32);
                 emitter.emit_load_const_i32(shift_const);
-                emitter.emit_builtin(opcode::builtin::SHL_I32);
+                emitter.emit_builtin(opcode::builtin::SHL_I32)?;
             }
             emitter.emit_bit_or_32();
         }
