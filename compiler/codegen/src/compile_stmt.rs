@@ -323,12 +323,11 @@ fn compile_case(
     case_stmt: &ironplc_dsl::textual::Case,
 ) -> Result<(), Diagnostic> {
     let end_label = emitter.create_label();
-    // Enum selectors have a resolved type that is the enum name (e.g. "COLOR"),
-    // which resolve_type_name doesn't handle. Fall back to W32/Signed (DINT)
-    // since all enums use DINT at codegen level (REQ-EN-codegen-003).
+    // An enumeration selector operates as a DINT (REQ-EN-codegen-003), which
+    // `op_type` answers from its type.
     let selector = CaseSelector {
         expr: &case_stmt.selector,
-        op_type: op_type(ctx, &case_stmt.selector).unwrap_or(crate::compile::DEFAULT_OP_TYPE),
+        op_type: op_type(ctx, &case_stmt.selector)?,
     };
 
     for group in &case_stmt.statement_groups {
