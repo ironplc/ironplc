@@ -33,7 +33,6 @@ What should a backend consume?
 * **Target neutral:** nothing a backend consumes is specific to one target.
 * **The analyzed tree stays faithful to the source**, and able to hold a broken
   program.
-* **Delivered in steps that change no behaviour.**
 
 ## Considered Options
 
@@ -69,9 +68,6 @@ else; no backend reads the syntax tree.
   the language server.
 * Bad, because there is a second representation of the program, and a stage to
   maintain.
-* Bad, because the move happens over many changes. Until it is finished, code
-  generation compiles some constructs from the syntax tree and some from the
-  lowered program.
 * Bad, because a source language with jumps must be structured by lowering
   before it fits a tree.
 * Bad, because a backend cannot see the whole syntax tree, so an optimization
