@@ -92,6 +92,10 @@ impl ImplicitConversions<'_> {
         let Some((target, width)) = self.passed_as(&param.param_type) else {
             return;
         };
+        if self.is_integer_result_in_other_context(arg, target) {
+            self.settle_integer_result(arg, target);
+            return;
+        }
         match &arg.expr_type {
             Some(ExprType::Literal(generic)) => {
                 let Some(default) = literal_default_type(generic) else {

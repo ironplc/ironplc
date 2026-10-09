@@ -382,6 +382,9 @@ mod deref_tests;
 mod inputs_of_one_type_tests;
 
 #[cfg(test)]
+mod integer_result_tests;
+
+#[cfg(test)]
 mod label_tests;
 
 #[cfg(test)]
@@ -389,6 +392,9 @@ mod ref_to_argument_tests;
 
 #[cfg(test)]
 mod string_encoding_tests;
+
+#[cfg(test)]
+mod subrange_tests;
 
 #[cfg(test)]
 mod tests {

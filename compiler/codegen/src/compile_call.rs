@@ -29,7 +29,7 @@ use super::compile_string::{
     compile_concat, compile_delete, compile_find, compile_insert, compile_left, compile_len,
     compile_mid, compile_replace, compile_right, resolve_string_arg,
 };
-use super::compile_time_arith::{compile_time_arith, time_arith_for, Operand};
+use super::compile_time_arith::{compile_time_arith, time_arith_for};
 use super::type_info::{elementary_type_info, expr_operand_name};
 use crate::emit::Emitter;
 
@@ -86,7 +86,10 @@ fn compile_intrinsic(
 ) -> Result<(), Diagnostic> {
     let result = expr_operand_name(ctx, call);
     let result = result.as_ref();
-    if intrinsic.inputs_of_one_type().is_some() {
+    // `MAX` of several inputs of one type, and `TRUNC`, `BCD_TO_INT` and
+    // `SIZEOF`, whose integer result takes the type of its context, compute at
+    // the type the analyzer recorded for the call (ADR-0056).
+    if intrinsic.inputs_of_one_type().is_some() || intrinsic.result_is_integer_of_context() {
         let at = self::op_type(ctx, call)?;
         return compile_at(emitter, ctx, at, op_type, |emitter, ctx, at| {
             compile_intrinsic_at(emitter, ctx, func, result, at, intrinsic)
@@ -134,7 +137,7 @@ fn compile_intrinsic_at(
             compile_int_to_bcd(emitter, ctx, fixed_args(func)?, &func.name.span(), op_type)
         }
         // SIZEOF operator (extension)
-        Intrinsic::Sizeof => compile_sizeof(emitter, ctx, fixed_args(func)?),
+        Intrinsic::Sizeof => compile_sizeof(emitter, ctx, fixed_args(func)?, op_type),
         Intrinsic::String(StringFunction::Len) => {
             compile_len(emitter, ctx, fixed_args(func)?, &func.name.span())
         }
@@ -175,7 +178,7 @@ fn compile_intrinsic_at(
         Intrinsic::Time { function, long } => {
             let (arith, width) = time_arith_for(function, long);
             let [in1, in2] = fixed_args::<2>(func)?;
-            compile_time_arith(emitter, ctx, arith, width, Operand::Expr(in1), in2)
+            compile_time_arith(emitter, ctx, arith, width, in1, in2)
         }
         // Time functions: datetime decomposition
         Intrinsic::DtToDate => compile_dt_to_date(emitter, ctx, fixed_args(func)?),
@@ -329,7 +332,7 @@ fn compile_operator_form(
         // enclosing `op_type`, which is the type of the BOOL it yields.
         FormOf::Compare(op) if op.is_comparison() => {
             let [left, right] = fixed_args::<2>(func)?;
-            compile_comparison(emitter, ctx, op, left, right, op_type)
+            compile_comparison(emitter, ctx, op, left, right)
         }
         FormOf::Compare(op) => {
             compile_left_fold(emitter, ctx, func, op_type, |emitter, op_type| {
@@ -434,7 +437,8 @@ fn compile_move(
     Ok(())
 }
 
-/// Compiles TRUNC(IN) — truncates a real value toward zero.
+/// Compiles TRUNC(IN) — truncates a real value toward zero to an integer of
+/// `target_op_type`, the type the analyzer recorded for the call.
 ///
 /// The argument is compiled using its own (float) op_type derived from the
 /// argument's resolved type. The result is converted to the target integer
@@ -483,6 +487,7 @@ fn compile_sizeof(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     args: [&Expr; 1],
+    op_type: OpType,
 ) -> Result<(), Diagnostic> {
     // Check if the argument is a variable that maps to an array.
     let size: u32 =
@@ -490,7 +495,8 @@ fn compile_sizeof(
             args[0].kind
         {
             if let Some(array_info) = ctx.array_vars.get(&named.name) {
-                let elem_bytes = array_info.element_var_type_info.storage_bits as u32 / 8;
+                // Ceiling division, as for a scalar: a BOOL element occupies 1 byte.
+                let elem_bytes = (array_info.element_var_type_info.storage_bits as u32).div_ceil(8);
                 array_info.total_elements * elem_bytes
             } else {
                 sizeof_from_expr_type(ctx, args[0])?
@@ -499,8 +505,18 @@ fn compile_sizeof(
             sizeof_from_expr_type(ctx, args[0])?
         };
 
-    let pool_index = ctx.add_i32_constant(size as i32);
-    emitter.emit_load_const_i32(pool_index);
+    // The size is pushed at the integer type the analyzer recorded for the
+    // call, which is the type of its context.
+    match op_type.0 {
+        OpWidth::W64 => {
+            let pool_index = ctx.add_i64_constant(i64::from(size));
+            emitter.emit_load_const_i64(pool_index);
+        }
+        OpWidth::W32 | OpWidth::F32 | OpWidth::F64 => {
+            let pool_index = ctx.add_i32_constant(size as i32);
+            emitter.emit_load_const_i32(pool_index);
+        }
+    }
     Ok(())
 }
 
@@ -511,7 +527,8 @@ fn sizeof_from_expr_type(ctx: &CompileContext, expr: &Expr) -> Result<u32, Diagn
     Ok((bits as u32).div_ceil(8))
 }
 
-/// Compiles BCD_TO_INT(IN) — converts a BCD-encoded bit string to an integer.
+/// Compiles BCD_TO_INT(IN) — converts a BCD-encoded bit string to an integer
+/// of `target_op_type`, the type the analyzer recorded for the call.
 ///
 /// The argument is compiled using its own (bit-string) op_type. The BCD
 /// decoding opcode is selected based on the argument's storage bit width.
@@ -520,7 +537,7 @@ fn compile_bcd_to_int(
     ctx: &mut CompileContext,
     args: [&Expr; 1],
     span: &SourceSpan,
-    _target_op_type: OpType,
+    target_op_type: OpType,
 ) -> Result<(), Diagnostic> {
     let arg_op_type = op_type(ctx, args[0])?;
     let bits = storage_bits(ctx, args[0])?;
@@ -534,6 +551,14 @@ fn compile_bcd_to_int(
         _ => return Err(Diagnostic::todo_with_span(span.clone())),
     };
     emitter.emit_builtin(func_id);
+    // The builtin decodes into a 64-bit integer for a 64-bit input and a
+    // 32-bit one otherwise; the result is the integer type the analyzer
+    // recorded for the call.
+    let decoded = match bits {
+        64 => (OpWidth::W64, Signedness::Signed),
+        _ => (OpWidth::W32, Signedness::Signed),
+    };
+    crate::compile_arith::convert(emitter, decoded, target_op_type);
     Ok(())
 }
 

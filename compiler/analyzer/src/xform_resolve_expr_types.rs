@@ -22,10 +22,11 @@ use crate::intermediates::arithmetic_overload::{
 };
 use crate::intermediates::common_operand::common_operand_of;
 use crate::intermediates::inherited_fields::collect_inherited_fields;
+use crate::intermediates::numeric_operation::literal_default_type;
 use crate::intermediates::operator_function_form::{operator_function_form, FormOf};
 use crate::intrinsic::{InputsOfOneType, Intrinsic, OneTypeResult};
 use crate::semantic_type::SemanticType;
-use crate::symbol_environment::{ScopeTracker, SymbolEnvironment, SymbolKind};
+use crate::symbol_environment::{ScopeTracker, SymbolEnvironment};
 use crate::type_environment::TypeEnvironment;
 use crate::value_type::operand_type_name;
 use ironplc_parser::options::CompilerOptions;
@@ -157,7 +158,7 @@ fn semantic_type_to_elementary_type_name(
     env: &TypeEnvironment,
     it: &SemanticType,
 ) -> Option<TypeName> {
-    if let Some(tn) = env.elementary_type_name_for(it) {
+    if let Some(tn) = env.elementary_type_name_for(it.operated_as()) {
         return Some(tn);
     }
     match it {
@@ -248,6 +249,15 @@ impl ExprTypeResolver<'_> {
                 let return_type = sig.return_type.as_ref()?.to_type_name();
                 if !is_generic_type(&return_type) {
                     return self.expr_type_named(return_type);
+                }
+                match &sig.intrinsic {
+                    // An integer of whichever type its context stores it
+                    // at, which the literal pass gives it (ADR-0028).
+                    Some(intrinsic) if intrinsic.result_is_integer_of_context() => {
+                        return Some(ExprType::Literal(GenericTypeName::AnyInt));
+                    }
+                    Some(Intrinsic::IntToBcd) => return self.bcd_result(f),
+                    _ => {}
                 }
                 if let Some(shape) = sig
                     .intrinsic
@@ -370,44 +380,6 @@ impl ExprTypeResolver<'_> {
         }
     }
 
-    /// Turns a bare name that late-bound resolution took for an enumerated
-    /// value back into a variable reference when a variable of that name is
-    /// in scope. Late-bound resolution runs before the symbol environment
-    /// exists and sees only the variables of the enclosing function, function
-    /// block or program, so it takes a method's variable, a global, an
-    /// inherited field or the implicit value input of a property accessor for
-    /// an enumerated value of the same name. A variable in scope hides an
-    /// enumerated value of that name.
-    fn restore_shadowing_variable(&self, expr: &mut Expr) {
-        let ExprKind::EnumeratedValue(ev) = &expr.kind else {
-            return;
-        };
-        if ev.type_name.is_some() {
-            return;
-        }
-        let declares_value = self
-            .symbols
-            .find(&ev.value, &self.scope.current())
-            .is_some_and(|symbol| {
-                matches!(
-                    symbol.kind,
-                    SymbolKind::Variable
-                        | SymbolKind::Parameter
-                        | SymbolKind::OutputParameter
-                        | SymbolKind::InOutParameter
-                        | SymbolKind::EdgeVariable
-                        | SymbolKind::ResultVariable
-                )
-            });
-        if declares_value {
-            expr.kind = ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(
-                NamedVariable {
-                    name: ev.value.clone(),
-                },
-            )));
-        }
-    }
-
     /// Gives `expr` the type `context` expects when `expr` is an
     /// unqualified enumerated value that `context`, an enumeration, declares.
     fn type_from_context(&mut self, expr: &mut Expr, context: Option<Context>) {
@@ -508,6 +480,26 @@ impl ExprTypeResolver<'_> {
             Ok(Overload::Numeric { result } | Overload::Typed { result, .. }) => Some(result),
             Ok(Overload::Unchecked { .. }) | Err(_) => None,
         }
+    }
+
+    /// The type of a call to `INT_TO_BCD`: the bit string as wide as its
+    /// input, which it encodes digit by digit. `INT_TO_BCD(i)` on an `INT` is
+    /// a `WORD`, and an untyped literal input is a `DINT` (ADR-0028), so
+    /// `INT_TO_BCD(42)` is a `DWORD`.
+    fn bcd_result(&self, f: &Function) -> Option<ExprType> {
+        let input = *positional_inputs(f)?.first()?;
+        let name = match &input.expr_type {
+            Some(ExprType::Literal(generic)) => literal_default_type(generic)?.into(),
+            _ => self.operand_name(input)?,
+        };
+        let bit_string = match ElementaryTypeName::try_from(&name.name).ok()? {
+            ElementaryTypeName::SINT | ElementaryTypeName::USINT => ElementaryTypeName::BYTE,
+            ElementaryTypeName::INT | ElementaryTypeName::UINT => ElementaryTypeName::WORD,
+            ElementaryTypeName::DINT | ElementaryTypeName::UDINT => ElementaryTypeName::DWORD,
+            ElementaryTypeName::LINT | ElementaryTypeName::ULINT => ElementaryTypeName::LWORD,
+            _ => return None,
+        };
+        self.expr_type_named(bit_string.into())
     }
 
     /// The type of a call to a function of several inputs of one type, whose
@@ -611,46 +603,58 @@ impl ExprTypeResolver<'_> {
     /// Walks the member chain to find the root variable, looks up its type
     /// definition, then finds the leaf member's type.
     fn resolve_structured_variable_type(&self, sv: &StructuredVariable) -> Option<TypeName> {
+        self.type_environment
+            .elementary_type_name_for(self.field_type(sv)?.operated_as())
+    }
+
+    /// The type of the member `sv` accesses, as its representation: a field's
+    /// type is known by its representation only.
+    fn field_type<'b>(&'b self, sv: &StructuredVariable) -> Option<&'b SemanticType> {
         let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
-        let field = parent_type
+        parent_type
             .member_fields()?
             .iter()
-            .find(|f| f.name == sv.field)?;
-        self.type_environment
-            .elementary_type_name_for(&field.field_type)
+            .find(|f| f.name == sv.field)
+            .map(|f| &f.field_type)
     }
 
     /// Resolves a `SymbolicVariableKind` to the `SemanticType` whose
     /// members it exposes.
     ///
     /// For `Structured`, recursively resolves the parent and finds the nested
-    /// member type. For anything else -- a variable, an array element, a
-    /// dereferenced reference -- takes the type its id names, when that is a
-    /// structure or function block.
+    /// member type, and for an element of an array that is a field
+    /// (`h.items[1]`), the array's element type. For anything else -- a
+    /// variable, an element of an array variable, a dereferenced reference --
+    /// takes the type its id names, when that is a structure or function
+    /// block.
     fn resolve_parent_struct_type<'b>(
         &'b self,
         kind: &SymbolicVariableKind,
     ) -> Option<&'b SemanticType> {
-        match kind {
-            SymbolicVariableKind::Structured(sv) => {
-                let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
-                let field = parent_type
-                    .member_fields()?
-                    .iter()
-                    .find(|f| f.name == sv.field)?;
-                if field.field_type.has_members() {
-                    Some(&field.field_type)
-                } else {
-                    None
-                }
-            }
-            _ => {
-                let representation = &self
-                    .type_environment
-                    .get_by_id(self.symbolic_type_id(kind)?)?
-                    .representation;
-                representation.has_members().then_some(representation)
-            }
+        let representation = match kind {
+            SymbolicVariableKind::Structured(sv) => self.field_type(sv)?,
+            SymbolicVariableKind::Array(array) => match array.subscripted_variable.as_ref() {
+                SymbolicVariableKind::Structured(sv) => self.field_element_type(sv)?,
+                _ => self.representation_of(kind)?,
+            },
+            _ => self.representation_of(kind)?,
+        };
+        representation.has_members().then_some(representation)
+    }
+
+    /// The type the id of the symbolic variable `kind` names, as its
+    /// representation.
+    fn representation_of(&self, kind: &SymbolicVariableKind) -> Option<&SemanticType> {
+        let id = self.symbolic_type_id(kind)?;
+        Some(&self.type_environment.get_by_id(id)?.representation)
+    }
+
+    /// The element type of the array the member access `sv` names
+    /// (`DATA.DIRS`), as its representation.
+    fn field_element_type<'b>(&'b self, sv: &StructuredVariable) -> Option<&'b SemanticType> {
+        match self.field_type(sv)? {
+            SemanticType::Array { element_type, .. } => Some(element_type),
+            _ => None,
         }
     }
 
@@ -661,15 +665,7 @@ impl ExprTypeResolver<'_> {
     /// `SemanticType::Array`, then returns the element type's
     /// canonical `TypeName`.
     fn resolve_struct_field_array_element_type(&self, sv: &StructuredVariable) -> Option<TypeName> {
-        let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
-        let field = parent_type
-            .member_fields()?
-            .iter()
-            .find(|f| f.name == sv.field)?;
-        let SemanticType::Array { element_type, .. } = &field.field_type else {
-            return None;
-        };
-        semantic_type_to_elementary_type_name(self.type_environment, element_type)
+        semantic_type_to_elementary_type_name(self.type_environment, self.field_element_type(sv)?)
     }
 
     /// The id of the type of the value the symbolic variable `kind` names:
@@ -752,8 +748,6 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
     fn fold_expr(&mut self, node: Expr) -> Result<Expr, Diagnostic> {
         // First, recurse to fold children (bottom-up)
         let mut expr = node.recurse_fold(self)?;
-
-        self.restore_shadowing_variable(&mut expr);
 
         // An unqualified enumerated value compared with a value of an
         // enumeration type has that type.

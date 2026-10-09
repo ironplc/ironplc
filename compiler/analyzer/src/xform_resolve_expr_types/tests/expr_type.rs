@@ -251,10 +251,10 @@ TYPE E_State : (Idle, Error); END_TYPE
     )
 }
 
-/// A variable in scope hides an enumerated value of the same name. Late-bound
-/// resolution sees only the variables of the enclosing unit, so these are
-/// the names it takes for the enumerated value until the symbol environment
-/// restores them.
+/// A variable in scope hides an enumerated value of the same name, wherever
+/// the variable is declared: these are the names the late-bound pass used to
+/// take for the enumerated value because it knew only the enclosing unit's
+/// own variables.
 #[rstest::rstest]
 #[case::method_input(
     "FUNCTION_BLOCK FB_A VAR b : BOOL; END_VAR METHOD M VAR_INPUT Error : BOOL; END_VAR b := Error; END_METHOD END_FUNCTION_BLOCK"
