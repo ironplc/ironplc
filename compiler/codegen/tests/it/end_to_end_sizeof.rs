@@ -98,3 +98,18 @@ END_PROGRAM
 ",
     &[("s", 8)],
 );
+
+e2e_i32_with!(
+    end_to_end_when_sizeof_array_of_int_then_returns_8,
+    sizeof_options(),
+    "
+PROGRAM main
+  VAR
+    arr : ARRAY[0..3] OF INT;
+    s : DINT;
+  END_VAR
+  s := SIZEOF(arr);
+END_PROGRAM
+",
+    &[("s", 8)],
+);
