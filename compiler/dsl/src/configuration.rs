@@ -223,6 +223,7 @@ mod tests {
             initializer: InitialValueAssignmentKind::None(SourceSpan::default()),
             block: next_block_id(),
             type_id: None,
+            reset_on_call: false,
         }
     }
 

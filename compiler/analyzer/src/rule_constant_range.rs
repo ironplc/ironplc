@@ -449,13 +449,38 @@ impl RuleConstantRange<'_> {
             InitialValueAssignmentKind::FunctionBlock(function_block) => {
                 self.check_named_elements(&function_block.type_name, &function_block.init);
             }
+            // A structure field's subrange value (`x : INT (0..15) := 3`).
+            InitialValueAssignmentKind::Subrange(subrange) => {
+                if let Some(value) = &subrange.initial_value {
+                    if let Some(declared) = self.subrange_representation(&subrange.spec) {
+                        self.check_constant(&integer_constant(value), &declared);
+                    }
+                }
+            }
             // A structure initializer is a `StructureInitializationDeclaration`,
             // which the visitor reaches on its own, in a `VAR` block and a
             // `TYPE` block alike. The remaining kinds hold no numeric constant
-            // (a string, an enumerated value, a reference), take their range
-            // from a subrange that `rule_range_limits` checks, or pass
-            // arguments to a constructor rather than store values.
+            // (a string, an enumerated value, a reference) or pass arguments
+            // to a constructor rather than store values.
             _ => {}
+        }
+    }
+
+    /// The representation of the subrange `spec` names or spells. `None`
+    /// for a bound that is a constant not yet resolved.
+    fn subrange_representation(&self, spec: &SubrangeSpecificationKind) -> Option<SemanticType> {
+        match spec {
+            SpecificationKind::Named(type_name) => self.representation_of(type_name),
+            SpecificationKind::Inline(spec) => {
+                let bound = |bound: &SignedIntegerRef| {
+                    i128::try_from(bound.as_signed_integer()?.clone()).ok()
+                };
+                Some(SemanticType::Subrange {
+                    base_type: Box::new(self.representation_of(&spec.type_name.clone().into())?),
+                    min_value: bound(&spec.subrange.start)?,
+                    max_value: bound(&spec.subrange.end)?,
+                })
+            }
         }
     }
 
@@ -545,7 +570,9 @@ impl RuleConstantRange<'_> {
                     self.check_array_element(inner, expected);
                 }
             }
-            ArrayInitialElementKind::EnumValue(_) => {}
+            ArrayInitialElementKind::EnumValue(_)
+            | ArrayInitialElementKind::Structure(_)
+            | ArrayInitialElementKind::Expression(_) => {}
         }
     }
 
@@ -715,6 +742,17 @@ impl Visitor<Infallible> for RuleConstantRange<'_> {
         node.recurse_visit(self)
     }
 
+    /// A subrange type's default (`R : DINT(10..100) := 500`) is checked
+    /// against the subrange.
+    fn visit_subrange_declaration(&mut self, node: &SubrangeDeclaration) -> Result<(), Infallible> {
+        if let Some(default) = &node.default {
+            if let Some(declared) = self.representation_of(&node.type_name) {
+                self.check_constant(&integer_constant(default), &declared);
+            }
+        }
+        node.recurse_visit(self)
+    }
+
     /// A structure field's default is checked against the field's type.
     fn visit_structure_element_declaration(
         &mut self,
@@ -793,6 +831,14 @@ impl Visitor<Infallible> for OwnTypes<'_, '_> {
         self.rule.check_prefixed_bit_string(node);
         Ok(())
     }
+}
+
+/// The signed integer `value`, a subrange's value, as the literal it is.
+fn integer_constant(value: &SignedInteger) -> ConstantKind {
+    ConstantKind::IntegerLiteral(IntegerLiteral {
+        value: value.clone(),
+        data_type: None,
+    })
 }
 
 #[cfg(test)]
