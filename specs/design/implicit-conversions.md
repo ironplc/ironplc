@@ -298,6 +298,18 @@ A literal a standard function does not give a type to (`TRUNC`, a typed time fun
 
 ## Codegen
 
+Every expression compiles at its own type, the one the analyzer recorded for
+it, and the code generator converts nothing the analyzer did not record. Where
+this section says a result is converted to the type of its context, the
+conversion is the `ImplicitConversion` the analyzer wrapped it in: an
+expression whose operation width differs from its context's, with no
+conversion recorded, is an internal error (P9998) rather than widened or
+narrowed. Two types of one width but different signedness share their bits
+and need no conversion. The conversions the program writes (`INT_TO_REAL`,
+`TRUNC`) are lowered as written.
+
+**REQ-IC-codegen-018** A value whose operation width differs from its context's, and whose conversion the analyzer did not record, is an internal error: with the recorded conversions removed, a `DINT` or `REAL` variable, a `DINT` sum, negation or `MAX`, a `DWORD` `OR`, an `INT_TO_REAL` and a `TIME` variable assigned to an `LINT`, `LREAL`, `LWORD` or `LTIME` report P9998, and an `LINT` assigned to an `LINT` and an `INT` to a `DINT` compile.
+
 An `ImplicitConversion` compiles its operand at the operand's own type and
 converts it to the type the node records. A comparison compiles at the type of
 its left operand, else of its right one when the left one has no type codegen

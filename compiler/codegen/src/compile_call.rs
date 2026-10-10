@@ -91,14 +91,39 @@ fn compile_intrinsic(
     // the type the analyzer recorded for the call (ADR-0056).
     if intrinsic.inputs_of_one_type().is_some() || intrinsic.result_is_integer_of_context() {
         let at = self::op_type(ctx, call)?;
-        return compile_at(emitter, ctx, at, op_type, |emitter, ctx, at| {
-            compile_intrinsic_at(emitter, ctx, func, result, at, intrinsic)
-        });
+        return compile_at(
+            emitter,
+            ctx,
+            at,
+            op_type,
+            &call.span(),
+            |emitter, ctx, at| compile_intrinsic_at(emitter, ctx, func, result, at, intrinsic),
+        );
     }
     if intrinsic.computes_at_own_type() {
-        return compile_at_operand_type(emitter, ctx, result, op_type, |emitter, ctx, at| {
-            compile_intrinsic_at(emitter, ctx, func, result, at, intrinsic)
-        });
+        return compile_at_operand_type(
+            emitter,
+            ctx,
+            result,
+            op_type,
+            &call.span(),
+            |emitter, ctx, at| compile_intrinsic_at(emitter, ctx, func, result, at, intrinsic),
+        );
+    }
+    // A type conversion, a typed time function or a string function has the
+    // result type its signature fixes, which the analyzer converted to the
+    // type of its context where their widths differ.
+    if intrinsic.result_has_fixed_type() {
+        if let Some(at) = super::compile_expr::op_type_from_expr(ctx, call) {
+            return compile_at(
+                emitter,
+                ctx,
+                at,
+                op_type,
+                &call.span(),
+                |emitter, ctx, at| compile_intrinsic_at(emitter, ctx, func, result, at, intrinsic),
+            );
+        }
     }
     compile_intrinsic_at(emitter, ctx, func, result, op_type, intrinsic)
 }
