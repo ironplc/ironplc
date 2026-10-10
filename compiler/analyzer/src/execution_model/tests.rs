@@ -25,38 +25,20 @@ fn analyze_clean(library: &Library, options: &CompilerOptions) -> (Library, Sema
 }
 
 /// Analyzes `source` and returns what `resolve` built from it.
-fn resolve_source_with(source: &str, options: &CompilerOptions) -> Execution {
+fn resolve_source_with(source: &str, options: &CompilerOptions) -> ExecutionModel {
     let library = parse_program(source, &FileId::default(), options).unwrap();
     let (library, context) = analyze_clean(&library, options);
-    let execution = resolve(&library, options);
+    let model = resolve(&library, options);
     // The context holds what one walk of the same library built.
     assert_eq!(
-        format!("{execution:?}"),
-        format!("{:?}", context.execution())
+        format!("{model:?}"),
+        format!("{:?}", context.execution_model())
     );
-    execution
+    model
 }
 
-fn resolve_source(source: &str) -> Execution {
+fn resolve_source(source: &str) -> ExecutionModel {
     resolve_source_with(source, &CompilerOptions::default())
-}
-
-fn model(execution: Execution) -> ExecutionModel {
-    match execution {
-        Execution::Executable(model) => model,
-        Execution::NotExecutable(reason) => panic!("not executable: {reason:?}"),
-    }
-}
-
-fn reason(execution: Execution) -> NotExecutable {
-    match execution {
-        Execution::NotExecutable(reason) => reason,
-        Execution::Executable(model) => panic!("executable: {model:?}"),
-    }
-}
-
-fn names(names: &[DebugName]) -> Vec<String> {
-    names.iter().map(DebugName::to_string).collect()
 }
 
 fn name(name: &Option<DebugName>) -> String {
@@ -81,14 +63,22 @@ fn schedule(schedule: &Schedule) -> String {
     }
 }
 
-/// Every instance of `model` as `resource/task(schedule, priority):
+/// What `instance` instantiates: its program's name, or `?` and the type
+/// name it names.
+fn instance_of(model: &ExecutionModel, instance: &ProgramInstance) -> String {
+    match &instance.program {
+        InstanceOf::Program(id) => model.program(*id).unwrap().name.to_string(),
+        InstanceOf::Unresolved(type_name) => format!("?{type_name}"),
+    }
+}
+
+/// Every instance of `configuration` as `resource/task(schedule, priority):
 /// instance=program`, in the order the model lists them.
-fn instances(model: &ExecutionModel) -> Vec<String> {
+fn instances_of(model: &ExecutionModel, configuration: &Configuration) -> Vec<String> {
     let mut lines = Vec::new();
-    for resource in &model.configuration().resources {
+    for resource in &configuration.resources {
         for task in &resource.tasks {
             for instance in &task.instances {
-                let program = model.program(instance.program).unwrap();
                 lines.push(format!(
                     "{}/{}({}, {}): {}={}",
                     name(&resource.name),
@@ -96,12 +86,25 @@ fn instances(model: &ExecutionModel) -> Vec<String> {
                     schedule(&task.schedule),
                     task.priority,
                     name(&instance.name),
-                    program.name
+                    instance_of(model, instance)
                 ));
             }
         }
     }
     lines
+}
+
+/// The only configuration of `model`.
+fn only_configuration(model: &ExecutionModel) -> &Configuration {
+    match model.configurations() {
+        [configuration] => configuration,
+        configurations => panic!("{} configurations", configurations.len()),
+    }
+}
+
+/// Every instance of the only configuration of `model`; see [`instances_of`].
+fn instances(model: &ExecutionModel) -> Vec<String> {
+    instances_of(model, only_configuration(model))
 }
 
 /// The globals of `model` as `name: kind`, in variable-table order.
@@ -114,8 +117,7 @@ fn globals(model: &ExecutionModel) -> Vec<String> {
 
 /// The one task of the only instance.
 fn only_task(model: &ExecutionModel) -> &Task {
-    let mut tasks = model
-        .configuration()
+    let mut tasks = only_configuration(model)
         .resources
         .iter()
         .flat_map(|resource| &resource.tasks)
@@ -153,31 +155,29 @@ END_CONFIGURATION
 
 #[test]
 fn resolve_when_configuration_then_names_every_part() {
-    let model = model(resolve_source(&program_with_task(
-        "INTERVAL := T#100ms, PRIORITY := 3",
-    )));
+    let model = resolve_source(&program_with_task("INTERVAL := T#100ms, PRIORITY := 3"));
 
-    assert_eq!(name(&model.configuration().name), "config");
+    assert_eq!(name(&only_configuration(&model).name), "config");
     assert_eq!(
         instances(&model),
         ["resource1/task1(cyclic 100ms, 3): instance1=main"]
     );
 }
 
-#[spec_test(REQ_EM_analyzer_010)]
+#[spec_test(REQ_EM_analyzer_012)]
 fn resolve_when_no_configuration_then_implicit_instance_under_implicit_freewheeling_task() {
-    let model = model(resolve_source(MAIN));
+    let model = resolve_source(MAIN);
 
-    assert!(model.configuration().name.is_none());
-    assert_eq!(model.configuration().resources.len(), 1);
+    assert!(only_configuration(&model).name.is_none());
+    assert_eq!(only_configuration(&model).resources.len(), 1);
     assert_eq!(
         instances(&model),
         ["<implicit>/<implicit>(freewheeling, 0): <implicit>=main"]
     );
 }
 
-#[spec_test(REQ_EM_analyzer_010)]
-fn resolve_when_configuration_instantiates_nothing_then_only_program_bound_implicitly() {
+#[spec_test(REQ_EM_analyzer_013)]
+fn resolve_when_configuration_instantiates_nothing_then_programs_bound_implicitly() {
     let source = format!(
         "{MAIN}
 CONFIGURATION config
@@ -198,11 +198,10 @@ END_CONFIGURATION
         .clear();
     let (library, _) = analyze_clean(&library, &options);
 
-    let model = model(resolve(&library, &options));
+    let model = resolve(&library, &options);
 
-    assert_eq!(name(&model.configuration().name), "config");
-    let resources: Vec<String> = model
-        .configuration()
+    assert_eq!(name(&only_configuration(&model).name), "config");
+    let resources: Vec<String> = only_configuration(&model)
         .resources
         .iter()
         .map(|resource| name(&resource.name))
@@ -226,9 +225,9 @@ CONFIGURATION config
 END_CONFIGURATION
 "
     );
-    let model = model(resolve_source(&source));
+    let model = resolve_source(&source);
 
-    let tasks: Vec<String> = model.configuration().resources[0]
+    let tasks: Vec<String> = only_configuration(&model).resources[0]
         .tasks
         .iter()
         .map(|task| name(&task.name))
@@ -252,9 +251,9 @@ CONFIGURATION config
 END_CONFIGURATION
 "
     );
-    let model = model(resolve_source(&source));
+    let model = resolve_source(&source);
 
-    assert_eq!(model.configuration().resources[0].tasks.len(), 1);
+    assert_eq!(only_configuration(&model).resources[0].tasks.len(), 1);
     assert_eq!(
         instances(&model),
         [
@@ -266,9 +265,7 @@ END_CONFIGURATION
 
 #[spec_test(REQ_EM_analyzer_020)]
 fn resolve_when_task_has_single_then_event_task_triggered_by_global_id() {
-    let model = model(resolve_source(&program_with_task(
-        "SINGLE := Trigger, PRIORITY := 1",
-    )));
+    let model = resolve_source(&program_with_task("SINGLE := Trigger, PRIORITY := 1"));
 
     let Schedule::Event {
         trigger: Trigger::Global(id),
@@ -282,27 +279,23 @@ fn resolve_when_task_has_single_then_event_task_triggered_by_global_id() {
 
 #[spec_test(REQ_EM_analyzer_020)]
 fn resolve_when_task_has_single_and_interval_then_event_task() {
-    let model = model(resolve_source(&program_with_task(
+    let model = resolve_source(&program_with_task(
         "SINGLE := Trigger, INTERVAL := T#10ms, PRIORITY := 1",
-    )));
+    ));
 
     assert_eq!(schedule(&only_task(&model).schedule), "event global 10ms");
 }
 
 #[spec_test(REQ_EM_analyzer_020)]
 fn resolve_when_task_single_is_constant_then_event_task_with_constant_trigger() {
-    let model = model(resolve_source(&program_with_task(
-        "SINGLE := TRUE, PRIORITY := 1",
-    )));
+    let model = resolve_source(&program_with_task("SINGLE := TRUE, PRIORITY := 1"));
 
     assert_eq!(schedule(&only_task(&model).schedule), "event constant");
 }
 
 #[spec_test(REQ_EM_analyzer_021)]
 fn resolve_when_task_has_interval_then_cyclic_task_with_duration() {
-    let model = model(resolve_source(&program_with_task(
-        "INTERVAL := T#100ms, PRIORITY := 3",
-    )));
+    let model = resolve_source(&program_with_task("INTERVAL := T#100ms, PRIORITY := 3"));
 
     assert!(matches!(
         only_task(&model).schedule,
@@ -312,9 +305,7 @@ fn resolve_when_task_has_interval_then_cyclic_task_with_duration() {
 
 #[spec_test(REQ_EM_analyzer_021)]
 fn resolve_when_task_interval_is_sub_millisecond_then_duration_keeps_precision() {
-    let model = model(resolve_source(&program_with_task(
-        "INTERVAL := T#0.5ms, PRIORITY := 0",
-    )));
+    let model = resolve_source(&program_with_task("INTERVAL := T#0.5ms, PRIORITY := 0"));
 
     assert!(matches!(
         only_task(&model).schedule,
@@ -324,9 +315,7 @@ fn resolve_when_task_interval_is_sub_millisecond_then_duration_keeps_precision()
 
 #[spec_test(REQ_EM_analyzer_022)]
 fn resolve_when_task_interval_is_zero_then_freewheeling_task() {
-    let model = model(resolve_source(&program_with_task(
-        "INTERVAL := T#0ms, PRIORITY := 1",
-    )));
+    let model = resolve_source(&program_with_task("INTERVAL := T#0ms, PRIORITY := 1"));
 
     assert!(matches!(only_task(&model).schedule, Schedule::Freewheeling));
     assert_eq!(only_task(&model).priority, 1);
@@ -334,16 +323,16 @@ fn resolve_when_task_interval_is_zero_then_freewheeling_task() {
 
 #[spec_test(REQ_EM_analyzer_022)]
 fn resolve_when_task_has_no_interval_then_freewheeling_task() {
-    let model = model(resolve_source(&program_with_task("PRIORITY := 2")));
+    let model = resolve_source(&program_with_task("PRIORITY := 2"));
 
     assert!(matches!(only_task(&model).schedule, Schedule::Freewheeling));
 }
 
 #[spec_test(REQ_EM_analyzer_023)]
 fn resolve_when_task_priority_exceeds_u16_then_priority_recorded_unchanged() {
-    let model = model(resolve_source(&program_with_task(
+    let model = resolve_source(&program_with_task(
         "INTERVAL := T#100ms, PRIORITY := 100000",
-    )));
+    ));
 
     assert_eq!(only_task(&model).priority, 100_000);
 }
@@ -402,7 +391,7 @@ END_CONFIGURATION
     configuration_mut(&mut library).resource_decl.push(cpu2);
     let (library, _) = analyze_clean(&library, &options);
 
-    let model = model(resolve(&library, &options));
+    let model = resolve(&library, &options);
 
     let programs: Vec<String> = model
         .programs()
@@ -447,7 +436,7 @@ END_CONFIGURATION
         allow_top_level_var_global: true,
         ..CompilerOptions::default()
     };
-    let model = model(resolve_source_with(&source, &options));
+    let model = resolve_source_with(&source, &options);
 
     assert_eq!(
         globals(&model),
@@ -489,9 +478,7 @@ END_CONFIGURATION
     let library = parse_program(&source, &FileId::default(), &options).unwrap();
     let (library, context) = analyze_clean(&library, &options);
     let analysis = CleanAnalysis::new(&library, &context).unwrap();
-    let Execution::Executable(model) = analysis.execution() else {
-        panic!("not executable");
-    };
+    let model = analysis.execution_model();
 
     let declarations: Vec<Option<String>> = model
         .globals()
@@ -530,9 +517,7 @@ fn clean_analysis_when_paired_with_another_library_then_model_is_that_librarys()
     )
     .unwrap();
     let analysis = CleanAnalysis::new(&other, &context).unwrap();
-    let Execution::Executable(model) = analysis.execution() else {
-        panic!("not executable");
-    };
+    let model = analysis.execution_model();
 
     let (id, program) = model.programs().next().unwrap();
     assert_eq!(program.name.to_string(), "other");
@@ -564,9 +549,7 @@ END_CONFIGURATION
     let library = parse_program(&two, &FileId::default(), &options).unwrap();
     let (library, context) = analyze_clean(&library, &options);
     let analysis = CleanAnalysis::new(&library, &context).unwrap();
-    let Execution::Executable(model) = analysis.execution() else {
-        panic!("not executable");
-    };
+    let model = analysis.execution_model();
     let (second, _) = model.programs().nth(1).unwrap();
 
     let one = parse_program(MAIN, &FileId::default(), &options).unwrap();
@@ -592,7 +575,7 @@ END_PROGRAM
         allow_top_level_var_global: true,
         ..CompilerOptions::default()
     };
-    let model = model(resolve_source_with(source, &options));
+    let model = resolve_source_with(source, &options);
 
     assert_eq!(
         globals(&model),
@@ -606,41 +589,52 @@ END_PROGRAM
 
 #[spec_test(REQ_EM_analyzer_041)]
 fn resolve_when_system_uptime_global_not_allowed_then_no_system_globals() {
-    let model = model(resolve_source(MAIN));
+    let model = resolve_source(MAIN);
 
     assert_eq!(model.globals().count(), 0);
 }
 
-#[spec_test(REQ_EM_analyzer_050)]
-fn resolve_when_no_program_then_not_executable_no_program() {
+#[spec_test(REQ_EM_analyzer_012)]
+fn resolve_when_no_program_and_no_configuration_then_no_configuration() {
     let source = "
 FUNCTION_BLOCK MyBlock
   VAR
     x : INT;
   END_VAR
 END_FUNCTION_BLOCK
-
-CONFIGURATION cfgA
-  RESOURCE resA ON PLC
-    PROGRAM instA : MyBlock;
-  END_RESOURCE
-END_CONFIGURATION
-
-CONFIGURATION cfgB
-  RESOURCE resB ON PLC
-    PROGRAM instB : MyBlock;
-  END_RESOURCE
-END_CONFIGURATION
 ";
+    let model = resolve_source(source);
 
-    assert!(matches!(
-        reason(resolve_source(source)),
-        NotExecutable::NoProgram
-    ));
+    assert!(model.configurations().is_empty());
+    assert_eq!(model.programs().count(), 0);
 }
 
-#[spec_test(REQ_EM_analyzer_051)]
-fn resolve_when_two_configurations_then_not_executable_with_names_in_source_order() {
+#[spec_test(REQ_EM_analyzer_012)]
+fn resolve_when_two_programs_and_no_configuration_then_implicit_instance_of_each_in_source_order() {
+    let source = "
+PROGRAM first
+  VAR x : INT; END_VAR
+  x := 1;
+END_PROGRAM
+
+PROGRAM second
+  VAR y : INT; END_VAR
+  y := 2;
+END_PROGRAM
+";
+    let model = resolve_source(source);
+
+    assert_eq!(
+        instances(&model),
+        [
+            "<implicit>/<implicit>(freewheeling, 0): <implicit>=first",
+            "<implicit>/<implicit>(freewheeling, 0): <implicit>=second",
+        ]
+    );
+}
+
+#[spec_test(REQ_EM_analyzer_031)]
+fn resolve_when_two_configurations_then_both_in_source_order() {
     let source = format!(
         "{MAIN}
 CONFIGURATION cfgA
@@ -658,36 +652,86 @@ CONFIGURATION cfgB
 END_CONFIGURATION
 "
     );
+    let model = resolve_source(&source);
 
-    let NotExecutable::SeveralConfigurations(configurations) = reason(resolve_source(&source))
-    else {
-        panic!("not several configurations");
-    };
-    assert_eq!(names(&configurations), ["cfgA", "cfgB"]);
+    let configurations: Vec<(String, Vec<String>)> = model
+        .configurations()
+        .iter()
+        .map(|configuration| {
+            (
+                name(&configuration.name),
+                instances_of(&model, configuration),
+            )
+        })
+        .collect();
+    assert_eq!(
+        configurations,
+        [
+            (
+                "cfgA".to_string(),
+                vec!["resA/t(cyclic 10ms, 1): instA=main".to_string()]
+            ),
+            (
+                "cfgB".to_string(),
+                vec!["resB/t(cyclic 500ms, 1): instB=main".to_string()]
+            ),
+        ]
+    );
 }
 
-#[spec_test(REQ_EM_analyzer_052)]
-fn resolve_when_two_programs_and_no_configuration_then_not_executable_with_names_in_source_order() {
-    let source = "
-PROGRAM first
-  VAR x : INT; END_VAR
-  x := 1;
-END_PROGRAM
+#[spec_test(REQ_EM_analyzer_031)]
+fn resolve_when_two_configurations_then_each_single_names_its_own_global() {
+    let source = format!(
+        "{MAIN}
+CONFIGURATION cfgA
+  VAR_GLOBAL
+    go_a : BOOL;
+  END_VAR
+  RESOURCE resA ON PLC
+    TASK t(SINGLE := go_a, PRIORITY := 1);
+    PROGRAM instA WITH t : main;
+  END_RESOURCE
+END_CONFIGURATION
 
-PROGRAM second
-  VAR y : INT; END_VAR
-  y := 2;
-END_PROGRAM
-";
+CONFIGURATION cfgB
+  VAR_GLOBAL
+    go_b : BOOL;
+  END_VAR
+  RESOURCE resB ON PLC
+    TASK t(SINGLE := go_b, PRIORITY := 1);
+    PROGRAM instB WITH t : main;
+  END_RESOURCE
+END_CONFIGURATION
+"
+    );
+    let model = resolve_source(&source);
 
-    let NotExecutable::SeveralPrograms(programs) = reason(resolve_source(source)) else {
-        panic!("not several programs");
-    };
-    assert_eq!(names(&programs), ["first", "second"]);
+    let triggers: Vec<String> = model
+        .configurations()
+        .iter()
+        .map(|configuration| {
+            let Schedule::Event {
+                trigger: Trigger::Global(id),
+                ..
+            } = configuration.resources[0].tasks[0].schedule
+            else {
+                panic!("not an event task");
+            };
+            model.global(id).unwrap().name.to_string()
+        })
+        .collect();
+    assert_eq!(triggers, ["go_a", "go_b"]);
+    assert_eq!(
+        globals(&model),
+        [
+            "go_a: Declared(Configuration)",
+            "go_b: Declared(Configuration)"
+        ]
+    );
 }
 
-#[spec_test(REQ_EM_analyzer_052)]
-fn resolve_when_two_programs_and_configuration_binds_one_then_executable() {
+#[spec_test(REQ_EM_analyzer_032)]
+fn resolve_when_two_programs_and_configuration_binds_one_then_both_are_program_types() {
     let source = format!(
         "{MAIN}
 PROGRAM helper
@@ -702,17 +746,21 @@ CONFIGURATION config
 END_CONFIGURATION
 "
     );
-    let model = model(resolve_source(&source));
+    let model = resolve_source(&source);
 
-    assert_eq!(model.programs().count(), 2);
+    let programs: Vec<String> = model
+        .programs()
+        .map(|(_, program)| program.name.to_string())
+        .collect();
+    assert_eq!(programs, ["main", "helper"]);
     assert_eq!(
         instances(&model),
         ["resource1/<implicit>(freewheeling, 0): instance1=main"]
     );
 }
 
-#[spec_test(REQ_EM_analyzer_053)]
-fn resolve_when_instance_type_is_not_a_program_then_not_executable_with_type_names() {
+#[spec_test(REQ_EM_analyzer_054)]
+fn resolve_when_instance_type_is_not_a_program_then_instance_unresolved_with_type_name() {
     let source = format!(
         "{MAIN}
 FUNCTION_BLOCK counter
@@ -729,9 +777,33 @@ CONFIGURATION config
 END_CONFIGURATION
 "
     );
+    let model = resolve_source(&source);
 
-    let NotExecutable::UndeclaredPrograms(types) = reason(resolve_source(&source)) else {
-        panic!("not undeclared programs");
-    };
-    assert_eq!(names(&types), ["counter", "elsewhere"]);
+    assert_eq!(
+        instances(&model),
+        [
+            "resource1/<implicit>(freewheeling, 0): first=?counter",
+            "resource1/<implicit>(freewheeling, 0): second=main",
+            "resource1/<implicit>(freewheeling, 0): third=?elsewhere",
+        ]
+    );
+}
+
+#[spec_test(REQ_EM_analyzer_054)]
+fn resolve_when_configuration_alone_then_every_instance_unresolved() {
+    let source = "
+CONFIGURATION config
+  RESOURCE resource1 ON PLC
+    TASK task1(INTERVAL := T#10ms, PRIORITY := 1);
+    PROGRAM instance1 WITH task1 : main;
+  END_RESOURCE
+END_CONFIGURATION
+";
+    let model = resolve_source(source);
+
+    assert_eq!(model.programs().count(), 0);
+    assert_eq!(
+        instances(&model),
+        ["resource1/task1(cyclic 10ms, 1): instance1=?main"]
+    );
 }

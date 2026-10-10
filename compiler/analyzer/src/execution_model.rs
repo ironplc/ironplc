@@ -1,10 +1,10 @@
-//! Resolves the execution model: which configuration is built, which program
-//! instances run under which tasks, how each task is scheduled, and which
-//! globals are in scope.
+//! Resolves the execution model: the configurations the library declares,
+//! which program instances run under which tasks, how each task is scheduled,
+//! and which globals are in scope.
 //!
 //! These are language decisions, so they are made once, here, and a backend
-//! lowers the answer. [`resolve`] builds an [`Execution`] of `ironplc-ir`'s
-//! types from an analyzed library. The
+//! lowers the answer. [`resolve`] builds an [`ExecutionModel`] of
+//! `ironplc-ir`'s types from an analyzed library. The
 //! [`SemanticContext`](crate::SemanticContext) stores it for `check` and the
 //! editor, and [`CleanAnalysis::new`](crate::CleanAnalysis::new) resolves it
 //! again, with the declaration behind each id, from the library it hands to
@@ -13,8 +13,9 @@
 //! `resolve` reads only what a clean analysis holds (the library and the
 //! compiler options), never the analyzer's internals, so that the module can
 //! move unchanged into a lowering crate when one exists. It reports nothing:
-//! a library that cannot be built into an executable is a valid library, and
-//! [`NotExecutable`] says why as data.
+//! the model describes the library as it is, and whether a backend can build
+//! it (one configuration, one program, a body for every instance) is that
+//! backend's check.
 //!
 //! See `specs/design/execution-model.md` and ADR-0065.
 
@@ -26,8 +27,8 @@ use ironplc_dsl::configuration::{
 };
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_ir::execution::{
-    Configuration, DebugName, Execution, ExecutionModelBuilder, Global, GlobalId, GlobalKind,
-    GlobalScope, NotExecutable, ProgramId, ProgramInstance, ProgramType, Resource, Schedule,
+    Configuration, DebugName, ExecutionModel, ExecutionModelBuilder, Global, GlobalId, GlobalKind,
+    GlobalScope, InstanceOf, ProgramId, ProgramInstance, ProgramType, Resource, Schedule,
     SystemGlobal, Task, Trigger,
 };
 use ironplc_parser::options::CompilerOptions;
@@ -35,7 +36,7 @@ use ironplc_parser::options::CompilerOptions;
 use crate::system_globals::SYSTEM_UPTIME_GLOBALS;
 
 /// Resolves the execution model of an analyzed library.
-pub fn resolve(library: &Library, options: &CompilerOptions) -> Execution {
+pub fn resolve(library: &Library, options: &CompilerOptions) -> ExecutionModel {
     resolve_with_declarations(library, options).0
 }
 
@@ -47,10 +48,10 @@ pub fn resolve(library: &Library, options: &CompilerOptions) -> Execution {
 pub(crate) fn resolve_with_declarations<'a>(
     library: &'a Library,
     options: &CompilerOptions,
-) -> (Execution, Declarations<'a>) {
+) -> (ExecutionModel, Declarations<'a>) {
     let mut walk = Walk::new(library);
-    let execution = walk.resolve(options);
-    (execution, walk.declarations)
+    let model = walk.resolve(options);
+    (model, walk.declarations)
 }
 
 /// The declaration behind each id of a model, borrowed from the library the
@@ -89,12 +90,9 @@ struct Walk<'a> {
     declarations: Declarations<'a>,
     /// The declared programs and their ids, in source order.
     programs: Vec<(&'a ProgramDeclaration, ProgramId)>,
-    /// The globals a `SINGLE` can name outside its resource, nearest scope
-    /// first: the configuration's, the top-level ones, the system ones.
+    /// The globals a `SINGLE` can name outside its configuration, nearest
+    /// scope first: the top-level ones, then the system ones.
     outer_scopes: Vec<Scope>,
-    /// The type names of program instances that name no declared `PROGRAM`,
-    /// in declaration order.
-    undeclared: Vec<DebugName>,
 }
 
 impl<'a> Walk<'a> {
@@ -105,11 +103,10 @@ impl<'a> Walk<'a> {
             declarations: Declarations::default(),
             programs: Vec::new(),
             outer_scopes: Vec::new(),
-            undeclared: Vec::new(),
         }
     }
 
-    fn resolve(&mut self, options: &CompilerOptions) -> Execution {
+    fn resolve(&mut self, options: &CompilerOptions) -> ExecutionModel {
         let mut programs = Vec::new();
         let mut configurations = Vec::new();
         let mut top_level = Vec::new();
@@ -127,18 +124,6 @@ impl<'a> Walk<'a> {
         // order is kept as it is.
         sort_by_source_position(&mut programs, |program| &program.name);
         sort_by_source_position(&mut configurations, |config| &config.name);
-
-        if programs.is_empty() {
-            return Execution::NotExecutable(NotExecutable::NoProgram);
-        }
-        if configurations.len() > 1 {
-            return Execution::NotExecutable(NotExecutable::SeveralConfigurations(
-                configurations
-                    .iter()
-                    .map(|config| debug_name(&config.name))
-                    .collect(),
-            ));
-        }
 
         for program in programs {
             let id = self.builder.add_program(ProgramType {
@@ -169,56 +154,49 @@ impl<'a> Walk<'a> {
                 top_level_scope.insert(name.clone(), id);
             }
         }
+        self.outer_scopes = vec![top_level_scope, system];
 
-        let configuration = match configurations.first() {
-            Some(config) => {
-                self.outer_scopes = vec![top_level_scope, system];
-                self.resolve_configuration(config)
-            }
-            None => Configuration {
+        let mut resolved: Vec<Configuration> = configurations
+            .into_iter()
+            .map(|config| self.resolve_configuration(config))
+            .collect();
+        // A library with no configuration runs its programs on their own.
+        if resolved.is_empty() && !self.programs.is_empty() {
+            resolved.push(Configuration {
                 name: None,
                 resources: Vec::new(),
-            },
-        };
-        self.finish(configuration)
-    }
-
-    /// Builds the model of `configuration`, binding the only `PROGRAM`
-    /// implicitly when no instance runs one.
-    fn finish(&mut self, mut configuration: Configuration) -> Execution {
-        if !self.undeclared.is_empty() {
-            return Execution::NotExecutable(NotExecutable::UndeclaredPrograms(std::mem::take(
-                &mut self.undeclared,
-            )));
+            });
+        }
+        for configuration in &mut resolved {
+            self.bind_programs_implicitly(configuration);
         }
 
+        std::mem::take(&mut self.builder).build(resolved)
+    }
+
+    /// Gives `configuration` an implicit resource that runs an implicit
+    /// instance of every `PROGRAM`, when none of its resources runs one.
+    fn bind_programs_implicitly(&self, configuration: &mut Configuration) {
         let has_instance = configuration
             .resources
             .iter()
             .flat_map(|resource| &resource.tasks)
             .any(|task| !task.instances.is_empty());
-        if !has_instance {
-            match self.programs.as_slice() {
-                [(_, program)] => configuration.resources.push(Resource {
-                    name: None,
-                    tasks: vec![implicit_task(vec![ProgramInstance {
-                        name: None,
-                        program: *program,
-                    }])],
-                }),
-                several => {
-                    return Execution::NotExecutable(NotExecutable::SeveralPrograms(
-                        several
-                            .iter()
-                            .map(|(program, _)| debug_name(&program.name))
-                            .collect(),
-                    ))
-                }
-            }
+        if has_instance || self.programs.is_empty() {
+            return;
         }
-
-        let builder = std::mem::take(&mut self.builder);
-        Execution::Executable(builder.build(configuration))
+        let instances = self
+            .programs
+            .iter()
+            .map(|(_, program)| ProgramInstance {
+                name: None,
+                program: InstanceOf::Program(*program),
+            })
+            .collect();
+        configuration.resources.push(Resource {
+            name: None,
+            tasks: vec![implicit_task(instances)],
+        });
     }
 
     /// Adds the globals of `config` and its resources, then resolves its
@@ -244,13 +222,11 @@ impl<'a> Walk<'a> {
             resource_scopes.push(scope);
         }
 
-        self.outer_scopes.insert(0, configuration_scope);
-
         let resources = config
             .resource_decl
             .iter()
             .zip(&resource_scopes)
-            .map(|(resource, scope)| self.resolve_resource(resource, scope))
+            .map(|(resource, scope)| self.resolve_resource(resource, scope, &configuration_scope))
             .collect();
 
         Configuration {
@@ -260,21 +236,25 @@ impl<'a> Walk<'a> {
     }
 
     /// Resolves a resource's tasks and gives each program instance to one.
-    fn resolve_resource(&mut self, resource: &ResourceDeclaration, scope: &Scope) -> Resource {
+    fn resolve_resource(
+        &self,
+        resource: &ResourceDeclaration,
+        scope: &Scope,
+        configuration_scope: &Scope,
+    ) -> Resource {
         let mut tasks: Vec<Task> = resource
             .tasks
             .iter()
-            .map(|task| self.resolve_task(task, scope))
+            .map(|task| self.resolve_task(task, &[scope, configuration_scope]))
             .collect();
         let mut implicit = Vec::new();
         for instance in &resource.programs {
-            let Some(program) = self.program_named(&instance.type_name) else {
-                self.undeclared.push(debug_name(&instance.type_name));
-                continue;
-            };
             let instance_model = ProgramInstance {
                 name: Some(debug_name(&instance.name)),
-                program,
+                program: match self.program_named(&instance.type_name) {
+                    Some(program) => InstanceOf::Program(program),
+                    None => InstanceOf::Unresolved(debug_name(&instance.type_name)),
+                },
             };
             // A `WITH` naming a task the resource does not declare is
             // reported by `rule_program_task_definition_exists`; the instance
@@ -300,13 +280,13 @@ impl<'a> Walk<'a> {
     }
 
     /// Resolves a task's parameters into its schedule.
-    fn resolve_task(&self, task: &TaskConfiguration, scope: &Scope) -> Task {
+    fn resolve_task(&self, task: &TaskConfiguration, scopes: &[&Scope]) -> Task {
         let interval = task.interval.as_ref().map(|interval| interval.interval);
         let schedule = match &task.single {
             Some(single) => Schedule::Event {
                 trigger: match single {
                     DataSourceKind::GlobalVarReference(reference) => self
-                        .global_named(&reference.global_var_name, scope)
+                        .global_named(&reference.global_var_name, scopes)
                         .map(Trigger::Global)
                         // A `SINGLE` that names no global is reported by
                         // `rule_task_configuration`, so no clean analysis
@@ -352,11 +332,13 @@ impl<'a> Walk<'a> {
             .map(|(_, id)| *id)
     }
 
-    /// The global `name` names from a task of a resource whose globals are
-    /// `scope`: the resource's, then the configuration's, then the top-level
-    /// ones, then the system ones.
-    fn global_named(&self, name: &Id, scope: &Scope) -> Option<GlobalId> {
-        std::iter::once(scope)
+    /// The global `name` names from a task whose resource and configuration
+    /// globals are `scopes`, nearest first: then the top-level ones, then the
+    /// system ones.
+    fn global_named(&self, name: &Id, scopes: &[&Scope]) -> Option<GlobalId> {
+        scopes
+            .iter()
+            .copied()
             .chain(&self.outer_scopes)
             .find_map(|scope| scope.get(name).copied())
     }
@@ -366,7 +348,7 @@ impl<'a> Walk<'a> {
 type Scope = HashMap<Id, GlobalId>;
 
 /// The freewheeling task of priority 0 that runs the instances no `WITH`
-/// binds, and the instance of a program no configuration binds.
+/// binds, and the instances of the programs no configuration binds.
 fn implicit_task(instances: Vec<ProgramInstance>) -> Task {
     Task {
         name: None,

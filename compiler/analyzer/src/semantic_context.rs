@@ -17,7 +17,7 @@ use crate::symbol_environment::SymbolEnvironment;
 use crate::type_environment::{TypeEnvironment, TypeEnvironmentBuilder};
 use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_ir::execution::{Execution, NotExecutable};
+use ironplc_ir::execution::{ExecutionModel, ExecutionModelBuilder};
 use ironplc_parser::options::CompilerOptions;
 
 /// Contains all environments needed for semantic analysis.
@@ -48,7 +48,7 @@ pub struct SemanticContext {
     /// What runs, and when: the configuration, its tasks and program
     /// instances, and the globals in scope. Codegen builds from this rather
     /// than reading the configuration's declarations.
-    execution: Execution,
+    execution_model: ExecutionModel,
 }
 
 impl SemanticContext {
@@ -67,14 +67,14 @@ impl SemanticContext {
             diagnostics: Vec::new(),
             reachable,
             compiler_options,
-            // Until a library is resolved there is nothing to run.
-            execution: Execution::NotExecutable(NotExecutable::NoProgram),
+            // Until a library is resolved there is nothing in it.
+            execution_model: ExecutionModelBuilder::new().build(Vec::new()),
         }
     }
 
     /// Records the execution model resolved from the library.
-    pub(crate) fn with_execution(mut self, execution: Execution) -> Self {
-        self.execution = execution;
+    pub(crate) fn with_execution_model(mut self, execution_model: ExecutionModel) -> Self {
+        self.execution_model = execution_model;
         self
     }
 
@@ -114,9 +114,9 @@ impl SemanticContext {
     }
 
     /// Returns the execution model resolved from the library: what runs, and
-    /// when, or why nothing can.
-    pub fn execution(&self) -> &Execution {
-        &self.execution
+    /// when.
+    pub fn execution_model(&self) -> &ExecutionModel {
+        &self.execution_model
     }
 
     /// Provides read-only access to the compiler options.

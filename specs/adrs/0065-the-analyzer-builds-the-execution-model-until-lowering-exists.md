@@ -63,8 +63,10 @@ lowered program will hold them.
   compiler options, never the analyzer's environments. When
   `ironplc-lowering` exists, the module moves into it unchanged and takes a
   `CleanAnalysis`, and the analyzer drops its dependency on `ironplc-ir`.
-* **The analyzer reports nothing about the model.** A library that cannot be
-  built into an executable resolves to `NotExecutable`, which codegen reports.
+* **The analyzer reports nothing about the model.** The model describes the
+  library as it is, including a library with no `PROGRAM`, several
+  configurations, or an instance of a program another file declares. Whether
+  a backend can build it is the backend's check, which codegen reports.
   The task parameters that make a program invalid (a negative `INTERVAL`, a
   `SINGLE` that names no `BOOL` global) are analyzer rules, which is where
   ADR-0058 puts them too, so they stay after the move.

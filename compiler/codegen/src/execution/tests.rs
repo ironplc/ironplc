@@ -305,7 +305,7 @@ fn task_schedule_when_priority_is_u16_max_then_fits() {
     assert_eq!(schedule.task_type, TaskType::Cyclic);
 }
 
-#[spec_test(REQ_EM_codegen_005)]
+#[spec_test(REQ_EM_codegen_008)]
 fn compile_when_no_program_then_p4020() {
     let source = "
 FUNCTION_BLOCK MyBlock
@@ -318,7 +318,7 @@ END_FUNCTION_BLOCK
     assert_eq!(error_code(source), Problem::NoProgramDeclaration.code());
 }
 
-#[spec_test(REQ_EM_codegen_005)]
+#[spec_test(REQ_EM_codegen_002)]
 fn compile_when_two_programs_and_no_configuration_then_p9999() {
     let source = format!(
         "{MAIN}
@@ -334,7 +334,7 @@ END_PROGRAM
     assert!(diagnostic.help.iter().any(|help| help.contains("1613")));
 }
 
-#[spec_test(REQ_EM_codegen_005)]
+#[spec_test(REQ_EM_codegen_008)]
 fn compile_when_two_configurations_then_p4081_on_second() {
     let source = format!(
         "{MAIN}
@@ -367,7 +367,7 @@ END_CONFIGURATION
     );
 }
 
-#[spec_test(REQ_EM_codegen_005)]
+#[spec_test(REQ_EM_codegen_008)]
 fn compile_when_instance_type_is_function_block_then_p4080_at_type_name() {
     let source = format!(
         "{MAIN}
@@ -393,6 +393,64 @@ END_CONFIGURATION
         diagnostic.primary.location.start,
         source.find(": counter").unwrap() + 2
     );
+}
+
+#[spec_test(REQ_EM_codegen_008)]
+fn compile_when_configuration_alone_then_p4080_at_program_type() {
+    // Checking such a file is fine; compiling it needs the program's body.
+    let source = "
+FUNCTION_BLOCK counter
+  VAR n : INT; END_VAR
+  n := n + 1;
+END_FUNCTION_BLOCK
+PROGRAM main
+  VAR x : INT; END_VAR
+  x := 1;
+END_PROGRAM
+CONFIGURATION config
+  RESOURCE resource1 ON PLC
+    PROGRAM second : elsewhere;
+    PROGRAM first : counter;
+  END_RESOURCE
+END_CONFIGURATION
+";
+    let diagnostic = compile_source(source).unwrap_err();
+
+    assert_eq!(
+        diagnostic.code,
+        Problem::ProgramInstanceTypeNotProgram.code()
+    );
+    assert_eq!(
+        diagnostic.primary.location.start,
+        source.find("elsewhere").unwrap()
+    );
+    assert_eq!(diagnostic.secondary.len(), 1);
+    assert_eq!(
+        diagnostic.secondary[0].location.start,
+        source.find(": counter").unwrap() + 2
+    );
+}
+
+#[spec_test(REQ_EM_codegen_008)]
+fn compile_when_no_program_and_two_configurations_then_p4020_first() {
+    let source = "
+FUNCTION_BLOCK counter
+  VAR n : INT; END_VAR
+  n := n + 1;
+END_FUNCTION_BLOCK
+CONFIGURATION cfgA
+  RESOURCE resA ON PLC
+    PROGRAM instA : counter;
+  END_RESOURCE
+END_CONFIGURATION
+CONFIGURATION cfgB
+  RESOURCE resB ON PLC
+    PROGRAM instB : counter;
+  END_RESOURCE
+END_CONFIGURATION
+";
+
+    assert_eq!(error_code(source), Problem::NoProgramDeclaration.code());
 }
 
 #[spec_test(REQ_EM_codegen_006)]

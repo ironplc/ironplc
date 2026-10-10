@@ -229,9 +229,8 @@ impl From<&CompilerOptions> for CodegenOptions {
 /// Takes a [`CleanAnalysis`], which can only be made from a semantic context
 /// that holds no diagnostics.
 ///
-/// Returns an error if the model is not executable, asks for more than the VM
-/// supports (see [`crate::execution`]), or if the program contains
-/// unsupported constructs.
+/// Returns an error if the model asks for more than the VM supports (see
+/// [`crate::execution`]), or if the program contains unsupported constructs.
 pub fn compile(
     analysis: CleanAnalysis<'_>,
     options: &CodegenOptions,

@@ -61,11 +61,12 @@ The departure is kept small enough to undo by moving one module:
   `CleanAnalysis`, and the analyzer drops its dependency on `ironplc-ir`.
 - **The model's types do not change** when it moves. They are `ironplc-ir`'s
   from the start.
-- **The analyzer reports nothing about the model.** A library that cannot be
-  built into an executable is a valid library, so `resolve` returns that as
-  data (`NotExecutable`), not as a diagnostic, as lowering would
-  (REQ-LOW-lowering-109). The rules that can make a program invalid are the
-  analyzer's under ADR-0058 too, and stay there after the move.
+- **The analyzer reports nothing about the model.** The model describes the
+  library as it is: a library with no `PROGRAM`, several configurations, or
+  an instance of a program declared in another file is a valid library. That
+  a backend cannot build one is the backend's check, as it would be under
+  lowering (REQ-LOW-lowering-109). The rules that can make a program invalid
+  are the analyzer's under ADR-0058 too, and stay there after the move.
 
 ## Representation
 
@@ -90,21 +91,16 @@ The model is built to two rules:
 ```rust
 // ironplc-ir, module `execution`
 
-/// What `resolve` built: a model a backend can build, or why it cannot.
-pub enum Execution {
-    Executable(ExecutionModel),
-    NotExecutable(NotExecutable),
-}
-
-/// The fields are private, so `ExecutionModelBuilder` is the only way to
-/// make one.
+/// What `resolve` built: the library as it is. Whether a backend can build it
+/// is the backend's check. The fields are private, so `ExecutionModelBuilder`
+/// is the only way to make one.
 pub struct ExecutionModel {
-    configuration: Configuration,         // declared, or the implicit one
+    configurations: Vec<Configuration>,   // declared, in source order; or the implicit one
     programs: Vec<ProgramType>,           // indexed by ProgramId
     globals: Vec<Global>,                 // indexed by GlobalId: variable-table order
 }
 impl ExecutionModel {
-    pub fn configuration(&self) -> &Configuration;
+    pub fn configurations(&self) -> &[Configuration];
     pub fn program(&self, id: ProgramId) -> Option<&ProgramType>; // None: another model's id
     pub fn global(&self, id: GlobalId) -> Option<&Global>;        // None: another model's id
     pub fn programs(&self) -> impl Iterator<Item = (ProgramId, &ProgramType)>; // in added order
@@ -113,7 +109,7 @@ impl ExecutionModel {
 
 pub struct Configuration {
     pub name: Option<DebugName>,          // None: the implicit configuration
-    pub resources: Vec<Resource>,         // declaration order; implicit one last
+    pub resources: Vec<Resource>,         // declaration order; implicit one last, if any
 }
 
 pub struct Resource {
@@ -140,8 +136,13 @@ pub enum Trigger {
 }
 
 pub struct ProgramInstance {
-    pub name: Option<DebugName>,          // None: the implicit instance
-    pub program: ProgramId,
+    pub name: Option<DebugName>,          // None: an implicit instance
+    pub program: InstanceOf,
+}
+
+pub enum InstanceOf {
+    Program(ProgramId),                   // a PROGRAM declaration of the library
+    Unresolved(DebugName),                // any other type name, as written
 }
 
 pub struct ProgramType {
@@ -172,7 +173,7 @@ pub struct ExecutionModelBuilder { /* private */ }
 impl ExecutionModelBuilder {
     pub fn add_program(&mut self, program: ProgramType) -> ProgramId;
     pub fn add_global(&mut self, global: Global) -> GlobalId;
-    pub fn build(self, configuration: Configuration) -> ExecutionModel;
+    pub fn build(self, configurations: Vec<Configuration>) -> ExecutionModel;
 }
 
 /// A source name, for a diagnostic or debug information. It is not `Eq`,
@@ -183,23 +184,17 @@ impl DebugName {
     pub fn span(&self) -> SourceSpan;
 }
 impl Display for DebugName { /* the name as written */ }
-
-pub enum NotExecutable {
-    NoProgram,
-    SeveralConfigurations(Vec<DebugName>),
-    SeveralPrograms(Vec<DebugName>),
-    UndeclaredPrograms(Vec<DebugName>),
-}
 ```
 
 ### How each relationship is held
 
 | Relationship | Held by | Why it cannot be wrong |
 |---|---|---|
-| A resource belongs to the configuration | `Configuration::resources` | Ownership; there is always exactly one configuration |
+| A configuration belongs to the library | `ExecutionModel::configurations` | Ownership |
+| A resource belongs to a configuration | `Configuration::resources` | Ownership |
 | A task belongs to a resource | `Resource::tasks` | Ownership |
 | An instance runs under a task | `Task::instances` | Ownership: an instance cannot name a task of another resource, or none |
-| An instance instantiates a program | `ProgramId` | Returned by the builder when the program is added; `resolve` adds only declared `PROGRAM`s, and an instance of anything else makes the library `NotExecutable` |
+| An instance instantiates a program | `InstanceOf::Program(ProgramId)` | Returned by the builder when the program is added; `resolve` adds only declared `PROGRAM`s. An instance of anything else is `InstanceOf::Unresolved`, which names no entry |
 | A task is triggered by a global | `GlobalId` | Returned by the builder when the global is added; an undeclared one is an analysis error |
 | A global's place in the variable table | Its position in `globals` | The position is the id |
 
@@ -223,14 +218,18 @@ Ownership goes to scheduling, which is what this model is for.
   so a cyclic task without an interval, or an event task without a trigger,
   cannot be written. The analyzer decides the kind ([Task kind](#task-kind));
   no backend reads `INTERVAL` and `SINGLE` to decide it again.
-- **An executable model and a reason are two types.** A backend matches
-  `Execution` once. Inside `ExecutionModel` every instance has a program
-  declared as a `PROGRAM`, every task has a schedule and every trigger names
-  a global, with no `Option` to handle.
+- **The model describes the library, not what a backend can build.** A
+  library with no `PROGRAM`, several configurations or several programs, or
+  with an instance of a program another file declares, is valid, and the
+  model holds it as it is. Each backend checks the model against what it can
+  run, and reports what it cannot ([Backend capability
+  checks](#backend-capability-checks)). An instance whose type is not a
+  `PROGRAM` of the library says so in its type, `InstanceOf::Unresolved`,
+  rather than being left out, so that a backend sees it.
 - **Implicit objects are present, not inferred.** A library with no
-  `CONFIGURATION` gets an implicit one, so every executable model has exactly
-  one configuration. A program nothing binds runs under a task the model
-  lists, in a resource the model lists. Only their names are absent.
+  `CONFIGURATION` but a `PROGRAM` gets an implicit configuration. A program
+  nothing binds runs under a task the model lists, in a resource the model
+  lists. Only their names are absent.
 - **A system global is named by what it is.** `SystemGlobal::UpTime` tells a
   backend what the runtime writes into it. The backend does not recognise the
   global by its name, or by its type.
@@ -289,8 +288,8 @@ replaced by, its `PouId` and `VarId`.
 The lowered program design says that a library with no configuration lowers
 nothing, because only POUs reachable from a program instance are lowered
 (REQ-LOW-lowering-025). With this model a library has no configuration only in
-its source: the model gives it an implicit one, whose instance makes the only
-`PROGRAM` reachable, so it lowers as it compiles today. That sentence of the
+its source: the model gives it an implicit one, whose instances make its
+`PROGRAM`s reachable, so it lowers as it compiles today. That sentence of the
 lowered program design should read "a library with no program instance".
 
 ### Alternatives for review
@@ -351,15 +350,17 @@ it lands, `ironplc-ir` imports `SourceSpan` from `ironplc-dsl`.
 
 **REQ-EM-ir-002** `ironplc-ir` depends on no compiler crate but `ironplc-dsl`.
 
-The model holds every resource, task and instance the configuration declares.
-It does not know that the VM runs one program instance; codegen checks that
-against it (see [Backend capability checks](#backend-capability-checks)).
+The model holds every configuration, resource, task and instance the library
+declares. It does not know that the VM runs one configuration and one program
+instance; codegen checks that against it (see [Backend capability
+checks](#backend-capability-checks)).
 
 ### Binding programs to tasks
 
-**REQ-EM-analyzer-010** With no `CONFIGURATION`, the model has an implicit configuration holding one implicit resource, which holds one implicit freewheeling task of priority 0, which runs one implicit instance of the only `PROGRAM`.
+**REQ-EM-analyzer-012** With no `CONFIGURATION` and at least one `PROGRAM`, the model has one implicit configuration holding one implicit resource, which holds one implicit freewheeling task of priority 0, which runs one implicit instance of every `PROGRAM`, in source order. With no `PROGRAM` either, the model has no configuration.
 
-This is what codegen does today, and the model keeps it. The default
+For a library of one `PROGRAM` this is what codegen did before the model, and
+the model keeps it. The default
 configuration sketched in [Task Support](61131-task-support.md) has a cyclic
 task of 10 ms; the compiler has never built that, and this design does not
 adopt it.
@@ -370,8 +371,7 @@ A `WITH` that names a task the resource does not declare is reported by
 `rule_program_task_definition_exists` (P4006); the model binds that instance to
 the implicit task, so every instance has a task.
 
-A configuration whose resources instantiate no program binds the only `PROGRAM`
-implicitly, as with no configuration.
+**REQ-EM-analyzer-013** A configuration none of whose resources has a program instance gets an implicit resource, after its declared ones, which runs an implicit instance of every `PROGRAM` as REQ-EM-analyzer-012 describes.
 
 Every instance in an `ExecutionModel` is owned by exactly one task, so an
 instance cannot be bound to no task, or to a task of another resource.
@@ -393,6 +393,10 @@ instance cannot be bound to no task, or to a task of another resource.
 The structured text grammar accepts one `RESOURCE` per configuration; the
 PLCopen XML front end gives a configuration as many as it declares.
 
+**REQ-EM-analyzer-031** Every `CONFIGURATION` the library declares is in the model, in source order, each resolved as REQ-EM-analyzer-030 describes; the model does not pick one.
+
+**REQ-EM-analyzer-032** Every `PROGRAM` declaration is a program type of the model, in source order, whether or not an instance runs it.
+
 ### Globals
 
 **REQ-EM-analyzer-040** The globals in scope are listed system first, then top-level `VAR_GLOBAL` in the order the files were given, then the configuration's, then each resource's in declaration order; a global's `GlobalId` is its position in that list.
@@ -401,27 +405,23 @@ PLCopen XML front end gives a configuration as many as it declares.
 
 The VM writes the uptime globals by slot, which is why they come first.
 
+With several configurations, each configuration's globals, then its
+resources', follow the top-level ones, configurations in source order.
+
 A resource's `VAR_GLOBAL` is in the model, but codegen does not give it storage
 yet: it builds the variable table from the system, top-level and configuration
 globals, in the order above, so that a program that compiles today keeps its
 variable indexes.
 
-### When no executable can be built
+### Instances of a type the library does not declare as a program
 
-These cases are recorded in the model, not reported by analysis: `check`, the language server and the MCP server analyze library
-files that legitimately declare no `PROGRAM`, or several.
-
-**REQ-EM-analyzer-050** A library that declares no `PROGRAM` resolves to `NotExecutable::NoProgram`, whatever else it declares.
-
-**REQ-EM-analyzer-051** A library that declares more than one `CONFIGURATION` is recorded as not executable, with their names in source order; the model resolves none of them rather than picking one.
-
-**REQ-EM-analyzer-052** A library that declares more than one `PROGRAM` and no configuration that binds one is recorded as not executable, with their names in source order. A configuration that binds one of several programs is executable.
-
-**REQ-EM-analyzer-053** A configuration with a program instance whose type is not a `PROGRAM` declaration of the library, such as a function block or a name declared nowhere, is recorded as not executable, with those type names in declaration order. An `ExecutionModel` therefore never holds an instance without a program.
+**REQ-EM-analyzer-054** A program instance whose type is not a `PROGRAM` declaration of the library, such as a function block or a name declared nowhere, is in the model as `InstanceOf::Unresolved`, with its type name as written.
 
 A configuration is commonly kept in a file of its own, and checking that file
 alone must not report the programs it names as missing, which is why this is
-recorded rather than reported.
+recorded rather than reported. `check`, the language server and the MCP server
+analyze library files that legitimately declare no `PROGRAM`, or several, for
+the same reason; the model holds those as they are too.
 
 ### Language rules on tasks
 
@@ -439,8 +439,7 @@ accept an undeclared or non-`BOOL` `SINGLE` until it rejected the event task.
 
 ### Backend capability checks
 
-Codegen reports why the model is not executable, then checks the model against
-what the VM can run. These checks read the model; they resolve nothing. Only
+Codegen checks the model against what the VM can run. These checks read the model; they resolve nothing. Only
 the task of the instance that runs is checked: a task no instance runs under is
 never emitted.
 
@@ -456,7 +455,7 @@ than cyclic with a period of 0, as before the model.
 
 **REQ-EM-codegen-004** A priority above 65535 or an interval that does not fit 64-bit microseconds is P4048, labelled at the task's name: the container stores them in those widths.
 
-**REQ-EM-codegen-005** A model recorded as not executable is reported for its reason: no `PROGRAM` is P4020, several `PROGRAM`s is P9999 with the help naming #1613, several `CONFIGURATION`s is P4081, and an instance of a type that is not a `PROGRAM` is P4080.
+**REQ-EM-codegen-008** A model that the container cannot hold is reported, in this order: a model with no `PROGRAM` is P4020, whatever else it holds; a model with more than one configuration is P4081, labelled at the second; and a configuration with an `InstanceOf::Unresolved` instance is P4080, labelled at each such type name. Several `PROGRAM`s are P9999 (REQ-EM-codegen-002).
 
 Codegen used to compile the only `PROGRAM` freewheeling and ignore an instance
 of a function block or of an undeclared program; such a library now reports
