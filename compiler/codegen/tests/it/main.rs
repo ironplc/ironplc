@@ -154,6 +154,7 @@ mod end_to_end_mul;
 mod end_to_end_mux;
 mod end_to_end_mux_float;
 mod end_to_end_mux_lint;
+mod end_to_end_named_return_type;
 mod end_to_end_neg;
 mod end_to_end_nested;
 mod end_to_end_numeric_builtin_edges;

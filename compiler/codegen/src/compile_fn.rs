@@ -29,7 +29,7 @@ use super::compile_stmt::{
     compile_body, compile_statements, resolve_string_max_length, resolve_string_spec_max_length,
 };
 use super::scope::Scope;
-use super::type_info::{decl_type_info, resolve_type_name};
+use super::type_info::{decl_type_info, named_type_info, resolve_type_name};
 use crate::emit::Emitter;
 
 /// Records a debug [`VarNameEntry`] for a function- or FB-local variable
@@ -290,7 +290,7 @@ pub(crate) fn compile_user_function(
                     return_var_index,
                     &func_decl.name.span(),
                 )?;
-            } else if let Some(type_info) = resolve_type_name(&return_type_name.name) {
+            } else if let Some(type_info) = named_type_info(types, &return_type_name) {
                 ctx.var_types.insert(return_id.clone(), type_info);
             }
             None
@@ -305,7 +305,7 @@ pub(crate) fn compile_user_function(
 
     // Determine return type's OpType.
     let return_type_name = func_decl.return_type.to_type_name();
-    let return_op_type = resolve_type_name(&return_type_name.name)
+    let return_op_type = named_type_info(types, &return_type_name)
         .map(|info| (info.op_width, info.signedness))
         .unwrap_or(DEFAULT_OP_TYPE);
 

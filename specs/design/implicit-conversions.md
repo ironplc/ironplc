@@ -355,9 +355,11 @@ operand and a field reached through an array of structures used to compile.
 
 **REQ-IC-codegen-011** `TRUNC`, `BCD_TO_INT` and `SIZEOF` compute at the integer type the analyzer recorded for the call: `x := TRUNC(r)` with `r = 2.75` and a `REAL` target stores 2.0, `l := TRUNC(lr)` with `lr = 5000000000.5` stores 5000000000, and `SIZEOF` and `BCD_TO_INT` assigned to an `LINT` store their value at 64 bits.
 
-A parameter of a user-defined function is passed at its declared type the same way, whatever kind of declaration declares it.
+A parameter of a user-defined function is passed at its declared type the same way, whatever kind of declaration declares it, and the value of a function or method is returned at the type its return type names, an alias as the type it names and a subrange as its base type. The code generator used to resolve a return type's name as an elementary type only, and returned any other at the default `DINT`, which read the bits of an alias of `LREAL` as an integer.
 
 **REQ-IC-codegen-006** A function's parameter of an alias or a subrange type receives the value of the type it is operated as: `pass(p)` with `p = 2.5` and a parameter of an alias of `LREAL` passes 2.5, and `pass(b)` with `b = 5000000000` and a parameter of an alias or a subrange of `LINT` passes 5000000000.
+
+**REQ-IC-codegen-016** A function or method whose return type is an alias or a subrange returns the value of the type it is operated as: `keep(x)` and `k.Half()` with a return type that is an alias of `LREAL` return 2.5 and 1.25, and a function returning a subrange or an alias of `LINT` returns 4294967298 and 4294967297.
 
 `AND`, `OR` and `XOR` compute at the type the analyzer recorded for the operation, to which it converted an operand of another width, and their result is converted to the type of its context.
 
