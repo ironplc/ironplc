@@ -676,6 +676,7 @@ fn method_decl(name: &str) -> ironplc_dsl::common::MethodDeclaration {
         edge_variables: vec![],
         body: vec![],
         span: ironplc_dsl::core::SourceSpan::default(),
+        result: Default::default(),
     }
 }
 

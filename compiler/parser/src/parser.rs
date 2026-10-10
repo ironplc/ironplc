@@ -912,7 +912,7 @@ parser! {
     rule structure_element_declaration() -> StructureElementDeclaration = name:structure_element_name() _ tok(TokenType::Colon) _ init:(
       arr:array_spec_init() { InitialValueAssignmentKind::Array(arr) }
       // handle the initial value
-      / subrange:subrange_spec_init__with_range() { InitialValueAssignmentKind::Subrange(subrange.0) }
+      / subrange:subrange_spec_init__with_range() { InitialValueAssignmentKind::Subrange(SubrangeInitialValueAssignment { spec: subrange.0, initial_value: subrange.1 }) }
       / i:initialized_structure__without_ambiguous() { late_resolved_members(i) }
       / spec_init:enumerated_spec_init__with_value() {
         match spec_init.0 {
@@ -1321,7 +1321,7 @@ parser! {
     }
     rule var_declaration() -> Vec<UntypedVarDecl> = temp_var_decl()
     rule temp_var_decl() -> Vec<UntypedVarDecl> = string_var_declaration() / var1_declaration() / array_var_declaration() / structured_var_declaration()
-    rule var1_declaration() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init:(spec:subrange_specification__with_range() {InitialValueAssignmentKind::Subrange(spec)} / values:enumerated_specification__only_values()  {InitialValueAssignmentKind::EnumeratedValues(EnumeratedValuesInitializer{ values, initial_value: None})} / spec:simple_specification() { InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer::bare(spec))} ) {
+    rule var1_declaration() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init:(spec:subrange_specification__with_range() {InitialValueAssignmentKind::Subrange(SubrangeInitialValueAssignment::bare(spec))} / values:enumerated_specification__only_values()  {InitialValueAssignmentKind::EnumeratedValues(EnumeratedValuesInitializer{ values, initial_value: None})} / spec:simple_specification() { InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer::bare(spec))} ) {
       // TODO this could eventually cause duplicated definitions because
       // multiple variables have the same type declaration
       names.iter().map(|identifier| {
@@ -1377,6 +1377,7 @@ parser! {
         initializer,
         block: next_block_id(),
         type_id: None,
+        reset_on_call: false,
       }
     }
     // We use the same type as in other places for VarInit, but the external always omits the initializer
@@ -1404,6 +1405,7 @@ parser! {
         initializer: spec,
         block: next_block_id(),
         type_id: None,
+        reset_on_call: false,
       }
     }
     rule global_var_name() -> Id = i:identifier() { i }
@@ -1430,6 +1432,7 @@ parser! {
           initializer: init,
           block: next_block_id(),
           type_id: None,
+          reset_on_call: false,
         }
       }).collect()
      }
@@ -1542,6 +1545,7 @@ parser! {
         variables,
         edge_variables,
         body,
+        result: Default::default(),
       }
     }
     rule io_var_declarations() -> Vec<VarDeclarations> = input_declarations() / o:output_declarations() { vec![VarDeclarations::Outputs(o)] } / io:input_output_declarations() { vec![VarDeclarations::Inouts(io)] }
@@ -1619,6 +1623,7 @@ parser! {
         edge_variables,
         body: body.unwrap_or_default(),
         span: SourceSpan::join(&start.span, &end.span),
+        result: Default::default(),
       }
     }
 
