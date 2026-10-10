@@ -70,6 +70,17 @@ pub(crate) fn expr_type_info(ctx: &CompileContext, expr: &Expr) -> Option<VarTyp
     }
 }
 
+/// The `VarTypeInfo` of the type named `name`, whatever kind of declaration
+/// declares it: an alias as the type it names, and a subrange as its base
+/// type. `None` for a type the backend does not operate on as one value.
+///
+/// A function's or method's return type is known by its name only, so this
+/// is how its value is operated: resolving the name as an elementary type
+/// alone took an alias of `LREAL` for the default `DINT`.
+pub(crate) fn named_type_info(types: &TypeEnvironment, name: &TypeName) -> Option<VarTypeInfo> {
+    operand_type_info(&types.get(name)?.representation)
+}
+
 /// The `VarTypeInfo` of the type a declaration declares, from its
 /// `type_id`. `None` when the analyzer resolved no type for it, or when the
 /// type is not one this backend operates on arithmetically.

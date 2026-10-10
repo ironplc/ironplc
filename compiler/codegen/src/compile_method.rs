@@ -25,7 +25,7 @@ use super::compile::{
 use super::compile_expr::{compile_expr, emit_load_var};
 use super::compile_setup::emit_function_local_prologue;
 use super::compile_stmt::compile_statements;
-use super::type_info::{decl_type_info, resolve_type_name};
+use super::type_info::{decl_type_info, named_type_info};
 use crate::emit::Emitter;
 
 /// Compiles every `METHOD` declared on `fb_decl`, in declaration order.
@@ -117,7 +117,7 @@ fn compile_user_method(
     param_var_off: VarIndex,
     ctx: &mut CompileContext,
     _builder: &mut ContainerBuilder,
-    _types: &TypeEnvironment,
+    types: &TypeEnvironment,
 ) -> Result<CompiledFunction, Diagnostic> {
     let mut current_index = param_var_off;
     let mut num_params: u16 = 0;
@@ -164,7 +164,7 @@ fn compile_user_method(
     let has_return_value = method.return_type.is_some();
 
     let return_op_type = match &method.return_type {
-        Some(FunctionReturnType::Named(type_name)) => resolve_type_name(&type_name.name)
+        Some(FunctionReturnType::Named(type_name)) => named_type_info(types, type_name)
             .map(|info| (info.op_width, info.signedness))
             .unwrap_or(DEFAULT_OP_TYPE),
         Some(FunctionReturnType::String(spec)) | Some(FunctionReturnType::WString(spec)) => {
@@ -188,7 +188,7 @@ fn compile_user_method(
     if has_return_value {
         ctx.variables.insert(return_id.clone(), return_var_index);
         if let Some(FunctionReturnType::Named(type_name)) = &method.return_type {
-            if let Some(type_info) = resolve_type_name(&type_name.name) {
+            if let Some(type_info) = named_type_info(types, type_name) {
                 ctx.var_types.insert(return_id.clone(), type_info);
             }
         }
