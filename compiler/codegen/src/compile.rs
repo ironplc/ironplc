@@ -996,6 +996,10 @@ pub(crate) struct FbInstanceInfo {
     pub(crate) data_offset: u32,
     /// Maps field name (lowercase) to field index.
     pub(crate) field_indices: HashMap<String, u8>,
+    /// Maps field name (lowercase) to the operation type of its declared
+    /// type, which a value stored in the field or read from it is
+    /// compiled at.
+    pub(crate) field_op_types: HashMap<String, OpType>,
 }
 
 /// Metadata for a compiled user-defined function block type.

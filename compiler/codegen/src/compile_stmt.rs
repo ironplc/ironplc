@@ -170,6 +170,7 @@ fn compile_fb_call(
         .ok_or_else(|| Diagnostic::todo_with_span(fb_call.span()))?;
     let type_id = fb_info.type_id;
     let field_indices = fb_info.field_indices.clone();
+    let field_op_types = fb_info.field_op_types.clone();
     let var_index = fb_info.var_index;
 
     // Push FB instance reference.
@@ -182,7 +183,7 @@ fn compile_fb_call(
             let field_idx = field_indices
                 .get(&field_name)
                 .ok_or_else(|| Diagnostic::todo_with_span(input.name.span()))?;
-            let op_type = resolve_fb_field_op_type(ctx, type_id, &field_name);
+            let op_type = resolve_fb_field_op_type(&field_op_types, &field_name);
             compile_expr(emitter, ctx, &input.expr, op_type)?;
             emitter.emit_fb_store_param(*field_idx);
         }
@@ -209,7 +210,7 @@ fn compile_fb_call(
                 .ok_or_else(|| Diagnostic::todo_with_span(output.src.span()))?;
             emitter.emit_fb_load_param(*field_idx);
             let target_index = resolve_variable(ctx, &output.tgt)?;
-            let op_type = resolve_fb_field_op_type(ctx, type_id, &field_name);
+            let op_type = resolve_fb_field_op_type(&field_op_types, &field_name);
             emit_store_var(emitter, target_index, op_type);
         }
     }
