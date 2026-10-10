@@ -14,7 +14,7 @@ use ironplc_analyzer::semantic_type::{ArrayDimension, ByteSized, SemanticType};
 use ironplc_container::{CharWidth, ContainerBuilder, SlotIndex, VarIndex};
 
 use super::compile::{CompileContext, OpWidth, Signedness, VarTypeInfo};
-use super::compile_expr::compile_expr;
+use super::compile_expr::{compile_expr, op_type};
 use crate::emit::Emitter;
 
 /// Normalized array specification, independent of AST representation.
@@ -846,10 +846,18 @@ pub(crate) fn emit_flat_index(
         return Ok(());
     }
 
-    // Variable case: emit runtime computation using i64 arithmetic.
-    let subscript_op_type = (OpWidth::W32, Signedness::Signed);
+    // Variable case: emit runtime computation using i64 arithmetic. Each
+    // subscript compiles at its own type, which the analyzer converted to
+    // `DINT` where its width differed.
     for (k, (subscript, dim)) in subscripts.iter().zip(dimensions.iter()).enumerate() {
-        compile_expr(emitter, ctx, subscript, subscript_op_type)?;
+        let own = op_type(ctx, subscript)?;
+        if own.0 != OpWidth::W32 {
+            return Err(Diagnostic::internal_error_at(Label::span(
+                subscript.span(),
+                "Array subscript of a width other than DINT's, and the analyzer recorded no conversion",
+            )));
+        }
+        compile_expr(emitter, ctx, subscript, own)?;
         if dim.lower_bound != 0 {
             let lb_const = ctx.add_i64_constant(dim.lower_bound as i64);
             emitter.emit_load_const_i64(lb_const);

@@ -9,11 +9,11 @@
 use ironplc_analyzer::{BitShift, Intrinsic, NumericFunction};
 use ironplc_container::opcode;
 use ironplc_dsl::core::Located;
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, Function};
 
 use super::call_args::{collect_positional_args, wrong_arg_count};
-use super::compile::{CompileContext, OpType, OpWidth, Signedness, DEFAULT_OP_TYPE};
+use super::compile::{CompileContext, OpType, OpWidth, Signedness};
 use super::compile_expr::{compile_expr, op_type, storage_bits};
 use crate::emit::Emitter;
 
@@ -240,12 +240,20 @@ pub(crate) fn compile_shift_rotate(
 ) -> Result<(), Diagnostic> {
     // Compile IN (value) with the inferred op_type
     compile_expr(emitter, ctx, args[0], op_type)?;
-    // Compile N (shift count) — always as i32 for W32, i64 for W64
-    let n_op_type = match op_type.0 {
-        OpWidth::W64 => (OpWidth::W64, Signedness::Signed),
-        _ => DEFAULT_OP_TYPE,
+    // Compile N (shift count) at its own type: the analyzer converted it to
+    // `LINT` for a value operated at 64 bits and to `DINT` otherwise.
+    let count = super::compile_expr::op_type(ctx, args[1])?;
+    let expected = match op_type.0 {
+        OpWidth::W64 => OpWidth::W64,
+        _ => OpWidth::W32,
     };
-    compile_expr(emitter, ctx, args[1], n_op_type)?;
+    if count.0 != expected {
+        return Err(Diagnostic::internal_error_at(Label::span(
+            args[1].span(),
+            "Shift count of a width other than the shifted value's, and the analyzer recorded no conversion",
+        )));
+    }
+    compile_expr(emitter, ctx, args[1], count)?;
 
     // Determine storage bits for narrow-type ROL/ROR selection
     let bits = storage_bits(ctx, args[0])?;
