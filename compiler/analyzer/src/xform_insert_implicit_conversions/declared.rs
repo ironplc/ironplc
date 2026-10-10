@@ -114,9 +114,5 @@ pub(super) fn elementary_of(
     types: &TypeEnvironment,
     representation: &SemanticType,
 ) -> Option<TypeId> {
-    let representation = match representation {
-        SemanticType::Subrange { base_type, .. } => base_type,
-        other => other,
-    };
-    types.id_of(&types.elementary_type_name_for(representation)?)
+    types.id_of(&types.elementary_type_name_for(representation.operated_as())?)
 }

@@ -470,8 +470,9 @@ iec_type_tag encoding:
 
 Tags 25-27 mark a variable whose slot holds a data-region offset rather than
 its value, so a reader knows not to display the slot. They are distinct from
-`OTHER` because `OTHER` also carries named subrange types, whose slot does hold
-their value. See [Variable Value Rendering](variable-value-rendering.md).
+`OTHER` because a variable tagged `OTHER` may hold its value in its slot. A
+subrange variable is not tagged `OTHER`: it carries its base type's tag
+(REQ-SR-023), so it renders at its base type's width and signedness. See [Variable Value Rendering](variable-value-rendering.md).
 Format version 4 retires them: the type reference's `kind` says what the slot
 holds, and the COMPOSITE_TYPE and ARRAY_TYPE tables say what is at the offset
 ([Variable Inspection Model](variable-inspection-model.md) §1.1).

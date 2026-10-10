@@ -1025,21 +1025,33 @@ END_PROGRAM
     Ok(())
 }
 
-/// A named subrange also reaches the renderer without an elementary type tag,
-/// but its slot *does* hold its value. It must keep showing it.
+/// A named subrange's slot holds its value at its base type's width and
+/// signedness, so it renders as its base type. Rendering it as a 32-bit
+/// signed integer showed a `LINT` subrange as its low word and an unsigned
+/// one above 2^31 as negative.
 #[spec_test(REQ_VC_vm_cli_009)]
-fn run_when_dump_vars_and_named_subrange_then_shows_value() -> Result<(), Box<dyn std::error::Error>>
-{
+fn run_when_dump_vars_and_named_subrange_then_shows_value_at_base_type_width(
+) -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
     let container_path = dir.path().join("sub.iplc");
     write_compiled_container(
         &container_path,
         "
-TYPE Level : INT (0..100); END_TYPE
+TYPE
+    Level : INT (0..100);
+    Big : LINT (0..10000000000);
+    BigAlias : Big;
+    Huge : ULINT (0..18446744073709551615);
+    Wide : UDINT (0..4294967295);
+END_TYPE
 
 PROGRAM main
 VAR
     lvl : Level := 75;
+    big : Big := 4294967297;
+    alias : BigAlias := 4294967298;
+    huge : Huge := 18446744073709551615;
+    wide : Wide := 4294967295;
 END_VAR
 END_PROGRAM
 ",
@@ -1055,6 +1067,13 @@ END_PROGRAM
     let dump = String::from_utf8(out.get_output().stdout.clone())?;
 
     assert!(dump.contains("lvl: 75\n"), "dump was:\n{dump}");
+    assert!(dump.contains("big: 4294967297\n"), "dump was:\n{dump}");
+    assert!(dump.contains("alias: 4294967298\n"), "dump was:\n{dump}");
+    assert!(
+        dump.contains("huge: 18446744073709551615\n"),
+        "dump was:\n{dump}"
+    );
+    assert!(dump.contains("wide: 4294967295\n"), "dump was:\n{dump}");
 
     Ok(())
 }

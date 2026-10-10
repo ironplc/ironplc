@@ -29,7 +29,7 @@ use super::compile_string::{
     compile_concat, compile_delete, compile_find, compile_insert, compile_left, compile_len,
     compile_mid, compile_replace, compile_right, resolve_string_arg,
 };
-use super::compile_time_arith::{compile_time_arith, time_arith_for, Operand};
+use super::compile_time_arith::{compile_time_arith, time_arith_for};
 use super::type_info::{elementary_type_info, expr_operand_name};
 use crate::emit::Emitter;
 
@@ -178,7 +178,7 @@ fn compile_intrinsic_at(
         Intrinsic::Time { function, long } => {
             let (arith, width) = time_arith_for(function, long);
             let [in1, in2] = fixed_args::<2>(func)?;
-            compile_time_arith(emitter, ctx, arith, width, Operand::Expr(in1), in2)
+            compile_time_arith(emitter, ctx, arith, width, in1, in2)
         }
         // Time functions: datetime decomposition
         Intrinsic::DtToDate => compile_dt_to_date(emitter, ctx, fixed_args(func)?),
@@ -332,7 +332,7 @@ fn compile_operator_form(
         // enclosing `op_type`, which is the type of the BOOL it yields.
         FormOf::Compare(op) if op.is_comparison() => {
             let [left, right] = fixed_args::<2>(func)?;
-            compile_comparison(emitter, ctx, op, left, right, op_type)
+            compile_comparison(emitter, ctx, op, left, right)
         }
         FormOf::Compare(op) => {
             compile_left_fold(emitter, ctx, func, op_type, |emitter, op_type| {
@@ -748,15 +748,20 @@ pub(crate) fn resolve_fb_type(name: &str) -> Option<(u16, usize, HashMap<String,
         "TON" => Some((opcode::fb_type::TON, 6, timer_fb_fields())),
         "TOF" => Some((opcode::fb_type::TOF, 6, timer_fb_fields())),
         "TP" => Some((opcode::fb_type::TP, 6, timer_fb_fields())),
-        "CTU" | "CTU_INT" | "CTU_DINT" | "CTU_LINT" | "CTU_UDINT" | "CTU_ULINT" => {
-            Some((opcode::fb_type::CTU, 6, ctu_fb_fields()))
-        }
-        "CTD" | "CTD_INT" | "CTD_DINT" | "CTD_LINT" | "CTD_UDINT" | "CTD_ULINT" => {
-            Some((opcode::fb_type::CTD, 6, ctd_fb_fields()))
-        }
-        "CTUD" | "CTUD_INT" | "CTUD_DINT" | "CTUD_LINT" | "CTUD_UDINT" | "CTUD_ULINT" => {
-            Some((opcode::fb_type::CTUD, 10, ctud_fb_fields()))
-        }
+        // Each width of a counter counts in its own type: `INT` and `DINT`
+        // in a signed 32-bit integer, the others in their own.
+        "CTU" | "CTU_INT" | "CTU_DINT" => Some((opcode::fb_type::CTU, 6, ctu_fb_fields())),
+        "CTU_UDINT" => Some((opcode::fb_type::CTU_UDINT, 6, ctu_fb_fields())),
+        "CTU_LINT" => Some((opcode::fb_type::CTU_LINT, 6, ctu_fb_fields())),
+        "CTU_ULINT" => Some((opcode::fb_type::CTU_ULINT, 6, ctu_fb_fields())),
+        "CTD" | "CTD_INT" | "CTD_DINT" => Some((opcode::fb_type::CTD, 6, ctd_fb_fields())),
+        "CTD_UDINT" => Some((opcode::fb_type::CTD_UDINT, 6, ctd_fb_fields())),
+        "CTD_LINT" => Some((opcode::fb_type::CTD_LINT, 6, ctd_fb_fields())),
+        "CTD_ULINT" => Some((opcode::fb_type::CTD_ULINT, 6, ctd_fb_fields())),
+        "CTUD" | "CTUD_INT" | "CTUD_DINT" => Some((opcode::fb_type::CTUD, 10, ctud_fb_fields())),
+        "CTUD_UDINT" => Some((opcode::fb_type::CTUD_UDINT, 10, ctud_fb_fields())),
+        "CTUD_LINT" => Some((opcode::fb_type::CTUD_LINT, 10, ctud_fb_fields())),
+        "CTUD_ULINT" => Some((opcode::fb_type::CTUD_ULINT, 10, ctud_fb_fields())),
         "SR" => Some((opcode::fb_type::SR, 3, sr_fb_fields())),
         "RS" => Some((opcode::fb_type::RS, 3, rs_fb_fields())),
         "R_TRIG" => Some((opcode::fb_type::R_TRIG, 3, edge_trig_fb_fields())),

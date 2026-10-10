@@ -2511,32 +2511,44 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                             _ => unreachable!(),
                         }
                     }
-                    opcode::fb_type::CTU => {
+                    opcode::fb_type::CTU
+                    | opcode::fb_type::CTU_UDINT
+                    | opcode::fb_type::CTU_LINT
+                    | opcode::fb_type::CTU_ULINT => {
                         let instance_size = crate::intrinsic::CTU_INSTANCE_FIELDS * 8;
                         let instance_end = instance_start + instance_size;
                         if instance_end > data_region.len() {
                             return Err(Trap::DataRegionOutOfBounds(instance_start as u32));
                         }
                         let slice = &mut data_region[instance_start..instance_end];
-                        crate::intrinsic::ctu(slice)?;
+                        let width = crate::intrinsic::CounterWidth::of(type_id);
+                        crate::intrinsic::ctu(slice, width)?;
                     }
-                    opcode::fb_type::CTD => {
+                    opcode::fb_type::CTD
+                    | opcode::fb_type::CTD_UDINT
+                    | opcode::fb_type::CTD_LINT
+                    | opcode::fb_type::CTD_ULINT => {
                         let instance_size = crate::intrinsic::CTD_INSTANCE_FIELDS * 8;
                         let instance_end = instance_start + instance_size;
                         if instance_end > data_region.len() {
                             return Err(Trap::DataRegionOutOfBounds(instance_start as u32));
                         }
                         let slice = &mut data_region[instance_start..instance_end];
-                        crate::intrinsic::ctd(slice)?;
+                        let width = crate::intrinsic::CounterWidth::of(type_id);
+                        crate::intrinsic::ctd(slice, width)?;
                     }
-                    opcode::fb_type::CTUD => {
+                    opcode::fb_type::CTUD
+                    | opcode::fb_type::CTUD_UDINT
+                    | opcode::fb_type::CTUD_LINT
+                    | opcode::fb_type::CTUD_ULINT => {
                         let instance_size = crate::intrinsic::CTUD_INSTANCE_FIELDS * 8;
                         let instance_end = instance_start + instance_size;
                         if instance_end > data_region.len() {
                             return Err(Trap::DataRegionOutOfBounds(instance_start as u32));
                         }
                         let slice = &mut data_region[instance_start..instance_end];
-                        crate::intrinsic::ctud(slice)?;
+                        let width = crate::intrinsic::CounterWidth::of(type_id);
+                        crate::intrinsic::ctud(slice, width)?;
                     }
                     opcode::fb_type::SR => {
                         let instance_size = crate::intrinsic::SR_INSTANCE_FIELDS * 8;

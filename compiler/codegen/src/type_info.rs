@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 
 use ironplc_analyzer::value_type::operand_type_name;
-use ironplc_dsl::common::{ElementaryTypeName, GenericTypeName, TypeName, VarDecl};
+use ironplc_dsl::common::{ElementaryTypeName, TypeName, VarDecl};
 use ironplc_dsl::core::Id;
 use ironplc_dsl::textual::{Expr, ExprType};
 use ironplc_dsl::type_id::TypeId;
@@ -44,11 +44,14 @@ pub(crate) fn operand_names(types: &TypeEnvironment) -> HashMap<TypeId, TypeName
 
 /// The name the arithmetic overloads know an expression's value by, from
 /// its `expr_type` (see [`operand_names`]).
+///
+/// `None` for an untyped literal: the analyzer types every numeric literal
+/// (ADR-0056), so one that reaches here untyped is an operand it did not
+/// resolve.
 pub(crate) fn expr_operand_name(ctx: &CompileContext, expr: &Expr) -> Option<TypeName> {
     match expr.expr_type.as_ref()? {
         ExprType::Concrete(id) | ExprType::Inferred(id) => ctx.operand_names.get(id).cloned(),
-        ExprType::Literal(generic) => Some(generic.clone().into()),
-        ExprType::Null => None,
+        ExprType::Literal(_) | ExprType::Null => None,
     }
 }
 
@@ -56,11 +59,12 @@ pub(crate) fn expr_operand_name(ctx: &CompileContext, expr: &Expr) -> Option<Typ
 ///
 /// `None` when the analyzer resolved no type for the expression, or when its
 /// type is not one this backend operates on arithmetically (a string, or a
-/// composite type).
+/// composite type). An untyped literal has none: the analyzer types every
+/// numeric literal (ADR-0056), and a string literal is not operated on.
 pub(crate) fn expr_type_info(ctx: &CompileContext, expr: &Expr) -> Option<VarTypeInfo> {
     match expr.expr_type.as_ref()? {
         ExprType::Concrete(id) | ExprType::Inferred(id) => operand_type_info(ctx.types.get(id)?),
-        ExprType::Literal(generic) => literal_type_info(generic),
+        ExprType::Literal(_) => None,
         // NULL is compared and stored as the reference it stands in for.
         ExprType::Null => Some(reference_type_info()),
     }
@@ -89,7 +93,7 @@ pub(crate) fn expr_representation<'a>(
 /// operates as a `DINT` (REQ-EN-codegen-003); a subrange operates as its base
 /// type; a reference is a 64-bit address, as a reference field is (see
 /// `compile_struct::var_type_info_for_field`).
-fn operand_type_info(representation: &SemanticType) -> Option<VarTypeInfo> {
+pub(crate) fn operand_type_info(representation: &SemanticType) -> Option<VarTypeInfo> {
     match representation {
         SemanticType::Enumeration { .. } => Some(crate::compile_enum::enum_var_type_info()),
         SemanticType::Subrange { base_type, .. } => var_type_info(base_type),
@@ -122,25 +126,12 @@ fn reference_type_info() -> VarTypeInfo {
     }
 }
 
-/// The `VarTypeInfo` an untyped literal of a generic category operates with
-/// when nothing narrows it: an integer literal as a `DINT`, a real literal as
-/// a `REAL`. Generic types reach codegen for expressions like `5 + 5` where no
-/// concrete type context was available during type resolution.
-fn literal_type_info(generic: &GenericTypeName) -> Option<VarTypeInfo> {
-    elementary_type_info(&ironplc_analyzer::literal_default_type(generic)?)
-}
-
-/// Maps an IEC 61131-3 type name to its `VarTypeInfo`.
+/// Maps an IEC 61131-3 elementary type name to its `VarTypeInfo`.
 ///
-/// Returns `None` for unrecognized type names (e.g., user-defined types)
-/// and for STRING/WSTRING which are handled separately.
+/// Returns `None` for any other name (a user-defined type, or a generic type
+/// such as `ANY_INT`) and for STRING/WSTRING which are handled separately.
 pub(crate) fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
-    // Try as elementary type first (the common case), then as a generic
-    // type naming an untyped literal.
-    match ElementaryTypeName::try_from(name) {
-        Ok(elementary) => elementary_type_info(&elementary),
-        Err(()) => literal_type_info(&GenericTypeName::try_from(name).ok()?),
-    }
+    elementary_type_info(&ElementaryTypeName::try_from(name).ok()?)
 }
 
 /// Maps an elementary type to its `VarTypeInfo`.
@@ -281,24 +272,10 @@ mod tests {
     #[case::string("STRING")]
     #[case::wstring("WSTRING")]
     #[case::user_defined("MyStruct")]
+    #[case::any_int("ANY_INT")]
+    #[case::any_real("ANY_REAL")]
     fn resolve_type_name_when_not_operated_on_arithmetically_then_none(#[case] type_name: &str) {
         assert!(resolve_type_name(&Id::from(type_name)).is_none());
-    }
-
-    /// A generic type reaches codegen for an expression such as `5 + 5`, where
-    /// type resolution had no concrete type to give it.
-    #[rstest]
-    #[case::any_int("ANY_INT", OpWidth::W32, 32)]
-    #[case::any_real("ANY_REAL", OpWidth::F32, 32)]
-    fn resolve_type_name_when_generic_type_then_default_concrete_type(
-        #[case] type_name: &str,
-        #[case] op_width: OpWidth,
-        #[case] storage_bits: u8,
-    ) {
-        let info = resolve_type_name(&Id::from(type_name)).unwrap();
-
-        assert_eq!(info.op_width, op_width);
-        assert_eq!(info.storage_bits, storage_bits);
     }
 
     /// The operand type of the type `type_name` names in `source`.

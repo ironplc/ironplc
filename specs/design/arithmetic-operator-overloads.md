@@ -189,8 +189,8 @@ operator is not defined for the pair. It is a pure function of its arguments,
 so calling it from more than one pass needs no annotation on the tree.
 
 1. If either operand has no resolved type, or a type the compatibility
-   predicate cannot judge (a subrange, an enumeration, a structure, a user
-   type), return `Unchecked`
+   predicate cannot judge (an enumeration, a structure, a user type), return
+   `Unchecked`
    with the left operand's type. This is today's behaviour, and the operator
    rule already skips such operands. It is a separate answer from `Numeric`
    so that nothing downstream mistakes "not judged" for "judged numeric".
@@ -318,12 +318,12 @@ function that the answer's signature names as its intrinsic
 through the same intrinsic. The typed routines take their operands rather
 than a `Function`, so both spellings share them, and take their operation
 width from the intrinsic (32-bit for the short form, 64-bit for the long one)
-instead of hard-coding 32-bit, so the long forms compile. In a fold after the first
-step, the left operand is the accumulated result already on the stack rather
-than an expression, so a routine's left operand is either one. A short-width
-operand of a long form is loaded at 32 bits and widened by its signedness, as
-ADR-0001 loads any narrower integer: a `TIME` is sign-extended and a date
-type is zero-extended.
+instead of hard-coding 32-bit, so the long forms compile. The analyzer writes
+a typed fold of three or more inputs as the two-input calls it folds to, and
+converts a short-width operand of a long form to its long type (see
+`implicit-conversions.md`, Time and date operations), which widens it by its
+signedness: a `TIME` is sign-extended and a date type is zero-extended. Each
+routine compiles its operands at the types the analyzer recorded.
 
 **Numeric width.** A numeric binary expression compiles at the width of its
 resolved type, not at the width of the variable it is assigned to. An operand
@@ -344,11 +344,10 @@ operands and a `DINT` target divides signed; it now divides unsigned, as its
 operands are. An expression whose operands and target share both width and
 signedness compiles to the same bytecode as before.
 
-Codegen applies this only when the expression's resolved type is a concrete
-elementary numeric or bit-string type. An expression typed otherwise (a
-generic literal type, a subrange, an enumeration, or no type) compiles at the
-enclosing operation type, as it does today, because codegen cannot place its
-width.
+Codegen applies this when the expression's resolved type is a concrete
+elementary numeric or bit-string type, a subrange being known by its base
+type's name. An expression the analyzer resolved to neither that nor a typed
+overload is an internal error, not compiled at the enclosing operation type.
 
 The function form follows the same rule at each step of its fold, so
 `ADD(i, r)` and `i + r` compute the same value, and `ADD(a, b, c)` compiles
@@ -505,7 +504,7 @@ Programs that keep working: `t1 + t2`, `t + lt`, `lt + LTIME#1s`, `dt + t`,
 
 **REQ-AO-codegen-011** A call to the function form of a numeric operator computes each fold step as the operator expression does, so `ADD(i, r)` gives 4.5 for `INT` 3 and `REAL` 1.5.
 
-**REQ-AO-codegen-012** An arithmetic expression whose resolved type is not a concrete elementary numeric or bit-string type, such as a subrange, compiles at the enclosing operation type as before this design.
+**REQ-AO-codegen-012** An arithmetic expression on a subrange computes at the subrange's base type, and its result is converted to the enclosing operation type: `l := s + s` on a subrange of `INT` adds at 32 bits and widens the sum.
 
 ## Out of scope
 
