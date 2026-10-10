@@ -198,3 +198,37 @@ END_PROGRAM
 ",
     &[("result", 42)],
 );
+
+e2e_i32!(
+    end_to_end_when_inline_array_of_alias_element_then_stored_as_alias_base,
+    "
+TYPE MY_INT : INT; END_TYPE
+PROGRAM main
+  VAR
+    arr : ARRAY[1..3] OF MY_INT;
+    x : INT;
+  END_VAR
+  arr[2] := 42;
+  x := arr[2];
+END_PROGRAM
+",
+    &[("x", 42)],
+);
+
+e2e_i32!(
+    end_to_end_when_named_array_of_date_then_roundtrips,
+    "
+TYPE DATES : ARRAY[1..3] OF DATE; END_TYPE
+PROGRAM main
+  VAR
+    days : DATES;
+    x : INT;
+  END_VAR
+  days[2] := D#2020-01-02;
+  IF days[2] = D#2020-01-02 THEN
+    x := 1;
+  END_IF;
+END_PROGRAM
+",
+    &[("x", 1)],
+);

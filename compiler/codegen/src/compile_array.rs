@@ -411,96 +411,6 @@ pub(crate) fn dimensions_from_semantic_type(dims: &[ArrayDimension]) -> Vec<Dime
         .collect()
 }
 
-/// Converts an inline array specification (from the AST) to a normalized ArraySpec.
-pub(crate) fn array_spec_from_inline(
-    subranges: &ironplc_dsl::common::ArraySubranges,
-    _span: &ironplc_dsl::core::SourceSpan,
-) -> Result<ArraySpec, Diagnostic> {
-    let dimensions: Vec<(i32, i32)> = subranges
-        .ranges
-        .iter()
-        .map(|range| {
-            let (Some(start), Some(end)) = (
-                range.start.as_signed_integer(),
-                range.end.as_signed_integer(),
-            ) else {
-                return Err(Diagnostic::internal_error());
-            };
-            Ok((
-                super::compile_stmt::signed_integer_to_i32(start)?,
-                super::compile_stmt::signed_integer_to_i32(end)?,
-            ))
-        })
-        .collect::<Result<Vec<_>, Diagnostic>>()?;
-    let (string_max_len, string_char_width) = match &subranges.type_name {
-        ironplc_dsl::common::ArrayElementType::String(spec) => {
-            let len = spec
-                .length
-                .as_ref()
-                .and_then(|l| l.as_integer().map(|i| i.value as u16))
-                .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH);
-            (Some(len), Some(CharWidth::Narrow))
-        }
-        ironplc_dsl::common::ArrayElementType::WString(spec) => {
-            let len = spec
-                .length
-                .as_ref()
-                .and_then(|l| l.as_integer().map(|i| i.value as u16))
-                .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH);
-            (Some(len), Some(CharWidth::Wide))
-        }
-        _ => (None, None),
-    };
-    Ok(ArraySpec {
-        dimensions,
-        element_type_name: Id::from(&subranges.type_name.to_type_name().to_string()),
-        ref_to: subranges.ref_to.is_some(),
-        string_max_len,
-        string_char_width,
-    })
-}
-
-/// Normalizes an array variable declaration -- inline or by named type -- into
-/// an [`ArraySpec`].
-///
-/// Element types that are structures are laid out differently and register
-/// through `compile_array_struct` instead; callers route those away first.
-pub(crate) fn array_spec_for_declaration(
-    types: &ironplc_analyzer::TypeEnvironment,
-    spec: &ironplc_dsl::common::SpecificationKind<ironplc_dsl::common::ArraySubranges>,
-    span: &SourceSpan,
-) -> Result<ArraySpec, Diagnostic> {
-    match spec {
-        ironplc_dsl::common::SpecificationKind::Inline(subranges) => {
-            array_spec_from_inline(subranges, span)
-        }
-        ironplc_dsl::common::SpecificationKind::Named(type_name) => {
-            // The caller reaches this arm only for a declaration the type
-            // environment already resolved to an array, so a miss here is a
-            // compiler invariant rather than anything the program did.
-            let array_type = types.resolve_array_type(type_name).ok_or_else(|| {
-                Diagnostic::internal_error_at(Label::span(
-                    type_name.span(),
-                    "Array type is absent from the type environment",
-                ))
-            })?;
-            let SemanticType::Array {
-                element_type,
-                dimensions,
-            } = array_type
-            else {
-                // `resolve_array_type` returns only the Array variant, so this
-                // is a compiler invariant rather than anything the program did.
-                return Err(Diagnostic::internal_error_at(Label::span(
-                    type_name.span(),
-                    "Array type resolved to a non-array representation",
-                )));
-            };
-            array_spec_from_named(element_type, dimensions, span)
-        }
-    }
-}
-
 /// Converts a named array type (from the TypeEnvironment) to a normalized ArraySpec.
 ///
 /// `span` locates the declaration being compiled; the semantic type has
@@ -510,6 +420,18 @@ pub(crate) fn array_spec_from_named(
     dimensions: &[ArrayDimension],
     span: &SourceSpan,
 ) -> Result<ArraySpec, Diagnostic> {
+    array_spec_from_type(element_type, dimensions, None, span)
+}
+
+/// Converts an array type to a normalized ArraySpec. `target_name` names
+/// the type an element refers to, for an array of references whose target
+/// has a name the representation does not keep (a structure).
+pub(crate) fn array_spec_from_type(
+    element_type: &SemanticType,
+    dimensions: &[ArrayDimension],
+    target_name: Option<Id>,
+    span: &SourceSpan,
+) -> Result<ArraySpec, Diagnostic> {
     let dims: Vec<(i32, i32)> = dimensions.iter().map(|d| (d.lower, d.upper)).collect();
     let ref_to = matches!(element_type, SemanticType::Reference { .. });
     let inner_type = if let SemanticType::Reference { target_type } = element_type {
@@ -517,7 +439,10 @@ pub(crate) fn array_spec_from_named(
     } else {
         element_type
     };
-    let element_type_name = semantic_type_to_name(inner_type, span)?;
+    let element_type_name = match (ref_to, target_name) {
+        (true, Some(name)) => name,
+        _ => semantic_type_to_name(inner_type, span)?,
+    };
     let (string_max_len, string_char_width) = match inner_type {
         SemanticType::String {
             max_len,
@@ -593,6 +518,22 @@ fn semantic_type_to_name(ty: &SemanticType, span: &SourceSpan) -> Result<Id, Dia
         SemanticType::Time {
             size: ByteSized::B64,
         } => "LTIME",
+        SemanticType::Date {
+            size: ByteSized::B64,
+        } => "LDATE",
+        SemanticType::Date { .. } => "DATE",
+        SemanticType::TimeOfDay {
+            size: ByteSized::B64,
+        } => "LTIME_OF_DAY",
+        SemanticType::TimeOfDay { .. } => "TIME_OF_DAY",
+        SemanticType::DateAndTime {
+            size: ByteSized::B64,
+        } => "LDATE_AND_TIME",
+        SemanticType::DateAndTime { .. } => "DATE_AND_TIME",
+        SemanticType::String {
+            char_width: CharWidth::Wide,
+            ..
+        } => "WSTRING",
         SemanticType::String { .. } => "STRING",
         _ => {
             return Err(Diagnostic::not_implemented(Label::span(

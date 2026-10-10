@@ -63,7 +63,6 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_parser::options::{CompilerOptions, StringToNumFailure, StringToNumNonNumeric};
 use ironplc_problems::Problem;
 
-use ironplc_analyzer::system_globals::SYSTEM_UPTIME_GLOBALS;
 use ironplc_analyzer::{
     CleanAnalysis, FunctionEnvironment, Intrinsic, SemanticType, TypeEnvironment,
 };
@@ -71,7 +70,7 @@ use ironplc_analyzer::{
 use crate::emit::Emitter;
 
 use super::compile_fn::{compile_user_function, compile_user_function_block};
-use super::compile_setup::{assign_variables, emit_initial_values};
+use super::compile_setup::{assign_system_uptime_globals, assign_variables, emit_initial_values};
 use super::compile_stmt::compile_body;
 
 /// The native operation width used for arithmetic and comparisons.
@@ -254,25 +253,16 @@ pub fn compile(
     }
     let user_globals: &[VarDecl] = config.map(|c| c.global_var.as_slice()).unwrap_or(&[]);
 
-    // Prepend system uptime globals when the feature is enabled.
-    let mut synthetic_globals: Vec<VarDecl> = Vec::new();
-    if options.system_uptime_global {
-        for global in &SYSTEM_UPTIME_GLOBALS {
-            synthetic_globals.push(
-                VarDecl::simple(global.name, global.type_name).with_type(VariableType::Global),
-            );
-        }
-    }
-
     // Collect top-level VAR_GLOBAL declarations (outside CONFIGURATION blocks).
+    let mut library_globals: Vec<VarDecl> = Vec::new();
     for element in &library.elements {
         if let LibraryElementKind::GlobalVarDeclarations(decls) = element {
-            synthetic_globals.extend_from_slice(decls);
+            library_globals.extend_from_slice(decls);
         }
     }
 
-    synthetic_globals.extend_from_slice(user_globals);
-    let global_vars = &synthetic_globals;
+    library_globals.extend_from_slice(user_globals);
+    let global_vars = &library_globals;
 
     let reachable = context.reachable();
 
@@ -309,6 +299,7 @@ pub fn compile(
             program,
             func_decls: &func_decls,
             fb_decls: &fb_decls,
+            system_uptime_globals: options.system_uptime_global,
             global_vars,
         },
         context.functions(),
@@ -697,6 +688,8 @@ struct ProgramInputs<'a> {
     program: &'a ProgramDeclaration,
     func_decls: &'a [&'a FunctionDeclaration],
     fb_decls: &'a [&'a FunctionBlockDeclaration],
+    /// Whether the implicit uptime globals precede the program's globals.
+    system_uptime_globals: bool,
     global_vars: &'a [VarDecl],
 }
 
@@ -722,6 +715,7 @@ fn compile_program_with_functions(
         program,
         func_decls,
         fb_decls,
+        system_uptime_globals,
         global_vars,
     } = inputs;
     let mut ctx = CompileContext::new();
@@ -748,7 +742,11 @@ fn compile_program_with_functions(
         register_pou_source_file(&mut ctx, &fb.name.name.span.file_id, sources);
     }
 
-    // Assign global variable indices first (indices 0..G).
+    // Assign global variable indices first (indices 0..G), the implicit
+    // uptime globals before any other.
+    if system_uptime_globals {
+        assign_system_uptime_globals(&mut ctx, types);
+    }
     assign_variables(&mut ctx, &mut builder, global_vars, types)?;
     let num_globals = ctx.variables.len() as u16;
 
