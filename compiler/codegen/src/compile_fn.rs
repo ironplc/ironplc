@@ -277,15 +277,14 @@ pub(crate) fn compile_user_function(
         }
         FunctionReturnType::Named(_) => {
             let return_type_name = func_decl.return_type.to_type_name();
-            if types.resolve_struct_type(&return_type_name).is_some() {
+            if let Some(struct_type) = types.resolve_struct_type(&return_type_name) {
                 // Return type is a struct — allocate data region space and
                 // register the return variable so field assignments
                 // (e.g. FUNC.X := val) work inside the function body.
                 crate::compile_struct::allocate_struct_variable(
                     ctx,
                     builder,
-                    types,
-                    &return_type_name,
+                    struct_type,
                     &return_id,
                     return_var_index,
                     &func_decl.name.span(),

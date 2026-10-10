@@ -48,7 +48,7 @@ The design builds on:
 
 **REQ-SR-012** The scoped type table match handles `TypeDefinitionKind::Subrange` by producing `InitialValueAssignmentKind::Subrange(SpecificationKind::Named(type_name))`.
 
-**REQ-SR-013** When a variable is declared with a named subrange type and an explicit initializer (`VAR x : MY_RANGE := 75; END_VAR`), the parser produces `InitialValueAssignmentKind::Simple`. The codegen `assign_variables` function detects subrange types in the `Simple` arm by consulting the type environment.
+**REQ-SR-013** When a variable is declared with a named subrange type and an explicit initializer (`VAR x : MY_RANGE := 75; END_VAR`), the parser produces `InitialValueAssignmentKind::Simple`. The codegen `assign_variables` function lays out every declaration's storage from the type the analyzer resolved for it, so the subrange is stored as its base type whichever initializer it arrives with.
 
 ## 3. Variable Allocation
 

@@ -16,9 +16,6 @@ use ironplc_dsl::textual::{Expr, SymbolicVariableKind};
 use ironplc_analyzer::semantic_type::{ArrayDimension, SemanticStructField, SemanticType};
 use ironplc_container::{CharWidth, ContainerBuilder, FieldType, SlotIndex, VarIndex};
 
-use ironplc_analyzer::TypeEnvironment;
-use ironplc_dsl::common::SpecificationKind;
-
 use super::compile::CompileContext;
 use super::compile_array::{dimensions_from_semantic_type, ResolvedAccess, StructStringElement};
 
@@ -560,65 +557,6 @@ fn total_elements(dimensions: &[ArrayDimension], span: &SourceSpan) -> Result<u3
         acc.checked_mul(size)
             .ok_or_else(|| Diagnostic::not_supported(Label::span(span.clone(), "Array too large")))
     })
-}
-
-/// Detects an array declaration whose element type is a user-defined
-/// structure, returning the element type, the debug type name to record for
-/// the variable, and the array bounds.
-///
-/// Returns `None` for every other array — including `ARRAY[..] OF REF_TO
-/// <struct>`, whose elements are one-slot references and so belong on the
-/// ordinary array path.
-#[allow(clippy::type_complexity)]
-pub(crate) fn struct_array_declaration(
-    types: &TypeEnvironment,
-    spec: &SpecificationKind<ironplc_dsl::common::ArraySubranges>,
-    span: &ironplc_dsl::core::SourceSpan,
-) -> Result<Option<(SemanticType, String, Vec<ArrayDimension>)>, Diagnostic> {
-    match spec {
-        SpecificationKind::Inline(subranges) => {
-            if subranges.ref_to.is_some() {
-                return Ok(None);
-            }
-            let element_name = subranges.type_name.to_type_name();
-            let Some(element_type) = types.resolve_struct_type(&element_name) else {
-                return Ok(None);
-            };
-            // Reuse the inline bounds parsing rather than repeating it.
-            let array_spec = super::compile_array::array_spec_from_inline(subranges, span)?;
-            let dimensions = array_spec
-                .dimensions
-                .iter()
-                .map(|&(lower, upper)| ArrayDimension { lower, upper })
-                .collect();
-            Ok(Some((
-                element_type.clone(),
-                format!("ARRAY OF {}", element_name.to_string().to_uppercase()),
-                dimensions,
-            )))
-        }
-        SpecificationKind::Named(type_name) => {
-            let Some(SemanticType::Array {
-                element_type,
-                dimensions,
-            }) = types.resolve_array_type(type_name)
-            else {
-                return Ok(None);
-            };
-            if !matches!(element_type.as_ref(), SemanticType::Structure { .. }) {
-                return Ok(None);
-            }
-            // Named array specifications are expanded to inline ones before
-            // codegen, so this arm is defensive. It cannot name the element:
-            // `SemanticType::Structure` is structural and carries no
-            // declared name, so the debug entry falls back to the array type's.
-            Ok(Some((
-                element_type.as_ref().clone(),
-                type_name.to_string().to_uppercase(),
-                dimensions.clone(),
-            )))
-        }
-    }
 }
 
 /// Registers a top-level `ARRAY OF <struct>` variable.
