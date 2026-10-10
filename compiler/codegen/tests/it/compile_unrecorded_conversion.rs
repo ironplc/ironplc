@@ -29,7 +29,8 @@ fn code_without_conversions(target: &str, value: &str) -> Option<String> {
     let source = format!(
         "PROGRAM main
          VAR x : {target}; t : TIME; lt : LTIME; da : DATE; lda : LDATE; d : DINT;
-             l : LINT; r : REAL; a : ARRAY[0..3] OF DINT; dw : DWORD; lw : LWORD; END_VAR
+             l : LINT; r : REAL; a : ARRAY[0..3] OF DINT; dw : DWORD; lw : LWORD;
+             i : INT; END_VAR
          x := {value};
          END_PROGRAM"
     );
@@ -83,6 +84,37 @@ fn compile_when_subscript_or_count_conversion_removed_then_internal_error(
 #[case::dint_subscript("DINT", "a[d]")]
 #[case::dint_count("DWORD", "SHL(dw, d)")]
 fn compile_when_subscript_or_count_needs_no_conversion_then_compiles(
+    #[case] target: &str,
+    #[case] value: &str,
+) {
+    assert_eq!(code_without_conversions(target, value), None);
+}
+
+#[spec_test(REQ_IC_codegen_018)]
+#[rstest]
+#[case::variable("LINT", "d")]
+#[case::real_variable("LREAL", "r")]
+#[case::arithmetic("LINT", "d + d")]
+#[case::negation("LINT", "-d")]
+#[case::bitwise("LWORD", "dw OR dw")]
+#[case::inputs_of_one_type("LINT", "MAX(d, d)")]
+#[case::fixed_result("LREAL", "INT_TO_REAL(i)")]
+#[case::short_time("LTIME", "t")]
+fn compile_when_conversion_to_context_removed_then_internal_error(
+    #[case] target: &str,
+    #[case] value: &str,
+) {
+    assert_eq!(
+        code_without_conversions(target, value).as_deref(),
+        Some("P9998")
+    );
+}
+
+#[rstest]
+#[case::same_width("LINT", "l")]
+#[case::same_width_other_signedness("DINT", "i")]
+#[case::same_width_arithmetic("LINT", "l + l")]
+fn compile_when_value_has_its_context_width_then_compiles(
     #[case] target: &str,
     #[case] value: &str,
 ) {

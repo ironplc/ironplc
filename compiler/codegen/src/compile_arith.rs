@@ -65,11 +65,18 @@ pub(crate) fn compile_binary_arith(
     else {
         return Err(unresolved_operation(expr.span()));
     };
-    compile_at(emitter, ctx, natural, op_type, |emitter, ctx, at| {
-        compile_expr(emitter, ctx, &binary.left, at)?;
-        compile_expr(emitter, ctx, &binary.right, at)?;
-        emit_arithmetic_op(emitter, &binary.op, at)
-    })
+    compile_at(
+        emitter,
+        ctx,
+        natural,
+        op_type,
+        &expr.span(),
+        |emitter, ctx, at| {
+            compile_expr(emitter, ctx, &binary.left, at)?;
+            compile_expr(emitter, ctx, &binary.right, at)?;
+            emit_arithmetic_op(emitter, &binary.op, at)
+        },
+    )
 }
 
 /// Compiles a call to the function form of the arithmetic operator `op`,
@@ -107,11 +114,18 @@ pub(crate) fn compile_arith_fold(
     let Some(natural) = numeric_inputs_op_type(ctx, result, &args) else {
         return Err(unresolved_operation(func.name.span()));
     };
-    compile_at(emitter, ctx, natural, op_type, |emitter, ctx, at| {
-        compile_left_fold(emitter, ctx, func, at, |emitter, at| {
-            emit_arithmetic_op(emitter, op, at)
-        })
-    })
+    compile_at(
+        emitter,
+        ctx,
+        natural,
+        op_type,
+        &func.name.span(),
+        |emitter, ctx, at| {
+            compile_left_fold(emitter, ctx, func, at, |emitter, at| {
+                emit_arithmetic_op(emitter, op, at)
+            })
+        },
+    )
 }
 
 /// Returns the typed overload of `op` on `left` and the operand `right`, as
@@ -185,47 +199,65 @@ fn unresolved_operation(span: SourceSpan) -> Diagnostic {
 /// A negation, `NOT`, a numeric function of one input, `MOVE` and a shift or
 /// rotate compute at their own type when it is numeric, as an arithmetic
 /// operation does: `SHL` of a `DWORD` assigned to an `LWORD` shifts the 32
-/// bits of the `DWORD` and widens the result. Any other, such as `NOT` of a
-/// `BOOL`, computes at `op_type`.
+/// bits of the `DWORD` and widens the result. One of another type that has
+/// an operation type, such as `NOT` of a `BOOL` or `MOVE` of a `TIME`,
+/// computes at that type too, and one of a type without one (a string) at
+/// `op_type`.
 pub(crate) fn compile_at_operand_type(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     result: Option<&TypeName>,
     op_type: OpType,
+    span: &SourceSpan,
     compile: impl FnOnce(&mut Emitter, &mut CompileContext, OpType) -> Result<(), Diagnostic>,
 ) -> Result<(), Diagnostic> {
-    let at = numeric_op_type(result).unwrap_or(op_type);
-    compile_at(emitter, ctx, at, op_type, compile)
+    let at = result
+        .and_then(|result| resolve_type_name(&result.name))
+        .map_or(op_type, |info| (info.op_width, info.signedness));
+    compile_at(emitter, ctx, at, op_type, span, compile)
 }
 
-/// Compiles, by `compile`, an operation at the operation type `at`, then
-/// converts the result to `op_type`, the operation type of the enclosing
-/// expression.
+/// Compiles, by `compile`, an operation at the operation type `at`, its own,
+/// and checks that it is of the width of `op_type`, the operation type of
+/// the enclosing expression (see [`expect_context_width`]).
 pub(crate) fn compile_at(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     at: OpType,
     op_type: OpType,
+    span: &SourceSpan,
     compile: impl FnOnce(&mut Emitter, &mut CompileContext, OpType) -> Result<(), Diagnostic>,
 ) -> Result<(), Diagnostic> {
     compile(emitter, ctx, at)?;
-    convert_to_context(emitter, at, op_type)
+    expect_context_width(at, op_type, span)
 }
 
-/// Converts the value on the stack, computed at its own operation type
-/// `own`, to `context`, the operation type of the expression that encloses
-/// it.
+/// Checks that a value computed at its own operation type `own` is of the
+/// width of `context`, the operation type of the expression that encloses
+/// it, and reports an internal error (P9998) when it is not.
 ///
-/// This is the one place codegen converts a value without the analyzer
-/// having recorded the conversion (ADR-0056). Every other conversion is
-/// one the analyzer recorded in an `ImplicitConversion`, or one the
-/// program wrote, such as `INT_TO_REAL`.
-pub(crate) fn convert_to_context(
-    emitter: &mut Emitter,
+/// The analyzer records every conversion between types of different widths
+/// as an `ImplicitConversion` (ADR-0056), and the code generator lowers
+/// only those and the conversions the program writes, such as
+/// `INT_TO_REAL`. A value whose width differs from its context's is one
+/// the analyzer did not convert, and is reported rather than converted
+/// here. Two types of one width but different signedness share their bits,
+/// so they need no conversion.
+pub(crate) fn expect_context_width(
     own: OpType,
     context: OpType,
+    span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
-    convert(emitter, own, context)
+    if own.0 == context.0 {
+        return Ok(());
+    }
+    Err(Diagnostic::internal_error_at(Label::span(
+        span.clone(),
+        format!(
+            "Value of width {:?} where {:?} is expected, and the analyzer recorded no conversion",
+            own.0, context.0
+        ),
+    )))
 }
 
 /// Emits the conversion of the value on the stack from `from` to `to`, or

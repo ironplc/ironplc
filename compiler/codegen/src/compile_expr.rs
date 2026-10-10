@@ -121,19 +121,18 @@ pub(crate) fn compile_expr(
             compile_constant(emitter, ctx, constant, own)
         }
         ExprKind::Const(constant) => compile_constant(emitter, ctx, constant, op_type),
-        // A variable read at a different width is read at its own and
-        // converted: loading an INT's slot as a REAL would reinterpret its
-        // bits, and loading a UDINT's as a LINT would sign-extend it.
-        ExprKind::Variable(variable) => {
-            match crate::compile_arith::numeric_op_type(expr_operand_name(ctx, expr).as_ref()) {
-                Some(own) if own.0 != op_type.0 => {
-                    compile_variable_read(emitter, ctx, variable, own)?;
-                    crate::compile_arith::convert_to_context(emitter, own, op_type)?;
-                    Ok(())
-                }
-                _ => compile_variable_read(emitter, ctx, variable, op_type),
+        // A variable is read at its own type, to which the analyzer converted
+        // it where its context's width differs (ADR-0056): loading an INT's
+        // slot as a REAL would reinterpret its bits, and loading a UDINT's as
+        // a LINT would sign-extend it. A string or an aggregate has no
+        // operation type and is read for the storage its context gives it.
+        ExprKind::Variable(variable) => match op_type_from_expr(ctx, expr) {
+            Some(own) => {
+                compile_variable_read(emitter, ctx, variable, own)?;
+                crate::compile_arith::expect_context_width(own, op_type, &expr.span())
             }
-        }
+            None => compile_variable_read(emitter, ctx, variable, op_type),
+        },
         ExprKind::BinaryOp(binary) => compile_binary_arith(emitter, ctx, expr, binary, op_type),
         ExprKind::UnaryOp(unary) => {
             let result = expr_operand_name(ctx, expr);
@@ -142,6 +141,7 @@ pub(crate) fn compile_expr(
                 ctx,
                 result.as_ref(),
                 op_type,
+                &expr.span(),
                 |emitter, ctx, at| {
                     compile_expr(emitter, ctx, &unary.term, at)?;
                     match unary.op {
@@ -204,8 +204,7 @@ pub(crate) fn compile_expr(
             let to = self::op_type(ctx, expr)?;
             compile_expr(emitter, ctx, inner, from)?;
             crate::compile_arith::convert(emitter, from, to)?;
-            crate::compile_arith::convert_to_context(emitter, to, op_type)?;
-            Ok(())
+            crate::compile_arith::expect_context_width(to, op_type, &expr.span())
         }
         ExprKind::Null(_) => {
             // NULL → push null sentinel (u64::MAX) as a u64 constant.
@@ -249,8 +248,7 @@ fn compile_compare(
     compile_expr(emitter, ctx, &compare.left, at)?;
     compile_expr(emitter, ctx, &compare.right, at)?;
     emit_compare_op(emitter, &compare.op, at);
-    crate::compile_arith::convert_to_context(emitter, at, op_type)?;
-    Ok(())
+    crate::compile_arith::expect_context_width(at, op_type, &expr.span())
 }
 
 /// Compiles the integer count a time-like literal stores, pushing it onto the
