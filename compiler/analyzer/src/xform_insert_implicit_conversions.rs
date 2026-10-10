@@ -39,8 +39,8 @@ use ironplc_dsl::common::Library;
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::scope::ScopeNode;
 use ironplc_dsl::textual::{
-    Assignment, Case, CompareExpr, Expr, ExprKind, FbCall, For, Function, If, ParamAssignmentKind,
-    Repeat, StmtKind, While,
+    ArrayVariable, Assignment, Case, CompareExpr, Expr, ExprKind, FbCall, For, Function, If,
+    ParamAssignmentKind, Repeat, StmtKind, While,
 };
 use ironplc_dsl::type_id::TypeId;
 use ironplc_parser::options::CompilerOptions;
@@ -208,6 +208,12 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
             | ExprKind::ImplicitConversion(_)
             | ExprKind::Null(_) => {}
         }
+        Ok(node)
+    }
+
+    fn fold_array_variable(&mut self, node: ArrayVariable) -> Result<ArrayVariable, Infallible> {
+        let mut node = node.recurse_fold(self)?;
+        self.record_subscript_conversions(&mut node);
         Ok(node)
     }
 

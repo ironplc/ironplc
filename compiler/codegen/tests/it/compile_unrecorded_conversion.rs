@@ -29,7 +29,7 @@ fn code_without_conversions(target: &str, value: &str) -> Option<String> {
     let source = format!(
         "PROGRAM main
          VAR x : {target}; t : TIME; lt : LTIME; da : DATE; lda : LDATE; d : DINT;
-             l : LINT; r : REAL; END_VAR
+             l : LINT; r : REAL; a : ARRAY[0..3] OF DINT; dw : DWORD; lw : LWORD; END_VAR
          x := {value};
          END_PROGRAM"
     );
@@ -61,4 +61,30 @@ fn compile_when_time_operand_conversion_removed_then_internal_error(
 #[test]
 fn compile_when_time_operands_need_no_conversion_then_compiles() {
     assert_eq!(code_without_conversions("LTIME", "lt + lt"), None);
+}
+
+#[spec_test(REQ_IC_codegen_015)]
+#[rstest]
+#[case::lint_subscript("DINT", "a[l]")]
+#[case::lint_arithmetic_subscript("DINT", "a[d + l]")]
+#[case::lint_count_of_32_bit_value("DWORD", "SHL(dw, l)")]
+#[case::dint_count_of_64_bit_value("LWORD", "SHL(lw, d)")]
+fn compile_when_subscript_or_count_conversion_removed_then_internal_error(
+    #[case] target: &str,
+    #[case] value: &str,
+) {
+    assert_eq!(
+        code_without_conversions(target, value).as_deref(),
+        Some("P9998")
+    );
+}
+
+#[rstest]
+#[case::dint_subscript("DINT", "a[d]")]
+#[case::dint_count("DWORD", "SHL(dw, d)")]
+fn compile_when_subscript_or_count_needs_no_conversion_then_compiles(
+    #[case] target: &str,
+    #[case] value: &str,
+) {
+    assert_eq!(code_without_conversions(target, value), None);
 }

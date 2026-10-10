@@ -16,6 +16,8 @@
 //! One copy of the sequence is what makes those two observably the same
 //! thing at runtime.
 
+use std::collections::HashMap;
+
 use ironplc_dsl::common::{StructInitialValueAssignmentKind, StructureElementInit};
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -26,26 +28,21 @@ use super::compile::{CompileContext, OpType, DEFAULT_OP_TYPE};
 use super::compile_expr::compile_expr;
 use crate::emit::Emitter;
 
-/// Resolves the operand type for a function block field.
+/// Resolves the operand type of the field `field_name` of a function block
+/// instance: the operation type of the field's declared type, for a
+/// user-defined block and a standard one alike. A `CTU_LINT`'s `PV` is
+/// stored as the `LINT` the analyzer converted its input to.
 ///
-/// A user-defined function block records the operand type of each of its
-/// fields, so its own table answers first. A standard library block records
-/// none — the intrinsic owns its layout, not codegen — so its fields take
-/// the default slot type.
+/// A field of a type the backend does not operate on as one value (a
+/// string, an aggregate) has none, and takes the default slot type.
 pub(crate) fn resolve_fb_field_op_type(
-    ctx: &CompileContext,
-    type_id: u16,
+    field_op_types: &HashMap<String, OpType>,
     field_name: &str,
 ) -> OpType {
-    // Check user-defined FBs by type_id.
-    for user_fb in ctx.user_fb_types.values() {
-        if user_fb.type_id == type_id {
-            if let Some(op_type) = user_fb.field_op_types.get(field_name) {
-                return *op_type;
-            }
-        }
-    }
-    DEFAULT_OP_TYPE
+    field_op_types
+        .get(field_name)
+        .copied()
+        .unwrap_or(DEFAULT_OP_TYPE)
 }
 
 /// Emits a store of `value` into `field` of the function block instance
@@ -63,7 +60,7 @@ pub(crate) fn compile_fb_field_store(
     value: &Expr,
 ) -> Result<bool, Diagnostic> {
     let field_name = field.to_string().to_lowercase();
-    let (field_idx, var_index, type_id) = match ctx.fb_instances.get(instance_name) {
+    let (field_idx, var_index, op_type) = match ctx.fb_instances.get(instance_name) {
         Some(fb_info) => {
             let field_idx = fb_info
                 .field_indices
@@ -78,12 +75,12 @@ pub(crate) fn compile_fb_field_store(
                         ),
                     ))
                 })?;
-            (field_idx, fb_info.var_index, fb_info.type_id)
+            let op_type = resolve_fb_field_op_type(&fb_info.field_op_types, &field_name);
+            (field_idx, fb_info.var_index, op_type)
         }
         None => return Ok(false),
     };
 
-    let op_type = resolve_fb_field_op_type(ctx, type_id, &field_name);
     emitter.emit_fb_load_instance(var_index);
     compile_expr(emitter, ctx, value, op_type)?;
     emitter.emit_fb_store_param(field_idx);

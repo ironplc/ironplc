@@ -158,6 +158,10 @@ An assignment stores its value at the type of its target. The pass records the c
 
 **REQ-IC-analyzer-085** The result of a call to a user-defined function or a method, and a dereference, are converted to the type of a target of another operation width: in `l := big(u)` with `big` returning a `UDINT` the result is converted to `LINT`, in `lr := half(r)` with `half` returning a `REAL` to `LREAL`, and so are `l := k.Big()` and `l := p^` on a `REF_TO UDINT`. The code generator used to store the result unconverted, which sign-extended an unsigned result and read a `REAL`'s bits as an `LREAL` ([#2126](https://github.com/ironplc/ironplc/issues/2126)).
 
+A standard function whose signature fixes its result type -- a type conversion (`INT_TO_REAL` is a `REAL`), a typed time or date function, `DT_TO_DATE` and `DT_TO_TOD`, and a string function (`LEN` is an `INT`) -- converts to its context as a user-defined function does. The pass used to treat it as computing at its context's type, so nothing converted its result: `lr := INT_TO_REAL(i)` on an `LREAL` stored the `REAL`'s bits as an `LREAL`, and `l := DINT_TO_UDINT(d)` on an `LINT` sign-extended the `UDINT`.
+
+**REQ-IC-analyzer-102** The result of a standard function whose signature fixes its type is converted to the type of a target of another width: in `lr := INT_TO_REAL(i)` the `REAL` is converted to `LREAL`, in `l := DINT_TO_UDINT(d)` and `l := LEN(s)` the `UDINT` and the `INT` to `LINT`, and in `ldt := SUB_DT_TIME(dt, t)` and `ld := DT_TO_DATE(dt)` the short date types to their long ones.
+
 **REQ-IC-analyzer-034** An array element or structure field target converts the value to the element's or field's type.
 
 **REQ-IC-analyzer-035** A function's result assignment converts the value to the function's return type, looking the result variable up in the function's scope.
@@ -207,6 +211,14 @@ A field of a structure has its declared type, a subrange field its base type, wh
 A `FOR` loop stores its initial value in its control variable and compares and steps it at the control variable's type.
 
 **REQ-IC-analyzer-079** The initial value, final value and step of a `FOR` loop are converted to the type of its control variable as an assigned value is: in `FOR l := d TO e` on an `LINT` and two `DINT`s both bounds are converted to `LINT`.
+
+### Subscripts and shift counts
+
+An array subscript is compiled at `DINT`, and the count of a shift or rotate at `LINT` when the shifted value is operated at 64 bits and at `DINT` otherwise, whatever their own types: the literals of both already take those types (see Literals). The pass converts a subscript or count of another width to that type as an assigned value is converted. A 64-bit subscript, or a 64-bit count of a 32-bit value, is narrowed: the code generator narrowed it before the conversion was recorded, and recording it makes the narrowing visible. Whether a subscript should index at 64 bits, and whether a count beyond the value's width should shift every bit out, are separate decisions.
+
+**REQ-IC-analyzer-100** A subscript whose width differs from `DINT`'s is converted to `DINT`, in a value and in an assignment target: the `LINT` of `a[l]` and the `LINT` sum of `a[d + l]` are converted to `DINT`, and the `SINT` of `a[s]` is not converted.
+
+**REQ-IC-analyzer-101** A shift or rotate count whose width differs from the count's type is converted to it: the `LINT` count of `SHL(dw, l)` on a `DWORD` is converted to `DINT`, the `DINT` count of `SHL(lw, d)` and `ROR(lw, d)` on an `LWORD` to `LINT`, and a `SINT` count of a `DWORD` and a `ULINT` count of an `LWORD` are not converted.
 
 ### Arguments
 
@@ -345,6 +357,8 @@ operand and a field reached through an array of structures used to compile.
 
 **REQ-IC-codegen-012** An operation on a subrange or on a field reached through an array of structures computes at its own type, as on a variable of the base or field type: `gt := s > l` with `s = 10` on a subrange of `INT` and `l = 4294967297` stores `FALSE`, `l := s * s` with `s = 100000` on a subrange of `DINT` wraps at 32 bits as `DINT * DINT` does, `l := MAX(u, v)` with `u = 4000000000` on a subrange of `UDINT` stores 4000000000, and `l := h.items[1].a * h.items[2].a` on `DINT` fields of 100000 wraps at 32 bits.
 
+**REQ-IC-codegen-017** The result of a standard function whose signature fixes its type keeps its value in a wider target: `lr := INT_TO_REAL(i)` with `i = 3` stores 3.0, `l := DINT_TO_UDINT(d)` with `d = -5` stores 4294967291, and `SUB_DT_TIME` and `DT_TO_DATE` of a date after 2038 stored in an `LDT` and an `LDATE` keep the date.
+
 **REQ-IC-codegen-011** `TRUNC`, `BCD_TO_INT` and `SIZEOF` compute at the integer type the analyzer recorded for the call: `x := TRUNC(r)` with `r = 2.75` and a `REAL` target stores 2.0, `l := TRUNC(lr)` with `lr = 5000000000.5` stores 5000000000, and `SIZEOF` and `BCD_TO_INT` assigned to an `LINT` store their value at 64 bits.
 
 A parameter of a user-defined function is passed at its declared type the same way, whatever kind of declaration declares it.
@@ -354,6 +368,10 @@ A parameter of a user-defined function is passed at its declared type the same w
 `AND`, `OR` and `XOR` compute at the type the analyzer recorded for the operation, to which it converted an operand of another width, and their result is converted to the type of its context.
 
 A typed time or date function compiles each operand at the type the analyzer recorded for it, which is the width the routine computes at. An operand of another width is an internal error (P9998), not widened as the code generator used to widen a short operand of a long form and the number a duration is scaled by. The analyzer writes a typed fold as the calls it folds to, so no step widens the previous step's result on the stack.
+
+An array subscript and a shift or rotate count compile at the type the analyzer recorded for them, which is `DINT`, or `LINT` for the count of a value operated at 64 bits. One of another width is an internal error, not narrowed or widened as the code generator used to.
+
+**REQ-IC-codegen-015** A subscript or shift count whose conversion the analyzer did not record is an internal error: with the recorded conversions removed, `a[l]`, `a[d + l]`, `SHL(dw, l)` and `SHL(lw, d)` report P9998, and `a[d]` and `SHL(dw, d)` compile.
 
 **REQ-IC-codegen-013** A typed time or date operation whose operand conversion the analyzer did not record is an internal error: with the recorded conversions removed, `lt + t`, `SUB_LDATE_LDATE(lda, da)`, `lt * d`, `MUL_LTIME(lt, r)` and `t * l` report P9998, and `lt + lt` compiles.
 

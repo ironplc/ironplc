@@ -212,7 +212,7 @@ fn resolve_field_type(
             // Current approach relies on underscore prefix convention which isn't type-safe
             let subrange_result = crate::intermediates::subrange::try_from(
                 &TypeName::from("_field_subrange"),
-                subrange_spec,
+                &subrange_spec.spec,
                 type_environment,
             )?;
 

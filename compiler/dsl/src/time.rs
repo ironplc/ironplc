@@ -115,6 +115,12 @@ impl DurationLiteral {
         }
     }
 
+    /// Creates a literal of no time at all (`T#0s`), the value a duration
+    /// starts with when nothing declares one.
+    pub fn zero(span: SourceSpan) -> Self {
+        Self::new(span, Duration::ZERO)
+    }
+
     /// Returns the literal with `width` recorded as the member of the family
     /// its prefix named.
     pub fn with_width(mut self, width: TemporalWidth) -> Self {
@@ -288,6 +294,12 @@ impl TimeOfDayLiteral {
         }
     }
 
+    /// Creates a literal of midnight (`TOD#00:00:00`), the value a time of
+    /// day starts with when nothing declares one.
+    pub fn midnight() -> Self {
+        Self::new(Time::MIDNIGHT)
+    }
+
     /// Returns the literal with `width` recorded as the member of the family
     /// its prefix named.
     pub fn with_width(mut self, width: TemporalWidth) -> Self {
@@ -398,6 +410,12 @@ impl DateLiteral {
         }
     }
 
+    /// Creates a literal of the first day dates count from (`D#1970-01-01`),
+    /// the value a date starts with when nothing declares one.
+    pub fn epoch() -> Self {
+        Self::new(time::OffsetDateTime::UNIX_EPOCH.date())
+    }
+
     /// Returns the literal with `width` recorded as the member of the family
     /// its prefix named.
     pub fn with_width(mut self, width: TemporalWidth) -> Self {
@@ -480,6 +498,14 @@ impl DateAndTimeLiteral {
             span: SourceSpan::default(),
             width: TemporalWidth::Short,
         }
+    }
+
+    /// Creates a literal of the moment dates and times count from
+    /// (`DT#1970-01-01-00:00:00`), the value a date and time starts with
+    /// when nothing declares one.
+    pub fn epoch() -> Self {
+        let epoch = time::OffsetDateTime::UNIX_EPOCH;
+        Self::new(PrimitiveDateTime::new(epoch.date(), epoch.time()))
     }
 
     /// Returns the literal with `width` recorded as the member of the family
@@ -652,5 +678,22 @@ mod tests {
             Time::from_hms(12, 0, 0).unwrap(),
         ));
         assert_eq!(format!("{dt}"), "DATE_AND_TIME#2025-01-01-12:00:00");
+    }
+
+    #[test]
+    fn epoch_when_date_and_date_and_time_then_zero_seconds_since_epoch() {
+        assert_eq!(DateLiteral::epoch().seconds_since_epoch(), 0);
+        assert_eq!(DateAndTimeLiteral::epoch().seconds_since_epoch(), 0);
+    }
+
+    #[test]
+    fn midnight_when_time_of_day_then_zero_milliseconds() {
+        assert_eq!(TimeOfDayLiteral::midnight().whole_milliseconds(), 0);
+    }
+
+    #[test]
+    fn zero_when_duration_then_no_milliseconds() {
+        let zero = DurationLiteral::zero(SourceSpan::default());
+        assert_eq!(zero.interval.whole_milliseconds(), 0);
     }
 }

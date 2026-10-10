@@ -23,5 +23,8 @@ fn main() {
         "implicit-conversions.md",
         // The post-emission peephole optimizer (`REQ-PEEP-codegen-*`).
         "bytecode-peephole-optimizer.md",
+        // Counter widths (`REQ-CW-codegen-*`): a counter of each width end to
+        // end.
+        "counter-widths.md",
     ]);
 }

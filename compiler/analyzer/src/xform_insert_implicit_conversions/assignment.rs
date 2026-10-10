@@ -6,7 +6,8 @@
 //! the elementary type it is operated as: its own, or its base type for a
 //! subrange. The target of a dereference is the variable the reference
 //! refers to. The bounds and step of a `FOR` loop are converted to the type
-//! of its control variable the same way.
+//! of its control variable the same way, and an array subscript to `DINT`,
+//! the type a subscript is compiled at.
 //!
 //! It records a conversion where the value has a type of its own, which a
 //! literal does not. A value converts to its context when it is a variable, an
@@ -15,17 +16,19 @@
 //! computes at its own type when it is arithmetic, a negation or `NOT`, an
 //! `AND`, `OR` or `XOR`, or a standard function on one value or of several
 //! inputs of one type ([`Intrinsic::computes_at_own_type`]). A call to a
-//! user-defined function or a method, and a dereference, have the type the
-//! function or method returns or the referenced variable has, and convert to
-//! their context too. Any other value -- a literal, a call to `TRUNC` -- is
+//! user-defined function or a method, a standard function whose signature
+//! fixes its result type ([`Intrinsic::result_has_fixed_type`]), and a
+//! dereference, have the type the function returns or the referenced
+//! variable has, and convert to their context too. Any other value -- a
+//! literal, a call to `TRUNC` -- is
 //! compiled at the target's width rather than converted to it, so there is
 //! no conversion to record.
 //!
 //! A directly represented target is not recorded yet.
 
 use ironplc_dsl::textual::{
-    Assignment, Expr, ExprKind, For, Function, ParamAssignmentKind, PartialAccessSize,
-    SymbolicVariableKind, Variable,
+    ArrayVariable, Assignment, Expr, ExprKind, For, Function, ParamAssignmentKind,
+    PartialAccessSize, SymbolicVariableKind, Variable,
 };
 use ironplc_dsl::type_id::TypeId;
 
@@ -116,6 +119,19 @@ impl ImplicitConversions<'_> {
         }
     }
 
+    /// Records the conversion of each subscript of `array` to `DINT`, the
+    /// type a subscript is compiled at. A 64-bit subscript is narrowed to it,
+    /// as the code generator narrowed it before the conversion was recorded;
+    /// whether a subscript should index at 64 bits is a separate decision.
+    pub(super) fn record_subscript_conversions(&self, array: &mut ArrayVariable) {
+        let Some(dint) = self.dint() else {
+            return;
+        };
+        for subscript in &mut array.subscripts {
+            self.record_conversion_to(subscript, dint);
+        }
+    }
+
     /// The elementary type the target `target` is stored as, and its
     /// operation width, when it is numeric.
     pub(super) fn stored_as(&self, target: &Variable) -> Option<(TypeId, OperationWidth)> {
@@ -179,14 +195,18 @@ impl ImplicitConversions<'_> {
             // its context's.
             ExprKind::ImplicitConversion(_) => true,
             ExprKind::Expression(inner) => self.converts_to_its_context(inner),
-            // A user-defined function returns its declared type. The function
-            // form of an arithmetic operator, an operation on one value and a
-            // function of several inputs of one type compute at their own
-            // type, and any other standard function at its context's.
+            // A user-defined function returns its declared type, and so does a
+            // standard function whose signature fixes its result type (a type
+            // conversion, a typed time function). The function form of an
+            // arithmetic operator, an operation on one value and a function of
+            // several inputs of one type compute at their own type, and any
+            // other standard function at its context's.
             ExprKind::Function(func) => match self.intrinsic_of(func) {
                 None => true,
                 Some(intrinsic) => {
-                    self.is_numeric_pair(func, expr) || intrinsic.computes_at_own_type()
+                    self.is_numeric_pair(func, expr)
+                        || intrinsic.computes_at_own_type()
+                        || intrinsic.result_has_fixed_type()
                 }
             },
             // A method returns its declared type, and a dereference reads the

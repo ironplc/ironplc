@@ -131,5 +131,7 @@ fn main() {
         // Behavior policies (`REQ-BP-vm-*`): the STRING_TO_<numeric> scan
         // and failure semantics.
         "behavior-policies.md",
+        // Counter widths (`REQ-CW-vm-*`): each width counts in its own type.
+        "counter-widths.md",
     ]);
 }

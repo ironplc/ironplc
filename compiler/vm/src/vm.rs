@@ -2529,21 +2529,39 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                         )?,
                         uptime_us as i64,
                     )?,
-                    opcode::fb_type::CTU => intrinsic::ctu(intrinsic_instance(
-                        data_region,
-                        instance_start,
-                        intrinsic::CTU_INSTANCE_FIELDS,
-                    )?)?,
-                    opcode::fb_type::CTD => intrinsic::ctd(intrinsic_instance(
-                        data_region,
-                        instance_start,
-                        intrinsic::CTD_INSTANCE_FIELDS,
-                    )?)?,
-                    opcode::fb_type::CTUD => intrinsic::ctud(intrinsic_instance(
-                        data_region,
-                        instance_start,
-                        intrinsic::CTUD_INSTANCE_FIELDS,
-                    )?)?,
+                    opcode::fb_type::CTU
+                    | opcode::fb_type::CTU_UDINT
+                    | opcode::fb_type::CTU_LINT
+                    | opcode::fb_type::CTU_ULINT => intrinsic::ctu(
+                        intrinsic_instance(
+                            data_region,
+                            instance_start,
+                            intrinsic::CTU_INSTANCE_FIELDS,
+                        )?,
+                        intrinsic::CounterWidth::of(type_id),
+                    )?,
+                    opcode::fb_type::CTD
+                    | opcode::fb_type::CTD_UDINT
+                    | opcode::fb_type::CTD_LINT
+                    | opcode::fb_type::CTD_ULINT => intrinsic::ctd(
+                        intrinsic_instance(
+                            data_region,
+                            instance_start,
+                            intrinsic::CTD_INSTANCE_FIELDS,
+                        )?,
+                        intrinsic::CounterWidth::of(type_id),
+                    )?,
+                    opcode::fb_type::CTUD
+                    | opcode::fb_type::CTUD_UDINT
+                    | opcode::fb_type::CTUD_LINT
+                    | opcode::fb_type::CTUD_ULINT => intrinsic::ctud(
+                        intrinsic_instance(
+                            data_region,
+                            instance_start,
+                            intrinsic::CTUD_INSTANCE_FIELDS,
+                        )?,
+                        intrinsic::CounterWidth::of(type_id),
+                    )?,
                     opcode::fb_type::SR => intrinsic::sr(intrinsic_instance(
                         data_region,
                         instance_start,

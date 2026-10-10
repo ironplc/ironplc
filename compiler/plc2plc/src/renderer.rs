@@ -912,6 +912,21 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         Ok(())
     }
 
+    // 2.4.3.2
+    fn visit_subrange_initial_value_assignment(
+        &mut self,
+        node: &SubrangeInitialValueAssignment,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_subrange_specification_kind(&node.spec)?;
+
+        if let Some(iv) = &node.initial_value {
+            self.write_ws(":=");
+            self.visit_signed_integer(iv)?;
+        }
+
+        Ok(())
+    }
+
     // Extension: constant-expression VAR initializer
     // (e.g. `PI/180.0`), not yet folded to a literal.
     fn visit_simple_expr_initializer(
@@ -1002,6 +1017,21 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         }
 
         Ok(())
+    }
+
+    fn visit_array_initial_element_kind(
+        &mut self,
+        node: &ArrayInitialElementKind,
+    ) -> Result<Self::Value, Diagnostic> {
+        match node {
+            ArrayInitialElementKind::Structure(elements) => {
+                self.write_ws("(");
+                visit_comma_separated!(self, elements.iter(), StructureElementInit);
+                self.write_ws(")");
+                Ok(())
+            }
+            _ => node.recurse_visit(self),
+        }
     }
 
     /// Renders a repeated array element, `count(value)`.

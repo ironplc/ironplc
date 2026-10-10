@@ -235,7 +235,17 @@ impl ImplicitConversions<'_> {
                         operated.and_then(|id| self.width_of_type(id)) == Some(OperationWidth::W64);
                     let count = if wide { self.lint() } else { dint };
                     for (index, arg) in inputs.into_iter().enumerate() {
-                        self.type_literals(arg, if index == 0 { operated } else { count });
+                        if index == 0 {
+                            self.type_literals(arg, operated);
+                            continue;
+                        }
+                        self.type_literals(arg, count);
+                        // A count of another width is converted to the type
+                        // the count is compiled at, as it is narrowed or
+                        // widened to it.
+                        if let Some(count) = count {
+                            self.record_conversion_to(arg, count);
+                        }
                     }
                 }
                 // A position or a length is a `DINT`; a string is compiled in
