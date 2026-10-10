@@ -12,7 +12,6 @@
 
 use std::collections::HashSet;
 
-use crate::execution_model::Declarations;
 use crate::function_environment::{FunctionEnvironment, FunctionEnvironmentBuilder};
 use crate::symbol_environment::SymbolEnvironment;
 use crate::type_environment::{TypeEnvironment, TypeEnvironmentBuilder};
@@ -50,9 +49,6 @@ pub struct SemanticContext {
     /// instances, and the globals in scope. Codegen builds from this rather
     /// than reading the configuration's declarations.
     execution: Execution,
-    /// Where the declaration behind each id in `execution` is in the
-    /// library, recorded by the walk that allocated the ids.
-    execution_declarations: Declarations,
 }
 
 impl SemanticContext {
@@ -73,18 +69,12 @@ impl SemanticContext {
             compiler_options,
             // Until a library is resolved there is nothing to run.
             execution: Execution::NotExecutable(NotExecutable::NoProgram),
-            execution_declarations: Declarations::default(),
         }
     }
 
-    /// Records the execution model resolved from the library, and where the
-    /// declaration behind each of its ids is.
-    pub(crate) fn with_execution(
-        mut self,
-        (execution, declarations): (Execution, Declarations),
-    ) -> Self {
+    /// Records the execution model resolved from the library.
+    pub(crate) fn with_execution(mut self, execution: Execution) -> Self {
         self.execution = execution;
-        self.execution_declarations = declarations;
         self
     }
 
@@ -127,11 +117,6 @@ impl SemanticContext {
     /// when, or why nothing can.
     pub fn execution(&self) -> &Execution {
         &self.execution
-    }
-
-    /// Where the declaration behind each id of [`Self::execution`] is.
-    pub(crate) fn execution_declarations(&self) -> &Declarations {
-        &self.execution_declarations
     }
 
     /// Provides read-only access to the compiler options.

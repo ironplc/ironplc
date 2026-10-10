@@ -4,9 +4,11 @@
 //!
 //! These are language decisions, so they are made once, here, and a backend
 //! lowers the answer. [`resolve`] builds an [`Execution`] of `ironplc-ir`'s
-//! types from an analyzed library, and
-//! [`SemanticContext::execution`](crate::SemanticContext::execution) hands it
-//! to codegen through [`CleanAnalysis`](crate::CleanAnalysis).
+//! types from an analyzed library. The
+//! [`SemanticContext`](crate::SemanticContext) stores it for `check` and the
+//! editor, and [`CleanAnalysis::new`](crate::CleanAnalysis::new) resolves it
+//! again, with the declaration behind each id, from the library it hands to
+//! codegen.
 //!
 //! `resolve` reads only what a clean analysis holds (the library and the
 //! compiler options), never the analyzer's internals, so that the module can
@@ -37,117 +39,45 @@ pub fn resolve(library: &Library, options: &CompilerOptions) -> Execution {
     resolve_with_declarations(library, options).0
 }
 
-/// Resolves the execution model, and records where the declaration behind
-/// each id the model allocated is in `library`.
+/// Resolves the execution model, and the declaration behind each id the
+/// model allocated.
 ///
-/// Both come from one walk of the library, so the declarations are those of
-/// the ids the model holds. See [`Declarations`].
-pub(crate) fn resolve_with_declarations(
-    library: &Library,
+/// Both come from one walk of `library`, so the declarations are those of the
+/// ids the model holds, and they borrow from `library`. See [`Declarations`].
+pub(crate) fn resolve_with_declarations<'a>(
+    library: &'a Library,
     options: &CompilerOptions,
-) -> (Execution, Declarations) {
+) -> (Execution, Declarations<'a>) {
     let mut walk = Walk::new(library);
     let execution = walk.resolve(options);
     (execution, walk.declarations)
 }
 
-/// Where, in the library the model was resolved from, the declaration behind
-/// each id is.
+/// The declaration behind each id of a model, borrowed from the library the
+/// model was resolved from.
 ///
 /// Codegen still compiles a program's body, and a declared global's type and
 /// initial value, from the library. It reaches them by id, through
-/// [`CleanAnalysis`](crate::CleanAnalysis), from this record of the walk that
-/// allocated the ids. It goes away when the lowered program carries bodies,
-/// types and initial values.
+/// [`CleanAnalysis`](crate::CleanAnalysis), from the walk that allocated the
+/// ids. It goes away when the lowered program carries bodies, types and
+/// initial values.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct Declarations {
-    /// The position in `library.elements` of each program's declaration.
-    programs: HashMap<ProgramId, usize>,
-    /// Where each declared global's declaration is. A system global has none.
-    globals: HashMap<GlobalId, GlobalDeclaration>,
+pub(crate) struct Declarations<'a> {
+    programs: HashMap<ProgramId, &'a ProgramDeclaration>,
+    /// A declared global's declaration. A system global has none.
+    globals: HashMap<GlobalId, &'a VarDecl>,
 }
 
-/// Where a declared global's `VarDecl` is in the library.
-#[derive(Clone, Copy, Debug)]
-enum GlobalDeclaration {
-    /// `library.elements[element]` is a top-level `VAR_GLOBAL` block.
-    TopLevel { element: usize, index: usize },
-    /// `library.elements[element]` is the configuration.
-    Configuration { element: usize, index: usize },
-    /// `library.elements[element]` is the configuration, and `resource` its
-    /// resource.
-    Resource {
-        element: usize,
-        resource: usize,
-        index: usize,
-    },
-}
-
-impl Declarations {
-    /// The declaration of the program `id` names, at `span`.
-    ///
-    /// `None` when `library` is not the one the ids were allocated from: the
-    /// element is not a `PROGRAM`, or not the one whose name is at `span`.
-    pub(crate) fn program<'a>(
-        &self,
-        library: &'a Library,
-        id: ProgramId,
-        span: &SourceSpan,
-    ) -> Option<&'a ProgramDeclaration> {
-        match library.elements.get(*self.programs.get(&id)?)? {
-            LibraryElementKind::ProgramDeclaration(program)
-                if same_position(&program.name.span, span) =>
-            {
-                Some(program)
-            }
-            _ => None,
-        }
+impl<'a> Declarations<'a> {
+    /// The declaration of the program `id` names.
+    pub(crate) fn program(&self, id: ProgramId) -> Option<&'a ProgramDeclaration> {
+        self.programs.get(&id).copied()
     }
 
-    /// The declaration of the declared global `id` names, at `span`.
-    ///
-    /// `None` for a system global, which has no declaration, and when
-    /// `library` is not the one the ids were allocated from.
-    pub(crate) fn global<'a>(
-        &self,
-        library: &'a Library,
-        id: GlobalId,
-        span: &SourceSpan,
-    ) -> Option<&'a VarDecl> {
-        let decl = match *self.globals.get(&id)? {
-            GlobalDeclaration::TopLevel { element, index } => {
-                match library.elements.get(element)? {
-                    LibraryElementKind::GlobalVarDeclarations(decls) => decls.get(index)?,
-                    _ => return None,
-                }
-            }
-            GlobalDeclaration::Configuration { element, index } => {
-                configuration_at(library, element)?.global_var.get(index)?
-            }
-            GlobalDeclaration::Resource {
-                element,
-                resource,
-                index,
-            } => configuration_at(library, element)?
-                .resource_decl
-                .get(resource)?
-                .global_vars
-                .get(index)?,
-        };
-        same_position(&decl.identifier.span(), span).then_some(decl)
-    }
-}
-
-/// Whether `a` and `b` are the same place in the same file. `SourceSpan`'s
-/// own equality holds for any two spans.
-fn same_position(a: &SourceSpan, b: &SourceSpan) -> bool {
-    a.file_id == b.file_id && a.start == b.start && a.end == b.end
-}
-
-fn configuration_at(library: &Library, element: usize) -> Option<&ConfigurationDeclaration> {
-    match library.elements.get(element)? {
-        LibraryElementKind::ConfigurationDeclaration(config) => Some(config),
-        _ => None,
+    /// The declaration of the declared global `id` names. `None` for a system
+    /// global, which has no declaration.
+    pub(crate) fn global(&self, id: GlobalId) -> Option<&'a VarDecl> {
+        self.globals.get(&id).copied()
     }
 }
 
@@ -156,7 +86,7 @@ fn configuration_at(library: &Library, element: usize) -> Option<&ConfigurationD
 struct Walk<'a> {
     library: &'a Library,
     builder: ExecutionModelBuilder,
-    declarations: Declarations,
+    declarations: Declarations<'a>,
     /// The declared programs and their ids, in source order.
     programs: Vec<(&'a ProgramDeclaration, ProgramId)>,
     /// The globals a `SINGLE` can name outside its resource, nearest scope
@@ -183,17 +113,11 @@ impl<'a> Walk<'a> {
         let mut programs = Vec::new();
         let mut configurations = Vec::new();
         let mut top_level = Vec::new();
-        for (element, kind) in self.library.elements.iter().enumerate() {
+        for kind in &self.library.elements {
             match kind {
-                LibraryElementKind::ProgramDeclaration(program) => {
-                    programs.push((element, program))
-                }
-                LibraryElementKind::ConfigurationDeclaration(config) => {
-                    configurations.push((element, config))
-                }
-                LibraryElementKind::GlobalVarDeclarations(decls) => {
-                    top_level.push((element, decls))
-                }
+                LibraryElementKind::ProgramDeclaration(program) => programs.push(program),
+                LibraryElementKind::ConfigurationDeclaration(config) => configurations.push(config),
+                LibraryElementKind::GlobalVarDeclarations(decls) => top_level.push(decls),
                 _ => {}
             }
         }
@@ -201,8 +125,8 @@ impl<'a> Walk<'a> {
         // with no dependency between them the order comes out reversed. Top-
         // level `VAR_GLOBAL` blocks stay first, in source order, so their
         // order is kept as it is.
-        sort_by_source_position(&mut programs, |(_, program)| &program.name);
-        sort_by_source_position(&mut configurations, |(_, config)| &config.name);
+        sort_by_source_position(&mut programs, |program| &program.name);
+        sort_by_source_position(&mut configurations, |config| &config.name);
 
         if programs.is_empty() {
             return Execution::NotExecutable(NotExecutable::NoProgram);
@@ -211,16 +135,16 @@ impl<'a> Walk<'a> {
             return Execution::NotExecutable(NotExecutable::SeveralConfigurations(
                 configurations
                     .iter()
-                    .map(|(_, config)| debug_name(&config.name))
+                    .map(|config| debug_name(&config.name))
                     .collect(),
             ));
         }
 
-        for (element, program) in programs {
+        for program in programs {
             let id = self.builder.add_program(ProgramType {
                 name: debug_name(&program.name),
             });
-            self.declarations.programs.insert(id, element);
+            self.declarations.programs.insert(id, program);
             self.programs.push((program, id));
         }
 
@@ -239,23 +163,17 @@ impl<'a> Walk<'a> {
         }
 
         let mut top_level_scope = Scope::new();
-        for (element, decls) in top_level {
-            for (index, decl) in decls.iter().enumerate() {
-                let id = self.add_global(
-                    decl,
-                    GlobalScope::TopLevel,
-                    GlobalDeclaration::TopLevel { element, index },
-                );
-                if let Some(name) = decl.identifier.symbolic_id() {
-                    top_level_scope.insert(name.clone(), id);
-                }
+        for decl in top_level.into_iter().flatten() {
+            let id = self.add_global(decl, GlobalScope::TopLevel);
+            if let Some(name) = decl.identifier.symbolic_id() {
+                top_level_scope.insert(name.clone(), id);
             }
         }
 
         let configuration = match configurations.first() {
-            Some((element, config)) => {
+            Some(config) => {
                 self.outer_scopes = vec![top_level_scope, system];
-                self.resolve_configuration(*element, config)
+                self.resolve_configuration(config)
             }
             None => Configuration {
                 name: None,
@@ -305,36 +223,20 @@ impl<'a> Walk<'a> {
 
     /// Adds the globals of `config` and its resources, then resolves its
     /// resources.
-    fn resolve_configuration(
-        &mut self,
-        element: usize,
-        config: &ConfigurationDeclaration,
-    ) -> Configuration {
+    fn resolve_configuration(&mut self, config: &'a ConfigurationDeclaration) -> Configuration {
         let mut configuration_scope = Scope::new();
-        for (index, decl) in config.global_var.iter().enumerate() {
-            let id = self.add_global(
-                decl,
-                GlobalScope::Configuration,
-                GlobalDeclaration::Configuration { element, index },
-            );
+        for decl in &config.global_var {
+            let id = self.add_global(decl, GlobalScope::Configuration);
             if let Some(name) = decl.identifier.symbolic_id() {
                 configuration_scope.insert(name.clone(), id);
             }
         }
 
         let mut resource_scopes = Vec::new();
-        for (resource, declaration) in config.resource_decl.iter().enumerate() {
+        for resource in &config.resource_decl {
             let mut scope = Scope::new();
-            for (index, decl) in declaration.global_vars.iter().enumerate() {
-                let id = self.add_global(
-                    decl,
-                    GlobalScope::Resource,
-                    GlobalDeclaration::Resource {
-                        element,
-                        resource,
-                        index,
-                    },
-                );
+            for decl in &resource.global_vars {
+                let id = self.add_global(decl, GlobalScope::Resource);
                 if let Some(name) = decl.identifier.symbolic_id() {
                     scope.insert(name.clone(), id);
                 }
@@ -432,18 +334,13 @@ impl<'a> Walk<'a> {
         }
     }
 
-    /// Adds a declared global and records where its declaration is.
-    fn add_global(
-        &mut self,
-        decl: &VarDecl,
-        scope: GlobalScope,
-        declaration: GlobalDeclaration,
-    ) -> GlobalId {
+    /// Adds a declared global and records its declaration.
+    fn add_global(&mut self, decl: &'a VarDecl, scope: GlobalScope) -> GlobalId {
         let id = self.builder.add_global(Global {
             name: DebugName::new(decl.identifier.to_string(), decl.identifier.span()),
             kind: GlobalKind::Declared(scope),
         });
-        self.declarations.globals.insert(id, declaration);
+        self.declarations.globals.insert(id, decl);
         id
     }
 

@@ -2,8 +2,9 @@
 
 use ironplc_dsl::common::{Library, ProgramDeclaration, VarDecl};
 use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_ir::execution::{Execution, ExecutionModel, GlobalId, ProgramId};
+use ironplc_ir::execution::{Execution, GlobalId, ProgramId};
 
+use crate::execution_model::{self, Declarations};
 use crate::semantic_context::SemanticContext;
 
 /// An analyzed library paired with a semantic context that holds no
@@ -27,18 +28,26 @@ use crate::semantic_context::SemanticContext;
 ///   through the rules, so it holds no rule diagnostics and passes the gate
 ///   even for a library the rules would reject.
 /// - That the context was built from the library. Nothing ties the two
-///   together, so a context can be paired with any library.
+///   together, so a context can be paired with any library. The execution
+///   model is the exception: `new` resolves it from `library` itself, so the
+///   model and the declarations it reaches always belong to that library.
 ///
 /// The gate stops a caller from forgetting the check, not one that sets out
 /// to skip it.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct CleanAnalysis<'a> {
     library: &'a Library,
     context: &'a SemanticContext,
+    /// The execution model resolved from `library`.
+    execution: Execution,
+    /// The declaration behind each id of `execution`, borrowed from
+    /// `library` by the walk that allocated the ids.
+    declarations: Declarations<'a>,
 }
 
 impl<'a> CleanAnalysis<'a> {
-    /// Pairs `library` with `context` when the context holds no diagnostics.
+    /// Pairs `library` with `context` when the context holds no diagnostics,
+    /// and resolves the execution model of `library`.
     ///
     /// Returns the context's diagnostics otherwise. Returning them, rather
     /// than `None`, means a caller that unwraps the result with `.expect()`
@@ -50,7 +59,14 @@ impl<'a> CleanAnalysis<'a> {
         if context.has_diagnostics() {
             return Err(context.diagnostics());
         }
-        Ok(Self { library, context })
+        let (execution, declarations) =
+            execution_model::resolve_with_declarations(library, context.compiler_options());
+        Ok(Self {
+            library,
+            context,
+            execution,
+            declarations,
+        })
     }
 
     /// The analyzed library.
@@ -63,10 +79,10 @@ impl<'a> CleanAnalysis<'a> {
         self.context
     }
 
-    /// What runs, and when: the execution model the analyzer resolved, or
-    /// why nothing can run.
-    pub fn execution(&self) -> &'a Execution {
-        self.context.execution()
+    /// What runs, and when: the execution model of the library, or why
+    /// nothing can run.
+    pub fn execution(&self) -> &Execution {
+        &self.execution
     }
 
     /// The `PROGRAM` declaration whose body the program `id` of the
@@ -74,13 +90,9 @@ impl<'a> CleanAnalysis<'a> {
     ///
     /// Answered from the walk of the library that allocated `id`. `None`
     /// means a compiler defect, which the caller reports as an internal
-    /// error: the model is not executable, `id` is another model's, or the
-    /// library is not the one the context was resolved from.
+    /// error: `id` is another model's.
     pub fn program_declaration(&self, id: ProgramId) -> Option<&'a ProgramDeclaration> {
-        let program = self.model()?.program(id)?;
-        self.context
-            .execution_declarations()
-            .program(self.library, id, &program.name.span())
+        self.declarations.program(id)
     }
 
     /// The declaration of the declared global `id` of the execution model,
@@ -88,21 +100,10 @@ impl<'a> CleanAnalysis<'a> {
     ///
     /// Answered from the walk of the library that allocated `id`. `None`
     /// means a compiler defect, which the caller reports as an internal
-    /// error: `id` names a system global, which has no declaration, the
-    /// model is not executable, `id` is another model's, or the library is
-    /// not the one the context was resolved from.
+    /// error: `id` names a system global, which has no declaration, or is
+    /// another model's.
     pub fn global_declaration(&self, id: GlobalId) -> Option<&'a VarDecl> {
-        let global = self.model()?.global(id)?;
-        self.context
-            .execution_declarations()
-            .global(self.library, id, &global.name.span())
-    }
-
-    fn model(&self) -> Option<&'a ExecutionModel> {
-        match self.execution() {
-            Execution::Executable(model) => Some(model),
-            Execution::NotExecutable(_) => None,
-        }
+        self.declarations.global(id)
     }
 }
 

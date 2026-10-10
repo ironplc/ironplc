@@ -55,8 +55,10 @@ lowered program will hold them.
 
 * **`execution_model::resolve`** in the analyzer builds an
   `ironplc_ir::execution::Execution` at the end of `stages::resolve_types`,
-  next to `reachable()`, and the `SemanticContext` stores it. `CleanAnalysis`
-  hands it to codegen.
+  next to `reachable()`, and the `SemanticContext` stores it for `check` and
+  the editor. `CleanAnalysis::new` resolves the model again from the library
+  it holds, and hands that to codegen, so the model codegen builds from is
+  always that library's.
 * **`resolve` reads only what a clean analysis holds**: the library and the
   compiler options, never the analyzer's environments. When
   `ironplc-lowering` exists, the module moves into it unchanged and takes a
@@ -69,8 +71,9 @@ lowered program will hold them.
 * **Codegen reaches a declaration only by id.** It still compiles a program's
   body, and a declared global's type and initial value, from the library.
   `CleanAnalysis::program_declaration` and `global_declaration` answer them
-  from the same walk that allocated the ids; they go away when the lowered
-  program carries bodies, types and initial values.
+  from the same walk that allocated the ids, which keeps a reference to each
+  declaration, borrowed from the library, rather than its position. They go
+  away when the lowered program carries bodies, types and initial values.
 
 ### Consequences
 
@@ -87,6 +90,8 @@ lowered program will hold them.
   analyzer.
 * Bad, because `CleanAnalysis` now hands out declaration nodes by model id,
   an interface that exists only until the lowered program carries bodies.
+* Bad, because the model is resolved twice, once for the context and once
+  by `CleanAnalysis::new`. The walk visits the top-level declarations only.
 
 ### Confirmation
 

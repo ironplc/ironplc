@@ -259,8 +259,13 @@ by id, never by name in codegen:
 
 `CleanAnalysis` answers both by id, as `program_declaration(ProgramId)` and
 `global_declaration(GlobalId)`, from the same walk of the library that
-allocated the ids. It lives in the analyzer, not `ironplc-ir`, because it hands
-out declaration nodes. It is the only place a backend reaches a declaration
+allocated the ids. `CleanAnalysis::new` runs that walk on the library it
+holds, so the model codegen receives is always that library's, and the walk
+keeps a reference to each declaration rather than a position in the library:
+the borrow checker, not a convention, ties a declaration to the library it
+came from. The `SemanticContext` keeps its own copy of the model, without the
+declarations, for `check` and the editor. `CleanAnalysis` lives in the
+analyzer, not `ironplc-ir`, because it hands out declaration nodes. It is the only place a backend reaches a declaration
 through the model, and it goes away when the lowered program carries bodies,
 types and initial values.
 

@@ -519,7 +519,7 @@ END_CONFIGURATION
 }
 
 #[test]
-fn program_declaration_when_library_is_not_the_one_resolved_then_none() {
+fn clean_analysis_when_paired_with_another_library_then_model_is_that_librarys() {
     let options = CompilerOptions::default();
     let library = parse_program(MAIN, &FileId::default(), &options).unwrap();
     let (_, context) = analyze_clean(&library, &options);
@@ -534,8 +534,46 @@ fn program_declaration_when_library_is_not_the_one_resolved_then_none() {
         panic!("not executable");
     };
 
-    let (id, _) = model.programs().next().unwrap();
-    assert!(analysis.program_declaration(id).is_none());
+    let (id, program) = model.programs().next().unwrap();
+    assert_eq!(program.name.to_string(), "other");
+    assert!(std::ptr::eq(
+        analysis.program_declaration(id).unwrap(),
+        match &other.elements[0] {
+            LibraryElementKind::ProgramDeclaration(program) => program,
+            _ => panic!("not a program"),
+        }
+    ));
+}
+
+#[test]
+fn program_declaration_when_id_is_another_models_then_none() {
+    let options = CompilerOptions::default();
+    let two = format!(
+        "{MAIN}
+PROGRAM helper
+  VAR y : INT; END_VAR
+  y := 2;
+END_PROGRAM
+CONFIGURATION config
+  RESOURCE resource1 ON PLC
+    PROGRAM instance1 : main;
+  END_RESOURCE
+END_CONFIGURATION
+"
+    );
+    let library = parse_program(&two, &FileId::default(), &options).unwrap();
+    let (library, context) = analyze_clean(&library, &options);
+    let analysis = CleanAnalysis::new(&library, &context).unwrap();
+    let Execution::Executable(model) = analysis.execution() else {
+        panic!("not executable");
+    };
+    let (second, _) = model.programs().nth(1).unwrap();
+
+    let one = parse_program(MAIN, &FileId::default(), &options).unwrap();
+    let (one, one_context) = analyze_clean(&one, &options);
+    let one_analysis = CleanAnalysis::new(&one, &one_context).unwrap();
+
+    assert!(one_analysis.program_declaration(second).is_none());
 }
 
 #[spec_test(REQ_EM_analyzer_041)]

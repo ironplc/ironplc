@@ -357,7 +357,7 @@ pub fn resolve_types(
 
     // What runs, and when, resolved once next to `reachable`, so that a
     // backend builds from it rather than deciding it again.
-    let execution = execution_model::resolve_with_declarations(&library, options);
+    let execution = execution_model::resolve(&library, options);
 
     let mut context = SemanticContext::new(
         type_environment,
