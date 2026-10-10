@@ -12,6 +12,7 @@ mod renderer;
 #[cfg(test)]
 mod tests;
 mod type_comment;
+mod written;
 
 // Spec conformance testing infrastructure (test-only).
 #[cfg(test)]

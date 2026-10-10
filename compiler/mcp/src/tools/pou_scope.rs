@@ -7,7 +7,7 @@ use ironplc_dsl::common::{
     ConstantKind, FunctionBlockDeclaration, FunctionDeclaration, InitialValueAssignmentKind,
     Library, LibraryElementKind, ProgramDeclaration, TypeReference, VarDecl, VariableType,
 };
-use ironplc_dsl::core::FileId;
+use ironplc_dsl::core::{FileId, Located};
 use ironplc_project::project::{MemoryBackedProject, Project};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -215,20 +215,34 @@ fn direction_of(vt: &VariableType) -> String {
 /// returns `None` otherwise. Per REQ-TOL-mcp-220 the rendering is for display
 /// only and is not guaranteed to be a parseable expression.
 fn render_initial_value(init: &InitialValueAssignmentKind) -> Option<String> {
+    // The analyzer completes every initializer with the value the variable
+    // starts with; a value it supplied (a synthesized span) is not one the
+    // declaration declares.
     match init {
-        InitialValueAssignmentKind::Simple(s) => s.initial_value.as_ref().map(|c| c.to_string()),
+        InitialValueAssignmentKind::Simple(s) => s
+            .initial_value
+            .as_ref()
+            .filter(|c| !c.span().is_synthesized())
+            .map(|c| c.to_string()),
         InitialValueAssignmentKind::String(s) => s
             .initial_value
             .as_ref()
+            .filter(|lit| !lit.span.is_synthesized())
             .map(|lit| ConstantKind::CharacterString(lit.clone()).to_string()),
-        InitialValueAssignmentKind::EnumeratedType(e) => {
-            e.initial_value.as_ref().map(|v| v.value.to_string())
-        }
-        InitialValueAssignmentKind::EnumeratedValues(e) => {
-            e.initial_value.as_ref().map(|v| v.value.to_string())
-        }
+        InitialValueAssignmentKind::EnumeratedType(e) => e
+            .initial_value
+            .as_ref()
+            .filter(|v| !v.value.span.is_synthesized())
+            .map(|v| v.value.to_string()),
+        InitialValueAssignmentKind::EnumeratedValues(e) => e
+            .initial_value
+            .as_ref()
+            .filter(|v| !v.value.span.is_synthesized())
+            .map(|v| v.value.to_string()),
         InitialValueAssignmentKind::Reference(r) => match &r.initial_value {
-            Some(ironplc_dsl::common::ReferenceInitialValue::Null(_)) => Some("NULL".into()),
+            Some(ironplc_dsl::common::ReferenceInitialValue::Null(span)) => {
+                (!span.is_synthesized()).then(|| "NULL".into())
+            }
             Some(ironplc_dsl::common::ReferenceInitialValue::Ref(_)) => Some("REF".into()),
             None => None,
         },
@@ -253,6 +267,11 @@ mod tests {
     use crate::tools::test_support::{
         ed2_options, source, unnamed_source, SEMANTIC_ERROR_PROGRAM, VALID_PROGRAM,
     };
+    use ironplc_dsl::common::{
+        IntegerLiteral, RefSyntax, ReferenceInitialValue, ReferenceInitializer, ReferenceTarget,
+        SignedInteger, SimpleInitializer, TypeName,
+    };
+    use ironplc_dsl::core::SourceSpan;
 
     fn build(src: &str, pou: &str) -> PouScopeResponse {
         let sources = vec![SourceInput {
@@ -377,5 +396,45 @@ mod tests {
         assert!(!resp.ok);
         assert!(resp.found);
         assert!(!resp.variables.is_empty());
+    }
+
+    fn simple(span: SourceSpan) -> InitialValueAssignmentKind {
+        InitialValueAssignmentKind::Simple(SimpleInitializer {
+            type_name: TypeName::from("INT"),
+            initial_value: Some(ConstantKind::IntegerLiteral(IntegerLiteral {
+                value: SignedInteger::new("7", span).unwrap(),
+                data_type: None,
+            })),
+        })
+    }
+
+    fn null_reference(span: SourceSpan) -> InitialValueAssignmentKind {
+        InitialValueAssignmentKind::Reference(ReferenceInitializer {
+            target: ReferenceTarget::Named(TypeName::from("INT")),
+            initial_value: Some(ReferenceInitialValue::Null(span)),
+            syntax: RefSyntax::RefTo,
+        })
+    }
+
+    #[test]
+    fn render_initial_value_when_value_written_then_some() {
+        let written = SourceSpan::range(1, 2);
+
+        assert_eq!(
+            render_initial_value(&simple(written.clone())).as_deref(),
+            Some("7")
+        );
+        assert_eq!(
+            render_initial_value(&null_reference(written)).as_deref(),
+            Some("NULL")
+        );
+    }
+
+    #[test]
+    fn render_initial_value_when_value_synthesized_then_none() {
+        let synthesized = SourceSpan::synthesized();
+
+        assert_eq!(render_initial_value(&simple(synthesized.clone())), None);
+        assert_eq!(render_initial_value(&null_reference(synthesized)), None);
     }
 }
