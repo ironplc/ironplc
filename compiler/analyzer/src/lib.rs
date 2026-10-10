@@ -31,6 +31,7 @@ mod intrinsic;
 mod result;
 mod rule_abstract_not_instantiated;
 mod rule_array_index_range;
+mod rule_array_initializer_length;
 mod rule_assignment_aggregate_type_compat;
 mod rule_bit_and_partial_access_range;
 mod rule_case_bit_string_label;
