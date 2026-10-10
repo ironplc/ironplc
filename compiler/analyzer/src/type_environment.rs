@@ -300,6 +300,10 @@ pub struct TypeEnvironment {
     /// array holds its element's structure but not its name, so an array of
     /// `Point` could not otherwise be traced back to `Point`.
     array_elements: HashMap<TypeId, TypeId>,
+    /// The type each alias (`TYPE MyByte : BYTE`) was declared as an alias
+    /// of, by the alias's id. The alias copies its base's representation,
+    /// which says what the type is but not what its values start at.
+    alias_bases: HashMap<TypeId, TypeId>,
     /// The repeated declarations met while populating, until the transform
     /// that populates the environment drains them with
     /// [`Self::take_duplicates`]. Recorded rather than returned so that a
@@ -318,6 +322,7 @@ impl TypeEnvironment {
             references: HashMap::new(),
             referenced: HashMap::new(),
             array_elements: HashMap::new(),
+            alias_bases: HashMap::new(),
             duplicates: Vec::new(),
         }
     }
@@ -485,7 +490,18 @@ impl TypeEnvironment {
         if let (Some(alias), Some(element)) = (self.id_of(type_name), element) {
             self.array_elements.entry(alias).or_insert(element);
         }
+        if let (Some(alias), Some(base)) = (self.id_of(type_name), self.id_of(base_type_name)) {
+            if alias != base {
+                self.alias_bases.entry(alias).or_insert(base);
+            }
+        }
         Ok(())
+    }
+
+    /// The type the alias `alias` names (`BYTE` for `TYPE MyByte : BYTE`),
+    /// or `None` when `alias` was not declared as an alias.
+    pub fn alias_base(&self, alias: TypeId) -> Option<TypeId> {
+        self.alias_bases.get(&alias).copied()
     }
 
     /// Gets the type from the environment.

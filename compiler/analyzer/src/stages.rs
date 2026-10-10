@@ -41,7 +41,7 @@ use crate::{
     xform_insert_implicit_conversions, xform_insert_implicit_deref, xform_int_to_bool_initializer,
     xform_mark_unwritten_constants, xform_named_to_positional_args, xform_remove_unsigned_abs,
     xform_resolve_adr, xform_resolve_constant_expressions, xform_resolve_decl_types,
-    xform_resolve_expr_types, xform_resolve_late_bound_expr_kind,
+    xform_resolve_expr_types, xform_resolve_initial_values, xform_resolve_late_bound_expr_kind,
     xform_resolve_late_bound_type_initializer, xform_resolve_symbol_and_function_environment,
     xform_resolve_type_aliases, xform_resolve_type_decl_environment, xform_toposort_declarations,
 };
@@ -288,6 +288,11 @@ pub fn resolve_types(
         xform_resolve_decl_types::apply(lib, &mut type_environment)
     });
 
+    // Resolve the default of every declared type while the declarations
+    // still name the types they were written with: resolving expression
+    // types rewrites an alias in an initializer to the type it aliases.
+    let type_defaults = xform_resolve_initial_values::TypeDefaults::of(&type_environment, &library);
+
     // Best effort: a repeated declaration name is diagnosed here, by the
     // environments, and the first declaration is kept, so the rest of the
     // library still resolves instead of reverting on the first repeat.
@@ -360,7 +365,8 @@ pub fn resolve_types(
         symbol_environment,
         reachable,
         *options,
-    );
+    )
+    .with_type_defaults(type_defaults);
     context.add_diagnostics(diagnostics);
 
     Ok((library, context))

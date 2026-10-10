@@ -107,6 +107,7 @@ mod xform_resolve_adr;
 mod xform_resolve_constant_expressions;
 mod xform_resolve_decl_types;
 mod xform_resolve_expr_types;
+pub mod xform_resolve_initial_values;
 mod xform_resolve_late_bound_expr_kind;
 mod xform_resolve_late_bound_type_initializer;
 mod xform_resolve_symbol_and_function_environment;
