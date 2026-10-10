@@ -6,7 +6,6 @@
 //! as `common::MethodDeclaration` and so on.
 use crate::common::*;
 use crate::core::{Id, Located, SourceSpan};
-use crate::decl_id::DeclId;
 use crate::extension::LanguageExtension;
 use crate::fold::Fold;
 use crate::member_qualifier::MemberQualifiers;
@@ -27,7 +26,7 @@ use dsl_macro_derive::{Located, Recurse};
 /// Phase 1: static dispatch. Resolution of calls against this declaration
 /// (own methods first, then the `EXTENDS` chain) is implemented outside
 /// the AST, in `ironplc-analyzer`.
-#[derive(Clone, Debug, Recurse, Located)]
+#[derive(Clone, Debug, PartialEq, Recurse, Located)]
 #[recurse(scope)]
 pub struct MethodDeclaration {
     /// Qualifiers between `METHOD` and the name, in source order, such as
@@ -60,24 +59,6 @@ pub struct MethodDeclaration {
     pub body: Vec<StmtKind>,
     #[located(position)]
     pub span: SourceSpan,
-    /// The identity of the method's implicit result variable, when it
-    /// declares a return type (see [`DeclId`]). Populated by the analyzer;
-    /// left out of `PartialEq` like [`VarDecl::decl_id`].
-    #[recurse(ignore)]
-    pub result_decl_id: Option<DeclId>,
-}
-
-impl PartialEq for MethodDeclaration {
-    fn eq(&self, other: &Self) -> bool {
-        self.qualifiers == other.qualifiers
-            && self.name == other.name
-            && self.return_type == other.return_type
-            && self.implicit_variables == other.implicit_variables
-            && self.variables == other.variables
-            && self.edge_variables == other.edge_variables
-            && self.body == other.body
-            && self.span == other.span
-    }
 }
 
 impl MethodDeclaration {
@@ -150,7 +131,6 @@ impl PropertyDeclaration {
             edge_variables,
             body,
             span,
-            result_decl_id: None,
         }
     }
 
@@ -184,7 +164,6 @@ impl PropertyDeclaration {
             initializer,
             block: next_block_id(),
             type_id: None,
-            decl_id: None,
         };
         MethodDeclaration {
             qualifiers: MemberQualifiers::default(),
@@ -195,7 +174,6 @@ impl PropertyDeclaration {
             edge_variables,
             body,
             span,
-            result_decl_id: None,
         }
     }
 }

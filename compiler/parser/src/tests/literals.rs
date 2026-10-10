@@ -51,11 +51,9 @@ END_FUNCTION";
                 }),
                 block: next_block_id(),
                 type_id: None,
-                decl_id: None,
             }],
             edge_variables: vec![],
             body: vec![StmtKind::simple_assignment("fun", "InputsNumber")],
-            result_decl_id: None,
         },
     ));
     assert_eq!(res, expected);
@@ -93,11 +91,9 @@ END_FUNCTION";
                 }),
                 block: next_block_id(),
                 type_id: None,
-                decl_id: None,
             }],
             edge_variables: vec![],
             body: vec![StmtKind::simple_assignment("fun", "InputsNumber")],
-            result_decl_id: None,
         },
     ));
     assert_eq!(res, expected);
@@ -135,11 +131,9 @@ END_FUNCTION";
                 }),
                 block: next_block_id(),
                 type_id: None,
-                decl_id: None,
             }],
             edge_variables: vec![],
             body: vec![StmtKind::simple_assignment("fun", "InputsNumber")],
-            result_decl_id: None,
         },
     ));
     assert_eq!(res, expected);
@@ -176,11 +170,9 @@ END_FUNCTION";
                 }),
                 block: next_block_id(),
                 type_id: None,
-                decl_id: None,
             }],
             edge_variables: vec![],
             body: vec![StmtKind::simple_assignment("fun", "tv")],
-            result_decl_id: None,
         },
     ));
     assert_eq!(actual, expected);

@@ -9,12 +9,13 @@ use ironplc_dsl::textual::{Assignment, Expr, SymbolicVariableKind, Variable};
 
 use super::compile::{CompileContext, DEFAULT_OP_TYPE};
 use super::compile_array::{emit_flat_index, resolve_access, ResolvedAccess};
-use super::compile_expr::{compile_expr, emit_truncation, op_type_from_expr, variable_span};
+use super::compile_expr::{
+    compile_expr, emit_truncation, op_type_from_expr, resolve_variable_name, variable_span,
+};
 use super::compile_fb_init::compile_fb_field_store;
 use super::compile_partial_access::{compile_partial_access_assignment, PartialAccess};
 use super::compile_place::Place;
 use crate::emit::Emitter;
-use crate::storage::Binding;
 use crate::string_width::compile_string_value;
 
 /// Compiles an assignment statement.
@@ -37,12 +38,12 @@ pub(crate) fn compile_assignment(
     // Dereference assignment: myRef^ := expr
     // Compile the RHS, load the reference variable, emit STORE_INDIRECT.
     if assignment.deref {
-        let target = Binding::of_variable(&assignment.target)?;
+        let target_name = resolve_variable_name(&assignment.target);
         // A VAR_IN_OUT parameter's slot holds a reference to the
         // caller's variable, not the reference to dereference.
-        let target_index = target
-            .filter(|target| !ctx.in_out_params.contains(&target.decl))
-            .and_then(|target| ctx.variables.get(&target.decl).copied())
+        let target_index = target_name
+            .filter(|name| !ctx.in_out_params.contains(*name))
+            .and_then(|name| ctx.variables.get(name).copied())
             .ok_or_else(|| {
                 Diagnostic::not_implemented(Label::span(
                     assignment.target.span(),
@@ -92,7 +93,7 @@ pub(crate) fn compile_assignment(
             if compile_fb_field_store(
                 emitter,
                 ctx,
-                Binding::of(named)?,
+                &named.name,
                 &structured.field,
                 &assignment.value,
             )? {
@@ -103,7 +104,7 @@ pub(crate) fn compile_assignment(
         // STRING fields are composite (multi-slot) and handled via the
         // data region, so we intercept before resolve_struct_field_access
         // which only supports single-slot (primitive/enum) fields.
-        let (root, slot_offset, field_type) = crate::compile_struct::walk_struct_chain(
+        let (root_name, slot_offset, field_type) = crate::compile_struct::walk_struct_chain(
             ctx,
             &structured.record,
             &structured.field,
@@ -114,10 +115,10 @@ pub(crate) fn compile_assignment(
         {
             let char_width = *char_width;
             // `walk_struct_chain` found this structure variable above.
-            let struct_info = ctx.struct_vars.get(&root.decl).ok_or_else(|| {
+            let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
                 Diagnostic::internal_error_at(Label::span(
                     structured.span(),
-                    format!("Variable '{}' is not a structure", root.name),
+                    format!("Variable '{}' is not a structure", root_name),
                 ))
             })?;
             let byte_offset = struct_info.data_offset + slot_offset.raw() * 8;
@@ -140,11 +141,11 @@ pub(crate) fn compile_assignment(
     }
 
     // Look up the target variable's type info.
-    let target = Binding::of_variable(&assignment.target)?;
+    let target_name = resolve_variable_name(&assignment.target);
 
     // Check if the target is a STRING variable (stored in data region).
-    let string_info = target
-        .and_then(|target| ctx.string_vars.get(&target.decl))
+    let string_info = target_name
+        .and_then(|name| ctx.string_vars.get(name))
         .map(|info| (info.data_offset, info.char_width));
 
     if let Some((data_offset, char_width)) = string_info {
@@ -209,7 +210,7 @@ pub(crate) fn compile_assignment(
                 let place = Place::from_access(
                     ctx,
                     access,
-                    target.map(|target| target.decl),
+                    target_name,
                     variable_span(&assignment.target),
                 )?;
                 assign_to_place(emitter, ctx, &place, &assignment.value)?;

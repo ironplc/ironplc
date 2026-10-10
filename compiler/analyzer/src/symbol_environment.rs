@@ -1,7 +1,6 @@
 use indexmap::IndexMap;
 use ironplc_dsl::common::{DeclarationQualifier, TypeName, VariableType};
 use ironplc_dsl::core::{Id, Located};
-use ironplc_dsl::decl_id::DeclId;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::scope::ScopeNode;
 use ironplc_dsl::textual::SelfRefKind;
@@ -160,10 +159,6 @@ pub struct SymbolInfo {
     /// environment. `None` for symbols that are not variables and for a
     /// variable whose type the analyzer could not resolve.
     pub type_id: Option<TypeId>,
-    /// For variables (result variables included), the identity of the
-    /// declaration, the same id the declaration carries in the AST. `None`
-    /// for symbols that are not variables.
-    pub decl_id: Option<DeclId>,
     /// The variable type qualifier (VAR, VAR_INPUT, VAR_OUTPUT, etc.)
     pub variable_type: Option<VariableType>,
     /// The qualifier the declaration was written with (CONSTANT, RETAIN,
@@ -194,7 +189,6 @@ impl SymbolInfo {
             visibility_scope: scope,
             is_external: false,
             type_id: None,
-            decl_id: None,
             variable_type: None,
             qualifier: None,
             address: None,
@@ -203,36 +197,6 @@ impl SymbolInfo {
             is_abstract: false,
             extends: None,
         }
-    }
-
-    /// The symbol of a variable declared in `scope` at `span` with
-    /// direction, declaration qualifier, the id of its declared type and
-    /// optional hardware address. The symbol's kind follows from the section
-    /// the variable is declared in.
-    pub fn variable(
-        scope: &ScopeKind,
-        span: ironplc_dsl::core::SourceSpan,
-        variable_type: VariableType,
-        qualifier: DeclarationQualifier,
-        type_id: Option<TypeId>,
-        address: Option<String>,
-    ) -> Self {
-        let kind = match variable_type {
-            VariableType::Input => SymbolKind::Parameter,
-            VariableType::Output => SymbolKind::OutputParameter,
-            VariableType::InOut => SymbolKind::InOutParameter,
-            _ => SymbolKind::Variable,
-        };
-        let is_external = variable_type == VariableType::External;
-        let mut info = SymbolInfo::new(kind, scope.clone(), span)
-            .with_variable_type(variable_type)
-            .with_qualifier(qualifier)
-            .with_type_id(type_id)
-            .with_external(is_external);
-        if let Some(addr) = address {
-            info = info.with_address(addr);
-        }
-        info
     }
 
     fn with_compiler_provided(mut self) -> Self {
@@ -260,12 +224,6 @@ impl SymbolInfo {
     /// Set the id of the variable's declared type
     pub fn with_type_id(mut self, type_id: Option<TypeId>) -> Self {
         self.type_id = type_id;
-        self
-    }
-
-    /// Set the identity of the variable's declaration
-    pub fn with_decl_id(mut self, decl_id: Option<DeclId>) -> Self {
-        self.decl_id = decl_id;
         self
     }
 
@@ -428,13 +386,11 @@ impl SymbolEnvironment {
         kind: SymbolKind,
         scope: &ScopeKind,
         type_id: Option<TypeId>,
-        decl_id: DeclId,
     ) -> Result<(), Diagnostic> {
         self.insert_symbol(
             name,
             SymbolInfo::new(kind, scope.clone(), name.span())
                 .with_type_id(type_id)
-                .with_decl_id(Some(decl_id))
                 .with_compiler_provided(),
         )
     }
@@ -454,15 +410,23 @@ impl SymbolEnvironment {
         type_id: Option<TypeId>,
         address: Option<String>,
     ) -> Result<(), Diagnostic> {
-        let info = SymbolInfo::variable(
-            scope,
-            name.span(),
-            variable_type,
-            qualifier,
-            type_id,
-            address,
-        );
-        self.insert_symbol(name, info)
+        let kind = match variable_type {
+            VariableType::Input => SymbolKind::Parameter,
+            VariableType::Output => SymbolKind::OutputParameter,
+            VariableType::InOut => SymbolKind::InOutParameter,
+            _ => SymbolKind::Variable,
+        };
+        let mut symbol_info = SymbolInfo::new(kind, scope.clone(), name.span())
+            .with_variable_type(variable_type.clone())
+            .with_qualifier(qualifier)
+            .with_type_id(type_id);
+        if let Some(addr) = address {
+            symbol_info = symbol_info.with_address(addr);
+        }
+        if variable_type == VariableType::External {
+            symbol_info = symbol_info.with_external(true);
+        }
+        self.insert_symbol(name, symbol_info)
     }
 
     /// Insert a symbol described by `info`, in `info`'s scope.

@@ -167,7 +167,7 @@ impl DeclarationResolver<'_> {
             })
         } else {
             ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(
-                NamedVariable::new(value),
+                NamedVariable { name: value },
             )))
         }
     }

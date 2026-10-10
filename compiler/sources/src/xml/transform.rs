@@ -468,7 +468,6 @@ fn transform_function(
             variables,
             edge_variables: vec![],
             body,
-            result_decl_id: None,
         },
     ))
 }
@@ -626,7 +625,6 @@ fn transform_variable(
         initializer,
         block: next_block_id(),
         type_id: None,
-        decl_id: None,
     })
 }
 

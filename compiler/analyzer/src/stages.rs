@@ -37,9 +37,7 @@ use crate::{
     symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
     system_globals::SYSTEM_UPTIME_GLOBALS,
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
-    type_table,
-    xform_assign_decl_ids::{self, DeclIdAllocator},
-    xform_bind_variables, xform_fold_constant_expressions, xform_fold_initializer_expressions,
+    type_table, xform_fold_constant_expressions, xform_fold_initializer_expressions,
     xform_insert_implicit_conversions, xform_insert_implicit_deref, xform_int_to_bool_initializer,
     xform_mark_unwritten_constants, xform_named_to_positional_args, xform_remove_unsigned_abs,
     xform_resolve_adr, xform_resolve_constant_expressions, xform_resolve_decl_types,
@@ -194,7 +192,6 @@ pub fn resolve_types(
     }
 
     let mut symbol_environment = SymbolEnvironment::new();
-    let mut decl_ids = DeclIdAllocator::default();
 
     // Register implicit system globals when the uptime feature is enabled.
     if options.allow_system_uptime_global {
@@ -205,7 +202,6 @@ pub fn resolve_types(
                     SymbolKind::Variable,
                     &ScopeKind::Global,
                     type_environment.id_of(&TypeName::from(global.type_name)),
-                    decl_ids.allocate(),
                 )
                 .map_err(|e| vec![e])?;
         }
@@ -292,13 +288,6 @@ pub fn resolve_types(
         xform_resolve_decl_types::apply(lib, &mut type_environment)
     });
 
-    // Give every variable declaration its identity, which the symbol
-    // environment records next and every reference records after it.
-    // Infallible, so nothing to revert.
-    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
-        xform_assign_decl_ids::apply(lib, &mut decl_ids)
-    });
-
     // Best effort: a repeated declaration name is diagnosed here, by the
     // environments, and the first declaration is kept, so the rest of the
     // library still resolves instead of reverting on the first repeat.
@@ -310,11 +299,6 @@ pub fn resolve_types(
             &type_environment,
         )
     });
-
-    // Bind every variable reference to the declaration the symbol
-    // environment resolves it to, so that no later pass and no back end
-    // resolves a name again. See specs/design/variable-binding.md.
-    let mut library = xform_bind_variables::apply(library, &symbol_environment);
 
     // Convert named function call arguments to positional.
     // Best effort: a diagnosed call keeps its named arguments, which is the

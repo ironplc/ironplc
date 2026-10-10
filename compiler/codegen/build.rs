@@ -23,8 +23,5 @@ fn main() {
         "implicit-conversions.md",
         // The post-emission peephole optimizer (`REQ-PEEP-codegen-*`).
         "bytecode-peephole-optimizer.md",
-        // Variable binding (`REQ-VB-codegen-*`): storage keyed by
-        // declaration.
-        "variable-binding.md",
     ]);
 }

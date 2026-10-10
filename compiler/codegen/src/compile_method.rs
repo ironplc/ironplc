@@ -27,13 +27,13 @@ use super::compile_setup::emit_function_local_prologue;
 use super::compile_stmt::compile_statements;
 use super::type_info::{decl_type_info, resolve_type_name};
 use crate::emit::Emitter;
-use crate::storage::Binding;
 
 /// Compiles every `METHOD` declared on `fb_decl`, in declaration order.
 ///
-/// Must run after `fb_decl`'s own body has been compiled (so the type's
-/// fields still have their storage, at `field_var_off`) and before the
-/// caller releases it. `var_offset` is threaded through and advanced
+/// Must run after `fb_decl`'s own body has been compiled (so `ctx.variables`
+/// still holds that type's field name -> `VarIndex` mappings, at
+/// `field_var_off`) and before the caller restores `ctx.variables` back to
+/// the program-level view. `var_offset` is threaded through and advanced
 /// past each method's own param/local region as it's allocated, exactly
 /// like `compile_user_function`'s `var_offset` in the outer driver.
 pub(crate) fn compile_user_fb_methods(
@@ -52,10 +52,18 @@ pub(crate) fn compile_user_fb_methods(
         let function_id = ctx.user_fb_types[fb_name].methods[&method_name].function_id;
         let param_var_off = *var_offset;
 
-        // A method's parameters, locals and result belong to the method,
-        // not to the function block or to whichever method is compiled
-        // next, so their storage is released once it is compiled. The
-        // fields' storage stays for the next method's `self` access.
+        // A method's parameters, locals and result name belong to the
+        // method, not to the function block or to whichever method is
+        // compiled next. `compile_user_function` gets this by starting
+        // from an empty map (`compile_fn.rs:78`); a method cannot,
+        // because the enclosing type's field mappings have to stay
+        // visible for `self` access -- so snapshot and restore instead.
+        // Without this, a name declared by one method still resolves in
+        // the next, to a `VarIndex` that may fall outside that method's
+        // frame bounds window.
+        let saved_variables = ctx.variables.clone();
+        let saved_var_types = ctx.var_types.clone();
+
         let compiled_method = compile_user_method(
             method,
             function_id,
@@ -66,12 +74,8 @@ pub(crate) fn compile_user_fb_methods(
             types,
         );
 
-        ctx.release(
-            method
-                .all_variables()
-                .filter_map(|decl| decl.decl_id)
-                .chain(method.result_decl_id),
-        );
+        ctx.variables = saved_variables;
+        ctx.var_types = saved_var_types;
 
         let result = compiled_method?;
 
@@ -102,10 +106,10 @@ pub(crate) fn compile_user_fb_methods(
 
 /// Compiles a single method body. `param_var_off` is where this method's
 /// own params/locals/return slot start; `field_var_off` is the owning
-/// type's field region start (the fields already have their storage, so
-/// field references inside the body resolve normally through the existing
-/// variable-lookup machinery -- no special-casing needed here beyond not
-/// touching those entries).
+/// type's field region start (already populated in `ctx.variables` by the
+/// caller, so field references inside the body resolve normally through
+/// the existing variable-lookup machinery -- no special-casing needed
+/// here beyond not touching those entries).
 fn compile_user_method(
     method: &MethodDeclaration,
     function_id: FunctionId,
@@ -115,7 +119,7 @@ fn compile_user_method(
     _builder: &mut ContainerBuilder,
     _types: &TypeEnvironment,
 ) -> Result<CompiledFunction, Diagnostic> {
-    let fb_next_slot = std::mem::replace(&mut ctx.next_slot, param_var_off.raw());
+    let mut current_index = param_var_off;
     let mut num_params: u16 = 0;
 
     // First pass: input-compatible parameters (VAR_INPUT and VAR_IN_OUT).
@@ -124,14 +128,13 @@ fn compile_user_method(
             continue;
         }
         if let Some(id) = decl.identifier.symbolic_id() {
-            let binding = Binding::new(decl.decl_id, id)?;
-            let current_index = ctx.allocate_slot();
-            ctx.variables.insert(binding.decl, current_index);
+            ctx.variables.insert(id.clone(), current_index);
             if let InitialValueAssignmentKind::Simple(_) = &decl.initializer {
                 if let Some(type_info) = decl_type_info(ctx, decl) {
-                    ctx.var_types.insert(binding.decl, type_info);
+                    ctx.var_types.insert(id.clone(), type_info);
                 }
             }
+            current_index = VarIndex::new(current_index.raw() + 1);
             num_params += 1;
         }
     }
@@ -142,14 +145,13 @@ fn compile_user_method(
             continue;
         }
         if let Some(id) = decl.identifier.symbolic_id() {
-            let binding = Binding::new(decl.decl_id, id)?;
-            let current_index = ctx.allocate_slot();
-            ctx.variables.insert(binding.decl, current_index);
+            ctx.variables.insert(id.clone(), current_index);
             if let InitialValueAssignmentKind::Simple(_) = &decl.initializer {
                 if let Some(type_info) = decl_type_info(ctx, decl) {
-                    ctx.var_types.insert(binding.decl, type_info);
+                    ctx.var_types.insert(id.clone(), type_info);
                 }
             }
+            current_index = VarIndex::new(current_index.raw() + 1);
         }
     }
 
@@ -157,7 +159,7 @@ fn compile_user_method(
     // return type: `emit_function_local_prologue` unconditionally
     // zero-initializes "the return variable", so a void method gets one
     // harmless unused slot rather than special-casing the prologue call.
-    let return_var_index = ctx.allocate_slot();
+    let return_var_index = current_index;
     let return_id = method.name.clone();
     let has_return_value = method.return_type.is_some();
 
@@ -183,18 +185,16 @@ fn compile_user_method(
     // Only when the method declares a return type: one without a return
     // type has no result to assign, and the analyzer rejects the
     // assignment rather than letting it reach here.
-    let return_decl = if has_return_value {
-        let return_decl = Binding::new(method.result_decl_id, &return_id)?.decl;
-        ctx.variables.insert(return_decl, return_var_index);
+    if has_return_value {
+        ctx.variables.insert(return_id.clone(), return_var_index);
         if let Some(FunctionReturnType::Named(type_name)) = &method.return_type {
             if let Some(type_info) = resolve_type_name(&type_name.name) {
-                ctx.var_types.insert(return_decl, type_info);
+                ctx.var_types.insert(return_id.clone(), type_info);
             }
         }
-        Some(return_decl)
-    } else {
-        None
-    };
+    }
+
+    current_index = VarIndex::new(current_index.raw() + 1);
 
     // Reported num_locals spans from the *type's field region* (not just
     // this method's own params/locals) through the end of this method's
@@ -202,8 +202,7 @@ fn compile_user_method(
     // field_var_off, instance_count: <this value>`, so it must cover
     // both the field range (for `self` access) and this method's own
     // range in one contiguous bounds-check window.
-    let num_locals = ctx.next_slot - field_var_off;
-    ctx.next_slot = fb_next_slot;
+    let num_locals = current_index.raw() - field_var_off;
 
     let mut method_emitter = Emitter::new();
 
@@ -212,7 +211,6 @@ fn compile_user_method(
         ctx,
         &method.variables,
         &return_id,
-        return_decl,
         return_var_index,
         return_op_type,
     )?;
@@ -280,7 +278,7 @@ fn compile_method_call(
     // `THIS^.M()` / `SUPER^.M()` receivers parse but are rejected earlier by
     // `rule_method_call_declared`, so codegen only ever sees a named instance.
     let instance = match &call.receiver {
-        MethodReceiver::Instance(id) => Binding::new(call.receiver_decl_id, id)?,
+        MethodReceiver::Instance(id) => id,
         MethodReceiver::SelfRef(self_ref) => {
             return Err(Diagnostic::internal_error_at(Label::span(
                 self_ref.span(),
@@ -291,7 +289,7 @@ fn compile_method_call(
 
     let fb_info = ctx
         .fb_instances
-        .get(&instance.decl)
+        .get(instance)
         .ok_or_else(|| Diagnostic::todo_with_span(call.span()))?;
     let type_id = fb_info.type_id;
     let var_index = fb_info.var_index;

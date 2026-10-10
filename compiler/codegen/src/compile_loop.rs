@@ -14,7 +14,6 @@ use super::compile_expr::{
 };
 use super::compile_stmt::compile_stmts;
 use crate::emit::{self, Emitter};
-use crate::storage::Binding;
 use ironplc_container::opcode;
 
 /// The labels of a loop that its body can jump to.
@@ -317,10 +316,9 @@ pub(crate) fn compile_for(
     ctx: &mut CompileContext,
     for_stmt: &ironplc_dsl::textual::For,
 ) -> Result<(), Diagnostic> {
-    let control = Binding::new(for_stmt.control_decl_id, &for_stmt.control)?;
-    let var_index = ctx.var_index(control)?;
-    let op_type = ctx.var_op_type(control.decl);
-    let type_info = ctx.var_type_info(control.decl);
+    let var_index = ctx.var_index(&for_stmt.control)?;
+    let op_type = ctx.var_op_type(&for_stmt.control);
+    let type_info = ctx.var_type_info(&for_stmt.control);
 
     // Determine step sign.
     let step_sign = match &for_stmt.step {

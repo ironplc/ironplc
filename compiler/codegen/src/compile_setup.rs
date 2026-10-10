@@ -26,8 +26,6 @@ use super::compile_call::resolve_fb_type;
 use super::compile_expr::{compile_constant, emit_store_var, emit_truncation, resolve_variable};
 use super::compile_stmt::resolve_string_max_length;
 use crate::emit::Emitter;
-use crate::storage::Binding;
-use ironplc_dsl::decl_id::DeclId;
 
 /// Assigns variable table indices and type info for all variable declarations.
 pub(crate) fn assign_variables(
@@ -38,10 +36,8 @@ pub(crate) fn assign_variables(
 ) -> Result<(), Diagnostic> {
     for decl in declarations {
         if let Some(id) = decl.identifier.symbolic_id() {
-            let binding = Binding::new(decl.decl_id, id)?;
-            let decl_id = binding.decl;
-            let index = ctx.allocate_slot();
-            ctx.variables.insert(decl_id, index);
+            let index = VarIndex::new(ctx.variables.len() as u16);
+            ctx.variables.insert(id.clone(), index);
 
             // Resolve type info and collect debug metadata.
             let (type_tag, type_name_str) = match &decl.initializer {
@@ -56,7 +52,7 @@ pub(crate) fn assign_variables(
                             builder,
                             types,
                             &simple.type_name,
-                            decl_id,
+                            id,
                             index,
                             &decl.identifier.span(),
                         )?;
@@ -69,13 +65,13 @@ pub(crate) fn assign_variables(
                         if let Some(type_info) =
                             crate::compile_struct::var_type_info_for_field(subrange_type)
                         {
-                            ctx.var_types.insert(decl_id, type_info);
+                            ctx.var_types.insert(id.clone(), type_info);
                         }
                         let name = simple.type_name.to_string().to_uppercase();
                         (iec_type_tag::OTHER, name)
                     } else {
                         if let Some(type_info) = crate::type_info::decl_type_info(ctx, decl) {
-                            ctx.var_types.insert(decl_id, type_info);
+                            ctx.var_types.insert(id.clone(), type_info);
                         }
                         let tag = resolve_iec_type_tag(types, &simple.type_name);
                         let name = simple.type_name.name.to_string().to_uppercase();
@@ -96,7 +92,7 @@ pub(crate) fn assign_variables(
                     }
 
                     ctx.string_vars.insert(
-                        decl_id,
+                        id.clone(),
                         StringVarInfo {
                             data_offset,
                             max_length,
@@ -131,7 +127,7 @@ pub(crate) fn assign_variables(
                         )?;
 
                         ctx.fb_instances.insert(
-                            decl_id,
+                            id.clone(),
                             FbInstanceInfo {
                                 var_index: index,
                                 type_id,
@@ -157,7 +153,7 @@ pub(crate) fn assign_variables(
                         )?;
 
                         ctx.fb_instances.insert(
-                            decl_id,
+                            id.clone(),
                             FbInstanceInfo {
                                 var_index: index,
                                 type_id,
@@ -182,7 +178,7 @@ pub(crate) fn assign_variables(
                         crate::compile_array_struct::register_struct_array_variable(
                             ctx,
                             builder,
-                            decl_id,
+                            id,
                             index,
                             &element_type,
                             &debug_type_name,
@@ -198,7 +194,7 @@ pub(crate) fn assign_variables(
                         crate::compile_array::register_array_variable(
                             ctx,
                             builder,
-                            decl_id,
+                            id,
                             index,
                             &spec,
                             &decl.identifier.span(),
@@ -207,7 +203,7 @@ pub(crate) fn assign_variables(
                 }
                 InitialValueAssignmentKind::Reference(ref_init) => {
                     crate::compile_reference::register_reference_variable(
-                        ctx, builder, types, binding, index, ref_init,
+                        ctx, builder, types, id, index, ref_init,
                     )?;
                     (iec_type_tag::OTHER, "REF_TO".into())
                 }
@@ -217,7 +213,7 @@ pub(crate) fn assign_variables(
                         builder,
                         types,
                         &struct_init.type_name,
-                        decl_id,
+                        id,
                         index,
                         &decl.identifier.span(),
                     )?;
@@ -228,7 +224,7 @@ pub(crate) fn assign_variables(
                 | InitialValueAssignmentKind::EnumeratedValues(_) => {
                     // Enum variables use DINT (W32/Signed/32-bit) per REQ-EN-codegen-010.
                     let type_info = crate::compile_enum::enum_var_type_info();
-                    ctx.var_types.insert(decl_id, type_info);
+                    ctx.var_types.insert(id.clone(), type_info);
                     // Debug tag is DINT per REQ-EN-codegen-012; type_name is the
                     // enum's debug name (e.g. "COLOR"), REQ-EN-codegen-092.
                     let name = crate::compile_enum::debug_name(types, decl.type_id);
@@ -250,7 +246,7 @@ pub(crate) fn assign_variables(
                     if let Some(st) = subrange_type {
                         if let Some(type_info) = crate::compile_struct::var_type_info_for_field(st)
                         {
-                            ctx.var_types.insert(decl_id, type_info);
+                            ctx.var_types.insert(id.clone(), type_info);
                         }
                     }
                     let name = match spec {
@@ -384,15 +380,13 @@ pub(crate) fn emit_initial_values(
 ) -> Result<(), Diagnostic> {
     for decl in declarations {
         if let Some(id) = decl.identifier.symbolic_id() {
-            let binding = Binding::new(decl.decl_id, id)?;
-            let decl_id = binding.decl;
             match &decl.initializer {
                 InitialValueAssignmentKind::Simple(simple) => {
                     // The global_var_decl parser produces Simple for all
                     // named types, including structs.  If the variable was
                     // registered as a struct during assign_variables,
                     // initialize it like a Structure initializer.
-                    if let Some(struct_info) = ctx.struct_vars.get(&decl_id).cloned() {
+                    if let Some(struct_info) = ctx.struct_vars.get(id).cloned() {
                         crate::compile_struct_init::initialize_struct_variable(
                             emitter,
                             ctx,
@@ -401,8 +395,8 @@ pub(crate) fn emit_initial_values(
                             &decl.identifier.span(),
                         )?;
                     } else if let Some(constant) = &simple.initial_value {
-                        let var_index = ctx.var_index(binding)?;
-                        let type_info = ctx.var_type_info(decl_id);
+                        let var_index = ctx.var_index(id)?;
+                        let type_info = ctx.var_type_info(id);
                         let op_type = type_info
                             .map(|ti| (ti.op_width, ti.signedness))
                             .unwrap_or(DEFAULT_OP_TYPE);
@@ -417,7 +411,7 @@ pub(crate) fn emit_initial_values(
                     }
                 }
                 InitialValueAssignmentKind::String(string_init) => {
-                    if let Some(info) = ctx.string_vars.get(&decl_id) {
+                    if let Some(info) = ctx.string_vars.get(id) {
                         let data_offset = info.data_offset;
                         let max_length = info.max_length;
                         let char_width = info.char_width;
@@ -435,7 +429,7 @@ pub(crate) fn emit_initial_values(
                     }
                 }
                 InitialValueAssignmentKind::FunctionBlock(fb_init) => {
-                    if let Some(fb_info) = ctx.fb_instances.get(&decl_id) {
+                    if let Some(fb_info) = ctx.fb_instances.get(id) {
                         let data_offset = fb_info.data_offset;
                         let var_index = fb_info.var_index;
                         // Store the data region byte offset into the variable slot.
@@ -450,7 +444,7 @@ pub(crate) fn emit_initial_values(
                         crate::compile_fb_init::emit_fb_instance_member_initializers(
                             emitter,
                             ctx,
-                            binding,
+                            id,
                             &fb_init.init,
                         )?;
                     }
@@ -461,7 +455,7 @@ pub(crate) fn emit_initial_values(
                     // element field values are left zeroed, matching what an
                     // array-of-struct field of a structure gets today; only
                     // the headers of its STRING fields are written.
-                    if let Some(struct_array_info) = ctx.struct_array_vars.get(&decl_id) {
+                    if let Some(struct_array_info) = ctx.struct_array_vars.get(id) {
                         if !array_init.initial_values.is_empty() {
                             return Err(Diagnostic::not_implemented(Label::span(
                                 decl.identifier.span(),
@@ -483,7 +477,7 @@ pub(crate) fn emit_initial_values(
                             &element_strings,
                             &decl.identifier.span(),
                         )?;
-                    } else if let Some(array_info) = ctx.array_vars.get(&decl_id) {
+                    } else if let Some(array_info) = ctx.array_vars.get(id) {
                         let data_offset = array_info.data_offset;
                         let var_index = array_info.var_index;
                         let desc_index = array_info.desc_index;
@@ -543,7 +537,7 @@ pub(crate) fn emit_initial_values(
                     }
                 }
                 InitialValueAssignmentKind::Reference(ref_init) => {
-                    let var_index = ctx.var_index(binding)?;
+                    let var_index = ctx.var_index(id)?;
                     match &ref_init.initial_value {
                         Some(ReferenceInitialValue::Ref(target_var)) => {
                             // REF(var) → load the target variable's index as a u64 constant.
@@ -560,7 +554,7 @@ pub(crate) fn emit_initial_values(
                     emitter.emit_store_var_i64(var_index);
                 }
                 InitialValueAssignmentKind::Structure(struct_init) => {
-                    if let Some(struct_info) = ctx.struct_vars.get(&decl_id).cloned() {
+                    if let Some(struct_info) = ctx.struct_vars.get(id).cloned() {
                         crate::compile_struct_init::initialize_struct_variable(
                             emitter,
                             ctx,
@@ -573,14 +567,14 @@ pub(crate) fn emit_initial_values(
                 InitialValueAssignmentKind::EnumeratedType(_)
                 | InitialValueAssignmentKind::EnumeratedValues(_) => {
                     // Emit LOAD_CONST_I32(ordinal) + STORE_VAR_I32 per REQ-EN-codegen-020.
-                    let var_index = ctx.var_index(binding)?;
+                    let var_index = ctx.var_index(id)?;
                     emit_enum_initial_value(emitter, ctx, decl, var_index)?;
                 }
                 InitialValueAssignmentKind::Subrange(ref spec) => {
                     // Initialize subrange variable to its lower bound (min_value)
                     // per IEC 61131-3 §2.4.3.1 (default is the "leftmost value").
-                    let var_index = ctx.var_index(binding)?;
-                    let type_info = ctx.var_type_info(decl_id);
+                    let var_index = ctx.var_index(id)?;
+                    let type_info = ctx.var_type_info(id);
                     let op_type = type_info
                         .map(|ti| (ti.op_width, ti.signedness))
                         .unwrap_or(DEFAULT_OP_TYPE);
@@ -675,7 +669,6 @@ pub(crate) fn emit_function_local_prologue(
     ctx: &mut CompileContext,
     variables: &[VarDecl],
     return_id: &Id,
-    return_decl: Option<DeclId>,
     return_var_index: VarIndex,
     return_op_type: OpType,
 ) -> Result<(), Diagnostic> {
@@ -685,9 +678,8 @@ pub(crate) fn emit_function_local_prologue(
             continue;
         }
         if let Some(id) = decl.identifier.symbolic_id() {
-            let binding = Binding::new(decl.decl_id, id)?;
-            let var_index = ctx.var_index(binding)?;
-            let type_info = ctx.var_type_info(binding.decl);
+            let var_index = ctx.var_index(id)?;
+            let type_info = ctx.var_type_info(id);
             let op_type = type_info
                 .map(|ti| (ti.op_width, ti.signedness))
                 .unwrap_or(DEFAULT_OP_TYPE);
@@ -709,7 +701,7 @@ pub(crate) fn emit_function_local_prologue(
                 InitialValueAssignmentKind::String(string_init) => {
                     // Re-initialize STRING locals: emit STR_INIT to reset the
                     // header, then optionally load the initial value.
-                    if let Some(info) = ctx.string_vars.get(&binding.decl) {
+                    if let Some(info) = ctx.string_vars.get(id) {
                         let data_offset = info.data_offset;
                         let max_length = info.max_length;
                         let char_width = info.char_width;
@@ -753,9 +745,7 @@ pub(crate) fn emit_function_local_prologue(
     }
 
     // Zero-initialize the return variable.
-    let return_struct = return_decl.and_then(|decl| ctx.struct_vars.get(&decl).cloned());
-    let return_string = return_decl.and_then(|decl| ctx.string_vars.get(&decl).cloned());
-    if let Some(struct_info) = return_struct {
+    if let Some(struct_info) = ctx.struct_vars.get(return_id).cloned() {
         // Struct return: store data_offset into the return var slot and
         // zero all struct fields. Functions are stateless, so the struct
         // must be re-initialized on every call. The struct was registered
@@ -767,7 +757,7 @@ pub(crate) fn emit_function_local_prologue(
             &[],
             &return_id.span(),
         )?;
-    } else if let Some(info) = return_string {
+    } else if let Some(info) = ctx.string_vars.get(return_id) {
         // STRING/WSTRING return: initialize the string header in the data region.
         emitter.emit_str_init(info.data_offset, info.max_length, info.char_width);
     } else {

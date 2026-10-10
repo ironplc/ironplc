@@ -42,7 +42,6 @@ use super::compile::{
 };
 use super::compile_expr::{compile_expr, variable_span};
 use crate::emit::Emitter;
-use crate::storage::Binding;
 
 /// What a string-valued expression is, before any bytecode runs.
 ///
@@ -131,15 +130,14 @@ fn variable_shape(ctx: &CompileContext, variable: &Variable) -> Result<StringSha
 
     match access_root(kind) {
         SymbolicVariableKind::Named(named) => {
-            let decl = Binding::of(named)?.decl;
-            if let Some(info) = ctx.string_vars.get(&decl) {
+            if let Some(info) = ctx.string_vars.get(&named.name) {
                 return Ok(StringShape {
                     char_width: info.char_width,
                     max_length: Some(info.max_length),
                 });
             }
             ctx.array_vars
-                .get(&decl)
+                .get(&named.name)
                 .filter(|info| info.is_string_element)
                 .map(|info| StringShape {
                     char_width: info.string_char_width,
@@ -479,8 +477,7 @@ fn type_name_for(char_width: CharWidth) -> &'static str {
 mod tests {
     use ironplc_dsl::common::CharacterStringLiteral;
     use ironplc_dsl::core::Id;
-    use ironplc_dsl::decl_id::DeclId;
-    use ironplc_dsl::textual::{NamedVariable, ParamAssignmentKind, PositionalInput};
+    use ironplc_dsl::textual::{ParamAssignmentKind, PositionalInput};
     use rstest::rstest;
 
     use super::*;
@@ -530,24 +527,12 @@ mod tests {
         ctx
     }
 
-    /// The declaration of the string variable `s`.
-    const S: DeclId = DeclId::from_raw(0);
-
-    /// A read of the string variable `s`, bound to its declaration.
-    fn s_variable() -> Expr {
-        let mut named = NamedVariable::new(Id::from("s"));
-        named.decl_id = Some(S);
-        Expr::new(ExprKind::Variable(Variable::Symbolic(
-            SymbolicVariableKind::Named(named),
-        )))
-    }
-
     /// A context that declares one narrow string variable `s` of capacity
     /// `max_length`.
     fn context_with_string(max_length: u16) -> CompileContext {
         let mut ctx = context();
         ctx.string_vars.insert(
-            S,
+            Id::from("s"),
             StringVarInfo {
                 data_offset: 0,
                 max_length,
@@ -606,7 +591,7 @@ mod tests {
     #[test]
     fn string_expr_shape_when_named_variable_then_declared_capacity() {
         let ctx = context_with_string(300);
-        let expr = s_variable();
+        let expr = Expr::new(ExprKind::named_variable("s"));
 
         let shape = string_expr_shape(&ctx, &expr).unwrap();
 
@@ -649,7 +634,7 @@ mod tests {
     #[test]
     fn string_expr_shape_when_nested_concat_then_bounds_add_recursively() {
         let ctx = context_with_string(100);
-        let s = || s_variable();
+        let s = || Expr::new(ExprKind::named_variable("s"));
         let expr = call("concat", vec![call("concat", vec![s(), s()]), s()]);
 
         let shape = string_expr_shape(&ctx, &expr).unwrap();

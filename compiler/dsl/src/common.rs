@@ -11,7 +11,6 @@ use dsl_macro_derive::{Located, Recurse};
 
 use crate::configuration::{ConfigurationDeclaration, Direction};
 use crate::core::{Id, Located, SourceSpan};
-use crate::decl_id::DeclId;
 use crate::fold::Fold;
 use crate::scope::ScopeBearing;
 use crate::sfc::{Network, Sfc};
@@ -2076,13 +2075,6 @@ pub struct VarDecl {
     /// derived from `initializer`.
     #[recurse(ignore)]
     pub type_id: Option<TypeId>,
-    /// The declaration's identity, which every reference to the variable
-    /// records (see [`DeclId`]). Populated by the analyzer; `None` before it
-    /// runs. Left out of `PartialEq` like `block`: it is assigned from a
-    /// counter, so a declaration built by hand matches a parsed one only by
-    /// what it declares.
-    #[recurse(ignore)]
-    pub decl_id: Option<DeclId>,
 }
 
 impl PartialEq for VarDecl {
@@ -2107,7 +2099,6 @@ impl VarDecl {
             )),
             block: next_block_id(),
             type_id: None,
-            decl_id: None,
         }
     }
 
@@ -2124,7 +2115,6 @@ impl VarDecl {
             }),
             block: next_block_id(),
             type_id: None,
-            decl_id: None,
         }
     }
 
@@ -2143,7 +2133,6 @@ impl VarDecl {
             ),
             block: next_block_id(),
             type_id: None,
-            decl_id: None,
         }
     }
 
@@ -2162,7 +2151,6 @@ impl VarDecl {
             }),
             block: next_block_id(),
             type_id: None,
-            decl_id: None,
         }
     }
 
@@ -2185,7 +2173,6 @@ impl VarDecl {
             ),
             block: next_block_id(),
             type_id: None,
-            decl_id: None,
         }
     }
 
@@ -2204,7 +2191,6 @@ impl VarDecl {
             ),
             block: next_block_id(),
             type_id: None,
-            decl_id: None,
         }
     }
 
@@ -2222,7 +2208,6 @@ impl VarDecl {
             ),
             block: next_block_id(),
             type_id: None,
-            decl_id: None,
         }
     }
 
@@ -2241,7 +2226,6 @@ impl VarDecl {
             ),
             block: next_block_id(),
             type_id: None,
-            decl_id: None,
         }
     }
 
@@ -2360,25 +2344,13 @@ impl VariableType {
 /// Declaration (that does not permit a location).
 ///
 /// See section 2.4.3.
-#[derive(Clone, Debug, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct EdgeVarDecl {
     pub identifier: Id,
     #[recurse(ignore)]
     pub direction: EdgeDirection,
     #[recurse(ignore)]
     pub qualifier: DeclarationQualifier,
-    /// The declaration's identity; see [`VarDecl::decl_id`]. Left out of
-    /// `PartialEq` for the same reason.
-    #[recurse(ignore)]
-    pub decl_id: Option<DeclId>,
-}
-
-impl PartialEq for EdgeVarDecl {
-    fn eq(&self, other: &Self) -> bool {
-        self.identifier == other.identifier
-            && self.direction == other.direction
-            && self.qualifier == other.qualifier
-    }
 }
 
 /// Ways of identifying variable data objects. These are used
@@ -3030,7 +3002,7 @@ impl From<TypeName> for FunctionReturnType {
 /// return value and bound variables.
 ///
 /// See section 2.5.1.
-#[derive(Clone, Debug, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse)]
 #[recurse(scope)]
 pub struct FunctionDeclaration {
     pub name: Id,
@@ -3038,21 +3010,6 @@ pub struct FunctionDeclaration {
     pub variables: Vec<VarDecl>,
     pub edge_variables: Vec<EdgeVarDecl>,
     pub body: Vec<StmtKind>,
-    /// The identity of the function's implicit result variable, the one
-    /// its own name assigns (see [`DeclId`]). Populated by the analyzer;
-    /// left out of `PartialEq` like [`VarDecl::decl_id`].
-    #[recurse(ignore)]
-    pub result_decl_id: Option<DeclId>,
-}
-
-impl PartialEq for FunctionDeclaration {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-            && self.return_type == other.return_type
-            && self.variables == other.variables
-            && self.edge_variables == other.edge_variables
-            && self.body == other.body
-    }
 }
 
 impl HasVariables for FunctionDeclaration {
@@ -3208,7 +3165,6 @@ mod tests {
             initializer: InitialValueAssignmentKind::None(SourceSpan::default()),
             block,
             type_id: None,
-            decl_id: None,
         }
     }
 

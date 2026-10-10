@@ -6,11 +6,10 @@
 //! declaration site (program, function parameter, function local, function
 //! block) registers references through [`register_reference_variable`].
 
-use crate::storage::Binding;
 use ironplc_analyzer::{SemanticType, TypeEnvironment};
 use ironplc_container::{CharWidth, ContainerBuilder, VarIndex};
 use ironplc_dsl::common::{ReferenceInitializer, TypeName};
-use ironplc_dsl::core::Located;
+use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::Diagnostic;
 
 use super::compile::{CompileContext, OpWidth, Signedness, VarTypeInfo};
@@ -29,14 +28,13 @@ pub(crate) fn register_reference_variable(
     ctx: &mut CompileContext,
     builder: &mut ContainerBuilder,
     types: &TypeEnvironment,
-    binding: Binding<'_>,
+    id: &Id,
     var_index: VarIndex,
     ref_init: &ReferenceInitializer,
 ) -> Result<(), Diagnostic> {
-    let id = binding.name;
     // References are stored as 64-bit variable-table indices (unsigned).
     ctx.var_types.insert(
-        binding.decl,
+        id.clone(),
         VarTypeInfo {
             op_width: OpWidth::W64,
             signedness: Signedness::Unsigned,
@@ -52,7 +50,7 @@ pub(crate) fn register_reference_variable(
     } = &target
     {
         let spec = array_spec_from_named(element_type, dimensions, &id.span())?;
-        register_ref_to_array_metadata(ctx, builder, binding, var_index, &spec)?;
+        register_ref_to_array_metadata(ctx, builder, id, var_index, &spec)?;
     }
     Ok(())
 }
@@ -65,11 +63,11 @@ pub(crate) fn register_reference_variable(
 fn register_ref_to_array_metadata(
     ctx: &mut CompileContext,
     builder: &mut ContainerBuilder,
-    binding: Binding<'_>,
+    id: &Id,
     var_index: VarIndex,
     spec: &ArraySpec,
 ) -> Result<(), Diagnostic> {
-    let span = binding.name.span();
+    let span = id.span();
     let element_vti = if spec.ref_to {
         VarTypeInfo {
             op_width: OpWidth::W64,
@@ -87,7 +85,7 @@ fn register_ref_to_array_metadata(
     let (dimensions, total_elements) = compute_dimensions(&spec.dimensions, &span)?;
     let desc_index = builder.add_array_descriptor(element_type_byte, total_elements, 0);
     ctx.array_vars.insert(
-        binding.decl,
+        id.clone(),
         ArrayVarInfo {
             var_index,
             desc_index,

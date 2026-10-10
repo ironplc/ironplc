@@ -6,7 +6,6 @@
 
 use ironplc_dsl::common::{ArrayInitialElementKind, ConstantKind};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
-use ironplc_dsl::decl_id::DeclId;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, ExprKind, SymbolicVariableKind, UnaryOp, Variable};
 use ironplc_problems::Problem;
@@ -17,7 +16,6 @@ use ironplc_container::{CharWidth, ContainerBuilder, SlotIndex, VarIndex};
 use super::compile::{CompileContext, OpWidth, Signedness, VarTypeInfo};
 use super::compile_expr::compile_expr;
 use crate::emit::Emitter;
-use crate::storage::Binding;
 
 /// Normalized array specification, independent of AST representation.
 /// Both inline (`ARRAY[1..3, 1..4] OF INT`) and named type paths
@@ -209,12 +207,11 @@ pub(crate) fn resolve_symbolic_access<'ctx, 'ast>(
                     SymbolicVariableKind::Named(named) => {
                         levels.reverse();
                         let all_subscripts: Vec<&Expr> = levels.into_iter().flatten().collect();
-                        let decl = Binding::of(named)?.decl;
-                        let info = ctx.array_vars.get(&decl).ok_or_else(|| {
+                        let info = ctx.array_vars.get(&named.name).ok_or_else(|| {
                             // An element of an array of structures spans
                             // several slots, so it has no single-value load or
                             // store; only its fields are addressable.
-                            if ctx.struct_array_vars.contains_key(&decl) {
+                            if ctx.struct_array_vars.contains_key(&named.name) {
                                 Diagnostic::not_implemented(Label::span(
                                     named.name.span(),
                                     format!(
@@ -245,7 +242,7 @@ pub(crate) fn resolve_symbolic_access<'ctx, 'ast>(
                                     levels.into_iter().flatten().collect();
                                 let info = ctx
                                     .array_vars
-                                    .get(&Binding::of(named)?.decl)
+                                    .get(&named.name)
                                     .ok_or_else(|| Diagnostic::todo_with_span(named.name.span()))?;
                                 return Ok(ResolvedAccess::DerefArrayElement {
                                     info,
@@ -292,11 +289,10 @@ pub(crate) fn resolve_symbolic_access<'ctx, 'ast>(
             )
         }
         SymbolicVariableKind::Named(named) => {
-            let binding = Binding::of(named)?;
-            if let Some(ref_slot) = ctx.in_out_ref_slot(binding.decl) {
+            if let Some(ref_slot) = ctx.in_out_ref_slot(&named.name) {
                 return Ok(ResolvedAccess::InOut { ref_slot });
             }
-            let var_index = ctx.var_index(binding)?;
+            let var_index = ctx.var_index(&named.name)?;
             Ok(ResolvedAccess::Scalar { var_index })
         }
         other => Err(Diagnostic::todo_with_span(other.span())),
@@ -314,7 +310,7 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
     structured: &ironplc_dsl::textual::StructuredVariable,
     subscripts: Vec<&'ast Expr>,
 ) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
-    let (root, slot_offset, field_type) =
+    let (root_name, slot_offset, field_type) =
         crate::compile_struct::walk_struct_chain(ctx, &structured.record, &structured.field, 0)?;
 
     let SemanticType::Array {
@@ -328,10 +324,10 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
         )));
     };
 
-    let struct_info = ctx.struct_vars.get(&root.decl).ok_or_else(|| {
+    let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
         Diagnostic::not_implemented(Label::span(
             structured.span(),
-            format!("Variable '{}' is not a structure", root.name),
+            format!("Variable '{}' is not a structure", root_name),
         ))
     })?;
 
@@ -685,7 +681,7 @@ pub(crate) fn compute_dimensions(
 pub(crate) fn register_array_variable(
     ctx: &mut CompileContext,
     builder: &mut ContainerBuilder,
-    decl: DeclId,
+    id: &Id,
     var_index: VarIndex,
     spec: &ArraySpec,
     span: &ironplc_dsl::core::SourceSpan,
@@ -753,7 +749,7 @@ pub(crate) fn register_array_variable(
 
     // 6. Store in context
     ctx.array_vars.insert(
-        decl,
+        id.clone(),
         ArrayVarInfo {
             var_index,
             desc_index,

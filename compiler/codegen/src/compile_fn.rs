@@ -28,10 +28,9 @@ use super::compile_setup::{
 use super::compile_stmt::{
     compile_body, compile_statements, resolve_string_max_length, resolve_string_spec_max_length,
 };
+use super::scope::Scope;
 use super::type_info::{decl_type_info, resolve_type_name};
 use crate::emit::Emitter;
-use crate::storage::Binding;
-use ironplc_dsl::decl_id::DeclId;
 
 /// Records a debug [`VarNameEntry`] for a function- or FB-local variable
 /// (parameter or local) owned by `function_id`. Mirrors the program/global
@@ -85,9 +84,8 @@ fn in_out_value_type(decl: &VarDecl) -> Result<VarTypeInfo, Diagnostic> {
 
 /// Compiles a single user-defined function body.
 ///
-/// The function's parameters and locals get storage keyed by their own
-/// declarations, so a local that hides a global of the same name does not
-/// touch the global's; the storage is released once the body is compiled.
+/// Saves and restores the context's variable mappings so that function-local
+/// variables don't interfere with the program's namespace.
 ///
 /// Variable layout within the function's region (starting at `var_offset`):
 /// - Input parameters (in declaration order)
@@ -101,11 +99,17 @@ pub(crate) fn compile_user_function(
     ctx: &mut CompileContext,
     builder: &mut ContainerBuilder,
     types: &TypeEnvironment,
+    num_globals: u16,
 ) -> Result<CompiledFunction, Diagnostic> {
+    // Swap the program's variable mappings for the function's own; the
+    // program's are put back once the function is compiled.
+    let program_scope = ctx.swap_scope(Scope::default());
+    ctx.swap_scope(Scope::for_function_body(&program_scope, num_globals));
+
     // Assign variable slots for the function's parameters and locals,
     // starting at var_offset. Input parameters come first (declaration order),
     // then local variables.
-    let program_next_slot = std::mem::replace(&mut ctx.next_slot, var_offset.raw());
+    let mut current_index = var_offset;
     let mut num_params: u16 = 0;
 
     // First pass: input-compatible parameters (VAR_INPUT and VAR_IN_OUT)
@@ -115,23 +119,22 @@ pub(crate) fn compile_user_function(
             continue;
         }
         if let Some(id) = decl.identifier.symbolic_id() {
-            let binding = Binding::new(decl.decl_id, id)?;
-            let current_index = ctx.allocate_slot();
-            ctx.variables.insert(binding.decl, current_index);
+            ctx.variables.insert(id.clone(), current_index);
             push_local_var_name(ctx, current_index, function_id, decl, id, types);
             if decl.var_type == VariableType::InOut {
                 // The slot holds a reference to the caller's variable; its
                 // type info is the referenced value's, for reads and writes.
                 let type_info = in_out_value_type(decl)?;
-                ctx.var_types.insert(binding.decl, type_info);
-                ctx.in_out_params.insert(binding.decl);
+                ctx.var_types.insert(id.clone(), type_info);
+                ctx.in_out_params.insert(id.clone());
+                current_index = VarIndex::new(current_index.raw() + 1);
                 num_params += 1;
                 continue;
             }
             match &decl.initializer {
                 InitialValueAssignmentKind::Simple(_) => {
                     if let Some(type_info) = decl_type_info(ctx, decl) {
-                        ctx.var_types.insert(binding.decl, type_info);
+                        ctx.var_types.insert(id.clone(), type_info);
                     }
                 }
                 InitialValueAssignmentKind::String(string_init) => {
@@ -147,7 +150,7 @@ pub(crate) fn compile_user_function(
                     }
 
                     ctx.string_vars.insert(
-                        binding.decl,
+                        id.clone(),
                         StringVarInfo {
                             data_offset,
                             max_length,
@@ -160,13 +163,14 @@ pub(crate) fn compile_user_function(
                         ctx,
                         builder,
                         types,
-                        binding,
+                        id,
                         current_index,
                         ref_init,
                     )?;
                 }
                 _ => {}
             }
+            current_index = VarIndex::new(current_index.raw() + 1);
             num_params += 1;
         }
     }
@@ -177,14 +181,12 @@ pub(crate) fn compile_user_function(
             continue;
         }
         if let Some(id) = decl.identifier.symbolic_id() {
-            let binding = Binding::new(decl.decl_id, id)?;
-            let current_index = ctx.allocate_slot();
-            ctx.variables.insert(binding.decl, current_index);
+            ctx.variables.insert(id.clone(), current_index);
             push_local_var_name(ctx, current_index, function_id, decl, id, types);
             match &decl.initializer {
                 InitialValueAssignmentKind::Simple(_) => {
                     if let Some(type_info) = decl_type_info(ctx, decl) {
-                        ctx.var_types.insert(binding.decl, type_info);
+                        ctx.var_types.insert(id.clone(), type_info);
                     }
                 }
                 InitialValueAssignmentKind::String(string_init) => {
@@ -200,7 +202,7 @@ pub(crate) fn compile_user_function(
                     }
 
                     ctx.string_vars.insert(
-                        binding.decl,
+                        id.clone(),
                         StringVarInfo {
                             data_offset,
                             max_length,
@@ -213,21 +215,21 @@ pub(crate) fn compile_user_function(
                         ctx,
                         builder,
                         types,
-                        binding,
+                        id,
                         current_index,
                         ref_init,
                     )?;
                 }
                 _ => {}
             }
+            current_index = VarIndex::new(current_index.raw() + 1);
         }
     }
 
     // Assign the return variable (named same as the function).
-    let return_var_index = ctx.allocate_slot();
+    let return_var_index = current_index;
     let return_id = func_decl.name.clone();
-    let return_decl = Binding::new(func_decl.result_decl_id, &return_id)?.decl;
-    ctx.variables.insert(return_decl, return_var_index);
+    ctx.variables.insert(return_id.clone(), return_var_index);
 
     // Debug entry for the return value. The result has no IEC variable
     // section; it is modeled as VAR_OUTPUT so a debugger surfaces it in the
@@ -260,7 +262,7 @@ pub(crate) fn compile_user_function(
             }
 
             ctx.string_vars.insert(
-                return_decl,
+                return_id.clone(),
                 StringVarInfo {
                     data_offset,
                     max_length,
@@ -284,24 +286,22 @@ pub(crate) fn compile_user_function(
                     builder,
                     types,
                     &return_type_name,
-                    return_decl,
+                    &return_id,
                     return_var_index,
                     &func_decl.name.span(),
                 )?;
             } else if let Some(type_info) = resolve_type_name(&return_type_name.name) {
-                ctx.var_types.insert(return_decl, type_info);
+                ctx.var_types.insert(return_id.clone(), type_info);
             }
             None
         }
     };
-    // Captured here because the function's storage is released at the end
-    // of this function, losing the return variable's entry.
-    let return_struct_desc_index = ctx
-        .struct_vars
-        .get(&return_decl)
-        .map(|info| info.desc_index);
+    // Captured here because `ctx.struct_vars` is restored to the caller's
+    // scope at the end of this function, losing the return variable's entry.
+    let return_struct_desc_index = ctx.struct_vars.get(&return_id).map(|info| info.desc_index);
+    current_index = VarIndex::new(current_index.raw() + 1);
 
-    let num_locals = ctx.next_slot - var_offset.raw();
+    let num_locals = current_index.raw() - var_offset.raw();
 
     // Determine return type's OpType.
     let return_type_name = func_decl.return_type.to_type_name();
@@ -321,7 +321,6 @@ pub(crate) fn compile_user_function(
         ctx,
         &func_decl.variables,
         &func_decl.name,
-        Some(return_decl),
         return_var_index,
         return_op_type,
     )?;
@@ -385,8 +384,9 @@ pub(crate) fn compile_user_function(
         }
         let passing = match &decl.initializer {
             InitialValueAssignmentKind::String(_) => decl
-                .decl_id
-                .and_then(|decl| ctx.string_vars.get(&decl))
+                .identifier
+                .symbolic_id()
+                .and_then(|id| ctx.string_vars.get(id))
                 .map_or(ParamPassing::Value(DEFAULT_OP_TYPE), |info| {
                     ParamPassing::String(StringParamInfo {
                         data_offset: info.data_offset,
@@ -418,9 +418,8 @@ pub(crate) fn compile_user_function(
         },
     );
 
-    // The function's storage is its own; nothing else can name it.
-    ctx.next_slot = program_next_slot;
-    ctx.release(declared_ids(&func_decl.variables).chain([return_decl]));
+    // Restore the program's variable mappings.
+    ctx.swap_scope(program_scope);
 
     Ok(CompiledFunction {
         function_id,
@@ -436,9 +435,8 @@ pub(crate) fn compile_user_function(
 
 /// Compiles a single user-defined function block body.
 ///
-/// The fields get storage keyed by their own declarations. It is left in
-/// place for this type's methods, which the caller compiles next and which
-/// reach the fields the same way; the caller releases it after them.
+/// Saves and restores the context's variable mappings so that FB-local
+/// variables don't interfere with the program's namespace.
 ///
 /// All FB fields (VAR_INPUT, VAR_OUTPUT, VAR) are mapped to contiguous
 /// variable table slots starting at `var_offset`, in declaration order.
@@ -450,7 +448,8 @@ pub(crate) fn compile_user_function_block(
     ctx: &mut CompileContext,
     builder: &mut ContainerBuilder,
     types: &TypeEnvironment,
-) -> Result<CompiledFunction, Diagnostic> {
+    num_globals: u16,
+) -> Result<(CompiledFunction, Scope), Diagnostic> {
     let fb_name = fb_decl.name.name.to_string().to_uppercase();
 
     // Collect fields in a stable order: inputs first, then outputs, then locals.
@@ -472,18 +471,20 @@ pub(crate) fn compile_user_function_block(
         }
     }
 
+    // Swap the program's variable mappings for the FB type's own.
+    let program_scope = ctx.swap_scope(Scope::default());
+    ctx.swap_scope(Scope::for_fb_body(&program_scope, num_globals));
+
     // Assign variable slots for all FB fields, in the same order as field_decls.
-    let program_next_slot = std::mem::replace(&mut ctx.next_slot, var_offset);
+    let mut current_index = VarIndex::new(var_offset);
     for decl in &field_decls {
         if let Some(id) = decl.identifier.symbolic_id() {
-            let binding = Binding::new(decl.decl_id, id)?;
-            let current_index = ctx.allocate_slot();
-            ctx.variables.insert(binding.decl, current_index);
+            ctx.variables.insert(id.clone(), current_index);
             push_local_var_name(ctx, current_index, function_id, decl, id, types);
             match &decl.initializer {
                 InitialValueAssignmentKind::Simple(_) => {
                     if let Some(vti) = decl_type_info(ctx, decl) {
-                        ctx.var_types.insert(binding.decl, vti);
+                        ctx.var_types.insert(id.clone(), vti);
                     }
                 }
                 InitialValueAssignmentKind::Reference(ref_init) => {
@@ -491,7 +492,7 @@ pub(crate) fn compile_user_function_block(
                         ctx,
                         builder,
                         types,
-                        binding,
+                        id,
                         current_index,
                         ref_init,
                     )?;
@@ -509,7 +510,7 @@ pub(crate) fn compile_user_function_block(
                     }
 
                     ctx.string_vars.insert(
-                        binding.decl,
+                        id.clone(),
                         StringVarInfo {
                             data_offset,
                             max_length,
@@ -519,11 +520,11 @@ pub(crate) fn compile_user_function_block(
                 }
                 _ => {}
             }
+            current_index = VarIndex::new(current_index.raw() + 1);
         }
     }
 
-    let num_locals = ctx.next_slot - var_offset;
-    ctx.next_slot = program_next_slot;
+    let num_locals = current_index.raw() - var_offset;
 
     // Compile the FB body.
     // Mark this FB's body as the current caller so nested CALL / FB_CALL
@@ -540,27 +541,25 @@ pub(crate) fn compile_user_function_block(
 
     let finalized = finalize_function(&mut fb_emitter, ctx)?;
 
-    // Note: the fields' storage is intentionally NOT released here (unlike
-    // `compile_user_function`). This type's METHODs (OOP extension,
-    // ADR-0041 Phase 1) are compiled next, right after this function
-    // returns, and reach the fields through it for `self` access. The
-    // caller (`compile_program_with_functions`) releases it once both this
-    // body and its methods are compiled.
+    // Note: `ctx`'s variable mappings are intentionally NOT restored
+    // here (unlike `compile_user_function`). This type's METHODs (OOP
+    // extension, ADR-0041 Phase 1) are compiled next, right after this
+    // function returns, and need `ctx.variables` to still hold this
+    // type's field mappings for `self` access. The program-level scope is
+    // returned instead, and the caller (`compile_program_with_functions`)
+    // swaps it back in once both this body and its methods are compiled.
 
-    Ok(CompiledFunction {
-        function_id,
-        bytecode: finalized.bytecode,
-        max_stack_depth: finalized.max_stack_depth,
-        max_temp_depth: finalized.max_temp_depth,
-        num_locals,
-        num_params: 0,
-        name: fb_name,
-        line_map: finalized.line_map,
-    })
-}
-
-/// The identities of the declarations in `variables`, for releasing the
-/// storage a body gave them once it is compiled.
-pub(crate) fn declared_ids(variables: &[VarDecl]) -> impl Iterator<Item = DeclId> + '_ {
-    variables.iter().filter_map(|decl| decl.decl_id)
+    Ok((
+        CompiledFunction {
+            function_id,
+            bytecode: finalized.bytecode,
+            max_stack_depth: finalized.max_stack_depth,
+            max_temp_depth: finalized.max_temp_depth,
+            num_locals,
+            num_params: 0,
+            name: fb_name,
+            line_map: finalized.line_map,
+        },
+        program_scope,
+    ))
 }

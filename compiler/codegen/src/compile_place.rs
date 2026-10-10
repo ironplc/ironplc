@@ -8,8 +8,7 @@
 //! writes the value does not depend on the shape.
 
 use ironplc_container::{SlotIndex, VarIndex};
-use ironplc_dsl::core::{Located, SourceSpan};
-use ironplc_dsl::decl_id::DeclId;
+use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, SymbolicVariableKind};
 
@@ -20,7 +19,6 @@ use super::compile_array::{
 use super::compile_expr::{emit_load_in_out, emit_load_var, emit_store_var, emit_truncation};
 use super::compile_struct::{resolve_struct_field_access, var_type_info_for_field};
 use crate::emit::Emitter;
-use crate::storage::Binding;
 
 /// A place that holds one value in a single slot.
 pub(crate) struct Place<'ast> {
@@ -92,34 +90,34 @@ impl<'ast> Place<'ast> {
             }
         }
 
-        let decl = match base {
-            SymbolicVariableKind::Named(named) => Some(Binding::of(named)?.decl),
+        let name = match base {
+            SymbolicVariableKind::Named(named) => Some(&named.name),
             _ => None,
         };
-        Self::from_access(ctx, resolve_symbolic_access(ctx, base)?, decl, span)
+        Self::from_access(ctx, resolve_symbolic_access(ctx, base)?, name, span)
     }
 
     /// Builds the place that `access`, already resolved from a variable
-    /// reference, addresses. `decl` is the declaration the reference names
-    /// when it is a plain name, and `span` is the reference.
+    /// reference, addresses. `name` is the variable when the reference is a
+    /// plain name, and `span` is the reference.
     ///
     /// A field at a fixed offset in a structure has no [`ResolvedAccess`];
     /// [`Place::resolve`] addresses it.
     pub(crate) fn from_access(
         ctx: &CompileContext,
         access: ResolvedAccess<'_, 'ast>,
-        decl: Option<DeclId>,
+        name: Option<&Id>,
         span: SourceSpan,
     ) -> Result<Self, Diagnostic> {
         let (address, type_info) = match access {
-            ResolvedAccess::Scalar { .. } if is_string_variable(ctx, decl) => {
+            ResolvedAccess::Scalar { .. } if is_string_variable(ctx, name) => {
                 return Err(string_place(span));
             }
             ResolvedAccess::Scalar { var_index } => {
-                (Address::Variable(var_index), variable_type_info(ctx, decl))
+                (Address::Variable(var_index), variable_type_info(ctx, name))
             }
             ResolvedAccess::InOut { ref_slot } => {
-                (Address::InOut(ref_slot), variable_type_info(ctx, decl))
+                (Address::InOut(ref_slot), variable_type_info(ctx, name))
             }
             ResolvedAccess::ArrayElement { info, subscripts } => {
                 array_element(info, subscripts, false, &span)?
@@ -281,15 +279,14 @@ fn array_element<'ast>(
     Ok((address, Some(info.element_var_type_info)))
 }
 
-/// The type of the variable `decl` declares, when the reference is a plain
-/// name.
-fn variable_type_info(ctx: &CompileContext, decl: Option<DeclId>) -> Option<VarTypeInfo> {
-    decl.and_then(|decl| ctx.var_type_info(decl))
+/// The type of the variable `name`, when the reference is a plain name.
+fn variable_type_info(ctx: &CompileContext, name: Option<&Id>) -> Option<VarTypeInfo> {
+    name.and_then(|name| ctx.var_type_info(name))
 }
 
-/// Returns `true` if `decl` declares a STRING variable.
-fn is_string_variable(ctx: &CompileContext, decl: Option<DeclId>) -> bool {
-    decl.is_some_and(|decl| ctx.string_vars.contains_key(&decl))
+/// Returns `true` if `name` is a STRING variable.
+fn is_string_variable(ctx: &CompileContext, name: Option<&Id>) -> bool {
+    name.is_some_and(|name| ctx.string_vars.contains_key(name))
 }
 
 /// A STRING lives in the data region rather than in one slot, so it is not a

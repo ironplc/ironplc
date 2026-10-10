@@ -383,7 +383,6 @@ fn insert_variable_when_name_is_compiler_provided_then_reserved() {
         SymbolKind::Variable,
         &ScopeKind::Global,
         None,
-        ironplc_dsl::decl_id::DeclId::from_raw(0),
     )
     .unwrap();
 
@@ -677,7 +676,6 @@ fn method_decl(name: &str) -> ironplc_dsl::common::MethodDeclaration {
         edge_variables: vec![],
         body: vec![],
         span: ironplc_dsl::core::SourceSpan::default(),
-        result_decl_id: None,
     }
 }
 
