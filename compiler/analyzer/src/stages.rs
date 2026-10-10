@@ -12,6 +12,7 @@ use ironplc_problems::Problem;
 use log::debug;
 
 use crate::{
+    execution_model,
     function_environment::FunctionEnvironmentBuilder,
     ironplc_dsl::common::Library,
     result::SemanticResult,
@@ -29,7 +30,7 @@ use crate::{
     rule_program_var_hides_global, rule_range_limits, rule_real_literal_range, rule_ref_to,
     rule_return_type_declared, rule_stdlib_type_redefinition, rule_string_encoding_compat,
     rule_string_length_range, rule_string_literal_char_range,
-    rule_struct_initializer_expression_allowed, rule_task_names_unique,
+    rule_struct_initializer_expression_allowed, rule_task_configuration, rule_task_names_unique,
     rule_temporal_literal_range, rule_unsupported_extension, rule_use_declared_enumerated_value,
     rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
     rule_var_decl_global_const_requires_external_const, rule_var_decl_initializer_type_compat,
@@ -354,13 +355,18 @@ pub fn resolve_types(
     debug!("Symbol Environment:");
     debug!("{symbol_environment:?}");
 
+    // What runs, and when, resolved once next to `reachable`, so that a
+    // backend builds from it rather than deciding it again.
+    let model = execution_model::resolve(&library, options);
+
     let mut context = SemanticContext::new(
         type_environment,
         function_environment,
         symbol_environment,
         reachable,
         *options,
-    );
+    )
+    .with_execution_model(model);
     context.add_diagnostics(diagnostics);
 
     Ok((library, context))
@@ -398,6 +404,7 @@ pub(crate) fn semantic(
         rule_program_var_hides_global::apply,
         rule_no_top_level_var_global::apply,
         rule_operator_operand_type_check::apply,
+        rule_task_configuration::apply,
         rule_task_names_unique::apply,
         rule_stdlib_type_redefinition::apply,
         rule_string_encoding_compat::apply,

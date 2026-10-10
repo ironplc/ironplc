@@ -6,6 +6,10 @@ P4020
 
 This error occurs when the compiler cannot find a PROGRAM declaration in the source. At least one PROGRAM is required to compile and run.
 
+Checking the source does not report this error: a library of functions and
+function blocks with no PROGRAM is valid on its own. Only compiling it into a
+program that runs needs one.
+
 Example
 -------
 

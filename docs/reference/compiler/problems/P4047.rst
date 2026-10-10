@@ -7,7 +7,9 @@ P4047
 This error occurs when a ``TASK`` declares the ``SINGLE`` parameter. ``SINGLE``
 names a boolean variable whose rising edge triggers the task. The runtime does
 not yet schedule event-triggered tasks, so a program that used ``SINGLE`` would
-compile but never run its task body.
+compile but never run its task body. The error is reported when the program
+the configuration compiles runs under a task with ``SINGLE``; a task no program
+runs under is not compiled.
 
 Example
 -------

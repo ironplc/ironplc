@@ -1,16 +1,16 @@
 //! Spec conformance tests for the execution model's types.
 //!
 //! The tests check the requirements this crate owns in
-//! `specs/design/execution-model.md`, and each names its requirement in a
-//! comment. They become `#[spec_test(REQ_EM_ir_NNN)]` when `build.rs` lists
-//! that document (see the comment there); until then the
-//! `all_spec_requirements_have_tests` meta-test has no requirement to check.
+//! `specs/design/execution-model.md`, each marked with the
+//! `#[spec_test(REQ_EM_ir_NNN)]` of its requirement, so the
+//! `all_spec_requirements_have_tests` meta-test fails when one has none.
 
 use ironplc_dsl::core::SourceSpan;
+use spec_test_macro::spec_test;
 
 use crate::execution::{
-    Configuration, DebugName, Execution, ExecutionModelBuilder, Global, GlobalKind, GlobalScope,
-    NotExecutable, ProgramInstance, ProgramType, Resource, Schedule, Task, Trigger,
+    Configuration, DebugName, ExecutionModel, ExecutionModelBuilder, Global, GlobalKind,
+    GlobalScope, InstanceOf, ProgramInstance, ProgramType, Resource, Schedule, Task, Trigger,
 };
 
 // ---------------------------------------------------------------------------
@@ -92,8 +92,7 @@ fn trait_probe_when_type_lacks_trait_then_false() {
     assert!(!probe.ord());
 }
 
-// REQ-EM-ir-001
-#[test]
+#[spec_test(REQ_EM_ir_001)]
 fn debug_name_when_probed_then_implements_no_comparison_or_hash() {
     let probe = &Probe::<DebugName>::new();
 
@@ -112,8 +111,7 @@ fn dsl_items(source: &str) -> Vec<&str> {
         .collect()
 }
 
-// REQ-EM-ir-001
-#[test]
+#[spec_test(REQ_EM_ir_001)]
 fn execution_module_when_scanned_then_names_only_source_span_from_dsl() {
     // A declaration node, an `Id` or a `TypeId` would have to be named
     // through `ironplc_dsl`; the only item the module names is the span a
@@ -130,16 +128,14 @@ fn holds_no_reference<T: 'static>(_value: &T) -> bool {
     true
 }
 
-// REQ-EM-ir-001
-#[test]
-fn execution_when_built_then_borrows_nothing_from_a_library() {
-    let execution = Execution::NotExecutable(NotExecutable::NoProgram);
+#[spec_test(REQ_EM_ir_001)]
+fn execution_model_when_built_then_borrows_nothing_from_a_library() {
+    let model: ExecutionModel = ExecutionModelBuilder::new().build(vec![]);
 
-    assert!(holds_no_reference(&execution));
+    assert!(holds_no_reference(&model));
 }
 
-// REQ-EM-ir-001
-#[test]
+#[spec_test(REQ_EM_ir_001)]
 fn execution_model_when_built_then_every_id_names_an_entry_of_the_model() {
     let name = |text: &str| DebugName::new(text, SourceSpan::range(0, text.len()));
     let mut builder = ExecutionModelBuilder::new();
@@ -148,7 +144,7 @@ fn execution_model_when_built_then_every_id_names_an_entry_of_the_model() {
         name: name("start"),
         kind: GlobalKind::Declared(GlobalScope::Configuration),
     });
-    let model = builder.build(Configuration {
+    let model = builder.build(vec![Configuration {
         name: Some(name("config")),
         resources: vec![Resource {
             name: Some(name("resource1")),
@@ -161,17 +157,18 @@ fn execution_model_when_built_then_every_id_names_an_entry_of_the_model() {
                 },
                 instances: vec![ProgramInstance {
                     name: Some(name("instance1")),
-                    program,
+                    program: InstanceOf::Program(program),
                 }],
             }],
         }],
-    });
+    }]);
 
-    let task = &model.configuration().resources[0].tasks[0];
+    let task = &model.configurations()[0].resources[0].tasks[0];
+    let InstanceOf::Program(id) = task.instances[0].program else {
+        panic!("instance has no program");
+    };
     assert_eq!(
-        model
-            .program(task.instances[0].program)
-            .map(|p| p.name.to_string()),
+        model.program(id).map(|p| p.name.to_string()),
         Some("main".to_string())
     );
     assert!(matches!(
@@ -193,8 +190,7 @@ fn workspace_dependencies(manifest: &str) -> Vec<&str> {
         .collect()
 }
 
-// REQ-EM-ir-002
-#[test]
+#[spec_test(REQ_EM_ir_002)]
 fn ir_manifest_when_read_then_depends_on_no_compiler_crate_but_dsl() {
     // Build and dev dependencies do not reach a crate that depends on
     // `ironplc-ir`, so only `[dependencies]` counts.
