@@ -15,6 +15,7 @@ use std::collections::HashSet;
 use crate::function_environment::{FunctionEnvironment, FunctionEnvironmentBuilder};
 use crate::symbol_environment::SymbolEnvironment;
 use crate::type_environment::{TypeEnvironment, TypeEnvironmentBuilder};
+use crate::xform_resolve_initial_values::TypeDefaults;
 use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_parser::options::CompilerOptions;
@@ -44,6 +45,9 @@ pub struct SemanticContext {
     reachable: HashSet<Id>,
     /// Compiler options that affect semantic validation (e.g., allow flags).
     compiler_options: CompilerOptions,
+    /// The default of every declared type, from which the starting value
+    /// of each declaration is resolved.
+    type_defaults: TypeDefaults,
 }
 
 impl SemanticContext {
@@ -62,7 +66,22 @@ impl SemanticContext {
             diagnostics: Vec::new(),
             reachable,
             compiler_options,
+            type_defaults: TypeDefaults::default(),
         }
+    }
+
+    /// This context with `type_defaults` as the defaults of the declared
+    /// types.
+    pub(crate) fn with_type_defaults(self, type_defaults: TypeDefaults) -> Self {
+        Self {
+            type_defaults,
+            ..self
+        }
+    }
+
+    /// The default of every declared type.
+    pub(crate) fn type_defaults(&self) -> &TypeDefaults {
+        &self.type_defaults
     }
 
     /// Adds diagnostics to the context.
