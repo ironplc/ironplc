@@ -858,3 +858,26 @@ fn apply_when_assignment_out_of_range_then_error_at_literal() {
     let location = &diagnostics[0].primary.location;
     assert_eq!((location.start, location.end), (start, start + "128".len()));
 }
+
+// --- Subrange values ---
+
+#[rstest]
+#[case::field_value_inside("TYPE T : STRUCT x : INT (0..15) := 15; END_STRUCT; END_TYPE", OK)]
+#[case::field_value_outside(
+    "TYPE T : STRUCT x : INT (0..15) := 16; END_STRUCT; END_TYPE",
+    OVERFLOW
+)]
+#[case::field_value_below(
+    "TYPE T : STRUCT x : INT (-5..15) := -6; END_STRUCT; END_TYPE",
+    OVERFLOW
+)]
+#[case::type_default_inside("TYPE R : DINT (10..100) := 100; END_TYPE", OK)]
+#[case::type_default_outside("TYPE R : DINT (10..100) := 500; END_TYPE", OVERFLOW)]
+fn apply_when_subrange_value_then_checked_against_subrange(
+    #[case] types: &str,
+    #[case] expected: &[Problem],
+) {
+    let program = format!("{types}\nPROGRAM main\nVAR x : INT; END_VAR\nx := 1;\nEND_PROGRAM\n");
+
+    assert_eq!(problems_of(&program), codes(expected));
+}
