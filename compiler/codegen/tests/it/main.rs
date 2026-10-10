@@ -114,6 +114,7 @@ mod end_to_end_fb_tof;
 mod end_to_end_fb_ton;
 mod end_to_end_fb_tp;
 mod end_to_end_find;
+mod end_to_end_fixed_result;
 mod end_to_end_float;
 mod end_to_end_func_forms;
 mod end_to_end_func_forms_extensible;

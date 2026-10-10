@@ -16,9 +16,11 @@
 //! computes at its own type when it is arithmetic, a negation or `NOT`, an
 //! `AND`, `OR` or `XOR`, or a standard function on one value or of several
 //! inputs of one type ([`Intrinsic::computes_at_own_type`]). A call to a
-//! user-defined function or a method, and a dereference, have the type the
-//! function or method returns or the referenced variable has, and convert to
-//! their context too. Any other value -- a literal, a call to `TRUNC` -- is
+//! user-defined function or a method, a standard function whose signature
+//! fixes its result type ([`Intrinsic::result_has_fixed_type`]), and a
+//! dereference, have the type the function returns or the referenced
+//! variable has, and convert to their context too. Any other value -- a
+//! literal, a call to `TRUNC` -- is
 //! compiled at the target's width rather than converted to it, so there is
 //! no conversion to record.
 //!
@@ -193,14 +195,18 @@ impl ImplicitConversions<'_> {
             // its context's.
             ExprKind::ImplicitConversion(_) => true,
             ExprKind::Expression(inner) => self.converts_to_its_context(inner),
-            // A user-defined function returns its declared type. The function
-            // form of an arithmetic operator, an operation on one value and a
-            // function of several inputs of one type compute at their own
-            // type, and any other standard function at its context's.
+            // A user-defined function returns its declared type, and so does a
+            // standard function whose signature fixes its result type (a type
+            // conversion, a typed time function). The function form of an
+            // arithmetic operator, an operation on one value and a function of
+            // several inputs of one type compute at their own type, and any
+            // other standard function at its context's.
             ExprKind::Function(func) => match self.intrinsic_of(func) {
                 None => true,
                 Some(intrinsic) => {
-                    self.is_numeric_pair(func, expr) || intrinsic.computes_at_own_type()
+                    self.is_numeric_pair(func, expr)
+                        || intrinsic.computes_at_own_type()
+                        || intrinsic.result_has_fixed_type()
                 }
             },
             // A method returns its declared type, and a dereference reads the
