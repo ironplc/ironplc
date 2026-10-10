@@ -241,10 +241,7 @@ mod tests {
             // declares for itself.
             container
                 .constant_pool
-                .push(ironplc_container::ConstEntry::primitive_le(
-                    ironplc_container::ConstType::I32,
-                    &7i32.to_le_bytes(),
-                ));
+                .push(ironplc_container::ConstEntry::i32(7));
             container.header.max_stack_depth = 4;
 
             let mut bufs = ironplc_vm::VmBuffers::from_container(&container);

@@ -68,8 +68,7 @@ pub(crate) fn compile_binary_arith(
     compile_at(emitter, ctx, natural, op_type, |emitter, ctx, at| {
         compile_expr(emitter, ctx, &binary.left, at)?;
         compile_expr(emitter, ctx, &binary.right, at)?;
-        emit_arithmetic_op(emitter, &binary.op, at);
-        Ok(())
+        emit_arithmetic_op(emitter, &binary.op, at)
     })
 }
 
@@ -210,8 +209,7 @@ pub(crate) fn compile_at(
     compile: impl FnOnce(&mut Emitter, &mut CompileContext, OpType) -> Result<(), Diagnostic>,
 ) -> Result<(), Diagnostic> {
     compile(emitter, ctx, at)?;
-    convert_to_context(emitter, at, op_type);
-    Ok(())
+    convert_to_context(emitter, at, op_type)
 }
 
 /// Converts the value on the stack, computed at its own operation type
@@ -222,19 +220,23 @@ pub(crate) fn compile_at(
 /// having recorded the conversion (ADR-0056). Every other conversion is
 /// one the analyzer recorded in an `ImplicitConversion`, or one the
 /// program wrote, such as `INT_TO_REAL`.
-pub(crate) fn convert_to_context(emitter: &mut Emitter, own: OpType, context: OpType) {
-    convert(emitter, own, context);
+pub(crate) fn convert_to_context(
+    emitter: &mut Emitter,
+    own: OpType,
+    context: OpType,
+) -> Result<(), Diagnostic> {
+    convert(emitter, own, context)
 }
 
 /// Emits the conversion of the value on the stack from `from` to `to`, or
 /// nothing when the two share an operation width.
-pub(crate) fn convert(emitter: &mut Emitter, from: OpType, to: OpType) {
+pub(crate) fn convert(emitter: &mut Emitter, from: OpType, to: OpType) -> Result<(), Diagnostic> {
     let info = |(op_width, signedness): OpType| VarTypeInfo {
         op_width,
         signedness,
         storage_bits: 0,
     };
-    emit_conversion_opcode(emitter, &info(from), &info(to));
+    emit_conversion_opcode(emitter, &info(from), &info(to))
 }
 
 /// Returns the operation type of `type_name` when it is a concrete

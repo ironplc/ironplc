@@ -237,10 +237,10 @@ fn compile_mul_div_time(
         ),
         OpWidth::W64 => return Err(unconverted_operand(in2, in2_op.0, OpWidth::F64)),
     };
-    emitter.emit_builtin(to_float);
+    emitter.emit_builtin(to_float)?;
     compile_expr(emitter, ctx, in2, in2_op)?;
     emit_fn(emitter, (in2_op.0, Signedness::Signed));
-    emitter.emit_builtin(from_float);
+    emitter.emit_builtin(from_float)?;
     Ok(())
 }
 
@@ -266,10 +266,10 @@ fn compile_mul_div_ltime(
             emit_fn(emitter, (OpWidth::W64, Signedness::Signed));
         }
         OpWidth::F64 => {
-            emitter.emit_builtin(opcode::builtin::CONV_I64_TO_F64);
+            emitter.emit_builtin(opcode::builtin::CONV_I64_TO_F64)?;
             compile_expr(emitter, ctx, in2, in2_op)?;
             emit_fn(emitter, (OpWidth::F64, Signedness::Signed));
-            emitter.emit_builtin(opcode::builtin::CONV_F64_TO_I64);
+            emitter.emit_builtin(opcode::builtin::CONV_F64_TO_I64)?;
         }
         OpWidth::W32 => return Err(unconverted_operand(in2, in2_op.0, OpWidth::W64)),
         OpWidth::F32 => return Err(unconverted_operand(in2, in2_op.0, OpWidth::F64)),

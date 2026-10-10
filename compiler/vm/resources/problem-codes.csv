@@ -24,3 +24,4 @@ V9016,ProgramExceedsCallDepth,Container declares a call depth that exceeds the V
 V9017,ZeroCallDepth,Container declares a maximum call depth of zero which is invalid,none
 V9018,RegionSizeMismatch,Region copy source and destination differ in size,struct
 V9019,VariableTableTooSmall,Variable table has fewer slots than the container requires,struct
+V9020,CallStackUnderflow,VM call frame stack has no frame where the dispatch loop requires one,none
