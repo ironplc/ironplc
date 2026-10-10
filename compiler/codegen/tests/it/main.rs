@@ -102,6 +102,7 @@ mod end_to_end_enum_inline;
 mod end_to_end_exit_return;
 mod end_to_end_expt;
 mod end_to_end_expt_lint;
+mod end_to_end_fb_counter_widths;
 mod end_to_end_fb_ctd;
 mod end_to_end_fb_ctu;
 mod end_to_end_fb_ctud;

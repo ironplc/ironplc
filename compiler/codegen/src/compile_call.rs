@@ -748,15 +748,20 @@ pub(crate) fn resolve_fb_type(name: &str) -> Option<(u16, usize, HashMap<String,
         "TON" => Some((opcode::fb_type::TON, 6, timer_fb_fields())),
         "TOF" => Some((opcode::fb_type::TOF, 6, timer_fb_fields())),
         "TP" => Some((opcode::fb_type::TP, 6, timer_fb_fields())),
-        "CTU" | "CTU_INT" | "CTU_DINT" | "CTU_LINT" | "CTU_UDINT" | "CTU_ULINT" => {
-            Some((opcode::fb_type::CTU, 6, ctu_fb_fields()))
-        }
-        "CTD" | "CTD_INT" | "CTD_DINT" | "CTD_LINT" | "CTD_UDINT" | "CTD_ULINT" => {
-            Some((opcode::fb_type::CTD, 6, ctd_fb_fields()))
-        }
-        "CTUD" | "CTUD_INT" | "CTUD_DINT" | "CTUD_LINT" | "CTUD_UDINT" | "CTUD_ULINT" => {
-            Some((opcode::fb_type::CTUD, 10, ctud_fb_fields()))
-        }
+        // Each width of a counter counts in its own type: `INT` and `DINT`
+        // in a signed 32-bit integer, the others in their own.
+        "CTU" | "CTU_INT" | "CTU_DINT" => Some((opcode::fb_type::CTU, 6, ctu_fb_fields())),
+        "CTU_UDINT" => Some((opcode::fb_type::CTU_UDINT, 6, ctu_fb_fields())),
+        "CTU_LINT" => Some((opcode::fb_type::CTU_LINT, 6, ctu_fb_fields())),
+        "CTU_ULINT" => Some((opcode::fb_type::CTU_ULINT, 6, ctu_fb_fields())),
+        "CTD" | "CTD_INT" | "CTD_DINT" => Some((opcode::fb_type::CTD, 6, ctd_fb_fields())),
+        "CTD_UDINT" => Some((opcode::fb_type::CTD_UDINT, 6, ctd_fb_fields())),
+        "CTD_LINT" => Some((opcode::fb_type::CTD_LINT, 6, ctd_fb_fields())),
+        "CTD_ULINT" => Some((opcode::fb_type::CTD_ULINT, 6, ctd_fb_fields())),
+        "CTUD" | "CTUD_INT" | "CTUD_DINT" => Some((opcode::fb_type::CTUD, 10, ctud_fb_fields())),
+        "CTUD_UDINT" => Some((opcode::fb_type::CTUD_UDINT, 10, ctud_fb_fields())),
+        "CTUD_LINT" => Some((opcode::fb_type::CTUD_LINT, 10, ctud_fb_fields())),
+        "CTUD_ULINT" => Some((opcode::fb_type::CTUD_ULINT, 10, ctud_fb_fields())),
         "SR" => Some((opcode::fb_type::SR, 3, sr_fb_fields())),
         "RS" => Some((opcode::fb_type::RS, 3, rs_fb_fields())),
         "R_TRIG" => Some((opcode::fb_type::R_TRIG, 3, edge_trig_fb_fields())),

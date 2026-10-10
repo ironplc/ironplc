@@ -228,6 +228,91 @@ pub fn rs(instance: &mut [u8]) -> Result<(), Trap> {
 // Counter Function Blocks (IEC 61131-3 Section 2.5.2.3.3)
 // =============================================================================
 
+/// The integer a counter counts in: the type of its `PV` and `CV`.
+///
+/// Each width of a counter (`CTU_UDINT`, `CTU_LINT`, ...) has its own
+/// `FB_CALL` type id and counts in its own type, so a `CTU_LINT` counts past
+/// 32 bits and a `CTU_UDINT` reads a preset above 2,147,483,647 as positive.
+/// `CTU`, `CTU_INT` and `CTU_DINT` count in a signed 32-bit integer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CounterWidth {
+    I32,
+    U32,
+    I64,
+    U64,
+}
+
+impl CounterWidth {
+    /// The width the counter with `FB_CALL` type id `type_id` counts in.
+    pub fn of(type_id: u16) -> CounterWidth {
+        use ironplc_container::opcode::fb_type;
+        match type_id {
+            fb_type::CTU_UDINT | fb_type::CTD_UDINT | fb_type::CTUD_UDINT => CounterWidth::U32,
+            fb_type::CTU_LINT | fb_type::CTD_LINT | fb_type::CTUD_LINT => CounterWidth::I64,
+            fb_type::CTU_ULINT | fb_type::CTD_ULINT | fb_type::CTUD_ULINT => CounterWidth::U64,
+            _ => CounterWidth::I32,
+        }
+    }
+}
+
+/// A value a counter counts in, read from and written to an instance field.
+///
+/// Counting saturates at the bounds of the type, as IEC 61131-3 counts only
+/// while `CV` is below the type's maximum or above its minimum.
+trait CounterValue: Copy + PartialOrd {
+    const ZERO: Self;
+    fn read(instance: &[u8], field: usize) -> Self;
+    fn write(self, instance: &mut [u8], field: usize);
+    fn up(self) -> Self;
+    fn down(self) -> Self;
+}
+
+macro_rules! counter_value {
+    ($t:ty, $bytes:literal) => {
+        impl CounterValue for $t {
+            const ZERO: Self = 0;
+
+            fn read(instance: &[u8], field: usize) -> Self {
+                let offset = field * FIELD_SIZE;
+                let bytes: [u8; $bytes] = instance[offset..offset + $bytes].try_into().unwrap();
+                <$t>::from_le_bytes(bytes)
+            }
+
+            /// Writes the value, zeroing the rest of the 8-byte slot.
+            fn write(self, instance: &mut [u8], field: usize) {
+                let offset = field * FIELD_SIZE;
+                instance[offset..offset + FIELD_SIZE].fill(0);
+                instance[offset..offset + $bytes].copy_from_slice(&self.to_le_bytes());
+            }
+
+            fn up(self) -> Self {
+                self.saturating_add(1)
+            }
+
+            fn down(self) -> Self {
+                self.saturating_sub(1)
+            }
+        }
+    };
+}
+
+counter_value!(i32, 4);
+counter_value!(u32, 4);
+counter_value!(i64, 8);
+counter_value!(u64, 8);
+
+/// Runs `count` at the type `width` names.
+macro_rules! at_width {
+    ($width:expr, $count:ident, $instance:expr) => {
+        match $width {
+            CounterWidth::I32 => $count::<i32>($instance),
+            CounterWidth::U32 => $count::<u32>($instance),
+            CounterWidth::I64 => $count::<i64>($instance),
+            CounterWidth::U64 => $count::<u64>($instance),
+        }
+    };
+}
+
 // --- CTU (Count Up) field layout ---
 const CTU_CU: usize = 0;
 const CTU_R: usize = 1;
@@ -239,31 +324,34 @@ const CTU_PREV_CU: usize = 5; // hidden
 /// Number of fields (including hidden) for a CTU FB instance.
 pub const CTU_INSTANCE_FIELDS: usize = 6;
 
-/// Executes one scan of the CTU (count up) intrinsic.
+/// Executes one scan of the CTU (count up) intrinsic, counting in `width`.
 ///
 /// # CTU behavior (IEC 61131-3 section 2.5.2.3.3):
 /// - When R is TRUE: CV = 0 (reset takes priority)
 /// - On rising edge of CU (and R is FALSE): CV increments by 1
 /// - Q = (CV >= PV)
-pub fn ctu(instance: &mut [u8]) -> Result<(), Trap> {
+pub fn ctu(instance: &mut [u8], width: CounterWidth) -> Result<(), Trap> {
+    at_width!(width, ctu_at, instance);
+    Ok(())
+}
+
+fn ctu_at<T: CounterValue>(instance: &mut [u8]) {
     let cu = read_i32(instance, CTU_CU) != 0;
     let r = read_i32(instance, CTU_R) != 0;
-    let pv = read_i32(instance, CTU_PV);
+    let pv = T::read(instance, CTU_PV);
     let prev_cu = read_i32(instance, CTU_PREV_CU) != 0;
 
-    let mut cv = read_i32(instance, CTU_CV);
+    let mut cv = T::read(instance, CTU_CV);
 
     if r {
-        cv = 0;
+        cv = T::ZERO;
     } else if cu && !prev_cu {
-        cv = cv.saturating_add(1);
+        cv = cv.up();
     }
 
-    write_i32(instance, CTU_CV, cv);
-    write_i32(instance, CTU_Q, if cv >= pv { 1 } else { 0 });
+    cv.write(instance, CTU_CV);
+    write_i32(instance, CTU_Q, i32::from(cv >= pv));
     write_i32(instance, CTU_PREV_CU, i32::from(cu));
-
-    Ok(())
 }
 
 // --- CTD (Count Down) field layout ---
@@ -277,31 +365,34 @@ const CTD_PREV_CD: usize = 5; // hidden
 /// Number of fields (including hidden) for a CTD FB instance.
 pub const CTD_INSTANCE_FIELDS: usize = 6;
 
-/// Executes one scan of the CTD (count down) intrinsic.
+/// Executes one scan of the CTD (count down) intrinsic, counting in `width`.
 ///
 /// # CTD behavior (IEC 61131-3 section 2.5.2.3.3):
 /// - When LD is TRUE: CV = PV (load takes priority)
 /// - On rising edge of CD (and LD is FALSE): CV decrements by 1
 /// - Q = (CV <= 0)
-pub fn ctd(instance: &mut [u8]) -> Result<(), Trap> {
+pub fn ctd(instance: &mut [u8], width: CounterWidth) -> Result<(), Trap> {
+    at_width!(width, ctd_at, instance);
+    Ok(())
+}
+
+fn ctd_at<T: CounterValue>(instance: &mut [u8]) {
     let cd = read_i32(instance, CTD_CD) != 0;
     let ld = read_i32(instance, CTD_LD) != 0;
-    let pv = read_i32(instance, CTD_PV);
+    let pv = T::read(instance, CTD_PV);
     let prev_cd = read_i32(instance, CTD_PREV_CD) != 0;
 
-    let mut cv = read_i32(instance, CTD_CV);
+    let mut cv = T::read(instance, CTD_CV);
 
     if ld {
         cv = pv;
     } else if cd && !prev_cd {
-        cv = cv.saturating_sub(1);
+        cv = cv.down();
     }
 
-    write_i32(instance, CTD_CV, cv);
-    write_i32(instance, CTD_Q, if cv <= 0 { 1 } else { 0 });
+    cv.write(instance, CTD_CV);
+    write_i32(instance, CTD_Q, i32::from(cv <= T::ZERO));
     write_i32(instance, CTD_PREV_CD, i32::from(cd));
-
-    Ok(())
 }
 
 // --- CTUD (Count Up/Down) field layout ---
@@ -319,7 +410,8 @@ const CTUD_PREV_CD: usize = 9; // hidden
 /// Number of fields (including hidden) for a CTUD FB instance.
 pub const CTUD_INSTANCE_FIELDS: usize = 10;
 
-/// Executes one scan of the CTUD (count up/down) intrinsic.
+/// Executes one scan of the CTUD (count up/down) intrinsic, counting in
+/// `width`.
 ///
 /// # CTUD behavior (IEC 61131-3 section 2.5.2.3.3):
 /// - When R is TRUE: CV = 0 (reset takes priority)
@@ -327,37 +419,40 @@ pub const CTUD_INSTANCE_FIELDS: usize = 10;
 /// - On rising edge of CU: CV increments by 1
 /// - On rising edge of CD: CV decrements by 1
 /// - QU = (CV >= PV), QD = (CV <= 0)
-pub fn ctud(instance: &mut [u8]) -> Result<(), Trap> {
+pub fn ctud(instance: &mut [u8], width: CounterWidth) -> Result<(), Trap> {
+    at_width!(width, ctud_at, instance);
+    Ok(())
+}
+
+fn ctud_at<T: CounterValue>(instance: &mut [u8]) {
     let cu = read_i32(instance, CTUD_CU) != 0;
     let cd = read_i32(instance, CTUD_CD) != 0;
     let r = read_i32(instance, CTUD_R) != 0;
     let ld = read_i32(instance, CTUD_LD) != 0;
-    let pv = read_i32(instance, CTUD_PV);
+    let pv = T::read(instance, CTUD_PV);
     let prev_cu = read_i32(instance, CTUD_PREV_CU) != 0;
     let prev_cd = read_i32(instance, CTUD_PREV_CD) != 0;
 
-    let mut cv = read_i32(instance, CTUD_CV);
+    let mut cv = T::read(instance, CTUD_CV);
 
     if r {
-        cv = 0;
+        cv = T::ZERO;
     } else if ld {
         cv = pv;
     } else {
         if cu && !prev_cu {
-            cv = cv.saturating_add(1);
+            cv = cv.up();
         }
         if cd && !prev_cd {
-            cv = cv.saturating_sub(1);
+            cv = cv.down();
         }
     }
 
-    write_i32(instance, CTUD_CV, cv);
-    write_i32(instance, CTUD_QU, if cv >= pv { 1 } else { 0 });
-    write_i32(instance, CTUD_QD, if cv <= 0 { 1 } else { 0 });
+    cv.write(instance, CTUD_CV);
+    write_i32(instance, CTUD_QU, i32::from(cv >= pv));
+    write_i32(instance, CTUD_QD, i32::from(cv <= T::ZERO));
     write_i32(instance, CTUD_PREV_CU, i32::from(cu));
     write_i32(instance, CTUD_PREV_CD, i32::from(cd));
-
-    Ok(())
 }
 
 // =============================================================================
@@ -408,4 +503,92 @@ pub fn f_trig(instance: &mut [u8]) -> Result<(), Trap> {
     write_i32(instance, F_TRIG_M, i32::from(clk));
 
     Ok(())
+}
+
+#[cfg(test)]
+mod counter_tests {
+    use super::*;
+    use ironplc_container::opcode::fb_type;
+    use rstest::rstest;
+    use spec_test_macro::spec_test;
+
+    /// An instance of `fields` fields, all zero but the `CV` field
+    /// `cv_field`, which holds `cv`.
+    fn counter_at<T: CounterValue>(fields: usize, cv_field: usize, cv: T) -> Vec<u8> {
+        let mut instance = vec![0u8; fields * FIELD_SIZE];
+        cv.write(&mut instance, cv_field);
+        instance
+    }
+
+    #[spec_test(REQ_CW_vm_001)]
+    #[rstest]
+    #[case::int(fb_type::CTU, CounterWidth::I32)]
+    #[case::udint(fb_type::CTD_UDINT, CounterWidth::U32)]
+    #[case::lint(fb_type::CTUD_LINT, CounterWidth::I64)]
+    #[case::ulint(fb_type::CTU_ULINT, CounterWidth::U64)]
+    fn counter_width_of_when_counter_type_then_its_width(
+        #[case] type_id: u16,
+        #[case] expected: CounterWidth,
+    ) {
+        assert_eq!(CounterWidth::of(type_id), expected);
+    }
+
+    #[spec_test(REQ_CW_vm_002)]
+    #[test]
+    fn ctu_when_lint_cv_at_largest_dint_then_counts_past_it() {
+        let mut instance = counter_at(CTU_INSTANCE_FIELDS, CTU_CV, i64::from(i32::MAX));
+        write_i32(&mut instance, CTU_CU, 1);
+
+        ctu(&mut instance, CounterWidth::I64).unwrap();
+
+        assert_eq!(i64::read(&instance, CTU_CV), i64::from(i32::MAX) + 1);
+    }
+
+    #[spec_test(REQ_CW_vm_002)]
+    #[test]
+    fn ctu_when_udint_preset_above_largest_dint_then_q_false() {
+        let mut instance = vec![0u8; CTU_INSTANCE_FIELDS * FIELD_SIZE];
+        3_000_000_000u32.write(&mut instance, CTU_PV);
+
+        ctu(&mut instance, CounterWidth::U32).unwrap();
+
+        assert_eq!(read_i32(&instance, CTU_Q), 0);
+    }
+
+    #[spec_test(REQ_CW_vm_003)]
+    #[test]
+    fn ctu_when_udint_cv_at_maximum_then_stays_there() {
+        let mut instance = counter_at(CTU_INSTANCE_FIELDS, CTU_CV, u32::MAX);
+        write_i32(&mut instance, CTU_CU, 1);
+
+        ctu(&mut instance, CounterWidth::U32).unwrap();
+
+        assert_eq!(u32::read(&instance, CTU_CV), u32::MAX);
+    }
+
+    #[spec_test(REQ_CW_vm_003)]
+    #[test]
+    fn ctd_when_ulint_cv_at_zero_then_stays_zero_and_q_true() {
+        let mut instance = counter_at(CTD_INSTANCE_FIELDS, CTD_CV, 0u64);
+        write_i32(&mut instance, CTD_CD, 1);
+
+        ctd(&mut instance, CounterWidth::U64).unwrap();
+
+        assert_eq!(u64::read(&instance, CTD_CV), 0);
+        assert_eq!(read_i32(&instance, CTD_Q), 1);
+    }
+
+    #[spec_test(REQ_CW_vm_002)]
+    #[test]
+    fn ctud_when_ulint_loads_preset_above_largest_lint_then_cv_holds_it() {
+        let mut instance = vec![0u8; CTUD_INSTANCE_FIELDS * FIELD_SIZE];
+        write_i32(&mut instance, CTUD_LD, 1);
+        u64::MAX.write(&mut instance, CTUD_PV);
+
+        ctud(&mut instance, CounterWidth::U64).unwrap();
+
+        assert_eq!(u64::read(&instance, CTUD_CV), u64::MAX);
+        assert_eq!(read_i32(&instance, CTUD_QU), 1);
+        assert_eq!(read_i32(&instance, CTUD_QD), 0);
+    }
 }

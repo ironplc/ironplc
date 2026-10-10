@@ -17,6 +17,7 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 
 use ironplc_analyzer::semantic_type::SemanticType;
 use ironplc_analyzer::TypeEnvironment;
+use std::collections::HashMap;
 
 use super::compile::{
     char_width_for_string_type, emit_string_literal_load, string_region_size, CompileContext,
@@ -118,6 +119,7 @@ pub(crate) fn assign_variables(
                     // instance through it. Nothing to do here but size it.
                     let fb_name = fb_init.type_name.to_string().to_uppercase();
                     if let Some((type_id, num_fields, field_map)) = resolve_fb_type(&fb_name) {
+                        let field_op_types = standard_fb_field_op_types(ctx, decl);
                         // Standard library function block.
                         let instance_size = num_fields as u32 * 8;
                         let data_offset = crate::data_region::reserve(
@@ -133,14 +135,16 @@ pub(crate) fn assign_variables(
                                 type_id,
                                 data_offset,
                                 field_indices: field_map,
+                                field_op_types,
                             },
                         );
-                    } else if let Some((num_fields, type_id, field_indices)) =
+                    } else if let Some((num_fields, type_id, field_indices, field_op_types)) =
                         ctx.user_fb_types.get(&fb_name).map(|user_fb| {
                             (
                                 user_fb.num_fields,
                                 user_fb.type_id,
                                 user_fb.field_indices.clone(),
+                                user_fb.field_op_types.clone(),
                             )
                         })
                     {
@@ -159,6 +163,7 @@ pub(crate) fn assign_variables(
                                 type_id,
                                 data_offset,
                                 field_indices,
+                                field_op_types,
                             },
                         );
                     }
@@ -315,6 +320,27 @@ fn resolve_iec_type_tag(types: &TypeEnvironment, type_name: &TypeName) -> u8 {
 /// type's width and signedness, so it must render as that type -- a `LINT`
 /// subrange rendered as 32 bits shows only the low word. `OTHER` when the
 /// base type is not elementary.
+/// The operation type of each field of the standard function block instance
+/// `decl` declares, from the declared type of the field: a `CTU_LINT`'s `PV`
+/// and `CV` are operated as `LINT`s.
+fn standard_fb_field_op_types(ctx: &CompileContext, decl: &VarDecl) -> HashMap<String, OpType> {
+    let Some(SemanticType::FunctionBlock { fields, .. }) =
+        decl.type_id.and_then(|id| ctx.types.get(&id))
+    else {
+        return HashMap::new();
+    };
+    fields
+        .iter()
+        .filter_map(|field| {
+            let info = crate::type_info::operand_type_info(&field.field_type)?;
+            Some((
+                field.name.to_string().to_lowercase(),
+                (info.op_width, info.signedness),
+            ))
+        })
+        .collect()
+}
+
 fn subrange_iec_type_tag(types: &TypeEnvironment, subrange: &SemanticType) -> u8 {
     let mut base = subrange;
     while let SemanticType::Subrange { base_type, .. } = base {
