@@ -15,12 +15,13 @@
 //!
 //! The analyzer decided which operand converts (ADR-0056): an operand of
 //! another width arrives wrapped in an `ImplicitConversion` to the result
-//! type, and a function form of three or more inputs whose steps compute at
-//! different types arrives as the calls it folds to. Every operation compiles
-//! at its own result type, a subrange's being its base type. One without a
-//! typed overload or a numeric result type, or with an input of another
-//! width, is one the analyzer did not resolve, and is an internal error
-//! rather than compiled at the type of its context.
+//! type, a function form of three or more inputs whose steps compute at
+//! different types arrives as the calls it folds to, and an operand of a typed
+//! pair is converted to the width its routine computes at. Every operation
+//! compiles at its own result type, a subrange's being its base type. One
+//! without a typed overload or a numeric result type, or with an input of
+//! another width, is one the analyzer did not resolve, and is an internal
+//! error rather than compiled at the type of its context.
 //!
 //! See `specs/design/arithmetic-operator-overloads.md`.
 
@@ -34,7 +35,7 @@ use super::call_args::collect_positional_args;
 use super::compile::{CompileContext, OpType, VarTypeInfo};
 use super::compile_call::{compile_left_fold, emit_conversion_opcode};
 use super::compile_expr::{compile_expr, emit_arithmetic_op};
-use super::compile_time_arith::{compile_time_arith, time_arith_for, Operand};
+use super::compile_time_arith::{compile_time_arith, time_arith_for};
 use super::type_info::{expr_operand_name, resolve_type_name};
 use crate::emit::Emitter;
 
@@ -55,14 +56,7 @@ pub(crate) fn compile_binary_arith(
     if let Some(left) = expr_operand_name(ctx, &binary.left) {
         if let Some((name, _)) = typed_step(ctx, &binary.op, &left, &binary.right) {
             let span = binary.left.span();
-            return compile_typed(
-                emitter,
-                ctx,
-                name,
-                Operand::Expr(&binary.left),
-                &binary.right,
-                span,
-            );
+            return compile_typed(emitter, ctx, name, &binary.left, &binary.right, span);
         }
     }
     let operands = [&binary.left, &binary.right];
@@ -82,13 +76,12 @@ pub(crate) fn compile_binary_arith(
 /// Compiles a call to the function form of the arithmetic operator `op`,
 /// folding its inputs from the left: `ADD(a, b, c)` is `(a + b) + c`.
 ///
-/// When the first two inputs have a typed overload, every step compiles
-/// through its typed routine, the left operand of each step after the first
-/// being the previous step's result on the stack. Otherwise every step
-/// computes at the call's numeric result type `result`, at whose width the
-/// analyzer placed every input, and the result is converted to `op_type`. A
-/// fold whose steps compute at different types arrives as the two-input calls
-/// it folds to, each its own call.
+/// A pair with a typed overload compiles through its typed routine; the
+/// analyzer writes a typed fold of three or more inputs as the two-input calls
+/// it folds to. Otherwise every step computes at the call's numeric result
+/// type `result`, at whose width the analyzer placed every input, and the
+/// result is converted to `op_type`. A fold whose steps compute at different
+/// types arrives as the two-input calls it folds to, each its own call.
 pub(crate) fn compile_arith_fold(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -100,17 +93,15 @@ pub(crate) fn compile_arith_fold(
     let args = collect_positional_args(func);
     if let [first, second, rest @ ..] = args.as_slice() {
         if let Some(left) = expr_operand_name(ctx, first) {
-            if let Some((name, result)) = typed_step(ctx, op, &left, second) {
+            if let Some((name, _)) = typed_step(ctx, op, &left, second) {
                 let span = func.name.span();
-                compile_typed(
-                    emitter,
-                    ctx,
-                    name,
-                    Operand::Expr(first),
-                    second,
-                    span.clone(),
-                )?;
-                return compile_typed_rest(emitter, ctx, op, result, rest, span);
+                if !rest.is_empty() {
+                    return Err(Diagnostic::internal_error_at(Label::span(
+                        span,
+                        "Typed fold the analyzer did not write as the calls it folds to",
+                    )));
+                }
+                return compile_typed(emitter, ctx, name, first, second, span);
             }
         }
     }
@@ -122,35 +113,6 @@ pub(crate) fn compile_arith_fold(
             emit_arithmetic_op(emitter, op, at)
         })
     })
-}
-
-/// Compiles the steps of a typed fold after the first, whose result of type
-/// `accumulated` is on the stack.
-fn compile_typed_rest(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    op: &Operator,
-    mut accumulated: TypeName,
-    rest: &[&Expr],
-    span: SourceSpan,
-) -> Result<(), Diagnostic> {
-    for arg in rest {
-        // The analyzer resolves every step of a fold; a step without a
-        // typed overload after one with it is a pair it rejected.
-        let Some((name, result)) = typed_step(ctx, op, &accumulated, arg) else {
-            return Err(Diagnostic::todo_with_span(span));
-        };
-        let Some(natural) = resolve_type_name(&accumulated.name) else {
-            return Err(Diagnostic::internal_error_at(Label::span(
-                span,
-                "Typed overload result is not an elementary type",
-            )));
-        };
-        let left = Operand::Stack((natural.op_width, natural.signedness));
-        compile_typed(emitter, ctx, name, left, arg, span.clone())?;
-        accumulated = result;
-    }
-    Ok(())
 }
 
 /// Returns the typed overload of `op` on `left` and the operand `right`, as
@@ -173,7 +135,7 @@ fn compile_typed(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     name: &str,
-    left: Operand<'_>,
+    left: &Expr,
     right: &Expr,
     span: SourceSpan,
 ) -> Result<(), Diagnostic> {

@@ -208,3 +208,15 @@ choice the Arguments postscript names is corrected the same way: a function's
 parameter of an alias or a subrange type is passed at the type it is operated
 as, not as a `DINT` (#2108), so an argument of an alias of `LREAL` no longer
 arrives as the bits of an integer. The decision above is unchanged.
+
+### Lowering (postscript)
+
+[ADR-0058](0058-the-analyzer-decides-and-lowering-translates.md) builds on
+this decision. The analyzer makes and records every decision whose outcome can
+make a program invalid, and a lowering stage between analysis and code
+generation translates what it recorded into a target-neutral program. That ADR
+extends this one and does not supersede it.
+
+The pass this ADR calls "a lowering pass" records decisions rather than
+lowering anything, so it is now called the **recording pass**. "Lowering"
+names only the stage after analysis. The decision above is unchanged.

@@ -29,7 +29,7 @@ use super::compile_string::{
     compile_concat, compile_delete, compile_find, compile_insert, compile_left, compile_len,
     compile_mid, compile_replace, compile_right, resolve_string_arg,
 };
-use super::compile_time_arith::{compile_time_arith, time_arith_for, Operand};
+use super::compile_time_arith::{compile_time_arith, time_arith_for};
 use super::type_info::{elementary_type_info, expr_operand_name};
 use crate::emit::Emitter;
 
@@ -178,7 +178,7 @@ fn compile_intrinsic_at(
         Intrinsic::Time { function, long } => {
             let (arith, width) = time_arith_for(function, long);
             let [in1, in2] = fixed_args::<2>(func)?;
-            compile_time_arith(emitter, ctx, arith, width, Operand::Expr(in1), in2)
+            compile_time_arith(emitter, ctx, arith, width, in1, in2)
         }
         // Time functions: datetime decomposition
         Intrinsic::DtToDate => compile_dt_to_date(emitter, ctx, fixed_args(func)?),
@@ -332,7 +332,7 @@ fn compile_operator_form(
         // enclosing `op_type`, which is the type of the BOOL it yields.
         FormOf::Compare(op) if op.is_comparison() => {
             let [left, right] = fixed_args::<2>(func)?;
-            compile_comparison(emitter, ctx, op, left, right, op_type)
+            compile_comparison(emitter, ctx, op, left, right)
         }
         FormOf::Compare(op) => {
             compile_left_fold(emitter, ctx, func, op_type, |emitter, op_type| {

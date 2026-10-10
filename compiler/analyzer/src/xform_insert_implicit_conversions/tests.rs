@@ -883,3 +883,4 @@ mod inputs_of_one_type;
 mod integer_result;
 mod subrange;
 mod temporal_assignment;
+mod time;

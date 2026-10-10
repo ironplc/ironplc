@@ -31,6 +31,7 @@ mod declared;
 mod inputs_of_one_type;
 mod integer_result;
 mod literal;
+mod time;
 
 use std::convert::Infallible;
 
@@ -184,7 +185,8 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
             ExprKind::BinaryOp(binary) => {
                 self.record_binary_operands(binary, node.expr_type.as_ref());
             }
-            ExprKind::Function(_) => {
+            ExprKind::Function(func) => {
+                self.record_time_function_inputs(func);
                 self.record_fold_operands(&mut node);
                 self.record_one_type_inputs(&mut node);
             }

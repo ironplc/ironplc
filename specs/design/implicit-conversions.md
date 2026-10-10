@@ -68,7 +68,7 @@ widened by its own signedness rather than the wider one truncated.
 
 ### Arithmetic
 
-An arithmetic operation computes at the type of its result (ADR-0001): `INT + REAL` converts the `INT` to `REAL` and adds as `REAL`. The pass covers the operator expression (`+`, `-`, `*`, `/`, `MOD`, `**`) and the function forms `ADD`, `SUB`, `MUL`, `DIV` and `MOD`. A pair with a typed overload on the time and date types (`t1 + t2`, `dt + t`) is left as it is, and so is an operation whose result is not an elementary numeric type.
+An arithmetic operation computes at the type of its result (ADR-0001): `INT + REAL` converts the `INT` to `REAL` and adds as `REAL`. The pass covers the operator expression (`+`, `-`, `*`, `/`, `MOD`, `**`) and the function forms `ADD`, `SUB`, `MUL`, `DIV` and `MOD`. A pair with a typed overload on the time and date types (`t1 + t2`, `dt + t`) computes through its routine, whose operands are converted as Time and date operations below says, and an operation whose result is not an elementary numeric type is left as it is.
 
 **REQ-IC-analyzer-020** An operand whose operation width differs from the result's is wrapped in an `ImplicitConversion` to the result type: in `i + r` on an `INT` and a `REAL` the `INT` is converted to `REAL`.
 
@@ -76,7 +76,7 @@ An arithmetic operation computes at the type of its result (ADR-0001): `INT + RE
 
 **REQ-IC-analyzer-022** An operand of the result's operation width is not converted, whatever its signedness: in `i + s` on an `INT` and a `SINT` neither is wrapped.
 
-**REQ-IC-analyzer-023** A pair with a typed overload is left as it is: the two `TIME` operands of `t1 + t2` are not converted.
+**REQ-IC-analyzer-023** A pair with a typed overload whose operands have the width its routine computes at is left as it is: the two `TIME` operands of `t1 + t2` are not converted.
 
 **REQ-IC-analyzer-024** The inputs of a call to the function form of an operator are converted as the operands of the operator expression are.
 
@@ -85,6 +85,16 @@ An arithmetic operation computes at the type of its result (ADR-0001): `INT + RE
 **REQ-IC-analyzer-026** An operand that is itself arithmetic is converted by its result type: in `(i + j) * r` the `INT` result of `i + j` is converted to `REAL`.
 
 The conversion of an arithmetic result to the type of its context is recorded where the context is: see Assignments below. An argument's is not recorded yet.
+
+### Time and date operations
+
+A typed time or date function (IEC 61131-3 Table 30: `ADD_TIME`, `SUB_DT_DT`, `MUL_TIME`, ...), and an operator expression or function form that resolves to one, computes at the width of its form: 32 bits for a short form and 64 for a long one (`ADD_LTIME`, `SUB_LDATE_LDATE`). The pass converts each operand to that width, in a call to the typed function itself as in the operator and the function form. An operand of a temporal parameter is converted to the parameter's type. The number `MUL` and `DIV` scale a duration by is converted to the type the routine scales at: a 64-bit integer for a long form, and `LREAL` for a real of a long form or a 64-bit integer of a short one, which cannot be narrowed to the duration's 32 bits. The code generator used to widen these operands itself.
+
+**REQ-IC-analyzer-096** A temporal operand of a long form whose width differs from its parameter's is converted to the parameter's type, in the operator expression, the function form and a call to the typed function: the `TIME` of `lt + t`, `t + lt`, `ADD(t, lt)`, `ADD_LTIME(lt, t)` and `ldt + t` is converted to `LTIME`, and the `DATE` of `lda - da` and `SUB_LDATE_LDATE(lda, da)` to `LDATE`.
+
+**REQ-IC-analyzer-097** The number a duration is scaled by is converted to the type its routine scales at: the `DINT` of `lt * d` and the `UDINT` of `MUL_LTIME(lt, ud)` to `LINT`, the `REAL` of `lt * r` to `LREAL`, the literal of `lt / 2` is an `LINT`, and the `LINT` of `t * l` and of `MUL_TIME(t, l)` is converted to `LREAL`. A `SINT` or `REAL` a `TIME` is scaled by is not converted.
+
+**REQ-IC-analyzer-098** A function form of three or more inputs whose every step is a typed overload is written as the calls it folds to, each step's operands converted to its routine's width: `ADD(t, t, lt)` is `ADD(ADD(t, t), lt)`, with the `TIME` result of the inner call converted to `LTIME`.
 
 ### Standard functions
 
@@ -279,9 +289,9 @@ A literal a standard function does not give a type to (`TRUNC`, a typed time fun
 An `ImplicitConversion` compiles its operand at the operand's own type and
 converts it to the type the node records. A comparison compiles at the type of
 its left operand, else of its right one when the left one has no type codegen
-can place (a direct address the analyzer does not type yet). Codegen does not
-choose a comparison's operand type, and does not decide which operand to
-convert.
+can place. A pair of which neither operand has one is reported (P9999) rather
+than compiled at the type of its context. Codegen does not choose a
+comparison's operand type, and does not decide which operand to convert.
 
 An operation on one value -- a negation, `NOT`, a numeric function of one
 input (`ABS`, `SQRT`, ...), `MOVE`, or a shift or rotate, whose count only
@@ -342,6 +352,10 @@ A parameter of a user-defined function is passed at its declared type the same w
 **REQ-IC-codegen-006** A function's parameter of an alias or a subrange type receives the value of the type it is operated as: `pass(p)` with `p = 2.5` and a parameter of an alias of `LREAL` passes 2.5, and `pass(b)` with `b = 5000000000` and a parameter of an alias or a subrange of `LINT` passes 5000000000.
 
 `AND`, `OR` and `XOR` compute at the type the analyzer recorded for the operation, to which it converted an operand of another width, and their result is converted to the type of its context.
+
+A typed time or date function compiles each operand at the type the analyzer recorded for it, which is the width the routine computes at. An operand of another width is an internal error (P9998), not widened as the code generator used to widen a short operand of a long form and the number a duration is scaled by. The analyzer writes a typed fold as the calls it folds to, so no step widens the previous step's result on the stack.
+
+**REQ-IC-codegen-013** A typed time or date operation whose operand conversion the analyzer did not record is an internal error: with the recorded conversions removed, `lt + t`, `SUB_LDATE_LDATE(lda, da)`, `lt * d`, `MUL_LTIME(lt, r)` and `t * l` report P9998, and `lt + lt` compiles.
 
 **REQ-IC-codegen-008** `AND`, `OR` and `XOR` keep every bit of their widest operand and widen their result by its own type: with `lw = 16#100000000` and `w = 1`, `w OR lw` and `lw OR w` give `16#100000001`, and with the `DWORD`s `d1 = 16#80000000` and `d2 = 1`, `lw := d1 OR d2` stores `16#80000001`.
 
