@@ -15,7 +15,8 @@ use crate::{
     function_environment::FunctionEnvironmentBuilder,
     ironplc_dsl::common::Library,
     result::SemanticResult,
-    rule_abstract_not_instantiated, rule_array_index_range, rule_assignment_aggregate_type_compat,
+    rule_abstract_not_instantiated, rule_array_index_range, rule_array_initializer_length,
+    rule_assignment_aggregate_type_compat,
     rule_bit_and_partial_access_range, rule_case_bit_string_label, rule_case_selector_type,
     rule_condition_type, rule_constant_not_written, rule_constant_range,
     rule_decl_struct_element_unique_names, rule_enum_base_type_allowed,
@@ -377,6 +378,7 @@ pub(crate) fn semantic(
 ) -> SemanticResult {
     let functions: Vec<fn(&Library, &SemanticContext, &CompilerOptions) -> SemanticResult> = vec![
         rule_abstract_not_instantiated::apply,
+        rule_array_initializer_length::apply,
         rule_assignment_aggregate_type_compat::apply,
         rule_decl_struct_element_unique_names::apply,
         rule_range_limits::apply,
