@@ -347,7 +347,7 @@ signedness compiles to the same bytecode as before.
 Codegen applies this when the expression's resolved type is a concrete
 elementary numeric or bit-string type, a subrange being known by its base
 type's name. An expression the analyzer resolved to neither that nor a typed
-overload is an internal error, not compiled at the enclosing operation type.
+overload is an internal error, not compiled at another type.
 
 The function form follows the same rule at each step of its fold, so
 `ADD(i, r)` and `i + r` compute the same value, and `ADD(a, b, c)` compiles
@@ -504,7 +504,7 @@ Programs that keep working: `t1 + t2`, `t + lt`, `lt + LTIME#1s`, `dt + t`,
 
 **REQ-AO-codegen-011** A call to the function form of a numeric operator computes each fold step as the operator expression does, so `ADD(i, r)` gives 4.5 for `INT` 3 and `REAL` 1.5.
 
-**REQ-AO-codegen-012** An arithmetic expression on a subrange computes at the subrange's base type, and its result is converted to the enclosing operation type: `l := s + s` on a subrange of `INT` adds at 32 bits and widens the sum.
+**REQ-AO-codegen-012** An arithmetic expression on a subrange computes at the subrange's base type, and its result is widened by the conversion the analyzer records to its target: `l := s + s` on a subrange of `INT` adds at 32 bits and widens the sum.
 
 ## Out of scope
 

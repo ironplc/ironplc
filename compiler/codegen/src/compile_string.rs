@@ -283,7 +283,7 @@ fn compile_position(
             "String position or length of a width other than DINT's, and the analyzer recorded no conversion",
         )));
     }
-    compile_expr(emitter, ctx, position, own)
+    compile_expr(emitter, ctx, position)
 }
 
 /// Compiles the DELETE standard function call.
