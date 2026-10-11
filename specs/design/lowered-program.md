@@ -1512,6 +1512,7 @@ today.
 | Whether an interface value can hold only one concrete type | Not made; calls through an interface are not compiled | The concrete types the value can hold (REQ-LOW-analyzer-107) | A direct method call, or a `Callee::Interface` |
 | Capacity of a string declared without one | Codegen and `slot_count`, from `DEFAULT_STRING_MAX_LENGTH` | The string type's capacity (REQ-LOW-analyzer-053) | The capacity of its `StringShape` |
 | Enumeration ordinal | The analyzer, when the type enters the type environment (`EnumerationMembers`); codegen looks the ordinal up (`compile_enum.rs`) | Each member's ordinal, explicit (`GREEN := 5`) or counted on from the one before, and the type's default member, on `SemanticType::Enumeration` | `Const` |
+| Declaration a variable name refers to | The analyzer's `SymbolEnvironment::resolve_variable` ([Variable Binding](variable-binding.md)); codegen resolves names again, from tables of its own (`scope.rs`) | Not in the `Library`: the function answers from the `SemanticContext`, with a `DeclRef` that names the declaration by its scope and its name ([ADR-0066](../adrs/0066-name-resolution-is-an-analyzer-function.md)) | One `VarId` for each `DeclRef` (REQ-LOW-lowering-020, REQ-LOW-lowering-022) |
 
 **Decisions lowering makes**
 
@@ -1750,7 +1751,7 @@ Nothing is deleted before its last reader has moved to the lowered program.
 | `intermediates/` | Keep | Its signatures carry the `BuiltinFunction` identity. |
 | `FunctionEnvironment` | Keep | Signatures of built-in functions name their `BuiltinFunction` (REQ-LOW-analyzer-070). |
 | `Intrinsic` (`intrinsic.rs`) | Keep, renamed | Renamed `BuiltinFunction` (see [Names](#names)), so that `Intrinsic` names only the IR's typed enum. |
-| `SymbolEnvironment` | Keep | Supplies the declarations `VarId`s are allocated from. |
+| `SymbolEnvironment` | Keep | Supplies the declarations `VarId`s are allocated from: lowering asks `resolve_variable` which declaration each name refers to, and allocates one `VarId` for each `DeclRef` it answers with ([Variable Binding](variable-binding.md)). |
 | `Expr::expr_type`, `VarDecl::type_id`, `ExprKind::LateBound` | Keep | Lowering is their last reader. |
 
 ### `CompileContext`

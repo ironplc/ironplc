@@ -1,0 +1,90 @@
+=====
+P4082
+=====
+
+.. problem-summary:: P4082
+
+This error occurs when a ``VAR_EXTERNAL`` declaration does not match a global
+variable. A ``VAR_EXTERNAL`` declaration gives a program or a function block
+access to a global variable. It declares no variable of its own, so it must
+name a global variable and declare it with that variable's type.
+
+The compiler reports this error in two cases:
+
+- No global variable has the name the declaration uses.
+- The type the declaration uses is not the type of the global variable.
+
+Two declarations have the same type when they name the same type. A type and
+an alias of that type are different types. Two arrays written out in place
+have the same type when they have the same bounds and the same element type.
+
+The compiler reports this error on every dialect.
+
+Example
+-------
+
+The following code will generate error P4082:
+
+.. playground::
+
+   CONFIGURATION config
+     VAR_GLOBAL
+       MaxSpeed : INT := 100;
+     END_VAR
+     RESOURCE res ON PLC
+       TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+       PROGRAM plc_task_instance WITH plc_task : main;
+     END_RESOURCE
+   END_CONFIGURATION
+
+   PROGRAM main
+     VAR_EXTERNAL
+       MaxSpeed : DINT;  (* Error: the global variable is an INT *)
+       MinSpeed : INT;   (* Error: no global variable is named MinSpeed *)
+     END_VAR
+     VAR
+       currentSpeed : DINT;
+     END_VAR
+     currentSpeed := MaxSpeed;
+   END_PROGRAM
+
+``MaxSpeed`` is declared ``INT`` as a global variable and ``DINT`` in the
+program. No ``VAR_GLOBAL`` block declares ``MinSpeed``.
+
+To fix this error, declare each ``VAR_EXTERNAL`` with the name and the type
+of its global variable, and declare the global variable when it is missing:
+
+.. playground::
+
+   CONFIGURATION config
+     VAR_GLOBAL
+       MaxSpeed : INT := 100;
+       MinSpeed : INT := 10;
+     END_VAR
+     RESOURCE res ON PLC
+       TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+       PROGRAM plc_task_instance WITH plc_task : main;
+     END_RESOURCE
+   END_CONFIGURATION
+
+   PROGRAM main
+     VAR_EXTERNAL
+       MaxSpeed : INT;
+       MinSpeed : INT;
+     END_VAR
+     VAR
+       currentSpeed : DINT;
+     END_VAR
+     currentSpeed := MaxSpeed;
+   END_PROGRAM
+
+Checking One File of Several
+----------------------------
+
+The compiler checks the files you give it as one unit. A file that declares a
+function block with a ``VAR_EXTERNAL`` reports this error when you check it
+without the file that declares the global variable. Check the files together:
+
+.. code-block:: shell
+
+   ironplcc check counter.st configuration.st

@@ -111,13 +111,19 @@ and nothing the author wrote is dropped from it.
 own.** Resolution builds one answer to "what does this name declare, and what is
 its type", and every rule reads that answer:
 
-- `SymbolEnvironment::find(name, scope)` (`symbol_environment.rs`) resolves a
-  name from a scope: the enclosing scopes innermost first, then the function
-  blocks the outermost one `EXTENDS`, then the global scope. Its `SymbolInfo`
-  carries the variable's section, declared qualifier, address and `type_id`. A
-  function's or method's own name is its `ResultVariable`.
+- `SymbolEnvironment::resolve_variable(name, scope)` (`symbol_environment.rs`)
+  decides which variable a name refers to from a scope: the enclosing scopes
+  innermost first, then the function blocks the outermost one `EXTENDS`, then
+  the global scope. It also decides whether the body reaches a global, and
+  resolves a `VAR_EXTERNAL` to its global. Its `SymbolInfo` carries the
+  variable's section, declared qualifier, address and `type_id`. A function's
+  or method's own name is its `ResultVariable`. See
+  [Variable Binding](../design/variable-binding.md).
+- `SymbolEnvironment::find(name, scope)` looks through the same scopes and
+  returns a symbol of any kind. Use it to ask about a type, a program or a
+  function block, never to ask which variable a name is.
 - `ScopeTracker` names the scope a visitor is in. Feed it from `enter_scope`
-  and `exit_scope`, and pass `current()` to `find`.
+  and `exit_scope`, and pass `current()` to `resolve_variable`.
 - `variable_type::declared` gives a name's declared `SemanticType`, and
   `variable_type::of` walks a reference such as `s.field[i]` to the element it
   names. `TypeEnvironment::get_by_id` answers for any `type_id`.

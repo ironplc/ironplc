@@ -78,6 +78,7 @@ mod rule_var_decl_const_initialized;
 mod rule_var_decl_const_not_fb;
 mod rule_var_decl_global_const_requires_external_const;
 mod rule_var_decl_initializer_type_compat;
+mod rule_var_external_matches_global;
 mod scoped_table;
 mod semantic_context;
 pub mod semantic_type;
@@ -165,3 +166,5 @@ mod spec_conformance_constant_inference;
 mod spec_conformance_keyword_function_forms;
 #[cfg(test)]
 mod spec_conformance_pointer_to;
+#[cfg(test)]
+mod spec_conformance_variable_binding;
