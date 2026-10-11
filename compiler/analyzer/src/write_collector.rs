@@ -17,9 +17,7 @@ use ironplc_dsl::textual::*;
 use ironplc_dsl::visitor::Visitor;
 
 use crate::call_assignment_check::bind_inputs;
-use crate::callee_resolution::{
-    instance_type, CallParameters, FunctionBlocks, ParameterSection,
-};
+use crate::callee_resolution::{instance_type, CallParameters, FunctionBlocks, ParameterSection};
 use crate::function_environment::FunctionEnvironment;
 use crate::symbol_environment::{
     Resolution, ScopeKind, ScopePath, ScopeTracker, SymbolEnvironment,

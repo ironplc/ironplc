@@ -356,10 +356,11 @@ END_FUNCTION_BLOCK",
             .is_none());
     }
 
-    /// The scope of the declarations directly inside the unit `name`, or
-    /// inside the method `method` of it.
+    /// The scope a body at `path` is in: a unit, or a method of it.
     fn scope(path: &[&str]) -> ScopeKind {
-        ScopeKind::Named(ScopePath::new(path.iter().map(|name| Id::from(name)).collect()))
+        ScopeKind::Named(ScopePath::new(
+            path.iter().map(|name| Id::from(name)).collect(),
+        ))
     }
 
     /// The type of `instance` as a body in `path` names it, in a library
@@ -496,11 +497,15 @@ END_FUNCTION_BLOCK";
         let parameters = CallParameters::of_declaration(block(&lib, "FB_Params"));
         assert_eq!(
             Some(ParameterSection::Input),
-            parameters.named_input(&Id::from("FIRST")).map(|p| p.section)
+            parameters
+                .named_input(&Id::from("FIRST"))
+                .map(|p| p.section)
         );
         assert_eq!(
             Some(ParameterSection::InOut),
-            parameters.named_input(&Id::from("total")).map(|p| p.section)
+            parameters
+                .named_input(&Id::from("total"))
+                .map(|p| p.section)
         );
         assert!(parameters.named_input(&Id::from("done")).is_none());
         assert!(parameters.named_input(&Id::from("hidden")).is_none());

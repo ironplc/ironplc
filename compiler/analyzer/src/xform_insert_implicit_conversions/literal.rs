@@ -26,11 +26,11 @@ use ironplc_dsl::type_id::TypeId;
 
 use super::declared::elementary_of;
 use super::ImplicitConversions;
+use crate::callee_resolution::CallParameters;
 use crate::intermediates::conversion_target::{concrete, wrap};
 use crate::intermediates::numeric_operation::{literal_default_type, OperationWidth};
 use crate::intermediates::operator_function_form::FormOf;
 use crate::intrinsic::Intrinsic;
-use crate::callee_resolution::CallParameters;
 use crate::semantic_type::SemanticType;
 use crate::variable_type;
 
