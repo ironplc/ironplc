@@ -15,52 +15,14 @@
 //! Finding the callee in the first place is `callee_resolution`'s job.
 
 use ironplc_dsl::{
-    common::{HasVariables, VarDecl, VariableType},
-    core::{Id, SourceSpan},
+    common::HasVariables,
+    core::SourceSpan,
     diagnostic::{Diagnostic, Label},
     textual::ParamAssignmentKind,
 };
 use ironplc_problems::Problem;
 
-/// Returns the first variable matching the specified name and one of the
-/// variable types, or `None` if the owner does not contain a matching
-/// variable.
-fn find<'a>(
-    owner: &'a dyn HasVariables,
-    name: &'a Id,
-    types: &[VariableType],
-) -> Option<&'a VarDecl> {
-    owner
-        .variables()
-        .iter()
-        .find(|item| match item.identifier.symbolic_id() {
-            Some(n) => n.eq(name) && types.contains(&item.var_type),
-            None => false,
-        })
-}
-
-fn count_input_type(owner: &dyn HasVariables) -> usize {
-    owner
-        .variables()
-        .iter()
-        .filter(|item| item.var_type == VariableType::Input)
-        .count()
-}
-
-/// Returns the first VAR_INPUT or VAR_INOUT variable matching the name
-/// or `None` if the owner does not contain a matching variable.
-fn find_input_type<'a>(owner: &'a dyn HasVariables, name: &'a Id) -> Option<&'a VarDecl> {
-    find(owner, name, &[VariableType::Input, VariableType::InOut])
-}
-
-/// Returns the first VAR_OUTPUT variable matching the name
-/// or `None` if the owner does not contain a matching variable.
-///
-/// VAR_IN_OUT are output variables, but they are only assigned
-/// through the input `:=` syntax so not included for this rule.
-fn find_output_type<'a>(owner: &'a dyn HasVariables, name: &'a Id) -> Option<&'a VarDecl> {
-    find(owner, name, &[VariableType::Output])
-}
+use crate::callee_resolution::{CallParameter, CallParameters};
 
 /// Pairs every input argument of a call with the declared parameter it
 /// binds to: a named input (`x := e`) by name against `VAR_INPUT` and
@@ -71,18 +33,15 @@ fn find_output_type<'a>(owner: &'a dyn HasVariables, name: &'a Id) -> Option<&'a
 ///
 /// Output assignments (`=>`) are not inputs and are not returned.
 pub(crate) fn bind_inputs<'a>(
-    owner: &'a dyn HasVariables,
+    parameters: &'a CallParameters,
     params: &'a [ParamAssignmentKind],
-) -> Vec<(&'a ParamAssignmentKind, Option<&'a VarDecl>)> {
-    let mut positional = owner
-        .variables()
-        .iter()
-        .filter(|item| item.var_type == VariableType::Input);
+) -> Vec<(&'a ParamAssignmentKind, Option<&'a CallParameter>)> {
+    let mut positional = parameters.inputs();
     params
         .iter()
         .filter_map(|param| match param {
             ParamAssignmentKind::NamedInput(named) => {
-                Some((param, find_input_type(owner, &named.name)))
+                Some((param, parameters.named_input(&named.name)))
             }
             ParamAssignmentKind::PositionalInput(_) => Some((param, positional.next())),
             ParamAssignmentKind::Output(_) => None,
@@ -129,6 +88,8 @@ pub(crate) fn check_assignments(
     params: &[ParamAssignmentKind],
     labels: &AssignmentCheckLabels,
 ) -> Vec<Diagnostic> {
+    let parameters = CallParameters::of_declaration(owner);
+
     // Sort the inputs as either named, positional, and outputs
     let mut formal = Vec::new();
     let mut non_formal = Vec::new();
@@ -158,7 +119,7 @@ pub(crate) fn check_assignments(
     // permitted so we use the assignments as the set to iterate
     if !formal.is_empty() {
         // TODO check the types.
-        for (param, declared) in bind_inputs(owner, params) {
+        for (param, declared) in bind_inputs(&parameters, params) {
             if let (ParamAssignmentKind::NamedInput(name), None) = (param, declared) {
                 diagnostics.push(
                     Diagnostic::problem(
@@ -176,7 +137,7 @@ pub(crate) fn check_assignments(
     // Check that the number of variables matches exactly the number
     // of expected inputs and the types match.
     if !non_formal.is_empty() {
-        let num_required_inputs = count_input_type(owner);
+        let num_required_inputs = parameters.inputs().count();
         if non_formal.len() != num_required_inputs {
             diagnostics.push(
                 Diagnostic::problem(
@@ -193,7 +154,7 @@ pub(crate) fn check_assignments(
     // Check that the assigned output parameter names match the actual
     // output parameter names
     for output in outputs {
-        if find_output_type(owner, &output.src).is_none() {
+        if parameters.output(&output.src).is_none() {
             diagnostics.push(
                 Diagnostic::problem(
                     Problem::FunctionInvocationUndefinedOutput,
@@ -280,10 +241,11 @@ END_PROGRAM"
     /// order, with `-` for an unbound argument.
     fn bound_names(lib: &Library) -> Vec<String> {
         let (fb, call) = fb_and_call(lib);
-        bind_inputs(fb, &call.params)
+        let parameters = CallParameters::of_declaration(fb);
+        bind_inputs(&parameters, &call.params)
             .iter()
             .map(|(_, declared)| match declared {
-                Some(decl) => decl.identifier.to_string(),
+                Some(parameter) => parameter.name.to_string(),
                 None => "-".to_owned(),
             })
             .collect()
@@ -311,7 +273,8 @@ END_PROGRAM"
     fn bind_inputs_when_argument_bound_then_pairs_it_with_its_expression() {
         let lib = parse_call("step := a");
         let (fb, call) = fb_and_call(&lib);
-        let bound = bind_inputs(fb, &call.params);
+        let parameters = CallParameters::of_declaration(fb);
+        let bound = bind_inputs(&parameters, &call.params);
         assert_eq!(1, bound.len());
         assert!(matches!(
             bound[0],

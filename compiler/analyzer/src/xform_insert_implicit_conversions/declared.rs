@@ -15,10 +15,11 @@
 
 use std::collections::HashMap;
 
-use ironplc_dsl::common::{Library, LibraryElementKind, VarDecl, VariableType};
+use ironplc_dsl::common::{Library, LibraryElementKind, VarDecl};
 use ironplc_dsl::core::Id;
 use ironplc_dsl::type_id::TypeId;
 
+use crate::callee_resolution::CallParameters;
 use crate::semantic_type::SemanticType;
 use crate::type_environment::TypeEnvironment;
 
@@ -32,8 +33,8 @@ pub(super) type Parameters = Vec<(Id, Option<TypeId>)>;
 pub(super) struct Declarations {
     /// The declared type of each field, by block and field name.
     fields: HashMap<(Id, Id), Option<TypeId>>,
-    /// The names of each block's inputs, in declaration order.
-    inputs: HashMap<Id, Vec<Id>>,
+    /// The parameters of each block, in declaration order.
+    parameters: HashMap<Id, CallParameters>,
     /// The input parameters of each method, by block and method name.
     methods: HashMap<(Id, Id), Parameters>,
 }
@@ -56,13 +57,9 @@ impl Declarations {
                         .insert((name.clone(), field.clone()), at);
                 }
             }
-            let inputs = block
-                .variables
-                .iter()
-                .filter(|decl| decl.var_type == VariableType::Input)
-                .filter_map(|decl| decl.identifier.symbolic_id().cloned())
-                .collect();
-            declarations.inputs.insert(name.clone(), inputs);
+            declarations
+                .parameters
+                .insert(name.clone(), CallParameters::of_declaration(block));
             for method in &block.methods {
                 let parameters = method
                     .variables
@@ -88,10 +85,9 @@ impl Declarations {
         self.fields.get(&(block.clone(), field.clone())).copied()
     }
 
-    /// The names of the inputs of the user-defined function block `block`,
-    /// in declaration order.
-    pub(super) fn inputs(&self, block: &Id) -> Option<&[Id]> {
-        self.inputs.get(block).map(Vec::as_slice)
+    /// The parameters of the user-defined function block `block`.
+    pub(super) fn parameters(&self, block: &Id) -> Option<&CallParameters> {
+        self.parameters.get(block)
     }
 
     /// The input parameters of the method `method` of the function block

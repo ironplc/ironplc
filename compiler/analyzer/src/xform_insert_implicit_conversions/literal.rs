@@ -30,7 +30,8 @@ use crate::intermediates::conversion_target::{concrete, wrap};
 use crate::intermediates::numeric_operation::{literal_default_type, OperationWidth};
 use crate::intermediates::operator_function_form::FormOf;
 use crate::intrinsic::Intrinsic;
-use crate::semantic_type::{FunctionBlockVarType, SemanticType};
+use crate::callee_resolution::CallParameters;
+use crate::semantic_type::SemanticType;
 use crate::variable_type;
 
 impl ImplicitConversions<'_> {
@@ -504,16 +505,18 @@ impl ImplicitConversions<'_> {
             return None;
         };
         // The type of a user-defined block lists only the fields declared
-        // with a simple type, so its inputs come from its declaration. A
+        // with a simple type, so its parameters come from its declaration. A
         // standard block's type lists every field.
-        match self.declarations.inputs(&Id::from(name.as_str())) {
-            Some(inputs) => inputs.get(position).cloned(),
-            None => fields
-                .iter()
-                .filter(|field| field.var_type == Some(FunctionBlockVarType::Input))
-                .nth(position)
-                .map(|field| field.name.clone()),
-        }
+        let standard;
+        let parameters = match self.declarations.parameters(&Id::from(name.as_str())) {
+            Some(parameters) => parameters,
+            None => {
+                standard = CallParameters::of_standard_block(fields);
+                &standard
+            }
+        };
+        let input = parameters.inputs().nth(position)?;
+        Some(input.name.clone())
     }
 
     pub(super) fn type_if_literals(&self, node: &mut If) {

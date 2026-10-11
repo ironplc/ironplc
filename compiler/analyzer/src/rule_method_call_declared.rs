@@ -45,34 +45,37 @@ use ironplc_dsl::{
     common::*,
     core::{Id, Located},
     diagnostic::{Diagnostic, Label},
+    scope::ScopeNode,
     textual::*,
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
 
 use crate::{
-    callee_resolution::{FunctionBlocks, InstanceTypes},
+    callee_resolution::{instance_type, FunctionBlocks},
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    symbol_environment::ScopeTracker,
 };
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
     lib: &Library,
-    _context: &SemanticContext,
+    context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
     let function_blocks = FunctionBlocks::from_library(lib);
 
-    run_rule(RuleMethodCallDeclared::new(&function_blocks), lib)
+    run_rule(RuleMethodCallDeclared::new(&function_blocks, context), lib)
 }
 
 struct RuleMethodCallDeclared<'a> {
     function_blocks: &'a FunctionBlocks<'a>,
+    context: &'a SemanticContext,
 
-    /// The instances declared in the unit being walked.
-    instances: InstanceTypes,
+    /// The scope the walk is in, which an instance is looked up from.
+    scope: ScopeTracker,
 
     /// Whether the method call being visited is in expression position,
     /// where its value is used and the method must have a return type.
@@ -82,10 +85,11 @@ struct RuleMethodCallDeclared<'a> {
 }
 
 impl<'a> RuleMethodCallDeclared<'a> {
-    fn new(function_blocks: &'a FunctionBlocks<'a>) -> Self {
+    fn new(function_blocks: &'a FunctionBlocks<'a>, context: &'a SemanticContext) -> Self {
         Self {
             function_blocks,
-            instances: InstanceTypes::default(),
+            context,
+            scope: ScopeTracker::default(),
             in_expression: false,
             diagnostics: Vec::new(),
         }
@@ -131,36 +135,13 @@ impl DiagnosticVisitor for RuleMethodCallDeclared<'_> {
 impl Visitor<Infallible> for RuleMethodCallDeclared<'_> {
     type Value = ();
 
-    fn visit_function_block_declaration(
-        &mut self,
-        node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, Infallible> {
-        let res = node.recurse_visit(self);
-        self.instances.clear();
-        res
-    }
-
-    fn visit_function_declaration(
-        &mut self,
-        node: &FunctionDeclaration,
-    ) -> Result<Self::Value, Infallible> {
-        let res = node.recurse_visit(self);
-        self.instances.clear();
-        res
-    }
-
-    fn visit_program_declaration(
-        &mut self,
-        node: &ProgramDeclaration,
-    ) -> Result<Self::Value, Infallible> {
-        let res = node.recurse_visit(self);
-        self.instances.clear();
-        res
-    }
-
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
-        self.instances.declare(node);
+    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
+        self.scope.enter(&node);
         Ok(())
+    }
+
+    fn exit_scope(&mut self) {
+        self.scope.exit();
     }
 
     fn visit_expr_kind(&mut self, node: &ExprKind) -> Result<Self::Value, Infallible> {
@@ -201,9 +182,12 @@ impl RuleMethodCallDeclared<'_> {
             }
         };
 
-        // Cloned so that the borrow of `instances` ends here: the arms below
-        // push onto `self.diagnostics`, which borrows `self` mutably.
-        let fb_type = self.instances.type_of(instance).cloned();
+        let fb_type = instance_type(
+            instance,
+            &self.scope.current(),
+            self.context.symbols(),
+            self.context.types(),
+        );
         let Some(fb_type) = fb_type else {
             self.diagnostics.push(Self::not_in_scope(call, instance));
             return;
