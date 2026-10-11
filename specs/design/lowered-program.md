@@ -1170,9 +1170,14 @@ passed to a call as an `Arg`:
 
 Keeping the two apart matters because a backend may implement both by passing
 an address. Then the difference is only whether the backend copies first, and
-a node that says so cannot be forgotten. Today `ParamPassing` has no mode for a
-by-value aggregate input, and such a parameter falls through to
-`ParamPassing::Value`, which passes one scalar value.
+a node that says so cannot be forgotten. Today codegen does not support an
+array or structure input to a function or function block. Inside the body
+the parameter has no array or structure storage, so reading an element or a
+field of it is reported as P9999 (`compile_array.rs`, `compile_struct.rs`).
+A call still passes one scalar value for the parameter
+(`ParamPassing::Value`), which is harmless only because a body that reads
+the parameter never compiles. Lowering reports such an input as P9999 until
+it provides `Arg::Copy` for it.
 
 A function whose result is a string or an aggregate returns it through a
 result parameter: a hidden parameter of non-null reference type, after a
