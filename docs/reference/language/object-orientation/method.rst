@@ -26,12 +26,12 @@ introduced in IEC 61131-3 Edition 3.
    * - **IEC 61131-3**
      - Edition 3 (object-oriented programming)
    * - **Support**
-     - Parsed, analyzed, compiled and executed for a method declared on
-       the instance's own type: a declaration is checked, and a call is
-       resolved against the declared type of the instance, walking the
-       ``EXTENDS`` chain to find the method. A call that the chain
-       resolves to an inherited method is accepted by analysis but not
-       yet compiled (see :ref:`method-limitations`). Enable with
+     - Parsed, analyzed, compiled and executed: a declaration is checked,
+       and a call is resolved against the declared type of the instance,
+       walking the ``EXTENDS`` chain to find the method. A call to a method
+       inherited from a type that declares variables is accepted by
+       analysis but not yet compiled (see :ref:`method-limitations`).
+       Enable with
        ``--allow-fb-inheritance``; see
        :doc:`/explanation/enabling-dialects-and-features`.
 
@@ -128,12 +128,13 @@ A method with a ``STRING`` or ``WSTRING`` return type reports
 :doc:`P9999 </reference/compiler/problems/P9999>` when compiled.
 
 A call to a method the instance's type inherits through
-:doc:`EXTENDS <extends>` passes analysis but reports
-:doc:`P9999 </reference/compiler/problems/P9999>` when compiled. Code
-generation does not yet give a derived type storage for what it inherits,
-so there is nothing for the inherited body to run against. Declare the
-method on the type being called, or call it on an instance of the type
-that declares it, until inherited storage is compiled.
+:doc:`EXTENDS <extends>` from a type that declares variables passes
+analysis but reports :doc:`P9999 </reference/compiler/problems/P9999>`
+when compiled. Code generation does not yet give a derived type storage for
+the variables it inherits, so there is nothing for the inherited body to run
+against. A method inherited from a type without variables runs. Declare the
+method on the type being called, or call it on an instance of the type that
+declares it, until inherited storage is compiled.
 
 See Also
 --------

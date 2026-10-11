@@ -31,5 +31,7 @@ fn main() {
         "counter-widths.md",
         // Initial values (`REQ-IV-codegen-*`): storing each resolved starting value.
         "initial-values.md",
+        // Call binding (`REQ-CB-codegen-*`): lowering what a call reaches.
+        "call-binding.md",
     ]);
 }

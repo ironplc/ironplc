@@ -22,6 +22,7 @@ use ironplc_dsl::common::{
     TypeName, VariableType,
 };
 use ironplc_dsl::core::Id;
+use ironplc_dsl::textual::MethodReceiver;
 
 use crate::semantic_type::{FunctionBlockVarType, SemanticStructField};
 use crate::symbol_environment::{Resolution, ScopeKind, SymbolEnvironment};
@@ -133,6 +134,67 @@ pub(crate) fn instance_type(
     types.name_of(type_id).cloned()
 }
 
+/// The block a method call on `receiver` starts its search from, as a body in
+/// `scope` names it: the declared block of an instance, the enclosing block
+/// for `THIS^`, and the block that one `EXTENDS` for `SUPER^`.
+///
+/// `None` when the instance is not a function block instance the scope can
+/// use, for `THIS^` outside a function block, and for `SUPER^` in a block
+/// that extends nothing.
+pub(crate) fn receiver_block(
+    receiver: &MethodReceiver,
+    scope: &ScopeKind,
+    symbols: &SymbolEnvironment,
+    types: &TypeEnvironment,
+) -> Option<TypeName> {
+    match receiver {
+        MethodReceiver::Instance(instance) => instance_type(instance, scope, symbols, types),
+        MethodReceiver::SelfRef(self_ref) => symbols.self_type(scope, self_ref.kind),
+    }
+}
+
+/// Which block declares each method that can be called on each function
+/// block a library declares: the block's own method of that name, or else
+/// the nearest one in its `EXTENDS` chain (ADR-0041 case 1).
+///
+/// These are the answers of [`FunctionBlocks::resolve_method`], kept without
+/// borrowing the library, for a pass that consumes the library as it folds
+/// it and for code generation, which call a method by the block that
+/// declares it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct MethodOwners {
+    declaring: HashMap<(TypeName, Id), TypeName>,
+}
+
+impl MethodOwners {
+    /// The owner of every method callable on every function block `lib`
+    /// declares.
+    pub fn of_library(lib: &Library) -> Self {
+        let blocks = FunctionBlocks::from_library(lib);
+        let mut declaring = HashMap::new();
+        for block in blocks.by_name.values() {
+            for ancestor in blocks.chain(&block.name) {
+                for method in &ancestor.methods {
+                    if let Some((owner, _)) = blocks.resolve_method(&block.name, &method.name) {
+                        declaring
+                            .entry((block.name.clone(), method.name.clone()))
+                            .or_insert_with(|| owner.name.clone());
+                    }
+                }
+            }
+        }
+        MethodOwners { declaring }
+    }
+
+    /// The block that declares the method `method` called on an instance of
+    /// `block`: `block` itself or a block it extends. `None` when no block in
+    /// the chain declares one, or `block` is not a block the library
+    /// declares.
+    pub fn declaring_block(&self, block: &TypeName, method: &Id) -> Option<&TypeName> {
+        self.declaring.get(&(block.clone(), method.clone()))
+    }
+}
+
 /// Which kind of parameter a call passes something to or reads from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ParameterSection {
@@ -242,7 +304,9 @@ mod tests {
     use crate::symbol_environment::ScopePath;
     use crate::test_helpers::parse_and_resolve_types_with_options;
     use ironplc_dsl::core::FileId;
+    use ironplc_dsl::textual::{SelfRefKind, SelfRefVariable};
     use ironplc_parser::{options::CompilerOptions, parse_program};
+    use spec_test_macro::spec_test;
 
     fn oop_options() -> CompilerOptions {
         CompilerOptions {
@@ -535,5 +599,147 @@ END_FUNCTION_BLOCK";
         assert_eq!(vec!["CU", "R", "PV"], names(parameters.inputs()));
         assert!(parameters.output(&Id::from("CV")).is_some());
         assert!(parameters.named_input(&Id::from("CV")).is_none());
+    }
+
+    const RECEIVERS: &str = "
+FUNCTION_BLOCK FB_Base
+METHOD Get : INT
+    Get := 1;
+END_METHOD
+METHOD Reset
+END_METHOD
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+METHOD Get : INT
+    Get := 2;
+END_METHOD
+METHOD Run
+END_METHOD
+END_FUNCTION_BLOCK
+PROGRAM main
+VAR
+    d : FB_Derived;
+END_VAR
+END_PROGRAM";
+
+    /// The block a call on `receiver` starts from, in a body at `path`.
+    fn receiver_block_in(path: &[&str], receiver: MethodReceiver) -> Option<TypeName> {
+        let (_, context) = parse_and_resolve_types_with_options(RECEIVERS, &oop_options());
+        receiver_block(&receiver, &scope(path), context.symbols(), context.types())
+    }
+
+    fn self_ref(kind: SelfRefKind) -> MethodReceiver {
+        MethodReceiver::SelfRef(SelfRefVariable {
+            kind,
+            position: ironplc_dsl::core::SourceSpan::default(),
+        })
+    }
+
+    #[spec_test(REQ_CB_analyzer_003)]
+    fn receiver_block_when_instance_then_its_declared_block() {
+        assert_eq!(
+            Some(TypeName::from("FB_Derived")),
+            receiver_block_in(&["main"], MethodReceiver::Instance(Id::from("d")))
+        );
+    }
+
+    #[spec_test(REQ_CB_analyzer_005)]
+    fn receiver_block_when_this_in_method_then_enclosing_block() {
+        assert_eq!(
+            Some(TypeName::from("FB_Derived")),
+            receiver_block_in(&["FB_Derived", "Run"], self_ref(SelfRefKind::This))
+        );
+    }
+
+    #[spec_test(REQ_CB_analyzer_005)]
+    fn receiver_block_when_super_in_method_then_block_it_extends() {
+        assert_eq!(
+            Some(TypeName::from("FB_Base")),
+            receiver_block_in(&["FB_Derived", "Run"], self_ref(SelfRefKind::Super))
+        );
+    }
+
+    #[spec_test(REQ_CB_analyzer_006)]
+    fn receiver_block_when_this_outside_function_block_then_none() {
+        assert_eq!(
+            None,
+            receiver_block_in(&["main"], self_ref(SelfRefKind::This))
+        );
+    }
+
+    #[spec_test(REQ_CB_analyzer_006)]
+    fn receiver_block_when_super_in_block_that_extends_nothing_then_none() {
+        assert_eq!(
+            None,
+            receiver_block_in(&["FB_Base", "Reset"], self_ref(SelfRefKind::Super))
+        );
+    }
+
+    /// The block that declares `method` called on `block`, in `RECEIVERS`.
+    fn owner(block: &str, method: &str) -> Option<TypeName> {
+        MethodOwners::of_library(&parse(RECEIVERS))
+            .declaring_block(&TypeName::from(block), &Id::from(method))
+            .cloned()
+    }
+
+    #[spec_test(REQ_CB_analyzer_003)]
+    fn method_owners_when_declared_on_own_block_then_own_block() {
+        assert_eq!(
+            Some(TypeName::from("FB_Derived")),
+            owner("FB_Derived", "Run")
+        );
+    }
+
+    #[spec_test(REQ_CB_analyzer_003)]
+    fn method_owners_when_inherited_then_base_block() {
+        assert_eq!(
+            Some(TypeName::from("FB_Base")),
+            owner("FB_Derived", "Reset")
+        );
+    }
+
+    #[spec_test(REQ_CB_analyzer_004)]
+    fn method_owners_when_overridden_then_derived_block() {
+        assert_eq!(
+            Some(TypeName::from("FB_Derived")),
+            owner("FB_Derived", "Get")
+        );
+        assert_eq!(Some(TypeName::from("FB_Base")), owner("FB_Base", "Get"));
+    }
+
+    #[test]
+    fn method_owners_when_declared_only_on_derived_then_base_has_none() {
+        assert_eq!(None, owner("FB_Base", "Run"));
+    }
+
+    #[test]
+    fn method_owners_when_not_declared_anywhere_then_none() {
+        assert_eq!(None, owner("FB_Derived", "Missing"));
+    }
+
+    #[test]
+    fn method_owners_when_method_name_differs_in_case_then_found() {
+        assert_eq!(
+            Some(TypeName::from("FB_Base")),
+            owner("fb_derived", "RESET")
+        );
+    }
+
+    #[test]
+    fn method_owners_when_extends_cycle_then_terminates() {
+        let lib = parse(
+            "
+FUNCTION_BLOCK FB_A EXTENDS FB_B
+METHOD M
+END_METHOD
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK FB_B EXTENDS FB_A
+END_FUNCTION_BLOCK",
+        );
+        let owners = MethodOwners::of_library(&lib);
+        assert_eq!(
+            Some(&TypeName::from("FB_A")),
+            owners.declaring_block(&TypeName::from("FB_B"), &Id::from("M"))
+        );
     }
 }

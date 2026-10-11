@@ -13,6 +13,7 @@
 use ironplc_dsl::core::{Id, SourceSpan};
 
 use crate::semantic_type::{ByteSized, FunctionBlockVarType, SemanticStructField, SemanticType};
+use crate::standard_function_block::{CounterWidth, StandardFunctionBlock};
 use crate::type_attributes::TypeAttributes;
 
 // Type constants for common types used in stdlib function blocks
@@ -27,22 +28,23 @@ fn time_type() -> SemanticType {
 }
 
 /// Integer type variants for counter function blocks.
-/// Each variant specifies the type name suffix and the SemanticType for PV/CV fields.
+/// Each variant specifies the type name suffix, the width it counts in and
+/// the SemanticType for PV/CV fields.
 #[allow(clippy::type_complexity)]
-const COUNTER_INT_VARIANTS: &[(&str, fn() -> SemanticType)] = &[
-    ("", || SemanticType::Int {
+const COUNTER_INT_VARIANTS: &[(&str, CounterWidth, fn() -> SemanticType)] = &[
+    ("", CounterWidth::Int, || SemanticType::Int {
         size: ByteSized::B16,
     }), // INT (default)
-    ("_DINT", || SemanticType::Int {
+    ("_DINT", CounterWidth::Dint, || SemanticType::Int {
         size: ByteSized::B32,
     }), // DINT
-    ("_LINT", || SemanticType::Int {
+    ("_LINT", CounterWidth::Lint, || SemanticType::Int {
         size: ByteSized::B64,
     }), // LINT
-    ("_UDINT", || SemanticType::UInt {
+    ("_UDINT", CounterWidth::Udint, || SemanticType::UInt {
         size: ByteSized::B32,
     }), // UDINT
-    ("_ULINT", || SemanticType::UInt {
+    ("_ULINT", CounterWidth::Ulint, || SemanticType::UInt {
         size: ByteSized::B64,
     }), // ULINT
 ];
@@ -77,8 +79,9 @@ fn build_field(
     field
 }
 
-/// Builds TypeAttributes for a standard library function block.
+/// Builds TypeAttributes for the standard library function block `block`.
 fn build_function_block(
+    block: StandardFunctionBlock,
     name: &str,
     field_defs: &[(&str, SemanticType, FunctionBlockVarType)],
 ) -> TypeAttributes {
@@ -97,6 +100,7 @@ fn build_function_block(
             fields,
         },
     )
+    .with_standard_block(block)
 }
 
 // =============================================================================
@@ -110,6 +114,7 @@ fn build_function_block(
 fn build_sr() -> TypeAttributes {
     use FunctionBlockVarType::*;
     build_function_block(
+        StandardFunctionBlock::Sr,
         "SR",
         &[
             ("S1", bool_type(), Input),  // Set input (dominant)
@@ -126,6 +131,7 @@ fn build_sr() -> TypeAttributes {
 fn build_rs() -> TypeAttributes {
     use FunctionBlockVarType::*;
     build_function_block(
+        StandardFunctionBlock::Rs,
         "RS",
         &[
             ("S", bool_type(), Input),   // Set input
@@ -145,6 +151,7 @@ fn build_rs() -> TypeAttributes {
 fn build_r_trig() -> TypeAttributes {
     use FunctionBlockVarType::*;
     build_function_block(
+        StandardFunctionBlock::RTrig,
         "R_TRIG",
         &[
             ("CLK", bool_type(), Input),  // Clock input
@@ -160,6 +167,7 @@ fn build_r_trig() -> TypeAttributes {
 fn build_f_trig() -> TypeAttributes {
     use FunctionBlockVarType::*;
     build_function_block(
+        StandardFunctionBlock::FTrig,
         "F_TRIG",
         &[
             ("CLK", bool_type(), Input),  // Clock input
@@ -177,9 +185,10 @@ fn build_f_trig() -> TypeAttributes {
 ///
 /// Counts up on rising edge of CU input until CV >= PV.
 /// The `suffix` is appended to "CTU" (e.g., "_DINT" for CTU_DINT).
-fn build_ctu_variant(suffix: &str, int_type: SemanticType) -> TypeAttributes {
+fn build_ctu_variant(suffix: &str, width: CounterWidth, int_type: SemanticType) -> TypeAttributes {
     use FunctionBlockVarType::*;
     build_function_block(
+        StandardFunctionBlock::Ctu(width),
         &format!("CTU{}", suffix),
         &[
             ("CU", bool_type(), Input),      // Count up input (R_EDGE)
@@ -195,9 +204,10 @@ fn build_ctu_variant(suffix: &str, int_type: SemanticType) -> TypeAttributes {
 ///
 /// Counts down on rising edge of CD input until CV <= 0.
 /// The `suffix` is appended to "CTD" (e.g., "_DINT" for CTD_DINT).
-fn build_ctd_variant(suffix: &str, int_type: SemanticType) -> TypeAttributes {
+fn build_ctd_variant(suffix: &str, width: CounterWidth, int_type: SemanticType) -> TypeAttributes {
     use FunctionBlockVarType::*;
     build_function_block(
+        StandardFunctionBlock::Ctd(width),
         &format!("CTD{}", suffix),
         &[
             ("CD", bool_type(), Input),      // Count down input (R_EDGE)
@@ -213,9 +223,10 @@ fn build_ctd_variant(suffix: &str, int_type: SemanticType) -> TypeAttributes {
 ///
 /// Counts up on CU rising edge, down on CD rising edge.
 /// The `suffix` is appended to "CTUD" (e.g., "_DINT" for CTUD_DINT).
-fn build_ctud_variant(suffix: &str, int_type: SemanticType) -> TypeAttributes {
+fn build_ctud_variant(suffix: &str, width: CounterWidth, int_type: SemanticType) -> TypeAttributes {
     use FunctionBlockVarType::*;
     build_function_block(
+        StandardFunctionBlock::Ctud(width),
         &format!("CTUD{}", suffix),
         &[
             ("CU", bool_type(), Input),      // Count up input (R_EDGE)
@@ -233,19 +244,19 @@ fn build_ctud_variant(suffix: &str, int_type: SemanticType) -> TypeAttributes {
 /// Generates all counter function block variants (CTU, CTD, CTUD with all integer types).
 fn get_all_counter_variants() -> Vec<(&'static str, TypeAttributes)> {
     let mut counters = Vec::new();
-    for (suffix, int_type_fn) in COUNTER_INT_VARIANTS {
+    for (suffix, width, int_type_fn) in COUNTER_INT_VARIANTS {
         let int_type = int_type_fn();
         counters.push((
             leak_lowercase(&format!("ctu{}", suffix)),
-            build_ctu_variant(suffix, int_type.clone()),
+            build_ctu_variant(suffix, *width, int_type.clone()),
         ));
         counters.push((
             leak_lowercase(&format!("ctd{}", suffix)),
-            build_ctd_variant(suffix, int_type.clone()),
+            build_ctd_variant(suffix, *width, int_type.clone()),
         ));
         counters.push((
             leak_lowercase(&format!("ctud{}", suffix)),
-            build_ctud_variant(suffix, int_type),
+            build_ctud_variant(suffix, *width, int_type),
         ));
     }
     counters
@@ -268,6 +279,7 @@ fn leak_lowercase(s: &str) -> &'static str {
 fn build_ton() -> TypeAttributes {
     use FunctionBlockVarType::*;
     build_function_block(
+        StandardFunctionBlock::Ton,
         "TON",
         &[
             ("IN", bool_type(), Input),  // Timer input
@@ -285,6 +297,7 @@ fn build_ton() -> TypeAttributes {
 fn build_tof() -> TypeAttributes {
     use FunctionBlockVarType::*;
     build_function_block(
+        StandardFunctionBlock::Tof,
         "TOF",
         &[
             ("IN", bool_type(), Input),  // Timer input
@@ -301,6 +314,7 @@ fn build_tof() -> TypeAttributes {
 fn build_tp() -> TypeAttributes {
     use FunctionBlockVarType::*;
     build_function_block(
+        StandardFunctionBlock::Tp,
         "TP",
         &[
             ("IN", bool_type(), Input),  // Timer input
@@ -384,6 +398,7 @@ pub fn is_stdlib_function_block(name: &Id) -> bool {
 mod tests {
     use super::*;
     use ironplc_test::cast_struct;
+    use spec_test_macro::spec_test;
 
     #[test]
     fn get_all_stdlib_function_blocks_returns_expected_count() {
@@ -446,6 +461,7 @@ mod tests {
     fn build_ctu_variant_when_called_then_has_correct_fields() {
         let ctu = build_ctu_variant(
             "",
+            CounterWidth::Int,
             SemanticType::Int {
                 size: ByteSized::B16,
             },
@@ -471,6 +487,7 @@ mod tests {
     fn build_ctu_variant_when_dint_then_has_correct_name_and_type() {
         let ctu_dint = build_ctu_variant(
             "_DINT",
+            CounterWidth::Dint,
             SemanticType::Int {
                 size: ByteSized::B32,
             },
@@ -529,5 +546,34 @@ mod tests {
         for (_, fb) in get_all_stdlib_function_blocks() {
             assert!(fb.span.is_builtin(), "Expected builtin span for stdlib FB");
         }
+    }
+
+    #[spec_test(REQ_CB_analyzer_001)]
+    fn get_all_stdlib_function_blocks_when_built_then_each_records_its_identity() {
+        let identities: Vec<(&str, Option<StandardFunctionBlock>)> =
+            get_all_stdlib_function_blocks()
+                .into_iter()
+                .map(|(name, attributes)| (name, attributes.standard_block))
+                .collect();
+        assert!(identities.iter().all(|(_, block)| block.is_some()));
+        assert!(identities.contains(&("ton", Some(StandardFunctionBlock::Ton))));
+        assert!(identities.contains(&("r_trig", Some(StandardFunctionBlock::RTrig))));
+        assert!(identities.contains(&("ctu", Some(StandardFunctionBlock::Ctu(CounterWidth::Int)))));
+        assert!(identities.contains(&(
+            "ctud_ulint",
+            Some(StandardFunctionBlock::Ctud(CounterWidth::Ulint))
+        )));
+    }
+
+    #[test]
+    fn get_all_stdlib_function_blocks_when_built_then_identities_are_distinct() {
+        let mut identities: Vec<StandardFunctionBlock> = get_all_stdlib_function_blocks()
+            .into_iter()
+            .filter_map(|(_, attributes)| attributes.standard_block)
+            .collect();
+        let count = identities.len();
+        identities.sort_by_key(|block| format!("{block:?}"));
+        identities.dedup();
+        assert_eq!(count, identities.len());
     }
 }

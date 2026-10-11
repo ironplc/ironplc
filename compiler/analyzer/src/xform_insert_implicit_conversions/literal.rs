@@ -20,14 +20,14 @@ use ironplc_dsl::common::{ConstantKind, ElementaryTypeName, GenericTypeName, Typ
 use ironplc_dsl::core::Id;
 use ironplc_dsl::textual::{
     Case, CompareExpr, CompareOp, Expr, ExprKind, ExprType, FbCall, For, Function, If, MethodCall,
-    MethodReceiver, ParamAssignmentKind, Repeat, SymbolicVariableKind, UnaryOp, Variable, While,
+    ParamAssignmentKind, Repeat, SymbolicVariableKind, UnaryOp, Variable, While,
 };
 use ironplc_dsl::type_id::TypeId;
 
 use super::declared::elementary_of;
 use super::ImplicitConversions;
 use crate::builtin_function::BuiltinFunction;
-use crate::callee_resolution::CallParameters;
+use crate::callee_resolution::{receiver_block, CallParameters};
 use crate::intermediates::conversion_target::{concrete, wrap};
 use crate::intermediates::numeric_operation::{literal_default_type, OperationWidth};
 use crate::intermediates::operator_function_form::FormOf;
@@ -307,19 +307,13 @@ impl ImplicitConversions<'_> {
         &self,
         call: &'c mut MethodCall,
     ) -> Vec<(&'c mut Expr, Option<TypeId>)> {
-        let parameters = match &call.receiver {
-            MethodReceiver::Instance(instance) => {
-                variable_type::declared(instance, self.context, &self.scope.current()).and_then(
-                    |representation| match representation {
-                        SemanticType::FunctionBlock { name, .. } => self
-                            .declarations
-                            .method(&Id::from(name.as_str()), &call.method),
-                        _ => None,
-                    },
-                )
-            }
-            MethodReceiver::SelfRef(_) => None,
-        };
+        let parameters = receiver_block(
+            &call.receiver,
+            &self.scope.current(),
+            self.context.symbols(),
+            self.context.types(),
+        )
+        .and_then(|block| self.declarations.method(&block, &call.method));
         let mut position = 0;
         let mut arguments = Vec::with_capacity(call.params.len());
         for param in &mut call.params {

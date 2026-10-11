@@ -26,7 +26,8 @@ IEC 61131-3 Edition 3.
        does not yet give a derived type storage for what it inherits, so
        compiling a derived type reports
        :doc:`P9999 </reference/compiler/problems/P9999>` where it reads or
-       writes an inherited variable or calls an inherited method. On an
+       writes an inherited variable, or calls a method inherited from a type
+       that declares variables. On an
        interface, parsed only. Enable with
        ``--allow-fb-inheritance``; see
        :doc:`/explanation/enabling-dialects-and-features`.
