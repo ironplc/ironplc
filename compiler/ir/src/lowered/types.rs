@@ -317,7 +317,8 @@ impl TypeTable {
     /// the table does not hold.
     pub fn operation_type(&self, id: TypeId) -> Option<ScalarType> {
         match self.kind(id)? {
-            TypeKind::Bool | TypeKind::Enumeration { .. } => Some(ScalarType::BOOL),
+            TypeKind::Bool => Some(ScalarType::Bool),
+            TypeKind::Enumeration { .. } => Some(ScalarType::I32(Signedness::Signed)),
             TypeKind::Integer { width, signed } => Some(integer(*width, signedness(*signed))),
             TypeKind::BitString { width } => Some(integer(*width, Signedness::Unsigned)),
             TypeKind::Real {

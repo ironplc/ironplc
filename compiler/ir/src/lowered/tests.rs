@@ -105,8 +105,11 @@ impl Fixture {
     }
 }
 
+/// The operation type of a `DINT`.
+const DINT: ScalarType = ScalarType::I32(Signedness::Signed);
+
 fn int(value: i128) -> Expr {
-    Expr::integer(value, ScalarType::BOOL, span()).unwrap()
+    Expr::integer(value, DINT, span()).unwrap()
 }
 
 fn is_internal_error_naming(
@@ -144,7 +147,7 @@ fn ids_when_compared_then_each_is_its_own_type() {
 #[test]
 fn constant_when_width_differs_from_type_then_internal_error() {
     assert!(is_internal_error_naming(
-        Expr::constant(Const::I64(1), ScalarType::BOOL, span()),
+        Expr::constant(Const::I64(1), DINT, span()),
         "Expr::constant"
     ));
     assert!(Expr::constant(Const::F32(1.5), ScalarType::F64, span()).is_err());
@@ -159,7 +162,7 @@ fn integer_when_value_outside_type_then_internal_error() {
     assert!(Expr::integer(-1, unsigned, span()).is_err());
     assert!(Expr::integer(i128::from(u32::MAX), unsigned, span()).is_ok());
     assert!(is_internal_error_naming(
-        Expr::integer(1 << 31, ScalarType::BOOL, span()),
+        Expr::integer(1 << 31, DINT, span()),
         "Expr::integer"
     ));
     assert!(Expr::integer(1, ScalarType::Ref, span()).is_err());
@@ -200,7 +203,7 @@ fn integer_when_real_type_then_rounded_once() {
 #[test]
 fn real_when_integer_type_then_internal_error() {
     assert!(is_internal_error_naming(
-        Expr::real(1.5, ScalarType::BOOL, span()),
+        Expr::real(1.5, DINT, span()),
         "Expr::real"
     ));
     let narrowed = Expr::real(0.1, ScalarType::F32, span()).unwrap();
@@ -216,7 +219,7 @@ fn binary_when_operand_types_differ_then_internal_error() {
         "Expr::binary"
     ));
     let sum = Expr::binary(BinaryOp::Add, int(1), int(2), span()).unwrap();
-    assert_eq!(sum.ty(), ScalarType::BOOL);
+    assert_eq!(sum.ty(), DINT);
 }
 
 /// REQ-LOW-lowering-042: an integer-only operator does not apply to a real.
@@ -236,14 +239,14 @@ fn compare_when_types_match_then_bool_and_when_not_then_internal_error() {
         "Expr::compare"
     ));
     let compared = Expr::compare(CompareOp::Lt, real.clone(), real, span()).unwrap();
-    assert_eq!(compared.ty(), ScalarType::BOOL);
+    assert_eq!(compared.ty(), ScalarType::Bool);
 }
 
 /// REQ-LOW-lowering-044: a conversion changes type.
 #[test]
 fn convert_when_same_type_then_internal_error() {
     assert!(is_internal_error_naming(
-        Expr::convert(int(1), ScalarType::BOOL, span()),
+        Expr::convert(int(1), DINT, span()),
         "Expr::convert"
     ));
     let widened = Expr::convert(int(1), ScalarType::I64(Signedness::Signed), span()).unwrap();
@@ -379,6 +382,7 @@ fn assign_when_bool_place_then_comparison_stored_as_is() {
     let f = fixture();
     let compared = Expr::compare(CompareOp::Eq, int(1), int(2), span()).unwrap();
     assert!(Stmt::assign(&f.types, f.place(f.bool), compared, span()).is_ok());
+    assert!(Stmt::assign(&f.types, f.place(f.bool), int(1), span()).is_err());
 }
 
 /// REQ-LOW-lowering-036: a non-null reference is never assigned.
@@ -406,12 +410,43 @@ fn compare_when_references_ordered_then_internal_error() {
     ));
 }
 
-/// REQ-LOW-lowering-048: the logical forms apply only to `BOOL` values.
+/// REQ-LOW-lowering-048: the logical forms apply only to a `BOOL`, and the
+/// bitwise forms only to an integer.
 #[test]
-fn unary_when_bool_not_of_wide_integer_then_internal_error() {
-    let wide = Expr::integer(1, ScalarType::I64(Signedness::Signed), span()).unwrap();
-    assert!(Expr::unary(UnaryOp::BoolNot, wide.clone(), span()).is_err());
-    assert!(Expr::unary(UnaryOp::BitNot, wide, span()).is_ok());
+fn unary_when_not_of_wrong_type_then_internal_error() {
+    let truth = Expr::boolean(true, span());
+    assert!(Expr::unary(UnaryOp::BoolNot, truth.clone(), span()).is_ok());
+    assert!(is_internal_error_naming(
+        Expr::unary(UnaryOp::BitNot, truth, span()),
+        "Expr::unary"
+    ));
+    assert!(Expr::unary(UnaryOp::BoolNot, int(1), span()).is_err());
+    assert!(Expr::unary(UnaryOp::BitNot, int(1), span()).is_ok());
+}
+
+/// REQ-LOW-lowering-048: `AND`, `OR` and `XOR` are logical on a `BOOL` and
+/// bitwise on an integer, and never the other way round.
+#[test]
+fn binary_when_logical_operator_of_wrong_type_then_internal_error() {
+    let truth = || Expr::boolean(true, span());
+    assert!(Expr::binary(BinaryOp::BoolAnd, truth(), truth(), span()).is_ok());
+    assert!(Expr::binary(BinaryOp::BitAnd, truth(), truth(), span()).is_err());
+    assert!(is_internal_error_naming(
+        Expr::binary(BinaryOp::BoolOr, int(1), int(2), span()),
+        "Expr::binary"
+    ));
+    assert!(Expr::binary(BinaryOp::BitOr, int(1), int(2), span()).is_ok());
+    assert!(Expr::binary(BinaryOp::Add, truth(), truth(), span()).is_err());
+}
+
+/// A `BOOL` is a type of its own: it is neither an integer constant nor
+/// converted to or from a number.
+#[test]
+fn boolean_when_used_as_integer_then_internal_error() {
+    assert_eq!(Expr::boolean(true, span()).to_string(), "(const bool true)");
+    assert!(Expr::integer(1, ScalarType::Bool, span()).is_err());
+    assert!(Expr::convert(Expr::boolean(true, span()), DINT, span()).is_err());
+    assert!(Expr::truncate(NarrowWidth::B8, Expr::boolean(true, span()), span()).is_err());
 }
 
 #[test]
@@ -452,7 +487,7 @@ fn type_table_when_operation_types_then_follow_adr_0001() {
     let operated = |var| f.types.operation_type(ty(var));
     assert_eq!(operated(f.sint), Some(ScalarType::I32(Signedness::Signed)));
     assert_eq!(operated(f.lreal), Some(ScalarType::F64));
-    assert_eq!(operated(f.bool), Some(ScalarType::BOOL));
+    assert_eq!(operated(f.bool), Some(ScalarType::Bool));
     assert_eq!(operated(f.this), Some(ScalarType::Ref));
     assert_eq!(operated(f.program), None);
     assert_eq!(f.types.narrowed_storage(ty(f.int)), Some(NarrowWidth::B16));

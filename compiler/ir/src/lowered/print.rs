@@ -29,6 +29,7 @@ impl fmt::Display for Expr {
         match self.kind() {
             ExprKind::Const(constant) => match (constant, constant.integer_value(ty)) {
                 (_, Some(value)) => write!(f, "(const {ty} {value})"),
+                (Const::Bool(value), None) => write!(f, "(const {ty} {value})"),
                 (Const::F32(value), None) => write!(f, "(const {ty} {value:?})"),
                 (Const::F64(value), None) => write!(f, "(const {ty} {value:?})"),
                 (Const::I32(_) | Const::I64(_), None) => write!(f, "(const {ty} {constant:?})"),

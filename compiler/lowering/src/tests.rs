@@ -77,6 +77,7 @@ fn lower_statement_when_logical_operators_then_form_follows_type() {
         "PROGRAM main VAR x : BOOL; y : BOOL; w : DWORD; v : DWORD; END_VAR
             x := NOT y;
             x := x AND y;
+            x := TRUE;
             w := NOT v;
             w := w XOR v;
          END_PROGRAM",
@@ -85,8 +86,9 @@ fn lower_statement_when_logical_operators_then_form_follows_type() {
     assert_eq!(
         outcome.statements,
         [
-            "assign v0^.f0 (bool_not i32s (read i32s v0^.f1))",
-            "assign v0^.f0 (bool_and i32s (read i32s v0^.f0) (read i32s v0^.f1))",
+            "assign v0^.f0 (bool_not bool (read bool v0^.f1))",
+            "assign v0^.f0 (bool_and bool (read bool v0^.f0) (read bool v0^.f1))",
+            "assign v0^.f0 (const bool true)",
             "assign v0^.f2 (bit_not i32u (read i32u v0^.f3))",
             "assign v0^.f2 (bit_xor i32u (read i32u v0^.f2) (read i32u v0^.f3))",
         ]
@@ -109,7 +111,7 @@ fn lower_statement_when_comparison_then_compare_of_one_type() {
         [
             "assign v0^.f0 (lt (read i32s v0^.f1) (const i32s 3))",
             "assign v0^.f0 (eq (convert i64s (read i32s v0^.f1)) (read i64s v0^.f2))",
-            "assign v0^.f0 (and_then (read i32s v0^.f0) (gt (read i32s v0^.f1) (const i32s 0)))",
+            "assign v0^.f0 (and_then (read bool v0^.f0) (gt (read i32s v0^.f1) (const i32s 0)))",
         ]
     );
 }

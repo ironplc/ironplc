@@ -175,10 +175,13 @@ impl Lowering<'_> {
             ConstantKind::RealLiteral(literal) => {
                 return Expr::real(literal.value, ty, span).map(Some)
             }
-            ConstantKind::Boolean(literal) => Some(match literal.value {
-                Boolean::True => 1,
-                Boolean::False => 0,
-            }),
+            ConstantKind::Boolean(literal) => {
+                let value = match literal.value {
+                    Boolean::True => true,
+                    Boolean::False => false,
+                };
+                return Ok(Some(Expr::boolean(value, span)));
+            }
             ConstantKind::BitStringLiteral(literal) => i128::try_from(literal.value.value).ok(),
             ConstantKind::CharacterString(_)
             | ConstantKind::Duration(_)

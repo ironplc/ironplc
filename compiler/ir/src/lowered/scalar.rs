@@ -9,16 +9,19 @@ pub enum Signedness {
     Unsigned,
 }
 
-/// The type a scalar value is operated at: one of the four operation widths
-/// of ADR-0001, with a signedness for an integer, or a reference or interface
-/// value, which has no width in the lowered program.
+/// The type a scalar value is operated at: a `BOOL`, one of the four
+/// operation widths of ADR-0001 with a signedness for an integer, or a
+/// reference or interface value.
 ///
-/// A `ScalarType` does not say whether a value is a `BOOL`: a `BOOL` is
-/// operated at [`ScalarType::BOOL`], the operation type of a `DINT`. Lowering
-/// chooses the logical or the bitwise form of an operator from the source
-/// type (REQ-LOW-lowering-048).
+/// A `BOOL`, a reference and an interface value have no width in the lowered
+/// program: how each is computed and stored is each backend's layout. The
+/// bytecode backend computes a `BOOL` as a 32-bit integer; another backend
+/// may pack `BOOL`s into bits. Because a `BOOL` is a type of its own, the
+/// logical operators apply only to it and the bitwise ones only to integers
+/// (REQ-LOW-lowering-048).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ScalarType {
+    Bool,
     I32(Signedness),
     I64(Signedness),
     F32,
@@ -28,16 +31,13 @@ pub enum ScalarType {
 }
 
 impl ScalarType {
-    /// The operation type of a `BOOL`, and of the result of a comparison.
-    pub const BOOL: ScalarType = ScalarType::I32(Signedness::Signed);
-
-    /// The width of a numeric operation type in bits; `None` for a reference
-    /// or an interface value.
+    /// The width of a numeric operation type in bits; `None` for a `BOOL`, a
+    /// reference or an interface value.
     pub fn bits(self) -> Option<u8> {
         match self {
             ScalarType::I32(_) | ScalarType::F32 => Some(32),
             ScalarType::I64(_) | ScalarType::F64 => Some(64),
-            ScalarType::Ref | ScalarType::Interface => None,
+            ScalarType::Bool | ScalarType::Ref | ScalarType::Interface => None,
         }
     }
 
@@ -45,7 +45,11 @@ impl ScalarType {
     pub fn signedness(self) -> Option<Signedness> {
         match self {
             ScalarType::I32(signedness) | ScalarType::I64(signedness) => Some(signedness),
-            ScalarType::F32 | ScalarType::F64 | ScalarType::Ref | ScalarType::Interface => None,
+            ScalarType::Bool
+            | ScalarType::F32
+            | ScalarType::F64
+            | ScalarType::Ref
+            | ScalarType::Interface => None,
         }
     }
 
@@ -72,7 +76,11 @@ impl ScalarType {
             ScalarType::I32(Signedness::Unsigned) => Some((0, u32::MAX.into())),
             ScalarType::I64(Signedness::Signed) => Some((i64::MIN.into(), i64::MAX.into())),
             ScalarType::I64(Signedness::Unsigned) => Some((0, u64::MAX.into())),
-            ScalarType::F32 | ScalarType::F64 | ScalarType::Ref | ScalarType::Interface => None,
+            ScalarType::Bool
+            | ScalarType::F32
+            | ScalarType::F64
+            | ScalarType::Ref
+            | ScalarType::Interface => None,
         }
     }
 }
@@ -80,6 +88,7 @@ impl ScalarType {
 impl fmt::Display for ScalarType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let text = match self {
+            ScalarType::Bool => "bool",
             ScalarType::I32(Signedness::Signed) => "i32s",
             ScalarType::I32(Signedness::Unsigned) => "i32u",
             ScalarType::I64(Signedness::Signed) => "i64s",

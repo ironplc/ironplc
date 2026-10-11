@@ -8,14 +8,15 @@ use super::place::Place;
 use super::scalar::{ScalarType, Signedness};
 use super::types::{NarrowWidth, TypeTable};
 
-/// The value of a constant, at one of the four operation widths, so a value
-/// always fits its width and a backend emits it as it is.
+/// The value of a constant: a `BOOL`, or a value at one of the four operation
+/// widths, so a value always fits its type and a backend emits it as it is.
 ///
 /// An integer's signedness is the type of the expression that holds it: an
 /// unsigned value is stored as its bit pattern, so a `UDINT` of 4,000,000,000
 /// is `I32(-294967296)` in an expression of type `i32u`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Const {
+    Bool(bool),
     I32(i32),
     I64(i64),
     F32(f32),
@@ -35,7 +36,9 @@ impl Const {
             (Const::I64(value), ScalarType::I64(Signedness::Unsigned)) => {
                 Some((value as u64).into())
             }
-            (Const::I32(_) | Const::I64(_) | Const::F32(_) | Const::F64(_), _) => None,
+            (Const::Bool(_) | Const::I32(_) | Const::I64(_) | Const::F32(_) | Const::F64(_), _) => {
+                None
+            }
         }
     }
 
@@ -43,7 +46,8 @@ impl Const {
     fn has_width_of(self, ty: ScalarType) -> bool {
         matches!(
             (self, ty),
-            (Const::I32(_), ScalarType::I32(_))
+            (Const::Bool(_), ScalarType::Bool)
+                | (Const::I32(_), ScalarType::I32(_))
                 | (Const::I64(_), ScalarType::I64(_))
                 | (Const::F32(_), ScalarType::F32)
                 | (Const::F64(_), ScalarType::F64)
@@ -170,7 +174,7 @@ impl Expr {
             }
             ScalarType::F32 => Some(Const::F32(value as f32)),
             ScalarType::F64 => Some(Const::F64(value as f64)),
-            ScalarType::Ref | ScalarType::Interface => None,
+            ScalarType::Bool | ScalarType::Ref | ScalarType::Interface => None,
         };
         let constant = constant.ok_or_else(|| {
             broken(
@@ -182,12 +186,21 @@ impl Expr {
         Ok(Self::new(ExprKind::Const(constant), ty, span))
     }
 
+    /// The `BOOL` constant `value`.
+    pub fn boolean(value: bool, span: SourceSpan) -> Self {
+        Self::new(ExprKind::Const(Const::Bool(value)), ScalarType::Bool, span)
+    }
+
     /// The real `value` as a constant of the real type `ty`, rounded to it.
     pub fn real(value: f64, ty: ScalarType, span: SourceSpan) -> Result<Self, Diagnostic> {
         let constant = match ty {
             ScalarType::F32 => Const::F32(value as f32),
             ScalarType::F64 => Const::F64(value),
-            ScalarType::I32(_) | ScalarType::I64(_) | ScalarType::Ref | ScalarType::Interface => {
+            ScalarType::Bool
+            | ScalarType::I32(_)
+            | ScalarType::I64(_)
+            | ScalarType::Ref
+            | ScalarType::Interface => {
                 return Err(broken(
                     "Expr::real",
                     &span,
@@ -247,12 +260,12 @@ impl Expr {
     }
 
     /// `op` applied to `value`, at its type. `Neg` needs a number, `BitNot`
-    /// an integer, and `BoolNot` the operation type of a `BOOL`.
+    /// an integer, and `BoolNot` a `BOOL`.
     pub fn unary(op: UnaryOp, value: Expr, span: SourceSpan) -> Result<Self, Diagnostic> {
         let applies = match op {
             UnaryOp::Neg => value.ty.is_numeric(),
             UnaryOp::BitNot => value.ty.is_integer(),
-            UnaryOp::BoolNot => value.ty == ScalarType::BOOL,
+            UnaryOp::BoolNot => value.ty == ScalarType::Bool,
         };
         if !applies {
             return Err(broken(
@@ -286,7 +299,7 @@ impl Expr {
             BinaryOp::Mod | BinaryOp::BitAnd | BinaryOp::BitOr | BinaryOp::BitXor => {
                 ty.is_integer()
             }
-            BinaryOp::BoolAnd | BinaryOp::BoolOr | BinaryOp::BoolXor => ty == ScalarType::BOOL,
+            BinaryOp::BoolAnd | BinaryOp::BoolOr | BinaryOp::BoolXor => ty == ScalarType::Bool,
         };
         if rhs.ty != ty || !applies {
             return Err(broken(
@@ -307,7 +320,7 @@ impl Expr {
     }
 
     /// `lhs` compared with `rhs`, which have the same type; the comparison has
-    /// the operation type of a `BOOL` (REQ-LOW-lowering-043).
+    /// a `BOOL` (REQ-LOW-lowering-043).
     pub fn compare(
         op: CompareOp,
         lhs: Expr,
@@ -323,7 +336,11 @@ impl Expr {
         let comparable = match lhs.ty {
             ScalarType::Interface => false,
             ScalarType::Ref => !ordered,
-            ScalarType::I32(_) | ScalarType::I64(_) | ScalarType::F32 | ScalarType::F64 => true,
+            ScalarType::Bool
+            | ScalarType::I32(_)
+            | ScalarType::I64(_)
+            | ScalarType::F32
+            | ScalarType::F64 => true,
         };
         if lhs.ty != rhs.ty || !comparable {
             return Err(broken(
@@ -338,7 +355,7 @@ impl Expr {
                 lhs: Box::new(lhs),
                 rhs: Box::new(rhs),
             },
-            ScalarType::BOOL,
+            ScalarType::Bool,
             span,
         ))
     }
@@ -351,7 +368,7 @@ impl Expr {
         rhs: Expr,
         span: SourceSpan,
     ) -> Result<Self, Diagnostic> {
-        if lhs.ty != ScalarType::BOOL || rhs.ty != ScalarType::BOOL {
+        if lhs.ty != ScalarType::Bool || rhs.ty != ScalarType::Bool {
             return Err(broken(
                 "Expr::short_circuit",
                 &span,
@@ -364,7 +381,7 @@ impl Expr {
                 lhs: Box::new(lhs),
                 rhs: Box::new(rhs),
             },
-            ScalarType::BOOL,
+            ScalarType::Bool,
             span,
         ))
     }
