@@ -123,7 +123,7 @@ fn compile_intrinsic_at(
             compile_bcd_to_int(emitter, ctx, fixed_args(func)?, &func.name.span(), op_type)
         }
         Intrinsic::IntToBcd => {
-            compile_int_to_bcd(emitter, ctx, fixed_args(func)?, &func.name.span(), op_type)
+            compile_int_to_bcd(emitter, ctx, fixed_args(func)?, &func.name.span())
         }
         // SIZEOF operator (extension)
         Intrinsic::Sizeof => compile_sizeof(emitter, ctx, fixed_args(func)?, op_type),
@@ -552,14 +552,16 @@ fn compile_bcd_to_int(
 
 /// Compiles INT_TO_BCD(IN) — converts an integer to a BCD-encoded bit string.
 ///
-/// The argument is compiled using its own (integer) op_type. The BCD
-/// encoding opcode is selected based on the target's operation width.
+/// The argument is compiled at its own (integer) type, and the BCD encoding
+/// opcode is selected by its width: the call computes at the bit string as
+/// wide as its input. An input of a width with no encoding opcode is one the
+/// analyzer did not type, and is an internal error rather than encoded at the
+/// width of the call's context.
 fn compile_int_to_bcd(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     args: [&Expr; 1],
     span: &SourceSpan,
-    target_op_type: OpType,
 ) -> Result<(), Diagnostic> {
     let arg_op_type = op_type(ctx, args[0])?;
     let bits = storage_bits(ctx, args[0])?;
@@ -570,13 +572,11 @@ fn compile_int_to_bcd(
         (OpWidth::W32, 16) => opcode::builtin::INT_TO_BCD_16,
         (OpWidth::W32, 32) => opcode::builtin::INT_TO_BCD_32,
         (OpWidth::W64, 64) => opcode::builtin::INT_TO_BCD_64,
-        _ => {
-            // For wider target than source, select based on target width
-            match target_op_type.0 {
-                OpWidth::W32 => opcode::builtin::INT_TO_BCD_32,
-                OpWidth::W64 => opcode::builtin::INT_TO_BCD_64,
-                _ => return Err(Diagnostic::todo_with_span(span.clone())),
-            }
+        (width, bits) => {
+            return Err(Diagnostic::internal_error_at(Label::span(
+                span.clone(),
+                format!("INT_TO_BCD of an input of width {width:?} and {bits} bits"),
+            )));
         }
     };
     emitter.emit_builtin(func_id)?;

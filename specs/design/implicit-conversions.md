@@ -381,6 +381,8 @@ A parameter of a user-defined function is passed at its declared type the same w
 
 **REQ-IC-codegen-006** A function's parameter of an alias or a subrange type receives the value of the type it is operated as: `pass(p)` with `p = 2.5` and a parameter of an alias of `LREAL` passes 2.5, and `pass(b)` with `b = 5000000000` and a parameter of an alias or a subrange of `LINT` passes 5000000000.
 
+**REQ-IC-codegen-016** A function or method whose return type is an alias or a subrange returns the value of the type it is operated as: `keep(x)` and `k.Half()` with a return type that is an alias of `LREAL` return 2.5 and 1.25, and a function returning a subrange or an alias of `LINT` returns 4294967298 and 4294967297.
+
 Every other variable of a function, a method or a function block body -- a local, a field, a function's or a method's return value -- is stored and loaded at its declared type too, whatever kind of declaration declares it: the type the analyzer resolved for it, a subrange at its base type, an enumeration as a `DINT` and a reference as its 64-bit index.
 
 **REQ-IC-codegen-020** A function's return value of a subrange of `LINT` and a method-local `REFERENCE TO` are stored at 64 bits: `f := p` in a function returning a subrange of `LINT`, and `r REF= target` on a method-local `REFERENCE TO INT`, store the 64-bit value with a 64-bit store.
@@ -396,6 +398,8 @@ An array subscript and a shift or rotate count compile at the type the analyzer 
 A string function's position or length compiles at the type the analyzer recorded for it, which is `DINT`. One of another width is an internal error, not narrowed as the code generator used to.
 
 **REQ-IC-codegen-018** A string position or length whose conversion the analyzer did not record is an internal error: with the recorded conversions removed, `LEFT(st, l)`, `MID(st, d, l)`, `INSERT(st, 'ab', l)` and `REPLACE(st, 'ab', l, d)` report P9998, and `LEFT(st, d)` compiles.
+
+`INT_TO_BCD` selects its encoding by the width of its input, the bit string as wide as it (REQ-IC-analyzer-090). An input of a width with no encoding is an internal error, not encoded at the width of the call's context as the code generator used to.
 
 **REQ-IC-codegen-013** A typed time or date operation whose operand conversion the analyzer did not record is an internal error: with the recorded conversions removed, `lt + t`, `SUB_LDATE_LDATE(lda, da)`, `lt * d`, `MUL_LTIME(lt, r)` and `t * l` report P9998, and `lt + lt` compiles.
 
