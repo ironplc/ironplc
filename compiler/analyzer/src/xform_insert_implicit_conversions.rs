@@ -1,5 +1,10 @@
-//! Lowering pass recording, in the AST, how each operand of a comparison is
-//! converted before it is compared.
+//! The recording pass: records, in the AST, each implicit conversion and the
+//! type of each untyped literal (ADR-0056), so that no later stage decides
+//! one. It records decisions rather than lowering anything; lowering
+//! translates what it records (`specs/design/lowered-program.md`).
+//!
+//! It began with the operands of a comparison, described below, and its
+//! submodules extend it to the other contexts a value is converted in.
 //!
 //! A comparison (`=`, `<>`, `<`, `<=`, `>`, `>=` and the functions `EQ`,
 //! `NE`, `LT`, `LE`, `GT`, `GE`) compares its operands at one operand type.
