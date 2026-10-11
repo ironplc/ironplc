@@ -99,6 +99,16 @@ describe:
   for an operand pair with a typed overload, such as time arithmetic.
 - Bit and partial access, and assignments to most targets that occupy one
   slot, compile through one addressing path (`Place`).
+- The analyzer resolves the execution model: which configuration is built,
+  which program instance runs under which task, how each task is scheduled
+  and which globals exist ([The Resolved Execution Model](execution-model.md)).
+  It is plain data in `ironplc-ir`, and codegen builds the task table and
+  globals from it without reading a configuration's declarations.
+- The analyzer's `xform_resolve_initial_values` completes every initializer
+  with the whole starting value of its declaration
+  ([Initial Values Completed by the Analyzer](initial-values.md)). Codegen
+  runs it on a copy of the library as the first step of `compile`, and stores
+  each value as the completed initializer states it.
 
 The rest of this section describes the problem as it was measured, because
 that is what the design answers.
@@ -311,6 +321,15 @@ program carries its own type table (see
 [Program, POUs and variables](#32-program-pous-and-variables)), so a backend
 needs nothing more.
 
+`ironplc-ir` already exists, holding the execution model (see
+[The Resolved Execution Model](execution-model.md)). Until `ironplc-lowering`
+exists, the analyzer builds that model and so depends on `ironplc-ir`, and
+codegen depends on both, contrary to the table above
+([ADR-0065](../adrs/0065-the-analyzer-builds-the-execution-model-until-lowering-exists.md)).
+The analyzer's `execution_model` module reads only what a clean analysis
+holds, so that it moves into `ironplc-lowering` unchanged, and the analyzer
+then drops the dependency.
+
 **REQ-LOW-lowering-001** The lowering entry point takes a clean analysis (see
 [The Clean-Analysis Gate](#2-the-clean-analysis-gate)) and returns either a
 lowered program or a non-empty list of diagnostics.
@@ -370,14 +389,29 @@ serves the MCP server and the playground, `lsp_runner.rs`, the benchmarks, and
 the tests of codegen and of the VM command line.
 
 ```rust
-pub struct CleanAnalysis<'a> { library: &'a Library, context: &'a SemanticContext }
+pub struct CleanAnalysis<'a> {
+    library: &'a Library,
+    context: &'a SemanticContext,
+    execution_model: ExecutionModel,   // resolved from `library` by `new`
+    declarations: Declarations<'a>,    // the declaration behind each model id
+}
 
 impl<'a> CleanAnalysis<'a> {
     // The error is the context's diagnostics.
     pub fn new(library: &'a Library, context: &'a SemanticContext)
         -> Result<Self, &'a [Diagnostic]>;
+    pub fn execution_model(&self) -> &ExecutionModel;
+    pub fn program_declaration(&self, id: ProgramId) -> Option<&'a ProgramDeclaration>;
+    pub fn global_declaration(&self, id: GlobalId) -> Option<&'a VarDecl>;
 }
 ```
+
+`new` resolves the execution model from the library it holds, so the model
+codegen builds from is always that library's. `program_declaration` and
+`global_declaration` are how codegen reaches a program's body and a declared
+global's type and initial value by model id, and they go away when the
+lowered program carries bodies, types and initial values (see
+[What a backend still reads](execution-model.md#what-a-backend-still-reads)).
 
 Lowering takes the same value. Nothing about the gate changes when lowering
 arrives: codegen passes the clean analysis it receives on to lowering.
@@ -460,8 +494,7 @@ pub struct Program {
     pub variables: Vec<Variable>,      // indexed by VarId
     pub pous: Vec<Pou>,                // indexed by PouId
     pub init: Vec<Stmt>,               // initial values of every global and instance, run once
-    pub instances: Vec<ProgramInstance>, // the global holding each program instance, and its task
-    pub tasks: Vec<Task>,
+    pub execution: ExecutionModel,     // resources, tasks and program instances (execution-model.md)
 }
 
 pub struct Variable {
@@ -512,6 +545,12 @@ pub struct Field {
 }
 ```
 
+What runs and when is the execution model that `ironplc-ir` already holds
+([The Resolved Execution Model](execution-model.md)). The lowered program
+holds it rather than repeating it, and its `ProgramId` and `GlobalId` become,
+or are replaced by, the `PouId` of the program's body and the `VarId` of the
+global.
+
 A program, like a function block, has an instance: the global that a program
 configuration declares holds it, and the program's variables are the fields of
 its type. A program, function block or method body reaches its own instance
@@ -557,6 +596,14 @@ should become declarative (a value per place), and how a warm restart that
 keeps `RETAIN` variables is expressed, are revisited with support for
 `RETAIN` variables (see [Scope](#scope)).
 
+Lowering takes each starting value from a completed initializer. The
+analyzer's `xform_resolve_initial_values` completes each declaration's initializer with
+its whole starting value: every field and element listed, every scalar a
+literal of the type it is stored as
+([Initial Values Completed by the Analyzer](initial-values.md)). Lowering runs
+it on a copy of the library, as codegen does today, and translates each
+completed initializer into statements.
+
 The initial values of an instance's fields are written where the instance is
 declared, as statements through the place that holds it, so an instance's own
 initializer (`t : MyFb := (x := 7)`) needs no further mechanism. The locals of
@@ -570,7 +617,10 @@ today.
 An unreachable POU is never lowered. Analysis still checks every POU, so
 `check` reports a problem in an unreachable POU as it does today. It does not
 report a construct the compiler cannot generate yet there, because that POU
-is never generated. A library with no configuration therefore lowers nothing.
+is never generated. A library with no program instance therefore lowers
+nothing. A library with a `PROGRAM` but no `CONFIGURATION` has instances: the
+execution model gives it an implicit configuration whose instances make its
+programs reachable.
 
 **REQ-LOW-lowering-026** Every variable's `ty` is present in the type table.
 
@@ -1107,8 +1157,8 @@ passed to a call as an `Arg`:
 Keeping the two apart matters because a backend may implement both by passing
 an address. Then the difference is only whether the backend copies first, and
 a node that says so cannot be forgotten. Today `ParamPassing` has no mode for a
-by-value aggregate input, and such a parameter falls through to the scalar
-default (`ParamPassing::Value(DEFAULT_OP_TYPE)` in `compile_fn.rs`).
+by-value aggregate input, and such a parameter falls through to
+`ParamPassing::Value`, which passes one scalar value.
 
 A function whose result is a string or an aggregate returns it through a
 result parameter: a hidden parameter of non-null reference type, after a
@@ -1505,7 +1555,7 @@ today.
 
 | Decision | Made today in | Recorded as | In the lowered program |
 |---|---|---|---|
-| Type of an untyped literal | The analyzer (ADR-0056), except a member initializer of a function block instance, which codegen builds itself | The literal's `expr_type`, as `ExprType::Inferred` | A `Const` of that type |
+| Type of an untyped literal | The analyzer (ADR-0056); the literals of a completed initializer are written at the type they are stored as ([Initial Values](initial-values.md)) | The literal's `expr_type`, as `ExprType::Inferred` | A `Const` of that type |
 | Implicit conversion | The analyzer for operands, assigned values, the arguments of functions, methods and function block calls, loop bounds, the results of calls and dereferences, subscripts, shift counts and string positions (ADR-0056); codegen stores a function block output at the field's type unconverted | `ExprKind::ImplicitConversion` | `Convert` |
 | Arithmetic overload | Analyzer's `resolve_arithmetic_overload` | The expression's `expr_type`, and its operands' conversions | A `Binary` at the result type, or the desugared time arithmetic |
 | Operand type of a comparison | The analyzer ([Comparison Operand Type](comparison-operand-type.md)) | Its operands' conversions | A `Compare` at that type |
@@ -1525,7 +1575,7 @@ today.
 | Capacity of an intermediate string result | Codegen: a bound per expression (`string_width.rs`), and a temporary buffer as large as the largest string in the program ([issue 2118](https://github.com/ironplc/ironplc/issues/2118)) | The capacity of the `StrExpr`'s `StringShape` |
 | Argument passing mode | `ParamPassing` in `compile.rs` | `Arg` variant |
 | Variable and field identity | Nine name-keyed maps; lower-cased field names | `VarId`, `FieldIdx` |
-| Default initial value | `emit_initial_values`; subrange lower bound, the enumeration's default member as the analyzer records it | `Assign` statements in `init` |
+| Default initial value | The analyzer's `xform_resolve_initial_values`, which codegen runs on a copy of the library and whose completed initializers `emit_initial_values` stores ([Initial Values](initial-values.md)) | `Assign` statements in `init` |
 | Function local re-initialization ([ADR-0024](../adrs/0024-function-local-reinit-via-bytecode-prologue.md)) | `emit_function_local_prologue` | Statements at the head of the function body |
 | Behaviour policy | `CodegenOptions::string_to_num` | `Intrinsic` variant |
 | Target of `EXIT` and `CONTINUE` | `loop_labels` stack, with a P9998 as a fallback | `LoopId` |
@@ -1578,8 +1628,13 @@ The user-facing problems codegen raises today fall into two groups:
   `EXIT` outside a loop, a recursive call, a string encoding mismatch or a
   constant out of range, as P9998.
 - **A limit of what the bytecode backend builds**: `TaskSingleNotSupported`,
-  `TaskParameterOutOfRange`, and `NoProgramDeclaration`, since a container
-  needs a program to run. It stays in that backend (REQ-LOW-codegen-113).
+  `TaskParameterOutOfRange`, `NoProgramDeclaration`, since a container needs
+  a program to run, `ConfigurationAmbiguous` (P4081) and
+  `ProgramInstanceTypeNotProgram` (P4080). Codegen checks each against the
+  execution model (`codegen/src/execution.rs`), and they stay in that backend
+  (REQ-LOW-codegen-113). The task parameters that make a program invalid, a
+  negative `INTERVAL` (P4078) and a `SINGLE` that names no `BOOL` global
+  (P4007, P4079), are already analyzer rules.
 
 **REQ-LOW-analyzer-095** Analysis reports a constant subscript outside its
 dimension's bounds as `ArrayIndexOutOfBounds`.
@@ -1752,6 +1807,9 @@ Nothing is deleted before its last reader has moved to the lowered program.
 | `FunctionEnvironment` | Keep | Signatures of built-in functions name their `BuiltinFunction` (REQ-LOW-analyzer-070). |
 | `Intrinsic` (`intrinsic.rs`) | Keep, renamed | Renamed `BuiltinFunction` (see [Names](#names)), so that `Intrinsic` names only the IR's typed enum. |
 | `SymbolEnvironment` | Keep | Supplies the declarations `VarId`s are allocated from. |
+| `execution_model` | Move to lowering | Builds the execution model until lowering exists (ADR-0065); moves into `ironplc-lowering` unchanged, and the analyzer drops its dependency on `ironplc-ir`. |
+| `xform_resolve_initial_values` | Keep | Completes every initializer ([Initial Values](initial-values.md)). Codegen runs it today, and lowering runs it once lowering exists. |
+| `CleanAnalysis::program_declaration`, `global_declaration` | Remove | Hand codegen declarations by execution model id until the lowered program carries bodies, types and initial values. |
 | `Expr::expr_type`, `VarDecl::type_id`, `ExprKind::LateBound` | Keep | Lowering is their last reader. |
 
 ### `CompileContext`
@@ -1760,7 +1818,7 @@ Nothing is deleted before its last reader has moved to the lowered program.
 
 | Fields | What they are | Disposition |
 |---|---|---|
-| `var_types`, `types`, `operand_names`, `intrinsics`, `compiler_options`, `string_to_num` | Language decisions and their inputs | Move to lowering. No backend holds them. |
+| `var_types`, `types`, `block_members`, `operand_names`, `intrinsics`, `compiler_options`, `string_to_num` | Language decisions and their inputs | Move to lowering. No backend holds them. |
 | `variables`, `string_vars`, `array_vars`, `struct_vars`, `struct_array_vars`, `fb_instances`, `in_out_params`, `user_functions`, `user_fb_types`, `next_user_fb_type_id` | Storage layout | Keep in the bytecode backend as its layout, keyed by id, immutable during emission. |
 | `constants`, `loop_labels`, `current_function_return`, `current_function_id`, `call_graph`, `data_region_offset`, `max_string_capacity`, `has_wide_string`, `debug_*` | Emission state | Keep in a smaller emit context. |
 
@@ -1770,7 +1828,8 @@ Nothing is deleted before its last reader has moved to the lowered program.
 |---|---|
 | `OpWidth`, `Signedness`, `OpType` | Move to `ironplc-ir` as `ScalarType`. |
 | `VarTypeInfo` | Dissolves. Operation type is on the expression; storage width comes from the place's type. |
-| `ArrayVarInfo`, `StructVarInfo`, `StructFieldInfo`, `StructArrayVarInfo`, `FbInstanceInfo`, `UserFunctionInfo`, `UserFbTypeInfo`, `UserMethodInfo`, `StringVarInfo` | Keep in the bytecode backend's layout, without their type fields (`StructFieldInfo::op_type` and `field_type`, `field_op_types`, `field_type_ids`, `param_op_types`, `element_var_type_info`). |
+| `ArrayVarInfo`, `StructVarInfo`, `StructFieldInfo`, `StructArrayVarInfo`, `FbInstanceInfo`, `UserFunctionInfo`, `UserFbTypeInfo`, `UserMethodInfo`, `StringVarInfo` | Keep in the bytecode backend's layout, without their type fields (`StructFieldInfo::field_type`, `field_op_types`, `element_var_type_info`). |
+| `InitialValue` (`initial_value.rs`) | Dissolves. The completed initializer becomes statements in `init`. |
 | `Place` (`compile_place.rs`), `ResolvedAccess` | Keep in the bytecode backend. They are that backend's addressing: the result of asking its layout how to reach a lowered `Place`. |
 | `ParamPassing` | Dissolves into `Arg`, which adds the by-value aggregate mode `ParamPassing` lacks. |
 | `Scope` (formerly `SavedFbScope`) | Absorbed into the bytecode backend's layout. Ids do not collide across scopes, and a function block's variables are fields of its instance. While both routes exist it is how a lowered statement finds its variables' storage (see [Delivery Constraints](#delivery-constraints)). |
@@ -2108,9 +2167,11 @@ This section constrains the order of work; it is not a work breakdown.
   moves to an analyzer rule, before lowering covers a construct that depends
   on it. The recording pass already covers most contexts: operands,
   assignments, the arguments of functions, methods and function block calls,
-  loop bounds, the results of calls and dereferences, and the types of
-  literals. The contexts it does not record yet, such as a condition, a
-  subscript and a function block output, come next
+  loop bounds, the results of calls and dereferences, conditions, subscripts,
+  shift counts, string positions and the types of literals. The contexts it
+  does not record yet, a function block output stored by a call
+  ([issue 2125](https://github.com/ironplc/ironplc/issues/2125)) and a
+  directly represented variable, come next
   ([issue 2050](https://github.com/ironplc/ironplc/issues/2050)). A statement
   that needs a decision the analyzer does not record yet stays on the route
   that reads the AST.
@@ -2298,6 +2359,7 @@ these ADRs:
 | [ADR-0062](../adrs/0062-a-body-works-on-its-instances-fields-in-place.md) | A body works on its instance's fields in place; the bytecode VM's copy is removed by a change of its own ([Instance fields](#instance-fields)). |
 | [ADR-0063](../adrs/0063-a-call-through-an-interface-lists-its-implementers.md) | A call through an interface lists its implementers, and each backend chooses how to dispatch ([Calls through an interface](#calls-through-an-interface)). |
 | [ADR-0064](../adrs/0064-every-string-has-an-explicit-capacity.md) | Every string in the IR has an explicit capacity ([String capacity](#string-capacity)). |
+| [ADR-0065](../adrs/0065-the-analyzer-builds-the-execution-model-until-lowering-exists.md) | Until lowering exists, the analyzer builds the execution model in `ironplc-ir`, departing from ADR-0058 and ADR-0059 ([Position in the Pipeline](#1-position-in-the-pipeline)). |
 
 Two parts of this design are described but not yet decided, so neither has an
 ADR:

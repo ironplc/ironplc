@@ -16,8 +16,7 @@ Codegen's driver used to make these decisions while it compiled, reading
 `ConfigurationDeclaration`, `ResourceDeclaration`, `TaskConfiguration` and
 `ProgramConfiguration` nodes from the library. This design moves them out of
 codegen, and makes them the first part of the
-[Lowered Program](lowered-program.md) (proposed in pull request 2011 and not
-yet merged):
+[Lowered Program](lowered-program.md):
 
 - **`ironplc-ir`**, a new crate, holds the **execution model**: what runs and
   when, as plain data.
@@ -275,7 +274,7 @@ and is the first thing in `ironplc-ir`:
 
 | Execution model | Lowered program |
 |---|---|
-| `Resource`, `Task`, `ProgramInstance` | `Program::tasks`, `Program::instances` |
+| `Resource`, `Task`, `ProgramInstance` | `Program::execution` |
 | `ProgramId` | The `PouId` of the program's body |
 | `GlobalId` | The `VarId` of the global |
 | The storage of a `ProgramInstance` | A global holding the instance (§3.2), which lowering allocates |
@@ -285,12 +284,11 @@ When the lowered program's `Program` exists, it holds the `ExecutionModel`
 rather than repeating it, and `ProgramId` and `GlobalId` become, or are
 replaced by, its `PouId` and `VarId`.
 
-The lowered program design says that a library with no configuration lowers
-nothing, because only POUs reachable from a program instance are lowered
-(REQ-LOW-lowering-025). With this model a library has no configuration only in
-its source: the model gives it an implicit one, whose instances make its
-`PROGRAM`s reachable, so it lowers as it compiles today. That sentence of the
-lowered program design should read "a library with no program instance".
+Only POUs reachable from a program instance are lowered
+(REQ-LOW-lowering-025), so a library with no program instance lowers nothing.
+With this model a library has no configuration only in its source: the model
+gives it an implicit one, whose instances make its `PROGRAM`s reachable, so it
+lowers as it compiles today.
 
 ### Alternatives for review
 
