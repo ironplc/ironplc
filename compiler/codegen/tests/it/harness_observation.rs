@@ -272,6 +272,35 @@ fn observe_when_written_value_does_not_fit_declared_type_then_fails() {
     );
 }
 
+// A NaN is a value a REAL holds, though it is not equal to itself, so a test
+// can write one.
+#[test]
+fn observe_when_nan_written_to_real_then_program_reads_nan() {
+    run_scans(
+        "PROGRAM main VAR input : REAL; unordered : BOOL; END_VAR unordered := input <> input; END_PROGRAM",
+        &CompilerOptions::default(),
+        |session| {
+            session.write("input", f64::NAN);
+            session.scan(0).unwrap();
+            assert_eq!(session.read("unordered"), true);
+        },
+    );
+}
+
+// A scan that traps still gives a snapshot: the variables as the trap left
+// them.
+#[test]
+fn observe_when_scan_traps_then_snapshot_holds_variables_as_trap_left_them() {
+    let (snapshot, fault) = Snapshot::try_run(
+        "PROGRAM main VAR before : DINT; zero : DINT; after : DINT; END_VAR before := 1; after := before / zero; END_PROGRAM",
+        &CompilerOptions::default(),
+    );
+
+    assert!(fault.is_some());
+    assert_eq!(snapshot.read("before"), 1);
+    assert_eq!(snapshot.read("after"), 0);
+}
+
 // REQ-OBS-codegen-042
 #[test]
 fn observe_when_program_counts_scans_then_value_persists_across_scans() {

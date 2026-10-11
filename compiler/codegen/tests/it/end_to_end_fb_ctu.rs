@@ -51,6 +51,21 @@ END_PROGRAM
 ])]
 // CTU_DINT variant compiles and runs; one count reaches PV=1.
 #[case::dint_variant(CTU_DINT_PROGRAM, &[run(0), expect("result", 1), expect("count", 1)])]
+// CU held TRUE counts once: only a rising edge counts.
+#[case::held_input_counts_once(CTU_PROGRAM, &[
+    write("pulse", 1), run(0), run(1), run(2), expect("count", 1),
+])]
+// CV keeps counting past PV, and Q stays TRUE.
+#[case::counts_past_pv(CTU_PROGRAM, &[
+    pulse("pulse", 5, 0), expect("count", 5), expect("result", 1),
+])]
+// An edge that arrives while R is TRUE is used up: when R falls with CU
+// still TRUE there is no edge left to count.
+#[case::edge_during_reset_is_used_up(CTU_PROGRAM, &[
+    write("reset", 1), write("pulse", 1), run(0), expect("count", 0),
+    write("reset", 0), run(1), expect("count", 0),
+    write("pulse", 0), run(2), write("pulse", 1), run(3), expect("count", 1),
+])]
 fn end_to_end_fb_ctu(#[case] source: &str, #[case] steps: &[FbStep]) {
     drive_fb(source, &CompilerOptions::default(), steps);
 }
