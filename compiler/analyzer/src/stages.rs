@@ -191,7 +191,8 @@ pub fn resolve_types(
             .expect("SIZEOF should not conflict with stdlib");
     }
 
-    let mut symbol_environment = SymbolEnvironment::new();
+    let mut symbol_environment =
+        SymbolEnvironment::new().with_bare_globals(options.allow_top_level_var_global);
 
     // Register implicit system globals when the uptime feature is enabled.
     if options.allow_system_uptime_global {
