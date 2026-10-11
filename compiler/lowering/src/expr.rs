@@ -13,7 +13,7 @@ use ironplc_dsl::textual::{
     SymbolicVariableKind, UnaryOp as AstUnaryOp, Variable,
 };
 use ironplc_ir::lowered::{
-    BinaryOp, CompareOp, Const, Expr, Place, ScalarType, ShortCircuitOp, TypeId, TypeKind, UnaryOp,
+    BinaryOp, CompareOp, Expr, Place, ScalarType, ShortCircuitOp, TypeId, TypeKind, UnaryOp,
 };
 
 use crate::variables::BodyFrame;
@@ -169,36 +169,27 @@ impl Lowering<'_> {
         let Some((_, ty)) = self.operated_type(expr) else {
             return Ok(None);
         };
-        let value = match constant {
-            ConstantKind::IntegerLiteral(literal) => {
-                let Ok(value) = i128::try_from(literal.value.clone()) else {
-                    return Ok(None);
-                };
-                if ty.is_real() {
-                    // An integer literal at a real type is that number.
-                    Const::Real(value as f64)
-                } else {
-                    Const::Int(value)
-                }
+        let integer = match constant {
+            // An integer literal at a real type is that number, as a real.
+            ConstantKind::IntegerLiteral(literal) => i128::try_from(literal.value.clone()).ok(),
+            ConstantKind::RealLiteral(literal) => {
+                return Expr::real(literal.value, ty, span).map(Some)
             }
-            ConstantKind::RealLiteral(literal) => Const::Real(literal.value),
-            ConstantKind::Boolean(literal) => Const::Int(match literal.value {
+            ConstantKind::Boolean(literal) => Some(match literal.value {
                 Boolean::True => 1,
                 Boolean::False => 0,
             }),
-            ConstantKind::BitStringLiteral(literal) => {
-                let Ok(value) = i128::try_from(literal.value.value) else {
-                    return Ok(None);
-                };
-                Const::Int(value)
-            }
+            ConstantKind::BitStringLiteral(literal) => i128::try_from(literal.value.value).ok(),
             ConstantKind::CharacterString(_)
             | ConstantKind::Duration(_)
             | ConstantKind::TimeOfDay(_)
             | ConstantKind::Date(_)
             | ConstantKind::DateAndTime(_) => return Ok(None),
         };
-        Expr::constant(value, ty, span).map(Some)
+        let Some(integer) = integer else {
+            return Ok(None);
+        };
+        Expr::integer(integer, ty, span).map(Some)
     }
 
     fn binary(

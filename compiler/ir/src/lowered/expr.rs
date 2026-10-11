@@ -5,17 +5,50 @@ use ironplc_dsl::diagnostic::Diagnostic;
 
 use super::invariant::broken;
 use super::place::Place;
-use super::scalar::ScalarType;
+use super::scalar::{ScalarType, Signedness};
 use super::types::TypeTable;
 
-/// The value of a constant. Its [`ScalarType`] is the type of the expression
-/// that holds it, which says how the value is operated.
+/// The value of a constant, at one of the four operation widths, so a value
+/// always fits its width and a backend emits it as it is.
+///
+/// An integer's signedness is the type of the expression that holds it: an
+/// unsigned value is stored as its bit pattern, so a `UDINT` of 4,000,000,000
+/// is `I32(-294967296)` in an expression of type `i32u`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Const {
-    /// A value of an integer operation type.
-    Int(i128),
-    /// A value of a real operation type.
-    Real(f64),
+    I32(i32),
+    I64(i64),
+    F32(f32),
+    F64(f64),
+}
+
+impl Const {
+    /// The integer the constant stands for, read at the integer type `ty`;
+    /// `None` for a real constant or a type of another width.
+    pub fn integer_value(self, ty: ScalarType) -> Option<i128> {
+        match (self, ty) {
+            (Const::I32(value), ScalarType::I32(Signedness::Signed)) => Some(value.into()),
+            (Const::I32(value), ScalarType::I32(Signedness::Unsigned)) => {
+                Some((value as u32).into())
+            }
+            (Const::I64(value), ScalarType::I64(Signedness::Signed)) => Some(value.into()),
+            (Const::I64(value), ScalarType::I64(Signedness::Unsigned)) => {
+                Some((value as u64).into())
+            }
+            (Const::I32(_) | Const::I64(_) | Const::F32(_) | Const::F64(_), _) => None,
+        }
+    }
+
+    /// Whether the constant is of the width of `ty`.
+    fn has_width_of(self, ty: ScalarType) -> bool {
+        matches!(
+            (self, ty),
+            (Const::I32(_), ScalarType::I32(_))
+                | (Const::I64(_), ScalarType::I64(_))
+                | (Const::F32(_), ScalarType::F32)
+                | (Const::F64(_), ScalarType::F64)
+        )
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -109,23 +142,60 @@ pub struct Expr {
 }
 
 impl Expr {
-    /// The constant `value` of type `ty`, which must hold it
-    /// (REQ-LOW-lowering-041).
+    /// The constant `value` of type `ty`, which is of the width of `ty`, so
+    /// that `ty` holds it (REQ-LOW-lowering-041).
     pub fn constant(value: Const, ty: ScalarType, span: SourceSpan) -> Result<Self, Diagnostic> {
-        let holds = match value {
-            Const::Int(int) => ty
-                .integer_range()
-                .is_some_and(|(min, max)| (min..=max).contains(&int)),
-            Const::Real(_) => ty.is_real(),
-        };
-        if !holds {
+        if !value.has_width_of(ty) {
             return Err(broken(
                 "Expr::constant",
                 &span,
-                format!("{ty} does not hold {value:?}"),
+                format!("{value:?} is not of the width of {ty}"),
             ));
         }
         Ok(Self::new(ExprKind::Const(value), ty, span))
+    }
+
+    /// The integer `value` as a constant of type `ty`. At an integer type,
+    /// `ty` must hold the value. At a real type the constant is the nearest
+    /// real, rounded once from the integer.
+    pub fn integer(value: i128, ty: ScalarType, span: SourceSpan) -> Result<Self, Diagnostic> {
+        let constant = match ty {
+            ScalarType::I32(Signedness::Signed) => i32::try_from(value).ok().map(Const::I32),
+            ScalarType::I32(Signedness::Unsigned) => {
+                u32::try_from(value).ok().map(|v| Const::I32(v as i32))
+            }
+            ScalarType::I64(Signedness::Signed) => i64::try_from(value).ok().map(Const::I64),
+            ScalarType::I64(Signedness::Unsigned) => {
+                u64::try_from(value).ok().map(|v| Const::I64(v as i64))
+            }
+            ScalarType::F32 => Some(Const::F32(value as f32)),
+            ScalarType::F64 => Some(Const::F64(value as f64)),
+            ScalarType::Ref | ScalarType::Interface => None,
+        };
+        let constant = constant.ok_or_else(|| {
+            broken(
+                "Expr::integer",
+                &span,
+                format!("{ty} does not hold {value}"),
+            )
+        })?;
+        Ok(Self::new(ExprKind::Const(constant), ty, span))
+    }
+
+    /// The real `value` as a constant of the real type `ty`, rounded to it.
+    pub fn real(value: f64, ty: ScalarType, span: SourceSpan) -> Result<Self, Diagnostic> {
+        let constant = match ty {
+            ScalarType::F32 => Const::F32(value as f32),
+            ScalarType::F64 => Const::F64(value),
+            ScalarType::I32(_) | ScalarType::I64(_) | ScalarType::Ref | ScalarType::Interface => {
+                return Err(broken(
+                    "Expr::real",
+                    &span,
+                    format!("{ty} is not a real type"),
+                ))
+            }
+        };
+        Ok(Self::new(ExprKind::Const(constant), ty, span))
     }
 
     /// The value at `place`, at the operation type of the place's type

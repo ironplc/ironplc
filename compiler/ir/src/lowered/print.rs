@@ -27,8 +27,12 @@ impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let ty = self.ty();
         match self.kind() {
-            ExprKind::Const(Const::Int(value)) => write!(f, "(const {ty} {value})"),
-            ExprKind::Const(Const::Real(value)) => write!(f, "(const {ty} {value:?})"),
+            ExprKind::Const(constant) => match (constant, constant.integer_value(ty)) {
+                (_, Some(value)) => write!(f, "(const {ty} {value})"),
+                (Const::F32(value), None) => write!(f, "(const {ty} {value:?})"),
+                (Const::F64(value), None) => write!(f, "(const {ty} {value:?})"),
+                (Const::I32(_) | Const::I64(_), None) => write!(f, "(const {ty} {constant:?})"),
+            },
             ExprKind::Read(place) => write!(f, "(read {ty} {place})"),
             ExprKind::Convert(value) => write!(f, "(convert {ty} {value})"),
             ExprKind::Truncate { bits, value } => write!(f, "(truncate {bits} {value})"),

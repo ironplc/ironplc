@@ -66,7 +66,7 @@ fn fixture() -> Fixture {
 }
 
 fn int(value: i128) -> Expr {
-    Expr::constant(Const::Int(value), ScalarType::BOOL, span()).unwrap()
+    Expr::integer(value, ScalarType::BOOL, span()).unwrap()
 }
 
 fn is_internal_error_naming(
@@ -99,24 +99,78 @@ fn ids_when_compared_then_each_is_its_own_type() {
     }
 }
 
-/// REQ-LOW-lowering-041: a constant fits its type.
+/// REQ-LOW-lowering-041: a constant is of its type's width, so its type
+/// holds it.
 #[test]
-fn constant_when_value_outside_type_then_internal_error() {
-    let unsigned = ScalarType::I32(Signedness::Unsigned);
-    assert!(Expr::constant(Const::Int(-1), unsigned, span()).is_err());
-    assert!(Expr::constant(Const::Int(i128::from(u32::MAX)), unsigned, span()).is_ok());
+fn constant_when_width_differs_from_type_then_internal_error() {
     assert!(is_internal_error_naming(
-        Expr::constant(Const::Int(1 << 31), ScalarType::BOOL, span()),
+        Expr::constant(Const::I64(1), ScalarType::BOOL, span()),
         "Expr::constant"
     ));
-    assert!(Expr::constant(Const::Real(1.5), ScalarType::BOOL, span()).is_err());
-    assert!(Expr::constant(Const::Real(1.5), ScalarType::F64, span()).is_ok());
+    assert!(Expr::constant(Const::F32(1.5), ScalarType::F64, span()).is_err());
+    assert!(Expr::constant(Const::F64(1.5), ScalarType::F64, span()).is_ok());
+}
+
+/// REQ-LOW-lowering-041: an integer becomes a constant only of a type that
+/// holds it.
+#[test]
+fn integer_when_value_outside_type_then_internal_error() {
+    let unsigned = ScalarType::I32(Signedness::Unsigned);
+    assert!(Expr::integer(-1, unsigned, span()).is_err());
+    assert!(Expr::integer(i128::from(u32::MAX), unsigned, span()).is_ok());
+    assert!(is_internal_error_naming(
+        Expr::integer(1 << 31, ScalarType::BOOL, span()),
+        "Expr::integer"
+    ));
+    assert!(Expr::integer(1, ScalarType::Ref, span()).is_err());
+}
+
+/// An unsigned constant is stored as its bit pattern and reads back as the
+/// unsigned value it stands for.
+#[test]
+fn integer_when_unsigned_above_signed_range_then_bit_pattern_reads_back() {
+    let unsigned = ScalarType::I32(Signedness::Unsigned);
+    let constant = Expr::integer(4_000_000_000, unsigned, span()).unwrap();
+    assert!(matches!(
+        constant.kind(),
+        ExprKind::Const(Const::I32(-294_967_296))
+    ));
+    assert_eq!(constant.to_string(), "(const i32u 4000000000)");
+    let wide = Expr::integer(
+        i128::from(u64::MAX),
+        ScalarType::I64(Signedness::Unsigned),
+        span(),
+    );
+    assert_eq!(
+        wide.unwrap().to_string(),
+        "(const i64u 18446744073709551615)"
+    );
+}
+
+/// An integer at a real type is rounded once, from the integer, as a literal
+/// written at that type is.
+#[test]
+fn integer_when_real_type_then_rounded_once() {
+    let value = (1i128 << 60) + 1;
+    let constant = Expr::integer(value, ScalarType::F32, span()).unwrap();
+    assert!(matches!(constant.kind(), ExprKind::Const(Const::F32(v)) if *v == value as f32));
+}
+
+/// A real becomes a constant only of a real type, rounded to it.
+#[test]
+fn real_when_integer_type_then_internal_error() {
+    assert!(is_internal_error_naming(
+        Expr::real(1.5, ScalarType::BOOL, span()),
+        "Expr::real"
+    ));
+    let narrowed = Expr::real(0.1, ScalarType::F32, span()).unwrap();
+    assert!(matches!(narrowed.kind(), ExprKind::Const(Const::F32(v)) if *v == 0.1f32));
 }
 
 /// REQ-LOW-lowering-042: the operands of a binary operation have its type.
 #[test]
 fn binary_when_operand_types_differ_then_internal_error() {
-    let wide = Expr::constant(Const::Int(1), ScalarType::I64(Signedness::Signed), span()).unwrap();
+    let wide = Expr::integer(1, ScalarType::I64(Signedness::Signed), span()).unwrap();
     assert!(is_internal_error_naming(
         Expr::binary(BinaryOp::Add, int(1), wide, span()),
         "Expr::binary"
@@ -128,7 +182,7 @@ fn binary_when_operand_types_differ_then_internal_error() {
 /// REQ-LOW-lowering-042: an integer-only operator does not apply to a real.
 #[test]
 fn binary_when_mod_of_reals_then_internal_error() {
-    let real = || Expr::constant(Const::Real(1.0), ScalarType::F32, span()).unwrap();
+    let real = || Expr::real(1.0, ScalarType::F32, span()).unwrap();
     assert!(Expr::binary(BinaryOp::Mod, real(), real(), span()).is_err());
     assert!(Expr::binary(BinaryOp::Div, real(), real(), span()).is_ok());
 }
@@ -136,7 +190,7 @@ fn binary_when_mod_of_reals_then_internal_error() {
 /// REQ-LOW-lowering-043: a comparison compares one type and yields a `BOOL`.
 #[test]
 fn compare_when_types_match_then_bool_and_when_not_then_internal_error() {
-    let real = Expr::constant(Const::Real(1.0), ScalarType::F64, span()).unwrap();
+    let real = Expr::real(1.0, ScalarType::F64, span()).unwrap();
     assert!(is_internal_error_naming(
         Expr::compare(CompareOp::Lt, int(1), real.clone(), span()),
         "Expr::compare"
@@ -289,7 +343,7 @@ fn assign_when_non_null_reference_then_internal_error() {
 /// REQ-LOW-lowering-048: the logical forms apply only to `BOOL` values.
 #[test]
 fn unary_when_bool_not_of_wide_integer_then_internal_error() {
-    let wide = Expr::constant(Const::Int(1), ScalarType::I64(Signedness::Signed), span()).unwrap();
+    let wide = Expr::integer(1, ScalarType::I64(Signedness::Signed), span()).unwrap();
     assert!(Expr::unary(UnaryOp::BoolNot, wide.clone(), span()).is_err());
     assert!(Expr::unary(UnaryOp::BitNot, wide, span()).is_ok());
 }
@@ -300,7 +354,7 @@ fn truncate_when_not_narrower_then_internal_error() {
         Expr::truncate(32, int(1), span()),
         "Expr::truncate"
     ));
-    let real = Expr::constant(Const::Real(1.0), ScalarType::F32, span()).unwrap();
+    let real = Expr::real(1.0, ScalarType::F32, span()).unwrap();
     assert!(Expr::truncate(16, real, span()).is_err());
 }
 

@@ -3,7 +3,7 @@
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
 
-use super::expr::{Const, Expr, ExprKind};
+use super::expr::{Expr, ExprKind};
 use super::ids::TypeId;
 use super::invariant::broken;
 use super::place::Place;
@@ -96,12 +96,13 @@ fn fits(types: &TypeTable, place: TypeId, bits: u8, value: &Expr) -> bool {
     };
     match value.kind() {
         ExprKind::Truncate { bits: to, .. } => *to == bits,
-        ExprKind::Const(Const::Int(int)) => (min..=max).contains(int),
+        ExprKind::Const(constant) => constant
+            .integer_value(value.ty())
+            .is_some_and(|int| (min..=max).contains(&int)),
         ExprKind::Read(source) => types
             .value_range(source.ty())
             .is_some_and(|(low, high)| min <= low && high <= max),
-        ExprKind::Const(Const::Real(_))
-        | ExprKind::Convert(_)
+        ExprKind::Convert(_)
         | ExprKind::Unary { .. }
         | ExprKind::Binary { .. }
         | ExprKind::Compare { .. }
