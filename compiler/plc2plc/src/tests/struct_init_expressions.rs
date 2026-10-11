@@ -1,5 +1,6 @@
-//! Round-tripping of general expressions used as struct/FB-instance
-//! initializer values, e.g. `tonDelta : TON := (PT := pDevice^.Delta);`.
+//! Round-tripping of struct/FB-instance initializer values: general
+//! expressions, e.g. `tonDelta : TON := (PT := pDevice^.Delta);`, and
+//! nested arrays and structures.
 
 use super::common::*;
 
@@ -59,4 +60,57 @@ END_VAR
 END_FUNCTION_BLOCK
 ";
     assert_round_trips(source, &CompilerOptions::default());
+}
+
+/// A member that is itself an array or a structure renders in brackets or
+/// parentheses.
+#[test]
+fn write_to_string_when_struct_init_member_is_array_or_structure_then_round_trips() {
+    let source = "
+TYPE
+    Inner : STRUCT x : INT; END_STRUCT;
+    Outer : STRUCT values : ARRAY[1..2] OF INT; inner : Inner; END_STRUCT;
+END_TYPE
+
+PROGRAM main
+VAR
+    o : Outer := (values := [1, 2], inner := (x := 3));
+END_VAR
+END_PROGRAM
+";
+    let rendered = assert_round_trips(source, &CompilerOptions::default());
+
+    assert!(
+        rendered.contains("( values := [ 1 , 2 ] , inner := ( x := 3 ) )"),
+        "Rendered:\n{rendered}"
+    );
+}
+
+/// After analysis, a function block instance's member initializer is a
+/// function block initializer rather than a late-resolved one; its members
+/// still render.
+#[test]
+fn write_to_string_when_analyzed_fb_instance_has_member_initializer_then_round_trips() {
+    let source = "
+FUNCTION_BLOCK Counter
+VAR_INPUT
+    preset : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+    counter : Counter := (preset := 5);
+END_VAR
+END_PROGRAM
+";
+    let options = CompilerOptions::default();
+    let parsed = parse_program(source, &FileId::default(), &options).unwrap();
+    let (analyzed, _) = analyze_and_render_with_types(source, &options);
+
+    let rendered = write_to_string(&analyzed).unwrap();
+
+    let reparsed = parse_program(&rendered, &FileId::default(), &options)
+        .unwrap_or_else(|e| panic!("Rendered output did not re-parse: {e:?}\n{rendered}"));
+    assert_eq!(parsed, reparsed, "Rendered:\n{rendered}");
 }
