@@ -29,5 +29,8 @@ fn main() {
         "execution-model.md",
         // Initial values (`REQ-IV-analyzer-*`): the starting value of each declaration.
         "initial-values.md",
+        // Variable binding (`REQ-VB-analyzer-*`): which declaration a
+        // variable name refers to.
+        "variable-binding.md",
     ]);
 }

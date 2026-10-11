@@ -75,7 +75,10 @@ pub(super) fn encode(value: &Value, tag: u8) -> Result<Slot, String> {
         (UINT | WORD, Value::Int(i)) => Slot::from_i32(fit::<u16>(*i)?.into()),
         (UDINT | DWORD, Value::Int(i)) => Slot::from_i32(fit::<u32>(*i)? as i32),
         (ULINT | LWORD, Value::Int(i)) => Slot::from_u64(fit::<u64>(*i)?),
-        (REAL, Value::Real(r)) if f64::from(*r as f32) == *r => Slot::from_f32(*r as f32),
+        // A NaN is not equal to itself, so it is admitted by name.
+        (REAL, Value::Real(r)) if r.is_nan() || f64::from(*r as f32) == *r => {
+            Slot::from_f32(*r as f32)
+        }
         (LREAL, Value::Real(r)) => Slot::from_f64(*r),
         (TIME, Value::Duration(d)) => Slot::from_i32(fit::<i32>(millis(*d)?)?),
         (LTIME, Value::Duration(d)) => Slot::from_i64(fit::<i64>(millis(*d)?)?),

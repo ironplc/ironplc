@@ -19,7 +19,9 @@ use ironplc_dsl::visitor::Visitor;
 use crate::call_assignment_check::bind_inputs;
 use crate::callee_resolution::{FunctionBlocks, InstanceTypes};
 use crate::function_environment::FunctionEnvironment;
-use crate::symbol_environment::{ScopeKind, ScopePath, ScopeTracker, SymbolEnvironment};
+use crate::symbol_environment::{
+    Resolution, ScopeKind, ScopePath, ScopeTracker, SymbolEnvironment,
+};
 use crate::type_environment::TypeEnvironment;
 
 /// The writes of a library, and its `VAR_GLOBAL` names with whether every
@@ -156,8 +158,8 @@ impl WriteCollector<'_> {
     /// The scope whose declaration a bare `name` reaches from the current
     /// scope: the innermost enclosing unit that declares it, then the
     /// `EXTENDS` chain of the enclosing function block, then the globals. A
-    /// `VAR_EXTERNAL` declaration keeps its own scope; `mark` decides that
-    /// the write changes the global.
+    /// `VAR_EXTERNAL` declaration keeps its own scope; `mark` asks which
+    /// variable the write changes.
     fn declaring_scope(&self, name: &Id) -> ScopeKind {
         let symbol = self.symbol_environment.find(name, &self.current_scope());
         match symbol {
@@ -180,10 +182,13 @@ impl WriteCollector<'_> {
 
     fn mark(&mut self, name: &Id) {
         let declaration = self.declaring_scope(name);
-        // A write through a `VAR_EXTERNAL` writes its global.
-        let written = match self.symbol_environment.find(name, &declaration) {
-            Some(symbol) if symbol.is_external => ScopeKind::Global,
-            _ => declaration.clone(),
+        // The variable the write changes is the one the name resolves to:
+        // the global, for a write through a `VAR_EXTERNAL`.
+        let written = match self.symbol_environment.resolve_variable(name, &declaration) {
+            Resolution::Variable { decl, .. } | Resolution::GlobalNotVisible { decl, .. } => {
+                decl.scope
+            }
+            Resolution::NotAVariable | Resolution::Undeclared => declaration.clone(),
         };
         self.record(declaration, written, name);
     }
