@@ -11,7 +11,8 @@ repository.workspace = true
 maintenance = { status = "experimental" }
 
 [dependencies]
-# For `SourceSpan` alone; see `specs/design/execution-model.md`, "Source
+# For `SourceSpan`, `FileId`, `Label` and `Diagnostic`, which the crate
+# re-exports for backends; see `specs/design/execution-model.md`, "Source
 # positions". REQ-EM-ir-002 allows no other compiler crate here.
 ironplc-dsl = { path = "../dsl", version = "0.248.0" }
 time = "0.3.47"
