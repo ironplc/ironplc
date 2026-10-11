@@ -15,9 +15,9 @@
 //! those, and its operation width differs from the target's. An operation
 //! computes at its own type when it is arithmetic, a negation or `NOT`, an
 //! `AND`, `OR` or `XOR`, or a standard function on one value or of several
-//! inputs of one type ([`Intrinsic::computes_at_own_type`]). A call to a
+//! inputs of one type ([`BuiltinFunction::computes_at_own_type`]). A call to a
 //! user-defined function or a method, a standard function whose signature
-//! fixes its result type ([`Intrinsic::result_has_fixed_type`]), and a
+//! fixes its result type ([`BuiltinFunction::result_has_fixed_type`]), and a
 //! dereference, have the type the function returns or the referenced
 //! variable has, and convert to their context too. Any other value -- a
 //! literal, a call to `TRUNC` -- is
@@ -34,11 +34,11 @@ use ironplc_dsl::type_id::TypeId;
 
 use super::arithmetic::arithmetic_operator;
 use super::ImplicitConversions;
+use crate::builtin_function::{is_bitwise, BuiltinFunction};
 use crate::intermediates::conversion_target::concrete;
 use crate::intermediates::numeric_operation::{
     numeric_operation_width, operation_width_of, OperationWidth,
 };
-use crate::intrinsic::{is_bitwise, Intrinsic};
 use crate::semantic_type::{ByteSized, SemanticType};
 use crate::variable_type;
 
@@ -201,12 +201,12 @@ impl ImplicitConversions<'_> {
             // arithmetic operator, an operation on one value and a function of
             // several inputs of one type compute at their own type, and any
             // other standard function at its context's.
-            ExprKind::Function(func) => match self.intrinsic_of(func) {
+            ExprKind::Function(func) => match self.builtin_function_of(func) {
                 None => true,
-                Some(intrinsic) => {
+                Some(builtin) => {
                     self.is_numeric_pair(func, expr)
-                        || intrinsic.computes_at_own_type()
-                        || intrinsic.result_has_fixed_type()
+                        || builtin.computes_at_own_type()
+                        || builtin.result_has_fixed_type()
                 }
             },
             // A method returns its declared type, and a dereference reads the
@@ -225,8 +225,12 @@ impl ImplicitConversions<'_> {
 
     /// The operation the standard function `func` calls, or `None` for a
     /// user-defined function.
-    pub(super) fn intrinsic_of(&self, func: &Function) -> Option<Intrinsic> {
-        self.context.functions().get(&func.name)?.intrinsic.clone()
+    pub(super) fn builtin_function_of(&self, func: &Function) -> Option<BuiltinFunction> {
+        self.context
+            .functions()
+            .get(&func.name)?
+            .builtin_function
+            .clone()
     }
 
     /// Returns `true` when `func`, the call `expr`, is the function form of

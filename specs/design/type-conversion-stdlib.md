@@ -72,7 +72,7 @@ Starting at 0x037E (next available after ATAN_F64):
 
 ### Codegen Routing
 
-Each conversion's signature names the intrinsic `Intrinsic::Conversion` with its source and target types (`analyzer/src/intermediates/stdlib_conversion_function.rs`). `compile_function_call` routes a call by that intrinsic, never by parsing the function's name: a conversion to or from `STRING` goes to `compile_string_conversion`, and any other to `compile_type_conversion`.
+Each conversion's signature names the built-in function `BuiltinFunction::Conversion` with its source and target types (`analyzer/src/intermediates/stdlib_conversion_function.rs`). `compile_function_call` routes a call by that built-in function, never by parsing the function's name: a conversion to or from `STRING` goes to `compile_string_conversion`, and any other to `compile_type_conversion`.
 
 The handler determines which opcode to emit based on source and target VarTypeInfo:
 

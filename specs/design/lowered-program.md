@@ -1619,7 +1619,7 @@ today.
 |---|---|---|
 | Narrowing before a store | `emit_truncation` at each store site | `Truncate` |
 | Logical or bitwise operator | `emit_not` and the `AND`, `OR` and `XOR` emitters, from the signedness of the operation type | Distinct operators |
-| Callee | The analyzer's enum on the signature (to become `BuiltinFunction`, see [Names](#names)), dispatched by `compile_intrinsic`; then `lookup_builtin` picks a `func_id` from the operation width | `Callee`, with the `Intrinsic` for the operand types (REQ-LOW-lowering-147) |
+| Callee | The analyzer's `BuiltinFunction` on the signature, dispatched by `compile_intrinsic`; then `lookup_builtin` picks a `func_id` from the operation width | `Callee`, with the `Intrinsic` for the operand types (REQ-LOW-lowering-147) |
 | Implementers of a call through an interface | Not made; calls through an interface are not compiled | `Callee::Interface` (REQ-LOW-lowering-105) |
 | Capacity of an intermediate string result | Codegen: a bound per expression (`string_width.rs`), and a temporary buffer as large as the largest string in the program ([issue 2118](https://github.com/ironplc/ironplc/issues/2118)) | The capacity of the `StrExpr`'s `StringShape` |
 | Argument passing mode | `ParamPassing` in `compile.rs` | `Arg` variant |
@@ -1855,7 +1855,7 @@ Nothing is deleted before its last reader has moved to the lowered program.
 | `rule_constant_range` | Keep | It runs after the recording pass. It checks a literal against its recorded type, and reads through a conversion to check against the operand types as written (see [Decisions](#4-decisions)). |
 | `intermediates/` | Keep | Its signatures carry the `BuiltinFunction` identity. |
 | `FunctionEnvironment` | Keep | Signatures of built-in functions name their `BuiltinFunction` (REQ-LOW-analyzer-070). |
-| `Intrinsic` (`intrinsic.rs`) | Keep, renamed | Renamed `BuiltinFunction` (see [Names](#names)), so that `Intrinsic` names only the IR's typed enum. |
+| `BuiltinFunction` (`builtin_function.rs`) | Keep | Formerly `Intrinsic`; renamed (see [Names](#names)), so that `Intrinsic` names only the IR's typed enum. |
 | `SymbolEnvironment` | Keep | Supplies the declarations `VarId`s are allocated from: lowering asks `resolve_variable` which declaration each name refers to, and allocates one `VarId` for each `DeclRef` it answers with ([Variable Binding](variable-binding.md)). |
 | `execution_model` | Move to lowering | Builds the execution model until lowering exists (ADR-0065); moves into `ironplc-lowering` unchanged, and the analyzer drops its dependency on `ironplc-ir`. |
 | `xform_resolve_initial_values` | Keep | Completes every initializer ([Initial Values](initial-values.md)). Codegen runs it today, and lowering runs it once lowering exists. |
@@ -1913,12 +1913,13 @@ first a `TypeRepr` and the second a `Type`, and rustc separates `hir::Ty`, as
 written, from `ty::Ty`. `SemanticType` is the second kind, so `TypeRepr` would
 name the wrong one.
 
-Two renames remain, each one mechanical prefactor:
+The analyzer's enum of built-in functions, formerly `Intrinsic`
+(`intrinsic.rs`), is `BuiltinFunction` (`builtin_function.rs`), so that
+`Intrinsic` names only the IR's typed enum (see
+[Position in the Pipeline](#1-position-in-the-pipeline)).
 
-- The analyzer's enum of built-in functions, today `Intrinsic`
-  (`intrinsic.rs`), becomes `BuiltinFunction`, so that `Intrinsic` names only
-  the IR's typed enum (see
-  [Position in the Pipeline](#1-position-in-the-pipeline)).
+One rename remains, a mechanical prefactor:
+
 - ADR-0056 and the doc comment of `xform_insert_implicit_conversions` call
   that transform "a lowering pass". The doc comment is reworded to call it the
   recording pass, as below, and ADR-0058 and a postscript to ADR-0056 record
@@ -2210,7 +2211,7 @@ This section constrains the order of work; it is not a work breakdown.
 
 **Before lowering covers a construct**
 
-- **Renames.** The renames that remain in [Names](#names) each land as one
+- **Renames.** The rename that remains in [Names](#names) lands as one
   mechanical prefactor.
 - **Decisions recorded first.** The analyzer records each decision in the
   first table of [Decisions](#4-decisions), and each check only codegen makes

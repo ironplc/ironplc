@@ -6,7 +6,7 @@
 //!
 //! The type conversion functions (INT_TO_REAL, REAL_TO_INT, etc.) are in
 //! `stdlib_conversion_function` and the time and date functions in
-//! `stdlib_time_function`. Each signature names the [`Intrinsic`] it stands
+//! `stdlib_time_function`. Each signature names the [`BuiltinFunction`] it stands
 //! for.
 //!
 //! These functions are automatically available in the function environment
@@ -15,11 +15,11 @@
 use ironplc_dsl::common::TypeName;
 use ironplc_dsl::core::Id;
 
+use crate::builtin_function::{BitShift, BuiltinFunction, NumericFunction, StringFunction};
 use crate::function_environment::FunctionSignature;
 use crate::intermediates::operator_function_form;
 use crate::intermediates::stdlib_conversion_function;
 use crate::intermediates::stdlib_time_function;
-use crate::intrinsic::{BitShift, Intrinsic, NumericFunction, StringFunction};
 use crate::semantic_type::SemanticFunctionParameter;
 
 /// Helper to create an input parameter.
@@ -49,35 +49,35 @@ fn get_numeric_functions() -> Vec<FunctionSignature> {
         // ABS: absolute value (ANY_NUM -> ANY_NUM)
         FunctionSignature::stdlib(
             "ABS",
-            Intrinsic::Numeric(NumericFunction::Abs),
+            BuiltinFunction::Numeric(NumericFunction::Abs),
             TypeName::from("ANY_NUM"),
             vec![input_param("IN", "ANY_NUM")],
         ),
         // SQRT: square root (ANY_REAL -> ANY_REAL)
         FunctionSignature::stdlib(
             "SQRT",
-            Intrinsic::Numeric(NumericFunction::Sqrt),
+            BuiltinFunction::Numeric(NumericFunction::Sqrt),
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
         // MIN: minimum of two values (ANY_NUM, ANY_NUM -> ANY_NUM)
         FunctionSignature::stdlib(
             "MIN",
-            Intrinsic::Numeric(NumericFunction::Min),
+            BuiltinFunction::Numeric(NumericFunction::Min),
             TypeName::from("ANY_NUM"),
             vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
         ),
         // MAX: maximum of two values (ANY_NUM, ANY_NUM -> ANY_NUM)
         FunctionSignature::stdlib(
             "MAX",
-            Intrinsic::Numeric(NumericFunction::Max),
+            BuiltinFunction::Numeric(NumericFunction::Max),
             TypeName::from("ANY_NUM"),
             vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
         ),
         // LIMIT: clamp value to range (ANY_NUM, ANY_NUM, ANY_NUM -> ANY_NUM)
         FunctionSignature::stdlib(
             "LIMIT",
-            Intrinsic::Numeric(NumericFunction::Limit),
+            BuiltinFunction::Numeric(NumericFunction::Limit),
             TypeName::from("ANY_NUM"),
             vec![
                 input_param("MN", "ANY_NUM"),
@@ -88,7 +88,7 @@ fn get_numeric_functions() -> Vec<FunctionSignature> {
         // SEL: binary selection (BOOL, ANY_NUM, ANY_NUM -> ANY_NUM)
         FunctionSignature::stdlib(
             "SEL",
-            Intrinsic::Numeric(NumericFunction::Sel),
+            BuiltinFunction::Numeric(NumericFunction::Sel),
             TypeName::from("ANY_NUM"),
             vec![
                 input_param("G", "BOOL"),
@@ -99,70 +99,70 @@ fn get_numeric_functions() -> Vec<FunctionSignature> {
         // LN: natural logarithm (ANY_REAL -> ANY_REAL)
         FunctionSignature::stdlib(
             "LN",
-            Intrinsic::Numeric(NumericFunction::Ln),
+            BuiltinFunction::Numeric(NumericFunction::Ln),
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
         // LOG: base-10 logarithm (ANY_REAL -> ANY_REAL)
         FunctionSignature::stdlib(
             "LOG",
-            Intrinsic::Numeric(NumericFunction::Log),
+            BuiltinFunction::Numeric(NumericFunction::Log),
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
         // EXP: natural exponential (ANY_REAL -> ANY_REAL)
         FunctionSignature::stdlib(
             "EXP",
-            Intrinsic::Numeric(NumericFunction::Exp),
+            BuiltinFunction::Numeric(NumericFunction::Exp),
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
         // SIN: sine (ANY_REAL -> ANY_REAL)
         FunctionSignature::stdlib(
             "SIN",
-            Intrinsic::Numeric(NumericFunction::Sin),
+            BuiltinFunction::Numeric(NumericFunction::Sin),
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
         // COS: cosine (ANY_REAL -> ANY_REAL)
         FunctionSignature::stdlib(
             "COS",
-            Intrinsic::Numeric(NumericFunction::Cos),
+            BuiltinFunction::Numeric(NumericFunction::Cos),
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
         // TAN: tangent (ANY_REAL -> ANY_REAL)
         FunctionSignature::stdlib(
             "TAN",
-            Intrinsic::Numeric(NumericFunction::Tan),
+            BuiltinFunction::Numeric(NumericFunction::Tan),
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
         // ASIN: arc sine (ANY_REAL -> ANY_REAL)
         FunctionSignature::stdlib(
             "ASIN",
-            Intrinsic::Numeric(NumericFunction::Asin),
+            BuiltinFunction::Numeric(NumericFunction::Asin),
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
         // ACOS: arc cosine (ANY_REAL -> ANY_REAL)
         FunctionSignature::stdlib(
             "ACOS",
-            Intrinsic::Numeric(NumericFunction::Acos),
+            BuiltinFunction::Numeric(NumericFunction::Acos),
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
         // ATAN: arc tangent (ANY_REAL -> ANY_REAL)
         FunctionSignature::stdlib(
             "ATAN",
-            Intrinsic::Numeric(NumericFunction::Atan),
+            BuiltinFunction::Numeric(NumericFunction::Atan),
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
         // ATAN2: two-argument arc tangent (ANY_REAL, ANY_REAL -> ANY_REAL)
         FunctionSignature::stdlib(
             "ATAN2",
-            Intrinsic::Numeric(NumericFunction::Atan2),
+            BuiltinFunction::Numeric(NumericFunction::Atan2),
             TypeName::from("ANY_REAL"),
             vec![
                 input_param("IN1", "ANY_REAL"),
@@ -172,7 +172,7 @@ fn get_numeric_functions() -> Vec<FunctionSignature> {
         // EXPT: exponentiation (ANY_NUM, ANY_NUM -> ANY_NUM)
         FunctionSignature::stdlib(
             "EXPT",
-            Intrinsic::Numeric(NumericFunction::Expt),
+            BuiltinFunction::Numeric(NumericFunction::Expt),
             TypeName::from("ANY_NUM"),
             vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
         ),
@@ -197,7 +197,7 @@ fn get_selection_functions() -> Vec<FunctionSignature> {
         // MUX supports K + 2..16 IN values = 3..17 total input arguments
         FunctionSignature::stdlib_extensible(
             "MUX",
-            Intrinsic::Mux,
+            BuiltinFunction::Mux,
             TypeName::from("ANY_NUM"),
             vec![
                 input_param("K", "ANY_INT"),
@@ -223,7 +223,7 @@ fn get_assignment_functions() -> Vec<FunctionSignature> {
         // MOVE: assignment (ANY_NUM -> ANY_NUM)
         FunctionSignature::stdlib(
             "MOVE",
-            Intrinsic::Move,
+            BuiltinFunction::Move,
             TypeName::from("ANY_NUM"),
             vec![input_param("IN", "ANY_NUM")],
         ),
@@ -241,7 +241,7 @@ fn get_assignment_functions() -> Vec<FunctionSignature> {
 fn get_trunc_function() -> Vec<FunctionSignature> {
     vec![FunctionSignature::stdlib(
         "TRUNC",
-        Intrinsic::Trunc,
+        BuiltinFunction::Trunc,
         TypeName::from("ANY_INT"),
         vec![input_param("IN", "ANY_REAL")],
     )]
@@ -259,13 +259,13 @@ fn get_bcd_functions() -> Vec<FunctionSignature> {
     vec![
         FunctionSignature::stdlib(
             "BCD_TO_INT",
-            Intrinsic::BcdToInt,
+            BuiltinFunction::BcdToInt,
             TypeName::from("ANY_INT"),
             vec![input_param("IN", "ANY_BIT")],
         ),
         FunctionSignature::stdlib(
             "INT_TO_BCD",
-            Intrinsic::IntToBcd,
+            BuiltinFunction::IntToBcd,
             TypeName::from("ANY_BIT"),
             vec![input_param("IN", "ANY_INT")],
         ),
@@ -285,25 +285,25 @@ fn get_bitshift_functions() -> Vec<FunctionSignature> {
     vec![
         FunctionSignature::stdlib(
             "SHL",
-            Intrinsic::BitShift(BitShift::Shl),
+            BuiltinFunction::BitShift(BitShift::Shl),
             TypeName::from("ANY_BIT"),
             vec![input_param("IN", "ANY_BIT"), input_param("N", "ANY_INT")],
         ),
         FunctionSignature::stdlib(
             "SHR",
-            Intrinsic::BitShift(BitShift::Shr),
+            BuiltinFunction::BitShift(BitShift::Shr),
             TypeName::from("ANY_BIT"),
             vec![input_param("IN", "ANY_BIT"), input_param("N", "ANY_INT")],
         ),
         FunctionSignature::stdlib(
             "ROL",
-            Intrinsic::BitShift(BitShift::Rol),
+            BuiltinFunction::BitShift(BitShift::Rol),
             TypeName::from("ANY_BIT"),
             vec![input_param("IN", "ANY_BIT"), input_param("N", "ANY_INT")],
         ),
         FunctionSignature::stdlib(
             "ROR",
-            Intrinsic::BitShift(BitShift::Ror),
+            BuiltinFunction::BitShift(BitShift::Ror),
             TypeName::from("ANY_BIT"),
             vec![input_param("IN", "ANY_BIT"), input_param("N", "ANY_INT")],
         ),
@@ -318,14 +318,14 @@ fn get_string_functions() -> Vec<FunctionSignature> {
         // LEN: current length of a string (ANY_STRING -> INT)
         FunctionSignature::stdlib(
             "LEN",
-            Intrinsic::String(StringFunction::Len),
+            BuiltinFunction::String(StringFunction::Len),
             TypeName::from("INT"),
             vec![input_param("IN", "ANY_STRING")],
         ),
         // FIND: find first occurrence of IN2 within IN1 (ANY_STRING, ANY_STRING -> INT)
         FunctionSignature::stdlib(
             "FIND",
-            Intrinsic::String(StringFunction::Find),
+            BuiltinFunction::String(StringFunction::Find),
             TypeName::from("INT"),
             vec![
                 input_param("IN1", "ANY_STRING"),
@@ -336,7 +336,7 @@ fn get_string_functions() -> Vec<FunctionSignature> {
         // (ANY_STRING, ANY_STRING, ANY_INT, ANY_INT -> ANY_STRING)
         FunctionSignature::stdlib(
             "REPLACE",
-            Intrinsic::String(StringFunction::Replace),
+            BuiltinFunction::String(StringFunction::Replace),
             TypeName::from("ANY_STRING"),
             vec![
                 input_param("IN1", "ANY_STRING"),
@@ -349,7 +349,7 @@ fn get_string_functions() -> Vec<FunctionSignature> {
         // (ANY_STRING, ANY_STRING, ANY_INT -> ANY_STRING)
         FunctionSignature::stdlib(
             "INSERT",
-            Intrinsic::String(StringFunction::Insert),
+            BuiltinFunction::String(StringFunction::Insert),
             TypeName::from("ANY_STRING"),
             vec![
                 input_param("IN1", "ANY_STRING"),
@@ -361,7 +361,7 @@ fn get_string_functions() -> Vec<FunctionSignature> {
         // (ANY_STRING, ANY_INT, ANY_INT -> ANY_STRING)
         FunctionSignature::stdlib(
             "DELETE",
-            Intrinsic::String(StringFunction::Delete),
+            BuiltinFunction::String(StringFunction::Delete),
             TypeName::from("ANY_STRING"),
             vec![
                 input_param("IN1", "ANY_STRING"),
@@ -373,7 +373,7 @@ fn get_string_functions() -> Vec<FunctionSignature> {
         // (ANY_STRING, ANY_INT -> ANY_STRING)
         FunctionSignature::stdlib(
             "LEFT",
-            Intrinsic::String(StringFunction::Left),
+            BuiltinFunction::String(StringFunction::Left),
             TypeName::from("ANY_STRING"),
             vec![input_param("IN", "ANY_STRING"), input_param("L", "ANY_INT")],
         ),
@@ -381,7 +381,7 @@ fn get_string_functions() -> Vec<FunctionSignature> {
         // (ANY_STRING, ANY_INT -> ANY_STRING)
         FunctionSignature::stdlib(
             "RIGHT",
-            Intrinsic::String(StringFunction::Right),
+            BuiltinFunction::String(StringFunction::Right),
             TypeName::from("ANY_STRING"),
             vec![input_param("IN", "ANY_STRING"), input_param("L", "ANY_INT")],
         ),
@@ -389,7 +389,7 @@ fn get_string_functions() -> Vec<FunctionSignature> {
         // (ANY_STRING, ANY_INT, ANY_INT -> ANY_STRING)
         FunctionSignature::stdlib(
             "MID",
-            Intrinsic::String(StringFunction::Mid),
+            BuiltinFunction::String(StringFunction::Mid),
             TypeName::from("ANY_STRING"),
             vec![
                 input_param("IN", "ANY_STRING"),
@@ -401,7 +401,7 @@ fn get_string_functions() -> Vec<FunctionSignature> {
         // (ANY_STRING, ANY_STRING -> ANY_STRING)
         FunctionSignature::stdlib(
             "CONCAT",
-            Intrinsic::String(StringFunction::Concat),
+            BuiltinFunction::String(StringFunction::Concat),
             TypeName::from("ANY_STRING"),
             vec![
                 input_param("IN1", "ANY_STRING"),
@@ -495,13 +495,13 @@ pub fn get_compiler_intrinsic_functions() -> Vec<FunctionSignature> {
     vec![
         FunctionSignature::stdlib(
             "__TRUNC",
-            Intrinsic::Numeric(NumericFunction::TruncReal),
+            BuiltinFunction::Numeric(NumericFunction::TruncReal),
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
         FunctionSignature::stdlib(
             "__MOD",
-            Intrinsic::Numeric(NumericFunction::ModReal),
+            BuiltinFunction::Numeric(NumericFunction::ModReal),
             TypeName::from("ANY_REAL"),
             vec![
                 input_param("IN1", "ANY_REAL"),
@@ -524,7 +524,7 @@ pub fn get_compiler_intrinsic_functions() -> Vec<FunctionSignature> {
 pub fn get_sizeof_function() -> FunctionSignature {
     FunctionSignature::stdlib(
         "SIZEOF",
-        Intrinsic::Sizeof,
+        BuiltinFunction::Sizeof,
         TypeName::from("ANY_INT"),
         vec![input_param("IN", "ANY")],
     )
@@ -533,8 +533,8 @@ pub fn get_sizeof_function() -> FunctionSignature {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::builtin_function::TimeFunction;
     use crate::intermediates::operator_function_form::FormOf;
-    use crate::intrinsic::TimeFunction;
     use ironplc_dsl::common::{ElementaryTypeName, FunctionReturnType};
     use ironplc_dsl::textual::Operator;
     use rstest::rstest;
@@ -733,41 +733,44 @@ mod tests {
         assert!(functions.iter().any(|f| f.name.original() == "__MOD"));
     }
 
-    /// Every family of standard function names its intrinsic, so codegen
+    /// Every family of standard function names its built-in function, so codegen
     /// never has to recognize a function by its spelling.
     #[rstest]
-    #[case::numeric("ABS", Intrinsic::Numeric(NumericFunction::Abs))]
-    #[case::compiler_intrinsic("__MOD", Intrinsic::Numeric(NumericFunction::ModReal))]
-    #[case::bit_shift("ROR", Intrinsic::BitShift(BitShift::Ror))]
-    #[case::string("CONCAT", Intrinsic::String(StringFunction::Concat))]
-    #[case::selection("MUX", Intrinsic::Mux)]
-    #[case::bcd("INT_TO_BCD", Intrinsic::IntToBcd)]
-    #[case::operator_form("ADD", Intrinsic::Operator(FormOf::Arithmetic(Operator::Add)))]
+    #[case::numeric("ABS", BuiltinFunction::Numeric(NumericFunction::Abs))]
+    #[case::compiler_intrinsic("__MOD", BuiltinFunction::Numeric(NumericFunction::ModReal))]
+    #[case::bit_shift("ROR", BuiltinFunction::BitShift(BitShift::Ror))]
+    #[case::string("CONCAT", BuiltinFunction::String(StringFunction::Concat))]
+    #[case::selection("MUX", BuiltinFunction::Mux)]
+    #[case::bcd("INT_TO_BCD", BuiltinFunction::IntToBcd)]
+    #[case::operator_form("ADD", BuiltinFunction::Operator(FormOf::Arithmetic(Operator::Add)))]
     #[case::conversion(
         "INT_TO_REAL",
-        Intrinsic::Conversion {
+        BuiltinFunction::Conversion {
             source: ElementaryTypeName::INT,
             target: ElementaryTypeName::REAL,
         }
     )]
     #[case::time(
         "SUB_LTIME",
-        Intrinsic::Time { function: TimeFunction::SubTime, long: true }
+        BuiltinFunction::Time { function: TimeFunction::SubTime, long: true }
     )]
-    fn get_all_stdlib_functions_when_registered_then_names_its_intrinsic(
+    fn get_all_stdlib_functions_when_registered_then_names_its_builtin_function(
         #[case] name: &str,
-        #[case] intrinsic: Intrinsic,
+        #[case] builtin: BuiltinFunction,
     ) {
         let sig = get_all_stdlib_functions()
             .into_iter()
             .find(|f| f.name == Id::from(name));
 
-        assert_eq!(sig.and_then(|sig| sig.intrinsic), Some(intrinsic));
+        assert_eq!(sig.and_then(|sig| sig.builtin_function), Some(builtin));
     }
 
     #[test]
     fn get_sizeof_function_when_called_then_names_sizeof() {
-        assert_eq!(get_sizeof_function().intrinsic, Some(Intrinsic::Sizeof));
+        assert_eq!(
+            get_sizeof_function().builtin_function,
+            Some(BuiltinFunction::Sizeof)
+        );
     }
 
     #[test]

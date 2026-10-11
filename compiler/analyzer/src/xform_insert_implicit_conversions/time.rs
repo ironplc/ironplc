@@ -30,18 +30,21 @@ use ironplc_dsl::textual::{Expr, ExprType, Function, Operator, ParamAssignmentKi
 use ironplc_dsl::type_id::TypeId;
 
 use super::ImplicitConversions;
+use crate::builtin_function::BuiltinFunction;
 use crate::intermediates::arithmetic_overload::typed_overload;
 use crate::intermediates::conversion_target::concrete;
 use crate::intermediates::numeric_operation::{
     literal_default_type, operation_width_of, OperationWidth,
 };
-use crate::intrinsic::Intrinsic;
 
 impl ImplicitConversions<'_> {
     /// Records the conversions of the inputs of `func` when it is a call to a
     /// typed time or date function, such as `ADD_LTIME(lt, t)`.
     pub(super) fn record_time_function_inputs(&self, func: &mut Function) {
-        if !matches!(self.intrinsic_of(func), Some(Intrinsic::Time { .. })) {
+        if !matches!(
+            self.builtin_function_of(func),
+            Some(BuiltinFunction::Time { .. })
+        ) {
             return;
         }
         let name = func.name.clone();
@@ -69,7 +72,7 @@ impl ImplicitConversions<'_> {
         let Some(signature) = self.context.functions().get(name) else {
             return;
         };
-        let Some(Intrinsic::Time { long, .. }) = signature.intrinsic else {
+        let Some(BuiltinFunction::Time { long, .. }) = signature.builtin_function else {
             return;
         };
         let params: Vec<TypeName> = signature

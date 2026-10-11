@@ -14,6 +14,7 @@ use ironplc_dsl::textual::*;
 use ironplc_dsl::type_id::TypeId;
 use std::collections::HashMap;
 
+use crate::builtin_function::{BuiltinFunction, InputsOfOneType, OneTypeResult};
 use crate::callee_resolution::FunctionBlocks;
 use crate::enumerated_value_type::{self, Context, EnumeratedValueType, OwnedContext};
 use crate::function_environment::FunctionEnvironment;
@@ -24,7 +25,6 @@ use crate::intermediates::common_operand::common_operand_of;
 use crate::intermediates::inherited_fields::collect_inherited_fields;
 use crate::intermediates::numeric_operation::literal_default_type;
 use crate::intermediates::operator_function_form::{operator_function_form, FormOf};
-use crate::intrinsic::{InputsOfOneType, Intrinsic, OneTypeResult};
 use crate::semantic_type::SemanticType;
 use crate::symbol_environment::{ScopeTracker, SymbolEnvironment};
 use crate::type_environment::TypeEnvironment;
@@ -250,19 +250,19 @@ impl ExprTypeResolver<'_> {
                 if !is_generic_type(&return_type) {
                     return self.expr_type_named(return_type);
                 }
-                match &sig.intrinsic {
+                match &sig.builtin_function {
                     // An integer of whichever type its context stores it
                     // at, which the literal pass gives it (ADR-0028).
-                    Some(intrinsic) if intrinsic.result_is_integer_of_context() => {
+                    Some(builtin) if builtin.result_is_integer_of_context() => {
                         return Some(ExprType::Literal(GenericTypeName::AnyInt));
                     }
-                    Some(Intrinsic::IntToBcd) => return self.bcd_result(f),
+                    Some(BuiltinFunction::IntToBcd) => return self.bcd_result(f),
                     _ => {}
                 }
                 if let Some(shape) = sig
-                    .intrinsic
+                    .builtin_function
                     .as_ref()
-                    .and_then(Intrinsic::inputs_of_one_type)
+                    .and_then(BuiltinFunction::inputs_of_one_type)
                 {
                     if let Some(inputs) = positional_inputs(f) {
                         return self.inputs_of_one_type_result(&inputs, shape);
@@ -504,7 +504,7 @@ impl ExprTypeResolver<'_> {
 
     /// The type of a call to a function of several inputs of one type, whose
     /// inputs are `inputs`: the type every input of that type widens to, or
-    /// for `EXPT` its first input's (see [`Intrinsic::inputs_of_one_type`]).
+    /// for `EXPT` its first input's (see [`BuiltinFunction::inputs_of_one_type`]).
     /// `MAX(i, l)` on an `INT` and an `LINT` is an `LINT`.
     ///
     /// When no input's type accepts every other one -- a `DINT` and a `UDINT`

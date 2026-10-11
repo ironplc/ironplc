@@ -19,6 +19,7 @@ fn init_test_logger() {
 #[macro_use]
 mod test_macros;
 
+mod builtin_function;
 mod call_assignment_check;
 mod callee_resolution;
 mod clean_analysis;
@@ -28,7 +29,6 @@ pub mod enumeration_members;
 mod enumeration_values;
 pub mod execution_model;
 mod function_environment;
-mod intrinsic;
 mod result;
 mod rule_abstract_not_instantiated;
 mod rule_array_index_range;
@@ -124,6 +124,10 @@ mod intermediates;
 pub mod extractors;
 
 // Re-export public types for external use
+pub use builtin_function::{
+    BitShift, BuiltinFunction, InputsOfOneType, NumericFunction, OneTypeResult, StringFunction,
+    TimeFunction,
+};
 pub use clean_analysis::CleanAnalysis;
 pub use function_environment::{
     FunctionEnvironment, FunctionEnvironmentBuilder, FunctionSignature,
@@ -134,10 +138,6 @@ pub use intermediates::arithmetic_overload::{
 };
 pub use intermediates::enumeration::resolve_ordinal_values;
 pub use intermediates::operator_function_form::FormOf;
-pub use intrinsic::{
-    BitShift, InputsOfOneType, Intrinsic, NumericFunction, OneTypeResult, StringFunction,
-    TimeFunction,
-};
 pub use semantic_context::{SemanticContext, SemanticContextBuilder};
 pub use semantic_type::SemanticType;
 pub use type_attributes::TypeAttributes;
