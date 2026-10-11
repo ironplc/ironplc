@@ -29,7 +29,8 @@ fn code_without_conversions(target: &str, value: &str) -> Option<String> {
     let source = format!(
         "PROGRAM main
          VAR x : {target}; t : TIME; lt : LTIME; da : DATE; lda : LDATE; d : DINT;
-             l : LINT; r : REAL; a : ARRAY[0..3] OF DINT; dw : DWORD; lw : LWORD; END_VAR
+             l : LINT; r : REAL; a : ARRAY[0..3] OF DINT; dw : DWORD; lw : LWORD;
+             st : STRING[10]; END_VAR
          x := {value};
          END_PROGRAM"
     );
@@ -87,4 +88,25 @@ fn compile_when_subscript_or_count_needs_no_conversion_then_compiles(
     #[case] value: &str,
 ) {
     assert_eq!(code_without_conversions(target, value), None);
+}
+
+#[spec_test(REQ_IC_codegen_018)]
+#[rstest]
+#[case::lint_length("STRING", "LEFT(st, l)")]
+#[case::lint_position("STRING", "MID(st, d, l)")]
+#[case::lint_insert_position("STRING", "INSERT(st, 'ab', l)")]
+#[case::lint_replace_length("STRING", "REPLACE(st, 'ab', l, d)")]
+fn compile_when_string_position_conversion_removed_then_internal_error(
+    #[case] target: &str,
+    #[case] value: &str,
+) {
+    assert_eq!(
+        code_without_conversions(target, value).as_deref(),
+        Some("P9998")
+    );
+}
+
+#[test]
+fn compile_when_string_position_needs_no_conversion_then_compiles() {
+    assert_eq!(code_without_conversions("STRING", "LEFT(st, d)"), None);
 }

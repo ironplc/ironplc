@@ -10,8 +10,8 @@ use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{CompareOp, Expr, ExprKind};
 
-use super::compile::{string_region_size, CompileContext, DEFAULT_OP_TYPE};
-use super::compile_expr::{compile_expr, resolve_variable_name};
+use super::compile::{string_region_size, CompileContext, OpWidth};
+use super::compile_expr::{compile_expr, op_type, resolve_variable_name};
 use crate::emit::Emitter;
 use crate::string_width::{
     compile_string_value, encoding_mismatch, resolve_operand_char_width, string_operand_capacity,
@@ -196,9 +196,8 @@ pub(crate) fn compile_replace(
     let in2_offset = resolve_string_arg(emitter, ctx, args[1], span, char_width)?;
 
     // Compile L and P integer expressions onto the stack.
-    let op_type = DEFAULT_OP_TYPE;
-    compile_expr(emitter, ctx, args[2], op_type)?;
-    compile_expr(emitter, ctx, args[3], op_type)?;
+    compile_position(emitter, ctx, args[2])?;
+    compile_position(emitter, ctx, args[3])?;
 
     emitter.emit_replace_str(in1_offset, in2_offset);
     Ok(())
@@ -220,8 +219,7 @@ pub(crate) fn compile_insert(
     let in2_offset = resolve_string_arg(emitter, ctx, args[1], span, char_width)?;
 
     // Compile P integer expression onto the stack.
-    let op_type = DEFAULT_OP_TYPE;
-    compile_expr(emitter, ctx, args[2], op_type)?;
+    compile_position(emitter, ctx, args[2])?;
 
     emitter.emit_insert_str(in1_offset, in2_offset);
     Ok(())
@@ -241,8 +239,7 @@ fn compile_string_2arg(
     let char_width = resolve_operand_char_width(ctx, &[args[0]], span)?;
     let in_offset = resolve_string_arg(emitter, ctx, args[0], span, char_width)?;
 
-    let op_type = DEFAULT_OP_TYPE;
-    compile_expr(emitter, ctx, args[1], op_type)?;
+    compile_position(emitter, ctx, args[1])?;
 
     emit(emitter, in_offset);
     Ok(())
@@ -262,12 +259,31 @@ fn compile_string_3arg(
     let char_width = resolve_operand_char_width(ctx, &[args[0]], span)?;
     let in_offset = resolve_string_arg(emitter, ctx, args[0], span, char_width)?;
 
-    let op_type = DEFAULT_OP_TYPE;
-    compile_expr(emitter, ctx, args[1], op_type)?;
-    compile_expr(emitter, ctx, args[2], op_type)?;
+    compile_position(emitter, ctx, args[1])?;
+    compile_position(emitter, ctx, args[2])?;
 
     emit(emitter, in_offset);
     Ok(())
+}
+
+/// Compiles the position or length `position` of a string function onto the
+/// stack, at its own type: the analyzer converted one of another width to
+/// `DINT`, the type a position or length is compiled at. One of another
+/// width is a conversion the analyzer did not record, and an internal error
+/// rather than narrowed here.
+fn compile_position(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    position: &Expr,
+) -> Result<(), Diagnostic> {
+    let own = op_type(ctx, position)?;
+    if own.0 != OpWidth::W32 {
+        return Err(Diagnostic::internal_error_at(Label::span(
+            position.span(),
+            "String position or length of a width other than DINT's, and the analyzer recorded no conversion",
+        )));
+    }
+    compile_expr(emitter, ctx, position, own)
 }
 
 /// Compiles the DELETE standard function call.
