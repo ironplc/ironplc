@@ -80,9 +80,26 @@ END_PROGRAM
 ";
     let rendered = assert_round_trips(source, &CompilerOptions::default());
 
-    assert!(
-        rendered.contains("( values := [ 1 , 2 ] , inner := ( x := 3 ) )"),
-        "Rendered:\n{rendered}"
+    assert_eq!(
+        rendered,
+        "TYPE
+   Inner : STRUCT
+      x : INT ;
+   END_STRUCT ;
+END_TYPE
+TYPE
+   Outer : STRUCT
+      values : ARRAY [ 1.. 2 ] OF INT ;
+      inner : Inner ;
+   END_STRUCT ;
+END_TYPE
+PROGRAM main
+
+VAR
+   o : Outer := ( values := [ 1 , 2 ] , inner := ( x := 3 ) );
+END_VAR
+END_PROGRAM
+"
     );
 }
 
@@ -90,7 +107,7 @@ END_PROGRAM
 /// function block initializer rather than a late-resolved one; its members
 /// still render.
 #[test]
-fn write_to_string_when_analyzed_fb_instance_has_member_initializer_then_round_trips() {
+fn write_to_string_when_analyzed_fb_instance_has_member_initializer_then_renders_members() {
     let source = "
 FUNCTION_BLOCK Counter
 VAR_INPUT
@@ -105,12 +122,24 @@ END_VAR
 END_PROGRAM
 ";
     let options = CompilerOptions::default();
-    let parsed = parse_program(source, &FileId::default(), &options).unwrap();
-    let (analyzed, _) = analyze_and_render_with_types(source, &options);
+    let (library, rendered) = analyze_and_render_with_types(source, &options);
 
-    let rendered = write_to_string(&analyzed).unwrap();
+    assert_eq!(
+        rendered,
+        "FUNCTION_BLOCK Counter
 
-    let reparsed = parse_program(&rendered, &FileId::default(), &options)
-        .unwrap_or_else(|e| panic!("Rendered output did not re-parse: {e:?}\n{rendered}"));
-    assert_eq!(parsed, reparsed, "Rendered:\n{rendered}");
+   VAR_INPUT
+      preset : int;
+   END_VAR
+
+END_FUNCTION_BLOCK
+PROGRAM main
+
+VAR
+   counter : Counter := ( preset := 5 );
+END_VAR
+END_PROGRAM
+"
+    );
+    assert_annotated_reparses_as_plain(&library, &rendered, &options);
 }
