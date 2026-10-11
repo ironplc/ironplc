@@ -266,6 +266,13 @@ pub struct DeclRef {
 
 /// What a name refers to when a body uses it as a variable. See
 /// [`SymbolEnvironment::resolve_variable`].
+///
+/// `decl` names the variable, and `info` describes the declaration the name
+/// reaches from where it is used. They are the same declaration except
+/// through a `VAR_EXTERNAL`: `decl` is then the global the external names,
+/// which is the variable a read or a write reaches, and `info` is the
+/// `VAR_EXTERNAL` declaration itself, whose qualifier is the one the body
+/// sees.
 #[derive(Debug, Clone)]
 pub enum Resolution<'a> {
     /// A variable the reference may use.
@@ -346,9 +353,9 @@ fn reserved_name(name: &Id) -> Diagnostic {
 /// The problem a second global declaration of a name is, when `existing`
 /// and `repeat` are both declarations and at least one is a program or a
 /// configuration. A pair of types or function blocks is the type
-/// environment's to report. The global scope also holds enumeration values,
-/// structure elements and global variables, whose uniqueness other rules
-/// own, so a pair involving one of those is `None`.
+/// environment's to report. The global scope also holds global variables.
+/// A variable repeating a variable is [`repeated_symbol`]'s to report, so a
+/// pair involving a variable is `None` here.
 fn repeated_declaration(existing: &SymbolKind, repeat: &SymbolKind) -> Option<Problem> {
     let is_declaration = |kind: &SymbolKind| {
         matches!(
@@ -577,9 +584,15 @@ impl SymbolEnvironment {
     ///    it, unless the dialect lets a body use globals directly
     ///    ([`Self::with_bare_globals`]). A global the compiler provides is
     ///    always usable.
+    /// 3. **A `VAR_EXTERNAL` is its global.** A name that reaches a
+    ///    `VAR_EXTERNAL` declaration resolves to the global variable of
+    ///    that name, which the declaration gives the body access to. The
+    ///    external is not a variable of its own, so every unit that names
+    ///    one global through an external resolves to one [`DeclRef`].
     ///
-    /// A `VAR_EXTERNAL` resolves to its own declaration, in the scope that
-    /// declares it, and not to the global it names.
+    /// An external that names no global variable is an error, which
+    /// `rule_var_external_matches_global` reports. It resolves to its own
+    /// declaration, so that the rest of the body is still checked.
     pub fn resolve_variable(&self, name: &Id, from: &ScopeKind) -> Resolution<'_> {
         let Some((declared, info)) = self.find_declaration(name, from) else {
             return Resolution::Undeclared;
@@ -587,15 +600,37 @@ impl SymbolEnvironment {
         if !is_named_as_variable(&info.kind) {
             return Resolution::NotAVariable;
         }
-        let decl = DeclRef {
-            scope: info.scope.clone(),
-            name: declared.clone(),
+        let global = info
+            .is_external
+            .then(|| self.global_variable(name))
+            .flatten();
+        let decl = match global {
+            Some((global_name, _)) => DeclRef {
+                scope: ScopeKind::Global,
+                name: global_name.clone(),
+            },
+            None => DeclRef {
+                scope: info.scope.clone(),
+                name: declared.clone(),
+            },
         };
         if self.is_usable(info) {
             Resolution::Variable { decl, info }
         } else {
             Resolution::GlobalNotVisible { decl, info }
         }
+    }
+
+    /// The global variable named `name`, with the name as its declaration
+    /// spells it: one a `VAR_GLOBAL` block declares, or one the compiler
+    /// provides. `None` when the global scope declares no variable of that
+    /// name, whatever else it declares under it.
+    ///
+    /// This is the variable a `VAR_EXTERNAL` declaration of `name` names.
+    pub fn global_variable(&self, name: &Id) -> Option<(&Id, &SymbolInfo)> {
+        self.global_symbols
+            .get_key_value(name)
+            .filter(|(_, info)| is_variable(&info.kind))
     }
 
     /// Whether a body may use the variable `info` describes by name: every

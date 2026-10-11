@@ -219,7 +219,7 @@ fn resolve_variable_when_bare_globals_then_global_is_variable() {
 }
 
 #[test]
-fn resolve_variable_when_external_then_names_the_external_declaration() {
+fn resolve_variable_when_external_then_names_the_global() {
     let mut env = SymbolEnvironment::new();
     let program = scope(&["main"]);
     declare(&mut env, &ScopeKind::Global, "g", VariableType::Global);
@@ -229,9 +229,175 @@ fn resolve_variable_when_external_then_names_the_external_declaration() {
 
     assert!(matches!(
         resolution,
-        Resolution::Variable { decl: found, info }
-            if found == decl(&program, "g") && info.is_external
+        Resolution::Variable { decl: found, .. } if found == decl(&ScopeKind::Global, "g")
     ));
+}
+
+#[test]
+fn resolve_variable_when_external_then_info_is_the_external_declaration() {
+    let mut env = SymbolEnvironment::new();
+    let program = scope(&["main"]);
+    declare(&mut env, &ScopeKind::Global, "g", VariableType::Global);
+    env.insert_variable(
+        &Id::from("g"),
+        &program,
+        VariableType::External,
+        DeclarationQualifier::Constant,
+        None,
+        None,
+    )
+    .unwrap();
+
+    let resolution = env.resolve_variable(&Id::from("g"), &program);
+
+    assert!(matches!(
+        resolution,
+        Resolution::Variable { info, .. }
+            if info.is_external && info.is_constant() && info.scope == program
+    ));
+}
+
+#[test]
+fn resolve_variable_when_two_units_declare_one_external_then_same_declaration() {
+    let mut env = SymbolEnvironment::new();
+    declare(&mut env, &ScopeKind::Global, "g", VariableType::Global);
+    declare(&mut env, &scope(&["main"]), "g", VariableType::External);
+    declare(&mut env, &scope(&["FB"]), "g", VariableType::External);
+
+    let from_program = env.resolve_variable(&Id::from("g"), &scope(&["main"]));
+    let from_block = env.resolve_variable(&Id::from("g"), &scope(&["FB"]));
+
+    assert!(matches!(
+        (from_program, from_block),
+        (
+            Resolution::Variable { decl: program, .. },
+            Resolution::Variable { decl: block, .. }
+        ) if program == block
+    ));
+}
+
+#[test]
+fn resolve_variable_when_external_names_global_in_other_case_then_global_spelling() {
+    let mut env = SymbolEnvironment::new();
+    let program = scope(&["main"]);
+    declare(
+        &mut env,
+        &ScopeKind::Global,
+        "MaxSpeed",
+        VariableType::Global,
+    );
+    declare(&mut env, &program, "MAXSPEED", VariableType::External);
+
+    let resolution = env.resolve_variable(&Id::from("maxspeed"), &program);
+
+    assert!(matches!(
+        resolution,
+        Resolution::Variable { decl: found, .. } if found.name.original() == "MaxSpeed"
+    ));
+}
+
+#[test]
+fn resolve_variable_when_external_names_compiler_provided_global_then_names_the_global() {
+    let mut env = SymbolEnvironment::new();
+    let program = scope(&["main"]);
+    env.insert_compiler_provided(
+        &Id::from("uptime"),
+        SymbolKind::Variable,
+        &ScopeKind::Global,
+        None,
+    )
+    .unwrap();
+    declare(&mut env, &program, "uptime", VariableType::External);
+
+    let resolution = env.resolve_variable(&Id::from("uptime"), &program);
+
+    assert!(matches!(
+        resolution,
+        Resolution::Variable { decl: found, .. } if found == decl(&ScopeKind::Global, "uptime")
+    ));
+}
+
+#[test]
+fn resolve_variable_when_external_names_no_global_then_its_own_declaration() {
+    let mut env = SymbolEnvironment::new();
+    let program = scope(&["main"]);
+    declare(&mut env, &program, "g", VariableType::External);
+
+    let resolution = env.resolve_variable(&Id::from("g"), &program);
+
+    assert!(matches!(
+        resolution,
+        Resolution::Variable { decl: found, .. } if found == decl(&program, "g")
+    ));
+}
+
+#[test]
+fn resolve_variable_when_external_names_a_type_then_its_own_declaration() {
+    let mut env = SymbolEnvironment::new();
+    let program = scope(&["main"]);
+    env.insert(&Id::from("g"), SymbolKind::Type, &ScopeKind::Global)
+        .unwrap();
+    declare(&mut env, &program, "g", VariableType::External);
+
+    let resolution = env.resolve_variable(&Id::from("g"), &program);
+
+    assert!(matches!(
+        resolution,
+        Resolution::Variable { decl: found, .. } if found == decl(&program, "g")
+    ));
+}
+
+#[test]
+fn resolve_variable_when_external_inherited_then_names_the_global() {
+    let mut env = SymbolEnvironment::new();
+    function_block(&mut env, "Base", None);
+    function_block(&mut env, "Derived", Some("Base"));
+    declare(&mut env, &ScopeKind::Global, "g", VariableType::Global);
+    declare(&mut env, &scope(&["Base"]), "g", VariableType::External);
+
+    let resolution = env.resolve_variable(&Id::from("g"), &scope(&["Derived", "M"]));
+
+    assert!(matches!(
+        resolution,
+        Resolution::Variable { decl: found, .. } if found == decl(&ScopeKind::Global, "g")
+    ));
+}
+
+#[test]
+fn global_variable_when_var_global_then_found_with_declaration_spelling() {
+    let mut env = SymbolEnvironment::new();
+    declare(
+        &mut env,
+        &ScopeKind::Global,
+        "MaxSpeed",
+        VariableType::Global,
+    );
+
+    let found = env.global_variable(&Id::from("MAXSPEED"));
+
+    assert!(found.is_some_and(|(name, info)| {
+        name.original() == "MaxSpeed" && info.variable_type == Some(VariableType::Global)
+    }));
+}
+
+#[rstest]
+#[case::data_type(SymbolKind::Type)]
+#[case::program(SymbolKind::Program)]
+#[case::function_block(SymbolKind::FunctionBlock)]
+fn global_variable_when_name_declared_as_other_kind_then_none(#[case] kind: SymbolKind) {
+    let mut env = SymbolEnvironment::new();
+    env.insert(&Id::from("thing"), kind, &ScopeKind::Global)
+        .unwrap();
+
+    assert!(env.global_variable(&Id::from("thing")).is_none());
+}
+
+#[test]
+fn global_variable_when_declared_in_a_unit_only_then_none() {
+    let mut env = SymbolEnvironment::new();
+    declare(&mut env, &scope(&["main"]), "x", VariableType::Var);
+
+    assert!(env.global_variable(&Id::from("x")).is_none());
 }
 
 #[test]

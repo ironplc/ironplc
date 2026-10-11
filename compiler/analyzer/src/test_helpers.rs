@@ -189,6 +189,40 @@ pub fn edition3_options() -> ironplc_parser::options::CompilerOptions {
     )
 }
 
+/// A configuration declaring the globals `globals`, with a resource that
+/// runs the program `main`.
+#[cfg(test)]
+pub fn configuration_with_globals(globals: &str) -> String {
+    format!(
+        "
+CONFIGURATION config
+  VAR_GLOBAL
+    {globals}
+  END_VAR
+  RESOURCE res ON PLC
+    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM plc_task_instance WITH plc_task : main;
+  END_RESOURCE
+END_CONFIGURATION
+"
+    )
+}
+
+/// A program `main` that declares the externals `externals` and nothing
+/// else.
+#[cfg(test)]
+pub fn program_with_externals(externals: &str) -> String {
+    format!(
+        "
+PROGRAM main
+  VAR_EXTERNAL
+    {externals}
+  END_VAR
+END_PROGRAM
+"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
