@@ -26,6 +26,7 @@ mod compile_bool;
 mod compile_case;
 mod compile_cmp;
 mod compile_const_trunc;
+mod compile_declared_type_store;
 mod compile_dup;
 mod compile_exit_return;
 mod compile_extends_inheritance;

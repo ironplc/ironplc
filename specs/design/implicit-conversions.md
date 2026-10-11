@@ -381,6 +381,10 @@ A parameter of a user-defined function is passed at its declared type the same w
 
 **REQ-IC-codegen-006** A function's parameter of an alias or a subrange type receives the value of the type it is operated as: `pass(p)` with `p = 2.5` and a parameter of an alias of `LREAL` passes 2.5, and `pass(b)` with `b = 5000000000` and a parameter of an alias or a subrange of `LINT` passes 5000000000.
 
+Every other variable of a function, a method or a function block body -- a local, a field, a function's or a method's return value -- is stored and loaded at its declared type too, whatever kind of declaration declares it: the type the analyzer resolved for it, a subrange at its base type, an enumeration as a `DINT` and a reference as its 64-bit index.
+
+**REQ-IC-codegen-020** A function's return value of a subrange of `LINT` and a method-local `REFERENCE TO` are stored at 64 bits: `f := p` in a function returning a subrange of `LINT`, and `r REF= target` on a method-local `REFERENCE TO INT`, store the 64-bit value with a 64-bit store.
+
 `AND`, `OR` and `XOR` compute at the type the analyzer recorded for the operation, to which it converted an operand of another width.
 
 A typed time or date function compiles each operand at the type the analyzer recorded for it, which is the width the routine computes at. An operand of another width is an internal error (P9998), not widened as the code generator used to widen a short operand of a long form and the number a duration is scaled by. The analyzer writes a typed fold as the calls it folds to, so no step widens the previous step's result on the stack.

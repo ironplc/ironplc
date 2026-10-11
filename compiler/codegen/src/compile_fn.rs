@@ -29,7 +29,7 @@ use super::compile_stmt::{
     compile_body, compile_statements, resolve_string_max_length, resolve_string_spec_max_length,
 };
 use super::scope::Scope;
-use super::type_info::{decl_type_info, resolve_type_name};
+use super::type_info::{decl_type_info, named_type_info, resolve_type_name};
 use crate::emit::Emitter;
 
 /// Records a debug [`VarNameEntry`] for a function- or FB-local variable
@@ -131,12 +131,13 @@ pub(crate) fn compile_user_function(
                 num_params += 1;
                 continue;
             }
+            // A parameter operates at its declared type, whatever kind of
+            // declaration declares it: a subrange at its base type, an
+            // enumeration as a `DINT`, a reference as its 64-bit index.
+            if let Some(type_info) = decl_type_info(ctx, decl) {
+                ctx.var_types.insert(id.clone(), type_info);
+            }
             match &decl.initializer {
-                InitialValueAssignmentKind::Simple(_) => {
-                    if let Some(type_info) = decl_type_info(ctx, decl) {
-                        ctx.var_types.insert(id.clone(), type_info);
-                    }
-                }
                 InitialValueAssignmentKind::String(string_init) => {
                     let max_length = resolve_string_max_length(string_init)?;
                     let char_width = char_width_for_string_type(&string_init.width);
@@ -183,12 +184,11 @@ pub(crate) fn compile_user_function(
         if let Some(id) = decl.identifier.symbolic_id() {
             ctx.variables.insert(id.clone(), current_index);
             push_local_var_name(ctx, current_index, function_id, decl, id, types);
+            // A local operates at its declared type, as a parameter does.
+            if let Some(type_info) = decl_type_info(ctx, decl) {
+                ctx.var_types.insert(id.clone(), type_info);
+            }
             match &decl.initializer {
-                InitialValueAssignmentKind::Simple(_) => {
-                    if let Some(type_info) = decl_type_info(ctx, decl) {
-                        ctx.var_types.insert(id.clone(), type_info);
-                    }
-                }
                 InitialValueAssignmentKind::String(string_init) => {
                     let max_length = resolve_string_max_length(string_init)?;
                     let char_width = char_width_for_string_type(&string_init.width);
@@ -289,7 +289,7 @@ pub(crate) fn compile_user_function(
                     return_var_index,
                     &func_decl.name.span(),
                 )?;
-            } else if let Some(type_info) = resolve_type_name(&return_type_name.name) {
+            } else if let Some(type_info) = named_type_info(ctx, types, &return_type_name) {
                 ctx.var_types.insert(return_id.clone(), type_info);
             }
             None
@@ -302,9 +302,11 @@ pub(crate) fn compile_user_function(
 
     let num_locals = current_index.raw() - var_offset.raw();
 
-    // Determine return type's OpType.
+    // The type the return value is loaded at: the declared return type, a
+    // subrange at its base type. A string or structure return lives in the
+    // data region, and its slot holds a data offset at the default type.
     let return_type_name = func_decl.return_type.to_type_name();
-    let return_op_type = resolve_type_name(&return_type_name.name)
+    let return_op_type = named_type_info(ctx, types, &return_type_name)
         .map(|info| (info.op_width, info.signedness))
         .unwrap_or(DEFAULT_OP_TYPE);
 
@@ -474,12 +476,12 @@ pub(crate) fn compile_user_function_block(
         if let Some(id) = decl.identifier.symbolic_id() {
             ctx.variables.insert(id.clone(), current_index);
             push_local_var_name(ctx, current_index, function_id, decl, id, types);
+            // A field operates at its declared type, as a function's local
+            // does.
+            if let Some(type_info) = decl_type_info(ctx, decl) {
+                ctx.var_types.insert(id.clone(), type_info);
+            }
             match &decl.initializer {
-                InitialValueAssignmentKind::Simple(_) => {
-                    if let Some(vti) = decl_type_info(ctx, decl) {
-                        ctx.var_types.insert(id.clone(), vti);
-                    }
-                }
                 InitialValueAssignmentKind::Reference(ref_init) => {
                     crate::compile_reference::register_reference_variable(
                         ctx,
