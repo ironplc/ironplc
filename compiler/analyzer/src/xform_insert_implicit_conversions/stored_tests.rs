@@ -173,3 +173,23 @@ fn apply_when_method_argument_then_converted_to_declared_type_of_its_parameter()
         ]
     );
 }
+
+#[spec_test(REQ_CB_analyzer_007)]
+#[test]
+fn apply_when_inherited_method_argument_then_converted_to_declared_type_of_its_parameter() {
+    let source = "FUNCTION_BLOCK Base
+        METHOD Set VAR_INPUT x : LINT; END_VAR END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK Derived EXTENDS Base
+        END_FUNCTION_BLOCK
+        PROGRAM main VAR k : Derived; d : DINT; END_VAR
+        k.Set(d); k.Set(x := d); END_PROGRAM";
+    let options = CompilerOptions {
+        allow_fb_inheritance: true,
+        ..CompilerOptions::default()
+    };
+    assert_eq!(
+        stored_values(source, &options),
+        vec!["DINT->LINT", "DINT->LINT"]
+    );
+}

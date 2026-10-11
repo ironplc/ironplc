@@ -32,5 +32,7 @@ fn main() {
         // Variable binding (`REQ-VB-analyzer-*`): which declaration a
         // variable name refers to.
         "variable-binding.md",
+        // Call binding (`REQ-CB-analyzer-*`): what a call reaches.
+        "call-binding.md",
     ]);
 }

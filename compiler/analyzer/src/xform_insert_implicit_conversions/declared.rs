@@ -15,11 +15,11 @@
 
 use std::collections::HashMap;
 
-use ironplc_dsl::common::{Library, LibraryElementKind, VarDecl};
+use ironplc_dsl::common::{Library, LibraryElementKind, TypeName, VarDecl};
 use ironplc_dsl::core::Id;
 use ironplc_dsl::type_id::TypeId;
 
-use crate::callee_resolution::CallParameters;
+use crate::callee_resolution::{CallParameters, MethodOwners};
 use crate::semantic_type::SemanticType;
 use crate::type_environment::TypeEnvironment;
 
@@ -35,15 +35,21 @@ pub(super) struct Declarations {
     fields: HashMap<(Id, Id), Option<TypeId>>,
     /// The parameters of each block, in declaration order.
     parameters: HashMap<Id, CallParameters>,
-    /// The input parameters of each method, by block and method name.
+    /// The input parameters of each method, by the block that declares it
+    /// and the method's name.
     methods: HashMap<(Id, Id), Parameters>,
+    /// The block that declares each method callable on each block.
+    owners: MethodOwners,
 }
 
 impl Declarations {
     /// Collects the declarations of every user-defined function block in
     /// `lib`.
     pub(super) fn collect(lib: &Library, types: &TypeEnvironment) -> Self {
-        let mut declarations = Declarations::default();
+        let mut declarations = Declarations {
+            owners: MethodOwners::of_library(lib),
+            ..Declarations::default()
+        };
         for element in &lib.elements {
             let LibraryElementKind::FunctionBlockDeclaration(block) = element else {
                 continue;
@@ -90,10 +96,12 @@ impl Declarations {
         self.parameters.get(block)
     }
 
-    /// The input parameters of the method `method` of the function block
-    /// `block`.
-    pub(super) fn method(&self, block: &Id, method: &Id) -> Option<&Parameters> {
-        self.methods.get(&(block.clone(), method.clone()))
+    /// The input parameters of the method `method` called on an instance
+    /// of the function block `block`: the method `block` declares, or else
+    /// the one the nearest block it `EXTENDS` declares.
+    pub(super) fn method(&self, block: &TypeName, method: &Id) -> Option<&Parameters> {
+        let owner = self.owners.declaring_block(block, method)?;
+        self.methods.get(&(owner.name.clone(), method.clone()))
     }
 }
 

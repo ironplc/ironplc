@@ -59,7 +59,8 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_parser::options::{CompilerOptions, StringToNumFailure, StringToNumNonNumeric};
 
 use ironplc_analyzer::{
-    BuiltinFunction, CleanAnalysis, FunctionEnvironment, SemanticType, TypeEnvironment,
+    BuiltinFunction, CleanAnalysis, FunctionEnvironment, MethodOwners, SemanticType,
+    TypeEnvironment,
 };
 
 use crate::emit::Emitter;
@@ -281,6 +282,7 @@ pub fn compile(
         })
         .collect();
 
+    let method_owners = MethodOwners::of_library(library);
     let mut container = compile_program_with_functions(
         ProgramInputs {
             program: runnable.program,
@@ -288,6 +290,7 @@ pub fn compile(
             fb_decls: &fb_decls,
             system_globals: &runnable.system_globals,
             global_vars: &runnable.globals,
+            method_owners: &method_owners,
         },
         context.functions(),
         context.types(),
@@ -437,6 +440,9 @@ struct ProgramInputs<'a> {
     system_globals: &'a [SystemGlobal],
     /// The declared globals that get storage, in variable-table order.
     global_vars: &'a [VarDecl],
+    /// The block that declares each method callable on each block, as the
+    /// analyzer resolves it.
+    method_owners: &'a MethodOwners,
 }
 
 /// Compiles a PROGRAM and its user-defined functions into a container.
@@ -463,12 +469,14 @@ fn compile_program_with_functions(
         fb_decls,
         system_globals,
         global_vars,
+        method_owners,
     } = inputs;
     let mut ctx = CompileContext::new();
     ctx.types = crate::type_info::type_representations(types);
     ctx.block_members = crate::initial_value::block_members(fb_decls, &ctx.types);
     ctx.operand_names = crate::type_info::operand_names(types);
     ctx.builtin_functions = crate::compile_call::builtin_functions_by_name(functions);
+    ctx.method_owners = method_owners.clone();
     ctx.string_to_num = string_to_num;
     ctx.compiler_options = compiler_options;
     let mut builder = ContainerBuilder::new();
@@ -1096,6 +1104,11 @@ pub(crate) struct CompileContext {
     /// not here is a call of a user-defined function.
     /// See [`crate::compile_call::builtin_functions_by_name`].
     pub(crate) builtin_functions: HashMap<Id, BuiltinFunction>,
+    /// Which block declares the method a call reaches, by the block the
+    /// call's instance is declared as. The analyzer decides it
+    /// ([`MethodOwners`]); a method call asks it rather than looking the
+    /// method up itself.
+    pub(crate) method_owners: MethodOwners,
     /// The behavior policies `STRING_TO_<numeric>` calls select their
     /// builtin by (ADR-0049).
     pub(crate) string_to_num: StringToNumPolicies,
@@ -1193,6 +1206,7 @@ impl CompileContext {
             block_members: HashMap::new(),
             operand_names: HashMap::new(),
             builtin_functions: HashMap::new(),
+            method_owners: MethodOwners::default(),
             string_to_num: StringToNumPolicies::default(),
             compiler_options: CompilerOptions::default(),
             current_function_return: None,

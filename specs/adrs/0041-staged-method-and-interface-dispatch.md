@@ -3,6 +3,7 @@
 status: proposed
 date: 2026-07-27
 amended: 2026-09-12 (Implementation Status added; Phase 1's property bullet is unbuilt)
+amended: 2026-10-12 (Implementation Status said THIS^ and SUPER^ calls shipped; they are rejected as not implemented)
 
 ## Context and Problem Statement
 
@@ -142,8 +143,6 @@ What landed:
   call to a method no type in the chain declares. `codegen/src/compile_method.rs`
   emits the body; `compile_fb_call` resolves the target through `ctx.fb_instances`
   at compile time, with no per-instance runtime storage.
-* **`THIS^` and `SUPER^`**, as keywords (`parser/src/token.rs`) and through
-  method codegen, with no runtime polymorphism -- as decided.
 * **No memory-layout change and no new runtime indirection**, which is the
   property Phase 1 was chosen for. `iec_type_tag` is debug metadata, not a
   runtime type tag; nothing in the shipped path dispatches dynamically.
@@ -158,6 +157,11 @@ What did not:
   `--dialect twincat`. There is no `PropertyDeclaration` node in `dsl`, no
   `<Property>` handler in `sources/src/xml` beside the `<Method>` one, no
   `--allow-*` flag, and no codegen rewrite step.
+* **Method calls through `THIS^` and `SUPER^`.** They are keywords
+  (`parser/src/token.rs`), but `rule_method_call_declared` reports a call
+  through either as not implemented
+  ([issue #1406](https://github.com/ironplc/ironplc/issues/1406)), so no
+  codegen path compiles one.
 * The Verification section below is therefore evidence for the method and
   dispatch-cost claims only; it never covered properties.
 
@@ -283,6 +287,21 @@ therefore mostly about Phase 2, and this is where the tension lives.
   (`METHOD`/`PROPERTY`/`EXTENDS`/`IMPLEMENTS`/`THIS^`/`SUPER^`) are
   handled separately and are out of scope here. This ADR governs only
   how a supported call dispatches to a body.
+
+### The analyzer resolves the method (postscript, 2026-10-12)
+
+Codegen used to find a method by name on the instance's own block only, so a
+method a base block declared failed to compile. The analyzer now resolves
+case 1 once, and every stage reads its answer:
+`callee_resolution::FunctionBlocks::resolve_method` walks the `EXTENDS` chain,
+`receiver_block` starts the walk at the instance's block, the enclosing block
+for `THIS^` or its base for `SUPER^`, and `MethodOwners` keeps the answers for
+the recording pass and for codegen, which compiles the method of the block the
+analyzer names and resolves nothing itself. A method of a base block that
+declares fields is reported as not implemented when called on a derived
+instance, since a derived block's layout does not yet hold inherited fields.
+See [Call Binding](../design/call-binding.md). The decision above is
+unchanged.
 
 ### Verification
 

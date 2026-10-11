@@ -6,7 +6,10 @@
 
 use ironplc_dsl::core::{Located, SourceSpan};
 
-use crate::{semantic_type::SemanticType, type_category::TypeCategory};
+use crate::{
+    semantic_type::SemanticType, standard_function_block::StandardFunctionBlock,
+    type_category::TypeCategory,
+};
 
 /// Attributes associated with a type in the type environment.
 #[derive(Debug, Clone, PartialEq)]
@@ -18,6 +21,10 @@ pub struct TypeAttributes {
     pub representation: SemanticType,
     /// Category of the type (elementary, user-defined, or derived)
     pub type_category: TypeCategory,
+    /// Which standard function block the type is, for the types the type
+    /// environment provides for them; `None` for every other type, including
+    /// a user-defined block of the same name.
+    pub standard_block: Option<StandardFunctionBlock>,
 }
 
 impl TypeAttributes {
@@ -28,7 +35,14 @@ impl TypeAttributes {
             span,
             representation,
             type_category,
+            standard_block: None,
         }
+    }
+
+    /// Records that the type is the standard function block `block`.
+    pub fn with_standard_block(mut self, block: StandardFunctionBlock) -> Self {
+        self.standard_block = Some(block);
+        self
     }
 
     /// Creates new TypeAttributes for elementary types

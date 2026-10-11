@@ -10,7 +10,9 @@
 //! closely; the differences are exactly the parts of that convention.
 
 use ironplc_container::{ContainerBuilder, FunctionId, VarIndex};
-use ironplc_dsl::common::{FunctionBlockDeclaration, FunctionReturnType, MethodDeclaration};
+use ironplc_dsl::common::{
+    FunctionBlockDeclaration, FunctionReturnType, MethodDeclaration, TypeName,
+};
 use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, MethodCall, MethodReceiver, ParamAssignmentKind};
@@ -256,14 +258,15 @@ fn compile_user_method(
 /// ADR-0041 Phase 1 static dispatch). See `METHOD_CALL`'s doc comment in
 /// `ironplc_container::opcode` for the calling convention.
 ///
-/// Scoped to methods declared directly on the instance's own function
-/// block type. A method reached only via the instance type's `EXTENDS`
-/// chain (already accepted by `rule_method_call_declared` at the
-/// semantic-analysis level) is not yet supported here: a derived type's
-/// data-region layout doesn't currently reserve storage for a base
-/// type's fields at all (`compile_user_function_block`'s field list
-/// comes from `fb_decl.variables` only, never flattened with inherited
-/// fields), so there is nothing correct to copy-in/copy-out from.
+/// The method is the one the analyzer resolved the call to
+/// ([`ironplc_analyzer::MethodOwners`]): the instance's block's own, or the
+/// nearest block it `EXTENDS` that declares one. A method a base block
+/// declares runs on the instance only when the base block has no fields: a
+/// derived block's data-region layout does not yet reserve storage for a
+/// base block's fields (`compile_user_function_block`'s field list comes from
+/// `fb_decl.variables` only, never flattened with inherited fields), so
+/// there is nothing correct to copy in and out. Such a call is reported as
+/// not implemented.
 ///
 /// Leaves the instance reference on the stack with the return value, if
 /// the method has one, on top of it, and returns whether it does. The
@@ -298,7 +301,31 @@ fn compile_method_call(
         .find(|(_, info)| info.type_id == type_id)
         .map(|(name, _)| name.clone())
         .ok_or_else(|| Diagnostic::todo_with_span(call.span()))?;
-    let fb_type_info = &ctx.user_fb_types[&fb_name];
+
+    // `rule_method_call_declared` rejects a call no block in the chain
+    // declares a method for (P4046).
+    let declaring = ctx
+        .method_owners
+        .declaring_block(&TypeName::from(fb_name.as_str()), &call.method)
+        .map(|block| block.to_string().to_uppercase())
+        .ok_or_else(|| {
+            Diagnostic::internal_error_at(Label::span(
+                call.span(),
+                "Method call the analyzer resolved to no method",
+            ))
+        })?;
+    let fb_type_info = ctx.user_fb_types.get(&declaring).ok_or_else(|| {
+        Diagnostic::internal_error_at(Label::span(
+            call.span(),
+            "Method of a function block that has no layout",
+        ))
+    })?;
+    if declaring != fb_name && fb_type_info.num_fields > 0 {
+        return Err(Diagnostic::not_implemented(Label::span(
+            call.span(),
+            "Method of a base function block that declares fields, called on an instance of a derived block",
+        )));
+    }
 
     let method_name = call.method.to_string().to_lowercase();
     let method_info = fb_type_info

@@ -6,7 +6,10 @@
 
 use std::collections::HashMap;
 
-use ironplc_analyzer::{BuiltinFunction, FormOf, FunctionEnvironment, StringFunction};
+use ironplc_analyzer::{
+    BuiltinFunction, CounterWidth, FormOf, FunctionEnvironment, StandardFunctionBlock,
+    StringFunction,
+};
 use ironplc_container::opcode;
 use ironplc_dsl::common::{ElementaryTypeName, TypeName};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
@@ -736,32 +739,38 @@ pub(crate) fn emit_conversion_opcode(
 
 // --- FB type helpers and string conversion (moved from compile.rs) ---
 
-/// Resolves a standard FB type name to its (type_id, total_num_fields, field_name->index map).
-/// Returns None for unknown FB types.
-pub(crate) fn resolve_fb_type(name: &str) -> Option<(u16, usize, HashMap<String, u8>)> {
-    match name {
-        "TON" => Some((opcode::fb_type::TON, 6, timer_fb_fields())),
-        "TOF" => Some((opcode::fb_type::TOF, 6, timer_fb_fields())),
-        "TP" => Some((opcode::fb_type::TP, 6, timer_fb_fields())),
+/// The VM block that runs the standard function block `block`, as
+/// `(type_id, total_num_fields, field_name -> index)`.
+///
+/// The analyzer records which standard block a type is on the type itself,
+/// so a user-defined block named like one never reaches this table.
+pub(crate) fn standard_fb_layout(
+    block: StandardFunctionBlock,
+) -> (u16, usize, HashMap<String, u8>) {
+    use CounterWidth::*;
+    use StandardFunctionBlock::*;
+    match block {
+        Ton => (opcode::fb_type::TON, 6, timer_fb_fields()),
+        Tof => (opcode::fb_type::TOF, 6, timer_fb_fields()),
+        Tp => (opcode::fb_type::TP, 6, timer_fb_fields()),
         // Each width of a counter counts in its own type: `INT` and `DINT`
         // in a signed 32-bit integer, the others in their own.
-        "CTU" | "CTU_INT" | "CTU_DINT" => Some((opcode::fb_type::CTU, 6, ctu_fb_fields())),
-        "CTU_UDINT" => Some((opcode::fb_type::CTU_UDINT, 6, ctu_fb_fields())),
-        "CTU_LINT" => Some((opcode::fb_type::CTU_LINT, 6, ctu_fb_fields())),
-        "CTU_ULINT" => Some((opcode::fb_type::CTU_ULINT, 6, ctu_fb_fields())),
-        "CTD" | "CTD_INT" | "CTD_DINT" => Some((opcode::fb_type::CTD, 6, ctd_fb_fields())),
-        "CTD_UDINT" => Some((opcode::fb_type::CTD_UDINT, 6, ctd_fb_fields())),
-        "CTD_LINT" => Some((opcode::fb_type::CTD_LINT, 6, ctd_fb_fields())),
-        "CTD_ULINT" => Some((opcode::fb_type::CTD_ULINT, 6, ctd_fb_fields())),
-        "CTUD" | "CTUD_INT" | "CTUD_DINT" => Some((opcode::fb_type::CTUD, 10, ctud_fb_fields())),
-        "CTUD_UDINT" => Some((opcode::fb_type::CTUD_UDINT, 10, ctud_fb_fields())),
-        "CTUD_LINT" => Some((opcode::fb_type::CTUD_LINT, 10, ctud_fb_fields())),
-        "CTUD_ULINT" => Some((opcode::fb_type::CTUD_ULINT, 10, ctud_fb_fields())),
-        "SR" => Some((opcode::fb_type::SR, 3, sr_fb_fields())),
-        "RS" => Some((opcode::fb_type::RS, 3, rs_fb_fields())),
-        "R_TRIG" => Some((opcode::fb_type::R_TRIG, 3, edge_trig_fb_fields())),
-        "F_TRIG" => Some((opcode::fb_type::F_TRIG, 3, edge_trig_fb_fields())),
-        _ => None,
+        Ctu(Int | Dint) => (opcode::fb_type::CTU, 6, ctu_fb_fields()),
+        Ctu(Udint) => (opcode::fb_type::CTU_UDINT, 6, ctu_fb_fields()),
+        Ctu(Lint) => (opcode::fb_type::CTU_LINT, 6, ctu_fb_fields()),
+        Ctu(Ulint) => (opcode::fb_type::CTU_ULINT, 6, ctu_fb_fields()),
+        Ctd(Int | Dint) => (opcode::fb_type::CTD, 6, ctd_fb_fields()),
+        Ctd(Udint) => (opcode::fb_type::CTD_UDINT, 6, ctd_fb_fields()),
+        Ctd(Lint) => (opcode::fb_type::CTD_LINT, 6, ctd_fb_fields()),
+        Ctd(Ulint) => (opcode::fb_type::CTD_ULINT, 6, ctd_fb_fields()),
+        Ctud(Int | Dint) => (opcode::fb_type::CTUD, 10, ctud_fb_fields()),
+        Ctud(Udint) => (opcode::fb_type::CTUD_UDINT, 10, ctud_fb_fields()),
+        Ctud(Lint) => (opcode::fb_type::CTUD_LINT, 10, ctud_fb_fields()),
+        Ctud(Ulint) => (opcode::fb_type::CTUD_ULINT, 10, ctud_fb_fields()),
+        Sr => (opcode::fb_type::SR, 3, sr_fb_fields()),
+        Rs => (opcode::fb_type::RS, 3, rs_fb_fields()),
+        RTrig => (opcode::fb_type::R_TRIG, 3, edge_trig_fb_fields()),
+        FTrig => (opcode::fb_type::F_TRIG, 3, edge_trig_fb_fields()),
     }
 }
 

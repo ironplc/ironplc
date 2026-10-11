@@ -85,6 +85,7 @@ mod scoped_table;
 mod semantic_context;
 pub mod semantic_type;
 pub mod stages;
+pub mod standard_function_block;
 mod string_similarity;
 pub mod symbol_environment;
 pub mod system_globals;
@@ -128,6 +129,7 @@ pub use builtin_function::{
     BitShift, BuiltinFunction, InputsOfOneType, NumericFunction, OneTypeResult, StringFunction,
     TimeFunction,
 };
+pub use callee_resolution::MethodOwners;
 pub use clean_analysis::CleanAnalysis;
 pub use function_environment::{
     FunctionEnvironment, FunctionEnvironmentBuilder, FunctionSignature,
@@ -140,6 +142,7 @@ pub use intermediates::enumeration::resolve_ordinal_values;
 pub use intermediates::operator_function_form::FormOf;
 pub use semantic_context::{SemanticContext, SemanticContextBuilder};
 pub use semantic_type::SemanticType;
+pub use standard_function_block::{CounterWidth, StandardFunctionBlock};
 pub use type_attributes::TypeAttributes;
 pub use type_category::TypeCategory;
 pub use type_environment::{

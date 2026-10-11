@@ -28,7 +28,7 @@ use super::compile::{
     FbInstanceInfo, OpType, OpWidth, Signedness, StringVarInfo, VarTypeInfo,
     DEFAULT_STRING_MAX_LENGTH,
 };
-use super::compile_call::resolve_fb_type;
+use super::compile_call::standard_fb_layout;
 use super::compile_expr::{emit_store_var, emit_truncation};
 use super::compile_initial_value::{
     char_width, emit_reference, emit_scalar, emit_string_store, is_cleared, required,
@@ -210,7 +210,10 @@ fn assign_storage(
             // slot offset -- each member store addresses the instance
             // through it. Nothing to do here but size it.
             let fb_name = declared_name();
-            if let Some((type_id, num_fields, field_map)) = resolve_fb_type(&fb_name) {
+            let standard_block = types
+                .get_by_id(type_id)
+                .and_then(|attributes| attributes.standard_block);
+            if let Some((type_id, num_fields, field_map)) = standard_block.map(standard_fb_layout) {
                 let field_op_types = standard_fb_field_op_types(ctx, decl);
                 // Standard library function block.
                 let instance_size = num_fields as u32 * 8;
