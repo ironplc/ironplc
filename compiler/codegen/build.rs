@@ -26,5 +26,7 @@ fn main() {
         // Counter widths (`REQ-CW-codegen-*`): a counter of each width end to
         // end.
         "counter-widths.md",
+        // Initial values (`REQ-IV-codegen-*`): storing each resolved starting value.
+        "initial-values.md",
     ]);
 }
