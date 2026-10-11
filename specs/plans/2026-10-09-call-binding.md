@@ -98,7 +98,7 @@ should not build, now that `SymbolEnvironment::resolve_variable` answers it.
 |---|---|---|---|
 | 1 | FB `a, b : DINT`, `q := a * 10 + b`; `inst(1, 2)` | `q` = 0 | 12 |
 | 2 | User `FUNCTION_BLOCK CTU_INT` setting `CV := 42`; `c(CU := TRUE)` | `CV` = 1 (built-in `CTU` ran) | 42 |
-| 3 | Method `Inc`, `VAR_IN_OUT v`, `v := v + 1`; `inst.Inc(v := counter)`, `counter = 5` | `counter` = 5 | 6 |
+| 3 | Method `Inc`, `VAR_IN_OUT v`, `v := v + 1`; `inst.Inc(v := counter)`, `counter = 5` | `counter` = 5: passed by value, silently | P9999 from `compile`; lowering passes it by reference (`Arg::Ref`) |
 | 4 | `derived EXTENDS base`, `Get` declared in `base`; `d.Get()` | P9999 at `compile_method.rs:307` | 7 |
 | 5 | Method `M(a; b := 7)`; `inst.M(a := 1)` | P9999 at `compile_method.rs:346` | P4018 from `check` |
 | 6 | `inst(b := c1.Next(), a := c1.Next())` and `f(b := c2.Next(), a := c2.Next())`, both `a * 10 + b` | FB 21, function 12 | both 12 |
@@ -164,16 +164,16 @@ Its rules are the design doc's requirements:
 - **Positional inputs** bind to `VAR_INPUT` + `VAR_IN_OUT` in declaration
   order for a function (unchanged), and to `VAR_INPUT` alone for a function
   block and a method, as `bind_inputs` and `method.rst` ("exactly as for a
-  function block invocation") already say. See question 1.
+  function block invocation") already say (decided below).
 - **Named inputs** bind by name to `VAR_INPUT` and `VAR_IN_OUT`; `=>` binds
   to `VAR_OUTPUT`. An extensible function's further inputs are named by
   counting on, as today.
 - **Problems**, with the codes they have today: mixed named and positional
   (P4001), an unknown input (P4002 for blocks and methods, P4023 for
   functions), a positional count (P4003; P4018 for functions), an unknown
-  output (P4004). New: a parameter named twice is P4024 for every kind
-  (question 2); an omitted method input or `VAR_IN_OUT` is P4018 (question
-  4); a negated output that is not `BOOL` (question 3).
+  output (P4004). New: a parameter named twice is P4024 for every kind; an
+  omitted method input or `VAR_IN_OUT` is P4018; a negated output that is not
+  `BOOL` is a new problem code (all decided below).
 
 `CallParameter` lists a callee's parameters once, in `callee_resolution`: the
 declarations of a user block or method, the fields of a standard block's
@@ -220,7 +220,7 @@ lowering covers the construct:
 | `compile_setup.rs:213` | Asks the instance type's `standard_block` instead of matching its name; `resolve_fb_type` takes the variant, not a string. | 2 |
 | `compile_method_call` | Asks `resolve_method`. An inherited method whose declaring block has fields reports not implemented: a derived block's layout has no storage for inherited fields (`compile_method.rs:255-266`). | 4 |
 | `compile_method_call` | Walks the normal form; `param_names_in_order` and the first-empty-slot loop are deleted. | 5, 9 |
-| `compile_user_method`, `compile_method_call` | A `VAR_IN_OUT` slot holds a reference and the call site passes `compile_reference_arg`, as `compile_fn.rs` does for a function (question 5). | 3 |
+| `compile_method_call` | A call that binds a method's `VAR_IN_OUT` reports not implemented (P9999) instead of passing it by value, as `var-in-out-parameters.md` asks of an unsupported site. No existing test calls such a method. Lowering passes it by reference. | 3 |
 | `call_args.rs`, `compile_user_function_call` | Read the normal form's inputs in order, as they read the positional ones today. | — |
 
 No codegen table changes its key, and no codegen id is added.
@@ -287,8 +287,10 @@ Four, in order. A tracking issue lists them.
 - analyzer: the binding pass normalizes `MethodCall`s; P4018 for an omitted
   input. Readers: `rule_method_call_declared`, `write_collector::visit_method_call`,
   `literal.rs::method_arguments`, `argument.rs::record_method_arguments`.
-- codegen: the normal form; `VAR_IN_OUT` by reference.
-- specs: `var-in-out-parameters.md`, the Methods row of its status table.
+- codegen: the normal form; P9999 for a call that binds a method's
+  `VAR_IN_OUT`.
+- specs: `var-in-out-parameters.md`, the Methods row of its status table:
+  reported as not implemented, no longer passed by value.
 - docs: `object-orientation/method.rst`: every input must be supplied.
 
 ### Core 4: function calls (one binder)
@@ -344,11 +346,10 @@ place with an `amended:` line.
 - **Variable binding (#2180).** Same pattern: one analyzer function, language
   terms on the AST. A parameter in normal form is named as its callee
   declares it, which is its `DeclRef` in the callee's scope.
-- **#2201 (lowering regression tests)** pins "function block inputs are
-  evaluated in the order the call writes them". Core 2 changes that to
-  declaration order on purpose. If #2201 lands first, core 2 updates that
-  case and says so; if not, #2201 should pin declaration order or leave it
-  out.
+- **#2201 (lowering regression tests)**, now on `main`, pins source order
+  in `end_to_end_evaluation_order.rs`'s `function_block_inputs_in_written_order`
+  case (`log` = 21). Core 2 changes that case to declaration order (`log` =
+  12) on purpose, renames it, and says so in its description.
 - **Implicit conversions (#2050, #2125).** `literal.rs` and `argument.rs`
   change only where they find a call's parameters. How a conversion is chosen
   does not change, and their tests pass unchanged, except that an inherited
@@ -377,11 +378,11 @@ place with an `amended:` line.
 | `compiler/analyzer/src/xform_insert_implicit_conversions/{declared,literal,argument,arithmetic,inputs_of_one_type}.rs` | `resolve_method`; the normal form | P, C1-C4 |
 | `compiler/codegen/src/compile_stmt.rs` | `compile_fb_call` walks the normal form | C2 |
 | `compiler/codegen/src/compile_setup.rs`, `compile_call.rs` | `standard_block` instead of the name | C1 |
-| `compiler/codegen/src/compile_method.rs` | `resolve_method`; normal form; `VAR_IN_OUT` by reference | C1, C3 |
+| `compiler/codegen/src/compile_method.rs` | `resolve_method`; normal form; P9999 for a method `VAR_IN_OUT` | C1, C3 |
 | `compiler/codegen/src/call_args.rs`, `compile_call.rs` | named inputs in order | C4 |
 | `compiler/codegen/tests/it/end_to_end_call_binding.rs` | **New.** One test per row | C1-C4 |
 | `compiler/analyzer/build.rs`, `compiler/codegen/build.rs` | list `call-binding.md` | C1 |
-| `compiler/problems/resources/problem-codes.csv`, `docs/reference/compiler/problems/P####.rst` | negated non-`BOOL` output, if question 3 says a new code; P4024 and P4018 pages name blocks and methods | C2, C3 |
+| `compiler/problems/resources/problem-codes.csv`, `docs/reference/compiler/problems/P####.rst` | new code for a negated non-`BOOL` output; P4024 and P4018 pages name blocks and methods | C2, C3 |
 | `specs/design/call-binding.md` | **New** | C1-C4 |
 | `specs/design/lowered-program.md` | §4 row; REQ-LOW-lowering-069 | C2 |
 | `specs/adrs/0041-staged-method-and-interface-dispatch.md` | postscript; Implementation Status corrected | C1 |
@@ -409,7 +410,7 @@ No new AST type, no VM, container or opcode change.
 
 ### Core 2: function block calls
 
-- [ ] `bind`; the binding pass for `FbCall`; P4024; negated output per question 3.
+- [ ] `bind`; the binding pass for `FbCall`; P4024; a new problem code for a negated non-`BOOL` output.
 - [ ] Switch the FB readers to the normal form.
 - [ ] `compile_fb_call` walks it, inverting negated outputs.
 - [ ] Analyzer tests: positional, named, mixed (P4001), omitted input and output, negated output, `VAR_IN_OUT`, duplicate, a positional standard FB call (`t(TRUE, T#1S)`).
@@ -420,9 +421,9 @@ No new AST type, no VM, container or opcode change.
 
 - [ ] The binding pass for `MethodCall`; P4018 for an omitted input.
 - [ ] Switch the method readers.
-- [ ] Codegen: normal form; `VAR_IN_OUT` by reference.
+- [ ] Codegen: normal form; P9999 for a call that binds a method's `VAR_IN_OUT`, with a test.
 - [ ] Analyzer tests: positional, named, mixed, omitted (P4018), `VAR_IN_OUT`, duplicate, inherited and overridden, `THIS^`/`SUPER^` normal form.
-- [ ] End to end: rows 3, 6 (method), 7 (method); `check` errors for rows 5 and 9.
+- [ ] End to end: rows 6 (method), 7 (method); `check` errors for rows 5 and 9; `compile` P9999 for row 3.
 - [ ] Specs and docs.
 
 ### Core 4: function calls
@@ -454,13 +455,15 @@ No new AST type, no VM, container or opcode change.
   (core 4). Codegen reports a positional argument in a user function call as
   an internal error, so a missed one fails a test rather than miscompiling.
 - **Core 4's blast radius.** Many readers; the split above.
-- **New `check` errors** (rows 5, 7, 9, question 3). Each is a program that
+- **New `check` errors** (rows 5, 7, 9, and a negated non-`BOOL` output). Each is a program that
   compiles wrongly, or not at all, today.
 - **The analyzed tree reads differently.** A call shows in normal form, not
   as written, as ADR-0056 already accepted for conversions. Diagnostics keep
   each argument's own span.
 
 ## Decided
+
+### Parameter identity
 
 - **Parameters are named by `DeclRef`, not by index.** The task asked for
   parameters "by index or identity, not name". In the normal form each
@@ -479,28 +482,35 @@ No new AST type, no VM, container or opcode change.
     function block input without a new AST entry, and does not say which
     parameter an argument binds to.
 
-## Questions for the reviewer
+### Answered on the plan PR
 
-1. **Positional order for blocks and methods.** `bind_inputs` and
-   `method.rst` bind positional arguments to `VAR_INPUT` only, and the plan
-   keeps that. `var-in-out-parameters.md` §Argument list says block and
-   method calls "also [have] to include `VAR_IN_OUT` in the positional
-   order", as functions do. The plan corrects that paragraph. Is that the
-   intended rule?
-2. **Duplicates.** A block or method parameter named twice passes `check`
-   today (row 7). P4024, as for functions?
-3. **Negated outputs.** `NOT q => x` on a non-`BOOL` output is not checked.
-   Reject it with a new problem code, so nothing later decides what `NOT`
-   means for an `INT`?
-4. **Omitted method input.** Reuse P4018 with the method in its context, or
-   a new code?
-5. **Method `VAR_IN_OUT`.** Pass by reference in today's codegen (row 3
-   gives 6), or report P9999 as `var-in-out-parameters.md` asks of an
-   unsupported site, and leave the reference to lowering? The plan passes by
-   reference: `compile_fn.rs` already does it for functions, so the change is
-   small.
-6. **Omitted FB input.** An absent `NamedInput` means "keeps its previous
-   value". Is that enough, or should the normal form mark it?
+- **Positional order for blocks and methods:** `VAR_INPUT` only, as
+  `bind_inputs` and `method.rst` say. Core 3 corrects
+  `var-in-out-parameters.md` §Argument list, which says block and method
+  calls include `VAR_IN_OUT` in the positional order.
+- **A parameter named twice** on a block or method call is P4024, as for a
+  function.
+- **A negated output that is not `BOOL`** is rejected, with a new problem
+  code, so nothing later decides what `NOT` means for an `INT`.
+- **An omitted method input or `VAR_IN_OUT`** is P4018, with the method in its
+  context.
+- **A method's `VAR_IN_OUT` in today's codegen** is reported as not
+  implemented (P9999), not passed by reference. No existing test calls such
+  a method, so none breaks. Lowering passes it by reference (`Arg::Ref`).
+- **An omitted function block input keeps its value from the previous call**,
+  or its initial value on the first call, and the normal form records it by
+  its absence. This is IEC 61131-3's rule for a function block instance, as
+  vendor documentation states it (for example Schneider Electric's Machine
+  Expert: "if any variable of a function block input is missing (= open),
+  then the value from the previous invocation of this instance will be
+  used"). The repository already relies on it:
+  `end_to_end_fb_ton.rs` sets `PT` once with a member initializer
+  (`timer : TON := (PT := T#5s)`) and calls `timer(IN := TRUE, ...)`, the
+  remedy `P4043.rst` offers; and it writes `timer.IN` and `timer.PT` before a
+  bare `timer()`. Functions and methods are different: their inputs are
+  fresh on every call, which is why omitting one is P4018. The design doc
+  states the rule as a requirement and `pous/function-block.rst` documents
+  it (core 2).
 
 ## Out of scope
 
