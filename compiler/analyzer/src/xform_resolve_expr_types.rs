@@ -543,7 +543,10 @@ impl ExprTypeResolver<'_> {
     /// The id of the type the variable `name` names from the current scope
     /// was declared with.
     fn declared_type_id(&self, name: &Id) -> Option<TypeId> {
-        self.symbols.find(name, &self.scope.current())?.type_id
+        self.symbols
+            .resolve_variable(name, &self.scope.current())
+            .declared()?
+            .type_id
     }
 
     /// The id of the type of the value `var` names.

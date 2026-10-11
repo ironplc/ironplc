@@ -150,7 +150,8 @@ impl RuleFunctionCallInOutArgument<'_> {
     fn is_name_writable(&self, name: &Id) -> bool {
         self.context
             .symbols()
-            .find(name, &self.scope.current())
+            .resolve_variable(name, &self.scope.current())
+            .declared()
             .is_some_and(is_declared_writable)
     }
 
