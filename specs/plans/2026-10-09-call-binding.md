@@ -1,33 +1,54 @@
 # Plan: Resolve Call Targets and Argument Binding in the Analyzer
 
-Checked against `main` at `4480575`; line numbers are as of that commit. The
-reproductions below were rerun there (the task cites `c150fb1`, and none of
-them changed in between).
+Checked against `main` at `377b8b9`; line numbers are as of that commit. Every
+reproduction below was rerun there.
 
 ## Goal
 
 Codegen lowers calls; it does not decide what they mean. Today it still
-decides, with lookups of its own:
+decides, with lookups and precedence rules of its own:
 
-- **what a call reaches**: which function, which function block type
-  (standard or user-defined), which method body;
-- **how each argument binds**: by position or by name, by value or by
-  reference;
+- **what a call reaches**: which function block type (standard or
+  user-defined) and which method body;
+- **how each argument binds**: by position or by name;
 - **what an omitted input does**;
 - **the order arguments are evaluated in**.
 
-After this work the analyzer decides all four and records the answer on the
-call node, the way it records `expr_type` and `ImplicitConversion`
-(ADR-0056). Codegen lowers exactly the recorded callee and binding, so a
-second backend cannot decide differently.
+After this work the analyzer decides all four. Codegen's route that compiles
+from the AST, and lowering after it, read the analyzer's answer and decide
+nothing.
 
-Two constraints hold at the end:
+## Where this sits relative to lowering
 
-- **Codegen never resolves a callee by name.** The analyzer records an
-  identity: a function's signature, a function block's `TypeId`, a method's
-  declaring block and position. `resolve_fb_type`'s name table is deleted.
-- **Codegen never binds an argument.** Every `Function`, `FbCall` and
-  `MethodCall` carries one entry per parameter, in evaluation order.
+`specs/design/lowered-program.md` (#2011, `proposed`) puts a lowering stage
+between analysis and the backends. Two of its decisions shape this plan:
+
+- **ADR-0058: the analyzer decides what can make a program invalid, and
+  records it in the analyzed `Library`.** A binding can make a program
+  invalid (an unknown or duplicated parameter, a missing input), so the
+  binding is the analyzer's. §4 of the design already lists "Argument order
+  and count" among the decisions the analyzer records, "as positional
+  arguments", which today covers function calls only.
+- **Lowering makes the decisions no valid program can get wrong**, among them
+  the passing mode (`Arg::Value`, `Ref`, `Copy`) and, under ADR-0060, how a
+  standard function block runs. So neither is recorded here.
+
+#2180 (variable binding) sets how a decision is recorded: in the language's
+own terms, with one analyzer function that the rules, today's codegen and
+lowering all ask, and no identity on the AST that exists only to key storage.
+Its coordination note says a call binding names its parameters by `DeclRef`.
+
+So this plan:
+
+1. **Records the binding as the call's normal form**: named arguments, in the
+   parameter declaration order. A parameter is named as the callee declares
+   it; with the callee's scope, that is its `DeclRef`. This is the
+   positional rewrite functions already get, extended to every kind of call.
+2. **Answers "which method" with one analyzer function**, as #2180 answers
+   "which variable".
+3. **Changes today's codegen only as much as reading those answers takes.**
+   That code is deleted as lowering covers calls. Nothing is built in codegen
+   that lowering replaces: no new codegen tables, no ids keyed for codegen.
 
 ## Current behaviour
 
@@ -35,558 +56,447 @@ Two constraints hold at the end:
 
 | Site | What it decides |
 |---|---|
-| `compile_call.rs:53` `compile_function_call` | The intrinsic table by name (`ctx.intrinsics`, built by `intrinsics_by_name`, `:42`), then the user function by lowercase name. `string_width.rs:239,250` and `compile_aggregate.rs:132` repeat the lookups. |
-| `compile_setup.rs:120` | An FB instance's type, by `resolve_fb_type(uppercase name)` (`compile_call.rs:746`) **before** the user FB types. The table maps `CTU_INT`, `CTD_INT` and `CTUD_INT`, which the analyzer does not treat as standard names (`stdlib_function_block.rs:343`), to the built-in blocks. |
-| `compile_stmt.rs:162` `compile_fb_call` | Stores `NamedInput`s only, so positional inputs are dropped. Evaluates them in source order. Looks fields up by lowercase name. Leaves an omitted input unchanged. Reads outputs in source order and ignores `Output::not`. |
-| `compile_method.rs:290-309` | Finds the instance's FB by scanning `user_fb_types` for its VM type id, then the method by lowercase name on that block only, so an inherited method is P9999. |
-| `compile_method.rs:328-352` | A positional argument goes to the first empty slot among **all** input-compatible parameters, a named one by name, evaluation in parameter order, P9999 for an omitted input. |
-| `compile_method.rs:126-140` | A `VAR_IN_OUT` parameter gets a value slot, so it is passed by value. |
-| `compile_fb_init.rs:35` | A field's operation type, by scanning `user_fb_types` for a VM type id and the field by name. |
+| `compile_setup.rs:213` | An FB instance's type, by `resolve_fb_type(uppercase name)` (`compile_call.rs:735`) **before** the user FB types. The table maps `CTU_INT`, `CTD_INT` and `CTUD_INT`, which the analyzer does not treat as standard names (`stdlib_function_block.rs:343`), to built-in blocks, so a user block of that name never runs. |
+| `compile_stmt.rs:162` `compile_fb_call` | Stores `NamedInput`s only (`:181`), so positional inputs are dropped. Evaluates them in source order. Reads outputs in source order (`:205`) and ignores `Output::not`. |
+| `compile_method.rs:298-307` | Finds the instance's FB by scanning for its VM type id, then the method by lowercase name on that block only, so an inherited method is P9999. |
+| `compile_method.rs:325-346` | A positional argument goes to the first empty slot among **all** input-compatible parameters, a named one by name. Evaluation in parameter order; P9999 for an omitted input. |
+| `compile_method.rs:124-137` | A `VAR_IN_OUT` parameter gets a value slot, so it is passed by value. `var-in-out-parameters.md` says an unsupported `VAR_IN_OUT` is reported as P9999, "rather than compiled with by-value semantics". |
+
+Function calls are not on this list. Codegen finds a function by the name the
+analyzer resolved, with the same case-insensitive key as the
+`FunctionEnvironment`, and a user function cannot share a standard
+function's name. So codegen cannot choose a different function. Lowering
+replaces that lookup anyway (§4 of the design: "No stage after the analyzer
+matches a function's name").
 
 ### The analyzer's binders
 
-The analyzer binds arguments in five places, by three different rules:
+Five places bind arguments, by three different rules:
 
 | Binder | Calls | Positional rule |
 |---|---|---|
 | `xform_named_to_positional_args.rs:76` `plan_positional_order` | `Function` | rewrites named arguments into the order of `VAR_INPUT` + `VAR_IN_OUT` |
 | `function_environment.rs:138` `FunctionSignature::bind_inputs` | `Function` (5 rules) | zips positional arguments with `VAR_INPUT` + `VAR_IN_OUT` |
-| `call_assignment_check.rs:72` `bind_inputs` | `FbCall`, `MethodCall` (2 rules, `write_collector.rs:295`) | `VAR_INPUT` only |
-| `write_collector.rs:400-411` | `Function` | its own zip |
-| `xform_insert_implicit_conversions/literal.rs:289` `method_arguments`, `:457` `fb_call_inputs` | `MethodCall`, `FbCall` | a position counter over `VAR_INPUT` + `VAR_IN_OUT` for methods, `VAR_INPUT` for blocks |
+| `call_assignment_check.rs:73` `bind_inputs` | `FbCall`, `MethodCall` (2 rules, `write_collector.rs:295`) | `VAR_INPUT` only |
+| `write_collector.rs:404` | `Function` | its own zip |
+| `xform_insert_implicit_conversions/literal.rs:302` `method_arguments`, `:470` `fb_call_inputs` | `MethodCall`, `FbCall` | a position counter: `VAR_INPUT` + `VAR_IN_OUT` for methods, `VAR_INPUT` for blocks |
 
-Callee resolution is in `callee_resolution.rs` (`FunctionBlocks::resolve_method`
-walks `EXTENDS`), but the conversion pass looks methods up in a table of its
-own (`xform_insert_implicit_conversions/declared.rs`, `Declarations::method`)
-that does not walk `EXTENDS`. `InstanceTypes` is a per-rule table of
-instances, which [Name and Type
-Lookup](../steering/compiler-architecture.md#name-and-type-lookup) says a
-rule should not build.
+`callee_resolution.rs` resolves a method through `EXTENDS`
+(`FunctionBlocks::resolve_method`, `:77`), but the conversion pass looks
+methods up in a table of its own (`declared.rs:99`, `Declarations::method`)
+that does not. `InstanceTypes` (`callee_resolution.rs:112`) is a per-rule table
+of instances, which [Name and Type
+Lookup](../steering/compiler-architecture.md#name-and-type-lookup) says a rule
+should not build, now that `SymbolEnvironment::resolve_variable` answers it.
 
 ### Reproductions
 
-`cargo build -p ironplc-cli -p ironplc-vm-cli`; `--dialect iec61131-3-ed3`
-for methods; `ironplcvm run --scans 1 --dump-vars=-`. Every program passes
-`check`.
+`cargo build -p ironplc-cli -p ironplc-vm-cli`; `--dialect iec61131-3-ed3`;
+`ironplcvm run --scans 1 --dump-vars=-`. Every program passes `check`.
 
-| # | Program | Today | Expected |
+| # | Program | Today | After |
 |---|---|---|---|
 | 1 | FB `a, b : DINT`, `q := a * 10 + b`; `inst(1, 2)` | `q` = 0 | 12 |
 | 2 | User `FUNCTION_BLOCK CTU_INT` setting `CV := 42`; `c(CU := TRUE)` | `CV` = 1 (built-in `CTU` ran) | 42 |
 | 3 | Method `Inc`, `VAR_IN_OUT v`, `v := v + 1`; `inst.Inc(v := counter)`, `counter = 5` | `counter` = 5 | 6 |
-| 4 | `derived EXTENDS base`, `Get` declared in `base`; `d.Get()` | P9999 at `compile_method.rs:309` | 7 |
-| 5 | Method `M(a; b := 7)`; `inst.M(a := 1)` | P9999 at `compile_method.rs:349` | a `check` error (P4018) |
+| 4 | `derived EXTENDS base`, `Get` declared in `base`; `d.Get()` | P9999 at `compile_method.rs:307` | 7 |
+| 5 | Method `M(a; b := 7)`; `inst.M(a := 1)` | P9999 at `compile_method.rs:346` | P4018 from `check` |
 | 6 | `inst(b := c1.Next(), a := c1.Next())` and `f(b := c2.Next(), a := c2.Next())`, both `a * 10 + b` | FB 21, function 12 | both 12 |
-
-Found while reproducing; also in scope, because a complete binding has to
-decide them:
-
-| # | Program | Today | After |
-|---|---|---|---|
-| 7 | `inst(a := 1, a := 3, b := 2)` on an FB; the same on a method | passes `check`; last write wins (32) | P4024, as for a function |
+| 7 | `inst(a := 1, a := 3, b := 2)` on an FB, and on a method | last write wins (32) | P4024 from `check` |
 | 8 | `inst(NOT z => nz)`, `z` = TRUE | `nz` = TRUE | FALSE |
-| 9 | Method `M` with `VAR_IN_OUT x` then `VAR_INPUT a`; `inst.M(5)` | passes `check` (the rule counts `5` against `VAR_INPUT` alone); P9999 in codegen, which binds it to `x` and leaves `a` unbound | P4018: `x` is not bound |
+| 9 | Method with `VAR_IN_OUT x`, then `VAR_INPUT a`; `inst.M(5)` | P9999 at `compile_method.rs:346`: the rule counts `5` against `VAR_INPUT`, codegen binds it to `x` | P4018 from `check`: `x` is not bound |
 
 ## Architecture
 
-### What is recorded
+### The normal form of a call
 
-New types in `compiler/dsl/src/call_binding.rs`. They are identities and
-indices only, `#[recurse(ignore)]` on the call nodes like `expr_type`, so the
-derived folds move them through unchanged (`dsl_macro_derive/src/lib.rs:581`)
-and no visitor descends into them.
+A binding pass, `xform_bind_call_arguments`, replaces
+`xform_named_to_positional_args` at the same place in `stages::resolve_types`
+(after the environments are built, before expression types and the rules).
+For every `Function`, `FbCall` and `MethodCall` whose arguments bind, it
+rewrites the argument list into the call's **normal form**:
 
-```rust
-/// The identity of a function signature within one compilation. Only the
-/// analyzer's `FunctionEnvironment` allocates one, as only the
-/// `TypeEnvironment` allocates a `TypeId`.
-pub struct SignatureId(u32);
+- **One `NamedInput` per supplied input** (`VAR_INPUT` or `VAR_IN_OUT`),
+  naming the parameter as the callee declares it, **in parameter declaration
+  order**. A positional argument becomes the `NamedInput` of the parameter it
+  binds to, keeping its own span.
+- **Then one `Output` per supplied output assignment**, in parameter
+  declaration order, keeping its `not`.
+- **That order is the evaluation order.** For a function it is the order the
+  positional rewrite produces today. For a function block it replaces source
+  order, which changes a call whose named arguments have side effects and are
+  written out of declaration order (row 6).
+- **An omitted parameter is absent.** For a function block input that means
+  it keeps its previous value, and for an output that the call does not read
+  it, as today. A function or method may not omit an input (P4018), so its
+  normal form names every input.
 
-/// What a call reaches, as the analyzer resolved it.
-pub enum Callee {
-    /// A standard or user-defined function.
-    Function(SignatureId),
-    /// The function block the instance is declared as: the instance
-    /// `VarDecl`'s `type_id`.
-    FunctionBlock(TypeId),
-    /// The method `method` (its position in the declaring block's `methods`)
-    /// of the block `block` that declares it, found through `EXTENDS`.
-    Method { block: TypeId, method: u16 },
-}
+No new AST type is needed: `NamedInput` and `Output` already say which
+parameter, with which argument. Folds and visitors keep reaching the argument
+expressions where they do today, and the conversions the implicit-conversion
+pass records stay on those expressions. A call that does not bind keeps the
+arguments it was written with, and the problem is reported; `CleanAnalysis`
+keeps codegen from seeing it. This is the best-effort policy of the pass it
+replaces.
 
-/// One parameter of the callee and what the call does with it.
-pub struct BoundParameter {
-    /// The parameter's position in the callee's parameter list (below).
-    pub param: u16,
-    pub argument: BoundArgument,
-}
+`lowered-program.md` §4's row "Argument order and count" becomes: made in the
+binding pass for every call; recorded as the call's normal form. §5's
+"Named argument → positional `Arg`" stays: lowering translates the normal form
+into `Vec<Arg>`, choosing each `Arg` by the parameter's section.
 
-pub enum BoundArgument {
-    /// The input at `params[arg]` of the call, passed by value.
-    Value { arg: u16 },
-    /// The input at `params[arg]`, passed by reference (`VAR_IN_OUT`).
-    Reference { arg: u16 },
-    /// An omitted function block input: it keeps its previous value.
-    Unchanged,
-    /// The output assignment at `params[arg]`: its target and its `not`.
-    Output { arg: u16 },
-    /// An output the call does not read.
-    NotRead,
-    /// An omitted function block `VAR_IN_OUT`. Codegen does not compile a
-    /// function block `VAR_IN_OUT` yet (P9999 today and after); P4061 is not
-    /// implemented (`var-in-out-parameters.md`).
-    Unbound,
-}
+### One binder
 
-pub struct CallBinding {
-    pub callee: Callee,
-    /// One entry per parameter, in the order the arguments are evaluated.
-    pub parameters: Vec<BoundParameter>,
-}
-```
-
-`Function`, `FbCall` and `MethodCall` each get `pub binding: Option<CallBinding>`
-(`None` from the parser). The arguments stay where the program wrote them, in
-`params`/`param_assignment`; the binding points at them by index. So every
-fold and visitor keeps reaching the argument expressions where it does today,
-and the conversions the implicit-conversion pass records stay on the
-expressions the binding points at. (Moving the expressions into the binding
-is the alternative; see question 5.)
-
-**The parameter list** of a callee is defined once, in the analyzer:
-
-| Callee | Parameters, in order |
-|---|---|
-| User FB | its `VAR_INPUT`, `VAR_IN_OUT` and `VAR_OUTPUT` declarations, in declaration order |
-| Standard FB | its `Input` and `Output` fields, in the order of `SemanticType::FunctionBlock::fields` |
-| Method | its `VAR_INPUT`, `VAR_IN_OUT` and `VAR_OUTPUT` declarations, in declaration order |
-| Function | `FunctionSignature::parameters`, continued past the declared ones for an extensible function as `input_parameters` does |
-
-`param` indexes that list. Codegen maps it to a field index or a parameter
-slot from tables it builds when it lays out the callee, not by name.
-
-### Where it is decided
-
-**One binder**, `analyzer/src/call_binding.rs`, grown from
-`call_assignment_check::bind_inputs` and `plan_positional_order`:
+`analyzer/src/call_binding.rs`, grown from `call_assignment_check::bind_inputs`
+and `plan_positional_order`:
 
 ```rust
-/// Binds `args` to `params`, the callee's parameter list, by the rules of
-/// `kind`. Returns the problems the call has instead when it cannot be bound.
+/// Binds `args` to `params`, the callee's parameters in declaration order,
+/// by the rules of `kind`, and returns the arguments in normal form.
 pub(crate) fn bind(
-    kind: CallKind,                 // Function | FunctionBlock | Method
-    params: &[CallParameter],       // the list above, with each section
-    args: &[ParamAssignmentKind],
-) -> Result<Vec<BoundParameter>, Vec<BindProblem>>;
+    kind: CallKind,              // Function | FunctionBlock | Method
+    params: &[CallParameter],    // name, section and declared type of each
+    args: Vec<ParamAssignmentKind>,
+) -> Result<Vec<ParamAssignmentKind>, (Vec<ParamAssignmentKind>, Vec<Diagnostic>)>;
 ```
 
-The rules it applies, which the design doc states as requirements:
+Its rules are the design doc's requirements:
 
 - **Positional inputs** bind to `VAR_INPUT` + `VAR_IN_OUT` in declaration
-  order for a function (unchanged); to `VAR_INPUT` alone for a function block
-  and a method, as `bind_inputs` and `method.rst` ("exactly as for a function
-  block invocation") already say. See question 1.
-- **Named inputs** bind by name to `VAR_INPUT` and `VAR_IN_OUT`; `=>` to
-  `VAR_OUTPUT`.
-- **Problems**, each reported where it is today: mixed named and positional
-  (P4001), an unknown input name (P4002 for blocks and methods, P4023 for
+  order for a function (unchanged), and to `VAR_INPUT` alone for a function
+  block and a method, as `bind_inputs` and `method.rst` ("exactly as for a
+  function block invocation") already say. See question 1.
+- **Named inputs** bind by name to `VAR_INPUT` and `VAR_IN_OUT`; `=>` binds
+  to `VAR_OUTPUT`. An extensible function's further inputs are named by
+  counting on, as today.
+- **Problems**, with the codes they have today: mixed named and positional
+  (P4001), an unknown input (P4002 for blocks and methods, P4023 for
   functions), a positional count (P4003; P4018 for functions), an unknown
-  output (P4004), and a parameter named twice (P4024, now for every kind;
-  question 2).
-- **Omission**: a function block input is `Unchanged`, a function block
-  `VAR_IN_OUT` `Unbound`, an unread output `NotRead`. A function or method
-  input or `VAR_IN_OUT` is P4018 (question 4).
-- **Passing mode**: `Reference` for a `VAR_IN_OUT`, `Value` otherwise.
-- **Evaluation order**: the parameter list's order. Inputs come in
-  declaration order, then (after the call) outputs in declaration order. For
-  a function this is the order the positional rewrite produces today. For a
-  function block it replaces source order, which changes a call whose named
-  arguments have side effects and are written out of declaration order
-  (row 6).
+  output (P4004). New: a parameter named twice is P4024 for every kind
+  (question 2); an omitted method input or `VAR_IN_OUT` is P4018 (question
+  4); a negated output that is not `BOOL` (question 3).
 
-**One callee resolution**, `callee_resolution.rs`: a function by
-`FunctionEnvironment`, an instance by the symbol environment (prefactor 2), a
-method through `EXTENDS` (`resolve_method`), `THIS^` from the enclosing block
-and `SUPER^` from its base.
+`CallParameter` lists a callee's parameters once, in `callee_resolution`: the
+declarations of a user block or method, the fields of a standard block's
+type, a function's signature. The binding pass, the rules, the write collector
+and the conversion pass all use `bind` or read the normal form it leaves. None
+keeps a binding loop of its own.
 
-**One recording pass**, `xform_bind_calls`, replaces
-`xform_named_to_positional_args` at the same place in `stages::resolve_types`
-(after the environments are built, before expression types): it records
-`binding` on every call whose callee resolves and whose arguments bind. It
-does not rewrite arguments. A call it cannot bind is left without a binding
-and the rules report why; `CleanAnalysis` keeps codegen from seeing it.
-Best effort, per call, like the pass it replaces.
+### Which block, which method
 
-The rules, the write collector and the implicit-conversion pass read the
-recorded binding, or call `bind` when they run on a tree the pass has not
-seen. None keeps a binding loop of its own.
+- **A function block instance's type** is its `VarDecl::type_id`, which
+  already exists. Whether the type is a standard block, and which, is a
+  property of the type: `TypeAttributes::standard_block`, set for the types
+  `intermediates/stdlib_function_block.rs` builds. A type without it is a user
+  block, whatever its name (row 2). Lowering needs the same answer to pick the
+  block it generates (ADR-0060).
+- **A method call's body** is answered by one analyzer function, as #2180
+  answers a variable:
 
-### Standard function block identity
+  ```rust
+  /// The block that declares the method `method` called on `receiver`, and
+  /// the method: the receiver's block, then its EXTENDS chain (ADR-0041
+  /// case 1). THIS^ starts at the enclosing block, SUPER^ at its base.
+  pub fn resolve_method(&self, receiver: Receiver<'_>, method: &Id)
+      -> Option<ResolvedMethod<'_>>;
+  ```
 
-A standard block's identity is a property of its type, not of its spelling.
-`TypeAttributes` gets `standard_block: Option<StandardFunctionBlock>`, set by
-`intermediates/stdlib_function_block.rs` for the 22 types it builds:
+  The rule, the binding pass, the conversion pass (in place of
+  `Declarations::method`) and codegen call it. Codegen reaches it through
+  `CleanAnalysis`, as it reaches the execution model's declarations since
+  #2170. Lowering calls it when it exists, to allocate the method's `PouId`.
+- **`THIS^` and `SUPER^`.** `resolve_method` answers them, with analyzer
+  tests. `rule_method_call_declared` still reports them as not implemented
+  (#1406); compiling them is #1998's codegen PR, which then asks
+  `resolve_method` rather than resolving anything itself.
 
-```rust
-pub enum StandardFunctionBlock {
-    Ton, Tof, Tp, Sr, Rs, RTrig, FTrig,
-    Ctu(CounterWidth), Ctd(CounterWidth), Ctud(CounterWidth),
-}
-```
+### Today's codegen
 
-Codegen gets an instance's `TypeId` from its `VarDecl::type_id`, asks the
-type environment for `standard_block`, and maps the variant to the VM block
-in a new `codegen/src/standard_fb.rs` (VM type id and field count; every
-counter width runs the 32-bit block, as today). A field's index is its
-parameter's position in the type's field list, which matches the VM's field
-order for every standard block (checked by a test, not assumed). A type
-without `standard_block` is a user block, found in `user_fb_types` by
-`TypeId`. So a user block named `CTU_INT` is a user block (row 2).
+Each change is what reading the analyzer's answer takes, and goes when
+lowering covers the construct:
 
-### Codegen
+| Site | Change | Rows |
+|---|---|---|
+| `compile_fb_call` | Walks the normal form: each `NamedInput` in order, then each `Output` in order, inverting a negated one. Fields are still found by name in codegen's layout tables, which `lowered-program.md` allows until lowering gives ids ("Storage found by name at first"). | 1, 6, 8 |
+| `compile_setup.rs:213` | Asks the instance type's `standard_block` instead of matching its name; `resolve_fb_type` takes the variant, not a string. | 2 |
+| `compile_method_call` | Asks `resolve_method`. An inherited method whose declaring block has fields reports not implemented: a derived block's layout has no storage for inherited fields (`compile_method.rs:255-266`). | 4 |
+| `compile_method_call` | Walks the normal form; `param_names_in_order` and the first-empty-slot loop are deleted. | 5, 9 |
+| `compile_user_method`, `compile_method_call` | A `VAR_IN_OUT` slot holds a reference and the call site passes `compile_reference_arg`, as `compile_fn.rs` does for a function (question 6). | 3 |
+| `call_args.rs`, `compile_user_function_call` | Read the normal form's inputs in order, as they read the positional ones today. | — |
 
-- **Function calls**: `binding.callee` → `FunctionEnvironment::get_by_id` →
-  the intrinsic, or the user function in `user_functions`, keyed by
-  `SignatureId`. `intrinsics_by_name` and `ctx.intrinsics` go away, and so do
-  the name lookups in `string_width.rs` and `compile_aggregate.rs`.
-  `call_args::collect_positional_args`/`fixed_args` read the binding's input
-  arguments in order.
-- **FB calls**: walk `binding.parameters`. `Value` compiles the argument and
-  stores the field; `Unchanged` emits nothing; `Reference`/`Unbound` report
-  not implemented, as a function block `VAR_IN_OUT` does today; after the
-  call, `Output` loads the field, applies `NOT` when the assignment is
-  negated, and stores the target.
-- **Method calls**: lower `Callee::Method { block, method }`. The method's
-  body, field region and parameter slots are the declaring block's. A
-  `VAR_IN_OUT` slot holds a reference, as in `compile_fn.rs:125-134`, and the
-  call site passes `compile_reference_arg`. An inherited method whose
-  declaring block has fields reports not implemented: a derived block's
-  layout has no storage for inherited fields yet (`compile_method.rs:261-268`
-  says so today), so lowering the call would copy the wrong slots.
-- **Missing binding**: a call node with `binding: None` is an internal error
-  (`Diagnostic::internal_error_at`), never a name lookup.
-- **Names left on call paths**: none for a callee, field or parameter.
-  Variable references (an argument variable, an output target, the instance
-  variable itself) are still bound by name; that is out of scope.
+No codegen table changes its key, and no codegen id is added.
 
 ### Container bytes
 
 A program that behaves correctly today compiles to the same bytes, with one
-exception: a function block call whose named inputs or outputs are written
-out of declaration order now stores and loads them in declaration order (the
-evaluation-order rule). Each core PR compares bytes before and after (see
-Verification) and lists every difference.
+exception: a function block call whose named arguments are written out of
+declaration order now stores and loads them in declaration order. Each core PR
+compares bytes before and after and lists every difference.
 
 ## Prefactoring
 
-Two behaviour-preserving PRs, each from `main`:
+One behaviour-preserving PR, from `main`:
 
-1. **Codegen keys user function blocks by identity.** `user_fb_types` becomes
-   `HashMap<TypeId, UserFbTypeInfo>` (the id from the type environment, read
-   once while laying out the block), `FbInstanceInfo` carries the instance's
-   `TypeId` from `decl.type_id`, and `UserFbTypeInfo::methods` becomes a `Vec`
-   in declaration order. The three scans by VM type id
-   (`compile_stmt.rs:198`, `compile_method.rs:300`, `compile_fb_init.rs:42`)
-   become lookups. Standard blocks still resolve through `resolve_fb_type`,
-   and a method is still found by name, so the bytes are unchanged. Signal:
-   the same scan written three times, and core PR 1 needs the `TypeId` key.
+**`callee_resolution` resolves an instance through the environments, and
+lists a callee's parameters once.** `InstanceTypes` goes: an instance's block
+is found by `SymbolEnvironment::resolve_variable` and its `type_id`, from the
+`ScopeTracker` scope. `rule_function_block_invocation`,
+`rule_method_call_declared` and `write_collector` move to it. `CallParameter`
+replaces the four places that list a callee's inputs today
+(`count_input_type` and `find` in `call_assignment_check.rs`,
+`Declarations::inputs` in `declared.rs`, `function_block_input` in
+`literal.rs`).
 
-2. **`callee_resolution` resolves an instance through the environments.**
-   `InstanceTypes` goes; an instance's block is found by
-   `SymbolEnvironment::find` and its `type_id`, from the `ScopeTracker` scope,
-   as the steering file asks. Its two rules and the write collector move to
-   it. The callee's parameter list (`CallParameter`, above) moves here too,
-   from the three places that list a callee's inputs today
-   (`count_input_type` and `find` in `call_assignment_check.rs`,
-   `Declarations::inputs` in `declared.rs`, `function_block_input` in
-   `literal.rs`). Signal: three copies of one list, and a table the steering
-   file forbids. If any existing test has to change, the change is not
-   behaviour-preserving and moves into core PR 1.
+- **Signals:** four copies of one list, and a per-rule table that the
+  steering file forbids and `resolve_variable` (#2193) now makes unnecessary.
+- **If an existing test has to change**, the change is not
+  behaviour-preserving and moves into core 1.
 
-Not prefactored, to keep the prefactors behaviour-preserving: walking
-`EXTENDS` in the conversion pass's method lookup (it changes the conversions
-recorded for an inherited method's arguments; core PR 1) and the dsl types
-(an unused type is speculative; core PR 1 and 2 add them when they are used).
+Not prefactored: walking `EXTENDS` in the conversion pass changes the
+conversions recorded for an inherited method's arguments, so it goes in
+core 1.
 
 ## Core change PRs
 
-Four, in this order, each stacked on nothing but `main` and the prefactors.
-A tracking issue lists them.
+Four, in order. A tracking issue lists them.
 
-### Core 1: callee identity (rows 2, 4)
+### Core 1: which block, which method (rows 2, 4)
 
-- dsl: `SignatureId`, `Callee`, and `binding` on the three call nodes, with
-  `CallBinding::parameters` empty until core 2-4 fill it. (If a reviewer
-  prefers, core 1 adds a `callee: Option<Callee>` field and core 2 folds it
-  into `binding`; question 5.)
-- analyzer: `FunctionEnvironment` allocates a `SignatureId` per signature
-  (`get_by_id`); `TypeAttributes::standard_block`; `xform_bind_calls`
-  records the callee of every call, including `THIS^` and `SUPER^`
-  receivers. The conversion pass reads the recorded method callee instead of
-  `Declarations::method`, so an inherited method's arguments are converted
-  (this is the conversion pass's binder changing, not how it chooses a
-  conversion).
-- codegen: function calls by `SignatureId`; FB instance types by `TypeId` and
-  `standard_block`; `resolve_fb_type` and its field maps deleted for
-  `standard_fb.rs`; methods by the recorded block and position.
-- docs and specs: `specs/design/call-binding.md` (new, `status: partially
-  implemented`) with the callee requirements; listed in `analyzer/build.rs`
-  and `codegen/build.rs`. ADR-0041 postscript. `docs/` pages for function
-  blocks and methods if they name the standard counter variants.
+- analyzer: `TypeAttributes::standard_block`; `resolve_method` with
+  `THIS^`/`SUPER^`, used by `rule_method_call_declared` and in place of
+  `Declarations::method` in the conversion pass.
+- codegen: `standard_block` instead of the name; `resolve_method` for method
+  calls; the inherited-fields refusal.
+- specs: `specs/design/call-binding.md` (new, `status: partially
+  implemented`), with the callee requirements; listed in `analyzer/build.rs`
+  and `codegen/build.rs`. ADR-0041 postscript (below).
 
-### Core 2: function block call binding (rows 1, 6 FB half, 7 FB half, 8)
+### Core 2: function block calls (rows 1, 6 FB half, 7 FB half, 8)
 
-- analyzer: `call_binding::bind` and `BindProblem`; `check_assignments`
-  reports the binder's problems; `xform_bind_calls` records the binding of
-  every `FbCall`. Readers switched: `rule_function_block_invocation`,
+- analyzer: `call_binding::bind`; the binding pass normalizes `FbCall`s;
+  P4024 and the negated-output check. Readers: `rule_function_block_invocation`,
   `write_collector::visit_fb_call`, `literal.rs::fb_call_inputs`,
-  `argument.rs::record_fb_call_inputs`, `xform_resolve_expr_types.rs:784`.
-  P4024 for a duplicated FB parameter. A negated non-`BOOL` output is
-  rejected (question 3).
-- codegen: `compile_fb_call` lowers the binding.
-- spec: evaluation order, positional FB inputs, outputs and negation,
-  omission (`Unchanged`, `NotRead`, `Unbound`), passing mode.
-- docs: `docs/reference/language/pous/function-block.rst` states the
-  evaluation order and that a negated output is inverted.
+  `argument.rs::record_fb_call_inputs`, `xform_resolve_expr_types`.
+- codegen: `compile_fb_call` walks the normal form.
+- specs: evaluation order, positional inputs, outputs and negation, omission.
+  `lowered-program.md` §4 row; REQ-LOW-lowering-069 says the inputs are
+  assigned in the order of the normal form.
+- docs: `pous/function-block.rst`: evaluation order, negated outputs.
 
-### Core 3: method call binding (rows 3, 5, 6 method half, 7 method half, 9)
+### Core 3: method calls (rows 3, 5, 6 method half, 7 method half, 9)
 
-- analyzer: `xform_bind_calls` records method bindings with the same binder.
-  An omitted method input or `VAR_IN_OUT` is P4018. Readers switched:
-  `rule_method_call_declared`, `write_collector::visit_method_call`,
+- analyzer: the binding pass normalizes `MethodCall`s; P4018 for an omitted
+  input. Readers: `rule_method_call_declared`, `write_collector::visit_method_call`,
   `literal.rs::method_arguments`, `argument.rs::record_method_arguments`.
-  The rule still reports `THIS^`/`SUPER^` receivers as not implemented.
-- codegen: the method's `VAR_IN_OUT` slots hold references; the call site
-  walks the binding; `param_names_in_order` and the first-empty-slot loop are
-  deleted.
-- specs: `var-in-out-parameters.md`, Methods row of Implementation Status.
-- docs: `method.rst` states that every input must be supplied (P4018) and
-  that `VAR_IN_OUT` is by reference.
+- codegen: the normal form; `VAR_IN_OUT` by reference.
+- specs: `var-in-out-parameters.md`, the Methods row of its status table.
+- docs: `object-orientation/method.rst`: every input must be supplied.
 
-### Core 4: function call binding (row 6 function half; one binder)
+### Core 4: function calls (one binder)
 
-- analyzer: `xform_bind_calls` records function bindings, standard and
-  user-defined, including extensible ones and the nested calls the
-  conversion pass builds for `ADD(a, b, c)`.
+- analyzer: the binding pass normalizes `Function`s to the same named form,
+  including standard, extensible and nested calls the conversion pass builds
+  (`ADD(a, b, c)` folds into named `IN1`/`IN2` calls).
   `xform_named_to_positional_args` and `FunctionSignature::bind_inputs` are
-  deleted; their readers (`rule_function_call_declared`,
+  deleted. Readers: `rule_function_call_declared`,
   `rule_function_call_type_check`, `rule_function_call_in_out_argument`,
   `rule_string_encoding_compat`, `rule_constant_range`,
-  `write_collector::visit_function`, `xform_resolve_expr_types.rs:127,276,471`,
-  `argument.rs::record_argument_conversions`, `arithmetic.rs`,
-  `inputs_of_one_type.rs`) read the binding.
-- codegen: `compile_user_function_call` and `call_args` read the binding.
-- specs: `call-binding.md` `status: implemented`;
-  `var-in-out-parameters.md` §Argument list and
-  `constant-variable-inference.md:186` no longer name the deleted pass.
+  `write_collector::visit_function`, `xform_resolve_expr_types`,
+  `argument.rs`, `arithmetic.rs`, `inputs_of_one_type.rs`.
+- codegen: `call_args` reads named inputs in order. Bytes unchanged: the
+  order is the positional rewrite's.
+- specs: `call-binding.md` `status: implemented`; `var-in-out-parameters.md`
+  §Argument list and `constant-variable-inference.md:186` stop naming the
+  deleted pass.
 
-Core 4 is the largest by file count, but each reader changes from "zip the
-positional arguments" to "walk the binding". If its diff passes roughly 1500
-lines, it splits into analyzer readers, then codegen.
+If core 4 passes roughly 1500 lines of diff, it splits into the analyzer
+readers, then codegen.
 
 ## Design doc reference
 
-`specs/design/call-binding.md` (new). One requirement per row of the
-reproduction table, and the rules above. Numbering sketch:
+`specs/design/call-binding.md` (new): one requirement per reproduction row,
+and the rules above.
 
 | Range | Area |
 |---|---|
-| `REQ-CB-analyzer-001`–`019` | Callee identity: function signature, FB type by `type_id`, standard block by type not name, method through `EXTENDS`, `THIS^`, `SUPER^` |
-| `REQ-CB-analyzer-020`–`039` | Binding: one entry per parameter, positional/named/mixed per kind, passing mode, outputs and negation, duplicates |
+| `REQ-CB-analyzer-001`–`019` | Which block and which method: standard by type not name, `EXTENDS`, `THIS^`, `SUPER^` |
+| `REQ-CB-analyzer-020`–`039` | Normal form: positional, named and mixed per kind; outputs and negation; duplicates |
 | `REQ-CB-analyzer-040`–`049` | Evaluation order |
 | `REQ-CB-analyzer-050`–`059` | Omission per kind |
-| `REQ-CB-codegen-001`–`019` | Codegen lowers the recorded callee; missing binding is an internal error |
-| `REQ-CB-codegen-020`–`039` | One per reproduction row, end to end |
+| `REQ-CB-codegen-001`–`019` | One per reproduction row, end to end |
 
-Each core PR adds only the requirements it implements, with their tests,
-since the build enforces both directions. Related:
-[ADR-0041](../adrs/0041-staged-method-and-interface-dispatch.md) (this is its
-case 1),
-[ADR-0056](../adrs/0056-analyzer-records-implicit-conversions-in-the-ast.md)
-(the principle), `user-defined-function-calls-design.md`,
+Each core PR adds only the requirements it implements, with their tests.
+Related: ADR-0041 (case 1), ADR-0056, ADR-0058, ADR-0060,
+`lowered-program.md` §4 and §5, `user-defined-function-calls-design.md`,
 `function-block-infrastructure-design.md`, `var-in-out-parameters.md`.
 
-**ADR-0041 postscript** (core 1): the analyzer resolves case 1 statically
-and records the declaring block and method on the call; codegen lowers the
-recorded method and resolves nothing. The ADR's Implementation Status says
-`THIS^` and `SUPER^` shipped through method codegen; they are rejected as
-not implemented (`rule_method_call_declared.rs:191`, #1406). That is a
-defect in the record, so it is corrected in place with an `amended:` line.
+**ADR-0041 postscript** (core 1): the analyzer resolves case 1 with
+`resolve_method`, and codegen, then lowering, call it rather than resolve.
+The ADR's Implementation Status says `THIS^` and `SUPER^` shipped through
+method codegen. They are rejected as not implemented
+(`rule_method_call_declared.rs:191`, #1406), so that sentence is corrected in
+place with an `amended:` line.
 
 ## Coordination
 
-- **Implicit conversions (#2133).** `literal.rs` and `argument.rs` change
-  only where they find a call's parameters: they read the binding instead of
-  counting positions. How a conversion is chosen does not change, and the
-  `ImplicitConversion` nodes stay on the argument expressions, which do not
-  move. Their tests (`xform_insert_implicit_conversions/tests.rs`,
-  `stored_tests.rs`) must pass unchanged, except where an inherited method's
-  arguments now get conversions (core 1), which is a new test.
-- **Initial values.** No dependency: omitted function and method inputs are
-  an error, not a default.
-- **`THIS^`/`SUPER^` (plan PR #1998).** That plan's codegen PR lowers
-  `THIS^.M()`/`SUPER^.M()`. This work records their callee (analyzer tests
-  only) and leaves the not-implemented diagnostic in place, so #1998 lowers
-  the recorded method rather than resolving it. The recording needs the
-  enclosing block: it uses #1998's `EnclosingBlock` if that prefactor has
-  landed, and otherwise the outermost `FunctionBlock` scope of the
-  `ScopeTracker`.
-- **Execution model.** No overlap.
+- **Lowering** (`lowered-program.md`). This plan records what §4 assigns to
+  the analyzer and leaves the passing mode and standard block bodies to
+  lowering. Its codegen changes are on the route lowering deletes.
+- **Variable binding (#2180).** Same pattern: one analyzer function, language
+  terms on the AST. A parameter in normal form is named as its callee
+  declares it, which is its `DeclRef` in the callee's scope.
+- **#2201 (lowering regression tests)** pins "function block inputs are
+  evaluated in the order the call writes them". Core 2 changes that to
+  declaration order on purpose. If #2201 lands first, core 2 updates that
+  case and says so; if not, #2201 should pin declaration order or leave it
+  out.
+- **Implicit conversions (#2050, #2125).** `literal.rs` and `argument.rs`
+  change only where they find a call's parameters. How a conversion is chosen
+  does not change, and their tests pass unchanged, except that an inherited
+  method's arguments now get conversions (core 1, a new test).
+- **`THIS^`/`SUPER^` (#1998).** Its codegen PR asks `resolve_method`. Its
+  `EnclosingBlock` prefactor is what `resolve_method` uses for the enclosing
+  block if it lands first; otherwise the outermost `FunctionBlock` scope of
+  the `ScopeTracker`.
 
 ## File map
 
 | File | Change | PR |
 |---|---|---|
-| `compiler/codegen/src/compile.rs` | `user_fb_types` by `TypeId`; `FbInstanceInfo` gets `TypeId`; methods `Vec`; drop `intrinsics`; `user_functions` by `SignatureId` | P1, C1 |
-| `compiler/codegen/src/compile_setup.rs` | instance type from `decl.type_id` and `standard_block` | P1, C1 |
-| `compiler/codegen/src/compile_stmt.rs` | `compile_fb_call` lowers the binding | P1, C2 |
-| `compiler/codegen/src/compile_method.rs` | recorded method; binding; `VAR_IN_OUT` by reference | P1, C1, C3 |
-| `compiler/codegen/src/compile_fb_init.rs` | field op type by `TypeId` | P1 |
-| `compiler/codegen/src/compile_call.rs` | callee by `SignatureId`; delete `resolve_fb_type`, field maps, `intrinsics_by_name` | C1, C4 |
-| `compiler/codegen/src/standard_fb.rs` | **New.** `StandardFunctionBlock` → VM block | C1 |
-| `compiler/codegen/src/string_width.rs`, `compile_aggregate.rs` | callee by `SignatureId` | C1 |
-| `compiler/codegen/src/call_args.rs` | read the binding | C4 |
-| `compiler/codegen/tests/it/end_to_end_call_binding.rs` | **New.** One test per reproduction row | C1-C4 |
-| `compiler/dsl/src/call_binding.rs`, `lib.rs`, `textual.rs` | **New** types; `binding` field on three nodes; constructors updated (about 35 sites, mechanical) | C1, C2 |
-| `compiler/analyzer/src/callee_resolution.rs` | instance via environments; `CallParameter` list; `THIS^`/`SUPER^` | P2, C1 |
+| `compiler/analyzer/src/callee_resolution.rs` | instance via `resolve_variable`; `CallParameter`; `resolve_method` with `THIS^`/`SUPER^` | P, C1 |
 | `compiler/analyzer/src/call_binding.rs` | **New.** The binder | C2 |
-| `compiler/analyzer/src/call_assignment_check.rs` | reports the binder's problems | C2 |
-| `compiler/analyzer/src/xform_bind_calls.rs` | **New.** Recording pass, replaces `xform_named_to_positional_args.rs` | C1-C4 |
-| `compiler/analyzer/src/xform_named_to_positional_args.rs` | **Deleted** (tests move to `call_binding` and `xform_bind_calls`) | C4 |
-| `compiler/analyzer/src/function_environment.rs` | `SignatureId`, `get_by_id`; delete `bind_inputs` | C1, C4 |
+| `compiler/analyzer/src/xform_bind_call_arguments.rs` | **New.** The binding pass; replaces `xform_named_to_positional_args.rs` (deleted in C4, tests moved) | C2-C4 |
+| `compiler/analyzer/src/call_assignment_check.rs` | reports through the binder | P, C2 |
 | `compiler/analyzer/src/type_attributes.rs`, `intermediates/stdlib_function_block.rs` | `standard_block` | C1 |
-| `compiler/analyzer/src/stages.rs` | `xform_bind_calls` in place of the rewrite | C1 |
-| `compiler/analyzer/src/write_collector.rs` | read the binding | P2, C2-C4 |
-| `compiler/analyzer/src/rule_function_block_invocation.rs`, `rule_method_call_declared.rs` | instance via environments; binder problems | P2, C2, C3 |
-| `compiler/analyzer/src/rule_function_call_*.rs`, `rule_string_encoding_compat.rs`, `rule_constant_range.rs` | read the binding | C4 |
-| `compiler/analyzer/src/xform_resolve_expr_types.rs` | read the binding | C2, C4 |
-| `compiler/analyzer/src/xform_insert_implicit_conversions/{declared,literal,argument,arithmetic,inputs_of_one_type}.rs` | read the recorded callee and binding | C1-C4 |
+| `compiler/analyzer/src/clean_analysis.rs` | `resolve_method` for codegen | C1 |
+| `compiler/analyzer/src/stages.rs` | the binding pass in place of the rewrite | C2 |
+| `compiler/analyzer/src/function_environment.rs` | delete `bind_inputs` | C4 |
+| `compiler/analyzer/src/write_collector.rs` | read the normal form | P, C2-C4 |
+| `compiler/analyzer/src/rule_function_block_invocation.rs`, `rule_method_call_declared.rs` | instances via the environments; normal form | P, C1-C3 |
+| `compiler/analyzer/src/rule_function_call_*.rs`, `rule_string_encoding_compat.rs`, `rule_constant_range.rs` | read the normal form | C4 |
+| `compiler/analyzer/src/xform_resolve_expr_types.rs` | read the normal form | C2, C4 |
+| `compiler/analyzer/src/xform_insert_implicit_conversions/{declared,literal,argument,arithmetic,inputs_of_one_type}.rs` | `resolve_method`; the normal form | P, C1-C4 |
+| `compiler/codegen/src/compile_stmt.rs` | `compile_fb_call` walks the normal form | C2 |
+| `compiler/codegen/src/compile_setup.rs`, `compile_call.rs` | `standard_block` instead of the name | C1 |
+| `compiler/codegen/src/compile_method.rs` | `resolve_method`; normal form; `VAR_IN_OUT` by reference | C1, C3 |
+| `compiler/codegen/src/call_args.rs`, `compile_call.rs` | named inputs in order | C4 |
+| `compiler/codegen/tests/it/end_to_end_call_binding.rs` | **New.** One test per row | C1-C4 |
 | `compiler/analyzer/build.rs`, `compiler/codegen/build.rs` | list `call-binding.md` | C1 |
 | `compiler/problems/resources/problem-codes.csv`, `docs/reference/compiler/problems/P####.rst` | negated non-`BOOL` output, if question 3 says a new code; P4024 and P4018 pages name blocks and methods | C2, C3 |
 | `specs/design/call-binding.md` | **New** | C1-C4 |
+| `specs/design/lowered-program.md` | §4 row; REQ-LOW-lowering-069 | C2 |
 | `specs/adrs/0041-staged-method-and-interface-dispatch.md` | postscript; Implementation Status corrected | C1 |
-| `specs/design/var-in-out-parameters.md`, `constant-variable-inference.md` | status and pass names | C3, C4 |
+| `specs/design/var-in-out-parameters.md`, `constant-variable-inference.md` | status; pass names | C3, C4 |
 | `docs/reference/language/pous/function-block.rst`, `object-orientation/method.rst`, `structured-text/function-call.rst` | evaluation order, negated outputs, omission | C2-C4 |
 
-No VM, container or opcode change.
+No new AST type, no VM, container or opcode change.
 
 ## Tasks
 
-### Prefactor 1: codegen keys user function blocks by identity
+### Prefactor: callee resolution through the environments
 
-- [ ] Build `ironplcc` on clean `main`; keep it as the "before" binary.
-- [ ] `user_fb_types: HashMap<TypeId, UserFbTypeInfo>`; `FbInstanceInfo::fb_type: TypeId`; `UserFbTypeInfo::methods: Vec<UserMethodInfo>`.
-- [ ] Replace the three scans by VM type id with lookups.
-- [ ] `compiler/codegen/tests/it` unchanged; bytes identical (Verification).
+- [ ] `callee_resolution`: instance via `resolve_variable` and `type_id`; delete `InstanceTypes`.
+- [ ] `CallParameter` for a user FB, a standard FB, a method and a function; replace `count_input_type`, `find`, `Declarations::inputs`, `function_block_input`.
+- [ ] Both rules and `write_collector` use it; every existing test unchanged.
 
-### Prefactor 2: callee resolution through the environments
+### Core 1: which block, which method
 
-- [ ] `callee_resolution`: instance lookup via `SymbolEnvironment::find` and `type_id`; delete `InstanceTypes`.
-- [ ] `CallParameter` list for a user FB, a standard FB, a method and a function; replace `count_input_type`, `find`, `Declarations::inputs`, `function_block_input`.
-- [ ] Move both rules and `write_collector` to it; every existing test unchanged.
-
-### Core 1: callee identity
-
-- [ ] dsl types and fields; constructors.
-- [ ] `SignatureId` in `FunctionEnvironment`; `standard_block` in the type environment.
-- [ ] `xform_bind_calls` records callees, including `THIS^`/`SUPER^`.
-- [ ] Conversion pass reads the recorded method callee.
-- [ ] Codegen lowers recorded callees; delete `resolve_fb_type`, `intrinsics_by_name`; add `standard_fb.rs` with a test that its field order matches each standard type's field list.
-- [ ] Inherited method with fields in the declaring block: not implemented, with a test.
-- [ ] Analyzer tests: user function, standard function, user FB, standard FB, user FB named `CTU_INT`, own method, inherited method, overridden method, `THIS^.M()`, `SUPER^.M()`.
+- [ ] `standard_block` on the standard FB types; test that each of the 22 has it and that a user block named `CTU_INT` does not.
+- [ ] `resolve_method`, including `THIS^`/`SUPER^`; the rule and the conversion pass use it.
+- [ ] Codegen: `standard_block` and `resolve_method`; refusal for an inherited method whose block has fields, with a test.
+- [ ] Analyzer tests: own, inherited and overridden method; `THIS^.M()`; `SUPER^.M()`; user block named like a standard one.
 - [ ] End to end: rows 2 and 4.
-- [ ] `call-binding.md` callee section; build lists; ADR-0041 postscript.
+- [ ] `call-binding.md`, build lists, ADR-0041.
 
-### Core 2: function block call binding
+### Core 2: function block calls
 
-- [ ] `call_binding::bind`; `BindProblem`; `check_assignments` on top of it.
-- [ ] Record FB bindings; switch the FB readers.
-- [ ] P4024 for a duplicated FB parameter; negated non-`BOOL` output per question 3.
-- [ ] `compile_fb_call` lowers the binding, including negation.
-- [ ] Analyzer tests: positional, named, mixed (P4001), omitted input (`Unchanged`), omitted output (`NotRead`), outputs including negated, `VAR_IN_OUT` (`Reference`, `Unbound`), duplicate, standard FB positional (`t(TRUE, T#1S)`).
-- [ ] End to end: rows 1, 6 (FB), 7 (FB), 8; a positional standard FB call.
-- [ ] Spec and docs.
+- [ ] `bind`; the binding pass for `FbCall`; P4024; negated output per question 3.
+- [ ] Switch the FB readers to the normal form.
+- [ ] `compile_fb_call` walks it, inverting negated outputs.
+- [ ] Analyzer tests: positional, named, mixed (P4001), omitted input and output, negated output, `VAR_IN_OUT`, duplicate, a positional standard FB call (`t(TRUE, T#1S)`).
+- [ ] End to end: rows 1, 6 (FB), 7 (FB), 8, and a positional standard FB call.
+- [ ] Specs and docs; `lowered-program.md` §4 and REQ-LOW-lowering-069.
 
-### Core 3: method call binding
+### Core 3: method calls
 
-- [ ] Record method bindings; switch the method readers; P4018 for an omitted input.
-- [ ] Method `VAR_IN_OUT` slots as references; call site by reference.
-- [ ] Analyzer tests: positional, named, mixed, omitted (P4018), `VAR_IN_OUT`, outputs, duplicate, inherited and overridden, `THIS^`/`SUPER^` bindings.
+- [ ] The binding pass for `MethodCall`; P4018 for an omitted input.
+- [ ] Switch the method readers.
+- [ ] Codegen: normal form; `VAR_IN_OUT` by reference.
+- [ ] Analyzer tests: positional, named, mixed, omitted (P4018), `VAR_IN_OUT`, duplicate, inherited and overridden, `THIS^`/`SUPER^` normal form.
 - [ ] End to end: rows 3, 6 (method), 7 (method); `check` errors for rows 5 and 9.
-- [ ] Spec and docs.
+- [ ] Specs and docs.
 
-### Core 4: function call binding
+### Core 4: function calls
 
-- [ ] Record function bindings (standard, user, extensible, nested folds).
+- [ ] The binding pass for `Function`, including standard, extensible and the conversion pass's nested folds.
 - [ ] Delete `xform_named_to_positional_args` and `FunctionSignature::bind_inputs`; switch every reader.
-- [ ] Codegen reads the binding; a call without one is an internal error, with a test.
-- [ ] Analyzer tests: positional, named (reordered), mixed, extensible named (`IN3`), `VAR_IN_OUT` (`Reference`), omitted (P4018).
-- [ ] End to end: row 6 (function); `f(b := x, a := y)` against `f(y, x)`.
+- [ ] Codegen reads named inputs in order; a call left with a positional argument is an internal error, with a test.
+- [ ] Analyzer tests: positional, named (reordered), mixed, extensible named (`IN3`), `VAR_IN_OUT`, omitted (P4018).
+- [ ] End to end: row 6 (function); `f(b := x, a := y)` equals `f(y, x)`.
 - [ ] `call-binding.md` `status: implemented`; other specs.
 
 ### Verification (every PR)
 
-- [ ] `cd compiler && just` passes, including 85% coverage.
-- [ ] `cd specs && just` passes; nothing outside `specs/plans/` names this plan.
-- [ ] **Bytes.** Compile with the "before" and "after" `ironplcc` and compare
-  the `.iplc` files: `compiler/resources/test/*.st`, the playground examples,
-  and a throwaway program (scratchpad, not committed) with every kind of
-  call, each written in and out of declaration order. First confirm that two
-  compiles with one binary are identical. Prefactors: no differences. Core:
-  the differences are only the reproduction rows and FB calls written out of
-  declaration order, and the PR description lists them.
+- [ ] `cd compiler && just`, including 85% coverage; `cd specs && just`.
+- [ ] **Bytes.** Compile every `.st` file in the repository with the `ironplcc`
+  from before and after the change, under the default options and
+  `--dialect rusty` and `--dialect iec61131-3-ed3`, as #2170 did, plus a
+  throwaway program (scratchpad) with every kind of call written in and out
+  of declaration order. First check that one binary compiles a file to the
+  same bytes twice. Prefactor: no difference. Core: only the reproduction
+  rows and FB calls written out of declaration order; the PR description
+  lists them.
 - [ ] Test modules under 1000 lines; BDD names.
 
 ## Risks
 
-- **Synthetic calls.** A pass after `xform_bind_calls` that builds a
-  `Function` (the conversion pass's nested `ADD` fold) must bind it, or
-  codegen reports an internal error. Core 4 lists every constructor of a
-  `Function` after the pass and binds each; the end-to-end suite covers them.
-- **Indices go stale.** The binding indexes `params`; a later pass that
-  reorders or drops arguments would break it. No pass does today. A debug
-  assertion in codegen checks that each index points at an argument of the
-  recorded kind.
-- **Blast radius of core 4.** Many readers; mitigated by the split above.
-- **`compile.rs` is already 2150 lines.** These changes remove more than
-  they add there; nothing new goes into it.
-- **New `check` errors** (rows 5, 7, 9; and question 3). Each is a program
-  that compiled wrongly or not at all today.
+- **A pass that builds a call after the binding pass** must build it in
+  normal form. The conversion pass's nested `ADD` fold is the one known case
+  (core 4). Codegen reports a positional argument in a user function call as
+  an internal error, so a missed one fails a test rather than miscompiling.
+- **Core 4's blast radius.** Many readers; the split above.
+- **New `check` errors** (rows 5, 7, 9, question 3). Each is a program that
+  compiles wrongly, or not at all, today.
+- **The analyzed tree reads differently.** A call shows in normal form, not
+  as written, as ADR-0056 already accepted for conversions. Diagnostics keep
+  each argument's own span.
 
 ## Questions for the reviewer
 
-1. **Positional order for blocks and methods.** The task, `bind_inputs`
-   and `method.rst` bind positional block and method arguments to
-   `VAR_INPUT` only. `var-in-out-parameters.md` §Argument list says block and
+1. **Positional order for blocks and methods.** `bind_inputs` and
+   `method.rst` bind positional arguments to `VAR_INPUT` only, and the plan
+   keeps that. `var-in-out-parameters.md` §Argument list says block and
    method calls "also [have] to include `VAR_IN_OUT` in the positional
-   order", as functions do. The plan follows the task and corrects that
-   paragraph. Is that the intended rule?
+   order", as functions do. The plan corrects that paragraph. Is that the
+   intended rule?
 2. **Duplicates.** A block or method parameter named twice passes `check`
-   today (row 7). The plan makes it P4024, as for functions. Acceptable as
-   a new error?
-3. **Negated outputs.** `NOT q => x` on a non-`BOOL` output is not checked
-   today. The plan rejects it with a new problem code, so codegen never
-   decides what `NOT` means for an `INT`. Or should it be bitwise, recorded
-   by the analyzer?
-4. **Omitted method input.** Reuse P4018 ("wrong number of arguments") with
-   the method in its context, or a new code?
-5. **Binding shape.** Indices into the arguments as written (folds, visitors
-   and conversions untouched), or move the expressions into the binding?
-   And one `binding` field from core 1, or a `callee` field in core 1 that
-   core 2 folds in?
-6. **Standard block identity**: a field on `TypeAttributes`, or on
-   `SemanticType::FunctionBlock` (more match sites)?
-7. **`THIS^`/`SUPER^`**: is recording the callee here, with lowering left to
-   #1998, the split you want?
+   today (row 7). P4024, as for functions?
+3. **Negated outputs.** `NOT q => x` on a non-`BOOL` output is not checked.
+   Reject it with a new problem code, so nothing later decides what `NOT`
+   means for an `INT`?
+4. **Omitted method input.** Reuse P4018 with the method in its context, or
+   a new code?
+5. **Parameters by name.** The task asked for parameters "by index or
+   identity, not name". This plan names each parameter as its callee declares
+   it, which with the callee's scope is the `DeclRef` #2180 uses, and records
+   no index. Lowering allocates ids. Agreed?
+6. **Method `VAR_IN_OUT`.** Pass by reference in today's codegen (row 3
+   gives 6), or report P9999 as `var-in-out-parameters.md` asks of an
+   unsupported site, and leave the reference to lowering? The plan passes by
+   reference: `compile_fn.rs` already does it for functions, so the change is
+   small.
+7. **Omitted FB input.** An absent `NamedInput` means "keeps its previous
+   value". Is that enough, or should the normal form mark it?
 
 ## Out of scope
 
-- Runtime dispatch through a reference or an interface (ADR-0041 case 2).
+- Runtime dispatch through a reference or an interface (ADR-0041 case 2,
+  ADR-0063).
 - Default values for omitted function and method inputs.
-- 64-bit standard counters in the VM.
+- Passing modes and standard block bodies: lowering's, under ADR-0058 and
+  ADR-0060.
 - Member access outside a call (`inst.x`), including writes to an FB's
   internal `VAR`.
-- Variable references in general, still bound by name.
-- Function block `VAR_IN_OUT` lowering and P4061; storage for inherited
-  fields; function `=>` outputs (P9999 at `rule_function_call_type_check.rs:313`
-  today and after).
+- Variable references in general (#2180).
+- Function block `VAR_IN_OUT` in codegen and P4061; storage for inherited
+  fields; function `=>` outputs (P9999 at `rule_function_call_type_check.rs:317`);
+  method `VAR_OUTPUT` storage (P9999 at `compile.rs:1251`).
