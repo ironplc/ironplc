@@ -3,6 +3,7 @@
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
 
+use super::ids::Stamp;
 use super::invariant::broken;
 use super::place::Place;
 use super::scalar::{ScalarType, Signedness};
@@ -143,6 +144,9 @@ pub struct Expr {
     kind: ExprKind,
     ty: ScalarType,
     span: SourceSpan,
+    /// The program the places the expression reads belong to; `None` for an
+    /// expression that reads no place.
+    program: Option<Stamp>,
 }
 
 impl Expr {
@@ -213,7 +217,11 @@ impl Expr {
 
     /// The value at `place`, at the operation type of the place's type
     /// (REQ-LOW-lowering-047).
-    pub fn read(types: &TypeTable, place: Place, span: SourceSpan) -> Result<Self, Diagnostic> {
+    pub(crate) fn read(
+        types: &TypeTable,
+        place: Place,
+        span: SourceSpan,
+    ) -> Result<Self, Diagnostic> {
         let ty = types.operation_type(place.ty()).ok_or_else(|| {
             broken(
                 "Expr::read",
@@ -293,6 +301,7 @@ impl Expr {
         rhs: Expr,
         span: SourceSpan,
     ) -> Result<Self, Diagnostic> {
+        Self::of_one_program("Expr::binary", &lhs, &rhs, &span)?;
         let ty = lhs.ty;
         let applies = match op {
             BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div => ty.is_numeric(),
@@ -327,6 +336,7 @@ impl Expr {
         rhs: Expr,
         span: SourceSpan,
     ) -> Result<Self, Diagnostic> {
+        Self::of_one_program("Expr::compare", &lhs, &rhs, &span)?;
         // References are compared only for equality: an order of addresses
         // means something different on every target.
         let ordered = matches!(
@@ -368,6 +378,7 @@ impl Expr {
         rhs: Expr,
         span: SourceSpan,
     ) -> Result<Self, Diagnostic> {
+        Self::of_one_program("Expr::short_circuit", &lhs, &rhs, &span)?;
         if lhs.ty != ScalarType::Bool || rhs.ty != ScalarType::Bool {
             return Err(broken(
                 "Expr::short_circuit",
@@ -387,7 +398,44 @@ impl Expr {
     }
 
     fn new(kind: ExprKind, ty: ScalarType, span: SourceSpan) -> Self {
-        Self { kind, ty, span }
+        let program = match &kind {
+            ExprKind::Const(_) => None,
+            ExprKind::Read(place) => Some(place.stamp()),
+            ExprKind::Convert(value)
+            | ExprKind::Truncate { value, .. }
+            | ExprKind::Unary { value, .. } => value.program,
+            ExprKind::Binary { lhs, rhs, .. }
+            | ExprKind::Compare { lhs, rhs, .. }
+            | ExprKind::ShortCircuit { lhs, rhs, .. } => lhs.program.or(rhs.program),
+        };
+        Self {
+            kind,
+            ty,
+            span,
+            program,
+        }
+    }
+
+    /// The program the places the expression reads belong to.
+    pub(crate) fn program(&self) -> Option<Stamp> {
+        self.program
+    }
+
+    /// Refuses operands that read places of two different programs.
+    fn of_one_program(
+        constructor: &str,
+        lhs: &Expr,
+        rhs: &Expr,
+        span: &SourceSpan,
+    ) -> Result<(), Diagnostic> {
+        match (lhs.program, rhs.program) {
+            (Some(left), Some(right)) if left != right => Err(broken(
+                constructor,
+                span,
+                "the operands belong to two different programs",
+            )),
+            _ => Ok(()),
+        }
     }
 
     pub fn kind(&self) -> &ExprKind {

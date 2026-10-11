@@ -159,10 +159,10 @@ impl Lowering<'_> {
 
     /// The value at `place`, when its type is operated on as one value.
     fn read(&mut self, place: Place, span: SourceSpan) -> Lowered {
-        if self.types.operation_type(place.ty()).is_none() {
+        if self.program.types().operation_type(place.ty()).is_none() {
             return Ok(None);
         }
-        Expr::read(&self.types, place, span).map(Some)
+        self.program.read(place, span).map(Some)
     }
 
     fn constant(&mut self, expr: &AstExpr, constant: &ConstantKind, span: SourceSpan) -> Lowered {
@@ -277,7 +277,11 @@ impl Lowering<'_> {
         let Some(ty) = self.lowered_type(recorded)? else {
             return Ok(None);
         };
-        Ok(self.types.operation_type(ty).map(|operated| (ty, operated)))
+        Ok(self
+            .program
+            .types()
+            .operation_type(ty)
+            .map(|operated| (ty, operated)))
     }
 
     /// Whether `expr` is computed by arithmetic: a number or a bit string,
@@ -287,13 +291,16 @@ impl Lowering<'_> {
         let Some((ty, _)) = self.operated_type(expr)? else {
             return Ok(false);
         };
-        let Some(kind) = self.types.kind(ty) else {
+        let Some(kind) = self.program.types().kind(ty) else {
             return Ok(false);
         };
         Ok(match kind {
             TypeKind::Integer { .. } | TypeKind::BitString { .. } | TypeKind::Real { .. } => true,
             TypeKind::Subrange { base, .. } => {
-                matches!(self.types.kind(*base), Some(TypeKind::Integer { .. }))
+                matches!(
+                    self.program.types().kind(*base),
+                    Some(TypeKind::Integer { .. })
+                )
             }
             TypeKind::Bool
             | TypeKind::Temporal { .. }
@@ -315,7 +322,7 @@ impl Lowering<'_> {
         let Some((ty, _)) = self.operated_type(expr)? else {
             return Ok(None);
         };
-        let Some(kind) = self.types.kind(ty) else {
+        let Some(kind) = self.program.types().kind(ty) else {
             return Ok(None);
         };
         Ok(match kind {

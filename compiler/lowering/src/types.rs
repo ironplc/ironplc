@@ -166,7 +166,9 @@ impl Lowering<'_> {
             }
             SemanticType::Function { .. } => return Ok(None),
         };
-        self.types.push(TypeEntry { name, kind }, &span).map(Some)
+        self.program
+            .push_type(TypeEntry { name, kind }, &span)
+            .map(Some)
     }
 
     fn temporal(
@@ -179,8 +181,8 @@ impl Lowering<'_> {
         let Some(width) = wide_width(size) else {
             return Ok(None);
         };
-        self.types
-            .push(
+        self.program
+            .push_type(
                 TypeEntry {
                     name,
                     kind: TypeKind::Temporal { kind, width },

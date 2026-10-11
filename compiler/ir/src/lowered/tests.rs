@@ -23,8 +23,7 @@ fn name(text: &str) -> crate::execution::DebugName {
 /// A program type with one `INT` field, the types a test needs, and one
 /// variable of each type.
 struct Fixture {
-    types: TypeTable,
-    variables: VariableTable,
+    b: ProgramBuilder,
     dint: VarId,
     int: VarId,
     sint: VarId,
@@ -36,72 +35,92 @@ struct Fixture {
 }
 
 fn fixture() -> Fixture {
-    let mut types = TypeTable::new();
-    let mut push = |kind| types.push(entry(kind), &span()).unwrap();
-    let dint = push(TypeKind::Integer {
-        width: IntWidth::B32,
-        signed: true,
-    });
-    let int = push(TypeKind::Integer {
-        width: IntWidth::B16,
-        signed: true,
-    });
-    let sint = push(TypeKind::Integer {
-        width: IntWidth::B8,
-        signed: true,
-    });
-    let bool = push(TypeKind::Bool);
-    let lreal = push(TypeKind::Real {
-        width: WideWidth::B64,
-    });
-    let mut pous = PouTable::new();
-    let main = pous.push(name("main"));
-    let program = push(TypeKind::Program {
-        fields: vec![Field::new("x", span(), Some(Section::Local), int)],
-        body: main,
-    });
-    let this = push(TypeKind::Reference {
-        target: program,
-        nullability: Nullability::NonNull,
-    });
-    let reference = push(TypeKind::Reference {
-        target: dint,
-        nullability: Nullability::Nullable,
-    });
-    let mut variables = VariableTable::new();
-    let mut var = |text: &str, ty| {
-        variables
-            .push(&types, name(text), Owner::Pou(main), ty)
-            .unwrap()
+    let mut b = ProgramBuilder::new();
+    let push = |b: &mut ProgramBuilder, kind| b.push_type(entry(kind), &span()).unwrap();
+    let dint = push(
+        &mut b,
+        TypeKind::Integer {
+            width: IntWidth::B32,
+            signed: true,
+        },
+    );
+    let int = push(
+        &mut b,
+        TypeKind::Integer {
+            width: IntWidth::B16,
+            signed: true,
+        },
+    );
+    let sint = push(
+        &mut b,
+        TypeKind::Integer {
+            width: IntWidth::B8,
+            signed: true,
+        },
+    );
+    let bool = push(&mut b, TypeKind::Bool);
+    let lreal = push(
+        &mut b,
+        TypeKind::Real {
+            width: WideWidth::B64,
+        },
+    );
+    let main = b.push_pou(name("main"));
+    let program = push(
+        &mut b,
+        TypeKind::Program {
+            fields: vec![Field::new("x", span(), Some(Section::Local), int)],
+            body: main,
+        },
+    );
+    let this = push(
+        &mut b,
+        TypeKind::Reference {
+            target: program,
+            nullability: Nullability::NonNull,
+        },
+    );
+    let reference = push(
+        &mut b,
+        TypeKind::Reference {
+            target: dint,
+            nullability: Nullability::Nullable,
+        },
+    );
+    let var = |b: &mut ProgramBuilder, text: &str, ty| {
+        b.push_variable(name(text), Owner::Pou(main), ty).unwrap()
     };
     Fixture {
-        dint: var("d", dint),
-        int: var("i", int),
-        sint: var("s", sint),
-        bool: var("b", bool),
-        lreal: var("r", lreal),
-        program: var("p", program),
-        this: var("this", this),
-        reference: var("ref", reference),
-        types,
-        variables,
+        dint: var(&mut b, "d", dint),
+        int: var(&mut b, "i", int),
+        sint: var(&mut b, "s", sint),
+        bool: var(&mut b, "b", bool),
+        lreal: var(&mut b, "r", lreal),
+        program: var(&mut b, "p", program),
+        this: var(&mut b, "this", this),
+        reference: var(&mut b, "ref", reference),
+        b,
     }
 }
 
 impl Fixture {
     fn place(&self, var: VarId) -> Place {
-        Place::var(&self.variables, var, &span()).unwrap()
+        self.b.var(var, &span()).unwrap()
     }
 
     fn read(&self, var: VarId) -> Expr {
-        Expr::read(&self.types, self.place(var), span()).unwrap()
+        self.b.read(self.place(var), span()).unwrap()
+    }
+
+    fn ty(&self, var: VarId) -> TypeId {
+        self.b.variables().get(var).unwrap().ty()
     }
 
     /// The field `x` of the instance `this` refers to.
     fn field(&self) -> Place {
-        let program = self.place(self.this).deref(&self.types, &span()).unwrap();
-        let x = self.types.field_idx(program.ty(), 0).unwrap();
-        program.field(&self.types, x, &span()).unwrap()
+        let program = self.b.deref(self.place(self.this), &span()).unwrap();
+        let x = self.b.field_idx(program.ty(), 0).unwrap();
+        self.b.field(program, x, &span()).unwrap()
     }
 }
 
@@ -265,7 +284,7 @@ fn read_when_place_is_int_then_operation_type_of_int() {
 fn read_when_place_is_program_then_internal_error() {
     let f = fixture();
     assert!(is_internal_error_naming(
-        Expr::read(&f.types, f.place(f.program), span()),
+        f.b.read(f.place(f.program), span()),
         "Expr::read"
     ));
 }
@@ -274,7 +293,7 @@ fn read_when_place_is_program_then_internal_error() {
 #[test]
 fn place_when_variable_then_type_of_variable() {
     let f = fixture();
-    assert_eq!(f.place(f.int).ty(), f.variables.get(f.int).unwrap().ty());
+    assert_eq!(f.place(f.int).ty(), f.ty(f.int));
 }
 
 /// A variable another table allocated is not a place of this one.
@@ -282,7 +301,7 @@ fn place_when_variable_then_type_of_variable() {
 fn place_when_variable_not_in_table_then_internal_error() {
     let f = fixture();
     assert!(is_internal_error_naming(
-        Place::var(&VariableTable::new(), f.int, &span()),
+        ProgramBuilder::new().var(f.int, &span()),
         "Place::var"
     ));
 }
@@ -291,8 +310,7 @@ fn place_when_variable_not_in_table_then_internal_error() {
 #[test]
 fn variable_when_type_not_in_table_then_internal_error() {
     let f = fixture();
-    let ty = f.variables.get(f.int).unwrap().ty();
-    let result = VariableTable::new().push(&TypeTable::new(), name("x"), Owner::Global, ty);
+    let result = ProgramBuilder::new().push_variable(name("x"), Owner::Global, f.ty(f.int));
     assert!(is_internal_error_naming(result, "VariableTable::push"));
 }
 
@@ -302,7 +320,7 @@ fn variable_when_type_not_in_table_then_internal_error() {
 fn place_when_field_through_deref_then_type_of_field() {
     let f = fixture();
     let field = f.field();
-    assert_eq!(field.ty(), f.variables.get(f.int).unwrap().ty());
+    assert_eq!(field.ty(), f.ty(f.int));
     assert_eq!(field.to_string(), "v6^.f0");
 }
 
@@ -311,11 +329,11 @@ fn place_when_field_through_deref_then_type_of_field() {
 #[test]
 fn field_idx_when_position_outside_type_then_none() {
     let f = fixture();
-    let program = f.variables.get(f.program).unwrap().ty();
-    assert!(f.types.field_idx(program, 0).is_some());
-    assert!(f.types.field_idx(program, 1).is_none());
-    let dint = f.variables.get(f.dint).unwrap().ty();
-    assert!(f.types.field_idx(dint, 0).is_none());
+    let program = f.ty(f.program);
+    assert!(f.b.field_idx(program, 0).is_some());
+    assert!(f.b.field_idx(program, 1).is_none());
+    let dint = f.ty(f.dint);
+    assert!(f.b.field_idx(dint, 0).is_none());
 }
 
 /// REQ-LOW-lowering-030: a field index of one type does not name a field of
@@ -323,10 +341,10 @@ fn field_idx_when_position_outside_type_then_none() {
 #[test]
 fn place_when_field_of_another_type_then_internal_error() {
     let f = fixture();
-    let program = f.variables.get(f.program).unwrap().ty();
-    let x = f.types.field_idx(program, 0).unwrap();
+    let program = f.ty(f.program);
+    let x = f.b.field_idx(program, 0).unwrap();
     assert!(is_internal_error_naming(
-        f.place(f.dint).field(&f.types, x, &span()),
+        f.b.field(f.place(f.dint), x, &span()),
         "Place::field"
     ));
 }
@@ -336,7 +354,7 @@ fn place_when_field_of_another_type_then_internal_error() {
 fn place_when_deref_of_non_reference_then_internal_error() {
     let f = fixture();
     assert!(is_internal_error_naming(
-        f.place(f.program).deref(&f.types, &span()),
+        f.b.deref(f.place(f.program), &span()),
         "Place::deref"
     ));
 }
@@ -346,7 +364,7 @@ fn place_when_deref_of_non_reference_then_internal_error() {
 fn assign_when_value_type_differs_from_place_then_internal_error() {
     let f = fixture();
     assert!(is_internal_error_naming(
-        Stmt::assign(&f.types, f.place(f.lreal), int(1), span()),
+        f.b.assign(f.place(f.lreal), int(1), span()),
         "Stmt::assign"
     ));
 }
@@ -357,7 +375,7 @@ fn assign_when_value_type_differs_from_place_then_internal_error() {
 #[test]
 fn assign_when_narrow_place_then_value_must_fit() {
     let f = fixture();
-    let assign = |value| Stmt::assign(&f.types, f.place(f.int), value, span());
+    let assign = |value| f.b.assign(f.place(f.int), value, span());
 
     let sum = Expr::binary(BinaryOp::Add, int(1), int(2), span()).unwrap();
     assert!(is_internal_error_naming(
@@ -381,8 +399,8 @@ fn assign_when_narrow_place_then_value_must_fit() {
 fn assign_when_bool_place_then_comparison_stored_as_is() {
     let f = fixture();
     let compared = Expr::compare(CompareOp::Eq, int(1), int(2), span()).unwrap();
-    assert!(Stmt::assign(&f.types, f.place(f.bool), compared, span()).is_ok());
-    assert!(Stmt::assign(&f.types, f.place(f.bool), int(1), span()).is_err());
+    assert!(f.b.assign(f.place(f.bool), compared, span()).is_ok());
+    assert!(f.b.assign(f.place(f.bool), int(1), span()).is_err());
 }
 
 /// REQ-LOW-lowering-036: a non-null reference is never assigned.
@@ -391,10 +409,10 @@ fn assign_when_non_null_reference_then_internal_error() {
     let f = fixture();
     let source = f.read(f.reference);
     assert!(is_internal_error_naming(
-        Stmt::assign(&f.types, f.place(f.this), source.clone(), span()),
+        f.b.assign(f.place(f.this), source.clone(), span()),
         "Stmt::assign"
     ));
-    assert!(Stmt::assign(&f.types, f.place(f.reference), source, span()).is_ok());
+    assert!(f.b.assign(f.place(f.reference), source, span()).is_ok());
 }
 
 /// References are compared for equality only.
@@ -467,13 +485,13 @@ fn print_when_assignment_then_s_expression() {
     let field = f.field();
     let sum = Expr::binary(
         BinaryOp::Add,
-        Expr::read(&f.types, field.clone(), span()).unwrap(),
+        f.b.read(field.clone(), span()).unwrap(),
         int(1),
         span(),
     )
     .unwrap();
     let truncated = Expr::truncate(NarrowWidth::B16, sum, span()).unwrap();
-    let stmt = Stmt::assign(&f.types, field, truncated, span()).unwrap();
+    let stmt = f.b.assign(field, truncated, span()).unwrap();
     assert_eq!(
         stmt.to_string(),
         "assign v6^.f0 (truncate 16 (add i32s (read i32s v6^.f0) (const i32s 1)))"
@@ -483,25 +501,28 @@ fn print_when_assignment_then_s_expression() {
 #[test]
 fn type_table_when_operation_types_then_follow_adr_0001() {
     let f = fixture();
-    let ty = |var| f.variables.get(var).unwrap().ty();
-    let operated = |var| f.types.operation_type(ty(var));
+    let ty = |var| f.ty(var);
+    let operated = |var| f.b.types().operation_type(ty(var));
     assert_eq!(operated(f.sint), Some(ScalarType::I32(Signedness::Signed)));
     assert_eq!(operated(f.lreal), Some(ScalarType::F64));
     assert_eq!(operated(f.bool), Some(ScalarType::Bool));
     assert_eq!(operated(f.this), Some(ScalarType::Ref));
     assert_eq!(operated(f.program), None);
-    assert_eq!(f.types.narrowed_storage(ty(f.int)), Some(NarrowWidth::B16));
-    assert_eq!(f.types.narrowed_storage(ty(f.dint)), None);
-    assert_eq!(f.types.narrowed_storage(ty(f.bool)), None);
+    assert_eq!(
+        f.b.types().narrowed_storage(ty(f.int)),
+        Some(NarrowWidth::B16)
+    );
+    assert_eq!(f.b.types().narrowed_storage(ty(f.dint)), None);
+    assert_eq!(f.b.types().narrowed_storage(ty(f.bool)), None);
 }
 
 /// A type refers only to types already in the table.
 #[test]
 fn type_table_when_reference_to_unknown_type_then_internal_error() {
     let f = fixture();
-    let mut other = TypeTable::new();
-    let target = f.variables.get(f.program).unwrap().ty();
-    let result = other.push(
+    let mut other = ProgramBuilder::new();
+    let target = f.ty(f.program);
+    let result = other.push_type(
         entry(TypeKind::Reference {
             target,
             nullability: Nullability::Nullable,
@@ -515,11 +536,10 @@ fn type_table_when_reference_to_unknown_type_then_internal_error() {
 #[test]
 fn type_table_when_subrange_outside_base_then_internal_error() {
     let mut f = fixture();
-    let int = f.variables.get(f.int).unwrap().ty();
-    let lreal = f.variables.get(f.lreal).unwrap().ty();
+    let int = f.ty(f.int);
+    let lreal = f.ty(f.lreal);
     let mut subrange = |base, min, max| {
-        f.types
-            .push(entry(TypeKind::Subrange { base, min, max }), &span())
+        f.b.push_type(entry(TypeKind::Subrange { base, min, max }), &span())
     };
     assert!(subrange(int, 0, 100).is_ok());
     assert!(is_internal_error_naming(
@@ -534,9 +554,9 @@ fn type_table_when_subrange_outside_base_then_internal_error() {
 #[test]
 fn type_table_when_array_without_dimensions_then_internal_error() {
     let mut f = fixture();
-    let element = f.variables.get(f.dint).unwrap().ty();
+    let element = f.ty(f.dint);
     let mut array = |dimensions| {
-        f.types.push(
+        f.b.push_type(
             entry(TypeKind::Array {
                 element,
                 dimensions,
@@ -553,11 +573,11 @@ fn type_table_when_array_without_dimensions_then_internal_error() {
 #[test]
 fn type_table_when_field_section_wrong_then_internal_error() {
     let mut f = fixture();
-    let int = f.variables.get(f.int).unwrap().ty();
+    let int = f.ty(f.int);
     let field = |section| vec![Field::new("x", span(), section, int)];
     assert!(f
-        .types
-        .push(
+        .b
+        .push_type(
             entry(TypeKind::Structure {
                 fields: field(None)
             }),
@@ -565,13 +585,94 @@ fn type_table_when_field_section_wrong_then_internal_error() {
         )
         .is_ok());
     assert!(is_internal_error_naming(
-        f.types.push(
+        f.b.push_type(
             entry(TypeKind::Structure {
                 fields: field(Some(Section::Local))
             }),
             &span()
         ),
         "TypeTable::push"
+    ));
+}
+
+/// An id from one program names nothing in another, even at the same
+/// position.
+#[test]
+fn ids_when_from_another_program_then_name_nothing() {
+    let f = fixture();
+    let other = fixture();
+    assert!(f.b.types().get(other.ty(other.int)).is_none());
+    assert!(f.b.variables().get(other.int).is_none());
+    assert!(is_internal_error_naming(
+        f.b.var(other.int, &span()),
+        "Place::var"
+    ));
+}
+
+/// An expression reads the places of one program only.
+#[test]
+fn binary_when_operands_from_two_programs_then_internal_error() {
+    let f = fixture();
+    let other = fixture();
+    assert!(is_internal_error_naming(
+        Expr::binary(
+            BinaryOp::Add,
+            f.read(f.dint),
+            other.read(other.dint),
+            span()
+        ),
+        "Expr::binary"
+    ));
+    assert!(Expr::binary(BinaryOp::Add, f.read(f.dint), int(1), span()).is_ok());
+}
+
+/// A value read from another program is not stored in this one.
+#[test]
+fn assign_when_value_from_another_program_then_internal_error() {
+    let f = fixture();
+    let other = fixture();
+    assert!(is_internal_error_naming(
+        f.b.assign(f.place(f.dint), other.read(other.dint), span()),
+        "Stmt::assign"
+    ));
+}
+
+/// A field id of one program does not name a field in another.
+#[test]
+fn field_when_field_idx_from_another_program_then_internal_error() {
+    let f = fixture();
+    let other = fixture();
+    let program = other.b.deref(other.place(other.this), &span()).unwrap();
+    let x = other.b.field_idx(program.ty(), 0).unwrap();
+    let here = f.b.deref(f.place(f.this), &span()).unwrap();
+    assert!(is_internal_error_naming(
+        f.b.field(here, x, &span()),
+        "Place::field"
+    ));
+}
+
+/// A program type's body, and a variable's owner, are POUs of the same
+/// program.
+#[test]
+fn builder_when_pou_from_another_program_then_internal_error() {
+    let mut f = fixture();
+    let mut other = ProgramBuilder::new();
+    let foreign = other.push_pou(name("elsewhere"));
+    let result = f.b.push_type(
+        entry(TypeKind::Program {
+            fields: vec![],
+            body: foreign,
+        }),
+        &span(),
+    );
+    assert!(is_internal_error_naming(
+        result,
+        "ProgramBuilder::push_type"
+    ));
+    let ty = f.ty(f.dint);
+    assert!(is_internal_error_naming(
+        f.b.push_variable(name("x"), Owner::Pou(foreign), ty),
+        "ProgramBuilder::push_variable"
     ));
 }
 

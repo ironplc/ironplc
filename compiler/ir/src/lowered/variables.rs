@@ -7,7 +7,7 @@
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
 
-use super::ids::{PouId, TypeId, VarId};
+use super::ids::{PouId, Stamp, TypeId, VarId};
 use super::invariant::broken;
 use super::types::TypeTable;
 use crate::execution::DebugName;
@@ -44,20 +44,26 @@ impl Variable {
     }
 }
 
-/// Every variable of a lowered program, by [`VarId`].
-#[derive(Clone, Debug, Default)]
+/// Every variable of a lowered program, by [`VarId`]. A
+/// [`ProgramBuilder`](super::ProgramBuilder) owns it, and is the only way to
+/// add to it.
+#[derive(Clone, Debug)]
 pub struct VariableTable {
+    stamp: Stamp,
     variables: Vec<Variable>,
 }
 
 impl VariableTable {
-    pub fn new() -> Self {
-        Self::default()
+    pub(crate) fn new(stamp: Stamp) -> Self {
+        Self {
+            stamp,
+            variables: Vec::new(),
+        }
     }
 
     /// Adds a variable named `name`, owned by `owner`, of the type `ty`,
     /// which must be in `types` (REQ-LOW-lowering-026).
-    pub fn push(
+    pub(crate) fn push(
         &mut self,
         types: &TypeTable,
         name: DebugName,
@@ -71,7 +77,7 @@ impl VariableTable {
                 format!("{ty} is not in the type table"),
             ));
         }
-        let id = VarId::new(self.variables.len() as u32);
+        let id = VarId::new(self.stamp, self.variables.len() as u32);
         self.variables.push(Variable { name, owner, ty });
         Ok(id)
     }
@@ -79,6 +85,9 @@ impl VariableTable {
     /// The variable `id` names, or `None` if this table did not allocate
     /// `id`.
     pub fn get(&self, id: VarId) -> Option<&Variable> {
+        if id.stamp() != self.stamp {
+            return None;
+        }
         self.variables.get(id.index() as usize)
     }
 
@@ -87,7 +96,7 @@ impl VariableTable {
         self.variables
             .iter()
             .enumerate()
-            .map(|(index, variable)| (VarId::new(index as u32), variable))
+            .map(|(index, variable)| (VarId::new(self.stamp, index as u32), variable))
     }
 
     /// The type of the variable `id`, or a P9998 at `span` if this table did
@@ -103,20 +112,26 @@ impl VariableTable {
     }
 }
 
-/// Every POU of a lowered program, by [`PouId`].
-#[derive(Clone, Debug, Default)]
+/// Every POU of a lowered program, by [`PouId`]. A
+/// [`ProgramBuilder`](super::ProgramBuilder) owns it, and is the only way to
+/// add to it.
+#[derive(Clone, Debug)]
 pub struct PouTable {
+    stamp: Stamp,
     names: Vec<DebugName>,
 }
 
 impl PouTable {
-    pub fn new() -> Self {
-        Self::default()
+    pub(crate) fn new(stamp: Stamp) -> Self {
+        Self {
+            stamp,
+            names: Vec::new(),
+        }
     }
 
     /// Adds the POU named `name` and returns the id that names it.
-    pub fn push(&mut self, name: DebugName) -> PouId {
-        let id = PouId::new(self.names.len() as u32);
+    pub(crate) fn push(&mut self, name: DebugName) -> PouId {
+        let id = PouId::new(self.stamp, self.names.len() as u32);
         self.names.push(name);
         id
     }
@@ -124,6 +139,9 @@ impl PouTable {
     /// The name of the POU `id`, or `None` if this table did not allocate
     /// `id`.
     pub fn name(&self, id: PouId) -> Option<&DebugName> {
+        if id.stamp() != self.stamp {
+            return None;
+        }
         self.names.get(id.index() as usize)
     }
 }

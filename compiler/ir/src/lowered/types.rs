@@ -12,7 +12,7 @@
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
 
-use super::ids::{PouId, TypeId};
+use super::ids::{PouId, Stamp, TypeId};
 use super::invariant::broken;
 use super::scalar::{ScalarType, Signedness};
 use crate::execution::DebugName;
@@ -205,15 +205,21 @@ pub struct TypeEntry {
     pub kind: TypeKind,
 }
 
-/// Every type of a lowered program, by [`TypeId`].
-#[derive(Clone, Debug, Default)]
+/// Every type of a lowered program, by [`TypeId`]. A
+/// [`ProgramBuilder`](super::ProgramBuilder) owns it, and is the only way to
+/// add to it.
+#[derive(Clone, Debug)]
 pub struct TypeTable {
+    stamp: Stamp,
     entries: Vec<TypeEntry>,
 }
 
 impl TypeTable {
-    pub fn new() -> Self {
-        Self::default()
+    pub(crate) fn new(stamp: Stamp) -> Self {
+        Self {
+            stamp,
+            entries: Vec::new(),
+        }
     }
 
     /// Adds `entry` and returns the id that names it.
@@ -224,10 +230,14 @@ impl TypeTable {
     /// bound, a structure's fields have no section, and a function block's or
     /// program's fields each have one. An entry that breaks one of these is a
     /// P9998 and is not added.
-    pub fn push(&mut self, entry: TypeEntry, span: &SourceSpan) -> Result<TypeId, Diagnostic> {
+    pub(crate) fn push(
+        &mut self,
+        entry: TypeEntry,
+        span: &SourceSpan,
+    ) -> Result<TypeId, Diagnostic> {
         self.check(&entry.kind)
             .map_err(|what| broken("TypeTable::push", span, what))?;
-        let id = TypeId::new(self.entries.len() as u32);
+        let id = TypeId::new(self.stamp, self.entries.len() as u32);
         self.entries.push(entry);
         Ok(id)
     }
@@ -294,8 +304,12 @@ impl TypeTable {
         }
     }
 
-    /// The entry of `id`, or `None` if the table has none.
+    /// The entry of `id`, or `None` if the table has none, as for an id
+    /// another program's table allocated.
     pub fn get(&self, id: TypeId) -> Option<&TypeEntry> {
+        if id.stamp() != self.stamp {
+            return None;
+        }
         self.entries.get(id.index() as usize)
     }
 
@@ -309,7 +323,7 @@ impl TypeTable {
         self.entries
             .iter()
             .enumerate()
-            .map(|(index, entry)| (TypeId::new(index as u32), entry))
+            .map(|(index, entry)| (TypeId::new(self.stamp, index as u32), entry))
     }
 
     /// The type a value of `id` is operated at; `None` for a type that is
@@ -425,7 +439,7 @@ impl TypeTable {
     /// field, so a [`FieldIdx`](super::FieldIdx) always names one.
     pub fn field_idx(&self, id: TypeId, position: usize) -> Option<super::FieldIdx> {
         let fields = self.fields(id)?;
-        (position < fields.len()).then(|| super::FieldIdx::new(position as u32))
+        (position < fields.len()).then(|| super::FieldIdx::new(self.stamp, position as u32))
     }
 
     /// The target and nullability of a reference type; `None` for any other.

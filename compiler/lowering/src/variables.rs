@@ -89,7 +89,7 @@ impl<'a> Lowering<'a> {
         if let Some(pou) = self.pou_ids.get(&key) {
             return *pou;
         }
-        let pou = self.pous.push(DebugName::new(name, span.clone()));
+        let pou = self.program.push_pou(DebugName::new(name, span.clone()));
         self.pou_ids.insert(key, pou);
         pou
     }
@@ -123,7 +123,7 @@ impl<'a> Lowering<'a> {
             ));
             field_names.push(field_name.clone());
         }
-        let program = self.types.push(
+        let program = self.program.push_type(
             TypeEntry {
                 name: Some(DebugName::new(name.to_string(), name.span())),
                 kind: TypeKind::Program { fields, body: pou },
@@ -164,7 +164,7 @@ impl<'a> Lowering<'a> {
         instance_type: TypeId,
         field_names: Vec<Id>,
     ) -> Result<Instance, Diagnostic> {
-        let this_type = self.types.push(
+        let this_type = self.program.push_type(
             TypeEntry {
                 name: None,
                 kind: TypeKind::Reference {
@@ -174,8 +174,7 @@ impl<'a> Lowering<'a> {
             },
             &name.span(),
         )?;
-        let this = self.variables.push(
-            &self.types,
+        let this = self.program.push_variable(
             DebugName::new("THIS", name.span()),
             Owner::Pou(pou),
             this_type,
@@ -217,13 +216,13 @@ impl<'a> Lowering<'a> {
                     .iter()
                     .position(|field| *field == decl.name);
                 let Some(field) = position
-                    .and_then(|position| self.types.field_idx(instance.instance_type, position))
+                    .and_then(|position| self.program.field_idx(instance.instance_type, position))
                 else {
                     return Ok(None);
                 };
-                let place = Place::var(&self.variables, instance.this, span)?
-                    .deref(&self.types, span)?
-                    .field(&self.types, field, span)?;
+                let this = self.program.var(instance.this, span)?;
+                let instance_place = self.program.deref(this, span)?;
+                let place = self.program.field(instance_place, field, span)?;
                 Ok(Some(place))
             }
             Some(_) | None => self.declared_variable(decl, info, Owner::Pou(frame.pou), span),
@@ -249,11 +248,11 @@ impl<'a> Lowering<'a> {
                     return Ok(None);
                 };
                 let name = DebugName::new(decl.name.to_string(), info.span.clone());
-                let id = self.variables.push(&self.types, name, owner, ty)?;
+                let id = self.program.push_variable(name, owner, ty)?;
                 self.declared.insert(decl, id);
                 id
             }
         };
-        Place::var(&self.variables, id, span).map(Some)
+        self.program.var(id, span).map(Some)
     }
 }

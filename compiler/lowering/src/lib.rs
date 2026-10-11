@@ -38,7 +38,7 @@ use ironplc_analyzer::CleanAnalysis;
 use ironplc_dsl::common::{FunctionBlockDeclaration, FunctionDeclaration, ProgramDeclaration};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::StmtKind;
-use ironplc_ir::lowered::{PouId, PouTable, Stmt, TypeTable, VarId, VariableTable};
+use ironplc_ir::lowered::{PouId, ProgramBuilder, Stmt, TypeTable, VarId, VariableTable};
 
 /// The body a statement belongs to.
 #[derive(Clone, Copy, Debug)]
@@ -65,14 +65,14 @@ pub enum StatementLowering {
 /// that every statement of one compilation shares one set of ids.
 pub struct Lowering<'a> {
     analysis: &'a CleanAnalysis<'a>,
-    types: TypeTable,
+    /// The lowered program's tables, which every node lowering builds
+    /// refers into.
+    program: ProgramBuilder,
     /// The lowered type of each analyzer type, or `None` for one lowering
     /// cannot express yet.
     type_ids: HashMap<ironplc_dsl::type_id::TypeId, Option<ironplc_ir::lowered::TypeId>>,
-    variables: VariableTable,
     /// The variable of each declaration that is not a field.
     declared: HashMap<DeclRef, VarId>,
-    pous: PouTable,
     pou_ids: HashMap<String, PouId>,
     /// What lowering knows of each body it has lowered a statement of.
     bodies: HashMap<PouId, Option<variables::BodyFrame>>,
@@ -83,11 +83,9 @@ impl<'a> Lowering<'a> {
     pub fn new(analysis: &'a CleanAnalysis<'a>) -> Self {
         Self {
             analysis,
-            types: TypeTable::new(),
+            program: ProgramBuilder::new(),
             type_ids: HashMap::new(),
-            variables: VariableTable::new(),
             declared: HashMap::new(),
-            pous: PouTable::new(),
             pou_ids: HashMap::new(),
             bodies: HashMap::new(),
         }
@@ -115,11 +113,11 @@ impl<'a> Lowering<'a> {
 
     /// The types the lowered statements refer to.
     pub fn types(&self) -> &TypeTable {
-        &self.types
+        self.program.types()
     }
 
     /// The variables the lowered statements refer to.
     pub fn variables(&self) -> &VariableTable {
-        &self.variables
+        self.program.variables()
     }
 }

@@ -3,7 +3,7 @@
 use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{Assignment, StmtKind as AstStmtKind};
-use ironplc_ir::lowered::{store_narrowing, Expr, Stmt};
+use ironplc_ir::lowered::{Expr, Stmt};
 
 use crate::variables::BodyFrame;
 use crate::Lowering;
@@ -46,7 +46,7 @@ impl Lowering<'_> {
         let Some(place) = self.variable_place(frame, &assignment.target)? else {
             return Ok(None);
         };
-        let Some(operated) = self.types.operation_type(place.ty()) else {
+        let Some(operated) = self.program.types().operation_type(place.ty()) else {
             // A string or an aggregate is not assigned as one scalar value.
             return Ok(None);
         };
@@ -62,10 +62,12 @@ impl Lowering<'_> {
                 return Ok(None);
             }
         }
-        if let Some(width) = store_narrowing(&self.types, place.ty(), &value) {
+        if let Some(width) = self.program.store_narrowing(place.ty(), &value) {
             let span = value.span().clone();
             value = Expr::truncate(width, value, span)?;
         }
-        Stmt::assign(&self.types, place, value, assignment.span()).map(Some)
+        self.program
+            .assign(place, value, assignment.span())
+            .map(Some)
     }
 }

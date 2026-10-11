@@ -33,12 +33,22 @@ impl Stmt {
     /// width, a constant within the place's range, or a read of a place whose
     /// range lies within it (REQ-LOW-lowering-046). The place is not a
     /// non-null reference, which only a call binds (REQ-LOW-lowering-036).
-    pub fn assign(
+    pub(crate) fn assign(
         types: &TypeTable,
         place: Place,
         value: Expr,
         span: SourceSpan,
     ) -> Result<Self, Diagnostic> {
+        if value
+            .program()
+            .is_some_and(|program| program != place.stamp())
+        {
+            return Err(broken(
+                "Stmt::assign",
+                &span,
+                "the value reads places of another program",
+            ));
+        }
         let operated = types.operation_type(place.ty());
         if operated != Some(value.ty()) {
             return Err(broken(

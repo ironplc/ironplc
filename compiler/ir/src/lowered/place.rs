@@ -3,7 +3,7 @@
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
 
-use super::ids::{FieldIdx, TypeId, VarId};
+use super::ids::{FieldIdx, Stamp, TypeId, VarId};
 use super::invariant::broken;
 use super::types::TypeTable;
 use super::variables::VariableTable;
@@ -32,7 +32,7 @@ pub struct Place {
 impl Place {
     /// The whole of the variable `root`, at the type `variables` holds for
     /// it; a P9998 if `variables` did not allocate `root`.
-    pub fn var(
+    pub(crate) fn var(
         variables: &VariableTable,
         root: VarId,
         span: &SourceSpan,
@@ -47,12 +47,19 @@ impl Place {
 
     /// The field `field` of this place, whose type must be a structure,
     /// function block or program with that field (REQ-LOW-lowering-030).
-    pub fn field(
+    pub(crate) fn field(
         mut self,
         types: &TypeTable,
         field: FieldIdx,
         span: &SourceSpan,
     ) -> Result<Self, Diagnostic> {
+        if field.stamp() != self.stamp() {
+            return Err(broken(
+                "Place::field",
+                span,
+                format!("{field} is a field of another program"),
+            ));
+        }
         let fields = types
             .fields(self.ty)
             .ok_or_else(|| broken("Place::field", span, format!("{} has no fields", self.ty)))?;
@@ -70,7 +77,11 @@ impl Place {
 
     /// What this place refers to; its type must be a reference
     /// (REQ-LOW-lowering-032).
-    pub fn deref(mut self, types: &TypeTable, span: &SourceSpan) -> Result<Self, Diagnostic> {
+    pub(crate) fn deref(
+        mut self,
+        types: &TypeTable,
+        span: &SourceSpan,
+    ) -> Result<Self, Diagnostic> {
         let (target, _) = types.reference(self.ty).ok_or_else(|| {
             broken(
                 "Place::deref",
@@ -96,5 +107,10 @@ impl Place {
     /// The type of the value located at the place.
     pub fn ty(&self) -> TypeId {
         self.ty
+    }
+
+    /// The program the place belongs to.
+    pub(crate) fn stamp(&self) -> Stamp {
+        self.root.stamp()
     }
 }
