@@ -206,6 +206,8 @@ A field of a structure has its declared type, a subrange field its base type, wh
 
 **REQ-IC-analyzer-095** A field of a structure has its declared type wherever the structure is, and a subrange field its base type: `h.items[1].a` on an array field of structures with a `DINT` field `a` is a `DINT`, converted to `LINT` in `l := h.items[1].a`, and the subrange field `it.r` of a subrange of `INT` is an `INT`.
 
+**REQ-IC-analyzer-103** A field of a structure or function block has the type it is declared with, as a variable does, whatever kind of type that is: the `STRING[10]` field `h.name` is a `STRING`, the `WSTRING[10]` field `h.wide` a `WSTRING`, the element `h.names[2]` of an `ARRAY[1..2] OF WSTRING[10]` field a `WSTRING`, a field of the enumeration `COLOR` a `COLOR`, and so is a function block output `inst.state` of that enumeration.
+
 ### Loops
 
 A `FOR` loop stores its initial value in its control variable and compares and steps it at the control variable's type.

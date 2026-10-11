@@ -668,6 +668,14 @@ impl ExprTypeResolver<'_> {
         semantic_type_to_elementary_type_name(self.type_environment, self.field_element_type(sv)?)
     }
 
+    /// The id of the declared type of the member `sv` accesses: the field of
+    /// the structure or function block type its record has. `None` when the
+    /// record's type is not known or records no type for the field.
+    fn field_type_id(&self, sv: &StructuredVariable) -> Option<TypeId> {
+        let record = self.symbolic_type_id(&sv.record)?;
+        self.type_environment.field_type(record, &sv.field)
+    }
+
     /// The id of the type of the value the symbolic variable `kind` names:
     /// the declared type of a variable, the element type of a subscript,
     /// the referenced type of a dereference and the field type of a member
@@ -676,21 +684,26 @@ impl ExprTypeResolver<'_> {
         match kind {
             SymbolicVariableKind::Named(nv) => self.declared_type_id(&nv.name),
             SymbolicVariableKind::Array(arr_var) => {
-                // Array subscript on a struct field (e.g. `DATA.DIRS[i, j]`).
-                // A field's type is known by its representation only, so
-                // the element type is resolved through the struct chain.
-                if let SymbolicVariableKind::Structured(sv) = arr_var.subscripted_variable.as_ref()
-                {
-                    return self
-                        .type_environment
-                        .id_of(&self.resolve_struct_field_array_element_type(sv)?);
+                let element = self
+                    .symbolic_type_id(&arr_var.subscripted_variable)
+                    .and_then(|array| self.type_environment.element_type(array));
+                if element.is_some() {
+                    return element;
                 }
-                let array = self.symbolic_type_id(&arr_var.subscripted_variable)?;
-                self.type_environment.element_type(array)
+                // Array subscript on a struct field (e.g. `DATA.DIRS[i, j]`)
+                // whose declared type was not recorded: the element type is
+                // resolved through the struct chain's representations.
+                let SymbolicVariableKind::Structured(sv) = arr_var.subscripted_variable.as_ref()
+                else {
+                    return None;
+                };
+                self.type_environment
+                    .id_of(&self.resolve_struct_field_array_element_type(sv)?)
             }
-            SymbolicVariableKind::Structured(sv) => self
-                .type_environment
-                .id_of(&self.resolve_structured_variable_type(sv)?),
+            SymbolicVariableKind::Structured(sv) => self.field_type_id(sv).or_else(|| {
+                self.type_environment
+                    .id_of(&self.resolve_structured_variable_type(sv)?)
+            }),
             SymbolicVariableKind::BitAccess(_) => {
                 self.type_environment.id_of(&TypeName::from("BOOL"))
             }

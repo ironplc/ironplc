@@ -614,9 +614,10 @@ a comparison of two arrays from being writable.
 `ScalarType` is today's `OpType`, one of four operation widths (32-bit integer,
 64-bit integer, 32-bit float, 64-bit float) with a signedness, plus a
 reference kind and an interface kind. Widths narrower than 32 bits exist only
-as the storage of a place (ADR-0001). `StringShape` is today's
-`string_width::StringShape`: an encoding (ADR-0034) and a capacity. Today
-the capacity may be unknown; in the IR it is always stated (see
+as the storage of a place (ADR-0001). `StringShape` is an encoding
+(ADR-0034) and a capacity: today the encoding is the string type the analyzer
+records, and `string_width.rs` works out the capacity. Today the capacity may
+be unknown; in the IR it is always stated (see
 [String capacity](#string-capacity)).
 
 ```rust
@@ -1527,7 +1528,7 @@ today.
 | Function local re-initialization ([ADR-0024](../adrs/0024-function-local-reinit-via-bytecode-prologue.md)) | `emit_function_local_prologue` | Statements at the head of the function body |
 | Behaviour policy | `CodegenOptions::string_to_num` | `Intrinsic` variant |
 | Target of `EXIT` and `CONTINUE` | `loop_labels` stack, with a P9998 as a fallback | `LoopId` |
-| String encoding and capacity of a string value | `string_width.rs` | `StringShape` |
+| String encoding and capacity of a string value | The encoding: the analyzer's string type; the capacity: `string_width.rs` | `StringShape` |
 | Temporal literal count and unit ([ADR-0021](../adrs/0021-time-32bit-ltime-64bit.md), [ADR-0025](../adrs/0025-datetime-unsigned-representation.md)) | `compile_time_count` | `Const` |
 
 **REQ-LOW-analyzer-091** In the `Library` that analysis returns, every
