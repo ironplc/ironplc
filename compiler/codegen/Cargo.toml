@@ -14,6 +14,9 @@ ironplc-problems = { path = "../problems", version = "0.248.0" }
 ironplc-analyzer = { path = "../analyzer", version = "0.248.0" }
 ironplc-parser = { path = "../parser", version = "0.248.0" }
 ironplc-ir = { path = "../ir", version = "0.248.0" }
+# While both routes exist, codegen asks lowering for each statement
+# (specs/design/lowered-program.md, "Delivery Constraints").
+ironplc-lowering = { path = "../lowering", version = "0.248.0" }
 blake3 = "1"
 paste = "1.0"
 

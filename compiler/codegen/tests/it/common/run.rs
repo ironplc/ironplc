@@ -1,7 +1,7 @@
 //! Parse, compile and run helpers shared by the codegen integration tests.
 
 use ironplc_analyzer::{CleanAnalysis, SemanticContext};
-use ironplc_codegen::compile;
+use ironplc_codegen::{compile, Route};
 use ironplc_container::Container;
 use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
@@ -52,14 +52,69 @@ pub fn try_parse_and_compile(
 
 /// Compiles an analyzed library, such as user source analyzed together with a
 /// bundled library, into a Container.
+///
+/// The library is compiled by both routes: every statement from the AST, and
+/// the statements lowering supports from the lowered program
+/// (`specs/design/lowered-program.md`, "Delivery Constraints"). Both must
+/// compile, or both fail, and after one scan both must leave every variable
+/// with the same value; a disagreement fails the test. The container
+/// returned is the one compiled from the AST.
 pub fn compile_analyzed(
     library: &Library,
     context: &SemanticContext,
     options: &CompilerOptions,
 ) -> Result<Container, Diagnostic> {
+    let ast = compile_by_route(library, context, options, Route::Ast);
+    let lowered = compile_by_route(library, context, options, Route::PreferLowered);
+    match (&ast, &lowered) {
+        (Ok(ast), Ok(lowered)) => assert_routes_agree(ast, lowered),
+        (Err(_), Err(_)) => {}
+        (Ok(_), Err(diagnostic)) => {
+            panic!("only the lowered route failed to compile: {diagnostic:?}")
+        }
+        (Err(diagnostic), Ok(_)) => panic!("only the AST route failed to compile: {diagnostic:?}"),
+    }
+    ast
+}
+
+/// Compiles an analyzed library with every statement taking `route`.
+pub fn compile_by_route(
+    library: &Library,
+    context: &SemanticContext,
+    options: &CompilerOptions,
+    route: Route,
+) -> Result<Container, Diagnostic> {
     let analysis = CleanAnalysis::new(library, context).expect("analysis reported diagnostics");
-    let codegen_options = ironplc_codegen::CodegenOptions::from(options);
+    let codegen_options = ironplc_codegen::CodegenOptions {
+        route,
+        ..ironplc_codegen::CodegenOptions::from(options)
+    };
     compile(analysis, &codegen_options, &ironplc_codegen::EmptyLookup)
+}
+
+/// Fails the test unless one scan of `ast` and one of `lowered` leave every
+/// variable, and the data region, with the same value, or both trap.
+fn assert_routes_agree(ast: &Container, lowered: &Container) {
+    match (run_one_scan(ast), run_one_scan(lowered)) {
+        (Ok(ast_bufs), Ok(lowered_bufs)) => {
+            let variables = super::variables::Variables::of(ast);
+            for (index, (a, l)) in ast_bufs.vars.iter().zip(&lowered_bufs.vars).enumerate() {
+                assert_eq!(
+                    a,
+                    l,
+                    "the AST and lowered routes leave variable {} with different values",
+                    variables.name_at(index).unwrap_or("(unnamed)")
+                );
+            }
+            assert_eq!(
+                ast_bufs.data_region, lowered_bufs.data_region,
+                "the AST and lowered routes leave the data region with different values"
+            );
+        }
+        (Err(_), Err(_)) => {}
+        (Ok(_), Err(fault)) => panic!("only the lowered route traps: {fault:?}"),
+        (Err(fault), Ok(_)) => panic!("only the AST route traps: {fault:?}"),
+    }
 }
 
 /// Parses, analyzes, compiles, and runs one scan cycle, returning `Err` on VM trap.

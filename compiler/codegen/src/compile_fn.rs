@@ -352,7 +352,9 @@ pub(crate) fn compile_user_function(
     let saved_current_fn = ctx.current_function_id.take();
     ctx.current_function_id = Some(function_id);
 
+    let saved_pou = ctx.current_pou.replace(func_decl.name.clone());
     compile_statements(&mut func_emitter, ctx, &body)?;
+    ctx.current_pou = saved_pou;
 
     ctx.current_function_id = saved_current_fn;
     ctx.current_function_return = saved_return_ctx;
@@ -529,7 +531,9 @@ pub(crate) fn compile_user_function_block(
     ctx.current_function_id = Some(function_id);
 
     let mut fb_emitter = Emitter::new();
+    let saved_pou = ctx.current_pou.replace(fb_decl.name.name.clone());
     compile_body(&mut fb_emitter, ctx, &fb_decl.body, &fb_decl.name.span())?;
+    ctx.current_pou = saved_pou;
     fb_emitter.emit_ret_void();
 
     ctx.current_function_id = saved_current_fn;

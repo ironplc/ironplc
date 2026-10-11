@@ -35,7 +35,10 @@ use std::collections::HashMap;
 
 use ironplc_analyzer::symbol_environment::DeclRef;
 use ironplc_analyzer::CleanAnalysis;
-use ironplc_dsl::common::{FunctionBlockDeclaration, FunctionDeclaration, ProgramDeclaration};
+use ironplc_dsl::common::{
+    FunctionBlockDeclaration, FunctionDeclaration, LibraryElementKind, ProgramDeclaration,
+};
+use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::StmtKind;
 use ironplc_ir::lowered::{PouId, ProgramBuilder, Stmt, TypeTable, VarId, VariableTable};
@@ -109,6 +112,46 @@ impl<'a> Lowering<'a> {
             Some(lowered) => StatementLowering::Lowered(lowered),
             None => StatementLowering::Unsupported,
         })
+    }
+
+    /// Lowers `stmt`, a top-level statement of the body of the program,
+    /// function block or function named `pou` in the library the analysis
+    /// holds. A POU of another kind, such as a method, is unsupported.
+    pub fn lower_statement_of(
+        &mut self,
+        pou: &Id,
+        stmt: &StmtKind,
+    ) -> Result<StatementLowering, Diagnostic> {
+        match self.body_named(pou) {
+            Some(body) => self.lower_statement(body, stmt),
+            None => Ok(StatementLowering::Unsupported),
+        }
+    }
+
+    /// The body of the program, function block or function named `pou`.
+    fn body_named(&self, pou: &Id) -> Option<Body<'a>> {
+        self.analysis
+            .library()
+            .elements
+            .iter()
+            .find_map(|element| match element {
+                LibraryElementKind::ProgramDeclaration(program) if program.name == *pou => {
+                    Some(Body::Program(program))
+                }
+                LibraryElementKind::FunctionBlockDeclaration(block) if block.name.name == *pou => {
+                    Some(Body::FunctionBlock(block))
+                }
+                LibraryElementKind::FunctionDeclaration(function) if function.name == *pou => {
+                    Some(Body::Function(function))
+                }
+                LibraryElementKind::DataTypeDeclaration(_)
+                | LibraryElementKind::FunctionDeclaration(_)
+                | LibraryElementKind::FunctionBlockDeclaration(_)
+                | LibraryElementKind::ProgramDeclaration(_)
+                | LibraryElementKind::ConfigurationDeclaration(_)
+                | LibraryElementKind::GlobalVarDeclarations(_)
+                | LibraryElementKind::InterfaceDeclaration(_) => None,
+            })
     }
 
     /// The types the lowered statements refer to.

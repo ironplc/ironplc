@@ -228,7 +228,10 @@ fn compile_user_method(
     let saved_current_fn = ctx.current_function_id.take();
     ctx.current_function_id = Some(function_id);
 
+    // A method body is not lowered yet.
+    let saved_pou = ctx.current_pou.take();
     compile_statements(&mut method_emitter, ctx, &body)?;
+    ctx.current_pou = saved_pou;
 
     ctx.current_function_id = saved_current_fn;
     ctx.current_function_return = saved_return_ctx;

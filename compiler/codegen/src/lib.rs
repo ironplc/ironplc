@@ -62,6 +62,7 @@ mod data_region;
 mod emit;
 mod execution;
 mod initial_value;
+mod lowered;
 mod optimize;
 mod scope;
 mod source_lookup;
@@ -69,7 +70,8 @@ mod stack_balance;
 mod string_width;
 mod type_info;
 
-pub use compile::{compile, CodegenOptions, StringToNumPolicies};
+pub use compile::{compile, compile_with_route_counts, CodegenOptions, StringToNumPolicies};
+pub use lowered::{Route, RouteCounts};
 pub use source_lookup::{EmptyLookup, SourceLookup};
 
 // Spec conformance testing infrastructure (test-only)
