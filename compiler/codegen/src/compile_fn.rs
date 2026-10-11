@@ -312,13 +312,14 @@ pub(crate) fn compile_user_function(
     let mut func_emitter = Emitter::new();
 
     // Emit initialization prologue: IEC 61131-3 functions are stateless, so
-    // local variables must be re-initialized on every call. The flat variable
-    // table (ADR-0046) retains stale values between calls, so the prologue
-    // resets non-parameter locals to their declared initial values (or zero).
+    // the locals the analyzer flags, and the result, start again at their
+    // resolved values on every call. The flat variable table (ADR-0046)
+    // retains stale values between calls otherwise.
     emit_function_local_prologue(
         &mut func_emitter,
         ctx,
         &func_decl.variables,
+        Some(&func_decl.result),
         &func_decl.name,
         return_var_index,
         return_op_type,

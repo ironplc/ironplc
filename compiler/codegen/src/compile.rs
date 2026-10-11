@@ -238,6 +238,15 @@ pub fn compile(
     options: &CodegenOptions,
     sources: &dyn crate::source_lookup::SourceLookup,
 ) -> Result<Container, Diagnostic> {
+    // Lowering completes every initializer on a copy, and reads the program
+    // and globals from it; the analyzed library stays as written
+    // (specs/design/initial-values.md).
+    let completed = ironplc_analyzer::xform_resolve_initial_values::apply(
+        analysis.library().clone(),
+        analysis.context(),
+    );
+    let analysis = CleanAnalysis::new(&completed, analysis.context())
+        .map_err(|_| Diagnostic::internal_error())?;
     let library = analysis.library();
     let context = analysis.context();
     let runnable = crate::execution::runnable(&analysis)?;
@@ -457,6 +466,7 @@ fn compile_program_with_functions(
     } = inputs;
     let mut ctx = CompileContext::new();
     ctx.types = crate::type_info::type_representations(types);
+    ctx.block_members = crate::initial_value::block_members(fb_decls, &ctx.types);
     ctx.operand_names = crate::type_info::operand_names(types);
     ctx.intrinsics = crate::compile_call::intrinsics_by_name(functions);
     ctx.string_to_num = string_to_num;
@@ -496,7 +506,6 @@ fn compile_program_with_functions(
         let fb_name = fb_decl.name.name.to_string().to_uppercase();
         let mut field_indices: HashMap<String, u8> = HashMap::new();
         let mut field_op_types: HashMap<String, OpType> = HashMap::new();
-        let mut field_type_ids = HashMap::new();
         let mut field_decls_tmp: Vec<&VarDecl> = Vec::new();
 
         for decl in &fb_decl.variables {
@@ -518,9 +527,6 @@ fn compile_program_with_functions(
             if let Some(id) = decl.identifier.symbolic_id() {
                 let name = id.to_string().to_lowercase();
                 field_indices.insert(name.clone(), i as u8);
-                if let Some(type_id) = decl.type_id {
-                    field_type_ids.insert(name.clone(), type_id);
-                }
                 // A field is operated at its declared type, whatever kind of
                 // declaration declares it: a subrange at its base type.
                 let op_type = crate::type_info::decl_type_info(&ctx, decl)
@@ -540,7 +546,6 @@ fn compile_program_with_functions(
                 function_id: FunctionId::new(next_function_id),
                 var_offset: 0, // updated after program vars are assigned
                 field_op_types,
-                field_type_ids,
                 methods: HashMap::new(),
             },
         );
@@ -1020,8 +1025,6 @@ pub(crate) struct UserFbTypeInfo {
     pub(crate) var_offset: u16,
     /// Maps field name (lowercase) to its op type for codegen at call sites.
     pub(crate) field_op_types: HashMap<String, OpType>,
-    /// Maps field name (lowercase) to the type its declaration declares.
-    pub(crate) field_type_ids: HashMap<String, ironplc_dsl::type_id::TypeId>,
     /// Maps method name (lowercase) to compilation metadata (OOP
     /// extension, ADR-0041 Phase 1). Populated in two steps: `function_id`,
     /// `num_params`, `param_names_in_order`, and `has_return_value` are known
@@ -1082,6 +1085,9 @@ pub(crate) struct CompileContext {
     /// What every type is, by the id an expression's `expr_type` carries.
     /// See [`crate::type_info::expr_type_info`].
     pub(crate) types: HashMap<ironplc_dsl::type_id::TypeId, SemanticType>,
+    /// What an instance's value is read against: see
+    /// [`crate::initial_value::block_members`].
+    pub(crate) block_members: crate::initial_value::BlockMembers,
     /// The name the arithmetic overloads know a value of each type by.
     /// See [`crate::type_info::expr_operand_name`].
     pub(crate) operand_names: HashMap<ironplc_dsl::type_id::TypeId, ironplc_dsl::common::TypeName>,
@@ -1184,6 +1190,7 @@ impl CompileContext {
             user_fb_types: HashMap::new(),
             next_user_fb_type_id: 0x1000,
             types: HashMap::new(),
+            block_members: HashMap::new(),
             operand_names: HashMap::new(),
             intrinsics: HashMap::new(),
             string_to_num: StringToNumPolicies::default(),

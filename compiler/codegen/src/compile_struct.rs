@@ -62,9 +62,6 @@ pub(crate) struct StructFieldInfo {
     pub slot_offset: SlotIndex,
     /// The field's semantic type (for nested resolution).
     pub field_type: SemanticType,
-    /// Op type for leaf (primitive/enum) fields. `None` for structure/array
-    /// fields (which are accessed via further resolution).
-    pub op_type: Option<OpType>,
     /// For STRING fields, the maximum character length. `None` for non-STRING fields.
     pub string_max_length: Option<u16>,
 }
@@ -144,7 +141,6 @@ pub(crate) fn build_struct_fields(
             Diagnostic::not_implemented(Label::span(span.clone(), msg))
         })?;
         let name = field.name.to_string().to_lowercase();
-        let op_type = resolve_field_op_type(&field.field_type);
         let string_max_length = match &field.field_type {
             SemanticType::String { max_len, .. } => {
                 Some(max_len.unwrap_or(DEFAULT_STRING_MAX_LENGTH as u128) as u16)
@@ -170,7 +166,6 @@ pub(crate) fn build_struct_fields(
             name,
             slot_offset,
             field_type: field.field_type.clone(),
-            op_type,
             string_max_length,
         });
         slot_offset = SlotIndex::new(slot_offset.raw() + field_slots);
@@ -604,7 +599,6 @@ mod tests {
         assert_eq!(field_list[0].name, "s");
         assert_eq!(field_list[0].slot_offset, SlotIndex::new(0));
         assert_eq!(field_list[0].string_max_length, Some(255));
-        assert!(field_list[0].op_type.is_none());
     }
 
     #[test]

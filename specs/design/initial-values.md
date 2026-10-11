@@ -1,13 +1,13 @@
 # Design: Initial Values Completed by the Analyzer
 
-status: partially implemented
-date: 2026-10-10
+status: implemented
+date: 2026-10-11
 
 ## Overview
 
 What value a variable starts with is a language rule. This design moves the
-rule out of code generation and into the analyzer: the analyzer resolves the
-starting value of every declaration and completes the declaration's
+rule out of code generation and into the analyzer: an analyzer pass resolves
+the starting value of every declaration and completes the declaration's
 initializer with it, in place. After the pass an initializer is no longer
 only what the program wrote: it is the whole starting value, every field and
 element listed, every scalar a literal of the type it is stored as. A back
@@ -19,14 +19,11 @@ A declaration holds one answer to what it starts with. The value is not kept
 beside the initializer, where the two could disagree; the initializer *is*
 the value, and a later lowering works from it.
 
-**Status.** The analyzer pass (section 2) is built and tested, but it is not
-yet run by `stages::analyze`: code generation still reads each initializer's
-syntax and chooses defaults itself, and would not understand a completed
-initializer. `analyze` resolves the defaults of the declared types
-(`TypeDefaults`) and keeps them on the `SemanticContext`; the pass that
-completes each declaration (`xform_resolve_initial_values::apply`) is called
-only by its tests, after `analyze`. Running it in `analyze`, and code
-generation reading the completed initializer, are not implemented yet.
+Code generation runs the pass, on a copy of the analyzed library, as the
+first step of lowering. `stages::analyze` does not run it, so the analyzed
+library that `check`, the language server, `echo` and the MCP tools read stays
+the program as written, and none of them has to tell a value the program
+wrote from one the compiler supplied.
 
 The design builds on:
 
@@ -112,8 +109,8 @@ span it was written at.
 Every part the program did not write at the declaration -- the type's
 default, a field a partial initializer leaves out, the elements an array
 initializer does not reach -- has a synthesized span
-(`SourceSpan::synthesized`), so that a rendering of the program as written
-can leave those parts out.
+(`SourceSpan::synthesized`), so that a part the compiler supplied can be told
+from one the program wrote.
 
 ```
 p : P := (y := 4);       (* completed: (x := ~10, y := 4), ~ synthesized *)
@@ -137,8 +134,9 @@ them. Each declaration's initializer is completed by
 `xform_resolve_initial_values::apply`, which is to run after implicit
 conversions are recorded and after the range rule checks the literals the
 program wrote, so that an expression member carries its conversions.
-`analyze` does not run it yet (see the status in the overview); its tests
-run it on the library `analyze` returns. The value is built from the same leaves an initializer holds
+`analyze` does not run it: code generation runs it on a copy of the
+analyzed library (section 3), and its tests run it on the library `analyze`
+returns. The value is built from the same leaves an initializer holds
 and written back as the initializer; it is not kept anywhere else.
 
 ### Completed initializers
@@ -210,3 +208,88 @@ and written back as the initializer; it is not kept anywhere else.
 ### Re-initialization
 
 **REQ-IV-analyzer-050** The `VAR` and `VAR_TEMP` declarations of a function or method, and its result, are flagged (`reset_on_call`) to start again on every call; a program's and a function block's variables, and a function's inputs, are not.
+
+## 3. Code generation
+
+`ironplc_codegen::compile` first runs `xform_resolve_initial_values::apply`
+on a copy of the analyzed library, then reads each value from the completed
+initializer (`codegen/src/initial_value.rs`), against the declared type, and
+decides only where each value is stored and which stores to emit.
+The variable table and the data region start cleared, so the init function
+omits a store that would leave storage as it starts: an elementary scalar of
+value zero, an array element or a field of an array element that is zero.
+An enumeration, a subrange and every field of a structure variable are
+stored whatever their value, as the init function has always stored them.
+The prologue of a function or method stores every flagged value whatever it
+is, since it overwrites what the last call left.
+
+**REQ-IV-codegen-001** A declaration whose initializer reaches code generation without a complete value is reported as an internal error rather than given a default.
+
+**REQ-IV-codegen-010** A structure variable's fields start at the defaults the structure declares.
+
+**REQ-IV-codegen-011** A structure field of an alias type starts at the alias's declared default.
+
+**REQ-IV-codegen-012** A structure field of a subrange type starts at the subrange's declared default.
+
+**REQ-IV-codegen-013** A `STRING` field starts at its declared default, or at the value a structure initializer gives it.
+
+**REQ-IV-codegen-014** An `ARRAY` field's elements start at its declared default, or at the values a structure initializer gives them.
+
+**REQ-IV-codegen-015** A structure field of an inline subrange type starts at the value its declaration states, and at the lower bound when it states none.
+
+**REQ-IV-codegen-020** A program variable of an alias type starts at the alias's declared default.
+
+**REQ-IV-codegen-021** A variable of a subrange type with a declared default starts at the default.
+
+**REQ-IV-codegen-022** A program variable, a function local and a function block output of a subrange type start at its lower bound.
+
+**REQ-IV-codegen-023** A function's `VAR_TEMP` is reset to its initial value on every call.
+
+**REQ-IV-codegen-024** A function returning an enumeration that assigns no result returns the enumeration's declared default.
+
+**REQ-IV-codegen-025** A function returning a subrange that assigns no result returns its lower bound.
+
+**REQ-IV-codegen-030** An array of strings initialized with an empty repetition holds empty strings in the elements it covers.
+
+**REQ-IV-codegen-031** An array initializer with fewer values than elements leaves the rest at the element type's default.
+
+**REQ-IV-codegen-032** Every element of an array of structures starts at the structure's default.
+
+**REQ-IV-codegen-033** A program whose array initializer has more values than elements does not reach code generation: analysis reports P4077.
+
+**REQ-IV-codegen-040** A function block instance starts with the values its block declares for its variables, with the instance's member initializer applied over them.
+
+**REQ-IV-codegen-041** A function block member initialized by an expression (an extension) is evaluated when the instance is initialized.
+
+## 4. What changes for an existing program
+
+A program whose variables started at the right values keeps the same
+container bytes, with three exceptions:
+
+- An initializer that states the value storage already starts at (`:= 0`,
+  `:= FALSE`, `:= ''`, a zero array element) is no longer stored, because
+  codegen sees the value and not whether the program wrote it.
+- Function block fields and array elements of a reference type are now
+  stored `NULL`, where they started at variable-table index 0, a reference
+  to an unrelated variable.
+- A function's `VAR_TEMP` is reset on every call, as its `VAR` is; it kept
+  the value the last call left.
+
+A program that states a subrange value its subrange cannot hold -- a
+subrange type's declared default (`TYPE R : DINT(10..100) := 500`) or a
+structure field's value (`x : INT (0..15) := 20`) -- is now reported as a
+constant overflow. Both values were ignored, the variable starting at the
+lower bound.
+
+## Out of scope
+
+- Where storage lives: slot and data-region layout, and descriptors.
+- `RETAIN` and `PERSISTENT` semantics.
+- The call-style function block initializer `name : FB(args)`, which stays
+  refused by `rule_function_block_call_unsupported`.
+- An expression initializer for a structure field, which codegen refuses as
+  not implemented, and a non-empty initial value for a `STRING` nested inside
+  an array element, whose header codegen does not write.
+- Function block fields of a string, array or structure type, which have no
+  storage of their own in an instance; a non-empty starting value for one is
+  refused as not implemented.
