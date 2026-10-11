@@ -25,7 +25,7 @@
 //! into a declared destination is *encoded for* that destination rather than
 //! checked against it, which is [`compile_string_value`].
 
-use ironplc_analyzer::{Intrinsic, SemanticType, StringFunction};
+use ironplc_analyzer::{BuiltinFunction, SemanticType, StringFunction};
 use ironplc_container::CharWidth;
 use ironplc_dsl::common::{ConstantKind, ElementaryTypeName};
 use ironplc_dsl::core::{Located, SourceSpan};
@@ -209,9 +209,9 @@ fn string_bound_of(field_type: &SemanticType) -> Option<Option<u16>> {
 /// analyzer typed it as a string and codegen does not know how -- so it is
 /// reported as one, naming the call, rather than sized at a guess.
 fn function_bound(ctx: &CompileContext, func: &Function) -> Result<Option<u16>, Diagnostic> {
-    match ctx.intrinsics.get(&func.name) {
-        Some(Intrinsic::String(function)) => string_function_bound(ctx, func, *function),
-        Some(Intrinsic::Conversion {
+    match ctx.builtin_functions.get(&func.name) {
+        Some(BuiltinFunction::String(function)) => string_function_bound(ctx, func, *function),
+        Some(BuiltinFunction::Conversion {
             target: ElementaryTypeName::STRING,
             ..
         }) => Ok(None),
@@ -446,7 +446,7 @@ mod tests {
 
     use super::*;
     use crate::compile::StringVarInfo;
-    use crate::compile_call::intrinsics_by_name;
+    use crate::compile_call::builtin_functions_by_name;
     use ironplc_analyzer::FunctionEnvironmentBuilder;
 
     /// A narrow literal of `len` code units.
@@ -483,7 +483,7 @@ mod tests {
     /// analyzed program does.
     fn context() -> CompileContext {
         let mut ctx = CompileContext::new();
-        ctx.intrinsics = intrinsics_by_name(
+        ctx.builtin_functions = builtin_functions_by_name(
             &FunctionEnvironmentBuilder::new()
                 .with_stdlib_functions()
                 .build(),

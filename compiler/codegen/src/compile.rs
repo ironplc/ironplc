@@ -59,7 +59,7 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_parser::options::{CompilerOptions, StringToNumFailure, StringToNumNonNumeric};
 
 use ironplc_analyzer::{
-    CleanAnalysis, FunctionEnvironment, Intrinsic, SemanticType, TypeEnvironment,
+    BuiltinFunction, CleanAnalysis, FunctionEnvironment, SemanticType, TypeEnvironment,
 };
 
 use crate::emit::Emitter;
@@ -468,7 +468,7 @@ fn compile_program_with_functions(
     ctx.types = crate::type_info::type_representations(types);
     ctx.block_members = crate::initial_value::block_members(fb_decls, &ctx.types);
     ctx.operand_names = crate::type_info::operand_names(types);
-    ctx.intrinsics = crate::compile_call::intrinsics_by_name(functions);
+    ctx.builtin_functions = crate::compile_call::builtin_functions_by_name(functions);
     ctx.string_to_num = string_to_num;
     ctx.compiler_options = compiler_options;
     let mut builder = ContainerBuilder::new();
@@ -1094,8 +1094,8 @@ pub(crate) struct CompileContext {
     /// The operation each standard function stands for, by name, as the
     /// analyzer's function environment states it. A call of a name that is
     /// not here is a call of a user-defined function.
-    /// See [`crate::compile_call::intrinsics_by_name`].
-    pub(crate) intrinsics: HashMap<Id, Intrinsic>,
+    /// See [`crate::compile_call::builtin_functions_by_name`].
+    pub(crate) builtin_functions: HashMap<Id, BuiltinFunction>,
     /// The behavior policies `STRING_TO_<numeric>` calls select their
     /// builtin by (ADR-0049).
     pub(crate) string_to_num: StringToNumPolicies,
@@ -1192,7 +1192,7 @@ impl CompileContext {
             types: HashMap::new(),
             block_members: HashMap::new(),
             operand_names: HashMap::new(),
-            intrinsics: HashMap::new(),
+            builtin_functions: HashMap::new(),
             string_to_num: StringToNumPolicies::default(),
             compiler_options: CompilerOptions::default(),
             current_function_return: None,

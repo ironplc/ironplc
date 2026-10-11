@@ -3,15 +3,15 @@
 //! from `STRING`.
 //!
 //! Each conversion takes one input of its source type, returns its target
-//! type, and stands for [`Intrinsic::Conversion`] of the two. The tables
+//! type, and stands for [`BuiltinFunction::Conversion`] of the two. The tables
 //! below give each type with the spelling function names use for it, so the
-//! intrinsic's types are stated here rather than parsed back out of a name.
+//! conversion's types are stated here rather than parsed back out of a name.
 
 use ironplc_dsl::common::{ElementaryTypeName, TypeName};
 
 use super::stdlib_function::input_param;
+use crate::builtin_function::BuiltinFunction;
 use crate::function_environment::FunctionSignature;
-use crate::intrinsic::Intrinsic;
 
 /// A type a conversion function converts from or to: how the function's
 /// name spells it, and the type it is.
@@ -54,7 +54,7 @@ fn build_conversion_function(source: &Spelling, target: &Spelling) -> FunctionSi
     let (target_name, target_type) = target;
     FunctionSignature::stdlib(
         &format!("{source_name}_TO_{target_name}"),
-        Intrinsic::Conversion {
+        BuiltinFunction::Conversion {
             source: source_type.clone(),
             target: target_type.clone(),
         },
@@ -490,8 +490,8 @@ mod tests {
             Some(FunctionReturnType::Named(TypeName::from("REAL")))
         );
         assert_eq!(
-            sig.intrinsic,
-            Some(Intrinsic::Conversion {
+            sig.builtin_function,
+            Some(BuiltinFunction::Conversion {
                 source: ElementaryTypeName::INT,
                 target: ElementaryTypeName::REAL,
             })
@@ -519,7 +519,7 @@ mod tests {
         ElementaryTypeName::LREAL
     )]
     #[case::from_bool("BOOL_TO_WORD", ElementaryTypeName::BOOL, ElementaryTypeName::WORD)]
-    fn get_conversion_functions_when_conversion_then_intrinsic_names_its_types(
+    fn get_conversion_functions_when_conversion_then_builtin_function_names_its_types(
         #[case] name: &str,
         #[case] source: ElementaryTypeName,
         #[case] target: ElementaryTypeName,
@@ -528,8 +528,8 @@ mod tests {
         let sig = functions.iter().find(|f| f.name.original() == name);
 
         assert_eq!(
-            sig.and_then(|sig| sig.intrinsic.clone()),
-            Some(Intrinsic::Conversion { source, target })
+            sig.and_then(|sig| sig.builtin_function.clone()),
+            Some(BuiltinFunction::Conversion { source, target })
         );
     }
 

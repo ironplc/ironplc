@@ -47,7 +47,7 @@ impl ImplicitConversions<'_> {
         let Some(signature) = self.context.functions().get(&func.name) else {
             return;
         };
-        if signature.intrinsic.is_some() {
+        if signature.builtin_function.is_some() {
             return;
         }
         // The named-argument pass made every input positional, in the order

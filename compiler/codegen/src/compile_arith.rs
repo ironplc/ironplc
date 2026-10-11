@@ -25,7 +25,7 @@
 //!
 //! See `specs/design/arithmetic-operator-overloads.md`.
 
-use ironplc_analyzer::{typed_overload, Intrinsic};
+use ironplc_analyzer::{typed_overload, BuiltinFunction};
 use ironplc_dsl::common::{ElementaryTypeName, GenericTypeName, TypeName};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -128,7 +128,8 @@ fn compile_typed(
 ) -> Result<(), Diagnostic> {
     // Every typed name the analyzer answers with is registered as a time
     // function; a test pins it for both widths of every overload.
-    let Some(Intrinsic::Time { function, long }) = ctx.intrinsics.get(&Id::from(name)).cloned()
+    let Some(BuiltinFunction::Time { function, long }) =
+        ctx.builtin_functions.get(&Id::from(name)).cloned()
     else {
         return Err(Diagnostic::internal_error_at(Label::span(
             span,

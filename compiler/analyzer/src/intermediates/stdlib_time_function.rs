@@ -14,8 +14,8 @@
 use ironplc_dsl::common::TypeName;
 
 use super::stdlib_function::input_param;
+use crate::builtin_function::{BuiltinFunction, TimeFunction};
 use crate::function_environment::FunctionSignature;
-use crate::intrinsic::{Intrinsic, TimeFunction};
 
 /// Returns standard time and date function definitions.
 ///
@@ -50,7 +50,7 @@ impl TimeOverload {
     fn signature(&self) -> FunctionSignature {
         FunctionSignature::stdlib(
             self.name,
-            Intrinsic::Time {
+            BuiltinFunction::Time {
                 function: self.function,
                 long: self.long,
             },
@@ -202,7 +202,7 @@ fn other_time_functions() -> Vec<FunctionSignature> {
         // Concatenation
         FunctionSignature::stdlib(
             "CONCAT_DATE_TOD",
-            Intrinsic::Time {
+            BuiltinFunction::Time {
                 function: TimeFunction::ConcatDateTod,
                 long: false,
             },
@@ -215,25 +215,25 @@ fn other_time_functions() -> Vec<FunctionSignature> {
         // Decomposition: extract DATE or TIME_OF_DAY from DATE_AND_TIME
         FunctionSignature::stdlib(
             "DT_TO_DATE",
-            Intrinsic::DtToDate,
+            BuiltinFunction::DtToDate,
             TypeName::from("DATE"),
             vec![input_param("IN", "DATE_AND_TIME")],
         ),
         FunctionSignature::stdlib(
             "DATE_AND_TIME_TO_DATE",
-            Intrinsic::DtToDate,
+            BuiltinFunction::DtToDate,
             TypeName::from("DATE"),
             vec![input_param("IN", "DATE_AND_TIME")],
         ),
         FunctionSignature::stdlib(
             "DT_TO_TOD",
-            Intrinsic::DtToTod,
+            BuiltinFunction::DtToTod,
             TypeName::from("TIME_OF_DAY"),
             vec![input_param("IN", "DATE_AND_TIME")],
         ),
         FunctionSignature::stdlib(
             "DATE_AND_TIME_TO_TIME_OF_DAY",
-            Intrinsic::DtToTod,
+            BuiltinFunction::DtToTod,
             TypeName::from("TIME_OF_DAY"),
             vec![input_param("IN", "DATE_AND_TIME")],
         ),
@@ -310,28 +310,28 @@ mod tests {
     /// long width; the decomposition functions stand for the same operation
     /// under either spelling.
     #[rstest]
-    #[case::short("ADD_TIME", Intrinsic::Time { function: TimeFunction::AddTime, long: false })]
-    #[case::long("ADD_LTIME", Intrinsic::Time { function: TimeFunction::AddTime, long: true })]
+    #[case::short("ADD_TIME", BuiltinFunction::Time { function: TimeFunction::AddTime, long: false })]
+    #[case::long("ADD_LTIME", BuiltinFunction::Time { function: TimeFunction::AddTime, long: true })]
     #[case::long_difference(
         "SUB_LDATE_LDATE",
-        Intrinsic::Time { function: TimeFunction::SubDateDate, long: true }
+        BuiltinFunction::Time { function: TimeFunction::SubDateDate, long: true }
     )]
-    #[case::long_scale("DIV_LTIME", Intrinsic::Time { function: TimeFunction::DivTime, long: true })]
+    #[case::long_scale("DIV_LTIME", BuiltinFunction::Time { function: TimeFunction::DivTime, long: true })]
     #[case::concat(
         "CONCAT_DATE_TOD",
-        Intrinsic::Time { function: TimeFunction::ConcatDateTod, long: false }
+        BuiltinFunction::Time { function: TimeFunction::ConcatDateTod, long: false }
     )]
-    #[case::dt_to_date("DT_TO_DATE", Intrinsic::DtToDate)]
-    #[case::date_and_time_to_date("DATE_AND_TIME_TO_DATE", Intrinsic::DtToDate)]
-    #[case::dt_to_tod("DT_TO_TOD", Intrinsic::DtToTod)]
-    #[case::date_and_time_to_tod("DATE_AND_TIME_TO_TIME_OF_DAY", Intrinsic::DtToTod)]
-    fn get_time_functions_when_registered_then_names_its_intrinsic(
+    #[case::dt_to_date("DT_TO_DATE", BuiltinFunction::DtToDate)]
+    #[case::date_and_time_to_date("DATE_AND_TIME_TO_DATE", BuiltinFunction::DtToDate)]
+    #[case::dt_to_tod("DT_TO_TOD", BuiltinFunction::DtToTod)]
+    #[case::date_and_time_to_tod("DATE_AND_TIME_TO_TIME_OF_DAY", BuiltinFunction::DtToTod)]
+    fn get_time_functions_when_registered_then_names_its_builtin_function(
         #[case] name: &str,
-        #[case] intrinsic: Intrinsic,
+        #[case] builtin: BuiltinFunction,
     ) {
         assert_eq!(
-            registered(name).and_then(|sig| sig.intrinsic),
-            Some(intrinsic)
+            registered(name).and_then(|sig| sig.builtin_function),
+            Some(builtin)
         );
     }
 

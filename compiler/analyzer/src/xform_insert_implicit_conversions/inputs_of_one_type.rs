@@ -4,7 +4,7 @@
 //! `MIN`, `MAX`, `LIMIT`, `SEL`, `MUX`, `EXPT` and `ATAN2` compute at their
 //! result type, which the resolver gave the call: the type every input of the
 //! function's type widens to, or `EXPT`'s first input's
-//! ([`Intrinsic::inputs_of_one_type`]). This module records, on each input of
+//! ([`BuiltinFunction::inputs_of_one_type`]). This module records, on each input of
 //! that type:
 //!
 //! * an [`ExprKind::ImplicitConversion`] to the result type when its operation
@@ -28,8 +28,8 @@ use ironplc_dsl::textual::{Expr, ExprKind, ExprType, Function, ParamAssignmentKi
 use ironplc_dsl::type_id::TypeId;
 
 use super::ImplicitConversions;
+use crate::builtin_function::{is_bitwise, BuiltinFunction};
 use crate::intermediates::numeric_operation::{operation_width_of, OperationWidth};
-use crate::intrinsic::{is_bitwise, Intrinsic};
 
 impl ImplicitConversions<'_> {
     /// Records the conversions of the inputs of `expr` when it is a call to a
@@ -66,10 +66,10 @@ impl ImplicitConversions<'_> {
     /// a function of several inputs of one type, to `result`, the type the
     /// call computes at.
     pub(super) fn record_one_type_call(&self, func: &mut Function, result: TypeId) {
-        let Some(intrinsic) = self.intrinsic_of(func) else {
+        let Some(builtin) = self.builtin_function_of(func) else {
             return;
         };
-        let Some(shape) = intrinsic.inputs_of_one_type() else {
+        let Some(shape) = builtin.inputs_of_one_type() else {
             return;
         };
         let Some(width) = self.operation_width(result) else {
@@ -88,7 +88,7 @@ impl ImplicitConversions<'_> {
         for (index, input) in inputs.enumerate() {
             if index >= shape.first {
                 self.record_one_type_input(input, (result, width));
-            } else if intrinsic == Intrinsic::Mux {
+            } else if builtin == BuiltinFunction::Mux {
                 // `K` is an index the multiplexer reads as a `DINT`.
                 if let Some(dint) = dint {
                     self.record_one_type_input(input, dint);
