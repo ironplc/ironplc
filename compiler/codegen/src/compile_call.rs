@@ -18,7 +18,7 @@ use super::compile::{
     CompileContext, OpType, OpWidth, ParamPassing, Signedness, UserFunctionInfo, VarTypeInfo,
     NARROW_CHAR_WIDTH,
 };
-use super::compile_arith::{compile_arith_fold, compile_at, compile_at_operand_type};
+use super::compile_arith::{compile_arith_fold, compile_at};
 use super::compile_builtin::{compile_numeric, compile_shift_rotate};
 use super::compile_comparison::compile_comparison;
 use super::compile_expr::{
@@ -71,11 +71,11 @@ pub(crate) fn compile_function_call(
 /// ([`Intrinsic::computes_at_own_type`]), converting the result to
 /// `op_type`, and at `op_type` otherwise.
 ///
-/// A function of several inputs of one type (`MAX`, `MUX`, ...) computes at
-/// the type the analyzer recorded for the call, to which it converted each
-/// input (ADR-0056). An operation on one value computes at its operand's type
-/// when that is numeric, and at `op_type` otherwise, as `NOT` of a `BOOL`
-/// does.
+/// The type it computes at is the one the analyzer recorded for the call: for
+/// a function of several inputs of one type (`MAX`, `MUX`, ...), the type it
+/// converted each input to (ADR-0056); for an operation on one value, its
+/// operand's; and for `TRUNC`, `BCD_TO_INT` and `SIZEOF`, whose integer
+/// result takes the type of its context, that type.
 fn compile_intrinsic(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -86,17 +86,9 @@ fn compile_intrinsic(
 ) -> Result<(), Diagnostic> {
     let result = expr_operand_name(ctx, call);
     let result = result.as_ref();
-    // `MAX` of several inputs of one type, and `TRUNC`, `BCD_TO_INT` and
-    // `SIZEOF`, whose integer result takes the type of its context, compute at
-    // the type the analyzer recorded for the call (ADR-0056).
-    if intrinsic.inputs_of_one_type().is_some() || intrinsic.result_is_integer_of_context() {
+    if intrinsic.computes_at_own_type() || intrinsic.result_is_integer_of_context() {
         let at = self::op_type(ctx, call)?;
         return compile_at(emitter, ctx, at, op_type, |emitter, ctx, at| {
-            compile_intrinsic_at(emitter, ctx, func, result, at, intrinsic)
-        });
-    }
-    if intrinsic.computes_at_own_type() {
-        return compile_at_operand_type(emitter, ctx, result, op_type, |emitter, ctx, at| {
             compile_intrinsic_at(emitter, ctx, func, result, at, intrinsic)
         });
     }
