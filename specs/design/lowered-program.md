@@ -848,6 +848,7 @@ pub enum ExprKind {
     Const(Const),                                   // I32, I64, F32 or F64
     Read(Place),
     Convert(Box<Expr>),                             // to `ty`, from the operand's type
+    ConvertChecked(Box<Expr>),                      // as `Convert`, trapping when the value does not fit `ty`
     Truncate { bits: u8, value: Box<Expr> },        // wrap to a storage width (ADR-0001)
     Unary { op: UnaryOp, value: Box<Expr> },        // Neg, BitNot, BoolNot
     Binary { op: BinaryOp, lhs: Box<Expr>, rhs: Box<Expr> },
@@ -1484,11 +1485,26 @@ index arithmetic is slow on the 32-bit targets a PLC runtime often has.
 
 **REQ-LOW-lowering-161** The subscripts of an `Index` are of type `DINT`.
 
-The conversion to `DINT` wraps, so a subscript outside the range of `DINT`,
-such as a `UDINT` of 4,294,967,295, becomes another position, here -1, and on
-an array whose bounds include it selects an element rather than trapping.
-The end-to-end tests leave that case out rather than pin it. Whether such a
-subscript traps is an open question (see [Open Questions](#open-questions)).
+A plain conversion to `DINT` wraps, so a subscript outside the range of
+`DINT`, such as a `UDINT` of 4,294,967,295, would become another position,
+here -1, and on an array whose bounds include it would select an element
+rather than trap. So the conversion of a subscript is checked. Where a
+subscript's type holds values `DINT` does not (`UDINT`, `LINT`, `ULINT`,
+`DWORD`, `LWORD`), the analyzer records its conversion as a checked one, and
+lowering translates that into a `ConvertChecked`. A narrower subscript type
+converts exactly and needs no check. Today the conversion wraps; the
+end-to-end tests leave that case out rather than pin it.
+
+**REQ-LOW-analyzer-162** Analysis records the conversion to `DINT` of a
+subscript whose type holds values outside the range of `DINT` as a checked
+conversion, and of any other subscript as an ordinary one.
+
+**REQ-LOW-lowering-163** Lowering translates a checked conversion into a
+`ConvertChecked`, and an ordinary one into a `Convert`.
+
+**REQ-LOW-codegen-164** A `ConvertChecked` whose operand lies outside the
+range of its type traps as a subscript out of bounds does: a `UDINT`
+subscript of 4,294,967,295 traps on `ARRAY[-3..100]`.
 
 **REQ-LOW-codegen-089** An `Intrinsic` means what the IEC 61131-3 standard
 function means, with these choices where the standard leaves room: the count
@@ -1583,7 +1599,7 @@ today.
 | Decision | Made today in | Recorded as | In the lowered program |
 |---|---|---|---|
 | Type of an untyped literal | The analyzer (ADR-0056); the literals of a completed initializer are written at the type they are stored as ([Initial Values](initial-values.md)) | The literal's `expr_type`, as `ExprType::Inferred` | A `Const` of that type |
-| Implicit conversion | The analyzer for operands, assigned values, the arguments of functions, methods and function block calls, loop bounds, the results of calls and dereferences, subscripts, shift counts and string positions (ADR-0056); codegen stores a function block output at the field's type unconverted | `ExprKind::ImplicitConversion` | `Convert` |
+| Implicit conversion | The analyzer for operands, assigned values, the arguments of functions, methods and function block calls, loop bounds, the results of calls and dereferences, subscripts, shift counts and string positions (ADR-0056); codegen stores a function block output at the field's type unconverted | `ExprKind::ImplicitConversion`, checked for a subscript that may not fit `DINT` (REQ-LOW-analyzer-162) | `Convert`, or `ConvertChecked` |
 | Arithmetic overload | Analyzer's `resolve_arithmetic_overload` | The expression's `expr_type`, and its operands' conversions | A `Binary` at the result type, or the desugared time arithmetic |
 | Operand type of a comparison | The analyzer ([Comparison Operand Type](comparison-operand-type.md)) | Its operands' conversions | A `Compare` at that type |
 | Argument order and count | `xform_named_to_positional_args` for a function call, then re-checked at 27 sites in codegen; codegen for a method call (`compile_method.rs`) and, by name, for a function block call (`compile_stmt.rs`) | Positional arguments | `Vec<Arg>` matched to parameters |
@@ -1809,6 +1825,7 @@ How the three targets are expected to realise the same node:
 | `Truncate` | `TRUNC_*` | Sign or zero extension from the narrow width | `trunc`, then `sext` or `zext` |
 | Signed `Div` | `DIV_I32`, `DIV_I64`, which wrap the most negative value divided by -1 | `i32.div_s` behind a guard for that case | `sdiv` behind guards for a zero divisor and for that case |
 | `Convert` from a real to an integer | `CONV_F32_TO_I32` and siblings, which saturate | `i32.trunc_sat_f32_s` and siblings | `llvm.fptosi.sat` and siblings |
+| `ConvertChecked` | A range check that traps, then the conversion | A comparison and `unreachable`, then the conversion | A comparison and a branch to the trap, then `trunc` |
 | `Deref` | Load and store indirect, which trap on null | A load or store, behind an explicit null check for a nullable reference | A `load` or `store`, behind an explicit null check for a nullable reference |
 | `Loop`, `Exit`, `Continue` | Labels and jumps | `loop`, `block`, `br` | Basic blocks and `br` |
 | `For` | Labels and jumps, with a fused compare and branch | The expansion to `Loop` | Basic blocks, with the bounds left for LLVM's loop passes |
@@ -2199,7 +2216,8 @@ This section constrains the order of work; it is not a work breakdown.
   shift counts, string positions and the types of literals. The contexts it
   does not record yet, a function block output stored by a call
   ([issue 2125](https://github.com/ironplc/ironplc/issues/2125)) and a
-  directly represented variable, come next
+  directly represented variable, come next, and so does marking a subscript's
+  conversion as checked (REQ-LOW-analyzer-162)
   ([issue 2050](https://github.com/ironplc/ironplc/issues/2050)). A statement
   that needs a decision the analyzer does not record yet stays on the route
   that reads the AST.
@@ -2402,11 +2420,7 @@ ADR:
 
 ## Open Questions
 
-1. **A subscript outside the range of `DINT`.** Converting it to `DINT` wraps,
-   so it can select an element instead of trapping (see
-   [Meaning of operations](#310-meaning-of-operations)). Either the analyzer
-   records a conversion that traps when the value does not fit, or every
-   subscript's own type reaches the bounds check.
+None.
 
 ## References
 
