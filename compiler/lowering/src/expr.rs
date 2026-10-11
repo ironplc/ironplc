@@ -1,0 +1,331 @@
+//! Scalar expressions.
+//!
+//! Each expression is lowered at the type the analyzer recorded for it
+//! (`Expr::expr_type`), and each conversion the analyzer recorded
+//! (`ExprKind::ImplicitConversion`) becomes a `Convert`. Lowering decides no
+//! literal type and no conversion itself (REQ-LOW-lowering-094).
+
+use ironplc_dsl::common::{Boolean, ConstantKind};
+use ironplc_dsl::core::{Located, SourceSpan};
+use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_dsl::textual::{
+    CompareOp as AstCompareOp, Expr as AstExpr, ExprKind as AstExprKind, Operator,
+    SymbolicVariableKind, UnaryOp as AstUnaryOp, Variable,
+};
+use ironplc_ir::lowered::{
+    BinaryOp, CompareOp, Const, Expr, Place, ScalarType, ShortCircuitOp, TypeId, TypeKind, UnaryOp,
+};
+
+use crate::variables::BodyFrame;
+use crate::Lowering;
+
+/// A lowered expression, or `None` when lowering does not support it yet.
+pub(crate) type Lowered = Result<Option<Expr>, Diagnostic>;
+
+impl Lowering<'_> {
+    /// Lowers the scalar expression `expr` of the body of `frame`.
+    pub(crate) fn expr(&mut self, frame: &BodyFrame, expr: &AstExpr) -> Lowered {
+        let span = expr.span();
+        match &expr.kind {
+            AstExprKind::Expression(inner) => self.expr(frame, inner),
+            AstExprKind::Const(constant) => self.constant(expr, constant, span),
+            AstExprKind::Variable(variable) => {
+                let Some(place) = self.variable_place(frame, variable)? else {
+                    return Ok(None);
+                };
+                self.read(place, span)
+            }
+            AstExprKind::BinaryOp(binary) => {
+                let op = match binary.op {
+                    Operator::Add => BinaryOp::Add,
+                    Operator::Sub => BinaryOp::Sub,
+                    Operator::Mul => BinaryOp::Mul,
+                    Operator::Div => BinaryOp::Div,
+                    Operator::Mod => BinaryOp::Mod,
+                    // `**` is the standard function `EXPT`, an intrinsic.
+                    Operator::Pow => return Ok(None),
+                };
+                if !self.is_arithmetic(expr) {
+                    return Ok(None);
+                }
+                self.binary(frame, op, &binary.left, &binary.right, span)
+            }
+            AstExprKind::UnaryOp(unary) => {
+                let op = match unary.op {
+                    AstUnaryOp::Neg => {
+                        if !self.is_arithmetic(expr) {
+                            return Ok(None);
+                        }
+                        UnaryOp::Neg
+                    }
+                    AstUnaryOp::Not => match self.is_bool(expr) {
+                        Some(true) => UnaryOp::BoolNot,
+                        Some(false) => UnaryOp::BitNot,
+                        None => return Ok(None),
+                    },
+                };
+                let Some(value) = self.expr(frame, &unary.term)? else {
+                    return Ok(None);
+                };
+                Expr::unary(op, value, span).map(Some)
+            }
+            AstExprKind::Compare(compare) => {
+                let (left, right) = (&compare.left, &compare.right);
+                match compare.op {
+                    AstCompareOp::And => self.logical(
+                        frame,
+                        expr,
+                        (BinaryOp::BoolAnd, BinaryOp::BitAnd),
+                        left,
+                        right,
+                    ),
+                    AstCompareOp::Or => self.logical(
+                        frame,
+                        expr,
+                        (BinaryOp::BoolOr, BinaryOp::BitOr),
+                        left,
+                        right,
+                    ),
+                    AstCompareOp::Xor => self.logical(
+                        frame,
+                        expr,
+                        (BinaryOp::BoolXor, BinaryOp::BitXor),
+                        left,
+                        right,
+                    ),
+                    AstCompareOp::AndThen => {
+                        self.short_circuit(frame, ShortCircuitOp::AndThen, left, right, span)
+                    }
+                    AstCompareOp::OrElse => {
+                        self.short_circuit(frame, ShortCircuitOp::OrElse, left, right, span)
+                    }
+                    AstCompareOp::Eq => self.compare(frame, CompareOp::Eq, left, right, span),
+                    AstCompareOp::Ne => self.compare(frame, CompareOp::Ne, left, right, span),
+                    AstCompareOp::Lt => self.compare(frame, CompareOp::Lt, left, right, span),
+                    AstCompareOp::Gt => self.compare(frame, CompareOp::Gt, left, right, span),
+                    AstCompareOp::LtEq => self.compare(frame, CompareOp::Le, left, right, span),
+                    AstCompareOp::GtEq => self.compare(frame, CompareOp::Ge, left, right, span),
+                }
+            }
+            AstExprKind::ImplicitConversion(inner) => {
+                let Some((_, to)) = self.operated_type(expr) else {
+                    return Ok(None);
+                };
+                let Some(value) = self.expr(frame, inner)? else {
+                    return Ok(None);
+                };
+                if value.ty() == to {
+                    // The two types are operated alike, as an `INT` widened
+                    // to a `DINT` is: nothing converts.
+                    return Ok(Some(value));
+                }
+                if !(value.ty().is_numeric() && to.is_numeric()) {
+                    return Ok(None);
+                }
+                Expr::convert(value, to, span).map(Some)
+            }
+            AstExprKind::EnumeratedValue(_)
+            | AstExprKind::Function(_)
+            | AstExprKind::MethodCall(_)
+            | AstExprKind::LateBound(_)
+            | AstExprKind::Ref(_)
+            | AstExprKind::Deref(_)
+            | AstExprKind::Null(_) => Ok(None),
+        }
+    }
+
+    /// The place a variable names, or `None` when lowering does not reach it
+    /// yet. Today that is a variable named on its own.
+    pub(crate) fn variable_place(
+        &mut self,
+        frame: &BodyFrame,
+        variable: &Variable,
+    ) -> Result<Option<Place>, Diagnostic> {
+        match variable {
+            Variable::Symbolic(SymbolicVariableKind::Named(named)) => {
+                self.named_place(frame, &named.name, &named.name.span())
+            }
+            Variable::Symbolic(
+                SymbolicVariableKind::Array(_)
+                | SymbolicVariableKind::Structured(_)
+                | SymbolicVariableKind::BitAccess(_)
+                | SymbolicVariableKind::PartialAccess(_)
+                | SymbolicVariableKind::Deref(_)
+                | SymbolicVariableKind::SelfRef(_),
+            )
+            | Variable::Direct(_) => Ok(None),
+        }
+    }
+
+    /// The value at `place`, when its type is operated on as one value.
+    fn read(&mut self, place: Place, span: SourceSpan) -> Lowered {
+        if self.types.operation_type(place.ty()).is_none() {
+            return Ok(None);
+        }
+        Expr::read(&self.types, place, span).map(Some)
+    }
+
+    fn constant(&mut self, expr: &AstExpr, constant: &ConstantKind, span: SourceSpan) -> Lowered {
+        let Some((_, ty)) = self.operated_type(expr) else {
+            return Ok(None);
+        };
+        let value = match constant {
+            ConstantKind::IntegerLiteral(literal) => {
+                let Ok(value) = i128::try_from(literal.value.clone()) else {
+                    return Ok(None);
+                };
+                if ty.is_real() {
+                    // An integer literal at a real type is that number.
+                    Const::Real(value as f64)
+                } else {
+                    Const::Int(value)
+                }
+            }
+            ConstantKind::RealLiteral(literal) => Const::Real(literal.value),
+            ConstantKind::Boolean(literal) => Const::Int(match literal.value {
+                Boolean::True => 1,
+                Boolean::False => 0,
+            }),
+            ConstantKind::BitStringLiteral(literal) => {
+                let Ok(value) = i128::try_from(literal.value.value) else {
+                    return Ok(None);
+                };
+                Const::Int(value)
+            }
+            ConstantKind::CharacterString(_)
+            | ConstantKind::Duration(_)
+            | ConstantKind::TimeOfDay(_)
+            | ConstantKind::Date(_)
+            | ConstantKind::DateAndTime(_) => return Ok(None),
+        };
+        Expr::constant(value, ty, span).map(Some)
+    }
+
+    fn binary(
+        &mut self,
+        frame: &BodyFrame,
+        op: BinaryOp,
+        left: &AstExpr,
+        right: &AstExpr,
+        span: SourceSpan,
+    ) -> Lowered {
+        let Some(lhs) = self.expr(frame, left)? else {
+            return Ok(None);
+        };
+        let Some(rhs) = self.expr(frame, right)? else {
+            return Ok(None);
+        };
+        Expr::binary(op, lhs, rhs, span).map(Some)
+    }
+
+    /// `AND`, `OR` or `XOR`: the logical form of `ops` for a `BOOL`, and the
+    /// bitwise form for an integer or bit string (REQ-LOW-lowering-048).
+    fn logical(
+        &mut self,
+        frame: &BodyFrame,
+        expr: &AstExpr,
+        (logical, bitwise): (BinaryOp, BinaryOp),
+        left: &AstExpr,
+        right: &AstExpr,
+    ) -> Lowered {
+        let op = match self.is_bool(expr) {
+            Some(true) => logical,
+            Some(false) => bitwise,
+            None => return Ok(None),
+        };
+        self.binary(frame, op, left, right, expr.span())
+    }
+
+    fn compare(
+        &mut self,
+        frame: &BodyFrame,
+        op: CompareOp,
+        left: &AstExpr,
+        right: &AstExpr,
+        span: SourceSpan,
+    ) -> Lowered {
+        let Some(lhs) = self.expr(frame, left)? else {
+            return Ok(None);
+        };
+        let Some(rhs) = self.expr(frame, right)? else {
+            return Ok(None);
+        };
+        Expr::compare(op, lhs, rhs, span).map(Some)
+    }
+
+    fn short_circuit(
+        &mut self,
+        frame: &BodyFrame,
+        op: ShortCircuitOp,
+        left: &AstExpr,
+        right: &AstExpr,
+        span: SourceSpan,
+    ) -> Lowered {
+        let Some(lhs) = self.expr(frame, left)? else {
+            return Ok(None);
+        };
+        let Some(rhs) = self.expr(frame, right)? else {
+            return Ok(None);
+        };
+        Expr::short_circuit(op, lhs, rhs, span).map(Some)
+    }
+
+    /// The lowered type the analyzer recorded for `expr`, and the type it is
+    /// operated at; `None` when it recorded none, or one lowering cannot
+    /// operate on as one value.
+    fn operated_type(&mut self, expr: &AstExpr) -> Option<(TypeId, ScalarType)> {
+        let recorded = expr.expr_type.as_ref()?.type_id()?;
+        let ty = self.lowered_type(recorded)?;
+        let operated = self.types.operation_type(ty)?;
+        Some((ty, operated))
+    }
+
+    /// Whether `expr` is computed by arithmetic: a number or a bit string,
+    /// not a time, a date or an enumeration, whose operations follow rules of
+    /// their own.
+    fn is_arithmetic(&mut self, expr: &AstExpr) -> bool {
+        let Some((ty, _)) = self.operated_type(expr) else {
+            return false;
+        };
+        let Some(kind) = self.types.kind(ty) else {
+            return false;
+        };
+        match kind {
+            TypeKind::Integer { .. } | TypeKind::BitString { .. } | TypeKind::Real { .. } => true,
+            TypeKind::Subrange { base, .. } => {
+                matches!(self.types.kind(*base), Some(TypeKind::Integer { .. }))
+            }
+            TypeKind::Bool
+            | TypeKind::Temporal { .. }
+            | TypeKind::Enumeration { .. }
+            | TypeKind::String(_)
+            | TypeKind::Array { .. }
+            | TypeKind::Structure { .. }
+            | TypeKind::FunctionBlock { .. }
+            | TypeKind::Program { .. }
+            | TypeKind::Reference { .. } => false,
+        }
+    }
+
+    /// Whether `expr` is a `BOOL` (`Some(true)`) or an integer or bit string
+    /// (`Some(false)`), which decides between the logical and bitwise form of
+    /// `NOT`, `AND`, `OR` and `XOR` (REQ-LOW-lowering-048). `None` for any
+    /// other type.
+    fn is_bool(&mut self, expr: &AstExpr) -> Option<bool> {
+        let (ty, _) = self.operated_type(expr)?;
+        match self.types.kind(ty)? {
+            TypeKind::Bool => Some(true),
+            TypeKind::Integer { .. } | TypeKind::BitString { .. } => Some(false),
+            TypeKind::Real { .. }
+            | TypeKind::Temporal { .. }
+            | TypeKind::Enumeration { .. }
+            | TypeKind::Subrange { .. }
+            | TypeKind::String(_)
+            | TypeKind::Array { .. }
+            | TypeKind::Structure { .. }
+            | TypeKind::FunctionBlock { .. }
+            | TypeKind::Program { .. }
+            | TypeKind::Reference { .. } => None,
+        }
+    }
+}

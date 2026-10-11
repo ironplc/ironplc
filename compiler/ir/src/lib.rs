@@ -1,10 +1,17 @@
 //! IronPLC's target-neutral intermediate representation.
 //!
 //! A backend reads what this crate holds and decides nothing about what the
-//! language means. It holds the execution model today ([`execution`]); see
-//! `specs/design/execution-model.md`.
+//! language means. It holds the execution model ([`execution`]; see
+//! `specs/design/execution-model.md`) and the lowered program ([`lowered`];
+//! see `specs/design/lowered-program.md`).
+
+// A match over a lowered enum names every variant, so a variant added later
+// fails to compile wherever it is not handled (REQ-LOW-lowering-082).
+#![deny(clippy::wildcard_enum_match_arm)]
+#![allow(clippy::result_large_err)]
 
 pub mod execution;
+pub mod lowered;
 
 // What a backend needs from `ironplc-dsl` to label a diagnostic and find a
 // source file, re-exported so that a backend names them through this crate

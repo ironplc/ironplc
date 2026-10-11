@@ -1,0 +1,36 @@
+//! The lowered program: a program in which every decision the language makes
+//! has already been made, and every name already refers to the thing it
+//! names. See `specs/design/lowered-program.md`.
+//!
+//! Lowering builds the nodes through the constructors here, which check the
+//! invariants of the design and return a P9998 diagnostic naming the
+//! constructor when one is violated (REQ-LOW-ir-081). The fields of every node
+//! are private, so the constructors are the only way to build one
+//! (REQ-LOW-ir-080), and a backend can rely on the invariants without checking
+//! them again.
+//!
+//! The lowered program grows one construct at a time. Today it holds scalar
+//! expressions, places reached through fields and dereferences, and the
+//! assignment of a scalar value.
+
+mod expr;
+mod ids;
+mod invariant;
+mod place;
+mod print;
+mod scalar;
+mod stmt;
+mod types;
+
+pub use expr::{BinaryOp, CompareOp, Const, Expr, ExprKind, ShortCircuitOp, UnaryOp};
+pub use ids::{FieldIdx, LoopId, PouId, TypeId, VarId};
+pub use place::{Place, Projection};
+pub use scalar::{ScalarType, Signedness};
+pub use stmt::{store_narrowing, Stmt, StmtKind};
+pub use types::{
+    Encoding, Field, Nullability, Section, StringShape, TemporalKind, TypeEntry, TypeKind,
+    TypeTable,
+};
+
+#[cfg(test)]
+mod tests;

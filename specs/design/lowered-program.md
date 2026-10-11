@@ -467,13 +467,18 @@ Everything is referred to by an id allocated during lowering, never by name.
 | `PouId` | A program, function, function block or method | The lower-case key of `user_functions`, the upper-case key of `user_fb_types` |
 | `FieldIdx` | A field of a structure, function block or program, by position. Every variable a function block or program declares, other than `VAR_TEMP` and `VAR_EXTERNAL`, is a field of its instance, and so is every field lowering synthesizes for it (see [Synthesized state](#synthesized-state)) | The lower-case field name in `field_index` and `field_indices` |
 | `LoopId` | One `Loop` or `For` | The top of the `loop_labels` stack |
-| `TypeId` | A type (ADR-0055, unchanged) | Unchanged |
+| `TypeId` | A type of the lowered program's type table | The analyzer's `TypeId` (ADR-0055), which lowering maps to one of its own |
 
 Each id is a type of its own, a newtype over an integer such as
 `struct VarId(u32)`, and not a type alias. An alias such as `type VarId = u32`
 would let a `PouId` be passed where a `VarId` is expected, and the compiler
-would accept it; that mix-up is what separate ids exist to prevent. `TypeId`
-is already a newtype.
+would accept it; that mix-up is what separate ids exist to prevent.
+
+The lowered program numbers its types itself rather than reusing the
+analyzer's `TypeId`. Two types it needs have no analyzer id: the type of a
+program's instance, and the non-null reference type of a body's instance
+parameter. A backend therefore never sees an analyzer id, which also keeps
+it from needing one (REQ-LOW-codegen-002).
 
 **REQ-LOW-ir-019** `VarId`, `PouId`, `FieldIdx`, `LoopId` and `TypeId` are
 distinct types, so a value of one cannot be used where another is expected.
