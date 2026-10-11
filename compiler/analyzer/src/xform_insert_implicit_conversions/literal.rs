@@ -1,15 +1,14 @@
 //! Recording the type of an untyped literal from the context it is used in.
 //!
 //! An untyped literal such as `1` has a generic type (`ANY_INT`) until a
-//! context gives it one (ADR-0028). The code generator gives it one top-down:
-//! each statement passes the type it stores or tests at into its expression,
-//! and every construct on the way to the literal either passes that type on
+//! context gives it one (ADR-0028). The context is found top-down: each
+//! statement gives its expression the type it stores or tests at, and every
+//! construct on the way to the literal either passes that type on
 //! (parentheses), computes at a type of its own (an arithmetic operation, a
 //! negation, `ABS` or `MAX` of a concrete type, a comparison, a call to a
 //! user-defined function), or computes at a fixed type (a subscript, a
 //! string position, a shift count). This module records the type each
-//! literal reaches, so that a backend reads it from the literal rather than
-//! carrying it down.
+//! literal reaches, so that a backend compiles the literal at it.
 //!
 //! A literal stored in a function block field, passed to a method parameter
 //! or assigned through a dereference takes the declared type of the variable

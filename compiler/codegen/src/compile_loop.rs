@@ -345,7 +345,7 @@ pub(crate) fn compile_for(
     };
 
     // Initialize: compile(from), STORE_VAR control
-    compile_expr(emitter, ctx, &for_stmt.from, op_type)?;
+    compile_expr(emitter, ctx, &for_stmt.from)?;
     if let Some(ti) = type_info {
         if !elide_trunc {
             emit_truncation(emitter, ti);
@@ -367,7 +367,7 @@ pub(crate) fn compile_for(
         emit_classified_cmp_br(emitter, classified, false, end_label)?;
     } else {
         emit_load_var(emitter, var_index, op_type);
-        compile_expr(emitter, ctx, &for_stmt.to, op_type)?;
+        compile_expr(emitter, ctx, &for_stmt.to)?;
         match step_sign {
             StepSign::Positive => emit_le(emitter, op_type),
             StepSign::Negative => emit_ge(emitter, op_type),
@@ -384,7 +384,7 @@ pub(crate) fn compile_for(
     // Increment: LOAD_VAR control, compile(step), ADD, truncate, STORE_VAR control
     emit_load_var(emitter, var_index, op_type);
     match &for_stmt.step {
-        Some(step_expr) => compile_expr(emitter, ctx, step_expr, op_type)?,
+        Some(step_expr) => compile_expr(emitter, ctx, step_expr)?,
         None => match op_type.0 {
             OpWidth::W32 => {
                 let one_index = ctx.add_i32_constant(1);

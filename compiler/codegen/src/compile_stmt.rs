@@ -183,8 +183,7 @@ fn compile_fb_call(
             let field_idx = field_indices
                 .get(&field_name)
                 .ok_or_else(|| Diagnostic::todo_with_span(input.name.span()))?;
-            let op_type = resolve_fb_field_op_type(&field_op_types, &field_name);
-            compile_expr(emitter, ctx, &input.expr, op_type)?;
+            compile_expr(emitter, ctx, &input.expr)?;
             emitter.emit_fb_store_param(*field_idx);
         }
     }
@@ -382,7 +381,7 @@ impl CaseSelector<'_> {
         label: CaseLabelValue<'_>,
         cmp: fn(&mut Emitter, OpType),
     ) -> Result<(), Diagnostic> {
-        compile_expr(emitter, ctx, self.expr, self.op_type)?;
+        compile_expr(emitter, ctx, self.expr)?;
         match self.op_type.0 {
             OpWidth::W32 => {
                 let pool_index = ctx.add_i32_constant(label.to_i32(self.op_type.1)?);
@@ -498,7 +497,7 @@ fn compile_case_selector(
         CaseSelectionKind::EnumeratedValue(ev) => {
             // REQ-EN-codegen-040: Load selector, load ordinal constant, compare with EQ_I32.
             // The label is a value of the selector's type.
-            compile_expr(emitter, ctx, selector.expr, selector.op_type)?;
+            compile_expr(emitter, ctx, selector.expr)?;
             let members = crate::compile_enum::members_of_expr(ctx, selector.expr);
             let ordinal = crate::compile_enum::ordinal_in(members, ev)?;
             let pool_index = ctx.add_i32_constant(ordinal);

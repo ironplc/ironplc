@@ -801,7 +801,7 @@ pub(crate) fn emit_flat_index(
                 "Array subscript of a width other than DINT's, and the analyzer recorded no conversion",
             )));
         }
-        compile_expr(emitter, ctx, subscript, own)?;
+        compile_expr(emitter, ctx, subscript)?;
         if dim.lower_bound != 0 {
             let lb_const = ctx.add_i64_constant(dim.lower_bound as i64);
             emitter.emit_load_const_i64(lb_const);
