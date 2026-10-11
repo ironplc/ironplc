@@ -292,3 +292,50 @@ fn usable_variables_when_bare_globals_then_global_listed() {
 
     assert_eq!(names, vec!["x", "e", "g", "uptime"]);
 }
+
+#[test]
+fn declared_when_variable_then_its_symbol() {
+    let mut env = SymbolEnvironment::new();
+    let function = scope(&["F"]);
+    declare(&mut env, &function, "x", VariableType::Var);
+
+    let declared = env.resolve_variable(&Id::from("x"), &function).declared();
+
+    assert!(declared.is_some_and(|info| info.variable_type == Some(VariableType::Var)));
+}
+
+#[test]
+fn declared_when_global_not_visible_then_its_symbol() {
+    let mut env = SymbolEnvironment::new();
+    declare(&mut env, &ScopeKind::Global, "g", VariableType::Global);
+
+    let declared = env
+        .resolve_variable(&Id::from("g"), &scope(&["main"]))
+        .declared();
+
+    assert!(declared.is_some_and(|info| info.variable_type == Some(VariableType::Global)));
+}
+
+#[test]
+fn declared_when_not_a_variable_then_none() {
+    let mut env = SymbolEnvironment::new();
+    env.insert(&Id::from("T"), SymbolKind::Type, &ScopeKind::Global)
+        .unwrap();
+
+    let declared = env
+        .resolve_variable(&Id::from("T"), &scope(&["F"]))
+        .declared();
+
+    assert!(declared.is_none());
+}
+
+#[test]
+fn declared_when_undeclared_then_none() {
+    let env = SymbolEnvironment::new();
+
+    let declared = env
+        .resolve_variable(&Id::from("x"), &scope(&["F"]))
+        .declared();
+
+    assert!(declared.is_none());
+}

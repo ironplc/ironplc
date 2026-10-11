@@ -280,6 +280,24 @@ pub enum Resolution<'a> {
     Undeclared,
 }
 
+impl<'a> Resolution<'a> {
+    /// The variable the name refers to, whether or not the scope reaches
+    /// it.
+    ///
+    /// For a caller that types or checks a variable. A global the scope
+    /// does not reach is still answered for: reporting it is the job of
+    /// the rule that reports an undefined variable, and a second pass
+    /// that refused it would only lose what is known about the variable.
+    pub fn declared(self) -> Option<&'a SymbolInfo> {
+        match self {
+            Resolution::Variable { info, .. } | Resolution::GlobalNotVisible { info, .. } => {
+                Some(info)
+            }
+            Resolution::NotAVariable | Resolution::Undeclared => None,
+        }
+    }
+}
+
 /// Whether `kind` is a variable: the kinds a `VAR*` block declares.
 fn is_variable(kind: &SymbolKind) -> bool {
     matches!(
