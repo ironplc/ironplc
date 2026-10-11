@@ -337,8 +337,9 @@ elsewhere: `SourceSpan`, `FileId`, `Label` and `Diagnostic` go together.
 `ironplc-ir` re-exports all four from `ironplc-dsl`, and a backend names them
 through `ironplc-ir` (see the lowered program design's
 [Position in the Pipeline](lowered-program.md#1-position-in-the-pipeline)).
-Today `ironplc-ir` imports `SourceSpan` and re-exports nothing yet, since
-codegen still depends on `ironplc-dsl`.
+The execution model's own module still imports `SourceSpan` from
+`ironplc-dsl` directly, and codegen still depends on `ironplc-dsl` until it
+reads only the lowered program.
 
 ## Behaviour
 
