@@ -25,6 +25,24 @@ use super::operator_function_form::{form_of_operator, FormOf, OperatorFunctionFo
 use super::stdlib_time_function::short_overload;
 use crate::type_compat::{are_types_compatible, is_checkable_type, same_temporal_family};
 
+/// A typed overload of an arithmetic operator on the time and date types:
+/// the form that applies, by name (`ADD_TIME`, `ADD_LTIME`), and its result
+/// type.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedOverload {
+    pub name: &'static str,
+    pub result: TypeName,
+}
+
+impl From<TypedOverload> for Overload {
+    fn from(typed: TypedOverload) -> Self {
+        Overload::Typed {
+            name: typed.name,
+            result: typed.result,
+        }
+    }
+}
+
 /// The overload of an arithmetic operator that applies to a pair of operand
 /// types.
 #[derive(Debug, Clone, PartialEq)]
@@ -97,7 +115,8 @@ pub fn resolve_arithmetic_overload(
     if !is_checkable_type(left) || !is_checkable_type(right) {
         return Some(unchecked());
     }
-    numeric_overload(form, op, left, right, options).or_else(|| typed_overload(op, left, right))
+    numeric_overload(form, op, left, right, options)
+        .or_else(|| typed_overload(op, left, right).map(Overload::from))
 }
 
 /// Resolves an extensible call's inputs by folding from the left:
@@ -153,7 +172,7 @@ pub fn resolve_arithmetic_fold(
 /// an untyped literal's category (`ANY_INT`, `ANY_REAL`) in the `ANY_NUM`
 /// slot, as in `t * 2`. The type resolver has already reduced an alias to
 /// its elementary type.
-pub fn typed_overload(op: &Operator, left: &TypeName, right: &TypeName) -> Option<Overload> {
+pub fn typed_overload(op: &Operator, left: &TypeName, right: &TypeName) -> Option<TypedOverload> {
     let form = arithmetic_form(op)?;
     let left = OperandType::of(left);
     let right = OperandType::of(right);
@@ -166,7 +185,7 @@ pub fn typed_overload(op: &Operator, left: &TypeName, right: &TypeName) -> Optio
         .filter_map(|operand| operand.elementary.as_ref())
         .any(is_long_temporal);
     let row = if long { row.long()? } else { *row };
-    Some(Overload::Typed {
+    Some(TypedOverload {
         name: row.name,
         result: TypeName::from(row.result),
     })
@@ -352,14 +371,14 @@ mod tests {
         // A literal fills the ANY_NUM factor: `t * 2`, `t / 1.5`.
         assert_eq!(
             typed_overload(&Operator::Mul, &time, &int_literal),
-            Some(Overload::Typed {
+            Some(TypedOverload {
                 name: "MUL_TIME",
                 result: time.clone()
             })
         );
         assert_eq!(
             typed_overload(&Operator::Div, &time, &real_literal),
-            Some(Overload::Typed {
+            Some(TypedOverload {
                 name: "DIV_TIME",
                 result: time.clone()
             })

@@ -248,6 +248,56 @@ impl SymbolInfo {
     }
 }
 
+/// A variable declaration, named by the scope it is declared in and its
+/// name.
+///
+/// This is not an id the analyzer allocates. It is how the program itself
+/// names a declaration: a name is declared at most once in a scope
+/// (`P4014`), so the pair is unique in a library that analysis accepts.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct DeclRef {
+    /// The scope the declaration is in. For a field a function block
+    /// inherits through `EXTENDS`, this is the scope of the block that
+    /// declares it, not of the block that uses it.
+    pub scope: ScopeKind,
+    /// The name, as the declaration spells it.
+    pub name: Id,
+}
+
+/// What a name refers to when a body uses it as a variable. See
+/// [`SymbolEnvironment::resolve_variable`].
+#[derive(Debug, Clone)]
+pub enum Resolution<'a> {
+    /// A variable the reference may use.
+    Variable { decl: DeclRef, info: &'a SymbolInfo },
+    /// A global the scope does not reach: the name is a `VAR_GLOBAL`, and
+    /// nothing nearer (such as a `VAR_EXTERNAL`) declares it.
+    GlobalNotVisible { decl: DeclRef, info: &'a SymbolInfo },
+    /// The name is declared, but not as a variable (a type, a program, a
+    /// function block, ...).
+    NotAVariable,
+    /// Nothing visible declares the name.
+    Undeclared,
+}
+
+impl<'a> Resolution<'a> {
+    /// The variable the name refers to, whether or not the scope reaches
+    /// it.
+    ///
+    /// For a caller that types or checks a variable. A global the scope
+    /// does not reach is still answered for: reporting it is the job of
+    /// the rule that reports an undefined variable, and a second pass
+    /// that refused it would only lose what is known about the variable.
+    pub fn declared(self) -> Option<&'a SymbolInfo> {
+        match self {
+            Resolution::Variable { info, .. } | Resolution::GlobalNotVisible { info, .. } => {
+                Some(info)
+            }
+            Resolution::NotAVariable | Resolution::Undeclared => None,
+        }
+    }
+}
+
 /// Whether `kind` is a variable: the kinds a `VAR*` block declares.
 fn is_variable(kind: &SymbolKind) -> bool {
     matches!(
@@ -259,6 +309,12 @@ fn is_variable(kind: &SymbolKind) -> bool {
             | SymbolKind::EdgeVariable
             | SymbolKind::Constant
     )
+}
+
+/// Whether a body can name `kind` as a variable: the kinds a `VAR*` block
+/// declares, and the result variable of a function or method.
+fn is_named_as_variable(kind: &SymbolKind) -> bool {
+    is_variable(kind) || *kind == SymbolKind::ResultVariable
 }
 
 /// The problem a second declaration of a name in one scope is: `P4014` for
@@ -346,6 +402,11 @@ pub struct SymbolEnvironment {
     /// read through its type (`Colors#Red`), and two enumerations, or an
     /// enumeration and a variable, may use the same name.
     enumeration_values: EnumerationValues,
+    /// Whether a body may use a `VAR_GLOBAL` directly, without a
+    /// `VAR_EXTERNAL` naming it. The vendor dialects that declare globals
+    /// in top-level lists (`--allow-top-level-var-global`) allow it; IEC
+    /// 61131-3 reaches a global only through `VAR_EXTERNAL`.
+    bare_globals: bool,
 }
 
 impl SymbolEnvironment {
@@ -354,7 +415,19 @@ impl SymbolEnvironment {
             global_symbols: IndexMap::new(),
             scoped_symbols: IndexMap::new(),
             enumeration_values: EnumerationValues::default(),
+            bare_globals: false,
         }
+    }
+
+    /// Set whether a body may use a `VAR_GLOBAL` directly, without a
+    /// `VAR_EXTERNAL` naming it.
+    ///
+    /// The environment holds this, rather than each lookup being told, so
+    /// that every caller of [`Self::resolve_variable`] gets the same
+    /// answer for the same name.
+    pub fn with_bare_globals(mut self, bare_globals: bool) -> Self {
+        self.bare_globals = bare_globals;
+        self
     }
 
     /// Insert a symbol into the environment.
@@ -478,9 +551,60 @@ impl SymbolEnvironment {
     /// it `EXTENDS`, nearest first, so a derived block and its methods see
     /// the fields it inherits.
     pub fn find(&self, name: &Id, scope: &ScopeKind) -> Option<&SymbolInfo> {
+        self.find_declaration(name, scope).map(|(_, info)| info)
+    }
+
+    /// As [`Self::find`], with the name as the declaration spells it.
+    fn find_declaration(&self, name: &Id, scope: &ScopeKind) -> Option<(&Id, &SymbolInfo)> {
         self.visible_scopes(scope)
             .iter()
-            .find_map(|scope| self.symbols_in(scope)?.get(name))
+            .find_map(|scope| self.symbols_in(scope)?.get_key_value(name))
+    }
+
+    /// The declaration `name` refers to as a variable from the scope
+    /// `from`, by the language's scope rules.
+    ///
+    /// This is the one place that decides which declaration a variable
+    /// reference names. It applies, in order:
+    ///
+    /// 1. **Lookup order.** The nearest declaration of the name is the one
+    ///    [`Self::find`] returns: the enclosing scopes innermost first,
+    ///    then the `EXTENDS` chain, then the global scope. A nearer
+    ///    declaration that is not a variable still hides a farther one
+    ///    that is.
+    /// 2. **Global visibility.** A `VAR_GLOBAL` is reached through a
+    ///    `VAR_EXTERNAL`, which is a variable of the scope that declares
+    ///    it, unless the dialect lets a body use globals directly
+    ///    ([`Self::with_bare_globals`]). A global the compiler provides is
+    ///    always usable.
+    ///
+    /// A `VAR_EXTERNAL` resolves to its own declaration, in the scope that
+    /// declares it, and not to the global it names.
+    pub fn resolve_variable(&self, name: &Id, from: &ScopeKind) -> Resolution<'_> {
+        let Some((declared, info)) = self.find_declaration(name, from) else {
+            return Resolution::Undeclared;
+        };
+        if !is_named_as_variable(&info.kind) {
+            return Resolution::NotAVariable;
+        }
+        let decl = DeclRef {
+            scope: info.scope.clone(),
+            name: declared.clone(),
+        };
+        if self.is_usable(info) {
+            Resolution::Variable { decl, info }
+        } else {
+            Resolution::GlobalNotVisible { decl, info }
+        }
+    }
+
+    /// Whether a body may use the variable `info` describes by name: every
+    /// variable but a `VAR_GLOBAL` the body has to reach through a
+    /// `VAR_EXTERNAL`.
+    fn is_usable(&self, info: &SymbolInfo) -> bool {
+        let is_declared_global =
+            info.scope == ScopeKind::Global && info.variable_type == Some(VariableType::Global);
+        !is_declared_global || info.compiler_provided || self.bare_globals
     }
 
     /// The function block `THIS^` or `SUPER^` names from `scope`.
@@ -549,12 +673,23 @@ impl SymbolEnvironment {
                 continue;
             };
             for (name, info) in symbols {
-                if is_variable(&info.kind) || info.kind == SymbolKind::ResultVariable {
+                if is_named_as_variable(&info.kind) {
                     visible.entry(name).or_insert(info);
                 }
             }
         }
         visible.into_iter().collect()
+    }
+
+    /// The variables of [`Self::visible_variables`] that a body in `scope`
+    /// may use by name: all of them but the globals
+    /// [`Self::resolve_variable`] answers [`Resolution::GlobalNotVisible`]
+    /// for. These are the names worth suggesting for a misspelled one.
+    pub fn usable_variables(&self, scope: &ScopeKind) -> Vec<(&Id, &SymbolInfo)> {
+        self.visible_variables(scope)
+            .into_iter()
+            .filter(|(_, info)| self.is_usable(info))
+            .collect()
     }
 
     /// Get a symbol by name and scope (alias for find)
@@ -644,5 +779,7 @@ impl std::fmt::Debug for SymbolEnvironment {
     }
 }
 
+#[cfg(test)]
+mod resolve_variable_tests;
 #[cfg(test)]
 mod tests;

@@ -10,7 +10,7 @@ use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, SymbolicVariableKind, Variable};
 
-use super::compile::{CompileContext, OpType, OpWidth, Signedness, DEFAULT_OP_TYPE};
+use super::compile::{CompileContext, OpWidth, DEFAULT_OP_TYPE};
 use super::compile_expr::compile_expr;
 use super::compile_place::Place;
 use crate::emit::Emitter;
@@ -81,17 +81,6 @@ impl<'ast> PartialAccess<'ast> {
     /// always emitted it, and still does.
     fn shifts(&self) -> bool {
         self.shift > 0 || self.bits == 1
-    }
-
-    /// The type a value written to the bits is compiled at: `BOOL` for one
-    /// bit, otherwise the bit string as wide as the bits, so that a `%L`
-    /// access takes a 64-bit value and every narrower one a 32-bit value.
-    fn value_op_type(&self) -> OpType {
-        match self.bits {
-            1 => DEFAULT_OP_TYPE,
-            2..=32 => (OpWidth::W32, Signedness::Unsigned),
-            _ => (OpWidth::W64, Signedness::Unsigned),
-        }
     }
 
     /// A mask of `bits` set bits, starting at bit 0.
@@ -174,7 +163,7 @@ pub(crate) fn compile_partial_access_assignment(
             emitter.emit_load_const_i64(clear_const);
             emitter.emit_bit_and_64();
 
-            compile_expr(emitter, ctx, value, access.value_op_type())?;
+            compile_expr(emitter, ctx, value)?;
             if value_wide {
                 let mask_const = ctx.add_i64_constant(access.mask() as u64 as i64);
                 emitter.emit_load_const_i64(mask_const);
@@ -198,7 +187,7 @@ pub(crate) fn compile_partial_access_assignment(
             emitter.emit_load_const_i32(clear_const);
             emitter.emit_bit_and_32();
 
-            compile_expr(emitter, ctx, value, access.value_op_type())?;
+            compile_expr(emitter, ctx, value)?;
             let mask_const = ctx.add_i32_constant(access.mask() as u32 as i32);
             emitter.emit_load_const_i32(mask_const);
             emitter.emit_bit_and_32();

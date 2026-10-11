@@ -70,22 +70,23 @@ pub(crate) fn expr_type_info(ctx: &CompileContext, expr: &Expr) -> Option<VarTyp
     }
 }
 
-/// The `VarTypeInfo` of the type named `name`, whatever kind of declaration
-/// declares it: an alias as the type it names, and a subrange as its base
-/// type. `None` for a type the backend does not operate on as one value.
-///
-/// A function's or method's return type is known by its name only, so this
-/// is how its value is operated: resolving the name as an elementary type
-/// alone took an alias of `LREAL` for the default `DINT`.
-pub(crate) fn named_type_info(types: &TypeEnvironment, name: &TypeName) -> Option<VarTypeInfo> {
-    operand_type_info(&types.get(name)?.representation)
-}
-
 /// The `VarTypeInfo` of the type a declaration declares, from its
 /// `type_id`. `None` when the analyzer resolved no type for it, or when the
 /// type is not one this backend operates on arithmetically.
 pub(crate) fn decl_type_info(ctx: &CompileContext, decl: &VarDecl) -> Option<VarTypeInfo> {
     operand_type_info(ctx.types.get(&decl.type_id?)?)
+}
+
+/// The `VarTypeInfo` of the type `type_name` names, looked up by its id in
+/// `types`: how a function's or a method's declared return type operates,
+/// a subrange as its base type and an enumeration as a `DINT`. `None` when
+/// it names no type, or one this backend does not operate on arithmetically.
+pub(crate) fn named_type_info(
+    ctx: &CompileContext,
+    types: &TypeEnvironment,
+    type_name: &TypeName,
+) -> Option<VarTypeInfo> {
+    operand_type_info(ctx.types.get(&types.id_of(type_name)?)?)
 }
 
 /// What an expression's value is, from its `expr_type`, when it has a

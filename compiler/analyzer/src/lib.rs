@@ -26,6 +26,7 @@ mod constant_folding;
 mod enumerated_value_type;
 pub mod enumeration_members;
 mod enumeration_values;
+pub mod execution_model;
 mod function_environment;
 mod intrinsic;
 mod result;
@@ -69,6 +70,7 @@ mod rule_string_length_range;
 mod rule_string_literal_char_range;
 mod rule_struct_initializer_expression_allowed;
 mod rule_support;
+mod rule_task_configuration;
 mod rule_task_names_unique;
 mod rule_temporal_literal_range;
 mod rule_unsupported_extension;
@@ -127,6 +129,7 @@ pub use function_environment::{
 };
 pub use intermediates::arithmetic_overload::{
     resolve_arithmetic_fold, resolve_arithmetic_overload, typed_overload, FoldFailure, Overload,
+    TypedOverload,
 };
 pub use intermediates::enumeration::resolve_ordinal_values;
 pub use intermediates::operator_function_form::FormOf;

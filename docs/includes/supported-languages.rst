@@ -1,7 +1,12 @@
 **Fully Supported:**
 
 - **Structured Text (ST)** - Text-based programming language
-- **Sequential Function Chart (SFC)** - State-machine based programming with ST action bodies
+
+**Checked but Not Yet Compiled:**
+
+- **Sequential Function Chart (SFC)** - State-machine based programming with ST
+  action bodies. :program:`ironplcc check` parses and checks SFC bodies, but
+  compiling one reports :doc:`P9999 </reference/compiler/problems/P9999>`.
 
 **Not Supported:**
 

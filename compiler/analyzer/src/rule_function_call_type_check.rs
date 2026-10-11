@@ -110,7 +110,8 @@ impl RuleFunctionCallTypeCheck<'_> {
         let type_id = self
             .context
             .symbols()
-            .find(id, &self.scope.current())?
+            .resolve_variable(id, &self.scope.current())
+            .declared()?
             .type_id?;
         self.context.types().name_of(type_id).cloned()
     }
@@ -133,7 +134,8 @@ impl RuleFunctionCallTypeCheck<'_> {
         let type_id = self
             .context
             .symbols()
-            .find(id, &self.scope.current())?
+            .resolve_variable(id, &self.scope.current())
+            .declared()?
             .type_id?;
         let types = self.context.types();
         let referenced = types.get_by_id(type_id)?.representation.referenced_type()?;

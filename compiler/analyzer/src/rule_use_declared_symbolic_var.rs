@@ -54,21 +54,20 @@ use crate::{
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
     string_similarity::find_closest_match,
-    symbol_environment::{ScopeKind, ScopeTracker, SymbolEnvironment, SymbolInfo, SymbolKind},
+    symbol_environment::{Resolution, ScopeTracker, SymbolEnvironment},
 };
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
     lib: &Library,
     context: &SemanticContext,
-    options: &CompilerOptions,
+    _options: &CompilerOptions,
 ) -> SemanticResult {
     run_rule(
         SymbolScopeChecker {
             symbols: context.symbols(),
             scope: ScopeTracker::default(),
             units: Vec::new(),
-            bare_globals: options.allow_top_level_var_global,
             enclosing_properties: Vec::new(),
             diagnostics: Vec::new(),
         },
@@ -79,7 +78,8 @@ pub fn apply(
 /// Checks each name a body uses against the symbol environment, from the
 /// scope the body is in. The environment answers for the scope's own
 /// variables, those of the scopes enclosing it, the fields a function
-/// block inherits through `EXTENDS`, and the globals.
+/// block inherits through `EXTENDS`, and the globals, and decides whether
+/// the body reaches a global.
 struct SymbolScopeChecker<'a> {
     symbols: &'a SymbolEnvironment,
     /// Where the traversal is, to look names up in the symbol environment.
@@ -88,11 +88,6 @@ struct SymbolScopeChecker<'a> {
     /// that opened it, which is in scope within its body, and `None` for a
     /// function or method, whose own name is its result variable.
     units: Vec<Option<Id>>,
-    /// Whether a body may use a `VAR_GLOBAL` directly, without a
-    /// `VAR_EXTERNAL` naming it. The vendor dialects that declare globals
-    /// in top-level lists (`--allow-top-level-var-global`) allow it; IEC
-    /// 61131-3 reaches a global only through `VAR_EXTERNAL`.
-    bare_globals: bool,
     /// One entry per open scope: the property names of the function block
     /// that opened it, `None` for any other scope. A name that is not a
     /// variable but is a property of the enclosing function block is a
@@ -111,39 +106,15 @@ impl SymbolScopeChecker<'_> {
             .is_some_and(|properties| properties.contains(name))
     }
 
-    /// Whether a variable `info` describes can be used by name from here.
-    ///
-    /// A `VAR_GLOBAL` is reached through a `VAR_EXTERNAL`, which is a
-    /// variable of the scope that declares it, unless the dialect lets a
-    /// body use globals directly. A global the compiler provides is always
-    /// usable.
-    fn is_usable_variable(&self, info: &SymbolInfo) -> bool {
-        let is_variable = matches!(
-            info.kind,
-            SymbolKind::Variable
-                | SymbolKind::Parameter
-                | SymbolKind::OutputParameter
-                | SymbolKind::InOutParameter
-                | SymbolKind::EdgeVariable
-                | SymbolKind::Constant
-                | SymbolKind::ResultVariable
-        );
-        if !is_variable {
-            return false;
-        }
-        let is_declared_global =
-            info.scope == ScopeKind::Global && info.variable_type == Some(VariableType::Global);
-        !is_declared_global || info.compiler_provided || self.bare_globals
-    }
-
     /// Whether `name` is in scope where the traversal is.
     fn is_in_scope(&self, name: &Id) -> bool {
         if self.units.iter().flatten().any(|unit| unit == name) {
             return true;
         }
-        self.symbols
-            .find(name, &self.scope.current())
-            .is_some_and(|info| self.is_usable_variable(info))
+        matches!(
+            self.symbols.resolve_variable(name, &self.scope.current()),
+            Resolution::Variable { .. }
+        )
     }
 }
 
@@ -205,13 +176,10 @@ impl Visitor<Infallible> for SymbolScopeChecker<'_> {
             return Ok(());
         }
 
-        let visible = self.symbols.visible_variables(&self.scope.current());
+        let usable = self.symbols.usable_variables(&self.scope.current());
         let suggestion = find_closest_match(
             node.name.original(),
-            visible
-                .iter()
-                .filter(|(_, info)| self.is_usable_variable(info))
-                .map(|(name, _)| name.original().as_str()),
+            usable.iter().map(|(name, _)| name.original().as_str()),
         );
         let mut diagnostic = Diagnostic::problem(
             Problem::VariableUndefined,

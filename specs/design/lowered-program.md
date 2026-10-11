@@ -92,9 +92,10 @@ describe:
   literals (ADR-0056): those of operands, assigned values, the arguments of
   functions, methods and function block calls, loop bounds, and the results
   of calls and dereferences. It types a function of several inputs, such as
-  `MAX`, and the bitwise operators by the type every input widens to. The
-  conversions codegen still makes itself go through one function,
-  `convert_to_context`. Codegen asks the overload resolver a second time only
+  `MAX`, and the bitwise operators by the type every input widens to, and
+  records the conversion of a subscript, a shift count and a string
+  position. Codegen compiles every expression at its own type and makes no
+  conversion of its own. Codegen asks the overload resolver a second time only
   for an operand pair with a typed overload, such as time arithmetic.
 - Bit and partial access, and assignments to most targets that occupy one
   slot, compile through one addressing path (`Place`).
@@ -614,9 +615,10 @@ a comparison of two arrays from being writable.
 `ScalarType` is today's `OpType`, one of four operation widths (32-bit integer,
 64-bit integer, 32-bit float, 64-bit float) with a signedness, plus a
 reference kind and an interface kind. Widths narrower than 32 bits exist only
-as the storage of a place (ADR-0001). `StringShape` is today's
-`string_width::StringShape`: an encoding (ADR-0034) and a capacity. Today
-the capacity may be unknown; in the IR it is always stated (see
+as the storage of a place (ADR-0001). `StringShape` is an encoding
+(ADR-0034) and a capacity: today the encoding is the string type the analyzer
+records, and `string_width.rs` works out the capacity. Today the capacity may
+be unknown; in the IR it is always stated (see
 [String capacity](#string-capacity)).
 
 ```rust
@@ -1504,7 +1506,7 @@ today.
 | Decision | Made today in | Recorded as | In the lowered program |
 |---|---|---|---|
 | Type of an untyped literal | The analyzer (ADR-0056), except a member initializer of a function block instance, which codegen builds itself | The literal's `expr_type`, as `ExprType::Inferred` | A `Const` of that type |
-| Implicit conversion | The analyzer for operands, assigned values, the arguments of functions, methods and function block calls, loop bounds, and the results of calls and dereferences (ADR-0056); codegen, through `convert_to_context`, for the contexts the analyzer does not record yet, such as a condition, a subscript and a function block output | `ExprKind::ImplicitConversion` | `Convert` |
+| Implicit conversion | The analyzer for operands, assigned values, the arguments of functions, methods and function block calls, loop bounds, the results of calls and dereferences, subscripts, shift counts and string positions (ADR-0056); codegen stores a function block output at the field's type unconverted | `ExprKind::ImplicitConversion` | `Convert` |
 | Arithmetic overload | Analyzer's `resolve_arithmetic_overload` | The expression's `expr_type`, and its operands' conversions | A `Binary` at the result type, or the desugared time arithmetic |
 | Operand type of a comparison | The analyzer ([Comparison Operand Type](comparison-operand-type.md)) | Its operands' conversions | A `Compare` at that type |
 | Argument order and count | `xform_named_to_positional_args` for a function call, then re-checked at 27 sites in codegen; codegen for a method call (`compile_method.rs`) and, by name, for a function block call (`compile_stmt.rs`) | Positional arguments | `Vec<Arg>` matched to parameters |
@@ -1527,7 +1529,7 @@ today.
 | Function local re-initialization ([ADR-0024](../adrs/0024-function-local-reinit-via-bytecode-prologue.md)) | `emit_function_local_prologue` | Statements at the head of the function body |
 | Behaviour policy | `CodegenOptions::string_to_num` | `Intrinsic` variant |
 | Target of `EXIT` and `CONTINUE` | `loop_labels` stack, with a P9998 as a fallback | `LoopId` |
-| String encoding and capacity of a string value | `string_width.rs` | `StringShape` |
+| String encoding and capacity of a string value | The encoding: the analyzer's string type; the capacity: `string_width.rs` | `StringShape` |
 | Temporal literal count and unit ([ADR-0021](../adrs/0021-time-32bit-ltime-64bit.md), [ADR-0025](../adrs/0025-datetime-unsigned-representation.md)) | `compile_time_count` | `Const` |
 
 **REQ-LOW-analyzer-091** In the `Library` that analysis returns, every

@@ -52,6 +52,11 @@ during the scan cycle:
   execute before lower-priority tasks. Tasks with equal priority run in
   declaration order.
 
+A task with an ``INTERVAL`` of zero, or with no ``INTERVAL``, is freewheeling:
+it runs again as soon as it finishes. A program declared without ``WITH``, or
+compiled without a ``CONFIGURATION``, runs under such a task. A negative
+interval is an error (:doc:`/reference/compiler/problems/P4078`).
+
 If a task takes longer than its interval, the runtime skips the missed
 cycle and realigns forward. See :doc:`/explanation/execution-cycle` for
 details on overruns, watchdog timeouts, and the full scheduling model.
