@@ -220,7 +220,7 @@ lowering covers the construct:
 | `compile_setup.rs:213` | Asks the instance type's `standard_block` instead of matching its name; `resolve_fb_type` takes the variant, not a string. | 2 |
 | `compile_method_call` | Asks `resolve_method`. An inherited method whose declaring block has fields reports not implemented: a derived block's layout has no storage for inherited fields (`compile_method.rs:255-266`). | 4 |
 | `compile_method_call` | Walks the normal form; `param_names_in_order` and the first-empty-slot loop are deleted. | 5, 9 |
-| `compile_user_method`, `compile_method_call` | A `VAR_IN_OUT` slot holds a reference and the call site passes `compile_reference_arg`, as `compile_fn.rs` does for a function (question 6). | 3 |
+| `compile_user_method`, `compile_method_call` | A `VAR_IN_OUT` slot holds a reference and the call site passes `compile_reference_arg`, as `compile_fn.rs` does for a function (question 5). | 3 |
 | `call_args.rs`, `compile_user_function_call` | Read the normal form's inputs in order, as they read the positional ones today. | — |
 
 No codegen table changes its key, and no codegen id is added.
@@ -460,6 +460,25 @@ No new AST type, no VM, container or opcode change.
   as written, as ADR-0056 already accepted for conversions. Diagnostics keep
   each argument's own span.
 
+## Decided
+
+- **Parameters are named by `DeclRef`, not by index.** The task asked for
+  parameters "by index or identity, not name". In the normal form each
+  parameter is named as its callee declares it. The callee is resolved and a
+  name is declared once in its scope (P4014), so the name with the callee's
+  scope is the declaration's `DeclRef`, as #2180 uses. For a standard block,
+  the scope is its type in the type environment. Lowering allocates its own
+  ids from it (`VarId`, `FieldIdx`). Alternatives considered:
+  - **A position in the callee's parameter list.** Every reader would rebuild
+    the list to interpret it, and lowering allocates positional ids itself.
+  - **An id on each declaration in the AST.** This is #2175's `DeclId`, which
+    was closed.
+  - **A side table keyed by call node.** Nodes have no stable identity, and
+    the spans of calls a pass builds can coincide.
+  - **A positional normal form for every call.** It cannot show an omitted
+    function block input without a new AST entry, and does not say which
+    parameter an argument binds to.
+
 ## Questions for the reviewer
 
 1. **Positional order for blocks and methods.** `bind_inputs` and
@@ -475,16 +494,12 @@ No new AST type, no VM, container or opcode change.
    means for an `INT`?
 4. **Omitted method input.** Reuse P4018 with the method in its context, or
    a new code?
-5. **Parameters by name.** The task asked for parameters "by index or
-   identity, not name". This plan names each parameter as its callee declares
-   it, which with the callee's scope is the `DeclRef` #2180 uses, and records
-   no index. Lowering allocates ids. Agreed?
-6. **Method `VAR_IN_OUT`.** Pass by reference in today's codegen (row 3
+5. **Method `VAR_IN_OUT`.** Pass by reference in today's codegen (row 3
    gives 6), or report P9999 as `var-in-out-parameters.md` asks of an
    unsupported site, and leave the reference to lowering? The plan passes by
    reference: `compile_fn.rs` already does it for functions, so the change is
    small.
-7. **Omitted FB input.** An absent `NamedInput` means "keeps its previous
+6. **Omitted FB input.** An absent `NamedInput` means "keeps its previous
    value". Is that enough, or should the normal form mark it?
 
 ## Out of scope
