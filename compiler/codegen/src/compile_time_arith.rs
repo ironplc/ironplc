@@ -122,7 +122,7 @@ fn compile_operand(
     if own.0 != width {
         return Err(unconverted_operand(operand, own.0, width));
     }
-    compile_expr(emitter, ctx, operand, own)
+    compile_expr(emitter, ctx, operand)
 }
 
 /// The internal error for an operand of a typed time or date function whose
@@ -223,7 +223,7 @@ fn compile_mul_div_time(
     compile_operand(emitter, ctx, OpWidth::W32, in1)?;
     let (to_float, from_float) = match in2_op.0 {
         OpWidth::W32 => {
-            compile_expr(emitter, ctx, in2, in2_op)?;
+            compile_expr(emitter, ctx, in2)?;
             emit_fn(emitter, (OpWidth::W32, Signedness::Signed));
             return Ok(());
         }
@@ -238,7 +238,7 @@ fn compile_mul_div_time(
         OpWidth::W64 => return Err(unconverted_operand(in2, in2_op.0, OpWidth::F64)),
     };
     emitter.emit_builtin(to_float)?;
-    compile_expr(emitter, ctx, in2, in2_op)?;
+    compile_expr(emitter, ctx, in2)?;
     emit_fn(emitter, (in2_op.0, Signedness::Signed));
     emitter.emit_builtin(from_float)?;
     Ok(())
@@ -262,12 +262,12 @@ fn compile_mul_div_ltime(
     compile_operand(emitter, ctx, OpWidth::W64, in1)?;
     match in2_op.0 {
         OpWidth::W64 => {
-            compile_expr(emitter, ctx, in2, in2_op)?;
+            compile_expr(emitter, ctx, in2)?;
             emit_fn(emitter, (OpWidth::W64, Signedness::Signed));
         }
         OpWidth::F64 => {
             emitter.emit_builtin(opcode::builtin::CONV_I64_TO_F64)?;
-            compile_expr(emitter, ctx, in2, in2_op)?;
+            compile_expr(emitter, ctx, in2)?;
             emit_fn(emitter, (OpWidth::F64, Signedness::Signed));
             emitter.emit_builtin(opcode::builtin::CONV_F64_TO_I64)?;
         }

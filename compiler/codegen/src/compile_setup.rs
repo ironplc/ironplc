@@ -20,6 +20,7 @@ use ironplc_analyzer::semantic_type::SemanticType;
 use ironplc_analyzer::system_globals::SYSTEM_UPTIME_GLOBALS;
 use ironplc_analyzer::TypeEnvironment;
 use ironplc_dsl::type_id::TypeId;
+use ironplc_ir::execution::SystemGlobal;
 use std::collections::HashMap;
 
 use super::compile::{
@@ -66,11 +67,25 @@ pub(crate) fn assign_variables(
     Ok(())
 }
 
-/// Assigns the implicit uptime globals (`__SYSTEM_UP_TIME`,
-/// `__SYSTEM_UP_LTIME`) the first variable-table slots. The VM writes them
-/// before every scan, so they have no starting value to store.
-pub(crate) fn assign_system_uptime_globals(ctx: &mut CompileContext, types: &TypeEnvironment) {
-    for global in &SYSTEM_UPTIME_GLOBALS {
+/// Assigns the compiler-provided globals of the execution model, such as
+/// `__SYSTEM_UP_TIME`, the next variable-table slots, in the model's order.
+/// The model lists them first, and the VM writes them before every scan, so
+/// they have no starting value to store.
+pub(crate) fn assign_system_globals(
+    ctx: &mut CompileContext,
+    system_globals: &[SystemGlobal],
+    types: &TypeEnvironment,
+) -> Result<(), Diagnostic> {
+    for kind in system_globals {
+        let global = SYSTEM_UPTIME_GLOBALS
+            .iter()
+            .find(|global| global.kind == *kind)
+            .ok_or_else(|| {
+                Diagnostic::internal_error_at(Label::file(
+                    ironplc_dsl::core::FileId::default(),
+                    "System global has no entry in the system globals table",
+                ))
+            })?;
         let id = Id::from(global.name);
         let index = VarIndex::new(ctx.variables.len() as u16);
         ctx.variables.insert(id.clone(), index);
@@ -84,6 +99,7 @@ pub(crate) fn assign_system_uptime_globals(ctx: &mut CompileContext, types: &Typ
             type_name: type_name.name.to_string().to_uppercase(),
         });
     }
+    Ok(())
 }
 
 /// Lays out the storage of the variable `decl` declares, which has the

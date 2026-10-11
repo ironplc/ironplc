@@ -24,7 +24,7 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::Expr;
 
 use super::compile::{CompileContext, OpType, DEFAULT_OP_TYPE};
-use super::compile_expr::{compile_expr, op_type};
+use super::compile_expr::compile_expr;
 use super::compile_initial_value::{emit_reference, emit_scalar, is_cleared};
 use crate::emit::Emitter;
 
@@ -59,13 +59,8 @@ pub(crate) fn compile_fb_field_store(
     field: &Id,
     value: &Expr,
 ) -> Result<bool, Diagnostic> {
-    let Some(fb_info) = ctx.fb_instances.get(instance_name) else {
-        return Ok(false);
-    };
-    let op_type =
-        resolve_fb_field_op_type(&fb_info.field_op_types, &field.to_string().to_lowercase());
     compile_fb_field_store_with(emitter, ctx, instance_name, field, |emitter, ctx| {
-        compile_expr(emitter, ctx, value, op_type)
+        compile_expr(emitter, ctx, value)
     })
 }
 
@@ -151,15 +146,11 @@ pub(crate) fn emit_fb_instance_member_initializers(
                 })?;
             }
             // An expression member (an extension) is evaluated when the
-            // instance is initialized, at the member's declared type, and at
-            // its own type when the block records none.
+            // instance is initialized, at its own type: the analyzer records
+            // any conversion to the member's type.
             InitialValue::Expression(expr) => {
-                let op_type = match field_op_type(ctx, instance_name, &field.name) {
-                    Some(op_type) => op_type,
-                    None => op_type(ctx, expr)?,
-                };
                 compile_fb_field_store_with(emitter, ctx, instance_name, &field.name, |e, c| {
-                    compile_expr(e, c, expr, op_type)
+                    compile_expr(e, c, expr)
                 })?;
             }
             // A string, array, structure or block member lives outside the

@@ -315,7 +315,6 @@ fn compile_method_call(
     let param_var_off = ironplc_container::VarIndex::new(method_info.param_var_off);
     let num_params = method_info.num_params;
     let param_names_in_order = method_info.param_names_in_order.clone();
-    let param_op_types = method_info.param_op_types.clone();
     let has_return_value = method_info.has_return_value;
     let max_stack_depth = method_info.max_stack_depth;
 
@@ -346,10 +345,9 @@ fn compile_method_call(
         }
     }
 
-    for (i, arg) in ordered_args.iter().enumerate() {
+    for arg in &ordered_args {
         let expr = arg.ok_or_else(|| Diagnostic::todo_with_span(call.span()))?;
-        let op_type = param_op_types.get(i).copied().unwrap_or(DEFAULT_OP_TYPE);
-        compile_expr(emitter, ctx, expr, op_type)?;
+        compile_expr(emitter, ctx, expr)?;
     }
 
     // Record a call-graph edge; unlike FB_CALL, a method call is always

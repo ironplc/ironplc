@@ -7,11 +7,9 @@ use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Assignment, Expr, SymbolicVariableKind, Variable};
 
-use super::compile::{CompileContext, DEFAULT_OP_TYPE};
+use super::compile::CompileContext;
 use super::compile_array::{emit_flat_index, resolve_access, ResolvedAccess};
-use super::compile_expr::{
-    compile_expr, emit_truncation, op_type_from_expr, resolve_variable_name, variable_span,
-};
+use super::compile_expr::{compile_expr, emit_truncation, resolve_variable_name, variable_span};
 use super::compile_fb_init::compile_fb_field_store;
 use super::compile_partial_access::{compile_partial_access_assignment, PartialAccess};
 use super::compile_place::Place;
@@ -55,8 +53,7 @@ pub(crate) fn compile_assignment(
         // (REQ-IC-analyzer-039), so it compiles at its own type. It is
         // stored as it is: a result narrower than 32 bits is not truncated to
         // its width (#2116).
-        let op_type = op_type_from_expr(ctx, &assignment.value).unwrap_or(DEFAULT_OP_TYPE);
-        compile_expr(emitter, ctx, &assignment.value, op_type)?;
+        compile_expr(emitter, ctx, &assignment.value)?;
 
         // Load the reference (variable index stored in the ref variable).
         emitter.emit_load_var_i64(target_index);
@@ -194,8 +191,7 @@ pub(crate) fn compile_assignment(
                 let ref_var_index = info.var_index;
                 let arr_desc_index = info.desc_index;
                 let dim_info = info.dimensions.clone();
-                let element_op_type = (element_vti.op_width, element_vti.signedness);
-                compile_expr(emitter, ctx, &assignment.value, element_op_type)?;
+                compile_expr(emitter, ctx, &assignment.value)?;
                 emit_truncation(emitter, element_vti);
                 emit_flat_index(
                     emitter,
@@ -227,6 +223,6 @@ fn assign_to_place(
     place: &Place,
     value: &Expr,
 ) -> Result<(), Diagnostic> {
-    compile_expr(emitter, ctx, value, place.op_type())?;
+    compile_expr(emitter, ctx, value)?;
     place.emit_store(emitter, ctx)
 }

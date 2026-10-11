@@ -918,6 +918,7 @@ dependencies = [
  "indexmap",
  "ironplc-container",
  "ironplc-dsl",
+ "ironplc-ir",
  "ironplc-parser",
  "ironplc-problems",
  "ironplc-spec-requirements-gen",
@@ -927,6 +928,7 @@ dependencies = [
  "phf",
  "rstest",
  "spec_test_macro",
+ "time",
 ]
 
 [[package]]
@@ -993,6 +995,7 @@ dependencies = [
  "ironplc-analyzer",
  "ironplc-container",
  "ironplc-dsl",
+ "ironplc-ir",
  "ironplc-parser",
  "ironplc-problems",
  "ironplc-sources",
@@ -1036,6 +1039,7 @@ version = "0.248.0"
 dependencies = [
  "ironplc-dsl",
  "ironplc-spec-requirements-gen",
+ "spec_test_macro",
  "time",
 ]
 

@@ -18,7 +18,7 @@ use super::compile::{
     CompileContext, OpType, OpWidth, ParamPassing, Signedness, UserFunctionInfo, VarTypeInfo,
     NARROW_CHAR_WIDTH,
 };
-use super::compile_arith::{compile_arith_fold, compile_at};
+use super::compile_arith::compile_arith_fold;
 use super::compile_builtin::{compile_numeric, compile_shift_rotate};
 use super::compile_comparison::compile_comparison;
 use super::compile_expr::{
@@ -46,7 +46,7 @@ pub(crate) fn intrinsics_by_name(functions: &FunctionEnvironment) -> HashMap<Id,
         .collect()
 }
 
-/// Compiles `call`, the call `func`.
+/// Compiles `call`, the call `func`, whose own operation type is `at`.
 ///
 /// A standard function compiles as the operation its signature names; any
 /// other function is a user-defined one.
@@ -55,10 +55,10 @@ pub(crate) fn compile_function_call(
     ctx: &mut CompileContext,
     call: &Expr,
     func: &Function,
-    op_type: OpType,
+    at: OpType,
 ) -> Result<(), Diagnostic> {
     if let Some(intrinsic) = ctx.intrinsics.get(&func.name).cloned() {
-        return compile_intrinsic(emitter, ctx, call, func, op_type, intrinsic);
+        return compile_intrinsic(emitter, ctx, call, func, at, intrinsic);
     }
     let Some(func_info) = ctx.user_functions.get(func.name.lower_case()).cloned() else {
         return Err(Diagnostic::todo_with_span(func.name.span()));
@@ -67,32 +67,29 @@ pub(crate) fn compile_function_call(
 }
 
 /// Compiles `call`, a call to a standard function, as the operation
-/// `intrinsic`: at its own type when it computes at it
-/// ([`Intrinsic::computes_at_own_type`]), converting the result to
-/// `op_type`, and at `op_type` otherwise.
+/// `intrinsic` at `at`, the call's own operation type.
 ///
 /// The type it computes at is the one the analyzer recorded for the call: for
 /// a function of several inputs of one type (`MAX`, `MUX`, ...), the type it
 /// converted each input to (ADR-0056); for an operation on one value, its
 /// operand's; and for `TRUNC`, `BCD_TO_INT` and `SIZEOF`, whose integer
-/// result takes the type of its context, that type.
+/// result takes the type of its context, that type. A call of one of these
+/// without a type is one the analyzer did not resolve.
 fn compile_intrinsic(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     call: &Expr,
     func: &Function,
-    op_type: OpType,
+    at: OpType,
     intrinsic: Intrinsic,
 ) -> Result<(), Diagnostic> {
     let result = expr_operand_name(ctx, call);
     let result = result.as_ref();
     if intrinsic.computes_at_own_type() || intrinsic.result_is_integer_of_context() {
         let at = self::op_type(ctx, call)?;
-        return compile_at(emitter, ctx, at, op_type, |emitter, ctx, at| {
-            compile_intrinsic_at(emitter, ctx, func, result, at, intrinsic)
-        });
+        return compile_intrinsic_at(emitter, ctx, func, result, at, intrinsic);
     }
-    compile_intrinsic_at(emitter, ctx, func, result, op_type, intrinsic)
+    compile_intrinsic_at(emitter, ctx, func, result, at, intrinsic)
 }
 
 /// Compiles a call to a standard function as the operation `intrinsic`, at
@@ -120,7 +117,7 @@ fn compile_intrinsic_at(
         }
         Intrinsic::Mux => compile_mux(emitter, ctx, func, op_type),
         // Assignment function (equivalent to := operator)
-        Intrinsic::Move => compile_move(emitter, ctx, fixed_args(func)?, op_type),
+        Intrinsic::Move => compile_move(emitter, ctx, fixed_args(func)?),
         Intrinsic::Trunc => compile_trunc(emitter, ctx, fixed_args(func)?, op_type),
         Intrinsic::BcdToInt => {
             compile_bcd_to_int(emitter, ctx, fixed_args(func)?, &func.name.span(), op_type)
@@ -227,8 +224,8 @@ fn compile_user_function_call(
             }
             // The analyzer converted an argument of another width to the
             // parameter's type (ADR-0056).
-            ParamPassing::Value(param_op_type) => {
-                compile_expr(emitter, ctx, arg, param_op_type)?;
+            ParamPassing::Value => {
+                compile_expr(emitter, ctx, arg)?;
             }
             ParamPassing::Reference => compile_reference_arg(emitter, ctx, arg)?,
         }
@@ -301,10 +298,10 @@ fn compile_reference_arg(
 
 /// Compiles the function form of an operator as the operator itself.
 ///
-/// The arguments compile at `op_type`, the enclosing expression's operation
-/// type, or for `NOT` its operand's (see [`compile_intrinsic`]), and the
-/// opcode comes from the emitter the operator expression uses, so `AND(a, b)`
-/// and `a AND b` cannot diverge.
+/// Each argument compiles at its own type, and the operator computes at
+/// `op_type`, the call's own type (see [`compile_intrinsic`]); the opcode
+/// comes from the emitter the operator expression uses, so `AND(a, b)` and
+/// `a AND b` cannot diverge.
 ///
 /// A binary operator folds its arguments from the left, so `ADD(a, b, c)`
 /// compiles as `(a + b) + c`. The analyzer has already enforced how many
@@ -319,7 +316,7 @@ fn compile_operator_form(
     operator: &FormOf,
 ) -> Result<(), Diagnostic> {
     match operator {
-        FormOf::Arithmetic(op) => compile_arith_fold(emitter, ctx, func, op, result, op_type),
+        FormOf::Arithmetic(op) => compile_arith_fold(emitter, ctx, func, op, result),
         // A comparison computes at the type of its operands, not at the
         // enclosing `op_type`, which is the type of the BOOL it yields.
         FormOf::Compare(op) if op.is_comparison() => {
@@ -334,7 +331,7 @@ fn compile_operator_form(
         }
         FormOf::Not => {
             let [term] = fixed_args::<1>(func)?;
-            compile_expr(emitter, ctx, term, op_type)?;
+            compile_expr(emitter, ctx, term)?;
             emit_not(emitter, ctx, op_type, term)
         }
     }
@@ -356,9 +353,9 @@ pub(crate) fn compile_left_fold(
     if rest.is_empty() {
         return Err(wrong_arg_count(func));
     }
-    compile_expr(emitter, ctx, first, op_type)?;
+    compile_expr(emitter, ctx, first)?;
     for arg in rest {
-        compile_expr(emitter, ctx, arg, op_type)?;
+        compile_expr(emitter, ctx, arg)?;
         emit_fn(emitter, op_type)?;
     }
     Ok(())
@@ -376,9 +373,9 @@ fn compile_dt_to_date(
 ) -> Result<(), Diagnostic> {
     let op_type = (OpWidth::W32, Signedness::Unsigned);
     // Stack: IN
-    compile_expr(emitter, ctx, args[0], op_type)?;
+    compile_expr(emitter, ctx, args[0])?;
     // Stack: IN, IN
-    compile_expr(emitter, ctx, args[0], op_type)?;
+    compile_expr(emitter, ctx, args[0])?;
     // Stack: IN, IN, 86400
     let secs_per_day = ctx.add_i32_constant(86400);
     emitter.emit_load_const_i32(secs_per_day);
@@ -400,7 +397,7 @@ fn compile_dt_to_tod(
 ) -> Result<(), Diagnostic> {
     let op_type = (OpWidth::W32, Signedness::Unsigned);
     // Stack: IN
-    compile_expr(emitter, ctx, args[0], op_type)?;
+    compile_expr(emitter, ctx, args[0])?;
     // Stack: IN, 86400
     let secs_per_day = ctx.add_i32_constant(86400);
     emitter.emit_load_const_i32(secs_per_day);
@@ -422,9 +419,8 @@ fn compile_move(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     args: [&Expr; 1],
-    op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    compile_expr(emitter, ctx, args[0], op_type)?;
+    compile_expr(emitter, ctx, args[0])?;
     // No additional opcode needed - the value is already on the stack
 
     Ok(())
@@ -444,7 +440,7 @@ fn compile_trunc(
 ) -> Result<(), Diagnostic> {
     // Determine the argument's float type from its resolved type.
     let arg_op_type = op_type(ctx, args[0])?;
-    compile_expr(emitter, ctx, args[0], arg_op_type)?;
+    compile_expr(emitter, ctx, args[0])?;
 
     // Build VarTypeInfo for source (float) and target (integer) to reuse
     // the existing conversion opcode emission.
@@ -532,9 +528,8 @@ fn compile_bcd_to_int(
     span: &SourceSpan,
     target_op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    let arg_op_type = op_type(ctx, args[0])?;
     let bits = storage_bits(ctx, args[0])?;
-    compile_expr(emitter, ctx, args[0], arg_op_type)?;
+    compile_expr(emitter, ctx, args[0])?;
 
     let func_id = match bits {
         8 => opcode::builtin::BCD_TO_INT_8,
@@ -568,7 +563,7 @@ fn compile_int_to_bcd(
 ) -> Result<(), Diagnostic> {
     let arg_op_type = op_type(ctx, args[0])?;
     let bits = storage_bits(ctx, args[0])?;
-    compile_expr(emitter, ctx, args[0], arg_op_type)?;
+    compile_expr(emitter, ctx, args[0])?;
 
     let func_id = match (arg_op_type.0, bits) {
         (OpWidth::W32, 8) => opcode::builtin::INT_TO_BCD_8,
@@ -625,7 +620,7 @@ fn compile_mux(
     let func_id = base + num_inputs;
 
     for arg in &args {
-        compile_expr(emitter, ctx, arg, self::op_type(ctx, arg)?)?;
+        compile_expr(emitter, ctx, arg)?;
     }
 
     emitter.emit_builtin(func_id)?;
@@ -646,9 +641,7 @@ fn compile_type_conversion(
     source: VarTypeInfo,
     target: VarTypeInfo,
 ) -> Result<(), Diagnostic> {
-    let source_op_type: OpType = (source.op_width, source.signedness);
-
-    compile_expr(emitter, ctx, args[0], source_op_type)?;
+    compile_expr(emitter, ctx, args[0])?;
 
     // Integer-to-boolean needs a dedicated opcode (non-zero → 1, zero → 0)
     // rather than the generic conversion + truncation path, because
@@ -904,8 +897,7 @@ fn compile_string_conversion(
 ) -> Result<(), Diagnostic> {
     match conv {
         StringConversion::NumToString { source } => {
-            let source_op_type: OpType = (source.op_width, source.signedness);
-            compile_expr(emitter, ctx, args[0], source_op_type)?;
+            compile_expr(emitter, ctx, args[0])?;
 
             let func_id = match (source.op_width, source.signedness) {
                 (OpWidth::W32, Signedness::Signed) => opcode::builtin::CONV_I32_TO_STR,

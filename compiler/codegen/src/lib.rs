@@ -60,6 +60,7 @@ mod compile_struct_init;
 mod compile_time_arith;
 mod data_region;
 mod emit;
+mod execution;
 mod initial_value;
 mod optimize;
 mod scope;
