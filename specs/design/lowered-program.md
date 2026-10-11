@@ -467,13 +467,18 @@ Everything is referred to by an id allocated during lowering, never by name.
 | `PouId` | A program, function, function block or method | The lower-case key of `user_functions`, the upper-case key of `user_fb_types` |
 | `FieldIdx` | A field of a structure, function block or program, by position. Every variable a function block or program declares, other than `VAR_TEMP` and `VAR_EXTERNAL`, is a field of its instance, and so is every field lowering synthesizes for it (see [Synthesized state](#synthesized-state)) | The lower-case field name in `field_index` and `field_indices` |
 | `LoopId` | One `Loop` or `For` | The top of the `loop_labels` stack |
-| `TypeId` | A type (ADR-0055, unchanged) | Unchanged |
+| `TypeId` | A type of the lowered program's type table | The analyzer's `TypeId` (ADR-0055), which lowering maps to one of its own |
 
 Each id is a type of its own, a newtype over an integer such as
 `struct VarId(u32)`, and not a type alias. An alias such as `type VarId = u32`
 would let a `PouId` be passed where a `VarId` is expected, and the compiler
-would accept it; that mix-up is what separate ids exist to prevent. `TypeId`
-is already a newtype.
+would accept it; that mix-up is what separate ids exist to prevent.
+
+The lowered program numbers its types itself rather than reusing the
+analyzer's `TypeId`. Two types it needs have no analyzer id: the type of a
+program's instance, and the non-null reference type of a body's instance
+parameter. A backend therefore never sees an analyzer id, which also keeps
+it from needing one (REQ-LOW-codegen-002).
 
 **REQ-LOW-ir-019** `VarId`, `PouId`, `FieldIdx`, `LoopId` and `TypeId` are
 distinct types, so a value of one cannot be used where another is expected.
@@ -665,17 +670,24 @@ a comparison of two arrays from being writable.
 | Aggregate | arrays, structures, function block and program instances | `Place` only; there is no aggregate expression |
 
 `ScalarType` is today's `OpType`, one of four operation widths (32-bit integer,
-64-bit integer, 32-bit float, 64-bit float) with a signedness, plus a
-reference kind and an interface kind. Widths narrower than 32 bits exist only
-as the storage of a place (ADR-0001). `StringShape` is an encoding
+64-bit integer, 32-bit float, 64-bit float) with a signedness, plus a `BOOL`
+kind, a reference kind and an interface kind. Widths narrower than 32 bits
+exist only as the storage of a place (ADR-0001). `StringShape` is an encoding
 (ADR-0034) and a capacity: today the encoding is the string type the analyzer
 records, and `string_width.rs` works out the capacity. Today the capacity may
 be unknown; in the IR it is always stated (see
 [String capacity](#string-capacity)).
 
 ```rust
-pub enum ScalarType { I32(Signedness), I64(Signedness), F32, F64, Ref, Interface }
+pub enum ScalarType { Bool, I32(Signedness), I64(Signedness), F32, F64, Ref, Interface }
 ```
+
+A `BOOL` is a type of its own rather than an integer of some width. Today the
+bytecode backend computes and stores a `BOOL` as a signed 32-bit value
+(`type_info.rs`), the operation type of a `DINT`. That is that backend's
+layout, not the language: another backend may compute a `BOOL` as one byte, or
+pack several into the bits of one word, and it can only do so if the lowered
+program says which values are `BOOL`s.
 
 The operation widths are ADR-0001's, and this design assumes them. They are
 part of what a program means, not a choice a target makes, because an
@@ -899,14 +911,15 @@ is not optional and is never a generic category such as `ANY_INT`.
 `Binary` itself.
 
 **REQ-LOW-lowering-043** The operands of a `Compare` have the same type as each
-other, and the `Compare` itself has the operation type of `BOOL`.
+other, and the `Compare` itself has the type `Bool`.
 
-A `ScalarType` does not say whether a value is a `BOOL`. Today codegen
-computes a `BOOL` as a signed 32-bit value (`type_info.rs`), the operation
-type of a `DINT`, and a `UDINT` and a `DWORD` share the unsigned one. It
-chooses between a logical and a bitwise operator from the signedness alone
-(`compile_expr.rs`). Lowering knows which from the source type and chooses
-operators accordingly (REQ-LOW-lowering-048); a backend never needs to.
+Today codegen computes a `BOOL` at the operation type of a `DINT`, and a
+`UDINT` and a `DWORD` share the unsigned one, so it chooses between a logical
+and a bitwise operator from the signedness alone (`compile_expr.rs`). In the
+lowered program a `BOOL` has its own `ScalarType`, so the logical operators
+apply only to `Bool` and the bitwise ones only to integers, and a constructor
+refuses any other pairing (REQ-LOW-lowering-048). No `BOOL` is converted to or
+from a number implicitly.
 
 **REQ-LOW-lowering-044** A `Convert` changes type: its operand's type differs
 from its own.
@@ -1825,7 +1838,7 @@ How the three targets are expected to realise the same node:
 
 | Lowered | Bytecode VM | WebAssembly (expected) | LLVM (expected) |
 |---|---|---|---|
-| `ScalarType` | I32, I64, F32 and F64 opcode families | `i32`, `i64`, `f32`, `f64` | `i32`, `i64`, `float`, `double` |
+| `ScalarType` | I32, I64, F32 and F64 opcode families; a `Bool` is an I32 | `i32`, `i64`, `f32`, `f64`; a `Bool` is an `i32`, or bits of a packed word | `i32`, `i64`, `float`, `double`; a `Bool` is an `i1` |
 | `ScalarType::Ref` | A 64-bit variable-table index | A 32-bit address in linear memory | `ptr` |
 | `Truncate` | `TRUNC_*` | Sign or zero extension from the narrow width | `trunc`, then `sext` or `zext` |
 | Signed `Div` | `DIV_I32`, `DIV_I64`, which wrap the most negative value divided by -1 | `i32.div_s` behind a guard for that case | `sdiv` behind guards for a zero divisor and for that case |
