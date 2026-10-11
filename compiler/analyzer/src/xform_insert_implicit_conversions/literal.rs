@@ -26,10 +26,10 @@ use ironplc_dsl::type_id::TypeId;
 
 use super::declared::elementary_of;
 use super::ImplicitConversions;
+use crate::builtin_function::BuiltinFunction;
 use crate::intermediates::conversion_target::{concrete, wrap};
 use crate::intermediates::numeric_operation::{literal_default_type, OperationWidth};
 use crate::intermediates::operator_function_form::FormOf;
-use crate::intrinsic::Intrinsic;
 use crate::semantic_type::{FunctionBlockVarType, SemanticType};
 use crate::variable_type;
 
@@ -151,8 +151,10 @@ impl ImplicitConversions<'_> {
         context: Option<TypeId>,
         numeric_pair: bool,
     ) {
-        let intrinsic = self.intrinsic_of(func);
-        let one_type = intrinsic.as_ref().and_then(Intrinsic::inputs_of_one_type);
+        let builtin = self.builtin_function_of(func);
+        let one_type = builtin
+            .as_ref()
+            .and_then(BuiltinFunction::inputs_of_one_type);
         let typed_pair = matches!(
             func.param_assignment.as_slice(),
             [ParamAssignmentKind::PositionalInput(left), ParamAssignmentKind::PositionalInput(right), ..]
@@ -169,21 +171,21 @@ impl ImplicitConversions<'_> {
         let dint = self.dint();
         // An operation on one value computes at its own numeric type, and any
         // other at the type of its context.
-        let operated = if intrinsic
+        let operated = if builtin
             .as_ref()
-            .is_some_and(Intrinsic::computes_at_own_type)
+            .is_some_and(BuiltinFunction::computes_at_own_type)
         {
             numeric.or(context)
         } else {
             context
         };
-        match intrinsic {
+        match builtin {
             // A user-defined function, or one the analyzer has no signature
             // for: each argument at its own type, which the argument pass
             // gave it.
             None => inputs.into_iter().for_each(|arg| self.type_own(arg)),
-            Some(intrinsic) => match intrinsic {
-                Intrinsic::Operator(FormOf::Arithmetic(_)) => {
+            Some(builtin) => match builtin {
+                BuiltinFunction::Operator(FormOf::Arithmetic(_)) => {
                     let at = if typed_pair {
                         None
                     } else if numeric_pair {
@@ -198,7 +200,7 @@ impl ImplicitConversions<'_> {
                         }
                     }
                 }
-                Intrinsic::Operator(FormOf::Compare(op)) if op.is_comparison() => {
+                BuiltinFunction::Operator(FormOf::Compare(op)) if op.is_comparison() => {
                     if let [left, right] = inputs.as_mut_slice() {
                         let at = self
                             .own_or_default(left)
@@ -208,10 +210,11 @@ impl ImplicitConversions<'_> {
                         self.type_literals(right, at);
                     }
                 }
-                Intrinsic::Operator(FormOf::Compare(_) | FormOf::Not) | Intrinsic::Move => inputs
+                BuiltinFunction::Operator(FormOf::Compare(_) | FormOf::Not)
+                | BuiltinFunction::Move => inputs
                     .into_iter()
                     .for_each(|arg| self.type_literals(arg, operated)),
-                Intrinsic::Numeric(_) | Intrinsic::Mux => match one_type {
+                BuiltinFunction::Numeric(_) | BuiltinFunction::Mux => match one_type {
                     // A function of several inputs of one type computes at
                     // its own type. A selector is a BOOL or an integer,
                     // whatever the type of the inputs it selects between.
@@ -229,7 +232,7 @@ impl ImplicitConversions<'_> {
                         .into_iter()
                         .for_each(|arg| self.type_literals(arg, operated)),
                 },
-                Intrinsic::BitShift(_) => {
+                BuiltinFunction::BitShift(_) => {
                     let wide =
                         operated.and_then(|id| self.width_of_type(id)) == Some(OperationWidth::W64);
                     let count = if wide { self.lint() } else { dint };
@@ -250,7 +253,7 @@ impl ImplicitConversions<'_> {
                 // A position or a length is a `DINT`, and one of another
                 // width is converted to it, as it is narrowed or widened to
                 // it; a string is compiled in its own encoding.
-                Intrinsic::String(_) => inputs.into_iter().for_each(|arg| {
+                BuiltinFunction::String(_) => inputs.into_iter().for_each(|arg| {
                     if self.conversions.is_string(arg) {
                         self.type_own(arg);
                     } else {
@@ -260,20 +263,20 @@ impl ImplicitConversions<'_> {
                         }
                     }
                 }),
-                Intrinsic::Conversion { source, .. } => {
+                BuiltinFunction::Conversion { source, .. } => {
                     let source: TypeName = source.into();
                     let at = self.context.types().id_of(&source);
                     inputs
                         .into_iter()
                         .for_each(|arg| self.type_literals(arg, at));
                 }
-                Intrinsic::Trunc
-                | Intrinsic::BcdToInt
-                | Intrinsic::IntToBcd
-                | Intrinsic::Time { .. }
-                | Intrinsic::DtToDate
-                | Intrinsic::DtToTod => inputs.into_iter().for_each(|arg| self.type_own(arg)),
-                Intrinsic::Sizeof => {}
+                BuiltinFunction::Trunc
+                | BuiltinFunction::BcdToInt
+                | BuiltinFunction::IntToBcd
+                | BuiltinFunction::Time { .. }
+                | BuiltinFunction::DtToDate
+                | BuiltinFunction::DtToTod => inputs.into_iter().for_each(|arg| self.type_own(arg)),
+                BuiltinFunction::Sizeof => {}
             },
         }
     }

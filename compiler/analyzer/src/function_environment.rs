@@ -17,8 +17,8 @@ use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{Expr, ParamAssignmentKind};
 use ironplc_problems::Problem;
 
+use crate::builtin_function::BuiltinFunction;
 use crate::intermediates::stdlib_function::get_all_stdlib_functions;
-use crate::intrinsic::Intrinsic;
 use crate::semantic_type::SemanticFunctionParameter;
 use crate::symbol_environment::duplicate_declaration;
 
@@ -45,7 +45,7 @@ pub struct FunctionSignature {
     pub max_inputs: Option<usize>,
     /// The operation a standard function stands for, which code generation
     /// compiles a call to it as. `None` for a user-defined function.
-    pub intrinsic: Option<Intrinsic>,
+    pub builtin_function: Option<BuiltinFunction>,
 }
 
 impl FunctionSignature {
@@ -63,15 +63,15 @@ impl FunctionSignature {
             span,
             is_extensible: false,
             max_inputs: None,
-            intrinsic: None,
+            builtin_function: None,
         }
     }
 
     /// Creates a stdlib function signature with a builtin span, standing for
-    /// the operation `intrinsic`.
+    /// the operation `builtin_function`.
     pub fn stdlib(
         name: &str,
-        intrinsic: Intrinsic,
+        builtin_function: BuiltinFunction,
         return_type: TypeName,
         parameters: Vec<SemanticFunctionParameter>,
     ) -> Self {
@@ -82,7 +82,7 @@ impl FunctionSignature {
             span: SourceSpan::builtin(),
             is_extensible: false,
             max_inputs: None,
-            intrinsic: Some(intrinsic),
+            builtin_function: Some(builtin_function),
         }
     }
 
@@ -95,7 +95,7 @@ impl FunctionSignature {
     /// it unbounded.
     pub fn stdlib_extensible(
         name: &str,
-        intrinsic: Intrinsic,
+        builtin_function: BuiltinFunction,
         return_type: TypeName,
         parameters: Vec<SemanticFunctionParameter>,
         max_inputs: Option<usize>,
@@ -107,7 +107,7 @@ impl FunctionSignature {
             span: SourceSpan::builtin(),
             is_extensible: true,
             max_inputs,
-            intrinsic: Some(intrinsic),
+            builtin_function: Some(builtin_function),
         }
     }
 
@@ -315,14 +315,14 @@ mod tests {
     fn create_test_signature(name: &str, return_type_name: &str) -> FunctionSignature {
         FunctionSignature::stdlib(
             name,
-            Intrinsic::Move,
+            BuiltinFunction::Move,
             TypeName::from(return_type_name),
             vec![],
         )
     }
 
-    fn int_to_real() -> Intrinsic {
-        Intrinsic::Conversion {
+    fn int_to_real() -> BuiltinFunction {
+        BuiltinFunction::Conversion {
             source: ElementaryTypeName::INT,
             target: ElementaryTypeName::REAL,
         }
@@ -387,21 +387,21 @@ mod tests {
     }
 
     #[test]
-    fn function_signature_stdlib_when_created_then_names_its_intrinsic() {
+    fn function_signature_stdlib_when_created_then_names_its_builtin_function() {
         let sig =
             FunctionSignature::stdlib("INT_TO_REAL", int_to_real(), TypeName::from("REAL"), vec![]);
-        assert_eq!(sig.intrinsic, Some(int_to_real()));
+        assert_eq!(sig.builtin_function, Some(int_to_real()));
     }
 
     #[test]
-    fn function_signature_new_when_user_defined_then_no_intrinsic() {
+    fn function_signature_new_when_user_defined_then_no_builtin_function() {
         let sig = FunctionSignature::new(
             Id::from("MY_FUNC"),
             Some(FunctionReturnType::Named(TypeName::from("BOOL"))),
             vec![],
             SourceSpan::default(),
         );
-        assert_eq!(sig.intrinsic, None);
+        assert_eq!(sig.builtin_function, None);
     }
 
     #[test]
@@ -502,7 +502,7 @@ mod tests {
     fn function_signature_input_parameters_when_not_extensible_then_declared_inputs_only() {
         let sig = FunctionSignature::stdlib(
             "SUB",
-            Intrinsic::Operator(FormOf::Arithmetic(Operator::Sub)),
+            BuiltinFunction::Operator(FormOf::Arithmetic(Operator::Sub)),
             TypeName::from("ANY_NUM"),
             vec![input("IN1", "ANY_NUM"), input("IN2", "ANY_NUM")],
         );
@@ -513,7 +513,7 @@ mod tests {
     fn function_signature_input_parameters_when_unbounded_then_numbering_continues() {
         let sig = FunctionSignature::stdlib_extensible(
             "ADD",
-            Intrinsic::Operator(FormOf::Arithmetic(Operator::Add)),
+            BuiltinFunction::Operator(FormOf::Arithmetic(Operator::Add)),
             TypeName::from("ANY_NUM"),
             vec![input("IN1", "ANY_NUM"), input("IN2", "ANY_NUM")],
             None,
@@ -532,7 +532,7 @@ mod tests {
     fn function_signature_input_parameters_when_bounded_then_stops_at_max_inputs() {
         let sig = FunctionSignature::stdlib_extensible(
             "MUX",
-            Intrinsic::Mux,
+            BuiltinFunction::Mux,
             TypeName::from("ANY_NUM"),
             vec![
                 input("K", "ANY_INT"),
@@ -551,7 +551,7 @@ mod tests {
     fn function_signature_input_parameters_when_extensible_without_inputs_then_empty() {
         let sig = FunctionSignature::stdlib_extensible(
             "F",
-            Intrinsic::Move,
+            BuiltinFunction::Move,
             TypeName::from("INT"),
             vec![],
             None,

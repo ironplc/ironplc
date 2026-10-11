@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use ironplc_analyzer::{FormOf, FunctionEnvironment, Intrinsic, StringFunction};
+use ironplc_analyzer::{BuiltinFunction, FormOf, FunctionEnvironment, StringFunction};
 use ironplc_container::opcode;
 use ironplc_dsl::common::{ElementaryTypeName, TypeName};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
@@ -39,10 +39,14 @@ use crate::emit::Emitter;
 /// Codegen recognizes a standard function only through this table, built
 /// from the signatures the analyzer resolved calls against, never by its
 /// spelling.
-pub(crate) fn intrinsics_by_name(functions: &FunctionEnvironment) -> HashMap<Id, Intrinsic> {
+pub(crate) fn builtin_functions_by_name(
+    functions: &FunctionEnvironment,
+) -> HashMap<Id, BuiltinFunction> {
     functions
         .iter()
-        .filter_map(|(_, signature)| Some((signature.name.clone(), signature.intrinsic.clone()?)))
+        .filter_map(|(_, signature)| {
+            Some((signature.name.clone(), signature.builtin_function.clone()?))
+        })
         .collect()
 }
 
@@ -57,8 +61,8 @@ pub(crate) fn compile_function_call(
     func: &Function,
     at: OpType,
 ) -> Result<(), Diagnostic> {
-    if let Some(intrinsic) = ctx.intrinsics.get(&func.name).cloned() {
-        return compile_intrinsic(emitter, ctx, call, func, at, intrinsic);
+    if let Some(builtin) = ctx.builtin_functions.get(&func.name).cloned() {
+        return compile_intrinsic(emitter, ctx, call, func, at, builtin);
     }
     let Some(func_info) = ctx.user_functions.get(func.name.lower_case()).cloned() else {
         return Err(Diagnostic::todo_with_span(func.name.span()));
@@ -67,7 +71,7 @@ pub(crate) fn compile_function_call(
 }
 
 /// Compiles `call`, a call to a standard function, as the operation
-/// `intrinsic` at `at`, the call's own operation type.
+/// `builtin` at `at`, the call's own operation type.
 ///
 /// The type it computes at is the one the analyzer recorded for the call: for
 /// a function of several inputs of one type (`MAX`, `MUX`, ...), the type it
@@ -81,18 +85,18 @@ fn compile_intrinsic(
     call: &Expr,
     func: &Function,
     at: OpType,
-    intrinsic: Intrinsic,
+    builtin: BuiltinFunction,
 ) -> Result<(), Diagnostic> {
     let result = expr_operand_name(ctx, call);
     let result = result.as_ref();
-    if intrinsic.computes_at_own_type() || intrinsic.result_is_integer_of_context() {
+    if builtin.computes_at_own_type() || builtin.result_is_integer_of_context() {
         let at = self::op_type(ctx, call)?;
-        return compile_intrinsic_at(emitter, ctx, func, result, at, intrinsic);
+        return compile_intrinsic_at(emitter, ctx, func, result, at, builtin);
     }
-    compile_intrinsic_at(emitter, ctx, func, result, at, intrinsic)
+    compile_intrinsic_at(emitter, ctx, func, result, at, builtin)
 }
 
-/// Compiles a call to a standard function as the operation `intrinsic`, at
+/// Compiles a call to a standard function as the operation `builtin`, at
 /// `op_type`.
 ///
 /// The match has an arm for every operation, so a standard function the
@@ -103,58 +107,60 @@ fn compile_intrinsic_at(
     func: &Function,
     result: Option<&TypeName>,
     op_type: OpType,
-    intrinsic: Intrinsic,
+    builtin: BuiltinFunction,
 ) -> Result<(), Diagnostic> {
-    match intrinsic {
+    match builtin {
         // A function form of an operator (ADD, GT, AND, NOT, ...) compiles
         // as the operator it is a form of.
-        Intrinsic::Operator(operator) => {
+        BuiltinFunction::Operator(operator) => {
             compile_operator_form(emitter, ctx, func, result, op_type, &operator)
         }
-        Intrinsic::Numeric(function) => compile_numeric(emitter, ctx, func, function, op_type),
-        Intrinsic::BitShift(shift) => {
+        BuiltinFunction::Numeric(function) => {
+            compile_numeric(emitter, ctx, func, function, op_type)
+        }
+        BuiltinFunction::BitShift(shift) => {
             compile_shift_rotate(emitter, ctx, fixed_args(func)?, op_type, shift)
         }
-        Intrinsic::Mux => compile_mux(emitter, ctx, func, op_type),
+        BuiltinFunction::Mux => compile_mux(emitter, ctx, func, op_type),
         // Assignment function (equivalent to := operator)
-        Intrinsic::Move => compile_move(emitter, ctx, fixed_args(func)?),
-        Intrinsic::Trunc => compile_trunc(emitter, ctx, fixed_args(func)?, op_type),
-        Intrinsic::BcdToInt => {
+        BuiltinFunction::Move => compile_move(emitter, ctx, fixed_args(func)?),
+        BuiltinFunction::Trunc => compile_trunc(emitter, ctx, fixed_args(func)?, op_type),
+        BuiltinFunction::BcdToInt => {
             compile_bcd_to_int(emitter, ctx, fixed_args(func)?, &func.name.span(), op_type)
         }
-        Intrinsic::IntToBcd => {
+        BuiltinFunction::IntToBcd => {
             compile_int_to_bcd(emitter, ctx, fixed_args(func)?, &func.name.span())
         }
         // SIZEOF operator (extension)
-        Intrinsic::Sizeof => compile_sizeof(emitter, ctx, fixed_args(func)?, op_type),
-        Intrinsic::String(StringFunction::Len) => {
+        BuiltinFunction::Sizeof => compile_sizeof(emitter, ctx, fixed_args(func)?, op_type),
+        BuiltinFunction::String(StringFunction::Len) => {
             compile_len(emitter, ctx, fixed_args(func)?, &func.name.span())
         }
-        Intrinsic::String(StringFunction::Find) => {
+        BuiltinFunction::String(StringFunction::Find) => {
             compile_find(emitter, ctx, fixed_args(func)?, &func.name.span())
         }
-        Intrinsic::String(StringFunction::Replace) => {
+        BuiltinFunction::String(StringFunction::Replace) => {
             compile_replace(emitter, ctx, fixed_args(func)?, &func.name.span())
         }
-        Intrinsic::String(StringFunction::Insert) => {
+        BuiltinFunction::String(StringFunction::Insert) => {
             compile_insert(emitter, ctx, fixed_args(func)?, &func.name.span())
         }
-        Intrinsic::String(StringFunction::Delete) => {
+        BuiltinFunction::String(StringFunction::Delete) => {
             compile_delete(emitter, ctx, fixed_args(func)?, &func.name.span())
         }
-        Intrinsic::String(StringFunction::Left) => {
+        BuiltinFunction::String(StringFunction::Left) => {
             compile_left(emitter, ctx, fixed_args(func)?, &func.name.span())
         }
-        Intrinsic::String(StringFunction::Right) => {
+        BuiltinFunction::String(StringFunction::Right) => {
             compile_right(emitter, ctx, fixed_args(func)?, &func.name.span())
         }
-        Intrinsic::String(StringFunction::Mid) => {
+        BuiltinFunction::String(StringFunction::Mid) => {
             compile_mid(emitter, ctx, fixed_args(func)?, &func.name.span())
         }
-        Intrinsic::String(StringFunction::Concat) => {
+        BuiltinFunction::String(StringFunction::Concat) => {
             compile_concat(emitter, ctx, fixed_args(func)?, &func.name.span())
         }
-        Intrinsic::Conversion { source, target } => compile_conversion(
+        BuiltinFunction::Conversion { source, target } => compile_conversion(
             emitter,
             ctx,
             fixed_args(func)?,
@@ -164,14 +170,14 @@ fn compile_intrinsic_at(
         ),
         // A typed time or date function (ADD_TIME, SUB_DATE_DATE, ...)
         // compiles as the instruction sequence for the units of its operands.
-        Intrinsic::Time { function, long } => {
+        BuiltinFunction::Time { function, long } => {
             let (arith, width) = time_arith_for(function, long);
             let [in1, in2] = fixed_args::<2>(func)?;
             compile_time_arith(emitter, ctx, arith, width, in1, in2)
         }
         // Time functions: datetime decomposition
-        Intrinsic::DtToDate => compile_dt_to_date(emitter, ctx, fixed_args(func)?),
-        Intrinsic::DtToTod => compile_dt_to_tod(emitter, ctx, fixed_args(func)?),
+        BuiltinFunction::DtToDate => compile_dt_to_date(emitter, ctx, fixed_args(func)?),
+        BuiltinFunction::DtToTod => compile_dt_to_tod(emitter, ctx, fixed_args(func)?),
     }
 }
 
