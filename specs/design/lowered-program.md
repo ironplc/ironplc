@@ -1361,18 +1361,18 @@ program uses to a function block POU of the lowered program, and no node of
 the lowered program names a standard function block.
 
 The lowered blocks start from what the bytecode VM's intrinsics do today, so
-the move changes no program, with one exception. Today codegen sends
-`CTU_INT`, `CTU_DINT`, `CTU_UDINT`, `CTU_LINT` and `CTU_ULINT` to one VM
-intrinsic, which reads and writes `PV` and `CV` as signed 32-bit values
-(`compile_call.rs`, `vm/src/intrinsic.rs`), and the down and up-down counters
-do the same. A lowered counter computes at its own width, so a wide counter
-past the 32-bit range behaves differently. That is a correction, like those
-under [Backend Contract](#7-backend-contract).
+the move changes no program, with one exception. Each counter counts in its
+own width and saturates at its type's bounds ([Counter Widths](counter-widths.md)),
+except `CTU_INT`, `CTD_INT` and `CTUD_INT`, which the VM counts and saturates
+in 32 bits rather than at the bounds of `INT`. A lowered counter computes at
+its own width, so an `_INT` counter past the range of `INT` behaves
+differently. That is a correction, like those under
+[Backend Contract](#7-backend-contract).
 
 **REQ-LOW-codegen-078** For every standard function block, the block lowering
 generates leaves the instance's visible fields with the values the bytecode
-VM's intrinsic leaves, for the same inputs and round times, except where a
-wide counter's value lies outside the 32-bit range.
+VM's intrinsic leaves, for the same inputs and round times, except where an
+`_INT` counter's value lies outside the range of `INT`.
 
 ### 3.9 Invariants by construction
 
@@ -2237,11 +2237,11 @@ This section constrains the order of work; it is not a work breakdown.
   helpers compile each program both ways and compare the values of its
   variables by name (REQ-LOW-codegen-131). A disagreement fails the test. The
   corrections named under [Backend Contract](#7-backend-contract) and the
-  width of the wide counters
+  width of the `_INT` counters
   ([Standard function blocks](#standard-function-blocks)) are the exception:
-  they differ only for a selector or subscript with a side effect, or a counter
-  past the 32-bit range, and the programs that show them are listed as known
-  differences.
+  they differ only for a selector or subscript with a side effect, or an
+  `_INT` counter past the range of `INT`, and the programs that show them are
+  listed as known differences.
 - **Progress cannot fall.** CI reports how many top-level statements of the
   end-to-end programs took the lowered route. The number does not fall.
 - **The IR is readable from its first commit.** `ironplc-ir` writes a lowered
@@ -2249,7 +2249,7 @@ This section constrains the order of work; it is not a work breakdown.
   that text.
 - **Behaviour preserving.** Each stage is behaviour preserving and is
   delivered as a prefactor, apart from the two corrections named under
-  [Backend Contract](#7-backend-contract) and the width of the wide counters.
+  [Backend Contract](#7-backend-contract) and the width of the `_INT` counters.
   The lowered route makes those corrections by construction.
 - **Target neutrality shown early.** A minimal WebAssembly path (one
   `PROGRAM`, integer arithmetic, assignment) is built as soon as a program of
