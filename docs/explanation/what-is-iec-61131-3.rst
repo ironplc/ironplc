@@ -51,7 +51,7 @@ The standard defines five programming languages:
        third edition of the standard.
    * - **Sequential Function Chart (SFC)**
      - A graphical language for describing sequential processes with steps
-       and transitions. IronPLC has partial support for SFC.
+       and transitions. IronPLC checks SFC but cannot yet compile it.
 
 Most working engineers use a mix of these languages. IronPLC focuses on
 Structured Text because it is the most expressive and the easiest to work
