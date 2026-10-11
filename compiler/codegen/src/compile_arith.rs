@@ -25,7 +25,7 @@
 //!
 //! See `specs/design/arithmetic-operator-overloads.md`.
 
-use ironplc_analyzer::{typed_overload, Intrinsic, Overload};
+use ironplc_analyzer::{typed_overload, Intrinsic};
 use ironplc_dsl::common::{ElementaryTypeName, GenericTypeName, TypeName};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -53,11 +53,9 @@ pub(crate) fn compile_binary_arith(
     binary: &BinaryExpr,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    if let Some(left) = expr_operand_name(ctx, &binary.left) {
-        if let Some((name, _)) = typed_step(ctx, &binary.op, &left, &binary.right) {
-            let span = binary.left.span();
-            return compile_typed(emitter, ctx, name, &binary.left, &binary.right, span);
-        }
+    if let Some(name) = typed_step(ctx, &binary.op, &binary.left, &binary.right) {
+        let span = binary.left.span();
+        return compile_typed(emitter, ctx, name, &binary.left, &binary.right, span);
     }
     let operands = [&binary.left, &binary.right];
     let Some(natural) =
@@ -68,8 +66,7 @@ pub(crate) fn compile_binary_arith(
     compile_at(emitter, ctx, natural, op_type, |emitter, ctx, at| {
         compile_expr(emitter, ctx, &binary.left, at)?;
         compile_expr(emitter, ctx, &binary.right, at)?;
-        emit_arithmetic_op(emitter, &binary.op, at);
-        Ok(())
+        emit_arithmetic_op(emitter, &binary.op, at)
     })
 }
 
@@ -92,17 +89,15 @@ pub(crate) fn compile_arith_fold(
 ) -> Result<(), Diagnostic> {
     let args = collect_positional_args(func);
     if let [first, second, rest @ ..] = args.as_slice() {
-        if let Some(left) = expr_operand_name(ctx, first) {
-            if let Some((name, _)) = typed_step(ctx, op, &left, second) {
-                let span = func.name.span();
-                if !rest.is_empty() {
-                    return Err(Diagnostic::internal_error_at(Label::span(
-                        span,
-                        "Typed fold the analyzer did not write as the calls it folds to",
-                    )));
-                }
-                return compile_typed(emitter, ctx, name, first, second, span);
+        if let Some(name) = typed_step(ctx, op, first, second) {
+            let span = func.name.span();
+            if !rest.is_empty() {
+                return Err(Diagnostic::internal_error_at(Label::span(
+                    span,
+                    "Typed fold the analyzer did not write as the calls it folds to",
+                )));
             }
+            return compile_typed(emitter, ctx, name, first, second, span);
         }
     }
     let Some(natural) = numeric_inputs_op_type(ctx, result, &args) else {
@@ -115,18 +110,17 @@ pub(crate) fn compile_arith_fold(
     })
 }
 
-/// Returns the typed overload of `op` on `left` and the operand `right`, as
-/// the typed name and its result type, or `None` when the pair has none.
+/// Returns the name of the typed overload of `op` on the operands `left` and
+/// `right`, or `None` when the pair has none.
 fn typed_step(
     ctx: &CompileContext,
     op: &Operator,
-    left: &TypeName,
+    left: &Expr,
     right: &Expr,
-) -> Option<(&'static str, TypeName)> {
-    match typed_overload(op, left, &expr_operand_name(ctx, right)?)? {
-        Overload::Typed { name, result } => Some((name, result)),
-        Overload::Unchecked { .. } | Overload::Numeric { .. } => None,
-    }
+) -> Option<&'static str> {
+    let left = expr_operand_name(ctx, left)?;
+    let right = expr_operand_name(ctx, right)?;
+    typed_overload(op, &left, &right).map(|typed| typed.name)
 }
 
 /// Compiles the typed overload `name` over `left` and `right` through the
@@ -179,26 +173,6 @@ fn unresolved_operation(span: SourceSpan) -> Diagnostic {
     ))
 }
 
-/// Compiles, by `compile`, an operation whose result has the type of its
-/// operand, `result`, then converts the result to `op_type`, the operation
-/// type of the enclosing expression.
-///
-/// A negation, `NOT`, a numeric function of one input, `MOVE` and a shift or
-/// rotate compute at their own type when it is numeric, as an arithmetic
-/// operation does: `SHL` of a `DWORD` assigned to an `LWORD` shifts the 32
-/// bits of the `DWORD` and widens the result. Any other, such as `NOT` of a
-/// `BOOL`, computes at `op_type`.
-pub(crate) fn compile_at_operand_type(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    result: Option<&TypeName>,
-    op_type: OpType,
-    compile: impl FnOnce(&mut Emitter, &mut CompileContext, OpType) -> Result<(), Diagnostic>,
-) -> Result<(), Diagnostic> {
-    let at = numeric_op_type(result).unwrap_or(op_type);
-    compile_at(emitter, ctx, at, op_type, compile)
-}
-
 /// Compiles, by `compile`, an operation at the operation type `at`, then
 /// converts the result to `op_type`, the operation type of the enclosing
 /// expression.
@@ -210,8 +184,7 @@ pub(crate) fn compile_at(
     compile: impl FnOnce(&mut Emitter, &mut CompileContext, OpType) -> Result<(), Diagnostic>,
 ) -> Result<(), Diagnostic> {
     compile(emitter, ctx, at)?;
-    convert_to_context(emitter, at, op_type);
-    Ok(())
+    convert_to_context(emitter, at, op_type)
 }
 
 /// Converts the value on the stack, computed at its own operation type
@@ -222,19 +195,23 @@ pub(crate) fn compile_at(
 /// having recorded the conversion (ADR-0056). Every other conversion is
 /// one the analyzer recorded in an `ImplicitConversion`, or one the
 /// program wrote, such as `INT_TO_REAL`.
-pub(crate) fn convert_to_context(emitter: &mut Emitter, own: OpType, context: OpType) {
-    convert(emitter, own, context);
+pub(crate) fn convert_to_context(
+    emitter: &mut Emitter,
+    own: OpType,
+    context: OpType,
+) -> Result<(), Diagnostic> {
+    convert(emitter, own, context)
 }
 
 /// Emits the conversion of the value on the stack from `from` to `to`, or
 /// nothing when the two share an operation width.
-pub(crate) fn convert(emitter: &mut Emitter, from: OpType, to: OpType) {
+pub(crate) fn convert(emitter: &mut Emitter, from: OpType, to: OpType) -> Result<(), Diagnostic> {
     let info = |(op_width, signedness): OpType| VarTypeInfo {
         op_width,
         signedness,
         storage_bits: 0,
     };
-    emit_conversion_opcode(emitter, &info(from), &info(to));
+    emit_conversion_opcode(emitter, &info(from), &info(to))
 }
 
 /// Returns the operation type of `type_name` when it is a concrete

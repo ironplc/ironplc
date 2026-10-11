@@ -739,29 +739,6 @@ END_PROGRAM
 }
 
 #[test]
-fn compile_when_top_level_array_of_struct_has_initial_values_then_not_implemented() {
-    // Element fields are left zeroed, so an explicit initializer must be
-    // rejected rather than silently dropped.
-    assert_codegen_rejects(
-        "
-TYPE Item : STRUCT
-  a : DINT;
-END_STRUCT;
-END_TYPE
-
-PROGRAM main
-  VAR
-    arr : ARRAY[1..2] OF Item := [1, 2];
-    result : DINT;
-  END_VAR
-  result := arr[1].a;
-END_PROGRAM
-",
-        "an array-of-struct with initial values",
-    );
-}
-
-#[test]
 fn compile_when_top_level_array_of_struct_composite_field_read_then_not_implemented() {
     assert_codegen_rejects(
         "

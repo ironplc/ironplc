@@ -576,20 +576,3 @@ fn resolve_signed_integer_ref(sir: &SignedIntegerRef) -> Result<&SignedInteger, 
         SignedIntegerRef::Constant(id) => Err(Diagnostic::todo_with_id(id)),
     }
 }
-
-/// Converts a `SignedInteger` AST node to an `i32` value.
-///
-/// Its one use is the bounds of an inline array. Analysis reports a bound that
-/// a `DINT` cannot hold (`rule_range_limits`, P2024), so one that reaches here
-/// is a compiler bug.
-pub(crate) fn signed_integer_to_i32(si: &SignedInteger) -> Result<i32, Diagnostic> {
-    let value = if si.is_neg {
-        -(si.value.value as i128)
-    } else {
-        si.value.value as i128
-    };
-    i32::try_from(value).map_err(|_| {
-        Diagnostic::internal_error_at(Label::span(si.value.span(), "Integer literal"))
-            .with_context("value", &value.to_string())
-    })
-}

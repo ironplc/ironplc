@@ -18,7 +18,7 @@ use super::compile::{
     encode_string_literal, CompileContext, OpType, OpWidth, Signedness, VarTypeInfo,
     DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH,
 };
-use super::compile_arith::{compile_at_operand_type, compile_binary_arith};
+use super::compile_arith::{compile_at, compile_binary_arith};
 use super::compile_call::compile_function_call;
 use super::compile_comparison::compile_comparison;
 use super::compile_method::compile_method_call_expression;
@@ -109,18 +109,23 @@ pub(crate) fn compile_expr(
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
     match &expr.kind {
-        // The analyzer recorded the type a numeric literal is compiled at
+        // A literal compiles at the type the analyzer recorded for it
         // (ADR-0056). One codegen builds itself, such as a standard function
-        // block's member initializer, has none and is stored at the default
-        // slot type. Any other literal names its own type and is compiled
-        // for the storage its context gives it.
-        ExprKind::Const(
-            constant @ (ConstantKind::IntegerLiteral(_) | ConstantKind::RealLiteral(_)),
-        ) => {
-            let own = op_type_from_expr(ctx, expr).unwrap_or(DEFAULT_OP_TYPE);
-            compile_constant(emitter, ctx, constant, own)
+        // block's member initializer, has none: a number is stored at the
+        // default slot type, and any other literal at the type of the field
+        // it initializes, which the caller passes. A string literal is loaded
+        // into a buffer, at no operation type.
+        ExprKind::Const(constant) => {
+            let at = match (&expr.expr_type, constant) {
+                (_, ConstantKind::CharacterString(_)) => op_type,
+                (None, ConstantKind::IntegerLiteral(_) | ConstantKind::RealLiteral(_)) => {
+                    DEFAULT_OP_TYPE
+                }
+                (None, _) => op_type,
+                (Some(_), _) => self::op_type(ctx, expr)?,
+            };
+            compile_constant(emitter, ctx, constant, at)
         }
-        ExprKind::Const(constant) => compile_constant(emitter, ctx, constant, op_type),
         // A variable read at a different width is read at its own and
         // converted: loading an INT's slot as a REAL would reinterpret its
         // bits, and loading a UDINT's as a LINT would sign-extend it.
@@ -128,31 +133,28 @@ pub(crate) fn compile_expr(
             match crate::compile_arith::numeric_op_type(expr_operand_name(ctx, expr).as_ref()) {
                 Some(own) if own.0 != op_type.0 => {
                     compile_variable_read(emitter, ctx, variable, own)?;
-                    crate::compile_arith::convert_to_context(emitter, own, op_type);
+                    crate::compile_arith::convert_to_context(emitter, own, op_type)?;
                     Ok(())
                 }
                 _ => compile_variable_read(emitter, ctx, variable, op_type),
             }
         }
         ExprKind::BinaryOp(binary) => compile_binary_arith(emitter, ctx, expr, binary, op_type),
+        // A negation or `NOT` computes at its own type, its operand's, as an
+        // arithmetic operation does: `NOT` of a `DWORD` assigned to an
+        // `LWORD` inverts the 32 bits of the `DWORD` and widens the result.
         ExprKind::UnaryOp(unary) => {
-            let result = expr_operand_name(ctx, expr);
-            compile_at_operand_type(
-                emitter,
-                ctx,
-                result.as_ref(),
-                op_type,
-                |emitter, ctx, at| {
-                    compile_expr(emitter, ctx, &unary.term, at)?;
-                    match unary.op {
-                        UnaryOp::Neg => {
-                            emit_neg(emitter, at);
-                            Ok(())
-                        }
-                        UnaryOp::Not => emit_not(emitter, ctx, at, &unary.term),
+            let at = self::op_type(ctx, expr)?;
+            compile_at(emitter, ctx, at, op_type, |emitter, ctx, at| {
+                compile_expr(emitter, ctx, &unary.term, at)?;
+                match unary.op {
+                    UnaryOp::Neg => {
+                        emit_neg(emitter, at);
+                        Ok(())
                     }
-                },
-            )
+                    UnaryOp::Not => emit_not(emitter, ctx, at, &unary.term),
+                }
+            })
         }
         ExprKind::LateBound(late_bound) => {
             if let Some(ref_slot) = ctx.in_out_ref_slot(&late_bound.value) {
@@ -203,8 +205,8 @@ pub(crate) fn compile_expr(
             let from = self::op_type(ctx, inner)?;
             let to = self::op_type(ctx, expr)?;
             compile_expr(emitter, ctx, inner, from)?;
-            crate::compile_arith::convert(emitter, from, to);
-            crate::compile_arith::convert_to_context(emitter, to, op_type);
+            crate::compile_arith::convert(emitter, from, to)?;
+            crate::compile_arith::convert_to_context(emitter, to, op_type)?;
             Ok(())
         }
         ExprKind::Null(_) => {
@@ -249,7 +251,7 @@ fn compile_compare(
     compile_expr(emitter, ctx, &compare.left, at)?;
     compile_expr(emitter, ctx, &compare.right, at)?;
     emit_compare_op(emitter, &compare.op, at);
-    crate::compile_arith::convert_to_context(emitter, at, op_type);
+    crate::compile_arith::convert_to_context(emitter, at, op_type)?;
     Ok(())
 }
 
@@ -1093,15 +1095,20 @@ emit_logical_op!(xor);
 /// The operator expression and the function form of the operator (`ADD`,
 /// `SUB`, ...) both come through here, so the two spellings cannot emit
 /// differently.
-pub(crate) fn emit_arithmetic_op(emitter: &mut Emitter, op: &Operator, op_type: OpType) {
+pub(crate) fn emit_arithmetic_op(
+    emitter: &mut Emitter,
+    op: &Operator,
+    op_type: OpType,
+) -> Result<(), Diagnostic> {
     match op {
         Operator::Add => emit_add(emitter, op_type),
         Operator::Sub => emit_sub(emitter, op_type),
         Operator::Mul => emit_mul(emitter, op_type),
         Operator::Div => emit_div(emitter, op_type),
         Operator::Mod => emit_mod(emitter, op_type),
-        Operator::Pow => emit_pow(emitter, op_type),
+        Operator::Pow => return emit_pow(emitter, op_type),
     }
+    Ok(())
 }
 
 /// Emits the opcode of a comparison, logical or bitwise operator for
@@ -1181,11 +1188,11 @@ pub(crate) fn emit_mod(emitter: &mut Emitter, op_type: OpType) {
 
 /// POW dispatch. Width-only shape, but emits `EXPT_*` builtins rather than
 /// dedicated `emit_pow_*` opcodes, so it stays hand-written.
-pub(crate) fn emit_pow(emitter: &mut Emitter, op_type: OpType) {
-    match op_type.0 {
-        OpWidth::W32 => emitter.emit_builtin(opcode::builtin::EXPT_I32),
-        OpWidth::W64 => emitter.emit_builtin(opcode::builtin::EXPT_I64),
-        OpWidth::F32 => emitter.emit_builtin(opcode::builtin::EXPT_F32),
-        OpWidth::F64 => emitter.emit_builtin(opcode::builtin::EXPT_F64),
-    }
+pub(crate) fn emit_pow(emitter: &mut Emitter, op_type: OpType) -> Result<(), Diagnostic> {
+    emitter.emit_builtin(match op_type.0 {
+        OpWidth::W32 => opcode::builtin::EXPT_I32,
+        OpWidth::W64 => opcode::builtin::EXPT_I64,
+        OpWidth::F32 => opcode::builtin::EXPT_F32,
+        OpWidth::F64 => opcode::builtin::EXPT_F64,
+    })
 }

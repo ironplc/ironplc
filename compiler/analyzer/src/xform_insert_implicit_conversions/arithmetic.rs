@@ -31,7 +31,7 @@ use ironplc_dsl::type_id::TypeId;
 
 use super::ImplicitConversions;
 use crate::intermediates::arithmetic_overload::{
-    resolve_arithmetic_overload, typed_overload, Overload,
+    resolve_arithmetic_overload, typed_overload, Overload, TypedOverload,
 };
 use crate::intermediates::numeric_operation::{numeric_operation_width, OperationWidth};
 use crate::intermediates::operator_function_form::{operator_function_form, FormOf};
@@ -201,10 +201,7 @@ impl ImplicitConversions<'_> {
         rest.iter()
             .map(|input| {
                 let right = self.conversions.operand_name(input)?;
-                let Overload::Typed { name, result } = typed_overload(op, &accumulated, &right)?
-                else {
-                    return None;
-                };
+                let TypedOverload { name, result } = typed_overload(op, &accumulated, &right)?;
                 accumulated = result.clone();
                 Some((Id::from(name), result))
             })
@@ -230,10 +227,7 @@ impl ImplicitConversions<'_> {
         ) else {
             return false;
         };
-        matches!(
-            typed_overload(op, &left, &right),
-            Some(Overload::Typed { .. })
-        )
+        typed_overload(op, &left, &right).is_some()
     }
 
     /// Makes `operand` an operand of the step: an untyped literal takes the

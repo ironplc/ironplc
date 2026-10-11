@@ -16,12 +16,14 @@ use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 
 use ironplc_analyzer::semantic_type::SemanticType;
+use ironplc_analyzer::system_globals::SYSTEM_UPTIME_GLOBALS;
 use ironplc_analyzer::TypeEnvironment;
+use ironplc_dsl::type_id::TypeId;
 use std::collections::HashMap;
 
 use super::compile::{
     char_width_for_string_type, emit_string_literal_load, string_region_size, CompileContext,
-    FbInstanceInfo, OpType, OpWidth, StringVarInfo, DEFAULT_OP_TYPE,
+    FbInstanceInfo, OpType, OpWidth, StringVarInfo, DEFAULT_OP_TYPE, DEFAULT_STRING_MAX_LENGTH,
 };
 use super::compile_call::resolve_fb_type;
 use super::compile_expr::{compile_constant, emit_store_var, emit_truncation, resolve_variable};
@@ -29,6 +31,11 @@ use super::compile_stmt::resolve_string_max_length;
 use crate::emit::Emitter;
 
 /// Assigns variable table indices and type info for all variable declarations.
+///
+/// The storage each declaration needs is decided by the type the analyzer
+/// resolved for it (`VarDecl::type_id`), not by the syntax of its
+/// initializer: a structure, an array, a string, a function block instance, a
+/// reference or a scalar.
 pub(crate) fn assign_variables(
     ctx: &mut CompileContext,
     builder: &mut ContainerBuilder,
@@ -39,239 +46,7 @@ pub(crate) fn assign_variables(
         if let Some(id) = decl.identifier.symbolic_id() {
             let index = VarIndex::new(ctx.variables.len() as u16);
             ctx.variables.insert(id.clone(), index);
-
-            // Resolve type info and collect debug metadata.
-            let (type_tag, type_name_str) = match &decl.initializer {
-                InitialValueAssignmentKind::Simple(simple) => {
-                    // The global_var_decl parser produces Simple for all named
-                    // types, including structs.  Detect struct types via the
-                    // type environment and register them properly so that field
-                    // access works in codegen.
-                    if types.resolve_struct_type(&simple.type_name).is_some() {
-                        crate::compile_struct::allocate_struct_variable(
-                            ctx,
-                            builder,
-                            types,
-                            &simple.type_name,
-                            id,
-                            index,
-                            &decl.identifier.span(),
-                        )?;
-                        let type_name_str = simple.type_name.to_string().to_uppercase();
-                        (iec_type_tag::STRUCT, type_name_str)
-                    } else if let Some(subrange_type) =
-                        types.resolve_subrange_type(&simple.type_name)
-                    {
-                        // Named subrange type with explicit init (e.g., x : MY_RANGE := 75)
-                        if let Some(type_info) =
-                            crate::compile_struct::var_type_info_for_field(subrange_type)
-                        {
-                            ctx.var_types.insert(id.clone(), type_info);
-                        }
-                        let name = simple.type_name.to_string().to_uppercase();
-                        (subrange_iec_type_tag(types, subrange_type), name)
-                    } else {
-                        if let Some(type_info) = crate::type_info::decl_type_info(ctx, decl) {
-                            ctx.var_types.insert(id.clone(), type_info);
-                        }
-                        let tag = resolve_iec_type_tag(types, &simple.type_name);
-                        let name = simple.type_name.name.to_string().to_uppercase();
-                        (tag, name)
-                    }
-                }
-                InitialValueAssignmentKind::String(string_init) => {
-                    let max_length = resolve_string_max_length(string_init)?;
-                    let char_width = char_width_for_string_type(&string_init.width);
-
-                    // Allocate space in the data region: [max_length: u16][cur_length: u16][data]
-                    let total_bytes = string_region_size(max_length, char_width);
-                    let data_offset =
-                        crate::data_region::reserve(ctx, total_bytes, &string_init.span())?;
-
-                    if max_length > ctx.max_string_capacity {
-                        ctx.max_string_capacity = max_length;
-                    }
-
-                    ctx.string_vars.insert(
-                        id.clone(),
-                        StringVarInfo {
-                            data_offset,
-                            max_length,
-                            char_width,
-                        },
-                    );
-                    ctx.debug_string_layouts.push(StringLayoutEntry {
-                        var_index: index,
-                        data_offset,
-                        max_length,
-                    });
-                    if char_width.is_wide() {
-                        ctx.has_wide_string = true;
-                        (iec_type_tag::WSTRING, "WSTRING".into())
-                    } else {
-                        (iec_type_tag::STRING, "STRING".into())
-                    }
-                }
-                InitialValueAssignmentKind::FunctionBlock(fb_init) => {
-                    // A member initializer (`(PT := T#100MS)`) is applied by
-                    // `emit_initial_values`, which runs after the instance
-                    // has its slot offset -- each member store addresses the
-                    // instance through it. Nothing to do here but size it.
-                    let fb_name = fb_init.type_name.to_string().to_uppercase();
-                    if let Some((type_id, num_fields, field_map)) = resolve_fb_type(&fb_name) {
-                        let field_op_types = standard_fb_field_op_types(ctx, decl);
-                        // Standard library function block.
-                        let instance_size = num_fields as u32 * 8;
-                        let data_offset = crate::data_region::reserve(
-                            ctx,
-                            instance_size,
-                            &decl.identifier.span(),
-                        )?;
-
-                        ctx.fb_instances.insert(
-                            id.clone(),
-                            FbInstanceInfo {
-                                var_index: index,
-                                type_id,
-                                data_offset,
-                                field_indices: field_map,
-                                field_op_types,
-                            },
-                        );
-                    } else if let Some((num_fields, type_id, field_indices, field_op_types)) =
-                        ctx.user_fb_types.get(&fb_name).map(|user_fb| {
-                            (
-                                user_fb.num_fields,
-                                user_fb.type_id,
-                                user_fb.field_indices.clone(),
-                                user_fb.field_op_types.clone(),
-                            )
-                        })
-                    {
-                        // User-defined function block.
-                        let instance_size = num_fields as u32 * 8;
-                        let data_offset = crate::data_region::reserve(
-                            ctx,
-                            instance_size,
-                            &decl.identifier.span(),
-                        )?;
-
-                        ctx.fb_instances.insert(
-                            id.clone(),
-                            FbInstanceInfo {
-                                var_index: index,
-                                type_id,
-                                data_offset,
-                                field_indices,
-                                field_op_types,
-                            },
-                        );
-                    }
-                    (iec_type_tag::FB_INSTANCE, fb_name)
-                }
-                InitialValueAssignmentKind::Array(array_init) => {
-                    // An array whose elements are structures is laid out as
-                    // one flat run of slots rather than one slot per element,
-                    // so it registers through its own path.
-                    if let Some((element_type, debug_type_name, dimensions)) =
-                        crate::compile_array_struct::struct_array_declaration(
-                            types,
-                            &array_init.spec,
-                            &decl.identifier.span(),
-                        )?
-                    {
-                        crate::compile_array_struct::register_struct_array_variable(
-                            ctx,
-                            builder,
-                            id,
-                            index,
-                            &element_type,
-                            &debug_type_name,
-                            &dimensions,
-                            &decl.identifier.span(),
-                        )?
-                    } else {
-                        let spec = crate::compile_array::array_spec_for_declaration(
-                            types,
-                            &array_init.spec,
-                            &decl.identifier.span(),
-                        )?;
-                        crate::compile_array::register_array_variable(
-                            ctx,
-                            builder,
-                            id,
-                            index,
-                            &spec,
-                            &decl.identifier.span(),
-                        )?
-                    }
-                }
-                InitialValueAssignmentKind::Reference(ref_init) => {
-                    crate::compile_reference::register_reference_variable(
-                        ctx, builder, types, id, index, ref_init,
-                    )?;
-                    (iec_type_tag::OTHER, "REF_TO".into())
-                }
-                InitialValueAssignmentKind::Structure(struct_init) => {
-                    crate::compile_struct::allocate_struct_variable(
-                        ctx,
-                        builder,
-                        types,
-                        &struct_init.type_name,
-                        id,
-                        index,
-                        &decl.identifier.span(),
-                    )?;
-                    let type_name_str = struct_init.type_name.to_string().to_uppercase();
-                    (iec_type_tag::STRUCT, type_name_str)
-                }
-                InitialValueAssignmentKind::EnumeratedType(_)
-                | InitialValueAssignmentKind::EnumeratedValues(_) => {
-                    // Enum variables use DINT (W32/Signed/32-bit) per REQ-EN-codegen-010.
-                    let type_info = crate::compile_enum::enum_var_type_info();
-                    ctx.var_types.insert(id.clone(), type_info);
-                    // Debug tag is DINT per REQ-EN-codegen-012; type_name is the
-                    // enum's debug name (e.g. "COLOR"), REQ-EN-codegen-092.
-                    let name = crate::compile_enum::debug_name(types, decl.type_id);
-                    (iec_type_tag::DINT, name)
-                }
-                InitialValueAssignmentKind::Subrange(ref spec) => {
-                    // Subrange variable (e.g., x : MY_RANGE or x : INT (1..100))
-                    // Resolve VarTypeInfo from the subrange's base type.
-                    let subrange_type = match &spec.spec {
-                        SpecificationKind::Named(type_name) => {
-                            types.resolve_subrange_type(type_name)
-                        }
-                        SpecificationKind::Inline(inline_spec) => {
-                            let base_tn: ironplc_dsl::common::TypeName =
-                                inline_spec.type_name.clone().into();
-                            types.get(&base_tn).map(|attrs| &attrs.representation)
-                        }
-                    };
-                    if let Some(st) = subrange_type {
-                        if let Some(type_info) = crate::compile_struct::var_type_info_for_field(st)
-                        {
-                            ctx.var_types.insert(id.clone(), type_info);
-                        }
-                    }
-                    let tag = subrange_type
-                        .map(|st| subrange_iec_type_tag(types, st))
-                        .unwrap_or(iec_type_tag::OTHER);
-                    (tag, subrange_debug_type_name(&spec.spec))
-                }
-                InitialValueAssignmentKind::LateResolvedType(_) => {
-                    // LateResolvedType should have been resolved before codegen.
-                    // If we reach here, it indicates a bug in the compiler.
-                    return Err(Diagnostic::internal_error_at(Label::span(
-                        decl.identifier.span(),
-                        "Variable type was not resolved before code generation",
-                    )));
-                }
-                // Other initializer kinds do not yet have type info tracked
-                // in codegen.
-                _ => (iec_type_tag::OTHER, String::new()),
-            };
-
+            let (type_tag, type_name_str) = assign_storage(ctx, builder, decl, id, index, types)?;
             ctx.debug_var_names.push(VarNameEntry {
                 var_index: index,
                 function_id: function_id::GLOBAL_SCOPE,
@@ -283,6 +58,308 @@ pub(crate) fn assign_variables(
         }
     }
     Ok(())
+}
+
+/// Assigns the implicit uptime globals (`__SYSTEM_UP_TIME`,
+/// `__SYSTEM_UP_LTIME`) the first variable-table slots. The VM writes them
+/// before every scan, so they have no starting value to store.
+pub(crate) fn assign_system_uptime_globals(ctx: &mut CompileContext, types: &TypeEnvironment) {
+    for global in &SYSTEM_UPTIME_GLOBALS {
+        let id = Id::from(global.name);
+        let index = VarIndex::new(ctx.variables.len() as u16);
+        ctx.variables.insert(id.clone(), index);
+        let type_name = TypeName::from(global.type_name);
+        ctx.debug_var_names.push(VarNameEntry {
+            var_index: index,
+            function_id: function_id::GLOBAL_SCOPE,
+            var_section: var_section::VAR_GLOBAL,
+            iec_type_tag: resolve_iec_type_tag(types, &type_name),
+            name: id.to_string(),
+            type_name: type_name.name.to_string().to_uppercase(),
+        });
+    }
+}
+
+/// Lays out the storage of the variable `decl` declares, which has the
+/// variable-table slot `index`, and returns its debug `(iec_type_tag,
+/// type_name)`.
+fn assign_storage(
+    ctx: &mut CompileContext,
+    builder: &mut ContainerBuilder,
+    decl: &VarDecl,
+    id: &Id,
+    index: VarIndex,
+    types: &TypeEnvironment,
+) -> Result<(u8, String), Diagnostic> {
+    let span = decl.identifier.span();
+    let Some(type_id) = decl.type_id else {
+        return Ok((iec_type_tag::OTHER, String::new()));
+    };
+    let representation = types
+        .get_by_id(type_id)
+        .map(|attributes| attributes.representation.clone())
+        .ok_or_else(|| {
+            Diagnostic::internal_error_at(Label::span(
+                span.clone(),
+                "Variable type is absent from the type environment",
+            ))
+        })?;
+    let declared_name = || {
+        types
+            .name_of(type_id)
+            .map(|name| name.to_string().to_uppercase())
+            .unwrap_or_default()
+    };
+
+    Ok(match &representation {
+        SemanticType::Structure { .. } => {
+            crate::compile_struct::allocate_struct_variable(
+                ctx,
+                builder,
+                &representation,
+                id,
+                index,
+                &span,
+            )?;
+            (iec_type_tag::STRUCT, declared_name())
+        }
+        SemanticType::Subrange { base_type, .. } => {
+            // A subrange operates as its base type.
+            if let Some(type_info) = crate::compile_struct::var_type_info_for_field(&representation)
+            {
+                ctx.var_types.insert(id.clone(), type_info);
+            }
+            // A named subrange is known by its name; one spelled out in
+            // place by its base type.
+            let name = match types.name_of(type_id) {
+                Some(name) => name.to_string().to_uppercase(),
+                None => elementary_name(types, base_type),
+            };
+            (subrange_iec_type_tag(types, &representation), name)
+        }
+        // A declaration that names its type with a `SimpleInitializer` (every
+        // `VAR_GLOBAL` declaration does, as does one naming a string type)
+        // gets from `emit_initial_values` only what a scalar gets: no string
+        // header, no data-region offset in its slot, no `NULL` and no
+        // enumeration ordinal. Until its starting value is read from its
+        // type rather than from its initializer, it keeps the scalar storage
+        // and debug entry that match.
+        SemanticType::String { .. }
+        | SemanticType::Array { .. }
+        | SemanticType::FunctionBlock { .. }
+        | SemanticType::Reference { .. }
+        | SemanticType::Enumeration { .. }
+            if matches!(decl.initializer, InitialValueAssignmentKind::Simple(_)) =>
+        {
+            assign_scalar_storage(ctx, decl, id, types, type_id)
+        }
+        SemanticType::String {
+            max_len,
+            char_width,
+        } => {
+            let (max_length, region_span) = match &decl.initializer {
+                InitialValueAssignmentKind::String(string_init) => {
+                    (resolve_string_max_length(string_init)?, string_init.span())
+                }
+                _ => (
+                    max_len
+                        .map(|len| len as u16)
+                        .unwrap_or(DEFAULT_STRING_MAX_LENGTH),
+                    span,
+                ),
+            };
+            let char_width = *char_width;
+
+            // Allocate space in the data region: [max_length: u16][cur_length: u16][data]
+            let total_bytes = string_region_size(max_length, char_width);
+            let data_offset = crate::data_region::reserve(ctx, total_bytes, &region_span)?;
+
+            if max_length > ctx.max_string_capacity {
+                ctx.max_string_capacity = max_length;
+            }
+
+            ctx.string_vars.insert(
+                id.clone(),
+                StringVarInfo {
+                    data_offset,
+                    max_length,
+                    char_width,
+                },
+            );
+            ctx.debug_string_layouts.push(StringLayoutEntry {
+                var_index: index,
+                data_offset,
+                max_length,
+            });
+            if char_width.is_wide() {
+                ctx.has_wide_string = true;
+                (iec_type_tag::WSTRING, "WSTRING".into())
+            } else {
+                (iec_type_tag::STRING, "STRING".into())
+            }
+        }
+        SemanticType::FunctionBlock { .. } => {
+            // A member initializer (`(PT := T#100MS)`) is applied by
+            // `emit_initial_values`, which runs after the instance has its
+            // slot offset -- each member store addresses the instance
+            // through it. Nothing to do here but size it.
+            let fb_name = declared_name();
+            if let Some((type_id, num_fields, field_map)) = resolve_fb_type(&fb_name) {
+                let field_op_types = standard_fb_field_op_types(ctx, decl);
+                // Standard library function block.
+                let instance_size = num_fields as u32 * 8;
+                let data_offset = crate::data_region::reserve(ctx, instance_size, &span)?;
+
+                ctx.fb_instances.insert(
+                    id.clone(),
+                    FbInstanceInfo {
+                        var_index: index,
+                        type_id,
+                        data_offset,
+                        field_indices: field_map,
+                        field_op_types,
+                    },
+                );
+            } else if let Some((num_fields, type_id, field_indices, field_op_types)) =
+                ctx.user_fb_types.get(&fb_name).map(|user_fb| {
+                    (
+                        user_fb.num_fields,
+                        user_fb.type_id,
+                        user_fb.field_indices.clone(),
+                        user_fb.field_op_types.clone(),
+                    )
+                })
+            {
+                // User-defined function block.
+                let instance_size = num_fields as u32 * 8;
+                let data_offset = crate::data_region::reserve(ctx, instance_size, &span)?;
+
+                ctx.fb_instances.insert(
+                    id.clone(),
+                    FbInstanceInfo {
+                        var_index: index,
+                        type_id,
+                        data_offset,
+                        field_indices,
+                        field_op_types,
+                    },
+                );
+            }
+            (iec_type_tag::FB_INSTANCE, fb_name)
+        }
+        SemanticType::Array {
+            element_type,
+            dimensions,
+        } => {
+            if let SemanticType::Structure { .. } = element_type.as_ref() {
+                // An array whose elements are structures is laid out as one
+                // flat run of slots rather than one slot per element, so it
+                // registers through its own path. An array spelled out in
+                // place is known by its element type's name.
+                let debug_type_name = types
+                    .name_of(type_id)
+                    .map(|name| name.to_string().to_uppercase())
+                    .unwrap_or_else(|| {
+                        let element = types
+                            .element_type(type_id)
+                            .and_then(|element| types.name_of(element))
+                            .map(|name| name.to_string().to_uppercase())
+                            .unwrap_or_default();
+                        format!("ARRAY OF {element}")
+                    });
+                crate::compile_array_struct::register_struct_array_variable(
+                    ctx,
+                    builder,
+                    id,
+                    index,
+                    element_type,
+                    &debug_type_name,
+                    dimensions,
+                    &span,
+                )?
+            } else {
+                // An element that is a reference is known by the name of
+                // the type it refers to.
+                let target_name = types
+                    .element_type(type_id)
+                    .and_then(|element| types.referenced_type(element))
+                    .and_then(|target| types.name_of(target))
+                    .map(|name| name.name.clone());
+                let spec = crate::compile_array::array_spec_from_type(
+                    element_type,
+                    dimensions,
+                    target_name,
+                    &span,
+                )?;
+                crate::compile_array::register_array_variable(
+                    ctx, builder, id, index, &spec, &span,
+                )?
+            }
+        }
+        SemanticType::Reference { target_type } => {
+            crate::compile_reference::register_reference_of_type(
+                ctx,
+                builder,
+                id,
+                index,
+                target_type,
+            )?;
+            (iec_type_tag::OTHER, "REF_TO".into())
+        }
+        SemanticType::Enumeration { .. } => {
+            // Enum variables use DINT (W32/Signed/32-bit) per REQ-EN-codegen-010.
+            let type_info = crate::compile_enum::enum_var_type_info();
+            ctx.var_types.insert(id.clone(), type_info);
+            // Debug tag is DINT per REQ-EN-codegen-012; type_name is the
+            // enum's debug name (e.g. "COLOR"), REQ-EN-codegen-092.
+            let name = crate::compile_enum::debug_name(types, Some(type_id));
+            (iec_type_tag::DINT, name)
+        }
+        SemanticType::Function { .. } => (iec_type_tag::OTHER, String::new()),
+        _ => assign_scalar_storage(ctx, decl, id, types, type_id),
+    })
+}
+
+/// Records how the scalar variable `decl` declares, of the type `type_id`,
+/// operates, and returns its debug `(iec_type_tag, type_name)`.
+///
+/// An alias of an elementary type is known by the elementary type, as the
+/// analyzer resolves the alias; any other type by its own name.
+fn assign_scalar_storage(
+    ctx: &mut CompileContext,
+    decl: &VarDecl,
+    id: &Id,
+    types: &TypeEnvironment,
+    type_id: TypeId,
+) -> (u8, String) {
+    if let Some(type_info) = crate::type_info::decl_type_info(ctx, decl) {
+        ctx.var_types.insert(id.clone(), type_info);
+    }
+    let elementary = types
+        .get_by_id(type_id)
+        .and_then(|attrs| types.elementary_type_name_for(&attrs.representation));
+    match elementary {
+        Some(name) => (
+            resolve_iec_type_tag(types, &name),
+            name.to_string().to_uppercase(),
+        ),
+        None => (
+            iec_type_tag_of(types, type_id),
+            types
+                .name_of(type_id)
+                .map(|name| name.to_string().to_uppercase())
+                .unwrap_or_default(),
+        ),
+    }
+}
+
+/// The upper-case name of the elementary type `representation` is, or an
+/// empty name when it is not one.
+fn elementary_name(types: &TypeEnvironment, representation: &SemanticType) -> String {
+    types
+        .elementary_type_name_for(representation)
+        .map(|name| name.name.to_string().to_uppercase())
+        .unwrap_or_default()
 }
 
 /// Maps a DSL VariableType to the debug section var_section encoding.
@@ -303,15 +380,22 @@ pub(crate) fn map_var_section(vt: &VariableType) -> u8 {
 /// is elementary, its base type's tag when it is a subrange (or an alias of
 /// one), else `OTHER`.
 fn resolve_iec_type_tag(types: &TypeEnvironment, type_name: &TypeName) -> u8 {
-    if let Some(tag) = types
+    types
         .id_of(type_name)
-        .and_then(ironplc_analyzer::type_id::elementary_debug_tag)
-    {
+        .map(|type_id| iec_type_tag_of(types, type_id))
+        .unwrap_or(iec_type_tag::OTHER)
+}
+
+/// The debug type tag of the type `type_id`: the type's id when it is
+/// elementary, its base type's tag when it is a subrange (or an alias of
+/// one), else `OTHER`.
+fn iec_type_tag_of(types: &TypeEnvironment, type_id: TypeId) -> u8 {
+    if let Some(tag) = ironplc_analyzer::type_id::elementary_debug_tag(type_id) {
         return tag;
     }
-    match types.resolve_subrange_type(type_name) {
-        Some(subrange) => subrange_iec_type_tag(types, subrange),
-        None => iec_type_tag::OTHER,
+    match types.get_by_id(type_id).map(|attrs| &attrs.representation) {
+        Some(subrange @ SemanticType::Subrange { .. }) => subrange_iec_type_tag(types, subrange),
+        _ => iec_type_tag::OTHER,
     }
 }
 

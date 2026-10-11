@@ -13,10 +13,8 @@ use ironplc_dsl::textual::{StructuredVariable, SymbolicVariableKind};
 use ironplc_analyzer::semantic_type::{
     ByteSized, SemanticStructField, SemanticType, SlotCountError,
 };
-use ironplc_analyzer::TypeEnvironment;
 use ironplc_container::FieldType;
 use ironplc_container::{ContainerBuilder, SlotIndex, VarIndex};
-use ironplc_dsl::common::TypeName;
 
 use super::compile::{
     CompileContext, OpType, OpWidth, Signedness, VarTypeInfo, DEFAULT_STRING_MAX_LENGTH,
@@ -362,31 +360,16 @@ pub(crate) fn emit_truncation_for_field(emitter: &mut Emitter, field_type: &Sema
     }
 }
 
-/// Allocates data region space for a structure variable and registers metadata.
-///
-/// Called from both the `Structure` and `LateResolvedType` match arms in
-/// `assign_variables`.
-///
-/// A function-block type never reaches here, even though `x : T := (a := 1)`
-/// parses as a structure initializer for every `T`: the parser has no type
-/// declarations in scope, so `xform_resolve_late_bound_type_initializer`
-/// rewrites the ones naming a function block into
-/// `InitialValueAssignmentKind::FunctionBlock` before codegen runs. Reaching
-/// here with a function-block type name therefore means that rewrite did not
-/// happen, and the "Unknown structure type" diagnostic below is the symptom.
+/// Allocates data region space for a variable of the structure type
+/// `struct_type` and registers metadata.
 pub(crate) fn allocate_struct_variable(
     ctx: &mut CompileContext,
     builder: &mut ContainerBuilder,
-    types: &TypeEnvironment,
-    type_name: &TypeName,
+    struct_type: &SemanticType,
     id: &Id,
     index: VarIndex,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
-    let struct_type = types.resolve_struct_type(type_name).ok_or_else(|| {
-        Diagnostic::not_implemented(Label::span(span.clone(), "Unknown structure type"))
-    })?;
-
     let SemanticType::Structure { fields } = struct_type else {
         return Err(Diagnostic::internal_error_at(Label::span(
             span.clone(),

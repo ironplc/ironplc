@@ -30,7 +30,7 @@ use ironplc_dsl::textual::{Expr, ExprType, Function, Operator, ParamAssignmentKi
 use ironplc_dsl::type_id::TypeId;
 
 use super::ImplicitConversions;
-use crate::intermediates::arithmetic_overload::{typed_overload, Overload};
+use crate::intermediates::arithmetic_overload::typed_overload;
 use crate::intermediates::conversion_target::concrete;
 use crate::intermediates::numeric_operation::{
     literal_default_type, operation_width_of, OperationWidth,
@@ -60,10 +60,7 @@ impl ImplicitConversions<'_> {
     pub(super) fn typed_overload_of(&self, op: &Operator, left: &Expr, right: &Expr) -> Option<Id> {
         let left = self.conversions.operand_name(left)?;
         let right = self.conversions.operand_name(right)?;
-        match typed_overload(op, &left, &right)? {
-            Overload::Typed { name, .. } => Some(Id::from(name)),
-            Overload::Unchecked { .. } | Overload::Numeric { .. } => None,
-        }
+        typed_overload(op, &left, &right).map(|typed| Id::from(typed.name))
     }
 
     /// Records the conversion of `in1` and `in2`, the inputs of the typed

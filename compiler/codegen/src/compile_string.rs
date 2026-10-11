@@ -62,7 +62,7 @@ pub(crate) fn compile_string_compare(
     let right_pool = ctx.add_i32_constant(right_offset as i32);
     emitter.emit_load_const_i32(right_pool);
 
-    emitter.emit_builtin(opcode::builtin::CMP_STR);
+    emitter.emit_builtin(opcode::builtin::CMP_STR)?;
 
     let zero_idx = ctx.add_i32_constant(0);
     emitter.emit_load_const_i32(zero_idx);

@@ -158,6 +158,10 @@ An assignment stores its value at the type of its target. The pass records the c
 
 **REQ-IC-analyzer-085** The result of a call to a user-defined function or a method, and a dereference, are converted to the type of a target of another operation width: in `l := big(u)` with `big` returning a `UDINT` the result is converted to `LINT`, in `lr := half(r)` with `half` returning a `REAL` to `LREAL`, and so are `l := k.Big()` and `l := p^` on a `REF_TO UDINT`. The code generator used to store the result unconverted, which sign-extended an unsigned result and read a `REAL`'s bits as an `LREAL` ([#2126](https://github.com/ironplc/ironplc/issues/2126)).
 
+A standard function whose signature fixes its result type -- a type conversion (`INT_TO_REAL` is a `REAL`), a typed time or date function, `DT_TO_DATE` and `DT_TO_TOD`, and a string function (`LEN` is an `INT`) -- converts to its context as a user-defined function does. The pass used to treat it as computing at its context's type, so nothing converted its result: `lr := INT_TO_REAL(i)` on an `LREAL` stored the `REAL`'s bits as an `LREAL`, and `l := DINT_TO_UDINT(d)` on an `LINT` sign-extended the `UDINT`.
+
+**REQ-IC-analyzer-102** The result of a standard function whose signature fixes its type is converted to the type of a target of another width: in `lr := INT_TO_REAL(i)` the `REAL` is converted to `LREAL`, in `l := DINT_TO_UDINT(d)` and `l := LEN(s)` the `UDINT` and the `INT` to `LINT`, and in `ldt := SUB_DT_TIME(dt, t)` and `ld := DT_TO_DATE(dt)` the short date types to their long ones.
+
 **REQ-IC-analyzer-034** An array element or structure field target converts the value to the element's or field's type.
 
 **REQ-IC-analyzer-035** A function's result assignment converts the value to the function's return type, looking the result variable up in the function's scope.
@@ -201,6 +205,8 @@ A field of a structure has its declared type, a subrange field its base type, wh
 **REQ-IC-analyzer-094** An argument of a subrange parameter's base type is accepted, and a wider one is not: `f(i)` and `f(s + 1)` with a parameter of a subrange of `INT` report nothing, and `f(d)` on a `DINT` reports P4026.
 
 **REQ-IC-analyzer-095** A field of a structure has its declared type wherever the structure is, and a subrange field its base type: `h.items[1].a` on an array field of structures with a `DINT` field `a` is a `DINT`, converted to `LINT` in `l := h.items[1].a`, and the subrange field `it.r` of a subrange of `INT` is an `INT`.
+
+**REQ-IC-analyzer-103** A field of a structure or function block has the type it is declared with, as a variable does, whatever kind of type that is: the `STRING[10]` field `h.name` is a `STRING`, the `WSTRING[10]` field `h.wide` a `WSTRING`, the element `h.names[2]` of an `ARRAY[1..2] OF WSTRING[10]` field a `WSTRING`, a field of the enumeration `COLOR` a `COLOR`, and so is a function block output `inst.state` of that enumeration.
 
 ### Loops
 
@@ -288,7 +294,7 @@ Every construct a literal can sit in either passes the type of its context on, c
 
 **REQ-IC-codegen-002** An integer or real literal compiles at the type the analyzer recorded for it, not at a type its context passes down: `l := 5000000000` stores 5000000000, and `l := UDINT#4000000000` stores 4000000000.
 
-A literal codegen builds itself has no recorded type: a member initializer of a function block instance takes the field's type in a user-defined block and is stored as a `DINT` in a standard one. A time, date, string, boolean or bit-string literal names its own type and is compiled for the storage its context gives it.
+A time, date, boolean or bit-string literal names its own type and compiles at it, as a typed numeric literal does. A literal codegen builds itself has no recorded type: a member initializer of a function block instance takes the field's type in a user-defined block, and in a standard one a number is stored as a `DINT` and any other literal at the field's type.
 
 A literal a standard function does not give a type to (`TRUNC`, a typed time function such as `MUL_TIME`) takes its default type, as does a literal argument of a user-defined function whose parameter the argument pass did not give it, before the argument's conversion. The member initializers of a function block instance, which codegen compiles as expressions it builds itself, are not typed by the pass.
 
@@ -303,9 +309,11 @@ comparison's operand type, and does not decide which operand to convert.
 
 An operation on one value -- a negation, `NOT`, a numeric function of one
 input (`ABS`, `SQRT`, ...), `MOVE`, or a shift or rotate, whose count only
-says how far -- has its operand's type, and computes at that type when it is
-numeric, as an arithmetic operation computes at its result's. Its result is
-converted to the type of its context.
+says how far -- has its operand's type, and computes at that type, as an
+arithmetic operation computes at its result's: `NOT` of a `BOOL` at `BOOL`, a
+negation of a `TIME` at `TIME`. Its result is converted to the type of its
+context. One the analyzer gave no type is reported rather than computed at
+its context's.
 
 A function of several inputs of one type (`MAX`, `MIN`, `LIMIT`, `SEL`, `MUX`,
 `EXPT`, `ATAN2`) computes at the type the analyzer recorded for the call, and
@@ -352,6 +360,8 @@ error rather than compiled at the type of its context, which is how a subrange
 operand and a field reached through an array of structures used to compile.
 
 **REQ-IC-codegen-012** An operation on a subrange or on a field reached through an array of structures computes at its own type, as on a variable of the base or field type: `gt := s > l` with `s = 10` on a subrange of `INT` and `l = 4294967297` stores `FALSE`, `l := s * s` with `s = 100000` on a subrange of `DINT` wraps at 32 bits as `DINT * DINT` does, `l := MAX(u, v)` with `u = 4000000000` on a subrange of `UDINT` stores 4000000000, and `l := h.items[1].a * h.items[2].a` on `DINT` fields of 100000 wraps at 32 bits.
+
+**REQ-IC-codegen-017** The result of a standard function whose signature fixes its type keeps its value in a wider target: `lr := INT_TO_REAL(i)` with `i = 3` stores 3.0, `l := DINT_TO_UDINT(d)` with `d = -5` stores 4294967291, and `SUB_DT_TIME` and `DT_TO_DATE` of a date after 2038 stored in an `LDT` and an `LDATE` keep the date.
 
 **REQ-IC-codegen-011** `TRUNC`, `BCD_TO_INT` and `SIZEOF` compute at the integer type the analyzer recorded for the call: `x := TRUNC(r)` with `r = 2.75` and a `REAL` target stores 2.0, `l := TRUNC(lr)` with `lr = 5000000000.5` stores 5000000000, and `SIZEOF` and `BCD_TO_INT` assigned to an `LINT` store their value at 64 bits.
 

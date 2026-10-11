@@ -18,6 +18,8 @@
 //! on their own type. The VM is generic over the hook type, so each hook
 //! gets its own monomorphized dispatch loop.
 
+use core::convert::Infallible;
+
 use ironplc_container::FunctionId;
 
 use crate::debug::PauseReason;
@@ -25,16 +27,17 @@ use crate::debug::PauseReason;
 /// What the VM should do after the hook has inspected the upcoming
 /// instruction.
 ///
-/// Returned from [`DebugHook::before_instruction`] on every opcode.
+/// Returned from [`DebugHook::before_instruction`] on every opcode. `P` is
+/// the hook's [`DebugHook::Pause`] type: why it stopped the VM.
 /// [`NoopDebugHook`] always returns [`HookAction::Continue`] from an
 /// `#[inline(always)]` body so the monomorphised hot path stays branch-free.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum HookAction {
+pub enum HookAction<P = PauseReason> {
     /// Execute the instruction normally.
     Continue,
     /// Stop *before* executing the instruction at `(function_id, pc)`.
     /// The frame stack is left intact so execution can resume from here.
-    Pause(PauseReason),
+    Pause(P),
 }
 
 /// A trait invoked by the VM before executing each instruction and around
@@ -46,6 +49,15 @@ pub enum HookAction {
 /// state through side channels; they only see the function id, program
 /// counter, and opcode byte.
 pub trait DebugHook {
+    /// Why this hook stops the VM, carried by [`HookAction::Pause`].
+    ///
+    /// A hook that never pauses uses [`Infallible`], as [`NoopDebugHook`]
+    /// does. The dispatch loop's paused outcome then has no value, so a
+    /// driver of that hook matches it away with `match never {}` instead of
+    /// handling a pause the type system has ruled out. A hook that pauses
+    /// uses [`PauseReason`], which the debug driver reports.
+    type Pause;
+
     /// Called immediately before the instruction at `pc` (with opcode
     /// byte `op`) is executed inside the function identified by
     /// `function_id`.
@@ -60,7 +72,12 @@ pub trait DebugHook {
     /// Returning [`HookAction::Pause`] stops the VM *before* the
     /// instruction executes; `pc` is written back to the top frame so
     /// the same instruction re-executes when the VM is resumed.
-    fn before_instruction(&mut self, function_id: FunctionId, pc: usize, op: u8) -> HookAction;
+    fn before_instruction(
+        &mut self,
+        function_id: FunctionId,
+        pc: usize,
+        op: u8,
+    ) -> HookAction<Self::Pause>;
 
     /// Called after the hook approves a `CALL` / `FB_CALL` instruction and
     /// just before the callee frame is pushed. Default: no-op.
@@ -92,12 +109,22 @@ pub trait DebugHook {
 
 /// A no-op [`DebugHook`] used by default. Zero-sized; the empty
 /// `before_instruction` is always inlined and compiles to nothing.
+///
+/// Its [`Pause`](DebugHook::Pause) type is [`Infallible`]: it cannot pause,
+/// and the type says so.
 #[derive(Default, Clone, Copy, Debug)]
 pub struct NoopDebugHook;
 
 impl DebugHook for NoopDebugHook {
+    type Pause = Infallible;
+
     #[inline(always)]
-    fn before_instruction(&mut self, _function_id: FunctionId, _pc: usize, _op: u8) -> HookAction {
+    fn before_instruction(
+        &mut self,
+        _function_id: FunctionId,
+        _pc: usize,
+        _op: u8,
+    ) -> HookAction<Infallible> {
         HookAction::Continue
     }
 }
@@ -126,6 +153,8 @@ mod tests {
             events: Vec<(FunctionId, usize, u8)>,
         }
         impl DebugHook for RecordingHook {
+            type Pause = PauseReason;
+
             fn before_instruction(
                 &mut self,
                 function_id: FunctionId,
@@ -147,9 +176,11 @@ mod tests {
 
     #[test]
     fn custom_debug_hook_when_pausing_then_returns_pause_action() {
-        use crate::debug::{BreakpointId, PauseReason};
+        use crate::debug::BreakpointId;
         struct PausingHook;
         impl DebugHook for PausingHook {
+            type Pause = PauseReason;
+
             fn before_instruction(&mut self, _f: FunctionId, _pc: usize, _op: u8) -> HookAction {
                 HookAction::Pause(PauseReason::Breakpoint(BreakpointId(7)))
             }

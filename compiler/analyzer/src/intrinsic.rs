@@ -101,6 +101,32 @@ impl Intrinsic {
         }
     }
 
+    /// Returns `true` for an operation whose result has a type its signature
+    /// fixes, whatever its inputs and its context: a type conversion
+    /// (`INT_TO_REAL` is a `REAL`), a typed time or date function
+    /// (`SUB_DT_TIME` is a `DATE_AND_TIME`), `DT_TO_DATE` and `DT_TO_TOD`, and
+    /// a string function (`LEN` is an `INT`). Its result is converted to the
+    /// type of its context, as a user-defined function's is: `lr :=
+    /// INT_TO_REAL(i)` on an `LREAL` widens the `REAL`.
+    pub fn result_has_fixed_type(&self) -> bool {
+        match self {
+            Intrinsic::String(_)
+            | Intrinsic::Conversion { .. }
+            | Intrinsic::Time { .. }
+            | Intrinsic::DtToDate
+            | Intrinsic::DtToTod => true,
+            Intrinsic::Operator(_)
+            | Intrinsic::Numeric(_)
+            | Intrinsic::BitShift(_)
+            | Intrinsic::Mux
+            | Intrinsic::Move
+            | Intrinsic::Trunc
+            | Intrinsic::BcdToInt
+            | Intrinsic::IntToBcd
+            | Intrinsic::Sizeof => false,
+        }
+    }
+
     /// Returns `true` for an operation whose result is an integer of the type
     /// its context stores it at, as an untyped integer literal is (ADR-0028):
     /// `TRUNC`, `BCD_TO_INT` and `SIZEOF`, whose signatures return `ANY_INT`
