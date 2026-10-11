@@ -214,13 +214,17 @@ A `FOR` loop stores its initial value in its control variable and compares and s
 
 **REQ-IC-analyzer-079** The initial value, final value and step of a `FOR` loop are converted to the type of its control variable as an assigned value is: in `FOR l := d TO e` on an `LINT` and two `DINT`s both bounds are converted to `LINT`.
 
-### Subscripts and shift counts
+### Subscripts, shift counts and string positions
 
 An array subscript is compiled at `DINT`, and the count of a shift or rotate at `LINT` when the shifted value is operated at 64 bits and at `DINT` otherwise, whatever their own types: the literals of both already take those types (see Literals). The pass converts a subscript or count of another width to that type as an assigned value is converted. A 64-bit subscript, or a 64-bit count of a 32-bit value, is narrowed: the code generator narrowed it before the conversion was recorded, and recording it makes the narrowing visible. Whether a subscript should index at 64 bits, and whether a count beyond the value's width should shift every bit out, are separate decisions.
 
 **REQ-IC-analyzer-100** A subscript whose width differs from `DINT`'s is converted to `DINT`, in a value and in an assignment target: the `LINT` of `a[l]` and the `LINT` sum of `a[d + l]` are converted to `DINT`, and the `SINT` of `a[s]` is not converted.
 
 **REQ-IC-analyzer-101** A shift or rotate count whose width differs from the count's type is converted to it: the `LINT` count of `SHL(dw, l)` on a `DWORD` is converted to `DINT`, the `DINT` count of `SHL(lw, d)` and `ROR(lw, d)` on an `LWORD` to `LINT`, and a `SINT` count of a `DWORD` and a `ULINT` count of an `LWORD` are not converted.
+
+The position or length of a string function -- the `L` of `LEFT` and `RIGHT`, the `L` and `P` of `MID`, `DELETE` and `REPLACE`, and the `P` of `INSERT` -- is compiled at `DINT` whatever its own type, as a subscript is, and its literals already take that type. The pass converts one of another width to `DINT` the same way, so a 64-bit position or length is narrowed as the code generator narrowed it.
+
+**REQ-IC-analyzer-104** A string function's position or length whose width differs from `DINT`'s is converted to `DINT`: the `LINT` of `LEFT(st, l)`, the `LINT` sum of `RIGHT(st, d + l)`, the `ULINT` length of `DELETE(st, ul, l)` and the `LINT` position of `INSERT(st, 'ab', l)` are converted to `DINT`, and the `SINT` of `LEFT(st, s)` and the `DINT` position of `MID(st, l, d)` are not converted.
 
 ### Arguments
 
@@ -376,6 +380,10 @@ A typed time or date function compiles each operand at the type the analyzer rec
 An array subscript and a shift or rotate count compile at the type the analyzer recorded for them, which is `DINT`, or `LINT` for the count of a value operated at 64 bits. One of another width is an internal error, not narrowed or widened as the code generator used to.
 
 **REQ-IC-codegen-015** A subscript or shift count whose conversion the analyzer did not record is an internal error: with the recorded conversions removed, `a[l]`, `a[d + l]`, `SHL(dw, l)` and `SHL(lw, d)` report P9998, and `a[d]` and `SHL(dw, d)` compile.
+
+A string function's position or length compiles at the type the analyzer recorded for it, which is `DINT`. One of another width is an internal error, not narrowed as the code generator used to.
+
+**REQ-IC-codegen-018** A string position or length whose conversion the analyzer did not record is an internal error: with the recorded conversions removed, `LEFT(st, l)`, `MID(st, d, l)`, `INSERT(st, 'ab', l)` and `REPLACE(st, 'ab', l, d)` report P9998, and `LEFT(st, d)` compiles.
 
 **REQ-IC-codegen-013** A typed time or date operation whose operand conversion the analyzer did not record is an internal error: with the recorded conversions removed, `lt + t`, `SUB_LDATE_LDATE(lda, da)`, `lt * d`, `MUL_LTIME(lt, r)` and `t * l` report P9998, and `lt + lt` compiles.
 

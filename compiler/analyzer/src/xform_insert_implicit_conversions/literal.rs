@@ -248,13 +248,17 @@ impl ImplicitConversions<'_> {
                         }
                     }
                 }
-                // A position or a length is a `DINT`; a string is compiled in
-                // its own encoding.
+                // A position or a length is a `DINT`, and one of another
+                // width is converted to it, as it is narrowed or widened to
+                // it; a string is compiled in its own encoding.
                 Intrinsic::String(_) => inputs.into_iter().for_each(|arg| {
                     if self.conversions.is_string(arg) {
                         self.type_own(arg);
                     } else {
                         self.type_literals(arg, dint);
+                        if let Some(dint) = dint {
+                            self.record_conversion_to(arg, dint);
+                        }
                     }
                 }),
                 Intrinsic::Conversion { source, .. } => {
