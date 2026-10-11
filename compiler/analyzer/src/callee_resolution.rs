@@ -9,16 +9,23 @@
 //! to keep private copies of them; this module is the one copy, so they
 //! cannot drift.
 //!
-//! Argument-to-parameter binding for a resolved callee lives beside the
-//! parameter-assignment checks in `call_assignment_check`.
+//! The instance a call names is found through the symbol environment, as any
+//! other variable is ([`instance_type`]), and the parameters a callee
+//! declares are listed once ([`CallParameters`]). Argument-to-parameter
+//! binding for a resolved callee lives beside the parameter-assignment
+//! checks in `call_assignment_check`.
 
 use std::collections::{HashMap, HashSet};
 
 use ironplc_dsl::common::{
-    FunctionBlockDeclaration, InitialValueAssignmentKind, Library, LibraryElementKind,
-    MethodDeclaration, TypeName, VarDecl,
+    FunctionBlockDeclaration, HasVariables, Library, LibraryElementKind, MethodDeclaration,
+    TypeName, VariableType,
 };
 use ironplc_dsl::core::Id;
+
+use crate::semantic_type::{FunctionBlockVarType, SemanticStructField};
+use crate::symbol_environment::{Resolution, ScopeKind, SymbolEnvironment};
+use crate::type_environment::TypeEnvironment;
 
 /// The function blocks a library declares, by name.
 pub(crate) struct FunctionBlocks<'a> {
@@ -102,46 +109,138 @@ impl<'a> FunctionBlocks<'a> {
     }
 }
 
-/// The function-block instances declared in the program organization unit
-/// being walked, by variable name.
+/// The function block type of the variable `instance`, as a body in `scope`
+/// names it: the type its declaration resolved to, user-defined or standard.
 ///
-/// Instances are declared per unit, so a walk records each declaration as
-/// it meets it and calls [`InstanceTypes::clear`] when it leaves the unit,
-/// exactly as the rules that own a walk have always done.
-#[derive(Default)]
-pub(crate) struct InstanceTypes {
-    var_to_fb: HashMap<Id, TypeName>,
+/// `None` when `instance` names no variable the scope can use, or a variable
+/// that is not a function block instance. The variable is the one
+/// [`SymbolEnvironment::resolve_variable`] finds, so a local hides a field of
+/// the same name, a method sees its block's instances, and a block sees the
+/// instances it inherits through `EXTENDS`.
+pub(crate) fn instance_type(
+    instance: &Id,
+    scope: &ScopeKind,
+    symbols: &SymbolEnvironment,
+    types: &TypeEnvironment,
+) -> Option<TypeName> {
+    let Resolution::Variable { info, .. } = symbols.resolve_variable(instance, scope) else {
+        return None;
+    };
+    let type_id = info.type_id?;
+    if !types.get_by_id(type_id)?.representation.is_function_block() {
+        return None;
+    }
+    types.name_of(type_id).cloned()
 }
 
-impl InstanceTypes {
-    /// Records `decl` when it declares a function-block instance; any other
-    /// declaration is ignored. Type resolution has already turned every
-    /// instance declaration, member-initialized or not, into a
-    /// function-block initializer, so the initializer kind is the whole test.
-    pub(crate) fn declare(&mut self, decl: &VarDecl) {
-        if let InitialValueAssignmentKind::FunctionBlock(init) = &decl.initializer {
-            if let Some(name) = decl.identifier.symbolic_id() {
-                self.var_to_fb.insert(name.clone(), init.type_name.clone());
-            }
-        }
+/// Which kind of parameter a call passes something to or reads from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ParameterSection {
+    /// `VAR_INPUT`
+    Input,
+    /// `VAR_IN_OUT`
+    InOut,
+    /// `VAR_OUTPUT`
+    Output,
+}
+
+/// One parameter of a function block or method, as a call sees it.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct CallParameter {
+    /// The name, as the callee declares it.
+    pub(crate) name: Id,
+    pub(crate) section: ParameterSection,
+}
+
+/// The parameters of a function block or method, in declaration order.
+///
+/// Every analysis that binds a call's arguments asks this list which
+/// parameters there are, so they agree on what counts as an input and on the
+/// order positional arguments take.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct CallParameters {
+    parameters: Vec<CallParameter>,
+}
+
+impl CallParameters {
+    /// The parameters a user-defined function block or method declares.
+    pub(crate) fn of_declaration(owner: &dyn HasVariables) -> Self {
+        let parameters = owner
+            .variables()
+            .iter()
+            .filter_map(|decl| {
+                let section = match decl.var_type {
+                    VariableType::Input => ParameterSection::Input,
+                    VariableType::InOut => ParameterSection::InOut,
+                    VariableType::Output => ParameterSection::Output,
+                    _ => return None,
+                };
+                Some(CallParameter {
+                    name: decl.identifier.symbolic_id()?.clone(),
+                    section,
+                })
+            })
+            .collect();
+        CallParameters { parameters }
     }
 
-    /// The declared function-block type of the variable `instance`.
-    pub(crate) fn type_of(&self, instance: &Id) -> Option<&TypeName> {
-        self.var_to_fb.get(instance)
+    /// The parameters of a standard function block, from the fields of its
+    /// type. A standard block's type lists every field it has, which the
+    /// type of a user-defined block does not.
+    pub(crate) fn of_standard_block(fields: &[SemanticStructField]) -> Self {
+        let parameters = fields
+            .iter()
+            .filter_map(|field| {
+                let section = match field.var_type? {
+                    FunctionBlockVarType::Input => ParameterSection::Input,
+                    FunctionBlockVarType::InOut => ParameterSection::InOut,
+                    FunctionBlockVarType::Output => ParameterSection::Output,
+                    FunctionBlockVarType::Internal => return None,
+                };
+                Some(CallParameter {
+                    name: field.name.clone(),
+                    section,
+                })
+            })
+            .collect();
+        CallParameters { parameters }
     }
 
-    /// Forgets every instance, on leaving the unit that declared them.
-    pub(crate) fn clear(&mut self) {
-        self.var_to_fb.clear();
+    /// The `VAR_INPUT` parameters, in declaration order: the parameters a
+    /// positional argument of a function block or method call binds to.
+    pub(crate) fn inputs(&self) -> impl Iterator<Item = &CallParameter> {
+        self.in_section(ParameterSection::Input)
+    }
+
+    /// The parameter a named input `name := ...` binds to: a `VAR_INPUT` or
+    /// `VAR_IN_OUT` of that name.
+    pub(crate) fn named_input(&self, name: &Id) -> Option<&CallParameter> {
+        self.parameters.iter().find(|parameter| {
+            parameter.name == *name && parameter.section != ParameterSection::Output
+        })
+    }
+
+    /// The parameter an output assignment `name => ...` reads: a
+    /// `VAR_OUTPUT` of that name. A `VAR_IN_OUT` is assigned only through
+    /// the input syntax, so it is not one.
+    pub(crate) fn output(&self, name: &Id) -> Option<&CallParameter> {
+        self.in_section(ParameterSection::Output)
+            .find(|parameter| parameter.name == *name)
+    }
+
+    fn in_section(&self, section: ParameterSection) -> impl Iterator<Item = &CallParameter> {
+        self.parameters
+            .iter()
+            .filter(move |parameter| parameter.section == section)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::semantic_type::SemanticType;
+    use crate::symbol_environment::ScopePath;
     use crate::test_helpers::parse_and_resolve_types_with_options;
-    use ironplc_dsl::common::ProgramDeclaration;
     use ironplc_dsl::core::FileId;
     use ironplc_parser::{options::CompilerOptions, parse_program};
 
@@ -257,51 +356,184 @@ END_FUNCTION_BLOCK",
             .is_none());
     }
 
-    fn program(lib: &Library) -> &ProgramDeclaration {
-        lib.elements
-            .iter()
-            .find_map(|element| match element {
-                LibraryElementKind::ProgramDeclaration(program) => Some(program),
-                _ => None,
-            })
-            .unwrap()
+    /// The scope a body at `path` is in: a unit, or a method of it.
+    fn scope(path: &[&str]) -> ScopeKind {
+        ScopeKind::Named(ScopePath::new(
+            path.iter().map(|name| Id::from(name)).collect(),
+        ))
     }
 
-    #[test]
-    fn instance_types_when_instance_declared_then_type_of_finds_it() {
-        // An instance declaration is late-bound until type resolution, so
-        // the declarations must be resolved before they can be recorded.
-        let (lib, _) = parse_and_resolve_types_with_options(
-            "
+    /// The type of `instance` as a body in `path` names it, in a library
+    /// resolved from `program`.
+    fn instance_type_in(program: &str, path: &[&str], instance: &str) -> Option<TypeName> {
+        let (_, context) = parse_and_resolve_types_with_options(program, &oop_options());
+        instance_type(
+            &Id::from(instance),
+            &scope(path),
+            context.symbols(),
+            context.types(),
+        )
+    }
+
+    const INSTANCES: &str = "
 FUNCTION_BLOCK FB_Base
 VAR
     x : INT;
+    inherited : TON;
 END_VAR
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+METHOD Run
+VAR
+    local : FB_Base;
+END_VAR
+END_METHOD
 END_FUNCTION_BLOCK
 PROGRAM main
 VAR
     inst : FB_Base;
     with_init : FB_Base := (x := 1);
+    timer : TON;
     count : INT;
 END_VAR
-END_PROGRAM",
-            &oop_options(),
-        );
-        let mut instances = InstanceTypes::default();
-        for decl in &program(&lib).variables {
-            instances.declare(decl);
-        }
-        assert_eq!(
-            Some(&TypeName::from("FB_Base")),
-            instances.type_of(&Id::from("inst"))
-        );
-        assert_eq!(
-            Some(&TypeName::from("FB_Base")),
-            instances.type_of(&Id::from("with_init"))
-        );
-        assert_eq!(None, instances.type_of(&Id::from("count")));
+END_PROGRAM";
 
-        instances.clear();
-        assert_eq!(None, instances.type_of(&Id::from("inst")));
+    #[test]
+    fn instance_type_when_user_block_instance_then_its_block() {
+        assert_eq!(
+            Some(TypeName::from("FB_Base")),
+            instance_type_in(INSTANCES, &["main"], "inst")
+        );
+    }
+
+    #[test]
+    fn instance_type_when_instance_has_member_initializer_then_its_block() {
+        assert_eq!(
+            Some(TypeName::from("FB_Base")),
+            instance_type_in(INSTANCES, &["main"], "with_init")
+        );
+    }
+
+    #[test]
+    fn instance_type_when_standard_block_instance_then_its_block() {
+        assert_eq!(
+            Some(TypeName::from("TON")),
+            instance_type_in(INSTANCES, &["main"], "timer")
+        );
+    }
+
+    #[test]
+    fn instance_type_when_not_an_instance_then_none() {
+        assert_eq!(None, instance_type_in(INSTANCES, &["main"], "count"));
+    }
+
+    #[test]
+    fn instance_type_when_undeclared_then_none() {
+        assert_eq!(None, instance_type_in(INSTANCES, &["main"], "missing"));
+    }
+
+    #[test]
+    fn instance_type_when_declared_in_another_unit_then_none() {
+        assert_eq!(None, instance_type_in(INSTANCES, &["FB_Base"], "inst"));
+    }
+
+    #[test]
+    fn instance_type_when_method_local_then_found_in_that_method_only() {
+        assert_eq!(
+            Some(TypeName::from("FB_Base")),
+            instance_type_in(INSTANCES, &["FB_Derived", "Run"], "local")
+        );
+        assert_eq!(None, instance_type_in(INSTANCES, &["FB_Derived"], "local"));
+    }
+
+    #[test]
+    fn instance_type_when_inherited_through_extends_then_its_block() {
+        assert_eq!(
+            Some(TypeName::from("TON")),
+            instance_type_in(INSTANCES, &["FB_Derived", "Run"], "inherited")
+        );
+    }
+
+    /// The function block `name` that `lib` declares.
+    fn block<'a>(lib: &'a Library, name: &str) -> &'a FunctionBlockDeclaration {
+        FunctionBlocks::from_library(lib)
+            .get(&TypeName::from(name))
+            .unwrap()
+    }
+
+    const PARAMETERS: &str = "
+FUNCTION_BLOCK FB_Params
+VAR_OUTPUT
+    done : BOOL;
+END_VAR
+VAR_INPUT
+    first : INT;
+END_VAR
+VAR_IN_OUT
+    total : INT;
+END_VAR
+VAR
+    hidden : INT;
+END_VAR
+VAR_INPUT
+    second : INT;
+END_VAR
+END_FUNCTION_BLOCK";
+
+    fn names<'a>(parameters: impl Iterator<Item = &'a CallParameter>) -> Vec<String> {
+        parameters.map(|p| p.name.to_string()).collect()
+    }
+
+    #[test]
+    fn call_parameters_when_declaration_then_inputs_in_declaration_order() {
+        let lib = parse(PARAMETERS);
+        let parameters = CallParameters::of_declaration(block(&lib, "FB_Params"));
+        assert_eq!(vec!["first", "second"], names(parameters.inputs()));
+    }
+
+    #[test]
+    fn call_parameters_when_named_input_then_finds_input_and_in_out_only() {
+        let lib = parse(PARAMETERS);
+        let parameters = CallParameters::of_declaration(block(&lib, "FB_Params"));
+        assert_eq!(
+            Some(ParameterSection::Input),
+            parameters
+                .named_input(&Id::from("FIRST"))
+                .map(|p| p.section)
+        );
+        assert_eq!(
+            Some(ParameterSection::InOut),
+            parameters
+                .named_input(&Id::from("total"))
+                .map(|p| p.section)
+        );
+        assert!(parameters.named_input(&Id::from("done")).is_none());
+        assert!(parameters.named_input(&Id::from("hidden")).is_none());
+    }
+
+    #[test]
+    fn call_parameters_when_output_then_finds_output_only() {
+        let lib = parse(PARAMETERS);
+        let parameters = CallParameters::of_declaration(block(&lib, "FB_Params"));
+        assert!(parameters.output(&Id::from("done")).is_some());
+        assert!(parameters.output(&Id::from("total")).is_none());
+        assert!(parameters.output(&Id::from("first")).is_none());
+    }
+
+    #[test]
+    fn call_parameters_when_standard_block_then_inputs_and_outputs_of_its_type() {
+        let (_, context) = parse_and_resolve_types_with_options(PARAMETERS, &oop_options());
+        let SemanticType::FunctionBlock { fields, .. } = &context
+            .types()
+            .get(&TypeName::from("CTU"))
+            .unwrap()
+            .representation
+        else {
+            panic!("CTU is a function block");
+        };
+        let parameters = CallParameters::of_standard_block(fields);
+        assert_eq!(vec!["CU", "R", "PV"], names(parameters.inputs()));
+        assert!(parameters.output(&Id::from("CV")).is_some());
+        assert!(parameters.named_input(&Id::from("CV")).is_none());
     }
 }

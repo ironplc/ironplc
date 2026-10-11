@@ -93,13 +93,6 @@ impl ScopeTracker {
         path.push(Self::name_of(node));
         ScopeKind::Named(ScopePath::new(path))
     }
-
-    /// The outermost declaration the traversal is inside, such as the
-    /// function block a method belongs to, or `None` outside every
-    /// declaration.
-    pub(crate) fn unit(&self) -> Option<&Id> {
-        self.path.first()
-    }
 }
 
 /// Represents the kind of scope a symbol belongs to

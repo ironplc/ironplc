@@ -35,6 +35,7 @@ use ironplc_dsl::{
     common::*,
     core::Located,
     diagnostic::{Diagnostic, Label},
+    scope::ScopeNode,
     textual::*,
     visitor::Visitor,
 };
@@ -42,38 +43,41 @@ use ironplc_problems::Problem;
 use std::convert::Infallible;
 
 use crate::{
-    callee_resolution::{FunctionBlocks, InstanceTypes},
+    callee_resolution::{instance_type, FunctionBlocks},
     intermediates::stdlib_function_block::is_stdlib_function_block,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    symbol_environment::ScopeTracker,
 };
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
     lib: &Library,
-    _context: &SemanticContext,
+    context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
     let function_blocks = FunctionBlocks::from_library(lib);
 
     // Walk the library to find all references to function blocks
-    run_rule(RuleFunctionBlockUse::new(&function_blocks), lib)
+    run_rule(RuleFunctionBlockUse::new(&function_blocks, context), lib)
 }
 
 struct RuleFunctionBlockUse<'a> {
     function_blocks: &'a FunctionBlocks<'a>,
+    context: &'a SemanticContext,
 
-    /// The instances declared in the unit being walked.
-    instances: InstanceTypes,
+    /// The scope the walk is in, which an instance is looked up from.
+    scope: ScopeTracker,
 
     diagnostics: Vec<Diagnostic>,
 }
 impl<'a> RuleFunctionBlockUse<'a> {
-    fn new(function_blocks: &'a FunctionBlocks<'a>) -> Self {
+    fn new(function_blocks: &'a FunctionBlocks<'a>, context: &'a SemanticContext) -> Self {
         Self {
             function_blocks,
-            instances: InstanceTypes::default(),
+            context,
+            scope: ScopeTracker::default(),
             diagnostics: Vec::new(),
         }
     }
@@ -114,50 +118,24 @@ impl DiagnosticVisitor for RuleFunctionBlockUse<'_> {
 impl Visitor<Infallible> for RuleFunctionBlockUse<'_> {
     type Value = ();
 
-    fn visit_function_block_declaration(
-        &mut self,
-        node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, Infallible> {
-        let res = node.recurse_visit(self);
-
-        // Remove all items from var init decl since we have left this context
-        self.instances.clear();
-        res
-    }
-
-    fn visit_function_declaration(
-        &mut self,
-        node: &FunctionDeclaration,
-    ) -> Result<Self::Value, Infallible> {
-        let res = node.recurse_visit(self);
-
-        // Remove all items from var init decl since we have left this context
-        self.instances.clear();
-        res
-    }
-
-    fn visit_program_declaration(
-        &mut self,
-        node: &ProgramDeclaration,
-    ) -> Result<Self::Value, Infallible> {
-        let res = node.recurse_visit(self);
-
-        // Remove all items from var init decl since we have left this context
-        self.instances.clear();
-        res
-    }
-
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
-        self.instances.declare(node);
+    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
+        self.scope.enter(&node);
         Ok(())
+    }
+
+    fn exit_scope(&mut self) {
+        self.scope.exit();
     }
 
     fn visit_fb_call(&mut self, fb_call: &FbCall) -> Result<Self::Value, Infallible> {
         // Check if function block is defined because you cannot
         // call a function block that doesn't exist
-        // Cloned so that the borrow of `instances` ends here: the arms below
-        // push onto `self.diagnostics`, which borrows `self` mutably.
-        let function_block_name = self.instances.type_of(&fb_call.var_name).cloned();
+        let function_block_name = instance_type(
+            &fb_call.var_name,
+            &self.scope.current(),
+            self.context.symbols(),
+            self.context.types(),
+        );
         let Some(function_block_name) = function_block_name else {
             self.diagnostics.push(Self::not_in_scope(fb_call));
             return Ok(());

@@ -693,18 +693,16 @@ fn scope_tracker_when_method_entered_then_path_through_block() {
         tracker.current(),
         ScopeKind::Named(ScopePath::new(vec![Id::from("FB_Axis"), Id::from("Start")]))
     );
-    assert_eq!(tracker.unit(), Some(&Id::from("FB_Axis")));
 }
 
 #[test]
-fn scope_tracker_when_exited_then_unit_none() {
+fn scope_tracker_when_exited_then_global() {
     let block = function_block_decl("FB_Axis");
     let mut tracker = ScopeTracker::default();
 
     tracker.enter(&ScopeNode::FunctionBlock(&block));
     tracker.exit();
 
-    assert_eq!(tracker.unit(), None);
     assert_eq!(tracker.current(), ScopeKind::Global);
 }
 
