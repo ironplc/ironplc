@@ -65,6 +65,20 @@ PROGRAM main
 END_PROGRAM
 ";
 
+// PT wired to a variable, so a test can set and change the preset.
+const TON_PRESET: &str = "
+PROGRAM main
+  VAR
+    timer : TON;
+    enable : BOOL;
+    preset : TIME := T#5s;
+    result : BOOL;
+    elapsed : TIME;
+  END_VAR
+  timer(IN := enable, PT := preset, Q => result, ET => elapsed);
+END_PROGRAM
+";
+
 const TON_TWO: &str = "
 PROGRAM main
   VAR
@@ -295,6 +309,40 @@ END_PROGRAM
 // An invocation argument overrides the declaration's member initializer.
 #[case::member_initializer_overridden_by_invocation(TON_MEMBER_INIT_PT_OVERRIDDEN, &[
     run(0), expect("result", 0), run(2_000_000), expect("result", 1),
+])]
+// Once PT has elapsed, ET stays at PT and Q stays TRUE for as long as IN
+// does. The timer starts at the time of the scan IN rose in, not at zero.
+#[case::et_clamps_at_pt_and_q_holds(TON_ENABLE, &[
+    write("enable", 1), run(1_000_000), expect("result", 0), expect("elapsed", Duration::ZERO),
+    run(3_000_000), expect("result", 0), expect("elapsed", Duration::seconds(2)),
+    run(6_000_000), expect("result", 1), expect("elapsed", Duration::seconds(5)),
+    run(9_000_000), expect("result", 1), expect("elapsed", Duration::seconds(5)),
+    run(20_000_000), expect("result", 1), expect("elapsed", Duration::seconds(5)),
+])]
+// With PT zero, Q is FALSE in the scan IN rises in and TRUE in the next,
+// even one at the same time.
+#[case::zero_preset_reached_one_scan_after_edge(TON_PRESET, &[
+    write("enable", 1), write("preset", Duration::ZERO),
+    run(0), expect("result", 0),
+    run(0), expect("result", 1), expect("elapsed", Duration::ZERO),
+])]
+// Elapsed time is measured from the start in microseconds, then cut to whole
+// milliseconds: 999 us short of a millisecond counts for nothing.
+#[case::elapsed_cut_to_whole_milliseconds(TON_PRESET, &[
+    write("enable", 1), write("preset", Duration::milliseconds(2)),
+    run(999), expect("elapsed", Duration::ZERO),
+    run(1_998), expect("elapsed", Duration::ZERO),
+    run(1_999), expect("elapsed", Duration::milliseconds(1)), expect("result", 0),
+    run(2_998), expect("elapsed", Duration::milliseconds(1)), expect("result", 0),
+    run(2_999), expect("elapsed", Duration::milliseconds(2)), expect("result", 1),
+])]
+// PT is read on every call: lowering it below the time already elapsed ends
+// the delay at once, with ET at the new PT.
+#[case::preset_lowered_while_timing(TON_PRESET, &[
+    write("enable", 1), run(0),
+    run(3_000_000), expect("result", 0), expect("elapsed", Duration::seconds(3)),
+    write("preset", Duration::seconds(2)),
+    run(4_000_000), expect("result", 1), expect("elapsed", Duration::seconds(2)),
 ])]
 fn end_to_end_fb_ton(#[case] source: &str, #[case] steps: &[FbStep]) {
     drive_fb(source, &CompilerOptions::default(), steps);
