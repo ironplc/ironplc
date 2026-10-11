@@ -568,20 +568,15 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
             stack.push(Slot::from_i64(int_to_bcd_u64(a) as i64))?;
             Ok(())
         }
-        // MUX (multiplexer) for all type widths
-        id if opcode::builtin::is_mux(id) => {
-            let n = opcode::builtin::mux_info(id).unwrap() as usize;
-            if id >= opcode::builtin::MUX_F64_BASE {
-                dispatch_mux_f64(n, stack)
-            } else if id >= opcode::builtin::MUX_F32_BASE {
-                dispatch_mux_f32(n, stack)
-            } else if id >= opcode::builtin::MUX_I64_BASE {
-                dispatch_mux_i64(n, stack)
-            } else {
-                dispatch_mux_i32(n, stack)
-            }
-        }
-        _ => Err(Trap::InvalidBuiltinFunction(FunctionId::new(func_id))),
+        // MUX (multiplexer) for all type widths. Its IDs are a range per
+        // type, so they cannot be match arms: `mux_info` recognises them.
+        id => match opcode::builtin::mux_info(id) {
+            Some(n) if id >= opcode::builtin::MUX_F64_BASE => dispatch_mux_f64(n as usize, stack),
+            Some(n) if id >= opcode::builtin::MUX_F32_BASE => dispatch_mux_f32(n as usize, stack),
+            Some(n) if id >= opcode::builtin::MUX_I64_BASE => dispatch_mux_i64(n as usize, stack),
+            Some(n) => dispatch_mux_i32(n as usize, stack),
+            None => Err(Trap::InvalidBuiltinFunction(FunctionId::new(func_id))),
+        },
     }
 }
 
@@ -788,5 +783,39 @@ fn float_clamp_f64(val: f64, mn: f64, mx: f64) -> f64 {
         mx
     } else {
         at_least_mn
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dispatch_when_mux_id_then_selects_input_k() {
+        let mut backing = [Slot::from_i32(0); 4];
+        let mut stack = OperandStack::new(&mut backing);
+        // K = 1, IN0 = 10, IN1 = 20.
+        stack.push(Slot::from_i32(1)).unwrap();
+        stack.push(Slot::from_i32(10)).unwrap();
+        stack.push(Slot::from_i32(20)).unwrap();
+
+        dispatch(opcode::builtin::MUX_I32_BASE + 2, &mut stack).unwrap();
+
+        assert_eq!(stack.pop().unwrap().as_i32(), 20);
+        assert_eq!(stack.len(), 0);
+    }
+
+    #[test]
+    fn dispatch_when_mux_id_below_two_inputs_then_invalid_builtin_function() {
+        let mut backing = [Slot::from_i32(0); 4];
+        let mut stack = OperandStack::new(&mut backing);
+        let id = opcode::builtin::MUX_I32_BASE + 1;
+
+        let result = dispatch(id, &mut stack);
+
+        assert_eq!(
+            result,
+            Err(Trap::InvalidBuiltinFunction(FunctionId::new(id)))
+        );
     }
 }

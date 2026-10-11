@@ -32,6 +32,7 @@ mod intrinsic;
 mod result;
 mod rule_abstract_not_instantiated;
 mod rule_array_index_range;
+mod rule_array_initializer_length;
 mod rule_assignment_aggregate_type_compat;
 mod rule_bit_and_partial_access_range;
 mod rule_case_bit_string_label;
@@ -108,6 +109,7 @@ mod xform_resolve_adr;
 mod xform_resolve_constant_expressions;
 mod xform_resolve_decl_types;
 mod xform_resolve_expr_types;
+pub mod xform_resolve_initial_values;
 mod xform_resolve_late_bound_expr_kind;
 mod xform_resolve_late_bound_type_initializer;
 mod xform_resolve_symbol_and_function_environment;
@@ -127,6 +129,7 @@ pub use function_environment::{
 };
 pub use intermediates::arithmetic_overload::{
     resolve_arithmetic_fold, resolve_arithmetic_overload, typed_overload, FoldFailure, Overload,
+    TypedOverload,
 };
 pub use intermediates::enumeration::resolve_ordinal_values;
 pub use intermediates::operator_function_form::FormOf;

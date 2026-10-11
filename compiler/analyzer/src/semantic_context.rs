@@ -15,6 +15,7 @@ use std::collections::HashSet;
 use crate::function_environment::{FunctionEnvironment, FunctionEnvironmentBuilder};
 use crate::symbol_environment::SymbolEnvironment;
 use crate::type_environment::{TypeEnvironment, TypeEnvironmentBuilder};
+use crate::xform_resolve_initial_values::TypeDefaults;
 use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_ir::execution::{ExecutionModel, ExecutionModelBuilder};
@@ -49,6 +50,9 @@ pub struct SemanticContext {
     /// instances, and the globals in scope. Codegen builds from this rather
     /// than reading the configuration's declarations.
     execution_model: ExecutionModel,
+    /// The default of every declared type, from which the starting value
+    /// of each declaration is resolved.
+    type_defaults: TypeDefaults,
 }
 
 impl SemanticContext {
@@ -69,6 +73,7 @@ impl SemanticContext {
             compiler_options,
             // Until a library is resolved there is nothing in it.
             execution_model: ExecutionModelBuilder::new().build(Vec::new()),
+            type_defaults: TypeDefaults::default(),
         }
     }
 
@@ -76,6 +81,20 @@ impl SemanticContext {
     pub(crate) fn with_execution_model(mut self, execution_model: ExecutionModel) -> Self {
         self.execution_model = execution_model;
         self
+    }
+
+    /// This context with `type_defaults` as the defaults of the declared
+    /// types.
+    pub(crate) fn with_type_defaults(self, type_defaults: TypeDefaults) -> Self {
+        Self {
+            type_defaults,
+            ..self
+        }
+    }
+
+    /// The default of every declared type.
+    pub(crate) fn type_defaults(&self) -> &TypeDefaults {
+        &self.type_defaults
     }
 
     /// Adds diagnostics to the context.

@@ -17,9 +17,9 @@ use ironplc_analyzer::TypeEnvironment;
 
 use super::compile::{
     char_width_for_string_type, finalize_function, string_region_size, CompileContext,
-    CompiledFunction, CurrentFunctionReturn, OpWidth, ParamPassing, Signedness, StringParamInfo,
-    StringReturnInfo, StringVarInfo, UserFunctionInfo, VarTypeInfo, DEFAULT_OP_TYPE,
-    NARROW_CHAR_WIDTH, WIDE_CHAR_WIDTH,
+    CompiledFunction, CurrentFunctionReturn, ParamPassing, StringParamInfo, StringReturnInfo,
+    StringVarInfo, UserFunctionInfo, VarTypeInfo, DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH,
+    WIDE_CHAR_WIDTH,
 };
 use super::compile_expr::emit_load_var;
 use super::compile_setup::{
@@ -277,15 +277,14 @@ pub(crate) fn compile_user_function(
         }
         FunctionReturnType::Named(_) => {
             let return_type_name = func_decl.return_type.to_type_name();
-            if types.resolve_struct_type(&return_type_name).is_some() {
+            if let Some(struct_type) = types.resolve_struct_type(&return_type_name) {
                 // Return type is a struct — allocate data region space and
                 // register the return variable so field assignments
                 // (e.g. FUNC.X := val) work inside the function body.
                 crate::compile_struct::allocate_struct_variable(
                     ctx,
                     builder,
-                    types,
-                    &return_type_name,
+                    struct_type,
                     &return_id,
                     return_var_index,
                     &func_decl.name.span(),
@@ -370,9 +369,8 @@ pub(crate) fn compile_user_function(
     // Record function metadata for use at call sites.
     let func_name = func_decl.name.lower_case();
 
-    // Record how a call site passes each parameter: by value at its declared
-    // type, whatever kind of declaration declares it, a subrange at its base
-    // type and an alias at the type it names.
+    // Record how a call site passes each parameter: by value, into the
+    // parameter's string space, or by reference.
     let mut params: Vec<ParamPassing> = Vec::new();
     for decl in &func_decl.variables {
         if !decl.var_type.is_input_compatible() {
@@ -387,20 +385,14 @@ pub(crate) fn compile_user_function(
                 .identifier
                 .symbolic_id()
                 .and_then(|id| ctx.string_vars.get(id))
-                .map_or(ParamPassing::Value(DEFAULT_OP_TYPE), |info| {
+                .map_or(ParamPassing::Value, |info| {
                     ParamPassing::String(StringParamInfo {
                         data_offset: info.data_offset,
                         max_length: info.max_length,
                         char_width: info.char_width,
                     })
                 }),
-            InitialValueAssignmentKind::Reference(_) => {
-                ParamPassing::Value((OpWidth::W64, Signedness::Unsigned))
-            }
-            _ => ParamPassing::Value(
-                decl_type_info(ctx, decl)
-                    .map_or(DEFAULT_OP_TYPE, |info| (info.op_width, info.signedness)),
-            ),
+            _ => ParamPassing::Value,
         };
         params.push(passing);
     }

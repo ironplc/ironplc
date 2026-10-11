@@ -124,6 +124,18 @@ fn is_compatible(constant: &ConstantKind, target: &SemanticType) -> bool {
     }
 }
 
+/// Whether the innermost elements of the array `representation` are
+/// structures or function block instances.
+fn has_aggregate_elements(representation: &SemanticType) -> bool {
+    match representation {
+        SemanticType::Array { element_type, .. } => match element_type.as_ref() {
+            inner @ SemanticType::Array { .. } => has_aggregate_elements(inner),
+            element => element.has_members(),
+        },
+        _ => false,
+    }
+}
+
 impl Visitor<Infallible> for RuleInitializerTypeCompat<'_> {
     type Value = ();
 
@@ -137,6 +149,24 @@ impl Visitor<Infallible> for RuleInitializerTypeCompat<'_> {
         // - Subrange: validate subrange initializer value is within bounds
         // - Structure: validate structure field initializer types
         // - Array: validate array element initializer types
+        // An array initializer lists constants and enumerated values, which
+        // no element that is a structure or function block instance can
+        // take.
+        if let InitialValueAssignmentKind::Array(array) = &node.initializer {
+            let element_is_aggregate = node
+                .type_id
+                .and_then(|id| self.type_environment.get_by_id(id))
+                .is_some_and(|attributes| has_aggregate_elements(&attributes.representation));
+            if element_is_aggregate && !array.initial_values.is_empty() {
+                self.diagnostics.push(
+                    Diagnostic::problem(
+                        Problem::InitializerTypeMismatch,
+                        Label::span(node.span(), "Variable declaration"),
+                    )
+                    .with_context("variable", &node.identifier.to_string()),
+                );
+            }
+        }
         if let InitialValueAssignmentKind::Simple(si) = &node.initializer {
             if let Some(constant) = &si.initial_value {
                 if let Some(type_attrs) = self.type_environment.get(&si.type_name) {
@@ -201,6 +231,28 @@ END_PROGRAM"
 PROGRAM main
 VAR
     x : BOOL := TRUE;
+END_VAR
+END_PROGRAM"
+    );
+
+    rule_err!(
+        apply_when_array_of_structures_initialized_with_constants_then_error,
+        "
+TYPE Item : STRUCT a : DINT; END_STRUCT; END_TYPE
+PROGRAM main
+VAR
+    arr : ARRAY[1..2] OF Item := [1, 2];
+END_VAR
+END_PROGRAM",
+        [Problem::InitializerTypeMismatch]
+    );
+
+    rule_ok!(
+        apply_when_array_of_integers_initialized_with_constants_then_ok,
+        "
+PROGRAM main
+VAR
+    arr : ARRAY[1..2] OF DINT := [1, 2];
 END_VAR
 END_PROGRAM"
     );

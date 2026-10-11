@@ -28,8 +28,8 @@ use ironplc_dsl::configuration::{
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_ir::execution::{
     Configuration, DebugName, ExecutionModel, ExecutionModelBuilder, Global, GlobalId, GlobalKind,
-    GlobalScope, InstanceOf, ProgramId, ProgramInstance, ProgramType, Resource, Schedule,
-    SystemGlobal, Task, Trigger,
+    GlobalScope, InstanceOf, ProgramId, ProgramInstance, ProgramType, Resource, Schedule, Task,
+    Trigger,
 };
 use ironplc_parser::options::CompilerOptions;
 
@@ -135,13 +135,10 @@ impl<'a> Walk<'a> {
 
         let mut system = Scope::new();
         if options.allow_system_uptime_global {
-            for (global, kind) in SYSTEM_UPTIME_GLOBALS
-                .iter()
-                .zip([SystemGlobal::UpTime, SystemGlobal::UpLTime])
-            {
+            for global in &SYSTEM_UPTIME_GLOBALS {
                 let id = self.builder.add_global(Global {
                     name: DebugName::new(global.name, SourceSpan::default()),
-                    kind: GlobalKind::System(kind),
+                    kind: GlobalKind::System(global.kind),
                 });
                 system.insert(Id::from(global.name), id);
             }

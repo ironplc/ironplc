@@ -60,7 +60,7 @@ pub(crate) fn compile_fb_field_store(
     value: &Expr,
 ) -> Result<bool, Diagnostic> {
     let field_name = field.to_string().to_lowercase();
-    let (field_idx, var_index, op_type) = match ctx.fb_instances.get(instance_name) {
+    let (field_idx, var_index) = match ctx.fb_instances.get(instance_name) {
         Some(fb_info) => {
             let field_idx = fb_info
                 .field_indices
@@ -75,14 +75,13 @@ pub(crate) fn compile_fb_field_store(
                         ),
                     ))
                 })?;
-            let op_type = resolve_fb_field_op_type(&fb_info.field_op_types, &field_name);
-            (field_idx, fb_info.var_index, op_type)
+            (field_idx, fb_info.var_index)
         }
         None => return Ok(false),
     };
 
     emitter.emit_fb_load_instance(var_index);
-    compile_expr(emitter, ctx, value, op_type)?;
+    compile_expr(emitter, ctx, value)?;
     emitter.emit_fb_store_param(field_idx);
     emitter.emit_pop();
     Ok(true)

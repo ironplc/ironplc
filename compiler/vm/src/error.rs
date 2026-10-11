@@ -27,6 +27,12 @@ pub enum Trap {
     },
     UnexpectedEndOfBytecode,
     CallStackOverflow,
+    /// The dispatch loop needed the topmost call frame -- to store the
+    /// program counter back into it, or to pop it on a return -- and the
+    /// frame stack was empty. The loop only runs while a frame is live, so
+    /// this is a VM defect; it is a trap rather than a panic so that a
+    /// broken invariant halts the VM through the fault path.
+    CallStackUnderflow,
     InvalidCmpOp(u8),
     /// A string opcode encountered an operand whose `char_width` did not
     /// match the expected encoding. Per ADR-0034 the analyzer rejects
@@ -203,6 +209,7 @@ impl fmt::Display for Trap {
             }
             Trap::UnexpectedEndOfBytecode => write!(f, "bytecode ended mid-instruction"),
             Trap::CallStackOverflow => write!(f, "call stack overflow"),
+            Trap::CallStackUnderflow => write!(f, "call stack underflow"),
             Trap::InvalidCmpOp(code) => write!(f, "invalid comparison operator code: 0x{code:02X}"),
             Trap::EncodingMismatch { expected, actual } => write!(
                 f,
@@ -258,6 +265,7 @@ mod tests {
     #[case(Trap::DivideByZero, "divide by zero")]
     #[case(Trap::StackOverflow, "stack overflow")]
     #[case(Trap::StackUnderflow, "stack underflow")]
+    #[case(Trap::CallStackUnderflow, "call stack underflow")]
     #[case(Trap::InvalidInstruction(0xAB), "invalid instruction: 0xAB")]
     #[case(
         Trap::InvalidConstantIndex(ConstantIndex::new(5)),
@@ -431,6 +439,7 @@ mod tests {
     )]
     #[case(Trap::ZeroCallDepth, "V9017")]
     #[case(Trap::VariableTableTooSmall { required: 2, available: 1 }, "V9019")]
+    #[case(Trap::CallStackUnderflow, "V9020")]
     fn v_code_when_variant_then_expected(#[case] trap: Trap, #[case] expected: &str) {
         assert_eq!(trap.v_code(), expected);
     }
@@ -496,5 +505,6 @@ mod tests {
             .exit_code(),
             3
         );
+        assert_eq!(Trap::CallStackUnderflow.exit_code(), 3);
     }
 }

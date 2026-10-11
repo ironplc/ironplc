@@ -16,7 +16,7 @@
 
 use ironplc_analyzer::CleanAnalysis;
 use ironplc_container::{Container, TaskType};
-use ironplc_dsl::common::{ProgramDeclaration, VarDecl, VariableType};
+use ironplc_dsl::common::{ProgramDeclaration, VarDecl};
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::execution::{
@@ -31,7 +31,11 @@ pub(crate) struct Runnable<'a> {
     pub(crate) program: &'a ProgramDeclaration,
     /// The task table entry's scheduling fields.
     pub(crate) schedule: TaskSchedule,
-    /// The global variables, in variable-table order.
+    /// The compiler-provided globals, which the model lists before any
+    /// declared one, in variable-table order.
+    pub(crate) system_globals: Vec<SystemGlobal>,
+    /// The declarations of the declared globals that get storage, in
+    /// variable-table order after the system globals.
     pub(crate) globals: Vec<VarDecl>,
     /// Whether the model lists the uptime global, which the VM writes each
     /// scan.
@@ -57,6 +61,13 @@ pub(crate) fn runnable<'a>(analysis: &CleanAnalysis<'a>) -> Result<Runnable<'a>,
     Ok(Runnable {
         program,
         schedule,
+        system_globals: model
+            .globals()
+            .filter_map(|(_, global)| match global.kind {
+                GlobalKind::System(system) => Some(system),
+                GlobalKind::Declared(_) => None,
+            })
+            .collect(),
         globals: global_declarations(analysis, model)?,
         has_system_uptime: model
             .globals()
@@ -284,8 +295,9 @@ pub(crate) fn apply_task_schedule(container: &mut Container, schedule: TaskSched
     }
 }
 
-/// The declarations of the globals the variable table holds, in the model's
-/// order.
+/// The declarations of the declared globals the variable table holds, in the
+/// model's order. The system globals are laid out from the model by
+/// [`crate::compile_setup::assign_system_globals`].
 ///
 /// A declared global's type and initial value are still compiled from its
 /// declaration, which is reached by id. A resource's `VAR_GLOBAL` gets no
@@ -298,7 +310,7 @@ fn global_declarations(
     let mut declarations = Vec::new();
     for (id, global) in model.globals() {
         match global.kind {
-            GlobalKind::System(system) => declarations.push(system_global(system)),
+            GlobalKind::System(_) => {}
             GlobalKind::Declared(GlobalScope::TopLevel | GlobalScope::Configuration) => {
                 let decl = analysis.global_declaration(id).ok_or_else(|| {
                     Diagnostic::internal_error_at(Label::span(
@@ -312,19 +324,6 @@ fn global_declarations(
         }
     }
     Ok(declarations)
-}
-
-/// The declaration of a compiler-provided global, which no source declares.
-///
-/// The declaration names its type rather than recording a type id: recording
-/// the id would let a comparison with the global take the fused
-/// compare-to-constant form, and change the bytes a program compiles to.
-fn system_global(global: SystemGlobal) -> VarDecl {
-    let (name, type_name) = match global {
-        SystemGlobal::UpTime => ("__SYSTEM_UP_TIME", "TIME"),
-        SystemGlobal::UpLTime => ("__SYSTEM_UP_LTIME", "LTIME"),
-    };
-    VarDecl::simple(name, type_name).with_type(VariableType::Global)
 }
 
 /// Builds the P4080 diagnostic for instances of types that are not a

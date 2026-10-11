@@ -65,7 +65,9 @@ use ironplc_analyzer::{
 use crate::emit::Emitter;
 
 use super::compile_fn::{compile_user_function, compile_user_function_block};
-use super::compile_setup::{assign_variables, emit_initial_values};
+use ironplc_ir::execution::SystemGlobal;
+
+use super::compile_setup::{assign_system_globals, assign_variables, emit_initial_values};
 use super::compile_stmt::compile_body;
 
 /// The native operation width used for arithmetic and comparisons.
@@ -275,6 +277,7 @@ pub fn compile(
             program: runnable.program,
             func_decls: &func_decls,
             fb_decls: &fb_decls,
+            system_globals: &runnable.system_globals,
             global_vars: &runnable.globals,
         },
         context.functions(),
@@ -421,6 +424,9 @@ struct ProgramInputs<'a> {
     program: &'a ProgramDeclaration,
     func_decls: &'a [&'a FunctionDeclaration],
     fb_decls: &'a [&'a FunctionBlockDeclaration],
+    /// The compiler-provided globals, which precede the declared ones.
+    system_globals: &'a [SystemGlobal],
+    /// The declared globals that get storage, in variable-table order.
     global_vars: &'a [VarDecl],
 }
 
@@ -446,6 +452,7 @@ fn compile_program_with_functions(
         program,
         func_decls,
         fb_decls,
+        system_globals,
         global_vars,
     } = inputs;
     let mut ctx = CompileContext::new();
@@ -472,7 +479,9 @@ fn compile_program_with_functions(
         register_pou_source_file(&mut ctx, &fb.name.name.span.file_id, sources);
     }
 
-    // Assign global variable indices first (indices 0..G).
+    // Assign global variable indices first (indices 0..G), the
+    // compiler-provided globals before any other.
+    assign_system_globals(&mut ctx, system_globals, types)?;
     assign_variables(&mut ctx, &mut builder, global_vars, types)?;
     let num_globals = ctx.variables.len() as u16;
 
@@ -551,7 +560,6 @@ fn compile_program_with_functions(
         for method in &fb_decl.methods {
             let method_name = method.name.to_string().to_lowercase();
             let mut param_names_in_order: Vec<String> = Vec::new();
-            let mut param_op_types: Vec<OpType> = Vec::new();
             for decl in &method.variables {
                 if !decl.var_type.is_input_compatible() {
                     continue;
@@ -559,9 +567,6 @@ fn compile_program_with_functions(
                 if let Some(id) = decl.identifier.symbolic_id() {
                     param_names_in_order.push(id.to_string().to_lowercase());
                 }
-                let op_type = crate::type_info::decl_type_info(&ctx, decl)
-                    .map_or(DEFAULT_OP_TYPE, |vti| (vti.op_width, vti.signedness));
-                param_op_types.push(op_type);
             }
 
             let function_id = FunctionId::new(next_method_function_id);
@@ -575,7 +580,6 @@ fn compile_program_with_functions(
                         param_var_off: 0, // updated once the method is compiled
                         num_params: param_names_in_order.len() as u16,
                         param_names_in_order,
-                        param_op_types,
                         has_return_value: method.return_type.is_some(),
                         max_stack_depth: 0, // updated once the method is compiled
                     },
@@ -933,9 +937,10 @@ pub(crate) struct StringParamInfo {
 /// (`VAR_INPUT`/`VAR_IN_OUT`) of a user-defined function.
 #[derive(Clone)]
 pub(crate) enum ParamPassing {
-    /// The argument's value is pushed onto the operand stack at this type,
-    /// and `CALL` stores it in the parameter's slot.
-    Value(OpType),
+    /// The argument's value is pushed onto the operand stack at its own
+    /// type, which the analyzer converted to the parameter's (ADR-0056), and
+    /// `CALL` stores it in the parameter's slot.
+    Value,
     /// The argument is copied into the parameter's data region space before
     /// `CALL`, and a dummy value is pushed for the slot `CALL` pops.
     String(StringParamInfo),
@@ -1019,7 +1024,7 @@ pub(crate) struct UserFbTypeInfo {
     pub(crate) field_type_ids: HashMap<String, ironplc_dsl::type_id::TypeId>,
     /// Maps method name (lowercase) to compilation metadata (OOP
     /// extension, ADR-0041 Phase 1). Populated in two steps: `function_id`,
-    /// `num_params`, `param_op_types`, and `has_return_value` are known
+    /// `num_params`, `param_names_in_order`, and `has_return_value` are known
     /// from the AST alone and set during the pre-scan registration pass;
     /// `param_var_off` is set once the method body is actually compiled
     /// and its scratch region is known (mirrors `var_offset` above).
@@ -1042,10 +1047,9 @@ pub(crate) struct UserMethodInfo {
     pub(crate) param_var_off: u16,
     /// Number of VAR_INPUT/VAR_IN_OUT parameters, in declaration order.
     pub(crate) num_params: u16,
-    /// Parameter names (lowercase) and op types, in declaration order --
-    /// used to resolve both positional and named call-site arguments.
+    /// Parameter names (lowercase), in declaration order -- used to resolve
+    /// both positional and named call-site arguments.
     pub(crate) param_names_in_order: Vec<String>,
-    pub(crate) param_op_types: Vec<OpType>,
     pub(crate) has_return_value: bool,
     /// Max operand-stack depth used by the method body. `0` until the
     /// method is actually compiled; used for the scan function's

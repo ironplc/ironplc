@@ -18,7 +18,7 @@ use super::compile::{
     CompileContext, OpType, OpWidth, ParamPassing, Signedness, UserFunctionInfo, VarTypeInfo,
     NARROW_CHAR_WIDTH,
 };
-use super::compile_arith::{compile_arith_fold, compile_at, compile_at_operand_type};
+use super::compile_arith::compile_arith_fold;
 use super::compile_builtin::{compile_numeric, compile_shift_rotate};
 use super::compile_comparison::compile_comparison;
 use super::compile_expr::{
@@ -46,7 +46,7 @@ pub(crate) fn intrinsics_by_name(functions: &FunctionEnvironment) -> HashMap<Id,
         .collect()
 }
 
-/// Compiles `call`, the call `func`.
+/// Compiles `call`, the call `func`, whose own operation type is `at`.
 ///
 /// A standard function compiles as the operation its signature names; any
 /// other function is a user-defined one.
@@ -55,10 +55,10 @@ pub(crate) fn compile_function_call(
     ctx: &mut CompileContext,
     call: &Expr,
     func: &Function,
-    op_type: OpType,
+    at: OpType,
 ) -> Result<(), Diagnostic> {
     if let Some(intrinsic) = ctx.intrinsics.get(&func.name).cloned() {
-        return compile_intrinsic(emitter, ctx, call, func, op_type, intrinsic);
+        return compile_intrinsic(emitter, ctx, call, func, at, intrinsic);
     }
     let Some(func_info) = ctx.user_functions.get(func.name.lower_case()).cloned() else {
         return Err(Diagnostic::todo_with_span(func.name.span()));
@@ -67,40 +67,29 @@ pub(crate) fn compile_function_call(
 }
 
 /// Compiles `call`, a call to a standard function, as the operation
-/// `intrinsic`: at its own type when it computes at it
-/// ([`Intrinsic::computes_at_own_type`]), converting the result to
-/// `op_type`, and at `op_type` otherwise.
+/// `intrinsic` at `at`, the call's own operation type.
 ///
-/// A function of several inputs of one type (`MAX`, `MUX`, ...) computes at
-/// the type the analyzer recorded for the call, to which it converted each
-/// input (ADR-0056). An operation on one value computes at its operand's type
-/// when that is numeric, and at `op_type` otherwise, as `NOT` of a `BOOL`
-/// does.
+/// The type it computes at is the one the analyzer recorded for the call: for
+/// a function of several inputs of one type (`MAX`, `MUX`, ...), the type it
+/// converted each input to (ADR-0056); for an operation on one value, its
+/// operand's; and for `TRUNC`, `BCD_TO_INT` and `SIZEOF`, whose integer
+/// result takes the type of its context, that type. A call of one of these
+/// without a type is one the analyzer did not resolve.
 fn compile_intrinsic(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     call: &Expr,
     func: &Function,
-    op_type: OpType,
+    at: OpType,
     intrinsic: Intrinsic,
 ) -> Result<(), Diagnostic> {
     let result = expr_operand_name(ctx, call);
     let result = result.as_ref();
-    // `MAX` of several inputs of one type, and `TRUNC`, `BCD_TO_INT` and
-    // `SIZEOF`, whose integer result takes the type of its context, compute at
-    // the type the analyzer recorded for the call (ADR-0056).
-    if intrinsic.inputs_of_one_type().is_some() || intrinsic.result_is_integer_of_context() {
+    if intrinsic.computes_at_own_type() || intrinsic.result_is_integer_of_context() {
         let at = self::op_type(ctx, call)?;
-        return compile_at(emitter, ctx, at, op_type, |emitter, ctx, at| {
-            compile_intrinsic_at(emitter, ctx, func, result, at, intrinsic)
-        });
+        return compile_intrinsic_at(emitter, ctx, func, result, at, intrinsic);
     }
-    if intrinsic.computes_at_own_type() {
-        return compile_at_operand_type(emitter, ctx, result, op_type, |emitter, ctx, at| {
-            compile_intrinsic_at(emitter, ctx, func, result, at, intrinsic)
-        });
-    }
-    compile_intrinsic_at(emitter, ctx, func, result, op_type, intrinsic)
+    compile_intrinsic_at(emitter, ctx, func, result, at, intrinsic)
 }
 
 /// Compiles a call to a standard function as the operation `intrinsic`, at
@@ -128,7 +117,7 @@ fn compile_intrinsic_at(
         }
         Intrinsic::Mux => compile_mux(emitter, ctx, func, op_type),
         // Assignment function (equivalent to := operator)
-        Intrinsic::Move => compile_move(emitter, ctx, fixed_args(func)?, op_type),
+        Intrinsic::Move => compile_move(emitter, ctx, fixed_args(func)?),
         Intrinsic::Trunc => compile_trunc(emitter, ctx, fixed_args(func)?, op_type),
         Intrinsic::BcdToInt => {
             compile_bcd_to_int(emitter, ctx, fixed_args(func)?, &func.name.span(), op_type)
@@ -235,8 +224,8 @@ fn compile_user_function_call(
             }
             // The analyzer converted an argument of another width to the
             // parameter's type (ADR-0056).
-            ParamPassing::Value(param_op_type) => {
-                compile_expr(emitter, ctx, arg, param_op_type)?;
+            ParamPassing::Value => {
+                compile_expr(emitter, ctx, arg)?;
             }
             ParamPassing::Reference => compile_reference_arg(emitter, ctx, arg)?,
         }
@@ -309,10 +298,10 @@ fn compile_reference_arg(
 
 /// Compiles the function form of an operator as the operator itself.
 ///
-/// The arguments compile at `op_type`, the enclosing expression's operation
-/// type, or for `NOT` its operand's (see [`compile_intrinsic`]), and the
-/// opcode comes from the emitter the operator expression uses, so `AND(a, b)`
-/// and `a AND b` cannot diverge.
+/// Each argument compiles at its own type, and the operator computes at
+/// `op_type`, the call's own type (see [`compile_intrinsic`]); the opcode
+/// comes from the emitter the operator expression uses, so `AND(a, b)` and
+/// `a AND b` cannot diverge.
 ///
 /// A binary operator folds its arguments from the left, so `ADD(a, b, c)`
 /// compiles as `(a + b) + c`. The analyzer has already enforced how many
@@ -327,7 +316,7 @@ fn compile_operator_form(
     operator: &FormOf,
 ) -> Result<(), Diagnostic> {
     match operator {
-        FormOf::Arithmetic(op) => compile_arith_fold(emitter, ctx, func, op, result, op_type),
+        FormOf::Arithmetic(op) => compile_arith_fold(emitter, ctx, func, op, result),
         // A comparison computes at the type of its operands, not at the
         // enclosing `op_type`, which is the type of the BOOL it yields.
         FormOf::Compare(op) if op.is_comparison() => {
@@ -336,12 +325,13 @@ fn compile_operator_form(
         }
         FormOf::Compare(op) => {
             compile_left_fold(emitter, ctx, func, op_type, |emitter, op_type| {
-                emit_compare_op(emitter, op, op_type)
+                emit_compare_op(emitter, op, op_type);
+                Ok(())
             })
         }
         FormOf::Not => {
             let [term] = fixed_args::<1>(func)?;
-            compile_expr(emitter, ctx, term, op_type)?;
+            compile_expr(emitter, ctx, term)?;
             emit_not(emitter, ctx, op_type, term)
         }
     }
@@ -354,7 +344,7 @@ pub(crate) fn compile_left_fold(
     ctx: &mut CompileContext,
     func: &Function,
     op_type: OpType,
-    emit_fn: impl Fn(&mut Emitter, OpType),
+    emit_fn: impl Fn(&mut Emitter, OpType) -> Result<(), Diagnostic>,
 ) -> Result<(), Diagnostic> {
     let args = collect_positional_args(func);
     let [first, rest @ ..] = args.as_slice() else {
@@ -363,10 +353,10 @@ pub(crate) fn compile_left_fold(
     if rest.is_empty() {
         return Err(wrong_arg_count(func));
     }
-    compile_expr(emitter, ctx, first, op_type)?;
+    compile_expr(emitter, ctx, first)?;
     for arg in rest {
-        compile_expr(emitter, ctx, arg, op_type)?;
-        emit_fn(emitter, op_type);
+        compile_expr(emitter, ctx, arg)?;
+        emit_fn(emitter, op_type)?;
     }
     Ok(())
 }
@@ -383,9 +373,9 @@ fn compile_dt_to_date(
 ) -> Result<(), Diagnostic> {
     let op_type = (OpWidth::W32, Signedness::Unsigned);
     // Stack: IN
-    compile_expr(emitter, ctx, args[0], op_type)?;
+    compile_expr(emitter, ctx, args[0])?;
     // Stack: IN, IN
-    compile_expr(emitter, ctx, args[0], op_type)?;
+    compile_expr(emitter, ctx, args[0])?;
     // Stack: IN, IN, 86400
     let secs_per_day = ctx.add_i32_constant(86400);
     emitter.emit_load_const_i32(secs_per_day);
@@ -407,7 +397,7 @@ fn compile_dt_to_tod(
 ) -> Result<(), Diagnostic> {
     let op_type = (OpWidth::W32, Signedness::Unsigned);
     // Stack: IN
-    compile_expr(emitter, ctx, args[0], op_type)?;
+    compile_expr(emitter, ctx, args[0])?;
     // Stack: IN, 86400
     let secs_per_day = ctx.add_i32_constant(86400);
     emitter.emit_load_const_i32(secs_per_day);
@@ -429,9 +419,8 @@ fn compile_move(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     args: [&Expr; 1],
-    op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    compile_expr(emitter, ctx, args[0], op_type)?;
+    compile_expr(emitter, ctx, args[0])?;
     // No additional opcode needed - the value is already on the stack
 
     Ok(())
@@ -451,7 +440,7 @@ fn compile_trunc(
 ) -> Result<(), Diagnostic> {
     // Determine the argument's float type from its resolved type.
     let arg_op_type = op_type(ctx, args[0])?;
-    compile_expr(emitter, ctx, args[0], arg_op_type)?;
+    compile_expr(emitter, ctx, args[0])?;
 
     // Build VarTypeInfo for source (float) and target (integer) to reuse
     // the existing conversion opcode emission.
@@ -473,7 +462,7 @@ fn compile_trunc(
             _ => 32,
         },
     };
-    emit_conversion_opcode(emitter, &source, &target);
+    emit_conversion_opcode(emitter, &source, &target)?;
 
     Ok(())
 }
@@ -539,9 +528,8 @@ fn compile_bcd_to_int(
     span: &SourceSpan,
     target_op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    let arg_op_type = op_type(ctx, args[0])?;
     let bits = storage_bits(ctx, args[0])?;
-    compile_expr(emitter, ctx, args[0], arg_op_type)?;
+    compile_expr(emitter, ctx, args[0])?;
 
     let func_id = match bits {
         8 => opcode::builtin::BCD_TO_INT_8,
@@ -550,7 +538,7 @@ fn compile_bcd_to_int(
         64 => opcode::builtin::BCD_TO_INT_64,
         _ => return Err(Diagnostic::todo_with_span(span.clone())),
     };
-    emitter.emit_builtin(func_id);
+    emitter.emit_builtin(func_id)?;
     // The builtin decodes into a 64-bit integer for a 64-bit input and a
     // 32-bit one otherwise; the result is the integer type the analyzer
     // recorded for the call.
@@ -558,7 +546,7 @@ fn compile_bcd_to_int(
         64 => (OpWidth::W64, Signedness::Signed),
         _ => (OpWidth::W32, Signedness::Signed),
     };
-    crate::compile_arith::convert(emitter, decoded, target_op_type);
+    crate::compile_arith::convert(emitter, decoded, target_op_type)?;
     Ok(())
 }
 
@@ -575,7 +563,7 @@ fn compile_int_to_bcd(
 ) -> Result<(), Diagnostic> {
     let arg_op_type = op_type(ctx, args[0])?;
     let bits = storage_bits(ctx, args[0])?;
-    compile_expr(emitter, ctx, args[0], arg_op_type)?;
+    compile_expr(emitter, ctx, args[0])?;
 
     let func_id = match (arg_op_type.0, bits) {
         (OpWidth::W32, 8) => opcode::builtin::INT_TO_BCD_8,
@@ -591,7 +579,7 @@ fn compile_int_to_bcd(
             }
         }
     };
-    emitter.emit_builtin(func_id);
+    emitter.emit_builtin(func_id)?;
     Ok(())
 }
 
@@ -632,10 +620,10 @@ fn compile_mux(
     let func_id = base + num_inputs;
 
     for arg in &args {
-        compile_expr(emitter, ctx, arg, self::op_type(ctx, arg)?)?;
+        compile_expr(emitter, ctx, arg)?;
     }
 
-    emitter.emit_builtin(func_id);
+    emitter.emit_builtin(func_id)?;
     Ok(())
 }
 
@@ -653,17 +641,15 @@ fn compile_type_conversion(
     source: VarTypeInfo,
     target: VarTypeInfo,
 ) -> Result<(), Diagnostic> {
-    let source_op_type: OpType = (source.op_width, source.signedness);
-
-    compile_expr(emitter, ctx, args[0], source_op_type)?;
+    compile_expr(emitter, ctx, args[0])?;
 
     // Integer-to-boolean needs a dedicated opcode (non-zero → 1, zero → 0)
     // rather than the generic conversion + truncation path, because
     // truncation would only keep the lowest bit instead of testing for zero.
     if target.storage_bits == 1 {
         match source.op_width {
-            OpWidth::W32 => emitter.emit_builtin(opcode::builtin::CONV_I32_TO_BOOL),
-            OpWidth::W64 => emitter.emit_builtin(opcode::builtin::CONV_I64_TO_BOOL),
+            OpWidth::W32 => emitter.emit_builtin(opcode::builtin::CONV_I32_TO_BOOL)?,
+            OpWidth::W64 => emitter.emit_builtin(opcode::builtin::CONV_I64_TO_BOOL)?,
             _ => {
                 return Err(Diagnostic::internal_error_at(Label::span(
                     span.clone(),
@@ -672,7 +658,7 @@ fn compile_type_conversion(
             }
         }
     } else {
-        emit_conversion_opcode(emitter, &source, &target);
+        emit_conversion_opcode(emitter, &source, &target)?;
         emit_truncation(emitter, target);
     }
 
@@ -686,56 +672,59 @@ pub(crate) fn emit_conversion_opcode(
     emitter: &mut Emitter,
     source: &VarTypeInfo,
     target: &VarTypeInfo,
-) {
+) -> Result<(), Diagnostic> {
+    use opcode::builtin::*;
     use OpWidth::*;
     use Signedness::*;
 
-    match (
+    let func_id = match (
         source.op_width,
         source.signedness,
         target.op_width,
         target.signedness,
     ) {
         // Same OpWidth: no conversion needed (truncation handles sub-width)
-        (W32, _, W32, _) | (W64, _, W64, _) => {}
+        (W32, _, W32, _) | (W64, _, W64, _) => None,
 
         // W32 signed -> W64: sign extension already in Slot, no-op
-        (W32, Signed, W64, _) => {}
+        (W32, Signed, W64, _) => None,
 
         // W32 unsigned -> W64: need zero-extension
-        (W32, Unsigned, W64, _) => {
-            emitter.emit_builtin(opcode::builtin::CONV_U32_TO_I64);
-        }
+        (W32, Unsigned, W64, _) => Some(CONV_U32_TO_I64),
 
         // W64 -> W32: as_i32() truncation at store time, no-op
-        (W64, _, W32, _) => {}
+        (W64, _, W32, _) => None,
 
         // Integer -> Float
-        (W32, Signed, F32, _) => emitter.emit_builtin(opcode::builtin::CONV_I32_TO_F32),
-        (W32, Signed, F64, _) => emitter.emit_builtin(opcode::builtin::CONV_I32_TO_F64),
-        (W64, Signed, F32, _) => emitter.emit_builtin(opcode::builtin::CONV_I64_TO_F32),
-        (W64, Signed, F64, _) => emitter.emit_builtin(opcode::builtin::CONV_I64_TO_F64),
-        (W32, Unsigned, F32, _) => emitter.emit_builtin(opcode::builtin::CONV_U32_TO_F32),
-        (W32, Unsigned, F64, _) => emitter.emit_builtin(opcode::builtin::CONV_U32_TO_F64),
-        (W64, Unsigned, F32, _) => emitter.emit_builtin(opcode::builtin::CONV_U64_TO_F32),
-        (W64, Unsigned, F64, _) => emitter.emit_builtin(opcode::builtin::CONV_U64_TO_F64),
+        (W32, Signed, F32, _) => Some(CONV_I32_TO_F32),
+        (W32, Signed, F64, _) => Some(CONV_I32_TO_F64),
+        (W64, Signed, F32, _) => Some(CONV_I64_TO_F32),
+        (W64, Signed, F64, _) => Some(CONV_I64_TO_F64),
+        (W32, Unsigned, F32, _) => Some(CONV_U32_TO_F32),
+        (W32, Unsigned, F64, _) => Some(CONV_U32_TO_F64),
+        (W64, Unsigned, F32, _) => Some(CONV_U64_TO_F32),
+        (W64, Unsigned, F64, _) => Some(CONV_U64_TO_F64),
 
         // Float -> Integer
-        (F32, _, W32, Signed) => emitter.emit_builtin(opcode::builtin::CONV_F32_TO_I32),
-        (F32, _, W64, Signed) => emitter.emit_builtin(opcode::builtin::CONV_F32_TO_I64),
-        (F64, _, W32, Signed) => emitter.emit_builtin(opcode::builtin::CONV_F64_TO_I32),
-        (F64, _, W64, Signed) => emitter.emit_builtin(opcode::builtin::CONV_F64_TO_I64),
-        (F32, _, W32, Unsigned) => emitter.emit_builtin(opcode::builtin::CONV_F32_TO_U32),
-        (F32, _, W64, Unsigned) => emitter.emit_builtin(opcode::builtin::CONV_F32_TO_U64),
-        (F64, _, W32, Unsigned) => emitter.emit_builtin(opcode::builtin::CONV_F64_TO_U32),
-        (F64, _, W64, Unsigned) => emitter.emit_builtin(opcode::builtin::CONV_F64_TO_U64),
+        (F32, _, W32, Signed) => Some(CONV_F32_TO_I32),
+        (F32, _, W64, Signed) => Some(CONV_F32_TO_I64),
+        (F64, _, W32, Signed) => Some(CONV_F64_TO_I32),
+        (F64, _, W64, Signed) => Some(CONV_F64_TO_I64),
+        (F32, _, W32, Unsigned) => Some(CONV_F32_TO_U32),
+        (F32, _, W64, Unsigned) => Some(CONV_F32_TO_U64),
+        (F64, _, W32, Unsigned) => Some(CONV_F64_TO_U32),
+        (F64, _, W64, Unsigned) => Some(CONV_F64_TO_U64),
 
         // Float -> Float
-        (F32, _, F64, _) => emitter.emit_builtin(opcode::builtin::CONV_F32_TO_F64),
-        (F64, _, F32, _) => emitter.emit_builtin(opcode::builtin::CONV_F64_TO_F32),
+        (F32, _, F64, _) => Some(CONV_F32_TO_F64),
+        (F64, _, F32, _) => Some(CONV_F64_TO_F32),
 
         // Same float width (shouldn't happen, but handle gracefully)
-        (F32, _, F32, _) | (F64, _, F64, _) => {}
+        (F32, _, F32, _) | (F64, _, F64, _) => None,
+    };
+    match func_id {
+        Some(func_id) => emitter.emit_builtin(func_id),
+        None => Ok(()),
     }
 }
 
@@ -908,8 +897,7 @@ fn compile_string_conversion(
 ) -> Result<(), Diagnostic> {
     match conv {
         StringConversion::NumToString { source } => {
-            let source_op_type: OpType = (source.op_width, source.signedness);
-            compile_expr(emitter, ctx, args[0], source_op_type)?;
+            compile_expr(emitter, ctx, args[0])?;
 
             let func_id = match (source.op_width, source.signedness) {
                 (OpWidth::W32, Signedness::Signed) => opcode::builtin::CONV_I32_TO_STR,
@@ -922,7 +910,7 @@ fn compile_string_conversion(
                     )));
                 }
             };
-            emitter.emit_builtin(func_id);
+            emitter.emit_builtin(func_id)?;
             Ok(())
         }
         StringConversion::StringToNum { target } => {
@@ -977,7 +965,7 @@ fn compile_string_conversion(
                     )));
                 }
             };
-            emitter.emit_builtin(func_id);
+            emitter.emit_builtin(func_id)?;
             Ok(())
         }
     }

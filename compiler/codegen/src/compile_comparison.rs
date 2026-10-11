@@ -40,8 +40,8 @@ pub(crate) fn compile_comparison(
     else {
         return Err(unresolved_expr_type(left));
     };
-    compile_expr(emitter, ctx, left, operand_type)?;
-    compile_expr(emitter, ctx, right, operand_type)?;
+    compile_expr(emitter, ctx, left)?;
+    compile_expr(emitter, ctx, right)?;
     emit_compare_op(emitter, op, operand_type);
     Ok(())
 }
