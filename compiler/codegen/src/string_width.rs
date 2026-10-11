@@ -34,8 +34,7 @@ use ironplc_dsl::textual::{Expr, ExprKind, Function, SymbolicVariableKind, Varia
 
 use super::call_args::collect_positional_args;
 use super::compile::{
-    emit_string_literal_load, CompileContext, DEFAULT_OP_TYPE, DEFAULT_STRING_MAX_LENGTH,
-    NARROW_CHAR_WIDTH,
+    emit_string_literal_load, CompileContext, DEFAULT_STRING_MAX_LENGTH, NARROW_CHAR_WIDTH,
 };
 use super::compile_expr::{compile_expr, variable_span};
 use super::type_info::expr_representation;
@@ -396,7 +395,7 @@ pub(crate) fn compile_string_value(
         }
     }
 
-    compile_expr(emitter, ctx, expr, DEFAULT_OP_TYPE)
+    compile_expr(emitter, ctx, expr)
 }
 
 /// The span to blame an operand's encoding on: its own when it has one, and

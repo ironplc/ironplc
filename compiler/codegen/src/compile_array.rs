@@ -4,7 +4,7 @@
 //! array read/write compilation. Separated from compile.rs to
 //! keep module sizes within the 1000-line guideline.
 
-use ironplc_dsl::common::{ArrayInitialElementKind, ConstantKind};
+use ironplc_dsl::common::ConstantKind;
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, ExprKind, SymbolicVariableKind, UnaryOp, Variable};
@@ -720,50 +720,6 @@ pub(crate) fn register_array_variable(
     Ok((type_tag, type_name_str))
 }
 
-/// Recursively walks the `ArrayInitialElementKind` tree and produces
-/// a flat `Vec<ConstantKind>` of initial values in element order.
-pub(crate) fn flatten_array_initial_values(
-    elements: &[ArrayInitialElementKind],
-) -> Result<Vec<ConstantKind>, Diagnostic> {
-    let mut result = Vec::new();
-    for elem in elements {
-        match elem {
-            ArrayInitialElementKind::Constant(value) => {
-                result.push(value.clone());
-            }
-            ArrayInitialElementKind::EnumValue(value) => {
-                return Err(Diagnostic::not_implemented(Label::span(
-                    value.span(),
-                    "Enumerated value in an array initializer",
-                )));
-            }
-            ArrayInitialElementKind::Repeated(repeated) => {
-                let count = repeated.size.value as usize;
-                match repeated.init.as_ref().as_ref() {
-                    Some(inner) => {
-                        let inner_values =
-                            flatten_array_initial_values(std::slice::from_ref(inner))?;
-                        for _ in 0..count {
-                            result.extend_from_slice(&inner_values);
-                        }
-                    }
-                    None => {
-                        let zero = ConstantKind::integer_literal("0")
-                            .map_err(|_| Diagnostic::internal_error())?;
-                        for _ in 0..count {
-                            result.push(zero.clone());
-                        }
-                    }
-                }
-            }
-            ArrayInitialElementKind::Structure(_) | ArrayInitialElementKind::Expression(_) => {
-                return Err(Diagnostic::internal_error());
-            }
-        }
-    }
-    Ok(result)
-}
-
 /// Emits bytecode to compute the 0-based flat index from subscript expressions.
 ///
 /// For constant subscripts, computes the flat index at compile time.
@@ -801,7 +757,7 @@ pub(crate) fn emit_flat_index(
                 "Array subscript of a width other than DINT's, and the analyzer recorded no conversion",
             )));
         }
-        compile_expr(emitter, ctx, subscript, own)?;
+        compile_expr(emitter, ctx, subscript)?;
         if dim.lower_bound != 0 {
             let lb_const = ctx.add_i64_constant(dim.lower_bound as i64);
             emitter.emit_load_const_i64(lb_const);

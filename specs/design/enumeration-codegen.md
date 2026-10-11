@@ -49,6 +49,10 @@ The design builds on:
 
 ## 3. Initialization
 
+The analyzer resolves the member each variable starts at and completes the
+declaration's initializer with it ([Initial Values](initial-values.md));
+codegen stores its ordinal.
+
 **REQ-EN-codegen-020** When a variable has an explicit initial value (`VAR x : COLOR := GREEN; END_VAR`), the codegen emits `LOAD_CONST_I32(ordinal)` + `STORE_VAR_I32`, where `ordinal` is the 0-based position of `GREEN` in the type declaration. No truncation is needed (32-bit storage per REQ-EN-codegen-003).
 
 **REQ-EN-codegen-021** When a variable has no explicit initial value (`VAR x : COLOR; END_VAR`), the initial ordinal is determined by the type declaration's default value. For `TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE`, the default is RED's ordinal (0).
@@ -77,7 +81,7 @@ The design builds on:
 
 ## 6. Structure Field Initialization
 
-**REQ-EN-codegen-050** A `StructInitialValueAssignmentKind::EnumeratedValue` in a struct initializer compiles by emitting `LOAD_CONST_I32(ordinal)`, which is then stored into the struct field's data region slot.
+**REQ-EN-codegen-050** An enumerated value in a struct initializer is stored as its ordinal: the analyzer completes the variable's initializer with the member every enumeration field starts at (see [Initial Values](initial-values.md)), and codegen emits `LOAD_CONST_I32(ordinal)`, which is then stored into the struct field's data region slot.
 
 **REQ-EN-codegen-051** Structure fields of enumeration type already receive the correct `op_type` via `resolve_field_op_type`, which delegates `SemanticType::Enumeration` to its underlying type (`compiler/codegen/src/compile_struct.rs:99`).
 

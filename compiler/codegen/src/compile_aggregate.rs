@@ -15,7 +15,7 @@ use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Assignment, ExprKind, SymbolicVariableKind, Variable};
 
-use super::compile::{CompileContext, DEFAULT_OP_TYPE};
+use super::compile::CompileContext;
 use super::compile_expr::{compile_expr, resolve_variable_name};
 use crate::emit::Emitter;
 use ironplc_container::VarIndex;
@@ -81,7 +81,7 @@ pub(crate) fn try_compile_whole_assignment(
     // Leaves the source's data_offset on the stack: a bare aggregate variable
     // compiles to a LOAD_VAR of its slot, and a struct-returning call leaves
     // its return region's offset there.
-    compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
+    compile_expr(emitter, ctx, &assignment.value)?;
     emitter.emit_copy_region(dst.var_index, dst.desc_index, src_desc_index);
     Ok(true)
 }

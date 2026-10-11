@@ -1,0 +1,37 @@
+=====
+P4078
+=====
+
+.. problem-summary:: P4078
+
+This error occurs when a ``TASK`` declares a negative ``INTERVAL``. The
+interval of a cyclic task is the time between the starts of two runs, so it
+cannot be less than zero.
+
+Example
+-------
+
+The following code will generate error P4078:
+
+.. code-block::
+
+   CONFIGURATION config
+       RESOURCE resource1 ON PLC
+           TASK task1(INTERVAL := T#-10ms, PRIORITY := 1);
+           PROGRAM instance1 WITH task1 : main;
+       END_RESOURCE
+   END_CONFIGURATION
+
+To fix this error, give the task a positive interval:
+
+.. code-block::
+
+   CONFIGURATION config
+       RESOURCE resource1 ON PLC
+           TASK task1(INTERVAL := T#10ms, PRIORITY := 1);
+           PROGRAM instance1 WITH task1 : main;
+       END_RESOURCE
+   END_CONFIGURATION
+
+A task with an interval of zero, or with no ``INTERVAL``, runs freewheeling:
+the runtime starts the next scan cycle as soon as the previous one finishes.

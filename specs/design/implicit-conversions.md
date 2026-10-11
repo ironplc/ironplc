@@ -214,13 +214,17 @@ A `FOR` loop stores its initial value in its control variable and compares and s
 
 **REQ-IC-analyzer-079** The initial value, final value and step of a `FOR` loop are converted to the type of its control variable as an assigned value is: in `FOR l := d TO e` on an `LINT` and two `DINT`s both bounds are converted to `LINT`.
 
-### Subscripts and shift counts
+### Subscripts, shift counts and string positions
 
 An array subscript is compiled at `DINT`, and the count of a shift or rotate at `LINT` when the shifted value is operated at 64 bits and at `DINT` otherwise, whatever their own types: the literals of both already take those types (see Literals). The pass converts a subscript or count of another width to that type as an assigned value is converted. A 64-bit subscript, or a 64-bit count of a 32-bit value, is narrowed: the code generator narrowed it before the conversion was recorded, and recording it makes the narrowing visible. Whether a subscript should index at 64 bits, and whether a count beyond the value's width should shift every bit out, are separate decisions.
 
 **REQ-IC-analyzer-100** A subscript whose width differs from `DINT`'s is converted to `DINT`, in a value and in an assignment target: the `LINT` of `a[l]` and the `LINT` sum of `a[d + l]` are converted to `DINT`, and the `SINT` of `a[s]` is not converted.
 
 **REQ-IC-analyzer-101** A shift or rotate count whose width differs from the count's type is converted to it: the `LINT` count of `SHL(dw, l)` on a `DWORD` is converted to `DINT`, the `DINT` count of `SHL(lw, d)` and `ROR(lw, d)` on an `LWORD` to `LINT`, and a `SINT` count of a `DWORD` and a `ULINT` count of an `LWORD` are not converted.
+
+The position or length of a string function -- the `L` of `LEFT` and `RIGHT`, the `L` and `P` of `MID`, `DELETE` and `REPLACE`, and the `P` of `INSERT` -- is compiled at `DINT` whatever its own type, as a subscript is, and its literals already take that type. The pass converts one of another width to `DINT` the same way, so a 64-bit position or length is narrowed as the code generator narrowed it.
+
+**REQ-IC-analyzer-104** A string function's position or length whose width differs from `DINT`'s is converted to `DINT`: the `LINT` of `LEFT(st, l)`, the `LINT` sum of `RIGHT(st, d + l)`, the `ULINT` length of `DELETE(st, ul, l)` and the `LINT` position of `INSERT(st, 'ab', l)` are converted to `DINT`, and the `SINT` of `LEFT(st, s)` and the `DINT` position of `MID(st, l, d)` are not converted.
 
 ### Arguments
 
@@ -300,6 +304,15 @@ A literal a standard function does not give a type to (`TRUNC`, a typed time fun
 
 ## Codegen
 
+Every expression compiles at its own type, the one the analyzer recorded for
+it, and codegen converts nothing to the type of the expression it is used in:
+where a value is used at another type, the analyzer recorded the conversion,
+or the program wrote one, such as `INT_TO_REAL`. A value with no operation
+type -- the buffer of a string, the data offset of an aggregate, or a constant
+codegen builds itself -- is loaded at the default slot type.
+
+**REQ-IC-codegen-019** Codegen chooses no conversion of its own: with the recorded conversions removed, `l := ud` on an `LINT` and a `UDINT`, `r := i` on a `REAL` and an `INT`, and `lr := r * r` on an `LREAL` and a `REAL` compile without converting the value.
+
 An `ImplicitConversion` compiles its operand at the operand's own type and
 converts it to the type the node records. A comparison compiles at the type of
 its left operand, else of its right one when the left one has no type codegen
@@ -311,21 +324,19 @@ An operation on one value -- a negation, `NOT`, a numeric function of one
 input (`ABS`, `SQRT`, ...), `MOVE`, or a shift or rotate, whose count only
 says how far -- has its operand's type, and computes at that type, as an
 arithmetic operation computes at its result's: `NOT` of a `BOOL` at `BOOL`, a
-negation of a `TIME` at `TIME`. Its result is converted to the type of its
-context. One the analyzer gave no type is reported rather than computed at
-its context's.
+negation of a `TIME` at `TIME`. One the analyzer gave no type is reported
+rather than computed at another type.
 
 A function of several inputs of one type (`MAX`, `MIN`, `LIMIT`, `SEL`, `MUX`,
 `EXPT`, `ATAN2`) computes at the type the analyzer recorded for the call, and
 selects its builtin by that type's width and signedness. Each input compiles at
 the type recorded for it, which for an input of the function's type is the
-call's width (see Standard functions), and the result is converted to the type
-of its context. A call without a recorded type is reported, not compiled at its
-context's.
+call's width (see Standard functions). A call without a recorded type is
+reported, not compiled at another type.
 
 **REQ-IC-codegen-003** An operation on one value assigned to a wider target computes at its operand's type: `lw := SHL(dw, 1)` with `dw = 16#80000000` stores 0, `lw := NOT dw` with `dw = 0` stores `16#FFFFFFFF`, and `l := -d` with `d` the least `DINT` stores that `DINT`.
 
-A variable is read at its own type and converted to its context's where that differs. A variable of a reference type holds the index of the variable it refers to, and its own type is the reference, which the analyzer knows by `REF_TO` and the type it references (see References), so it is read as that 64-bit index whatever it refers to. A read through it is a dereference, which the analyzer spells as one even for a bare `REFERENCE TO` read.
+A variable is read at its own type. A variable of a reference type holds the index of the variable it refers to, and its own type is the reference, which the analyzer knows by `REF_TO` and the type it references (see References), so it is read as that 64-bit index whatever it refers to. A read through it is a dereference, which the analyzer spells as one even for a bare `REFERENCE TO` read.
 
 **REQ-IC-codegen-010** A variable of a reference type is read as the 64-bit index it holds, whatever type it refers to: with `q := REF(r)` on a `REAL` `r` that is not the first variable, `q^` reads `r`, and so does `q2^` after `q2 := q`; a `REF_TO LREAL` reads its target the same way.
 
@@ -356,8 +367,9 @@ An arithmetic operation, in the operator and the function form, computes at
 its own result type: a typed overload's routine, or the numeric type at whose
 width the analyzer placed every operand, a subrange's being its base type. An
 operation with neither, or with an operand of another width, is an internal
-error rather than compiled at the type of its context, which is how a subrange
-operand and a field reached through an array of structures used to compile.
+error, rather than compiled at the type of the expression it is used in,
+which is how a subrange operand and a field reached through an array of
+structures used to compile.
 
 **REQ-IC-codegen-012** An operation on a subrange or on a field reached through an array of structures computes at its own type, as on a variable of the base or field type: `gt := s > l` with `s = 10` on a subrange of `INT` and `l = 4294967297` stores `FALSE`, `l := s * s` with `s = 100000` on a subrange of `DINT` wraps at 32 bits as `DINT * DINT` does, `l := MAX(u, v)` with `u = 4000000000` on a subrange of `UDINT` stores 4000000000, and `l := h.items[1].a * h.items[2].a` on `DINT` fields of 100000 wraps at 32 bits.
 
@@ -369,7 +381,11 @@ A parameter of a user-defined function is passed at its declared type the same w
 
 **REQ-IC-codegen-006** A function's parameter of an alias or a subrange type receives the value of the type it is operated as: `pass(p)` with `p = 2.5` and a parameter of an alias of `LREAL` passes 2.5, and `pass(b)` with `b = 5000000000` and a parameter of an alias or a subrange of `LINT` passes 5000000000.
 
-`AND`, `OR` and `XOR` compute at the type the analyzer recorded for the operation, to which it converted an operand of another width, and their result is converted to the type of its context.
+Every other variable of a function, a method or a function block body -- a local, a field, a function's or a method's return value -- is stored and loaded at its declared type too, whatever kind of declaration declares it: the type the analyzer resolved for it, a subrange at its base type, an enumeration as a `DINT` and a reference as its 64-bit index.
+
+**REQ-IC-codegen-020** A function's return value of a subrange of `LINT` and a method-local `REFERENCE TO` are stored at 64 bits: `f := p` in a function returning a subrange of `LINT`, and `r REF= target` on a method-local `REFERENCE TO INT`, store the 64-bit value with a 64-bit store.
+
+`AND`, `OR` and `XOR` compute at the type the analyzer recorded for the operation, to which it converted an operand of another width.
 
 A typed time or date function compiles each operand at the type the analyzer recorded for it, which is the width the routine computes at. An operand of another width is an internal error (P9998), not widened as the code generator used to widen a short operand of a long form and the number a duration is scaled by. The analyzer writes a typed fold as the calls it folds to, so no step widens the previous step's result on the stack.
 
@@ -377,15 +393,10 @@ An array subscript and a shift or rotate count compile at the type the analyzer 
 
 **REQ-IC-codegen-015** A subscript or shift count whose conversion the analyzer did not record is an internal error: with the recorded conversions removed, `a[l]`, `a[d + l]`, `SHL(dw, l)` and `SHL(lw, d)` report P9998, and `a[d]` and `SHL(dw, d)` compile.
 
+A string function's position or length compiles at the type the analyzer recorded for it, which is `DINT`. One of another width is an internal error, not narrowed as the code generator used to.
+
+**REQ-IC-codegen-018** A string position or length whose conversion the analyzer did not record is an internal error: with the recorded conversions removed, `LEFT(st, l)`, `MID(st, d, l)`, `INSERT(st, 'ab', l)` and `REPLACE(st, 'ab', l, d)` report P9998, and `LEFT(st, d)` compiles.
+
 **REQ-IC-codegen-013** A typed time or date operation whose operand conversion the analyzer did not record is an internal error: with the recorded conversions removed, `lt + t`, `SUB_LDATE_LDATE(lda, da)`, `lt * d`, `MUL_LTIME(lt, r)` and `t * l` report P9998, and `lt + lt` compiles.
 
 **REQ-IC-codegen-008** `AND`, `OR` and `XOR` keep every bit of their widest operand and widen their result by its own type: with `lw = 16#100000000` and `w = 1`, `w OR lw` and `lw OR w` give `16#100000001`, and with the `DWORD`s `d1 = 16#80000000` and `d2 = 1`, `lw := d1 OR d2` stores `16#80000001`.
-
-## Out of scope
-
-- A value in a context that records nothing -- a condition, a subscript, an
-  input of a standard function -- is still converted by codegen.
-- Codegen still converts a variable, an arithmetic result or an operation on
-  one value to the type of its context where nothing recorded it, so its own
-  conversion is removed only once every context records it. A literal's type
-  is no longer passed down.
