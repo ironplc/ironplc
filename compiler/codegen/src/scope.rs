@@ -236,6 +236,7 @@ mod tests {
             type_id: 0,
             data_offset: tag_of(name),
             field_indices: HashMap::new(),
+            field_op_types: HashMap::new(),
         }
     }
 

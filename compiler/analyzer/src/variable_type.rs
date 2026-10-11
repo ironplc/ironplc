@@ -111,7 +111,11 @@ pub(crate) fn declared<'a>(
     context: &'a SemanticContext,
     scope: &ScopeKind,
 ) -> Option<&'a SemanticType> {
-    let type_id = context.symbols().find(name, scope)?.type_id?;
+    let type_id = context
+        .symbols()
+        .resolve_variable(name, scope)
+        .declared()?
+        .type_id?;
     Some(&context.types().get_by_id(type_id)?.representation)
 }
 

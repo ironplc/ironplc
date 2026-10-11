@@ -1,0 +1,26 @@
+[package]
+name = "ironplc-ir"
+description = "Target-neutral intermediate representation consumed by IronPLC backends. Holds the execution model: what runs and when."
+version = "0.248.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[badges]
+maintenance = { status = "experimental" }
+
+[dependencies]
+# For `SourceSpan` alone; see `specs/design/execution-model.md`, "Source
+# positions". REQ-EM-ir-002 allows no other compiler crate here.
+ironplc-dsl = { path = "../dsl", version = "0.248.0" }
+time = "0.3.47"
+
+[build-dependencies]
+ironplc-spec-requirements-gen = { path = "../spec_requirements_gen" }
+
+[dev-dependencies]
+spec_test_macro = { path = "../spec_test_macro" }
+
+[lints]
+workspace = true

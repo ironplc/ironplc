@@ -428,6 +428,8 @@ Function block invocation follows the pattern: load the FB instance reference, s
 | 0x0020 | CTU | 0x0040 | R_TRIG |
 | 0x0021 | CTD | 0x0041 | F_TRIG |
 
+Each counter has a type id for each width it counts in: `0x0020`–`0x0022` count in a signed 32-bit integer (`CTU`, `CTU_INT`, `CTU_DINT` and the same for `CTD` and `CTUD`), `0x0023`–`0x0025` in an unsigned 32-bit one (`_UDINT`), `0x0026`–`0x0028` in a signed 64-bit one (`_LINT`) and `0x0029`–`0x002B` in an unsigned 64-bit one (`_ULINT`), each run in `CTU`, `CTD`, `CTUD` order. See `counter-widths.md`.
+
 Timer instances (TON, TOF, TP) use a shared 6-field layout: `IN`, `PT`, `Q`, `ET`, plus two hidden fields for the start timestamp and the running flag.
 
 #### Calling convention
@@ -1203,6 +1205,7 @@ Verification runs on the bytecode that ships, independently of the emitter's own
 | V9016 | ProgramExceedsCallDepth | Declared call depth exceeds the VM's frame capacity |
 | V9017 | ZeroCallDepth | Container declares a call depth of zero |
 | V9019 | VariableTableTooSmall | Variable table has fewer slots than the container requires |
+| V9020 | CallStackUnderflow | Dispatch loop found no call frame where it requires one |
 
 V4xxx codes are user errors (exit code 1); V9xxx codes are internal errors (exit code 3).
 

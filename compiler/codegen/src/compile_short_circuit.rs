@@ -19,7 +19,7 @@ use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{CompareExpr, CompareOp};
 
 use super::compile::CompileContext;
-use super::compile_expr::{compile_expr, expr_is_bool, op_type};
+use super::compile_expr::{compile_expr, expr_is_bool};
 use crate::emit::Emitter;
 
 /// A boolean operator that may skip evaluating its right operand.
@@ -86,20 +86,16 @@ pub(crate) fn compile_short_circuit(
     compare: &CompareExpr,
     op: ShortCircuitOp,
 ) -> Result<(), Diagnostic> {
-    // Both operands are BOOL (`ShortCircuitOp::for_expr` established that), so
-    // the left operand's type is the type of the whole expression.
-    let bool_op_type = op_type(ctx, &compare.left)?;
-
     let alternative = emitter.create_label();
     let end = emitter.create_label();
 
-    compile_expr(emitter, ctx, &compare.left, bool_op_type)?;
+    compile_expr(emitter, ctx, &compare.left)?;
     emitter.emit_jmp_if_not(alternative);
     let depth_before_arms = emitter.stack_depth();
 
     // Reached when the left operand is TRUE.
     match op {
-        ShortCircuitOp::AndThen => compile_expr(emitter, ctx, &compare.right, bool_op_type)?,
+        ShortCircuitOp::AndThen => compile_expr(emitter, ctx, &compare.right)?,
         ShortCircuitOp::OrElse => emitter.emit_load_true(),
     }
     emitter.emit_jmp(end);
@@ -110,7 +106,7 @@ pub(crate) fn compile_short_circuit(
     // Reached when the left operand is FALSE.
     match op {
         ShortCircuitOp::AndThen => emitter.emit_load_false(),
-        ShortCircuitOp::OrElse => compile_expr(emitter, ctx, &compare.right, bool_op_type)?,
+        ShortCircuitOp::OrElse => compile_expr(emitter, ctx, &compare.right)?,
     }
     emitter.bind_label(end);
 

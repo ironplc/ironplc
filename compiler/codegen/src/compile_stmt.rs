@@ -170,6 +170,7 @@ fn compile_fb_call(
         .ok_or_else(|| Diagnostic::todo_with_span(fb_call.span()))?;
     let type_id = fb_info.type_id;
     let field_indices = fb_info.field_indices.clone();
+    let field_op_types = fb_info.field_op_types.clone();
     let var_index = fb_info.var_index;
 
     // Push FB instance reference.
@@ -182,8 +183,7 @@ fn compile_fb_call(
             let field_idx = field_indices
                 .get(&field_name)
                 .ok_or_else(|| Diagnostic::todo_with_span(input.name.span()))?;
-            let op_type = resolve_fb_field_op_type(ctx, type_id, &field_name);
-            compile_expr(emitter, ctx, &input.expr, op_type)?;
+            compile_expr(emitter, ctx, &input.expr)?;
             emitter.emit_fb_store_param(*field_idx);
         }
     }
@@ -209,7 +209,7 @@ fn compile_fb_call(
                 .ok_or_else(|| Diagnostic::todo_with_span(output.src.span()))?;
             emitter.emit_fb_load_param(*field_idx);
             let target_index = resolve_variable(ctx, &output.tgt)?;
-            let op_type = resolve_fb_field_op_type(ctx, type_id, &field_name);
+            let op_type = resolve_fb_field_op_type(&field_op_types, &field_name);
             emit_store_var(emitter, target_index, op_type);
         }
     }
@@ -323,12 +323,11 @@ fn compile_case(
     case_stmt: &ironplc_dsl::textual::Case,
 ) -> Result<(), Diagnostic> {
     let end_label = emitter.create_label();
-    // Enum selectors have a resolved type that is the enum name (e.g. "COLOR"),
-    // which resolve_type_name doesn't handle. Fall back to W32/Signed (DINT)
-    // since all enums use DINT at codegen level (REQ-EN-codegen-003).
+    // An enumeration selector operates as a DINT (REQ-EN-codegen-003), which
+    // `op_type` answers from its type.
     let selector = CaseSelector {
         expr: &case_stmt.selector,
-        op_type: op_type(ctx, &case_stmt.selector).unwrap_or(crate::compile::DEFAULT_OP_TYPE),
+        op_type: op_type(ctx, &case_stmt.selector)?,
     };
 
     for group in &case_stmt.statement_groups {
@@ -382,7 +381,7 @@ impl CaseSelector<'_> {
         label: CaseLabelValue<'_>,
         cmp: fn(&mut Emitter, OpType),
     ) -> Result<(), Diagnostic> {
-        compile_expr(emitter, ctx, self.expr, self.op_type)?;
+        compile_expr(emitter, ctx, self.expr)?;
         match self.op_type.0 {
             OpWidth::W32 => {
                 let pool_index = ctx.add_i32_constant(label.to_i32(self.op_type.1)?);
@@ -498,7 +497,7 @@ fn compile_case_selector(
         CaseSelectionKind::EnumeratedValue(ev) => {
             // REQ-EN-codegen-040: Load selector, load ordinal constant, compare with EQ_I32.
             // The label is a value of the selector's type.
-            compile_expr(emitter, ctx, selector.expr, selector.op_type)?;
+            compile_expr(emitter, ctx, selector.expr)?;
             let members = crate::compile_enum::members_of_expr(ctx, selector.expr);
             let ordinal = crate::compile_enum::ordinal_in(members, ev)?;
             let pool_index = ctx.add_i32_constant(ordinal);
@@ -575,21 +574,4 @@ fn resolve_signed_integer_ref(sir: &SignedIntegerRef) -> Result<&SignedInteger, 
         SignedIntegerRef::Literal(si) => Ok(si),
         SignedIntegerRef::Constant(id) => Err(Diagnostic::todo_with_id(id)),
     }
-}
-
-/// Converts a `SignedInteger` AST node to an `i32` value.
-///
-/// Its one use is the bounds of an inline array. Analysis reports a bound that
-/// a `DINT` cannot hold (`rule_range_limits`, P2024), so one that reaches here
-/// is a compiler bug.
-pub(crate) fn signed_integer_to_i32(si: &SignedInteger) -> Result<i32, Diagnostic> {
-    let value = if si.is_neg {
-        -(si.value.value as i128)
-    } else {
-        si.value.value as i128
-    };
-    i32::try_from(value).map_err(|_| {
-        Diagnostic::internal_error_at(Label::span(si.value.span(), "Integer literal"))
-            .with_context("value", &value.to_string())
-    })
 }

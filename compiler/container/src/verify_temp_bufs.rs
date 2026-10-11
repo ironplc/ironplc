@@ -207,18 +207,23 @@ fn walk_function(
         .map_err(|_| TempBufferOverrun::Undecodable { function_id })?;
 
     // `depth_at[pc]` is the greatest temp depth any path has delivered to
-    // the instruction at `pc`. Index `len` is falling off the end.
+    // the instruction at `pc`. Index `len` is falling off the end. Each work
+    // item carries the depth that queued it.
     let mut depth_at: Vec<Option<u16>> = vec![None; len + 1];
-    let mut work: VecDeque<usize> = VecDeque::new();
+    let mut work: VecDeque<(usize, u16)> = VecDeque::new();
     let mut callees: Vec<FunctionId> = Vec::new();
     let mut max_depth = 0u16;
     let mut peak_offset = 0usize;
 
     depth_at[0] = Some(0);
-    work.push_back(0);
+    work.push_back((0, 0));
 
-    while let Some(pc) = work.pop_front() {
-        let depth = depth_at[pc].expect("queued offsets always carry a depth");
+    while let Some((pc, depth)) = work.pop_front() {
+        // A later raise at `pc` queued its own item behind this one, so this
+        // one is superseded: walking it would only deliver a lower depth.
+        if depth_at[pc].is_some_and(|recorded| recorded > depth) {
+            continue;
+        }
         if pc == len {
             continue;
         }
@@ -289,12 +294,17 @@ fn walk_function(
 /// Unlike the operand-stack walk this never reports a merge conflict: arms
 /// that deliver different temp depths are legal, and the bound needs the
 /// larger.
-fn raise(depth_at: &mut [Option<u16>], work: &mut VecDeque<usize>, target: usize, depth: u16) {
+fn raise(
+    depth_at: &mut [Option<u16>],
+    work: &mut VecDeque<(usize, u16)>,
+    target: usize,
+    depth: u16,
+) {
     match depth_at[target] {
         Some(existing) if existing >= depth => {}
         _ => {
             depth_at[target] = Some(depth);
-            work.push_back(target);
+            work.push_back((target, depth));
         }
     }
 }

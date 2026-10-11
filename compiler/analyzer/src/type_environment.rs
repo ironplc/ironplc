@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use ironplc_container::CharWidth;
 use ironplc_dsl::{
     common::{ArraySubranges, ElementaryTypeName, ReferenceTarget, SpecificationKind, TypeName},
-    core::{Located, SourceSpan},
+    core::{Id, Located, SourceSpan},
     diagnostic::{Diagnostic, Label},
     textual::{Expr, ExprType},
 };
@@ -300,6 +300,16 @@ pub struct TypeEnvironment {
     /// array holds its element's structure but not its name, so an array of
     /// `Point` could not otherwise be traced back to `Point`.
     array_elements: HashMap<TypeId, TypeId>,
+    /// The type each alias (`TYPE MyByte : BYTE`) was declared as an alias
+    /// of, by the alias's id. The alias copies its base's representation,
+    /// which says what the type is but not what its values start at.
+    alias_bases: HashMap<TypeId, TypeId>,
+    /// The declared type of each field of a structure or function block
+    /// type, by the id of the type and the field's name. The representation
+    /// of a structure holds each field's structure but not its type, so a
+    /// field of an enumeration, a `WSTRING` or an array of `WSTRING` could not
+    /// otherwise be traced back to it.
+    fields: HashMap<(TypeId, Id), TypeId>,
     /// The repeated declarations met while populating, until the transform
     /// that populates the environment drains them with
     /// [`Self::take_duplicates`]. Recorded rather than returned so that a
@@ -318,6 +328,8 @@ impl TypeEnvironment {
             references: HashMap::new(),
             referenced: HashMap::new(),
             array_elements: HashMap::new(),
+            alias_bases: HashMap::new(),
+            fields: HashMap::new(),
             duplicates: Vec::new(),
         }
     }
@@ -485,7 +497,35 @@ impl TypeEnvironment {
         if let (Some(alias), Some(element)) = (self.id_of(type_name), element) {
             self.array_elements.entry(alias).or_insert(element);
         }
+        if let (Some(alias), Some(base)) = (self.id_of(type_name), self.id_of(base_type_name)) {
+            if alias != base {
+                self.alias_bases.entry(alias).or_insert(base);
+            }
+        }
         Ok(())
+    }
+
+    /// Records that the field `field` of the structure or function block
+    /// type `record` is declared with the type `field_type`.
+    pub(crate) fn record_field(&mut self, record: TypeId, field: &Id, field_type: TypeId) {
+        self.fields.insert((record, field.clone()), field_type);
+    }
+
+    /// The id of the declared type of the field `field` of the structure or
+    /// function block type `record`, or `None` when `record` has no such
+    /// field or its type is not known. A field of an alias of a structure is
+    /// the field of the structure it names.
+    pub fn field_type(&self, record: TypeId, field: &Id) -> Option<TypeId> {
+        match self.fields.get(&(record, field.clone())) {
+            Some(field_type) => Some(*field_type),
+            None => self.field_type(self.alias_base(record)?, field),
+        }
+    }
+
+    /// The type the alias `alias` names (`BYTE` for `TYPE MyByte : BYTE`),
+    /// or `None` when `alias` was not declared as an alias.
+    pub fn alias_base(&self, alias: TypeId) -> Option<TypeId> {
+        self.alias_bases.get(&alias).copied()
     }
 
     /// Gets the type from the environment.

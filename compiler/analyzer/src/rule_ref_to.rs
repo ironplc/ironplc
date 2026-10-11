@@ -89,7 +89,9 @@ impl RuleRefTo<'_> {
     /// Returns the symbol of the variable `name` names from the current
     /// scope.
     fn symbol(&self, name: &Id) -> Option<&SymbolInfo> {
-        self.symbols.find(name, &self.scope.current())
+        self.symbols
+            .resolve_variable(name, &self.scope.current())
+            .declared()
     }
 
     /// Returns the id of a variable's declared type, if it has a name the

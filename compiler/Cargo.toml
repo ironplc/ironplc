@@ -12,6 +12,7 @@ members = [
     "plc2plc",
     "dsl",
     "dsl_macro_derive",
+    "ir",
     "parser",
     "problems",
     "sources",

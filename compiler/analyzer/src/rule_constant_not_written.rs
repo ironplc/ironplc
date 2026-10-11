@@ -62,7 +62,10 @@ pub fn apply(
         .iter()
         .filter(|site| is_statement_write(site.kind))
         .filter_map(|site| {
-            let declared = context.symbols.find(&site.name, &site.declaration)?;
+            let declared = context
+                .symbols
+                .resolve_variable(&site.name, &site.declaration)
+                .declared()?;
             declared.is_constant().then(|| {
                 Diagnostic::problem(
                     Problem::ConstantVariableWritten,

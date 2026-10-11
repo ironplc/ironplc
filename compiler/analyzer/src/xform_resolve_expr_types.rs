@@ -158,7 +158,7 @@ fn semantic_type_to_elementary_type_name(
     env: &TypeEnvironment,
     it: &SemanticType,
 ) -> Option<TypeName> {
-    if let Some(tn) = env.elementary_type_name_for(it) {
+    if let Some(tn) = env.elementary_type_name_for(it.operated_as()) {
         return Some(tn);
     }
     match it {
@@ -543,7 +543,10 @@ impl ExprTypeResolver<'_> {
     /// The id of the type the variable `name` names from the current scope
     /// was declared with.
     fn declared_type_id(&self, name: &Id) -> Option<TypeId> {
-        self.symbols.find(name, &self.scope.current())?.type_id
+        self.symbols
+            .resolve_variable(name, &self.scope.current())
+            .declared()?
+            .type_id
     }
 
     /// The id of the type of the value `var` names.
@@ -603,46 +606,58 @@ impl ExprTypeResolver<'_> {
     /// Walks the member chain to find the root variable, looks up its type
     /// definition, then finds the leaf member's type.
     fn resolve_structured_variable_type(&self, sv: &StructuredVariable) -> Option<TypeName> {
+        self.type_environment
+            .elementary_type_name_for(self.field_type(sv)?.operated_as())
+    }
+
+    /// The type of the member `sv` accesses, as its representation: a field's
+    /// type is known by its representation only.
+    fn field_type<'b>(&'b self, sv: &StructuredVariable) -> Option<&'b SemanticType> {
         let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
-        let field = parent_type
+        parent_type
             .member_fields()?
             .iter()
-            .find(|f| f.name == sv.field)?;
-        self.type_environment
-            .elementary_type_name_for(&field.field_type)
+            .find(|f| f.name == sv.field)
+            .map(|f| &f.field_type)
     }
 
     /// Resolves a `SymbolicVariableKind` to the `SemanticType` whose
     /// members it exposes.
     ///
     /// For `Structured`, recursively resolves the parent and finds the nested
-    /// member type. For anything else -- a variable, an array element, a
-    /// dereferenced reference -- takes the type its id names, when that is a
-    /// structure or function block.
+    /// member type, and for an element of an array that is a field
+    /// (`h.items[1]`), the array's element type. For anything else -- a
+    /// variable, an element of an array variable, a dereferenced reference --
+    /// takes the type its id names, when that is a structure or function
+    /// block.
     fn resolve_parent_struct_type<'b>(
         &'b self,
         kind: &SymbolicVariableKind,
     ) -> Option<&'b SemanticType> {
-        match kind {
-            SymbolicVariableKind::Structured(sv) => {
-                let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
-                let field = parent_type
-                    .member_fields()?
-                    .iter()
-                    .find(|f| f.name == sv.field)?;
-                if field.field_type.has_members() {
-                    Some(&field.field_type)
-                } else {
-                    None
-                }
-            }
-            _ => {
-                let representation = &self
-                    .type_environment
-                    .get_by_id(self.symbolic_type_id(kind)?)?
-                    .representation;
-                representation.has_members().then_some(representation)
-            }
+        let representation = match kind {
+            SymbolicVariableKind::Structured(sv) => self.field_type(sv)?,
+            SymbolicVariableKind::Array(array) => match array.subscripted_variable.as_ref() {
+                SymbolicVariableKind::Structured(sv) => self.field_element_type(sv)?,
+                _ => self.representation_of(kind)?,
+            },
+            _ => self.representation_of(kind)?,
+        };
+        representation.has_members().then_some(representation)
+    }
+
+    /// The type the id of the symbolic variable `kind` names, as its
+    /// representation.
+    fn representation_of(&self, kind: &SymbolicVariableKind) -> Option<&SemanticType> {
+        let id = self.symbolic_type_id(kind)?;
+        Some(&self.type_environment.get_by_id(id)?.representation)
+    }
+
+    /// The element type of the array the member access `sv` names
+    /// (`DATA.DIRS`), as its representation.
+    fn field_element_type<'b>(&'b self, sv: &StructuredVariable) -> Option<&'b SemanticType> {
+        match self.field_type(sv)? {
+            SemanticType::Array { element_type, .. } => Some(element_type),
+            _ => None,
         }
     }
 
@@ -653,15 +668,15 @@ impl ExprTypeResolver<'_> {
     /// `SemanticType::Array`, then returns the element type's
     /// canonical `TypeName`.
     fn resolve_struct_field_array_element_type(&self, sv: &StructuredVariable) -> Option<TypeName> {
-        let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
-        let field = parent_type
-            .member_fields()?
-            .iter()
-            .find(|f| f.name == sv.field)?;
-        let SemanticType::Array { element_type, .. } = &field.field_type else {
-            return None;
-        };
-        semantic_type_to_elementary_type_name(self.type_environment, element_type)
+        semantic_type_to_elementary_type_name(self.type_environment, self.field_element_type(sv)?)
+    }
+
+    /// The id of the declared type of the member `sv` accesses: the field of
+    /// the structure or function block type its record has. `None` when the
+    /// record's type is not known or records no type for the field.
+    fn field_type_id(&self, sv: &StructuredVariable) -> Option<TypeId> {
+        let record = self.symbolic_type_id(&sv.record)?;
+        self.type_environment.field_type(record, &sv.field)
     }
 
     /// The id of the type of the value the symbolic variable `kind` names:
@@ -672,21 +687,26 @@ impl ExprTypeResolver<'_> {
         match kind {
             SymbolicVariableKind::Named(nv) => self.declared_type_id(&nv.name),
             SymbolicVariableKind::Array(arr_var) => {
-                // Array subscript on a struct field (e.g. `DATA.DIRS[i, j]`).
-                // A field's type is known by its representation only, so
-                // the element type is resolved through the struct chain.
-                if let SymbolicVariableKind::Structured(sv) = arr_var.subscripted_variable.as_ref()
-                {
-                    return self
-                        .type_environment
-                        .id_of(&self.resolve_struct_field_array_element_type(sv)?);
+                let element = self
+                    .symbolic_type_id(&arr_var.subscripted_variable)
+                    .and_then(|array| self.type_environment.element_type(array));
+                if element.is_some() {
+                    return element;
                 }
-                let array = self.symbolic_type_id(&arr_var.subscripted_variable)?;
-                self.type_environment.element_type(array)
+                // Array subscript on a struct field (e.g. `DATA.DIRS[i, j]`)
+                // whose declared type was not recorded: the element type is
+                // resolved through the struct chain's representations.
+                let SymbolicVariableKind::Structured(sv) = arr_var.subscripted_variable.as_ref()
+                else {
+                    return None;
+                };
+                self.type_environment
+                    .id_of(&self.resolve_struct_field_array_element_type(sv)?)
             }
-            SymbolicVariableKind::Structured(sv) => self
-                .type_environment
-                .id_of(&self.resolve_structured_variable_type(sv)?),
+            SymbolicVariableKind::Structured(sv) => self.field_type_id(sv).or_else(|| {
+                self.type_environment
+                    .id_of(&self.resolve_structured_variable_type(sv)?)
+            }),
             SymbolicVariableKind::BitAccess(_) => {
                 self.type_environment.id_of(&TypeName::from("BOOL"))
             }

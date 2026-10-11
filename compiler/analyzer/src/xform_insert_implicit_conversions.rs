@@ -31,6 +31,7 @@ mod declared;
 mod inputs_of_one_type;
 mod integer_result;
 mod literal;
+mod time;
 
 use std::convert::Infallible;
 
@@ -38,8 +39,8 @@ use ironplc_dsl::common::Library;
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::scope::ScopeNode;
 use ironplc_dsl::textual::{
-    Assignment, Case, CompareExpr, Expr, ExprKind, FbCall, For, Function, If, ParamAssignmentKind,
-    Repeat, StmtKind, While,
+    ArrayVariable, Assignment, Case, CompareExpr, Expr, ExprKind, FbCall, For, Function, If,
+    ParamAssignmentKind, Repeat, StmtKind, While,
 };
 use ironplc_dsl::type_id::TypeId;
 use ironplc_parser::options::CompilerOptions;
@@ -184,7 +185,8 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
             ExprKind::BinaryOp(binary) => {
                 self.record_binary_operands(binary, node.expr_type.as_ref());
             }
-            ExprKind::Function(_) => {
+            ExprKind::Function(func) => {
+                self.record_time_function_inputs(func);
                 self.record_fold_operands(&mut node);
                 self.record_one_type_inputs(&mut node);
             }
@@ -206,6 +208,12 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
             | ExprKind::ImplicitConversion(_)
             | ExprKind::Null(_) => {}
         }
+        Ok(node)
+    }
+
+    fn fold_array_variable(&mut self, node: ArrayVariable) -> Result<ArrayVariable, Infallible> {
+        let mut node = node.recurse_fold(self)?;
+        self.record_subscript_conversions(&mut node);
         Ok(node)
     }
 

@@ -15,6 +15,17 @@ use dsl_macro_derive::{Located, Recurse};
 // and for any other commonly used file paths.
 static EMPTY_FILE_ID: LazyLock<Arc<str>> = LazyLock::new(|| Arc::from(""));
 
+/// The path of the file a node the compiler made, rather than parsed, is
+/// said to come from. No source file has it: it is not a valid path on
+/// Windows, and the angle brackets mark it as a placeholder elsewhere.
+///
+/// The marker is a path rather than a variant of [`FileId`] so that a
+/// [`SourceSpan`], which every node holds, stays as small as it is: the
+/// pointer of the `File` variant has room for one variant without data
+/// (`BuiltIn`), not two.
+const SYNTHESIZED_PATH: &str = "<synthesized>";
+static SYNTHESIZED_FILE_ID: LazyLock<Arc<str>> = LazyLock::new(|| Arc::from(SYNTHESIZED_PATH));
+
 /// FileId identifies the origin of source code.
 ///
 /// FileId is normally useful in the context of source positions
@@ -60,6 +71,19 @@ impl FileId {
     /// Returns true if this FileId represents a built-in type.
     pub fn is_builtin(&self) -> bool {
         matches!(self, FileId::BuiltIn)
+    }
+
+    /// Creates the file identifier of a node the compiler made rather than
+    /// parsed: a value the analyzer filled in, such as the default of a
+    /// field an initializer leaves out. A renderer that shows the program as
+    /// written leaves these out.
+    pub fn synthesized() -> Self {
+        FileId::File(SYNTHESIZED_FILE_ID.clone())
+    }
+
+    /// Returns true if this FileId marks a node the compiler made.
+    pub fn is_synthesized(&self) -> bool {
+        matches!(self, FileId::File(path) if path.as_ref() == SYNTHESIZED_PATH)
     }
 
     /// Test-only method to check if two FileIds share the same Arc memory.
@@ -149,6 +173,21 @@ impl SourceSpan {
     /// Returns true if this span represents a built-in type.
     pub fn is_builtin(&self) -> bool {
         self.file_id.is_builtin()
+    }
+
+    /// Creates the span of a node the compiler made rather than parsed,
+    /// such as a default value the analyzer filled in. It has no position.
+    pub fn synthesized() -> Self {
+        Self {
+            start: 0,
+            end: 0,
+            file_id: FileId::synthesized(),
+        }
+    }
+
+    /// Returns true if the node with this span was made by the compiler.
+    pub fn is_synthesized(&self) -> bool {
+        self.file_id.is_synthesized()
     }
 }
 
@@ -271,6 +310,29 @@ mod tests {
     #[derive(Located)]
     struct DefaultPositionNode {
         position: SourceSpan,
+    }
+
+    #[test]
+    fn is_synthesized_when_synthesized_span_then_true() {
+        assert!(SourceSpan::synthesized().is_synthesized());
+    }
+
+    #[test]
+    fn is_synthesized_when_parsed_or_builtin_span_then_false() {
+        let parsed = SourceSpan::range(1, 2).with_file_id(&FileId::from_string("main.st"));
+
+        assert!(!parsed.is_synthesized());
+        assert!(!SourceSpan::default().is_synthesized());
+        assert!(!SourceSpan::builtin().is_synthesized());
+    }
+
+    #[test]
+    fn source_span_when_synthesized_marker_then_same_size_as_two_indices_and_path() {
+        // The marker must not grow every node's span.
+        assert_eq!(
+            std::mem::size_of::<SourceSpan>(),
+            2 * std::mem::size_of::<usize>() + std::mem::size_of::<Arc<str>>()
+        );
     }
 
     #[test]

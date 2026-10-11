@@ -6,15 +6,15 @@
 //! width-specific `BUILTIN` func_id computes it. Separated from
 //! `compile_call.rs` to keep module sizes within the 1000-line guideline.
 
-use ironplc_analyzer::{BitShift, Intrinsic, NumericFunction};
+use ironplc_analyzer::{BitShift, NumericFunction};
 use ironplc_container::opcode;
 use ironplc_dsl::core::Located;
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, Function};
 
 use super::call_args::{collect_positional_args, wrong_arg_count};
-use super::compile::{CompileContext, OpType, OpWidth, Signedness, DEFAULT_OP_TYPE};
-use super::compile_expr::{compile_expr, op_type, storage_bits};
+use super::compile::{CompileContext, OpType, OpWidth, Signedness};
+use super::compile_expr::{compile_expr, storage_bits};
 use crate::emit::Emitter;
 
 /// Builds the opcode for a builtin defined across all four operation widths
@@ -164,10 +164,9 @@ pub(crate) fn lookup_builtin(
 ///
 /// A function of several inputs of one type (`MIN`, `MAX`, `LIMIT`, `SEL`,
 /// `EXPT`, `ATAN2`) computes at the type the analyzer recorded for the call,
-/// and compiles each argument at the type it recorded for that: an input of
+/// and each argument compiles at the type it recorded for that: an input of
 /// the function's type at `op_type`'s width, to which it converted one of
-/// another width, and `SEL`'s selector as the `BOOL` it is (ADR-0056). A
-/// function of one input compiles it at `op_type`.
+/// another width, and `SEL`'s selector as the `BOOL` it is (ADR-0056).
 pub(crate) fn compile_numeric(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -178,7 +177,8 @@ pub(crate) fn compile_numeric(
     let func_id = lookup_builtin(function, op_type.0, op_type.1)
         .ok_or_else(|| Diagnostic::todo_with_span(func.name.span()))?;
 
-    let expected_args = opcode::builtin::arg_count(func_id) as usize;
+    let expected_args =
+        opcode::builtin::arg_count_opt(func_id).ok_or_else(Diagnostic::internal_error)? as usize;
 
     let args = collect_positional_args(func);
 
@@ -186,17 +186,11 @@ pub(crate) fn compile_numeric(
         return Err(wrong_arg_count(func));
     }
 
-    let of_one_type = Intrinsic::Numeric(function).inputs_of_one_type().is_some();
     for arg in &args {
-        let arg_op_type = if of_one_type {
-            self::op_type(ctx, arg)?
-        } else {
-            op_type
-        };
-        compile_expr(emitter, ctx, arg, arg_op_type)?;
+        compile_expr(emitter, ctx, arg)?;
     }
 
-    emitter.emit_builtin(func_id);
+    emitter.emit_builtin(func_id)?;
     Ok(())
 }
 
@@ -239,18 +233,26 @@ pub(crate) fn compile_shift_rotate(
     shift: BitShift,
 ) -> Result<(), Diagnostic> {
     // Compile IN (value) with the inferred op_type
-    compile_expr(emitter, ctx, args[0], op_type)?;
-    // Compile N (shift count) — always as i32 for W32, i64 for W64
-    let n_op_type = match op_type.0 {
-        OpWidth::W64 => (OpWidth::W64, Signedness::Signed),
-        _ => DEFAULT_OP_TYPE,
+    compile_expr(emitter, ctx, args[0])?;
+    // Compile N (shift count) at its own type: the analyzer converted it to
+    // `LINT` for a value operated at 64 bits and to `DINT` otherwise.
+    let count = super::compile_expr::op_type(ctx, args[1])?;
+    let expected = match op_type.0 {
+        OpWidth::W64 => OpWidth::W64,
+        _ => OpWidth::W32,
     };
-    compile_expr(emitter, ctx, args[1], n_op_type)?;
+    if count.0 != expected {
+        return Err(Diagnostic::internal_error_at(Label::span(
+            args[1].span(),
+            "Shift count of a width other than the shifted value's, and the analyzer recorded no conversion",
+        )));
+    }
+    compile_expr(emitter, ctx, args[1])?;
 
     // Determine storage bits for narrow-type ROL/ROR selection
     let bits = storage_bits(ctx, args[0])?;
 
-    emitter.emit_builtin(shift_builtin(shift, op_type.0, bits));
+    emitter.emit_builtin(shift_builtin(shift, op_type.0, bits))?;
     Ok(())
 }
 

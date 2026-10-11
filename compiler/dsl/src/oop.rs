@@ -59,6 +59,10 @@ pub struct MethodDeclaration {
     pub body: Vec<StmtKind>,
     #[located(position)]
     pub span: SourceSpan,
+    /// The variable that holds the result, for a method that returns one
+    /// (see [`ResultVariable`]).
+    #[recurse(ignore)]
+    pub result: ResultVariable,
 }
 
 impl MethodDeclaration {
@@ -131,6 +135,7 @@ impl PropertyDeclaration {
             edge_variables,
             body,
             span,
+            result: Default::default(),
         }
     }
 
@@ -164,6 +169,7 @@ impl PropertyDeclaration {
             initializer,
             block: next_block_id(),
             type_id: None,
+            reset_on_call: false,
         };
         MethodDeclaration {
             qualifiers: MemberQualifiers::default(),
@@ -174,6 +180,7 @@ impl PropertyDeclaration {
             edge_variables,
             body,
             span,
+            result: Default::default(),
         }
     }
 }

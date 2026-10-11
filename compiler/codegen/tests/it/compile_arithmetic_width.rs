@@ -93,21 +93,21 @@ fn compile_when_operands_and_target_share_width_then_unchanged(
     );
 }
 
-/// REQ-AO-codegen-012: an expression whose result type is not a concrete
-/// elementary numeric type (here a subrange of `LINT`) compiles at the
-/// enclosing operation type, as before.
+/// REQ-AO-codegen-012: an expression on a subrange (here of `INT`) computes
+/// at the subrange's base type, and its result is widened to the `LINT`
+/// target, where it used to compute at the target's 64 bits.
 #[spec_test(REQ_AO_codegen_012)]
-fn compile_when_subrange_expression_then_compiles_at_enclosing_type() {
+fn compile_when_subrange_expression_then_computes_at_base_type() {
     let bytecode = scan_bytecode(
         "
 TYPE
-  BIG : LINT (0..10000000000);
+  SMALL : INT (-1000..1000);
 END_TYPE
 PROGRAM main
   VAR
-    x : BIG;
-    z : BIG;
-    y : BIG;
+    x : SMALL;
+    z : SMALL;
+    y : LINT;
   END_VAR
   y := x + z;
 END_PROGRAM
@@ -117,9 +117,9 @@ END_PROGRAM
     assert_bytecode!(
         &bytecode,
         [
-            bc::load_var_i64(0), // var:0 (x)
-            bc::load_var_i64(1), // var:1 (z)
-            bc::add_i64(),
+            bc::load_var_i32(0), // var:0 (x)
+            bc::load_var_i32(1), // var:1 (z)
+            bc::add_i32(),
             bc::store_var_i64(2), // var:2 (y)
             bc::ret_void(),
         ]

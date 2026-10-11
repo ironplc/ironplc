@@ -259,10 +259,12 @@ When both `i` and `j` are variables:
 
 During the init function (function 0), the compiler emits code to initialize each field of the structure variable.
 
-**Default initialization** (no explicit initial value):
-- Numeric fields: 0 (matching IEC 61131-3 defaults)
-- Boolean fields: FALSE
-- Enumeration fields: first enumeration value (or 0)
+Each field's value comes from the analyzer, which completes the
+declaration's initializer with the starting value of every field
+([Initial Values](initial-values.md)): the declaration's initializer, else
+the default the structure declares for the field, else the default of the
+field's type -- a subrange's lower bound, an enumeration's default member,
+an empty string, `NULL`, or zero.
 
 The init function emits a constant load + data region store for each field:
 
@@ -286,7 +288,11 @@ VAR
 END_VAR
 ```
 
-The compiler matches each element in `StructureInitializationDeclaration.elements_init` to the corresponding field, then emits a constant load + store for the specified value. Fields without explicit initializers use their default values.
+The analyzer applies the initializer's elements over the structure's
+defaults, so fields without explicit initializers keep their default values,
+and codegen emits a constant load + store for every field. A `STRING` field
+gets its header written and then its characters stored; an `ARRAY` field
+gets each element that is not zero stored, the data region starting zeroed.
 
 ### 3.2 Nested Structure Initialization
 
@@ -294,16 +300,17 @@ For nested structures, initialization is recursive. Each leaf field gets its own
 
 ### 3.3 Array-of-Struct Initialization
 
-The element field values of an array of structures are not initialized: the
-data region starts zeroed, so every field reads as zero. Default and
-explicit initial values for element fields are not applied
-([#1542](https://github.com/ironplc/ironplc/issues/1542)).
+Every element of an array of structures starts at the structure's default,
+which the analyzer resolves ([Initial Values](initial-values.md)). The data
+region starts zeroed, so the init function stores only the element fields
+whose value is not zero.
 
-The headers of STRING fields are the exception, because a zeroed header has
+The headers of STRING fields are always written, because a zeroed header has
 `char_width` 0 and traps on first use. The init function writes them with one
 `STR_INIT_ARRAY` per STRING field, through the field's strided descriptor
 (section 2.3), so every element's copy is initialized by a single
-instruction.
+instruction. A non-empty starting value of such a field is stored after the
+headers.
 
 ---
 

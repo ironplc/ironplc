@@ -12,14 +12,15 @@ use ironplc_problems::Problem;
 use log::debug;
 
 use crate::{
+    execution_model,
     function_environment::FunctionEnvironmentBuilder,
     ironplc_dsl::common::Library,
     result::SemanticResult,
-    rule_abstract_not_instantiated, rule_array_index_range, rule_assignment_aggregate_type_compat,
-    rule_bit_and_partial_access_range, rule_case_bit_string_label, rule_case_selector_type,
-    rule_condition_type, rule_constant_not_written, rule_constant_range,
-    rule_decl_struct_element_unique_names, rule_enum_base_type_allowed,
-    rule_enum_explicit_value_allowed, rule_enumeration_values_unique,
+    rule_abstract_not_instantiated, rule_array_index_range, rule_array_initializer_length,
+    rule_assignment_aggregate_type_compat, rule_bit_and_partial_access_range,
+    rule_case_bit_string_label, rule_case_selector_type, rule_condition_type,
+    rule_constant_not_written, rule_constant_range, rule_decl_struct_element_unique_names,
+    rule_enum_base_type_allowed, rule_enum_explicit_value_allowed, rule_enumeration_values_unique,
     rule_extends_field_duplicated, rule_function_block_call_unsupported,
     rule_function_block_invocation, rule_function_call_declared,
     rule_function_call_in_out_argument, rule_function_call_type_check,
@@ -29,7 +30,7 @@ use crate::{
     rule_program_var_hides_global, rule_range_limits, rule_real_literal_range, rule_ref_to,
     rule_return_type_declared, rule_stdlib_type_redefinition, rule_string_encoding_compat,
     rule_string_length_range, rule_string_literal_char_range,
-    rule_struct_initializer_expression_allowed, rule_task_names_unique,
+    rule_struct_initializer_expression_allowed, rule_task_configuration, rule_task_names_unique,
     rule_temporal_literal_range, rule_unsupported_extension, rule_use_declared_enumerated_value,
     rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
     rule_var_decl_global_const_requires_external_const, rule_var_decl_initializer_type_compat,
@@ -41,7 +42,7 @@ use crate::{
     xform_insert_implicit_conversions, xform_insert_implicit_deref, xform_int_to_bool_initializer,
     xform_mark_unwritten_constants, xform_named_to_positional_args, xform_remove_unsigned_abs,
     xform_resolve_adr, xform_resolve_constant_expressions, xform_resolve_decl_types,
-    xform_resolve_expr_types, xform_resolve_late_bound_expr_kind,
+    xform_resolve_expr_types, xform_resolve_initial_values, xform_resolve_late_bound_expr_kind,
     xform_resolve_late_bound_type_initializer, xform_resolve_symbol_and_function_environment,
     xform_resolve_type_aliases, xform_resolve_type_decl_environment, xform_toposort_declarations,
 };
@@ -191,7 +192,8 @@ pub fn resolve_types(
             .expect("SIZEOF should not conflict with stdlib");
     }
 
-    let mut symbol_environment = SymbolEnvironment::new();
+    let mut symbol_environment =
+        SymbolEnvironment::new().with_bare_globals(options.allow_top_level_var_global);
 
     // Register implicit system globals when the uptime feature is enabled.
     if options.allow_system_uptime_global {
@@ -288,6 +290,11 @@ pub fn resolve_types(
         xform_resolve_decl_types::apply(lib, &mut type_environment)
     });
 
+    // Resolve the default of every declared type while the declarations
+    // still name the types they were written with: resolving expression
+    // types rewrites an alias in an initializer to the type it aliases.
+    let type_defaults = xform_resolve_initial_values::TypeDefaults::of(&type_environment, &library);
+
     // Best effort: a repeated declaration name is diagnosed here, by the
     // environments, and the first declaration is kept, so the rest of the
     // library still resolves instead of reverting on the first repeat.
@@ -354,13 +361,19 @@ pub fn resolve_types(
     debug!("Symbol Environment:");
     debug!("{symbol_environment:?}");
 
+    // What runs, and when, resolved once next to `reachable`, so that a
+    // backend builds from it rather than deciding it again.
+    let model = execution_model::resolve(&library, options);
+
     let mut context = SemanticContext::new(
         type_environment,
         function_environment,
         symbol_environment,
         reachable,
         *options,
-    );
+    )
+    .with_execution_model(model)
+    .with_type_defaults(type_defaults);
     context.add_diagnostics(diagnostics);
 
     Ok((library, context))
@@ -377,6 +390,7 @@ pub(crate) fn semantic(
 ) -> SemanticResult {
     let functions: Vec<fn(&Library, &SemanticContext, &CompilerOptions) -> SemanticResult> = vec![
         rule_abstract_not_instantiated::apply,
+        rule_array_initializer_length::apply,
         rule_assignment_aggregate_type_compat::apply,
         rule_decl_struct_element_unique_names::apply,
         rule_range_limits::apply,
@@ -398,6 +412,7 @@ pub(crate) fn semantic(
         rule_program_var_hides_global::apply,
         rule_no_top_level_var_global::apply,
         rule_operator_operand_type_check::apply,
+        rule_task_configuration::apply,
         rule_task_names_unique::apply,
         rule_stdlib_type_redefinition::apply,
         rule_string_encoding_compat::apply,

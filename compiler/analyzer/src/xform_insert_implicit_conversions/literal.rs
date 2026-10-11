@@ -1,15 +1,14 @@
 //! Recording the type of an untyped literal from the context it is used in.
 //!
 //! An untyped literal such as `1` has a generic type (`ANY_INT`) until a
-//! context gives it one (ADR-0028). The code generator gives it one top-down:
-//! each statement passes the type it stores or tests at into its expression,
-//! and every construct on the way to the literal either passes that type on
+//! context gives it one (ADR-0028). The context is found top-down: each
+//! statement gives its expression the type it stores or tests at, and every
+//! construct on the way to the literal either passes that type on
 //! (parentheses), computes at a type of its own (an arithmetic operation, a
 //! negation, `ABS` or `MAX` of a concrete type, a comparison, a call to a
 //! user-defined function), or computes at a fixed type (a subscript, a
 //! string position, a shift count). This module records the type each
-//! literal reaches, so that a backend reads it from the literal rather than
-//! carrying it down.
+//! literal reaches, so that a backend compiles the literal at it.
 //!
 //! A literal stored in a function block field, passed to a method parameter
 //! or assigned through a dereference takes the declared type of the variable
@@ -235,16 +234,30 @@ impl ImplicitConversions<'_> {
                         operated.and_then(|id| self.width_of_type(id)) == Some(OperationWidth::W64);
                     let count = if wide { self.lint() } else { dint };
                     for (index, arg) in inputs.into_iter().enumerate() {
-                        self.type_literals(arg, if index == 0 { operated } else { count });
+                        if index == 0 {
+                            self.type_literals(arg, operated);
+                            continue;
+                        }
+                        self.type_literals(arg, count);
+                        // A count of another width is converted to the type
+                        // the count is compiled at, as it is narrowed or
+                        // widened to it.
+                        if let Some(count) = count {
+                            self.record_conversion_to(arg, count);
+                        }
                     }
                 }
-                // A position or a length is a `DINT`; a string is compiled in
-                // its own encoding.
+                // A position or a length is a `DINT`, and one of another
+                // width is converted to it, as it is narrowed or widened to
+                // it; a string is compiled in its own encoding.
                 Intrinsic::String(_) => inputs.into_iter().for_each(|arg| {
                     if self.conversions.is_string(arg) {
                         self.type_own(arg);
                     } else {
                         self.type_literals(arg, dint);
+                        if let Some(dint) = dint {
+                            self.record_conversion_to(arg, dint);
+                        }
                     }
                 }),
                 Intrinsic::Conversion { source, .. } => {

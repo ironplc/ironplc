@@ -58,6 +58,8 @@ enum Event {
 }
 
 impl DebugHook for RecordingHook {
+    type Pause = PauseReason;
+
     fn before_instruction(&mut self, function_id: FunctionId, pc: usize, _op: u8) -> HookAction {
         self.events.push(Event::Instr(function_id, pc));
         HookAction::Continue
@@ -238,6 +240,8 @@ struct PauseEachInstruction {
 }
 
 impl DebugHook for PauseEachInstruction {
+    type Pause = PauseReason;
+
     fn before_instruction(&mut self, _f: FunctionId, _pc: usize, _op: u8) -> HookAction {
         if self.skip {
             self.skip = false;

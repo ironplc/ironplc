@@ -192,6 +192,16 @@ impl SemanticType {
         matches!(self, SemanticType::Subrange { .. })
     }
 
+    /// The type a value of this type is operated at: a subrange's base type,
+    /// and any other type itself. `s + 1` on a subrange of `INT` adds as
+    /// `INT`.
+    pub fn operated_as(&self) -> &SemanticType {
+        match self {
+            SemanticType::Subrange { base_type, .. } => base_type,
+            other => other,
+        }
+    }
+
     /// Returns if the type is a function block.
     pub fn is_function_block(&self) -> bool {
         matches!(self, SemanticType::FunctionBlock { .. })

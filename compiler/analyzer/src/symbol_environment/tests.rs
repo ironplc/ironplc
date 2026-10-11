@@ -676,6 +676,7 @@ fn method_decl(name: &str) -> ironplc_dsl::common::MethodDeclaration {
         edge_variables: vec![],
         body: vec![],
         span: ironplc_dsl::core::SourceSpan::default(),
+        result: Default::default(),
     }
 }
 
@@ -720,7 +721,7 @@ fn scope_of_when_method_not_entered_then_scope_it_would_open() {
     assert_eq!(scope, tracker.current());
 }
 
-fn function_block(env: &mut SymbolEnvironment, name: &str, extends: Option<&str>) {
+pub(super) fn function_block(env: &mut SymbolEnvironment, name: &str, extends: Option<&str>) {
     let info = SymbolInfo::new(
         SymbolKind::FunctionBlock,
         ScopeKind::Global,
