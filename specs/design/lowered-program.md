@@ -286,7 +286,9 @@ Lowering is two new crates:
   the `Intrinsic` enum, and the expansions a backend may call instead of
   implementing a node (REQ-LOW-ir-068). It depends only on `ironplc-dsl`, for
   ids, source spans and diagnostics, and re-exports what a backend needs from
-  it.
+  it: `SourceSpan`, `FileId`, `Label` and `Diagnostic`. A backend names them
+  through `ironplc-ir`, so it needs no dependency on `ironplc-dsl`
+  (REQ-LOW-codegen-002).
 - **`ironplc-lowering`** is the pass that builds a lowered program, a program
   in the IR, from a clean analysis.
 
@@ -1124,6 +1126,17 @@ operation type, with no conversion (`compile_stmt.rs`).
 its inputs to the instance's fields, then an `FbCall`, then the assignments of
 its outputs from the instance's fields, in that order.
 
+The order of the inputs among themselves is the order of the call's normal
+form, which lowering is free to choose, and today's order is not a
+commitment. Today codegen evaluates a function block's inputs in the order
+the call writes them, while it evaluates the named arguments of a function or
+method in the order of the parameters. The end-to-end tests record both
+(`end_to_end_evaluation_order.rs`), so that a change shows up. Lowering may
+assign the inputs in the order the block declares them, as a function's
+arguments are evaluated. That is a correction, like those under
+[Backend Contract](#7-backend-contract): it differs only for inputs with a
+side effect, and the test that records the written order changes with it.
+
 ### 3.8 Callees, arguments and intrinsics
 
 ```rust
@@ -1462,6 +1475,20 @@ gives the bytecode VM an explicit stride for that reason, so that codegen
 never hands the VM an address it has not checked. The lowered program carries
 subscripts, never an address or a flat position, so no backend receives an
 address it did not check.
+
+Every subscript is a 32-bit signed integer, a `DINT`. The analyzer converts a
+subscript of another type to `DINT` (see [Implicit Conversions](implicit-conversions.md)),
+so a 64-bit subscript is narrowed, and no backend indexes at 64 bits. No
+program IronPLC targets needs an array of more than 2^31 elements, and 64-bit
+index arithmetic is slow on the 32-bit targets a PLC runtime often has.
+
+**REQ-LOW-lowering-161** The subscripts of an `Index` are of type `DINT`.
+
+The conversion to `DINT` wraps, so a subscript outside the range of `DINT`,
+such as a `UDINT` of 4,294,967,295, becomes another position, here -1, and on
+an array whose bounds include it selects an element rather than trapping.
+The end-to-end tests leave that case out rather than pin it. Whether such a
+subscript traps is an open question (see [Open Questions](#open-questions)).
 
 **REQ-LOW-codegen-089** An `Intrinsic` means what the IEC 61131-3 standard
 function means, with these choices where the standard leaves room: the count
@@ -2237,12 +2264,12 @@ This section constrains the order of work; it is not a work breakdown.
 - **The routes check each other.** While both routes exist, the end-to-end
   helpers compile each program both ways and compare the values of its
   variables by name (REQ-LOW-codegen-131). A disagreement fails the test. The
-  corrections named under [Backend Contract](#7-backend-contract) and the
-  width of the `_INT` counters
-  ([Standard function blocks](#standard-function-blocks)) are the exception:
-  they differ only for a selector or subscript with a side effect, or an
-  `_INT` counter past the range of `INT`, and the programs that show them are
-  listed as known differences.
+  corrections named under [Backend Contract](#7-backend-contract), the order
+  of a function block's inputs (REQ-LOW-lowering-069) and the width of the
+  `_INT` counters ([Standard function blocks](#standard-function-blocks)) are
+  the exception: they differ only for a selector, subscript or function block
+  input with a side effect, or an `_INT` counter past the range of `INT`, and
+  the programs that show them are listed as known differences.
 - **Progress cannot fall.** CI reports how many top-level statements of the
   end-to-end programs took the lowered route. The number does not fall.
 - **The IR is readable from its first commit.** `ironplc-ir` writes a lowered
@@ -2250,7 +2277,8 @@ This section constrains the order of work; it is not a work breakdown.
   that text.
 - **Behaviour preserving.** Each stage is behaviour preserving and is
   delivered as a prefactor, apart from the two corrections named under
-  [Backend Contract](#7-backend-contract) and the width of the `_INT` counters.
+  [Backend Contract](#7-backend-contract), the order of a function block's
+  inputs and the width of the `_INT` counters.
   The lowered route makes those corrections by construction.
 - **Target neutrality shown early.** A minimal WebAssembly path (one
   `PROGRAM`, integer arithmetic, assignment) is built as soon as a program of
@@ -2374,7 +2402,11 @@ ADR:
 
 ## Open Questions
 
-None.
+1. **A subscript outside the range of `DINT`.** Converting it to `DINT` wraps,
+   so it can select an element instead of trapping (see
+   [Meaning of operations](#310-meaning-of-operations)). Either the analyzer
+   records a conversion that traps when the value does not fit, or every
+   subscript's own type reaches the bounds check.
 
 ## References
 

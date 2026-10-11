@@ -333,12 +333,12 @@ backend reaches one only through `DebugName::span`.
 
 For a backend to drop `ironplc-dsl` altogether (REQ-LOW-codegen-002 in the
 lowered program design), it is not the span alone that has to come from
-elsewhere: `SourceSpan`, `FileId`, `Label` and `Diagnostic` go together. The
-way to get there is to move those four types into a small crate of their own,
-which `ironplc-dsl` re-exports so that nothing else changes, and which
-`ironplc-ir` and every backend depend on in place of `ironplc-dsl`. That move
-is mechanical, independent of this design, and a prefactor of its own. Until
-it lands, `ironplc-ir` imports `SourceSpan` from `ironplc-dsl`.
+elsewhere: `SourceSpan`, `FileId`, `Label` and `Diagnostic` go together.
+`ironplc-ir` re-exports all four from `ironplc-dsl`, and a backend names them
+through `ironplc-ir` (see the lowered program design's
+[Position in the Pipeline](lowered-program.md#1-position-in-the-pipeline)).
+Today `ironplc-ir` imports `SourceSpan` and re-exports nothing yet, since
+codegen still depends on `ironplc-dsl`.
 
 ## Behaviour
 
