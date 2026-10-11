@@ -57,6 +57,22 @@ END_PROGRAM
 #[case::load(CTUD_PROGRAM, &[write("load", 1), run(0), expect("cv_out", 3)])]
 // CTUD_DINT variant compiles and runs; one up-count reaches PV=1.
 #[case::dint_variant(CTUD_DINT_PROGRAM, &[run(0), expect("qu_out", 1), expect("cv_out", 1)])]
+// CU and CD rising in the same scan count one up and one down.
+#[case::up_and_down_together_cancel(CTUD_PROGRAM, &[
+    pulse("cu_in", 2, 0), expect("cv_out", 2),
+    write("cu_in", 1), write("cd_in", 1), run(4), expect("cv_out", 2),
+])]
+// R wins over LD.
+#[case::reset_wins_over_load(CTUD_PROGRAM, &[
+    pulse("cu_in", 1, 0),
+    write("reset", 1), write("load", 1), run(2), expect("cv_out", 0), expect("qd_out", 1),
+])]
+// LD wins over counting: an edge in the same scan is not counted on top of
+// the loaded value, and is used up.
+#[case::load_wins_over_counting(CTUD_PROGRAM, &[
+    write("load", 1), write("cu_in", 1), run(0), expect("cv_out", 3), expect("qu_out", 1),
+    write("load", 0), run(1), expect("cv_out", 3),
+])]
 fn end_to_end_fb_ctud(#[case] source: &str, #[case] steps: &[FbStep]) {
     drive_fb(source, &CompilerOptions::default(), steps);
 }
