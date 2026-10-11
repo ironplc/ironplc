@@ -62,9 +62,9 @@ impl Lowering<'_> {
                 return Ok(None);
             }
         }
-        if let Some(bits) = store_narrowing(&self.types, place.ty(), &value) {
+        if let Some(width) = store_narrowing(&self.types, place.ty(), &value) {
             let span = value.span().clone();
-            value = Expr::truncate(bits, value, span)?;
+            value = Expr::truncate(width, value, span)?;
         }
         Stmt::assign(&self.types, place, value, assignment.span()).map(Some)
     }

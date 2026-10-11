@@ -6,7 +6,7 @@ use ironplc_dsl::diagnostic::Diagnostic;
 use super::invariant::broken;
 use super::place::Place;
 use super::scalar::{ScalarType, Signedness};
-use super::types::TypeTable;
+use super::types::{NarrowWidth, TypeTable};
 
 /// The value of a constant, at one of the four operation widths, so a value
 /// always fits its width and a backend emits it as it is.
@@ -107,7 +107,7 @@ pub enum ExprKind {
     /// The low `bits` bits of the operand, sign-extended for a signed type and
     /// zero-extended for an unsigned one.
     Truncate {
-        bits: u8,
+        width: NarrowWidth,
         value: Box<Expr>,
     },
     Unary {
@@ -224,22 +224,21 @@ impl Expr {
         Ok(Self::new(ExprKind::Convert(Box::new(value)), ty, span))
     }
 
-    /// The low `bits` bits of the integer `value`, extended back to its type.
-    /// `bits` must be narrower than the type.
-    pub fn truncate(bits: u8, value: Expr, span: SourceSpan) -> Result<Self, Diagnostic> {
-        let narrower =
-            value.ty.is_integer() && value.ty.bits().is_some_and(|w| bits > 0 && bits < w);
+    /// The low bits of the integer `value`, `width` of them, extended back to
+    /// its type. `width` must be narrower than the type.
+    pub fn truncate(width: NarrowWidth, value: Expr, span: SourceSpan) -> Result<Self, Diagnostic> {
+        let narrower = value.ty.is_integer() && value.ty.bits().is_some_and(|w| width.bits() < w);
         if !narrower {
             return Err(broken(
                 "Expr::truncate",
                 &span,
-                format!("cannot truncate {} to {bits} bits", value.ty),
+                format!("cannot truncate {} to {} bits", value.ty, width.bits()),
             ));
         }
         let ty = value.ty;
         Ok(Self::new(
             ExprKind::Truncate {
-                bits,
+                width,
                 value: Box::new(value),
             },
             ty,
@@ -315,7 +314,18 @@ impl Expr {
         rhs: Expr,
         span: SourceSpan,
     ) -> Result<Self, Diagnostic> {
-        if lhs.ty != rhs.ty || matches!(lhs.ty, ScalarType::Interface) {
+        // References are compared only for equality: an order of addresses
+        // means something different on every target.
+        let ordered = matches!(
+            op,
+            CompareOp::Lt | CompareOp::Le | CompareOp::Gt | CompareOp::Ge
+        );
+        let comparable = match lhs.ty {
+            ScalarType::Interface => false,
+            ScalarType::Ref => !ordered,
+            ScalarType::I32(_) | ScalarType::I64(_) | ScalarType::F32 | ScalarType::F64 => true,
+        };
+        if lhs.ty != rhs.ty || !comparable {
             return Err(broken(
                 "Expr::compare",
                 &span,

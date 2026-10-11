@@ -38,9 +38,7 @@ use ironplc_analyzer::CleanAnalysis;
 use ironplc_dsl::common::{FunctionBlockDeclaration, FunctionDeclaration, ProgramDeclaration};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::StmtKind;
-use ironplc_ir::lowered::{PouId, Stmt, TypeTable, VarId};
-
-pub use variables::{Owner, Variable};
+use ironplc_ir::lowered::{PouId, PouTable, Stmt, TypeTable, VarId, VariableTable};
 
 /// The body a statement belongs to.
 #[derive(Clone, Copy, Debug)]
@@ -71,10 +69,10 @@ pub struct Lowering<'a> {
     /// The lowered type of each analyzer type, or `None` for one lowering
     /// cannot express yet.
     type_ids: HashMap<ironplc_dsl::type_id::TypeId, Option<ironplc_ir::lowered::TypeId>>,
-    variables: Vec<Variable>,
+    variables: VariableTable,
     /// The variable of each declaration that is not a field.
     declared: HashMap<DeclRef, VarId>,
-    pous: Vec<String>,
+    pous: PouTable,
     pou_ids: HashMap<String, PouId>,
     /// What lowering knows of each body it has lowered a statement of.
     bodies: HashMap<PouId, Option<variables::BodyFrame>>,
@@ -87,9 +85,9 @@ impl<'a> Lowering<'a> {
             analysis,
             types: TypeTable::new(),
             type_ids: HashMap::new(),
-            variables: Vec::new(),
+            variables: VariableTable::new(),
             declared: HashMap::new(),
-            pous: Vec::new(),
+            pous: PouTable::new(),
             pou_ids: HashMap::new(),
             bodies: HashMap::new(),
         }
@@ -106,7 +104,7 @@ impl<'a> Lowering<'a> {
         body: Body<'a>,
         stmt: &StmtKind,
     ) -> Result<StatementLowering, Diagnostic> {
-        let Some(frame) = self.frame(body) else {
+        let Some(frame) = self.frame(body)? else {
             return Ok(StatementLowering::Unsupported);
         };
         Ok(match self.statement(&frame, stmt)? {
@@ -120,8 +118,8 @@ impl<'a> Lowering<'a> {
         &self.types
     }
 
-    /// The variable `id` names, or `None` if lowering allocated no `id`.
-    pub fn variable(&self, id: VarId) -> Option<&Variable> {
-        self.variables.get(id.index() as usize)
+    /// The variables the lowered statements refer to.
+    pub fn variables(&self) -> &VariableTable {
+        &self.variables
     }
 }

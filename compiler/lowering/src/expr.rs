@@ -45,7 +45,7 @@ impl Lowering<'_> {
                     // `**` is the standard function `EXPT`, an intrinsic.
                     Operator::Pow => return Ok(None),
                 };
-                if !self.is_arithmetic(expr) {
+                if !self.is_arithmetic(expr)? {
                     return Ok(None);
                 }
                 self.binary(frame, op, &binary.left, &binary.right, span)
@@ -53,12 +53,12 @@ impl Lowering<'_> {
             AstExprKind::UnaryOp(unary) => {
                 let op = match unary.op {
                     AstUnaryOp::Neg => {
-                        if !self.is_arithmetic(expr) {
+                        if !self.is_arithmetic(expr)? {
                             return Ok(None);
                         }
                         UnaryOp::Neg
                     }
-                    AstUnaryOp::Not => match self.is_bool(expr) {
+                    AstUnaryOp::Not => match self.is_bool(expr)? {
                         Some(true) => UnaryOp::BoolNot,
                         Some(false) => UnaryOp::BitNot,
                         None => return Ok(None),
@@ -108,7 +108,7 @@ impl Lowering<'_> {
                 }
             }
             AstExprKind::ImplicitConversion(inner) => {
-                let Some((_, to)) = self.operated_type(expr) else {
+                let Some((_, to)) = self.operated_type(expr)? else {
                     return Ok(None);
                 };
                 let Some(value) = self.expr(frame, inner)? else {
@@ -166,7 +166,7 @@ impl Lowering<'_> {
     }
 
     fn constant(&mut self, expr: &AstExpr, constant: &ConstantKind, span: SourceSpan) -> Lowered {
-        let Some((_, ty)) = self.operated_type(expr) else {
+        let Some((_, ty)) = self.operated_type(expr)? else {
             return Ok(None);
         };
         let integer = match constant {
@@ -219,7 +219,7 @@ impl Lowering<'_> {
         left: &AstExpr,
         right: &AstExpr,
     ) -> Lowered {
-        let op = match self.is_bool(expr) {
+        let op = match self.is_bool(expr)? {
             Some(true) => logical,
             Some(false) => bitwise,
             None => return Ok(None),
@@ -264,24 +264,30 @@ impl Lowering<'_> {
     /// The lowered type the analyzer recorded for `expr`, and the type it is
     /// operated at; `None` when it recorded none, or one lowering cannot
     /// operate on as one value.
-    fn operated_type(&mut self, expr: &AstExpr) -> Option<(TypeId, ScalarType)> {
-        let recorded = expr.expr_type.as_ref()?.type_id()?;
-        let ty = self.lowered_type(recorded)?;
-        let operated = self.types.operation_type(ty)?;
-        Some((ty, operated))
+    fn operated_type(
+        &mut self,
+        expr: &AstExpr,
+    ) -> Result<Option<(TypeId, ScalarType)>, Diagnostic> {
+        let Some(recorded) = expr.expr_type.as_ref().and_then(|ty| ty.type_id()) else {
+            return Ok(None);
+        };
+        let Some(ty) = self.lowered_type(recorded)? else {
+            return Ok(None);
+        };
+        Ok(self.types.operation_type(ty).map(|operated| (ty, operated)))
     }
 
     /// Whether `expr` is computed by arithmetic: a number or a bit string,
     /// not a time, a date or an enumeration, whose operations follow rules of
     /// their own.
-    fn is_arithmetic(&mut self, expr: &AstExpr) -> bool {
-        let Some((ty, _)) = self.operated_type(expr) else {
-            return false;
+    fn is_arithmetic(&mut self, expr: &AstExpr) -> Result<bool, Diagnostic> {
+        let Some((ty, _)) = self.operated_type(expr)? else {
+            return Ok(false);
         };
         let Some(kind) = self.types.kind(ty) else {
-            return false;
+            return Ok(false);
         };
-        match kind {
+        Ok(match kind {
             TypeKind::Integer { .. } | TypeKind::BitString { .. } | TypeKind::Real { .. } => true,
             TypeKind::Subrange { base, .. } => {
                 matches!(self.types.kind(*base), Some(TypeKind::Integer { .. }))
@@ -295,16 +301,21 @@ impl Lowering<'_> {
             | TypeKind::FunctionBlock { .. }
             | TypeKind::Program { .. }
             | TypeKind::Reference { .. } => false,
-        }
+        })
     }
 
     /// Whether `expr` is a `BOOL` (`Some(true)`) or an integer or bit string
     /// (`Some(false)`), which decides between the logical and bitwise form of
     /// `NOT`, `AND`, `OR` and `XOR` (REQ-LOW-lowering-048). `None` for any
     /// other type.
-    fn is_bool(&mut self, expr: &AstExpr) -> Option<bool> {
-        let (ty, _) = self.operated_type(expr)?;
-        match self.types.kind(ty)? {
+    fn is_bool(&mut self, expr: &AstExpr) -> Result<Option<bool>, Diagnostic> {
+        let Some((ty, _)) = self.operated_type(expr)? else {
+            return Ok(None);
+        };
+        let Some(kind) = self.types.kind(ty) else {
+            return Ok(None);
+        };
+        Ok(match kind {
             TypeKind::Bool => Some(true),
             TypeKind::Integer { .. } | TypeKind::BitString { .. } => Some(false),
             TypeKind::Real { .. }
@@ -317,6 +328,6 @@ impl Lowering<'_> {
             | TypeKind::FunctionBlock { .. }
             | TypeKind::Program { .. }
             | TypeKind::Reference { .. } => None,
-        }
+        })
     }
 }

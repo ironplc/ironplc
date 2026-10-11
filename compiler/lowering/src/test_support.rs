@@ -7,7 +7,9 @@ use ironplc_dsl::core::FileId;
 use ironplc_dsl::textual::StmtKind;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::{Body, Lowering, StatementLowering, Variable};
+use ironplc_ir::lowered::Variable;
+
+use crate::{Body, Lowering, StatementLowering};
 
 /// What lowering made of each top-level statement of one body: the text of
 /// the lowered statement, or `unsupported`, and the variables lowering
@@ -48,12 +50,10 @@ pub(crate) fn lower_bodies(source: &str, pous: &[&str]) -> Outcome {
             statements.push(text);
         }
     }
-    let variables = (0..)
-        .map_while(|index| {
-            lowering
-                .variable(ironplc_ir::lowered::VarId::new(index))
-                .cloned()
-        })
+    let variables = lowering
+        .variables()
+        .iter()
+        .map(|(_, variable)| variable.clone())
         .collect();
     Outcome {
         statements,

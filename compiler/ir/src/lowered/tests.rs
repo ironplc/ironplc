@@ -16,52 +16,92 @@ fn entry(kind: TypeKind) -> TypeEntry {
     TypeEntry { name: None, kind }
 }
 
-/// A table with a `DINT`, an `INT`, a `SINT`, a `BOOL`, an `LREAL`, a program
-/// type with one `INT` field, and a non-null reference to that program type.
+fn name(text: &str) -> crate::execution::DebugName {
+    crate::execution::DebugName::new(text, span())
+}
+
+/// A program type with one `INT` field, the types a test needs, and one
+/// variable of each type.
 struct Fixture {
     types: TypeTable,
-    dint: TypeId,
-    int: TypeId,
-    sint: TypeId,
-    bool: TypeId,
-    lreal: TypeId,
-    program: TypeId,
-    this: TypeId,
+    variables: VariableTable,
+    dint: VarId,
+    int: VarId,
+    sint: VarId,
+    bool: VarId,
+    lreal: VarId,
+    program: VarId,
+    this: VarId,
+    reference: VarId,
 }
 
 fn fixture() -> Fixture {
     let mut types = TypeTable::new();
-    let dint = types.push(entry(TypeKind::Integer {
-        bits: 32,
+    let mut push = |kind| types.push(entry(kind), &span()).unwrap();
+    let dint = push(TypeKind::Integer {
+        width: IntWidth::B32,
         signed: true,
-    }));
-    let int = types.push(entry(TypeKind::Integer {
-        bits: 16,
+    });
+    let int = push(TypeKind::Integer {
+        width: IntWidth::B16,
         signed: true,
-    }));
-    let sint = types.push(entry(TypeKind::Integer {
-        bits: 8,
+    });
+    let sint = push(TypeKind::Integer {
+        width: IntWidth::B8,
         signed: true,
-    }));
-    let bool = types.push(entry(TypeKind::Bool));
-    let lreal = types.push(entry(TypeKind::Real { bits: 64 }));
-    let program = types.push(entry(TypeKind::Program {
+    });
+    let bool = push(TypeKind::Bool);
+    let lreal = push(TypeKind::Real {
+        width: WideWidth::B64,
+    });
+    let mut pous = PouTable::new();
+    let main = pous.push(name("main"));
+    let program = push(TypeKind::Program {
         fields: vec![Field::new("x", span(), Some(Section::Local), int)],
-        body: PouId::new(0),
-    }));
-    let this = types.push(entry(TypeKind::Reference {
+        body: main,
+    });
+    let this = push(TypeKind::Reference {
         target: program,
         nullability: Nullability::NonNull,
-    }));
+    });
+    let reference = push(TypeKind::Reference {
+        target: dint,
+        nullability: Nullability::Nullable,
+    });
+    let mut variables = VariableTable::new();
+    let mut var = |text: &str, ty| {
+        variables
+            .push(&types, name(text), Owner::Pou(main), ty)
+            .unwrap()
+    };
     Fixture {
+        dint: var("d", dint),
+        int: var("i", int),
+        sint: var("s", sint),
+        bool: var("b", bool),
+        lreal: var("r", lreal),
+        program: var("p", program),
+        this: var("this", this),
+        reference: var("ref", reference),
         types,
-        dint,
-        int,
-        sint,
-        bool,
-        lreal,
-        program,
-        this,
+        variables,
+    }
+}
+
+impl Fixture {
+    fn place(&self, var: VarId) -> Place {
+        Place::var(&self.variables, var, &span()).unwrap()
+    }
+
+    fn read(&self, var: VarId) -> Expr {
+        Expr::read(&self.types, self.place(var), span()).unwrap()
+    }
+
+    /// The field `x` of the instance `this` refers to.
+    fn field(&self) -> Place {
+        let program = self.place(self.this).deref(&self.types, &span()).unwrap();
+        let x = self.types.field_idx(program.ty(), 0).unwrap();
+        program.field(&self.types, x, &span()).unwrap()
     }
 }
 
@@ -214,20 +254,43 @@ fn convert_when_same_type_then_internal_error() {
 #[test]
 fn read_when_place_is_int_then_operation_type_of_int() {
     let f = fixture();
-    let place = Place::var(VarId::new(0), f.int);
-    let read = Expr::read(&f.types, place, span()).unwrap();
-    assert_eq!(read.ty(), ScalarType::I32(Signedness::Signed));
+    assert_eq!(f.read(f.int).ty(), ScalarType::I32(Signedness::Signed));
 }
 
 /// REQ-LOW-lowering-047: an aggregate is not read as one value.
 #[test]
 fn read_when_place_is_program_then_internal_error() {
     let f = fixture();
-    let place = Place::var(VarId::new(0), f.program);
     assert!(is_internal_error_naming(
-        Expr::read(&f.types, place, span()),
+        Expr::read(&f.types, f.place(f.program), span()),
         "Expr::read"
     ));
+}
+
+/// A place rooted at a variable takes its type from the variable table.
+#[test]
+fn place_when_variable_then_type_of_variable() {
+    let f = fixture();
+    assert_eq!(f.place(f.int).ty(), f.variables.get(f.int).unwrap().ty());
+}
+
+/// A variable another table allocated is not a place of this one.
+#[test]
+fn place_when_variable_not_in_table_then_internal_error() {
+    let f = fixture();
+    assert!(is_internal_error_naming(
+        Place::var(&VariableTable::new(), f.int, &span()),
+        "Place::var"
+    ));
+}
+
+/// REQ-LOW-lowering-026: a variable's type is in the type table.
+#[test]
+fn variable_when_type_not_in_table_then_internal_error() {
+    let f = fixture();
+    let ty = f.variables.get(f.int).unwrap().ty();
+    let result = VariableTable::new().push(&TypeTable::new(), name("x"), Owner::Global, ty);
+    assert!(is_internal_error_naming(result, "VariableTable::push"));
 }
 
 /// REQ-LOW-lowering-030, REQ-LOW-lowering-032: a field is reached through a
@@ -235,35 +298,42 @@ fn read_when_place_is_program_then_internal_error() {
 #[test]
 fn place_when_field_through_deref_then_type_of_field() {
     let f = fixture();
-    let place = Place::var(VarId::new(0), f.this)
-        .deref(&f.types, &span())
-        .unwrap()
-        .field(&f.types, FieldIdx::new(0), &span())
-        .unwrap();
-    assert_eq!(place.ty(), f.int);
-    assert_eq!(place.to_string(), "v0^.f0");
+    let field = f.field();
+    assert_eq!(field.ty(), f.variables.get(f.int).unwrap().ty());
+    assert_eq!(field.to_string(), "v6^.f0");
 }
 
-/// REQ-LOW-lowering-030: a field index lies within the type's fields.
+/// REQ-LOW-lowering-030: a field index names a field of the type, and only
+/// the type table makes one.
 #[test]
-fn place_when_field_index_outside_type_then_internal_error() {
+fn field_idx_when_position_outside_type_then_none() {
     let f = fixture();
-    let program = Place::var(VarId::new(0), f.program);
+    let program = f.variables.get(f.program).unwrap().ty();
+    assert!(f.types.field_idx(program, 0).is_some());
+    assert!(f.types.field_idx(program, 1).is_none());
+    let dint = f.variables.get(f.dint).unwrap().ty();
+    assert!(f.types.field_idx(dint, 0).is_none());
+}
+
+/// REQ-LOW-lowering-030: a field index of one type does not name a field of
+/// another.
+#[test]
+fn place_when_field_of_another_type_then_internal_error() {
+    let f = fixture();
+    let program = f.variables.get(f.program).unwrap().ty();
+    let x = f.types.field_idx(program, 0).unwrap();
     assert!(is_internal_error_naming(
-        program.clone().field(&f.types, FieldIdx::new(1), &span()),
+        f.place(f.dint).field(&f.types, x, &span()),
         "Place::field"
     ));
-    let scalar = Place::var(VarId::new(0), f.dint);
-    assert!(scalar.field(&f.types, FieldIdx::new(0), &span()).is_err());
 }
 
 /// REQ-LOW-lowering-032: only a reference is dereferenced.
 #[test]
 fn place_when_deref_of_non_reference_then_internal_error() {
     let f = fixture();
-    let place = Place::var(VarId::new(0), f.program);
     assert!(is_internal_error_naming(
-        place.deref(&f.types, &span()),
+        f.place(f.program).deref(&f.types, &span()),
         "Place::deref"
     ));
 }
@@ -272,9 +342,8 @@ fn place_when_deref_of_non_reference_then_internal_error() {
 #[test]
 fn assign_when_value_type_differs_from_place_then_internal_error() {
     let f = fixture();
-    let place = Place::var(VarId::new(0), f.lreal);
     assert!(is_internal_error_naming(
-        Stmt::assign(&f.types, place, int(1), span()),
+        Stmt::assign(&f.types, f.place(f.lreal), int(1), span()),
         "Stmt::assign"
     ));
 }
@@ -285,22 +354,23 @@ fn assign_when_value_type_differs_from_place_then_internal_error() {
 #[test]
 fn assign_when_narrow_place_then_value_must_fit() {
     let f = fixture();
-    let int_place = || Place::var(VarId::new(0), f.int);
-    let read = |ty| Expr::read(&f.types, Place::var(VarId::new(1), ty), span()).unwrap();
+    let assign = |value| Stmt::assign(&f.types, f.place(f.int), value, span());
 
     let sum = Expr::binary(BinaryOp::Add, int(1), int(2), span()).unwrap();
     assert!(is_internal_error_naming(
-        Stmt::assign(&f.types, int_place(), sum.clone(), span()),
+        assign(sum.clone()),
         "Stmt::assign"
     ));
-    let truncated = Expr::truncate(16, sum, span()).unwrap();
-    assert!(Stmt::assign(&f.types, int_place(), truncated, span()).is_ok());
+    let to_byte = Expr::truncate(NarrowWidth::B8, sum.clone(), span()).unwrap();
+    assert!(assign(to_byte).is_err());
+    let truncated = Expr::truncate(NarrowWidth::B16, sum, span()).unwrap();
+    assert!(assign(truncated).is_ok());
 
-    assert!(Stmt::assign(&f.types, int_place(), int(32767), span()).is_ok());
-    assert!(Stmt::assign(&f.types, int_place(), int(32768), span()).is_err());
+    assert!(assign(int(32767)).is_ok());
+    assert!(assign(int(32768)).is_err());
 
-    assert!(Stmt::assign(&f.types, int_place(), read(f.sint), span()).is_ok());
-    assert!(Stmt::assign(&f.types, int_place(), read(f.dint), span()).is_err());
+    assert!(assign(f.read(f.sint)).is_ok());
+    assert!(assign(f.read(f.dint)).is_err());
 }
 
 /// REQ-LOW-lowering-046: a `BOOL` is never narrowed.
@@ -308,36 +378,32 @@ fn assign_when_narrow_place_then_value_must_fit() {
 fn assign_when_bool_place_then_comparison_stored_as_is() {
     let f = fixture();
     let compared = Expr::compare(CompareOp::Eq, int(1), int(2), span()).unwrap();
-    let place = Place::var(VarId::new(0), f.bool);
-    assert!(Stmt::assign(&f.types, place, compared, span()).is_ok());
+    assert!(Stmt::assign(&f.types, f.place(f.bool), compared, span()).is_ok());
 }
 
 /// REQ-LOW-lowering-036: a non-null reference is never assigned.
 #[test]
 fn assign_when_non_null_reference_then_internal_error() {
-    let mut f = fixture();
-    let target = f.dint;
-    let nullable = f.types.push(entry(TypeKind::Reference {
-        target,
-        nullability: Nullability::Nullable,
-    }));
-    let source = Expr::read(&f.types, Place::var(VarId::new(1), nullable), span()).unwrap();
+    let f = fixture();
+    let source = f.read(f.reference);
     assert!(is_internal_error_naming(
-        Stmt::assign(
-            &f.types,
-            Place::var(VarId::new(0), f.this),
-            source.clone(),
-            span()
-        ),
+        Stmt::assign(&f.types, f.place(f.this), source.clone(), span()),
         "Stmt::assign"
     ));
-    assert!(Stmt::assign(
-        &f.types,
-        Place::var(VarId::new(0), nullable),
-        source,
-        span()
-    )
-    .is_ok());
+    assert!(Stmt::assign(&f.types, f.place(f.reference), source, span()).is_ok());
+}
+
+/// References are compared for equality only.
+#[test]
+fn compare_when_references_ordered_then_internal_error() {
+    let f = fixture();
+    let read = || f.read(f.reference);
+    assert!(Expr::compare(CompareOp::Eq, read(), read(), span()).is_ok());
+    assert!(Expr::compare(CompareOp::Ne, read(), read(), span()).is_ok());
+    assert!(is_internal_error_naming(
+        Expr::compare(CompareOp::Lt, read(), read(), span()),
+        "Expr::compare"
+    ));
 }
 
 /// REQ-LOW-lowering-048: the logical forms apply only to `BOOL` values.
@@ -351,21 +417,19 @@ fn unary_when_bool_not_of_wide_integer_then_internal_error() {
 #[test]
 fn truncate_when_not_narrower_then_internal_error() {
     assert!(is_internal_error_naming(
-        Expr::truncate(32, int(1), span()),
+        Expr::truncate(NarrowWidth::B32, int(1), span()),
         "Expr::truncate"
     ));
+    let wide = Expr::integer(1, ScalarType::I64(Signedness::Signed), span()).unwrap();
+    assert!(Expr::truncate(NarrowWidth::B32, wide, span()).is_ok());
     let real = Expr::real(1.0, ScalarType::F32, span()).unwrap();
-    assert!(Expr::truncate(16, real, span()).is_err());
+    assert!(Expr::truncate(NarrowWidth::B16, real, span()).is_err());
 }
 
 #[test]
 fn print_when_assignment_then_s_expression() {
     let f = fixture();
-    let field = Place::var(VarId::new(2), f.this)
-        .deref(&f.types, &span())
-        .unwrap()
-        .field(&f.types, FieldIdx::new(0), &span())
-        .unwrap();
+    let field = f.field();
     let sum = Expr::binary(
         BinaryOp::Add,
         Expr::read(&f.types, field.clone(), span()).unwrap(),
@@ -373,33 +437,107 @@ fn print_when_assignment_then_s_expression() {
         span(),
     )
     .unwrap();
-    let stmt = Stmt::assign(
-        &f.types,
-        field,
-        Expr::truncate(16, sum, span()).unwrap(),
-        span(),
-    )
-    .unwrap();
+    let truncated = Expr::truncate(NarrowWidth::B16, sum, span()).unwrap();
+    let stmt = Stmt::assign(&f.types, field, truncated, span()).unwrap();
     assert_eq!(
         stmt.to_string(),
-        "assign v2^.f0 (truncate 16 (add i32s (read i32s v2^.f0) (const i32s 1)))"
+        "assign v6^.f0 (truncate 16 (add i32s (read i32s v6^.f0) (const i32s 1)))"
     );
 }
 
 #[test]
 fn type_table_when_operation_types_then_follow_adr_0001() {
     let f = fixture();
-    assert_eq!(
-        f.types.operation_type(f.sint),
-        Some(ScalarType::I32(Signedness::Signed))
+    let ty = |var| f.variables.get(var).unwrap().ty();
+    let operated = |var| f.types.operation_type(ty(var));
+    assert_eq!(operated(f.sint), Some(ScalarType::I32(Signedness::Signed)));
+    assert_eq!(operated(f.lreal), Some(ScalarType::F64));
+    assert_eq!(operated(f.bool), Some(ScalarType::BOOL));
+    assert_eq!(operated(f.this), Some(ScalarType::Ref));
+    assert_eq!(operated(f.program), None);
+    assert_eq!(f.types.narrowed_storage(ty(f.int)), Some(NarrowWidth::B16));
+    assert_eq!(f.types.narrowed_storage(ty(f.dint)), None);
+    assert_eq!(f.types.narrowed_storage(ty(f.bool)), None);
+}
+
+/// A type refers only to types already in the table.
+#[test]
+fn type_table_when_reference_to_unknown_type_then_internal_error() {
+    let f = fixture();
+    let mut other = TypeTable::new();
+    let target = f.variables.get(f.program).unwrap().ty();
+    let result = other.push(
+        entry(TypeKind::Reference {
+            target,
+            nullability: Nullability::Nullable,
+        }),
+        &span(),
     );
-    assert_eq!(f.types.operation_type(f.lreal), Some(ScalarType::F64));
-    assert_eq!(f.types.operation_type(f.bool), Some(ScalarType::BOOL));
-    assert_eq!(f.types.operation_type(f.this), Some(ScalarType::Ref));
-    assert_eq!(f.types.operation_type(f.program), None);
-    assert_eq!(f.types.narrowed_storage_bits(f.int), Some(16));
-    assert_eq!(f.types.narrowed_storage_bits(f.dint), None);
-    assert_eq!(f.types.narrowed_storage_bits(f.bool), None);
+    assert!(is_internal_error_naming(result, "TypeTable::push"));
+}
+
+/// A subrange lies within an integer base type.
+#[test]
+fn type_table_when_subrange_outside_base_then_internal_error() {
+    let mut f = fixture();
+    let int = f.variables.get(f.int).unwrap().ty();
+    let lreal = f.variables.get(f.lreal).unwrap().ty();
+    let mut subrange = |base, min, max| {
+        f.types
+            .push(entry(TypeKind::Subrange { base, min, max }), &span())
+    };
+    assert!(subrange(int, 0, 100).is_ok());
+    assert!(is_internal_error_naming(
+        subrange(int, 0, 40_000),
+        "TypeTable::push"
+    ));
+    assert!(subrange(int, 5, 1).is_err());
+    assert!(subrange(lreal, 0, 1).is_err());
+}
+
+/// An array has dimensions, each with its lower bound at most its upper.
+#[test]
+fn type_table_when_array_without_dimensions_then_internal_error() {
+    let mut f = fixture();
+    let element = f.variables.get(f.dint).unwrap().ty();
+    let mut array = |dimensions| {
+        f.types.push(
+            entry(TypeKind::Array {
+                element,
+                dimensions,
+            }),
+            &span(),
+        )
+    };
+    assert!(array(vec![(1, 10)]).is_ok());
+    assert!(array(vec![]).is_err());
+    assert!(array(vec![(10, 1)]).is_err());
+}
+
+/// A structure's fields have no section, and a program's each have one.
+#[test]
+fn type_table_when_field_section_wrong_then_internal_error() {
+    let mut f = fixture();
+    let int = f.variables.get(f.int).unwrap().ty();
+    let field = |section| vec![Field::new("x", span(), section, int)];
+    assert!(f
+        .types
+        .push(
+            entry(TypeKind::Structure {
+                fields: field(None)
+            }),
+            &span()
+        )
+        .is_ok());
+    assert!(is_internal_error_naming(
+        f.types.push(
+            entry(TypeKind::Structure {
+                fields: field(Some(Section::Local))
+            }),
+            &span()
+        ),
+        "TypeTable::push"
+    ));
 }
 
 /// REQ-LOW-lowering-082: the crate denies wildcard arms over its enums. A test

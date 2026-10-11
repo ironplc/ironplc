@@ -7,7 +7,7 @@ use super::expr::{Expr, ExprKind};
 use super::ids::TypeId;
 use super::invariant::broken;
 use super::place::Place;
-use super::types::{Nullability, TypeTable};
+use super::types::{NarrowWidth, Nullability, TypeTable};
 
 /// What a statement does.
 #[derive(Clone, Debug)]
@@ -54,12 +54,13 @@ impl Stmt {
                 "a non-null reference is bound only by a call",
             ));
         }
-        if let Some(bits) = store_narrowing(types, place.ty(), &value) {
+        if let Some(width) = store_narrowing(types, place.ty(), &value) {
             return Err(broken(
                 "Stmt::assign",
                 &span,
                 format!(
-                    "the value is not narrowed to the {bits} bits of {}",
+                    "the value is not narrowed to the {} bits of {}",
+                    width.bits(),
                     place.ty()
                 ),
             ));
@@ -83,19 +84,18 @@ impl Stmt {
 /// place of type `place`; `None` when the value needs no narrowing, because
 /// the place is not stored narrower than its operation type or the value
 /// already fits it (REQ-LOW-lowering-046).
-pub fn store_narrowing(types: &TypeTable, place: TypeId, value: &Expr) -> Option<u8> {
-    let bits = types.narrowed_storage_bits(place)?;
-    (!fits(types, place, bits, value)).then_some(bits)
+pub fn store_narrowing(types: &TypeTable, place: TypeId, value: &Expr) -> Option<NarrowWidth> {
+    let width = types.narrowed_storage(place)?;
+    (!fits(types, place, width, value)).then_some(width)
 }
 
-/// Whether `value` already fits a place of type `place`, stored in `bits`
-/// bits.
-fn fits(types: &TypeTable, place: TypeId, bits: u8, value: &Expr) -> bool {
+/// Whether `value` already fits a place of type `place`, stored at `width`.
+fn fits(types: &TypeTable, place: TypeId, width: NarrowWidth, value: &Expr) -> bool {
     let Some((min, max)) = types.value_range(place) else {
         return false;
     };
     match value.kind() {
-        ExprKind::Truncate { bits: to, .. } => *to == bits,
+        ExprKind::Truncate { width: to, .. } => *to == width,
         ExprKind::Const(constant) => constant
             .integer_value(value.ty())
             .is_some_and(|int| (min..=max).contains(&int)),

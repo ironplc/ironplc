@@ -17,32 +17,15 @@
 //! (REQ-LOW-lowering-020).
 
 use ironplc_analyzer::symbol_environment::{DeclRef, Resolution, ScopeKind, ScopePath, SymbolInfo};
-use ironplc_dsl::common::{VarDecl, VariableType};
+use ironplc_dsl::common::{TypeName, VarDecl, VariableType};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_ir::execution::DebugName;
 use ironplc_ir::lowered::{
-    Field, FieldIdx, Nullability, Place, PouId, Section, TypeEntry, TypeId, TypeKind, VarId,
+    Field, Nullability, Owner, Place, PouId, Section, TypeEntry, TypeId, TypeKind, VarId,
 };
 
 use crate::{Body, Lowering};
-
-/// What a variable belongs to.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Owner {
-    Global,
-    Pou(PouId),
-}
-
-/// A variable of the lowered program that is not a field.
-#[derive(Clone, Debug)]
-pub struct Variable {
-    /// The name as declared, and the span of its declaration, for debug
-    /// information and diagnostics.
-    pub name: DebugName,
-    pub owner: Owner,
-    pub ty: TypeId,
-}
 
 /// What lowering knows of the body a statement belongs to.
 #[derive(Clone, Debug)]
@@ -59,36 +42,35 @@ pub(crate) struct BodyFrame {
 #[derive(Clone, Debug)]
 pub(crate) struct Instance {
     this: VarId,
-    /// The type of `this`: a non-null reference to the instance's type.
-    this_type: TypeId,
+    /// The type of the instance `this` refers to.
+    instance_type: TypeId,
     /// The name of each field of the instance's type, by position.
     field_names: Vec<Id>,
 }
 
+/// A value lowering made, `None` when it cannot express it yet, or a P9998.
+type Made<T> = Result<Option<T>, Diagnostic>;
+
 impl<'a> Lowering<'a> {
     /// The frame of `body`, made the first time a statement of it is
     /// lowered; `None` when lowering cannot express the body's instance yet.
-    pub(crate) fn frame(&mut self, body: Body<'a>) -> Option<BodyFrame> {
+    pub(crate) fn frame(&mut self, body: Body<'a>) -> Made<BodyFrame> {
         let name = match body {
             Body::Program(program) => program.name.clone(),
             Body::FunctionBlock(block) => block.name.name.clone(),
             Body::Function(function) => function.name.clone(),
         };
-        let pou = self.pou(&name.to_string());
+        let pou = self.pou(&name.to_string(), &name.span());
         if let Some(frame) = self.bodies.get(&pou) {
-            return frame.clone();
+            return Ok(frame.clone());
         }
         let scope = ScopeKind::Named(ScopePath::new(vec![name.clone()]));
         let instance = match body {
-            Body::Program(program) => {
-                if !program.access_variables.is_empty() {
-                    None
-                } else {
-                    self.program_instance(pou, &name, &program.variables)
-                        .map(Some)
-                }
-            }
-            Body::FunctionBlock(_) => self.block_instance(pou, &name).map(Some),
+            Body::Program(program) if !program.access_variables.is_empty() => None,
+            Body::Program(program) => self
+                .program_instance(pou, &name, &program.variables)?
+                .map(Some),
+            Body::FunctionBlock(_) => self.block_instance(pou, &name)?.map(Some),
             Body::Function(_) => Some(None),
         };
         let frame = instance.map(|instance| BodyFrame {
@@ -97,29 +79,24 @@ impl<'a> Lowering<'a> {
             instance,
         });
         self.bodies.insert(pou, frame.clone());
-        frame
+        Ok(frame)
     }
 
-    /// The POU named `name`, allocated the first time it is asked for.
-    pub(crate) fn pou(&mut self, name: &str) -> PouId {
+    /// The POU named `name`, declared at `span`, allocated the first time it
+    /// is asked for.
+    pub(crate) fn pou(&mut self, name: &str, span: &SourceSpan) -> PouId {
         let key = name.to_lowercase();
         if let Some(pou) = self.pou_ids.get(&key) {
             return *pou;
         }
-        let pou = PouId::new(self.pous.len() as u32);
-        self.pous.push(name.to_string());
+        let pou = self.pous.push(DebugName::new(name, span.clone()));
         self.pou_ids.insert(key, pou);
         pou
     }
 
     /// The instance of a program: a type with a field for each variable the
     /// program declares, other than a `VAR_TEMP` or a `VAR_EXTERNAL`.
-    fn program_instance(
-        &mut self,
-        pou: PouId,
-        name: &Id,
-        variables: &[VarDecl],
-    ) -> Option<Instance> {
+    fn program_instance(&mut self, pou: PouId, name: &Id, variables: &[VarDecl]) -> Made<Instance> {
         let mut fields = Vec::new();
         let mut field_names = Vec::new();
         for decl in variables {
@@ -129,10 +106,15 @@ impl<'a> Lowering<'a> {
                 VariableType::Input => Section::Input,
                 VariableType::Output => Section::Output,
                 VariableType::InOut => Section::InOut,
-                VariableType::Global | VariableType::Access => return None,
+                VariableType::Global | VariableType::Access => return Ok(None),
             };
-            let field_name = decl.identifier.symbolic_id()?;
-            let ty = self.lowered_type(decl.type_id?)?;
+            let (Some(field_name), Some(type_id)) = (decl.identifier.symbolic_id(), decl.type_id)
+            else {
+                return Ok(None);
+            };
+            let Some(ty) = self.lowered_type(type_id)? else {
+                return Ok(None);
+            };
             fields.push(Field::new(
                 &field_name.to_string(),
                 field_name.span(),
@@ -141,26 +123,36 @@ impl<'a> Lowering<'a> {
             ));
             field_names.push(field_name.clone());
         }
-        let program = self.types.push(TypeEntry {
-            name: Some(DebugName::new(name.to_string(), name.span())),
-            kind: TypeKind::Program { fields, body: pou },
-        });
-        Some(self.instance(pou, name, program, field_names))
+        let program = self.types.push(
+            TypeEntry {
+                name: Some(DebugName::new(name.to_string(), name.span())),
+                kind: TypeKind::Program { fields, body: pou },
+            },
+            &name.span(),
+        )?;
+        self.instance(pou, name, program, field_names).map(Some)
     }
 
     /// The instance of a function block: the block's own type, whose fields
     /// are the analyzer's, in the analyzer's order.
-    fn block_instance(&mut self, pou: PouId, name: &Id) -> Option<Instance> {
+    fn block_instance(&mut self, pou: PouId, name: &Id) -> Made<Instance> {
         let types = self.analysis.context().types();
-        let id = types.id_of(&ironplc_dsl::common::TypeName::from(&name.to_string()))?;
+        let Some(id) = types.id_of(&TypeName::from(&name.to_string())) else {
+            return Ok(None);
+        };
+        let Some(attributes) = types.get_by_id(id) else {
+            return Ok(None);
+        };
         let ironplc_analyzer::SemanticType::FunctionBlock { fields, .. } =
-            &types.get_by_id(id)?.representation
+            &attributes.representation
         else {
-            return None;
+            return Ok(None);
         };
         let field_names = fields.iter().map(|field| field.name.clone()).collect();
-        let block = self.lowered_type(id)?;
-        Some(self.instance(pou, name, block, field_names))
+        let Some(block) = self.lowered_type(id)? else {
+            return Ok(None);
+        };
+        self.instance(pou, name, block, field_names).map(Some)
     }
 
     /// The instance parameter of the body of `pou`, a non-null reference to
@@ -171,24 +163,28 @@ impl<'a> Lowering<'a> {
         name: &Id,
         instance_type: TypeId,
         field_names: Vec<Id>,
-    ) -> Instance {
-        let this_type = self.types.push(TypeEntry {
-            name: None,
-            kind: TypeKind::Reference {
-                target: instance_type,
-                nullability: Nullability::NonNull,
+    ) -> Result<Instance, Diagnostic> {
+        let this_type = self.types.push(
+            TypeEntry {
+                name: None,
+                kind: TypeKind::Reference {
+                    target: instance_type,
+                    nullability: Nullability::NonNull,
+                },
             },
-        });
-        let this = self.push_variable(Variable {
-            name: DebugName::new("THIS", name.span()),
-            owner: Owner::Pou(pou),
-            ty: this_type,
-        });
-        Instance {
-            this,
+            &name.span(),
+        )?;
+        let this = self.variables.push(
+            &self.types,
+            DebugName::new("THIS", name.span()),
+            Owner::Pou(pou),
             this_type,
+        )?;
+        Ok(Instance {
+            this,
+            instance_type,
             field_names,
-        }
+        })
     }
 
     /// The place `name` refers to in the body of `frame`; `None` when it is
@@ -198,7 +194,7 @@ impl<'a> Lowering<'a> {
         frame: &BodyFrame,
         name: &Id,
         span: &SourceSpan,
-    ) -> Result<Option<Place>, Diagnostic> {
+    ) -> Made<Place> {
         let symbols = self.analysis.context().symbols();
         let (decl, info) = match symbols.resolve_variable(name, &frame.scope) {
             Resolution::Variable { decl, info } => (decl, info),
@@ -207,7 +203,7 @@ impl<'a> Lowering<'a> {
             | Resolution::Undeclared => return Ok(None),
         };
         if decl.scope == ScopeKind::Global {
-            return Ok(self.declared_variable(decl, info, Owner::Global));
+            return self.declared_variable(decl, info, Owner::Global, span);
         }
         if decl.scope != frame.scope {
             // A field a function block inherits through `EXTENDS`.
@@ -216,19 +212,21 @@ impl<'a> Lowering<'a> {
         let is_temp = info.variable_type == Some(VariableType::VarTemp);
         match &frame.instance {
             Some(instance) if !is_temp => {
-                let Some(index) = instance
+                let position = instance
                     .field_names
                     .iter()
-                    .position(|field| *field == decl.name)
+                    .position(|field| *field == decl.name);
+                let Some(field) = position
+                    .and_then(|position| self.types.field_idx(instance.instance_type, position))
                 else {
                     return Ok(None);
                 };
-                let place = Place::var(instance.this, instance.this_type)
+                let place = Place::var(&self.variables, instance.this, span)?
                     .deref(&self.types, span)?
-                    .field(&self.types, FieldIdx::new(index as u32), span)?;
+                    .field(&self.types, field, span)?;
                 Ok(Some(place))
             }
-            Some(_) | None => Ok(self.declared_variable(decl, info, Owner::Pou(frame.pou))),
+            Some(_) | None => self.declared_variable(decl, info, Owner::Pou(frame.pou), span),
         }
     }
 
@@ -239,24 +237,23 @@ impl<'a> Lowering<'a> {
         decl: DeclRef,
         info: &SymbolInfo,
         owner: Owner,
-    ) -> Option<Place> {
-        if let Some(id) = self.declared.get(&decl) {
-            let ty = self.variables[id.index() as usize].ty;
-            return Some(Place::var(*id, ty));
-        }
-        let ty = self.lowered_type(info.type_id?)?;
-        let id = self.push_variable(Variable {
-            name: DebugName::new(decl.name.to_string(), info.span.clone()),
-            owner,
-            ty,
-        });
-        self.declared.insert(decl, id);
-        Some(Place::var(id, ty))
-    }
-
-    fn push_variable(&mut self, variable: Variable) -> VarId {
-        let id = VarId::new(self.variables.len() as u32);
-        self.variables.push(variable);
-        id
+        span: &SourceSpan,
+    ) -> Made<Place> {
+        let id = match self.declared.get(&decl) {
+            Some(id) => *id,
+            None => {
+                let Some(type_id) = info.type_id else {
+                    return Ok(None);
+                };
+                let Some(ty) = self.lowered_type(type_id)? else {
+                    return Ok(None);
+                };
+                let name = DebugName::new(decl.name.to_string(), info.span.clone());
+                let id = self.variables.push(&self.types, name, owner, ty)?;
+                self.declared.insert(decl, id);
+                id
+            }
+        };
+        Place::var(&self.variables, id, span).map(Some)
     }
 }

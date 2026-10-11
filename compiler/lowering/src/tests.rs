@@ -6,7 +6,7 @@
 //! a build script, once every requirement the crate owns is tested.
 
 use crate::test_support::{lower, lower_bodies};
-use crate::Owner;
+use ironplc_ir::lowered::Owner;
 
 /// REQ-LOW-lowering-034: a program's variable is a field of its instance,
 /// reached through the body's instance parameter `v0`.
@@ -19,7 +19,7 @@ fn lower_statement_when_program_variable_then_field_of_instance() {
         "main",
     );
     assert_eq!(outcome.statements, ["assign v0^.f1 (const i32s 5)"]);
-    assert_eq!(outcome.variables[0].name.to_string(), "THIS");
+    assert_eq!(outcome.variables[0].name().to_string(), "THIS");
 }
 
 /// REQ-LOW-lowering-046: a value stored narrower than its operation width is
@@ -149,7 +149,7 @@ fn lower_statement_when_var_temp_then_own_variable() {
         outcome.statements,
         ["assign v1 (const i32s 1)", "assign v0^.f0 (read i32s v1)",]
     );
-    assert_eq!(outcome.variables[1].name.to_string(), "t");
+    assert_eq!(outcome.variables[1].name().to_string(), "t");
 }
 
 /// REQ-LOW-lowering-034: a function block's variable is a field of its
@@ -191,8 +191,8 @@ fn lower_statement_when_same_name_in_two_functions_then_different_variables() {
             "assign v3 (read i32s v2)",
         ]
     );
-    assert_eq!(outcome.variables[0].name.to_string(), "x");
-    assert_eq!(outcome.variables[2].name.to_string(), "x");
+    assert_eq!(outcome.variables[0].name().to_string(), "x");
+    assert_eq!(outcome.variables[2].name().to_string(), "x");
 }
 
 /// REQ-LOW-lowering-022: a `VAR_EXTERNAL` names the global it refers to, so
@@ -216,8 +216,8 @@ fn lower_statement_when_var_external_then_global_variable() {
         outcome.statements,
         ["assign v1 (const i32s 1)", "assign v1 (const i32s 2)"]
     );
-    assert_eq!(outcome.variables[1].owner, Owner::Global);
-    assert_eq!(outcome.variables[1].name.to_string(), "g");
+    assert_eq!(outcome.variables[1].owner(), Owner::Global);
+    assert_eq!(outcome.variables[1].name().to_string(), "g");
 }
 
 /// What lowering does not support yet is unsupported, not a defect.

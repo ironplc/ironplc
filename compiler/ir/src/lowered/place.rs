@@ -6,6 +6,7 @@ use ironplc_dsl::diagnostic::Diagnostic;
 use super::ids::{FieldIdx, TypeId, VarId};
 use super::invariant::broken;
 use super::types::TypeTable;
+use super::variables::VariableTable;
 
 /// One step of the path from a variable to a place inside it.
 #[derive(Clone, Debug)]
@@ -29,13 +30,19 @@ pub struct Place {
 }
 
 impl Place {
-    /// The whole of the variable `root`, whose type is `ty`.
-    pub fn var(root: VarId, ty: TypeId) -> Self {
-        Self {
+    /// The whole of the variable `root`, at the type `variables` holds for
+    /// it; a P9998 if `variables` did not allocate `root`.
+    pub fn var(
+        variables: &VariableTable,
+        root: VarId,
+        span: &SourceSpan,
+    ) -> Result<Self, Diagnostic> {
+        let ty = variables.type_of(root, span)?;
+        Ok(Self {
             root,
             path: Vec::new(),
             ty,
-        }
+        })
     }
 
     /// The field `field` of this place, whose type must be a structure,

@@ -5,10 +5,15 @@
 //! many slots a value takes and how wide a reference is are each backend's
 //! layout. So an entry holds no size, offset or slot count, and refers to
 //! every other type by its [`TypeId`] (REQ-LOW-lowering-027).
+//!
+//! An entry is added only through [`TypeTable::push`], which checks it, and
+//! is never changed afterwards, so a place built against a type stays right.
 
 use ironplc_dsl::core::SourceSpan;
+use ironplc_dsl::diagnostic::Diagnostic;
 
 use super::ids::{PouId, TypeId};
+use super::invariant::broken;
 use super::scalar::{ScalarType, Signedness};
 use crate::execution::DebugName;
 
@@ -41,6 +46,71 @@ pub enum TemporalKind {
     Date,
     TimeOfDay,
     DateAndTime,
+}
+
+/// The width of an integer or a bit string.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IntWidth {
+    B8,
+    B16,
+    B32,
+    B64,
+}
+
+impl IntWidth {
+    pub fn bits(self) -> u8 {
+        match self {
+            IntWidth::B8 => 8,
+            IntWidth::B16 => 16,
+            IntWidth::B32 => 32,
+            IntWidth::B64 => 64,
+        }
+    }
+
+    /// The width a value of this width is narrowed to when stored, if it is
+    /// narrower than the operation type it is operated at.
+    fn narrowed(self) -> Option<NarrowWidth> {
+        match self {
+            IntWidth::B8 => Some(NarrowWidth::B8),
+            IntWidth::B16 => Some(NarrowWidth::B16),
+            IntWidth::B32 | IntWidth::B64 => None,
+        }
+    }
+}
+
+/// The width of a real, or of a time or date: 32 or 64 bits.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WideWidth {
+    B32,
+    B64,
+}
+
+impl WideWidth {
+    pub fn bits(self) -> u8 {
+        match self {
+            WideWidth::B32 => 32,
+            WideWidth::B64 => 64,
+        }
+    }
+}
+
+/// A width a `Truncate` narrows an integer to: one narrower than the
+/// operation type the value is computed at.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NarrowWidth {
+    B8,
+    B16,
+    B32,
+}
+
+impl NarrowWidth {
+    pub fn bits(self) -> u8 {
+        match self {
+            NarrowWidth::B8 => 8,
+            NarrowWidth::B16 => 16,
+            NarrowWidth::B32 => 32,
+        }
+    }
 }
 
 /// The encoding of a string (ADR-0034).
@@ -77,41 +147,47 @@ pub struct Field {
 pub enum TypeKind {
     Bool,
     Integer {
-        bits: u8,
+        width: IntWidth,
         signed: bool,
     },
     BitString {
-        bits: u8,
+        width: IntWidth,
     },
     Real {
-        bits: u8,
+        width: WideWidth,
     },
     Temporal {
         kind: TemporalKind,
-        bits: u8,
+        width: WideWidth,
     },
     /// An enumeration. Every enumeration is operated at the operation type of
     /// a `DINT`, as the bytecode backend does today (REQ-EN-codegen-003).
     Enumeration {
         values: Vec<DebugName>,
     },
+    /// The integers from `min` to `max` of the integer type `base`.
     Subrange {
         base: TypeId,
         min: i128,
         max: i128,
     },
     String(StringShape),
+    /// An array of one or more dimensions, each from its lower bound to its
+    /// upper bound.
     Array {
         element: TypeId,
         dimensions: Vec<(i32, i32)>,
     },
+    /// A structure; its fields have no section.
     Structure {
         fields: Vec<Field>,
     },
+    /// A function block; each field has a section.
     FunctionBlock {
         fields: Vec<Field>,
         body: PouId,
     },
+    /// A program; each field has a section.
     Program {
         fields: Vec<Field>,
         body: PouId,
@@ -141,22 +217,80 @@ impl TypeTable {
     }
 
     /// Adds `entry` and returns the id that names it.
-    pub fn push(&mut self, entry: TypeEntry) -> TypeId {
+    ///
+    /// Every type the entry refers to is already in the table. A subrange's
+    /// base is an integer type whose range holds `min` to `max`, an array has
+    /// at least one dimension and each lower bound is at most its upper
+    /// bound, a structure's fields have no section, and a function block's or
+    /// program's fields each have one. An entry that breaks one of these is a
+    /// P9998 and is not added.
+    pub fn push(&mut self, entry: TypeEntry, span: &SourceSpan) -> Result<TypeId, Diagnostic> {
+        self.check(&entry.kind)
+            .map_err(|what| broken("TypeTable::push", span, what))?;
         let id = TypeId::new(self.entries.len() as u32);
         self.entries.push(entry);
-        id
+        Ok(id)
     }
 
-    /// Replaces the entry of `id`, for a type that refers to itself through
-    /// a field, such as a program whose body is allocated after its type.
-    /// Returns `false`, changing nothing, if the table has no entry `id`.
-    pub fn replace(&mut self, id: TypeId, entry: TypeEntry) -> bool {
-        match self.entries.get_mut(id.index() as usize) {
-            Some(slot) => {
-                *slot = entry;
-                true
+    /// Why `kind` cannot be added to the table, if it cannot.
+    fn check(&self, kind: &TypeKind) -> Result<(), String> {
+        let known = |id: &TypeId| {
+            if self.get(*id).is_some() {
+                Ok(())
+            } else {
+                Err(format!("{id} is not in the table"))
             }
-            None => false,
+        };
+        let sections = |fields: &[Field], with_section: bool| {
+            fields.iter().try_for_each(|field| {
+                known(&field.ty)?;
+                if field.section.is_some() == with_section {
+                    Ok(())
+                } else {
+                    Err(format!("field {} has the wrong section", field.name))
+                }
+            })
+        };
+        match kind {
+            TypeKind::Bool
+            | TypeKind::Integer { .. }
+            | TypeKind::BitString { .. }
+            | TypeKind::Real { .. }
+            | TypeKind::Temporal { .. }
+            | TypeKind::Enumeration { .. }
+            | TypeKind::String(_) => Ok(()),
+            TypeKind::Subrange { base, min, max } => {
+                known(base)?;
+                let Some(TypeKind::Integer { .. }) = self.kind(*base) else {
+                    return Err(format!("subrange base {base} is not an integer"));
+                };
+                let (low, high) = self
+                    .value_range(*base)
+                    .ok_or_else(|| format!("subrange base {base} has no range"))?;
+                if low <= *min && min <= max && *max <= high {
+                    Ok(())
+                } else {
+                    Err(format!("subrange {min}..{max} is not within {base}"))
+                }
+            }
+            TypeKind::Array {
+                element,
+                dimensions,
+            } => {
+                known(element)?;
+                if !dimensions.is_empty() && dimensions.iter().all(|(low, high)| low <= high) {
+                    Ok(())
+                } else {
+                    Err(format!(
+                        "array dimensions {dimensions:?} are empty or inverted"
+                    ))
+                }
+            }
+            TypeKind::Structure { fields } => sections(fields, false),
+            TypeKind::FunctionBlock { fields, .. } | TypeKind::Program { fields, .. } => {
+                sections(fields, true)
+            }
+            TypeKind::Reference { target, .. } => known(target),
         }
     }
 
@@ -184,20 +318,24 @@ impl TypeTable {
     pub fn operation_type(&self, id: TypeId) -> Option<ScalarType> {
         match self.kind(id)? {
             TypeKind::Bool | TypeKind::Enumeration { .. } => Some(ScalarType::BOOL),
-            TypeKind::Integer { bits, signed } => Some(integer(*bits, signedness(*signed))),
-            TypeKind::BitString { bits } => Some(integer(*bits, Signedness::Unsigned)),
-            TypeKind::Real { bits } if *bits <= 32 => Some(ScalarType::F32),
-            TypeKind::Real { .. } => Some(ScalarType::F64),
+            TypeKind::Integer { width, signed } => Some(integer(*width, signedness(*signed))),
+            TypeKind::BitString { width } => Some(integer(*width, Signedness::Unsigned)),
+            TypeKind::Real {
+                width: WideWidth::B32,
+            } => Some(ScalarType::F32),
+            TypeKind::Real {
+                width: WideWidth::B64,
+            } => Some(ScalarType::F64),
             // A duration is signed; a date or a time of day counts forward
             // from an epoch.
             TypeKind::Temporal {
                 kind: TemporalKind::Time,
-                bits,
-            } => Some(integer(*bits, Signedness::Signed)),
+                width,
+            } => Some(wide_integer(*width, Signedness::Signed)),
             TypeKind::Temporal {
                 kind: TemporalKind::Date | TemporalKind::TimeOfDay | TemporalKind::DateAndTime,
-                bits,
-            } => Some(integer(*bits, Signedness::Unsigned)),
+                width,
+            } => Some(wide_integer(*width, Signedness::Unsigned)),
             TypeKind::Subrange { base, .. } => self.operation_type(*base),
             TypeKind::Reference { .. } => Some(ScalarType::Ref),
             TypeKind::String(_)
@@ -208,16 +346,16 @@ impl TypeTable {
         }
     }
 
-    /// The width in bits a value of `id` is stored at, where it is narrower
-    /// than the type's operation width and a store must narrow it; `None`
-    /// for a type a store never narrows.
+    /// The width a value of `id` is stored at, where it is narrower than the
+    /// type's operation width and a store must narrow it; `None` for a type a
+    /// store never narrows.
     ///
     /// A `BOOL` occupies one bit of value, but is never narrowed: every
     /// operation that yields a `BOOL` yields 0 or 1.
-    pub fn narrowed_storage_bits(&self, id: TypeId) -> Option<u8> {
-        let bits = match self.kind(id)? {
-            TypeKind::Integer { bits, .. } | TypeKind::BitString { bits } => *bits,
-            TypeKind::Subrange { base, .. } => return self.narrowed_storage_bits(*base),
+    pub fn narrowed_storage(&self, id: TypeId) -> Option<NarrowWidth> {
+        match self.kind(id)? {
+            TypeKind::Integer { width, .. } | TypeKind::BitString { width } => width.narrowed(),
+            TypeKind::Subrange { base, .. } => self.narrowed_storage(*base),
             TypeKind::Bool
             | TypeKind::Enumeration { .. }
             | TypeKind::Real { .. }
@@ -227,10 +365,8 @@ impl TypeTable {
             | TypeKind::Structure { .. }
             | TypeKind::FunctionBlock { .. }
             | TypeKind::Program { .. }
-            | TypeKind::Reference { .. } => return None,
-        };
-        let width = self.operation_type(id)?.bits()?;
-        (bits < width).then_some(bits)
+            | TypeKind::Reference { .. } => None,
+        }
     }
 
     /// The smallest and largest value of an integer-like type `id`: an
@@ -238,15 +374,18 @@ impl TypeTable {
     pub fn value_range(&self, id: TypeId) -> Option<(i128, i128)> {
         match self.kind(id)? {
             TypeKind::Bool => Some((0, 1)),
-            TypeKind::Integer { bits, signed: true } => {
-                let half = 1i128 << (bits - 1);
+            TypeKind::Integer {
+                width,
+                signed: true,
+            } => {
+                let half = 1i128 << (width.bits() - 1);
                 Some((-half, half - 1))
             }
             TypeKind::Integer {
-                bits,
+                width,
                 signed: false,
             }
-            | TypeKind::BitString { bits } => Some((0, (1i128 << bits) - 1)),
+            | TypeKind::BitString { width } => Some((0, (1i128 << width.bits()) - 1)),
             TypeKind::Subrange { min, max, .. } => Some((*min, *max)),
             TypeKind::Real { .. }
             | TypeKind::Temporal { .. }
@@ -280,6 +419,14 @@ impl TypeTable {
         }
     }
 
+    /// The field at `position` of the structure, function block or program
+    /// type `id`; `None` if the type has no such field. The only way to name a
+    /// field, so a [`FieldIdx`](super::FieldIdx) always names one.
+    pub fn field_idx(&self, id: TypeId, position: usize) -> Option<super::FieldIdx> {
+        let fields = self.fields(id)?;
+        (position < fields.len()).then(|| super::FieldIdx::new(position as u32))
+    }
+
     /// The target and nullability of a reference type; `None` for any other.
     pub fn reference(&self, id: TypeId) -> Option<(TypeId, Nullability)> {
         match self.kind(id)? {
@@ -311,12 +458,18 @@ fn signedness(signed: bool) -> Signedness {
     }
 }
 
-/// The integer operation type a value of `bits` bits is operated at.
-fn integer(bits: u8, signedness: Signedness) -> ScalarType {
-    if bits <= 32 {
-        ScalarType::I32(signedness)
-    } else {
-        ScalarType::I64(signedness)
+/// The integer operation type a value of `width` is operated at.
+fn integer(width: IntWidth, signedness: Signedness) -> ScalarType {
+    match width {
+        IntWidth::B8 | IntWidth::B16 | IntWidth::B32 => ScalarType::I32(signedness),
+        IntWidth::B64 => ScalarType::I64(signedness),
+    }
+}
+
+fn wide_integer(width: WideWidth, signedness: Signedness) -> ScalarType {
+    match width {
+        WideWidth::B32 => ScalarType::I32(signedness),
+        WideWidth::B64 => ScalarType::I64(signedness),
     }
 }
 

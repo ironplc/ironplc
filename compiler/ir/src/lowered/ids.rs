@@ -2,8 +2,9 @@
 //!
 //! Each id is a type of its own rather than an alias of an integer, so a
 //! `PouId` cannot be passed where a `VarId` is expected (REQ-LOW-ir-019).
-//! Lowering allocates them; an id is a position in a table lowering keeps,
-//! never a name.
+//! An id is a position in the table that allocates it, never a name, and
+//! only that table makes one: nothing outside this crate builds an id from a
+//! number, so an id always names an entry.
 
 use std::fmt;
 
@@ -15,7 +16,9 @@ macro_rules! id {
 
         impl $name {
             /// The id at position `index` of the table that allocates it.
-            pub const fn new(index: u32) -> Self {
+            // `LoopId` has no table until loops are lowered.
+            #[allow(dead_code)]
+            pub(crate) const fn new(index: u32) -> Self {
                 Self(index)
             }
 

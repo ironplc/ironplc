@@ -35,7 +35,7 @@ impl fmt::Display for Expr {
             },
             ExprKind::Read(place) => write!(f, "(read {ty} {place})"),
             ExprKind::Convert(value) => write!(f, "(convert {ty} {value})"),
-            ExprKind::Truncate { bits, value } => write!(f, "(truncate {bits} {value})"),
+            ExprKind::Truncate { width, value } => write!(f, "(truncate {} {value})", width.bits()),
             ExprKind::Unary { op, value } => write!(f, "({} {ty} {value})", unary(*op)),
             ExprKind::Binary { op, lhs, rhs } => write!(f, "({} {ty} {lhs} {rhs})", binary(*op)),
             ExprKind::Compare { op, lhs, rhs } => write!(f, "({} {lhs} {rhs})", compare(*op)),
