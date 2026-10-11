@@ -140,3 +140,19 @@ END_PROGRAM
     assert_eq!(snapshot.read("r1"), "a".repeat(254));
     assert_eq!(snapshot.read("r2"), "hello");
 }
+
+#[test]
+fn debug_var_names_when_named_array_of_wstring_then_type_name_is_array_of_wstring() {
+    let source = "
+TYPE WIDE : ARRAY[1..2] OF WSTRING; END_TYPE
+PROGRAM main
+  VAR
+    names : WIDE;
+  END_VAR
+END_PROGRAM
+";
+    let container = crate::common::parse_and_compile(source, &CompilerOptions::default());
+    let debug = container.debug_section.as_ref().unwrap();
+    let entry = debug.var_names.iter().find(|v| v.name == "names").unwrap();
+    assert_eq!(entry.type_name, "ARRAY OF WSTRING");
+}
