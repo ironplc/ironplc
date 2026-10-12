@@ -37,8 +37,6 @@ macro_rules! id {
         impl $name {
             /// The id at position `index` of the table, stamped `stamp`, that
             /// allocates it.
-            // `LoopId` has no table until loops are lowered.
-            #[allow(dead_code)]
             pub(crate) const fn new(stamp: Stamp, index: u32) -> Self {
                 Self { stamp, index }
             }
@@ -49,8 +47,6 @@ macro_rules! id {
             }
 
             /// The stamp of the program builder that allocated the id.
-            // `LoopId` has no table until loops are lowered.
-            #[allow(dead_code)]
             pub(crate) fn stamp(self) -> Stamp {
                 self.stamp
             }

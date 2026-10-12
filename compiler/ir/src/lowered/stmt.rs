@@ -3,10 +3,11 @@
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
 
-use super::expr::{Expr, ExprKind};
-use super::ids::TypeId;
+use super::expr::{Const, Expr, ExprKind};
+use super::ids::{LoopId, Stamp, TypeId};
 use super::invariant::broken;
 use super::place::Place;
+use super::scalar::ScalarType;
 use super::types::{NarrowWidth, Nullability, TypeTable};
 
 /// What a statement does.
@@ -14,6 +15,74 @@ use super::types::{NarrowWidth, Nullability, TypeTable};
 pub enum StmtKind {
     /// Stores a scalar value at a place.
     Assign { place: Place, value: Expr },
+    /// Runs `then` when `cond` is true and `otherwise` when it is false.
+    If {
+        cond: Expr,
+        then: Vec<Stmt>,
+        otherwise: Vec<Stmt>,
+    },
+    /// Evaluates `selector` once and runs the first arm with a label that
+    /// matches it, or `otherwise` when none does.
+    Case {
+        selector: Expr,
+        arms: Vec<CaseArm>,
+        otherwise: Vec<Stmt>,
+    },
+    /// Counts `control` from `from` to `to` by `step` (REQ-LOW-lowering-066).
+    For {
+        id: LoopId,
+        control: Place,
+        from: Expr,
+        to: Expr,
+        step: Const,
+        body: Vec<Stmt>,
+    },
+    /// Repeats `body` then `continuing` until an `Exit` leaves it. A
+    /// `Continue` skips the rest of `body` and goes on to `continuing`.
+    Loop {
+        id: LoopId,
+        body: Vec<Stmt>,
+        continuing: Vec<Stmt>,
+    },
+    /// Leaves the enclosing `Loop` or `For` it names.
+    Exit(LoopId),
+    /// Goes on with the next iteration of the enclosing `Loop` or `For` it
+    /// names.
+    Continue(LoopId),
+    /// Returns from the body.
+    Return,
+}
+
+/// One arm of a `Case`: its labels, and the statements it runs.
+#[derive(Clone, Debug)]
+pub struct CaseArm {
+    labels: Vec<CaseLabel>,
+    body: Vec<Stmt>,
+}
+
+impl CaseArm {
+    /// The arm that runs `body` when the selector matches one of `labels`.
+    /// The `Case` it belongs to checks the labels against its selector.
+    pub fn new(labels: Vec<CaseLabel>, body: Vec<Stmt>) -> Self {
+        Self { labels, body }
+    }
+
+    pub fn labels(&self) -> &[CaseLabel] {
+        &self.labels
+    }
+
+    pub fn body(&self) -> &[Stmt] {
+        &self.body
+    }
+}
+
+/// A label of a `Case` arm (REQ-LOW-lowering-064).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum CaseLabel {
+    /// Matches the selector equal to the value.
+    Value(Const),
+    /// Matches the selector from the first value to the second, both included.
+    Range(Const, Const),
 }
 
 /// A statement and the span of the source statement it stands for
@@ -22,6 +91,9 @@ pub enum StmtKind {
 pub struct Stmt {
     kind: StmtKind,
     span: SourceSpan,
+    /// The program whose places the statement names; `None` when it names
+    /// none.
+    program: Option<Stamp>,
 }
 
 impl Stmt {
@@ -75,10 +147,122 @@ impl Stmt {
                 ),
             ));
         }
+        let program = Some(place.stamp());
         Ok(Self {
             kind: StmtKind::Assign { place, value },
             span,
+            program,
         })
+    }
+
+    /// Runs `then` when `cond`, a `BOOL`, is true, and `otherwise` when it is
+    /// false.
+    pub fn if_(
+        cond: Expr,
+        then: Vec<Stmt>,
+        otherwise: Vec<Stmt>,
+        span: SourceSpan,
+    ) -> Result<Self, Diagnostic> {
+        if cond.ty() != ScalarType::Bool {
+            return Err(broken(
+                "Stmt::if_",
+                &span,
+                format!("the condition is a {}, not a bool", cond.ty()),
+            ));
+        }
+        let program = one_program(
+            "Stmt::if_",
+            &span,
+            std::iter::once(cond.program()).chain(programs(&then).chain(programs(&otherwise))),
+        )?;
+        Ok(Self {
+            kind: StmtKind::If {
+                cond,
+                then,
+                otherwise,
+            },
+            span,
+            program,
+        })
+    }
+
+    /// Runs the first of `arms` with a label matching `selector`, an integer,
+    /// or `otherwise` when none does. Every label is a constant of the
+    /// selector's type, and a range runs from its lower value to its higher
+    /// one (REQ-LOW-lowering-064).
+    pub fn case(
+        selector: Expr,
+        arms: Vec<CaseArm>,
+        otherwise: Vec<Stmt>,
+        span: SourceSpan,
+    ) -> Result<Self, Diagnostic> {
+        let ty = selector.ty();
+        if !ty.is_integer() {
+            return Err(broken(
+                "Stmt::case",
+                &span,
+                format!("the selector is a {ty}, not an integer"),
+            ));
+        }
+        let of_selector = |constant: &Const| constant.has_width_of(ty);
+        for label in arms.iter().flat_map(|arm| &arm.labels) {
+            let fits = match label {
+                CaseLabel::Value(value) => of_selector(value),
+                CaseLabel::Range(low, high) => {
+                    of_selector(low)
+                        && of_selector(high)
+                        && low.integer_value(ty) <= high.integer_value(ty)
+                }
+            };
+            if !fits {
+                return Err(broken(
+                    "Stmt::case",
+                    &span,
+                    format!("the label {label:?} is not a constant or range of {ty}"),
+                ));
+            }
+        }
+        let program = one_program(
+            "Stmt::case",
+            &span,
+            std::iter::once(selector.program()).chain(
+                arms.iter()
+                    .flat_map(|arm| programs(&arm.body))
+                    .chain(programs(&otherwise)),
+            ),
+        )?;
+        Ok(Self {
+            kind: StmtKind::Case {
+                selector,
+                arms,
+                otherwise,
+            },
+            span,
+            program,
+        })
+    }
+
+    /// Returns from the body.
+    pub fn return_(span: SourceSpan) -> Self {
+        Self {
+            kind: StmtKind::Return,
+            span,
+            program: None,
+        }
+    }
+
+    /// A statement whose invariants its builder has already checked.
+    pub(crate) fn checked(kind: StmtKind, span: SourceSpan, program: Option<Stamp>) -> Self {
+        Self {
+            kind,
+            span,
+            program,
+        }
+    }
+
+    /// The program whose places the statement names.
+    pub(crate) fn program(&self) -> Option<Stamp> {
+        self.program
     }
 
     pub fn kind(&self) -> &StmtKind {
@@ -118,4 +302,32 @@ fn fits(types: &TypeTable, place: TypeId, width: NarrowWidth, value: &Expr) -> b
         | ExprKind::Compare { .. }
         | ExprKind::ShortCircuit { .. } => false,
     }
+}
+
+/// The programs whose places `stmts` name.
+pub(crate) fn programs(stmts: &[Stmt]) -> impl Iterator<Item = Option<Stamp>> + '_ {
+    stmts.iter().map(Stmt::program)
+}
+
+/// The one program `parts` name places of, or a P9998 naming `constructor`
+/// when they name places of two.
+pub(crate) fn one_program(
+    constructor: &str,
+    span: &SourceSpan,
+    parts: impl Iterator<Item = Option<Stamp>>,
+) -> Result<Option<Stamp>, Diagnostic> {
+    let mut found = None;
+    for program in parts.flatten() {
+        match found {
+            Some(other) if other != program => {
+                return Err(broken(
+                    constructor,
+                    span,
+                    "the statement names places of two programs",
+                ))
+            }
+            Some(_) | None => found = Some(program),
+        }
+    }
+    Ok(found)
 }

@@ -208,6 +208,12 @@ impl<'a> Lowering<'a> {
             // A field a function block inherits through `EXTENDS`.
             return Ok(None);
         }
+        if info.variable_type == Some(VariableType::InOut) {
+            // A `VAR_IN_OUT` is a reference to the caller's variable, reached
+            // through `^`, which lowering does not express until calls bind
+            // one.
+            return Ok(None);
+        }
         let is_temp = info.variable_type == Some(VariableType::VarTemp);
         match &frame.instance {
             Some(instance) if !is_temp => {

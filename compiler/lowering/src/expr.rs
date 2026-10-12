@@ -144,8 +144,14 @@ impl Lowering<'_> {
                 }
                 Expr::convert(value, to, span).map(Some)
             }
-            AstExprKind::EnumeratedValue(_)
-            | AstExprKind::Function(_)
+            AstExprKind::EnumeratedValue(value) => {
+                let Some((_, ty)) = self.operated_type(expr)? else {
+                    return Ok(None);
+                };
+                let ordinal = self.enumerated_ordinal(expr, value)?;
+                Expr::integer(ordinal.into(), ty, span).map(Some)
+            }
+            AstExprKind::Function(_)
             | AstExprKind::MethodCall(_)
             | AstExprKind::LateBound(_)
             | AstExprKind::Ref(_)

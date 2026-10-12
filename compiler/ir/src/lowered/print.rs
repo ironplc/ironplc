@@ -3,12 +3,15 @@
 //! An expression prints as a parenthesized operator, its type and its
 //! operands: `(add i32s (read i32s v0^.f1) (const i32s 1))`. A place prints as
 //! its variable, then `^` for each dereference and `.f<n>` for each field.
+//! A statement prints on one line, and one holding other statements prints
+//! them on the lines after it, indented two spaces, and closes with `end`.
 
 use std::fmt;
 
 use super::expr::{BinaryOp, CompareOp, Const, Expr, ExprKind, ShortCircuitOp, UnaryOp};
 use super::place::{Place, Projection};
-use super::stmt::{Stmt, StmtKind};
+use super::scalar::ScalarType;
+use super::stmt::{CaseLabel, Stmt, StmtKind};
 
 impl fmt::Display for Place {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -49,9 +52,96 @@ impl fmt::Display for Expr {
 
 impl fmt::Display for Stmt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.kind() {
-            StmtKind::Assign { place, value } => write!(f, "assign {place} {value}"),
+        write_stmt(f, self, 0)
+    }
+}
+
+fn write_stmt(f: &mut fmt::Formatter<'_>, stmt: &Stmt, depth: usize) -> fmt::Result {
+    let indent = "  ".repeat(depth);
+    let block = |f: &mut fmt::Formatter<'_>, stmts: &[Stmt]| -> fmt::Result {
+        stmts.iter().try_for_each(|stmt| {
+            f.write_str("\n")?;
+            write_stmt(f, stmt, depth + 1)
+        })
+    };
+    f.write_str(&indent)?;
+    match stmt.kind() {
+        StmtKind::Assign { place, value } => write!(f, "assign {place} {value}"),
+        StmtKind::If {
+            cond,
+            then,
+            otherwise,
+        } => {
+            write!(f, "if {cond}")?;
+            block(f, then)?;
+            if !otherwise.is_empty() {
+                write!(f, "\n{indent}else")?;
+                block(f, otherwise)?;
+            }
+            write!(f, "\n{indent}end")
         }
+        StmtKind::Case {
+            selector,
+            arms,
+            otherwise,
+        } => {
+            write!(f, "case {selector}")?;
+            for arm in arms {
+                let labels: Vec<String> = arm
+                    .labels()
+                    .iter()
+                    .map(|label| case_label(*label, selector.ty()))
+                    .collect();
+                write!(f, "\n{indent}of {}", labels.join(", "))?;
+                block(f, arm.body())?;
+            }
+            if !otherwise.is_empty() {
+                write!(f, "\n{indent}else")?;
+                block(f, otherwise)?;
+            }
+            write!(f, "\n{indent}end")
+        }
+        StmtKind::For {
+            id,
+            control,
+            from,
+            to,
+            step,
+            body,
+        } => {
+            let step = case_label(CaseLabel::Value(*step), to.ty());
+            write!(f, "for {id} {control} from {from} to {to} by {step}")?;
+            block(f, body)?;
+            write!(f, "\n{indent}end")
+        }
+        StmtKind::Loop {
+            id,
+            body,
+            continuing,
+        } => {
+            write!(f, "loop {id}")?;
+            block(f, body)?;
+            if !continuing.is_empty() {
+                write!(f, "\n{indent}continuing")?;
+                block(f, continuing)?;
+            }
+            write!(f, "\n{indent}end")
+        }
+        StmtKind::Exit(id) => write!(f, "exit {id}"),
+        StmtKind::Continue(id) => write!(f, "continue {id}"),
+        StmtKind::Return => f.write_str("return"),
+    }
+}
+
+/// A label, or a step, as the integer it is at type `ty`.
+fn case_label(label: CaseLabel, ty: ScalarType) -> String {
+    let value = |constant: Const| match constant.integer_value(ty) {
+        Some(value) => value.to_string(),
+        None => format!("{constant:?}"),
+    };
+    match label {
+        CaseLabel::Value(constant) => value(constant),
+        CaseLabel::Range(low, high) => format!("{}..{}", value(low), value(high)),
     }
 }
 

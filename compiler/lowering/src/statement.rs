@@ -1,6 +1,6 @@
 //! Statements.
 
-use ironplc_dsl::core::Located;
+use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{Assignment, StmtKind as AstStmtKind};
 use ironplc_ir::lowered::{Expr, Stmt};
@@ -18,16 +18,16 @@ impl Lowering<'_> {
     ) -> Result<Option<Stmt>, Diagnostic> {
         match stmt {
             AstStmtKind::Assignment(assignment) => self.assignment(frame, assignment),
-            AstStmtKind::FbCall(_)
-            | AstStmtKind::MethodCall(_)
-            | AstStmtKind::If(_)
-            | AstStmtKind::Case(_)
-            | AstStmtKind::For(_)
-            | AstStmtKind::While(_)
-            | AstStmtKind::Repeat(_)
-            | AstStmtKind::Return
-            | AstStmtKind::Exit(_)
-            | AstStmtKind::Continue(_) => Ok(None),
+            AstStmtKind::If(stmt) => self.if_statement(frame, stmt),
+            AstStmtKind::Case(stmt) => self.case_statement(frame, stmt),
+            AstStmtKind::For(stmt) => self.for_statement(frame, stmt),
+            AstStmtKind::While(stmt) => self.while_statement(frame, stmt),
+            AstStmtKind::Repeat(stmt) => self.repeat_statement(frame, stmt),
+            AstStmtKind::Exit(span) => self.exit_statement(span),
+            AstStmtKind::Continue(span) => self.continue_statement(span),
+            // The AST keeps no span for a `RETURN`.
+            AstStmtKind::Return => Ok(Some(Stmt::return_(SourceSpan::default()))),
+            AstStmtKind::FbCall(_) | AstStmtKind::MethodCall(_) => Ok(None),
         }
     }
 

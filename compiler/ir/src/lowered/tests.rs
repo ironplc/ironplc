@@ -682,3 +682,5 @@ fn builder_when_pou_from_another_program_then_internal_error() {
 fn crate_root_when_read_then_denies_wildcard_enum_match_arm() {
     assert!(include_str!("../lib.rs").contains("#![deny(clippy::wildcard_enum_match_arm)]"));
 }
+
+mod control;

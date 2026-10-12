@@ -806,7 +806,7 @@ pub(crate) fn try_classify_cmp(ctx: &mut CompileContext, expr: &Expr) -> Option<
     None
 }
 
-fn classify_with_named(
+pub(crate) fn classify_with_named(
     ctx: &mut CompileContext,
     name: &Id,
     value: i64,

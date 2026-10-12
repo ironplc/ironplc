@@ -82,7 +82,16 @@ pub(crate) fn record_statement_position(
     ctx: &CompileContext,
     stmt: &StmtKind,
 ) {
-    let span = stmt.span();
+    record_position(emitter, ctx, &stmt.span());
+}
+
+/// Records `span` as the source position of the opcodes that follow, as
+/// [`record_statement_position`] does for a statement.
+pub(crate) fn record_position(
+    emitter: &mut crate::emit::Emitter,
+    ctx: &CompileContext,
+    span: &SourceSpan,
+) {
     let Some(file_id) = ctx.debug_source_files.get(&span.file_id) else {
         return;
     };
@@ -124,23 +133,7 @@ fn compile_statement(
         StmtKind::While(while_stmt) => compile_while(emitter, ctx, while_stmt),
         StmtKind::Repeat(repeat_stmt) => compile_repeat(emitter, ctx, repeat_stmt),
         StmtKind::Return => {
-            // Inside a function with a return value, an early RETURN must
-            // first push the current return-value variable so the caller
-            // sees a value on the stack (matching the trailing load+RET
-            // emitted at the end of the function body).
-            match ctx.current_function_return {
-                Some(CurrentFunctionReturn::Scalar { var_index, op_type }) => {
-                    emit_load_var(emitter, var_index, op_type);
-                    emitter.emit_ret();
-                }
-                Some(CurrentFunctionReturn::String { data_offset }) => {
-                    emitter.emit_str_load_var(data_offset);
-                    emitter.emit_ret();
-                }
-                None => {
-                    emitter.emit_ret_void();
-                }
-            }
+            emit_return(emitter, ctx);
             Ok(())
         }
         // Analysis rejects an EXIT or CONTINUE outside a loop
@@ -158,6 +151,27 @@ fn compile_statement(
             })?;
             emitter.emit_jmp(label);
             Ok(())
+        }
+    }
+}
+
+/// Emits a `RETURN` from the current body.
+///
+/// Inside a function with a return value, an early RETURN must first push
+/// the current return-value variable so the caller sees a value on the stack
+/// (matching the trailing load+RET emitted at the end of the function body).
+pub(crate) fn emit_return(emitter: &mut Emitter, ctx: &CompileContext) {
+    match ctx.current_function_return {
+        Some(CurrentFunctionReturn::Scalar { var_index, op_type }) => {
+            emit_load_var(emitter, var_index, op_type);
+            emitter.emit_ret();
+        }
+        Some(CurrentFunctionReturn::String { data_offset }) => {
+            emitter.emit_str_load_var(data_offset);
+            emitter.emit_ret();
+        }
+        None => {
+            emitter.emit_ret_void();
         }
     }
 }
