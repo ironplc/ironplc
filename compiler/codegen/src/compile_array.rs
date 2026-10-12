@@ -4,17 +4,16 @@
 //! array read/write compilation. Separated from compile.rs to
 //! keep module sizes within the 1000-line guideline.
 
-use ironplc_dsl::common::ConstantKind;
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{Expr, ExprKind, SymbolicVariableKind, UnaryOp, Variable};
+use ironplc_dsl::textual::{Expr, SymbolicVariableKind, Variable};
 use ironplc_problems::Problem;
 
 use ironplc_analyzer::semantic_type::{ArrayDimension, ByteSized, SemanticType};
 use ironplc_container::{CharWidth, ContainerBuilder, SlotIndex, VarIndex};
 
 use super::compile::{CompileContext, OpWidth, Signedness, VarTypeInfo};
-use super::compile_expr::{compile_expr, op_type};
+use super::compile_subscript::Subscript;
 use crate::emit::Emitter;
 
 /// Normalized array specification, independent of AST representation.
@@ -725,10 +724,10 @@ pub(crate) fn register_array_variable(
 /// For constant subscripts, computes the flat index at compile time.
 /// For variable subscripts, emits i64 arithmetic:
 ///   `(s_0 - l_0) * stride_0 + (s_1 - l_1) * stride_1 + ...`
-pub(crate) fn emit_flat_index(
+pub(crate) fn emit_flat_index<S: Subscript>(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    subscripts: &[&Expr],
+    subscripts: &[S],
     dimensions: &[DimensionInfo],
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
@@ -746,18 +745,9 @@ pub(crate) fn emit_flat_index(
         return Ok(());
     }
 
-    // Variable case: emit runtime computation using i64 arithmetic. Each
-    // subscript compiles at its own type, which the analyzer converted to
-    // `DINT` where its width differed.
+    // Variable case: emit runtime computation using i64 arithmetic.
     for (k, (subscript, dim)) in subscripts.iter().zip(dimensions.iter()).enumerate() {
-        let own = op_type(ctx, subscript)?;
-        if own.0 != OpWidth::W32 {
-            return Err(Diagnostic::internal_error_at(Label::span(
-                subscript.span(),
-                "Array subscript of a width other than DINT's, and the analyzer recorded no conversion",
-            )));
-        }
-        compile_expr(emitter, ctx, subscript)?;
+        subscript.emit(emitter, ctx)?;
         if dim.lower_bound != 0 {
             let lb_const = ctx.add_i64_constant(dim.lower_bound as i64);
             emitter.emit_load_const_i64(lb_const);
@@ -780,14 +770,14 @@ pub(crate) fn emit_flat_index(
 /// Returns `Err` if a literal subscript is out of bounds. Analysis reports such
 /// a subscript first (`rule_array_index_range`, P2027), so this is the fallback
 /// for a caller that compiles without analysis.
-fn try_constant_flat_index(
-    subscripts: &[&Expr],
+fn try_constant_flat_index<S: Subscript>(
+    subscripts: &[S],
     dimensions: &[DimensionInfo],
     span: &SourceSpan,
 ) -> Result<Option<i32>, Diagnostic> {
     let mut flat_index: i32 = 0;
     for (subscript, dim) in subscripts.iter().zip(dimensions.iter()) {
-        let value = match try_extract_integer_literal(subscript) {
+        let value = match subscript.literal() {
             Some(v) => v,
             None => return Ok(None),
         };
@@ -801,31 +791,4 @@ fn try_constant_flat_index(
         flat_index += (value - dim.lower_bound) * dim.stride as i32;
     }
     Ok(Some(flat_index))
-}
-
-/// Extracts an i32 value from an expression if it is a literal integer.
-/// Returns `None` for any non-literal expression.
-fn try_extract_integer_literal(expr: &Expr) -> Option<i32> {
-    match &expr.kind {
-        ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
-            let unsigned = i32::try_from(lit.value.value.value).ok()?;
-            if lit.value.is_neg {
-                unsigned.checked_neg()
-            } else {
-                Some(unsigned)
-            }
-        }
-        ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Neg => match &unary.term.kind {
-            ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
-                let val = i32::try_from(lit.value.value.value).ok()?;
-                if lit.value.is_neg {
-                    Some(val)
-                } else {
-                    val.checked_neg()
-                }
-            }
-            _ => None,
-        },
-        _ => None,
-    }
 }

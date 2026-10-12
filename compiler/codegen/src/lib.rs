@@ -57,6 +57,7 @@ mod compile_stmt;
 mod compile_string;
 mod compile_struct;
 mod compile_struct_init;
+mod compile_subscript;
 mod compile_time_arith;
 mod data_region;
 mod emit;

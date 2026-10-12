@@ -220,7 +220,7 @@ pub(crate) fn compile_assignment(
 fn assign_to_place(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    place: &Place,
+    place: &Place<&Expr>,
     value: &Expr,
 ) -> Result<(), Diagnostic> {
     compile_expr(emitter, ctx, value)?;
