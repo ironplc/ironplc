@@ -6,6 +6,9 @@
 //! reference. [`Place::emit_load`] and [`Place::emit_store`] then emit the
 //! load and the store for that shape, so a caller that reads, modifies and
 //! writes the value does not depend on the shape.
+//!
+//! A place's subscripts are any [`Subscript`]: the AST expressions
+//! [`Place::resolve`] finds, by default.
 
 use ironplc_container::{SlotIndex, VarIndex};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
@@ -18,11 +21,12 @@ use super::compile_array::{
 };
 use super::compile_expr::{emit_load_in_out, emit_load_var, emit_store_var, emit_truncation};
 use super::compile_struct::{resolve_struct_field_access, var_type_info_for_field};
+use super::compile_subscript::Subscript;
 use crate::emit::Emitter;
 
-/// A place that holds one value in a single slot.
-pub(crate) struct Place<'ast> {
-    address: Address<'ast>,
+/// A place that holds one value in a single slot, with subscripts of type `S`.
+pub(crate) struct Place<S> {
+    address: Address<S>,
     /// The type of the value the place holds. `None` only for a variable the
     /// context records no type for, which is loaded and stored at the default
     /// type and not truncated.
@@ -32,7 +36,7 @@ pub(crate) struct Place<'ast> {
 }
 
 /// Where a [`Place`] is, which decides the opcodes that load and store it.
-enum Address<'ast> {
+enum Address<S> {
     /// A variable: `LOAD_VAR` and `STORE_VAR`.
     Variable(VarIndex),
     /// A `VAR_IN_OUT` parameter. Its slot holds a reference to the caller's
@@ -45,12 +49,12 @@ enum Address<'ast> {
         var_index: VarIndex,
         desc_index: u16,
         through_ref: bool,
-        index: ElementIndex<'ast>,
+        index: ElementIndex<S>,
     },
 }
 
 /// The index of an [`Address::Element`] within its slot array.
-enum ElementIndex<'ast> {
+enum ElementIndex<S> {
     /// A field of a structure, at a fixed slot.
     Slot(SlotIndex),
     /// An array element, at the flat index of `subscripts`. `offset` is the
@@ -58,12 +62,12 @@ enum ElementIndex<'ast> {
     /// or is an array of structures (`a[i].field`).
     Subscripts {
         dimensions: Vec<DimensionInfo>,
-        subscripts: Vec<&'ast Expr>,
+        subscripts: Vec<S>,
         offset: Option<SlotIndex>,
     },
 }
 
-impl<'ast> Place<'ast> {
+impl<'ast> Place<&'ast Expr> {
     /// Resolves the place that `base` names.
     pub(crate) fn resolve(
         ctx: &CompileContext,
@@ -154,7 +158,9 @@ impl<'ast> Place<'ast> {
             span,
         })
     }
+}
 
+impl<S: Subscript> Place<S> {
     /// The type the place's value is loaded and stored at.
     pub(crate) fn op_type(&self) -> OpType {
         self.type_info
@@ -236,7 +242,7 @@ impl<'ast> Place<'ast> {
     }
 }
 
-impl ElementIndex<'_> {
+impl<S: Subscript> ElementIndex<S> {
     /// Pushes the index.
     fn emit(
         &self,
@@ -273,7 +279,7 @@ fn array_element<'ast>(
     subscripts: Vec<&'ast Expr>,
     through_ref: bool,
     span: &SourceSpan,
-) -> Result<(Address<'ast>, Option<VarTypeInfo>), Diagnostic> {
+) -> Result<(Address<&'ast Expr>, Option<VarTypeInfo>), Diagnostic> {
     if info.is_string_element {
         return Err(string_place(span.clone()));
     }
