@@ -1,7 +1,8 @@
-//! End-to-end tests that codegen runs the callee the analyzer resolved a
-//! call to: a function block instance runs the block its type is, and a
-//! method call runs the method its receiver's block declares or inherits.
-//! See `specs/design/call-binding.md`.
+//! End-to-end tests that codegen lowers the call the analyzer resolved and
+//! bound: a function block instance runs the block its type is, a method call
+//! runs the method its receiver's block declares or inherits, and a function
+//! block call's arguments are stored and read in the order of its normal
+//! form. See `specs/design/call-binding.md`.
 
 use ironplc_parser::options::CompilerOptions;
 use spec_test_macro::spec_test;
@@ -121,4 +122,100 @@ END_PROGRAM
     let start = source.find("d.Get()").unwrap();
     assert_eq!(diagnostic.primary.location.start, start);
     assert_eq!(diagnostic.primary.location.end, start + "d.Get()".len());
+}
+
+/// A block of two inputs that joins them as tens and ones.
+const PAIR: &str = "
+FUNCTION_BLOCK Pair
+VAR_INPUT tens : DINT; ones : DINT; END_VAR
+VAR_OUTPUT joined : DINT; positive : BOOL; END_VAR
+joined := tens * 10 + ones;
+positive := joined > 0;
+END_FUNCTION_BLOCK
+";
+
+#[spec_test(REQ_CB_codegen_020)]
+fn end_to_end_when_function_block_called_positionally_then_inputs_in_declaration_order() {
+    let source = format!(
+        "{PAIR}
+PROGRAM main
+VAR p : Pair; r : DINT; END_VAR
+p(1, 2);
+r := p.joined;
+END_PROGRAM"
+    );
+    assert_run_with(&source, &CompilerOptions::default(), &[("r", 12i64)]);
+}
+
+#[spec_test(REQ_CB_codegen_021)]
+fn end_to_end_when_standard_block_called_positionally_then_inputs_stored() {
+    let source = "
+PROGRAM main
+VAR c : CTU; cv : INT; pv : INT; q : BOOL; END_VAR
+c(TRUE, FALSE, 1);
+cv := c.CV;
+pv := c.PV;
+q := c.Q;
+END_PROGRAM
+";
+    assert_run_with(
+        source,
+        &CompilerOptions::default(),
+        &[("cv", 1i64), ("pv", 1i64), ("q", 1i64)],
+    );
+}
+
+#[spec_test(REQ_CB_codegen_022)]
+fn end_to_end_when_output_negated_then_stores_its_inverse() {
+    // One call cannot read an output twice (P4024), so two calls read it.
+    let source = format!(
+        "{PAIR}
+PROGRAM main
+VAR p : Pair; pos : BOOL; neg : BOOL; END_VAR
+p(tens := 1, ones := 2, positive => pos);
+p(tens := 1, ones := 2, NOT positive => neg);
+END_PROGRAM"
+    );
+    assert_run_with(
+        &source,
+        &CompilerOptions::default(),
+        &[("pos", 1i64), ("neg", 0i64)],
+    );
+}
+
+#[spec_test(REQ_CB_codegen_040)]
+fn end_to_end_when_named_inputs_have_side_effects_then_evaluated_in_declaration_order() {
+    let source = format!(
+        "{PAIR}
+FUNCTION trace : DINT
+VAR_IN_OUT log : DINT; END_VAR
+VAR_INPUT id : DINT; END_VAR
+log := log * 10 + id;
+trace := id;
+END_FUNCTION
+
+PROGRAM main
+VAR p : Pair; log : DINT; r : DINT; END_VAR
+p(ones := trace(log, 2), tens := trace(log, 1), joined => r);
+END_PROGRAM"
+    );
+    assert_run_with(
+        &source,
+        &CompilerOptions::default(),
+        &[("log", 12i64), ("r", 12i64)],
+    );
+}
+
+#[spec_test(REQ_CB_codegen_050)]
+fn end_to_end_when_input_omitted_then_keeps_value_of_previous_call() {
+    let source = format!(
+        "{PAIR}
+PROGRAM main
+VAR p : Pair; r : DINT; END_VAR
+p(tens := 1, ones := 2);
+p(ones := 5);
+r := p.joined;
+END_PROGRAM"
+    );
+    assert_run_with(&source, &CompilerOptions::default(), &[("r", 15i64)]);
 }

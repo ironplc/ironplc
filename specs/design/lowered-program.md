@@ -1137,7 +1137,8 @@ ordinary `Assign`, `AssignStr` or `Copy`, and a `VAR_IN_OUT` input is an
 operation type, with no conversion (`compile_stmt.rs`).
 
 **REQ-LOW-lowering-069** A function block call lowers to the assignments of
-its inputs to the instance's fields, then an `FbCall`, then the assignments of
+its inputs to the instance's fields, in the order of the call's normal form
+([Call Binding](call-binding.md)), then an `FbCall`, then the assignments of
 its outputs from the instance's fields, in that order.
 
 The order of the inputs among themselves is the order of the call's normal
@@ -1620,7 +1621,7 @@ today.
 | Implicit conversion | The analyzer for operands, assigned values, the arguments of functions, methods and function block calls, loop bounds, the results of calls and dereferences, subscripts, shift counts and string positions (ADR-0056); codegen stores a function block output at the field's type unconverted | `ExprKind::ImplicitConversion`, checked for a subscript that may not fit `DINT` (REQ-LOW-analyzer-162) | `Convert`, or `ConvertChecked` |
 | Arithmetic overload | Analyzer's `resolve_arithmetic_overload` | The expression's `expr_type`, and its operands' conversions | A `Binary` at the result type, or the desugared time arithmetic |
 | Operand type of a comparison | The analyzer ([Comparison Operand Type](comparison-operand-type.md)) | Its operands' conversions | A `Compare` at that type |
-| Argument order and count | `xform_named_to_positional_args` for a function call, then re-checked at 27 sites in codegen; codegen for a method call (`compile_method.rs`) and, by name, for a function block call (`compile_stmt.rs`) | Positional arguments | `Vec<Arg>` matched to parameters |
+| Argument order and count | `xform_named_to_positional_args` for a function call, then re-checked at 27 sites in codegen; `xform_bind_call_arguments` for a function block call ([Call Binding](call-binding.md)); codegen for a method call (`compile_method.rs`) | Positional arguments for a function call; the call's normal form for a function block call: named, in declaration order | `Vec<Arg>` matched to parameters |
 | Whether an interface value can hold only one concrete type | Not made; calls through an interface are not compiled | The concrete types the value can hold (REQ-LOW-analyzer-107) | A direct method call, or a `Callee::Interface` |
 | Capacity of a string declared without one | Codegen and `slot_count`, from `DEFAULT_STRING_MAX_LENGTH` | The string type's capacity (REQ-LOW-analyzer-053) | The capacity of its `StringShape` |
 | Enumeration ordinal | The analyzer, when the type enters the type environment (`EnumerationMembers`); codegen looks the ordinal up (`compile_enum.rs`) | Each member's ordinal, explicit (`GREEN := 5`) or counted on from the one before, and the type's default member, on `SemanticType::Enumeration` | `Const` |

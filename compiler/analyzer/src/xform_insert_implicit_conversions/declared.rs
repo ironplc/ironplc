@@ -19,7 +19,7 @@ use ironplc_dsl::common::{Library, LibraryElementKind, TypeName, VarDecl};
 use ironplc_dsl::core::Id;
 use ironplc_dsl::type_id::TypeId;
 
-use crate::callee_resolution::{CallParameters, MethodOwners};
+use crate::callee_resolution::MethodOwners;
 use crate::semantic_type::SemanticType;
 use crate::type_environment::TypeEnvironment;
 
@@ -33,8 +33,6 @@ pub(super) type Parameters = Vec<(Id, Option<TypeId>)>;
 pub(super) struct Declarations {
     /// The declared type of each field, by block and field name.
     fields: HashMap<(Id, Id), Option<TypeId>>,
-    /// The parameters of each block, in declaration order.
-    parameters: HashMap<Id, CallParameters>,
     /// The input parameters of each method, by the block that declares it
     /// and the method's name.
     methods: HashMap<(Id, Id), Parameters>,
@@ -63,9 +61,6 @@ impl Declarations {
                         .insert((name.clone(), field.clone()), at);
                 }
             }
-            declarations
-                .parameters
-                .insert(name.clone(), CallParameters::of_declaration(block));
             for method in &block.methods {
                 let parameters = method
                     .variables
@@ -89,11 +84,6 @@ impl Declarations {
     /// `Some(None)` when the field is not a single numeric value.
     pub(super) fn field(&self, block: &Id, field: &Id) -> Option<Option<TypeId>> {
         self.fields.get(&(block.clone(), field.clone())).copied()
-    }
-
-    /// The parameters of the user-defined function block `block`.
-    pub(super) fn parameters(&self, block: &Id) -> Option<&CallParameters> {
-        self.parameters.get(block)
     }
 
     /// The input parameters of the method `method` called on an instance

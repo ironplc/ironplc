@@ -33,7 +33,7 @@
 //! ```
 use ironplc_dsl::{
     common::*,
-    core::Located,
+    core::{Id, Located},
     diagnostic::{Diagnostic, Label},
     scope::ScopeNode,
     textual::*,
@@ -43,11 +43,11 @@ use ironplc_problems::Problem;
 use std::convert::Infallible;
 
 use crate::{
-    callee_resolution::{instance_type, FunctionBlocks},
-    intermediates::stdlib_function_block::is_stdlib_function_block,
+    callee_resolution::{instance_type, BlockParameters, CallParameters, FunctionBlocks},
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    semantic_type::{FunctionBlockVarType, SemanticType},
     symbol_environment::ScopeTracker,
 };
 use ironplc_parser::options::CompilerOptions;
@@ -58,13 +58,18 @@ pub fn apply(
     _options: &CompilerOptions,
 ) -> SemanticResult {
     let function_blocks = FunctionBlocks::from_library(lib);
+    let parameters = BlockParameters::of_library(lib);
 
     // Walk the library to find all references to function blocks
-    run_rule(RuleFunctionBlockUse::new(&function_blocks, context), lib)
+    run_rule(
+        RuleFunctionBlockUse::new(&function_blocks, &parameters, context),
+        lib,
+    )
 }
 
 struct RuleFunctionBlockUse<'a> {
     function_blocks: &'a FunctionBlocks<'a>,
+    parameters: &'a BlockParameters,
     context: &'a SemanticContext,
 
     /// The scope the walk is in, which an instance is looked up from.
@@ -73,9 +78,14 @@ struct RuleFunctionBlockUse<'a> {
     diagnostics: Vec<Diagnostic>,
 }
 impl<'a> RuleFunctionBlockUse<'a> {
-    fn new(function_blocks: &'a FunctionBlocks<'a>, context: &'a SemanticContext) -> Self {
+    fn new(
+        function_blocks: &'a FunctionBlocks<'a>,
+        parameters: &'a BlockParameters,
+        context: &'a SemanticContext,
+    ) -> Self {
         Self {
             function_blocks,
+            parameters,
             context,
             scope: ScopeTracker::default(),
             diagnostics: Vec::new(),
@@ -83,21 +93,71 @@ impl<'a> RuleFunctionBlockUse<'a> {
     }
 
     fn check_assignments(
-        function_block: &FunctionBlockDeclaration,
+        &self,
+        block: &TypeName,
+        parameters: &CallParameters,
         fb_call: &FbCall,
     ) -> Vec<Diagnostic> {
         crate::call_assignment_check::check_assignments(
-            function_block,
-            function_block.span(),
+            parameters,
+            self.function_blocks.get(block).map(|fb| fb.span()),
             fb_call.span(),
             &fb_call.params,
             &crate::call_assignment_check::AssignmentCheckLabels {
                 call_label: "Function block invocation",
                 context_key: "invocation",
-                owner_name: &function_block.name.to_string(),
+                owner_name: &block.to_string(),
                 decl_label: "Function block declaration",
             },
         )
+    }
+
+    /// Whether the output `output` of the function block `block` is a
+    /// `BOOL`, from its declaration or, for a standard block, its type.
+    /// `None` when the block has no such output, which the binding reports.
+    fn output_is_bool(&self, block: &TypeName, output: &Id) -> Option<bool> {
+        let types = self.context.types();
+        if let Some(fb) = self.function_blocks.get(block) {
+            let decl = fb.variables.iter().find(|decl| {
+                decl.var_type == VariableType::Output
+                    && decl.identifier.symbolic_id() == Some(output)
+            })?;
+            let representation = decl
+                .type_id
+                .and_then(|id| types.get_by_id(id))
+                .map(|attributes| &attributes.representation);
+            return Some(matches!(representation, Some(SemanticType::Bool)));
+        }
+        match &types.get(block)?.representation {
+            SemanticType::FunctionBlock { fields, .. } => fields
+                .iter()
+                .find(|field| {
+                    field.name == *output && field.var_type == Some(FunctionBlockVarType::Output)
+                })
+                .map(|field| field.field_type == SemanticType::Bool),
+            _ => None,
+        }
+    }
+
+    /// A negated output assignment, `NOT q => v`, inverts a `BOOL`; on an
+    /// output of any other type it has no meaning, so it is rejected rather
+    /// than left for a later stage to interpret.
+    fn check_negated_outputs(&mut self, block: &TypeName, fb_call: &FbCall) {
+        for param in &fb_call.params {
+            let ParamAssignmentKind::Output(output) = param else {
+                continue;
+            };
+            if output.not && self.output_is_bool(block, &output.src) == Some(false) {
+                self.diagnostics.push(
+                    Diagnostic::problem(
+                        Problem::NegatedOutputNotBool,
+                        Label::span(output.src.span(), "Negated output"),
+                    )
+                    .with_context_type("function block", block)
+                    .with_context_id("output", &output.src),
+                );
+            }
+        }
     }
 
     fn not_in_scope(fb_call: &FbCall) -> Diagnostic {
@@ -141,18 +201,17 @@ impl Visitor<Infallible> for RuleFunctionBlockUse<'_> {
             return Ok(());
         };
 
-        // Standard library function blocks (TON, TOF, TP, CTU, etc.)
-        // are validated during type resolution, not here.
-        if is_stdlib_function_block(&function_block_name.name) {
-            return Ok(());
-        }
-
-        match self.function_blocks.get(&function_block_name) {
+        // A block the library declares, or a standard one.
+        match self
+            .parameters
+            .of(&function_block_name, self.context.types())
+        {
             None => self.diagnostics.push(Self::not_in_scope(fb_call)),
-            Some(fb) => {
-                // Validate the parameter assignments
-                let diagnostics = RuleFunctionBlockUse::check_assignments(fb, fb_call);
+            Some(parameters) => {
+                let diagnostics =
+                    self.check_assignments(&function_block_name, &parameters, fb_call);
                 self.diagnostics.extend(diagnostics);
+                self.check_negated_outputs(&function_block_name, fb_call);
             }
         }
 
@@ -163,6 +222,7 @@ impl Visitor<Infallible> for RuleFunctionBlockUse<'_> {
 #[cfg(test)]
 mod tests {
     use ironplc_problems::Problem;
+    use spec_test_macro::spec_test;
 
     rule_ok!(
         apply_when_instance_declared_with_member_initializer_then_ok,
@@ -439,5 +499,115 @@ END_VAR
 FB_INSTANCE(NOPE1 := TRUE, NOPE2 := TRUE);
 END_PROGRAM",
         [ironplc_problems::Problem::FunctionInvocationMissingInput; 2]
+    );
+
+    /// A block with two inputs and two outputs, and a program that calls an
+    /// instance of it with `call`.
+    fn call(call: &str) -> String {
+        format!(
+            "
+FUNCTION_BLOCK Callee
+VAR_INPUT a : INT; b : INT; END_VAR
+VAR_OUTPUT q : INT; done : BOOL; END_VAR
+END_FUNCTION_BLOCK
+PROGRAM main
+VAR inst : Callee; x : INT; d : BOOL; END_VAR
+{call}
+END_PROGRAM"
+        )
+    }
+
+    /// A program that calls a timer with `call`.
+    fn timer_call(call: &str) -> String {
+        format!(
+            "
+PROGRAM main
+VAR t : TON; preset : TIME; q : BOOL; e : TIME; END_VAR
+{call}
+END_PROGRAM"
+        )
+    }
+
+    rule_err!(
+        #[spec_test(REQ_CB_analyzer_024)]
+        apply_when_input_named_twice_then_duplicate,
+        &call("inst(a := 1, a := 3, b := 2);"),
+        [Problem::FunctionCallDuplicateNamedArg]
+    );
+
+    rule_err_at!(
+        #[spec_test(REQ_CB_analyzer_024)]
+        apply_when_output_named_twice_then_duplicate_at_second,
+        "
+FUNCTION_BLOCK Callee
+VAR_OUTPUT q : INT; END_VAR
+END_FUNCTION_BLOCK
+PROGRAM main
+VAR inst : Callee; x : INT; y : INT; END_VAR
+inst(q => x, Q => y);
+END_PROGRAM",
+        Problem::FunctionCallDuplicateNamedArg,
+        "Q"
+    );
+
+    rule_err!(
+        #[spec_test(REQ_CB_analyzer_026)]
+        apply_when_negated_output_not_bool_then_negated_output_not_bool,
+        &call("inst(NOT q => x);"),
+        [Problem::NegatedOutputNotBool]
+    );
+
+    rule_ok!(
+        #[spec_test(REQ_CB_analyzer_026)]
+        apply_when_negated_output_bool_then_ok,
+        &call("inst(NOT done => d);")
+    );
+
+    rule_err!(
+        #[spec_test(REQ_CB_analyzer_026)]
+        apply_when_negated_standard_output_not_bool_then_negated_output_not_bool,
+        &timer_call("t(IN := TRUE, NOT ET => e);"),
+        [Problem::NegatedOutputNotBool]
+    );
+
+    rule_ok!(
+        #[spec_test(REQ_CB_analyzer_025)]
+        apply_when_standard_block_positional_then_ok,
+        &timer_call("t(TRUE, preset);")
+    );
+
+    rule_err!(
+        #[spec_test(REQ_CB_analyzer_025)]
+        apply_when_standard_block_input_unknown_then_missing_input,
+        &timer_call("t(IN := TRUE, FOO := preset);"),
+        [Problem::FunctionInvocationMissingInput]
+    );
+
+    rule_err!(
+        #[spec_test(REQ_CB_analyzer_025)]
+        apply_when_standard_block_positional_count_differs_then_requires_formal,
+        &timer_call("t(TRUE, preset, 5);"),
+        [Problem::FunctionInvocationRequiresFormal]
+    );
+
+    rule_err!(
+        #[spec_test(REQ_CB_analyzer_025)]
+        apply_when_standard_block_mixed_then_mixed,
+        &timer_call("t(TRUE, PT := preset);"),
+        [Problem::FunctionCallMixedArgTypes]
+    );
+
+    rule_err!(
+        #[spec_test(REQ_CB_analyzer_025)]
+        apply_when_standard_block_output_unknown_then_undefined_output,
+        &timer_call("t(IN := TRUE, NOPE => q);"),
+        [Problem::FunctionInvocationUndefinedOutput]
+    );
+
+    rule_err!(
+        #[spec_test(REQ_CB_analyzer_025)]
+        apply_when_standard_block_input_named_twice_then_duplicate,
+        &timer_call("t(IN := TRUE, IN := FALSE);"),
+        [Problem::FunctionCallDuplicateNamedArg]
     );
 }

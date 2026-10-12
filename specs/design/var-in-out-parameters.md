@@ -11,7 +11,7 @@ than compiled with by-value semantics.
 
 | Section | Status |
 |---|---|
-| [Writable arguments](#writable-arguments), [Argument list](#argument-list), [Rules](#rules) | Implemented for function calls: P4058, P4059, P4060. P4061 and P4062 (function blocks) are not. Function block and method calls do not yet include `VAR_IN_OUT` in the positional order. |
+| [Writable arguments](#writable-arguments), [Argument list](#argument-list), [Rules](#rules) | Implemented for function calls: P4058, P4059, P4060. P4061 and P4062 (function blocks) are not. A function block or method call passes a `VAR_IN_OUT` by name only ([Call Binding](call-binding.md)). |
 | [Constant arguments](#constant-arguments) | Not implemented; `VAR_IN_OUT CONSTANT` is not parsed. |
 | [References](#references) | Variable references and their instance-scope check are implemented. Data-region references, `REF_ELEM` and `REF_BASE` are not. |
 | [Call site](#call-site), [Parameter slots](#parameter-slots) | Implemented for functions with an elementary parameter, when the argument is a named variable or a forwarded `VAR_IN_OUT`. |
@@ -195,9 +195,11 @@ declaration order. `FunctionSignature::input_parameters` and
 `is_input_compatible()`, the same list `xform_named_to_positional_args` orders
 named arguments by. So the arity check (P4018), positional binding and the
 named-to-positional rewrite all agree, whichever order the two kinds of
-parameter are declared in. Function block and method calls bind by the same
-list through `call_assignment_check::bind_inputs`, which also has to include
-`VAR_IN_OUT` in the positional order.
+parameter are declared in.
+
+Function block and method calls differ: a positional argument binds to the
+`VAR_INPUT` declarations alone, in declaration order, and a `VAR_IN_OUT` is
+passed by name ([Call Binding](call-binding.md)).
 
 ### Rules
 

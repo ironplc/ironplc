@@ -9,19 +9,20 @@
 //! itself "invocation"; a method calls itself "method"). Shared here so the
 //! two rules can't drift out of sync on the actual validation logic.
 //!
-//! The binding of each argument to the parameter it names or occupies,
-//! [`bind_inputs`], is the part of that validation any other analysis of a
-//! call needs too, so it is a function of its own that the check builds on.
-//! Finding the callee in the first place is `callee_resolution`'s job.
+//! Which parameter each argument binds to is decided once, by
+//! `call_binding::bind`; the check reports why a call does not bind.
+//! [`bind_inputs`] pairs each input of a call with its parameter for an
+//! analysis that reads a call as written. Finding the callee in the first
+//! place is `callee_resolution`'s job.
 
 use ironplc_dsl::{
-    common::HasVariables,
     core::SourceSpan,
     diagnostic::{Diagnostic, Label},
     textual::ParamAssignmentKind,
 };
 use ironplc_problems::Problem;
 
+use crate::call_binding::{bind, BindProblem};
 use crate::callee_resolution::{CallParameter, CallParameters};
 
 /// Pairs every input argument of a call with the declared parameter it
@@ -65,119 +66,81 @@ pub(crate) struct AssignmentCheckLabels<'a> {
     pub(crate) decl_label: &'a str,
 }
 
-/// Validates a call's parameter assignments against `owner`'s declared
-/// `VAR_INPUT`/`VAR_IN_OUT`/`VAR_OUTPUT` variables:
+/// Reports why a call's arguments do not bind to `parameters`, the callee's
+/// declared `VAR_INPUT`/`VAR_IN_OUT`/`VAR_OUTPUT` parameters
+/// ([`crate::call_binding::bind`]):
 ///
-/// - named and positional inputs may not be mixed
-/// - every named input must match a declared input
-/// - a positional-args count must match the declared input count exactly
-/// - every output assignment (`=>`) must match a declared output
+/// - named and positional inputs may not be mixed (P4001)
+/// - every named input must match a declared input (P4002)
+/// - a positional call must supply every declared input, and no more (P4003)
+/// - every output assignment (`=>`) must match a declared output (P4004)
+/// - no parameter may be named twice (P4024)
 ///
 /// `owner_span` is the callee declaration's span, used for the secondary
-/// label on a missing-input diagnostic.
+/// label on a missing-input diagnostic; a standard function block has none.
 ///
 /// Returns every problem found, not the first: a call that names three inputs
 /// the callee does not declare is three diagnostics. The one exception is a
 /// call that mixes named and positional inputs, which returns alone --- with
-/// the call's shape itself in doubt, the per-parameter checks below would
-/// report noise derived from a misreading of the arguments.
+/// the call's shape itself in doubt, the per-parameter checks would report
+/// noise derived from a misreading of the arguments.
 pub(crate) fn check_assignments(
-    owner: &dyn HasVariables,
-    owner_span: SourceSpan,
+    parameters: &CallParameters,
+    owner_span: Option<SourceSpan>,
     call_span: SourceSpan,
     params: &[ParamAssignmentKind],
     labels: &AssignmentCheckLabels,
 ) -> Vec<Diagnostic> {
-    let parameters = CallParameters::of_declaration(owner);
-
-    // Sort the inputs as either named, positional, and outputs
-    let mut formal = Vec::new();
-    let mut non_formal = Vec::new();
-    let mut outputs = Vec::new();
-    for param in params {
-        match param {
-            ParamAssignmentKind::NamedInput(n) => formal.push(n),
-            ParamAssignmentKind::PositionalInput(p) => non_formal.push(p),
-            // Don't care outputs here
-            ParamAssignmentKind::Output(o) => outputs.push(o),
-        }
-    }
-
-    // Don't allow a mixture so assert that either named is empty or
-    // positional is empty
-    if !formal.is_empty() && !non_formal.is_empty() {
-        return vec![Diagnostic::problem(
-            Problem::FunctionCallMixedArgTypes,
-            Label::span(call_span.clone(), labels.call_label),
-        )
-        .with_context(labels.context_key, &labels.owner_name.to_string())];
-    }
-
-    let mut diagnostics = Vec::new();
-
-    // Check that the names and types match. Unassigned values are
-    // permitted so we use the assignments as the set to iterate
-    if !formal.is_empty() {
-        // TODO check the types.
-        for (param, declared) in bind_inputs(&parameters, params) {
-            if let (ParamAssignmentKind::NamedInput(name), None) = (param, declared) {
-                diagnostics.push(
-                    Diagnostic::problem(
-                        Problem::FunctionInvocationMissingInput,
-                        Label::span(call_span.clone(), labels.call_label),
-                    )
-                    .with_context(labels.context_key, &labels.owner_name.to_string())
-                    .with_context_id("undefined input", &name.name)
-                    .with_secondary(Label::span(owner_span.clone(), labels.decl_label)),
-                );
+    let Err(problems) = bind(parameters, params) else {
+        return vec![];
+    };
+    let label = || Label::span(call_span.clone(), labels.call_label);
+    let owner = labels.owner_name.to_string();
+    problems
+        .into_iter()
+        .map(|problem| match problem {
+            BindProblem::Mixed => Diagnostic::problem(Problem::FunctionCallMixedArgTypes, label())
+                .with_context(labels.context_key, &owner),
+            BindProblem::UnknownInput(name) => {
+                let diagnostic =
+                    Diagnostic::problem(Problem::FunctionInvocationMissingInput, label())
+                        .with_context(labels.context_key, &owner)
+                        .with_context_id("undefined input", name);
+                match &owner_span {
+                    Some(span) => {
+                        diagnostic.with_secondary(Label::span(span.clone(), labels.decl_label))
+                    }
+                    None => diagnostic,
+                }
             }
-        }
-    }
-
-    // Check that the number of variables matches exactly the number
-    // of expected inputs and the types match.
-    if !non_formal.is_empty() {
-        let num_required_inputs = parameters.inputs().count();
-        if non_formal.len() != num_required_inputs {
-            diagnostics.push(
-                Diagnostic::problem(
-                    Problem::FunctionInvocationRequiresFormal,
-                    Label::span(call_span.clone(), labels.call_label),
-                )
-                .with_context(labels.context_key, &labels.owner_name.to_string())
-                .with_context("required", &format!("{num_required_inputs}"))
-                .with_context("actual", &format!("{}", non_formal.len())),
-            );
-        }
-    }
-
-    // Check that the assigned output parameter names match the actual
-    // output parameter names
-    for output in outputs {
-        if parameters.output(&output.src).is_none() {
-            diagnostics.push(
-                Diagnostic::problem(
-                    Problem::FunctionInvocationUndefinedOutput,
-                    Label::span(call_span.clone(), labels.call_label),
-                )
-                .with_context(labels.context_key, &labels.owner_name.to_string())
-                .with_context_id("source", &output.src)
-                .with_context("target", &output.tgt.to_string()),
-            );
-        }
-    }
-
-    diagnostics
+            BindProblem::PositionalCount { required, actual } => {
+                Diagnostic::problem(Problem::FunctionInvocationRequiresFormal, label())
+                    .with_context(labels.context_key, &owner)
+                    .with_context("required", &format!("{required}"))
+                    .with_context("actual", &format!("{actual}"))
+            }
+            BindProblem::UnknownOutput(output) => {
+                Diagnostic::problem(Problem::FunctionInvocationUndefinedOutput, label())
+                    .with_context(labels.context_key, &owner)
+                    .with_context_id("source", &output.src)
+                    .with_context("target", &output.tgt.to_string())
+            }
+            BindProblem::Duplicate(name) => Diagnostic::problem(
+                Problem::FunctionCallDuplicateNamedArg,
+                Label::span(name.span.clone(), "Duplicate argument"),
+            )
+            .with_context(labels.context_key, &owner),
+        })
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::parse_and_resolve_types;
     use ironplc_dsl::common::{
         FunctionBlockBodyKind, FunctionBlockDeclaration, Library, LibraryElementKind,
     };
-    use ironplc_dsl::textual::{ExprKind, FbCall, StmtKind};
+    use ironplc_dsl::textual::{FbCall, StmtKind};
 
     /// A function block with one input, one in-out and one output, and a
     /// program that calls it with `params`.
@@ -205,7 +168,14 @@ END_VAR
     inst({params});
 END_PROGRAM"
         );
-        parse_and_resolve_types(&program)
+        // As written: `bind_inputs` reads a call's arguments as the program
+        // wrote them, before the binding pass puts them in normal form.
+        ironplc_parser::parse_program(
+            &program,
+            &ironplc_dsl::core::FileId::default(),
+            &ironplc_parser::options::CompilerOptions::default(),
+        )
+        .unwrap()
     }
 
     /// The function block and the one call the program makes to it.
@@ -279,7 +249,7 @@ END_PROGRAM"
         assert!(matches!(
             bound[0],
             (ParamAssignmentKind::NamedInput(named), Some(_))
-                if matches!(named.expr.kind, ExprKind::Variable(_))
+                if named.expr.to_string() == "a"
         ));
     }
 }

@@ -52,7 +52,7 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use crate::{
-    callee_resolution::{instance_type, FunctionBlocks},
+    callee_resolution::{instance_type, CallParameters, FunctionBlocks},
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
@@ -101,8 +101,8 @@ impl<'a> RuleMethodCallDeclared<'a> {
         call: &MethodCall,
     ) -> Vec<Diagnostic> {
         crate::call_assignment_check::check_assignments(
-            method,
-            method.span(),
+            &CallParameters::of_declaration(method),
+            Some(method.span()),
             call.span(),
             &call.params,
             &crate::call_assignment_check::AssignmentCheckLabels {

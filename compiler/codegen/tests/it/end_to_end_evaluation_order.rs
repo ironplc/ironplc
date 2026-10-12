@@ -85,12 +85,13 @@ fn assert_main(variables: &str, body: &str, expected: &[(&str, i64)]) {
     "r := joiner.join(ones := trace(log, 2), tens := trace(log, 1));",
     &[("log", 12), ("r", 12)]
 )]
-// The inputs of a function block call are evaluated in the order the call
-// writes them in, unlike the named arguments of a function.
-#[case::function_block_inputs_in_written_order(
+// The inputs of a function block call are evaluated in the order the block
+// declares them, as the named arguments of a function are, whatever order the
+// call writes them in (specs/design/call-binding.md).
+#[case::function_block_inputs_in_declaration_order(
     "log : DINT; r : DINT; pair : Pair;",
     "pair(ones := trace(log, 2), tens := trace(log, 1), joined => r);",
-    &[("log", 21), ("r", 12)]
+    &[("log", 12), ("r", 12)]
 )]
 #[case::subscripts_left_to_right(
     "log : DINT; r : DINT; grid : ARRAY[0..3, 0..3] OF DINT;",

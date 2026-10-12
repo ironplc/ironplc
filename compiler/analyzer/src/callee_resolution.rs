@@ -24,7 +24,7 @@ use ironplc_dsl::common::{
 use ironplc_dsl::core::Id;
 use ironplc_dsl::textual::MethodReceiver;
 
-use crate::semantic_type::{FunctionBlockVarType, SemanticStructField};
+use crate::semantic_type::{FunctionBlockVarType, SemanticStructField, SemanticType};
 use crate::symbol_environment::{Resolution, ScopeKind, SymbolEnvironment};
 use crate::type_environment::TypeEnvironment;
 
@@ -195,6 +195,45 @@ impl MethodOwners {
     }
 }
 
+/// The parameters of every function block a call can name: each block the
+/// library declares, from its declaration, and each standard block, from its
+/// type's fields.
+///
+/// Owned, so that a pass that consumes the library as it folds it can ask.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct BlockParameters {
+    declared: HashMap<TypeName, CallParameters>,
+}
+
+impl BlockParameters {
+    /// The parameters of every function block `lib` declares.
+    pub(crate) fn of_library(lib: &Library) -> Self {
+        let declared = FunctionBlocks::from_library(lib)
+            .by_name
+            .into_iter()
+            .map(|(name, block)| (name, CallParameters::of_declaration(block)))
+            .collect();
+        BlockParameters { declared }
+    }
+
+    /// The parameters of the function block `block`: a block the library
+    /// declares, or a standard block, whose type in `types` records which
+    /// one it is. `None` for any other type.
+    pub(crate) fn of(&self, block: &TypeName, types: &TypeEnvironment) -> Option<CallParameters> {
+        if let Some(parameters) = self.declared.get(block) {
+            return Some(parameters.clone());
+        }
+        let attributes = types.get(block)?;
+        attributes.standard_block?;
+        match &attributes.representation {
+            SemanticType::FunctionBlock { fields, .. } => {
+                Some(CallParameters::of_standard_block(fields))
+            }
+            _ => None,
+        }
+    }
+}
+
 /// Which kind of parameter a call passes something to or reads from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ParameterSection {
@@ -268,6 +307,11 @@ impl CallParameters {
         CallParameters { parameters }
     }
 
+    /// Every parameter, in declaration order.
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &CallParameter> {
+        self.parameters.iter()
+    }
+
     /// The `VAR_INPUT` parameters, in declaration order: the parameters a
     /// positional argument of a function block or method call binds to.
     pub(crate) fn inputs(&self) -> impl Iterator<Item = &CallParameter> {
@@ -282,14 +326,6 @@ impl CallParameters {
         })
     }
 
-    /// The parameter an output assignment `name => ...` reads: a
-    /// `VAR_OUTPUT` of that name. A `VAR_IN_OUT` is assigned only through
-    /// the input syntax, so it is not one.
-    pub(crate) fn output(&self, name: &Id) -> Option<&CallParameter> {
-        self.in_section(ParameterSection::Output)
-            .find(|parameter| parameter.name == *name)
-    }
-
     fn in_section(&self, section: ParameterSection) -> impl Iterator<Item = &CallParameter> {
         self.parameters
             .iter()
@@ -300,7 +336,6 @@ impl CallParameters {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::semantic_type::SemanticType;
     use crate::symbol_environment::ScopePath;
     use crate::test_helpers::parse_and_resolve_types_with_options;
     use ironplc_dsl::core::FileId;
@@ -575,13 +610,31 @@ END_FUNCTION_BLOCK";
         assert!(parameters.named_input(&Id::from("hidden")).is_none());
     }
 
+    /// The section of the parameter `name`, if `parameters` has one.
+    fn section_of(parameters: &CallParameters, name: &str) -> Option<ParameterSection> {
+        parameters
+            .iter()
+            .find(|p| p.name == Id::from(name))
+            .map(|p| p.section)
+    }
+
     #[test]
-    fn call_parameters_when_output_then_finds_output_only() {
+    fn call_parameters_when_declaration_then_every_parameter_in_declaration_order() {
         let lib = parse(PARAMETERS);
         let parameters = CallParameters::of_declaration(block(&lib, "FB_Params"));
-        assert!(parameters.output(&Id::from("done")).is_some());
-        assert!(parameters.output(&Id::from("total")).is_none());
-        assert!(parameters.output(&Id::from("first")).is_none());
+        assert_eq!(
+            vec!["done", "first", "total", "second"],
+            names(parameters.iter())
+        );
+        assert_eq!(
+            Some(ParameterSection::Output),
+            section_of(&parameters, "done")
+        );
+        assert_eq!(
+            Some(ParameterSection::InOut),
+            section_of(&parameters, "total")
+        );
+        assert_eq!(None, section_of(&parameters, "hidden"));
     }
 
     #[test]
@@ -597,7 +650,10 @@ END_FUNCTION_BLOCK";
         };
         let parameters = CallParameters::of_standard_block(fields);
         assert_eq!(vec!["CU", "R", "PV"], names(parameters.inputs()));
-        assert!(parameters.output(&Id::from("CV")).is_some());
+        assert_eq!(
+            Some(ParameterSection::Output),
+            section_of(&parameters, "CV")
+        );
         assert!(parameters.named_input(&Id::from("CV")).is_none());
     }
 

@@ -144,3 +144,4 @@ P4079,TaskSingleNotBool,Task SINGLE variable is not BOOL
 P4080,ProgramInstanceTypeNotProgram,Program instance type is not a declared PROGRAM
 P4081,ConfigurationAmbiguous,Source declares more than one CONFIGURATION to compile
 P4082,ExternalMatchesNoGlobal,VAR_EXTERNAL declaration matches no global variable
+P4083,NegatedOutputNotBool,Negated output assignment requires an output of type BOOL

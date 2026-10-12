@@ -39,11 +39,12 @@ use crate::{
     symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
     system_globals::SYSTEM_UPTIME_GLOBALS,
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
-    type_table, xform_fold_constant_expressions, xform_fold_initializer_expressions,
-    xform_insert_implicit_conversions, xform_insert_implicit_deref, xform_int_to_bool_initializer,
-    xform_mark_unwritten_constants, xform_named_to_positional_args, xform_remove_unsigned_abs,
-    xform_resolve_adr, xform_resolve_constant_expressions, xform_resolve_decl_types,
-    xform_resolve_expr_types, xform_resolve_initial_values, xform_resolve_late_bound_expr_kind,
+    type_table, xform_bind_call_arguments, xform_fold_constant_expressions,
+    xform_fold_initializer_expressions, xform_insert_implicit_conversions,
+    xform_insert_implicit_deref, xform_int_to_bool_initializer, xform_mark_unwritten_constants,
+    xform_named_to_positional_args, xform_remove_unsigned_abs, xform_resolve_adr,
+    xform_resolve_constant_expressions, xform_resolve_decl_types, xform_resolve_expr_types,
+    xform_resolve_initial_values, xform_resolve_late_bound_expr_kind,
     xform_resolve_late_bound_type_initializer, xform_resolve_symbol_and_function_environment,
     xform_resolve_type_aliases, xform_resolve_type_decl_environment, xform_toposort_declarations,
 };
@@ -314,6 +315,12 @@ pub fn resolve_types(
     library = run_best_effort(library, &mut diagnostics, |lib| {
         xform_named_to_positional_args::apply(lib, &function_environment)
     });
+
+    // Write every function block call's arguments in normal form: named, in
+    // the order the block declares its parameters, which is the order they
+    // are evaluated in (specs/design/call-binding.md). A call that does not
+    // bind keeps its arguments, and the rules report why.
+    library = xform_bind_call_arguments::apply(library, &symbol_environment, &type_environment);
 
     // Resolve expression types using the function environment. Best effort:
     // an unqualified enumerated value whose type is ambiguous is diagnosed
