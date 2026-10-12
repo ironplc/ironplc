@@ -17,7 +17,9 @@ use ironplc_dsl::textual::*;
 use ironplc_dsl::visitor::Visitor;
 
 use crate::call_assignment_check::bind_inputs;
-use crate::callee_resolution::{instance_type, CallParameters, FunctionBlocks, ParameterSection};
+use crate::callee_resolution::{
+    instance_type, receiver_block, CallParameters, FunctionBlocks, ParameterSection,
+};
 use crate::function_environment::FunctionEnvironment;
 use crate::symbol_environment::{
     Resolution, ScopeKind, ScopePath, ScopeTracker, SymbolEnvironment,
@@ -441,15 +443,17 @@ impl Visitor<Infallible> for WriteCollector<'_> {
     }
 
     fn visit_method_call(&mut self, node: &MethodCall) -> Result<(), Infallible> {
-        let method = match &node.receiver {
-            MethodReceiver::Instance(instance) => {
-                self.marking_as(WriteKind::Invocation, |c| c.mark(instance));
-                self.instance_type(instance)
-                    .and_then(|fb_type| self.function_blocks.resolve_method(&fb_type, &node.method))
-                    .map(|(_, method)| method)
-            }
-            MethodReceiver::SelfRef(_) => None,
-        };
+        if let MethodReceiver::Instance(instance) = &node.receiver {
+            self.marking_as(WriteKind::Invocation, |c| c.mark(instance));
+        }
+        let method = receiver_block(
+            &node.receiver,
+            &self.current_scope(),
+            self.symbol_environment,
+            self.type_environment,
+        )
+        .and_then(|block| self.function_blocks.resolve_method(&block, &node.method))
+        .map(|(_, method)| method);
         match method {
             Some(method) => self.mark_bound_arguments(method, &node.params),
             None => self.mark_all_arguments(&node.params),

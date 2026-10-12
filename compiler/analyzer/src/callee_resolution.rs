@@ -195,25 +195,56 @@ impl MethodOwners {
     }
 }
 
-/// The parameters of every function block a call can name: each block the
-/// library declares, from its declaration, and each standard block, from its
-/// type's fields.
+/// The parameters of every function block a call can name, and of every
+/// method a call can reach on one: each block the library declares, from its
+/// declaration, each standard block, from its type's fields, and each method,
+/// from the declaration of the block that declares it.
 ///
 /// Owned, so that a pass that consumes the library as it folds it can ask.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct BlockParameters {
     declared: HashMap<TypeName, CallParameters>,
+    /// The parameters of each method, by the block that declares it and the
+    /// method's name.
+    methods: HashMap<(TypeName, Id), CallParameters>,
+    owners: MethodOwners,
 }
 
 impl BlockParameters {
-    /// The parameters of every function block `lib` declares.
+    /// The parameters of every function block `lib` declares, and of their
+    /// methods.
     pub(crate) fn of_library(lib: &Library) -> Self {
-        let declared = FunctionBlocks::from_library(lib)
+        let blocks = FunctionBlocks::from_library(lib);
+        let methods = blocks
+            .by_name
+            .values()
+            .flat_map(|block| {
+                block.methods.iter().map(|method| {
+                    (
+                        (block.name.clone(), method.name.clone()),
+                        CallParameters::of_declaration(method),
+                    )
+                })
+            })
+            .collect();
+        let declared = blocks
             .by_name
             .into_iter()
             .map(|(name, block)| (name, CallParameters::of_declaration(block)))
             .collect();
-        BlockParameters { declared }
+        BlockParameters {
+            declared,
+            methods,
+            owners: MethodOwners::of_library(lib),
+        }
+    }
+
+    /// The parameters of the method `method` called on an instance of
+    /// `block`: the method `block` declares, or else the one the nearest
+    /// block it `EXTENDS` declares ([`MethodOwners`]).
+    pub(crate) fn method(&self, block: &TypeName, method: &Id) -> Option<&CallParameters> {
+        let owner = self.owners.declaring_block(block, method)?;
+        self.methods.get(&(owner.clone(), method.clone()))
     }
 
     /// The parameters of the function block `block`: a block the library
@@ -796,6 +827,59 @@ END_FUNCTION_BLOCK",
         assert_eq!(
             Some(&TypeName::from("FB_A")),
             owners.declaring_block(&TypeName::from("FB_B"), &Id::from("M"))
+        );
+    }
+
+    /// The names of the parameters of `method` called on `block`, in
+    /// `program`.
+    fn method_parameter_names(program: &str, block: &str, method: &str) -> Option<Vec<String>> {
+        let parameters = BlockParameters::of_library(&parse(program));
+        parameters
+            .method(&TypeName::from(block), &Id::from(method))
+            .map(|parameters| names(parameters.iter()))
+    }
+
+    const OVERRIDES: &str = "
+FUNCTION_BLOCK FB_Base
+METHOD Get : INT
+VAR_INPUT a : INT; END_VAR
+END_METHOD
+METHOD Put
+VAR_INPUT v : INT; END_VAR
+VAR_IN_OUT t : INT; END_VAR
+END_METHOD
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+METHOD Get : INT
+VAR_INPUT b : INT; END_VAR
+END_METHOD
+END_FUNCTION_BLOCK";
+
+    #[test]
+    fn block_parameters_method_when_inherited_then_parameters_of_base_method() {
+        assert_eq!(
+            Some(vec!["v".to_owned(), "t".to_owned()]),
+            method_parameter_names(OVERRIDES, "FB_Derived", "Put")
+        );
+    }
+
+    #[test]
+    fn block_parameters_method_when_overridden_then_parameters_of_own_method() {
+        assert_eq!(
+            Some(vec!["b".to_owned()]),
+            method_parameter_names(OVERRIDES, "FB_Derived", "Get")
+        );
+        assert_eq!(
+            Some(vec!["a".to_owned()]),
+            method_parameter_names(OVERRIDES, "FB_Base", "Get")
+        );
+    }
+
+    #[test]
+    fn block_parameters_method_when_not_declared_then_none() {
+        assert_eq!(
+            None,
+            method_parameter_names(OVERRIDES, "FB_Derived", "Missing")
         );
     }
 }

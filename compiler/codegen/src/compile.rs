@@ -592,13 +592,16 @@ fn compile_program_with_functions(
         let fb_name = fb_decl.name.name.to_string().to_uppercase();
         for method in &fb_decl.methods {
             let method_name = method.name.to_string().to_lowercase();
-            let mut param_names_in_order: Vec<String> = Vec::new();
+            let mut params: Vec<UserMethodParam> = Vec::new();
             for decl in &method.variables {
                 if !decl.var_type.is_input_compatible() {
                     continue;
                 }
                 if let Some(id) = decl.identifier.symbolic_id() {
-                    param_names_in_order.push(id.to_string().to_lowercase());
+                    params.push(UserMethodParam {
+                        name: id.clone(),
+                        in_out: decl.var_type == VariableType::InOut,
+                    });
                 }
             }
 
@@ -611,8 +614,8 @@ fn compile_program_with_functions(
                     UserMethodInfo {
                         function_id,
                         param_var_off: 0, // updated once the method is compiled
-                        num_params: param_names_in_order.len() as u16,
-                        param_names_in_order,
+                        num_params: params.len() as u16,
+                        params,
                         has_return_value: method.return_type.is_some(),
                         max_stack_depth: 0, // updated once the method is compiled
                     },
@@ -1085,14 +1088,21 @@ pub(crate) struct UserMethodInfo {
     pub(crate) param_var_off: u16,
     /// Number of VAR_INPUT/VAR_IN_OUT parameters, in declaration order.
     pub(crate) num_params: u16,
-    /// Parameter names (lowercase), in declaration order -- used to resolve
-    /// both positional and named call-site arguments.
-    pub(crate) param_names_in_order: Vec<String>,
+    /// The VAR_INPUT/VAR_IN_OUT parameters, in declaration order: the order
+    /// a call's normal form names them in.
+    pub(crate) params: Vec<UserMethodParam>,
     pub(crate) has_return_value: bool,
     /// Max operand-stack depth used by the method body. `0` until the
     /// method is actually compiled; used for the scan function's
     /// worst-case stack accounting, same as `max_fb_body_stack`.
     pub(crate) max_stack_depth: u16,
+}
+
+/// A VAR_INPUT or VAR_IN_OUT parameter of a user-defined method.
+pub(crate) struct UserMethodParam {
+    pub(crate) name: Id,
+    /// Whether the parameter is a VAR_IN_OUT.
+    pub(crate) in_out: bool,
 }
 
 pub(crate) struct CompileContext<'a> {

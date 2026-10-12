@@ -1,7 +1,7 @@
 //! End-to-end tests that codegen lowers the call the analyzer resolved and
 //! bound: a function block instance runs the block its type is, a method call
 //! runs the method its receiver's block declares or inherits, and a function
-//! block call's arguments are stored and read in the order of its normal
+//! block or method call's arguments are evaluated in the order of its normal
 //! form. See `specs/design/call-binding.md`.
 
 use ironplc_parser::options::CompilerOptions;
@@ -218,4 +218,68 @@ r := p.joined;
 END_PROGRAM"
     );
     assert_run_with(&source, &CompilerOptions::default(), &[("r", 15i64)]);
+}
+
+/// A block whose method joins its two inputs as tens and ones.
+const JOINER: &str = "
+FUNCTION_BLOCK Joiner
+METHOD Join : DINT
+VAR_INPUT tens : DINT; ones : DINT; END_VAR
+Join := tens * 10 + ones;
+END_METHOD
+END_FUNCTION_BLOCK
+";
+
+#[spec_test(REQ_CB_codegen_023)]
+fn end_to_end_when_method_called_positionally_then_inputs_in_declaration_order() {
+    let source = format!(
+        "{JOINER}
+PROGRAM main
+VAR j : Joiner; r : DINT; END_VAR
+r := j.Join(1, 2);
+END_PROGRAM"
+    );
+    assert_run_with(&source, &options(), &[("r", 12i64)]);
+}
+
+#[spec_test(REQ_CB_codegen_041)]
+fn end_to_end_when_method_named_inputs_have_side_effects_then_evaluated_in_declaration_order() {
+    let source = format!(
+        "{JOINER}
+FUNCTION trace : DINT
+VAR_IN_OUT log : DINT; END_VAR
+VAR_INPUT id : DINT; END_VAR
+log := log * 10 + id;
+trace := id;
+END_FUNCTION
+
+PROGRAM main
+VAR j : Joiner; log : DINT; r : DINT; END_VAR
+r := j.Join(ones := trace(log, 2), tens := trace(log, 1));
+END_PROGRAM"
+    );
+    assert_run_with(&source, &options(), &[("log", 12i64), ("r", 12i64)]);
+}
+
+#[spec_test(REQ_CB_codegen_024)]
+fn compile_when_method_binds_in_out_then_not_implemented() {
+    let source = "
+FUNCTION_BLOCK Counter
+METHOD Inc
+VAR_IN_OUT v : DINT; END_VAR
+v := v + 1;
+END_METHOD
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR inst : Counter; counter : DINT := 5; END_VAR
+inst.Inc(v := counter);
+END_PROGRAM
+";
+    let diagnostic = try_parse_and_compile(source, &options()).unwrap_err();
+
+    assert_eq!(diagnostic.code, "P9999");
+    let start = source.find("v := counter").unwrap();
+    assert_eq!(diagnostic.primary.location.start, start);
+    assert_eq!(diagnostic.primary.location.end, start + "v".len());
 }

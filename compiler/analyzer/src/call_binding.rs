@@ -17,12 +17,13 @@
 //! then its output assignments in the order the callee declares those. That
 //! order is the order the arguments are evaluated in. A parameter the call
 //! does not supply is absent: an omitted function block input keeps its value
-//! from the previous call.
+//! from the previous call, and a method call must supply every input
+//! ([`Binding::omitted`]).
 
 use ironplc_dsl::core::Id;
 use ironplc_dsl::textual::{NamedInput, Output, ParamAssignmentKind};
 
-use crate::callee_resolution::{CallParameters, ParameterSection};
+use crate::callee_resolution::{CallParameter, CallParameters, ParameterSection};
 
 /// Why the arguments of a call do not bind to its callee's parameters.
 #[derive(Debug, PartialEq)]
@@ -47,6 +48,21 @@ pub(crate) enum BindProblem<'a> {
 /// outputs in declaration order.
 pub(crate) struct Binding {
     arguments: Vec<usize>,
+    /// The position of each input and `VAR_IN_OUT` no argument binds to.
+    omitted: Vec<usize>,
+}
+
+impl Binding {
+    /// The inputs and `VAR_IN_OUT` parameters of `parameters`, the parameters
+    /// the call was bound to, that no argument binds to, in declaration
+    /// order.
+    pub(crate) fn omitted<'p>(&self, parameters: &'p CallParameters) -> Vec<&'p CallParameter> {
+        let declared: Vec<_> = parameters.iter().collect();
+        self.omitted
+            .iter()
+            .map(|&position| declared[position])
+            .collect()
+    }
 }
 
 /// Binds `args` to `parameters`, or returns every problem found, in argument
@@ -142,7 +158,16 @@ pub(crate) fn bind<'a>(
     };
     let mut arguments = in_order(false);
     arguments.extend(in_order(true));
-    Ok(Binding { arguments })
+    let omitted = declared
+        .iter()
+        .zip(&bound)
+        .enumerate()
+        .filter(|(_, (parameter, at))| {
+            parameter.section != ParameterSection::Output && at.is_none()
+        })
+        .map(|(position, _)| position)
+        .collect();
+    Ok(Binding { arguments, omitted })
 }
 
 /// `args`, the arguments of a call to a callee with `parameters`, in normal
@@ -320,6 +345,32 @@ END_PROGRAM"
     fn normal_form_when_arguments_do_not_bind_then_returns_them_unchanged() {
         let (parameters, args) = parse_call("inst(a := x, nope := y);");
         assert_eq!(Err(args.clone()), normal_form(&parameters, args));
+    }
+
+    /// The names of the inputs and in-outs `call` omits.
+    fn omitted(call: &str) -> Vec<String> {
+        let (parameters, args) = parse_call(call);
+        let binding = bind(&parameters, &args).unwrap();
+        binding
+            .omitted(&parameters)
+            .iter()
+            .map(|parameter| parameter.name.to_string())
+            .collect()
+    }
+
+    #[test]
+    fn omitted_when_inputs_and_in_out_omitted_then_each_in_declaration_order() {
+        assert_eq!(vec!["a", "io"], omitted("inst(b := y, q => r);"));
+    }
+
+    #[test]
+    fn omitted_when_positional_then_in_out_omitted() {
+        assert_eq!(vec!["io"], omitted("inst(x, y);"));
+    }
+
+    #[test]
+    fn omitted_when_every_input_supplied_then_none() {
+        assert!(omitted("inst(io := z, b := y, a := x);").is_empty());
     }
 
     #[spec_test(REQ_CB_analyzer_023)]

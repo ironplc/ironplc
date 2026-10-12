@@ -15,7 +15,7 @@ use ironplc_dsl::common::{
 };
 use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{Expr, MethodCall, MethodReceiver, ParamAssignmentKind};
+use ironplc_dsl::textual::{MethodCall, MethodReceiver, ParamAssignmentKind};
 
 use ironplc_analyzer::TypeEnvironment;
 
@@ -341,40 +341,52 @@ fn compile_method_call(
     let num_fields = fb_type_info.num_fields as u8;
     let param_var_off = ironplc_container::VarIndex::new(method_info.param_var_off);
     let num_params = method_info.num_params;
-    let param_names_in_order = method_info.param_names_in_order.clone();
     let has_return_value = method_info.has_return_value;
     let max_stack_depth = method_info.max_stack_depth;
 
-    emitter.emit_fb_load_instance(var_index);
-
-    // Resolve named/positional args to the method's declared VAR_INPUT
-    // order (arity and name validity already checked by
-    // rule_method_call_declared, so any argument that doesn't line up
-    // here indicates a codegen bug, not a user error -- hence `todo`
-    // rather than a user-facing diagnostic).
-    let mut ordered_args: Vec<Option<&Expr>> = vec![None; param_names_in_order.len()];
+    // The analyzer wrote the call in normal form (`call-binding.md`), and
+    // `rule_method_call_declared` requires every input (P4018), so the call
+    // names each parameter once, in declaration order. Anything else is a
+    // compiler bug.
+    let mut inputs = Vec::with_capacity(call.params.len());
     for param in &call.params {
         match param {
-            ParamAssignmentKind::PositionalInput(p) => {
-                if let Some(slot) = ordered_args.iter_mut().find(|s| s.is_none()) {
-                    *slot = Some(&p.expr);
-                }
+            ParamAssignmentKind::NamedInput(input) => inputs.push(input),
+            ParamAssignmentKind::PositionalInput(input) => {
+                return Err(Diagnostic::internal_error_at(Label::span(
+                    input.expr.span(),
+                    "Positional argument of a method call the analyzer did not bind",
+                )))
             }
-            ParamAssignmentKind::NamedInput(n) => {
-                let name = n.name.to_string().to_lowercase();
-                if let Some(idx) = param_names_in_order.iter().position(|p| *p == name) {
-                    ordered_args[idx] = Some(&n.expr);
-                }
-            }
-            ParamAssignmentKind::Output(_) => {
-                // Methods have no VAR_OUTPUT `=>` call syntax in this slice.
-            }
+            // Methods have no VAR_OUTPUT `=>` call syntax in this slice.
+            ParamAssignmentKind::Output(_) => {}
         }
     }
+    let params = &method_info.params;
+    let in_order = inputs.len() == params.len()
+        && inputs
+            .iter()
+            .zip(params)
+            .all(|(input, param)| input.name == param.name);
+    if !in_order {
+        return Err(Diagnostic::internal_error_at(Label::span(
+            call.span(),
+            "Method call whose arguments are not in normal form",
+        )));
+    }
+    // A VAR_IN_OUT is passed by reference, which this route cannot do
+    // (`var-in-out-parameters.md`); lowering does.
+    if let Some((input, _)) = inputs.iter().zip(params).find(|(_, param)| param.in_out) {
+        return Err(Diagnostic::not_implemented(Label::span(
+            input.name.span(),
+            "VAR_IN_OUT parameter of a METHOD",
+        )));
+    }
 
-    for arg in &ordered_args {
-        let expr = arg.ok_or_else(|| Diagnostic::todo_with_span(call.span()))?;
-        compile_expr(emitter, ctx, expr)?;
+    emitter.emit_fb_load_instance(var_index);
+
+    for input in &inputs {
+        compile_expr(emitter, ctx, &input.expr)?;
     }
 
     // Record a call-graph edge; unlike FB_CALL, a method call is always

@@ -60,10 +60,9 @@ Parameters are declared the same way as on a
 method itself.
 
 A method is called on an instance using the same dot notation as a
-structure member. Arguments are written positionally or by name, exactly as
-for a function block invocation. The call can be a statement, which discards
-any return value, or part of an expression, where it evaluates to the
-method's return value:
+structure member. The call can be a statement, which discards any return
+value, or part of an expression, where it evaluates to the method's return
+value:
 
 .. code-block:: bnf
 
@@ -76,6 +75,16 @@ expression reports :doc:`P4057 </reference/compiler/problems/P4057>`.
 The method to call is chosen from the *declared* type of the instance: the
 type's own methods first, then those of its ``EXTENDS`` base, and so on up
 the chain.
+
+Arguments bind as they do in a function block call (see
+:ref:`function block arguments <function-block-arguments>`), and are
+evaluated in the order the method declares its parameters, with one
+difference: a method keeps nothing between calls, so a call supplies every
+``VAR_INPUT`` and ``VAR_IN_OUT``. An omitted one is
+:doc:`P4018 </reference/compiler/problems/P4018>`, even when it declares an
+initial value. A positional argument goes to a ``VAR_INPUT``, never to a
+``VAR_IN_OUT``, which is supplied by name. Calling a method that declares a
+``VAR_IN_OUT`` is not supported yet.
 
 Example
 -------

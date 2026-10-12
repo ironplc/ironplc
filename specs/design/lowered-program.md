@@ -1142,15 +1142,10 @@ its inputs to the instance's fields, in the order of the call's normal form
 its outputs from the instance's fields, in that order.
 
 The order of the inputs among themselves is the order of the call's normal
-form, which lowering is free to choose, and today's order is not a
-commitment. Today codegen evaluates a function block's inputs in the order
-the call writes them, while it evaluates the named arguments of a function or
-method in the order of the parameters. The end-to-end tests record both
-(`end_to_end_evaluation_order.rs`), so that a change shows up. Lowering may
-assign the inputs in the order the block declares them, as a function's
-arguments are evaluated. That is a correction, like those under
-[Backend Contract](#7-backend-contract): it differs only for inputs with a
-side effect, and the test that records the written order changes with it.
+form: the order the block declares them, whatever order the call writes them
+in. Codegen evaluates them in that order, as it evaluates the arguments of a
+function or a method in the order of the parameters, and the end-to-end tests
+record it (`end_to_end_evaluation_order.rs`).
 
 ### 3.8 Callees, arguments and intrinsics
 
@@ -1621,7 +1616,7 @@ today.
 | Implicit conversion | The analyzer for operands, assigned values, the arguments of functions, methods and function block calls, loop bounds, the results of calls and dereferences, subscripts, shift counts and string positions (ADR-0056); codegen stores a function block output at the field's type unconverted | `ExprKind::ImplicitConversion`, checked for a subscript that may not fit `DINT` (REQ-LOW-analyzer-162) | `Convert`, or `ConvertChecked` |
 | Arithmetic overload | Analyzer's `resolve_arithmetic_overload` | The expression's `expr_type`, and its operands' conversions | A `Binary` at the result type, or the desugared time arithmetic |
 | Operand type of a comparison | The analyzer ([Comparison Operand Type](comparison-operand-type.md)) | Its operands' conversions | A `Compare` at that type |
-| Argument order and count | `xform_named_to_positional_args` for a function call, then re-checked at 27 sites in codegen; `xform_bind_call_arguments` for a function block call ([Call Binding](call-binding.md)); codegen for a method call (`compile_method.rs`) | Positional arguments for a function call; the call's normal form for a function block call: named, in declaration order | `Vec<Arg>` matched to parameters |
+| Argument order and count | `xform_named_to_positional_args` for a function call, then re-checked at 27 sites in codegen; `xform_bind_call_arguments` for a function block or method call ([Call Binding](call-binding.md)) | Positional arguments for a function call; the call's normal form for a function block or method call: named, in declaration order | `Vec<Arg>` matched to parameters |
 | Whether an interface value can hold only one concrete type | Not made; calls through an interface are not compiled | The concrete types the value can hold (REQ-LOW-analyzer-107) | A direct method call, or a `Callee::Interface` |
 | Capacity of a string declared without one | Codegen and `slot_count`, from `DEFAULT_STRING_MAX_LENGTH` | The string type's capacity (REQ-LOW-analyzer-053) | The capacity of its `StringShape` |
 | Enumeration ordinal | The analyzer, when the type enters the type environment (`EnumerationMembers`); codegen looks the ordinal up (`compile_enum.rs`) | Each member's ordinal, explicit (`GREEN := 5`) or counted on from the one before, and the type's default member, on `SemanticType::Enumeration` | `Const` |
@@ -2302,12 +2297,12 @@ This section constrains the order of work; it is not a work breakdown.
 - **The routes check each other.** While both routes exist, the end-to-end
   helpers compile each program both ways and compare the values of its
   variables by name (REQ-LOW-codegen-131). A disagreement fails the test. The
-  corrections named under [Backend Contract](#7-backend-contract), the order
-  of a function block's inputs (REQ-LOW-lowering-069) and the width of the
-  `_INT` counters ([Standard function blocks](#standard-function-blocks)) are
-  the exception: they differ only for a selector, subscript or function block
-  input with a side effect, or an `_INT` counter past the range of `INT`, and
-  the programs that show them are listed as known differences.
+  corrections named under [Backend Contract](#7-backend-contract) and the
+  width of the `_INT` counters
+  ([Standard function blocks](#standard-function-blocks)) are the exception:
+  they differ only for a selector or subscript with a side effect, or an
+  `_INT` counter past the range of `INT`, and the programs that show them are
+  listed as known differences.
 - **Progress cannot fall.** CI reports how many top-level statements of the
   end-to-end programs took the lowered route. The number does not fall.
 - **The IR is readable from its first commit.** `ironplc-ir` writes a lowered

@@ -66,6 +66,8 @@ Function blocks must be instantiated as variables before use:
 
 Outputs are accessed using dot notation on the instance.
 
+.. _function-block-arguments:
+
 Arguments
 ---------
 

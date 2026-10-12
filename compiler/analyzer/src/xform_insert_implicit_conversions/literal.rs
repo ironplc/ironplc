@@ -301,8 +301,11 @@ impl ImplicitConversions<'_> {
     }
 
     /// The input arguments of the method call `call`, each with the type its
-    /// parameter is passed as: positional arguments fill the parameters in
-    /// order, and a named one the parameter it names.
+    /// parameter is passed as.
+    ///
+    /// The binding pass has written every call that binds in normal form, so
+    /// each input names its parameter. A positional input is left only in a
+    /// call that does not bind, which the rules report, and is given no type.
     pub(super) fn method_arguments<'c>(
         &self,
         call: &'c mut MethodCall,
@@ -314,16 +317,11 @@ impl ImplicitConversions<'_> {
             self.context.types(),
         )
         .and_then(|block| self.declarations.method(&block, &call.method));
-        let mut position = 0;
         let mut arguments = Vec::with_capacity(call.params.len());
         for param in &mut call.params {
             match param {
                 ParamAssignmentKind::PositionalInput(input) => {
-                    let at = parameters
-                        .and_then(|parameters| parameters.get(position))
-                        .and_then(|(_, at)| *at);
-                    position += 1;
-                    arguments.push((&mut input.expr, at));
+                    arguments.push((&mut input.expr, None))
                 }
                 ParamAssignmentKind::NamedInput(input) => {
                     let at = parameters
