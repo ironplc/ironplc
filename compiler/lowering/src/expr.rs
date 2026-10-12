@@ -67,7 +67,19 @@ impl Lowering<'_> {
                 let Some(value) = self.expr(frame, &unary.term)? else {
                     return Ok(None);
                 };
-                Expr::unary(op, value, span).map(Some)
+                let value = Expr::unary(op, value, span.clone())?;
+                if op != UnaryOp::BitNot {
+                    return Ok(Some(value));
+                }
+                // Inverting a `BYTE` or `WORD` sets the bits above its width,
+                // so the result is narrowed back to the width at once.
+                let Some((ty, _)) = self.operated_type(expr)? else {
+                    return Ok(None);
+                };
+                match self.program.types().narrowed_storage(ty) {
+                    Some(width) => Expr::truncate(width, value, span).map(Some),
+                    None => Ok(Some(value)),
+                }
             }
             AstExprKind::Compare(compare) => {
                 let (left, right) = (&compare.left, &compare.right);
@@ -93,12 +105,20 @@ impl Lowering<'_> {
                         left,
                         right,
                     ),
-                    AstCompareOp::AndThen => {
-                        self.short_circuit(frame, ShortCircuitOp::AndThen, left, right, span)
-                    }
-                    AstCompareOp::OrElse => {
-                        self.short_circuit(frame, ShortCircuitOp::OrElse, left, right, span)
-                    }
+                    AstCompareOp::AndThen => self.short_circuit(
+                        frame,
+                        expr,
+                        (ShortCircuitOp::AndThen, BinaryOp::BitAnd),
+                        left,
+                        right,
+                    ),
+                    AstCompareOp::OrElse => self.short_circuit(
+                        frame,
+                        expr,
+                        (ShortCircuitOp::OrElse, BinaryOp::BitOr),
+                        left,
+                        right,
+                    ),
                     AstCompareOp::Eq => self.compare(frame, CompareOp::Eq, left, right, span),
                     AstCompareOp::Ne => self.compare(frame, CompareOp::Ne, left, right, span),
                     AstCompareOp::Lt => self.compare(frame, CompareOp::Lt, left, right, span),
@@ -247,14 +267,23 @@ impl Lowering<'_> {
         Expr::compare(op, lhs, rhs, span).map(Some)
     }
 
+    /// `AND_THEN` or `OR_ELSE`: the short circuit of `ops` for a `BOOL`, and
+    /// for an integer or bit string the eager bitwise form, since every bit
+    /// of both operands decides the result.
     fn short_circuit(
         &mut self,
         frame: &BodyFrame,
-        op: ShortCircuitOp,
+        expr: &AstExpr,
+        (op, bitwise): (ShortCircuitOp, BinaryOp),
         left: &AstExpr,
         right: &AstExpr,
-        span: SourceSpan,
     ) -> Lowered {
+        let span = expr.span();
+        match self.is_bool(expr)? {
+            Some(true) => {}
+            Some(false) => return self.binary(frame, bitwise, left, right, span),
+            None => return Ok(None),
+        }
         let Some(lhs) = self.expr(frame, left)? else {
             return Ok(None);
         };

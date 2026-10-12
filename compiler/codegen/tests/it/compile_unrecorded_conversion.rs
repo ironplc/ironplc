@@ -10,7 +10,9 @@ use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
 use spec_test_macro::spec_test;
 
-use crate::common::{bc, compile_analyzed, parse};
+use ironplc_codegen::Route;
+
+use crate::common::{bc, compile_by_route, parse};
 
 /// Removes every recorded conversion, leaving its operand in its place.
 struct RemoveConversions;
@@ -38,7 +40,9 @@ fn compile_without_conversions(target: &str, value: &str) -> Result<Container, S
     let options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
     let (library, context) = parse(&source, &options);
     let library = RemoveConversions.fold_library(library).unwrap();
-    compile_analyzed(&library, &context, &options).map_err(|diagnostic| diagnostic.code)
+    // A program whose recorded conversions were removed is not one lowering
+    // can build, so this compiles every statement from the AST.
+    compile_by_route(&library, &context, &options, Route::Ast).map_err(|diagnostic| diagnostic.code)
 }
 
 /// The problem code of compiling `x := <value>` for an `x` of type `target`

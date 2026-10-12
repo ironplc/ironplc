@@ -95,6 +95,42 @@ fn lower_statement_when_logical_operators_then_form_follows_type() {
     );
 }
 
+/// Inverting a `BYTE` sets the bits above its width, so `NOT` of one is
+/// narrowed back to its width at once, and `NOT` of a `DWORD` is not.
+#[test]
+fn lower_statement_when_not_of_narrow_bit_string_then_truncated() {
+    let outcome = lower(
+        "PROGRAM main VAR b : BYTE; c : BYTE; x : BOOL; END_VAR
+            x := NOT b = c;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        ["assign v0^.f2 (eq (truncate 8 (bit_not i32u (read i32u v0^.f0))) (read i32u v0^.f1))"]
+    );
+}
+
+/// `AND_THEN` and `OR_ELSE` short-circuit on a `BOOL`, and are the eager
+/// bitwise operators on a bit string.
+#[test]
+fn lower_statement_when_short_circuit_operator_then_form_follows_type() {
+    let outcome = lower(
+        "PROGRAM main VAR x : BOOL; y : BOOL; w : DWORD; v : DWORD; END_VAR
+            x := x AND_THEN y;
+            w := w OR_ELSE v;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f0 (and_then (read bool v0^.f0) (read bool v0^.f1))",
+            "assign v0^.f2 (bit_or i32u (read i32u v0^.f2) (read i32u v0^.f3))",
+        ]
+    );
+}
+
 /// REQ-LOW-lowering-043: a comparison yields a `BOOL`.
 #[test]
 fn lower_statement_when_comparison_then_compare_of_one_type() {

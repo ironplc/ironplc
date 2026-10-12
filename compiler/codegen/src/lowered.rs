@@ -45,7 +45,8 @@ pub enum Route {
     RequireLowered,
 }
 
-/// How many top-level statements took each route in one compilation.
+/// How many top-level statements took each route in one compilation. Under
+/// [`Route::Ast`] lowering is not asked, and nothing is counted.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct RouteCounts {
     /// Statements compiled from the lowered program.

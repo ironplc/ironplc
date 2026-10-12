@@ -7,7 +7,7 @@ use ironplc_parser::options::CompilerOptions;
 use ironplc_vm::test_support::load_and_start;
 use ironplc_vm::{FaultContext, VmBuffers};
 
-use super::run::{compile_analyzed, parse_and_compile, parse_and_try_run, run_one_scan};
+use super::run::{compile_to_run, parse_and_compile_to_run, parse_and_try_run, run_one_scan};
 use super::value::{FromValue, Value};
 use super::variables::Variables;
 
@@ -28,7 +28,7 @@ impl Snapshot {
     /// the variables as the scan left them, and the trap if there was one, so
     /// a test can see what a trap leaves behind.
     pub fn try_run(source: &str, options: &CompilerOptions) -> (Self, Option<FaultContext>) {
-        let container = parse_and_compile(source, options);
+        let container = parse_and_compile_to_run(source, options);
         let mut bufs = VmBuffers::from_container(&container);
         let fault = load_and_start(&container, &mut bufs)
             .and_then(|mut vm| vm.run_round(0))
@@ -44,7 +44,7 @@ impl Snapshot {
         context: &SemanticContext,
         options: &CompilerOptions,
     ) -> Self {
-        let container = compile_analyzed(library, context, options).unwrap();
+        let container = compile_to_run(library, context, options).unwrap();
         let bufs = run_one_scan(&container).unwrap();
         Snapshot { container, bufs }
     }
