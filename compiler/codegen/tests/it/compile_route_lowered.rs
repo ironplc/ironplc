@@ -10,7 +10,7 @@ use ironplc_codegen::Route;
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 
-use crate::common::{bc, compile_by_route, parse, Snapshot};
+use crate::common::{bc, compile_by_route, parse, run_one_scan, Snapshot};
 
 fn options() -> CompilerOptions {
     CompilerOptions {
@@ -201,8 +201,14 @@ fn compile_when_control_flow_lowered_then_same_code_as_ast(#[case] statement: &s
            {statement}
          END_PROGRAM"
     );
+    assert_same_code(&source);
+}
+
+/// Fails unless `source`, with every statement lowered, compiles to the same
+/// code and constants as by the AST route.
+fn assert_same_code(source: &str) {
     let options = options();
-    let (library, context) = parse(&source, &options);
+    let (library, context) = parse(source, &options);
     let ast = compile_by_route(&library, &context, &options, Route::Ast).unwrap();
     let lowered = compile_by_route(&library, &context, &options, Route::RequireLowered)
         .expect("every statement lowers");
@@ -211,4 +217,72 @@ fn compile_when_control_flow_lowered_then_same_code_as_ast(#[case] statement: &s
         format!("{:?}", lowered.constant_pool),
         format!("{:?}", ast.constant_pool)
     );
+}
+
+/// Elements of arrays, with lower bounds other than zero and two dimensions,
+/// fields of structures, a field of an element of an array of structures
+/// and an element of an array field, each read and written.
+#[test]
+fn run_when_array_elements_and_fields_then_values() {
+    let snapshot = run_lowered(
+        "TYPE P : STRUCT x : DINT; vals : ARRAY[1..3] OF DINT; END_STRUCT; END_TYPE
+         PROGRAM main
+           VAR a : ARRAY[1..5] OF DINT; m : ARRAY[1..2, 0..3] OF INT;
+               p : P; ps : ARRAY[0..3] OF P; i : DINT := 2;
+               r1 : DINT; r2 : DINT; r3 : DINT; r4 : DINT; END_VAR
+           a[i] := 7;
+           a[i + 1] := a[i] * 2;
+           m[2, i] := 5;
+           m[1, 0] := m[2, 2] + 1;
+           p.x := 3;
+           p.vals[i] := p.x + 1;
+           ps[i].x := 9;
+           ps[1].vals[3] := ps[2].x + 1;
+           r1 := a[3];
+           r2 := m[1, 0];
+           r3 := p.vals[2];
+           r4 := ps[1].vals[3];
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<i64>("r1"), 14);
+    assert_eq!(snapshot.read_as::<i64>("r2"), 6);
+    assert_eq!(snapshot.read_as::<i64>("r3"), 4);
+    assert_eq!(snapshot.read_as::<i64>("r4"), 10);
+}
+
+/// A subscript outside the array traps on the lowered route, as on the AST
+/// route (ADR-0023).
+#[test]
+fn run_when_subscript_outside_array_then_traps() {
+    let options = options();
+    let source = "PROGRAM main VAR a : ARRAY[1..5] OF DINT; i : DINT := 9; END_VAR
+           a[i] := 1;
+         END_PROGRAM";
+    let (library, context) = parse(source, &options);
+    let container = compile_by_route(&library, &context, &options, Route::RequireLowered)
+        .expect("every statement lowers");
+    assert!(run_one_scan(&container).is_err());
+}
+
+/// An element of an array and a field of a structure compile to the same
+/// instructions and constants by both routes. The arrays hold `DINT`s, so no
+/// store is narrowed: a read of a narrow place already fits a place of its
+/// type, and only the AST route truncates it again.
+#[rstest]
+#[case::array_element("a[i] := a[i + 1] + 1;")]
+#[case::constant_subscript("a[3] := a[2];")]
+#[case::two_dimensions("m[1, i] := m[2, 0];")]
+#[case::structure_field("p.x := p.x + 1;")]
+#[case::array_field("p.vals[i] := 1;")]
+#[case::field_of_element("ps[i].x := ps[2].x;")]
+fn compile_when_place_lowered_then_same_code_as_ast(#[case] statement: &str) {
+    let source = format!(
+        "TYPE P : STRUCT x : DINT; vals : ARRAY[1..3] OF DINT; END_STRUCT; END_TYPE
+         PROGRAM main
+           VAR a : ARRAY[1..5] OF DINT; m : ARRAY[1..2, 0..3] OF DINT;
+               p : P; ps : ARRAY[0..3] OF P; i : DINT; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    assert_same_code(&source);
 }

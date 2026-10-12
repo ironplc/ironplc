@@ -160,6 +160,50 @@ impl<'ast> Place<&'ast Expr> {
     }
 }
 
+impl<S> Place<S> {
+    /// The same place with each subscript replaced by what `replace` makes
+    /// of it, or the first error `replace` returns.
+    pub(crate) fn try_map_subscripts<T, E>(
+        self,
+        mut replace: impl FnMut(S) -> Result<T, E>,
+    ) -> Result<Place<T>, E> {
+        let address = match self.address {
+            Address::Variable(var_index) => Address::Variable(var_index),
+            Address::InOut(ref_slot) => Address::InOut(ref_slot),
+            Address::Element {
+                var_index,
+                desc_index,
+                through_ref,
+                index,
+            } => Address::Element {
+                var_index,
+                desc_index,
+                through_ref,
+                index: match index {
+                    ElementIndex::Slot(slot) => ElementIndex::Slot(slot),
+                    ElementIndex::Subscripts {
+                        dimensions,
+                        subscripts,
+                        offset,
+                    } => ElementIndex::Subscripts {
+                        dimensions,
+                        subscripts: subscripts
+                            .into_iter()
+                            .map(&mut replace)
+                            .collect::<Result<_, E>>()?,
+                        offset,
+                    },
+                },
+            },
+        };
+        Ok(Place {
+            address,
+            type_info: self.type_info,
+            span: self.span,
+        })
+    }
+}
+
 impl<S: Subscript> Place<S> {
     /// The type the place's value is loaded and stored at.
     pub(crate) fn op_type(&self) -> OpType {

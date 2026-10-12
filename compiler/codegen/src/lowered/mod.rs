@@ -13,9 +13,9 @@
 //! for debug information (REQ-LOW-lowering-006), and the design allows the
 //! lookup by name until a POU's statements all lower.
 
-use ironplc_dsl::core::{Id, Located};
+use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{NamedVariable, StmtKind as AstStmtKind, SymbolicVariableKind};
+use ironplc_dsl::textual::StmtKind as AstStmtKind;
 use ironplc_ir::lowered::{
     Expr, ExprKind, NarrowWidth, Place as LoweredPlace, Projection, ScalarType,
     Signedness as LoweredSignedness, Stmt, StmtKind,
@@ -23,10 +23,10 @@ use ironplc_ir::lowered::{
 use ironplc_lowering::{Lowering, StatementLowering};
 
 use crate::compile::{CompileContext, OpType, OpWidth, Signedness};
-use crate::compile_place::Place;
 use crate::emit::Emitter;
 
 mod expr;
+mod place;
 mod stmt;
 
 /// Which route codegen compiles a statement by.
@@ -213,19 +213,20 @@ fn reaches(
     place: &LoweredPlace,
     ty: ScalarType,
 ) -> bool {
-    let Some(name) = storage_name(lowering, place) else {
-        return false;
-    };
-    let base = named(name);
-    match Place::resolve(ctx, &base) {
-        Ok(storage) => op_type(ty) == Some(storage.op_type()),
-        Err(_) => false,
-    }
+    let subscripts_can_emit = place.path().iter().all(|projection| match projection {
+        Projection::Index(subscripts) => subscripts
+            .iter()
+            .all(|subscript| expr_can_emit(lowering, ctx, subscript)),
+        Projection::Field(_) | Projection::Deref => true,
+    });
+    subscripts_can_emit
+        && place::resolve(lowering, ctx, place, &SourceSpan::default())
+            .is_ok_and(|storage| op_type(ty) == Some(storage.op_type()))
 }
 
-/// The name this backend's layout knows `place` by: the variable's name, or
-/// the name of a field of the current instance, which this backend copies
-/// into a slot of that name. `None` for any other place.
+/// The name this backend's layout knows a variable `place` by: the
+/// variable's name, or the name of a field of the current instance, which
+/// this backend copies into a slot of that name. `None` for any other place.
 pub(super) fn storage_name(lowering: &Lowering<'_>, place: &LoweredPlace) -> Option<Id> {
     let root = lowering.variables().get(place.root())?;
     match place.path() {
@@ -238,10 +239,6 @@ pub(super) fn storage_name(lowering: &Lowering<'_>, place: &LoweredPlace) -> Opt
         }
         _ => None,
     }
-}
-
-pub(super) fn named(name: Id) -> SymbolicVariableKind {
-    SymbolicVariableKind::Named(NamedVariable { name })
 }
 
 /// The operation type this backend computes a value of `ty` at. A `BOOL` is
@@ -261,15 +258,4 @@ pub(super) fn op_type(ty: ScalarType) -> Option<OpType> {
         ScalarType::Ref => Some((OpWidth::W64, Signedness::Unsigned)),
         ScalarType::Interface => None,
     }
-}
-
-/// The name of `place`, which [`can_emit`] has already found.
-pub(super) fn storage(
-    lowering: &Lowering<'_>,
-    place: &LoweredPlace,
-    span: &ironplc_dsl::core::SourceSpan,
-) -> Result<Id, Diagnostic> {
-    storage_name(lowering, place).ok_or_else(|| {
-        Diagnostic::internal_error_at(Label::span(span.clone(), "A lowered place has no storage"))
-    })
 }

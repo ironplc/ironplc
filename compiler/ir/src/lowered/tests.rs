@@ -684,3 +684,5 @@ fn crate_root_when_read_then_denies_wildcard_enum_match_arm() {
 }
 
 mod control;
+
+mod places;

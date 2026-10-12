@@ -128,6 +128,17 @@ impl ProgramBuilder {
         place.field(&self.types, field, span)
     }
 
+    /// The element of `place` at `subscripts`; see [`Place`] for what they
+    /// must be (REQ-LOW-lowering-031, REQ-LOW-lowering-161).
+    pub fn index(
+        &self,
+        place: Place,
+        subscripts: Vec<Expr>,
+        span: &SourceSpan,
+    ) -> Result<Place, Diagnostic> {
+        place.index(&self.types, subscripts, span)
+    }
+
     /// What `place` refers to (REQ-LOW-lowering-032).
     pub fn deref(&self, place: Place, span: &SourceSpan) -> Result<Place, Diagnostic> {
         place.deref(&self.types, span)
