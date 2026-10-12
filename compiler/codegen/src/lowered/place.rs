@@ -21,7 +21,7 @@ use ironplc_ir::lowered::{
 use ironplc_lowering::Lowering;
 
 use super::expr::emit_expr;
-use super::op_type;
+use super::{is_instance, op_type};
 use crate::compile::{CompileContext, OpWidth, VarTypeInfo};
 use crate::compile_place::Place;
 use crate::compile_subscript::Subscript;
@@ -87,7 +87,7 @@ fn reference<'l>(
     let mut reference = match path {
         // A field of the current instance, which codegen copies into a slot
         // of the field's name.
-        [Projection::Deref, Projection::Field(field), rest @ ..] => {
+        [Projection::Deref, Projection::Field(field), rest @ ..] if is_instance(lowering, ty) => {
             let (instance, _) = types.reference(ty)?;
             let declared = types.fields(instance)?.get(field.index() as usize)?;
             ty = declared.ty;
