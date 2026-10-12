@@ -212,7 +212,7 @@ impl RuleStringEncodingCompat<'_> {
         let any_string = TypeName::from("ANY_STRING");
         let scope = self.scope.current();
         let mut first: Option<StringType> = None;
-        for (param, argument) in signature.bind_inputs(&node.param_assignment) {
+        for (param, argument) in signature.inputs_of(&node.param_assignment) {
             if param.param_type != any_string {
                 continue;
             }

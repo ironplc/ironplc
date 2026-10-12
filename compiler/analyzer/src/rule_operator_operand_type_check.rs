@@ -200,13 +200,9 @@ impl RuleOperatorOperandTypeCheck<'_> {
         let names: Option<Vec<Option<TypeName>>> = function
             .param_assignment
             .iter()
-            .map(|p| match p {
-                ParamAssignmentKind::PositionalInput(input) => Some(self.operand_name(&input.expr)),
-                ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
-            })
+            .map(|p| p.input_expr().map(|input| self.operand_name(input)))
             .collect();
-        // A named input is left only on a call the named-argument pass has
-        // already diagnosed.
+        // An output assignment is reported as not implemented.
         let Some(names) = names else {
             return;
         };

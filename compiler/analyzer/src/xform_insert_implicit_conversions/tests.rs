@@ -55,11 +55,11 @@ impl Visitor<Infallible> for ComparisonOperands<'_> {
     }
 
     fn visit_function(&mut self, node: &Function) -> Result<(), Infallible> {
-        if let [ParamAssignmentKind::PositionalInput(left), ParamAssignmentKind::PositionalInput(right)] =
-            node.param_assignment.as_slice()
-        {
-            let pair = [self.describe(&left.expr), self.describe(&right.expr)];
-            self.operands.push(pair);
+        if let [left, right] = node.param_assignment.as_slice() {
+            if let (Some(left), Some(right)) = (left.input_expr(), right.input_expr()) {
+                let pair = [self.describe(left), self.describe(right)];
+                self.operands.push(pair);
+            }
         }
         node.recurse_visit(self)
     }
@@ -393,6 +393,34 @@ fn apply_when_fold_has_three_inputs_then_written_as_the_calls_it_folds_to() {
         arithmetic_operands(&source),
         operands(&[&["DINT->LINT", "LINT"], &["DINT", "DINT"]])
     );
+}
+
+#[spec_test(REQ_CB_analyzer_035)]
+#[test]
+fn apply_when_fold_has_three_inputs_then_each_call_it_folds_to_in_normal_form() {
+    let source = arithmetic_program("LINT", "d : DINT; e : DINT; l : LINT;", "ADD(d, e, l)");
+    let options = CompilerOptions::default();
+    let library = ironplc_parser::parse_program(&source, &FileId::default(), &options).unwrap();
+    let (library, _) = analyze(&[&library], &options).unwrap();
+    struct Calls(Vec<String>);
+    impl Visitor<Infallible> for Calls {
+        type Value = ();
+        fn visit_function(&mut self, node: &Function) -> Result<(), Infallible> {
+            let names: Vec<String> = node
+                .param_assignment
+                .iter()
+                .map(|arg| match arg {
+                    ParamAssignmentKind::NamedInput(input) => input.name.to_string(),
+                    _ => "?".to_owned(),
+                })
+                .collect();
+            self.0.push(names.join(", "));
+            node.recurse_visit(self)
+        }
+    }
+    let mut calls = Calls(vec![]);
+    let Ok(()) = calls.walk(&library);
+    assert_eq!(vec!["IN1, IN2", "IN1, IN2"], calls.0);
 }
 
 #[spec_test(REQ_IC_analyzer_026)]

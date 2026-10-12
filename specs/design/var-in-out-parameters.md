@@ -193,9 +193,10 @@ feature.
 A call's argument list is the `VAR_INPUT` and `VAR_IN_OUT` declarations, in
 declaration order. `FunctionSignature::input_parameters` and
 `input_parameter_count` iterate over parameters that are
-`is_input_compatible()`, the same list `xform_named_to_positional_args` orders
-named arguments by. So the arity check (P4018), positional binding and the
-named-to-positional rewrite all agree, whichever order the two kinds of
+`is_input_compatible()`, the same list a positional argument of a function
+binds to and the binding pass writes a call's named inputs in
+([Call Binding](call-binding.md)). So the arity check (P4018), positional
+binding and the normal form all agree, whichever order the two kinds of
 parameter are declared in.
 
 Function block and method calls differ: a positional argument binds to the

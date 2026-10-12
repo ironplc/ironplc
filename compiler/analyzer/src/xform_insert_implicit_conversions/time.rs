@@ -26,7 +26,7 @@
 
 use ironplc_dsl::common::{ElementaryTypeName, TypeName};
 use ironplc_dsl::core::Id;
-use ironplc_dsl::textual::{Expr, ExprType, Function, Operator, ParamAssignmentKind};
+use ironplc_dsl::textual::{Expr, ExprType, Function, Operator};
 use ironplc_dsl::type_id::TypeId;
 
 use super::ImplicitConversions;
@@ -48,12 +48,12 @@ impl ImplicitConversions<'_> {
             return;
         }
         let name = func.name.clone();
-        // The named-argument pass made every input positional; any other
+        // A call of two inputs, as the binding pass writes one; any other
         // shape is one a rule reported.
-        if let [ParamAssignmentKind::PositionalInput(in1), ParamAssignmentKind::PositionalInput(in2)] =
-            func.param_assignment.as_mut_slice()
-        {
-            self.record_time_inputs(&name, &mut in1.expr, &mut in2.expr);
+        if let [in1, in2] = func.param_assignment.as_mut_slice() {
+            if let (Some(in1), Some(in2)) = (in1.input_expr_mut(), in2.input_expr_mut()) {
+                self.record_time_inputs(&name, in1, in2);
+            }
         }
     }
 

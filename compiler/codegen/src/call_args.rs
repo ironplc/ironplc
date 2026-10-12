@@ -9,24 +9,20 @@
 //! its arguments.
 //!
 //! Only a site whose argument list is not a size known where it is written
-//! keeps the `&Function` and calls [`collect_positional_args`]: a user-defined
+//! keeps the `&Function` and calls [`collect_input_args`]: a user-defined
 //! call, which matches each argument to its parameter; the functions whose
 //! count selects the opcode or comes from a table; and the folds over two or
 //! more arguments.
 
 use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{Expr, Function, ParamAssignmentKind};
+use ironplc_dsl::textual::{Expr, Function};
 
-/// Collects positional input arguments from a function call.
-pub(crate) fn collect_positional_args(func: &Function) -> Vec<&Expr> {
-    func.param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect()
+/// Collects the input arguments of a function call, in the order the call
+/// lists them: the order of the function's parameters, in the normal form the
+/// analyzer writes a call in (`call-binding.md`).
+pub(crate) fn collect_input_args(func: &Function) -> Vec<&Expr> {
+    func.inputs().collect()
 }
 
 /// The error for a call whose argument count its signature does not allow.
@@ -40,7 +36,7 @@ pub(crate) fn wrong_arg_count(func: &Function) -> Diagnostic {
     ))
 }
 
-/// Returns the `N` positional input arguments of a call, or the error
+/// Returns the `N` input arguments of a call, or the error
 /// [`wrong_arg_count`] describes for any other count.
 ///
 /// The diagnostic records the Rust location it is built at, so this and
@@ -50,7 +46,7 @@ pub(crate) fn wrong_arg_count(func: &Function) -> Diagnostic {
 /// would record a location inside this module.
 #[track_caller]
 pub(crate) fn fixed_args<const N: usize>(func: &Function) -> Result<[&Expr; N], Diagnostic> {
-    let Ok(args) = <[&Expr; N]>::try_from(collect_positional_args(func)) else {
+    let Ok(args) = <[&Expr; N]>::try_from(collect_input_args(func)) else {
         return Err(wrong_arg_count(func));
     };
     Ok(args)
@@ -60,7 +56,7 @@ pub(crate) fn fixed_args<const N: usize>(func: &Function) -> Result<[&Expr; N], 
 mod tests {
     use ironplc_dsl::common::{CharacterStringLiteral, ConstantKind};
     use ironplc_dsl::core::Id;
-    use ironplc_dsl::textual::{ExprKind, PositionalInput};
+    use ironplc_dsl::textual::{ExprKind, ParamAssignmentKind, PositionalInput};
     use rstest::rstest;
 
     use super::*;

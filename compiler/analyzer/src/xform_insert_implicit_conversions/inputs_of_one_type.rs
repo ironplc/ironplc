@@ -24,7 +24,7 @@
 //! type of its context is recorded where that context is.
 
 use ironplc_dsl::common::{ElementaryTypeName, TypeName};
-use ironplc_dsl::textual::{Expr, ExprKind, ExprType, Function, ParamAssignmentKind};
+use ironplc_dsl::textual::{Expr, ExprKind, ExprType, Function};
 use ironplc_dsl::type_id::TypeId;
 
 use super::ImplicitConversions;
@@ -76,15 +76,8 @@ impl ImplicitConversions<'_> {
             return;
         };
         let dint = self.dint_step();
-        // The named-argument pass made every input positional; any other
-        // shape is one a rule reported.
-        let inputs = func
-            .param_assignment
-            .iter_mut()
-            .filter_map(|input| match input {
-                ParamAssignmentKind::PositionalInput(input) => Some(&mut input.expr),
-                ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
-            });
+        // The binding pass wrote the inputs in the order of the parameters.
+        let inputs = func.inputs_mut();
         for (index, input) in inputs.enumerate() {
             if index >= shape.first {
                 self.record_one_type_input(input, (result, width));

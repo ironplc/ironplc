@@ -156,19 +156,14 @@ impl ImplicitConversions<'_> {
         let one_type = builtin
             .as_ref()
             .and_then(BuiltinFunction::inputs_of_one_type);
-        let typed_pair = matches!(
-            func.param_assignment.as_slice(),
-            [ParamAssignmentKind::PositionalInput(left), ParamAssignmentKind::PositionalInput(right), ..]
-                if self.is_typed_operator_pair(func, &left.expr, &right.expr)
-        );
-        let mut inputs: Vec<&mut Expr> = func
-            .param_assignment
-            .iter_mut()
-            .filter_map(|input| match input {
-                ParamAssignmentKind::PositionalInput(input) => Some(&mut input.expr),
-                ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
-            })
-            .collect();
+        let typed_pair = match func.param_assignment.as_slice() {
+            [left, right, ..] => match (left.input_expr(), right.input_expr()) {
+                (Some(left), Some(right)) => self.is_typed_operator_pair(func, left, right),
+                _ => false,
+            },
+            _ => false,
+        };
+        let mut inputs: Vec<&mut Expr> = func.inputs_mut().collect();
         let dint = self.dint();
         // An operation on one value computes at its own numeric type, and any
         // other at the type of its context.

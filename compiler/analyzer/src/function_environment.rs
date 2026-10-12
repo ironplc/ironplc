@@ -125,34 +125,63 @@ impl FunctionSignature {
             .count()
     }
 
-    /// Pairs each positional input argument of a call with the parameter it
-    /// binds to, in argument order, continuing past the declared parameters
-    /// for an extensible function (see [`Self::input_parameters`]).
-    ///
-    /// Only positional inputs bind: by the time a call is checked,
-    /// `xform_named_to_positional_args` has rewritten its named inputs, and
-    /// an output assignment binds no input. A call that pass could not rewrite
-    /// keeps its named inputs and has already been diagnosed, so binding none
-    /// of them is right. Arguments beyond the parameter list are dropped; the
-    /// arity check reports them.
-    pub fn bind_inputs<'a>(
+    /// Pairs each input argument of a call with the parameter it is passed
+    /// to, in argument order, leaving out an argument that is passed to no
+    /// parameter (see [`Self::parameters_of`]).
+    pub fn inputs_of<'a>(
         &'a self,
         params: &'a [ParamAssignmentKind],
     ) -> impl Iterator<Item = (SemanticFunctionParameter, &'a Expr)> + 'a {
-        let positional = params.iter().filter_map(|param| match param {
-            ParamAssignmentKind::PositionalInput(input) => Some(&input.expr),
-            ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
-        });
-        self.input_parameters().zip(positional)
+        self.parameters_of(params)
+            .filter_map(|(param, parameter)| Some((parameter?, param.input_expr()?)))
+    }
+
+    /// Pairs each input argument of a call with the parameter it is passed
+    /// to, if any, in argument order.
+    ///
+    /// The binding pass writes a call whose arguments bind in normal form, so
+    /// each input names its parameter, and an extensible function's further
+    /// inputs name theirs by counting on (see [`Self::input_parameters`]). A
+    /// positional input is left only in a call that does not bind, which is
+    /// reported; it is paired with the parameter at its position. One past
+    /// the parameter list, or a name that is no parameter, is paired with
+    /// nothing. An output assignment passes nothing in and is left out.
+    pub fn parameters_of<'a>(
+        &'a self,
+        params: &'a [ParamAssignmentKind],
+    ) -> impl Iterator<Item = (&'a ParamAssignmentKind, Option<SemanticFunctionParameter>)> + 'a
+    {
+        let count = params
+            .iter()
+            .filter(|param| param.input_expr().is_some())
+            .count()
+            .max(self.input_parameter_count());
+        let parameters: Vec<SemanticFunctionParameter> =
+            self.input_parameters().take(count).collect();
+        let mut position = 0;
+        params.iter().filter_map(move |param| match param {
+            ParamAssignmentKind::PositionalInput(_) => {
+                let parameter = parameters.get(position).cloned();
+                position += 1;
+                Some((param, parameter))
+            }
+            ParamAssignmentKind::NamedInput(input) => {
+                let parameter = parameters
+                    .iter()
+                    .find(|parameter| parameter.name == input.name)
+                    .cloned();
+                Some((param, parameter))
+            }
+            ParamAssignmentKind::Output(_) => None,
+        })
     }
 
     /// Returns the input parameters in argument order, continuing past the
     /// declared ones for an extensible signature.
     ///
     /// An input parameter is one a call passes an argument to: a `VAR_INPUT`
-    /// or a `VAR_IN_OUT`, in declaration order. This is the same list
-    /// `xform_named_to_positional_args` orders named arguments by, so a
-    /// positional argument binds to the parameter the caller wrote it for.
+    /// or a `VAR_IN_OUT`, in declaration order, the parameters a positional
+    /// argument binds to in that order.
     ///
     /// IEC 61131-3 names the inputs of an extensible function `IN1`, `IN2`,
     /// ..., `INn`, so the parameters beyond the declared list are the last

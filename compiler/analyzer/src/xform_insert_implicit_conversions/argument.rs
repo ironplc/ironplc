@@ -28,7 +28,7 @@
 //! value is to its target's (see `assignment.rs`).
 
 use ironplc_dsl::common::TypeName;
-use ironplc_dsl::textual::{Expr, ExprType, FbCall, Function, MethodCall, ParamAssignmentKind};
+use ironplc_dsl::textual::{Expr, ExprType, FbCall, Function, MethodCall};
 use ironplc_dsl::type_id::TypeId;
 
 use super::declared::elementary_of;
@@ -50,18 +50,16 @@ impl ImplicitConversions<'_> {
         if signature.builtin_function.is_some() {
             return;
         }
-        // The named-argument pass made every input positional, in the order
-        // of the input parameters.
-        let params: Vec<SemanticFunctionParameter> = signature.input_parameters().collect();
-        let args = func
-            .param_assignment
-            .iter_mut()
-            .filter_map(|arg| match arg {
-                ParamAssignmentKind::PositionalInput(input) => Some(&mut input.expr),
-                ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
-            });
-        for (arg, param) in args.zip(&params) {
-            self.record_argument(arg, param);
+        // The binding pass wrote the call in normal form, so each input names
+        // the parameter it is passed to.
+        let params: Vec<Option<SemanticFunctionParameter>> = signature
+            .parameters_of(&func.param_assignment)
+            .map(|(_, param)| param)
+            .collect();
+        for (arg, param) in func.inputs_mut().zip(params) {
+            if let Some(param) = param {
+                self.record_argument(arg, &param);
+            }
         }
     }
 

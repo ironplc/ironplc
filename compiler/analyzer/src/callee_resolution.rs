@@ -24,6 +24,7 @@ use ironplc_dsl::common::{
 use ironplc_dsl::core::Id;
 use ironplc_dsl::textual::MethodReceiver;
 
+use crate::function_environment::FunctionSignature;
 use crate::semantic_type::{FunctionBlockVarType, SemanticStructField, SemanticType};
 use crate::symbol_environment::{Resolution, ScopeKind, SymbolEnvironment};
 use crate::type_environment::TypeEnvironment;
@@ -276,7 +277,7 @@ pub(crate) enum ParameterSection {
     Output,
 }
 
-/// One parameter of a function block or method, as a call sees it.
+/// One parameter of a function, function block or method, as a call sees it.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct CallParameter {
     /// The name, as the callee declares it.
@@ -284,7 +285,8 @@ pub(crate) struct CallParameter {
     pub(crate) section: ParameterSection,
 }
 
-/// The parameters of a function block or method, in declaration order.
+/// The parameters of a function, function block or method, in declaration
+/// order.
 ///
 /// Every analysis that binds a call's arguments asks this list which
 /// parameters there are, so they agree on what counts as an input and on the
@@ -292,6 +294,9 @@ pub(crate) struct CallParameter {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct CallParameters {
     parameters: Vec<CallParameter>,
+    /// Whether a positional argument binds to a `VAR_IN_OUT` as well as to a
+    /// `VAR_INPUT`: true for a function, false for a function block or method.
+    positional_in_outs: bool,
 }
 
 impl CallParameters {
@@ -313,7 +318,10 @@ impl CallParameters {
                 })
             })
             .collect();
-        CallParameters { parameters }
+        CallParameters {
+            parameters,
+            positional_in_outs: false,
+        }
     }
 
     /// The parameters of a standard function block, from the fields of its
@@ -335,7 +343,47 @@ impl CallParameters {
                 })
             })
             .collect();
-        CallParameters { parameters }
+        CallParameters {
+            parameters,
+            positional_in_outs: false,
+        }
+    }
+
+    /// The parameters of a call to the function `signature` with `inputs`
+    /// input arguments: its `VAR_INPUT` and `VAR_IN_OUT` parameters, then its
+    /// `VAR_OUTPUT` parameters, each in declaration order.
+    ///
+    /// An extensible function takes inputs beyond its declared ones, named by
+    /// counting on from the last declared one
+    /// ([`FunctionSignature::input_parameters`]). The list has as many inputs
+    /// as the call supplies, when that is more than the function declares and
+    /// within its limit, so a further input numbered past a gap names no
+    /// parameter.
+    pub(crate) fn of_function(signature: &FunctionSignature, inputs: usize) -> Self {
+        let count = inputs.max(signature.input_parameter_count());
+        let inputs = signature
+            .input_parameters()
+            .take(count)
+            .map(|parameter| CallParameter {
+                section: if parameter.is_inout {
+                    ParameterSection::InOut
+                } else {
+                    ParameterSection::Input
+                },
+                name: parameter.name,
+            });
+        let outputs = signature
+            .parameters
+            .iter()
+            .filter(|parameter| parameter.is_output)
+            .map(|parameter| CallParameter {
+                name: parameter.name.clone(),
+                section: ParameterSection::Output,
+            });
+        CallParameters {
+            parameters: inputs.chain(outputs).collect(),
+            positional_in_outs: true,
+        }
     }
 
     /// Every parameter, in declaration order.
@@ -343,10 +391,15 @@ impl CallParameters {
         self.parameters.iter()
     }
 
-    /// The `VAR_INPUT` parameters, in declaration order: the parameters a
-    /// positional argument of a function block or method call binds to.
-    pub(crate) fn inputs(&self) -> impl Iterator<Item = &CallParameter> {
-        self.in_section(ParameterSection::Input)
+    /// The parameters a positional argument binds to, in declaration order:
+    /// the `VAR_INPUT` parameters of a function block or method, and the
+    /// `VAR_INPUT` and `VAR_IN_OUT` parameters of a function.
+    pub(crate) fn positional(&self) -> impl Iterator<Item = &CallParameter> {
+        let in_outs = self.positional_in_outs;
+        self.parameters.iter().filter(move |parameter| {
+            parameter.section == ParameterSection::Input
+                || (in_outs && parameter.section == ParameterSection::InOut)
+        })
     }
 
     /// The parameter a named input `name := ...` binds to: a `VAR_INPUT` or
@@ -355,12 +408,6 @@ impl CallParameters {
         self.parameters.iter().find(|parameter| {
             parameter.name == *name && parameter.section != ParameterSection::Output
         })
-    }
-
-    fn in_section(&self, section: ParameterSection) -> impl Iterator<Item = &CallParameter> {
-        self.parameters
-            .iter()
-            .filter(move |parameter| parameter.section == section)
     }
 }
 
@@ -618,7 +665,7 @@ END_FUNCTION_BLOCK";
     fn call_parameters_when_declaration_then_inputs_in_declaration_order() {
         let lib = parse(PARAMETERS);
         let parameters = CallParameters::of_declaration(block(&lib, "FB_Params"));
-        assert_eq!(vec!["first", "second"], names(parameters.inputs()));
+        assert_eq!(vec!["first", "second"], names(parameters.positional()));
     }
 
     #[test]
@@ -680,7 +727,7 @@ END_FUNCTION_BLOCK";
             panic!("CTU is a function block");
         };
         let parameters = CallParameters::of_standard_block(fields);
-        assert_eq!(vec!["CU", "R", "PV"], names(parameters.inputs()));
+        assert_eq!(vec!["CU", "R", "PV"], names(parameters.positional()));
         assert_eq!(
             Some(ParameterSection::Output),
             section_of(&parameters, "CV")

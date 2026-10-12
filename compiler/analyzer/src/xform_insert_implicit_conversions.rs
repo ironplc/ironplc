@@ -45,7 +45,7 @@ use ironplc_dsl::fold::Fold;
 use ironplc_dsl::scope::ScopeNode;
 use ironplc_dsl::textual::{
     ArrayVariable, Assignment, Case, CompareExpr, Expr, ExprKind, FbCall, For, Function, If,
-    ParamAssignmentKind, Repeat, StmtKind, While,
+    Repeat, StmtKind, While,
 };
 use ironplc_dsl::type_id::TypeId;
 use ironplc_parser::options::CompilerOptions;
@@ -234,13 +234,12 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
         let mut node = node.recurse_fold(self)?;
         self.record_argument_conversions(&mut node);
         if is_comparison_form(&node) {
-            // The comparison forms are binary, and the named-argument pass
-            // made every input positional; any other shape is one a rule
+            // The comparison forms are binary; any other shape is one a rule
             // reported.
-            if let [ParamAssignmentKind::PositionalInput(left), ParamAssignmentKind::PositionalInput(right)] =
-                node.param_assignment.as_mut_slice()
-            {
-                self.convert_operands(&mut left.expr, &mut right.expr);
+            if let [left, right] = node.param_assignment.as_mut_slice() {
+                if let (Some(left), Some(right)) = (left.input_expr_mut(), right.input_expr_mut()) {
+                    self.convert_operands(left, right);
+                }
             }
         }
         Ok(node)

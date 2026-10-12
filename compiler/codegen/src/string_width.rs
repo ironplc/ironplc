@@ -32,7 +32,7 @@ use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, ExprKind, Function, SymbolicVariableKind, Variable};
 
-use super::call_args::collect_positional_args;
+use super::call_args::collect_input_args;
 use super::compile::{
     emit_string_literal_load, CompileContext, DEFAULT_STRING_MAX_LENGTH, NARROW_CHAR_WIDTH,
 };
@@ -236,7 +236,7 @@ fn string_function_bound(
 ) -> Result<Option<u16>, Diagnostic> {
     match function {
         StringFunction::Concat | StringFunction::Insert | StringFunction::Replace => {
-            let args = collect_positional_args(func);
+            let args = collect_input_args(func);
             let Some(first) = args.first() else {
                 return Err(unknown_string_bound(
                     func.name.span(),
@@ -253,7 +253,7 @@ fn string_function_bound(
         StringFunction::Left
         | StringFunction::Right
         | StringFunction::Mid
-        | StringFunction::Delete => match collect_positional_args(func).first() {
+        | StringFunction::Delete => match collect_input_args(func).first() {
             Some(first) => string_expr_bound(ctx, first),
             None => Err(unknown_string_bound(
                 func.name.span(),

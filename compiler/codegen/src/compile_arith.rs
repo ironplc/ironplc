@@ -31,7 +31,7 @@ use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{BinaryExpr, Expr, Function, Operator};
 
-use super::call_args::collect_positional_args;
+use super::call_args::collect_input_args;
 use super::compile::{CompileContext, OpType, VarTypeInfo};
 use super::compile_call::{compile_left_fold, emit_conversion_opcode};
 use super::compile_expr::{compile_expr, emit_arithmetic_op};
@@ -82,7 +82,7 @@ pub(crate) fn compile_arith_fold(
     op: &Operator,
     result: Option<&TypeName>,
 ) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
+    let args = collect_input_args(func);
     if let [first, second, rest @ ..] = args.as_slice() {
         if let Some(name) = typed_step(ctx, op, first, second) {
             let span = func.name.span();

@@ -25,7 +25,8 @@
 use ironplc_dsl::common::TypeName;
 use ironplc_dsl::core::Id;
 use ironplc_dsl::textual::{
-    BinaryExpr, Expr, ExprKind, ExprType, Function, Operator, ParamAssignmentKind, PositionalInput,
+    BinaryExpr, Expr, ExprKind, ExprType, Function, NamedInput, Operator, ParamAssignmentKind,
+    PositionalInput,
 };
 use ironplc_dsl::type_id::TypeId;
 
@@ -68,7 +69,7 @@ impl ImplicitConversions<'_> {
         let Some(op) = arithmetic_operator(func) else {
             return;
         };
-        let Some(inputs) = positional_inputs(func) else {
+        let Some(inputs) = all_inputs(func) else {
             return;
         };
         if let Some(steps) = self.numeric_steps(&op, &inputs, expr.expr_type.as_ref()) {
@@ -109,8 +110,9 @@ impl ImplicitConversions<'_> {
         let mut inputs = std::mem::take(&mut func.param_assignment)
             .into_iter()
             .filter_map(|input| match input {
-                ParamAssignmentKind::PositionalInput(input) => Some(input.expr),
-                ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
+                ParamAssignmentKind::PositionalInput(PositionalInput { expr })
+                | ParamAssignmentKind::NamedInput(NamedInput { expr, .. }) => Some(expr),
+                ParamAssignmentKind::Output(_) => None,
             });
         let Some(mut accumulated) = inputs.next() else {
             return;
@@ -119,9 +121,11 @@ impl ImplicitConversions<'_> {
         for (index, (input, step_type)) in inputs.zip(types).enumerate() {
             let mut input = input;
             record(&mut accumulated, &mut input, index);
+            // Each step is a call in normal form, as the binding pass writes
+            // one: an arithmetic form's inputs are `IN1` and `IN2`.
             let call = Function {
                 name: name.clone(),
-                param_assignment: vec![positional(accumulated), positional(input)],
+                param_assignment: vec![named("IN1", accumulated), named("IN2", input)],
             };
             let step_result = if index == last {
                 result.clone()
@@ -258,19 +262,19 @@ pub(super) fn arithmetic_operator(func: &Function) -> Option<Operator> {
     }
 }
 
-/// The inputs of `func` when every argument is a positional input; the
-/// named-argument pass made every input positional, and any other shape is
-/// one a rule reported.
-fn positional_inputs(func: &Function) -> Option<Vec<&Expr>> {
+/// The inputs of `func` when every argument is an input, in the order of the
+/// function's parameters for a call the binding pass wrote in normal form;
+/// any other shape is one a rule reported.
+fn all_inputs(func: &Function) -> Option<Vec<&Expr>> {
     func.param_assignment
         .iter()
-        .map(|input| match input {
-            ParamAssignmentKind::PositionalInput(input) => Some(&input.expr),
-            ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
-        })
+        .map(ParamAssignmentKind::input_expr)
         .collect()
 }
 
-fn positional(expr: Expr) -> ParamAssignmentKind {
-    ParamAssignmentKind::PositionalInput(PositionalInput { expr })
+/// The named input `name := expr`, named at the span of `expr`.
+fn named(name: &str, expr: Expr) -> ParamAssignmentKind {
+    let mut name = Id::from(name);
+    name.span = expr.span.clone();
+    ParamAssignmentKind::NamedInput(NamedInput { name, expr })
 }

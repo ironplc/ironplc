@@ -91,10 +91,21 @@ Functions can be called using positional or named (formal) arguments:
    (* Named *)
    result := Square(x := 42);
 
+Positional arguments go to the ``VAR_INPUT`` and ``VAR_IN_OUT`` parameters in
+the order the function declares them. A call supplies every one of them
+(:doc:`P4018 </reference/compiler/problems/P4018>`), even one that declares an
+initial value: a function keeps nothing between calls. Named arguments may be
+written in any order, each parameter at most once
+(:doc:`P4024 </reference/compiler/problems/P4024>`), and the call evaluates
+them in the order the function declares its parameters.
+
 Related Problem Codes
 ---------------------
 
 - :doc:`/reference/compiler/problems/P4001` — Mixed named and positional arguments
+- :doc:`/reference/compiler/problems/P4018` — Wrong number of arguments
+- :doc:`/reference/compiler/problems/P4023` — Named argument is not a parameter
+- :doc:`/reference/compiler/problems/P4024` — Parameter named twice
 - :doc:`/reference/compiler/problems/P4058` — ``VAR_IN_OUT`` argument is not a variable
 - :doc:`/reference/compiler/problems/P4059` — ``VAR_IN_OUT`` argument type is not the parameter type
 - :doc:`/reference/compiler/problems/P4060` — ``VAR_IN_OUT`` argument cannot be proved writable

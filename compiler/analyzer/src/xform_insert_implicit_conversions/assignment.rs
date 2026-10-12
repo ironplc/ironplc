@@ -243,11 +243,10 @@ impl ImplicitConversions<'_> {
         let Some(natural) = self.width_of(expr) else {
             return false;
         };
-        let at_natural = |input: &ParamAssignmentKind| match input {
-            ParamAssignmentKind::PositionalInput(input) => {
-                self.width_of(&input.expr) == Some(natural)
-            }
-            ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => false,
+        let at_natural = |input: &ParamAssignmentKind| {
+            input
+                .input_expr()
+                .is_some_and(|input| self.width_of(input) == Some(natural))
         };
         matches!(func.param_assignment.as_slice(), [left, right] if at_natural(left) && at_natural(right))
     }

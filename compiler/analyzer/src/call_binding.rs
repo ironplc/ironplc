@@ -1,5 +1,5 @@
-//! Binds the arguments of a function block or method call to the callee's
-//! parameters, and writes the call in normal form.
+//! Binds the arguments of a function, function block or method call to the
+//! callee's parameters, and writes the call in normal form.
 //!
 //! How each argument binds is a language rule, so the analyzer decides it
 //! once, here, and every later stage reads the answer
@@ -7,8 +7,10 @@
 //!
 //! - A **named input** (`x := e`) binds to the `VAR_INPUT` or `VAR_IN_OUT` of
 //!   that name, and an **output assignment** (`q => v`) to the `VAR_OUTPUT`.
-//! - **Positional inputs** bind to the `VAR_INPUT` parameters in declaration
-//!   order, and there must be one for each.
+//! - **Positional inputs** bind in declaration order to the `VAR_INPUT`
+//!   parameters of a function block or method, and to the `VAR_INPUT` and
+//!   `VAR_IN_OUT` parameters of a function
+//!   ([`CallParameters::positional`]), and there must be one for each.
 //! - Named and positional inputs may not be mixed, and no parameter may be
 //!   named twice.
 //!
@@ -17,8 +19,8 @@
 //! then its output assignments in the order the callee declares those. That
 //! order is the order the arguments are evaluated in. A parameter the call
 //! does not supply is absent: an omitted function block input keeps its value
-//! from the previous call, and a method call must supply every input
-//! ([`Binding::omitted`]).
+//! from the previous call, and a function or method call must supply every
+//! input ([`Binding::omitted`]).
 
 use ironplc_dsl::core::Id;
 use ironplc_dsl::textual::{NamedInput, Output, ParamAssignmentKind};
@@ -103,10 +105,11 @@ pub(crate) fn bind<'a>(
     }
 
     if has_positional {
+        let binds_positional: Vec<&CallParameter> = parameters.positional().collect();
         let inputs: Vec<usize> = declared
             .iter()
             .enumerate()
-            .filter(|(_, parameter)| parameter.section == ParameterSection::Input)
+            .filter(|(_, parameter)| binds_positional.contains(parameter))
             .map(|(position, _)| position)
             .collect();
         let positional: Vec<usize> = args
@@ -180,7 +183,7 @@ pub(crate) fn normal_form(
         return Err(args);
     };
     let inputs: Vec<&Id> = parameters
-        .inputs()
+        .positional()
         .map(|parameter| &parameter.name)
         .collect();
     // A positional argument binds to the input at its position among the
