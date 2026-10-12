@@ -52,6 +52,7 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use crate::{
+    call_binding::bind,
     callee_resolution::{instance_type, CallParameters, FunctionBlocks},
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
@@ -95,13 +96,18 @@ impl<'a> RuleMethodCallDeclared<'a> {
         }
     }
 
+    /// Reports why `call`'s arguments do not bind to `method`'s parameters,
+    /// or else each input and `VAR_IN_OUT` the call does not supply (P4018):
+    /// a method's inputs are fresh on every call, so a call supplies them
+    /// all.
     fn check_assignments(
         owner_label: &str,
         method: &MethodDeclaration,
         call: &MethodCall,
     ) -> Vec<Diagnostic> {
-        crate::call_assignment_check::check_assignments(
-            &CallParameters::of_declaration(method),
+        let parameters = CallParameters::of_declaration(method);
+        let diagnostics = crate::call_assignment_check::check_assignments(
+            &parameters,
             Some(method.span()),
             call.span(),
             &call.params,
@@ -111,7 +117,27 @@ impl<'a> RuleMethodCallDeclared<'a> {
                 owner_name: owner_label,
                 decl_label: "Method declaration",
             },
-        )
+        );
+        if !diagnostics.is_empty() {
+            return diagnostics;
+        }
+        let Ok(binding) = bind(&parameters, &call.params) else {
+            return diagnostics;
+        };
+        let owner = owner_label.to_string();
+        binding
+            .omitted(&parameters)
+            .into_iter()
+            .map(|parameter| {
+                Diagnostic::problem(
+                    Problem::FunctionCallWrongArgCount,
+                    Label::span(call.span(), "Method invocation"),
+                )
+                .with_context("method", &owner)
+                .with_context_id("missing input", &parameter.name)
+                .with_secondary(Label::span(method.span(), "Method declaration"))
+            })
+            .collect()
     }
 
     /// The diagnostic for a method call whose receiver is not a variable of a
@@ -229,6 +255,7 @@ impl RuleMethodCallDeclared<'_> {
 mod tests {
     use super::*;
     use crate::test_helpers::fb_inheritance_options;
+    use spec_test_macro::spec_test;
 
     rule_ok!(
         apply_when_method_declared_on_own_type_then_ok,
@@ -469,6 +496,97 @@ END_VAR
 v := m.Scaled(m.Nope());
 END_PROGRAM",
         [Problem::MethodNotFound],
+        fb_inheritance_options()
+    );
+
+    /// A program calling `call` on an instance of a block whose method `M`
+    /// declares an in-out between two inputs, the second with an initial
+    /// value.
+    fn method_call(call: &str) -> String {
+        format!(
+            "
+FUNCTION_BLOCK FB
+METHOD M
+VAR_INPUT a : DINT; END_VAR
+VAR_IN_OUT io : DINT; END_VAR
+VAR_INPUT b : DINT := 7; END_VAR
+END_METHOD
+END_FUNCTION_BLOCK
+PROGRAM main
+VAR inst : FB; t : DINT; END_VAR
+{call}
+END_PROGRAM"
+        )
+    }
+
+    rule_ok!(
+        apply_when_method_named_out_of_declaration_order_then_ok,
+        &method_call("inst.M(b := 2, io := t, a := 1);"),
+        fb_inheritance_options()
+    );
+
+    rule_err!(
+        /// An initial value is not a default: a method's inputs are fresh on
+        /// every call.
+        #[spec_test(REQ_CB_analyzer_051)]
+        apply_when_method_input_omitted_then_wrong_arg_count,
+        &method_call("inst.M(a := 1, io := t);"),
+        [Problem::FunctionCallWrongArgCount],
+        fb_inheritance_options()
+    );
+
+    rule_err!(
+        #[spec_test(REQ_CB_analyzer_051)]
+        apply_when_method_inputs_and_in_out_omitted_then_wrong_arg_count_for_each,
+        &method_call("inst.M();"),
+        [Problem::FunctionCallWrongArgCount; 3],
+        fb_inheritance_options()
+    );
+
+    rule_err!(
+        /// A positional argument binds to a `VAR_INPUT`, never to a
+        /// `VAR_IN_OUT`, so the in-out is omitted.
+        #[spec_test(REQ_CB_analyzer_029)]
+        apply_when_method_positional_then_in_out_omitted,
+        &method_call("inst.M(1, 2);"),
+        [Problem::FunctionCallWrongArgCount],
+        fb_inheritance_options()
+    );
+
+    rule_err!(
+        #[spec_test(REQ_CB_analyzer_024)]
+        apply_when_method_input_named_twice_then_duplicate,
+        &method_call("inst.M(a := 1, a := 3, io := t, b := 2);"),
+        [Problem::FunctionCallDuplicateNamedArg],
+        fb_inheritance_options()
+    );
+
+    rule_err!(
+        /// The call's shape is in doubt, so nothing is said about what it
+        /// omits.
+        #[spec_test(REQ_CB_analyzer_023)]
+        apply_when_method_mixed_then_only_mixed,
+        &method_call("inst.M(1, io := t);"),
+        [Problem::FunctionCallMixedArgTypes],
+        fb_inheritance_options()
+    );
+
+    rule_err!(
+        #[spec_test(REQ_CB_analyzer_051)]
+        apply_when_inherited_method_input_omitted_then_wrong_arg_count,
+        "
+FUNCTION_BLOCK FB_Base
+METHOD Scale : DINT
+VAR_INPUT v : DINT; k : DINT; END_VAR
+END_METHOD
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+END_FUNCTION_BLOCK
+PROGRAM main
+VAR d : FB_Derived; r : DINT; END_VAR
+r := d.Scale(v := 1);
+END_PROGRAM",
+        [Problem::FunctionCallWrongArgCount],
         fb_inheritance_options()
     );
 }

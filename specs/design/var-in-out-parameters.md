@@ -16,7 +16,8 @@ than compiled with by-value semantics.
 | [References](#references) | Variable references and their instance-scope check are implemented. Data-region references, `REF_ELEM` and `REF_BASE` are not. |
 | [Call site](#call-site), [Parameter slots](#parameter-slots) | Implemented for functions with an elementary parameter, when the argument is a named variable or a forwarded `VAR_IN_OUT`. |
 | [Accesses by parameter type](#accesses-by-parameter-type) | Elementary: implemented. `REF_TO`, strings, arrays, structures and instances: not implemented. |
-| [Function blocks](#function-blocks), [Methods](#methods) | Not implemented: their `VAR_IN_OUT` is still passed by value. |
+| [Function blocks](#function-blocks) | Not implemented: a function block's `VAR_IN_OUT` is still passed by value. |
+| [Methods](#methods) | Not implemented: a method call that binds a `VAR_IN_OUT` is reported as not implemented (P9999), not passed by value ([Call Binding](call-binding.md)). |
 | [Refusing unhandled sites](#refusing-unhandled-sites) | The refusal is implemented. The `FOR` control variable, bit and partial access writes, and `=>` targets are refused rather than handled. |
 | [Debug information](#debug-information) | Implemented. |
 

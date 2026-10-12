@@ -161,13 +161,15 @@ fn apply_when_method_argument_then_converted_to_declared_type_of_its_parameter()
         allow_fb_inheritance: true,
         ..CompilerOptions::default()
     };
+    // `k.Set(y := i, x := d)` is written in the method's declaration order,
+    // `x` first, before the conversions are inserted.
     assert_eq!(
         stored_values(source, &options),
         vec![
             "UDINT->LINT",
             "INT->REAL",
-            "INT->REAL",
             "DINT->LINT",
+            "INT->REAL",
             "DINT->LINT",
             "DINT->LINT"
         ]
