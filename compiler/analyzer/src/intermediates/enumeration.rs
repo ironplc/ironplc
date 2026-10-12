@@ -2,7 +2,7 @@ use crate::enumeration_members::EnumerationMembers;
 use crate::semantic_type::{ByteSized, SemanticType};
 use crate::type_environment::TypeAttributes;
 use ironplc_dsl::common::*;
-use ironplc_dsl::core::Id;
+use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::*;
 use ironplc_problems::Problem;
 
@@ -26,7 +26,9 @@ pub fn resolve_ordinal_values(values: &[EnumeratedValue]) -> Vec<i64> {
             None => next,
         };
         resolved.push(ordinal);
-        next = ordinal + 1;
+        // An explicit value can be as large as an `i64` holds; the member
+        // after it is then out of range too, and reported as such.
+        next = ordinal.saturating_add(1);
     }
     resolved
 }
@@ -57,6 +59,9 @@ fn byte_sized_for_underlying_type(type_name: ElementaryTypeName) -> ByteSized {
 /// Try to create the semantic type information for the enumerated
 /// values initializer.
 ///
+/// The most members an enumeration may declare (P2020).
+const MAX_MEMBERS: usize = 65_536;
+
 /// This function determines how many bytes are needed to represent the
 /// enumerated values -- either from an explicit base-type suffix
 /// (`underlying_type_override`), or automatically from the resolved
@@ -70,6 +75,18 @@ pub fn try_from_values(
     underlying_type_override: Option<ElementaryTypeName>,
     default: Option<&Id>,
 ) -> Result<TypeAttributes, Diagnostic> {
+    // We could support more than 65k members, but I cannot imagine a reasonable
+    // program with that many states. We can change this if we can find such
+    // a program.
+    if enumerated_values.values().len() > MAX_MEMBERS {
+        return Err(Diagnostic::problem(
+            Problem::EnumerationTooManyValues,
+            Label::span(enumerated_values.values_span(), "Enumeration declaration"),
+        )
+        .with_context("members", &enumerated_values.values().len().to_string()));
+    }
+
+    check_ordinals_fit_dint(enumerated_values.values())?;
     let members = EnumerationMembers::from_values(enumerated_values.values(), default);
     if let Some(type_name) = underlying_type_override {
         return Ok(TypeAttributes::new(
@@ -87,23 +104,15 @@ pub fn try_from_values(
     let resolved = resolve_ordinal_values(enumerated_values.values());
     let max_value = resolved.into_iter().max().unwrap_or(0);
     let range = max_value.max(0) as u128 + 1;
-    let underlying_type = if range <= 256 {
-        SemanticType::Int {
-            size: ByteSized::B8,
-        }
+    let size = if range <= 256 {
+        ByteSized::B8
     } else if range <= 65_536 {
-        SemanticType::Int {
-            size: ByteSized::B16,
-        }
+        ByteSized::B16
     } else {
-        // We could support more than 65k values, but I cannot imagine a reasonable
-        // program with that many states. We can change this if we can find such
-        // a program, we can enable more states here.
-        return Err(Diagnostic::problem(
-            Problem::EnumerationTooManyValues,
-            Label::span(enumerated_values.values_span(), "Enumeration declaration"),
-        ));
+        // Every ordinal fits a `DINT` (checked above), so 32 bits hold it.
+        ByteSized::B32
     };
+    let underlying_type = SemanticType::Int { size };
 
     Ok(TypeAttributes::new(
         enumerated_values.values_span(),
@@ -112,6 +121,24 @@ pub fn try_from_values(
             members,
         },
     ))
+}
+
+/// Fails with P2044 at the first value whose ordinal is outside the range of
+/// `DINT`. Every enumeration is stored and operated on as a `DINT`
+/// (REQ-EN-codegen-003), whatever its base type, so an ordinal outside that
+/// range has no value at runtime (REQ-EN-codegen-084).
+fn check_ordinals_fit_dint(values: &[EnumeratedValue]) -> Result<(), Diagnostic> {
+    for (value, ordinal) in values.iter().zip(resolve_ordinal_values(values)) {
+        if i32::try_from(ordinal).is_err() {
+            return Err(Diagnostic::problem(
+                Problem::EnumValueOutOfRange,
+                Label::span(value.span(), "Enumeration value"),
+            )
+            .with_context_id("value", &value.value)
+            .with_context("ordinal", &ordinal.to_string()));
+        }
+    }
+    Ok(())
 }
 
 /// The type an alias of the enumeration `base` declares (`PAINT : COLOR`):
@@ -135,6 +162,7 @@ mod tests {
     use ironplc_problems::Problem;
 
     use super::resolve_ordinal_values;
+    use crate::semantic_type::{ByteSized, SemanticType};
     use crate::{
         type_environment::TypeEnvironmentBuilder, xform_resolve_type_decl_environment::apply,
     };
@@ -283,6 +311,84 @@ END_TYPE
             Problem::EnumerationTooManyValues.code(),
             errors.first().unwrap().code
         );
+    }
+
+    /// The problems that declaring the types of `program` reports.
+    fn declaration_errors(program: &str) -> Vec<ironplc_dsl::diagnostic::Diagnostic> {
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
+                .unwrap();
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        apply(input, &mut env).err().unwrap_or_default()
+    }
+
+    /// REQ-EN-codegen-084: an ordinal above `DINT` is reported, whatever the
+    /// enumeration's base type.
+    #[test]
+    fn apply_when_explicit_value_above_dint_with_base_type_then_p2044() {
+        let errors =
+            declaration_errors("TYPE BIG : (SMALL := 0, HUGE := 5000000000) LINT; END_TYPE");
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].code, Problem::EnumValueOutOfRange.code());
+        assert!(errors[0].described.iter().any(|item| item.contains("HUGE")));
+    }
+
+    /// REQ-EN-codegen-084: an ordinal below `DINT` is reported.
+    #[test]
+    fn apply_when_explicit_value_below_dint_then_p2044() {
+        let errors = declaration_errors("TYPE E : (LOW := -2147483649, HIGH); END_TYPE");
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].code, Problem::EnumValueOutOfRange.code());
+    }
+
+    /// REQ-EN-codegen-084: a value numbered on past the largest `DINT` is
+    /// reported, at that value.
+    #[test]
+    fn apply_when_value_numbered_past_dint_then_p2044_at_that_value() {
+        let errors = declaration_errors("TYPE E : (TOP := 2147483647, OVER) DINT; END_TYPE");
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].code, Problem::EnumValueOutOfRange.code());
+        assert!(errors[0].described.iter().any(|item| item.contains("OVER")));
+    }
+
+    /// One value above 16 bits, with no base type, is a 32-bit enumeration
+    /// rather than P2020, which is about the number of members.
+    #[test]
+    fn apply_when_value_above_16_bits_without_base_type_then_32_bit_enum() {
+        let input = ironplc_parser::parse_program(
+            "TYPE E : (A := 100000, B); END_TYPE",
+            &FileId::default(),
+            &CompilerOptions::default(),
+        )
+        .unwrap();
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        apply(input, &mut env).unwrap();
+        let attributes = env.get(&TypeName::from("E")).unwrap();
+        assert!(matches!(
+            &attributes.representation,
+            SemanticType::Enumeration { underlying_type, .. }
+                if **underlying_type == SemanticType::Int { size: ByteSized::B32 }
+        ));
+    }
+
+    #[test]
+    fn apply_when_values_at_dint_bounds_then_creates_enum() {
+        let errors = declaration_errors(
+            "TYPE E : (BOTTOM := -2147483648, TOP := 2147483647) DINT; END_TYPE",
+        );
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn resolve_ordinal_values_when_explicit_value_at_i64_max_then_next_saturates() {
+        let values = vec![value_with("A", i64::MAX), value("B")];
+        assert_eq!(resolve_ordinal_values(&values), vec![i64::MAX, i64::MAX]);
     }
 
     #[test]

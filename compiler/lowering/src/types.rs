@@ -103,8 +103,8 @@ impl Lowering<'_> {
                 values: members
                     .iter()
                     .map(|member| {
-                        // Every enumeration operates as a `DINT`, so the
-                        // analyzer's ordinals fit one.
+                        // Analysis reports an ordinal outside `DINT`
+                        // (P2044), so each one fits.
                         let ordinal = i32::try_from(member.ordinal).map_err(|_| {
                             Diagnostic::internal_error_at(Label::span(
                                 member.name.span(),

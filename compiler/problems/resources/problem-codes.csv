@@ -29,7 +29,7 @@ P2015,SubrangeBaseTypeNotNumeric,Subrange base type must be numeric
 P2016,SubrangeOutOfBounds,Subrange is outside base type bounds
 P2017,StructFieldMissingType,Structure field missing type specification
 P2019,InvalidSimpleTypeDecl,Invalid simple type declaration
-P2020,EnumerationTooManyValues,Enumeration has too many unique values
+P2020,EnumerationTooManyValues,Enumeration declares more than 65536 members
 P2021,StructFieldTypeNotDeclared,Structure field references undeclared type
 P2022,ArrayDimensionEmpty,Array must have at least one dimension
 P2023,ArraySizeOverflow,Array size calculation overflow
@@ -137,6 +137,7 @@ P2040,RealLiteralOutOfRange,Real literal is outside the range the real type can 
 P2041,StringLengthOutOfRange,String length is more than a string can hold
 P2042,ReturnTypeNotDeclared,Return type is not declared
 P2043,EnumValueAmbiguous,Enumerated value is declared by more than one enumeration and its type cannot be told from where it is used
+P2044,EnumValueOutOfRange,Enumeration value is outside the range of DINT
 P4069,BitAccessTypeInvalid,Bit or partial access requires a bit string or integer variable
 P4077,ArrayInitializerTooManyValues,Array initializer has more values than the array has elements
 P4078,TaskIntervalNegative,Task INTERVAL is negative

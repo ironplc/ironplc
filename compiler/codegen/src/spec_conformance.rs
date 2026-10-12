@@ -725,6 +725,32 @@ END_PROGRAM
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }
 
+/// REQ-EN-codegen-084: An ordinal outside `DINT` is reported by analysis,
+/// whatever the enumeration's base type, so codegen never stores one.
+#[spec_test(REQ_EN_codegen_084)]
+fn enum_spec_req_en_084_ordinal_outside_dint_reported() {
+    let options = CompilerOptions::from_dialect(ironplc_parser::options::Dialect::Iec61131_3Ed3);
+    let options = CompilerOptions {
+        allow_enum_base_type: true,
+        ..options
+    };
+    let library = ironplc_parser::parse_program(
+        "TYPE BIG : (SMALL := 0, HUGE := 5000000000) LINT; END_TYPE
+         PROGRAM main VAR b : BIG := HUGE; END_VAR END_PROGRAM",
+        &FileId::default(),
+        &options,
+    )
+    .unwrap();
+    let errors = match ironplc_analyzer::stages::analyze(&[&library], &options) {
+        Err(errors) => errors,
+        Ok((_, context)) => context.diagnostics().to_vec(),
+    };
+    assert!(
+        errors.iter().any(|error| error.code == "P2044"),
+        "{errors:?}"
+    );
+}
+
 /// REQ-EN-codegen-083: A value outside an expression is a member of the type
 /// of where it appears: a CASE label of the selector's type, a structure
 /// field initializer of the field's type.

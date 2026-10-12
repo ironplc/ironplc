@@ -144,6 +144,8 @@ Ordinals are decided once, in the analyzer, so every code generator uses the sam
 
 **REQ-EN-codegen-083** A value outside an expression is a member of the type of the place it appears in: a variable's initial value of the declared type (`VarDecl::type_id`), a CASE label of the selector's type, a structure field initializer of the field's type, and a function block member initializer of the member's declared type. A structure field without an initializer starts at its enumeration's default.
 
+**REQ-EN-codegen-084** Analysis reports an enumeration value whose ordinal is outside the range of DINT as P2044, whatever base type the declaration names, so every ordinal fits the DINT an enumeration is stored as (REQ-EN-codegen-003).
+
 ## 10. Inline Enumerations
 
 An inline enumeration spells its values where a type name would go: `VAR e : (A, B) := B; END_VAR`. The analyzer enters it as an anonymous type of its own, recorded on `VarDecl::type_id`, so two declarations that spell the same list are two types (ADR-0055). It otherwise compiles as a named enumeration with the same value list does. It may be declared in any variable section of a program, function block, function or method.

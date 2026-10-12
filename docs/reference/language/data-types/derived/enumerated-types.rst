@@ -130,6 +130,11 @@ is 1 and ``Type_BOOL`` is 2:
 Values are not checked for uniqueness: ``(A := 1, B := 1)`` gives two names
 for the same value and is accepted. Only the *names* must differ.
 
+Every value, written or continued from the one before, must be within the
+range of ``DINT``: from -2147483648 to 2147483647. A value outside it is
+:doc:`/reference/compiler/problems/P2044`, whatever base type the declaration
+names.
+
 Base Type (Language Extension)
 ------------------------------
 
@@ -163,6 +168,8 @@ Related Problem Codes
 - :doc:`/reference/compiler/problems/P2006` — Value not defined in the
   enumeration
 - :doc:`/reference/compiler/problems/P2043` — Enumerated value is ambiguous
+- :doc:`/reference/compiler/problems/P2044` — Enumeration value is outside
+  the range of ``DINT``
 - :doc:`/reference/compiler/problems/P4055` — Explicit enumeration member
   value requires a dialect or flag
 - :doc:`/reference/compiler/problems/P4056` — Enumeration base-type suffix
