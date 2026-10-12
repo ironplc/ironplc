@@ -11,12 +11,13 @@
 //! them again.
 //!
 //! The lowered program grows one construct at a time. Today it holds scalar
-//! expressions, places reached through fields and dereferences, and the
-//! assignment of a scalar value.
+//! expressions, places reached through fields and dereferences, the
+//! assignment of a scalar value, and control flow.
 
 mod expr;
 mod ids;
 mod invariant;
+mod loops;
 mod place;
 mod print;
 mod program;
@@ -27,13 +28,14 @@ mod variables;
 
 pub use expr::{BinaryOp, CompareOp, Const, Expr, ExprKind, ShortCircuitOp, UnaryOp};
 pub use ids::{FieldIdx, LoopId, PouId, TypeId, VarId};
+pub use loops::{counts_down, ForParts, LoopScope};
 pub use place::{Place, Projection};
 pub use program::ProgramBuilder;
 pub use scalar::{ScalarType, Signedness};
-pub use stmt::{store_narrowing, Stmt, StmtKind};
+pub use stmt::{store_narrowing, CaseArm, CaseLabel, Stmt, StmtKind};
 pub use types::{
-    Encoding, Field, IntWidth, NarrowWidth, Nullability, Section, StringShape, TemporalKind,
-    TypeEntry, TypeKind, TypeTable, WideWidth,
+    Encoding, EnumerationValue, Field, IntWidth, NarrowWidth, Nullability, Section, StringShape,
+    TemporalKind, TypeEntry, TypeKind, TypeTable, WideWidth,
 };
 pub use variables::{Owner, PouTable, Variable, VariableTable};
 

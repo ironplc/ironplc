@@ -201,6 +201,17 @@ impl<'ast> Place<'ast> {
         if let Some(type_info) = self.type_info {
             emit_truncation(emitter, type_info);
         }
+        self.emit_store_fitting(emitter, ctx)
+    }
+
+    /// Pops a value that already fits the place's type, as every value the
+    /// lowered program stores does (REQ-LOW-lowering-046), and stores it in
+    /// the place.
+    pub(crate) fn emit_store_fitting(
+        &self,
+        emitter: &mut Emitter,
+        ctx: &mut CompileContext,
+    ) -> Result<(), Diagnostic> {
         match &self.address {
             Address::Variable(var_index) => emit_store_var(emitter, *var_index, self.op_type()),
             Address::InOut(ref_slot) => {

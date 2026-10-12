@@ -2,7 +2,7 @@
 //!
 //! A [`ProgramBuilder`] owns the program's type, variable and POU tables,
 //! and is the only way to add to them or to build a node that refers into
-//! them: a place, a read of a place, and an assignment. Every id, place and
+//! them: a place, a read of a place, an assignment and a loop. Every id, place and
 //! expression it makes carries its stamp, and it refuses one carrying another
 //! builder's, so nothing from one lowered program can be used in another.
 
@@ -10,8 +10,9 @@ use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
 
 use super::expr::Expr;
-use super::ids::{FieldIdx, PouId, Stamp, TypeId, VarId};
+use super::ids::{FieldIdx, LoopId, PouId, Stamp, TypeId, VarId};
 use super::invariant::broken;
+use super::loops::{build_for, build_loop, expand_for, ForParts, LoopScope};
 use super::place::Place;
 use super::stmt::{store_narrowing, Stmt};
 use super::types::{NarrowWidth, TypeEntry, TypeKind, TypeTable};
@@ -21,6 +22,9 @@ use crate::execution::DebugName;
 /// Builds one lowered program.
 #[derive(Clone, Debug)]
 pub struct ProgramBuilder {
+    stamp: Stamp,
+    /// How many loops the builder has opened.
+    loops: u32,
     types: TypeTable,
     variables: VariableTable,
     pous: PouTable,
@@ -37,6 +41,8 @@ impl ProgramBuilder {
     pub fn new() -> Self {
         let stamp = Stamp::fresh();
         Self {
+            stamp,
+            loops: 0,
             types: TypeTable::new(stamp),
             variables: VariableTable::new(stamp),
             pous: PouTable::new(stamp),
@@ -147,5 +153,64 @@ impl ProgramBuilder {
     /// type `place`; see [`store_narrowing`].
     pub fn store_narrowing(&self, place: TypeId, value: &Expr) -> Option<NarrowWidth> {
         store_narrowing(&self.types, place, value)
+    }
+
+    /// Opens a new `Loop` or `For`, whose scope makes the `Exit` and
+    /// `Continue` statements that name it.
+    pub fn open_loop(&mut self) -> LoopScope {
+        let id = LoopId::new(self.stamp, self.loops);
+        self.loops += 1;
+        LoopScope::new(id)
+    }
+
+    /// Closes `scope` as a `Loop` that repeats `body` then `continuing`.
+    /// Every `Exit` and `Continue` the scope made is inside them
+    /// (REQ-LOW-lowering-062).
+    pub fn loop_(
+        &self,
+        scope: LoopScope,
+        body: Vec<Stmt>,
+        continuing: Vec<Stmt>,
+        span: SourceSpan,
+    ) -> Result<Stmt, Diagnostic> {
+        self.check_scope("ProgramBuilder::loop_", &scope, &span)?;
+        build_loop(scope, body, continuing, span)
+    }
+
+    /// Closes `scope` as a `For`; see [`ForParts`] for what its parts must
+    /// be. Every `Exit` and `Continue` the scope made is inside its body
+    /// (REQ-LOW-lowering-062).
+    pub fn for_(
+        &self,
+        scope: LoopScope,
+        parts: ForParts,
+        span: SourceSpan,
+    ) -> Result<Stmt, Diagnostic> {
+        self.check_scope("ProgramBuilder::for_", &scope, &span)?;
+        build_for(&self.types, scope, parts, span)
+    }
+
+    /// Fails unless this builder opened `scope`.
+    fn check_scope(
+        &self,
+        constructor: &str,
+        scope: &LoopScope,
+        span: &SourceSpan,
+    ) -> Result<(), Diagnostic> {
+        if scope.id().stamp() != self.stamp {
+            return Err(broken(
+                constructor,
+                span,
+                format!("{} is a loop of another program", scope.id()),
+            ));
+        }
+        Ok(())
+    }
+
+    /// `stmt` with a `For` expanded into an `Assign` and a `Loop` of the same
+    /// meaning, for a backend with no use for its bounds (REQ-LOW-ir-068).
+    /// Any other statement is returned as it is.
+    pub fn expand_for(&self, stmt: Stmt) -> Result<Vec<Stmt>, Diagnostic> {
+        expand_for(&self.types, stmt)
     }
 }

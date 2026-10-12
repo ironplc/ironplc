@@ -21,11 +21,14 @@
 #![deny(clippy::wildcard_enum_match_arm)]
 #![allow(clippy::result_large_err)]
 
+mod control;
 mod expr;
 mod statement;
 mod types;
 mod variables;
 
+#[cfg(test)]
+mod control_tests;
 #[cfg(test)]
 mod test_support;
 #[cfg(test)]
@@ -41,7 +44,9 @@ use ironplc_dsl::common::{
 use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::StmtKind;
-use ironplc_ir::lowered::{PouId, ProgramBuilder, Stmt, TypeTable, VarId, VariableTable};
+use ironplc_ir::lowered::{
+    LoopScope, PouId, ProgramBuilder, Stmt, TypeTable, VarId, VariableTable,
+};
 
 /// The body a statement belongs to.
 #[derive(Clone, Copy, Debug)]
@@ -55,7 +60,7 @@ pub enum Body<'a> {
 #[derive(Clone, Debug)]
 pub enum StatementLowering {
     /// The statement, with everything inside it, lowered.
-    Lowered(Stmt),
+    Lowered(Box<Stmt>),
     /// The statement, or something inside it, is not one lowering supports
     /// yet. Not a defect: the statement is compiled from the AST.
     Unsupported,
@@ -79,6 +84,8 @@ pub struct Lowering<'a> {
     pou_ids: HashMap<String, PouId>,
     /// What lowering knows of each body it has lowered a statement of.
     bodies: HashMap<PouId, Option<variables::BodyFrame>>,
+    /// The loops enclosing the statement being lowered, innermost last.
+    loops: Vec<LoopScope>,
 }
 
 impl<'a> Lowering<'a> {
@@ -91,6 +98,7 @@ impl<'a> Lowering<'a> {
             declared: HashMap::new(),
             pou_ids: HashMap::new(),
             bodies: HashMap::new(),
+            loops: Vec::new(),
         }
     }
 
@@ -109,7 +117,7 @@ impl<'a> Lowering<'a> {
             return Ok(StatementLowering::Unsupported);
         };
         Ok(match self.statement(&frame, stmt)? {
-            Some(lowered) => StatementLowering::Lowered(lowered),
+            Some(lowered) => StatementLowering::Lowered(Box::new(lowered)),
             None => StatementLowering::Unsupported,
         })
     }

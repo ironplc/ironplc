@@ -533,7 +533,7 @@ pub enum TypeKind {
     BitString { bits: u8 },
     Real { bits: u8 },
     Temporal { kind: TemporalKind, bits: u8 },
-    Enumeration { underlying: TypeId, values: Vec<Id> },
+    Enumeration { underlying: TypeId, values: Vec<(Id, i32)> }, // each value's ordinal
     Subrange { base: TypeId, min: i128, max: i128 },
     String(StringShape),
     Array { element: TypeId, dimensions: Vec<(i32, i32)> },
@@ -572,6 +572,12 @@ value takes and how wide a reference is are each backend's layout. Today's
 offset, `slot_count` sizes strings with the container's `string_region_size`,
 and a reference is sized as a 64-bit variable-table index. Lowering builds its
 table from `SemanticType` and carries none of those.
+
+An enumeration's values carry the ordinals the analyzer decided for them
+(`EnumerationMembers`): an explicit value (`GREEN := 5`), or one more than the
+value before. An enumerated value lowers to its ordinal as a `Const`, and so
+does a `CASE` label naming one. Every enumeration operates as a `DINT`, so each
+ordinal fits one, and lowering reports one that does not as P9998.
 
 **REQ-LOW-lowering-027** The type table holds no size, offset or slot count,
 and refers to the type of every field, element, enumeration, subrange and
@@ -1055,6 +1061,10 @@ pub enum StmtKind {
     Continue(LoopId),
     Return,
 }
+
+pub struct CaseArm { labels: Vec<CaseLabel>, body: Vec<Stmt> }
+
+pub enum CaseLabel { Value(Const), Range(Const, Const) }      // a range includes both ends
 ```
 
 `Loop` repeats `body` then `continuing` until an `Exit` leaves it. `Continue`
@@ -1425,6 +1435,11 @@ constructor; it does not build the node.
 
 This puts the invariants in one place, upstream of every backend. A backend
 relies on them without re-checking, which is what lets its matches be total.
+
+A loop is opened before its body is built and closed by building the `Loop` or
+`For` from it. Only the open loop makes an `Exit` or `Continue` naming it, and
+closing the loop checks that each one it made is inside its body, so
+REQ-LOW-lowering-062 holds by construction.
 
 **REQ-LOW-lowering-082** `ironplc-ir`, `ironplc-lowering` and every backend crate deny
 `clippy::wildcard_enum_match_arm`, so a match over a lowered enum names every

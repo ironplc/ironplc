@@ -142,6 +142,17 @@ pub struct Field {
     pub ty: TypeId,
 }
 
+/// One value of an enumeration.
+#[derive(Clone, Debug)]
+pub struct EnumerationValue {
+    /// The value's name and the span of its declaration, for debug
+    /// information and diagnostics only.
+    pub name: DebugName,
+    /// What the value is at runtime: the ordinal the analyzer decided for it,
+    /// at the operation type every enumeration has.
+    pub ordinal: i32,
+}
+
 /// What a type is.
 #[derive(Clone, Debug)]
 pub enum TypeKind {
@@ -160,10 +171,11 @@ pub enum TypeKind {
         kind: TemporalKind,
         width: WideWidth,
     },
-    /// An enumeration. Every enumeration is operated at the operation type of
-    /// a `DINT`, as the bytecode backend does today (REQ-EN-codegen-003).
+    /// An enumeration, with its values in declaration order. Every
+    /// enumeration is operated at the operation type of a `DINT`, as the
+    /// bytecode backend does today (REQ-EN-codegen-003).
     Enumeration {
-        values: Vec<DebugName>,
+        values: Vec<EnumerationValue>,
     },
     /// The integers from `min` to `max` of the integer type `base`.
     Subrange {
@@ -375,6 +387,26 @@ impl TypeTable {
             | TypeKind::Enumeration { .. }
             | TypeKind::Real { .. }
             | TypeKind::Temporal { .. }
+            | TypeKind::String(_)
+            | TypeKind::Array { .. }
+            | TypeKind::Structure { .. }
+            | TypeKind::FunctionBlock { .. }
+            | TypeKind::Program { .. }
+            | TypeKind::Reference { .. } => None,
+        }
+    }
+
+    /// The ordinal of the value at `position` of the enumeration `id`; `None`
+    /// when `id` is not an enumeration or has no value there.
+    pub fn enumeration_ordinal(&self, id: TypeId, position: usize) -> Option<i32> {
+        match self.kind(id)? {
+            TypeKind::Enumeration { values } => values.get(position).map(|value| value.ordinal),
+            TypeKind::Bool
+            | TypeKind::Integer { .. }
+            | TypeKind::BitString { .. }
+            | TypeKind::Real { .. }
+            | TypeKind::Temporal { .. }
+            | TypeKind::Subrange { .. }
             | TypeKind::String(_)
             | TypeKind::Array { .. }
             | TypeKind::Structure { .. }

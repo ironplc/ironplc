@@ -267,7 +267,7 @@ fn lower_statement_when_not_supported_yet_then_unsupported() {
             a := ABS(a);
             t := T#1s;
             arr[1] := 1;
-            IF a > 0 THEN a := 1; END_IF;
+            FOR a := 1 TO 3 BY a DO r := r; END_FOR;
             r := r ** r;
          END_PROGRAM",
         "main",

@@ -8,12 +8,12 @@ use ironplc_analyzer::semantic_type::{ByteSized, FunctionBlockVarType, SemanticT
 use ironplc_container::{CharWidth, DEFAULT_STRING_MAX_LENGTH};
 use ironplc_dsl::common::TypeName;
 use ironplc_dsl::core::{Located, SourceSpan};
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::type_id::TypeId as AnalyzerTypeId;
 use ironplc_ir::execution::DebugName;
 use ironplc_ir::lowered::{
-    Encoding, Field, IntWidth, Nullability, Section, StringShape, TemporalKind, TypeEntry, TypeId,
-    TypeKind, WideWidth,
+    Encoding, EnumerationValue, Field, IntWidth, Nullability, Section, StringShape, TemporalKind,
+    TypeEntry, TypeId, TypeKind, WideWidth,
 };
 
 use crate::Lowering;
@@ -102,8 +102,24 @@ impl Lowering<'_> {
             SemanticType::Enumeration { members, .. } => TypeKind::Enumeration {
                 values: members
                     .iter()
-                    .map(|member| DebugName::new(member.name.to_string(), member.name.span()))
-                    .collect(),
+                    .map(|member| {
+                        // Every enumeration operates as a `DINT`, so the
+                        // analyzer's ordinals fit one.
+                        let ordinal = i32::try_from(member.ordinal).map_err(|_| {
+                            Diagnostic::internal_error_at(Label::span(
+                                member.name.span(),
+                                format!(
+                                    "The ordinal {} of {} does not fit a DINT",
+                                    member.ordinal, member.name
+                                ),
+                            ))
+                        })?;
+                        Ok(EnumerationValue {
+                            name: DebugName::new(member.name.to_string(), member.name.span()),
+                            ordinal,
+                        })
+                    })
+                    .collect::<Result<_, Diagnostic>>()?,
             },
             SemanticType::Subrange {
                 base_type,

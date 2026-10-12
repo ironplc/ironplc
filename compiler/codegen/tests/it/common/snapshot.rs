@@ -49,6 +49,12 @@ impl Snapshot {
         Snapshot { container, bufs }
     }
 
+    /// Runs the compiled `container` for one scan.
+    pub fn run_compiled(container: Container) -> Self {
+        let bufs = run_one_scan(&container).unwrap();
+        Snapshot { container, bufs }
+    }
+
     /// The value of the program or global variable `name`.
     pub fn read(&self, name: &str) -> Value {
         let variables = Variables::of(&self.container);

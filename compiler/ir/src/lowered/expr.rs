@@ -43,8 +43,29 @@ impl Const {
         }
     }
 
+    /// The integer `value` as a constant of the integer type `ty`; `None` when
+    /// `ty` is not an integer type or does not hold the value. An unsigned
+    /// value is held as its bit pattern.
+    pub fn integer(value: i128, ty: ScalarType) -> Option<Const> {
+        match ty {
+            ScalarType::I32(Signedness::Signed) => i32::try_from(value).ok().map(Const::I32),
+            ScalarType::I32(Signedness::Unsigned) => {
+                u32::try_from(value).ok().map(|v| Const::I32(v as i32))
+            }
+            ScalarType::I64(Signedness::Signed) => i64::try_from(value).ok().map(Const::I64),
+            ScalarType::I64(Signedness::Unsigned) => {
+                u64::try_from(value).ok().map(|v| Const::I64(v as i64))
+            }
+            ScalarType::Bool
+            | ScalarType::F32
+            | ScalarType::F64
+            | ScalarType::Ref
+            | ScalarType::Interface => None,
+        }
+    }
+
     /// Whether the constant is of the width of `ty`.
-    fn has_width_of(self, ty: ScalarType) -> bool {
+    pub(crate) fn has_width_of(self, ty: ScalarType) -> bool {
         matches!(
             (self, ty),
             (Const::Bool(_), ScalarType::Bool)
@@ -168,14 +189,7 @@ impl Expr {
     /// real, rounded once from the integer.
     pub fn integer(value: i128, ty: ScalarType, span: SourceSpan) -> Result<Self, Diagnostic> {
         let constant = match ty {
-            ScalarType::I32(Signedness::Signed) => i32::try_from(value).ok().map(Const::I32),
-            ScalarType::I32(Signedness::Unsigned) => {
-                u32::try_from(value).ok().map(|v| Const::I32(v as i32))
-            }
-            ScalarType::I64(Signedness::Signed) => i64::try_from(value).ok().map(Const::I64),
-            ScalarType::I64(Signedness::Unsigned) => {
-                u64::try_from(value).ok().map(|v| Const::I64(v as i64))
-            }
+            ScalarType::I32(_) | ScalarType::I64(_) => Const::integer(value, ty),
             ScalarType::F32 => Some(Const::F32(value as f32)),
             ScalarType::F64 => Some(Const::F64(value as f64)),
             ScalarType::Bool | ScalarType::Ref | ScalarType::Interface => None,
