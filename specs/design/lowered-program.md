@@ -576,8 +576,9 @@ table from `SemanticType` and carries none of those.
 An enumeration's values carry the ordinals the analyzer decided for them
 (`EnumerationMembers`): an explicit value (`GREEN := 5`), or one more than the
 value before. An enumerated value lowers to its ordinal as a `Const`, and so
-does a `CASE` label naming one. Every enumeration operates as a `DINT`, so each
-ordinal fits one, and lowering reports one that does not as P9998.
+does a `CASE` label naming one. Every enumeration operates as a `DINT`, and
+analysis reports an ordinal outside its range (P2044, REQ-EN-codegen-084), so
+each ordinal fits one; lowering reports one that does not as P9998.
 
 **REQ-LOW-lowering-027** The type table holds no size, offset or slot count,
 and refers to the type of every field, element, enumeration, subrange and

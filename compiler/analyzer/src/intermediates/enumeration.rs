@@ -2,7 +2,7 @@ use crate::enumeration_members::EnumerationMembers;
 use crate::semantic_type::{ByteSized, SemanticType};
 use crate::type_environment::TypeAttributes;
 use ironplc_dsl::common::*;
-use ironplc_dsl::core::Id;
+use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::*;
 use ironplc_problems::Problem;
 
@@ -26,7 +26,9 @@ pub fn resolve_ordinal_values(values: &[EnumeratedValue]) -> Vec<i64> {
             None => next,
         };
         resolved.push(ordinal);
-        next = ordinal + 1;
+        // An explicit value can be as large as an `i64` holds; the member
+        // after it is then out of range too, and reported as such.
+        next = ordinal.saturating_add(1);
     }
     resolved
 }
@@ -70,6 +72,7 @@ pub fn try_from_values(
     underlying_type_override: Option<ElementaryTypeName>,
     default: Option<&Id>,
 ) -> Result<TypeAttributes, Diagnostic> {
+    check_ordinals_fit_dint(enumerated_values.values())?;
     let members = EnumerationMembers::from_values(enumerated_values.values(), default);
     if let Some(type_name) = underlying_type_override {
         return Ok(TypeAttributes::new(
@@ -112,6 +115,24 @@ pub fn try_from_values(
             members,
         },
     ))
+}
+
+/// Fails with P2044 at the first value whose ordinal is outside the range of
+/// `DINT`. Every enumeration is stored and operated on as a `DINT`
+/// (REQ-EN-codegen-003), whatever its base type, so an ordinal outside that
+/// range has no value at runtime (REQ-EN-codegen-084).
+fn check_ordinals_fit_dint(values: &[EnumeratedValue]) -> Result<(), Diagnostic> {
+    for (value, ordinal) in values.iter().zip(resolve_ordinal_values(values)) {
+        if i32::try_from(ordinal).is_err() {
+            return Err(Diagnostic::problem(
+                Problem::EnumValueOutOfRange,
+                Label::span(value.span(), "Enumeration value"),
+            )
+            .with_context_id("value", &value.value)
+            .with_context("ordinal", &ordinal.to_string()));
+        }
+    }
+    Ok(())
 }
 
 /// The type an alias of the enumeration `base` declares (`PAINT : COLOR`):
@@ -283,6 +304,61 @@ END_TYPE
             Problem::EnumerationTooManyValues.code(),
             errors.first().unwrap().code
         );
+    }
+
+    /// The problems that declaring the types of `program` reports.
+    fn declaration_errors(program: &str) -> Vec<ironplc_dsl::diagnostic::Diagnostic> {
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
+                .unwrap();
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        apply(input, &mut env).err().unwrap_or_default()
+    }
+
+    /// REQ-EN-codegen-084: an ordinal above `DINT` is reported, whatever the
+    /// enumeration's base type.
+    #[test]
+    fn apply_when_explicit_value_above_dint_with_base_type_then_p2044() {
+        let errors =
+            declaration_errors("TYPE BIG : (SMALL := 0, HUGE := 5000000000) LINT; END_TYPE");
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].code, Problem::EnumValueOutOfRange.code());
+        assert!(errors[0].described.iter().any(|item| item.contains("HUGE")));
+    }
+
+    /// REQ-EN-codegen-084: an ordinal below `DINT` is reported.
+    #[test]
+    fn apply_when_explicit_value_below_dint_then_p2044() {
+        let errors = declaration_errors("TYPE E : (LOW := -2147483649, HIGH); END_TYPE");
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].code, Problem::EnumValueOutOfRange.code());
+    }
+
+    /// REQ-EN-codegen-084: a value numbered on past the largest `DINT` is
+    /// reported, at that value.
+    #[test]
+    fn apply_when_value_numbered_past_dint_then_p2044_at_that_value() {
+        let errors = declaration_errors("TYPE E : (TOP := 2147483647, OVER) DINT; END_TYPE");
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].code, Problem::EnumValueOutOfRange.code());
+        assert!(errors[0].described.iter().any(|item| item.contains("OVER")));
+    }
+
+    #[test]
+    fn apply_when_values_at_dint_bounds_then_creates_enum() {
+        let errors = declaration_errors(
+            "TYPE E : (BOTTOM := -2147483648, TOP := 2147483647) DINT; END_TYPE",
+        );
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn resolve_ordinal_values_when_explicit_value_at_i64_max_then_next_saturates() {
+        let values = vec![value_with("A", i64::MAX), value("B")];
+        assert_eq!(resolve_ordinal_values(&values), vec![i64::MAX, i64::MAX]);
     }
 
     #[test]
