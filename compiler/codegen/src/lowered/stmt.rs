@@ -403,10 +403,19 @@ impl Emission<'_, '_> {
     ) -> Result<(), Diagnostic> {
         let head = emitter.create_label();
         let end = emitter.create_label();
+        // Classified before the body, as `compile_repeat` does, so the
+        // constant pool holds the same constants in the same order.
+        let fused = self.classify(ctx, until);
         emitter.bind_label(head);
         let next = self.loop_body(emitter, ctx, id, end, body)?;
         bind_next(emitter, next);
-        self.branch_unless(emitter, ctx, until, head)?;
+        match fused {
+            Some(classified) => emit_classified_cmp_br(emitter, classified, false, head)?,
+            None => {
+                emit_expr(emitter, ctx, self.lowering, until)?;
+                emitter.emit_jmp_if_not(head);
+            }
+        }
         emitter.bind_label(end);
         Ok(())
     }
