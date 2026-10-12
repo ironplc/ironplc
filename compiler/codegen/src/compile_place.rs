@@ -105,34 +105,6 @@ impl<'ast> Place<&'ast Expr> {
         Self::from_access(ctx, resolve_symbolic_access(ctx, base)?, name, span)
     }
 
-    /// What the reference variable `reference` refers to: the place `p^`
-    /// names. `target` is the type of the value there.
-    ///
-    /// Only a variable's reference is followed. A `VAR_IN_OUT` parameter's
-    /// slot holds a reference to the caller's variable, not the reference
-    /// to follow, so it is not one.
-    pub(crate) fn through_reference(
-        ctx: &CompileContext,
-        reference: &Variable,
-        target: Option<VarTypeInfo>,
-    ) -> Result<Self, Diagnostic> {
-        let span = variable_span(reference);
-        let ref_slot = resolve_variable_name(reference)
-            .filter(|name| !ctx.in_out_params.contains(*name))
-            .and_then(|name| ctx.variables.get(name).copied())
-            .ok_or_else(|| {
-                Diagnostic::not_implemented(Label::span(
-                    span.clone(),
-                    "Dereference of a reference that is not in a variable",
-                ))
-            })?;
-        Ok(Place {
-            address: Address::Indirect(ref_slot),
-            type_info: target,
-            span,
-        })
-    }
-
     /// Builds the place that `access`, already resolved from a variable
     /// reference, addresses. `name` is the variable when the reference is a
     /// plain name, and `span` is the reference.
@@ -193,6 +165,34 @@ impl<'ast> Place<&'ast Expr> {
 }
 
 impl<S> Place<S> {
+    /// What the reference variable `reference` refers to: the place `p^`
+    /// names. `target` is the type of the value there.
+    ///
+    /// Only a variable's reference is followed. A `VAR_IN_OUT` parameter's
+    /// slot holds a reference to the caller's variable, not the reference
+    /// to follow, so it is not one.
+    pub(crate) fn through_reference(
+        ctx: &CompileContext,
+        reference: &Variable,
+        target: Option<VarTypeInfo>,
+    ) -> Result<Self, Diagnostic> {
+        let span = variable_span(reference);
+        let ref_slot = resolve_variable_name(reference)
+            .filter(|name| !ctx.in_out_params.contains(*name))
+            .and_then(|name| ctx.variables.get(name).copied())
+            .ok_or_else(|| {
+                Diagnostic::not_implemented(Label::span(
+                    span.clone(),
+                    "Dereference of a reference that is not in a variable",
+                ))
+            })?;
+        Ok(Place {
+            address: Address::Indirect(ref_slot),
+            type_info: target,
+            span,
+        })
+    }
+
     /// The same place with each subscript replaced by what `replace` makes
     /// of it, or the first error `replace` returns.
     pub(crate) fn try_map_subscripts<T, E>(

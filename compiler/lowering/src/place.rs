@@ -1,5 +1,5 @@
-//! Places named in the source: a variable, a field of a structure, and an
-//! element of an array.
+//! Places named in the source: a variable, a field of a structure, an
+//! element of an array, and what a reference refers to.
 
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::Diagnostic;
@@ -57,9 +57,14 @@ impl Lowering<'_> {
                     .index(base, subscripts, &array.span())
                     .map(Some)
             }
+            SymbolicVariableKind::Deref(deref) => {
+                let Some(reference) = self.symbolic_place(frame, &deref.variable)? else {
+                    return Ok(None);
+                };
+                self.program.deref(reference, &deref.span()).map(Some)
+            }
             SymbolicVariableKind::BitAccess(_)
             | SymbolicVariableKind::PartialAccess(_)
-            | SymbolicVariableKind::Deref(_)
             | SymbolicVariableKind::SelfRef(_) => Ok(None),
         }
     }

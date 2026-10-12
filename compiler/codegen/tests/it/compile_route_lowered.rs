@@ -1,4 +1,4 @@
-//! Tests of control flow compiled from the lowered program.
+//! Tests of control flow and places compiled from the lowered program.
 //!
 //! The end-to-end tests compare both routes on every program, but only for
 //! the statements that happen to lower. These require the lowered route, so
@@ -8,6 +8,7 @@
 
 use ironplc_codegen::Route;
 use ironplc_parser::options::CompilerOptions;
+use ironplc_vm::error::Trap;
 use rstest::rstest;
 
 use crate::common::{bc, compile_by_route, parse, run_one_scan, Snapshot};
@@ -15,6 +16,7 @@ use crate::common::{bc, compile_by_route, parse, run_one_scan, Snapshot};
 fn options() -> CompilerOptions {
     CompilerOptions {
         allow_continue: true,
+        allow_ref_to: true,
         ..CompilerOptions::default()
     }
 }
@@ -281,6 +283,74 @@ fn compile_when_place_lowered_then_same_code_as_ast(#[case] statement: &str) {
          PROGRAM main
            VAR a : ARRAY[1..5] OF DINT; m : ARRAY[1..2, 0..3] OF DINT;
                p : P; ps : ARRAY[0..3] OF P; i : DINT; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    assert_same_code(&source);
+}
+
+/// What a reference refers to is read and written through it: a variable, a
+/// narrow variable, whose store wraps at its width, and an element of an
+/// array. The references are bound by their declarations, since `REF(x)` is
+/// not lowered yet.
+#[test]
+fn run_when_read_and_written_through_references_then_values() {
+    let snapshot = run_lowered(
+        "PROGRAM main
+           VAR x : DINT := 5; n : INT := 100; arr : ARRAY[1..3] OF DINT; i : DINT := 2;
+               p : REF_TO DINT := REF(x); q : REF_TO INT := REF(n);
+               pa : REF_TO ARRAY[1..3] OF DINT := REF(arr);
+               r1 : DINT; r2 : DINT; r3 : DINT; END_VAR
+           p^ := p^ + 1;
+           q^ := q^ * 400;
+           pa^[i] := p^ * 2;
+           pa^[3] := pa^[i] + 1;
+           r1 := x;
+           r2 := n;
+           r3 := arr[3];
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<i64>("r1"), 6);
+    assert_eq!(snapshot.read_as::<i64>("r2"), -25536);
+    assert_eq!(snapshot.read_as::<i64>("r3"), 13);
+}
+
+/// REQ-LOW-codegen-088: a place reached through a null reference traps,
+/// whether it is read or written.
+#[rstest]
+#[case::read("x := p^;")]
+#[case::write("p^ := 1;")]
+#[case::element("x := pa^[1];")]
+fn run_when_null_reference_dereferenced_then_traps(#[case] statement: &str) {
+    let options = options();
+    let source = format!(
+        "PROGRAM main
+           VAR x : DINT; p : REF_TO DINT; pa : REF_TO ARRAY[1..3] OF DINT; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    let (library, context) = parse(&source, &options);
+    let container = compile_by_route(&library, &context, &options, Route::RequireLowered)
+        .expect("every statement lowers");
+    let Err(fault) = run_one_scan(&container) else {
+        panic!("the scan does not trap");
+    };
+    assert_eq!(fault.trap, Trap::NullDereference);
+}
+
+/// What a reference refers to, and an element of an array it refers to,
+/// compile to the same instructions and constants by both routes, the
+/// narrowed store through a reference to an `INT` included.
+#[rstest]
+#[case::read_and_write("p^ := p^ + 1;")]
+#[case::read_into_variable("x := p^;")]
+#[case::narrow_store("q^ := q^ + 1;")]
+#[case::element("pa^[i] := pa^[i + 1];")]
+fn compile_when_dereference_lowered_then_same_code_as_ast(#[case] statement: &str) {
+    let source = format!(
+        "PROGRAM main
+           VAR x : DINT; i : DINT; p : REF_TO DINT; q : REF_TO INT;
+               pa : REF_TO ARRAY[1..3] OF DINT; END_VAR
            {statement}
          END_PROGRAM"
     );

@@ -6,19 +6,23 @@
 //! addressed by rebuilding the variable reference it stands for, with a
 //! numbered placeholder for each subscript, resolving that, and putting the
 //! lowered subscripts in the placeholders' places. Both routes then address
-//! an element through the same code, bounds check included.
+//! an element through the same code, bounds check included, and what a
+//! reference variable refers to through the same indirect load and store.
 
 use ironplc_dsl::core::{Id, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
-    ArrayVariable, Expr as AstExpr, ExprKind as AstExprKind, NamedVariable, StructuredVariable,
-    SymbolicVariableKind,
+    ArrayVariable, DerefVariable, Expr as AstExpr, ExprKind as AstExprKind, NamedVariable,
+    StructuredVariable, SymbolicVariableKind, Variable,
 };
-use ironplc_ir::lowered::{Const, Expr, ExprKind, Place as LoweredPlace, Projection, TypeKind};
+use ironplc_ir::lowered::{
+    Const, Expr, ExprKind, Place as LoweredPlace, Projection, TypeId, TypeKind, TypeTable,
+};
 use ironplc_lowering::Lowering;
 
 use super::expr::emit_expr;
-use crate::compile::CompileContext;
+use super::op_type;
+use crate::compile::{CompileContext, OpWidth, VarTypeInfo};
 use crate::compile_place::Place;
 use crate::compile_subscript::Subscript;
 use crate::emit::Emitter;
@@ -54,6 +58,11 @@ pub(super) fn resolve<'l, 'a>(
     };
     let mut subscripts = Vec::new();
     let reference = reference(lowering, place, &mut subscripts).ok_or_else(no_storage)?;
+    // The whole of what a reference variable refers to: `p^`.
+    if let SymbolicVariableKind::Deref(deref) = reference {
+        let target = type_info(lowering.types(), place.ty());
+        return Place::through_reference(ctx, &Variable::Symbolic(*deref.variable), target);
+    }
     Place::resolve(ctx, &reference)?.try_map_subscripts(|placeholder| {
         let expr = placeholder
             .literal()
@@ -115,10 +124,32 @@ fn reference<'l>(
                     subscripts: placeholders,
                 })
             }
-            Projection::Deref => return None,
+            Projection::Deref => {
+                let (target, _) = types.reference(ty)?;
+                ty = target;
+                SymbolicVariableKind::Deref(DerefVariable {
+                    variable: Box::new(reference),
+                })
+            }
         };
     }
     Some(reference)
+}
+
+/// What this backend knows a value of the lowered type `ty` as: the type it
+/// is operated at, and the width a store narrows it to.
+fn type_info(types: &TypeTable, ty: TypeId) -> Option<VarTypeInfo> {
+    let (op_width, signedness) = op_type(types.operation_type(ty)?)?;
+    let storage_bits = match (types.narrowed_storage(ty), op_width) {
+        (Some(narrow), _) => narrow.bits(),
+        (None, OpWidth::W32 | OpWidth::F32) => 32,
+        (None, OpWidth::W64 | OpWidth::F64) => 64,
+    };
+    Some(VarTypeInfo {
+        op_width,
+        signedness,
+        storage_bits,
+    })
 }
 
 fn named(name: &str) -> SymbolicVariableKind {
