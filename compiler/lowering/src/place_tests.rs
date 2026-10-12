@@ -140,6 +140,19 @@ fn lower_statement_when_bit_or_partial_write_then_assign_bits() {
     );
 }
 
+/// Bits reached through a reference, `p^.3`, are not lowered while codegen's
+/// AST route does not address them.
+#[test]
+fn lower_statement_when_bits_written_through_reference_then_unsupported() {
+    let outcome = lower(
+        "PROGRAM main VAR w : WORD; p : REF_TO WORD; END_VAR
+            p^.3 := TRUE;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(outcome.statements, ["unsupported"]);
+}
+
 /// The bits of a bit selection, `d.%B1.3`, are not a place to write.
 #[test]
 fn lower_statement_when_bits_of_bits_written_then_unsupported() {

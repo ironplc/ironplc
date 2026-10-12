@@ -90,7 +90,10 @@ impl Lowering<'_> {
         bits: u8,
         assignment: &Assignment,
     ) -> Result<Option<Stmt>, Diagnostic> {
-        if assignment.deref {
+        // Codegen does not address bits through a reference yet, as in
+        // `p^.3 := TRUE`, from the AST, so while both routes exist they are
+        // not lowered either.
+        if assignment.deref || through_reference(base) {
             return Ok(None);
         }
         // The base of `d.%B1.3` is itself a bit selection, not a place.
@@ -131,4 +134,16 @@ fn selected_bits(symbolic: &SymbolicVariableKind) -> Option<(&SymbolicVariableKi
         .and_then(|shift| u8::try_from(shift).ok())
         .unwrap_or(u8::MAX);
     Some((base.as_ref(), shift, bits))
+}
+
+/// Whether the variable `symbolic` names is reached through a dereference.
+pub(crate) fn through_reference(symbolic: &SymbolicVariableKind) -> bool {
+    match symbolic {
+        SymbolicVariableKind::Deref(_) => true,
+        SymbolicVariableKind::Named(_) | SymbolicVariableKind::SelfRef(_) => false,
+        SymbolicVariableKind::Array(array) => through_reference(&array.subscripted_variable),
+        SymbolicVariableKind::Structured(structured) => through_reference(&structured.record),
+        SymbolicVariableKind::BitAccess(access) => through_reference(&access.variable),
+        SymbolicVariableKind::PartialAccess(access) => through_reference(&access.variable),
+    }
 }
