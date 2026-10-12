@@ -4,3 +4,56 @@ P2020
 
 .. problem-summary:: P2020
 
+This error occurs when an enumeration declares more than 65,536 members.
+
+An enumeration names the states something can be in: the modes of a machine,
+the steps of a sequence, the kinds of a message. Real programs need a handful
+of them, or at most a few hundred. A declaration with tens of thousands of
+members is almost always data rather than states, such as a list of product
+codes or error numbers generated from another system, and IronPLC limits an
+enumeration to 65,536 members rather than build a type that large.
+
+The limit counts members, not values. A member's value does not cause this
+error, however large it is: a value within the range of ``DINT`` is accepted,
+and one outside that range is :doc:`/reference/compiler/problems/P2044`.
+
+Example
+-------
+
+A declaration such as this one, with a member for each of 70,000 product
+codes, generates error P2020:
+
+.. code-block::
+
+   TYPE
+       E_Product : (P00000, P00001, P00002, (* ... *) P69999);
+   END_TYPE
+
+To fix this error, keep the codes as numbers, and name only the few the
+program treats specially:
+
+.. playground::
+
+   PROGRAM main
+       VAR CONSTANT
+           PRODUCT_TEST : DINT := 69999;
+       END_VAR
+       VAR
+           product : DINT := 12345;
+           is_test : BOOL;
+       END_VAR
+
+       is_test := product = PRODUCT_TEST;
+   END_PROGRAM
+
+Where the states do number in the thousands, split them by what they
+describe, such as one enumeration for each machine or each area of a plant,
+so each one stays small enough to read.
+
+See Also
+--------
+
+- :doc:`/reference/language/data-types/derived/enumerated-types` —
+  Enumerated types
+- :doc:`/reference/compiler/problems/P2044` — Enumeration value is outside
+  the range of ``DINT``

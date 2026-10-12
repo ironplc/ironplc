@@ -29,7 +29,7 @@ P2015,SubrangeBaseTypeNotNumeric,Subrange base type must be numeric
 P2016,SubrangeOutOfBounds,Subrange is outside base type bounds
 P2017,StructFieldMissingType,Structure field missing type specification
 P2019,InvalidSimpleTypeDecl,Invalid simple type declaration
-P2020,EnumerationTooManyValues,Enumeration has too many unique values
+P2020,EnumerationTooManyValues,Enumeration declares more than 65536 members
 P2021,StructFieldTypeNotDeclared,Structure field references undeclared type
 P2022,ArrayDimensionEmpty,Array must have at least one dimension
 P2023,ArraySizeOverflow,Array size calculation overflow

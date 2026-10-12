@@ -59,6 +59,9 @@ fn byte_sized_for_underlying_type(type_name: ElementaryTypeName) -> ByteSized {
 /// Try to create the semantic type information for the enumerated
 /// values initializer.
 ///
+/// The most members an enumeration may declare (P2020).
+const MAX_MEMBERS: usize = 65_536;
+
 /// This function determines how many bytes are needed to represent the
 /// enumerated values -- either from an explicit base-type suffix
 /// (`underlying_type_override`), or automatically from the resolved
@@ -72,6 +75,17 @@ pub fn try_from_values(
     underlying_type_override: Option<ElementaryTypeName>,
     default: Option<&Id>,
 ) -> Result<TypeAttributes, Diagnostic> {
+    // We could support more than 65k members, but I cannot imagine a reasonable
+    // program with that many states. We can change this if we can find such
+    // a program.
+    if enumerated_values.values().len() > MAX_MEMBERS {
+        return Err(Diagnostic::problem(
+            Problem::EnumerationTooManyValues,
+            Label::span(enumerated_values.values_span(), "Enumeration declaration"),
+        )
+        .with_context("members", &enumerated_values.values().len().to_string()));
+    }
+
     check_ordinals_fit_dint(enumerated_values.values())?;
     let members = EnumerationMembers::from_values(enumerated_values.values(), default);
     if let Some(type_name) = underlying_type_override {
@@ -90,23 +104,15 @@ pub fn try_from_values(
     let resolved = resolve_ordinal_values(enumerated_values.values());
     let max_value = resolved.into_iter().max().unwrap_or(0);
     let range = max_value.max(0) as u128 + 1;
-    let underlying_type = if range <= 256 {
-        SemanticType::Int {
-            size: ByteSized::B8,
-        }
+    let size = if range <= 256 {
+        ByteSized::B8
     } else if range <= 65_536 {
-        SemanticType::Int {
-            size: ByteSized::B16,
-        }
+        ByteSized::B16
     } else {
-        // We could support more than 65k values, but I cannot imagine a reasonable
-        // program with that many states. We can change this if we can find such
-        // a program, we can enable more states here.
-        return Err(Diagnostic::problem(
-            Problem::EnumerationTooManyValues,
-            Label::span(enumerated_values.values_span(), "Enumeration declaration"),
-        ));
+        // Every ordinal fits a `DINT` (checked above), so 32 bits hold it.
+        ByteSized::B32
     };
+    let underlying_type = SemanticType::Int { size };
 
     Ok(TypeAttributes::new(
         enumerated_values.values_span(),
@@ -156,6 +162,7 @@ mod tests {
     use ironplc_problems::Problem;
 
     use super::resolve_ordinal_values;
+    use crate::semantic_type::{ByteSized, SemanticType};
     use crate::{
         type_environment::TypeEnvironmentBuilder, xform_resolve_type_decl_environment::apply,
     };
@@ -345,6 +352,29 @@ END_TYPE
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].code, Problem::EnumValueOutOfRange.code());
         assert!(errors[0].described.iter().any(|item| item.contains("OVER")));
+    }
+
+    /// One value above 16 bits, with no base type, is a 32-bit enumeration
+    /// rather than P2020, which is about the number of members.
+    #[test]
+    fn apply_when_value_above_16_bits_without_base_type_then_32_bit_enum() {
+        let input = ironplc_parser::parse_program(
+            "TYPE E : (A := 100000, B); END_TYPE",
+            &FileId::default(),
+            &CompilerOptions::default(),
+        )
+        .unwrap();
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        apply(input, &mut env).unwrap();
+        let attributes = env.get(&TypeName::from("E")).unwrap();
+        assert!(matches!(
+            &attributes.representation,
+            SemanticType::Enumeration { underlying_type, .. }
+                if **underlying_type == SemanticType::Int { size: ByteSized::B32 }
+        ));
     }
 
     #[test]
