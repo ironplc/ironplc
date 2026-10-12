@@ -201,6 +201,9 @@ pub struct CodegenOptions {
     /// The behavior policies `STRING_TO_<numeric>` calls are compiled under
     /// (ADR-0049). They select the builtin func_id the call emits.
     pub string_to_num: StringToNumPolicies,
+    /// Which route each statement is compiled by: from the AST, or from the
+    /// lowered program where lowering supports it.
+    pub route: crate::lowered::Route,
 }
 
 /// The two behavior policies of a `STRING_TO_<numeric>` conversion.
@@ -217,6 +220,7 @@ impl From<&CompilerOptions> for CodegenOptions {
                 non_numeric: options.policy_string_to_num_non_numeric,
                 failure: options.policy_string_to_num_failure,
             },
+            route: crate::lowered::Route::default(),
         }
     }
 }
@@ -239,6 +243,16 @@ pub fn compile(
     options: &CodegenOptions,
     sources: &dyn crate::source_lookup::SourceLookup,
 ) -> Result<Container, Diagnostic> {
+    compile_with_route_counts(analysis, options, sources).map(|(container, _)| container)
+}
+
+/// Compiles a library into a bytecode container, as [`compile`] does, and
+/// says how many top-level statements took each route.
+pub fn compile_with_route_counts(
+    analysis: CleanAnalysis<'_>,
+    options: &CodegenOptions,
+    sources: &dyn crate::source_lookup::SourceLookup,
+) -> Result<(Container, crate::lowered::RouteCounts), Diagnostic> {
     // Lowering completes every initializer on a copy, and reads the program
     // and globals from it; the analyzed library stays as written
     // (specs/design/initial-values.md).
@@ -283,7 +297,10 @@ pub fn compile(
         .collect();
 
     let method_owners = MethodOwners::of_library(library);
-    let mut container = compile_program_with_functions(
+    let lowered_route = crate::lowered::LoweredRoute::new(options.route, || {
+        ironplc_lowering::Lowering::new(&analysis)
+    });
+    let (mut container, counts) = compile_program_with_functions(
         ProgramInputs {
             program: runnable.program,
             func_decls: &func_decls,
@@ -297,6 +314,7 @@ pub fn compile(
         options.string_to_num,
         *context.compiler_options(),
         sources,
+        lowered_route,
     )?;
 
     if runnable.has_system_uptime {
@@ -305,7 +323,7 @@ pub fn compile(
 
     crate::execution::apply_task_schedule(&mut container, runnable.schedule);
 
-    Ok(container)
+    Ok((container, counts))
 }
 
 /// Idempotently registers a POU's source file with the debug section's
@@ -462,7 +480,8 @@ fn compile_program_with_functions(
     string_to_num: StringToNumPolicies,
     compiler_options: CompilerOptions,
     sources: &dyn crate::source_lookup::SourceLookup,
-) -> Result<Container, Diagnostic> {
+    lowered_route: Option<crate::lowered::LoweredRoute<'_>>,
+) -> Result<(Container, crate::lowered::RouteCounts), Diagnostic> {
     let ProgramInputs {
         program,
         func_decls,
@@ -472,6 +491,7 @@ fn compile_program_with_functions(
         method_owners,
     } = inputs;
     let mut ctx = CompileContext::new();
+    ctx.lowered_route = lowered_route;
     ctx.types = crate::type_info::type_representations(types);
     ctx.block_members = crate::initial_value::block_members(fb_decls, &ctx.types);
     ctx.operand_names = crate::type_info::operand_names(types);
@@ -703,12 +723,14 @@ fn compile_program_with_functions(
     // emitted from inside the body records a call-graph edge.
     let mut scan_emitter = Emitter::new();
     ctx.current_function_id = Some(FunctionId::SCAN);
+    ctx.current_pou = Some(program.name.clone());
     compile_body(
         &mut scan_emitter,
         &mut ctx,
         &program.body,
         &program.name.span(),
     )?;
+    ctx.current_pou = None;
     ctx.current_function_id = None;
     scan_emitter.emit_ret_void();
 
@@ -933,7 +955,12 @@ fn compile_program_with_functions(
     // `specs/design/bytecode-verifier-rules.md` for the rules it enforces.
     crate::stack_balance::verify_container(&container)?;
 
-    Ok(container)
+    let counts = ctx
+        .lowered_route
+        .as_ref()
+        .map(|route| route.counts)
+        .unwrap_or_default();
+    Ok((container, counts))
 }
 
 #[derive(Clone)]
@@ -1068,7 +1095,15 @@ pub(crate) struct UserMethodInfo {
     pub(crate) max_stack_depth: u16,
 }
 
-pub(crate) struct CompileContext {
+pub(crate) struct CompileContext<'a> {
+    /// The lowering asked for each top-level statement, when the route
+    /// compiles statements from the lowered program; `None` when every
+    /// statement is compiled from the AST.
+    pub(crate) lowered_route: Option<crate::lowered::LoweredRoute<'a>>,
+    /// The program, function block or function whose body is being
+    /// compiled, which lowering finds the statement's names in; `None`
+    /// outside such a body, as in a method.
+    pub(crate) current_pou: Option<Id>,
     /// Maps variable identifiers to their variable table indices.
     pub(crate) variables: HashMap<Id, VarIndex>,
     /// Maps variable identifiers to their type information.
@@ -1180,9 +1215,11 @@ pub(crate) enum CurrentFunctionReturn {
     String { data_offset: u32 },
 }
 
-impl CompileContext {
+impl CompileContext<'_> {
     pub(crate) fn new() -> Self {
         CompileContext {
+            lowered_route: None,
+            current_pou: None,
             variables: HashMap::new(),
             var_types: HashMap::new(),
             constants: Vec::new(),

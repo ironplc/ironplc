@@ -996,6 +996,7 @@ dependencies = [
  "ironplc-container",
  "ironplc-dsl",
  "ironplc-ir",
+ "ironplc-lowering",
  "ironplc-parser",
  "ironplc-problems",
  "ironplc-sources",

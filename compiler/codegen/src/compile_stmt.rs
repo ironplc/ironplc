@@ -58,7 +58,11 @@ pub(crate) fn compile_statements(
     statements: &Statements,
 ) -> Result<(), Diagnostic> {
     for stmt in &statements.body {
-        compile_statement(emitter, ctx, stmt)?;
+        // A top-level statement takes the lowered route where the route asks
+        // for it and lowering supports it.
+        if !crate::lowered::try_compile_statement(emitter, ctx, stmt)? {
+            compile_statement(emitter, ctx, stmt)?;
+        }
     }
     Ok(())
 }
@@ -73,7 +77,7 @@ pub(crate) fn compile_statements(
 /// source bytes for it (the [`crate::EmptyLookup`] case), no entry is
 /// recorded — there's no useful (line, column) to surface, and a
 /// `file_id` without a position would only confuse a debugger.
-fn record_statement_position(
+pub(crate) fn record_statement_position(
     emitter: &mut crate::emit::Emitter,
     ctx: &CompileContext,
     stmt: &StmtKind,
