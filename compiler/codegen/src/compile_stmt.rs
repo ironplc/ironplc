@@ -159,6 +159,12 @@ fn compile_statement(
 }
 
 /// Compiles a function block invocation: stores inputs, calls FB, reads outputs.
+///
+/// The analyzer has written the call's arguments in normal form
+/// (`specs/design/call-binding.md`): one named input for each input the call
+/// supplies, in the order the block declares them, then its outputs in
+/// declaration order. They are compiled in that order, which is the order
+/// they are evaluated in. An input the call omits keeps its value.
 fn compile_fb_call(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -178,13 +184,24 @@ fn compile_fb_call(
 
     // Store input parameters.
     for param in &fb_call.params {
-        if let ParamAssignmentKind::NamedInput(input) = param {
-            let field_name = input.name.to_string().to_lowercase();
-            let field_idx = field_indices
-                .get(&field_name)
-                .ok_or_else(|| Diagnostic::todo_with_span(input.name.span()))?;
-            compile_expr(emitter, ctx, &input.expr)?;
-            emitter.emit_fb_store_param(*field_idx);
+        match param {
+            ParamAssignmentKind::NamedInput(input) => {
+                let field_name = input.name.to_string().to_lowercase();
+                let field_idx = field_indices
+                    .get(&field_name)
+                    .ok_or_else(|| Diagnostic::todo_with_span(input.name.span()))?;
+                compile_expr(emitter, ctx, &input.expr)?;
+                emitter.emit_fb_store_param(*field_idx);
+            }
+            // The binding pass names every input of a call that binds, and
+            // the rules reject one that does not.
+            ParamAssignmentKind::PositionalInput(input) => {
+                return Err(Diagnostic::internal_error_at(Label::span(
+                    input.expr.span(),
+                    "Positional input of a function block call the analyzer did not bind",
+                )));
+            }
+            ParamAssignmentKind::Output(_) => {}
         }
     }
 
@@ -208,6 +225,11 @@ fn compile_fb_call(
                 .get(&field_name)
                 .ok_or_else(|| Diagnostic::todo_with_span(output.src.span()))?;
             emitter.emit_fb_load_param(*field_idx);
+            // `NOT q => v` stores the inverse of a `BOOL` output; the
+            // analyzer rejects a negated output of any other type (P4083).
+            if output.not {
+                emitter.emit_bool_not();
+            }
             let target_index = resolve_variable(ctx, &output.tgt)?;
             let op_type = resolve_fb_field_op_type(&field_op_types, &field_name);
             emit_store_var(emitter, target_index, op_type);

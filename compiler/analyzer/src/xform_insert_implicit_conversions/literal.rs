@@ -27,7 +27,7 @@ use ironplc_dsl::type_id::TypeId;
 use super::declared::elementary_of;
 use super::ImplicitConversions;
 use crate::builtin_function::BuiltinFunction;
-use crate::callee_resolution::{receiver_block, CallParameters};
+use crate::callee_resolution::receiver_block;
 use crate::intermediates::conversion_target::{concrete, wrap};
 use crate::intermediates::numeric_operation::{literal_default_type, OperationWidth};
 use crate::intermediates::operator_function_form::FormOf;
@@ -459,18 +459,16 @@ impl ImplicitConversions<'_> {
     }
 
     /// The inputs of the function block call `node`, each with the type of
-    /// the field it is stored in: a named input the field it names, and the
-    /// n-th positional input the n-th input the block declares, which is how
-    /// IEC 61131-3 binds a non-formal call.
+    /// the field it is stored in.
     ///
-    /// The code generator drops a positional input today (#1855), so its
-    /// conversion and the type of its literals have no effect yet.
+    /// The binding pass has written every call that binds in normal form, so
+    /// each input names its field. A positional input is left only in a call
+    /// that does not bind, which the rules report, and is given no type.
     pub(super) fn fb_call_inputs<'c>(
         &self,
         node: &'c mut FbCall,
     ) -> Vec<(&'c mut Expr, Option<TypeId>)> {
         let instance = &node.var_name;
-        let mut position = 0;
         let mut inputs = Vec::with_capacity(node.params.len());
         for param in &mut node.params {
             match param {
@@ -478,42 +476,13 @@ impl ImplicitConversions<'_> {
                     let at = self.function_block_field_at(instance, &input.name);
                     inputs.push((&mut input.expr, at));
                 }
-                ParamAssignmentKind::PositionalInput(input) => {
-                    let at = self
-                        .function_block_input(instance, position)
-                        .and_then(|name| self.function_block_field_at(instance, &name));
-                    position += 1;
-                    inputs.push((&mut input.expr, at));
-                }
+                ParamAssignmentKind::PositionalInput(input) => inputs.push((&mut input.expr, None)),
                 // An output is stored into a variable by the call, not
                 // computed into the block (#2125).
                 ParamAssignmentKind::Output(_) => {}
             }
         }
         inputs
-    }
-
-    /// The name of the input at `position` among the inputs of the function
-    /// block instance `instance`, in the order the block declares them.
-    fn function_block_input(&self, instance: &Id, position: usize) -> Option<Id> {
-        let representation =
-            variable_type::declared(instance, self.context, &self.scope.current())?;
-        let SemanticType::FunctionBlock { name, fields } = representation else {
-            return None;
-        };
-        // The type of a user-defined block lists only the fields declared
-        // with a simple type, so its parameters come from its declaration. A
-        // standard block's type lists every field.
-        let standard;
-        let parameters = match self.declarations.parameters(&Id::from(name.as_str())) {
-            Some(parameters) => parameters,
-            None => {
-                standard = CallParameters::of_standard_block(fields);
-                &standard
-            }
-        };
-        let input = parameters.inputs().nth(position)?;
-        Some(input.name.clone())
     }
 
     pub(super) fn type_if_literals(&self, node: &mut If) {

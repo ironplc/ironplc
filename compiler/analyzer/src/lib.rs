@@ -21,6 +21,7 @@ mod test_macros;
 
 mod builtin_function;
 mod call_assignment_check;
+mod call_binding;
 mod callee_resolution;
 mod clean_analysis;
 mod constant_folding;
@@ -99,6 +100,7 @@ pub mod value_range;
 pub mod value_type;
 mod variable_type;
 mod write_collector;
+mod xform_bind_call_arguments;
 mod xform_fold_constant_expressions;
 mod xform_fold_initializer_expressions;
 mod xform_insert_implicit_conversions;

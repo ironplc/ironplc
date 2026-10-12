@@ -16,9 +16,11 @@ and [ADR-0058](../adrs/0058-the-analyzer-decides-and-lowering-translates.md):
 a decision that can make a program invalid is the analyzer's.
 
 **Status.** [What a call reaches](#what-a-call-reaches) is implemented for
-function block types and methods. How arguments bind, the evaluation order and
-omitted inputs are not implemented yet; codegen still binds the arguments of
-a function block or method call itself.
+function block types and methods. [How arguments bind](#how-arguments-bind),
+the evaluation order and omitted inputs are implemented for function block
+calls. Method and function calls are not done yet: codegen still binds a
+method call's arguments itself, and function calls still go through the named
+argument rewrite.
 
 ## What a call reaches
 
@@ -91,8 +93,81 @@ as not implemented, so code generation does not compile one yet.
 
 ## How arguments bind
 
-Not implemented yet. The analyzer will record each call's arguments in
-normal form: named arguments, one for each parameter the call supplies, in the
-callee's parameter declaration order, which is also the order they are
-evaluated in. An omitted function block input keeps its value from the
-previous call; a function or method may not omit an input.
+### Normal form
+
+The analyzer records how a call's arguments bind in the call itself, in the
+language's own terms: it writes the arguments in **normal form**. A pass,
+`xform_bind_call_arguments`, runs before the semantic rules and rewrites each
+function block call whose arguments bind:
+
+- one named input for each `VAR_INPUT` or `VAR_IN_OUT` the call supplies, in
+  the order the block declares them, a positional argument named after the
+  input it binds to;
+- then one output assignment for each `VAR_OUTPUT` the call reads, in
+  declaration order, keeping its negation.
+
+A parameter is named as its callee declares it, so with the callee's scope it
+is the declaration's `DeclRef` ([Variable Binding](variable-binding.md)). A
+call whose arguments do not bind keeps them as written, and
+`rule_function_block_invocation` reports why. `call_binding::bind` is the one
+binder: the pass, the rule's diagnostics and the normal form all come from it.
+
+**REQ-CB-analyzer-020** A function block call whose arguments bind is written
+with one named input for each input or `VAR_IN_OUT` it supplies, in the
+block's declaration order, followed by its output assignments in declaration
+order.
+
+**REQ-CB-analyzer-021** A positional input binds to the `VAR_INPUT` at its
+position among the block's `VAR_INPUT` declarations, and a positional call
+supplies one for each (P4003).
+
+**REQ-CB-analyzer-022** A named input binds to the `VAR_INPUT` or
+`VAR_IN_OUT` of that name, and an output assignment to the `VAR_OUTPUT` of
+that name. Any other name is P4002 or P4004.
+
+**REQ-CB-analyzer-023** A call that mixes named and positional inputs is
+P4001, and nothing else is reported for it.
+
+**REQ-CB-analyzer-024** A function block call that names a parameter twice is
+P4024.
+
+**REQ-CB-analyzer-025** A call of a standard function block is bound and
+checked by the same rules as a call of a user-defined one.
+
+**REQ-CB-analyzer-026** A negated output assignment (`NOT q => v`) whose
+output is not a `BOOL` is P4083.
+
+**REQ-CB-analyzer-027** A negated output assignment keeps its negation.
+
+**REQ-CB-codegen-020** A function block call with positional inputs stores
+them in the block's `VAR_INPUT` parameters in declaration order.
+
+**REQ-CB-codegen-021** A positional call of a standard function block stores
+its inputs.
+
+**REQ-CB-codegen-022** A negated output assignment stores the inverse of the
+output.
+
+### Evaluation order
+
+A call evaluates its arguments in the order of its normal form: inputs in the
+order the callee declares them, then, after the call, outputs in declaration
+order. Functions already evaluate their arguments in parameter order; a
+function block call used to evaluate its inputs in the order it wrote them.
+
+**REQ-CB-codegen-040** A function block call evaluates its inputs in the order
+the block declares them, whatever order the call writes them in.
+
+### Omitted inputs
+
+A function block instance keeps its variables between calls, so an input a
+call does not supply keeps the value it had: from the previous call, or its
+initial value on the first. The normal form records that by leaving the input
+out. A function or method has no such state, and an input it omits will be an
+error; that is not implemented yet.
+
+**REQ-CB-analyzer-050** An input a function block call omits is absent from
+its normal form.
+
+**REQ-CB-codegen-050** An input a function block call omits keeps the value
+the previous call gave it.
