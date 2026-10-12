@@ -73,6 +73,12 @@ fn write_stmt(f: &mut fmt::Formatter<'_>, stmt: &Stmt, depth: usize) -> fmt::Res
     f.write_str(&indent)?;
     match stmt.kind() {
         StmtKind::Assign { place, value } => write!(f, "assign {place} {value}"),
+        StmtKind::AssignBits {
+            place,
+            shift,
+            bits,
+            value,
+        } => write!(f, "assign-bits {place} {shift} {bits} {value}"),
         StmtKind::If {
             cond,
             then,

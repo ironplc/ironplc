@@ -151,6 +151,16 @@ fn can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, stmt: &Stmt) -> bool 
         StmtKind::Assign { place, value } => {
             reaches(lowering, ctx, place, value.ty()) && expr_can_emit(lowering, ctx, value)
         }
+        // The AST route does not write bits through a reference yet, as in
+        // `p^.3 := TRUE`, so while both routes exist neither does this one.
+        StmtKind::AssignBits { place, value, .. } => {
+            !through_reference(lowering, place)
+                && lowering
+                    .types()
+                    .operation_type(place.ty())
+                    .is_some_and(|ty| reaches(lowering, ctx, place, ty))
+                && expr_can_emit(lowering, ctx, value)
+        }
         StmtKind::If {
             cond,
             then,
@@ -239,6 +249,22 @@ pub(super) fn storage_name(lowering: &Lowering<'_>, place: &LoweredPlace) -> Opt
         }
         _ => None,
     }
+}
+
+/// Whether `place` is reached through a reference other than the instance
+/// parameter its body's fields are reached through.
+fn through_reference(lowering: &Lowering<'_>, place: &LoweredPlace) -> bool {
+    let root = lowering.variables().get(place.root());
+    let path = match place.path() {
+        [Projection::Deref, rest @ ..]
+            if root.is_some_and(|root| is_instance(lowering, root.ty())) =>
+        {
+            rest
+        }
+        path => path,
+    };
+    path.iter()
+        .any(|projection| matches!(projection, Projection::Deref))
 }
 
 /// Whether a variable of type `ty` is the instance parameter of a body, the

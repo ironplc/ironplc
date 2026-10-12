@@ -117,3 +117,37 @@ fn lower_statement_when_element_through_reference_then_deref_then_index() {
         ["assign v0^.f0^[(read i32s v0^.f1)] (read i32s v0^.f0^[(const i32s 3)])"]
     );
 }
+
+/// REQ-LOW-lowering-102: a bit or partial write is one `AssignBits` that
+/// names its place once, whatever the shape of the place.
+#[test]
+fn lower_statement_when_bit_or_partial_write_then_assign_bits() {
+    let outcome = lower(
+        "PROGRAM main VAR w : WORD; b : BYTE; a : ARRAY[0..3] OF DWORD; i : DINT; END_VAR
+            w.3 := TRUE;
+            w.%B1 := b;
+            a[i].%W1 := w;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign-bits v0^.f0 3 1 (const bool true)",
+            "assign-bits v0^.f0 8 8 (read i32u v0^.f1)",
+            "assign-bits v0^.f2[(read i32s v0^.f3)] 16 16 (read i32u v0^.f0)",
+        ]
+    );
+}
+
+/// The bits of a bit selection, `d.%B1.3`, are not a place to write.
+#[test]
+fn lower_statement_when_bits_of_bits_written_then_unsupported() {
+    let outcome = lower(
+        "PROGRAM main VAR d : DWORD; END_VAR
+            d.%B1.3 := TRUE;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(outcome.statements, ["unsupported"]);
+}

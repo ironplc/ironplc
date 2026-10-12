@@ -2,7 +2,7 @@
 
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_dsl::textual::{Assignment, StmtKind as AstStmtKind};
+use ironplc_dsl::textual::{Assignment, StmtKind as AstStmtKind, SymbolicVariableKind, Variable};
 use ironplc_ir::lowered::{Expr, Stmt};
 
 use crate::variables::BodyFrame;
@@ -43,6 +43,11 @@ impl Lowering<'_> {
         if assignment.ref_bind || assignment.set_bind || assignment.reset_bind {
             return Ok(None);
         }
+        if let Variable::Symbolic(target) = &assignment.target {
+            if let Some((base, shift, bits)) = selected_bits(target) {
+                return self.bits_assignment(frame, base, shift, bits, assignment);
+            }
+        }
         let Some(mut place) = self.variable_place(frame, &assignment.target)? else {
             return Ok(None);
         };
@@ -74,4 +79,56 @@ impl Lowering<'_> {
             .assign(place, value, assignment.span())
             .map(Some)
     }
+
+    /// `x.3 := v` or `x.%B1 := v`: one `AssignBits` that names the base
+    /// place once (REQ-LOW-lowering-102).
+    fn bits_assignment(
+        &mut self,
+        frame: &BodyFrame,
+        base: &SymbolicVariableKind,
+        shift: u8,
+        bits: u8,
+        assignment: &Assignment,
+    ) -> Result<Option<Stmt>, Diagnostic> {
+        if assignment.deref {
+            return Ok(None);
+        }
+        // The base of `d.%B1.3` is itself a bit selection, not a place.
+        let Some(place) = self.symbolic_place(frame, base)? else {
+            return Ok(None);
+        };
+        let Some(value) = self.expr(frame, &assignment.value)? else {
+            return Ok(None);
+        };
+        self.program
+            .assign_bits(place, shift, bits, value, assignment.span())
+            .map(Some)
+    }
+}
+
+/// The base, first bit and number of bits a bit access (`x.3`) or a partial
+/// access (`x.%B1`) selects; `None` for any other variable. The analyzer
+/// reports a selection that does not lie within its base (P4025), so the
+/// first bit fits a `u8`; one that did not would be refused when the
+/// `AssignBits` is built.
+fn selected_bits(symbolic: &SymbolicVariableKind) -> Option<(&SymbolicVariableKind, u8, u8)> {
+    let (base, index, bits) = match symbolic {
+        SymbolicVariableKind::BitAccess(access) => (&access.variable, access.index.value, 1),
+        SymbolicVariableKind::PartialAccess(access) => (
+            &access.variable,
+            access.index.value,
+            access.size.bit_width(),
+        ),
+        SymbolicVariableKind::Named(_)
+        | SymbolicVariableKind::Array(_)
+        | SymbolicVariableKind::Structured(_)
+        | SymbolicVariableKind::Deref(_)
+        | SymbolicVariableKind::SelfRef(_) => return None,
+    };
+    let bits = u8::try_from(bits).unwrap_or(u8::MAX);
+    let shift = index
+        .checked_mul(u128::from(bits))
+        .and_then(|shift| u8::try_from(shift).ok())
+        .unwrap_or(u8::MAX);
+    Some((base.as_ref(), shift, bits))
 }

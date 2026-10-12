@@ -160,6 +160,19 @@ impl ProgramBuilder {
         Stmt::assign(&self.types, place, value, span)
     }
 
+    /// Replaces `bits` bits of the value at `place`, starting at bit `shift`,
+    /// with the low bits of `value`; see [`Stmt`] for what they must be.
+    pub fn assign_bits(
+        &self,
+        place: Place,
+        shift: u8,
+        bits: u8,
+        value: Expr,
+        span: SourceSpan,
+    ) -> Result<Stmt, Diagnostic> {
+        Stmt::assign_bits(&self.types, place, shift, bits, value, span)
+    }
+
     /// The width `value` must be narrowed to before it is stored at a place of
     /// type `place`; see [`store_narrowing`].
     pub fn store_narrowing(&self, place: TypeId, value: &Expr) -> Option<NarrowWidth> {
