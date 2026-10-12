@@ -27,12 +27,14 @@ pub(crate) fn lower(source: &str, pou: &str) -> Outcome {
 
 /// Lowers the top-level statements of each POU of `pous`, in order, with one
 /// [`Lowering`], so that their variables share one table. The source may
-/// use `AND_THEN`, `OR_ELSE`, `CONTINUE` and explicit enumeration values.
+/// use `AND_THEN`, `OR_ELSE`, `CONTINUE`, explicit enumeration values and
+/// `REF_TO`.
 pub(crate) fn lower_bodies(source: &str, pous: &[&str]) -> Outcome {
     let options = CompilerOptions {
         allow_short_circuit_operators: true,
         allow_continue: true,
         allow_enum_explicit_values: true,
+        allow_ref_to: true,
         ..CompilerOptions::default()
     };
     let library = ironplc_parser::parse_program(source, &FileId::from_string("test.st"), &options)

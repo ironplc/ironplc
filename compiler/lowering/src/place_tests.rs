@@ -78,3 +78,42 @@ fn lower_statement_when_subscript_not_dint_then_unsupported() {
         ["unsupported", "unsupported", "unsupported"]
     );
 }
+
+/// REQ-LOW-lowering-032: what a reference refers to is a `Deref` of the
+/// place holding the reference, read and written, and a store through a
+/// reference to a narrow variable is narrowed.
+#[test]
+fn lower_statement_when_dereference_then_deref() {
+    let outcome = lower(
+        "PROGRAM main VAR x : DINT; n : INT; p : REF_TO DINT; q : REF_TO INT; END_VAR
+            p^ := p^ + 1;
+            q^ := q^ + 1;
+            x := p^;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f2^ (add i32s (read i32s v0^.f2^) (const i32s 1))",
+            "assign v0^.f3^ (truncate 16 (add i32s (read i32s v0^.f3^) (const i32s 1)))",
+            "assign v0^.f0 (read i32s v0^.f2^)",
+        ]
+    );
+}
+
+/// An element of an array a reference refers to is a `Deref`, then an
+/// `Index`.
+#[test]
+fn lower_statement_when_element_through_reference_then_deref_then_index() {
+    let outcome = lower(
+        "PROGRAM main VAR pa : REF_TO ARRAY[1..3] OF DINT; i : DINT; END_VAR
+            pa^[i] := pa^[3];
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        ["assign v0^.f0^[(read i32s v0^.f1)] (read i32s v0^.f0^[(const i32s 3)])"]
+    );
+}

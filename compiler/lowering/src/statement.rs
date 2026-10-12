@@ -39,13 +39,17 @@ impl Lowering<'_> {
         frame: &BodyFrame,
         assignment: &Assignment,
     ) -> Result<Option<Stmt>, Diagnostic> {
-        // `REF=`, `S=`, `R=` and an assignment through `^` are not lowered yet.
-        if assignment.deref || assignment.ref_bind || assignment.set_bind || assignment.reset_bind {
+        // `REF=`, `S=` and `R=` are not lowered yet.
+        if assignment.ref_bind || assignment.set_bind || assignment.reset_bind {
             return Ok(None);
         }
-        let Some(place) = self.variable_place(frame, &assignment.target)? else {
+        let Some(mut place) = self.variable_place(frame, &assignment.target)? else {
             return Ok(None);
         };
+        // `p^ := v` stores in what `p` refers to.
+        if assignment.deref {
+            place = self.program.deref(place, &assignment.target.span())?;
+        }
         let Some(operated) = self.program.types().operation_type(place.ty()) else {
             // A string or an aggregate is not assigned as one scalar value.
             return Ok(None);
