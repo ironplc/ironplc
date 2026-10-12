@@ -16,7 +16,6 @@ use ironplc_dsl::sfc::ActionAssociation;
 use ironplc_dsl::textual::*;
 use ironplc_dsl::visitor::Visitor;
 
-use crate::call_assignment_check::bind_inputs;
 use crate::callee_resolution::{
     instance_type, receiver_block, CallParameters, FunctionBlocks, ParameterSection,
 };
@@ -306,9 +305,18 @@ impl WriteCollector<'_> {
     /// Marks every variable argument that a `VAR_IN_OUT` parameter of
     /// `owner` writes. An argument that binds to no parameter is taken to be
     /// written: with no declaration to consult, nothing rules a write out.
+    ///
+    /// The binding pass wrote a call whose arguments bind in normal form, so
+    /// each input names its parameter. A positional input is left only in a
+    /// call that does not bind, which is reported.
     fn mark_bound_arguments(&mut self, owner: &dyn HasVariables, params: &[ParamAssignmentKind]) {
         let parameters = CallParameters::of_declaration(owner);
-        for (param, declared) in bind_inputs(&parameters, params) {
+        for param in params {
+            let declared = match param {
+                ParamAssignmentKind::NamedInput(input) => parameters.named_input(&input.name),
+                ParamAssignmentKind::PositionalInput(_) => None,
+                ParamAssignmentKind::Output(_) => continue,
+            };
             match declared {
                 None => self.marking_as(WriteKind::UnboundArgument, |c| c.mark_argument(param)),
                 Some(parameter) if parameter.section == ParameterSection::InOut => {
@@ -401,24 +409,12 @@ impl Visitor<Infallible> for WriteCollector<'_> {
             self.mark_all_arguments(&node.param_assignment);
             return node.recurse_visit(self);
         };
-        // Positional arguments occupy the input-compatible parameters in
-        // declaration order, which is the order
-        // `xform_named_to_positional_args` laid them out in. A named input
-        // still present was never rewritten, so it bound to nothing.
-        let mut declared = signature
-            .parameters
-            .iter()
-            .filter(|param| param.is_input_compatible());
-        for param in &node.param_assignment {
-            let written = match param {
-                ParamAssignmentKind::PositionalInput(_) => match declared.next() {
-                    Some(declared) => declared.is_inout.then_some(WriteKind::InOutArgument),
-                    // Past the declared parameters an extensible function
-                    // takes further inputs; anything else is unbound.
-                    None => (!signature.is_extensible).then_some(WriteKind::UnboundArgument),
-                },
-                ParamAssignmentKind::NamedInput(_) => Some(WriteKind::UnboundArgument),
-                ParamAssignmentKind::Output(_) => None,
+        // The binding pass wrote the call in normal form, so each input names
+        // the parameter it is passed to. One that names none is unbound.
+        for (param, declared) in signature.parameters_of(&node.param_assignment) {
+            let written = match declared {
+                Some(declared) => declared.is_inout.then_some(WriteKind::InOutArgument),
+                None => Some(WriteKind::UnboundArgument),
             };
             if let Some(kind) = written {
                 self.marking_as(kind, |c| c.mark_argument(param));

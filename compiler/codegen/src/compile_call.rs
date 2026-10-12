@@ -14,9 +14,11 @@ use ironplc_container::opcode;
 use ironplc_dsl::common::{ElementaryTypeName, TypeName};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{Expr, ExprKind, Function, SymbolicVariableKind, Variable};
+use ironplc_dsl::textual::{
+    Expr, ExprKind, Function, ParamAssignmentKind, SymbolicVariableKind, Variable,
+};
 
-use super::call_args::{collect_positional_args, fixed_args, wrong_arg_count};
+use super::call_args::{collect_input_args, fixed_args, wrong_arg_count};
 use super::compile::{
     CompileContext, OpType, OpWidth, ParamPassing, Signedness, UserFunctionInfo, VarTypeInfo,
     NARROW_CHAR_WIDTH,
@@ -198,7 +200,20 @@ fn compile_user_function_call(
     func: &Function,
     func_info: &UserFunctionInfo,
 ) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
+    // The analyzer wrote the call in normal form (`call-binding.md`): one
+    // named input for each parameter, in declaration order, every one
+    // supplied (P4018). A positional argument is one it did not bind.
+    if let Some(ParamAssignmentKind::PositionalInput(input)) = func
+        .param_assignment
+        .iter()
+        .find(|arg| matches!(arg, ParamAssignmentKind::PositionalInput(_)))
+    {
+        return Err(Diagnostic::internal_error_at(Label::span(
+            input.expr.span(),
+            "Positional argument of a function call the analyzer did not bind",
+        )));
+    }
+    let args = collect_input_args(func);
 
     // Compile each argument with the corresponding parameter's OpType.
     // STRING parameters are copied into the function's data region before CALL;
@@ -355,7 +370,7 @@ pub(crate) fn compile_left_fold(
     op_type: OpType,
     emit_fn: impl Fn(&mut Emitter, OpType) -> Result<(), Diagnostic>,
 ) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
+    let args = collect_input_args(func);
     let [first, rest @ ..] = args.as_slice() else {
         return Err(wrong_arg_count(func));
     };
@@ -607,7 +622,7 @@ fn compile_mux(
     func: &Function,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
+    let args = collect_input_args(func);
 
     // Must have at least 3 args (K + 2 IN values)
     if args.len() < 3 {

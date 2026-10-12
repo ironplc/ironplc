@@ -200,7 +200,7 @@ impl RuleFunctionCallTypeCheck<'_> {
             return false;
         }
         signature
-            .bind_inputs(&call.param_assignment)
+            .inputs_of(&call.param_assignment)
             .any(|(param, argument)| {
                 param.param_type == return_type
                     && value_type::check(
@@ -337,7 +337,7 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
             let overloaded = operator_function_form(&node.name.to_string())
                 .is_some_and(|form| !form.typed_overloads().is_empty());
             let inputs = signature
-                .bind_inputs(&node.param_assignment)
+                .inputs_of(&node.param_assignment)
                 .filter(|_| !overloaded);
             for (param, arg_expr) in inputs {
                 if param.is_inout {

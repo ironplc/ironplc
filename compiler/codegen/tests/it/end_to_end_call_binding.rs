@@ -1,13 +1,16 @@
 //! End-to-end tests that codegen lowers the call the analyzer resolved and
 //! bound: a function block instance runs the block its type is, a method call
-//! runs the method its receiver's block declares or inherits, and a function
-//! block or method call's arguments are evaluated in the order of its normal
-//! form. See `specs/design/call-binding.md`.
+//! runs the method its receiver's block declares or inherits, and a call's
+//! arguments are evaluated in the order of its normal form. See
+//! `specs/design/call-binding.md`.
 
+use ironplc_codegen::Route;
+use ironplc_dsl::fold::Fold;
+use ironplc_dsl::textual::{ParamAssignmentKind, PositionalInput};
 use ironplc_parser::options::CompilerOptions;
 use spec_test_macro::spec_test;
 
-use crate::common::{assert_run_with, try_parse_and_compile};
+use crate::common::{assert_run_with, compile_by_route, parse, try_parse_and_compile};
 
 /// Methods and `EXTENDS` are an extension.
 fn options() -> CompilerOptions {
@@ -282,4 +285,91 @@ END_PROGRAM
     let start = source.find("v := counter").unwrap();
     assert_eq!(diagnostic.primary.location.start, start);
     assert_eq!(diagnostic.primary.location.end, start + "v".len());
+}
+
+/// A function that joins its two inputs as tens and ones, and a function that
+/// appends the digit `id` to `log` and returns it.
+const FUNCTIONS: &str = "
+FUNCTION join : DINT
+VAR_INPUT tens : DINT; ones : DINT; END_VAR
+join := tens * 10 + ones;
+END_FUNCTION
+
+FUNCTION trace : DINT
+VAR_IN_OUT log : DINT; END_VAR
+VAR_INPUT id : DINT; END_VAR
+log := log * 10 + id;
+trace := id;
+END_FUNCTION
+";
+
+#[spec_test(REQ_CB_codegen_025)]
+fn end_to_end_when_function_named_then_computes_as_positional_in_declaration_order() {
+    let source = format!(
+        "{FUNCTIONS}
+PROGRAM main
+VAR x : DINT := 2; y : DINT := 1; named : DINT; positional : DINT; END_VAR
+named := join(ones := x, tens := y);
+positional := join(y, x);
+END_PROGRAM"
+    );
+    assert_run_with(
+        &source,
+        &CompilerOptions::default(),
+        &[("named", 12i64), ("positional", 12i64)],
+    );
+}
+
+#[spec_test(REQ_CB_codegen_042)]
+fn end_to_end_when_function_named_inputs_have_side_effects_then_evaluated_in_declaration_order() {
+    let source = format!(
+        "{FUNCTIONS}
+PROGRAM main
+VAR log : DINT; r : DINT; END_VAR
+r := join(ones := trace(log, 2), tens := trace(log, 1));
+END_PROGRAM"
+    );
+    assert_run_with(
+        &source,
+        &CompilerOptions::default(),
+        &[("log", 12i64), ("r", 12i64)],
+    );
+}
+
+/// Writes every named input of every function call as a positional input,
+/// as a call the analyzer did not bind would be.
+struct UnnameInputs;
+
+impl Fold<()> for UnnameInputs {
+    fn fold_param_assignment_kind(
+        &mut self,
+        node: ParamAssignmentKind,
+    ) -> Result<ParamAssignmentKind, ()> {
+        match node.recurse_fold(self)? {
+            ParamAssignmentKind::NamedInput(input) => {
+                Ok(ParamAssignmentKind::PositionalInput(PositionalInput {
+                    expr: input.expr,
+                }))
+            }
+            other => Ok(other),
+        }
+    }
+}
+
+#[spec_test(REQ_CB_codegen_026)]
+fn compile_when_user_function_argument_positional_then_internal_error() {
+    let source = format!(
+        "{FUNCTIONS}
+PROGRAM main
+VAR r : DINT; END_VAR
+r := join(1, 2);
+END_PROGRAM"
+    );
+    let options = CompilerOptions::default();
+    let (library, context) = parse(&source, &options);
+    let library = UnnameInputs.fold_library(library).unwrap();
+
+    let diagnostic = compile_by_route(&library, &context, &options, Route::Ast).unwrap_err();
+
+    assert_eq!(diagnostic.code, "P9998");
 }

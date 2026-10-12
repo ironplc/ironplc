@@ -445,6 +445,25 @@ pub struct Function {
     pub param_assignment: Vec<ParamAssignmentKind>,
 }
 
+impl Function {
+    /// The expression of each input argument, positional or named, in the
+    /// order the call lists them. After analysis, a call whose arguments bind
+    /// lists one named input for each input it supplies, in the order the
+    /// function declares them.
+    pub fn inputs(&self) -> impl Iterator<Item = &Expr> {
+        self.param_assignment
+            .iter()
+            .filter_map(ParamAssignmentKind::input_expr)
+    }
+
+    /// The expression of each input argument, as [`Function::inputs`].
+    pub fn inputs_mut(&mut self) -> impl Iterator<Item = &mut Expr> {
+        self.param_assignment
+            .iter_mut()
+            .filter_map(ParamAssignmentKind::input_expr_mut)
+    }
+}
+
 impl fmt::Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}(...)", self.name)
@@ -770,6 +789,16 @@ impl ParamAssignmentKind {
         match self {
             ParamAssignmentKind::PositionalInput(input) => Some(&input.expr),
             ParamAssignmentKind::NamedInput(input) => Some(&input.expr),
+            ParamAssignmentKind::Output(_) => None,
+        }
+    }
+
+    /// The expression this argument passes to the callee, as
+    /// [`ParamAssignmentKind::input_expr`].
+    pub fn input_expr_mut(&mut self) -> Option<&mut Expr> {
+        match self {
+            ParamAssignmentKind::PositionalInput(input) => Some(&mut input.expr),
+            ParamAssignmentKind::NamedInput(input) => Some(&mut input.expr),
             ParamAssignmentKind::Output(_) => None,
         }
     }

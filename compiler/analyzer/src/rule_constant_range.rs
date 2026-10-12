@@ -586,7 +586,7 @@ impl RuleConstantRange<'_> {
         let Some(signature) = self.function_environment.get(&node.name) else {
             return;
         };
-        for (param, arg) in signature.bind_inputs(&node.param_assignment) {
+        for (param, arg) in signature.inputs_of(&node.param_assignment) {
             if param.is_reference {
                 continue;
             }

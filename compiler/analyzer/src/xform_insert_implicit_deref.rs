@@ -91,11 +91,8 @@ impl ImplicitDeref {
         if !func.name.to_string().eq_ignore_ascii_case(IS_VALID_REF) {
             return None;
         }
-        if func.param_assignment.len() != 1 {
-            return None;
-        }
-        match &func.param_assignment[0] {
-            ParamAssignmentKind::PositionalInput(pos) => Some(pos.expr.clone()),
+        match func.param_assignment.as_slice() {
+            [arg] => arg.input_expr().cloned(),
             _ => None,
         }
     }

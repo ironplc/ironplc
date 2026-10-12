@@ -121,15 +121,13 @@ fn is_generic_type(tn: &TypeName) -> bool {
     GENERIC_TYPES.iter().any(|name| TypeName::from(name) == *tn)
 }
 
-/// The inputs of `f` when every argument is a positional input, as the
-/// named-argument pass leaves a call it accepted.
-fn positional_inputs(f: &Function) -> Option<Vec<&Expr>> {
+/// The inputs of `f` when every argument is an input, in the order the call
+/// lists them: the order of the parameters, for a call the binding pass wrote
+/// in normal form.
+fn all_inputs(f: &Function) -> Option<Vec<&Expr>> {
     f.param_assignment
         .iter()
-        .map(|p| match p {
-            ParamAssignmentKind::PositionalInput(input) => Some(&input.expr),
-            ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
-        })
+        .map(ParamAssignmentKind::input_expr)
         .collect()
 }
 
@@ -264,7 +262,7 @@ impl ExprTypeResolver<'_> {
                     .as_ref()
                     .and_then(BuiltinFunction::inputs_of_one_type)
                 {
-                    if let Some(inputs) = positional_inputs(f) {
+                    if let Some(inputs) = all_inputs(f) {
                         return self.inputs_of_one_type_result(&inputs, shape);
                     }
                 }
@@ -272,29 +270,14 @@ impl ExprTypeResolver<'_> {
                 // whose parameter declaration type matches the generic return type.
                 // This correctly skips selector parameters whose type differs from
                 // the return type (e.g., BOOL for SEL, ANY_INT for MUX).
-                let mut positional_index = 0usize;
-                f.param_assignment.iter().find_map(|p| match p {
-                    ParamAssignmentKind::PositionalInput(pos) => {
-                        let idx = positional_index;
-                        positional_index += 1;
-                        match sig.parameters.get(idx) {
-                            Some(param) if param.param_type == return_type => {
-                                pos.expr.expr_type.clone()
-                            }
-                            _ => None,
+                sig.inputs_of(&f.param_assignment)
+                    .find_map(|(param, expr)| {
+                        if param.param_type == return_type {
+                            expr.expr_type.clone()
+                        } else {
+                            None
                         }
-                    }
-                    ParamAssignmentKind::NamedInput(named) => {
-                        let param = sig.parameters.iter().find(|p| p.name == named.name);
-                        match param {
-                            Some(param) if param.param_type == return_type => {
-                                named.expr.expr_type.clone()
-                            }
-                            _ => None,
-                        }
-                    }
-                    ParamAssignmentKind::Output(_) => None,
-                })
+                    })
             }
             // The method's return type. A call on `THIS^`/`SUPER^`, or to a
             // method without a return type, has no type here; the method
@@ -456,9 +439,9 @@ impl ExprTypeResolver<'_> {
     /// applies to its inputs folded from the left: `SUB(d1, d2)` on `DATE`
     /// is `TIME`, and `ADD(i, d)` on `INT` and `DINT` is `DINT`.
     ///
-    /// Returns `None` for any other function, for a call with a named input
-    /// left (one the named-argument pass diagnosed), or when no overload is
-    /// judged or applies; the caller then types the call from its signature.
+    /// Returns `None` for any other function, for a call with an output
+    /// assignment, or when no overload is judged or applies; the caller then
+    /// types the call from its signature.
     fn resolve_overloaded_call(&self, f: &Function) -> Option<TypeName> {
         let form = operator_function_form(&f.name.to_string())?;
         let FormOf::Arithmetic(op) = &form.operator else {
@@ -467,14 +450,10 @@ impl ExprTypeResolver<'_> {
         if form.typed_overloads().is_empty() {
             return None;
         }
-        let names: Vec<Option<TypeName>> = f
-            .param_assignment
-            .iter()
-            .map(|p| match p {
-                ParamAssignmentKind::PositionalInput(input) => Some(self.operand_name(&input.expr)),
-                ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
-            })
-            .collect::<Option<_>>()?;
+        let names: Vec<Option<TypeName>> = all_inputs(f)?
+            .into_iter()
+            .map(|input| self.operand_name(input))
+            .collect();
         let inputs: Vec<Option<&TypeName>> = names.iter().map(Option::as_ref).collect();
         match resolve_arithmetic_fold(op, &inputs, &self.options) {
             Ok(Overload::Numeric { result } | Overload::Typed { result, .. }) => Some(result),
@@ -487,7 +466,7 @@ impl ExprTypeResolver<'_> {
     /// a `WORD`, and an untyped literal input is a `DINT` (ADR-0028), so
     /// `INT_TO_BCD(42)` is a `DWORD`.
     fn bcd_result(&self, f: &Function) -> Option<ExprType> {
-        let input = *positional_inputs(f)?.first()?;
+        let input = *all_inputs(f)?.first()?;
         let name = match &input.expr_type {
             Some(ExprType::Literal(generic)) => literal_default_type(generic)?.into(),
             _ => self.operand_name(input)?,

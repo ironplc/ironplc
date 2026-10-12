@@ -246,7 +246,7 @@ impl Visitor<Infallible> for RuleFunctionCallInOutArgument<'_> {
 
     fn visit_function(&mut self, node: &Function) -> Result<Self::Value, Infallible> {
         if let Some(signature) = self.context.functions.get(&node.name) {
-            for (param, arg) in signature.bind_inputs(&node.param_assignment) {
+            for (param, arg) in signature.inputs_of(&node.param_assignment) {
                 if !param.is_inout {
                     continue;
                 }

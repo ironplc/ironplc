@@ -12,7 +12,7 @@ use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, Function};
 
-use super::call_args::{collect_positional_args, wrong_arg_count};
+use super::call_args::{collect_input_args, wrong_arg_count};
 use super::compile::{CompileContext, OpType, OpWidth, Signedness};
 use super::compile_expr::{compile_expr, storage_bits};
 use crate::emit::Emitter;
@@ -180,7 +180,7 @@ pub(crate) fn compile_numeric(
     let expected_args =
         opcode::builtin::arg_count_opt(func_id).ok_or_else(Diagnostic::internal_error)? as usize;
 
-    let args = collect_positional_args(func);
+    let args = collect_input_args(func);
 
     if args.len() != expected_args {
         return Err(wrong_arg_count(func));
