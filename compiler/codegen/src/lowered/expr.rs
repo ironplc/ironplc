@@ -6,14 +6,13 @@ use ironplc_ir::lowered::{
 };
 use ironplc_lowering::Lowering;
 
-use super::{named, op_type, storage};
+use super::op_type;
 use crate::compile::{CompileContext, OpWidth, Signedness};
 use crate::compile_arith::convert;
 use crate::compile_expr::{
     emit_add, emit_div, emit_eq, emit_ge, emit_gt, emit_le, emit_lt, emit_mod, emit_mul, emit_ne,
     emit_neg, emit_sub,
 };
-use crate::compile_place::Place;
 use crate::emit::Emitter;
 
 pub(super) fn emit_expr(
@@ -31,8 +30,7 @@ pub(super) fn emit_expr(
     match expr.kind() {
         ExprKind::Const(constant) => emit_constant(emitter, ctx, *constant),
         ExprKind::Read(place) => {
-            let storage = named(storage(lowering, place, expr.span())?);
-            Place::resolve(ctx, &storage)?.emit_load(emitter, ctx)?;
+            super::place::resolve(lowering, ctx, place, expr.span())?.emit_load(emitter, ctx)?;
         }
         ExprKind::Convert(value) => {
             emit_expr(emitter, ctx, lowering, value)?;

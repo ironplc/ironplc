@@ -23,12 +23,15 @@
 
 mod control;
 mod expr;
+mod place;
 mod statement;
 mod types;
 mod variables;
 
 #[cfg(test)]
 mod control_tests;
+#[cfg(test)]
+mod place_tests;
 #[cfg(test)]
 mod test_support;
 #[cfg(test)]

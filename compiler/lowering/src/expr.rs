@@ -10,7 +10,7 @@ use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{
     CompareOp as AstCompareOp, Expr as AstExpr, ExprKind as AstExprKind, Operator,
-    SymbolicVariableKind, UnaryOp as AstUnaryOp, Variable,
+    UnaryOp as AstUnaryOp, Variable,
 };
 use ironplc_ir::lowered::{
     BinaryOp, CompareOp, Expr, Place, ScalarType, ShortCircuitOp, TypeId, TypeKind, UnaryOp,
@@ -161,25 +161,15 @@ impl Lowering<'_> {
     }
 
     /// The place a variable names, or `None` when lowering does not reach it
-    /// yet. Today that is a variable named on its own.
+    /// yet.
     pub(crate) fn variable_place(
         &mut self,
         frame: &BodyFrame,
         variable: &Variable,
     ) -> Result<Option<Place>, Diagnostic> {
         match variable {
-            Variable::Symbolic(SymbolicVariableKind::Named(named)) => {
-                self.named_place(frame, &named.name, &named.name.span())
-            }
-            Variable::Symbolic(
-                SymbolicVariableKind::Array(_)
-                | SymbolicVariableKind::Structured(_)
-                | SymbolicVariableKind::BitAccess(_)
-                | SymbolicVariableKind::PartialAccess(_)
-                | SymbolicVariableKind::Deref(_)
-                | SymbolicVariableKind::SelfRef(_),
-            )
-            | Variable::Direct(_) => Ok(None),
+            Variable::Symbolic(symbolic) => self.symbolic_place(frame, symbolic),
+            Variable::Direct(_) => Ok(None),
         }
     }
 

@@ -11,8 +11,8 @@
 //! them again.
 //!
 //! The lowered program grows one construct at a time. Today it holds scalar
-//! expressions, places reached through fields and dereferences, the
-//! assignment of a scalar value, and control flow.
+//! expressions, places reached through fields, elements and dereferences,
+//! the assignment of a scalar value, and control flow.
 
 mod expr;
 mod ids;

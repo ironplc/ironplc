@@ -17,13 +17,12 @@ use ironplc_ir::lowered::{
 use ironplc_lowering::Lowering;
 
 use super::expr::{emit_constant, emit_expr, emit_truncate};
-use super::{named, op_type, storage, storage_name};
+use super::{op_type, storage_name};
 use crate::compile::{CompileContext, OpType};
 use crate::compile_expr::{
     classify_with_named, emit_add, emit_classified_cmp_br, emit_eq, emit_ge, emit_le, ClassifiedCmp,
 };
 use crate::compile_loop::LoopLabels;
-use crate::compile_place::Place;
 use crate::compile_stmt::{emit_return, record_position};
 use crate::emit::{self, Emitter};
 
@@ -125,8 +124,7 @@ impl Emission<'_, '_> {
         place: &LoweredPlace,
         span: &SourceSpan,
     ) -> Result<(), Diagnostic> {
-        let storage = named(storage(self.lowering, place, span)?);
-        Place::resolve(ctx, &storage)?.emit_store_fitting(emitter, ctx)
+        super::place::resolve(self.lowering, ctx, place, span)?.emit_store_fitting(emitter, ctx)
     }
 
     fn load(
@@ -136,8 +134,7 @@ impl Emission<'_, '_> {
         place: &LoweredPlace,
         span: &SourceSpan,
     ) -> Result<(), Diagnostic> {
-        let storage = named(storage(self.lowering, place, span)?);
-        Place::resolve(ctx, &storage)?.emit_load(emitter, ctx)
+        super::place::resolve(self.lowering, ctx, place, span)?.emit_load(emitter, ctx)
     }
 
     /// As `compile_if`: the `else` branch is jumped over only when there is

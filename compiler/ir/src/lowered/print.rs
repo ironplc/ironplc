@@ -2,7 +2,8 @@
 //!
 //! An expression prints as a parenthesized operator, its type and its
 //! operands: `(add i32s (read i32s v0^.f1) (const i32s 1))`. A place prints as
-//! its variable, then `^` for each dereference and `.f<n>` for each field.
+//! its variable, then `^` for each dereference, `.f<n>` for each field and
+//! `[...]` for the subscripts of each element.
 //! A statement prints on one line, and one holding other statements prints
 //! them on the lines after it, indented two spaces, and closes with `end`.
 
@@ -19,6 +20,11 @@ impl fmt::Display for Place {
         for projection in self.path() {
             match projection {
                 Projection::Field(field) => write!(f, ".{field}")?,
+                Projection::Index(subscripts) => {
+                    let subscripts: Vec<String> =
+                        subscripts.iter().map(ToString::to_string).collect();
+                    write!(f, "[{}]", subscripts.join(", "))?
+                }
                 Projection::Deref => f.write_str("^")?,
             }
         }
