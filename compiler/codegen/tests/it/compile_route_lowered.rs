@@ -356,3 +356,24 @@ fn compile_when_dereference_lowered_then_same_code_as_ast(#[case] statement: &st
     );
     assert_same_code(&source);
 }
+
+/// A field reached through a reference a function receives, `p^.x`, is not
+/// a field of an instance. The lowered route does not take it for the
+/// function's own `x`; it leaves the statement to the AST route, which does
+/// not support it yet.
+#[test]
+fn compile_when_field_through_reference_parameter_then_not_taken_for_local() {
+    let options = options();
+    let source = "TYPE P : STRUCT x : DINT; END_STRUCT; END_TYPE
+         FUNCTION F : DINT
+           VAR_INPUT p : REF_TO P; END_VAR
+           VAR x : DINT := 5; END_VAR
+           F := p^.x;
+         END_FUNCTION
+         PROGRAM main VAR s : P; r : DINT; END_VAR
+           r := F(p := REF(s));
+         END_PROGRAM";
+    let (library, context) = parse(source, &options);
+    let result = compile_by_route(&library, &context, &options, Route::PreferLowered);
+    assert_eq!(result.unwrap_err().code, "P9999");
+}
