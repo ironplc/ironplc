@@ -18,6 +18,7 @@ fn options() -> CompilerOptions {
         allow_continue: true,
         allow_ref_to: true,
         allow_partial_access_syntax: true,
+        allow_sizeof: true,
         ..CompilerOptions::default()
     }
 }
@@ -810,6 +811,61 @@ fn compile_when_conversion_lowered_then_same_code_as_ast(#[case] statement: &str
         "PROGRAM main
            VAR i : INT; d : DINT; l : LINT; u : UDINT; r : REAL; x : LREAL; g : BOOL;
                t : TIME; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    assert_same_code(&source);
+}
+
+/// REQ-LOW-codegen-089: BCD conversions give the values the AST route
+/// gives. `BCD_TO_INT` decodes four bits above 9 as 0, and `INT_TO_BCD`
+/// encodes its input's bits as unsigned, modulo the power of ten its digits
+/// hold.
+#[test]
+fn run_when_bcd_conversions_then_values() {
+    let snapshot = run_lowered(
+        "PROGRAM main
+           VAR w : WORD := 16#1234; b : BYTE := 16#9A; lw : LWORD := 16#1234567890123456;
+               i : INT := 1234; s : SINT := -1; us : USINT := 123; u : UDINT := 12345678;
+               r1 : INT; r2 : DINT; r3 : LINT; r4 : WORD; r5 : BYTE; r6 : BYTE;
+               r7 : DWORD; END_VAR
+           r1 := BCD_TO_INT(w);
+           r2 := BCD_TO_INT(b);
+           r3 := BCD_TO_INT(lw);
+           r4 := INT_TO_BCD(i);
+           r5 := INT_TO_BCD(s);
+           r6 := INT_TO_BCD(us);
+           r7 := INT_TO_BCD(u);
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<i64>("r1"), 1234);
+    assert_eq!(snapshot.read_as::<i64>("r2"), 90);
+    assert_eq!(snapshot.read_as::<i64>("r3"), 1_234_567_890_123_456);
+    assert_eq!(snapshot.read_as::<u64>("r4"), 0x1234);
+    assert_eq!(snapshot.read_as::<u64>("r5"), 0x55);
+    assert_eq!(snapshot.read_as::<u64>("r6"), 0x23);
+    assert_eq!(snapshot.read_as::<u64>("r7"), 0x1234_5678);
+}
+
+/// A BCD conversion and `SIZEOF` compile to the same instructions and
+/// constants by both routes.
+#[rstest]
+#[case::bcd_to_int_word("d := BCD_TO_INT(w);")]
+#[case::bcd_to_int_to_int("i := BCD_TO_INT(w);")]
+#[case::bcd_to_int_lword("l := BCD_TO_INT(lw);")]
+#[case::bcd_to_int_lword_to_dint("d := BCD_TO_INT(lw);")]
+#[case::int_to_bcd_int("w := INT_TO_BCD(i);")]
+#[case::int_to_bcd_dint("dw := INT_TO_BCD(d);")]
+#[case::int_to_bcd_udint("dw := INT_TO_BCD(u);")]
+#[case::int_to_bcd_lint("lw := INT_TO_BCD(l);")]
+#[case::sizeof_array("d := SIZEOF(arr);")]
+#[case::sizeof_bool("d := SIZEOF(g);")]
+#[case::sizeof_element("l := SIZEOF(arr[1]);")]
+fn compile_when_bcd_or_sizeof_lowered_then_same_code_as_ast(#[case] statement: &str) {
+    let source = format!(
+        "PROGRAM main
+           VAR w : WORD; dw : DWORD; lw : LWORD; i : INT; d : DINT; u : UDINT; l : LINT;
+               g : BOOL; arr : ARRAY[1..4] OF INT; END_VAR
            {statement}
          END_PROGRAM"
     );

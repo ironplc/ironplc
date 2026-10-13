@@ -1,9 +1,10 @@
 //! Calls of standard functions. A function form of an operator, and `MOVE`,
 //! lower to what the operator, or the operand, lowers to; a type conversion
-//! and `TRUNC` to a `Convert`; any other function is the `Intrinsic` for its
-//! function at its operand types (REQ-LOW-lowering-147). The match over the
-//! analyzer's `BuiltinFunction` names every function, so one the analyzer
-//! adds is not lowered until it has an arm here.
+//! and `TRUNC` to a `Convert`; `SIZEOF` to a constant; any other function is
+//! the `Intrinsic` for its function at its operand types
+//! (REQ-LOW-lowering-147). The match over the analyzer's `BuiltinFunction`
+//! names every function, so one the analyzer adds is not lowered until it has
+//! an arm here.
 
 use ironplc_analyzer::{BitShift, BuiltinFunction, FormOf, NumericFunction};
 use ironplc_dsl::core::{Located, SourceSpan};
@@ -11,6 +12,7 @@ use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{CompareOp, Expr as AstExpr, Function, Operator};
 use ironplc_ir::lowered::{
     Arg, BinaryOp, Callee, CompareOp as LoweredCompareOp, Expr, Intrinsic, ScalarType, Signedness,
+    TypeId, TypeKind, TypeTable,
 };
 
 use crate::expr::Lowered;
@@ -91,10 +93,19 @@ impl Lowering<'_> {
                 [value] => self.conversion(frame, expr, value),
                 _ => Ok(None),
             },
-            BuiltinFunction::BcdToInt
-            | BuiltinFunction::IntToBcd
-            | BuiltinFunction::Sizeof
-            | BuiltinFunction::String(_)
+            BuiltinFunction::BcdToInt => match args.as_slice() {
+                [value] => self.bcd_to_int(frame, expr, value),
+                _ => Ok(None),
+            },
+            BuiltinFunction::IntToBcd => match args.as_slice() {
+                [value] => self.int_to_bcd(frame, expr, value),
+                _ => Ok(None),
+            },
+            BuiltinFunction::Sizeof => match args.as_slice() {
+                [value] => self.sizeof(expr, value),
+                _ => Ok(None),
+            },
+            BuiltinFunction::String(_)
             | BuiltinFunction::Time { .. }
             | BuiltinFunction::DtToDate
             | BuiltinFunction::DtToTod => Ok(None),
@@ -146,6 +157,97 @@ impl Lowering<'_> {
             Some(width) => Expr::truncate(width, value, span).map(Some),
             None => Ok(Some(value)),
         }
+    }
+
+    /// `BCD_TO_INT(value)`, the expression `expr`: the bit string `value`
+    /// decoded at its width, then converted to the integer the analyzer
+    /// recorded for the call, the integer of its context.
+    fn bcd_to_int(&mut self, frame: &BodyFrame, expr: &AstExpr, value: &AstExpr) -> Lowered {
+        let Some((_, to)) = self.operated_type(expr)? else {
+            return Ok(None);
+        };
+        if !to.is_integer() {
+            return Ok(None);
+        }
+        let Some(intrinsic) = self
+            .operated_type(value)?
+            .and_then(|(ty, _)| self.program.types().bit_width(ty))
+            .and_then(|width| {
+                at_width(
+                    width,
+                    [
+                        Intrinsic::BcdToIntU8,
+                        Intrinsic::BcdToIntU16,
+                        Intrinsic::BcdToIntU32,
+                        Intrinsic::BcdToIntU64,
+                    ],
+                )
+            })
+        else {
+            return Ok(None);
+        };
+        let Some(decoded) = self.intrinsic_call(frame, expr, intrinsic, &[value])? else {
+            return Ok(None);
+        };
+        if decoded.ty() == to {
+            return Ok(Some(decoded));
+        }
+        Expr::convert(decoded, to, expr.span()).map(Some)
+    }
+
+    /// `INT_TO_BCD(value)`, the expression `expr`: the integer `value`
+    /// encoded at its width and signedness, as the bit string as wide as it.
+    fn int_to_bcd(&mut self, frame: &BodyFrame, expr: &AstExpr, value: &AstExpr) -> Lowered {
+        let Some((ty, operated)) = self.operated_type(value)? else {
+            return Ok(None);
+        };
+        let at_signedness = match operated.signedness() {
+            Some(Signedness::Signed) => [
+                Intrinsic::IntToBcdI8,
+                Intrinsic::IntToBcdI16,
+                Intrinsic::IntToBcdI32,
+                Intrinsic::IntToBcdI64,
+            ],
+            Some(Signedness::Unsigned) => [
+                Intrinsic::IntToBcdU8,
+                Intrinsic::IntToBcdU16,
+                Intrinsic::IntToBcdU32,
+                Intrinsic::IntToBcdU64,
+            ],
+            None => return Ok(None),
+        };
+        let Some(intrinsic) = self
+            .program
+            .types()
+            .bit_width(ty)
+            .and_then(|width| at_width(width, at_signedness))
+        else {
+            return Ok(None);
+        };
+        let encoded = self.intrinsic_call(frame, expr, intrinsic, &[value])?;
+        self.of_own_type(expr, encoded)
+    }
+
+    /// `SIZEOF(value)`, the expression `expr`: the size in bytes of the type
+    /// of `value`, which is not evaluated, as a constant of the integer the
+    /// analyzer recorded for the call (REQ-LOW-lowering-103).
+    fn sizeof(&mut self, expr: &AstExpr, value: &AstExpr) -> Lowered {
+        let Some((_, ty)) = self.operated_type(expr)? else {
+            return Ok(None);
+        };
+        let Some(size) = self
+            .recorded_type(value)?
+            .and_then(|of| byte_size(self.program.types(), of))
+        else {
+            return Ok(None);
+        };
+        if !ty
+            .integer_range()
+            .is_some_and(|(min, max)| (min..=max).contains(&size))
+        {
+            return Ok(None);
+        }
+        Expr::integer(size, ty, expr.span()).map(Some)
     }
 
     /// The call `expr` of the numeric function `function` with `args`. The
@@ -359,8 +461,7 @@ fn shift_intrinsic(shift: BitShift, operated: ScalarType, width: u8) -> Option<I
         BitShift::Shl => Some(Intrinsic::ShlU32),
         BitShift::Shr if wide => Some(Intrinsic::ShrU64),
         BitShift::Shr => Some(Intrinsic::ShrU32),
-        BitShift::Rol => rotate(
-            wide,
+        BitShift::Rol => at_width(
             width,
             [
                 Intrinsic::RolU8,
@@ -369,8 +470,7 @@ fn shift_intrinsic(shift: BitShift, operated: ScalarType, width: u8) -> Option<I
                 Intrinsic::RolU64,
             ],
         ),
-        BitShift::Ror => rotate(
-            wide,
+        BitShift::Ror => at_width(
             width,
             [
                 Intrinsic::RorU8,
@@ -382,21 +482,48 @@ fn shift_intrinsic(shift: BitShift, operated: ScalarType, width: u8) -> Option<I
     }
 }
 
-/// The rotate of a bit string `width` bits wide, from the rotates of 8, 16,
-/// 32 and 64 bits. A rotate keeps its bits within the width of its type, so
-/// there is one per width.
-fn rotate(
-    wide: bool,
-    width: u8,
-    [bits_8, bits_16, bits_32, bits_64]: [Intrinsic; 4],
-) -> Option<Intrinsic> {
-    match (wide, width) {
-        (false, 8) => Some(bits_8),
-        (false, 16) => Some(bits_16),
-        (false, 32) => Some(bits_32),
-        (true, 64) => Some(bits_64),
-        // No bit string has any other width.
+/// The operation on a value `width` bits wide, from its variants for 8, 16,
+/// 32 and 64 bits: a rotate keeps its bits within the width of its type, and
+/// a BCD conversion has as many digits as the width holds.
+fn at_width(width: u8, [bits_8, bits_16, bits_32, bits_64]: [Intrinsic; 4]) -> Option<Intrinsic> {
+    match width {
+        8 => Some(bits_8),
+        16 => Some(bits_16),
+        32 => Some(bits_32),
+        64 => Some(bits_64),
+        // No integer or bit string has any other width.
         _ => None,
+    }
+}
+
+/// The size in bytes of a value of `ty`, from the language's storage widths
+/// (REQ-LOW-lowering-103): a `BOOL` takes a byte, and an array its element's
+/// size for each element. `None` for a type whose size is a target's layout,
+/// such as a structure, a string or an enumeration.
+fn byte_size(types: &TypeTable, ty: TypeId) -> Option<i128> {
+    match types.kind(ty)? {
+        TypeKind::Bool => Some(1),
+        TypeKind::Integer { width, .. } | TypeKind::BitString { width } => {
+            Some(i128::from(width.bits() / 8))
+        }
+        TypeKind::Real { width } | TypeKind::Temporal { width, .. } => {
+            Some(i128::from(width.bits() / 8))
+        }
+        TypeKind::Subrange { base, .. } => byte_size(types, *base),
+        TypeKind::Array {
+            element,
+            dimensions,
+        } => dimensions
+            .iter()
+            .try_fold(byte_size(types, *element)?, |size, (lower, upper)| {
+                size.checked_mul(i128::from(*upper) - i128::from(*lower) + 1)
+            }),
+        TypeKind::Enumeration { .. }
+        | TypeKind::String(_)
+        | TypeKind::Structure { .. }
+        | TypeKind::FunctionBlock { .. }
+        | TypeKind::Program { .. }
+        | TypeKind::Reference { .. } => None,
     }
 }
 
