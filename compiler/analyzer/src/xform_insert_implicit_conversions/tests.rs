@@ -466,10 +466,45 @@ fn apply_when_function_form_assigned_to_wider_target_then_result_converted() {
 }
 
 #[spec_test(REQ_IC_analyzer_032)]
+#[rstest]
+#[case::signed("INT", "s : SINT;", "s", "SINT")]
+#[case::unsigned("UDINT", "u : UINT;", "u", "UINT")]
+#[case::bit_string("DWORD", "b : BYTE;", "b", "BYTE")]
+fn apply_when_value_shares_target_operation_type_then_unchanged(
+    #[case] target: &str,
+    #[case] vars: &str,
+    #[case] value: &str,
+    #[case] expected: &str,
+) {
+    let source = arithmetic_program(target, vars, value);
+    assert_eq!(assigned_values(&source), vec![expected]);
+}
+
+#[spec_test(REQ_IC_analyzer_105)]
+#[rstest]
+#[case::usint_to_dint("DINT", "u : USINT;", "u", "USINT->DINT")]
+#[case::uint_to_dint("DINT", "u : UINT;", "u", "UINT->DINT")]
+#[case::arithmetic("DINT", "u : UINT; v : UINT;", "u + v", "UINT->DINT")]
+#[case::usint_to_int("INT", "u : USINT;", "u", "USINT->INT")]
+fn apply_when_value_of_target_width_and_other_signedness_then_converted_to_target_type(
+    #[case] target: &str,
+    #[case] vars: &str,
+    #[case] value: &str,
+    #[case] expected: &str,
+) {
+    let source = arithmetic_program(target, vars, value);
+    assert_eq!(assigned_values(&source), vec![expected]);
+}
+
+#[spec_test(REQ_IC_analyzer_105)]
 #[test]
-fn apply_when_value_shares_target_width_then_unchanged() {
-    let source = arithmetic_program("INT", "s : SINT;", "s");
-    assert_eq!(assigned_values(&source), vec!["SINT"]);
+fn apply_when_bit_string_widened_to_signed_integer_of_its_width_then_converted() {
+    let options = CompilerOptions {
+        allow_cross_family_widening: true,
+        ..CompilerOptions::default()
+    };
+    let source = arithmetic_program("DINT", "b : BYTE;", "b");
+    assert_eq!(assigned_values_with(&source, &options), vec!["BYTE->DINT"]);
 }
 
 #[spec_test(REQ_IC_analyzer_037)]

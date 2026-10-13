@@ -92,3 +92,22 @@ END_PROGRAM
 ",
     &[("r", -3.0)],
 );
+
+e2e_i32!(
+    end_to_end_when_unsigned_assigned_to_signed_of_same_operation_width_then_keeps_value,
+    "
+PROGRAM main
+  VAR
+    us : USINT := 255;
+    ui : UINT := 65535;
+    usd : DINT;
+    uid : DINT;
+    usi : INT;
+  END_VAR
+  usd := us;
+  uid := ui;
+  usi := us;
+END_PROGRAM
+",
+    &[("usd", 255), ("uid", 65535), ("usi", 255)],
+);

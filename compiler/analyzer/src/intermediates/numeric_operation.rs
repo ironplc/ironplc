@@ -7,7 +7,8 @@
 //!
 //! This is the width the code generator operates on: a value of 32 bits or
 //! fewer in a 32-bit word, a wider one in a 64-bit word, and a real in a
-//! float of its own size.
+//! float of its own size. A value stored at another type is converted where
+//! the width or, for an integer, the signedness differs: the operation type.
 
 use ironplc_dsl::common::{ElementaryTypeName, GenericTypeName, TypeName};
 
@@ -77,6 +78,61 @@ pub(crate) fn operation_width_of(representation: &SemanticType) -> Option<Operat
     }
 }
 
+/// Whether an integer is operated on as a signed or an unsigned number.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Signedness {
+    Signed,
+    Unsigned,
+}
+
+/// The type a value is operated on at: its width and, for an integer, its
+/// signedness. A value stored at a type of another operation type is
+/// converted to it, as the lowered program requires of every value it
+/// stores (REQ-LOW-lowering-094), even where the bits do not change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct OperationType {
+    pub(crate) width: OperationWidth,
+    pub(crate) signedness: Option<Signedness>,
+}
+
+/// Returns the type a value of the type `representation` is operated on
+/// at: its width, as [`operation_width_of`] gives it, and its signedness,
+/// as [`operation_signedness_of`] gives it.
+pub(crate) fn operation_type_of(representation: &SemanticType) -> Option<OperationType> {
+    Some(OperationType {
+        width: operation_width_of(representation)?,
+        signedness: operation_signedness_of(representation),
+    })
+}
+
+/// Returns the signedness a value of the type `representation` is operated
+/// on at as an integer: a signed integer, a duration and an enumeration's
+/// ordinal are signed, an unsigned integer, a bit string, a date, a time of
+/// day and a date and time unsigned, and a subrange is its base type's.
+/// `None` for a type that is not operated on as an integer: a `BOOL`, a
+/// real, a reference, a string, an aggregate or a POU.
+fn operation_signedness_of(representation: &SemanticType) -> Option<Signedness> {
+    match representation {
+        SemanticType::Subrange { base_type, .. } => operation_signedness_of(base_type),
+        SemanticType::Int { .. } | SemanticType::Time { .. } | SemanticType::Enumeration { .. } => {
+            Some(Signedness::Signed)
+        }
+        SemanticType::UInt { .. }
+        | SemanticType::Bytes { .. }
+        | SemanticType::Date { .. }
+        | SemanticType::TimeOfDay { .. }
+        | SemanticType::DateAndTime { .. } => Some(Signedness::Unsigned),
+        SemanticType::Bool
+        | SemanticType::Real { .. }
+        | SemanticType::Reference { .. }
+        | SemanticType::String { .. }
+        | SemanticType::Structure { .. }
+        | SemanticType::Array { .. }
+        | SemanticType::FunctionBlock { .. }
+        | SemanticType::Function { .. } => None,
+    }
+}
+
 /// The elementary type an untyped literal of the category `generic` is
 /// operated at when nothing gives it a type: `DINT` for an integer and
 /// `REAL` for a real (ADR-0028). `None` for a category no untyped literal
@@ -99,6 +155,7 @@ pub fn literal_default_type(generic: &GenericTypeName) -> Option<ElementaryTypeN
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::semantic_type::ByteSized;
     use rstest::rstest;
 
     #[rstest]
@@ -131,6 +188,43 @@ mod tests {
         #[case] expected: OperationWidth,
     ) {
         assert_eq!(operation_width_of(&representation), Some(expected));
+    }
+
+    #[rstest]
+    #[case::int(SemanticType::Int { size: ByteSized::B8 }, OperationWidth::W32, Some(Signedness::Signed))]
+    #[case::uint(SemanticType::UInt { size: ByteSized::B8 }, OperationWidth::W32, Some(Signedness::Unsigned))]
+    #[case::bit_string(SemanticType::Bytes { size: ByteSized::B64 }, OperationWidth::W64, Some(Signedness::Unsigned))]
+    #[case::time(SemanticType::Time { size: ByteSized::B32 }, OperationWidth::W32, Some(Signedness::Signed))]
+    #[case::date(SemanticType::Date { size: ByteSized::B32 }, OperationWidth::W32, Some(Signedness::Unsigned))]
+    #[case::real(SemanticType::Real { size: ByteSized::B32 }, OperationWidth::F32, None)]
+    #[case::boolean(SemanticType::Bool, OperationWidth::W32, None)]
+    fn operation_type_of_when_scalar_then_its_width_and_signedness(
+        #[case] representation: SemanticType,
+        #[case] width: OperationWidth,
+        #[case] signedness: Option<Signedness>,
+    ) {
+        assert_eq!(
+            operation_type_of(&representation),
+            Some(OperationType { width, signedness })
+        );
+    }
+
+    #[test]
+    fn operation_type_of_when_subrange_then_its_base_types() {
+        let representation = SemanticType::Subrange {
+            base_type: Box::new(SemanticType::UInt {
+                size: ByteSized::B16,
+            }),
+            min_value: 0,
+            max_value: 10,
+        };
+        assert_eq!(
+            operation_type_of(&representation),
+            Some(OperationType {
+                width: OperationWidth::W32,
+                signedness: Some(Signedness::Unsigned),
+            })
+        );
     }
 
     #[rstest]

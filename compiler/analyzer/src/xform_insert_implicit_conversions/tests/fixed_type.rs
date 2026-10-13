@@ -59,8 +59,8 @@ fn string_positions(name: &str) -> &'static [usize] {
 fn fixed_type_values(body: &str) -> Vec<String> {
     let source = format!(
         "PROGRAM main
-         VAR a : ARRAY[0..3] OF INT; x : INT; s : SINT; d : DINT; l : LINT; ul : ULINT;
-             dw : DWORD; lw : LWORD; st : STRING[10]; END_VAR
+         VAR a : ARRAY[0..3] OF INT; x : INT; s : SINT; d : DINT; l : LINT; u : UINT;
+             ul : ULINT; dw : DWORD; lw : LWORD; st : STRING[10]; END_VAR
          {body}
          END_PROGRAM"
     );
@@ -86,8 +86,9 @@ fn fixed_type_values(body: &str) -> Vec<String> {
 #[case::lint_arithmetic("x := a[d + l];", "LINT->DINT")]
 #[case::assignment_target("a[l] := 5;", "LINT->DINT")]
 #[case::narrower_integer("x := a[s];", "SINT")]
+#[case::unsigned_integer("x := a[u];", "UINT->DINT")]
 #[case::dint("x := a[d];", "DINT")]
-fn apply_when_subscript_of_other_width_then_converted_to_dint(
+fn apply_when_subscript_of_other_operation_type_then_converted_to_dint(
     #[case] body: &str,
     #[case] expected: &str,
 ) {
@@ -99,9 +100,9 @@ fn apply_when_subscript_of_other_width_then_converted_to_dint(
 #[case::lint_count_of_dword("dw := SHL(dw, l);", "LINT->DINT")]
 #[case::dint_count_of_lword("lw := SHL(lw, d);", "DINT->LINT")]
 #[case::sint_count_of_dword("dw := ROL(dw, s);", "SINT")]
-#[case::ulint_count_of_lword("lw := SHR(lw, ul);", "ULINT")]
+#[case::ulint_count_of_lword("lw := SHR(lw, ul);", "ULINT->LINT")]
 #[case::dint_count_of_lword_rotated("lw := ROR(lw, d);", "DINT->LINT")]
-fn apply_when_shift_count_of_other_width_then_converted_to_count_type(
+fn apply_when_shift_count_of_other_operation_type_then_converted_to_count_type(
     #[case] body: &str,
     #[case] expected: &str,
 ) {
@@ -117,7 +118,8 @@ fn apply_when_shift_count_of_other_width_then_converted_to_count_type(
 #[case::insert_position("st := INSERT(st, 'ab', l);", &["LINT->DINT"])]
 #[case::replace_length_and_position("st := REPLACE(st, 'ab', d, l);", &["DINT", "LINT->DINT"])]
 #[case::narrower_integer("st := LEFT(st, s);", &["SINT"])]
-fn apply_when_string_position_of_other_width_then_converted_to_dint(
+#[case::unsigned_integer("st := LEFT(st, u);", &["UINT->DINT"])]
+fn apply_when_string_position_of_other_operation_type_then_converted_to_dint(
     #[case] body: &str,
     #[case] expected: &[&str],
 ) {
