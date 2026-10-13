@@ -1442,9 +1442,16 @@ A loop is opened before its body is built and closed by building the `Loop` or
 closing the loop checks that each one it made is inside its body, so
 REQ-LOW-lowering-062 holds by construction.
 
-**REQ-LOW-lowering-082** `ironplc-ir`, `ironplc-lowering` and every backend crate deny
-`clippy::wildcard_enum_match_arm`, so a match over a lowered enum names every
-variant.
+**REQ-LOW-lowering-082** `ironplc-ir`, `ironplc-lowering` and every backend's code
+over the lowered program deny `clippy::wildcard_enum_match_arm`, so a match over
+a lowered enum names every variant.
+
+A backend crate denies the lint at its root. `ironplc-codegen` denies it at the
+root of its bridge from the lowered program (`src/lowered/`), because its AST
+route predates the rule. The lint does not see a wildcard inside a tuple or
+slice pattern, such as the last arm of `match (op, ty, width) { ..., _ => None }`.
+Such a match is split into one exhaustive match per enum, which leaves a
+wildcard only over a number or a slice length.
 
 ### 3.10 Meaning of operations
 
@@ -2004,8 +2011,9 @@ of a NaN, and `SHL` by 33, and every backend runs the same programs.
 
 **Structure is tested mechanically.** REQ-LOW-codegen-002 is a test over the
 crate manifest. REQ-LOW-lowering-082 is enforced by clippy; its conformance
-test asserts that each crate root carries the `deny` attribute, since a test
-cannot observe a lint that is not configured.
+test asserts that each crate root, or for `ironplc-codegen` the root of its
+lowered bridge, carries the `deny` attribute, since a test cannot observe a
+lint that is not configured.
 
 **Standard function blocks are tested against the VM.** REQ-LOW-codegen-078
 is asserted by running each standard function block both ways, through the

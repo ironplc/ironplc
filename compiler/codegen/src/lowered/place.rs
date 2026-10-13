@@ -16,12 +16,12 @@ use ironplc_dsl::textual::{
     StructuredVariable, SymbolicVariableKind, Variable,
 };
 use ironplc_ir::lowered::{
-    Const, Expr, ExprKind, Place as LoweredPlace, Projection, TypeId, TypeKind, TypeTable,
+    Const, Expr, Place as LoweredPlace, Projection, TypeId, TypeKind, TypeTable,
 };
 use ironplc_lowering::Lowering;
 
 use super::expr::emit_expr;
-use super::{is_instance, op_type};
+use super::{constant, instance_field, op_type};
 use crate::compile::{CompileContext, OpWidth, VarTypeInfo};
 use crate::compile_place::Place;
 use crate::compile_subscript::Subscript;
@@ -35,9 +35,9 @@ pub(super) struct LoweredSubscript<'l, 'a> {
 
 impl Subscript for LoweredSubscript<'_, '_> {
     fn literal(&self) -> Option<i32> {
-        match self.expr.kind() {
-            ExprKind::Const(Const::I32(value)) => Some(*value),
-            _ => None,
+        match constant(self.expr)? {
+            Const::I32(value) => Some(value),
+            Const::Bool(_) | Const::I64(_) | Const::F32(_) | Const::F64(_) => None,
         }
     }
 
@@ -82,19 +82,11 @@ fn reference<'l>(
 ) -> Option<SymbolicVariableKind> {
     let types = lowering.types();
     let root = lowering.variables().get(place.root())?;
-    let mut ty = root.ty();
-    let mut path = place.path();
-    let mut reference = match path {
+    let (mut reference, mut ty, path) = match instance_field(lowering, root.ty(), place.path()) {
         // A field of the current instance, which codegen copies into a slot
         // of the field's name.
-        [Projection::Deref, Projection::Field(field), rest @ ..] if is_instance(lowering, ty) => {
-            let (instance, _) = types.reference(ty)?;
-            let declared = types.fields(instance)?.get(field.index() as usize)?;
-            ty = declared.ty;
-            path = rest;
-            named(&declared.name.to_string())
-        }
-        _ => named(&root.name().to_string()),
+        Some((field, rest)) => (named(&field.name.to_string()), field.ty, rest),
+        None => (named(&root.name().to_string()), root.ty(), place.path()),
     };
     for projection in path {
         reference = match projection {
@@ -140,10 +132,12 @@ fn reference<'l>(
 /// is operated at, and the width a store narrows it to.
 fn type_info(types: &TypeTable, ty: TypeId) -> Option<VarTypeInfo> {
     let (op_width, signedness) = op_type(types.operation_type(ty)?)?;
-    let storage_bits = match (types.narrowed_storage(ty), op_width) {
-        (Some(narrow), _) => narrow.bits(),
-        (None, OpWidth::W32 | OpWidth::F32) => 32,
-        (None, OpWidth::W64 | OpWidth::F64) => 64,
+    let storage_bits = match types.narrowed_storage(ty) {
+        Some(narrow) => narrow.bits(),
+        None => match op_width {
+            OpWidth::W32 | OpWidth::F32 => 32,
+            OpWidth::W64 | OpWidth::F64 => 64,
+        },
     };
     Some(VarTypeInfo {
         op_width,

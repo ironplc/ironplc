@@ -29,18 +29,26 @@ impl Const {
     /// The integer the constant stands for, read at the integer type `ty`;
     /// `None` for a real constant or a type of another width.
     pub fn integer_value(self, ty: ScalarType) -> Option<i128> {
-        match (self, ty) {
-            (Const::I32(value), ScalarType::I32(Signedness::Signed)) => Some(value.into()),
-            (Const::I32(value), ScalarType::I32(Signedness::Unsigned)) => {
-                Some((value as u32).into())
-            }
-            (Const::I64(value), ScalarType::I64(Signedness::Signed)) => Some(value.into()),
-            (Const::I64(value), ScalarType::I64(Signedness::Unsigned)) => {
-                Some((value as u64).into())
-            }
-            (Const::Bool(_) | Const::I32(_) | Const::I64(_) | Const::F32(_) | Const::F64(_), _) => {
-                None
-            }
+        match ty {
+            ScalarType::I32(signedness) => match self {
+                Const::I32(value) => Some(match signedness {
+                    Signedness::Signed => value.into(),
+                    Signedness::Unsigned => (value as u32).into(),
+                }),
+                Const::Bool(_) | Const::I64(_) | Const::F32(_) | Const::F64(_) => None,
+            },
+            ScalarType::I64(signedness) => match self {
+                Const::I64(value) => Some(match signedness {
+                    Signedness::Signed => value.into(),
+                    Signedness::Unsigned => (value as u64).into(),
+                }),
+                Const::Bool(_) | Const::I32(_) | Const::F32(_) | Const::F64(_) => None,
+            },
+            ScalarType::Bool
+            | ScalarType::F32
+            | ScalarType::F64
+            | ScalarType::Ref
+            | ScalarType::Interface => None,
         }
     }
 
@@ -67,14 +75,15 @@ impl Const {
 
     /// Whether the constant is of the width of `ty`.
     pub(crate) fn has_width_of(self, ty: ScalarType) -> bool {
-        matches!(
-            (self, ty),
-            (Const::Bool(_), ScalarType::Bool)
-                | (Const::I32(_), ScalarType::I32(_))
-                | (Const::I64(_), ScalarType::I64(_))
-                | (Const::F32(_), ScalarType::F32)
-                | (Const::F64(_), ScalarType::F64)
-        )
+        match ty {
+            ScalarType::Bool => matches!(self, Const::Bool(_)),
+            ScalarType::I32(_) => matches!(self, Const::I32(_)),
+            ScalarType::I64(_) => matches!(self, Const::I64(_)),
+            ScalarType::F32 => matches!(self, Const::F32(_)),
+            ScalarType::F64 => matches!(self, Const::F64(_)),
+            // No constant is a reference or an interface value.
+            ScalarType::Ref | ScalarType::Interface => false,
+        }
     }
 }
 

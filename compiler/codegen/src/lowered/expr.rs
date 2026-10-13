@@ -168,7 +168,7 @@ pub(super) fn emit_truncate(
         (NarrowWidth::B16, Signedness::Unsigned) => emitter.emit_trunc_u16(),
         // The bytecode backend keeps no value narrower than its slot at
         // 32 bits, so `can_emit` leaves such a truncation to the AST.
-        (NarrowWidth::B32, _) => {
+        (NarrowWidth::B32, Signedness::Signed | Signedness::Unsigned) => {
             return Err(Diagnostic::internal_error_at(Label::span(
                 span.clone(),
                 "A truncation to 32 bits",
