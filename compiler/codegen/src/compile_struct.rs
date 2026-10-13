@@ -523,7 +523,6 @@ mod tests {
         SemanticStructField {
             name: Id::from(name),
             field_type,
-            offset: 0,
             var_type: None,
             has_default: false,
         }

@@ -49,34 +49,18 @@ const COUNTER_INT_VARIANTS: &[(&str, CounterWidth, fn() -> SemanticType)] = &[
     }), // ULINT
 ];
 
-/// Builds an SemanticStructField with proper offset calculation.
+/// Builds a field of a standard function block.
 fn build_field(
     name: &str,
     field_type: SemanticType,
     var_type: FunctionBlockVarType,
-    current_offset: &mut u32,
 ) -> SemanticStructField {
-    // Calculate alignment
-    let alignment = field_type.alignment_bytes() as u32;
-    let aligned_offset = if alignment == 0 {
-        *current_offset
-    } else {
-        current_offset.div_ceil(alignment) * alignment
-    };
-
-    // Calculate size
-    let size = field_type.size_in_bytes().unwrap_or(0);
-
-    let field = SemanticStructField {
+    SemanticStructField {
         name: Id::from(name),
         field_type,
-        offset: aligned_offset,
         var_type: Some(var_type),
         has_default: false, // Function block fields don't have defaults in the const sense
-    };
-
-    *current_offset = aligned_offset + size;
-    field
+    }
 }
 
 /// Builds TypeAttributes for the standard library function block `block`.
@@ -85,12 +69,9 @@ fn build_function_block(
     name: &str,
     field_defs: &[(&str, SemanticType, FunctionBlockVarType)],
 ) -> TypeAttributes {
-    let mut current_offset = 0u32;
     let fields: Vec<SemanticStructField> = field_defs
         .iter()
-        .map(|(name, field_type, var_type)| {
-            build_field(name, field_type.clone(), *var_type, &mut current_offset)
-        })
+        .map(|(name, field_type, var_type)| build_field(name, field_type.clone(), *var_type))
         .collect();
 
     TypeAttributes::new(

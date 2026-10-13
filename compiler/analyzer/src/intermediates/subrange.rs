@@ -638,7 +638,7 @@ END_TYPE
     }
 
     #[test]
-    fn apply_when_subrange_memory_size_then_inherits_base_type_size() {
+    fn apply_when_subrange_then_has_width_of_base_type() {
         let program = "
 TYPE
 SINT_RANGE : SINT (1..10) := 5;
@@ -656,15 +656,18 @@ END_TYPE
         let result = apply(input, &mut env);
         assert!(result.is_ok());
 
-        // Check memory sizes
+        // Each subrange has the width of its base type
         let sint_range = env.get(&TypeName::from("SINT_RANGE")).unwrap();
-        assert_eq!(sint_range.representation.size_in_bytes(), Some(1));
+        assert_eq!(sint_range.representation.operated_as().bit_width(), Some(8));
 
         let int_range = env.get(&TypeName::from("INT_RANGE")).unwrap();
-        assert_eq!(int_range.representation.size_in_bytes(), Some(2));
+        assert_eq!(int_range.representation.operated_as().bit_width(), Some(16));
 
         let dint_range = env.get(&TypeName::from("DINT_RANGE")).unwrap();
-        assert_eq!(dint_range.representation.size_in_bytes(), Some(4));
+        assert_eq!(
+            dint_range.representation.operated_as().bit_width(),
+            Some(32)
+        );
     }
 
     #[test]

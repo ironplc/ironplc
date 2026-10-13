@@ -380,7 +380,6 @@ impl Fold<Diagnostic> for TypeEnvironment {
         // so that variable declarations like `myFb : MY_FB` resolve to
         // SemanticType::FunctionBlock, just like stdlib FBs.
         let mut fields = Vec::new();
-        let mut current_offset = 0u32;
 
         for decl in &node.variables {
             let var_type = match decl.var_type {
@@ -423,23 +422,12 @@ impl Fold<Diagnostic> for TypeEnvironment {
                     }
                 };
 
-                let alignment = field_type.alignment_bytes() as u32;
-                let aligned_offset = if alignment == 0 {
-                    current_offset
-                } else {
-                    current_offset.div_ceil(alignment) * alignment
-                };
-                let size = field_type.size_in_bytes().unwrap_or(0);
-
                 fields.push(SemanticStructField {
                     name: Id::from(id.to_string().as_str()),
                     field_type,
-                    offset: aligned_offset,
                     var_type: Some(var_type),
                     has_default: false,
                 });
-
-                current_offset = aligned_offset + size;
             }
         }
 

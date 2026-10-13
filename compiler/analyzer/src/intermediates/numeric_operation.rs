@@ -70,7 +70,7 @@ pub(crate) fn operation_width_of(representation: &SemanticType) -> Option<Operat
         | SemanticType::Date { .. }
         | SemanticType::TimeOfDay { .. }
         | SemanticType::DateAndTime { .. } => {
-            let bits = representation.size_in_bytes()? * 8;
+            let bits = representation.bit_width()?;
             Some(match representation {
                 SemanticType::Real { .. } if bits <= 32 => OperationWidth::F32,
                 SemanticType::Real { .. } => OperationWidth::F64,
