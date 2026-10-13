@@ -4,7 +4,7 @@
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{Expr as AstExpr, ExprKind as AstExprKind, SymbolicVariableKind};
-use ironplc_ir::lowered::{Expr, Place, ScalarType, Signedness};
+use ironplc_ir::lowered::{Expr, Place};
 
 use crate::variables::BodyFrame;
 use crate::Lowering;
@@ -68,20 +68,16 @@ impl Lowering<'_> {
     /// subscript of another type to `DINT`. That conversion is exact for a
     /// type whose values all fit a `DINT`; for any other, such as a `UDINT`,
     /// it would wrap, so such a subscript is not lowered until the analyzer
-    /// records its conversion as checked (REQ-LOW-analyzer-162).
+    /// records its conversion as checked (REQ-LOW-analyzer-162). A subscript
+    /// of another type the analyzer did not convert is a defect, which
+    /// building the `Index` reports (REQ-LOW-lowering-094).
     fn subscript(&mut self, frame: &BodyFrame, subscript: &AstExpr) -> Made<Expr> {
         if let AstExprKind::ImplicitConversion(converted) = &subscript.kind {
             if !self.fits_dint(converted)? {
                 return Ok(None);
             }
         }
-        let Some(value) = self.expr(frame, subscript)? else {
-            return Ok(None);
-        };
-        if value.ty() != ScalarType::I32(Signedness::Signed) {
-            return Ok(None);
-        }
-        Ok(Some(value))
+        self.expr(frame, subscript)
     }
 
     /// Whether every value of `expr`'s type fits a `DINT`.
