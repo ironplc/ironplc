@@ -17,7 +17,7 @@ use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::StmtKind as AstStmtKind;
 use ironplc_ir::lowered::{
-    Expr, ExprKind, NarrowWidth, Nullability, Place as LoweredPlace, Projection, ScalarType,
+    Arg, Expr, ExprKind, NarrowWidth, Nullability, Place as LoweredPlace, Projection, ScalarType,
     Signedness as LoweredSignedness, Stmt, StmtKind, TypeId, TypeKind,
 };
 use ironplc_lowering::{Lowering, StatementLowering};
@@ -209,6 +209,9 @@ fn expr_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, expr: &Expr) -> 
         | ExprKind::ShortCircuit { lhs, rhs, .. } => {
             expr_can_emit(lowering, ctx, lhs) && expr_can_emit(lowering, ctx, rhs)
         }
+        ExprKind::Call { args, .. } => args.iter().all(|arg| match arg {
+            Arg::Value(value) => expr_can_emit(lowering, ctx, value),
+        }),
     }
 }
 
