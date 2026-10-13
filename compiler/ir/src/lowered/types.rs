@@ -373,6 +373,26 @@ impl TypeTable {
         }
     }
 
+    /// How many bits a value of `id` holds that an `AssignBits` may name: the
+    /// width of an integer or a bit string, through a subrange; `None` for any
+    /// other type (REQ-LOW-lowering-065).
+    pub fn bit_width(&self, id: TypeId) -> Option<u8> {
+        match self.kind(id)? {
+            TypeKind::Integer { width, .. } | TypeKind::BitString { width } => Some(width.bits()),
+            TypeKind::Subrange { base, .. } => self.bit_width(*base),
+            TypeKind::Bool
+            | TypeKind::Enumeration { .. }
+            | TypeKind::Real { .. }
+            | TypeKind::Temporal { .. }
+            | TypeKind::String(_)
+            | TypeKind::Array { .. }
+            | TypeKind::Structure { .. }
+            | TypeKind::FunctionBlock { .. }
+            | TypeKind::Program { .. }
+            | TypeKind::Reference { .. } => None,
+        }
+    }
+
     /// The width a value of `id` is stored at, where it is narrower than the
     /// type's operation width and a store must narrow it; `None` for a type a
     /// store never narrows.

@@ -17,6 +17,7 @@ fn options() -> CompilerOptions {
     CompilerOptions {
         allow_continue: true,
         allow_ref_to: true,
+        allow_partial_access_syntax: true,
         ..CompilerOptions::default()
     }
 }
@@ -376,4 +377,77 @@ fn compile_when_field_through_reference_parameter_then_not_taken_for_local() {
     let (library, context) = parse(source, &options);
     let result = compile_by_route(&library, &context, &options, Route::PreferLowered);
     assert_eq!(result.unwrap_err().code, "P9999");
+}
+
+/// Bits and parts are written to a variable, an element of an array, a
+/// field of a structure and a field of an element of an array of
+/// structures, leaving the other bits as they were. Setting the top bit of
+/// an `INT` makes it negative, as on the AST route.
+#[test]
+fn run_when_bits_and_parts_written_then_other_bits_kept() {
+    let snapshot = run_lowered(
+        "TYPE P : STRUCT w : WORD; END_STRUCT; END_TYPE
+         PROGRAM main
+           VAR w : WORD := 16#00F0; n : INT; l : LWORD; a : ARRAY[1..3] OF BYTE;
+               p : P; ps : ARRAY[0..1] OF P; i : DINT := 2;
+               b : BYTE := 16#AB; d : DWORD := 16#12345678;
+               rw : DWORD; rn : DINT; ra : DWORD; rp : DWORD; rps : DWORD; END_VAR
+           w.0 := TRUE;
+           w.%B1 := b;
+           n.15 := TRUE;
+           l.%D1 := d;
+           l.%B0 := b;
+           a[i].7 := TRUE;
+           p.w.%B0 := b;
+           ps[i - 1].w.3 := TRUE;
+           rw := w;
+           rn := n;
+           ra := a[2];
+           rp := p.w;
+           rps := ps[1].w;
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<i64>("rw"), 0xABF1);
+    assert_eq!(snapshot.read_as::<i64>("rn"), -32768);
+    assert_eq!(snapshot.read_as::<u64>("l"), 0x1234_5678_0000_00AB);
+    assert_eq!(snapshot.read_as::<i64>("ra"), 0x80);
+    assert_eq!(snapshot.read_as::<i64>("rp"), 0xAB);
+    assert_eq!(snapshot.read_as::<i64>("rps"), 8);
+}
+
+/// REQ-LOW-codegen-121: a bit write to an element of an array evaluates the
+/// element's subscript once, keeping the address for the store, where the
+/// AST route evaluates it for the load and again for the store.
+#[test]
+fn compile_when_bit_written_to_element_then_subscript_evaluated_once() {
+    let source = "PROGRAM main VAR i : DINT; a : ARRAY[0..3] OF WORD; END_VAR
+           a[i].3 := TRUE;
+         END_PROGRAM";
+    // i is var:0.
+    let load_i = bc::load_var_i32(0);
+    let loads = |code: Vec<u8>| {
+        code.windows(load_i.len())
+            .filter(|window| *window == load_i.as_slice())
+            .count()
+    };
+    assert_eq!(loads(body_by_route(source, Route::RequireLowered)), 1);
+    assert_eq!(loads(body_by_route(source, Route::Ast)), 2);
+}
+
+/// A bit or partial write to a variable compiles to the same instructions
+/// and constants by both routes: a variable has no address to evaluate.
+#[rstest]
+#[case::bit("w.3 := TRUE;")]
+#[case::first_bit("w.0 := FALSE;")]
+#[case::byte("w.%B1 := b;")]
+#[case::dword_of_lword("l.%D1 := d;")]
+#[case::lword_of_lword("l.%L0 := l;")]
+fn compile_when_bits_written_to_variable_then_same_code_as_ast(#[case] statement: &str) {
+    let source = format!(
+        "PROGRAM main
+           VAR w : WORD; b : BYTE; d : DWORD; l : LWORD; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    assert_same_code(&source);
 }

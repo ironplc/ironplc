@@ -1103,6 +1103,11 @@ ranges of the selector's type.
 **REQ-LOW-lowering-065** `AssignBits` names a bit range that lies within the
 storage width of its place's type.
 
+`AssignBits` replaces the `bits` bits of the place's value that start at bit
+`shift` with the low `bits` bits of its value, and leaves the other bits as
+they were. The value is a `BOOL` for one bit, a 32-bit integer for up to 32
+bits, and a 64-bit integer for more.
+
 The arms of a `Case` are tried in order and the first arm with a matching
 label runs, as `compile_case` does today.
 

@@ -286,6 +286,64 @@ impl<S: Subscript> Place<S> {
         self.emit_store_fitting(emitter, ctx)
     }
 
+    /// Loads the value the place holds, lets `modify` replace it on the
+    /// stack, and stores the result truncated to the place's type.
+    ///
+    /// The address is emitted once and kept on the stack for the store, so
+    /// the place's subscripts are evaluated once (REQ-LOW-codegen-121).
+    pub(crate) fn emit_update(
+        &self,
+        emitter: &mut Emitter,
+        ctx: &mut CompileContext,
+        modify: impl FnOnce(&mut Emitter, &mut CompileContext) -> Result<(), Diagnostic>,
+    ) -> Result<(), Diagnostic> {
+        let truncate = |emitter: &mut Emitter| {
+            if let Some(type_info) = self.type_info {
+                emit_truncation(emitter, type_info);
+            }
+        };
+        match &self.address {
+            Address::Variable(var_index) => {
+                emit_load_var(emitter, *var_index, self.op_type());
+                modify(emitter, ctx)?;
+                truncate(emitter);
+                emit_store_var(emitter, *var_index, self.op_type());
+            }
+            Address::Indirect(ref_slot) => {
+                emitter.emit_load_var_i64(*ref_slot);
+                emitter.emit_dup();
+                emitter.emit_load_indirect();
+                modify(emitter, ctx)?;
+                truncate(emitter);
+                emitter.emit_swap();
+                emitter.emit_store_indirect();
+            }
+            Address::Element {
+                var_index,
+                desc_index,
+                through_ref,
+                index,
+            } => {
+                index.emit(emitter, ctx, &self.span)?;
+                emitter.emit_dup();
+                if *through_ref {
+                    emitter.emit_load_array_deref(*var_index, *desc_index);
+                } else {
+                    emitter.emit_load_array(*var_index, *desc_index);
+                }
+                modify(emitter, ctx)?;
+                truncate(emitter);
+                emitter.emit_swap();
+                if *through_ref {
+                    emitter.emit_store_array_deref(*var_index, *desc_index);
+                } else {
+                    emitter.emit_store_array(*var_index, *desc_index);
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Pops a value that already fits the place's type, as every value the
     /// lowered program stores does (REQ-LOW-lowering-046), and stores it in
     /// the place.

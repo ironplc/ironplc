@@ -151,6 +151,13 @@ fn can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, stmt: &Stmt) -> bool 
         StmtKind::Assign { place, value } => {
             reaches(lowering, ctx, place, value.ty()) && expr_can_emit(lowering, ctx, value)
         }
+        StmtKind::AssignBits { place, value, .. } => {
+            lowering
+                .types()
+                .operation_type(place.ty())
+                .is_some_and(|ty| reaches(lowering, ctx, place, ty))
+                && expr_can_emit(lowering, ctx, value)
+        }
         StmtKind::If {
             cond,
             then,
