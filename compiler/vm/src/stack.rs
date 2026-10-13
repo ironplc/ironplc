@@ -1,5 +1,9 @@
+use vstd::prelude::*;
+
 use crate::error::Trap;
 use crate::value::Slot;
+
+verus! {
 
 /// Fixed-capacity operand stack for VM execution.
 pub struct OperandStack<'a> {
@@ -8,12 +12,21 @@ pub struct OperandStack<'a> {
 }
 
 impl<'a> OperandStack<'a> {
+    /// The stack never holds more slots than its backing slice.
+    ///
+    /// `new` establishes this and every method that takes `&mut self`
+    /// preserves it. The fields are private, so code outside this module
+    /// (which Verus does not check) cannot break it either.
+    pub closed spec fn wf(&self) -> bool {
+        self.len <= self.data@.len()
+    }
+
     /// Creates a new operand stack backed by the given slice.
-    pub fn new(backing: &'a mut [Slot]) -> Self {
-        OperandStack {
-            data: backing,
-            len: 0,
-        }
+    pub fn new(backing: &'a mut [Slot]) -> (s: Self)
+        ensures
+            s.wf(),
+    {
+        OperandStack { data: backing, len: 0 }
     }
 
     /// Number of slots currently on the stack.
@@ -28,7 +41,12 @@ impl<'a> OperandStack<'a> {
     }
 
     /// Pushes a slot onto the stack.
-    pub fn push(&mut self, slot: Slot) -> Result<(), Trap> {
+    pub fn push(&mut self, slot: Slot) -> Result<(), Trap>
+        requires
+            old(self).wf(),
+        ensures
+            final(self).wf(),
+    {
         if self.len >= self.data.len() {
             return Err(Trap::StackOverflow);
         }
@@ -38,7 +56,12 @@ impl<'a> OperandStack<'a> {
     }
 
     /// Pops a slot from the stack.
-    pub fn pop(&mut self) -> Result<Slot, Trap> {
+    pub fn pop(&mut self) -> Result<Slot, Trap>
+        requires
+            old(self).wf(),
+        ensures
+            final(self).wf(),
+    {
         if self.len == 0 {
             return Err(Trap::StackUnderflow);
         }
@@ -47,7 +70,10 @@ impl<'a> OperandStack<'a> {
     }
 
     /// Returns the top slot without removing it.
-    pub fn peek(&self) -> Result<Slot, Trap> {
+    pub fn peek(&self) -> Result<Slot, Trap>
+        requires
+            self.wf(),
+    {
         if self.len == 0 {
             return Err(Trap::StackUnderflow);
         }
@@ -55,7 +81,10 @@ impl<'a> OperandStack<'a> {
     }
 
     /// Returns the slot at `depth` slots below the top (depth 0 = top).
-    pub fn peek_at(&self, depth: usize) -> Result<Slot, Trap> {
+    pub fn peek_at(&self, depth: usize) -> Result<Slot, Trap>
+        requires
+            self.wf(),
+    {
         if depth >= self.len {
             return Err(Trap::StackUnderflow);
         }
@@ -63,7 +92,12 @@ impl<'a> OperandStack<'a> {
     }
 
     /// Removes `n` slots from the top of the stack.
-    pub fn truncate_by(&mut self, n: usize) -> Result<(), Trap> {
+    pub fn truncate_by(&mut self, n: usize) -> Result<(), Trap>
+        requires
+            old(self).wf(),
+        ensures
+            final(self).wf(),
+    {
         if n > self.len {
             return Err(Trap::StackUnderflow);
         }
@@ -72,13 +106,23 @@ impl<'a> OperandStack<'a> {
     }
 
     /// Duplicates the top value on the stack.
-    pub fn dup(&mut self) -> Result<(), Trap> {
+    pub fn dup(&mut self) -> Result<(), Trap>
+        requires
+            old(self).wf(),
+        ensures
+            final(self).wf(),
+    {
         let top = self.peek()?;
         self.push(top)
     }
 
     /// Swaps the top two values on the stack.
-    pub fn swap(&mut self) -> Result<(), Trap> {
+    pub fn swap(&mut self) -> Result<(), Trap>
+        requires
+            old(self).wf(),
+        ensures
+            final(self).wf(),
+    {
         if self.len < 2 {
             return Err(Trap::StackUnderflow);
         }
@@ -86,6 +130,8 @@ impl<'a> OperandStack<'a> {
         Ok(())
     }
 }
+
+} // verus!
 
 #[cfg(test)]
 mod tests {
