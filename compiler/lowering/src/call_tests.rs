@@ -398,3 +398,83 @@ fn lower_statement_when_trunc_then_convert_to_integer_of_context() {
         ]
     );
 }
+
+/// REQ-LOW-lowering-147: `BCD_TO_INT` is the intrinsic for the width of its
+/// bit string, converted to the integer of its context, and `INT_TO_BCD` the
+/// intrinsic for the width and signedness of its integer.
+#[test]
+fn lower_statement_when_bcd_conversion_then_intrinsic_at_its_width() {
+    let outcome = lower(
+        "PROGRAM main VAR w : WORD; b : BYTE; lw : LWORD; i : INT; us : USINT; d : DWORD;
+             di : DINT; l : LINT; END_VAR
+            i := BCD_TO_INT(w);
+            di := BCD_TO_INT(b);
+            l := BCD_TO_INT(lw);
+            di := BCD_TO_INT(lw);
+            w := INT_TO_BCD(i);
+            b := INT_TO_BCD(us);
+            lw := INT_TO_BCD(l);
+            d := INT_TO_BCD(42);
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f3 (truncate 16 (call bcd_to_int_u16 i32s (read i32u v0^.f0)))",
+            "assign v0^.f6 (call bcd_to_int_u8 i32s (read i32u v0^.f1))",
+            "assign v0^.f7 (call bcd_to_int_u64 i64s (read i64u v0^.f2))",
+            "assign v0^.f6 (convert i32s (call bcd_to_int_u64 i64s (read i64u v0^.f2)))",
+            "assign v0^.f0 (truncate 16 (call int_to_bcd_i16 i32u (read i32s v0^.f3)))",
+            "assign v0^.f1 (truncate 8 (call int_to_bcd_u8 i32u (read i32u v0^.f4)))",
+            "assign v0^.f2 (call int_to_bcd_i64 i64u (read i64s v0^.f7))",
+            "assign v0^.f5 (call int_to_bcd_i32 i32u (const i32s 42))",
+        ]
+    );
+}
+
+/// REQ-LOW-lowering-103: `SIZEOF` is a constant from the language's storage
+/// widths, at the integer of its context: a `BOOL` takes a byte, and an
+/// array its element's size for each element.
+#[test]
+fn lower_statement_when_sizeof_then_constant_of_storage_width() {
+    let outcome = lower(
+        "TYPE MATRIX : ARRAY[1..2, 1..5] OF REAL; END_TYPE
+         PROGRAM main VAR arr : ARRAY[0..3] OF INT; m : MATRIX; x : BOOL; t : TIME;
+             d : DINT; l : LINT; END_VAR
+            d := SIZEOF(arr);
+            d := SIZEOF(m);
+            d := SIZEOF(x);
+            d := SIZEOF(t);
+            l := SIZEOF(arr[1]);
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f4 (const i32s 8)",
+            "assign v0^.f4 (const i32s 40)",
+            "assign v0^.f4 (const i32s 1)",
+            "assign v0^.f4 (const i32s 4)",
+            "assign v0^.f5 (const i64s 2)",
+        ]
+    );
+}
+
+/// REQ-LOW-lowering-103: the size of a structure, a string or an
+/// enumeration is a target's layout, so its `SIZEOF` is not lowered.
+#[test]
+fn lower_statement_when_sizeof_of_layout_then_unsupported() {
+    let outcome = lower(
+        "TYPE P : STRUCT x : DINT; END_STRUCT; END_TYPE
+         TYPE COLOR : (RED, GREEN); END_TYPE
+         PROGRAM main VAR p : P; s : STRING; c : COLOR; d : DINT; END_VAR
+            d := SIZEOF(p);
+            d := SIZEOF(s);
+            d := SIZEOF(c);
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(outcome.statements, ["unsupported"; 3]);
+}

@@ -32,6 +32,10 @@ pub enum Arg {
 /// The selection functions `MIN`, `MAX`, `LIMIT` and `SEL` take any integer
 /// or real, and `SEL` also its selector, a `BOOL`. `MUX` takes a `DINT`
 /// selector, then two or more inputs of its type: its last parameter repeats.
+///
+/// `BCD_TO_INT` decodes a bit string to a signed integer of its operation
+/// width, and `INT_TO_BCD` encodes an integer as the bit string as wide as it.
+/// Each has a variant for each width, which fixes its number of digits.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Intrinsic {
     /// `SHL` of a 32-bit bit string: a `BYTE`, `WORD` or `DWORD`.
@@ -186,6 +190,30 @@ pub enum Intrinsic {
     MuxF32,
     /// `MUX` among two or more `LREAL`s.
     MuxF64,
+    /// `BCD_TO_INT` of a `BYTE`: two digits.
+    BcdToIntU8,
+    /// `BCD_TO_INT` of a `WORD`: four digits.
+    BcdToIntU16,
+    /// `BCD_TO_INT` of a `DWORD`: eight digits.
+    BcdToIntU32,
+    /// `BCD_TO_INT` of an `LWORD`: sixteen digits.
+    BcdToIntU64,
+    /// `INT_TO_BCD` of a `SINT`, to a `BYTE`.
+    IntToBcdI8,
+    /// `INT_TO_BCD` of a `USINT`, to a `BYTE`.
+    IntToBcdU8,
+    /// `INT_TO_BCD` of an `INT`, to a `WORD`.
+    IntToBcdI16,
+    /// `INT_TO_BCD` of a `UINT`, to a `WORD`.
+    IntToBcdU16,
+    /// `INT_TO_BCD` of a `DINT`, to a `DWORD`.
+    IntToBcdI32,
+    /// `INT_TO_BCD` of a `UDINT`, to a `DWORD`.
+    IntToBcdU32,
+    /// `INT_TO_BCD` of an `LINT`, to an `LWORD`.
+    IntToBcdI64,
+    /// `INT_TO_BCD` of a `ULINT`, to an `LWORD`.
+    IntToBcdU64,
 }
 
 const U32: ScalarType = ScalarType::I32(Signedness::Unsigned);
@@ -256,7 +284,6 @@ impl std::fmt::Display for Signature {
 
 impl Intrinsic {
     /// The types of the operation's parameters, in order, and of its result.
-    /// The types of the operation's parameters and of its result.
     pub fn signature(self) -> Signature {
         match self {
             Intrinsic::ShlU32
@@ -328,6 +355,18 @@ impl Intrinsic {
             Intrinsic::MuxU64 => Signature::repeating(&[I32, U64, U64], U64),
             Intrinsic::MuxF32 => Signature::repeating(&[I32, F32, F32], F32),
             Intrinsic::MuxF64 => Signature::repeating(&[I32, F64, F64], F64),
+            Intrinsic::BcdToIntU8 | Intrinsic::BcdToIntU16 | Intrinsic::BcdToIntU32 => {
+                Signature::fixed(&[U32], I32)
+            }
+            Intrinsic::BcdToIntU64 => Signature::fixed(&[U64], I64),
+            Intrinsic::IntToBcdI8 | Intrinsic::IntToBcdI16 | Intrinsic::IntToBcdI32 => {
+                Signature::fixed(&[I32], U32)
+            }
+            Intrinsic::IntToBcdU8 | Intrinsic::IntToBcdU16 | Intrinsic::IntToBcdU32 => {
+                Signature::fixed(&[U32], U32)
+            }
+            Intrinsic::IntToBcdI64 => Signature::fixed(&[I64], U64),
+            Intrinsic::IntToBcdU64 => Signature::fixed(&[U64], U64),
         }
     }
 
@@ -410,6 +449,18 @@ impl Intrinsic {
             Intrinsic::MuxU64 => "mux_u64",
             Intrinsic::MuxF32 => "mux_f32",
             Intrinsic::MuxF64 => "mux_f64",
+            Intrinsic::BcdToIntU8 => "bcd_to_int_u8",
+            Intrinsic::BcdToIntU16 => "bcd_to_int_u16",
+            Intrinsic::BcdToIntU32 => "bcd_to_int_u32",
+            Intrinsic::BcdToIntU64 => "bcd_to_int_u64",
+            Intrinsic::IntToBcdI8 => "int_to_bcd_i8",
+            Intrinsic::IntToBcdU8 => "int_to_bcd_u8",
+            Intrinsic::IntToBcdI16 => "int_to_bcd_i16",
+            Intrinsic::IntToBcdU16 => "int_to_bcd_u16",
+            Intrinsic::IntToBcdI32 => "int_to_bcd_i32",
+            Intrinsic::IntToBcdU32 => "int_to_bcd_u32",
+            Intrinsic::IntToBcdI64 => "int_to_bcd_i64",
+            Intrinsic::IntToBcdU64 => "int_to_bcd_u64",
         }
     }
 }

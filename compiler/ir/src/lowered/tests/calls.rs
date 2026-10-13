@@ -101,3 +101,30 @@ fn call_when_mux_input_of_another_type_then_internal_error() {
         "Expr::call"
     ));
 }
+
+/// REQ-LOW-ir-145: `INT_TO_BCD` of a signed integer takes that integer and
+/// returns the bit string as wide as it; an unsigned argument is refused.
+#[test]
+fn call_when_int_to_bcd_of_signed_then_bit_string_result() {
+    let f = fixture();
+    let call = Expr::call(
+        Callee::Intrinsic(Intrinsic::IntToBcdI32),
+        vec![Arg::Value(f.read(f.dint))],
+        span(),
+    )
+    .unwrap();
+    assert_eq!(call.ty(), U32);
+    assert_eq!(
+        call.to_string(),
+        "(call int_to_bcd_i32 i32u (read i32s v0))"
+    );
+    let unsigned = Expr::integer(5, U32, span()).unwrap();
+    assert!(is_internal_error_naming(
+        Expr::call(
+            Callee::Intrinsic(Intrinsic::IntToBcdI32),
+            vec![Arg::Value(unsigned)],
+            span(),
+        ),
+        "Expr::call"
+    ));
+}

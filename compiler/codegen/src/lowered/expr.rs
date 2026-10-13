@@ -227,6 +227,15 @@ pub(super) fn builtin_of(intrinsic: Intrinsic, args: usize) -> Option<u16> {
         Intrinsic::MuxI64 | Intrinsic::MuxU64 => return mux(builtin::MUX_I64_BASE),
         Intrinsic::MuxF32 => return mux(builtin::MUX_F32_BASE),
         Intrinsic::MuxF64 => return mux(builtin::MUX_F64_BASE),
+        Intrinsic::BcdToIntU8 => builtin::BCD_TO_INT_8,
+        Intrinsic::BcdToIntU16 => builtin::BCD_TO_INT_16,
+        Intrinsic::BcdToIntU32 => builtin::BCD_TO_INT_32,
+        Intrinsic::BcdToIntU64 => builtin::BCD_TO_INT_64,
+        // `INT_TO_BCD` reads its input's bits as unsigned whatever its sign.
+        Intrinsic::IntToBcdI8 | Intrinsic::IntToBcdU8 => builtin::INT_TO_BCD_8,
+        Intrinsic::IntToBcdI16 | Intrinsic::IntToBcdU16 => builtin::INT_TO_BCD_16,
+        Intrinsic::IntToBcdI32 | Intrinsic::IntToBcdU32 => builtin::INT_TO_BCD_32,
+        Intrinsic::IntToBcdI64 | Intrinsic::IntToBcdU64 => builtin::INT_TO_BCD_64,
     })
 }
 

@@ -328,6 +328,15 @@ impl Lowering<'_> {
         Expr::short_circuit(op, lhs, rhs, span).map(Some)
     }
 
+    /// The lowered type the analyzer recorded for `expr`; `None` when it
+    /// recorded none, or one lowering cannot express yet.
+    pub(crate) fn recorded_type(&mut self, expr: &AstExpr) -> Result<Option<TypeId>, Diagnostic> {
+        let Some(recorded) = expr.expr_type.as_ref().and_then(|ty| ty.type_id()) else {
+            return Ok(None);
+        };
+        self.lowered_type(recorded)
+    }
+
     /// The lowered type the analyzer recorded for `expr`, and the type it is
     /// operated at; `None` when it recorded none, or one lowering cannot
     /// operate on as one value.
@@ -335,10 +344,7 @@ impl Lowering<'_> {
         &mut self,
         expr: &AstExpr,
     ) -> Result<Option<(TypeId, ScalarType)>, Diagnostic> {
-        let Some(recorded) = expr.expr_type.as_ref().and_then(|ty| ty.type_id()) else {
-            return Ok(None);
-        };
-        let Some(ty) = self.lowered_type(recorded)? else {
+        let Some(ty) = self.recorded_type(expr)? else {
             return Ok(None);
         };
         Ok(self
