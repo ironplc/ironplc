@@ -35,6 +35,10 @@ pub(crate) mod string_ops;
 pub mod test_support;
 pub(crate) mod value;
 pub(crate) mod variable_table;
+// Declarations only Verus reads: no executable code, so a normal build
+// leaves the module out rather than reporting its items as dead.
+#[cfg(verus_only)]
+mod verus_specs;
 mod vm;
 
 pub use buffers::VmBuffers;
