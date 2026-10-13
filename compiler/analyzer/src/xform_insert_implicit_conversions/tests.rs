@@ -345,13 +345,19 @@ fn apply_when_typed_literal_out_of_range_of_narrower_operand_then_rules_still_re
 }
 
 #[spec_test(REQ_IC_analyzer_020)]
-#[test]
-fn apply_when_arithmetic_operand_narrower_then_converted_to_result_type() {
-    let source = arithmetic_program("REAL", "i : INT; r : REAL;", "i + r");
-    assert_eq!(
-        arithmetic_operands(&source),
-        operands(&[&["INT->REAL", "REAL"]])
-    );
+#[rstest]
+#[case::narrower("REAL", "i : INT; r : REAL;", "i + r", ["INT->REAL", "REAL"])]
+#[case::unsigned_left("DINT", "us : USINT; d : DINT;", "us + d", ["USINT->DINT", "DINT"])]
+#[case::unsigned_right("DINT", "us : USINT; d : DINT;", "d - us", ["DINT", "USINT->DINT"])]
+#[case::function_form("DINT", "ui : UINT; d : DINT;", "MUL(ui, d)", ["UINT->DINT", "DINT"])]
+fn apply_when_arithmetic_operand_of_another_operation_type_then_converted_to_result_type(
+    #[case] target: &str,
+    #[case] vars: &str,
+    #[case] value: &str,
+    #[case] expected: [&str; 2],
+) {
+    let source = arithmetic_program(target, vars, value);
+    assert_eq!(arithmetic_operands(&source), operands(&[&expected]));
 }
 
 #[spec_test(REQ_IC_analyzer_021)]
@@ -362,10 +368,17 @@ fn apply_when_arithmetic_operand_is_literal_then_literal_takes_result_type() {
 }
 
 #[spec_test(REQ_IC_analyzer_022)]
-#[test]
-fn apply_when_arithmetic_operands_share_a_width_then_unchanged() {
-    let source = arithmetic_program("INT", "i : INT; s : SINT;", "i + s");
-    assert_eq!(arithmetic_operands(&source), operands(&[&["INT", "SINT"]]));
+#[rstest]
+#[case::signed("INT", "i : INT; s : SINT;", "i + s", ["INT", "SINT"])]
+#[case::unsigned("UINT", "us : USINT; ui : UINT;", "us + ui", ["USINT", "UINT"])]
+fn apply_when_arithmetic_operands_share_an_operation_type_then_unchanged(
+    #[case] target: &str,
+    #[case] vars: &str,
+    #[case] value: &str,
+    #[case] expected: [&str; 2],
+) {
+    let source = arithmetic_program(target, vars, value);
+    assert_eq!(arithmetic_operands(&source), operands(&[&expected]));
 }
 
 #[spec_test(REQ_IC_analyzer_023)]
@@ -597,10 +610,18 @@ fn call_program(param: &str, vars: &str, args: &str) -> String {
 }
 
 #[spec_test(REQ_IC_analyzer_040)]
-#[test]
-fn apply_when_argument_narrower_than_parameter_then_converted_to_parameter_type() {
-    let source = call_program("LINT", "d : DINT;", "d");
-    assert_eq!(call_arguments(&source, "f"), vec!["DINT->LINT"]);
+#[rstest]
+#[case::narrower("LINT", "d : DINT;", "d", "DINT->LINT")]
+#[case::unsigned_of_parameter_width("DINT", "us : USINT;", "us", "USINT->DINT")]
+#[case::unsigned_arithmetic("DINT", "us : USINT;", "us + us", "USINT->DINT")]
+fn apply_when_argument_of_another_operation_type_then_converted_to_parameter_type(
+    #[case] param: &str,
+    #[case] vars: &str,
+    #[case] args: &str,
+    #[case] expected: &str,
+) {
+    let source = call_program(param, vars, args);
+    assert_eq!(call_arguments(&source, "f"), vec![expected]);
 }
 
 #[test]
@@ -610,10 +631,17 @@ fn apply_when_argument_is_negation_then_converted_to_parameter_type() {
 }
 
 #[spec_test(REQ_IC_analyzer_041)]
-#[test]
-fn apply_when_argument_shares_parameter_width_then_unchanged() {
-    let source = call_program("INT", "s : SINT;", "s");
-    assert_eq!(call_arguments(&source, "f"), vec!["SINT"]);
+#[rstest]
+#[case::signed("INT", "s : SINT;", "s", "SINT")]
+#[case::unsigned("UINT", "us : USINT;", "us", "USINT")]
+fn apply_when_argument_shares_parameter_operation_type_then_unchanged(
+    #[case] param: &str,
+    #[case] vars: &str,
+    #[case] args: &str,
+    #[case] expected: &str,
+) {
+    let source = call_program(param, vars, args);
+    assert_eq!(call_arguments(&source, "f"), vec![expected]);
 }
 
 #[spec_test(REQ_IC_analyzer_042)]

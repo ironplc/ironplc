@@ -1,14 +1,16 @@
-//! The width at which a numeric type is operated on.
+//! The width and signedness at which a numeric type is operated on.
 //!
-//! An arithmetic operation computes at the width of its result type, and an
-//! operand of another width is converted to it. Whether two numeric types
-//! share a width is a fact about the types, so the analyzer states it, where
+//! An arithmetic operation computes at its result type, and an operand of
+//! another operation type -- another width or, for an integer, another
+//! signedness -- is converted to it. Whether two numeric types share an
+//! operation type is a fact about the types, so the analyzer states it, where
 //! the conversion is recorded (ADR-0056).
 //!
-//! This is the width the code generator operates on: a value of 32 bits or
+//! The width is the one the code generator operates on: a value of 32 bits or
 //! fewer in a 32-bit word, a wider one in a 64-bit word, and a real in a
-//! float of its own size. A value stored at another type is converted where
-//! the width or, for an integer, the signedness differs: the operation type.
+//! float of its own size. A value operated on or stored at a type of its
+//! width and another signedness is converted too, although its bits do not
+//! change.
 
 use ironplc_dsl::common::{ElementaryTypeName, GenericTypeName, TypeName};
 
@@ -24,11 +26,17 @@ pub(crate) enum OperationWidth {
     F64,
 }
 
-/// Returns the width `type_name` is operated on at when it is an elementary
+/// Returns the width `type_name` is operated on at, as
+/// [`numeric_operation_type`] gives its operation type.
+pub(crate) fn numeric_operation_width(type_name: &TypeName) -> Option<OperationWidth> {
+    numeric_operation_type(type_name).map(|at| at.width)
+}
+
+/// Returns the type `type_name` is operated on at when it is an elementary
 /// numeric or bit-string type, the types the numeric overload computes at,
 /// and `None` for anything else: an untyped literal's category, a subrange,
 /// an enumeration, a temporal type, or `BOOL`.
-pub(crate) fn numeric_operation_width(type_name: &TypeName) -> Option<OperationWidth> {
+pub(crate) fn numeric_operation_type(type_name: &TypeName) -> Option<OperationType> {
     let elementary = ElementaryTypeName::try_from(&type_name.name).ok()?;
     let numeric = GenericTypeName::AnyNum.is_compatible_with(&elementary)
         || matches!(
@@ -41,7 +49,7 @@ pub(crate) fn numeric_operation_width(type_name: &TypeName) -> Option<OperationW
     if !numeric {
         return None;
     }
-    operation_width_of(elementary_type(type_name)?)
+    operation_type_of(elementary_type(type_name)?)
 }
 
 /// Returns the width a value of the type `representation` is operated on
@@ -174,6 +182,24 @@ mod tests {
         assert_eq!(
             numeric_operation_width(&TypeName::from(name)),
             Some(expected)
+        );
+    }
+
+    #[rstest]
+    #[case::usint("USINT", OperationWidth::W32, Signedness::Unsigned)]
+    #[case::dint("DINT", OperationWidth::W32, Signedness::Signed)]
+    #[case::lword("LWORD", OperationWidth::W64, Signedness::Unsigned)]
+    fn numeric_operation_type_when_integer_then_its_width_and_signedness(
+        #[case] name: &str,
+        #[case] width: OperationWidth,
+        #[case] signedness: Signedness,
+    ) {
+        assert_eq!(
+            numeric_operation_type(&TypeName::from(name)),
+            Some(OperationType {
+                width,
+                signedness: Some(signedness),
+            })
         );
     }
 
