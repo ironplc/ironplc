@@ -699,3 +699,43 @@ fn compile_when_selection_function_lowered_then_same_code_as_ast(#[case] stateme
     );
     assert_same_code(&source);
 }
+
+/// REQ-LOW-codegen-089: `MUX` gives the input its selector names, the first
+/// for a selector below zero and the last for one past the last input, as
+/// on the AST route.
+#[test]
+fn run_when_mux_then_input_selected_with_selector_clamped() {
+    let snapshot = run_lowered(
+        "PROGRAM main
+           VAR one : DINT := 1; below : INT := -1; past : DINT := 5; u : UDINT := 4000000000;
+               x : LREAL := 2.5; l : LINT := 2;
+               r1 : DINT; r2 : DINT; r3 : DINT; r4 : UDINT; r5 : LREAL; END_VAR
+           r1 := MUX(one, 10, 20, 30);
+           r2 := MUX(below, 10, 20, 30);
+           r3 := MUX(past, 10, 20, 30);
+           r4 := MUX(one, UDINT#1, u);
+           r5 := MUX(l, 0.5, 1.5, x);
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<i64>("r1"), 20);
+    assert_eq!(snapshot.read_as::<i64>("r2"), 10);
+    assert_eq!(snapshot.read_as::<i64>("r3"), 30);
+    assert_eq!(snapshot.read_as::<u64>("r4"), 4_000_000_000);
+    assert_eq!(snapshot.read_as::<f64>("r5"), 2.5);
+}
+
+/// A `MUX` compiles to the same instructions and constants by both routes,
+/// whatever its number of inputs and type.
+#[rstest]
+#[case::two_dint("d := MUX(k, d, e);")]
+#[case::three_udint("u := MUX(k, u, u, u);")]
+#[case::lreal("x := MUX(k, x, x);")]
+fn compile_when_mux_lowered_then_same_code_as_ast(#[case] statement: &str) {
+    let source = format!(
+        "PROGRAM main
+           VAR k : DINT; d : DINT; e : DINT; u : UDINT; x : LREAL; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    assert_same_code(&source);
+}

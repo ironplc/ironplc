@@ -69,3 +69,35 @@ fn call_when_real_function_of_its_type_then_real_result() {
         "(call atan2_f64 f64 (read f64 v4) (read f64 v4))"
     );
 }
+
+/// REQ-LOW-ir-145: `MUX` takes its selector, then two or more inputs of its
+/// type, and has that type.
+#[test]
+fn call_when_mux_of_two_or_more_inputs_then_input_type() {
+    let f = fixture();
+    let mux = |inputs: usize| {
+        let args = std::iter::once(Arg::Value(int(1)))
+            .chain((0..inputs).map(|_| Arg::Value(f.read(f.lreal))))
+            .collect();
+        Expr::call(Callee::Intrinsic(Intrinsic::MuxF64), args, span())
+    };
+    assert_eq!(mux(2).unwrap().ty(), ScalarType::F64);
+    assert_eq!(mux(5).unwrap().ty(), ScalarType::F64);
+    assert!(is_internal_error_naming(mux(1), "Expr::call"));
+}
+
+/// REQ-LOW-ir-145: each input of a `MUX` has the type its variant names.
+#[test]
+fn call_when_mux_input_of_another_type_then_internal_error() {
+    let f = fixture();
+    let args = vec![
+        Arg::Value(int(1)),
+        Arg::Value(f.read(f.lreal)),
+        Arg::Value(f.read(f.lreal)),
+        Arg::Value(int(2)),
+    ];
+    assert!(is_internal_error_naming(
+        Expr::call(Callee::Intrinsic(Intrinsic::MuxF64), args, span()),
+        "Expr::call"
+    ));
+}

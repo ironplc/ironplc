@@ -30,7 +30,8 @@ pub enum Arg {
 /// A numeric function takes and returns values of one type. `ABS` and `EXPT`
 /// take a signed integer or a real; the other numeric functions take a real.
 /// The selection functions `MIN`, `MAX`, `LIMIT` and `SEL` take any integer
-/// or real, and `SEL` also its selector, a `BOOL`.
+/// or real, and `SEL` also its selector, a `BOOL`. `MUX` takes a `DINT`
+/// selector, then two or more inputs of its type: its last parameter repeats.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Intrinsic {
     /// `SHL` of a 32-bit bit string: a `BYTE`, `WORD` or `DWORD`.
@@ -173,6 +174,18 @@ pub enum Intrinsic {
     SelF32,
     /// `SEL` between two `LREAL`s: the first when the selector is `FALSE`.
     SelF64,
+    /// `MUX` among two or more 32-bit signed integers.
+    MuxI32,
+    /// `MUX` among two or more 32-bit unsigned integers.
+    MuxU32,
+    /// `MUX` among two or more 64-bit signed integers.
+    MuxI64,
+    /// `MUX` among two or more 64-bit unsigned integers.
+    MuxU64,
+    /// `MUX` among two or more `REAL`s.
+    MuxF32,
+    /// `MUX` among two or more `LREAL`s.
+    MuxF64,
 }
 
 const U32: ScalarType = ScalarType::I32(Signedness::Unsigned);
@@ -183,9 +196,68 @@ const F32: ScalarType = ScalarType::F32;
 const F64: ScalarType = ScalarType::F64;
 const BOOL: ScalarType = ScalarType::Bool;
 
+/// The types of an intrinsic's parameters and of its result.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Signature {
+    params: &'static [ScalarType],
+    repeats_last: bool,
+    result: ScalarType,
+}
+
+impl Signature {
+    /// A call passes one argument of each of `params`, in order.
+    const fn fixed(params: &'static [ScalarType], result: ScalarType) -> Self {
+        Signature {
+            params,
+            repeats_last: false,
+            result,
+        }
+    }
+
+    /// A call passes one argument of each of `params`, in order, and then
+    /// any number of further arguments of the last one's type.
+    const fn repeating(params: &'static [ScalarType], result: ScalarType) -> Self {
+        Signature {
+            params,
+            repeats_last: true,
+            result,
+        }
+    }
+
+    /// The type of the result.
+    pub fn result(&self) -> ScalarType {
+        self.result
+    }
+
+    /// Whether a call whose arguments have `types`, in order, passes what
+    /// the parameters take.
+    pub fn takes(&self, types: &[ScalarType]) -> bool {
+        if !self.repeats_last {
+            return types == self.params;
+        }
+        let Some((last, first)) = self.params.split_last() else {
+            return types.is_empty();
+        };
+        types.len() >= self.params.len()
+            && types.starts_with(first)
+            && types[first.len()..].iter().all(|ty| ty == last)
+    }
+}
+
+impl std::fmt::Display for Signature {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.params)?;
+        if self.repeats_last {
+            write!(f, " and more of the last")?;
+        }
+        Ok(())
+    }
+}
+
 impl Intrinsic {
     /// The types of the operation's parameters, in order, and of its result.
-    pub fn signature(self) -> (&'static [ScalarType], ScalarType) {
+    /// The types of the operation's parameters and of its result.
+    pub fn signature(self) -> Signature {
         match self {
             Intrinsic::ShlU32
             | Intrinsic::ShrU32
@@ -194,14 +266,14 @@ impl Intrinsic {
             | Intrinsic::RolU32
             | Intrinsic::RorU8
             | Intrinsic::RorU16
-            | Intrinsic::RorU32 => (&[U32, I32], U32),
+            | Intrinsic::RorU32 => Signature::fixed(&[U32, I32], U32),
             Intrinsic::ShlU64 | Intrinsic::ShrU64 | Intrinsic::RolU64 | Intrinsic::RorU64 => {
-                (&[U64, I64], U64)
+                Signature::fixed(&[U64, I64], U64)
             }
-            Intrinsic::AbsI32 => (&[I32], I32),
-            Intrinsic::AbsI64 => (&[I64], I64),
-            Intrinsic::ExptI32 => (&[I32, I32], I32),
-            Intrinsic::ExptI64 => (&[I64, I64], I64),
+            Intrinsic::AbsI32 => Signature::fixed(&[I32], I32),
+            Intrinsic::AbsI64 => Signature::fixed(&[I64], I64),
+            Intrinsic::ExptI32 => Signature::fixed(&[I32, I32], I32),
+            Intrinsic::ExptI64 => Signature::fixed(&[I64, I64], I64),
             Intrinsic::AbsF32
             | Intrinsic::SqrtF32
             | Intrinsic::LnF32
@@ -213,7 +285,7 @@ impl Intrinsic {
             | Intrinsic::AsinF32
             | Intrinsic::AcosF32
             | Intrinsic::AtanF32
-            | Intrinsic::TruncF32 => (&[F32], F32),
+            | Intrinsic::TruncF32 => Signature::fixed(&[F32], F32),
             Intrinsic::AbsF64
             | Intrinsic::SqrtF64
             | Intrinsic::LnF64
@@ -225,27 +297,37 @@ impl Intrinsic {
             | Intrinsic::AsinF64
             | Intrinsic::AcosF64
             | Intrinsic::AtanF64
-            | Intrinsic::TruncF64 => (&[F64], F64),
-            Intrinsic::ExptF32 | Intrinsic::Atan2F32 | Intrinsic::ModF32 => (&[F32, F32], F32),
-            Intrinsic::ExptF64 | Intrinsic::Atan2F64 | Intrinsic::ModF64 => (&[F64, F64], F64),
-            Intrinsic::MinI32 | Intrinsic::MaxI32 => (&[I32, I32], I32),
-            Intrinsic::MinU32 | Intrinsic::MaxU32 => (&[U32, U32], U32),
-            Intrinsic::MinI64 | Intrinsic::MaxI64 => (&[I64, I64], I64),
-            Intrinsic::MinU64 | Intrinsic::MaxU64 => (&[U64, U64], U64),
-            Intrinsic::MinF32 | Intrinsic::MaxF32 => (&[F32, F32], F32),
-            Intrinsic::MinF64 | Intrinsic::MaxF64 => (&[F64, F64], F64),
-            Intrinsic::LimitI32 => (&[I32, I32, I32], I32),
-            Intrinsic::LimitU32 => (&[U32, U32, U32], U32),
-            Intrinsic::LimitI64 => (&[I64, I64, I64], I64),
-            Intrinsic::LimitU64 => (&[U64, U64, U64], U64),
-            Intrinsic::LimitF32 => (&[F32, F32, F32], F32),
-            Intrinsic::LimitF64 => (&[F64, F64, F64], F64),
-            Intrinsic::SelI32 => (&[BOOL, I32, I32], I32),
-            Intrinsic::SelU32 => (&[BOOL, U32, U32], U32),
-            Intrinsic::SelI64 => (&[BOOL, I64, I64], I64),
-            Intrinsic::SelU64 => (&[BOOL, U64, U64], U64),
-            Intrinsic::SelF32 => (&[BOOL, F32, F32], F32),
-            Intrinsic::SelF64 => (&[BOOL, F64, F64], F64),
+            | Intrinsic::TruncF64 => Signature::fixed(&[F64], F64),
+            Intrinsic::ExptF32 | Intrinsic::Atan2F32 | Intrinsic::ModF32 => {
+                Signature::fixed(&[F32, F32], F32)
+            }
+            Intrinsic::ExptF64 | Intrinsic::Atan2F64 | Intrinsic::ModF64 => {
+                Signature::fixed(&[F64, F64], F64)
+            }
+            Intrinsic::MinI32 | Intrinsic::MaxI32 => Signature::fixed(&[I32, I32], I32),
+            Intrinsic::MinU32 | Intrinsic::MaxU32 => Signature::fixed(&[U32, U32], U32),
+            Intrinsic::MinI64 | Intrinsic::MaxI64 => Signature::fixed(&[I64, I64], I64),
+            Intrinsic::MinU64 | Intrinsic::MaxU64 => Signature::fixed(&[U64, U64], U64),
+            Intrinsic::MinF32 | Intrinsic::MaxF32 => Signature::fixed(&[F32, F32], F32),
+            Intrinsic::MinF64 | Intrinsic::MaxF64 => Signature::fixed(&[F64, F64], F64),
+            Intrinsic::LimitI32 => Signature::fixed(&[I32, I32, I32], I32),
+            Intrinsic::LimitU32 => Signature::fixed(&[U32, U32, U32], U32),
+            Intrinsic::LimitI64 => Signature::fixed(&[I64, I64, I64], I64),
+            Intrinsic::LimitU64 => Signature::fixed(&[U64, U64, U64], U64),
+            Intrinsic::LimitF32 => Signature::fixed(&[F32, F32, F32], F32),
+            Intrinsic::LimitF64 => Signature::fixed(&[F64, F64, F64], F64),
+            Intrinsic::SelI32 => Signature::fixed(&[BOOL, I32, I32], I32),
+            Intrinsic::SelU32 => Signature::fixed(&[BOOL, U32, U32], U32),
+            Intrinsic::SelI64 => Signature::fixed(&[BOOL, I64, I64], I64),
+            Intrinsic::SelU64 => Signature::fixed(&[BOOL, U64, U64], U64),
+            Intrinsic::SelF32 => Signature::fixed(&[BOOL, F32, F32], F32),
+            Intrinsic::SelF64 => Signature::fixed(&[BOOL, F64, F64], F64),
+            Intrinsic::MuxI32 => Signature::repeating(&[I32, I32, I32], I32),
+            Intrinsic::MuxU32 => Signature::repeating(&[I32, U32, U32], U32),
+            Intrinsic::MuxI64 => Signature::repeating(&[I32, I64, I64], I64),
+            Intrinsic::MuxU64 => Signature::repeating(&[I32, U64, U64], U64),
+            Intrinsic::MuxF32 => Signature::repeating(&[I32, F32, F32], F32),
+            Intrinsic::MuxF64 => Signature::repeating(&[I32, F64, F64], F64),
         }
     }
 
@@ -322,6 +404,12 @@ impl Intrinsic {
             Intrinsic::SelU64 => "sel_u64",
             Intrinsic::SelF32 => "sel_f32",
             Intrinsic::SelF64 => "sel_f64",
+            Intrinsic::MuxI32 => "mux_i32",
+            Intrinsic::MuxU32 => "mux_u32",
+            Intrinsic::MuxI64 => "mux_i64",
+            Intrinsic::MuxU64 => "mux_u64",
+            Intrinsic::MuxF32 => "mux_f32",
+            Intrinsic::MuxF64 => "mux_f64",
         }
     }
 }

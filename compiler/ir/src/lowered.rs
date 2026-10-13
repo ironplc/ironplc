@@ -27,7 +27,7 @@ mod stmt;
 mod types;
 mod variables;
 
-pub use call::{Arg, Callee, Intrinsic};
+pub use call::{Arg, Callee, Intrinsic, Signature};
 pub use expr::{BinaryOp, CompareOp, Const, Expr, ExprKind, ShortCircuitOp, UnaryOp};
 pub use ids::{FieldIdx, LoopId, PouId, TypeId, VarId};
 pub use loops::{counts_down, ForParts, LoopScope};
