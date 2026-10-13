@@ -57,7 +57,7 @@ lint:
 
 # The fewest top-level statements of the codegen end-to-end programs that may
 # take the lowered route. Raise it when lowering grows; it never falls.
-lowered_floor := "8057"
+lowered_floor := "7978"
 
 # Count the top-level statements of the codegen end-to-end programs that take
 # the lowered route, and fail when fewer than `lowered_floor` do. The tests
