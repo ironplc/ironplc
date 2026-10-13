@@ -56,6 +56,10 @@ pub struct ExStringPreview(StringPreview);
 
 /// `<[T]>::swap` panics unless both indices are in bounds, and otherwise
 /// exchanges the two elements. vstd does not specify it.
+///
+/// `no_unwind` is required by `OperandStack`'s type invariant: a call that
+/// borrows a field of such a type mutably must not unwind, or it could leave
+/// the invariant broken.
 pub assume_specification<T>[ <[T]>::swap ](slice: &mut [T], a: usize, b: usize)
     requires
         a < old(slice)@.len(),
@@ -65,6 +69,7 @@ pub assume_specification<T>[ <[T]>::swap ](slice: &mut [T], a: usize, b: usize)
             b as int,
             old(slice)@[a as int],
         ),
+    no_unwind
 ;
 
 } // verus!
