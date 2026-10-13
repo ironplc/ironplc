@@ -59,10 +59,32 @@ fn lower_statement_when_field_of_array_element_then_index_then_field() {
     );
 }
 
+/// REQ-LOW-lowering-161: an unsigned subscript whose values all fit a `DINT`
+/// is converted to `DINT`, the conversion the analyzer records for it
+/// (REQ-LOW-lowering-094).
+#[test]
+fn lower_statement_when_unsigned_subscript_fits_dint_then_converted_to_dint() {
+    let outcome = lower(
+        "PROGRAM main VAR a : ARRAY[0..5] OF DINT; u : UINT; b : BYTE; END_VAR
+            a[u] := 1;
+            a[b] := a[u];
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f0[(convert i32s (read i32u v0^.f1))] (const i32s 1)",
+            "assign v0^.f0[(convert i32s (read i32u v0^.f2))] \
+             (read i32s v0^.f0[(convert i32s (read i32u v0^.f1))])",
+        ]
+    );
+}
+
 /// REQ-LOW-lowering-161: a subscript whose type holds values outside `DINT`
 /// is not lowered until the analyzer records its conversion as checked.
 #[test]
-fn lower_statement_when_subscript_may_not_fit_dint_then_unsupported() {
+fn lower_statement_when_subscript_exceeds_dint_then_unsupported() {
     let outcome = lower(
         "PROGRAM main VAR a : ARRAY[1..5] OF DINT; ud : UDINT; l : LINT; END_VAR
             a[ud] := 1;
@@ -71,38 +93,6 @@ fn lower_statement_when_subscript_may_not_fit_dint_then_unsupported() {
         "main",
     );
     assert_eq!(outcome.statements, ["unsupported", "unsupported"]);
-}
-
-/// REQ-LOW-lowering-161: an unsigned subscript narrower than `DINT` is
-/// converted to `DINT`, as the analyzer recorded.
-#[test]
-fn lower_statement_when_unsigned_subscript_narrower_than_dint_then_converted() {
-    let outcome = lower(
-        "PROGRAM main VAR a : ARRAY[1..5] OF DINT; u : UINT; w : WORD; END_VAR
-            a[u] := 1;
-            a[w] := 1;
-         END_PROGRAM",
-        "main",
-    );
-    assert_eq!(
-        outcome.statements,
-        [
-            "assign v0^.f0[(convert i32s (read i32u v0^.f1))] (const i32s 1)",
-            "assign v0^.f0[(convert i32s (read i32u v0^.f2))] (const i32s 1)",
-        ]
-    );
-}
-
-/// A `BOOL` subscript, which analysis accepts, is not lowered.
-#[test]
-fn lower_statement_when_bool_subscript_then_unsupported() {
-    let outcome = lower(
-        "PROGRAM main VAR a : ARRAY[0..1] OF DINT; b : BOOL; END_VAR
-            a[b] := 1;
-         END_PROGRAM",
-        "main",
-    );
-    assert_eq!(outcome.statements, ["unsupported"]);
 }
 
 /// REQ-LOW-lowering-032: what a reference refers to is a `Deref` of the

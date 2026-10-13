@@ -73,23 +73,16 @@ impl Lowering<'_> {
     /// subscript of another type to `DINT`. That conversion is exact for a
     /// type whose values all fit a `DINT`; for any other, such as a `UDINT`,
     /// it would wrap, so such a subscript is not lowered until the analyzer
-    /// records its conversion as checked (REQ-LOW-analyzer-162).
+    /// records its conversion as checked (REQ-LOW-analyzer-162). A subscript
+    /// of another type the analyzer did not convert is a defect, which
+    /// building the `Index` reports (REQ-LOW-lowering-094).
     fn subscript(&mut self, frame: &BodyFrame, subscript: &AstExpr) -> Made<Expr> {
         if let AstExprKind::ImplicitConversion(converted) = &subscript.kind {
             if !self.fits_dint(converted)? {
                 return Ok(None);
             }
         }
-        let Some(value) = self.expr(frame, subscript)? else {
-            return Ok(None);
-        };
-        if !value.ty().is_numeric() {
-            // A `BOOL` subscript, which analysis does not reject yet. A number
-            // of another type than `DINT` is a conversion the analyzer did not
-            // record, a defect, which `Place::index` reports.
-            return Ok(None);
-        }
-        Ok(Some(value))
+        self.expr(frame, subscript)
     }
 
     /// Whether every value of `expr`'s type fits a `DINT`.

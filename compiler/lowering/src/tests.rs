@@ -47,15 +47,16 @@ fn lower_statement_when_narrow_target_then_truncated_unless_fits() {
 }
 
 /// REQ-LOW-lowering-045, REQ-LOW-lowering-094: the conversion the analyzer
-/// recorded becomes a `Convert`, and one between types operated alike
-/// converts nothing.
+/// recorded becomes a `Convert`, also where only the signedness changes, and
+/// one between types operated alike converts nothing.
 #[test]
 fn lower_statement_when_recorded_conversion_then_convert() {
     let outcome = lower(
-        "PROGRAM main VAR d : DINT; l : LINT; i : INT; r : LREAL; END_VAR
+        "PROGRAM main VAR d : DINT; l : LINT; i : INT; r : LREAL; u : USINT; END_VAR
             l := d;
             d := i;
             r := d;
+            d := u;
          END_PROGRAM",
         "main",
     );
@@ -65,6 +66,7 @@ fn lower_statement_when_recorded_conversion_then_convert() {
             "assign v0^.f1 (convert i64s (read i32s v0^.f0))",
             "assign v0^.f0 (read i32s v0^.f2)",
             "assign v0^.f3 (convert f64 (read i32s v0^.f0))",
+            "assign v0^.f0 (convert i32s (read i32u v0^.f4))",
         ]
     );
 }

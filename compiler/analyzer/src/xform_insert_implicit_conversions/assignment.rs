@@ -12,16 +12,19 @@
 //! It records a conversion where the value has a type of its own, which a
 //! literal does not. A value converts to its context when it is a variable, an
 //! operation that computes at its own result type, or a parenthesized one of
-//! those, and its operation width or signedness differs from the target's. An
-//! operation computes at its own type when it is arithmetic, a negation or
-//! `NOT`, an `AND`, `OR` or `XOR`, or a standard function on one value or of
-//! several inputs of one type ([`BuiltinFunction::computes_at_own_type`]). A
-//! call to a user-defined function or a method, a standard function whose
-//! signature fixes its result type ([`BuiltinFunction::result_has_fixed_type`]),
-//! and a dereference, have the type the function returns or the referenced
+//! those, and its operation type differs from the target's: its width, or the
+//! signedness of an integer, so a `USINT` stored in a `DINT` is converted
+//! although both are operated on in 32 bits. An operation computes at its own
+//! type when it is arithmetic, a negation or `NOT`, an `AND`, `OR` or `XOR`,
+//! or a standard function on one value or of several inputs of one type
+//! ([`BuiltinFunction::computes_at_own_type`]). A call to a
+//! user-defined function or a method, a standard function whose signature
+//! fixes its result type ([`BuiltinFunction::result_has_fixed_type`]), and a
+//! dereference, have the type the function returns or the referenced
 //! variable has, and convert to their context too. Any other value -- a
-//! literal, a call to `TRUNC` -- is compiled at the target's width rather than
-//! converted to it, so there is no conversion to record.
+//! literal, a call to `TRUNC` -- is
+//! compiled at the target's width rather than converted to it, so there is
+//! no conversion to record.
 //!
 //! A directly represented target is not recorded yet.
 
@@ -36,7 +39,7 @@ use super::ImplicitConversions;
 use crate::builtin_function::{is_bitwise, BuiltinFunction};
 use crate::intermediates::conversion_target::concrete;
 use crate::intermediates::numeric_operation::{
-    numeric_operation_width, operation_signedness, operation_width_of, OperationWidth, Signedness,
+    numeric_operation_width, operation_type_of, OperationType, OperationWidth,
 };
 use crate::semantic_type::{ByteSized, SemanticType};
 use crate::variable_type;
@@ -68,8 +71,8 @@ impl ImplicitConversions<'_> {
     }
 
     /// Records the conversion of `value` to `target`, the type its context
-    /// stores it at: `value` converts to its context, and its operation width
-    /// or signedness differs from the target's.
+    /// stores it at, where the code generator converts it: `value` converts
+    /// to its context and its operation type differs from the target's.
     pub(super) fn record_conversion_to(&self, value: &mut Expr, target: TypeId) {
         let Some(at) = self.stored_type(target) else {
             return;
@@ -80,20 +83,15 @@ impl ImplicitConversions<'_> {
         }
     }
 
-    /// The operation width and signedness of a value of type `id` when it is
-    /// a number, a bit string or a time or date, the types a value is
-    /// converted between when stored, and of a subrange's base type.
+    /// The operation type of a value of type `id` when it is a number, a bit
+    /// string or a time or date, the types a value is converted between when
+    /// stored, and of a subrange's base type.
     ///
     /// A time or date is converted as a number is: `ld := d` on an `LDATE`
     /// and a `DATE` widens the unsigned seconds of the `DATE`. The code
     /// generator used to read the `DATE` at the target's 64 bits, which
     /// sign-extended a date after 2038.
-    ///
-    /// A value of the target's width and the other signedness is converted
-    /// too: `d := u` on a `DINT` and a `UINT` keeps the bits of the `UINT`,
-    /// but stores a value of another type, and lowering converts only where a
-    /// conversion is recorded (REQ-LOW-lowering-094).
-    fn stored_type(&self, id: TypeId) -> Option<(OperationWidth, Signedness)> {
+    fn stored_type(&self, id: TypeId) -> Option<OperationType> {
         let representation = self
             .context
             .types()
@@ -108,10 +106,7 @@ impl ImplicitConversions<'_> {
             | SemanticType::Time { .. }
             | SemanticType::Date { .. }
             | SemanticType::TimeOfDay { .. }
-            | SemanticType::DateAndTime { .. } => Some((
-                operation_width_of(representation)?,
-                operation_signedness(representation)?,
-            )),
+            | SemanticType::DateAndTime { .. } => operation_type_of(representation),
             // A `BOOL` or an enumeration is one width, a reference is stored as
             // the reference it is, and anything else is not a single value.
             SemanticType::Bool
@@ -127,7 +122,8 @@ impl ImplicitConversions<'_> {
     }
 
     /// Records the conversion of each subscript of `array` to `DINT`, the
-    /// type a subscript is compiled at. A 64-bit subscript is narrowed to it,
+    /// type a subscript is compiled at. An unsigned subscript is converted to
+    /// it whatever its width, and a 64-bit subscript is narrowed to it,
     /// as the code generator narrowed it before the conversion was recorded;
     /// whether a subscript should index at 64 bits is a separate decision.
     pub(super) fn record_subscript_conversions(&self, array: &mut ArrayVariable) {
@@ -171,7 +167,7 @@ impl ImplicitConversions<'_> {
         };
         let types = self.context.types();
         let id = types.id_of(&types.elementary_type_name_for(representation.operated_as())?)?;
-        Some((id, self.stored_type(id)?.0))
+        Some((id, self.stored_type(id)?.width))
     }
 
     pub(super) fn type_of(&self, kind: &SymbolicVariableKind) -> Option<SemanticType> {

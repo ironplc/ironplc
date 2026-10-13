@@ -47,8 +47,12 @@ impl Lowering<'_> {
             };
             args.push(value);
         }
-        // The analyzer converted each argument to its parameter's type, so an
-        // argument of another type is a defect, which `Expr::call` reports.
+        // An argument of another type than its parameter's is one the
+        // analyzer did not convert to it, and is not lowered.
+        let (params, _) = intrinsic.signature();
+        if !args.iter().map(Expr::ty).eq(params.iter().copied()) {
+            return Ok(None);
+        }
         Expr::call(
             Callee::Intrinsic(intrinsic),
             args.into_iter().map(Arg::Value).collect(),

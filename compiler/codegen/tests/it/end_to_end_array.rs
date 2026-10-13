@@ -234,23 +234,25 @@ END_PROGRAM
 );
 
 e2e_i32!(
-    end_to_end_when_unsigned_subscript_narrower_than_dint_then_indexes_element,
+    end_to_end_when_unsigned_subscript_narrower_than_dint_then_selects_its_element,
     "
 PROGRAM main
   VAR
-    arr : ARRAY[0..3] OF INT := [10, 20, 30, 40];
-    us : USINT := 1;
-    u : UINT := 2;
-    w : WORD := 3;
-    x : INT;
-    y : INT;
-    z : INT;
+    arr : ARRAY[0..300] OF DINT;
+    us : USINT := 255;
+    ui : UINT := 300;
+    b : BYTE := 7;
+    w : WORD := 8;
+    a : DINT;
+    c : DINT;
   END_VAR
-  arr[u] := arr[us] + 5;
-  x := arr[u];
-  y := arr[w];
-  z := arr[us];
+  arr[us] := 1;
+  arr[ui] := arr[us] + 1;
+  arr[b] := 3;
+  arr[w] := arr[b] + 1;
+  a := arr[ui];
+  c := arr[w];
 END_PROGRAM
 ",
-    &[("x", 25), ("y", 40), ("z", 20)],
+    &[("a", 2), ("c", 4)],
 );

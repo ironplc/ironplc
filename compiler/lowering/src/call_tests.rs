@@ -95,10 +95,10 @@ fn lower_statement_when_bits_of_bits_read_then_selected_twice() {
     );
 }
 
-/// REQ-LOW-lowering-147: a shift count of an unsigned type is converted to
-/// the signed count type of its intrinsic, as the analyzer recorded.
+/// REQ-LOW-lowering-094: an unsigned shift count is converted to its
+/// parameter's type, the conversion the analyzer records for it.
 #[test]
-fn lower_statement_when_unsigned_shift_count_then_converted() {
+fn lower_statement_when_unsigned_shift_count_then_converted_to_parameter_type() {
     let outcome = lower(
         "PROGRAM main VAR d : DWORD; l : LWORD; u : UDINT; ul : ULINT; END_VAR
             d := SHL(d, u);
