@@ -95,6 +95,26 @@ fn lower_statement_when_bits_of_bits_read_then_selected_twice() {
     );
 }
 
+/// REQ-LOW-lowering-094: an unsigned shift count is converted to its
+/// parameter's type, the conversion the analyzer records for it.
+#[test]
+fn lower_statement_when_unsigned_shift_count_then_converted_to_parameter_type() {
+    let outcome = lower(
+        "PROGRAM main VAR d : DWORD; l : LWORD; u : UDINT; ul : ULINT; END_VAR
+            d := SHL(d, u);
+            l := SHR(l, ul);
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f0 (call shl_u32 i32u (read i32u v0^.f0) (convert i32s (read i32u v0^.f2)))",
+            "assign v0^.f1 (call shr_u64 i64u (read i64u v0^.f1) (convert i64s (read i64u v0^.f3)))",
+        ]
+    );
+}
+
 /// A call of a user-defined function and bits read through a reference are
 /// not lowered yet.
 #[test]
@@ -108,20 +128,4 @@ fn lower_statement_when_call_or_read_not_supported_then_unsupported() {
         "main",
     );
     assert_eq!(outcome.statements, ["unsupported", "unsupported"]);
-}
-
-/// REQ-LOW-lowering-094: an unsigned shift count is passed at the count's
-/// type through the conversion the analyzer recorded for it.
-#[test]
-fn lower_statement_when_unsigned_shift_count_then_converted_to_count_type() {
-    let outcome = lower(
-        "PROGRAM main VAR d : DWORD; u : UDINT; END_VAR
-            d := SHL(d, u);
-         END_PROGRAM",
-        "main",
-    );
-    assert_eq!(
-        outcome.statements,
-        ["assign v0^.f0 (call shl_u32 i32u (read i32u v0^.f0) (convert i32s (read i32u v0^.f1)))"]
-    );
 }
