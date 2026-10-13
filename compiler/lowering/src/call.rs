@@ -1,9 +1,9 @@
 //! Calls of standard functions. A function form of an operator, and `MOVE`,
-//! lower to what the operator, or the operand, lowers to; any other function
-//! is the `Intrinsic` for its function at its operand types
-//! (REQ-LOW-lowering-147). The match over the analyzer's `BuiltinFunction`
-//! names every function, so one the analyzer adds is not lowered until it has
-//! an arm here.
+//! lower to what the operator, or the operand, lowers to; a type conversion
+//! and `TRUNC` to a `Convert`; any other function is the `Intrinsic` for its
+//! function at its operand types (REQ-LOW-lowering-147). The match over the
+//! analyzer's `BuiltinFunction` names every function, so one the analyzer
+//! adds is not lowered until it has an arm here.
 
 use ironplc_analyzer::{BitShift, BuiltinFunction, FormOf, NumericFunction};
 use ironplc_dsl::core::{Located, SourceSpan};
@@ -83,15 +83,68 @@ impl Lowering<'_> {
                 };
                 self.intrinsic_call(frame, expr, intrinsic, &args)
             }
-            BuiltinFunction::Trunc
-            | BuiltinFunction::BcdToInt
+            BuiltinFunction::Trunc => match args.as_slice() {
+                [value] => self.trunc(frame, expr, value),
+                _ => Ok(None),
+            },
+            BuiltinFunction::Conversion { .. } => match args.as_slice() {
+                [value] => self.conversion(frame, expr, value),
+                _ => Ok(None),
+            },
+            BuiltinFunction::BcdToInt
             | BuiltinFunction::IntToBcd
             | BuiltinFunction::Sizeof
             | BuiltinFunction::String(_)
-            | BuiltinFunction::Conversion { .. }
             | BuiltinFunction::Time { .. }
             | BuiltinFunction::DtToDate
             | BuiltinFunction::DtToTod => Ok(None),
+        }
+    }
+
+    /// `TRUNC(value)`, the expression `expr`: the real `value` converted to
+    /// the integer the analyzer recorded for the call, the integer of its
+    /// context. Like an arithmetic result, it is not narrowed until it is
+    /// stored.
+    fn trunc(&mut self, frame: &BodyFrame, expr: &AstExpr, value: &AstExpr) -> Lowered {
+        let Some((_, to)) = self.operated_type(expr)? else {
+            return Ok(None);
+        };
+        let Some(value) = self.expr(frame, value)? else {
+            return Ok(None);
+        };
+        if !(value.ty().is_real() && to.is_integer()) {
+            return Ok(None);
+        }
+        Expr::convert(value, to, expr.span()).map(Some)
+    }
+
+    /// The type conversion `<SOURCE>_TO_<TARGET>(value)`, the expression
+    /// `expr`: a `Convert` where the operation type changes, then a
+    /// `Truncate` where the target's storage narrows. A conversion to `BOOL`
+    /// is a comparison with zero.
+    fn conversion(&mut self, frame: &BodyFrame, expr: &AstExpr, value: &AstExpr) -> Lowered {
+        let span = expr.span();
+        // The analyzer recorded the target as the type of the call. A
+        // conversion to or from a `STRING` is not lowered yet: a `STRING` has
+        // no operation type, so the call or its input does not lower.
+        let Some((target, to)) = self.operated_type(expr)? else {
+            return Ok(None);
+        };
+        let Some(value) = self.expr(frame, value)? else {
+            return Ok(None);
+        };
+        if to == ScalarType::Bool {
+            let zero = Expr::integer(0, value.ty(), span.clone())?;
+            return Expr::compare(LoweredCompareOp::Ne, value, zero, span).map(Some);
+        }
+        let value = if value.ty() == to {
+            value
+        } else {
+            Expr::convert(value, to, span.clone())?
+        };
+        match self.program.types().narrowed_storage(target) {
+            Some(width) => Expr::truncate(width, value, span).map(Some),
+            None => Ok(Some(value)),
         }
     }
 

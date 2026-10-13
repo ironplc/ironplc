@@ -266,7 +266,7 @@ fn lower_statement_when_not_supported_yet_then_unsupported() {
     let outcome = lower(
         "PROGRAM main VAR s : STRING; a : DINT; t : TIME; r : REAL; END_VAR
             s := 'x';
-            a := TRUNC(r);
+            a := STRING_TO_DINT(s);
             t := T#1s;
             FOR a := 1 TO 3 BY a DO r := r; END_FOR;
          END_PROGRAM",

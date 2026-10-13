@@ -694,7 +694,9 @@ bytecode backend computes and stores a `BOOL` as a signed 32-bit value
 (`type_info.rs`), the operation type of a `DINT`. That is that backend's
 layout, not the language: another backend may compute a `BOOL` as one byte, or
 pack several into the bits of one word, and it can only do so if the lowered
-program says which values are `BOOL`s.
+program says which values are `BOOL`s. A `BOOL` becomes an integer only by an
+explicit conversion such as `BOOL_TO_INT`, a `Convert`, and an integer becomes
+a `BOOL` by a comparison with zero.
 
 The operation widths are ADR-0001's, and this design assumes them. They are
 part of what a program means, not a choice a target makes, because an
@@ -1484,7 +1486,8 @@ zero and saturates at the range of its operation type; a NaN converts to 0. A
 `Convert` from an integer to a real rounds to nearest. Between integer
 operation types, a `Convert` to a wider type sign-extends a signed operand and
 zero-extends an unsigned one, a `Convert` to a narrower type keeps the low 32
-bits, and a change of signedness alone keeps the bits.
+bits, and a change of signedness alone keeps the bits. A `Convert` from a
+`BOOL` gives 1 for `TRUE` and 0 for `FALSE`.
 
 **REQ-LOW-codegen-087** A `Truncate` keeps the low `bits` bits of its operand,
 then sign-extends them for a signed type and zero-extends them for an unsigned
@@ -1758,6 +1761,7 @@ implements it.
 | `a ** b` | `Call` of the `EXPT` `Intrinsic`, as `EXPT(a, b)` is |
 | Typed time function `ADD_DT_TIME(a, b)` | Scalar arithmetic with the unit conversion `compile_time_arith.rs` applies today |
 | Explicit conversion such as `REAL_TO_INT(x)` | A `Convert` where the operation type changes, then a `Truncate` where the storage narrows; a conversion to `BOOL` is a `Compare` with zero |
+| `TRUNC(x)` | A `Convert` to the integer the analyzer recorded for the call, narrowed where it is stored, as an arithmetic result is |
 | Enumerated value | `Const` |
 | `MOVE(x)`, parenthesised expression | The operand |
 | Comparison of strings | `Call` of a string comparison `Intrinsic` |
