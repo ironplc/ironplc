@@ -56,37 +56,18 @@ impl Lowering<'_> {
                 }
                 self.binary(frame, op, &binary.left, &binary.right, span)
             }
-            AstExprKind::UnaryOp(unary) => {
-                let op = match unary.op {
-                    AstUnaryOp::Neg => {
-                        if !self.is_arithmetic(expr)? {
-                            return Ok(None);
-                        }
-                        UnaryOp::Neg
+            AstExprKind::UnaryOp(unary) => match unary.op {
+                AstUnaryOp::Neg => {
+                    if !self.is_arithmetic(expr)? {
+                        return Ok(None);
                     }
-                    AstUnaryOp::Not => match self.is_bool(expr)? {
-                        Some(true) => UnaryOp::BoolNot,
-                        Some(false) => UnaryOp::BitNot,
-                        None => return Ok(None),
-                    },
-                };
-                let Some(value) = self.expr(frame, &unary.term)? else {
-                    return Ok(None);
-                };
-                let value = Expr::unary(op, value, span.clone())?;
-                if op != UnaryOp::BitNot {
-                    return Ok(Some(value));
+                    let Some(value) = self.expr(frame, &unary.term)? else {
+                        return Ok(None);
+                    };
+                    Expr::unary(UnaryOp::Neg, value, span).map(Some)
                 }
-                // Inverting a `BYTE` or `WORD` sets the bits above its width,
-                // so the result is narrowed back to the width at once.
-                let Some((ty, _)) = self.operated_type(expr)? else {
-                    return Ok(None);
-                };
-                match self.program.types().narrowed_storage(ty) {
-                    Some(width) => Expr::truncate(width, value, span).map(Some),
-                    None => Ok(Some(value)),
-                }
-            }
+                AstUnaryOp::Not => self.not(frame, expr, &unary.term),
+            },
             AstExprKind::Compare(compare) => {
                 let (left, right) = (&compare.left, &compare.right);
                 match compare.op {
@@ -245,25 +226,62 @@ impl Lowering<'_> {
         Expr::binary(op, lhs, rhs, span).map(Some)
     }
 
+    /// `NOT term`, the expression `expr`: the logical negation of a `BOOL`,
+    /// and the complement of an integer or bit string.
+    pub(crate) fn not(&mut self, frame: &BodyFrame, expr: &AstExpr, term: &AstExpr) -> Lowered {
+        let span = expr.span();
+        let op = match self.is_bool(expr)? {
+            Some(true) => UnaryOp::BoolNot,
+            Some(false) => UnaryOp::BitNot,
+            None => return Ok(None),
+        };
+        let Some(value) = self.expr(frame, term)? else {
+            return Ok(None);
+        };
+        let value = Expr::unary(op, value, span.clone())?;
+        if op != UnaryOp::BitNot {
+            return Ok(Some(value));
+        }
+        // Inverting a `BYTE` or `WORD` sets the bits above its width, so the
+        // result is narrowed back to the width at once.
+        let Some((ty, _)) = self.operated_type(expr)? else {
+            return Ok(None);
+        };
+        match self.program.types().narrowed_storage(ty) {
+            Some(width) => Expr::truncate(width, value, span).map(Some),
+            None => Ok(Some(value)),
+        }
+    }
+
     /// `AND`, `OR` or `XOR`: the logical form of `ops` for a `BOOL`, and the
     /// bitwise form for an integer or bit string (REQ-LOW-lowering-048).
     fn logical(
         &mut self,
         frame: &BodyFrame,
         expr: &AstExpr,
-        (logical, bitwise): (BinaryOp, BinaryOp),
+        ops: (BinaryOp, BinaryOp),
         left: &AstExpr,
         right: &AstExpr,
     ) -> Lowered {
-        let op = match self.is_bool(expr)? {
-            Some(true) => logical,
-            Some(false) => bitwise,
-            None => return Ok(None),
+        let Some(op) = self.logical_op(expr, ops)? else {
+            return Ok(None);
         };
         self.binary(frame, op, left, right, expr.span())
     }
 
-    fn compare(
+    /// The form of `ops` for `expr`: the logical one for a `BOOL`, the bitwise
+    /// one for an integer or bit string, and `None` for any other type.
+    pub(crate) fn logical_op(
+        &mut self,
+        expr: &AstExpr,
+        (logical, bitwise): (BinaryOp, BinaryOp),
+    ) -> Result<Option<BinaryOp>, Diagnostic> {
+        Ok(self
+            .is_bool(expr)?
+            .map(|is_bool| if is_bool { logical } else { bitwise }))
+    }
+
+    pub(crate) fn compare(
         &mut self,
         frame: &BodyFrame,
         op: CompareOp,
@@ -329,7 +347,7 @@ impl Lowering<'_> {
     /// Whether `expr` is computed by arithmetic: a number or a bit string,
     /// not a time, a date or an enumeration, whose operations follow rules of
     /// their own.
-    fn is_arithmetic(&mut self, expr: &AstExpr) -> Result<bool, Diagnostic> {
+    pub(crate) fn is_arithmetic(&mut self, expr: &AstExpr) -> Result<bool, Diagnostic> {
         let Some((ty, _)) = self.operated_type(expr)? else {
             return Ok(false);
         };

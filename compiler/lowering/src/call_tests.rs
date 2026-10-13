@@ -129,3 +129,52 @@ fn lower_statement_when_call_or_read_not_supported_then_unsupported() {
     );
     assert_eq!(outcome.statements, ["unsupported", "unsupported"]);
 }
+
+/// REQ-LOW-lowering-101: an operator and its function form lower to the same
+/// expression, and an extensible form folds its inputs from the left.
+#[test]
+fn lower_statement_when_operator_function_form_then_same_as_operator() {
+    let pairs = [
+        ("r := ADD(a, b);", "r := a + b;"),
+        ("r := ADD(a, b, c);", "r := a + b + c;"),
+        ("r := SUB(a, b);", "r := a - b;"),
+        ("r := MUL(a, b, c);", "r := a * b * c;"),
+        ("r := DIV(a, b);", "r := a / b;"),
+        ("r := MOD(a, b);", "r := a MOD b;"),
+        ("x := GT(a, b);", "x := a > b;"),
+        ("x := LE(a, b);", "x := a <= b;"),
+        ("x := AND(x, y, z);", "x := x AND y AND z;"),
+        ("w := OR(w, v);", "w := w OR v;"),
+        ("w := XOR(w, v);", "w := w XOR v;"),
+        ("x := NOT(x);", "x := NOT x;"),
+        ("w := NOT(w);", "w := NOT w;"),
+        ("r := MOVE(a);", "r := a;"),
+    ];
+    for (form, operator) in pairs {
+        let outcome = lower(
+            &format!(
+                "PROGRAM main VAR a : DINT; b : DINT; c : DINT; r : DINT;
+                     x : BOOL; y : BOOL; z : BOOL; w : WORD; v : WORD; END_VAR
+                    {form}
+                    {operator}
+                 END_PROGRAM"
+            ),
+            "main",
+        );
+        assert_ne!(outcome.statements[0], "unsupported", "{form}");
+        assert_eq!(outcome.statements[0], outcome.statements[1], "{form}");
+    }
+}
+
+/// A typed overload on times, such as `ADD` of two `TIME`s, is not lowered
+/// yet, as `t + t` is not.
+#[test]
+fn lower_statement_when_operator_form_on_times_then_unsupported() {
+    let outcome = lower(
+        "PROGRAM main VAR t : TIME; END_VAR
+            t := ADD(t, t);
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(outcome.statements, ["unsupported"]);
+}
