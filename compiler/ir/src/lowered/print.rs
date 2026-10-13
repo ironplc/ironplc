@@ -1,7 +1,8 @@
 //! The text form of a lowered program, which lowering's tests compare against.
 //!
 //! An expression prints as a parenthesized operator, its type and its
-//! operands: `(add i32s (read i32s v0^.f1) (const i32s 1))`. A place prints as
+//! operands: `(add i32s (read i32s v0^.f1) (const i32s 1))`; a call prints
+//! as `call`, its callee, its type and its arguments. A place prints as
 //! its variable, then `^` for each dereference, `.f<n>` for each field and
 //! `[...]` for the subscripts of each element.
 //! A statement prints on one line, and one holding other statements prints
@@ -9,6 +10,7 @@
 
 use std::fmt;
 
+use super::call::{Arg, Callee};
 use super::expr::{BinaryOp, CompareOp, Const, Expr, ExprKind, ShortCircuitOp, UnaryOp};
 use super::place::{Place, Projection};
 use super::scalar::ScalarType;
@@ -52,6 +54,16 @@ impl fmt::Display for Expr {
             ExprKind::ShortCircuit { op, lhs, rhs } => {
                 write!(f, "({} {lhs} {rhs})", short_circuit(*op))
             }
+            ExprKind::Call {
+                callee: Callee::Intrinsic(intrinsic),
+                args,
+            } => {
+                write!(f, "(call {} {ty}", intrinsic.name())?;
+                for Arg::Value(value) in args {
+                    write!(f, " {value}")?;
+                }
+                f.write_str(")")
+            }
         }
     }
 }
@@ -73,6 +85,12 @@ fn write_stmt(f: &mut fmt::Formatter<'_>, stmt: &Stmt, depth: usize) -> fmt::Res
     f.write_str(&indent)?;
     match stmt.kind() {
         StmtKind::Assign { place, value } => write!(f, "assign {place} {value}"),
+        StmtKind::AssignBits {
+            place,
+            shift,
+            bits,
+            value,
+        } => write!(f, "assign-bits {place} {shift} {bits} {value}"),
         StmtKind::If {
             cond,
             then,

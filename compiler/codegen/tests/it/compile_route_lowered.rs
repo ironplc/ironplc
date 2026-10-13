@@ -1,4 +1,4 @@
-//! Tests of control flow compiled from the lowered program.
+//! Tests of control flow and places compiled from the lowered program.
 //!
 //! The end-to-end tests compare both routes on every program, but only for
 //! the statements that happen to lower. These require the lowered route, so
@@ -8,6 +8,7 @@
 
 use ironplc_codegen::Route;
 use ironplc_parser::options::CompilerOptions;
+use ironplc_vm::error::Trap;
 use rstest::rstest;
 
 use crate::common::{bc, compile_by_route, parse, run_one_scan, Snapshot};
@@ -15,6 +16,8 @@ use crate::common::{bc, compile_by_route, parse, run_one_scan, Snapshot};
 fn options() -> CompilerOptions {
     CompilerOptions {
         allow_continue: true,
+        allow_ref_to: true,
+        allow_partial_access_syntax: true,
         ..CompilerOptions::default()
     }
 }
@@ -281,6 +284,228 @@ fn compile_when_place_lowered_then_same_code_as_ast(#[case] statement: &str) {
          PROGRAM main
            VAR a : ARRAY[1..5] OF DINT; m : ARRAY[1..2, 0..3] OF DINT;
                p : P; ps : ARRAY[0..3] OF P; i : DINT; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    assert_same_code(&source);
+}
+
+/// What a reference refers to is read and written through it: a variable, a
+/// narrow variable, whose store wraps at its width, and an element of an
+/// array. The references are bound by their declarations, since `REF(x)` is
+/// not lowered yet.
+#[test]
+fn run_when_read_and_written_through_references_then_values() {
+    let snapshot = run_lowered(
+        "PROGRAM main
+           VAR x : DINT := 5; n : INT := 100; arr : ARRAY[1..3] OF DINT; i : DINT := 2;
+               p : REF_TO DINT := REF(x); q : REF_TO INT := REF(n);
+               pa : REF_TO ARRAY[1..3] OF DINT := REF(arr);
+               r1 : DINT; r2 : DINT; r3 : DINT; END_VAR
+           p^ := p^ + 1;
+           q^ := q^ * 400;
+           pa^[i] := p^ * 2;
+           pa^[3] := pa^[i] + 1;
+           r1 := x;
+           r2 := n;
+           r3 := arr[3];
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<i64>("r1"), 6);
+    assert_eq!(snapshot.read_as::<i64>("r2"), -25536);
+    assert_eq!(snapshot.read_as::<i64>("r3"), 13);
+}
+
+/// REQ-LOW-codegen-088: a place reached through a null reference traps,
+/// whether it is read or written.
+#[rstest]
+#[case::read("x := p^;")]
+#[case::write("p^ := 1;")]
+#[case::element("x := pa^[1];")]
+fn run_when_null_reference_dereferenced_then_traps(#[case] statement: &str) {
+    let options = options();
+    let source = format!(
+        "PROGRAM main
+           VAR x : DINT; p : REF_TO DINT; pa : REF_TO ARRAY[1..3] OF DINT; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    let (library, context) = parse(&source, &options);
+    let container = compile_by_route(&library, &context, &options, Route::RequireLowered)
+        .expect("every statement lowers");
+    let Err(fault) = run_one_scan(&container) else {
+        panic!("the scan does not trap");
+    };
+    assert_eq!(fault.trap, Trap::NullDereference);
+}
+
+/// What a reference refers to, and an element of an array it refers to,
+/// compile to the same instructions and constants by both routes, the
+/// narrowed store through a reference to an `INT` included.
+#[rstest]
+#[case::read_and_write("p^ := p^ + 1;")]
+#[case::read_into_variable("x := p^;")]
+#[case::narrow_store("q^ := q^ + 1;")]
+#[case::element("pa^[i] := pa^[i + 1];")]
+fn compile_when_dereference_lowered_then_same_code_as_ast(#[case] statement: &str) {
+    let source = format!(
+        "PROGRAM main
+           VAR x : DINT; i : DINT; p : REF_TO DINT; q : REF_TO INT;
+               pa : REF_TO ARRAY[1..3] OF DINT; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    assert_same_code(&source);
+}
+
+/// A field reached through a reference a function receives, `p^.x`, is not
+/// a field of an instance. The lowered route does not take it for the
+/// function's own `x`; it leaves the statement to the AST route, which does
+/// not support it yet.
+#[test]
+fn compile_when_field_through_reference_parameter_then_not_taken_for_local() {
+    let options = options();
+    let source = "TYPE P : STRUCT x : DINT; END_STRUCT; END_TYPE
+         FUNCTION F : DINT
+           VAR_INPUT p : REF_TO P; END_VAR
+           VAR x : DINT := 5; END_VAR
+           F := p^.x;
+         END_FUNCTION
+         PROGRAM main VAR s : P; r : DINT; END_VAR
+           r := F(p := REF(s));
+         END_PROGRAM";
+    let (library, context) = parse(source, &options);
+    let result = compile_by_route(&library, &context, &options, Route::PreferLowered);
+    assert_eq!(result.unwrap_err().code, "P9999");
+}
+
+/// Bits and parts are written to a variable, an element of an array, a
+/// field of a structure and a field of an element of an array of
+/// structures, leaving the other bits as they were. Setting the top bit of
+/// an `INT` makes it negative, as on the AST route.
+#[test]
+fn run_when_bits_and_parts_written_then_other_bits_kept() {
+    let snapshot = run_lowered(
+        "TYPE P : STRUCT w : WORD; END_STRUCT; END_TYPE
+         PROGRAM main
+           VAR w : WORD := 16#00F0; n : INT; l : LWORD; a : ARRAY[1..3] OF BYTE;
+               p : P; ps : ARRAY[0..1] OF P; i : DINT := 2;
+               b : BYTE := 16#AB; d : DWORD := 16#12345678;
+               rw : DWORD; rn : DINT; ra : DWORD; rp : DWORD; rps : DWORD; END_VAR
+           w.0 := TRUE;
+           w.%B1 := b;
+           n.15 := TRUE;
+           l.%D1 := d;
+           l.%B0 := b;
+           a[i].7 := TRUE;
+           p.w.%B0 := b;
+           ps[i - 1].w.3 := TRUE;
+           rw := w;
+           rn := n;
+           ra := a[2];
+           rp := p.w;
+           rps := ps[1].w;
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<i64>("rw"), 0xABF1);
+    assert_eq!(snapshot.read_as::<i64>("rn"), -32768);
+    assert_eq!(snapshot.read_as::<u64>("l"), 0x1234_5678_0000_00AB);
+    assert_eq!(snapshot.read_as::<i64>("ra"), 0x80);
+    assert_eq!(snapshot.read_as::<i64>("rp"), 0xAB);
+    assert_eq!(snapshot.read_as::<i64>("rps"), 8);
+}
+
+/// REQ-LOW-codegen-121: a bit write to an element of an array evaluates the
+/// element's subscript once, keeping the address for the store, where the
+/// AST route evaluates it for the load and again for the store.
+#[test]
+fn compile_when_bit_written_to_element_then_subscript_evaluated_once() {
+    let source = "PROGRAM main VAR i : DINT; a : ARRAY[0..3] OF WORD; END_VAR
+           a[i].3 := TRUE;
+         END_PROGRAM";
+    // i is var:0.
+    let load_i = bc::load_var_i32(0);
+    let loads = |code: Vec<u8>| {
+        code.windows(load_i.len())
+            .filter(|window| *window == load_i.as_slice())
+            .count()
+    };
+    assert_eq!(loads(body_by_route(source, Route::RequireLowered)), 1);
+    assert_eq!(loads(body_by_route(source, Route::Ast)), 2);
+}
+
+/// A bit or partial write to a variable compiles to the same instructions
+/// and constants by both routes: a variable has no address to evaluate.
+#[rstest]
+#[case::bit("w.3 := TRUE;")]
+#[case::first_bit("w.0 := FALSE;")]
+#[case::byte("w.%B1 := b;")]
+#[case::dword_of_lword("l.%D1 := d;")]
+#[case::lword_of_lword("l.%L0 := l;")]
+fn compile_when_bits_written_to_variable_then_same_code_as_ast(#[case] statement: &str) {
+    let source = format!(
+        "PROGRAM main
+           VAR w : WORD; b : BYTE; d : DWORD; l : LWORD; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    assert_same_code(&source);
+}
+
+/// Shifts and rotates of each width, and bit and partial reads of a
+/// variable, an element and a signed integer, give the values the AST route
+/// gives.
+#[test]
+fn run_when_shifts_and_bit_reads_then_values() {
+    let snapshot = run_lowered(
+        "PROGRAM main
+           VAR b : BYTE := 16#81; w : WORD := 16#1234; d : DWORD := 16#80000001;
+               l : LWORD := 16#0123456789ABCDEF; n : INT := -2; i : DINT := 1;
+               a : ARRAY[0..1] OF WORD; k : DINT := 4;
+               rb : BYTE; rw : WORD; rd : DWORD; rl : LWORD; rl2 : LWORD;
+               x1 : BOOL; x2 : BOOL; x3 : BOOL; x4 : BOOL; p1 : BYTE; p2 : BYTE; p3 : DWORD; END_VAR
+           a[i] := 16#0008;
+           rb := ROL(b, 1);
+           rw := ROR(w, k);
+           rd := SHL(d, 1);
+           rl := SHR(l, k);
+           rl2 := ROL(l, 8);
+           x1 := w.2;
+           x2 := a[i].3;
+           x3 := n.15;
+           x4 := n.0;
+           p1 := w.%B1;
+           p2 := l.%B7;
+           p3 := l.%D0;
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<u64>("rb"), 0x03);
+    assert_eq!(snapshot.read_as::<u64>("rw"), 0x4123);
+    assert_eq!(snapshot.read_as::<u64>("rd"), 0x0000_0002);
+    assert_eq!(snapshot.read_as::<u64>("rl"), 0x0012_3456_789A_BCDE);
+    assert_eq!(snapshot.read_as::<u64>("rl2"), 0x2345_6789_ABCD_EF01);
+    assert_eq!(snapshot.read_as::<u64>("x1"), 1);
+    assert_eq!(snapshot.read_as::<u64>("x2"), 1);
+    assert_eq!(snapshot.read_as::<u64>("x3"), 1);
+    assert_eq!(snapshot.read_as::<u64>("x4"), 0);
+    assert_eq!(snapshot.read_as::<u64>("p1"), 0x12);
+    assert_eq!(snapshot.read_as::<u64>("p2"), 0x01);
+    assert_eq!(snapshot.read_as::<u64>("p3"), 0x89AB_CDEF);
+}
+
+/// A shift or rotate, and a partial read of a 32-bit place, compile to the
+/// same instructions and constants by both routes.
+#[rstest]
+#[case::shl_dword("d := SHL(d, n);")]
+#[case::shr_lword("l := SHR(l, 3);")]
+#[case::rol_byte("b := ROL(b, 1);")]
+#[case::ror_word("w := ROR(w, n);")]
+#[case::rol_lword("l := ROL(l, 2);")]
+#[case::partial_read("b := w.%B1;")]
+fn compile_when_shift_or_partial_read_lowered_then_same_code_as_ast(#[case] statement: &str) {
+    let source = format!(
+        "PROGRAM main
+           VAR b : BYTE; w : WORD; d : DWORD; l : LWORD; n : DINT; END_VAR
            {statement}
          END_PROGRAM"
     );

@@ -2,7 +2,7 @@
 
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_dsl::textual::{Assignment, StmtKind as AstStmtKind};
+use ironplc_dsl::textual::{Assignment, StmtKind as AstStmtKind, Variable};
 use ironplc_ir::lowered::{Expr, Stmt};
 
 use crate::variables::BodyFrame;
@@ -39,13 +39,22 @@ impl Lowering<'_> {
         frame: &BodyFrame,
         assignment: &Assignment,
     ) -> Result<Option<Stmt>, Diagnostic> {
-        // `REF=`, `S=`, `R=` and an assignment through `^` are not lowered yet.
-        if assignment.deref || assignment.ref_bind || assignment.set_bind || assignment.reset_bind {
+        // `REF=`, `S=` and `R=` are not lowered yet.
+        if assignment.ref_bind || assignment.set_bind || assignment.reset_bind {
             return Ok(None);
         }
-        let Some(place) = self.variable_place(frame, &assignment.target)? else {
+        if let Variable::Symbolic(target) = &assignment.target {
+            if let Some((base, shift, bits)) = crate::bits::selected_bits(target) {
+                return self.bits_assignment(frame, base, shift, bits, assignment);
+            }
+        }
+        let Some(mut place) = self.variable_place(frame, &assignment.target)? else {
             return Ok(None);
         };
+        // `p^ := v` stores in what `p` refers to.
+        if assignment.deref {
+            place = self.program.deref(place, &assignment.target.span())?;
+        }
         let Some(operated) = self.program.types().operation_type(place.ty()) else {
             // A string or an aggregate is not assigned as one scalar value.
             return Ok(None);

@@ -3,6 +3,7 @@
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
 
+use super::call::{Arg, Callee};
 use super::ids::Stamp;
 use super::invariant::broken;
 use super::place::Place;
@@ -154,6 +155,11 @@ pub enum ExprKind {
         op: ShortCircuitOp,
         lhs: Box<Expr>,
         rhs: Box<Expr>,
+    },
+    /// The result of calling `callee` with `args`, evaluated in order.
+    Call {
+        callee: Callee,
+        args: Vec<Arg>,
     },
 }
 
@@ -411,6 +417,43 @@ impl Expr {
         ))
     }
 
+    /// The result of calling `callee` with `args`. There is one argument for
+    /// each of the callee's parameters, of the parameter's type
+    /// (REQ-LOW-ir-145), and the arguments read places of one program.
+    pub fn call(callee: Callee, args: Vec<Arg>, span: SourceSpan) -> Result<Self, Diagnostic> {
+        const CONSTRUCTOR: &str = "Expr::call";
+        let Callee::Intrinsic(intrinsic) = callee;
+        let (params, result) = intrinsic.signature();
+        let types: Vec<ScalarType> = args
+            .iter()
+            .map(|arg| match arg {
+                Arg::Value(value) => value.ty,
+            })
+            .collect();
+        if types != params {
+            return Err(broken(
+                CONSTRUCTOR,
+                &span,
+                format!("{} takes {params:?}, not {types:?}", intrinsic.name()),
+            ));
+        }
+        let mut program = None;
+        for Arg::Value(value) in &args {
+            match (program, value.program) {
+                (Some(one), Some(other)) if one != other => {
+                    return Err(broken(
+                        CONSTRUCTOR,
+                        &span,
+                        "the arguments belong to two different programs",
+                    ))
+                }
+                (None, other) => program = other,
+                (Some(_), _) => {}
+            }
+        }
+        Ok(Self::new(ExprKind::Call { callee, args }, result, span))
+    }
+
     fn new(kind: ExprKind, ty: ScalarType, span: SourceSpan) -> Self {
         let program = match &kind {
             ExprKind::Const(_) => None,
@@ -421,6 +464,9 @@ impl Expr {
             ExprKind::Binary { lhs, rhs, .. }
             | ExprKind::Compare { lhs, rhs, .. }
             | ExprKind::ShortCircuit { lhs, rhs, .. } => lhs.program.or(rhs.program),
+            ExprKind::Call { args, .. } => args.iter().find_map(|arg| match arg {
+                Arg::Value(value) => value.program,
+            }),
         };
         Self {
             kind,

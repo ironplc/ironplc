@@ -21,6 +21,8 @@
 #![deny(clippy::wildcard_enum_match_arm)]
 #![allow(clippy::result_large_err)]
 
+mod bits;
+mod call;
 mod control;
 mod expr;
 mod place;
@@ -28,6 +30,8 @@ mod statement;
 mod types;
 mod variables;
 
+#[cfg(test)]
+mod call_tests;
 #[cfg(test)]
 mod control_tests;
 #[cfg(test)]

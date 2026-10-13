@@ -17,8 +17,8 @@ use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::StmtKind as AstStmtKind;
 use ironplc_ir::lowered::{
-    Expr, ExprKind, NarrowWidth, Place as LoweredPlace, Projection, ScalarType,
-    Signedness as LoweredSignedness, Stmt, StmtKind,
+    Arg, Expr, ExprKind, NarrowWidth, Nullability, Place as LoweredPlace, Projection, ScalarType,
+    Signedness as LoweredSignedness, Stmt, StmtKind, TypeId, TypeKind,
 };
 use ironplc_lowering::{Lowering, StatementLowering};
 
@@ -151,6 +151,13 @@ fn can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, stmt: &Stmt) -> bool 
         StmtKind::Assign { place, value } => {
             reaches(lowering, ctx, place, value.ty()) && expr_can_emit(lowering, ctx, value)
         }
+        StmtKind::AssignBits { place, value, .. } => {
+            lowering
+                .types()
+                .operation_type(place.ty())
+                .is_some_and(|ty| reaches(lowering, ctx, place, ty))
+                && expr_can_emit(lowering, ctx, value)
+        }
         StmtKind::If {
             cond,
             then,
@@ -202,6 +209,9 @@ fn expr_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, expr: &Expr) -> 
         | ExprKind::ShortCircuit { lhs, rhs, .. } => {
             expr_can_emit(lowering, ctx, lhs) && expr_can_emit(lowering, ctx, rhs)
         }
+        ExprKind::Call { args, .. } => args.iter().all(|arg| match arg {
+            Arg::Value(value) => expr_can_emit(lowering, ctx, value),
+        }),
     }
 }
 
@@ -231,7 +241,7 @@ pub(super) fn storage_name(lowering: &Lowering<'_>, place: &LoweredPlace) -> Opt
     let root = lowering.variables().get(place.root())?;
     match place.path() {
         [] => Some(Id::from(&root.name().to_string())),
-        [Projection::Deref, Projection::Field(field)] => {
+        [Projection::Deref, Projection::Field(field)] if is_instance(lowering, root.ty()) => {
             let (instance, _) = lowering.types().reference(root.ty())?;
             let fields = lowering.types().fields(instance)?;
             let field = fields.get(field.index() as usize)?;
@@ -239,6 +249,21 @@ pub(super) fn storage_name(lowering: &Lowering<'_>, place: &LoweredPlace) -> Opt
         }
         _ => None,
     }
+}
+
+/// Whether a variable of type `ty` is the instance parameter of a body, the
+/// non-null reference to a program or function block through which the body
+/// reaches its own fields. A `REF_TO` is nullable, and lowering binds no
+/// other non-null reference yet, so no other variable is one.
+pub(super) fn is_instance(lowering: &Lowering<'_>, ty: TypeId) -> bool {
+    let types = lowering.types();
+    types.reference(ty).is_some_and(|(target, nullability)| {
+        nullability == Nullability::NonNull
+            && matches!(
+                types.kind(target),
+                Some(TypeKind::Program { .. } | TypeKind::FunctionBlock { .. })
+            )
+    })
 }
 
 /// The operation type this backend computes a value of `ty` at. A `BOOL` is
