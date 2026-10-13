@@ -250,20 +250,58 @@ fn lower_statement_when_real_function_then_intrinsic_at_its_width() {
     }
 }
 
-/// `EXPT` of an unsigned integer, and the selection functions, are not
-/// lowered yet.
+/// `EXPT` of an unsigned integer, and `MUX`, are not lowered yet.
 #[test]
 fn lower_statement_when_numeric_function_not_supported_then_unsupported() {
     let outcome = lower(
         "PROGRAM main VAR u : UDINT; d : DINT; END_VAR
             u := EXPT(u, 2);
-            d := MIN(d, 1);
-            d := SEL(TRUE, d, 1);
+            d := MUX(1, d, 2);
          END_PROGRAM",
         "main",
     );
-    assert_eq!(
-        outcome.statements,
-        ["unsupported", "unsupported", "unsupported"]
-    );
+    assert_eq!(outcome.statements, ["unsupported", "unsupported"]);
+}
+
+/// REQ-LOW-lowering-147: a selection function is the intrinsic for its
+/// function at the type it computes at, signed, unsigned or real, and `SEL`
+/// takes its selector as the `BOOL` it is.
+#[test]
+fn lower_statement_when_selection_function_then_intrinsic_at_its_type() {
+    let types = [
+        ("DINT", "i32s", "i32"),
+        ("UDINT", "i32u", "u32"),
+        ("LINT", "i64s", "i64"),
+        ("ULINT", "i64u", "u64"),
+        ("REAL", "f32", "f32"),
+        ("LREAL", "f64", "f64"),
+    ];
+    for (declared, ty, suffix) in types {
+        let outcome = lower(
+            &format!(
+                "PROGRAM main VAR a : {declared}; b : {declared}; c : {declared}; g : BOOL; END_VAR
+                    a := MIN(a, b);
+                    a := MAX(a, b);
+                    a := LIMIT(a, b, c);
+                    a := SEL(g, b, c);
+                 END_PROGRAM"
+            ),
+            "main",
+        );
+        let (a, b, c) = (
+            format!("(read {ty} v0^.f0)"),
+            format!("(read {ty} v0^.f1)"),
+            format!("(read {ty} v0^.f2)"),
+        );
+        assert_eq!(
+            outcome.statements,
+            [
+                format!("assign v0^.f0 (call min_{suffix} {ty} {a} {b})"),
+                format!("assign v0^.f0 (call max_{suffix} {ty} {a} {b})"),
+                format!("assign v0^.f0 (call limit_{suffix} {ty} {a} {b} {c})"),
+                format!("assign v0^.f0 (call sel_{suffix} {ty} (read bool v0^.f3) {b} {c})"),
+            ],
+            "{declared}"
+        );
+    }
 }

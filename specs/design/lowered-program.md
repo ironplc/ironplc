@@ -1551,8 +1551,11 @@ subscript of 4,294,967,295 traps on `ARRAY[-3..100]`.
 **REQ-LOW-codegen-089** An `Intrinsic` means what the IEC 61131-3 standard
 function means, with these choices where the standard leaves room: the count
 of `SHL` and `SHR` is taken modulo the operation width, `SHR` fills with
-zeros, `EXPT` of an integer base by a negative exponent traps, and `ABS` of
-the most negative value of its operation type wraps to that value.
+zeros, `EXPT` of an integer base by a negative exponent traps, `ABS` of the
+most negative value of its operation type wraps to that value, and
+`LIMIT(MN, IN, MX)` is `MIN(MAX(IN, MN), MX)`, so `MX` when `MN` is greater
+than `MX`. Of reals, `MIN` and `MAX` give the other input when one is NaN, and
+`LIMIT` gives NaN when any input is.
 
 A real function such as `SIN` or `EXP` is computed with the target's own
 primitive: Rust's `f64` methods on the bytecode VM (`vm/src/builtin.rs`), and

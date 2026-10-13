@@ -29,6 +29,8 @@ pub enum Arg {
 ///
 /// A numeric function takes and returns values of one type. `ABS` and `EXPT`
 /// take a signed integer or a real; the other numeric functions take a real.
+/// The selection functions `MIN`, `MAX`, `LIMIT` and `SEL` take any integer
+/// or real, and `SEL` also its selector, a `BOOL`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Intrinsic {
     /// `SHL` of a 32-bit bit string: a `BYTE`, `WORD` or `DWORD`.
@@ -123,6 +125,54 @@ pub enum Intrinsic {
     ModF32,
     /// `__MOD` of two `LREAL`s: the remainder with the sign of the dividend.
     ModF64,
+    /// `MIN` of two 32-bit signed integers.
+    MinI32,
+    /// `MIN` of two 32-bit unsigned integers.
+    MinU32,
+    /// `MIN` of two 64-bit signed integers.
+    MinI64,
+    /// `MIN` of two 64-bit unsigned integers.
+    MinU64,
+    /// `MIN` of two `REAL`s.
+    MinF32,
+    /// `MIN` of two `LREAL`s.
+    MinF64,
+    /// `MAX` of two 32-bit signed integers.
+    MaxI32,
+    /// `MAX` of two 32-bit unsigned integers.
+    MaxU32,
+    /// `MAX` of two 64-bit signed integers.
+    MaxI64,
+    /// `MAX` of two 64-bit unsigned integers.
+    MaxU64,
+    /// `MAX` of two `REAL`s.
+    MaxF32,
+    /// `MAX` of two `LREAL`s.
+    MaxF64,
+    /// `LIMIT` of three 32-bit signed integers: the middle one clamped to the first and the last.
+    LimitI32,
+    /// `LIMIT` of three 32-bit unsigned integers: the middle one clamped to the first and the last.
+    LimitU32,
+    /// `LIMIT` of three 64-bit signed integers: the middle one clamped to the first and the last.
+    LimitI64,
+    /// `LIMIT` of three 64-bit unsigned integers: the middle one clamped to the first and the last.
+    LimitU64,
+    /// `LIMIT` of three `REAL`s: the middle one clamped to the first and the last.
+    LimitF32,
+    /// `LIMIT` of three `LREAL`s: the middle one clamped to the first and the last.
+    LimitF64,
+    /// `SEL` between two 32-bit signed integers: the first when the selector is `FALSE`.
+    SelI32,
+    /// `SEL` between two 32-bit unsigned integers: the first when the selector is `FALSE`.
+    SelU32,
+    /// `SEL` between two 64-bit signed integers: the first when the selector is `FALSE`.
+    SelI64,
+    /// `SEL` between two 64-bit unsigned integers: the first when the selector is `FALSE`.
+    SelU64,
+    /// `SEL` between two `REAL`s: the first when the selector is `FALSE`.
+    SelF32,
+    /// `SEL` between two `LREAL`s: the first when the selector is `FALSE`.
+    SelF64,
 }
 
 const U32: ScalarType = ScalarType::I32(Signedness::Unsigned);
@@ -131,6 +181,7 @@ const I32: ScalarType = ScalarType::I32(Signedness::Signed);
 const I64: ScalarType = ScalarType::I64(Signedness::Signed);
 const F32: ScalarType = ScalarType::F32;
 const F64: ScalarType = ScalarType::F64;
+const BOOL: ScalarType = ScalarType::Bool;
 
 impl Intrinsic {
     /// The types of the operation's parameters, in order, and of its result.
@@ -177,6 +228,24 @@ impl Intrinsic {
             | Intrinsic::TruncF64 => (&[F64], F64),
             Intrinsic::ExptF32 | Intrinsic::Atan2F32 | Intrinsic::ModF32 => (&[F32, F32], F32),
             Intrinsic::ExptF64 | Intrinsic::Atan2F64 | Intrinsic::ModF64 => (&[F64, F64], F64),
+            Intrinsic::MinI32 | Intrinsic::MaxI32 => (&[I32, I32], I32),
+            Intrinsic::MinU32 | Intrinsic::MaxU32 => (&[U32, U32], U32),
+            Intrinsic::MinI64 | Intrinsic::MaxI64 => (&[I64, I64], I64),
+            Intrinsic::MinU64 | Intrinsic::MaxU64 => (&[U64, U64], U64),
+            Intrinsic::MinF32 | Intrinsic::MaxF32 => (&[F32, F32], F32),
+            Intrinsic::MinF64 | Intrinsic::MaxF64 => (&[F64, F64], F64),
+            Intrinsic::LimitI32 => (&[I32, I32, I32], I32),
+            Intrinsic::LimitU32 => (&[U32, U32, U32], U32),
+            Intrinsic::LimitI64 => (&[I64, I64, I64], I64),
+            Intrinsic::LimitU64 => (&[U64, U64, U64], U64),
+            Intrinsic::LimitF32 => (&[F32, F32, F32], F32),
+            Intrinsic::LimitF64 => (&[F64, F64, F64], F64),
+            Intrinsic::SelI32 => (&[BOOL, I32, I32], I32),
+            Intrinsic::SelU32 => (&[BOOL, U32, U32], U32),
+            Intrinsic::SelI64 => (&[BOOL, I64, I64], I64),
+            Intrinsic::SelU64 => (&[BOOL, U64, U64], U64),
+            Intrinsic::SelF32 => (&[BOOL, F32, F32], F32),
+            Intrinsic::SelF64 => (&[BOOL, F64, F64], F64),
         }
     }
 
@@ -229,6 +298,30 @@ impl Intrinsic {
             Intrinsic::TruncF64 => "trunc_f64",
             Intrinsic::ModF32 => "mod_f32",
             Intrinsic::ModF64 => "mod_f64",
+            Intrinsic::MinI32 => "min_i32",
+            Intrinsic::MinU32 => "min_u32",
+            Intrinsic::MinI64 => "min_i64",
+            Intrinsic::MinU64 => "min_u64",
+            Intrinsic::MinF32 => "min_f32",
+            Intrinsic::MinF64 => "min_f64",
+            Intrinsic::MaxI32 => "max_i32",
+            Intrinsic::MaxU32 => "max_u32",
+            Intrinsic::MaxI64 => "max_i64",
+            Intrinsic::MaxU64 => "max_u64",
+            Intrinsic::MaxF32 => "max_f32",
+            Intrinsic::MaxF64 => "max_f64",
+            Intrinsic::LimitI32 => "limit_i32",
+            Intrinsic::LimitU32 => "limit_u32",
+            Intrinsic::LimitI64 => "limit_i64",
+            Intrinsic::LimitU64 => "limit_u64",
+            Intrinsic::LimitF32 => "limit_f32",
+            Intrinsic::LimitF64 => "limit_f64",
+            Intrinsic::SelI32 => "sel_i32",
+            Intrinsic::SelU32 => "sel_u32",
+            Intrinsic::SelI64 => "sel_i64",
+            Intrinsic::SelU64 => "sel_u64",
+            Intrinsic::SelF32 => "sel_f32",
+            Intrinsic::SelF64 => "sel_f64",
         }
     }
 }
