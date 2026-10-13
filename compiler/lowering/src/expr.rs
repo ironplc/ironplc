@@ -151,11 +151,22 @@ impl Lowering<'_> {
                 let ordinal = self.enumerated_ordinal(expr, value)?;
                 Expr::integer(ordinal.into(), ty, span).map(Some)
             }
+            AstExprKind::Deref(reference) => {
+                // A reference that is not in a variable, such as one a
+                // function returns, is not a place to follow.
+                let AstExprKind::Variable(variable) = &reference.kind else {
+                    return Ok(None);
+                };
+                let Some(reference) = self.variable_place(frame, variable)? else {
+                    return Ok(None);
+                };
+                let place = self.program.deref(reference, &span)?;
+                self.read(place, span)
+            }
             AstExprKind::Function(_)
             | AstExprKind::MethodCall(_)
             | AstExprKind::LateBound(_)
             | AstExprKind::Ref(_)
-            | AstExprKind::Deref(_)
             | AstExprKind::Null(_) => Ok(None),
         }
     }

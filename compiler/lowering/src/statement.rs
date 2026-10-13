@@ -2,7 +2,7 @@
 
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_dsl::textual::{Assignment, StmtKind as AstStmtKind};
+use ironplc_dsl::textual::{Assignment, StmtKind as AstStmtKind, SymbolicVariableKind, Variable};
 use ironplc_ir::lowered::{Expr, Stmt};
 
 use crate::variables::BodyFrame;
@@ -39,13 +39,22 @@ impl Lowering<'_> {
         frame: &BodyFrame,
         assignment: &Assignment,
     ) -> Result<Option<Stmt>, Diagnostic> {
-        // `REF=`, `S=`, `R=` and an assignment through `^` are not lowered yet.
-        if assignment.deref || assignment.ref_bind || assignment.set_bind || assignment.reset_bind {
+        // `REF=`, `S=` and `R=` are not lowered yet.
+        if assignment.ref_bind || assignment.set_bind || assignment.reset_bind {
             return Ok(None);
         }
-        let Some(place) = self.variable_place(frame, &assignment.target)? else {
+        if let Variable::Symbolic(target) = &assignment.target {
+            if let Some((base, shift, bits)) = selected_bits(target) {
+                return self.bits_assignment(frame, base, shift, bits, assignment);
+            }
+        }
+        let Some(mut place) = self.variable_place(frame, &assignment.target)? else {
             return Ok(None);
         };
+        // `p^ := v` stores in what `p` refers to.
+        if assignment.deref {
+            place = self.program.deref(place, &assignment.target.span())?;
+        }
         let Some(operated) = self.program.types().operation_type(place.ty()) else {
             // A string or an aggregate is not assigned as one scalar value.
             return Ok(None);
@@ -69,5 +78,72 @@ impl Lowering<'_> {
         self.program
             .assign(place, value, assignment.span())
             .map(Some)
+    }
+
+    /// `x.3 := v` or `x.%B1 := v`: one `AssignBits` that names the base
+    /// place once (REQ-LOW-lowering-102).
+    fn bits_assignment(
+        &mut self,
+        frame: &BodyFrame,
+        base: &SymbolicVariableKind,
+        shift: u8,
+        bits: u8,
+        assignment: &Assignment,
+    ) -> Result<Option<Stmt>, Diagnostic> {
+        // Codegen does not address bits through a reference yet, as in
+        // `p^.3 := TRUE`, from the AST, so while both routes exist they are
+        // not lowered either.
+        if assignment.deref || through_reference(base) {
+            return Ok(None);
+        }
+        // The base of `d.%B1.3` is itself a bit selection, not a place.
+        let Some(place) = self.symbolic_place(frame, base)? else {
+            return Ok(None);
+        };
+        let Some(value) = self.expr(frame, &assignment.value)? else {
+            return Ok(None);
+        };
+        self.program
+            .assign_bits(place, shift, bits, value, assignment.span())
+            .map(Some)
+    }
+}
+
+/// The base, first bit and number of bits a bit access (`x.3`) or a partial
+/// access (`x.%B1`) selects; `None` for any other variable. The analyzer
+/// reports a selection that does not lie within its base (P4025), so the
+/// first bit fits a `u8`; one that did not would be refused when the
+/// `AssignBits` is built.
+fn selected_bits(symbolic: &SymbolicVariableKind) -> Option<(&SymbolicVariableKind, u8, u8)> {
+    let (base, index, bits) = match symbolic {
+        SymbolicVariableKind::BitAccess(access) => (&access.variable, access.index.value, 1),
+        SymbolicVariableKind::PartialAccess(access) => (
+            &access.variable,
+            access.index.value,
+            access.size.bit_width(),
+        ),
+        SymbolicVariableKind::Named(_)
+        | SymbolicVariableKind::Array(_)
+        | SymbolicVariableKind::Structured(_)
+        | SymbolicVariableKind::Deref(_)
+        | SymbolicVariableKind::SelfRef(_) => return None,
+    };
+    let bits = u8::try_from(bits).unwrap_or(u8::MAX);
+    let shift = index
+        .checked_mul(u128::from(bits))
+        .and_then(|shift| u8::try_from(shift).ok())
+        .unwrap_or(u8::MAX);
+    Some((base.as_ref(), shift, bits))
+}
+
+/// Whether the variable `symbolic` names is reached through a dereference.
+pub(crate) fn through_reference(symbolic: &SymbolicVariableKind) -> bool {
+    match symbolic {
+        SymbolicVariableKind::Deref(_) => true,
+        SymbolicVariableKind::Named(_) | SymbolicVariableKind::SelfRef(_) => false,
+        SymbolicVariableKind::Array(array) => through_reference(&array.subscripted_variable),
+        SymbolicVariableKind::Structured(structured) => through_reference(&structured.record),
+        SymbolicVariableKind::BitAccess(access) => through_reference(&access.variable),
+        SymbolicVariableKind::PartialAccess(access) => through_reference(&access.variable),
     }
 }

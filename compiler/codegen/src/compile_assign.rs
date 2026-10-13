@@ -38,7 +38,7 @@ pub(crate) fn compile_assignment(
     // the referenced type (REQ-IC-analyzer-039), so it compiles at its own
     // type, and that is the type of the place it is stored in.
     if assignment.deref {
-        let place = Place::through_reference(
+        let place = Place::<&Expr>::through_reference(
             ctx,
             &assignment.target,
             expr_type_info(ctx, &assignment.value),
