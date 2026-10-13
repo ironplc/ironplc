@@ -511,3 +511,52 @@ fn compile_when_shift_or_partial_read_lowered_then_same_code_as_ast(#[case] stat
     );
     assert_same_code(&source);
 }
+
+/// The function forms of operators and `MOVE` give the values their
+/// operators give.
+#[test]
+fn run_when_operator_function_forms_then_values() {
+    let snapshot = run_lowered(
+        "PROGRAM main
+           VAR a : DINT := 7; b : DINT := 3; c : DINT := 2; w : WORD := 16#00FF;
+               r1 : DINT; r2 : DINT; r3 : DINT; x1 : BOOL; x2 : BOOL; rw : WORD; r4 : DINT; END_VAR
+           r1 := ADD(a, b, c);
+           r2 := SUB(MUL(a, b), c);
+           r3 := MOD(a, b);
+           x1 := GT(a, b);
+           x2 := AND(x1, LT(c, b), NOT(EQ(a, b)));
+           rw := XOR(NOT(w), WORD#16#0F0F);
+           r4 := MOVE(DIV(a, c));
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<i64>("r1"), 12);
+    assert_eq!(snapshot.read_as::<i64>("r2"), 19);
+    assert_eq!(snapshot.read_as::<i64>("r3"), 1);
+    assert_eq!(snapshot.read_as::<i64>("x1"), 1);
+    assert_eq!(snapshot.read_as::<i64>("x2"), 1);
+    assert_eq!(snapshot.read_as::<i64>("rw"), 0xF00F);
+    assert_eq!(snapshot.read_as::<i64>("r4"), 3);
+}
+
+/// The function form of an operator compiles to the same instructions and
+/// constants by both routes. `NOT` of a `WORD` is left out: the AST route
+/// truncates its result and then truncates it again for the store, where the
+/// lowered route stores the truncated value as it is.
+#[rstest]
+#[case::add_fold("r := ADD(a, b, c);")]
+#[case::sub("r := SUB(a, b);")]
+#[case::mod_("r := MOD(a, b);")]
+#[case::gt("x := GT(a, b);")]
+#[case::and_bool("x := AND(x, y);")]
+#[case::and_word("w := AND(w, v);")]
+#[case::not_bool("x := NOT(x);")]
+#[case::move_("r := MOVE(a);")]
+fn compile_when_operator_form_lowered_then_same_code_as_ast(#[case] statement: &str) {
+    let source = format!(
+        "PROGRAM main
+           VAR a : DINT; b : DINT; c : DINT; r : DINT; x : BOOL; y : BOOL; w : WORD; v : WORD; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    assert_same_code(&source);
+}
