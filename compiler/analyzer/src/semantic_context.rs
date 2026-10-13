@@ -148,12 +148,6 @@ impl SemanticContext {
         &mut self.types
     }
 
-    /// Provides mutable access to the function environment.
-    #[allow(dead_code)]
-    pub fn functions_mut(&mut self) -> &mut FunctionEnvironment {
-        &mut self.functions
-    }
-
     /// Provides mutable access to the symbol environment.
     pub fn symbols_mut(&mut self) -> &mut SymbolEnvironment {
         &mut self.symbols
@@ -275,7 +269,7 @@ mod tests {
         let ctx = SemanticContextBuilder::new().build().unwrap();
 
         // Should have empty environments
-        assert!(ctx.functions().is_empty());
+        assert!(ctx.functions().iter().next().is_none());
     }
 
     #[test]

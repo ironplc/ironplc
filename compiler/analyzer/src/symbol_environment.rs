@@ -720,12 +720,6 @@ impl SymbolEnvironment {
             .collect()
     }
 
-    /// Get a symbol by name and scope (alias for find)
-    #[allow(dead_code)]
-    pub fn get(&self, name: &Id, scope: &ScopeKind) -> Option<&SymbolInfo> {
-        self.find(name, scope)
-    }
-
     /// Returns all program declarations from the global scope.
     pub fn get_programs(&self) -> Vec<(&Id, &SymbolInfo)> {
         self.global_symbols
