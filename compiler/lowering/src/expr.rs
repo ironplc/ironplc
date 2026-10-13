@@ -5,6 +5,7 @@
 //! (`ExprKind::ImplicitConversion`) becomes a `Convert`. Lowering decides no
 //! literal type and no conversion itself (REQ-LOW-lowering-094).
 
+use ironplc_analyzer::NumericFunction;
 use ironplc_dsl::common::{Boolean, ConstantKind};
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
@@ -48,8 +49,11 @@ impl Lowering<'_> {
                     Operator::Mul => BinaryOp::Mul,
                     Operator::Div => BinaryOp::Div,
                     Operator::Mod => BinaryOp::Mod,
-                    // `**` is the standard function `EXPT`, an intrinsic.
-                    Operator::Pow => return Ok(None),
+                    // `**` is the standard function `EXPT`.
+                    Operator::Pow => {
+                        let args = [&binary.left, &binary.right];
+                        return self.numeric_call(frame, expr, NumericFunction::Expt, &args);
+                    }
                 };
                 if !self.is_arithmetic(expr)? {
                     return Ok(None);

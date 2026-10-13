@@ -52,3 +52,20 @@ fn call_when_arguments_read_two_programs_then_internal_error() {
         "Expr::call"
     ));
 }
+
+/// REQ-LOW-ir-145: a real function takes and returns values of its real type.
+#[test]
+fn call_when_real_function_of_its_type_then_real_result() {
+    let f = fixture();
+    let call = Expr::call(
+        Callee::Intrinsic(Intrinsic::Atan2F64),
+        vec![Arg::Value(f.read(f.lreal)), Arg::Value(f.read(f.lreal))],
+        span(),
+    )
+    .unwrap();
+    assert_eq!(call.ty(), ScalarType::F64);
+    assert_eq!(
+        call.to_string(),
+        "(call atan2_f64 f64 (read f64 v4) (read f64 v4))"
+    );
+}

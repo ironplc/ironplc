@@ -5,7 +5,7 @@
 //! names every function, so one the analyzer adds is not lowered until it has
 //! an arm here.
 
-use ironplc_analyzer::{BitShift, BuiltinFunction, FormOf};
+use ironplc_analyzer::{BitShift, BuiltinFunction, FormOf, NumericFunction};
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{CompareOp, Expr as AstExpr, Function, Operator};
@@ -63,8 +63,8 @@ impl Lowering<'_> {
                 };
                 self.intrinsic_call(frame, expr, intrinsic, &args)
             }
-            BuiltinFunction::Numeric(_)
-            | BuiltinFunction::Mux
+            BuiltinFunction::Numeric(function) => self.numeric_call(frame, expr, function, &args),
+            BuiltinFunction::Mux
             | BuiltinFunction::Trunc
             | BuiltinFunction::BcdToInt
             | BuiltinFunction::IntToBcd
@@ -75,6 +75,26 @@ impl Lowering<'_> {
             | BuiltinFunction::DtToDate
             | BuiltinFunction::DtToTod => Ok(None),
         }
+    }
+
+    /// The call `expr` of the numeric function `function` with `args`. The
+    /// operator `a ** b` is a call of `EXPT`.
+    pub(crate) fn numeric_call(
+        &mut self,
+        frame: &BodyFrame,
+        expr: &AstExpr,
+        function: NumericFunction,
+        args: &[&AstExpr],
+    ) -> Lowered {
+        // A numeric function computes at the type the analyzer converted its
+        // inputs to.
+        let Some(intrinsic) = self
+            .operated_type(expr)?
+            .and_then(|(_, operated)| numeric_intrinsic(function, operated))
+        else {
+            return Ok(None);
+        };
+        self.intrinsic_call(frame, expr, intrinsic, args)
     }
 
     /// The call `expr` of `intrinsic` with `args`.
@@ -306,5 +326,52 @@ fn rotate(
         (true, 64) => Some(bits_64),
         // No bit string has any other width.
         _ => None,
+    }
+}
+
+/// The numeric function `function` computed at `operated`.
+fn numeric_intrinsic(function: NumericFunction, operated: ScalarType) -> Option<Intrinsic> {
+    // The intrinsics at a 32-bit and a 64-bit signed integer, for a function
+    // that takes integers, and at a `REAL` and an `LREAL`.
+    let (integers, [real, long_real]) = match function {
+        NumericFunction::Abs => (
+            Some([Intrinsic::AbsI32, Intrinsic::AbsI64]),
+            [Intrinsic::AbsF32, Intrinsic::AbsF64],
+        ),
+        NumericFunction::Expt => (
+            Some([Intrinsic::ExptI32, Intrinsic::ExptI64]),
+            [Intrinsic::ExptF32, Intrinsic::ExptF64],
+        ),
+        NumericFunction::Sqrt => (None, [Intrinsic::SqrtF32, Intrinsic::SqrtF64]),
+        NumericFunction::Ln => (None, [Intrinsic::LnF32, Intrinsic::LnF64]),
+        NumericFunction::Log => (None, [Intrinsic::LogF32, Intrinsic::LogF64]),
+        NumericFunction::Exp => (None, [Intrinsic::ExpF32, Intrinsic::ExpF64]),
+        NumericFunction::Sin => (None, [Intrinsic::SinF32, Intrinsic::SinF64]),
+        NumericFunction::Cos => (None, [Intrinsic::CosF32, Intrinsic::CosF64]),
+        NumericFunction::Tan => (None, [Intrinsic::TanF32, Intrinsic::TanF64]),
+        NumericFunction::Asin => (None, [Intrinsic::AsinF32, Intrinsic::AsinF64]),
+        NumericFunction::Acos => (None, [Intrinsic::AcosF32, Intrinsic::AcosF64]),
+        NumericFunction::Atan => (None, [Intrinsic::AtanF32, Intrinsic::AtanF64]),
+        NumericFunction::Atan2 => (None, [Intrinsic::Atan2F32, Intrinsic::Atan2F64]),
+        NumericFunction::TruncReal => (None, [Intrinsic::TruncF32, Intrinsic::TruncF64]),
+        NumericFunction::ModReal => (None, [Intrinsic::ModF32, Intrinsic::ModF64]),
+        // The selection functions are not lowered yet.
+        NumericFunction::Min
+        | NumericFunction::Max
+        | NumericFunction::Limit
+        | NumericFunction::Sel => return None,
+    };
+    match operated {
+        ScalarType::I32(Signedness::Signed) => integers.map(|[integer, _]| integer),
+        ScalarType::I64(Signedness::Signed) => integers.map(|[_, long_integer]| long_integer),
+        ScalarType::F32 => Some(real),
+        ScalarType::F64 => Some(long_real),
+        // `EXPT` of an unsigned integer is not lowered yet. The analyzer
+        // removes `ABS` of one.
+        ScalarType::I32(Signedness::Unsigned)
+        | ScalarType::I64(Signedness::Unsigned)
+        | ScalarType::Bool
+        | ScalarType::Ref
+        | ScalarType::Interface => None,
     }
 }
