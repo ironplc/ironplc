@@ -15,6 +15,7 @@
 use crate::common::Snapshot;
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
+use spec_test_macro::spec_test;
 
 /// Declares a `SINT` target of each shape, runs `body`, and returns the
 /// variables. `i` is 1, so a subscript is computed at run time.
@@ -73,4 +74,38 @@ END_PROGRAM
     };
     let snapshot = Snapshot::run(source, &options);
     assert_eq!(snapshot.read_as::<i32>("r"), -56);
+}
+
+/// A value stored through a dereference is truncated to the width of the type
+/// the reference refers to, as one stored in that variable directly is. The
+/// value is read back into a 32-bit variable of the same signedness, which
+/// does not truncate.
+#[spec_test(REQ_IC_codegen_021)]
+#[rstest]
+#[case::signed_8_bit("SINT", "100", "DINT", -56)]
+#[case::unsigned_8_bit("USINT", "200", "UDINT", 144)]
+#[case::signed_16_bit("INT", "20000", "DINT", -25536)]
+#[case::unsigned_16_bit("UINT", "40000", "UDINT", 14464)]
+fn assignment_when_narrow_variable_through_reference_overflows_then_value_wraps_at_its_width(
+    #[case] ty: &str,
+    #[case] a: &str,
+    #[case] wide: &str,
+    #[case] expected: i32,
+) {
+    let source = format!(
+        "
+PROGRAM main
+  VAR x : {ty}; a : {ty} := {a}; p : REF_TO {ty}; r : {wide}; END_VAR
+  p := REF(x);
+  p^ := a + a;
+  r := x;
+END_PROGRAM
+"
+    );
+    let options = CompilerOptions {
+        allow_ref_to: true,
+        ..CompilerOptions::default()
+    };
+    let snapshot = Snapshot::run(&source, &options);
+    assert_eq!(snapshot.read_as::<i32>("r"), expected);
 }

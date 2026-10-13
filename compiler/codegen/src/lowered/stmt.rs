@@ -23,6 +23,7 @@ use crate::compile_expr::{
     classify_with_named, emit_add, emit_classified_cmp_br, emit_eq, emit_ge, emit_le, ClassifiedCmp,
 };
 use crate::compile_loop::LoopLabels;
+use crate::compile_partial_access::Bits;
 use crate::compile_stmt::{emit_return, record_position};
 use crate::emit::{self, Emitter};
 
@@ -73,6 +74,22 @@ impl Emission<'_, '_> {
             StmtKind::Assign { place, value } => {
                 emit_expr(emitter, ctx, self.lowering, value)?;
                 self.store(emitter, ctx, place, span)
+            }
+            StmtKind::AssignBits {
+                place,
+                shift,
+                bits,
+                value,
+            } => {
+                let lowering = self.lowering;
+                let storage = super::place::resolve(lowering, ctx, place, span)?;
+                let width = storage.op_type().0;
+                let selection = Bits::new(u32::from(*shift), u32::from(*bits));
+                storage.emit_update(emitter, ctx, |emitter, ctx| {
+                    selection.emit_insert(emitter, ctx, width, |emitter, ctx| {
+                        emit_expr(emitter, ctx, lowering, value)
+                    })
+                })
             }
             StmtKind::If {
                 cond,

@@ -15,6 +15,15 @@ use super::types::{NarrowWidth, Nullability, TypeTable};
 pub enum StmtKind {
     /// Stores a scalar value at a place.
     Assign { place: Place, value: Expr },
+    /// Replaces the `bits` bits of the value at `place` that start at bit
+    /// `shift` with the low `bits` bits of `value`, leaving the others as
+    /// they were. The place is named once, so it is evaluated once.
+    AssignBits {
+        place: Place,
+        shift: u8,
+        bits: u8,
+        value: Expr,
+    },
     /// Runs `then` when `cond` is true and `otherwise` when it is false.
     If {
         cond: Expr,
@@ -150,6 +159,63 @@ impl Stmt {
         let program = Some(place.stamp());
         Ok(Self {
             kind: StmtKind::Assign { place, value },
+            span,
+            program,
+        })
+    }
+
+    /// Replaces the `bits` bits of the value at `place` that start at bit
+    /// `shift` with the low `bits` bits of `value`.
+    ///
+    /// The place's type is an integer or a bit string, and the bits lie
+    /// within its width (REQ-LOW-lowering-065). The value is a `BOOL` for one
+    /// bit, a 32-bit integer for up to 32 bits, and a 64-bit integer for
+    /// more.
+    pub(crate) fn assign_bits(
+        types: &TypeTable,
+        place: Place,
+        shift: u8,
+        bits: u8,
+        value: Expr,
+        span: SourceSpan,
+    ) -> Result<Self, Diagnostic> {
+        const CONSTRUCTOR: &str = "Stmt::assign_bits";
+        let refuse = |message: String| Err(broken(CONSTRUCTOR, &span, message));
+        if value
+            .program()
+            .is_some_and(|program| program != place.stamp())
+        {
+            return refuse("the value reads places of another program".to_string());
+        }
+        let Some(width) = types.bit_width(place.ty()) else {
+            return refuse(format!("{} holds no bits to assign", place.ty()));
+        };
+        if bits == 0 || u16::from(shift) + u16::from(bits) > u16::from(width) {
+            return refuse(format!(
+                "{bits} bits from bit {shift} do not lie within the {width} bits of {}",
+                place.ty()
+            ));
+        }
+        let holds = match value.ty() {
+            ScalarType::Bool => bits == 1,
+            ScalarType::I32(_) => bits <= 32,
+            ScalarType::I64(_) => bits > 32,
+            ScalarType::F32 | ScalarType::F64 | ScalarType::Ref | ScalarType::Interface => false,
+        };
+        if !holds {
+            return refuse(format!(
+                "a {} value is not assigned to {bits} bits",
+                value.ty()
+            ));
+        }
+        let program = Some(place.stamp());
+        Ok(Self {
+            kind: StmtKind::AssignBits {
+                place,
+                shift,
+                bits,
+                value,
+            },
             span,
             program,
         })

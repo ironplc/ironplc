@@ -13,13 +13,16 @@
 use ironplc_container::{SlotIndex, VarIndex};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{Expr, SymbolicVariableKind};
+use ironplc_dsl::textual::{Expr, SymbolicVariableKind, Variable};
 
 use super::compile::{CompileContext, OpType, VarTypeInfo, DEFAULT_OP_TYPE};
 use super::compile_array::{
     emit_flat_index, resolve_symbolic_access, ArrayVarInfo, DimensionInfo, ResolvedAccess,
 };
-use super::compile_expr::{emit_load_in_out, emit_load_var, emit_store_var, emit_truncation};
+use super::compile_expr::{
+    emit_load_in_out, emit_load_var, emit_store_var, emit_truncation, resolve_variable_name,
+    variable_span,
+};
 use super::compile_struct::{resolve_struct_field_access, var_type_info_for_field};
 use super::compile_subscript::Subscript;
 use crate::emit::Emitter;
@@ -39,9 +42,10 @@ pub(crate) struct Place<S> {
 enum Address<S> {
     /// A variable: `LOAD_VAR` and `STORE_VAR`.
     Variable(VarIndex),
-    /// A `VAR_IN_OUT` parameter. Its slot holds a reference to the caller's
-    /// variable: `LOAD_INDIRECT` and `STORE_INDIRECT` through it.
-    InOut(VarIndex),
+    /// What the reference in a slot refers to: the caller's variable for a
+    /// `VAR_IN_OUT` parameter, or `p^` for a reference variable `p`.
+    /// `LOAD_INDIRECT` and `STORE_INDIRECT` through the slot.
+    Indirect(VarIndex),
     /// An element of the slot array `var_index` holds: an array, or a
     /// structure laid out as one. `LOAD_ARRAY` and `STORE_ARRAY`, or their
     /// `_DEREF` forms when `var_index` holds a reference to the array.
@@ -121,7 +125,7 @@ impl<'ast> Place<&'ast Expr> {
                 (Address::Variable(var_index), variable_type_info(ctx, name))
             }
             ResolvedAccess::InOut { ref_slot } => {
-                (Address::InOut(ref_slot), variable_type_info(ctx, name))
+                (Address::Indirect(ref_slot), variable_type_info(ctx, name))
             }
             ResolvedAccess::ArrayElement { info, subscripts } => {
                 array_element(info, subscripts, false, &span)?
@@ -161,6 +165,34 @@ impl<'ast> Place<&'ast Expr> {
 }
 
 impl<S> Place<S> {
+    /// What the reference variable `reference` refers to: the place `p^`
+    /// names. `target` is the type of the value there.
+    ///
+    /// Only a variable's reference is followed. A `VAR_IN_OUT` parameter's
+    /// slot holds a reference to the caller's variable, not the reference
+    /// to follow, so it is not one.
+    pub(crate) fn through_reference(
+        ctx: &CompileContext,
+        reference: &Variable,
+        target: Option<VarTypeInfo>,
+    ) -> Result<Self, Diagnostic> {
+        let span = variable_span(reference);
+        let ref_slot = resolve_variable_name(reference)
+            .filter(|name| !ctx.in_out_params.contains(*name))
+            .and_then(|name| ctx.variables.get(name).copied())
+            .ok_or_else(|| {
+                Diagnostic::not_implemented(Label::span(
+                    span.clone(),
+                    "Dereference of a reference that is not in a variable",
+                ))
+            })?;
+        Ok(Place {
+            address: Address::Indirect(ref_slot),
+            type_info: target,
+            span,
+        })
+    }
+
     /// The same place with each subscript replaced by what `replace` makes
     /// of it, or the first error `replace` returns.
     pub(crate) fn try_map_subscripts<T, E>(
@@ -169,7 +201,7 @@ impl<S> Place<S> {
     ) -> Result<Place<T>, E> {
         let address = match self.address {
             Address::Variable(var_index) => Address::Variable(var_index),
-            Address::InOut(ref_slot) => Address::InOut(ref_slot),
+            Address::Indirect(ref_slot) => Address::Indirect(ref_slot),
             Address::Element {
                 var_index,
                 desc_index,
@@ -220,7 +252,7 @@ impl<S: Subscript> Place<S> {
     ) -> Result<(), Diagnostic> {
         match &self.address {
             Address::Variable(var_index) => emit_load_var(emitter, *var_index, self.op_type()),
-            Address::InOut(ref_slot) => emit_load_in_out(emitter, *ref_slot),
+            Address::Indirect(ref_slot) => emit_load_in_out(emitter, *ref_slot),
             Address::Element {
                 var_index,
                 desc_index,
@@ -254,6 +286,64 @@ impl<S: Subscript> Place<S> {
         self.emit_store_fitting(emitter, ctx)
     }
 
+    /// Loads the value the place holds, lets `modify` replace it on the
+    /// stack, and stores the result truncated to the place's type.
+    ///
+    /// The address is emitted once and kept on the stack for the store, so
+    /// the place's subscripts are evaluated once (REQ-LOW-codegen-121).
+    pub(crate) fn emit_update(
+        &self,
+        emitter: &mut Emitter,
+        ctx: &mut CompileContext,
+        modify: impl FnOnce(&mut Emitter, &mut CompileContext) -> Result<(), Diagnostic>,
+    ) -> Result<(), Diagnostic> {
+        let truncate = |emitter: &mut Emitter| {
+            if let Some(type_info) = self.type_info {
+                emit_truncation(emitter, type_info);
+            }
+        };
+        match &self.address {
+            Address::Variable(var_index) => {
+                emit_load_var(emitter, *var_index, self.op_type());
+                modify(emitter, ctx)?;
+                truncate(emitter);
+                emit_store_var(emitter, *var_index, self.op_type());
+            }
+            Address::Indirect(ref_slot) => {
+                emitter.emit_load_var_i64(*ref_slot);
+                emitter.emit_dup();
+                emitter.emit_load_indirect();
+                modify(emitter, ctx)?;
+                truncate(emitter);
+                emitter.emit_swap();
+                emitter.emit_store_indirect();
+            }
+            Address::Element {
+                var_index,
+                desc_index,
+                through_ref,
+                index,
+            } => {
+                index.emit(emitter, ctx, &self.span)?;
+                emitter.emit_dup();
+                if *through_ref {
+                    emitter.emit_load_array_deref(*var_index, *desc_index);
+                } else {
+                    emitter.emit_load_array(*var_index, *desc_index);
+                }
+                modify(emitter, ctx)?;
+                truncate(emitter);
+                emitter.emit_swap();
+                if *through_ref {
+                    emitter.emit_store_array_deref(*var_index, *desc_index);
+                } else {
+                    emitter.emit_store_array(*var_index, *desc_index);
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Pops a value that already fits the place's type, as every value the
     /// lowered program stores does (REQ-LOW-lowering-046), and stores it in
     /// the place.
@@ -264,7 +354,7 @@ impl<S: Subscript> Place<S> {
     ) -> Result<(), Diagnostic> {
         match &self.address {
             Address::Variable(var_index) => emit_store_var(emitter, *var_index, self.op_type()),
-            Address::InOut(ref_slot) => {
+            Address::Indirect(ref_slot) => {
                 emitter.emit_load_var_i64(*ref_slot);
                 emitter.emit_store_indirect();
             }

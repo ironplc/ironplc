@@ -356,12 +356,12 @@ operand type down.
 A field of a user-defined function block and a parameter of a method are
 operated at their declared type, whatever kind of declaration declares them: a
 subrange at its base type. A value stored through a dereference is compiled at
-the type the analyzer gave it, which is the referenced type, and stored as it
-is: a result of a type narrower than 32 bits is not truncated to its width, so
-`p^ := a + a` on `SINT`s of 100 stores 200
-([#2116](https://github.com/ironplc/ironplc/issues/2116)).
+the type the analyzer gave it, which is the referenced type, and truncated to
+that type's width as a value stored in the variable directly is (ADR-0001).
 
 **REQ-IC-codegen-005** A value stored in a function block field, a method parameter or through a dereference keeps the value of its declared type: `b(x := 4000000000)` on a field of a subrange of `LINT` stores 4000000000, and `q^ := 1.5` on a `REF_TO REAL` stores 1.5.
+
+**REQ-IC-codegen-021** A value stored through a dereference wraps at the width of the type the reference refers to: `p^ := a + a` on `SINT`s of 100 stores -56, as `x := a + a` does.
 
 **REQ-IC-codegen-014** A time or date stored in a variable or input of its long type keeps its value: `ld := d` with `d = D#2100-01-01` stores `LDATE#2100-01-01` where it stored a date thousands of millennia away, and so do `ldt := dt` after 2038, `keep(x := d)` on an `LDATE` input, `lt := t` with `t = T#-5s` and `ltod := tod`.
 

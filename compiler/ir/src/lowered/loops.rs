@@ -91,7 +91,7 @@ fn naming(id: LoopId, stmt: &Stmt) -> u32 {
         StmtKind::Loop {
             body, continuing, ..
         } => all(body) + all(continuing),
-        StmtKind::Assign { .. } | StmtKind::Return => 0,
+        StmtKind::Assign { .. } | StmtKind::AssignBits { .. } | StmtKind::Return => 0,
     }
 }
 
