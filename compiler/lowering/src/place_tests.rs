@@ -180,3 +180,16 @@ fn lower_statement_when_bits_of_bits_written_then_unsupported() {
     );
     assert_eq!(outcome.statements, ["unsupported"]);
 }
+
+/// A `BOOL` subscript, which analysis accepts, is not lowered.
+#[test]
+fn lower_statement_when_bool_subscript_then_unsupported() {
+    let outcome = lower(
+        "PROGRAM main VAR a : ARRAY[0..1] OF DINT; b : BOOL; x : DINT; END_VAR
+            a[b] := 1;
+            x := a[b];
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(outcome.statements, ["unsupported", "unsupported"]);
+}
