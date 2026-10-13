@@ -1,8 +1,8 @@
 //! Calls of standard functions. A function form of an operator, and `MOVE`,
 //! lower to what the operator, or the operand, lowers to; a type conversion
-//! and `TRUNC` to a `Convert`; `SIZEOF` to a constant; any other function is
-//! the `Intrinsic` for its function at its operand types
-//! (REQ-LOW-lowering-147). The match over the analyzer's `BuiltinFunction`
+//! and `TRUNC` to a `Convert`; `SIZEOF` to a constant; a time or date
+//! function to arithmetic (`time.rs`); any other function is the `Intrinsic`
+//! for its function at its operand types (REQ-LOW-lowering-147). The match over the analyzer's `BuiltinFunction`
 //! names every function, so one the analyzer adds is not lowered until it has
 //! an arm here.
 
@@ -105,10 +105,18 @@ impl Lowering<'_> {
                 [value] => self.sizeof(expr, value),
                 _ => Ok(None),
             },
-            BuiltinFunction::String(_)
-            | BuiltinFunction::Time { .. }
-            | BuiltinFunction::DtToDate
-            | BuiltinFunction::DtToTod => Ok(None),
+            BuiltinFunction::Time { function, long } => {
+                self.time_function(frame, expr, function, long, &args)
+            }
+            BuiltinFunction::DtToDate => match args.as_slice() {
+                [value] => self.dt_to_date(frame, expr, value),
+                _ => Ok(None),
+            },
+            BuiltinFunction::DtToTod => match args.as_slice() {
+                [value] => self.dt_to_tod(frame, expr, value),
+                _ => Ok(None),
+            },
+            BuiltinFunction::String(_) => Ok(None),
         }
     }
 
