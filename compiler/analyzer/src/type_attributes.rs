@@ -49,24 +49,6 @@ impl TypeAttributes {
     pub fn elementary(representation: SemanticType) -> Self {
         Self::new(SourceSpan::default(), representation)
     }
-
-    /// Gets the size in bytes for this type (delegates to SemanticType)
-    ///
-    /// Returns `None` if the size cannot be determined (e.g., dynamic arrays,
-    /// variable-length strings, or types with unknown field sizes).
-    pub fn size_bytes(&self) -> Option<u32> {
-        self.representation.size_in_bytes()
-    }
-
-    /// Gets the alignment requirement in bytes for this type (delegates to SemanticType)
-    pub fn alignment_bytes(&self) -> u32 {
-        self.representation.alignment_bytes() as u32
-    }
-
-    /// Returns whether this type has an explicitly specified size (delegates to SemanticType)
-    pub fn has_explicit_size(&self) -> bool {
-        self.representation.has_explicit_size()
-    }
 }
 
 impl Located for TypeAttributes {
@@ -89,9 +71,6 @@ mod tests {
             },
         );
 
-        assert_eq!(attrs.size_bytes(), Some(4));
-        assert_eq!(attrs.alignment_bytes(), 4);
-        assert!(attrs.has_explicit_size());
         assert_eq!(attrs.type_category, TypeCategory::Elementary);
     }
 
@@ -99,31 +78,7 @@ mod tests {
     fn type_attributes_elementary_constructor() {
         let attrs = TypeAttributes::elementary(SemanticType::Bool);
 
-        assert_eq!(attrs.size_bytes(), Some(1));
-        assert_eq!(attrs.alignment_bytes(), 1);
-        assert!(attrs.has_explicit_size());
         assert_eq!(attrs.type_category, TypeCategory::Elementary);
         assert_eq!(attrs.span, SourceSpan::default());
-    }
-
-    #[test]
-    fn type_attributes_convenience_methods_delegate_to_semantic_type() {
-        let attrs = TypeAttributes::new(
-            SourceSpan::default(),
-            SemanticType::Real {
-                size: ByteSized::B64,
-            },
-        );
-
-        // Test that convenience methods return the same values as SemanticType methods
-        assert_eq!(attrs.size_bytes(), attrs.representation.size_in_bytes());
-        assert_eq!(
-            attrs.alignment_bytes(),
-            attrs.representation.alignment_bytes() as u32
-        );
-        assert_eq!(
-            attrs.has_explicit_size(),
-            attrs.representation.has_explicit_size()
-        );
     }
 }
