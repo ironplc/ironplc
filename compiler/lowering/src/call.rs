@@ -331,47 +331,103 @@ fn rotate(
 
 /// The numeric function `function` computed at `operated`.
 fn numeric_intrinsic(function: NumericFunction, operated: ScalarType) -> Option<Intrinsic> {
-    // The intrinsics at a 32-bit and a 64-bit signed integer, for a function
-    // that takes integers, and at a `REAL` and an `LREAL`.
-    let (integers, [real, long_real]) = match function {
-        NumericFunction::Abs => (
-            Some([Intrinsic::AbsI32, Intrinsic::AbsI64]),
-            [Intrinsic::AbsF32, Intrinsic::AbsF64],
-        ),
-        NumericFunction::Expt => (
-            Some([Intrinsic::ExptI32, Intrinsic::ExptI64]),
-            [Intrinsic::ExptF32, Intrinsic::ExptF64],
-        ),
-        NumericFunction::Sqrt => (None, [Intrinsic::SqrtF32, Intrinsic::SqrtF64]),
-        NumericFunction::Ln => (None, [Intrinsic::LnF32, Intrinsic::LnF64]),
-        NumericFunction::Log => (None, [Intrinsic::LogF32, Intrinsic::LogF64]),
-        NumericFunction::Exp => (None, [Intrinsic::ExpF32, Intrinsic::ExpF64]),
-        NumericFunction::Sin => (None, [Intrinsic::SinF32, Intrinsic::SinF64]),
-        NumericFunction::Cos => (None, [Intrinsic::CosF32, Intrinsic::CosF64]),
-        NumericFunction::Tan => (None, [Intrinsic::TanF32, Intrinsic::TanF64]),
-        NumericFunction::Asin => (None, [Intrinsic::AsinF32, Intrinsic::AsinF64]),
-        NumericFunction::Acos => (None, [Intrinsic::AcosF32, Intrinsic::AcosF64]),
-        NumericFunction::Atan => (None, [Intrinsic::AtanF32, Intrinsic::AtanF64]),
-        NumericFunction::Atan2 => (None, [Intrinsic::Atan2F32, Intrinsic::Atan2F64]),
-        NumericFunction::TruncReal => (None, [Intrinsic::TruncF32, Intrinsic::TruncF64]),
-        NumericFunction::ModReal => (None, [Intrinsic::ModF32, Intrinsic::ModF64]),
-        // The selection functions are not lowered yet.
-        NumericFunction::Min
-        | NumericFunction::Max
-        | NumericFunction::Limit
-        | NumericFunction::Sel => return None,
+    let at = match function {
+        NumericFunction::Abs => AtTypes {
+            signed: Some([Intrinsic::AbsI32, Intrinsic::AbsI64]),
+            unsigned: None,
+            reals: [Intrinsic::AbsF32, Intrinsic::AbsF64],
+        },
+        NumericFunction::Expt => AtTypes {
+            signed: Some([Intrinsic::ExptI32, Intrinsic::ExptI64]),
+            unsigned: None,
+            reals: [Intrinsic::ExptF32, Intrinsic::ExptF64],
+        },
+        NumericFunction::Sqrt => AtTypes::reals(Intrinsic::SqrtF32, Intrinsic::SqrtF64),
+        NumericFunction::Ln => AtTypes::reals(Intrinsic::LnF32, Intrinsic::LnF64),
+        NumericFunction::Log => AtTypes::reals(Intrinsic::LogF32, Intrinsic::LogF64),
+        NumericFunction::Exp => AtTypes::reals(Intrinsic::ExpF32, Intrinsic::ExpF64),
+        NumericFunction::Sin => AtTypes::reals(Intrinsic::SinF32, Intrinsic::SinF64),
+        NumericFunction::Cos => AtTypes::reals(Intrinsic::CosF32, Intrinsic::CosF64),
+        NumericFunction::Tan => AtTypes::reals(Intrinsic::TanF32, Intrinsic::TanF64),
+        NumericFunction::Asin => AtTypes::reals(Intrinsic::AsinF32, Intrinsic::AsinF64),
+        NumericFunction::Acos => AtTypes::reals(Intrinsic::AcosF32, Intrinsic::AcosF64),
+        NumericFunction::Atan => AtTypes::reals(Intrinsic::AtanF32, Intrinsic::AtanF64),
+        NumericFunction::Atan2 => AtTypes::reals(Intrinsic::Atan2F32, Intrinsic::Atan2F64),
+        NumericFunction::TruncReal => AtTypes::reals(Intrinsic::TruncF32, Intrinsic::TruncF64),
+        NumericFunction::ModReal => AtTypes::reals(Intrinsic::ModF32, Intrinsic::ModF64),
+        NumericFunction::Min => AtTypes::every([
+            Intrinsic::MinI32,
+            Intrinsic::MinI64,
+            Intrinsic::MinU32,
+            Intrinsic::MinU64,
+            Intrinsic::MinF32,
+            Intrinsic::MinF64,
+        ]),
+        NumericFunction::Max => AtTypes::every([
+            Intrinsic::MaxI32,
+            Intrinsic::MaxI64,
+            Intrinsic::MaxU32,
+            Intrinsic::MaxU64,
+            Intrinsic::MaxF32,
+            Intrinsic::MaxF64,
+        ]),
+        NumericFunction::Limit => AtTypes::every([
+            Intrinsic::LimitI32,
+            Intrinsic::LimitI64,
+            Intrinsic::LimitU32,
+            Intrinsic::LimitU64,
+            Intrinsic::LimitF32,
+            Intrinsic::LimitF64,
+        ]),
+        NumericFunction::Sel => AtTypes::every([
+            Intrinsic::SelI32,
+            Intrinsic::SelI64,
+            Intrinsic::SelU32,
+            Intrinsic::SelU64,
+            Intrinsic::SelF32,
+            Intrinsic::SelF64,
+        ]),
     };
+    let [real, long_real] = at.reals;
     match operated {
-        ScalarType::I32(Signedness::Signed) => integers.map(|[integer, _]| integer),
-        ScalarType::I64(Signedness::Signed) => integers.map(|[_, long_integer]| long_integer),
-        ScalarType::F32 => Some(real),
-        ScalarType::F64 => Some(long_real),
+        ScalarType::I32(Signedness::Signed) => at.signed.map(|[integer, _]| integer),
+        ScalarType::I64(Signedness::Signed) => at.signed.map(|[_, long]| long),
         // `EXPT` of an unsigned integer is not lowered yet. The analyzer
         // removes `ABS` of one.
-        ScalarType::I32(Signedness::Unsigned)
-        | ScalarType::I64(Signedness::Unsigned)
-        | ScalarType::Bool
-        | ScalarType::Ref
-        | ScalarType::Interface => None,
+        ScalarType::I32(Signedness::Unsigned) => at.unsigned.map(|[integer, _]| integer),
+        ScalarType::I64(Signedness::Unsigned) => at.unsigned.map(|[_, long]| long),
+        ScalarType::F32 => Some(real),
+        ScalarType::F64 => Some(long_real),
+        ScalarType::Bool | ScalarType::Ref | ScalarType::Interface => None,
+    }
+}
+
+/// The intrinsics of a numeric function: at a 32-bit and a 64-bit signed
+/// integer, and unsigned integer, where it takes them, and at a `REAL` and an
+/// `LREAL`.
+struct AtTypes {
+    signed: Option<[Intrinsic; 2]>,
+    unsigned: Option<[Intrinsic; 2]>,
+    reals: [Intrinsic; 2],
+}
+
+impl AtTypes {
+    /// A function of reals only.
+    fn reals(real: Intrinsic, long_real: Intrinsic) -> Self {
+        AtTypes {
+            signed: None,
+            unsigned: None,
+            reals: [real, long_real],
+        }
+    }
+
+    /// A function of every integer and real, in the order `I32`, `I64`,
+    /// `U32`, `U64`, `F32`, `F64`.
+    fn every([i32, i64, u32, u64, f32, f64]: [Intrinsic; 6]) -> Self {
+        AtTypes {
+            signed: Some([i32, i64]),
+            unsigned: Some([u32, u64]),
+            reals: [f32, f64],
+        }
     }
 }

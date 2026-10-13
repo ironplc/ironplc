@@ -644,3 +644,58 @@ fn compile_when_numeric_function_lowered_then_same_code_as_ast(#[case] statement
     );
     assert_same_code(&source);
 }
+
+/// REQ-LOW-codegen-089: the selection functions give the values the AST
+/// route gives. `MIN` and `MAX` of unsigned integers compare them unsigned,
+/// `LIMIT` clamps, to its upper bound when the bounds cross, and `SEL` takes
+/// its second input when the selector is `TRUE`. Of reals, `MIN` gives the
+/// other input when one is NaN, and `LIMIT` gives NaN.
+#[test]
+fn run_when_selection_functions_then_values() {
+    let snapshot = run_lowered(
+        "PROGRAM main
+           VAR u : UDINT := 3000000000; one : UDINT := 1; d : DINT := -4; l : LINT := 9;
+               r : REAL := 7.5; ul : ULINT := 5; g : BOOL := TRUE; m : REAL := -1.0;
+               ru : UDINT; rx : UDINT; rd : DINT; rc : DINT; rl : LINT; rr : REAL;
+               rs : ULINT; rn : REAL; rln : REAL; END_VAR
+           ru := MIN(u, one);
+           rx := MAX(u, one);
+           rd := LIMIT(-2, d, 2);
+           rc := LIMIT(5, d, 2);
+           rl := MAX(l, 3);
+           rr := LIMIT(0.0, r, 5.0);
+           rs := SEL(g, ul, 6);
+           rn := MIN(SQRT(m), 1.0);
+           rln := LIMIT(0.0, SQRT(m), 1.0);
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<u64>("ru"), 1);
+    assert_eq!(snapshot.read_as::<u64>("rx"), 3_000_000_000);
+    assert_eq!(snapshot.read_as::<i64>("rd"), -2);
+    assert_eq!(snapshot.read_as::<i64>("rc"), 2);
+    assert_eq!(snapshot.read_as::<i64>("rl"), 9);
+    assert_eq!(snapshot.read_as::<f32>("rr"), 5.0);
+    assert_eq!(snapshot.read_as::<u64>("rs"), 6);
+    assert_eq!(snapshot.read_as::<f32>("rn"), 1.0);
+    assert!(snapshot.read_as::<f32>("rln").is_nan());
+}
+
+/// A selection function compiles to the same instructions and constants by
+/// both routes.
+#[rstest]
+#[case::min_dint("d := MIN(d, e);")]
+#[case::max_udint("u := MAX(u, v);")]
+#[case::limit_lint("l := LIMIT(l, l, l);")]
+#[case::limit_real("r := LIMIT(r, r, r);")]
+#[case::sel_udint("u := SEL(g, u, v);")]
+#[case::sel_lreal("x := SEL(g, x, x);")]
+fn compile_when_selection_function_lowered_then_same_code_as_ast(#[case] statement: &str) {
+    let source = format!(
+        "PROGRAM main
+           VAR d : DINT; e : DINT; u : UDINT; v : UDINT; l : LINT; r : REAL; x : LREAL;
+               g : BOOL; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    assert_same_code(&source);
+}
