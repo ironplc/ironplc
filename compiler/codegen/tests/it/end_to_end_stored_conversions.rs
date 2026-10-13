@@ -77,6 +77,14 @@ e2e_i64!(
     &[("sum", 3)],
 );
 
+e2e_i32!(
+    end_to_end_when_for_bounds_unsigned_of_control_width_then_converted,
+    "PROGRAM main VAR d : DINT; u : USINT := 254; v : UINT := 256; sum : DINT; END_VAR
+       FOR d := u TO v DO sum := sum + d; END_FOR;
+     END_PROGRAM",
+    &[("sum", 765)],
+);
+
 e2e_i64_with!(
     end_to_end_when_assigned_through_reference_then_converted_to_referenced_type,
     CompilerOptions {
