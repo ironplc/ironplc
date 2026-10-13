@@ -47,9 +47,8 @@ impl Lowering<'_> {
             };
             args.push(value);
         }
-        // An argument the analyzer did not convert to its parameter's type,
-        // such as a `UDINT` count, which has the width of the `DINT` it is
-        // passed as, is not lowered until the analyzer records its conversion.
+        // An argument of another type than its parameter's is one the
+        // analyzer did not convert to it, and is not lowered.
         let (params, _) = intrinsic.signature();
         if !args.iter().map(Expr::ty).eq(params.iter().copied()) {
             return Ok(None);
