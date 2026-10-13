@@ -1,10 +1,11 @@
 //! Recording the conversion of an argument to the type of its parameter.
 //!
 //! A call to a user-defined function passes each input by value at the
-//! operation width of its parameter, and an argument of another width is
-//! converted to it: `f(d)` with a `LINT` parameter widens the `DINT`. This
-//! module records that conversion on the argument, as an
-//! [`ExprKind::ImplicitConversion`].
+//! operation type of its parameter, and an argument of another operation type
+//! -- another width, or the other signedness of an integer -- is converted to
+//! it: `f(d)` with a `LINT` parameter widens the `DINT`, and `f(us)` with a
+//! `DINT` parameter converts the `USINT`. This module records that conversion
+//! on the argument, as an [`ExprKind::ImplicitConversion`].
 //!
 //! A parameter is passed at its declared type, whatever kind of declaration
 //! declares it: a subrange at its base type and an alias at the type it
@@ -35,7 +36,7 @@ use super::declared::elementary_of;
 use super::ImplicitConversions;
 use crate::intermediates::conversion_target::wrap;
 use crate::intermediates::numeric_operation::{
-    literal_default_type, operation_width_of, OperationWidth,
+    literal_default_type, operation_type_of, operation_width_of, OperationType, OperationWidth,
 };
 use crate::semantic_type::SemanticFunctionParameter;
 use crate::type_environment::elementary_type;
@@ -87,7 +88,7 @@ impl ImplicitConversions<'_> {
         if param.is_inout || param.is_reference {
             return;
         }
-        let Some((target, width)) = self.passed_as(&param.param_type) else {
+        let Some((target, at)) = self.passed_as(&param.param_type) else {
             return;
         };
         if self.is_integer_result_in_other_context(arg, target) {
@@ -103,7 +104,7 @@ impl ImplicitConversions<'_> {
                 let Some((default_id, default_width)) = self.elementary(&default) else {
                     return;
                 };
-                if is_real(default_width) && !is_real(width) {
+                if is_real(default_width) && !is_real(at.width) {
                     // A real literal for an integer parameter, which the
                     // argument type rule rejects: it is no value of the
                     // parameter's type, so it is converted to one.
@@ -118,8 +119,8 @@ impl ImplicitConversions<'_> {
                     .context
                     .types()
                     .get_by_id(*own)
-                    .and_then(|attributes| operation_width_of(&attributes.representation));
-                if own.is_some_and(|own| own != width) {
+                    .and_then(|attributes| operation_type_of(&attributes.representation));
+                if own.is_some_and(|own| own != at) {
                     wrap(arg, target);
                 }
             }
@@ -128,19 +129,19 @@ impl ImplicitConversions<'_> {
     }
 
     /// The type a parameter declared as `param_type` is passed as, and its
-    /// operation width: the elementary type it is operated as, its own, the
+    /// operation type: the elementary type it is operated as, its own, the
     /// base type of a subrange, or the type an alias names. `None` for a
     /// parameter that is not a single numeric value: a string, which is
     /// copied rather than passed, or an enumeration.
-    fn passed_as(&self, param_type: &TypeName) -> Option<(TypeId, OperationWidth)> {
+    fn passed_as(&self, param_type: &TypeName) -> Option<(TypeId, OperationType)> {
         let types = self.context.types();
         let representation = match elementary_type(param_type) {
             Some(representation) => representation,
             None => &types.get(param_type)?.representation,
         };
         let id = elementary_of(types, representation)?;
-        let width = operation_width_of(&types.get_by_id(id)?.representation)?;
-        Some((id, width))
+        let at = operation_type_of(&types.get_by_id(id)?.representation)?;
+        Some((id, at))
     }
 
     /// The id of the elementary type `name`, and its operation width.

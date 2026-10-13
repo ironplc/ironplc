@@ -70,11 +70,13 @@ widened by its own signedness rather than the wider one truncated.
 
 An arithmetic operation computes at the type of its result (ADR-0001): `INT + REAL` converts the `INT` to `REAL` and adds as `REAL`. The pass covers the operator expression (`+`, `-`, `*`, `/`, `MOD`, `**`) and the function forms `ADD`, `SUB`, `MUL`, `DIV` and `MOD`. A pair with a typed overload on the time and date types (`t1 + t2`, `dt + t`) computes through its routine, whose operands are converted as Time and date operations below says, and an operation whose result is not an elementary numeric type is left as it is.
 
-**REQ-IC-analyzer-020** An operand whose operation width differs from the result's is wrapped in an `ImplicitConversion` to the result type: in `i + r` on an `INT` and a `REAL` the `INT` is converted to `REAL`.
+An operand is converted where its operation type differs from the result's: its operation width, or the signedness of an integer (see Assignments). The bytecode VM holds a `USINT` and a `DINT` in the same 32-bit word, but the lowered program types every operand of an operation (REQ-LOW-lowering-094). The pass used to convert only an operand of another width, so lowering reported P9998 on `us + d`.
+
+**REQ-IC-analyzer-020** An operand whose operation type differs from the result's is wrapped in an `ImplicitConversion` to the result type: in `i + r` on an `INT` and a `REAL` the `INT` is converted to `REAL`, in `us + d` and `d - us` on a `USINT` and a `DINT` the `USINT` is converted to `DINT`, and so is the `UINT` of `MUL(ui, d)`.
 
 **REQ-IC-analyzer-021** An untyped literal operand is given the result type: the `1` of `l + 1` is an `LINT`.
 
-**REQ-IC-analyzer-022** An operand of the result's operation width is not converted, whatever its signedness: in `i + s` on an `INT` and a `SINT` neither is wrapped.
+**REQ-IC-analyzer-022** An operand of the result's operation type is not converted: in `i + s` on an `INT` and a `SINT` neither is wrapped, and neither are the `USINT` and the `UINT` of `us + ui`.
 
 **REQ-IC-analyzer-023** A pair with a typed overload whose operands have the width its routine computes at is left as it is: the two `TIME` operands of `t1 + t2` are not converted.
 
@@ -110,11 +112,11 @@ The pass records, for each call, the conversion of every input of the function's
 
 **REQ-IC-analyzer-072** The result of `EXPT` has the type of its first input: `EXPT(r, l)` on a `REAL` and an `LINT` is a `REAL`.
 
-**REQ-IC-analyzer-073** An input of the function's type whose operation width differs from the result's is wrapped in an `ImplicitConversion` to the result type: the `INT` of `MAX(i, l)` is converted to `LINT`, and the `LINT` exponent of `EXPT(r, l)` to `REAL`.
+**REQ-IC-analyzer-073** An input of the function's type whose operation type differs from the result's is wrapped in an `ImplicitConversion` to the result type: the `INT` of `MAX(i, l)` is converted to `LINT`, the `USINT` of `MAX(us, d)` on a `DINT` to `DINT`, and the `LINT` exponent of `EXPT(r, l)` to `REAL`.
 
-**REQ-IC-analyzer-074** An input of the result's operation width is not converted, whatever its signedness: in `MAX(s, i)` on a `SINT` and an `INT` neither is wrapped.
+**REQ-IC-analyzer-074** An input of the result's operation type is not converted: in `MAX(s, i)` on a `SINT` and an `INT` neither is wrapped, and neither are the `USINT` and the `UINT` of `MAX(us, ui)`.
 
-**REQ-IC-analyzer-075** The `K` of `MUX` is converted to `DINT` when its operation width differs: the `LINT` `K` of `MUX(k, d, e)` is converted to `DINT`. The `G` of `SEL` is left the `BOOL` it is.
+**REQ-IC-analyzer-075** The `K` of `MUX` is converted to `DINT` when its operation type differs: the `LINT` `K` of `MUX(k, d, e)` and the `USINT` `K` of `MUX(us, d, e)` are converted to `DINT`. The `G` of `SEL` is left the `BOOL` it is.
 
 **REQ-IC-analyzer-076** A call whose result is an untyped literal's category takes the type of its context, as an untyped literal does (ADR-0028), and its inputs are converted to that type: `l := MAX(1, 2)` on an `LINT` is an `LINT`, and in `lr := EXPT(2, r)` on an `LREAL` and a `REAL` the `REAL` is converted to `LREAL`.
 
@@ -134,11 +136,11 @@ The pass records, for each call, the conversion of every input of the function's
 
 ### Bitwise operators
 
-`AND`, `OR` and `XOR` are boolean on `BOOL`s and bitwise on bit strings. Each computes at the type every operand widens to, by the relation a comparison chooses its operand type by, as a function of several inputs of one type does: `w OR lw` on a `WORD` and an `LWORD` is an `LWORD`. Their function forms are functions of several inputs of one type (see Standard functions). The pass converts an operand of another width to the operation's type, and records the conversion of the result to the type of its context, as it does an arithmetic result's. The analyzer used to type the operator by its left operand, so `w OR lw` truncated the `LWORD` to 32 bits, and a `DWORD` result stored in an `LWORD` was sign-extended.
+`AND`, `OR` and `XOR` are boolean on `BOOL`s and bitwise on bit strings. Each computes at the type every operand widens to, by the relation a comparison chooses its operand type by, as a function of several inputs of one type does: `w OR lw` on a `WORD` and an `LWORD` is an `LWORD`. Their function forms are functions of several inputs of one type (see Standard functions). The pass converts an operand of another operation type to the operation's type, as it converts an input of a function of several inputs of one type; an operand is a bit string or a `BOOL`, so only its width can differ. It records the conversion of the result to the type of its context, as it does an arithmetic result's. The analyzer used to type the operator by its left operand, so `w OR lw` truncated the `LWORD` to 32 bits, and a `DWORD` result stored in an `LWORD` was sign-extended.
 
 **REQ-IC-analyzer-081** `AND`, `OR` and `XOR`, in the operator and the function form, have the type every operand widens to, whichever side it is on: `w OR lw` and `lw OR w` on a `WORD` and an `LWORD` are `LWORD`s, `OR(b, lw, w)` is an `LWORD`, and `g AND h` on `BOOL`s is a `BOOL`.
 
-**REQ-IC-analyzer-082** An operand of `AND`, `OR` or `XOR` whose operation width differs from the operation's is wrapped in an `ImplicitConversion` to the operation's type, in the operator and the function form: the `WORD` of `w OR lw` is converted to `LWORD`, and in `w AND d` on a `WORD` and a `DWORD` neither is wrapped.
+**REQ-IC-analyzer-082** An operand of `AND`, `OR` or `XOR` whose operation type differs from the operation's is wrapped in an `ImplicitConversion` to the operation's type, in the operator and the function form: the `WORD` of `w OR lw` is converted to `LWORD`, and in `w AND d` on a `WORD` and a `DWORD` neither is wrapped.
 
 **REQ-IC-analyzer-083** The result of `AND`, `OR` or `XOR` is converted to the type of a target of another operation width: in `lw := d OR e` on an `LWORD` and two `DWORD`s the `DWORD` result is converted to `LWORD`.
 
@@ -232,11 +234,11 @@ The position or length of a string function -- the `L` of `LEFT` and `RIGHT`, th
 
 ### Arguments
 
-A call to a user-defined function passes each input by value at the operation width of its parameter. The pass records the conversion of an argument of another width to the type its parameter is passed as, and codegen compiles the argument at the parameter's width without choosing a conversion. A parameter is passed at its declared type, whatever kind of declaration declares it: a subrange at its base type and an alias at the type it names. An untyped literal takes its parameter's type, as it takes an assignment target's, so the parameter receives the value the program wrote. Codegen used to operate it at its default type (`DINT` or `REAL`, ADR-0028) and convert it, which rounded `f(0.1)` with an `LREAL` parameter to a `REAL` and failed on `f(5000000000)` with an `LINT` one.
+A call to a user-defined function passes each input by value at the operation type of its parameter. The pass records the conversion of an argument of another operation type to the type its parameter is passed as, and codegen compiles the argument at the parameter's width without choosing a conversion. A parameter is passed at its declared type, whatever kind of declaration declares it: a subrange at its base type and an alias at the type it names. An untyped literal takes its parameter's type, as it takes an assignment target's, so the parameter receives the value the program wrote. Codegen used to operate it at its default type (`DINT` or `REAL`, ADR-0028) and convert it, which rounded `f(0.1)` with an `LREAL` parameter to a `REAL` and failed on `f(5000000000)` with an `LINT` one.
 
-**REQ-IC-analyzer-040** An argument whose operation width differs from its parameter's is wrapped in an `ImplicitConversion` to the parameter's type: the `DINT` of `f(d)` with an `LINT` parameter is converted to `LINT`, whatever kind of expression the argument is.
+**REQ-IC-analyzer-040** An argument whose operation type differs from its parameter's is wrapped in an `ImplicitConversion` to the parameter's type, whatever kind of expression the argument is: the `DINT` of `f(d)` with an `LINT` parameter is converted to `LINT`, and the `USINT` of `f(us)` and the `USINT` sum of `f(us + us)` with a `DINT` parameter to `DINT`.
 
-**REQ-IC-analyzer-041** An argument of its parameter's operation width is not converted: the `SINT` of `f(s)` with an `INT` parameter is not wrapped.
+**REQ-IC-analyzer-041** An argument of its parameter's operation type is not converted: the `SINT` of `f(s)` with an `INT` parameter is not wrapped, and neither is the `USINT` of `f(us)` with a `UINT` one.
 
 **REQ-IC-analyzer-042** An untyped literal argument takes its parameter's type: the `1` of `f(1)` with an `INT` parameter is an `INT`, the `5000000000` of `f(5000000000)` with an `LINT` one an `LINT`, and the `0.1` of `f(0.1)` with an `LREAL` one an `LREAL`.
 

@@ -5,8 +5,10 @@
 //! records that, for the operator `a + b` and for the function form
 //! `ADD(a, b, ...)`:
 //!
-//! * an operand whose operation width differs from the result's is wrapped in
-//!   an [`ExprKind::ImplicitConversion`] to the result type;
+//! * an operand whose operation type differs from the result's is wrapped in
+//!   an [`ExprKind::ImplicitConversion`] to the result type: its width, or the
+//!   signedness of an integer, so the `USINT` of `us + d` on a `DINT` is
+//!   converted although both are operated on in 32 bits;
 //! * an untyped literal operand is given the result type;
 //! * a function form of three or more inputs is written as the calls it folds
 //!   to, `ADD(ADD(a, b), c)`, because each step computes at its own result
@@ -34,11 +36,11 @@ use super::ImplicitConversions;
 use crate::intermediates::arithmetic_overload::{
     resolve_arithmetic_overload, typed_overload, Overload, TypedOverload,
 };
-use crate::intermediates::numeric_operation::{numeric_operation_width, OperationWidth};
+use crate::intermediates::numeric_operation::{numeric_operation_type, OperationType};
 use crate::intermediates::operator_function_form::{operator_function_form, FormOf};
 
-/// The type an arithmetic step computes at, and the width it is operated on.
-type Step = (TypeId, OperationWidth);
+/// The type an arithmetic step computes at, and its operation type.
+type Step = (TypeId, OperationType);
 
 impl ImplicitConversions<'_> {
     /// Records the conversions of the operands of the operator expression
@@ -141,9 +143,9 @@ impl ImplicitConversions<'_> {
         *expr = accumulated;
     }
 
-    /// The type and width of each step of the fold of `inputs`, or `None`
-    /// unless there are two or more inputs and every step is the numeric
-    /// overload with a result this pass can place.
+    /// The type and operation type of each step of the fold of `inputs`, or
+    /// `None` unless there are two or more inputs and every step is the
+    /// numeric overload with a result this pass can place.
     ///
     /// The last step computes at the type of the call itself, which must be
     /// the overload's result. Each earlier step computes at its overload's
@@ -186,7 +188,7 @@ impl ImplicitConversions<'_> {
                 (own == *step_result).then_some(step)?
             } else {
                 let id = self.conversions.id_of(step_result)?;
-                (id, numeric_operation_width(step_result)?)
+                (id, numeric_operation_type(step_result)?)
             };
             steps.push(step);
         }
@@ -213,13 +215,13 @@ impl ImplicitConversions<'_> {
     }
 
     /// The type an operation of result type `result` computes at, and its
-    /// width, when it is an elementary numeric type.
+    /// operation type, when it is an elementary numeric type.
     fn step_of(&self, result: Option<&ExprType>) -> Option<Step> {
         let (ExprType::Concrete(id) | ExprType::Inferred(id)) = result? else {
             return None;
         };
         let name = self.conversions.name_of(*id)?;
-        Some((*id, numeric_operation_width(&name)?))
+        Some((*id, numeric_operation_type(&name)?))
     }
 
     /// Returns `true` when the operands of `op` have a typed overload on the
@@ -235,17 +237,18 @@ impl ImplicitConversions<'_> {
     }
 
     /// Makes `operand` an operand of the step: an untyped literal takes the
-    /// step's type, and a numeric operand of another width is converted to
-    /// it. An operand of the same width is operated on as it is.
-    fn record_operand(&self, operand: &mut Expr, (target, width): Step) {
+    /// step's type, and a numeric operand of another operation type is
+    /// converted to it. An operand of the same operation type is operated on
+    /// as it is.
+    fn record_operand(&self, operand: &mut Expr, (target, at): Step) {
         let differs = match operand.expr_type {
             Some(ExprType::Literal(_)) => true,
             Some(ExprType::Concrete(_) | ExprType::Inferred(_)) => self
                 .conversions
                 .operand_name(operand)
                 .as_ref()
-                .and_then(numeric_operation_width)
-                .is_some_and(|own| own != width),
+                .and_then(numeric_operation_type)
+                .is_some_and(|own| own != at),
             Some(ExprType::Null) | None => false,
         };
         if differs {
