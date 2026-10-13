@@ -47,13 +47,8 @@ impl Lowering<'_> {
             };
             args.push(value);
         }
-        // An argument the analyzer did not convert to its parameter's type,
-        // such as a `UDINT` count, which has the width of the `DINT` it is
-        // passed as, is not lowered until the analyzer records its conversion.
-        let (params, _) = intrinsic.signature();
-        if !args.iter().map(Expr::ty).eq(params.iter().copied()) {
-            return Ok(None);
-        }
+        // The analyzer converted each argument to its parameter's type, so an
+        // argument of another type is a defect, which `Expr::call` reports.
         Expr::call(
             Callee::Intrinsic(intrinsic),
             args.into_iter().map(Arg::Value).collect(),
