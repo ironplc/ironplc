@@ -262,9 +262,12 @@ impl Expr {
     }
 
     /// `value` converted to `ty`, which must differ from its type
-    /// (REQ-LOW-lowering-044). Both must be numeric.
+    /// (REQ-LOW-lowering-044). Both must be numeric, or `value` a `BOOL` and
+    /// `ty` an integer, as in `BOOL_TO_INT`.
     pub fn convert(value: Expr, ty: ScalarType, span: SourceSpan) -> Result<Self, Diagnostic> {
-        if value.ty == ty || !value.ty.is_numeric() || !ty.is_numeric() {
+        let converts = (value.ty.is_numeric() && ty.is_numeric())
+            || (value.ty == ScalarType::Bool && ty.is_integer());
+        if value.ty == ty || !converts {
             return Err(broken(
                 "Expr::convert",
                 &span,

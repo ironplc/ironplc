@@ -458,13 +458,22 @@ fn binary_when_logical_operator_of_wrong_type_then_internal_error() {
 }
 
 /// A `BOOL` is a type of its own: it is neither an integer constant nor
-/// converted to or from a number.
+/// converted to a number or from a real.
 #[test]
 fn boolean_when_used_as_integer_then_internal_error() {
     assert_eq!(Expr::boolean(true, span()).to_string(), "(const bool true)");
     assert!(Expr::integer(1, ScalarType::Bool, span()).is_err());
-    assert!(Expr::convert(Expr::boolean(true, span()), DINT, span()).is_err());
+    assert!(Expr::convert(int(1), ScalarType::Bool, span()).is_err());
+    assert!(Expr::convert(Expr::boolean(true, span()), ScalarType::F64, span()).is_err());
     assert!(Expr::truncate(NarrowWidth::B8, Expr::boolean(true, span()), span()).is_err());
+}
+
+/// `BOOL_TO_INT` converts a `BOOL` to an integer.
+#[test]
+fn convert_when_boolean_to_integer_then_integer() {
+    let converted = Expr::convert(Expr::boolean(true, span()), DINT, span()).unwrap();
+    assert_eq!(converted.ty(), DINT);
+    assert_eq!(converted.to_string(), "(convert i32s (const bool true))");
 }
 
 #[test]

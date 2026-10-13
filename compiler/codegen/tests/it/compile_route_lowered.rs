@@ -739,3 +739,79 @@ fn compile_when_mux_lowered_then_same_code_as_ast(#[case] statement: &str) {
     );
     assert_same_code(&source);
 }
+
+/// REQ-LOW-codegen-086, REQ-LOW-codegen-087: explicit conversions give the
+/// values the AST route gives. A real converts to an integer toward zero,
+/// saturating at its operation type, then wraps to a narrow target's
+/// storage. A conversion to `BOOL` tests for zero rather than keeping the
+/// low bit, and `TRUNC` converts to the integer of its context.
+#[test]
+fn run_when_conversions_then_values() {
+    let snapshot = run_lowered(
+        "PROGRAM main
+           VAR big : REAL := 40000.0; neg : REAL := -2.7; huge : REAL := 1.0E20;
+               u : UDINT := 3000000000; m : DINT := -1; i : INT := 300; w : WORD := 16#0100;
+               g : BOOL := TRUE; zero : LINT := 0; t : TIME := T#1500ms; x : LREAL := 1.0E12;
+               r1 : INT; r2 : DINT; r3 : DINT; r4 : LINT; r5 : UDINT; r6 : SINT; r7 : BOOL;
+               r8 : INT; r9 : BOOL; r10 : REAL; r11 : DINT; r12 : DINT; r13 : LINT;
+               r14 : REAL; END_VAR
+           r1 := REAL_TO_INT(big);
+           r2 := REAL_TO_DINT(neg);
+           r3 := REAL_TO_DINT(huge);
+           r4 := UDINT_TO_LINT(u);
+           r5 := DINT_TO_UDINT(m);
+           r6 := INT_TO_SINT(i);
+           r7 := WORD_TO_BOOL(w);
+           r8 := BOOL_TO_INT(g);
+           r9 := LINT_TO_BOOL(zero);
+           r10 := UDINT_TO_REAL(u);
+           r11 := TIME_TO_DINT(t);
+           r12 := TRUNC(neg);
+           r13 := TRUNC(x);
+           r14 := TRUNC(neg);
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<i64>("r1"), -25536);
+    assert_eq!(snapshot.read_as::<i64>("r2"), -2);
+    assert_eq!(snapshot.read_as::<i64>("r3"), 2_147_483_647);
+    assert_eq!(snapshot.read_as::<i64>("r4"), 3_000_000_000);
+    assert_eq!(snapshot.read_as::<u64>("r5"), 4_294_967_295);
+    assert_eq!(snapshot.read_as::<i64>("r6"), 44);
+    assert_eq!(snapshot.read_as::<i64>("r7"), 1);
+    assert_eq!(snapshot.read_as::<i64>("r8"), 1);
+    assert_eq!(snapshot.read_as::<i64>("r9"), 0);
+    assert_eq!(snapshot.read_as::<f32>("r10"), 3.0e9);
+    assert_eq!(snapshot.read_as::<i64>("r11"), 1500);
+    assert_eq!(snapshot.read_as::<i64>("r12"), -2);
+    assert_eq!(snapshot.read_as::<i64>("r13"), 1_000_000_000_000);
+    assert_eq!(snapshot.read_as::<f32>("r14"), -2.0);
+}
+
+/// An explicit conversion, and `TRUNC`, compile to the same instructions and
+/// constants by both routes. A conversion to a narrow type is stored to a
+/// `DINT`: stored to its own type, the AST route truncates it a second time
+/// and the lowered route does not. A conversion to `BOOL` is left out: the
+/// AST route calls a builtin, and the lowered route compares with zero.
+#[rstest]
+#[case::real_to_int("d := REAL_TO_INT(r);")]
+#[case::dint_to_lreal("x := DINT_TO_LREAL(d);")]
+#[case::udint_to_lint("l := UDINT_TO_LINT(u);")]
+#[case::lint_to_dint("d := LINT_TO_DINT(l);")]
+#[case::int_to_sint("d := INT_TO_SINT(i);")]
+#[case::lreal_to_udint("u := LREAL_TO_UDINT(x);")]
+#[case::bool_to_int("d := BOOL_TO_INT(g);")]
+#[case::time_to_dint("d := TIME_TO_DINT(t);")]
+#[case::int_to_real_widened("x := INT_TO_REAL(i);")]
+#[case::trunc_real("d := TRUNC(r);")]
+#[case::trunc_to_lint("l := TRUNC(x);")]
+#[case::trunc_to_int("i := TRUNC(r);")]
+fn compile_when_conversion_lowered_then_same_code_as_ast(#[case] statement: &str) {
+    let source = format!(
+        "PROGRAM main
+           VAR i : INT; d : DINT; l : LINT; u : UDINT; r : REAL; x : LREAL; g : BOOL;
+               t : TIME; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    assert_same_code(&source);
+}

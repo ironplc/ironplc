@@ -334,3 +334,67 @@ fn lower_statement_when_mux_then_intrinsic_with_each_input() {
         ]
     );
 }
+
+/// An explicit conversion is a `Convert` where the operation type changes,
+/// then a `Truncate` where the target's storage narrows. A conversion to
+/// `BOOL` is a comparison with zero.
+#[test]
+fn lower_statement_when_conversion_then_convert_then_truncate() {
+    let outcome = lower(
+        "PROGRAM main VAR d : DINT; r : REAL; i : INT; l : LINT; u : UDINT; s : SINT;
+             x : BOOL; w : WORD; t : TIME; lr : LREAL; END_VAR
+            r := DINT_TO_REAL(d);
+            i := REAL_TO_INT(r);
+            d := LINT_TO_DINT(l);
+            u := DINT_TO_UDINT(d);
+            s := INT_TO_SINT(i);
+            x := WORD_TO_BOOL(w);
+            i := BOOL_TO_INT(x);
+            d := TIME_TO_DINT(t);
+            lr := INT_TO_REAL(i);
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f1 (convert f32 (read i32s v0^.f0))",
+            "assign v0^.f2 (truncate 16 (convert i32s (read f32 v0^.f1)))",
+            "assign v0^.f0 (convert i32s (read i64s v0^.f3))",
+            "assign v0^.f4 (convert i32u (read i32s v0^.f0))",
+            "assign v0^.f5 (truncate 8 (read i32s v0^.f2))",
+            "assign v0^.f6 (ne (read i32u v0^.f7) (const i32u 0))",
+            "assign v0^.f2 (truncate 16 (convert i32s (read bool v0^.f6)))",
+            "assign v0^.f0 (read i32s v0^.f8)",
+            // The `REAL` the conversion returns is widened to the `LREAL`.
+            "assign v0^.f9 (convert f64 (convert f32 (read i32s v0^.f2)))",
+        ]
+    );
+}
+
+/// `TRUNC` converts a real to the integer of its context: 64 bits for an
+/// `LINT`, and a `DINT` converted on for a `REAL`. Like an arithmetic
+/// result, it is narrowed only where it is stored.
+#[test]
+fn lower_statement_when_trunc_then_convert_to_integer_of_context() {
+    let outcome = lower(
+        "PROGRAM main VAR d : DINT; r : REAL; i : INT; l : LINT; lr : LREAL; END_VAR
+            d := TRUNC(r);
+            l := TRUNC(lr);
+            r := TRUNC(r);
+            i := TRUNC(r);
+            d := TRUNC(r) + i;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f0 (convert i32s (read f32 v0^.f1))",
+            "assign v0^.f3 (convert i64s (read f64 v0^.f4))",
+            "assign v0^.f1 (convert f32 (convert i32s (read f32 v0^.f1)))",
+            "assign v0^.f2 (truncate 16 (convert i32s (read f32 v0^.f1)))",
+            "assign v0^.f0 (add i32s (convert i32s (read f32 v0^.f1)) (read i32s v0^.f2))",
+        ]
+    );
+}
