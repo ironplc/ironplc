@@ -138,13 +138,6 @@ pub enum SemanticType {
         /// Ordered list of fields (variables) in the function block instance
         fields: Vec<SemanticStructField>,
     },
-    /// Function type with return type and parameters
-    Function {
-        /// Return type of the function, None for procedures
-        return_type: Option<Box<SemanticType>>,
-        /// List of function parameters
-        parameters: Vec<SemanticFunctionParameter>,
-    },
     /// Reference type (REF_TO) pointing to a target type.
     /// References are stored as variable-table indices (u64) at runtime.
     Reference {
@@ -294,7 +287,6 @@ impl SemanticType {
             | SemanticType::Array { .. }
             | SemanticType::Subrange { .. }
             | SemanticType::FunctionBlock { .. }
-            | SemanticType::Function { .. }
             | SemanticType::Reference { .. } => None,
         }
     }
@@ -493,9 +485,7 @@ impl SemanticType {
             }
 
             // Not yet supported in data region
-            SemanticType::FunctionBlock { .. } | SemanticType::Function { .. } => {
-                Err(SlotCountError::UnsupportedFieldType)
-            }
+            SemanticType::FunctionBlock { .. } => Err(SlotCountError::UnsupportedFieldType),
         }
     }
 }

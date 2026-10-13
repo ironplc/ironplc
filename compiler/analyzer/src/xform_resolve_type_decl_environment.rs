@@ -107,12 +107,10 @@ impl TypeEnvironment {
                         },
                     ))
                 }
-                // FunctionBlock and Function types are POUs (Program Organization Units),
-                // not TYPE declarations, so they should never appear in the type environment.
+                // A function block is a POU (Program Organization Unit), not a TYPE
+                // declaration, so it should never appear here.
                 // If we reach this branch, it indicates a bug in the compiler.
-                SemanticType::FunctionBlock { .. } | SemanticType::Function { .. } => {
-                    Err(Diagnostic::internal_error())
-                }
+                SemanticType::FunctionBlock { .. } => Err(Diagnostic::internal_error()),
                 // Primitive types are handled by the is_primitive() check above,
                 // so reaching this branch indicates a bug in the compiler
                 SemanticType::Bool

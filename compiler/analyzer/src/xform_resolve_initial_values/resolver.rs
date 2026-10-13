@@ -389,7 +389,6 @@ impl<'a> Resolver<'a> {
                 Some(Value::Structure(values))
             }
             SemanticType::Array { .. } => self.array(place, &[]),
-            SemanticType::Function { .. } => None,
             scalar => scalar::implicit_default(scalar),
         }
     }

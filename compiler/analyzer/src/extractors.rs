@@ -84,7 +84,6 @@ pub enum TypeSymbolKind {
     String,
     Reference,
     FunctionBlock,
-    Function,
     Alias,
 }
 
@@ -99,7 +98,6 @@ impl TypeSymbolKind {
             TypeSymbolKind::String => "string",
             TypeSymbolKind::Reference => "reference",
             TypeSymbolKind::FunctionBlock => "function_block",
-            TypeSymbolKind::Function => "function",
             TypeSymbolKind::Alias => "alias",
         }
     }
@@ -115,7 +113,6 @@ impl From<&SemanticType> for TypeSymbolKind {
             SemanticType::String { .. } => TypeSymbolKind::String,
             SemanticType::Reference { .. } => TypeSymbolKind::Reference,
             SemanticType::FunctionBlock { .. } => TypeSymbolKind::FunctionBlock,
-            SemanticType::Function { .. } => TypeSymbolKind::Function,
             _ => TypeSymbolKind::Alias,
         }
     }

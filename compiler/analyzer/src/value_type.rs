@@ -97,8 +97,7 @@ fn operand_name_of(types: &TypeEnvironment, id: TypeId) -> Option<TypeName> {
         SemanticType::Enumeration { .. }
         | SemanticType::Structure { .. }
         | SemanticType::Array { .. }
-        | SemanticType::FunctionBlock { .. }
-        | SemanticType::Function { .. } => types.name_of(id).cloned(),
+        | SemanticType::FunctionBlock { .. } => types.name_of(id).cloned(),
     }
 }
 
@@ -182,8 +181,7 @@ pub(crate) fn of(types: &TypeEnvironment, expr: &Expr) -> Option<ValueType> {
         | SemanticType::TimeOfDay { .. }
         | SemanticType::DateAndTime { .. }
         | SemanticType::String { .. }
-        | SemanticType::Reference { .. }
-        | SemanticType::Function { .. } => by_name(),
+        | SemanticType::Reference { .. } => by_name(),
     }
 }
 
@@ -321,7 +319,6 @@ fn describe_representation(types: &TypeEnvironment, representation: &SemanticTyp
                 describe_representation(types, base_type)
             )
         }
-        SemanticType::Function { .. } => "a function".to_string(),
         // Every elementary representation is named above; these only reach
         // here in a representation the elementary table does not list.
         SemanticType::Bool

@@ -81,8 +81,7 @@ pub(crate) fn operation_width_of(representation: &SemanticType) -> Option<Operat
         SemanticType::String { .. }
         | SemanticType::Structure { .. }
         | SemanticType::Array { .. }
-        | SemanticType::FunctionBlock { .. }
-        | SemanticType::Function { .. } => None,
+        | SemanticType::FunctionBlock { .. } => None,
     }
 }
 
@@ -136,8 +135,7 @@ fn operation_signedness_of(representation: &SemanticType) -> Option<Signedness> 
         | SemanticType::String { .. }
         | SemanticType::Structure { .. }
         | SemanticType::Array { .. }
-        | SemanticType::FunctionBlock { .. }
-        | SemanticType::Function { .. } => None,
+        | SemanticType::FunctionBlock { .. } => None,
     }
 }
 

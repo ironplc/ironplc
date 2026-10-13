@@ -696,18 +696,15 @@ impl TypeEnvironment {
             .map(|(id, entry)| (*id, &entry.attributes))
     }
 
-    /// Returns an iterator over user-defined types, excluding elementary types,
-    /// function block types, and function types.
+    /// Returns an iterator over user-defined types, excluding elementary types
+    /// and function block types.
     pub fn iter_user_defined(
         &self,
     ) -> impl Iterator<Item = (&TypeName, &crate::type_attributes::TypeAttributes)> {
         use crate::type_category::TypeCategory;
         self.iter().filter(|(_, attrs)| {
             attrs.type_category != TypeCategory::Elementary
-                && !matches!(
-                    attrs.representation,
-                    SemanticType::FunctionBlock { .. } | SemanticType::Function { .. }
-                )
+                && !matches!(attrs.representation, SemanticType::FunctionBlock { .. })
         })
     }
 }
@@ -967,15 +964,6 @@ mod tests {
         };
         assert!(fb_type.is_function_block());
         assert!(!fb_type.is_primitive());
-
-        // Test function types
-        let func_type = SemanticType::Function {
-            return_type: Some(Box::new(SemanticType::Int {
-                size: ByteSized::B16,
-            })),
-            parameters: vec![],
-        };
-        assert!(!func_type.is_primitive());
     }
 
     #[test]

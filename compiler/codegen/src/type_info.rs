@@ -124,8 +124,7 @@ pub(crate) fn operand_type_info(representation: &SemanticType) -> Option<VarType
         SemanticType::String { .. }
         | SemanticType::Structure { .. }
         | SemanticType::Array { .. }
-        | SemanticType::FunctionBlock { .. }
-        | SemanticType::Function { .. } => None,
+        | SemanticType::FunctionBlock { .. } => None,
     }
 }
 
@@ -205,7 +204,6 @@ fn var_type_info(representation: &SemanticType) -> Option<VarTypeInfo> {
         | SemanticType::Array { .. }
         | SemanticType::Subrange { .. }
         | SemanticType::FunctionBlock { .. }
-        | SemanticType::Function { .. }
         | SemanticType::Reference { .. } => return None,
     };
 

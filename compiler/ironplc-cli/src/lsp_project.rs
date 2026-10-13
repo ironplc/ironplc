@@ -393,7 +393,6 @@ fn type_kind_to_symbol_kind(kind: TypeSymbolKind) -> SymbolKind {
         TypeSymbolKind::Structure => SymbolKind::STRUCT,
         TypeSymbolKind::Enumeration => SymbolKind::ENUM,
         TypeSymbolKind::FunctionBlock => SymbolKind::CLASS,
-        TypeSymbolKind::Function => SymbolKind::FUNCTION,
         TypeSymbolKind::Array => SymbolKind::ARRAY,
         TypeSymbolKind::Subrange => SymbolKind::TYPE_PARAMETER,
         TypeSymbolKind::String | TypeSymbolKind::Reference | TypeSymbolKind::Alias => {
