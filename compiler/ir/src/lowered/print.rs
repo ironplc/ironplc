@@ -38,12 +38,14 @@ impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let ty = self.ty();
         match self.kind() {
-            ExprKind::Const(constant) => match (constant, constant.integer_value(ty)) {
-                (_, Some(value)) => write!(f, "(const {ty} {value})"),
-                (Const::Bool(value), None) => write!(f, "(const {ty} {value})"),
-                (Const::F32(value), None) => write!(f, "(const {ty} {value:?})"),
-                (Const::F64(value), None) => write!(f, "(const {ty} {value:?})"),
-                (Const::I32(_) | Const::I64(_), None) => write!(f, "(const {ty} {constant:?})"),
+            ExprKind::Const(constant) => match constant.integer_value(ty) {
+                Some(value) => write!(f, "(const {ty} {value})"),
+                None => match constant {
+                    Const::Bool(value) => write!(f, "(const {ty} {value})"),
+                    Const::F32(value) => write!(f, "(const {ty} {value:?})"),
+                    Const::F64(value) => write!(f, "(const {ty} {value:?})"),
+                    Const::I32(_) | Const::I64(_) => write!(f, "(const {ty} {constant:?})"),
+                },
             },
             ExprKind::Read(place) => write!(f, "(read {ty} {place})"),
             ExprKind::Convert(value) => write!(f, "(convert {ty} {value})"),

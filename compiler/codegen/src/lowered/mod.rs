@@ -13,12 +13,17 @@
 //! for debug information (REQ-LOW-lowering-006), and the design allows the
 //! lookup by name until a POU's statements all lower.
 
+// A match over a lowered enum names every variant, so a variant added later
+// fails to compile wherever it is not handled (REQ-LOW-lowering-082). The
+// deny covers this module tree only: the AST route predates the rule.
+#![deny(clippy::wildcard_enum_match_arm)]
+
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::StmtKind as AstStmtKind;
 use ironplc_ir::lowered::{
-    Arg, Expr, ExprKind, NarrowWidth, Nullability, Place as LoweredPlace, Projection, ScalarType,
-    Signedness as LoweredSignedness, Stmt, StmtKind, TypeId, TypeKind,
+    Arg, Const, Expr, ExprKind, Field, NarrowWidth, Nullability, Place as LoweredPlace, Projection,
+    ScalarType, Signedness as LoweredSignedness, Stmt, StmtKind, TypeId, TypeKind,
 };
 use ironplc_lowering::{Lowering, StatementLowering};
 
@@ -239,15 +244,68 @@ fn reaches(
 /// this backend copies into a slot of that name. `None` for any other place.
 pub(super) fn storage_name(lowering: &Lowering<'_>, place: &LoweredPlace) -> Option<Id> {
     let root = lowering.variables().get(place.root())?;
-    match place.path() {
-        [] => Some(Id::from(&root.name().to_string())),
-        [Projection::Deref, Projection::Field(field)] if is_instance(lowering, root.ty()) => {
-            let (instance, _) = lowering.types().reference(root.ty())?;
-            let fields = lowering.types().fields(instance)?;
-            let field = fields.get(field.index() as usize)?;
-            Some(Id::from(&field.name.to_string()))
-        }
-        _ => None,
+    if place.path().is_empty() {
+        return Some(Id::from(&root.name().to_string()));
+    }
+    let (field, rest) = instance_field(lowering, root.ty(), place.path())?;
+    rest.is_empty().then(|| Id::from(&field.name.to_string()))
+}
+
+/// When `path` starts by reaching a field of the current instance through the
+/// instance parameter, of type `root`: that field, and the projections after
+/// it. `None` for any other path.
+pub(super) fn instance_field<'l, 'p>(
+    lowering: &'l Lowering<'_>,
+    root: TypeId,
+    path: &'p [Projection],
+) -> Option<(&'l Field, &'p [Projection])> {
+    let [deref, field, rest @ ..] = path else {
+        return None;
+    };
+    match deref {
+        Projection::Deref => {}
+        Projection::Field(_) | Projection::Index(_) => return None,
+    }
+    let field = match field {
+        Projection::Field(field) => field,
+        Projection::Index(_) | Projection::Deref => return None,
+    };
+    if !is_instance(lowering, root) {
+        return None;
+    }
+    let types = lowering.types();
+    let (instance, _) = types.reference(root)?;
+    let declared = types.fields(instance)?.get(field.index() as usize)?;
+    Some((declared, rest))
+}
+
+/// The constant `expr` is; `None` for an expression that computes its value.
+pub(super) fn constant(expr: &Expr) -> Option<Const> {
+    match expr.kind() {
+        ExprKind::Const(value) => Some(*value),
+        ExprKind::Read(_)
+        | ExprKind::Convert(_)
+        | ExprKind::Truncate { .. }
+        | ExprKind::Unary { .. }
+        | ExprKind::Binary { .. }
+        | ExprKind::Compare { .. }
+        | ExprKind::ShortCircuit { .. }
+        | ExprKind::Call { .. } => None,
+    }
+}
+
+/// The place `expr` reads; `None` for an expression that computes its value.
+pub(super) fn read(expr: &Expr) -> Option<&LoweredPlace> {
+    match expr.kind() {
+        ExprKind::Read(place) => Some(place),
+        ExprKind::Const(_)
+        | ExprKind::Convert(_)
+        | ExprKind::Truncate { .. }
+        | ExprKind::Unary { .. }
+        | ExprKind::Binary { .. }
+        | ExprKind::Compare { .. }
+        | ExprKind::ShortCircuit { .. }
+        | ExprKind::Call { .. } => None,
     }
 }
 
@@ -255,7 +313,7 @@ pub(super) fn storage_name(lowering: &Lowering<'_>, place: &LoweredPlace) -> Opt
 /// non-null reference to a program or function block through which the body
 /// reaches its own fields. A `REF_TO` is nullable, and lowering binds no
 /// other non-null reference yet, so no other variable is one.
-pub(super) fn is_instance(lowering: &Lowering<'_>, ty: TypeId) -> bool {
+fn is_instance(lowering: &Lowering<'_>, ty: TypeId) -> bool {
     let types = lowering.types();
     types.reference(ty).is_some_and(|(target, nullability)| {
         nullability == Nullability::NonNull
@@ -284,3 +342,6 @@ pub(super) fn op_type(ty: ScalarType) -> Option<OpType> {
         ScalarType::Interface => None,
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -17,7 +17,7 @@ use ironplc_ir::lowered::{
 use ironplc_lowering::Lowering;
 
 use super::expr::{emit_constant, emit_expr, emit_truncate};
-use super::{op_type, storage_name};
+use super::{constant, op_type, read, storage_name};
 use crate::compile::{CompileContext, OpType};
 use crate::compile_expr::{
     classify_with_named, emit_add, emit_classified_cmp_br, emit_eq, emit_ge, emit_le, ClassifiedCmp,
@@ -210,14 +210,11 @@ impl Emission<'_, '_> {
             CompareOp::Gt => cmp_op::GT_S,
             CompareOp::Ge => cmp_op::GE_S,
         };
-        let (place, value, cmp) = match (lhs.kind(), rhs.kind()) {
-            (ExprKind::Read(place), ExprKind::Const(value)) => (place, value, cmp),
-            (ExprKind::Const(value), ExprKind::Read(place)) => {
-                (place, value, cmp_op::commute(cmp)?)
-            }
-            _ => return None,
+        let (place, value, cmp) = match read(lhs).zip(constant(rhs)) {
+            Some((place, value)) => (place, value, cmp),
+            None => (read(rhs)?, constant(lhs)?, cmp_op::commute(cmp)?),
         };
-        self.classify_place(ctx, place, *value, lhs.ty(), cmp)
+        self.classify_place(ctx, place, value, lhs.ty(), cmp)
     }
 
     /// `place <cmp> value` as one `CMP_BR_*`, when `place` is a signed integer
@@ -305,10 +302,8 @@ impl Emission<'_, '_> {
         let end = emitter.create_label();
         emitter.bind_label(head);
         let within = if down { cmp_op::GE_S } else { cmp_op::LE_S };
-        let fused = match to.kind() {
-            ExprKind::Const(bound) => self.classify_place(ctx, control, *bound, ty, within),
-            _ => None,
-        };
+        let fused =
+            constant(to).and_then(|bound| self.classify_place(ctx, control, bound, ty, within));
         match fused {
             Some(classified) => emit_classified_cmp_br(emitter, classified, false, end)?,
             None => {
@@ -513,26 +508,33 @@ fn test_label(
 /// The condition of `stmt` when it is `If cond Exit(id)`: the tail a
 /// `REPEAT` lowers to.
 fn exit_when(stmt: &Stmt, id: LoopId) -> Option<&Expr> {
-    match stmt.kind() {
-        StmtKind::If {
-            cond,
-            then,
-            otherwise,
-        } if otherwise.is_empty() && is_exit(then, id) => Some(cond),
-        _ => None,
-    }
+    let (cond, then, otherwise) = if_parts(stmt)?;
+    (otherwise.is_empty() && is_exit(then, id)).then_some(cond)
 }
 
 /// The condition of `stmt` when it is `If cond else Exit(id)`: the head a
 /// `WHILE` lowers to.
 fn exit_unless(stmt: &Stmt, id: LoopId) -> Option<&Expr> {
+    let (cond, then, otherwise) = if_parts(stmt)?;
+    (then.is_empty() && is_exit(otherwise, id)).then_some(cond)
+}
+
+/// The condition, `then` and `otherwise` of `stmt` when it is an `If`.
+fn if_parts(stmt: &Stmt) -> Option<(&Expr, &[Stmt], &[Stmt])> {
     match stmt.kind() {
         StmtKind::If {
             cond,
             then,
             otherwise,
-        } if then.is_empty() && is_exit(otherwise, id) => Some(cond),
-        _ => None,
+        } => Some((cond, then, otherwise)),
+        StmtKind::Assign { .. }
+        | StmtKind::AssignBits { .. }
+        | StmtKind::Case { .. }
+        | StmtKind::For { .. }
+        | StmtKind::Loop { .. }
+        | StmtKind::Exit(_)
+        | StmtKind::Continue(_)
+        | StmtKind::Return => None,
     }
 }
 
@@ -551,14 +553,11 @@ fn stays_within(
     step: Const,
 ) -> bool {
     let ty = to.ty();
-    let constant = |expr: &Expr| match expr.kind() {
-        ExprKind::Const(value) => value.integer_value(ty),
-        _ => None,
-    };
+    let integer = |expr: &Expr| constant(expr)?.integer_value(ty);
     let (Some((min, max)), Some(from), Some(to), Some(step)) = (
         types.value_range(control.ty()),
-        constant(from),
-        constant(to),
+        integer(from),
+        integer(to),
         step.integer_value(ty),
     ) else {
         return false;
