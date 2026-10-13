@@ -366,7 +366,8 @@ fn fits(types: &TypeTable, place: TypeId, width: NarrowWidth, value: &Expr) -> b
         | ExprKind::Unary { .. }
         | ExprKind::Binary { .. }
         | ExprKind::Compare { .. }
-        | ExprKind::ShortCircuit { .. } => false,
+        | ExprKind::ShortCircuit { .. }
+        | ExprKind::Call { .. } => false,
     }
 }
 
