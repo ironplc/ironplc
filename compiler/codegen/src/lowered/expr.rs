@@ -1,8 +1,10 @@
 //! Emits a lowered expression.
 
+use ironplc_container::opcode::builtin;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::{
-    BinaryOp, CompareOp, Const, Expr, ExprKind, NarrowWidth, ShortCircuitOp, UnaryOp,
+    Arg, BinaryOp, Callee, CompareOp, Const, Expr, ExprKind, Intrinsic, NarrowWidth,
+    ShortCircuitOp, UnaryOp,
 };
 use ironplc_lowering::Lowering;
 
@@ -119,8 +121,37 @@ pub(super) fn emit_expr(
             }
             emitter.bind_label(end);
         }
+        ExprKind::Call {
+            callee: Callee::Intrinsic(intrinsic),
+            args,
+        } => {
+            for Arg::Value(value) in args {
+                emit_expr(emitter, ctx, lowering, value)?;
+            }
+            emitter.emit_builtin(builtin_of(*intrinsic))?;
+        }
     }
     Ok(())
+}
+
+/// The VM builtin that computes `intrinsic` (ADR-0008). The match names every
+/// intrinsic, so one the IR adds does not compile until it has a builtin here
+/// (REQ-LOW-codegen-074).
+fn builtin_of(intrinsic: Intrinsic) -> u16 {
+    match intrinsic {
+        Intrinsic::ShlU32 => builtin::SHL_I32,
+        Intrinsic::ShlU64 => builtin::SHL_I64,
+        Intrinsic::ShrU32 => builtin::SHR_I32,
+        Intrinsic::ShrU64 => builtin::SHR_I64,
+        Intrinsic::RolU8 => builtin::ROL_U8,
+        Intrinsic::RolU16 => builtin::ROL_U16,
+        Intrinsic::RolU32 => builtin::ROL_I32,
+        Intrinsic::RolU64 => builtin::ROL_I64,
+        Intrinsic::RorU8 => builtin::ROR_U8,
+        Intrinsic::RorU16 => builtin::ROR_U16,
+        Intrinsic::RorU32 => builtin::ROR_I32,
+        Intrinsic::RorU64 => builtin::ROR_I64,
+    }
 }
 
 /// Narrows the value on the stack to `width` bits of `signedness`.

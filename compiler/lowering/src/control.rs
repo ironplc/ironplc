@@ -325,6 +325,7 @@ fn integer_constant(expr: &Expr) -> Option<i128> {
         | ExprKind::Unary { .. }
         | ExprKind::Binary { .. }
         | ExprKind::Compare { .. }
-        | ExprKind::ShortCircuit { .. } => None,
+        | ExprKind::ShortCircuit { .. }
+        | ExprKind::Call { .. } => None,
     }
 }

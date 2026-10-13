@@ -451,3 +451,63 @@ fn compile_when_bits_written_to_variable_then_same_code_as_ast(#[case] statement
     );
     assert_same_code(&source);
 }
+
+/// Shifts and rotates of each width, and bit and partial reads of a
+/// variable, an element and a signed integer, give the values the AST route
+/// gives.
+#[test]
+fn run_when_shifts_and_bit_reads_then_values() {
+    let snapshot = run_lowered(
+        "PROGRAM main
+           VAR b : BYTE := 16#81; w : WORD := 16#1234; d : DWORD := 16#80000001;
+               l : LWORD := 16#0123456789ABCDEF; n : INT := -2; i : DINT := 1;
+               a : ARRAY[0..1] OF WORD; k : DINT := 4;
+               rb : BYTE; rw : WORD; rd : DWORD; rl : LWORD; rl2 : LWORD;
+               x1 : BOOL; x2 : BOOL; x3 : BOOL; x4 : BOOL; p1 : BYTE; p2 : BYTE; p3 : DWORD; END_VAR
+           a[i] := 16#0008;
+           rb := ROL(b, 1);
+           rw := ROR(w, k);
+           rd := SHL(d, 1);
+           rl := SHR(l, k);
+           rl2 := ROL(l, 8);
+           x1 := w.2;
+           x2 := a[i].3;
+           x3 := n.15;
+           x4 := n.0;
+           p1 := w.%B1;
+           p2 := l.%B7;
+           p3 := l.%D0;
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<u64>("rb"), 0x03);
+    assert_eq!(snapshot.read_as::<u64>("rw"), 0x4123);
+    assert_eq!(snapshot.read_as::<u64>("rd"), 0x0000_0002);
+    assert_eq!(snapshot.read_as::<u64>("rl"), 0x0012_3456_789A_BCDE);
+    assert_eq!(snapshot.read_as::<u64>("rl2"), 0x2345_6789_ABCD_EF01);
+    assert_eq!(snapshot.read_as::<u64>("x1"), 1);
+    assert_eq!(snapshot.read_as::<u64>("x2"), 1);
+    assert_eq!(snapshot.read_as::<u64>("x3"), 1);
+    assert_eq!(snapshot.read_as::<u64>("x4"), 0);
+    assert_eq!(snapshot.read_as::<u64>("p1"), 0x12);
+    assert_eq!(snapshot.read_as::<u64>("p2"), 0x01);
+    assert_eq!(snapshot.read_as::<u64>("p3"), 0x89AB_CDEF);
+}
+
+/// A shift or rotate, and a partial read of a 32-bit place, compile to the
+/// same instructions and constants by both routes.
+#[rstest]
+#[case::shl_dword("d := SHL(d, n);")]
+#[case::shr_lword("l := SHR(l, 3);")]
+#[case::rol_byte("b := ROL(b, 1);")]
+#[case::ror_word("w := ROR(w, n);")]
+#[case::rol_lword("l := ROL(l, 2);")]
+#[case::partial_read("b := w.%B1;")]
+fn compile_when_shift_or_partial_read_lowered_then_same_code_as_ast(#[case] statement: &str) {
+    let source = format!(
+        "PROGRAM main
+           VAR b : BYTE; w : WORD; d : DWORD; l : LWORD; n : DINT; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    assert_same_code(&source);
+}
