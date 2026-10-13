@@ -125,20 +125,35 @@ pub(super) fn emit_expr(
             callee: Callee::Intrinsic(intrinsic),
             args,
         } => {
+            // `can_emit` leaves to the AST a call with no builtin.
+            let builtin = builtin_of(*intrinsic, args.len()).ok_or_else(|| {
+                Diagnostic::internal_error_at(Label::span(
+                    expr.span().clone(),
+                    "A call of an intrinsic with no builtin",
+                ))
+            })?;
             for Arg::Value(value) in args {
                 emit_expr(emitter, ctx, lowering, value)?;
             }
-            emitter.emit_builtin(builtin_of(*intrinsic))?;
+            emitter.emit_builtin(builtin)?;
         }
     }
     Ok(())
 }
 
-/// The VM builtin that computes `intrinsic` (ADR-0008). The match names every
-/// intrinsic, so one the IR adds does not compile until it has a builtin here
-/// (REQ-LOW-codegen-074).
-fn builtin_of(intrinsic: Intrinsic) -> u16 {
-    match intrinsic {
+/// The VM builtin that computes a call of `intrinsic` with `args` arguments
+/// (ADR-0008); `None` for a `MUX` of more inputs than the VM has a builtin
+/// for. The match names every intrinsic, so one the IR adds does not compile
+/// until it has a builtin here (REQ-LOW-codegen-074).
+pub(super) fn builtin_of(intrinsic: Intrinsic, args: usize) -> Option<u16> {
+    // A `MUX` has a builtin for each number of inputs after its selector.
+    let mux = |base: u16| {
+        u16::try_from(args.saturating_sub(1))
+            .ok()
+            .filter(|inputs| *inputs <= builtin::MUX_MAX_INPUTS)
+            .map(|inputs| base + inputs)
+    };
+    Some(match intrinsic {
         Intrinsic::ShlU32 => builtin::SHL_I32,
         Intrinsic::ShlU64 => builtin::SHL_I64,
         Intrinsic::ShrU32 => builtin::SHR_I32,
@@ -207,7 +222,12 @@ fn builtin_of(intrinsic: Intrinsic) -> u16 {
         Intrinsic::SelI64 | Intrinsic::SelU64 => builtin::SEL_I64,
         Intrinsic::SelF32 => builtin::SEL_F32,
         Intrinsic::SelF64 => builtin::SEL_F64,
-    }
+        // `MUX` only selects, as `SEL` does.
+        Intrinsic::MuxI32 | Intrinsic::MuxU32 => return mux(builtin::MUX_I32_BASE),
+        Intrinsic::MuxI64 | Intrinsic::MuxU64 => return mux(builtin::MUX_I64_BASE),
+        Intrinsic::MuxF32 => return mux(builtin::MUX_F32_BASE),
+        Intrinsic::MuxF64 => return mux(builtin::MUX_F64_BASE),
+    })
 }
 
 /// Narrows the value on the stack to `width` bits of `signedness`.
@@ -254,5 +274,25 @@ pub(super) fn emit_constant(emitter: &mut Emitter, ctx: &mut CompileContext, con
             let index = ctx.add_f64_constant(value);
             emitter.emit_load_const_f64(index);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A `MUX` has a builtin for each number of inputs after its selector
+    /// that the VM takes, and none for more.
+    #[test]
+    fn builtin_of_when_mux_then_builtin_for_its_number_of_inputs() {
+        assert_eq!(
+            builtin_of(Intrinsic::MuxF64, 3),
+            Some(builtin::MUX_F64_BASE + 2)
+        );
+        assert_eq!(
+            builtin_of(Intrinsic::MuxU32, 17),
+            Some(builtin::MUX_I32_BASE + 16)
+        );
+        assert_eq!(builtin_of(Intrinsic::MuxI64, 18), None);
     }
 }

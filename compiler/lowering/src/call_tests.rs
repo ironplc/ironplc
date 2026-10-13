@@ -250,17 +250,16 @@ fn lower_statement_when_real_function_then_intrinsic_at_its_width() {
     }
 }
 
-/// `EXPT` of an unsigned integer, and `MUX`, are not lowered yet.
+/// `EXPT` of an unsigned integer is not lowered yet.
 #[test]
 fn lower_statement_when_numeric_function_not_supported_then_unsupported() {
     let outcome = lower(
-        "PROGRAM main VAR u : UDINT; d : DINT; END_VAR
+        "PROGRAM main VAR u : UDINT; END_VAR
             u := EXPT(u, 2);
-            d := MUX(1, d, 2);
          END_PROGRAM",
         "main",
     );
-    assert_eq!(outcome.statements, ["unsupported", "unsupported"]);
+    assert_eq!(outcome.statements, ["unsupported"]);
 }
 
 /// REQ-LOW-lowering-147: a selection function is the intrinsic for its
@@ -304,4 +303,34 @@ fn lower_statement_when_selection_function_then_intrinsic_at_its_type() {
             "{declared}"
         );
     }
+}
+
+/// REQ-LOW-lowering-147: `MUX` is the intrinsic for the type it computes at,
+/// taking its `DINT` selector and then each of its inputs. A selector of
+/// another integer type is the `DINT` the analyzer converted it to.
+#[test]
+fn lower_statement_when_mux_then_intrinsic_with_each_input() {
+    let outcome = lower(
+        "PROGRAM main VAR k : INT; d : DINT; u : UDINT; r : LREAL; l : LINT; END_VAR
+            d := MUX(k, d, 2);
+            u := MUX(k, u, u, u);
+            r := MUX(1, r, r);
+            d := MUX(l, d, d);
+            d := MUX(u, d, d);
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f1 (call mux_i32 i32s (read i32s v0^.f0) (read i32s v0^.f1) (const i32s 2))",
+            "assign v0^.f2 (call mux_u32 i32u (read i32s v0^.f0) (read i32u v0^.f2) \
+             (read i32u v0^.f2) (read i32u v0^.f2))",
+            "assign v0^.f3 (call mux_f64 f64 (const i32s 1) (read f64 v0^.f3) (read f64 v0^.f3))",
+            "assign v0^.f1 (call mux_i32 i32s (convert i32s (read i64s v0^.f4)) \
+             (read i32s v0^.f1) (read i32s v0^.f1))",
+            "assign v0^.f1 (call mux_i32 i32s (convert i32s (read i32u v0^.f2)) \
+             (read i32s v0^.f1) (read i32s v0^.f1))",
+        ]
+    );
 }

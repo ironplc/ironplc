@@ -64,8 +64,26 @@ impl Lowering<'_> {
                 self.intrinsic_call(frame, expr, intrinsic, &args)
             }
             BuiltinFunction::Numeric(function) => self.numeric_call(frame, expr, function, &args),
-            BuiltinFunction::Mux
-            | BuiltinFunction::Trunc
+            BuiltinFunction::Mux => {
+                // `MUX` computes at the type the analyzer converted its
+                // inputs to.
+                let mux = AtTypes::every([
+                    Intrinsic::MuxI32,
+                    Intrinsic::MuxI64,
+                    Intrinsic::MuxU32,
+                    Intrinsic::MuxU64,
+                    Intrinsic::MuxF32,
+                    Intrinsic::MuxF64,
+                ]);
+                let Some(intrinsic) = self
+                    .operated_type(expr)?
+                    .and_then(|(_, operated)| mux.at(operated))
+                else {
+                    return Ok(None);
+                };
+                self.intrinsic_call(frame, expr, intrinsic, &args)
+            }
+            BuiltinFunction::Trunc
             | BuiltinFunction::BcdToInt
             | BuiltinFunction::IntToBcd
             | BuiltinFunction::Sizeof
@@ -110,8 +128,8 @@ impl Lowering<'_> {
         };
         // An argument of another type than its parameter's is one the
         // analyzer did not convert to it, and is not lowered.
-        let (params, _) = intrinsic.signature();
-        if !args.iter().map(Expr::ty).eq(params.iter().copied()) {
+        let types: Vec<ScalarType> = args.iter().map(Expr::ty).collect();
+        if !intrinsic.signature().takes(&types) {
             return Ok(None);
         }
         Expr::call(
@@ -388,21 +406,12 @@ fn numeric_intrinsic(function: NumericFunction, operated: ScalarType) -> Option<
             Intrinsic::SelF64,
         ]),
     };
-    let [real, long_real] = at.reals;
-    match operated {
-        ScalarType::I32(Signedness::Signed) => at.signed.map(|[integer, _]| integer),
-        ScalarType::I64(Signedness::Signed) => at.signed.map(|[_, long]| long),
-        // `EXPT` of an unsigned integer is not lowered yet. The analyzer
-        // removes `ABS` of one.
-        ScalarType::I32(Signedness::Unsigned) => at.unsigned.map(|[integer, _]| integer),
-        ScalarType::I64(Signedness::Unsigned) => at.unsigned.map(|[_, long]| long),
-        ScalarType::F32 => Some(real),
-        ScalarType::F64 => Some(long_real),
-        ScalarType::Bool | ScalarType::Ref | ScalarType::Interface => None,
-    }
+    // `EXPT` of an unsigned integer is not lowered yet. The analyzer removes
+    // `ABS` of one.
+    at.at(operated)
 }
 
-/// The intrinsics of a numeric function: at a 32-bit and a 64-bit signed
+/// The intrinsics of a numeric or selection function: at a 32-bit and a 64-bit signed
 /// integer, and unsigned integer, where it takes them, and at a `REAL` and an
 /// `LREAL`.
 struct AtTypes {
@@ -428,6 +437,20 @@ impl AtTypes {
             signed: Some([i32, i64]),
             unsigned: Some([u32, u64]),
             reals: [f32, f64],
+        }
+    }
+
+    /// The function's intrinsic at `operated`.
+    fn at(&self, operated: ScalarType) -> Option<Intrinsic> {
+        let [real, long_real] = self.reals;
+        match operated {
+            ScalarType::I32(Signedness::Signed) => self.signed.map(|[integer, _]| integer),
+            ScalarType::I64(Signedness::Signed) => self.signed.map(|[_, long]| long),
+            ScalarType::I32(Signedness::Unsigned) => self.unsigned.map(|[integer, _]| integer),
+            ScalarType::I64(Signedness::Unsigned) => self.unsigned.map(|[_, long]| long),
+            ScalarType::F32 => Some(real),
+            ScalarType::F64 => Some(long_real),
+            ScalarType::Bool | ScalarType::Ref | ScalarType::Interface => None,
         }
     }
 }

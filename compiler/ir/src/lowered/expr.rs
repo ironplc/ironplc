@@ -427,23 +427,24 @@ impl Expr {
     }
 
     /// The result of calling `callee` with `args`. There is one argument for
-    /// each of the callee's parameters, of the parameter's type
-    /// (REQ-LOW-ir-145), and the arguments read places of one program.
+    /// each of the callee's parameters, of the parameter's type, and one or
+    /// more for a last parameter that repeats (REQ-LOW-ir-145). The arguments
+    /// read places of one program.
     pub fn call(callee: Callee, args: Vec<Arg>, span: SourceSpan) -> Result<Self, Diagnostic> {
         const CONSTRUCTOR: &str = "Expr::call";
         let Callee::Intrinsic(intrinsic) = callee;
-        let (params, result) = intrinsic.signature();
+        let signature = intrinsic.signature();
         let types: Vec<ScalarType> = args
             .iter()
             .map(|arg| match arg {
                 Arg::Value(value) => value.ty,
             })
             .collect();
-        if types != params {
+        if !signature.takes(&types) {
             return Err(broken(
                 CONSTRUCTOR,
                 &span,
-                format!("{} takes {params:?}, not {types:?}", intrinsic.name()),
+                format!("{} takes {signature}, not {types:?}", intrinsic.name()),
             ));
         }
         let mut program = None;
@@ -460,7 +461,11 @@ impl Expr {
                 (Some(_), _) => {}
             }
         }
-        Ok(Self::new(ExprKind::Call { callee, args }, result, span))
+        Ok(Self::new(
+            ExprKind::Call { callee, args },
+            signature.result(),
+            span,
+        ))
     }
 
     fn new(kind: ExprKind, ty: ScalarType, span: SourceSpan) -> Self {

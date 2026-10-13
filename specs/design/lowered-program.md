@@ -1340,7 +1340,9 @@ allow, such as the square root of an integer, therefore cannot be written. That
 is Goal 2 applied to intrinsics, and the choice
 [ADR-0004](../adrs/0004-separate-type-families-over-polymorphic-opcodes.md)
 made for the VM's opcodes. With the exhaustive match of REQ-LOW-codegen-074, a
-backend that compiles handles every combination. The analyzer resolves a
+backend that compiles handles every combination. `MUX` takes two or more
+inputs after its selector, so its last parameter repeats: `MuxF64` is one
+operation on `LREAL`s, whatever the number of inputs. The analyzer resolves a
 generic function such as `ADD` on `ANY_NUM` to one type before lowering sees
 it.
 
@@ -1554,8 +1556,10 @@ of `SHL` and `SHR` is taken modulo the operation width, `SHR` fills with
 zeros, `EXPT` of an integer base by a negative exponent traps, `ABS` of the
 most negative value of its operation type wraps to that value, and
 `LIMIT(MN, IN, MX)` is `MIN(MAX(IN, MN), MX)`, so `MX` when `MN` is greater
-than `MX`. Of reals, `MIN` and `MAX` give the other input when one is NaN, and
-`LIMIT` gives NaN when any input is.
+than `MX`, and `MUX` clamps its selector to its inputs, so a selector below
+zero gives the first input and one past the last gives the last. Of reals,
+`MIN` and `MAX` give the other input when one is NaN, and `LIMIT` gives NaN
+when any input is.
 
 A real function such as `SIN` or `EXP` is computed with the target's own
 primitive: Rust's `f64` methods on the bytecode VM (`vm/src/builtin.rs`), and
