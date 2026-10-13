@@ -270,18 +270,6 @@ impl FunctionEnvironment {
     pub fn iter_user_defined(&self) -> impl Iterator<Item = (&String, &FunctionSignature)> {
         self.table.iter().filter(|(_, sig)| !sig.is_stdlib())
     }
-
-    /// Returns the number of functions in the environment.
-    #[allow(dead_code)]
-    pub fn len(&self) -> usize {
-        self.table.len()
-    }
-
-    /// Returns true if the environment is empty.
-    #[allow(dead_code)]
-    pub fn is_empty(&self) -> bool {
-        self.table.is_empty()
-    }
 }
 
 impl Default for FunctionEnvironment {
@@ -360,8 +348,8 @@ mod tests {
     #[test]
     fn function_environment_new_when_created_then_empty() {
         let env = FunctionEnvironment::new();
-        assert!(env.is_empty());
-        assert_eq!(env.len(), 0);
+        assert!(env.iter().next().is_none());
+        assert_eq!(env.iter().count(), 0);
     }
 
     #[test]
@@ -371,8 +359,8 @@ mod tests {
 
         assert!(env.insert(sig).is_ok());
 
-        assert!(!env.is_empty());
-        assert_eq!(env.len(), 1);
+        assert!(env.iter().next().is_some());
+        assert_eq!(env.iter().count(), 1);
         assert!(env.contains(&Id::from("INT_TO_REAL")));
     }
 
@@ -386,7 +374,7 @@ mod tests {
         assert!(env.insert(sig2).is_err());
 
         // Should still only have one entry
-        assert_eq!(env.len(), 1);
+        assert_eq!(env.iter().count(), 1);
     }
 
     #[test]
@@ -591,7 +579,7 @@ mod tests {
     #[test]
     fn function_environment_builder_when_default_then_empty() {
         let env = FunctionEnvironmentBuilder::new().build();
-        assert!(env.is_empty());
+        assert!(env.iter().next().is_none());
     }
 
     #[test]
@@ -600,7 +588,7 @@ mod tests {
             .with_stdlib_functions()
             .build();
         // Exact count is tested in stdlib_function::tests; here just verify integration.
-        assert!(!env.is_empty());
+        assert!(env.iter().next().is_some());
         // Should be able to find conversion functions
         assert!(env.contains(&Id::from("INT_TO_REAL")));
         assert!(env.contains(&Id::from("REAL_TO_INT")));

@@ -70,7 +70,7 @@ fn symbol_environment_scope_management_when_managing_scopes_then_symbols_are_in_
 }
 
 #[test]
-fn get_when_checking_symbol_existence_then_returns_correct_results() {
+fn find_when_checking_symbol_existence_then_returns_correct_results() {
     let mut env = SymbolEnvironment::new();
 
     let id1 = Id::from("GLOBAL_VAR");
@@ -80,11 +80,10 @@ fn get_when_checking_symbol_existence_then_returns_correct_results() {
     env.insert(&id1, SymbolKind::Variable, &ScopeKind::Global)
         .unwrap();
 
-    // Test get method (alias for find)
-    let symbol1 = env.get(&id1, &ScopeKind::Global).unwrap();
+    let symbol1 = env.find(&id1, &ScopeKind::Global).unwrap();
     assert_eq!(symbol1.kind, SymbolKind::Variable);
 
-    let symbol2 = env.get(&id2, &ScopeKind::Global);
+    let symbol2 = env.find(&id2, &ScopeKind::Global);
     assert!(symbol2.is_none());
 }
 

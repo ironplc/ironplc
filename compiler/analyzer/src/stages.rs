@@ -39,14 +39,13 @@ use crate::{
     symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
     system_globals::SYSTEM_UPTIME_GLOBALS,
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
-    type_table, xform_bind_call_arguments, xform_fold_constant_expressions,
-    xform_fold_initializer_expressions, xform_insert_implicit_conversions,
-    xform_insert_implicit_deref, xform_int_to_bool_initializer, xform_mark_unwritten_constants,
-    xform_remove_unsigned_abs, xform_resolve_adr, xform_resolve_constant_expressions,
-    xform_resolve_decl_types, xform_resolve_expr_types, xform_resolve_initial_values,
-    xform_resolve_late_bound_expr_kind, xform_resolve_late_bound_type_initializer,
-    xform_resolve_symbol_and_function_environment, xform_resolve_type_aliases,
-    xform_resolve_type_decl_environment, xform_toposort_declarations,
+    xform_bind_call_arguments, xform_fold_constant_expressions, xform_fold_initializer_expressions,
+    xform_insert_implicit_conversions, xform_insert_implicit_deref, xform_int_to_bool_initializer,
+    xform_mark_unwritten_constants, xform_remove_unsigned_abs, xform_resolve_adr,
+    xform_resolve_constant_expressions, xform_resolve_decl_types, xform_resolve_expr_types,
+    xform_resolve_initial_values, xform_resolve_late_bound_expr_kind,
+    xform_resolve_late_bound_type_initializer, xform_resolve_symbol_and_function_environment,
+    xform_resolve_type_aliases, xform_resolve_type_decl_environment, xform_toposort_declarations,
 };
 
 /// Analyze runs semantic analysis on the set of files as a self-contained and complete unit.
@@ -84,18 +83,6 @@ pub fn analyze(
     // program wrote it through the conversion that wraps it.
     if let Err(diagnostics) = rule_constant_range::apply(&library, &context, options) {
         context.add_diagnostics(diagnostics);
-    }
-
-    // TODO this is currently in progress. It isn't clear to me yet how this will influence
-    // semantic analysis, but it should because the type table should influence rule checking.
-    // For now, this is just after the rules as they were originally written.
-    match type_table::apply(&library) {
-        Ok(type_table_result) => {
-            debug!("{type_table_result:?}");
-        }
-        Err(diagnostics) => {
-            context.add_diagnostics(diagnostics);
-        }
     }
 
     Ok((library, context))

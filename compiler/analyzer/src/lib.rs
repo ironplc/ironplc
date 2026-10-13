@@ -95,7 +95,6 @@ mod type_category;
 mod type_compat;
 mod type_environment;
 pub mod type_id;
-mod type_table;
 pub mod value_range;
 pub mod value_type;
 mod variable_type;
@@ -139,7 +138,6 @@ pub use intermediates::arithmetic_overload::{
     resolve_arithmetic_fold, resolve_arithmetic_overload, typed_overload, FoldFailure, Overload,
     TypedOverload,
 };
-pub use intermediates::enumeration::resolve_ordinal_values;
 pub use intermediates::operator_function_form::FormOf;
 pub use semantic_context::{SemanticContext, SemanticContextBuilder};
 pub use semantic_type::SemanticType;
