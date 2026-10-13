@@ -131,7 +131,8 @@ fn lower_statement_when_call_or_read_not_supported_then_unsupported() {
 }
 
 /// REQ-LOW-lowering-101: an operator and its function form lower to the same
-/// expression, and an extensible form folds its inputs from the left.
+/// expression, and an extensible form folds its inputs from the left. `**`
+/// is the standard function `EXPT`.
 #[test]
 fn lower_statement_when_operator_function_form_then_same_as_operator() {
     let pairs = [
@@ -149,6 +150,7 @@ fn lower_statement_when_operator_function_form_then_same_as_operator() {
         ("x := NOT(x);", "x := NOT x;"),
         ("w := NOT(w);", "w := NOT w;"),
         ("r := MOVE(a);", "r := a;"),
+        ("r := EXPT(a, b);", "r := a ** b;"),
     ];
     for (form, operator) in pairs {
         let outcome = lower(
@@ -177,4 +179,91 @@ fn lower_statement_when_operator_form_on_times_then_unsupported() {
         "main",
     );
     assert_eq!(outcome.statements, ["unsupported"]);
+}
+
+/// REQ-LOW-lowering-147: `ABS` and `EXPT` are the intrinsic for their
+/// function at the signed integer or real type they compute at, as are the
+/// real functions of two inputs. The exponent of a real is converted to it.
+#[test]
+fn lower_statement_when_numeric_function_then_intrinsic_call() {
+    let outcome = lower(
+        "PROGRAM main VAR i : INT; d : DINT; l : LINT; r : REAL; x : LREAL; END_VAR
+            i := ABS(i);
+            l := ABS(l);
+            x := ABS(x);
+            d := EXPT(d, 2);
+            r := EXPT(r, d);
+            r := ATAN2(r, r);
+            x := __MOD(x, x);
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f0 (truncate 16 (call abs_i32 i32s (read i32s v0^.f0)))",
+            "assign v0^.f2 (call abs_i64 i64s (read i64s v0^.f2))",
+            "assign v0^.f4 (call abs_f64 f64 (read f64 v0^.f4))",
+            "assign v0^.f1 (call expt_i32 i32s (read i32s v0^.f1) (const i32s 2))",
+            "assign v0^.f3 (call expt_f32 f32 (read f32 v0^.f3) (convert f32 (read i32s v0^.f1)))",
+            "assign v0^.f3 (call atan2_f32 f32 (read f32 v0^.f3) (read f32 v0^.f3))",
+            "assign v0^.f4 (call mod_f64 f64 (read f64 v0^.f4) (read f64 v0^.f4))",
+        ]
+    );
+}
+
+/// REQ-LOW-lowering-147: a real function of one input is the intrinsic for
+/// it at `REAL` and at `LREAL`.
+#[test]
+fn lower_statement_when_real_function_then_intrinsic_at_its_width() {
+    let functions = [
+        ("SQRT", "sqrt"),
+        ("LN", "ln"),
+        ("LOG", "log"),
+        ("EXP", "exp"),
+        ("SIN", "sin"),
+        ("COS", "cos"),
+        ("TAN", "tan"),
+        ("ASIN", "asin"),
+        ("ACOS", "acos"),
+        ("ATAN", "atan"),
+        ("__TRUNC", "trunc"),
+    ];
+    for (function, name) in functions {
+        let outcome = lower(
+            &format!(
+                "PROGRAM main VAR r : REAL; x : LREAL; END_VAR
+                    r := {function}(r);
+                    x := {function}(x);
+                 END_PROGRAM"
+            ),
+            "main",
+        );
+        assert_eq!(
+            outcome.statements,
+            [
+                format!("assign v0^.f0 (call {name}_f32 f32 (read f32 v0^.f0))"),
+                format!("assign v0^.f1 (call {name}_f64 f64 (read f64 v0^.f1))"),
+            ],
+            "{function}"
+        );
+    }
+}
+
+/// `EXPT` of an unsigned integer, and the selection functions, are not
+/// lowered yet.
+#[test]
+fn lower_statement_when_numeric_function_not_supported_then_unsupported() {
+    let outcome = lower(
+        "PROGRAM main VAR u : UDINT; d : DINT; END_VAR
+            u := EXPT(u, 2);
+            d := MIN(d, 1);
+            d := SEL(TRUE, d, 1);
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        ["unsupported", "unsupported", "unsupported"]
+    );
 }

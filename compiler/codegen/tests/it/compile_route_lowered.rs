@@ -560,3 +560,87 @@ fn compile_when_operator_form_lowered_then_same_code_as_ast(#[case] statement: &
     );
     assert_same_code(&source);
 }
+
+/// Numeric functions give the values the AST route gives. `ABS` of the most
+/// negative `DINT` wraps to itself, an integer exponent of a real is
+/// converted to it, and `**` is `EXPT`.
+#[test]
+fn run_when_numeric_functions_then_values() {
+    let snapshot = run_lowered(
+        "PROGRAM main
+           VAR i : INT := -5; d : DINT := -2147483648; l : LINT := -7; r : REAL := -2.5;
+               x : LREAL := 2.0; b : DINT := 3; n : INT := 10;
+               ri : INT; rd : DINT; rl : LINT; rr : REAL; e1 : DINT; e2 : LREAL; e3 : DINT;
+               s : LREAL; t : LREAL; a : LREAL; m : LREAL; tr : REAL; sr : REAL; END_VAR
+           ri := ABS(i);
+           rd := ABS(d);
+           rl := ABS(l);
+           rr := ABS(r);
+           e1 := EXPT(b, 4);
+           e2 := EXPT(x, n);
+           e3 := b ** 3;
+           s := SQRT(x);
+           t := LN(EXP(x));
+           a := ATAN2(x, x);
+           m := __MOD(LREAL#7.5, x);
+           tr := __TRUNC(r);
+           sr := SIN(r);
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<i64>("ri"), 5);
+    assert_eq!(snapshot.read_as::<i64>("rd"), -2_147_483_648);
+    assert_eq!(snapshot.read_as::<i64>("rl"), 7);
+    assert_eq!(snapshot.read_as::<f32>("rr"), 2.5);
+    assert_eq!(snapshot.read_as::<i64>("e1"), 81);
+    assert_eq!(snapshot.read_as::<f64>("e2"), 1024.0);
+    assert_eq!(snapshot.read_as::<i64>("e3"), 27);
+    assert_eq!(snapshot.read_as::<f64>("s"), 2.0_f64.sqrt());
+    assert_eq!(snapshot.read_as::<f64>("t"), 2.0_f64.exp().ln());
+    assert_eq!(snapshot.read_as::<f64>("a"), 2.0_f64.atan2(2.0));
+    assert_eq!(snapshot.read_as::<f64>("m"), 1.5);
+    assert_eq!(snapshot.read_as::<f32>("tr"), -2.0);
+    assert_eq!(snapshot.read_as::<f32>("sr"), (-2.5_f32).sin());
+}
+
+/// REQ-LOW-codegen-098: `EXPT` of an integer by a negative exponent traps on
+/// the lowered route, as on the AST route.
+#[test]
+fn run_when_integer_raised_to_negative_exponent_then_traps() {
+    let options = options();
+    let (library, context) = parse(
+        "PROGRAM main VAR b : DINT := 2; n : DINT := -1; r : DINT; END_VAR
+           r := EXPT(b, n);
+         END_PROGRAM",
+        &options,
+    );
+    let container = compile_by_route(&library, &context, &options, Route::RequireLowered)
+        .expect("every statement lowers");
+    let Err(fault) = run_one_scan(&container) else {
+        panic!("a negative exponent of an integer traps");
+    };
+    assert_eq!(fault.trap, Trap::NegativeExponent);
+}
+
+/// A numeric function, and `**`, compile to the same instructions and
+/// constants by both routes.
+#[rstest]
+#[case::abs_int("i := ABS(i);")]
+#[case::abs_lint("l := ABS(l);")]
+#[case::abs_real("r := ABS(r);")]
+#[case::expt_dint("d := EXPT(d, d);")]
+#[case::expt_real_by_dint("r := EXPT(r, d);")]
+#[case::pow_lreal("x := x ** x;")]
+#[case::sqrt_lreal("x := SQRT(x);")]
+#[case::sin_real("r := SIN(r);")]
+#[case::atan2_lreal("x := ATAN2(x, x);")]
+#[case::trunc_real("r := __TRUNC(r);")]
+#[case::mod_lreal("x := __MOD(x, x);")]
+fn compile_when_numeric_function_lowered_then_same_code_as_ast(#[case] statement: &str) {
+    let source = format!(
+        "PROGRAM main
+           VAR i : INT; d : DINT; l : LINT; r : REAL; x : LREAL; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    assert_same_code(&source);
+}

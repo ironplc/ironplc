@@ -1551,7 +1551,8 @@ subscript of 4,294,967,295 traps on `ARRAY[-3..100]`.
 **REQ-LOW-codegen-089** An `Intrinsic` means what the IEC 61131-3 standard
 function means, with these choices where the standard leaves room: the count
 of `SHL` and `SHR` is taken modulo the operation width, `SHR` fills with
-zeros, and `EXPT` of an integer base by a negative exponent traps.
+zeros, `EXPT` of an integer base by a negative exponent traps, and `ABS` of
+the most negative value of its operation type wraps to that value.
 
 A real function such as `SIN` or `EXP` is computed with the target's own
 primitive: Rust's `f64` methods on the bytecode VM (`vm/src/builtin.rs`), and
@@ -1747,6 +1748,7 @@ implements it.
 | Function block call with inputs and outputs | Assignments to the instance's fields, `FbCall`, assignments from them (REQ-LOW-lowering-069) |
 | Method call `inst.m(a)` | `Call` of the method with `Ref(inst)` first (REQ-LOW-lowering-076) |
 | Operator function form `ADD(a, b, c)` | Left fold of `Binary` |
+| `a ** b` | `Call` of the `EXPT` `Intrinsic`, as `EXPT(a, b)` is |
 | Typed time function `ADD_DT_TIME(a, b)` | Scalar arithmetic with the unit conversion `compile_time_arith.rs` applies today |
 | Explicit conversion such as `REAL_TO_INT(x)` | A `Convert` where the operation type changes, then a `Truncate` where the storage narrows; a conversion to `BOOL` is a `Compare` with zero |
 | Enumerated value | `Const` |
