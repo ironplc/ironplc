@@ -104,3 +104,89 @@ fn lower_statement_when_bool_subscript_then_unsupported() {
     );
     assert_eq!(outcome.statements, ["unsupported"]);
 }
+
+/// REQ-LOW-lowering-032: what a reference refers to is a `Deref` of the
+/// place holding the reference, read and written, and a store through a
+/// reference to a narrow variable is narrowed.
+#[test]
+fn lower_statement_when_dereference_then_deref() {
+    let outcome = lower(
+        "PROGRAM main VAR x : DINT; n : INT; p : REF_TO DINT; q : REF_TO INT; END_VAR
+            p^ := p^ + 1;
+            q^ := q^ + 1;
+            x := p^;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f2^ (add i32s (read i32s v0^.f2^) (const i32s 1))",
+            "assign v0^.f3^ (truncate 16 (add i32s (read i32s v0^.f3^) (const i32s 1)))",
+            "assign v0^.f0 (read i32s v0^.f2^)",
+        ]
+    );
+}
+
+/// An element of an array a reference refers to is a `Deref`, then an
+/// `Index`.
+#[test]
+fn lower_statement_when_element_through_reference_then_deref_then_index() {
+    let outcome = lower(
+        "PROGRAM main VAR pa : REF_TO ARRAY[1..3] OF DINT; i : DINT; END_VAR
+            pa^[i] := pa^[3];
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        ["assign v0^.f0^[(read i32s v0^.f1)] (read i32s v0^.f0^[(const i32s 3)])"]
+    );
+}
+
+/// REQ-LOW-lowering-102: a bit or partial write is one `AssignBits` that
+/// names its place once, whatever the shape of the place.
+#[test]
+fn lower_statement_when_bit_or_partial_write_then_assign_bits() {
+    let outcome = lower(
+        "PROGRAM main VAR w : WORD; b : BYTE; a : ARRAY[0..3] OF DWORD; i : DINT; END_VAR
+            w.3 := TRUE;
+            w.%B1 := b;
+            a[i].%W1 := w;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign-bits v0^.f0 3 1 (const bool true)",
+            "assign-bits v0^.f0 8 8 (read i32u v0^.f1)",
+            "assign-bits v0^.f2[(read i32s v0^.f3)] 16 16 (read i32u v0^.f0)",
+        ]
+    );
+}
+
+/// Bits reached through a reference, `p^.3`, are not lowered while codegen's
+/// AST route does not address them.
+#[test]
+fn lower_statement_when_bits_written_through_reference_then_unsupported() {
+    let outcome = lower(
+        "PROGRAM main VAR w : WORD; p : REF_TO WORD; END_VAR
+            p^.3 := TRUE;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(outcome.statements, ["unsupported"]);
+}
+
+/// The bits of a bit selection, `d.%B1.3`, are not a place to write.
+#[test]
+fn lower_statement_when_bits_of_bits_written_then_unsupported() {
+    let outcome = lower(
+        "PROGRAM main VAR d : DWORD; END_VAR
+            d.%B1.3 := TRUE;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(outcome.statements, ["unsupported"]);
+}

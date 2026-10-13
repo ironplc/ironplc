@@ -14,6 +14,7 @@
 //! expressions, places reached through fields, elements and dereferences,
 //! the assignment of a scalar value, and control flow.
 
+mod call;
 mod expr;
 mod ids;
 mod invariant;
@@ -26,6 +27,7 @@ mod stmt;
 mod types;
 mod variables;
 
+pub use call::{Arg, Callee, Intrinsic};
 pub use expr::{BinaryOp, CompareOp, Const, Expr, ExprKind, ShortCircuitOp, UnaryOp};
 pub use ids::{FieldIdx, LoopId, PouId, TypeId, VarId};
 pub use loops::{counts_down, ForParts, LoopScope};

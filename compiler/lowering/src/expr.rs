@@ -16,6 +16,7 @@ use ironplc_ir::lowered::{
     BinaryOp, CompareOp, Expr, Place, ScalarType, ShortCircuitOp, TypeId, TypeKind, UnaryOp,
 };
 
+use crate::bits::selected_bits;
 use crate::variables::BodyFrame;
 use crate::Lowering;
 
@@ -29,6 +30,11 @@ impl Lowering<'_> {
         match &expr.kind {
             AstExprKind::Expression(inner) => self.expr(frame, inner),
             AstExprKind::Const(constant) => self.constant(expr, constant, span),
+            AstExprKind::Variable(Variable::Symbolic(symbolic))
+                if selected_bits(symbolic).is_some() =>
+            {
+                self.bits_read(frame, expr, symbolic)
+            }
             AstExprKind::Variable(variable) => {
                 let Some(place) = self.variable_place(frame, variable)? else {
                     return Ok(None);
@@ -151,11 +157,22 @@ impl Lowering<'_> {
                 let ordinal = self.enumerated_ordinal(expr, value)?;
                 Expr::integer(ordinal.into(), ty, span).map(Some)
             }
-            AstExprKind::Function(_)
-            | AstExprKind::MethodCall(_)
+            AstExprKind::Deref(reference) => {
+                // A reference that is not in a variable, such as one a
+                // function returns, is not a place to follow.
+                let AstExprKind::Variable(variable) = &reference.kind else {
+                    return Ok(None);
+                };
+                let Some(reference) = self.variable_place(frame, variable)? else {
+                    return Ok(None);
+                };
+                let place = self.program.deref(reference, &span)?;
+                self.read(place, span)
+            }
+            AstExprKind::Function(func) => self.function_call(frame, expr, func),
+            AstExprKind::MethodCall(_)
             | AstExprKind::LateBound(_)
             | AstExprKind::Ref(_)
-            | AstExprKind::Deref(_)
             | AstExprKind::Null(_) => Ok(None),
         }
     }
@@ -174,7 +191,7 @@ impl Lowering<'_> {
     }
 
     /// The value at `place`, when its type is operated on as one value.
-    fn read(&mut self, place: Place, span: SourceSpan) -> Lowered {
+    pub(crate) fn read(&mut self, place: Place, span: SourceSpan) -> Lowered {
         if self.program.types().operation_type(place.ty()).is_none() {
             return Ok(None);
         }
@@ -292,7 +309,7 @@ impl Lowering<'_> {
     /// The lowered type the analyzer recorded for `expr`, and the type it is
     /// operated at; `None` when it recorded none, or one lowering cannot
     /// operate on as one value.
-    fn operated_type(
+    pub(crate) fn operated_type(
         &mut self,
         expr: &AstExpr,
     ) -> Result<Option<(TypeId, ScalarType)>, Diagnostic> {

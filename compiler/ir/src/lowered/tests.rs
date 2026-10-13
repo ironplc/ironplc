@@ -683,6 +683,10 @@ fn crate_root_when_read_then_denies_wildcard_enum_match_arm() {
     assert!(include_str!("../lib.rs").contains("#![deny(clippy::wildcard_enum_match_arm)]"));
 }
 
+mod bits;
+
+mod calls;
+
 mod control;
 
 mod places;

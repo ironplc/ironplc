@@ -15,6 +15,7 @@ use super::compile_partial_access::{compile_partial_access_assignment, PartialAc
 use super::compile_place::Place;
 use crate::emit::Emitter;
 use crate::string_width::compile_string_value;
+use crate::type_info::expr_type_info;
 
 /// Compiles an assignment statement.
 pub(crate) fn compile_assignment(
@@ -33,34 +34,17 @@ pub(crate) fn compile_assignment(
         return Err(Diagnostic::todo_with_span(assignment.span()));
     }
 
-    // Dereference assignment: myRef^ := expr
-    // Compile the RHS, load the reference variable, emit STORE_INDIRECT.
+    // Dereference assignment: `p^ := v`. The analyzer converted the value to
+    // the referenced type (REQ-IC-analyzer-039), so it compiles at its own
+    // type, and that is the type of the place it is stored in.
     if assignment.deref {
-        let target_name = resolve_variable_name(&assignment.target);
-        // A VAR_IN_OUT parameter's slot holds a reference to the
-        // caller's variable, not the reference to dereference.
-        let target_index = target_name
-            .filter(|name| !ctx.in_out_params.contains(*name))
-            .and_then(|name| ctx.variables.get(name).copied())
-            .ok_or_else(|| {
-                Diagnostic::not_implemented(Label::span(
-                    assignment.target.span(),
-                    "Dereferenced assignment target is not a plain variable",
-                ))
-            })?;
-
-        // The analyzer converted the value to the referenced type
-        // (REQ-IC-analyzer-039), so it compiles at its own type. It is
-        // stored as it is: a result narrower than 32 bits is not truncated to
-        // its width (#2116).
+        let place = Place::<&Expr>::through_reference(
+            ctx,
+            &assignment.target,
+            expr_type_info(ctx, &assignment.value),
+        )?;
         compile_expr(emitter, ctx, &assignment.value)?;
-
-        // Load the reference (variable index stored in the ref variable).
-        emitter.emit_load_var_i64(target_index);
-
-        // STORE_INDIRECT pops both value and ref.
-        emitter.emit_store_indirect();
-        return Ok(());
+        return place.emit_store(emitter, ctx);
     }
 
     // A bit or partial access target replaces bits of its base
