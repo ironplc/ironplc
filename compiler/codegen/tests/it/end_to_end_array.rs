@@ -232,3 +232,25 @@ END_PROGRAM
 ",
     &[("x", 1)],
 );
+
+e2e_i32!(
+    end_to_end_when_unsigned_subscript_narrower_than_dint_then_indexes_element,
+    "
+PROGRAM main
+  VAR
+    arr : ARRAY[0..3] OF INT := [10, 20, 30, 40];
+    us : USINT := 1;
+    u : UINT := 2;
+    w : WORD := 3;
+    x : INT;
+    y : INT;
+    z : INT;
+  END_VAR
+  arr[u] := arr[us] + 5;
+  x := arr[u];
+  y := arr[w];
+  z := arr[us];
+END_PROGRAM
+",
+    &[("x", 25), ("y", 40), ("z", 20)],
+);

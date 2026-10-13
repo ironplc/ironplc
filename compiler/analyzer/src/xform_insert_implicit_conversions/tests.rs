@@ -467,9 +467,23 @@ fn apply_when_function_form_assigned_to_wider_target_then_result_converted() {
 
 #[spec_test(REQ_IC_analyzer_032)]
 #[test]
-fn apply_when_value_shares_target_width_then_unchanged() {
+fn apply_when_value_shares_target_width_and_signedness_then_unchanged() {
     let source = arithmetic_program("INT", "s : SINT;", "s");
     assert_eq!(assigned_values(&source), vec!["SINT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_105)]
+#[rstest]
+#[case::uint_to_dint("DINT", "u : UINT;", "UINT->DINT")]
+#[case::usint_to_dint("DINT", "u : USINT;", "USINT->DINT")]
+#[case::usint_to_int("INT", "u : USINT;", "USINT->INT")]
+fn apply_when_value_shares_target_width_but_not_signedness_then_converted_to_target_type(
+    #[case] target: &str,
+    #[case] vars: &str,
+    #[case] expected: &str,
+) {
+    let source = arithmetic_program(target, vars, "u");
+    assert_eq!(assigned_values(&source), vec![expected]);
 }
 
 #[spec_test(REQ_IC_analyzer_037)]

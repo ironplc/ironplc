@@ -3,6 +3,7 @@
 //! reinterpreted.
 
 use ironplc_parser::options::CompilerOptions;
+use rstest::rstest;
 
 use crate::common::Snapshot;
 
@@ -92,3 +93,30 @@ END_PROGRAM
 ",
     &[("r", -3.0)],
 );
+
+/// An unsigned value stored in a signed target of the same operation width
+/// keeps its value, by both routes (REQ-IC-analyzer-105).
+#[rstest]
+#[case::usint_to_dint("USINT", "DINT", "200", 200)]
+#[case::uint_to_dint("UINT", "DINT", "65535", 65535)]
+#[case::usint_to_int("USINT", "INT", "255", 255)]
+fn end_to_end_when_unsigned_assigned_to_signed_of_same_width_then_keeps_value(
+    #[case] src: &str,
+    #[case] tgt: &str,
+    #[case] value: &str,
+    #[case] expected: i32,
+) {
+    let source = format!(
+        "
+PROGRAM main
+  VAR
+    x : {src} := {value};
+    r : {tgt};
+  END_VAR
+  r := x;
+END_PROGRAM
+"
+    );
+    let snapshot = Snapshot::run(&source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<i32>("r"), expected);
+}

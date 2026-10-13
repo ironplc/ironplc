@@ -77,6 +77,41 @@ pub(crate) fn operation_width_of(representation: &SemanticType) -> Option<Operat
     }
 }
 
+/// Whether a number is operated on as signed or unsigned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Signedness {
+    Signed,
+    Unsigned,
+}
+
+/// Returns whether a value of the type `representation` is operated on as
+/// signed or unsigned: a signed integer, a real and a duration as signed, and
+/// an unsigned integer, a bit string, and a date, a time of day or a date and
+/// time, which count forward from an epoch (ADR-0025), as unsigned. A
+/// subrange is operated as its base type. `None` for a type that is not
+/// operated on as a number.
+pub(crate) fn operation_signedness(representation: &SemanticType) -> Option<Signedness> {
+    match representation {
+        SemanticType::Int { .. } | SemanticType::Real { .. } | SemanticType::Time { .. } => {
+            Some(Signedness::Signed)
+        }
+        SemanticType::UInt { .. }
+        | SemanticType::Bytes { .. }
+        | SemanticType::Date { .. }
+        | SemanticType::TimeOfDay { .. }
+        | SemanticType::DateAndTime { .. } => Some(Signedness::Unsigned),
+        SemanticType::Subrange { base_type, .. } => operation_signedness(base_type),
+        SemanticType::Bool
+        | SemanticType::Enumeration { .. }
+        | SemanticType::Reference { .. }
+        | SemanticType::String { .. }
+        | SemanticType::Structure { .. }
+        | SemanticType::Array { .. }
+        | SemanticType::FunctionBlock { .. }
+        | SemanticType::Function { .. } => None,
+    }
+}
+
 /// The elementary type an untyped literal of the category `generic` is
 /// operated at when nothing gives it a type: `DINT` for an integer and
 /// `REAL` for a real (ADR-0028). `None` for a category no untyped literal
@@ -99,6 +134,7 @@ pub fn literal_default_type(generic: &GenericTypeName) -> Option<ElementaryTypeN
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::semantic_type::ByteSized;
     use rstest::rstest;
 
     #[rstest]
@@ -131,6 +167,21 @@ mod tests {
         #[case] expected: OperationWidth,
     ) {
         assert_eq!(operation_width_of(&representation), Some(expected));
+    }
+
+    #[rstest]
+    #[case::int(SemanticType::Int { size: ByteSized::B16 }, Some(Signedness::Signed))]
+    #[case::real(SemanticType::Real { size: ByteSized::B32 }, Some(Signedness::Signed))]
+    #[case::time(SemanticType::Time { size: ByteSized::B32 }, Some(Signedness::Signed))]
+    #[case::uint(SemanticType::UInt { size: ByteSized::B16 }, Some(Signedness::Unsigned))]
+    #[case::bytes(SemanticType::Bytes { size: ByteSized::B8 }, Some(Signedness::Unsigned))]
+    #[case::date(SemanticType::Date { size: ByteSized::B32 }, Some(Signedness::Unsigned))]
+    #[case::boolean(SemanticType::Bool, None)]
+    fn operation_signedness_when_type_then_signedness_it_is_operated_at(
+        #[case] representation: SemanticType,
+        #[case] expected: Option<Signedness>,
+    ) {
+        assert_eq!(operation_signedness(&representation), expected);
     }
 
     #[rstest]

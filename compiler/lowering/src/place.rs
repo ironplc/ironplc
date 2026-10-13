@@ -4,7 +4,7 @@
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{Expr as AstExpr, ExprKind as AstExprKind, SymbolicVariableKind};
-use ironplc_ir::lowered::{Expr, Place, ScalarType, Signedness};
+use ironplc_ir::lowered::{Expr, Place};
 
 use crate::variables::BodyFrame;
 use crate::Lowering;
@@ -78,7 +78,10 @@ impl Lowering<'_> {
         let Some(value) = self.expr(frame, subscript)? else {
             return Ok(None);
         };
-        if value.ty() != ScalarType::I32(Signedness::Signed) {
+        if !value.ty().is_numeric() {
+            // A `BOOL` subscript, which analysis does not reject yet. A number
+            // of another type than `DINT` is a conversion the analyzer did not
+            // record, a defect, which `Place::index` reports.
             return Ok(None);
         }
         Ok(Some(value))
