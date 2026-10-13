@@ -146,9 +146,7 @@ pub use semantic_type::SemanticType;
 pub use standard_function_block::{CounterWidth, StandardFunctionBlock};
 pub use type_attributes::TypeAttributes;
 pub use type_category::TypeCategory;
-pub use type_environment::{
-    elementary_type, TypeEnvironment, TypeEnvironmentBuilder, UsageContext,
-};
+pub use type_environment::{elementary_type, TypeEnvironment, TypeEnvironmentBuilder};
 
 #[cfg(test)]
 mod test_helpers;
