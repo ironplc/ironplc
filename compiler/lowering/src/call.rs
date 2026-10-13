@@ -250,23 +250,61 @@ fn compare_op(op: &CompareOp) -> Option<LoweredCompareOp> {
 /// The shift or rotate `shift` of a bit string operated at `operated` and
 /// `width` bits wide.
 fn shift_intrinsic(shift: BitShift, operated: ScalarType, width: u8) -> Option<Intrinsic> {
-    const U32: ScalarType = ScalarType::I32(Signedness::Unsigned);
-    const U64: ScalarType = ScalarType::I64(Signedness::Unsigned);
-    let intrinsic = match (shift, operated, width) {
-        (BitShift::Shl, U32, _) => Intrinsic::ShlU32,
-        (BitShift::Shl, U64, _) => Intrinsic::ShlU64,
-        (BitShift::Shr, U32, _) => Intrinsic::ShrU32,
-        (BitShift::Shr, U64, _) => Intrinsic::ShrU64,
-        (BitShift::Rol, U32, 8) => Intrinsic::RolU8,
-        (BitShift::Rol, U32, 16) => Intrinsic::RolU16,
-        (BitShift::Rol, U32, 32) => Intrinsic::RolU32,
-        (BitShift::Rol, U64, 64) => Intrinsic::RolU64,
-        (BitShift::Ror, U32, 8) => Intrinsic::RorU8,
-        (BitShift::Ror, U32, 16) => Intrinsic::RorU16,
-        (BitShift::Ror, U32, 32) => Intrinsic::RorU32,
-        (BitShift::Ror, U64, 64) => Intrinsic::RorU64,
-        // A shift of a `BOOL`, or of an integer the analyzer let through.
-        _ => return None,
+    // A bit string operates as an unsigned integer. A shift of a `BOOL`, or
+    // of an integer the analyzer let through, is not lowered.
+    let wide = match operated {
+        ScalarType::I32(Signedness::Unsigned) => false,
+        ScalarType::I64(Signedness::Unsigned) => true,
+        ScalarType::Bool
+        | ScalarType::I32(Signedness::Signed)
+        | ScalarType::I64(Signedness::Signed)
+        | ScalarType::F32
+        | ScalarType::F64
+        | ScalarType::Ref
+        | ScalarType::Interface => return None,
     };
-    Some(intrinsic)
+    match shift {
+        BitShift::Shl if wide => Some(Intrinsic::ShlU64),
+        BitShift::Shl => Some(Intrinsic::ShlU32),
+        BitShift::Shr if wide => Some(Intrinsic::ShrU64),
+        BitShift::Shr => Some(Intrinsic::ShrU32),
+        BitShift::Rol => rotate(
+            wide,
+            width,
+            [
+                Intrinsic::RolU8,
+                Intrinsic::RolU16,
+                Intrinsic::RolU32,
+                Intrinsic::RolU64,
+            ],
+        ),
+        BitShift::Ror => rotate(
+            wide,
+            width,
+            [
+                Intrinsic::RorU8,
+                Intrinsic::RorU16,
+                Intrinsic::RorU32,
+                Intrinsic::RorU64,
+            ],
+        ),
+    }
+}
+
+/// The rotate of a bit string `width` bits wide, from the rotates of 8, 16,
+/// 32 and 64 bits. A rotate keeps its bits within the width of its type, so
+/// there is one per width.
+fn rotate(
+    wide: bool,
+    width: u8,
+    [bits_8, bits_16, bits_32, bits_64]: [Intrinsic; 4],
+) -> Option<Intrinsic> {
+    match (wide, width) {
+        (false, 8) => Some(bits_8),
+        (false, 16) => Some(bits_16),
+        (false, 32) => Some(bits_32),
+        (true, 64) => Some(bits_64),
+        // No bit string has any other width.
+        _ => None,
+    }
 }
