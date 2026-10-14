@@ -9,7 +9,7 @@ use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{Assignment, Expr as AstExpr, SymbolicVariableKind};
 use ironplc_ir::lowered::{
-    Arg, BinaryOp, Callee, CompareOp, Expr, Intrinsic, ScalarType, Signedness, Stmt,
+    Arg, BinaryOp, CompareOp, Expr, Intrinsic, ScalarType, Signedness, Stmt,
 };
 
 use crate::expr::Lowered;
@@ -115,7 +115,7 @@ fn select(value: Expr, shift: u8, bits: u8, span: SourceSpan) -> Lowered {
     if shift > 0 {
         let count = Expr::integer(shift.into(), count, span.clone())?;
         selected = Expr::call(
-            Callee::Intrinsic(shr),
+            shr,
             vec![Arg::Value(selected), Arg::Value(count)],
             span.clone(),
         )?;

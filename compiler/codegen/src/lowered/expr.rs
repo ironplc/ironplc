@@ -8,7 +8,7 @@ use ironplc_ir::lowered::{
 };
 use ironplc_lowering::Lowering;
 
-use super::op_type;
+use super::{op_type, user_function};
 use crate::compile::{CompileContext, OpWidth, Signedness};
 use crate::compile_arith::convert;
 use crate::compile_expr::{
@@ -120,6 +120,29 @@ pub(super) fn emit_expr(
                 ShortCircuitOp::OrElse => emit_expr(emitter, ctx, lowering, rhs)?,
             }
             emitter.bind_label(end);
+        }
+        ExprKind::Call {
+            callee: Callee::User(pou),
+            args,
+        } => {
+            // `can_emit` leaves to the AST a call of a function this backend
+            // does not pass every argument of by value.
+            let function = user_function(lowering, ctx, *pou).ok_or_else(|| {
+                Diagnostic::internal_error_at(Label::span(
+                    expr.span().clone(),
+                    "A call of a function not passed its arguments by value",
+                ))
+            })?;
+            for Arg::Value(value) in args {
+                emit_expr(emitter, ctx, lowering, value)?;
+            }
+            emitter.emit_call(
+                function.function_id,
+                function.num_params,
+                function.var_offset,
+                function.max_stack_depth,
+            );
+            ctx.record_call_edge(function.function_id);
         }
         ExprKind::Call {
             callee: Callee::Intrinsic(intrinsic),

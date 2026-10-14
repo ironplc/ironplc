@@ -39,7 +39,7 @@ pub use types::{
     Encoding, EnumerationValue, Field, IntWidth, NarrowWidth, Nullability, Section, StringShape,
     TemporalKind, TypeEntry, TypeKind, TypeTable, WideWidth,
 };
-pub use variables::{Owner, PouTable, Variable, VariableTable};
+pub use variables::{FunctionSignature, Owner, PouTable, Variable, VariableTable};
 
 #[cfg(test)]
 mod tests;

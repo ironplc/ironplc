@@ -1902,6 +1902,7 @@ How the three targets are expected to realise the same node:
 | `For` | Labels and jumps, with a fused compare and branch | The expansion to `Loop` | Basic blocks, with the bounds left for LLVM's loop passes |
 | `Case` | Compare and branch chain | `br_table` or a chain | `switch` |
 | `Place` | One of seven load and store opcode families, chosen by layout; a field of the current instance is the slot the VM copied it into, until [issue 2120](https://github.com/ironplc/ironplc/issues/2120) | An address in linear memory, from the instance parameter for a field of the current instance | A `getelementptr` from the variable's `alloca` or global, or from the instance parameter |
+| `Callee::User` | `CALL` of the function, which stores the arguments in its parameters' slots | `call` | `call` |
 | `Intrinsic` | `BUILTIN func_id` (ADR-0008) | A call to a runtime function, or inline instructions | An LLVM intrinsic such as `llvm.sqrt`, or a call to a runtime function |
 | `Callee::Interface` | As pull request 1870 decides; it proposes a table of instances read by `LOAD_INSTANCE`, then a branch to a `METHOD_CALL` per implementer | `br_table` or a branch over the implementers | A `switch` over the implementers, or a call through a table of functions |
 | `RoundTime` | The `uptime_us` of `run_round` | A value the host passes in | A global the runtime writes before each round |
@@ -2328,7 +2329,9 @@ This section constrains the order of work; it is not a work breakdown.
   bytecode backend finds a lowered variable's storage in the layout codegen
   builds today: through the current body's `Scope`, by name. A field of the
   current instance is found the same way. While the VM copies fields, that is
-  the slot holding the copy (see [Instance fields](#instance-fields)).
+  the slot holding the copy (see [Instance fields](#instance-fields)). The
+  function a `Callee::User` calls is found by the name its POU carries, as
+  the function the route that reads the AST compiled.
   REQ-LOW-codegen-122 and REQ-LOW-codegen-123 are met later. Once a POU's
   statements all lower, the backend builds its layout from the POU's lowered
   declarations, keyed by id and complete before emission. Both requirements

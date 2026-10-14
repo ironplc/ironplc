@@ -112,36 +112,110 @@ impl VariableTable {
     }
 }
 
+/// The parameters a function takes, in order, and the variable that holds
+/// its result. A call passes one argument for each parameter
+/// (REQ-LOW-lowering-071).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FunctionSignature {
+    parameters: Vec<VarId>,
+    result: VarId,
+}
+
+impl FunctionSignature {
+    pub(crate) fn new(parameters: Vec<VarId>, result: VarId) -> Self {
+        Self { parameters, result }
+    }
+
+    pub fn parameters(&self) -> &[VarId] {
+        &self.parameters
+    }
+
+    pub fn result(&self) -> VarId {
+        self.result
+    }
+}
+
+/// One POU: its name, and its signature when it is a function a call reaches.
+#[derive(Clone, Debug)]
+struct PouEntry {
+    name: DebugName,
+    function: Option<FunctionSignature>,
+}
+
 /// Every POU of a lowered program, by [`PouId`]. A
 /// [`ProgramBuilder`](super::ProgramBuilder) owns it, and is the only way to
 /// add to it.
 #[derive(Clone, Debug)]
 pub struct PouTable {
     stamp: Stamp,
-    names: Vec<DebugName>,
+    pous: Vec<PouEntry>,
 }
 
 impl PouTable {
     pub(crate) fn new(stamp: Stamp) -> Self {
         Self {
             stamp,
-            names: Vec::new(),
+            pous: Vec::new(),
         }
     }
 
     /// Adds the POU named `name` and returns the id that names it.
     pub(crate) fn push(&mut self, name: DebugName) -> PouId {
-        let id = PouId::new(self.stamp, self.names.len() as u32);
-        self.names.push(name);
+        let id = PouId::new(self.stamp, self.pous.len() as u32);
+        self.pous.push(PouEntry {
+            name,
+            function: None,
+        });
         id
     }
 
     /// The name of the POU `id`, or `None` if this table did not allocate
     /// `id`.
     pub fn name(&self, id: PouId) -> Option<&DebugName> {
+        self.entry(id).map(|entry| &entry.name)
+    }
+
+    /// The signature of the function `id`, or `None` if it is not one this
+    /// table declares.
+    pub fn function(&self, id: PouId) -> Option<&FunctionSignature> {
+        self.entry(id).and_then(|entry| entry.function.as_ref())
+    }
+
+    /// Declares the POU `id` a function of `signature`, or a P9998 at `span`
+    /// if this table did not allocate `id` or declares it already.
+    pub(crate) fn declare_function(
+        &mut self,
+        id: PouId,
+        signature: FunctionSignature,
+        span: &SourceSpan,
+    ) -> Result<(), Diagnostic> {
+        const CONSTRUCTOR: &str = "ProgramBuilder::declare_function";
+        let entry = match id.stamp() == self.stamp {
+            true => self.pous.get_mut(id.index() as usize),
+            false => None,
+        };
+        let Some(entry) = entry else {
+            return Err(broken(
+                CONSTRUCTOR,
+                span,
+                format!("{id} is not a POU of this program"),
+            ));
+        };
+        if entry.function.is_some() {
+            return Err(broken(
+                CONSTRUCTOR,
+                span,
+                format!("{id} is declared already"),
+            ));
+        }
+        entry.function = Some(signature);
+        Ok(())
+    }
+
+    fn entry(&self, id: PouId) -> Option<&PouEntry> {
         if id.stamp() != self.stamp {
             return None;
         }
-        self.names.get(id.index() as usize)
+        self.pous.get(id.index() as usize)
     }
 }

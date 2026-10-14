@@ -9,6 +9,7 @@
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
 
+use super::call::Arg;
 use super::expr::Expr;
 use super::ids::{FieldIdx, LoopId, PouId, Stamp, TypeId, VarId};
 use super::invariant::broken;
@@ -16,7 +17,7 @@ use super::loops::{build_for, build_loop, expand_for, ForParts, LoopScope};
 use super::place::Place;
 use super::stmt::{store_narrowing, Stmt};
 use super::types::{NarrowWidth, TypeEntry, TypeKind, TypeTable};
-use super::variables::{Owner, PouTable, VariableTable};
+use super::variables::{FunctionSignature, Owner, PouTable, VariableTable};
 use crate::execution::DebugName;
 
 /// Builds one lowered program.
@@ -153,6 +154,43 @@ impl ProgramBuilder {
     /// The value at `place` (REQ-LOW-lowering-047).
     pub fn read(&self, place: Place, span: SourceSpan) -> Result<Expr, Diagnostic> {
         Expr::read(&self.types, place, span)
+    }
+
+    /// Declares the POU `pou` a function that takes each of `parameters` by
+    /// value, in order, and returns the value of `result`. Each is a
+    /// variable `pou` owns, of a type with an operation type.
+    pub fn declare_function(
+        &mut self,
+        pou: PouId,
+        parameters: Vec<VarId>,
+        result: VarId,
+        span: &SourceSpan,
+    ) -> Result<(), Diagnostic> {
+        let owned_scalar = |var: &VarId| {
+            self.variables.get(*var).is_some_and(|variable| {
+                variable.owner() == Owner::Pou(pou)
+                    && self.types.operation_type(variable.ty()).is_some()
+            })
+        };
+        if let Some(var) = parameters
+            .iter()
+            .chain([&result])
+            .find(|var| !owned_scalar(var))
+        {
+            return Err(broken(
+                "ProgramBuilder::declare_function",
+                span,
+                format!("{var} is not a scalar variable of {pou}"),
+            ));
+        }
+        self.pous
+            .declare_function(pou, FunctionSignature::new(parameters, result), span)
+    }
+
+    /// The result of calling the function `pou` with `args`; see
+    /// [`Expr::call`] for an intrinsic.
+    pub fn call(&self, pou: PouId, args: Vec<Arg>, span: SourceSpan) -> Result<Expr, Diagnostic> {
+        Expr::call_function(&self.types, &self.variables, &self.pous, pou, args, span)
     }
 
     /// Stores `value` at `place`; see [`Stmt`] for what the value must be.

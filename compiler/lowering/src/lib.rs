@@ -25,6 +25,7 @@ mod bits;
 mod call;
 mod control;
 mod expr;
+mod function;
 mod place;
 mod statement;
 mod time;
@@ -35,6 +36,8 @@ mod variables;
 mod call_tests;
 #[cfg(test)]
 mod control_tests;
+#[cfg(test)]
+mod function_tests;
 #[cfg(test)]
 mod place_tests;
 #[cfg(test)]
@@ -55,7 +58,7 @@ use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::StmtKind;
 use ironplc_ir::lowered::{
-    LoopScope, PouId, ProgramBuilder, Stmt, TypeTable, VarId, VariableTable,
+    LoopScope, PouId, PouTable, ProgramBuilder, Stmt, TypeTable, VarId, VariableTable,
 };
 
 /// The body a statement belongs to.
@@ -180,5 +183,10 @@ impl<'a> Lowering<'a> {
     /// The variables the lowered statements refer to.
     pub fn variables(&self) -> &VariableTable {
         self.program.variables()
+    }
+
+    /// The POUs the lowered statements refer to.
+    pub fn pous(&self) -> &PouTable {
+        self.program.pous()
     }
 }

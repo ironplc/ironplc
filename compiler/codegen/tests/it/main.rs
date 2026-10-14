@@ -40,6 +40,7 @@ mod compile_program_count;
 mod compile_reproducible;
 mod compile_route;
 mod compile_route_lowered;
+mod compile_route_lowered_function;
 mod compile_route_lowered_time;
 mod compile_set_reset_bind;
 mod compile_shift;
