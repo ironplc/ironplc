@@ -1573,8 +1573,9 @@ subscript of 4,294,967,295 traps on `ARRAY[-3..100]`.
 **REQ-LOW-codegen-089** An `Intrinsic` means what the IEC 61131-3 standard
 function means, with these choices where the standard leaves room: the count
 of `SHL` and `SHR` is taken modulo the operation width, `SHR` fills with
-zeros, `EXPT` of an integer base by a negative exponent traps, `ABS` of the
-most negative value of its operation type wraps to that value, and
+zeros, `EXPT` of a signed integer base by a negative exponent traps while
+`EXPT` of unsigned integers reads its exponent as unsigned and never traps,
+`ABS` of the most negative value of its operation type wraps to that value, and
 `LIMIT(MN, IN, MX)` is `MIN(MAX(IN, MN), MX)`, so `MX` when `MN` is greater
 than `MX`, and `MUX` clamps its selector to its inputs, so a selector below
 zero gives the first input and one past the last gives the last. Of reals,

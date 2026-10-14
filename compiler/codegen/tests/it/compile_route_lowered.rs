@@ -622,6 +622,19 @@ fn run_when_integer_raised_to_negative_exponent_then_traps() {
     assert_eq!(fault.trap, Trap::NegativeExponent);
 }
 
+/// REQ-LOW-codegen-089: `EXPT` of unsigned integers reads its exponent as
+/// unsigned, so one past the range of `DINT` wraps the power rather than
+/// trapping.
+#[test]
+fn run_when_unsigned_raised_to_exponent_past_dint_then_wraps() {
+    let snapshot = run_lowered(
+        "PROGRAM main VAR b : UDINT := 3; n : UDINT := 3000000000; r : UDINT; END_VAR
+           r := EXPT(b, n);
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<u64>("r"), 3_840_514_049);
+}
+
 /// A numeric function, and `**`, compile to the same instructions and
 /// constants by both routes.
 #[rstest]
@@ -630,6 +643,8 @@ fn run_when_integer_raised_to_negative_exponent_then_traps() {
 #[case::abs_real("r := ABS(r);")]
 #[case::expt_dint("d := EXPT(d, d);")]
 #[case::expt_real_by_dint("r := EXPT(r, d);")]
+#[case::expt_udint("u := EXPT(u, u);")]
+#[case::pow_ulint("ul := ul ** ul;")]
 #[case::pow_lreal("x := x ** x;")]
 #[case::sqrt_lreal("x := SQRT(x);")]
 #[case::sin_real("r := SIN(r);")]
@@ -639,7 +654,8 @@ fn run_when_integer_raised_to_negative_exponent_then_traps() {
 fn compile_when_numeric_function_lowered_then_same_code_as_ast(#[case] statement: &str) {
     let source = format!(
         "PROGRAM main
-           VAR i : INT; d : DINT; l : LINT; r : REAL; x : LREAL; END_VAR
+           VAR i : INT; d : DINT; l : LINT; r : REAL; x : LREAL; u : UDINT; ul : ULINT;
+           END_VAR
            {statement}
          END_PROGRAM"
     );

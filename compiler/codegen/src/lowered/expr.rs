@@ -292,6 +292,8 @@ pub(super) fn instruction_of(intrinsic: Intrinsic, args: usize) -> Option<Instru
         Intrinsic::AbsF64 => builtin::ABS_F64,
         Intrinsic::ExptI32 => builtin::EXPT_I32,
         Intrinsic::ExptI64 => builtin::EXPT_I64,
+        Intrinsic::ExptU32 => builtin::EXPT_U32,
+        Intrinsic::ExptU64 => builtin::EXPT_U64,
         Intrinsic::ExptF32 => builtin::EXPT_F32,
         Intrinsic::ExptF64 => builtin::EXPT_F64,
         Intrinsic::SqrtF32 => builtin::SQRT_F32,
