@@ -490,6 +490,31 @@ impl TypeEnvironment {
         self.fields.insert((record, field.clone()), field_type);
     }
 
+    /// Records the type of each field of the standard function block
+    /// `block`, every one of which is an elementary type, as the declaration
+    /// of a user-defined block records its fields'.
+    fn record_standard_block_fields(&mut self, block: &TypeName) {
+        let Some(record) = self.id_of(block) else {
+            return;
+        };
+        let Some(SemanticType::FunctionBlock { fields, .. }) = self
+            .get_by_id(record)
+            .map(|attributes| &attributes.representation)
+        else {
+            return;
+        };
+        let field_types: Vec<(Id, TypeId)> = fields
+            .iter()
+            .filter_map(|field| {
+                let name = self.elementary_type_name_for(&field.field_type)?;
+                Some((field.name.clone(), self.id_of(&name)?))
+            })
+            .collect();
+        for (field, field_type) in field_types {
+            self.record_field(record, &field, field_type);
+        }
+    }
+
     /// The id of the declared type of the field `field` of the structure or
     /// function block type `record`, or `None` when `record` has no such
     /// field or its type is not known. A field of an alias of a structure is
@@ -764,7 +789,9 @@ impl TypeEnvironmentBuilder {
             for (name, type_attrs) in
                 crate::intermediates::stdlib_function_block::get_all_stdlib_function_blocks()
             {
-                env.insert_type(&TypeName::from(name), type_attrs);
+                let name = TypeName::from(name);
+                env.insert_type(&name, type_attrs);
+                env.record_standard_block_fields(&name);
             }
         }
         Ok(env)
@@ -1055,6 +1082,24 @@ mod tests {
 
         // Check that the span is marked as builtin
         assert!(ton.span.is_builtin());
+    }
+
+    #[test]
+    fn type_environment_builder_with_stdlib_function_blocks_then_field_types_recorded() {
+        let env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .with_stdlib_function_blocks()
+            .build()
+            .unwrap();
+        let field = |block: &str, field: &str| {
+            env.field_type(env.id_of(&TypeName::from(block))?, &Id::from(field))
+        };
+        let id = |name: &str| env.id_of(&TypeName::from(name));
+        assert_eq!(field("ton", "PT"), id("time"));
+        assert_eq!(field("ton", "Q"), id("bool"));
+        assert_eq!(field("ctu", "CV"), id("int"));
+        assert_eq!(field("ctu_lint", "PV"), id("lint"));
+        assert_eq!(field("ctu", "MISSING"), None);
     }
 
     #[test]

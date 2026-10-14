@@ -193,3 +193,26 @@ fn lower_statement_when_bool_subscript_then_unsupported() {
     );
     assert_eq!(outcome.statements, ["unsupported", "unsupported"]);
 }
+
+/// A field of an instance of a standard function block is a field of the
+/// instance's field, as one of a user-defined block is: `PV` and `CV` are
+/// the third and fifth fields of a `CTU`, and `Q` the third of a `TON`.
+#[test]
+fn lower_statement_when_field_of_standard_block_then_field_of_instance() {
+    let outcome = lower(
+        "PROGRAM main VAR c : CTU; t : TON; x : INT; q : BOOL; END_VAR
+            x := c.CV;
+            q := t.Q;
+            c.PV := 7;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f2 (read i32s v0^.f0.f4)",
+            "assign v0^.f3 (read bool v0^.f1.f2)",
+            "assign v0^.f0.f2 (const i32s 7)",
+        ]
+    );
+}
