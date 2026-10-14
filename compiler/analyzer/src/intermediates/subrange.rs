@@ -86,7 +86,6 @@ pub fn try_from(
                 .validate_bounds(min_value, max_value, node_name)?;
 
             Ok(TypeResolution::Type(TypeAttributes::new(
-                node_name.span(),
                 SemanticType::Subrange {
                     base_type: Box::new(base_type.representation.clone()),
                     min_value,
@@ -317,16 +316,13 @@ mod tests {
         // First create a base subrange type
         env.insert_type(
             &TypeName::from("BASE_RANGE"),
-            TypeAttributes::new(
-                SourceSpan::default(),
-                SemanticType::Subrange {
-                    base_type: Box::new(SemanticType::Int {
-                        size: ByteSized::B16,
-                    }),
-                    min_value: 1,
-                    max_value: 100,
-                },
-            ),
+            TypeAttributes::new(SemanticType::Subrange {
+                base_type: Box::new(SemanticType::Int {
+                    size: ByteSized::B16,
+                }),
+                min_value: 1,
+                max_value: 100,
+            }),
         );
 
         // Create an alias specification: BASE_RANGE
@@ -457,13 +453,10 @@ mod tests {
         // Add a non-numeric type
         env.insert_type(
             &TypeName::from("string"),
-            TypeAttributes::new(
-                SourceSpan::default(),
-                SemanticType::String {
-                    max_len: None,
-                    char_width: CharWidth::Narrow,
-                },
-            ),
+            TypeAttributes::new(SemanticType::String {
+                max_len: None,
+                char_width: CharWidth::Narrow,
+            }),
         );
 
         // Create a subrange specification with non-numeric base type

@@ -345,11 +345,10 @@ mod tests {
     use crate::type_attributes::TypeAttributes;
     use crate::type_environment::TypeEnvironmentBuilder;
     use ironplc_container::CharWidth;
-    use ironplc_dsl::core::SourceSpan;
     use spec_test_macro::spec_test;
 
     fn anonymous(types: &mut TypeEnvironment, representation: SemanticType) -> TypeId {
-        types.insert_anonymous(TypeAttributes::new(SourceSpan::default(), representation))
+        types.insert_anonymous(TypeAttributes::new(representation))
     }
 
     fn environment() -> TypeEnvironment {
@@ -423,12 +422,9 @@ mod tests {
         let color = TypeName::from("Color");
         types.insert_type(
             &color,
-            TypeAttributes::new(
-                SourceSpan::default(),
-                SemanticType::Enumeration {
-                    members: crate::enumeration_members::EnumerationMembers::default(),
-                },
-            ),
+            TypeAttributes::new(SemanticType::Enumeration {
+                members: crate::enumeration_members::EnumerationMembers::default(),
+            }),
         );
         let named = types.id_of(&color).unwrap();
         let array = anonymous(
@@ -452,13 +448,10 @@ mod tests {
         let string = types.id_of(&TypeName::from("STRING")).unwrap();
         let sized = types.insert_sized_string(
             string,
-            TypeAttributes::new(
-                SourceSpan::default(),
-                SemanticType::String {
-                    max_len: Some(20),
-                    char_width: CharWidth::Narrow,
-                },
-            ),
+            TypeAttributes::new(SemanticType::String {
+                max_len: Some(20),
+                char_width: CharWidth::Narrow,
+            }),
         );
 
         assert_eq!(spelling(&types, sized), "STRING");

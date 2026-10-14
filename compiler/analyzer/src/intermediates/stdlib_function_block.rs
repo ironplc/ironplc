@@ -10,7 +10,7 @@
 //! These function blocks are automatically available in the type environment
 //! and do not need to be declared by the user.
 
-use ironplc_dsl::core::{Id, SourceSpan};
+use ironplc_dsl::core::Id;
 
 use crate::semantic_type::{ByteSized, FunctionBlockVarType, SemanticStructField, SemanticType};
 use crate::standard_function_block::{CounterWidth, StandardFunctionBlock};
@@ -74,13 +74,10 @@ fn build_function_block(
         .map(|(name, field_type, var_type)| build_field(name, field_type.clone(), *var_type))
         .collect();
 
-    TypeAttributes::new(
-        SourceSpan::builtin(),
-        SemanticType::FunctionBlock {
-            name: name.to_string(),
-            fields,
-        },
-    )
+    TypeAttributes::new(SemanticType::FunctionBlock {
+        name: name.to_string(),
+        fields,
+    })
     .with_standard_block(block)
 }
 
@@ -520,13 +517,6 @@ mod tests {
     #[test]
     fn is_stdlib_function_block_when_unknown_then_false() {
         assert!(!is_stdlib_function_block(&Id::from("my_custom_fb")));
-    }
-
-    #[test]
-    fn stdlib_function_blocks_have_builtin_span() {
-        for (_, fb) in get_all_stdlib_function_blocks() {
-            assert!(fb.span.is_builtin(), "Expected builtin span for stdlib FB");
-        }
     }
 
     #[spec_test(REQ_CB_analyzer_001)]

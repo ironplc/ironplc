@@ -310,7 +310,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
         node: StructureDeclaration,
     ) -> Result<StructureDeclaration, Diagnostic> {
         // Use the structure processing module to create the structure type
-        let attrs = crate::intermediates::structure::try_from(&node.type_name, &node, self)?;
+        let attrs = crate::intermediates::structure::try_from(&node, self)?;
         self.insert_type(&node.type_name, attrs);
         Ok(node)
     }
@@ -359,12 +359,9 @@ impl Fold<Diagnostic> for TypeEnvironment {
     ) -> Result<ReferenceDeclaration, Diagnostic> {
         let target_type = self.resolve_reference_target(&node.type_name, &node.target)?;
 
-        let attrs = crate::type_attributes::TypeAttributes::new(
-            node.type_name.span(),
-            SemanticType::Reference {
-                target_type: Box::new(target_type),
-            },
-        );
+        let attrs = crate::type_attributes::TypeAttributes::new(SemanticType::Reference {
+            target_type: Box::new(target_type),
+        });
         self.insert_type(&node.type_name, attrs);
         Ok(node)
     }
@@ -428,13 +425,10 @@ impl Fold<Diagnostic> for TypeEnvironment {
             }
         }
 
-        let attrs = crate::type_attributes::TypeAttributes::new(
-            node.name.span(),
-            SemanticType::FunctionBlock {
-                name: node.name.name.to_string(),
-                fields,
-            },
-        );
+        let attrs = crate::type_attributes::TypeAttributes::new(SemanticType::FunctionBlock {
+            name: node.name.name.to_string(),
+            fields,
+        });
         self.insert_type(&node.name, attrs);
 
         Ok(node)
@@ -458,10 +452,8 @@ impl Fold<Diagnostic> for TypeEnvironment {
         // `InterfaceDeclaration` itself always triggers P9999 via
         // `rule_unsupported_extension`, which blocks codegen for the whole
         // project before this representation could matter.
-        let attrs = crate::type_attributes::TypeAttributes::new(
-            node.name.span(),
-            SemanticType::Structure { fields: vec![] },
-        );
+        let attrs =
+            crate::type_attributes::TypeAttributes::new(SemanticType::Structure { fields: vec![] });
         self.insert_type(&TypeName::from_id(&node.name), attrs);
         Ok(node)
     }
@@ -587,6 +579,31 @@ END_TYPE
         assert_eq!(diagnostics[0].code, Problem::TypeDeclNameDuplicated.code());
         assert_eq!(library.elements.len(), 2);
         assert!(env.get(&TypeName::from("LEVEL")).is_some());
+    }
+
+    /// The first declaration of a repeated alias is labeled at its own
+    /// name, not at the declaration of the type it aliases.
+    #[test]
+    fn apply_when_alias_repeated_then_p2007_labels_first_alias() {
+        let program = "
+TYPE
+Base : STRUCT x : INT; END_STRUCT;
+END_TYPE
+TYPE
+Again : Base;
+END_TYPE
+TYPE
+Again : BOOL;
+END_TYPE
+        ";
+        let (result, _env) = parse_and_apply_with_elementary_types(program);
+        let (_, diagnostics) = result.unwrap();
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, Problem::TypeDeclNameDuplicated.code());
+        let first = program.find("Again").unwrap();
+        let second = program.rfind("Again").unwrap();
+        assert_eq!(diagnostics[0].primary.location.start, second);
+        assert_eq!(diagnostics[0].secondary[0].location.start, first);
     }
 
     #[test]
