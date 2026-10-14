@@ -15,6 +15,8 @@ use super::expr::{BinaryOp, CompareOp, Const, Expr, ExprKind, ShortCircuitOp, Un
 use super::place::{Place, Projection};
 use super::scalar::ScalarType;
 use super::stmt::{CaseLabel, Stmt, StmtKind};
+use super::str_expr::{StrExpr, StrExprKind};
+use super::types::Encoding;
 
 impl fmt::Display for Place {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -70,6 +72,23 @@ impl fmt::Display for Expr {
     }
 }
 
+impl fmt::Display for StrExpr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let shape = self.shape();
+        let ty = match shape.encoding {
+            Encoding::Narrow => "string",
+            Encoding::Wide => "wstring",
+        };
+        match self.kind() {
+            StrExprKind::Literal(chars) => {
+                let text: String = chars.iter().collect();
+                write!(f, "(literal {ty}[{}] {text:?})", shape.capacity)
+            }
+            StrExprKind::Read(place) => write!(f, "(read {ty}[{}] {place})", shape.capacity),
+        }
+    }
+}
+
 impl fmt::Display for Stmt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write_stmt(f, self, 0)
@@ -87,6 +106,7 @@ fn write_stmt(f: &mut fmt::Formatter<'_>, stmt: &Stmt, depth: usize) -> fmt::Res
     f.write_str(&indent)?;
     match stmt.kind() {
         StmtKind::Assign { place, value } => write!(f, "assign {place} {value}"),
+        StmtKind::AssignStr { place, value } => write!(f, "assign-str {place} {value}"),
         StmtKind::AssignBits {
             place,
             shift,

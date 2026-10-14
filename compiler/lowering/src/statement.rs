@@ -3,7 +3,7 @@
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{Assignment, StmtKind as AstStmtKind, Variable};
-use ironplc_ir::lowered::{Expr, Stmt};
+use ironplc_ir::lowered::{Expr, Stmt, TypeKind};
 
 use crate::variables::BodyFrame;
 use crate::Lowering;
@@ -55,8 +55,11 @@ impl Lowering<'_> {
         if assignment.deref {
             place = self.program.deref(place, &assignment.target.span())?;
         }
+        if let Some(TypeKind::String(_)) = self.program.types().kind(place.ty()) {
+            return self.string_assignment(frame, place, &assignment.value, assignment.span());
+        }
         let Some(operated) = self.program.types().operation_type(place.ty()) else {
-            // A string or an aggregate is not assigned as one scalar value.
+            // An aggregate is not assigned as one scalar value.
             return Ok(None);
         };
         let Some(mut value) = self.expr(frame, &assignment.value)? else {

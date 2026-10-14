@@ -79,6 +79,9 @@ impl Emission<'_, '_> {
                     |emitter, ctx| emit_expr(emitter, ctx, lowering, value),
                 )
             }
+            StmtKind::AssignStr { place, value } => {
+                super::string::emit_assign_str(emitter, ctx, self.lowering, place, value, span)
+            }
             StmtKind::AssignBits {
                 place,
                 shift,
@@ -533,6 +536,7 @@ fn if_parts(stmt: &Stmt) -> Option<(&Expr, &[Stmt], &[Stmt])> {
         } => Some((cond, then, otherwise)),
         StmtKind::Assign { .. }
         | StmtKind::AssignBits { .. }
+        | StmtKind::AssignStr { .. }
         | StmtKind::Case { .. }
         | StmtKind::For { .. }
         | StmtKind::Loop { .. }
