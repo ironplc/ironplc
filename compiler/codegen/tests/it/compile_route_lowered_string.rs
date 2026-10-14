@@ -1,5 +1,6 @@
-//! Tests of string assignments compiled from the lowered program, with every
-//! statement required to lower.
+//! Tests of string assignments and of the string functions that yield a
+//! number, compiled from the lowered program, with every statement required
+//! to lower.
 
 use rstest::rstest;
 
@@ -40,6 +41,54 @@ fn compile_when_string_assignment_lowered_then_same_code_as_ast(#[case] statemen
     let source = format!(
         "PROGRAM main
            VAR s : STRING; t : STRING; n : STRING[3]; w : WSTRING; x : WSTRING; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    assert_same_code(&source);
+}
+
+/// `LEN` counts the code units of its string, and `FIND` gives the 1-based
+/// position of the first occurrence of its second string in its first, or 0
+/// when there is none or the string it looks for is empty
+/// (REQ-LOW-codegen-089). A `WSTRING` counts 16-bit code units.
+#[test]
+fn run_when_len_or_find_then_values() {
+    let snapshot = run_lowered(
+        "PROGRAM main
+           VAR s : STRING[8] := 'hello'; w : WSTRING := \"π ≈ 3.14\";
+               r1, r2, r3, r4, r5, r6, r7 : DINT; END_VAR
+           r1 := LEN(s);
+           r2 := LEN('');
+           r3 := FIND(s, 'll');
+           r4 := FIND(s, 'xyz');
+           r5 := FIND(s, '');
+           r6 := LEN(w);
+           r7 := FIND(w, \"3.14\");
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<i32>("r1"), 5);
+    assert_eq!(snapshot.read_as::<i32>("r2"), 0);
+    assert_eq!(snapshot.read_as::<i32>("r3"), 3);
+    assert_eq!(snapshot.read_as::<i32>("r4"), 0);
+    assert_eq!(snapshot.read_as::<i32>("r5"), 0);
+    assert_eq!(snapshot.read_as::<i32>("r6"), 8);
+    assert_eq!(snapshot.read_as::<i32>("r7"), 5);
+}
+
+/// A call of `LEN` or `FIND` compiles to the same instructions and constants
+/// by both routes: the string at a variable is passed as the variable's own
+/// slot, and any other string is first stored in a slot of its capacity.
+#[rstest]
+#[case::len_of_variable("n := LEN(s);")]
+#[case::len_of_literal("n := LEN('abc');")]
+#[case::find_of_variables("n := FIND(s, t);")]
+#[case::find_of_literal("n := FIND(s, 'b');")]
+#[case::wide_len("n := LEN(w);")]
+#[case::wide_find("n := FIND(w, \"y\");")]
+fn compile_when_len_or_find_lowered_then_same_code_as_ast(#[case] statement: &str) {
+    let source = format!(
+        "PROGRAM main
+           VAR s : STRING; t : STRING[3]; w : WSTRING; n : DINT; END_VAR
            {statement}
          END_PROGRAM"
     );

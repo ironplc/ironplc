@@ -91,7 +91,7 @@ pub(crate) fn compile_string_compare(
 /// `max_length` and `char_width`. A wide slot also marks the program as
 /// holding a wide string so temp buffers are sized in wide bytes (ADR-0035)
 /// even when no WSTRING variable is declared.
-fn allocate_string_temp(
+pub(crate) fn allocate_string_temp(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     char_width: CharWidth,

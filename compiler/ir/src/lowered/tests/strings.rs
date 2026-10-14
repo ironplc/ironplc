@@ -1,4 +1,5 @@
-//! Tests of string expressions and the `AssignStr` statement.
+//! Tests of string expressions, the `AssignStr` statement and calls that
+//! take strings.
 
 use super::*;
 
@@ -81,4 +82,79 @@ fn literal_when_character_does_not_fit_encoding_then_internal_error() {
     assert!(is_internal_error_naming(narrow("€"), "StrExpr::literal"));
     assert!(wide("€").is_ok());
     assert!(is_internal_error_naming(wide("😀"), "StrExpr::literal"));
+}
+
+/// The string at `var`, as an argument.
+fn str_arg(f: &Fixture, var: VarId) -> Arg {
+    Arg::Str(f.b.read_str(f.place(var), span()).unwrap())
+}
+
+/// REQ-LOW-ir-145: `LEN` and `FIND` take strings of the encoding their
+/// intrinsic names, of any capacity, and yield an `INT`.
+#[test]
+fn call_when_strings_of_intrinsic_encoding_then_int_result() {
+    let mut f = fixture();
+    let (s, _, w) = strings(&mut f);
+    let len = Expr::call(Intrinsic::LenString, vec![str_arg(&f, s)], span()).unwrap();
+    assert_eq!(len.ty(), ScalarType::I32(Signedness::Signed));
+    assert_eq!(
+        len.to_string(),
+        "(call len_string i32s (read string[10] v8))"
+    );
+    let find = Expr::call(
+        Intrinsic::FindString,
+        vec![str_arg(&f, s), Arg::Str(literal("ab", Encoding::Narrow))],
+        span(),
+    )
+    .unwrap();
+    assert_eq!(
+        find.to_string(),
+        "(call find_string i32s (read string[10] v8) (literal string[2] \"ab\"))"
+    );
+    let wide = Expr::call(
+        Intrinsic::FindWString,
+        vec![str_arg(&f, w), str_arg(&f, w)],
+        span(),
+    );
+    assert!(wide.is_ok());
+}
+
+/// REQ-LOW-lowering-050: each string argument is of the encoding its
+/// intrinsic names, and a string parameter takes no value.
+#[test]
+fn call_when_string_of_other_encoding_or_value_then_internal_error() {
+    let mut f = fixture();
+    let (s, _, w) = strings(&mut f);
+    assert!(is_internal_error_naming(
+        Expr::call(Intrinsic::LenString, vec![str_arg(&f, w)], span()),
+        "Expr::call"
+    ));
+    assert!(is_internal_error_naming(
+        Expr::call(
+            Intrinsic::FindString,
+            vec![str_arg(&f, s), str_arg(&f, w)],
+            span()
+        ),
+        "Expr::call"
+    ));
+    assert!(is_internal_error_naming(
+        Expr::call(Intrinsic::LenString, vec![Arg::Value(int(3))], span()),
+        "Expr::call"
+    ));
+}
+
+#[test]
+fn call_when_string_arguments_read_two_programs_then_internal_error() {
+    let mut f = fixture();
+    let mut g = fixture();
+    let (s, _, _) = strings(&mut f);
+    let (other, _, _) = strings(&mut g);
+    assert!(is_internal_error_naming(
+        Expr::call(
+            Intrinsic::FindString,
+            vec![str_arg(&f, s), str_arg(&g, other)],
+            span()
+        ),
+        "Expr::call"
+    ));
 }

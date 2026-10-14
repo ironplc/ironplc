@@ -63,8 +63,11 @@ impl fmt::Display for Expr {
                     Callee::User(pou) => write!(f, "(call {pou} {ty}")?,
                     Callee::Intrinsic(intrinsic) => write!(f, "(call {} {ty}", intrinsic.name())?,
                 }
-                for Arg::Value(value) in args {
-                    write!(f, " {value}")?;
+                for arg in args {
+                    match arg {
+                        Arg::Value(value) => write!(f, " {value}")?,
+                        Arg::Str(value) => write!(f, " {value}")?,
+                    }
                 }
                 f.write_str(")")
             }

@@ -1564,7 +1564,10 @@ zero gives the first input and one past the last gives the last. Of reals,
 when any input is. `BCD_TO_INT` decodes each four bits of its operand's width
 as a digit, four bits above 9 as 0, and `INT_TO_BCD` encodes its operand's
 bits of its width, read as an unsigned integer, modulo the power of ten its
-digits hold, so `INT_TO_BCD` of a `SINT` of -1 is `BYTE#16#55`.
+digits hold, so `INT_TO_BCD` of a `SINT` of -1 is `BYTE#16#55`. `LEN` counts
+the code units of its string, and `FIND` gives the 1-based position, in code
+units, of the first occurrence of its second string in its first, or 0 when
+there is none or the second string is empty.
 
 A real function such as `SIN` or `EXP` is computed with the target's own
 primitive: Rust's `f64` methods on the bytecode VM (`vm/src/builtin.rs`), and

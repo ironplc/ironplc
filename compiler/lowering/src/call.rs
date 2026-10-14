@@ -4,7 +4,8 @@
 //! to; a type conversion and `TRUNC` to a `Convert`; `SIZEOF` to a constant;
 //! a time or date function to arithmetic (`time.rs`); any other function is
 //! the `Intrinsic` for its function at its operand types
-//! (REQ-LOW-lowering-147). The match over the analyzer's `BuiltinFunction`
+//! (REQ-LOW-lowering-147), a string function at the encoding of its strings
+//! (`string.rs`). The match over the analyzer's `BuiltinFunction`
 //! names every function, so one the analyzer adds is not lowered until it
 //! has an arm here.
 
@@ -13,8 +14,8 @@ use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{CompareOp, Expr as AstExpr, Function, Operator};
 use ironplc_ir::lowered::{
-    Arg, BinaryOp, CompareOp as LoweredCompareOp, Expr, Intrinsic, ScalarType, Signedness, TypeId,
-    TypeKind, TypeTable,
+    Arg, BinaryOp, CompareOp as LoweredCompareOp, Expr, Intrinsic, Param, ScalarType, Signedness,
+    TypeId, TypeKind, TypeTable,
 };
 
 use crate::expr::Lowered;
@@ -120,7 +121,9 @@ impl Lowering<'_> {
                 [value] => self.dt_to_tod(frame, expr, value),
                 _ => Ok(None),
             },
-            BuiltinFunction::String(_) => Ok(None),
+            BuiltinFunction::String(function) => {
+                self.string_function_call(frame, expr, function, &args)
+            }
         }
     }
 
@@ -282,29 +285,35 @@ impl Lowering<'_> {
         self.intrinsic_call(frame, expr, intrinsic, args)
     }
 
-    /// The call `expr` of `intrinsic` with `args`.
-    fn intrinsic_call(
+    /// The call `expr` of `intrinsic` with `args`, each lowered as what its
+    /// parameter takes: a value or a string.
+    pub(crate) fn intrinsic_call(
         &mut self,
         frame: &BodyFrame,
         expr: &AstExpr,
         intrinsic: Intrinsic,
         args: &[&AstExpr],
     ) -> Lowered {
-        let Some(args) = self.exprs(frame, args)? else {
-            return Ok(None);
-        };
+        let signature = intrinsic.signature();
+        let mut lowered = Vec::with_capacity(args.len());
+        for (index, arg) in args.iter().enumerate() {
+            let arg = match signature.param(index) {
+                Some(Param::Value(_)) => self.expr(frame, arg)?.map(Arg::Value),
+                Some(Param::Str(_)) => self.str_expr(frame, arg)?.map(Arg::Str),
+                None => None,
+            };
+            let Some(arg) = arg else {
+                return Ok(None);
+            };
+            lowered.push(arg);
+        }
         // An argument of another type than its parameter's is one the
         // analyzer did not convert to it, and is not lowered.
-        let types: Vec<ScalarType> = args.iter().map(Expr::ty).collect();
-        if !intrinsic.signature().takes(&types) {
+        let passed: Vec<Param> = lowered.iter().map(Arg::param).collect();
+        if !signature.takes(&passed) {
             return Ok(None);
         }
-        Expr::call(
-            intrinsic,
-            args.into_iter().map(Arg::Value).collect(),
-            expr.span(),
-        )
-        .map(Some)
+        Expr::call(intrinsic, lowered, expr.span()).map(Some)
     }
 
     /// The function form of an operator, `expr`: the expression the
