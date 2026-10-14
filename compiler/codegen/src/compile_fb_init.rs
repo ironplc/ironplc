@@ -1,31 +1,25 @@
-//! Writes to the fields of a function block instance.
+//! The starting values of a function block instance's members.
 //!
-//! Writing one field is a fixed four-instruction sequence — load the
-//! instance, evaluate the value, store it into the named parameter slot,
-//! drop the instance handle — wrapped in a field lookup that resolves the
-//! field's name to its slot index and operand type.
-//!
-//! It lives here rather than inline in either caller because the sequence
-//! belongs to the function block instance, not to what happens to be
-//! setting the member. Two spellings set one:
+//! Two spellings set a member:
 //!
 //! * an assignment statement (`timer.PT := T#100MS;`), and
 //! * a declaration's member initializer (`timer : TON := (PT := T#100MS);`),
 //!   emitted once as part of the setup block.
 //!
-//! One copy of the sequence is what makes those two observably the same
-//! thing at runtime.
+//! Both store through the [`Place`] of the field (`compile_place.rs`), so one
+//! copy of the store sequence makes the two observably the same thing at
+//! runtime.
 
 use std::collections::HashMap;
 
 use crate::initial_value::{InitialValue, ScalarValue};
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::Expr;
 
 use super::compile::{CompileContext, OpType, DEFAULT_OP_TYPE};
 use super::compile_expr::compile_expr;
 use super::compile_initial_value::{emit_reference, emit_scalar, is_cleared};
+use super::compile_place::Place;
 use crate::emit::Emitter;
 
 /// Resolves the operand type of the field `field_name` of a function block
@@ -45,61 +39,21 @@ pub(crate) fn resolve_fb_field_op_type(
         .unwrap_or(DEFAULT_OP_TYPE)
 }
 
-/// Emits a store of `value` into `field` of the function block instance
-/// named `instance_name`.
-///
-/// Returns `Ok(false)` without emitting anything when `instance_name` is not
-/// a function block instance, so a caller that cannot tell the two apart
-/// (an assignment target may equally be a structure field) can fall through
-/// to its own handling.
-pub(crate) fn compile_fb_field_store(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    instance_name: &Id,
-    field: &Id,
-    value: &Expr,
-) -> Result<bool, Diagnostic> {
-    compile_fb_field_store_with(emitter, ctx, instance_name, field, |emitter, ctx| {
-        compile_expr(emitter, ctx, value)
-    })
-}
-
 /// Emits a store into `field` of the function block instance named
-/// `instance_name` of the value `push` leaves on the stack. `Ok(false)`, and
-/// nothing emitted, when `instance_name` is not a function block instance.
-fn compile_fb_field_store_with(
+/// `instance_name` of the value `push` leaves on the stack, through the
+/// [`Place`] an assignment to the field stores through. Nothing is emitted
+/// when `instance_name` is not a function block instance.
+fn store_member(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     instance_name: &Id,
     field: &Id,
     push: impl FnOnce(&mut Emitter, &mut CompileContext) -> Result<(), Diagnostic>,
-) -> Result<bool, Diagnostic> {
-    let field_name = field.to_string().to_lowercase();
-    let (field_idx, var_index) = match ctx.fb_instances.get(instance_name) {
-        Some(fb_info) => {
-            let field_idx = fb_info
-                .field_indices
-                .get(&field_name)
-                .copied()
-                .ok_or_else(|| {
-                    Diagnostic::not_implemented(Label::span(
-                        field.span(),
-                        format!(
-                            "Unknown field '{field}' on function block '{instance_name}' \
-                             (writing a PROPERTY is not supported yet)"
-                        ),
-                    ))
-                })?;
-            (field_idx, fb_info.var_index)
-        }
-        None => return Ok(false),
-    };
-
-    emitter.emit_fb_load_instance(var_index);
-    push(emitter, ctx)?;
-    emitter.emit_fb_store_param(field_idx);
-    emitter.emit_pop();
-    Ok(true)
+) -> Result<(), Diagnostic> {
+    match Place::instance_field(ctx, instance_name, field)? {
+        Some(place) => place.emit_assign(emitter, ctx, push),
+        None => Ok(()),
+    }
 }
 
 /// Emits the stores that give a function block instance its starting value
@@ -136,12 +90,12 @@ pub(crate) fn emit_fb_instance_member_initializers(
                     Some(op_type) => op_type,
                     None => scalar_op_type(scalar, &field.name)?,
                 };
-                compile_fb_field_store_with(emitter, ctx, instance_name, &field.name, |e, c| {
+                store_member(emitter, ctx, instance_name, &field.name, |e, c| {
                     emit_scalar(e, c, scalar, op_type, &field.name.span())
                 })?;
             }
             InitialValue::Reference(reference) => {
-                compile_fb_field_store_with(emitter, ctx, instance_name, &field.name, |e, c| {
+                store_member(emitter, ctx, instance_name, &field.name, |e, c| {
                     emit_reference(e, c, reference)
                 })?;
             }
@@ -149,7 +103,7 @@ pub(crate) fn emit_fb_instance_member_initializers(
             // instance is initialized, at its own type: the analyzer records
             // any conversion to the member's type.
             InitialValue::Expression(expr) => {
-                compile_fb_field_store_with(emitter, ctx, instance_name, &field.name, |e, c| {
+                store_member(emitter, ctx, instance_name, &field.name, |e, c| {
                     compile_expr(e, c, expr)
                 })?;
             }

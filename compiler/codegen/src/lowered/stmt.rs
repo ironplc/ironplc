@@ -72,8 +72,12 @@ impl Emission<'_, '_> {
         let span = stmt.span();
         match stmt.kind() {
             StmtKind::Assign { place, value } => {
-                emit_expr(emitter, ctx, self.lowering, value)?;
-                self.store(emitter, ctx, place, span)
+                let lowering = self.lowering;
+                super::place::resolve(lowering, ctx, place, span)?.emit_assign_fitting(
+                    emitter,
+                    ctx,
+                    |emitter, ctx| emit_expr(emitter, ctx, lowering, value),
+                )
             }
             StmtKind::AssignBits {
                 place,
