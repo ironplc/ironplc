@@ -20,7 +20,7 @@ struct RemoveConversions;
 impl Fold<()> for RemoveConversions {
     fn fold_expr(&mut self, node: Expr) -> Result<Expr, ()> {
         match node.kind {
-            ExprKind::ImplicitConversion(inner) => self.fold_expr(*inner),
+            ExprKind::ImplicitConversion(conversion) => self.fold_expr(conversion.value),
             _ => node.recurse_fold(self),
         }
     }

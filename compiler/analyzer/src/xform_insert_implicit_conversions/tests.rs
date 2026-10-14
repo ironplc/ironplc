@@ -38,7 +38,9 @@ pub(super) fn describe(types: &TypeEnvironment, expr: &Expr) -> String {
             .map_or("?".to_string(), |name| name.to_string().to_uppercase())
     };
     match &expr.kind {
-        ExprKind::ImplicitConversion(inner) => format!("{}->{}", name(inner), name(expr)),
+        ExprKind::ImplicitConversion(conversion) => {
+            format!("{}->{}", name(&conversion.value), name(expr))
+        }
         _ => name(expr),
     }
 }
@@ -316,8 +318,8 @@ fn apply_when_nested_in_condition_then_conversion_spans_operand() {
     impl Visitor<Infallible> for Conversions {
         type Value = ();
         fn visit_expr(&mut self, node: &Expr) -> Result<(), Infallible> {
-            if let ExprKind::ImplicitConversion(inner) = &node.kind {
-                assert_eq!(node.span, inner.span);
+            if let ExprKind::ImplicitConversion(conversion) = &node.kind {
+                assert_eq!(node.span, conversion.value.span);
                 self.0.push(node.to_string());
             }
             node.recurse_visit(self)

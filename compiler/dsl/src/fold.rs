@@ -367,6 +367,8 @@ pub trait Fold<E> {
     // 3.3.1
     dispatch!(UnaryExpr);
 
+    dispatch!(ImplicitConversion);
+
     dispatch!(Function);
 
     dispatch!(LateBound);

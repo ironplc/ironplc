@@ -181,10 +181,10 @@ pub(crate) fn compile_expr(
         // The analyzer decided the conversion (ADR-0056): the inner value is
         // compiled at its own type, so it widens by its own signedness, and
         // converted to the type the node records.
-        ExprKind::ImplicitConversion(inner) => {
-            let from = self::op_type(ctx, inner)?;
+        ExprKind::ImplicitConversion(conversion) => {
+            let from = self::op_type(ctx, &conversion.value)?;
             let to = self::op_type(ctx, expr)?;
-            compile_expr(emitter, ctx, inner)?;
+            compile_expr(emitter, ctx, &conversion.value)?;
             crate::compile_arith::convert(emitter, from, to)
         }
         ExprKind::Null(_) => {

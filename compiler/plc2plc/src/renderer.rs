@@ -292,7 +292,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         // A conversion is written as its operand, without the operand's own
         // comment: the conversion's comment names the operand's type too.
         let written = match &node.kind {
-            dsl::textual::ExprKind::ImplicitConversion(inner) => inner.as_ref(),
+            dsl::textual::ExprKind::ImplicitConversion(conversion) => &conversion.value,
             _ => node,
         };
         // Parenthesised so the comment on the operand and the comment on the

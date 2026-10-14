@@ -121,11 +121,11 @@ impl Lowering<'_> {
                     AstCompareOp::GtEq => self.compare(frame, CompareOp::Ge, left, right, span),
                 }
             }
-            AstExprKind::ImplicitConversion(inner) => {
+            AstExprKind::ImplicitConversion(conversion) => {
                 let Some((_, to)) = self.operated_type(expr)? else {
                     return Ok(None);
                 };
-                let Some(value) = self.expr(frame, inner)? else {
+                let Some(value) = self.expr(frame, &conversion.value)? else {
                     return Ok(None);
                 };
                 if value.ty() == to {

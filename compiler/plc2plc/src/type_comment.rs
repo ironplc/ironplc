@@ -22,10 +22,10 @@ pub type TypeNamer<'a> = &'a dyn Fn(TypeId) -> String;
 /// The comment written after `expr`.
 pub(crate) fn comment(expr: &Expr, type_name: TypeNamer) -> String {
     match &expr.kind {
-        ExprKind::ImplicitConversion(inner) => format!(
+        ExprKind::ImplicitConversion(conversion) => format!(
             "(* {}{} -> {} *)",
-            prefix(inner),
-            type_text(inner, type_name),
+            prefix(&conversion.value),
+            type_text(&conversion.value, type_name),
             type_text(expr, type_name)
         ),
         _ => format!("(* {}{} *)", prefix(expr), type_text(expr, type_name)),

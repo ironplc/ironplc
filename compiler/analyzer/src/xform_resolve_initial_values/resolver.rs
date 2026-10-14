@@ -507,13 +507,13 @@ impl<'a> Resolver<'a> {
             ExprKind::Expression(inner) => self.expression(inner, place),
             // The conversion is to the field's type, which the value is
             // converted to below anyway.
-            ExprKind::ImplicitConversion(inner)
+            ExprKind::ImplicitConversion(conversion)
                 if matches!(
-                    inner.kind,
+                    conversion.value.kind,
                     ExprKind::Const(_) | ExprKind::EnumeratedValue(_)
                 ) =>
             {
-                self.expression(inner, place)
+                self.expression(&conversion.value, place)
             }
             ExprKind::Null(span)
                 if matches!(place.representation, SemanticType::Reference { .. }) =>
