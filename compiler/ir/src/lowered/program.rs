@@ -16,6 +16,7 @@ use super::invariant::broken;
 use super::loops::{build_for, build_loop, expand_for, ForParts, LoopScope};
 use super::place::Place;
 use super::stmt::{store_narrowing, Stmt};
+use super::str_expr::StrExpr;
 use super::types::{NarrowWidth, TypeEntry, TypeKind, TypeTable};
 use super::variables::{FunctionSignature, Owner, PouTable, VariableTable};
 use crate::execution::DebugName;
@@ -196,6 +197,22 @@ impl ProgramBuilder {
     /// Stores `value` at `place`; see [`Stmt`] for what the value must be.
     pub fn assign(&self, place: Place, value: Expr, span: SourceSpan) -> Result<Stmt, Diagnostic> {
         Stmt::assign(&self.types, place, value, span)
+    }
+
+    /// The string at `place`, a place of a string type.
+    pub fn read_str(&self, place: Place, span: SourceSpan) -> Result<StrExpr, Diagnostic> {
+        StrExpr::read(&self.types, place, span)
+    }
+
+    /// Stores the string `value` at `place`; see [`Stmt`] for what they must
+    /// be.
+    pub fn assign_str(
+        &self,
+        place: Place,
+        value: StrExpr,
+        span: SourceSpan,
+    ) -> Result<Stmt, Diagnostic> {
+        Stmt::assign_str(&self.types, place, value, span)
     }
 
     /// Replaces `bits` bits of the value at `place`, starting at bit `shift`,

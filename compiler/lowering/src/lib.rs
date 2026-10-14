@@ -28,6 +28,7 @@ mod expr;
 mod function;
 mod place;
 mod statement;
+mod string;
 mod time;
 mod types;
 mod variables;
@@ -40,6 +41,8 @@ mod control_tests;
 mod function_tests;
 #[cfg(test)]
 mod place_tests;
+#[cfg(test)]
+mod string_tests;
 #[cfg(test)]
 mod test_support;
 #[cfg(test)]

@@ -699,3 +699,5 @@ mod calls;
 mod control;
 
 mod places;
+
+mod strings;

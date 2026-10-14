@@ -11,7 +11,7 @@ const SOURCE: &str = "
 PROGRAM main
   VAR a : DINT; s : STRING; END_VAR
   a := a + 1;
-  s := 'x';
+  s := CONCAT(s, 'x');
   a := a * 2;
 END_PROGRAM
 ";
