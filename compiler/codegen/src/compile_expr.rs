@@ -135,15 +135,15 @@ pub(crate) fn compile_expr(
                 UnaryOp::Not => emit_not(emitter, ctx, at, &unary.term),
             }
         }
-        ExprKind::LateBound(late_bound) => {
-            if let Some(ref_slot) = ctx.in_out_ref_slot(&late_bound.value) {
-                emit_load_in_out(emitter, ref_slot);
-                return Ok(());
-            }
-            let var_index = ctx.var_index(&late_bound.value)?;
-            emit_load_var(emitter, var_index, at);
-            Ok(())
-        }
+        // The analyzer resolves every late-bound name to a variable or an
+        // enumerated value (`xform_resolve_late_bound_expr_kind`).
+        ExprKind::LateBound(late_bound) => Err(Diagnostic::internal_error_at(Label::span(
+            late_bound.value.span(),
+            format!(
+                "{} is a name the analyzer did not resolve",
+                late_bound.value
+            ),
+        ))),
         ExprKind::Expression(inner) => compile_expr(emitter, ctx, inner),
         ExprKind::Compare(compare) => compile_compare(emitter, ctx, expr, compare),
         ExprKind::EnumeratedValue(enum_val) => {
@@ -892,7 +892,6 @@ fn named_variable_name(kind: &ExprKind) -> Option<&Id> {
         ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(named))) => {
             Some(&named.name)
         }
-        ExprKind::LateBound(late) => Some(&late.value),
         _ => None,
     }
 }

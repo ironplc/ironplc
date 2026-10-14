@@ -8,7 +8,7 @@
 use ironplc_analyzer::NumericFunction;
 use ironplc_dsl::common::{Boolean, ConstantKind};
 use ironplc_dsl::core::{Located, SourceSpan};
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
     CompareOp as AstCompareOp, Expr as AstExpr, ExprKind as AstExprKind, Operator,
     UnaryOp as AstUnaryOp, Variable,
@@ -158,10 +158,16 @@ impl Lowering<'_> {
                 self.read(place, span)
             }
             AstExprKind::Function(func) => self.function_call(frame, expr, func),
-            AstExprKind::MethodCall(_)
-            | AstExprKind::LateBound(_)
-            | AstExprKind::Ref(_)
-            | AstExprKind::Null(_) => Ok(None),
+            // The analyzer resolves every late-bound name to a variable or an
+            // enumerated value (`xform_resolve_late_bound_expr_kind`).
+            AstExprKind::LateBound(late_bound) => Err(Diagnostic::internal_error_at(Label::span(
+                late_bound.value.span(),
+                format!(
+                    "{} is a name the analyzer did not resolve",
+                    late_bound.value
+                ),
+            ))),
+            AstExprKind::MethodCall(_) | AstExprKind::Ref(_) | AstExprKind::Null(_) => Ok(None),
         }
     }
 

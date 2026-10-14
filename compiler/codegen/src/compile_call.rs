@@ -291,7 +291,6 @@ fn compile_reference_arg(
         ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(named))) => {
             Some(&named.name)
         }
-        ExprKind::LateBound(late_bound) => Some(&late_bound.value),
         _ => None,
     };
     // An elementary variable has type info and lives in its own slot; a
