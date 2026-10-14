@@ -2,11 +2,12 @@
 //!
 //! A string lives in the data region. Its value is computed into one of the
 //! VM's temporary buffers (ADR-0052): a literal by `LOAD_CONST_STR`, the
-//! string at a place by `STR_LOAD_VAR`. `STR_STORE_VAR` copies a buffer into
-//! a place, keeping the code units its capacity holds (REQ-LOW-codegen-056).
-//! A string function's instruction takes each string as the data region
-//! offset of a slot that holds it. While both routes exist, a string place is
-//! found where this backend's layout stores it, by name.
+//! string at a place by `STR_LOAD_VAR`, and a string function's result by
+//! its opcode. `STR_STORE_VAR` copies a buffer into a place, keeping the code
+//! units its capacity holds (REQ-LOW-codegen-056). A string function's
+//! instruction takes each string as the data region offset of a slot that
+//! holds it. While both routes exist, a string place is found where this
+//! backend's layout stores it, by name.
 
 use ironplc_container::CharWidth;
 use ironplc_dsl::core::SourceSpan;
@@ -14,7 +15,8 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::{Encoding, Place as LoweredPlace, StrExpr, StrExprKind};
 use ironplc_lowering::Lowering;
 
-use super::storage_name;
+use super::expr::{emit_intrinsic_call, instruction_of};
+use super::{args_can_emit, storage_name};
 use crate::compile::{emit_string_literal_load, CompileContext, StringVarInfo};
 use crate::compile_string::allocate_string_temp;
 use crate::emit::Emitter;
@@ -39,6 +41,9 @@ pub(super) fn str_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, value:
     match value.kind() {
         StrExprKind::Literal(_) => true,
         StrExprKind::Read(place) => string_storage(lowering, ctx, place).is_some(),
+        StrExprKind::Call { callee, args } => {
+            instruction_of(*callee, args.len()).is_some() && args_can_emit(lowering, ctx, args)
+        }
     }
 }
 
@@ -100,6 +105,9 @@ fn emit_str_expr(
             let place =
                 string_storage(lowering, ctx, place).ok_or_else(|| no_storage(value.span()))?;
             emitter.emit_str_load_var(place.data_offset);
+        }
+        StrExprKind::Call { callee, args } => {
+            emit_intrinsic_call(emitter, ctx, lowering, *callee, args, value.span())?
         }
     }
     Ok(())

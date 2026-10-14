@@ -1,7 +1,11 @@
 //! Calls: what a call calls, and the arguments it passes.
 
+use ironplc_dsl::core::SourceSpan;
+use ironplc_dsl::diagnostic::Diagnostic;
+
 use super::expr::Expr;
 use super::ids::{PouId, Stamp};
+use super::invariant::broken;
 use super::scalar::{ScalarType, Signedness};
 use super::str_expr::StrExpr;
 use super::types::Encoding;
@@ -45,7 +49,32 @@ impl Arg {
     }
 }
 
-/// What one parameter of an intrinsic takes (REQ-LOW-lowering-072).
+/// The program whose places `args` read, refusing arguments that read
+/// places of two programs.
+pub(crate) fn program_of(
+    constructor: &str,
+    args: &[Arg],
+    span: &SourceSpan,
+) -> Result<Option<Stamp>, Diagnostic> {
+    let mut program = None;
+    for arg in args {
+        match (program, arg.program()) {
+            (Some(one), Some(other)) if one != other => {
+                return Err(broken(
+                    constructor,
+                    span,
+                    "the arguments belong to two different programs",
+                ))
+            }
+            (None, other) => program = other,
+            (Some(_), _) => {}
+        }
+    }
+    Ok(program)
+}
+
+/// What one parameter of an intrinsic takes (REQ-LOW-lowering-072), or what
+/// the intrinsic yields.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Param {
     /// A value at this operation type.
@@ -76,7 +105,8 @@ pub enum Param {
 /// A string function takes strings of one encoding, so it has a variant for
 /// each. `LEN` counts the code units of its string, and `FIND` gives the
 /// 1-based position of the first code unit of its second string's first
-/// occurrence in its first; both yield an `INT`.
+/// occurrence in its first; both yield an `INT`. The others yield a string
+/// of their encoding, and take each length and position as an `INT`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Intrinsic {
     /// `SHL` of a 32-bit bit string: a `BYTE`, `WORD` or `DWORD`.
@@ -263,41 +293,57 @@ pub enum Intrinsic {
     FindString,
     /// `FIND` of a `WSTRING` in a `WSTRING`.
     FindWString,
+    /// `CONCAT` of two `STRING`s.
+    ConcatString,
+    /// `CONCAT` of two `WSTRING`s.
+    ConcatWString,
+    /// `INSERT` of a `STRING` into a `STRING`, after a position.
+    InsertString,
+    /// `INSERT` of a `WSTRING` into a `WSTRING`, after a position.
+    InsertWString,
+    /// `REPLACE` of a length of a `STRING`, from a position, with a `STRING`.
+    ReplaceString,
+    /// `REPLACE` of a length of a `WSTRING`, from a position, with a `WSTRING`.
+    ReplaceWString,
+    /// `DELETE` of a length of a `STRING`, from a position.
+    DeleteString,
+    /// `DELETE` of a length of a `WSTRING`, from a position.
+    DeleteWString,
+    /// `LEFT`: the first code units of a `STRING`, of a length.
+    LeftString,
+    /// `LEFT`: the first code units of a `WSTRING`, of a length.
+    LeftWString,
+    /// `RIGHT`: the last code units of a `STRING`, of a length.
+    RightString,
+    /// `RIGHT`: the last code units of a `WSTRING`, of a length.
+    RightWString,
+    /// `MID`: a length of a `STRING`, from a position.
+    MidString,
+    /// `MID`: a length of a `WSTRING`, from a position.
+    MidWString,
 }
 
-const U32: ScalarType = ScalarType::I32(Signedness::Unsigned);
-const U64: ScalarType = ScalarType::I64(Signedness::Unsigned);
-const I32: ScalarType = ScalarType::I32(Signedness::Signed);
-const I64: ScalarType = ScalarType::I64(Signedness::Signed);
-const F32: ScalarType = ScalarType::F32;
-const F64: ScalarType = ScalarType::F64;
+const U32: Param = Param::Value(ScalarType::I32(Signedness::Unsigned));
+const U64: Param = Param::Value(ScalarType::I64(Signedness::Unsigned));
+const I32: Param = Param::Value(ScalarType::I32(Signedness::Signed));
+const I64: Param = Param::Value(ScalarType::I64(Signedness::Signed));
+const F32: Param = Param::Value(ScalarType::F32);
+const F64: Param = Param::Value(ScalarType::F64);
+const BOOL: Param = Param::Value(ScalarType::Bool);
+const STRING: Param = Param::Str(Encoding::Narrow);
+const WSTRING: Param = Param::Str(Encoding::Wide);
 
-/// The parameters intrinsics take.
-mod param {
-    use super::{Encoding, Param, ScalarType};
-
-    pub(super) const U32: Param = Param::Value(super::U32);
-    pub(super) const U64: Param = Param::Value(super::U64);
-    pub(super) const I32: Param = Param::Value(super::I32);
-    pub(super) const I64: Param = Param::Value(super::I64);
-    pub(super) const F32: Param = Param::Value(super::F32);
-    pub(super) const F64: Param = Param::Value(super::F64);
-    pub(super) const BOOL: Param = Param::Value(ScalarType::Bool);
-    pub(super) const STRING: Param = Param::Str(Encoding::Narrow);
-    pub(super) const WSTRING: Param = Param::Str(Encoding::Wide);
-}
-
-/// The types of an intrinsic's parameters and of its result.
+/// What an intrinsic's parameters take and what it yields.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Signature {
     params: &'static [Param],
     repeats_last: bool,
-    result: ScalarType,
+    result: Param,
 }
 
 impl Signature {
     /// A call passes one argument of each of `params`, in order.
-    const fn fixed(params: &'static [Param], result: ScalarType) -> Self {
+    const fn fixed(params: &'static [Param], result: Param) -> Self {
         Signature {
             params,
             repeats_last: false,
@@ -307,7 +353,7 @@ impl Signature {
 
     /// A call passes one argument of each of `params`, in order, and then
     /// any number of further arguments of the last one's type.
-    const fn repeating(params: &'static [Param], result: ScalarType) -> Self {
+    const fn repeating(params: &'static [Param], result: Param) -> Self {
         Signature {
             params,
             repeats_last: true,
@@ -315,8 +361,9 @@ impl Signature {
         }
     }
 
-    /// The type of the result.
-    pub fn result(&self) -> ScalarType {
+    /// What the intrinsic yields: a value of its type, or a string of its
+    /// encoding.
+    pub fn result(&self) -> Param {
         self.result
     }
 
@@ -356,7 +403,28 @@ impl std::fmt::Display for Signature {
 }
 
 impl Intrinsic {
-    /// The types of the operation's parameters, in order, and of its result.
+    /// Refuses `args` unless they pass what the parameters take, one argument
+    /// for each, and one or more for a last parameter that repeats
+    /// (REQ-LOW-ir-145).
+    pub(crate) fn check_args(
+        self,
+        constructor: &str,
+        args: &[Arg],
+        span: &SourceSpan,
+    ) -> Result<(), Diagnostic> {
+        let signature = self.signature();
+        let passed: Vec<Param> = args.iter().map(Arg::param).collect();
+        if signature.takes(&passed) {
+            return Ok(());
+        }
+        Err(broken(
+            constructor,
+            span,
+            format!("{} takes {signature}, not {passed:?}", self.name()),
+        ))
+    }
+
+    /// What the operation's parameters take, in order, and what it yields.
     pub fn signature(self) -> Signature {
         match self {
             Intrinsic::ShlU32
@@ -366,14 +434,14 @@ impl Intrinsic {
             | Intrinsic::RolU32
             | Intrinsic::RorU8
             | Intrinsic::RorU16
-            | Intrinsic::RorU32 => Signature::fixed(&[param::U32, param::I32], U32),
+            | Intrinsic::RorU32 => Signature::fixed(&[U32, I32], U32),
             Intrinsic::ShlU64 | Intrinsic::ShrU64 | Intrinsic::RolU64 | Intrinsic::RorU64 => {
-                Signature::fixed(&[param::U64, param::I64], U64)
+                Signature::fixed(&[U64, I64], U64)
             }
-            Intrinsic::AbsI32 => Signature::fixed(&[param::I32], I32),
-            Intrinsic::AbsI64 => Signature::fixed(&[param::I64], I64),
-            Intrinsic::ExptI32 => Signature::fixed(&[param::I32, param::I32], I32),
-            Intrinsic::ExptI64 => Signature::fixed(&[param::I64, param::I64], I64),
+            Intrinsic::AbsI32 => Signature::fixed(&[I32], I32),
+            Intrinsic::AbsI64 => Signature::fixed(&[I64], I64),
+            Intrinsic::ExptI32 => Signature::fixed(&[I32, I32], I32),
+            Intrinsic::ExptI64 => Signature::fixed(&[I64, I64], I64),
             Intrinsic::AbsF32
             | Intrinsic::SqrtF32
             | Intrinsic::LnF32
@@ -385,7 +453,7 @@ impl Intrinsic {
             | Intrinsic::AsinF32
             | Intrinsic::AcosF32
             | Intrinsic::AtanF32
-            | Intrinsic::TruncF32 => Signature::fixed(&[param::F32], F32),
+            | Intrinsic::TruncF32 => Signature::fixed(&[F32], F32),
             Intrinsic::AbsF64
             | Intrinsic::SqrtF64
             | Intrinsic::LnF64
@@ -397,65 +465,71 @@ impl Intrinsic {
             | Intrinsic::AsinF64
             | Intrinsic::AcosF64
             | Intrinsic::AtanF64
-            | Intrinsic::TruncF64 => Signature::fixed(&[param::F64], F64),
+            | Intrinsic::TruncF64 => Signature::fixed(&[F64], F64),
             Intrinsic::ExptF32 | Intrinsic::Atan2F32 | Intrinsic::ModF32 => {
-                Signature::fixed(&[param::F32, param::F32], F32)
+                Signature::fixed(&[F32, F32], F32)
             }
             Intrinsic::ExptF64 | Intrinsic::Atan2F64 | Intrinsic::ModF64 => {
-                Signature::fixed(&[param::F64, param::F64], F64)
+                Signature::fixed(&[F64, F64], F64)
             }
-            Intrinsic::MinI32 | Intrinsic::MaxI32 => {
-                Signature::fixed(&[param::I32, param::I32], I32)
-            }
-            Intrinsic::MinU32 | Intrinsic::MaxU32 => {
-                Signature::fixed(&[param::U32, param::U32], U32)
-            }
-            Intrinsic::MinI64 | Intrinsic::MaxI64 => {
-                Signature::fixed(&[param::I64, param::I64], I64)
-            }
-            Intrinsic::MinU64 | Intrinsic::MaxU64 => {
-                Signature::fixed(&[param::U64, param::U64], U64)
-            }
-            Intrinsic::MinF32 | Intrinsic::MaxF32 => {
-                Signature::fixed(&[param::F32, param::F32], F32)
-            }
-            Intrinsic::MinF64 | Intrinsic::MaxF64 => {
-                Signature::fixed(&[param::F64, param::F64], F64)
-            }
-            Intrinsic::LimitI32 => Signature::fixed(&[param::I32, param::I32, param::I32], I32),
-            Intrinsic::LimitU32 => Signature::fixed(&[param::U32, param::U32, param::U32], U32),
-            Intrinsic::LimitI64 => Signature::fixed(&[param::I64, param::I64, param::I64], I64),
-            Intrinsic::LimitU64 => Signature::fixed(&[param::U64, param::U64, param::U64], U64),
-            Intrinsic::LimitF32 => Signature::fixed(&[param::F32, param::F32, param::F32], F32),
-            Intrinsic::LimitF64 => Signature::fixed(&[param::F64, param::F64, param::F64], F64),
-            Intrinsic::SelI32 => Signature::fixed(&[param::BOOL, param::I32, param::I32], I32),
-            Intrinsic::SelU32 => Signature::fixed(&[param::BOOL, param::U32, param::U32], U32),
-            Intrinsic::SelI64 => Signature::fixed(&[param::BOOL, param::I64, param::I64], I64),
-            Intrinsic::SelU64 => Signature::fixed(&[param::BOOL, param::U64, param::U64], U64),
-            Intrinsic::SelF32 => Signature::fixed(&[param::BOOL, param::F32, param::F32], F32),
-            Intrinsic::SelF64 => Signature::fixed(&[param::BOOL, param::F64, param::F64], F64),
-            Intrinsic::MuxI32 => Signature::repeating(&[param::I32, param::I32, param::I32], I32),
-            Intrinsic::MuxU32 => Signature::repeating(&[param::I32, param::U32, param::U32], U32),
-            Intrinsic::MuxI64 => Signature::repeating(&[param::I32, param::I64, param::I64], I64),
-            Intrinsic::MuxU64 => Signature::repeating(&[param::I32, param::U64, param::U64], U64),
-            Intrinsic::MuxF32 => Signature::repeating(&[param::I32, param::F32, param::F32], F32),
-            Intrinsic::MuxF64 => Signature::repeating(&[param::I32, param::F64, param::F64], F64),
+            Intrinsic::MinI32 | Intrinsic::MaxI32 => Signature::fixed(&[I32, I32], I32),
+            Intrinsic::MinU32 | Intrinsic::MaxU32 => Signature::fixed(&[U32, U32], U32),
+            Intrinsic::MinI64 | Intrinsic::MaxI64 => Signature::fixed(&[I64, I64], I64),
+            Intrinsic::MinU64 | Intrinsic::MaxU64 => Signature::fixed(&[U64, U64], U64),
+            Intrinsic::MinF32 | Intrinsic::MaxF32 => Signature::fixed(&[F32, F32], F32),
+            Intrinsic::MinF64 | Intrinsic::MaxF64 => Signature::fixed(&[F64, F64], F64),
+            Intrinsic::LimitI32 => Signature::fixed(&[I32, I32, I32], I32),
+            Intrinsic::LimitU32 => Signature::fixed(&[U32, U32, U32], U32),
+            Intrinsic::LimitI64 => Signature::fixed(&[I64, I64, I64], I64),
+            Intrinsic::LimitU64 => Signature::fixed(&[U64, U64, U64], U64),
+            Intrinsic::LimitF32 => Signature::fixed(&[F32, F32, F32], F32),
+            Intrinsic::LimitF64 => Signature::fixed(&[F64, F64, F64], F64),
+            Intrinsic::SelI32 => Signature::fixed(&[BOOL, I32, I32], I32),
+            Intrinsic::SelU32 => Signature::fixed(&[BOOL, U32, U32], U32),
+            Intrinsic::SelI64 => Signature::fixed(&[BOOL, I64, I64], I64),
+            Intrinsic::SelU64 => Signature::fixed(&[BOOL, U64, U64], U64),
+            Intrinsic::SelF32 => Signature::fixed(&[BOOL, F32, F32], F32),
+            Intrinsic::SelF64 => Signature::fixed(&[BOOL, F64, F64], F64),
+            Intrinsic::MuxI32 => Signature::repeating(&[I32, I32, I32], I32),
+            Intrinsic::MuxU32 => Signature::repeating(&[I32, U32, U32], U32),
+            Intrinsic::MuxI64 => Signature::repeating(&[I32, I64, I64], I64),
+            Intrinsic::MuxU64 => Signature::repeating(&[I32, U64, U64], U64),
+            Intrinsic::MuxF32 => Signature::repeating(&[I32, F32, F32], F32),
+            Intrinsic::MuxF64 => Signature::repeating(&[I32, F64, F64], F64),
             Intrinsic::BcdToIntU8 | Intrinsic::BcdToIntU16 | Intrinsic::BcdToIntU32 => {
-                Signature::fixed(&[param::U32], I32)
+                Signature::fixed(&[U32], I32)
             }
-            Intrinsic::BcdToIntU64 => Signature::fixed(&[param::U64], I64),
+            Intrinsic::BcdToIntU64 => Signature::fixed(&[U64], I64),
             Intrinsic::IntToBcdI8 | Intrinsic::IntToBcdI16 | Intrinsic::IntToBcdI32 => {
-                Signature::fixed(&[param::I32], U32)
+                Signature::fixed(&[I32], U32)
             }
             Intrinsic::IntToBcdU8 | Intrinsic::IntToBcdU16 | Intrinsic::IntToBcdU32 => {
-                Signature::fixed(&[param::U32], U32)
+                Signature::fixed(&[U32], U32)
             }
-            Intrinsic::IntToBcdI64 => Signature::fixed(&[param::I64], U64),
-            Intrinsic::IntToBcdU64 => Signature::fixed(&[param::U64], U64),
-            Intrinsic::LenString => Signature::fixed(&[param::STRING], I32),
-            Intrinsic::LenWString => Signature::fixed(&[param::WSTRING], I32),
-            Intrinsic::FindString => Signature::fixed(&[param::STRING, param::STRING], I32),
-            Intrinsic::FindWString => Signature::fixed(&[param::WSTRING, param::WSTRING], I32),
+            Intrinsic::IntToBcdI64 => Signature::fixed(&[I64], U64),
+            Intrinsic::IntToBcdU64 => Signature::fixed(&[U64], U64),
+            Intrinsic::LenString => Signature::fixed(&[STRING], I32),
+            Intrinsic::LenWString => Signature::fixed(&[WSTRING], I32),
+            Intrinsic::FindString => Signature::fixed(&[STRING, STRING], I32),
+            Intrinsic::FindWString => Signature::fixed(&[WSTRING, WSTRING], I32),
+            Intrinsic::ConcatString => Signature::fixed(&[STRING, STRING], STRING),
+            Intrinsic::ConcatWString => Signature::fixed(&[WSTRING, WSTRING], WSTRING),
+            Intrinsic::InsertString => Signature::fixed(&[STRING, STRING, I32], STRING),
+            Intrinsic::InsertWString => Signature::fixed(&[WSTRING, WSTRING, I32], WSTRING),
+            Intrinsic::ReplaceString => Signature::fixed(&[STRING, STRING, I32, I32], STRING),
+            Intrinsic::ReplaceWString => Signature::fixed(&[WSTRING, WSTRING, I32, I32], WSTRING),
+            Intrinsic::DeleteString | Intrinsic::MidString => {
+                Signature::fixed(&[STRING, I32, I32], STRING)
+            }
+            Intrinsic::DeleteWString | Intrinsic::MidWString => {
+                Signature::fixed(&[WSTRING, I32, I32], WSTRING)
+            }
+            Intrinsic::LeftString | Intrinsic::RightString => {
+                Signature::fixed(&[STRING, I32], STRING)
+            }
+            Intrinsic::LeftWString | Intrinsic::RightWString => {
+                Signature::fixed(&[WSTRING, I32], WSTRING)
+            }
         }
     }
 
@@ -554,6 +628,20 @@ impl Intrinsic {
             Intrinsic::LenWString => "len_wstring",
             Intrinsic::FindString => "find_string",
             Intrinsic::FindWString => "find_wstring",
+            Intrinsic::ConcatString => "concat_string",
+            Intrinsic::ConcatWString => "concat_wstring",
+            Intrinsic::InsertString => "insert_string",
+            Intrinsic::InsertWString => "insert_wstring",
+            Intrinsic::ReplaceString => "replace_string",
+            Intrinsic::ReplaceWString => "replace_wstring",
+            Intrinsic::DeleteString => "delete_string",
+            Intrinsic::DeleteWString => "delete_wstring",
+            Intrinsic::LeftString => "left_string",
+            Intrinsic::LeftWString => "left_wstring",
+            Intrinsic::RightString => "right_string",
+            Intrinsic::RightWString => "right_wstring",
+            Intrinsic::MidString => "mid_string",
+            Intrinsic::MidWString => "mid_wstring",
         }
     }
 }

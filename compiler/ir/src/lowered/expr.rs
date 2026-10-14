@@ -3,7 +3,7 @@
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
 
-use super::call::{Arg, Callee, Intrinsic, Param};
+use super::call::{program_of, Arg, Callee, Intrinsic, Param};
 use super::ids::{PouId, Stamp, VarId};
 use super::invariant::broken;
 use super::place::Place;
@@ -430,26 +430,25 @@ impl Expr {
         ))
     }
 
-    /// The result of calling `intrinsic` with `args`. There is one argument
-    /// for each of its parameters, of the parameter's type, and one or more
+    /// The value `intrinsic` yields from `args`. There is one argument for
+    /// each of its parameters, of what the parameter takes, and one or more
     /// for a last parameter that repeats (REQ-LOW-ir-145). The arguments read
-    /// places of one program.
+    /// places of one program. An intrinsic that yields a string is a
+    /// [`StrExpr`](super::StrExpr) call.
     pub fn call(
         intrinsic: Intrinsic,
         args: Vec<Arg>,
         span: SourceSpan,
     ) -> Result<Self, Diagnostic> {
         const CONSTRUCTOR: &str = "Expr::call";
-        let signature = intrinsic.signature();
-        let passed = passed(&args);
-        if !signature.takes(&passed) {
+        let Param::Value(result) = intrinsic.signature().result() else {
             return Err(broken(
                 CONSTRUCTOR,
                 &span,
-                format!("{} takes {signature}, not {passed:?}", intrinsic.name()),
+                format!("{} yields a string, not a value", intrinsic.name()),
             ));
-        }
-        let result = signature.result();
+        };
+        intrinsic.check_args(CONSTRUCTOR, &args, &span)?;
         Self::of_call(
             CONSTRUCTOR,
             Callee::Intrinsic(intrinsic),
@@ -497,7 +496,7 @@ impl Expr {
                 format!("{pou} has a parameter or result that is not a scalar"),
             ));
         };
-        let passed = passed(&args);
+        let passed: Vec<Param> = args.iter().map(Arg::param).collect();
         if passed != params {
             return Err(broken(
                 CONSTRUCTOR,
@@ -526,20 +525,7 @@ impl Expr {
         ty: ScalarType,
         span: SourceSpan,
     ) -> Result<Self, Diagnostic> {
-        let mut program = None;
-        for arg in &args {
-            match (program, arg.program()) {
-                (Some(one), Some(other)) if one != other => {
-                    return Err(broken(
-                        constructor,
-                        &span,
-                        "the arguments belong to two different programs",
-                    ))
-                }
-                (None, other) => program = other,
-                (Some(_), _) => {}
-            }
-        }
+        program_of(constructor, &args, &span)?;
         Ok(Self::new(ExprKind::Call { callee, args }, ty, span))
     }
 
@@ -596,9 +582,4 @@ impl Expr {
     pub fn span(&self) -> &SourceSpan {
         &self.span
     }
-}
-
-/// What each of `args` passes.
-fn passed(args: &[Arg]) -> Vec<Param> {
-    args.iter().map(Arg::param).collect()
 }
