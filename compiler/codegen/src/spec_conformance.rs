@@ -469,24 +469,33 @@ END_PROGRAM
     assert_eq!(read_i32(&container, &bufs, "result"), 42);
 }
 
-/// REQ-EN-codegen-051: Struct field enum type gets correct op_type via resolve_field_op_type.
+/// REQ-EN-codegen-051: A struct field of enumeration type holds every ordinal,
+/// as a DINT variable does.
 #[spec_test(REQ_EN_codegen_051)]
-fn enum_spec_req_en_051_struct_field_enum_type_resolves() {
-    // If the field type didn't resolve correctly, the struct wouldn't compile.
-    let source = "
-TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
+fn enum_spec_req_en_051_struct_field_enum_holds_every_ordinal() {
+    // The last member's ordinal, 129, does not fit a signed byte.
+    let members: Vec<String> = (0..130).map(|i| format!("V{i}")).collect();
+    let source = format!(
+        "
+TYPE E : ({}); END_TYPE
 TYPE MyStruct :
   STRUCT
-    c : COLOR;
+    c : E;
   END_STRUCT;
 END_TYPE
 PROGRAM main
   VAR
     s : MyStruct;
+    is_last : DINT;
   END_VAR
+  s.c := V129;
+  IF s.c = V129 THEN is_last := 1; ELSE is_last := 0; END_IF;
 END_PROGRAM
-";
-    let _container = compile_only(source);
+",
+        members.join(", ")
+    );
+    let (container, bufs) = compile_and_run(&source);
+    assert_eq!(read_i32(&container, &bufs, "is_last"), 1);
 }
 
 // ---------------------------------------------------------------------------

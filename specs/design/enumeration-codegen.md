@@ -83,7 +83,7 @@ codegen stores its ordinal.
 
 **REQ-EN-codegen-050** An enumerated value in a struct initializer is stored as its ordinal: the analyzer completes the variable's initializer with the member every enumeration field starts at (see [Initial Values](initial-values.md)), and codegen emits `LOAD_CONST_I32(ordinal)`, which is then stored into the struct field's data region slot.
 
-**REQ-EN-codegen-051** Structure fields of enumeration type already receive the correct `op_type` via `resolve_field_op_type`, which delegates `SemanticType::Enumeration` to its underlying type (`compiler/codegen/src/compile_struct.rs:99`).
+**REQ-EN-codegen-051** A structure field of enumeration type is stored and operated on as a DINT, as a variable of the type is (REQ-EN-codegen-003), so it holds every ordinal its enumeration declares.
 
 ## 7. Debug Section: Enum Definition Table (Tag 9)
 
