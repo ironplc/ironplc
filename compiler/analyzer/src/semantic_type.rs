@@ -38,22 +38,13 @@ pub enum ByteSized {
 }
 
 impl ByteSized {
-    /// Converts the ByteSized variant to its corresponding bit width
-    pub fn into(&self) -> u8 {
+    /// The width in bits.
+    pub fn bits(&self) -> u8 {
         match self {
             ByteSized::B8 => 8,
             ByteSized::B16 => 16,
             ByteSized::B32 => 32,
             ByteSized::B64 => 64,
-        }
-    }
-
-    pub fn as_bytes(&self) -> u8 {
-        match self {
-            ByteSized::B8 => 1,
-            ByteSized::B16 => 2,
-            ByteSized::B32 => 4,
-            ByteSized::B64 => 8,
         }
     }
 }
@@ -279,7 +270,7 @@ impl SemanticType {
             | SemanticType::Time { size }
             | SemanticType::Date { size }
             | SemanticType::TimeOfDay { size }
-            | SemanticType::DateAndTime { size } => Some(size.into()),
+            | SemanticType::DateAndTime { size } => Some(size.bits()),
             SemanticType::Bool
             | SemanticType::String { .. }
             | SemanticType::Enumeration { .. }
@@ -333,33 +324,20 @@ impl SemanticType {
         use ironplc_dsl::diagnostic::{Diagnostic, Label};
         use ironplc_problems::Problem;
 
-        let (type_min, type_max) = match self {
-            SemanticType::Int { size } => match size {
-                ByteSized::B8 => (i8::MIN as i128, i8::MAX as i128),
-                ByteSized::B16 => (i16::MIN as i128, i16::MAX as i128),
-                ByteSized::B32 => (i32::MIN as i128, i32::MAX as i128),
-                ByteSized::B64 => (i64::MIN as i128, i64::MAX as i128),
-            },
-            SemanticType::UInt { size } => match size {
-                ByteSized::B8 => (0, u8::MAX as i128),
-                ByteSized::B16 => (0, u16::MAX as i128),
-                ByteSized::B32 => (0, u32::MAX as i128),
-                ByteSized::B64 => (0, u64::MAX as i128),
-            },
-            SemanticType::Subrange {
-                min_value: base_min,
-                max_value: base_max,
-                ..
-            } => {
-                // For nested subranges, use the parent subrange bounds
-                (*base_min, *base_max)
-            }
-            _ => {
-                return Err(Diagnostic::problem(
-                    Problem::SubrangeBaseTypeNotNumeric,
-                    Label::span(type_name.span(), "Subrange base type"),
-                ));
-            }
+        // A nested subrange is bounded by its parent's bounds. A bit string
+        // has a range of values too, but is not numeric, so it is no
+        // subrange's base.
+        let range = match self {
+            SemanticType::Int { .. }
+            | SemanticType::UInt { .. }
+            | SemanticType::Subrange { .. } => crate::value_range::of(self),
+            _ => None,
+        };
+        let Some((type_min, type_max)) = range else {
+            return Err(Diagnostic::problem(
+                Problem::SubrangeBaseTypeNotNumeric,
+                Label::span(type_name.span(), "Subrange base type"),
+            ));
         };
 
         if min_value < type_min || max_value > type_max {

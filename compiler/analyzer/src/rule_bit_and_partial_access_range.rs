@@ -217,7 +217,7 @@ impl RuleBitAndPartialAccessRange<'_> {
 fn bit_width(accessed_type: &SemanticType) -> Option<u128> {
     match accessed_type {
         SemanticType::Bytes { size } | SemanticType::Int { size } | SemanticType::UInt { size } => {
-            Some(size.as_bytes() as u128 * 8)
+            Some(u128::from(size.bits()))
         }
         SemanticType::Subrange { base_type, .. } => bit_width(base_type),
         _ => None,

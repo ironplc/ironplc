@@ -328,7 +328,7 @@ pub(crate) fn var_type_info_for_field(field_type: &SemanticType) -> Option<VarTy
         | SemanticType::Time { size }
         | SemanticType::Date { size }
         | SemanticType::TimeOfDay { size }
-        | SemanticType::DateAndTime { size } => size.into(),
+        | SemanticType::DateAndTime { size } => size.bits(),
         SemanticType::Enumeration {
             underlying_type, ..
         } => {
