@@ -105,8 +105,9 @@ impl Lowering<'_> {
                 [value] => self.sizeof(expr, value),
                 _ => Ok(None),
             },
-            BuiltinFunction::Time { function, long } => {
-                self.time_function(frame, expr, function, long, &args)
+            // A typed time function computes at the width of its result.
+            BuiltinFunction::Time { function, .. } => {
+                self.time_function(frame, expr, function, &args)
             }
             BuiltinFunction::DtToDate => match args.as_slice() {
                 [value] => self.dt_to_date(frame, expr, value),
@@ -316,14 +317,20 @@ impl Lowering<'_> {
         let span = expr.span();
         let folded = match form {
             FormOf::Arithmetic(op) => {
-                // A typed overload on times and dates (`ADD_TIME`) follows
-                // rules of its own.
-                if !self.is_arithmetic(expr)? {
-                    return Ok(None);
-                }
                 let Some(op) = arithmetic_op(op) else {
                     return Ok(None);
                 };
+                if self.is_temporal(expr)? {
+                    // The analyzer wrote a fold of three or more times as
+                    // the two-input calls it folds to.
+                    let [in1, in2] = args else {
+                        return Ok(None);
+                    };
+                    return self.time_arithmetic(frame, expr, op, in1, in2);
+                }
+                if !self.is_arithmetic(expr)? {
+                    return Ok(None);
+                }
                 self.fold(frame, op, args, span)?
             }
             FormOf::Compare(op) => match logical_ops(op) {

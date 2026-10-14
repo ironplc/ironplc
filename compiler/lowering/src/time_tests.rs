@@ -1,4 +1,4 @@
-//! Tests of lowering the typed time and date functions.
+//! Tests of lowering arithmetic on times and dates.
 //!
 //! Each test that checks a requirement of `specs/design/lowered-program.md`
 //! names it.
@@ -42,6 +42,61 @@ fn lower_statement_when_typed_time_function_then_arithmetic_of_its_units() {
              (div i64s (read i64s v0^.f7) (const i64s 1000))))",
         ]
     );
+}
+
+/// REQ-LOW-lowering-166: an operator on times and dates, and its function
+/// form, lower to the expression of the typed function they resolve to. A
+/// fold of three times is the typed function folded from the left.
+#[test]
+fn lower_statement_when_operator_on_times_then_same_as_typed_function() {
+    let forms = [
+        ["t := ADD_TIME(t, t2);", "t := t + t2;", "t := ADD(t, t2);"],
+        ["c := SUB_TOD_TIME(c, t);", "c := c - t;", "c := SUB(c, t);"],
+        [
+            "t := SUB_TOD_TOD(c, c2);",
+            "t := c - c2;",
+            "t := SUB(c, c2);",
+        ],
+        ["s := ADD_DT_TIME(s, t);", "s := s + t;", "s := ADD(s, t);"],
+        [
+            "t := SUB_DATE_DATE(d, d2);",
+            "t := d - d2;",
+            "t := SUB(d, d2);",
+        ],
+        ["t := MUL_TIME(t, r);", "t := t * r;", "t := MUL(t, r);"],
+        ["t := DIV_TIME(t, 2);", "t := t / 2;", "t := DIV(t, 2);"],
+        [
+            "lt := ADD_LTIME(lt, t);",
+            "lt := lt + t;",
+            "lt := ADD(lt, t);",
+        ],
+        [
+            "lt := MUL_LTIME(lt, i);",
+            "lt := lt * i;",
+            "lt := MUL(lt, i);",
+        ],
+        [
+            "t := ADD_TIME(ADD_TIME(t, t2), t);",
+            "t := t + t2 + t;",
+            "t := ADD(t, t2, t);",
+        ],
+    ];
+    for [typed, operator, form] in forms {
+        let outcome = lower(
+            &format!(
+                "PROGRAM main VAR t : TIME; t2 : TIME; c : TOD; c2 : TOD; s : DT;
+                     d : DATE; d2 : DATE; lt : LTIME; r : REAL; i : DINT; END_VAR
+                    {typed}
+                    {operator}
+                    {form}
+                 END_PROGRAM"
+            ),
+            "main",
+        );
+        assert_ne!(outcome.statements[0], "unsupported", "{typed}");
+        assert_eq!(outcome.statements[0], outcome.statements[1], "{operator}");
+        assert_eq!(outcome.statements[0], outcome.statements[2], "{form}");
+    }
 }
 
 /// `MUL_TIME` and `DIV_TIME` scale a duration by an integer of its width

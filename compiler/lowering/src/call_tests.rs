@@ -168,19 +168,6 @@ fn lower_statement_when_operator_function_form_then_same_as_operator() {
     }
 }
 
-/// A typed overload on times, such as `ADD` of two `TIME`s, is not lowered
-/// yet, as `t + t` is not.
-#[test]
-fn lower_statement_when_operator_form_on_times_then_unsupported() {
-    let outcome = lower(
-        "PROGRAM main VAR t : TIME; END_VAR
-            t := ADD(t, t);
-         END_PROGRAM",
-        "main",
-    );
-    assert_eq!(outcome.statements, ["unsupported"]);
-}
-
 /// REQ-LOW-lowering-147: `ABS` and `EXPT` are the intrinsic for their
 /// function at the signed integer or real type they compute at, as are the
 /// real functions of two inputs. The exponent of a real is converted to it.
