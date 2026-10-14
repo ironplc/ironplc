@@ -1024,6 +1024,9 @@ yields a string has the sum of the capacities of its string arguments: room
 for every code unit `CONCAT`, `INSERT` and `REPLACE` join, and for every one
 `LEFT`, `RIGHT`, `MID` and `DELETE` can keep of their one string.
 
+**REQ-LOW-lowering-168** The result of a conversion to a string has the
+default capacity.
+
 The bytecode backend cannot meet REQ-LOW-codegen-055 yet, and lowering cannot
 fix that. The VM's pool of temporary buffers is sized once, by two container
 header fields, `num_temp_bufs` and `max_temp_buf_bytes`
@@ -1381,6 +1384,11 @@ structure or function block type is a `Copy`, and an argument for a
 selects among `Intrinsic` variants during lowering; a backend receives no
 policy options.
 
+An operation with a policy has one variant for each set of operand types,
+which carries the alternative lowering selected: `StringToI32(ParsePolicy)`
+reads a `DINT` as the `ParsePolicy` it names says, and a backend's match on it
+names every alternative.
+
 **REQ-LOW-codegen-074** The bytecode backend maps `Intrinsic` to a `func_id`
 with a match that has no wildcard arm, so adding a variant fails to compile
 until the backend handles it.
@@ -1575,7 +1583,11 @@ units, of the first occurrence of its second string in its first, or 0 when
 there is none or the second string is empty. Of the other string functions,
 a negative length counts as 0 and a length past the end of the string stops
 at its end; a position of `MID`, `DELETE` or `REPLACE` below 1 counts as 1,
-one of `INSERT` below 0 as 0, and a position past the end as the end.
+one of `INSERT` below 0 as 0, and a position past the end as the end. A
+conversion from a `STRING` reads a number as the policies its variant names
+say, and the number is one its target type holds; a conversion to a `STRING`
+writes an integer's decimal digits, after a `-` when it is negative, and a
+`REAL` as the shortest decimal that reads back as it, without an exponent.
 
 A real function such as `SIN` or `EXP` is computed with the target's own
 primitive: Rust's `f64` methods on the bytecode VM (`vm/src/builtin.rs`), and
@@ -1780,6 +1792,8 @@ implements it.
 | Enumerated value | `Const` |
 | `MOVE(x)`, parenthesised expression | The operand |
 | Comparison of strings | `Call` of a string comparison `Intrinsic` |
+| Conversion from a `STRING`, such as `STRING_TO_DINT(s)` | `Call` of the `Intrinsic` that reads a number of the call's type, a bit string as the unsigned integer of its width, carrying the parse policy (REQ-LOW-lowering-073) |
+| Conversion to a `STRING`, such as `DINT_TO_STRING(n)` | A `StrExpr` `Call` of the `Intrinsic` that writes a number of its operation type, of the default capacity (REQ-LOW-lowering-168) |
 | Standard string function, such as `LEN(s)` or `CONCAT(s, t)` | `Call` of its `Intrinsic` for the encoding of its strings: an `Expr` for `LEN` and `FIND`, and a `StrExpr` with room for every code unit of its strings for one that yields a string (REQ-LOW-lowering-167) |
 | Named argument | Positional `Arg` |
 | `SIZEOF(x)` | A `Const`: the bytes of `x`'s storage width, or the element bytes times the element count for an array |

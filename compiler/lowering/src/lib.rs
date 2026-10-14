@@ -61,7 +61,7 @@ use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::StmtKind;
 use ironplc_ir::lowered::{
-    LoopScope, PouId, PouTable, ProgramBuilder, Stmt, TypeTable, VarId, VariableTable,
+    LoopScope, ParsePolicy, PouId, PouTable, ProgramBuilder, Stmt, TypeTable, VarId, VariableTable,
 };
 
 /// The body a statement belongs to.
@@ -89,6 +89,9 @@ pub enum StatementLowering {
 /// that every statement of one compilation shares one set of ids.
 pub struct Lowering<'a> {
     analysis: &'a CleanAnalysis<'a>,
+    /// How a `STRING_TO_*` conversion reads its string: the behaviour
+    /// policy the compiler's options select (REQ-LOW-lowering-073).
+    parse: ParsePolicy,
     /// The lowered program's tables, which every node lowering builds
     /// refers into.
     program: ProgramBuilder,
@@ -105,10 +108,12 @@ pub struct Lowering<'a> {
 }
 
 impl<'a> Lowering<'a> {
-    /// Starts lowering the library `analysis` holds.
-    pub fn new(analysis: &'a CleanAnalysis<'a>) -> Self {
+    /// Starts lowering the library `analysis` holds, reading a string as a
+    /// number as `parse` says.
+    pub fn new(analysis: &'a CleanAnalysis<'a>, parse: ParsePolicy) -> Self {
         Self {
             analysis,
+            parse,
             program: ProgramBuilder::new(),
             type_ids: HashMap::new(),
             declared: HashMap::new(),

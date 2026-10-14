@@ -10,9 +10,10 @@
 
 use std::fmt;
 
-use super::call::{Arg, Callee};
+use super::call::{Arg, Callee, Intrinsic};
 use super::expr::{BinaryOp, CompareOp, Const, Expr, ExprKind, ShortCircuitOp, UnaryOp};
 use super::place::{Place, Projection};
+use super::policy::{NonNumeric, ParseFailure, ParsePolicy};
 use super::scalar::ScalarType;
 use super::stmt::{CaseLabel, Stmt, StmtKind};
 use super::str_expr::{StrExpr, StrExprKind};
@@ -61,7 +62,7 @@ impl fmt::Display for Expr {
             ExprKind::Call { callee, args } => {
                 match callee {
                     Callee::User(pou) => write!(f, "(call {pou} {ty}")?,
-                    Callee::Intrinsic(intrinsic) => write!(f, "(call {} {ty}", intrinsic.name())?,
+                    Callee::Intrinsic(intrinsic) => write!(f, "(call {intrinsic} {ty}")?,
                 }
                 write_args(f, args)?;
                 f.write_str(")")
@@ -84,11 +85,46 @@ impl fmt::Display for StrExpr {
             }
             StrExprKind::Read(place) => write!(f, "(read {ty}[{}] {place})", shape.capacity),
             StrExprKind::Call { callee, args } => {
-                write!(f, "(call {} {ty}[{}]", callee.name(), shape.capacity)?;
+                write!(f, "(call {callee} {ty}[{}]", shape.capacity)?;
                 write_args(f, args)?;
                 f.write_str(")")
             }
         }
+    }
+}
+
+impl fmt::Display for Intrinsic {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.name())?;
+        if let Intrinsic::StringToU8(policy)
+        | Intrinsic::StringToI8(policy)
+        | Intrinsic::StringToU16(policy)
+        | Intrinsic::StringToI16(policy)
+        | Intrinsic::StringToU32(policy)
+        | Intrinsic::StringToI32(policy)
+        | Intrinsic::StringToU64(policy)
+        | Intrinsic::StringToI64(policy)
+        | Intrinsic::StringToF32(policy)
+        | Intrinsic::StringToF64(policy) = self
+        {
+            write!(f, "[{policy}]")?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for ParsePolicy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let non_numeric = match self.non_numeric {
+            NonNumeric::Reject => "reject",
+            NonNumeric::IgnoreTrailing => "ignore-trailing",
+            NonNumeric::IgnoreSurrounding => "ignore-surrounding",
+        };
+        let failure = match self.failure {
+            ParseFailure::Trap => "trap",
+            ParseFailure::Zero => "zero",
+        };
+        write!(f, "{non_numeric},{failure}")
     }
 }
 

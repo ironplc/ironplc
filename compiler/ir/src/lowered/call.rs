@@ -6,6 +6,7 @@ use ironplc_dsl::diagnostic::Diagnostic;
 use super::expr::Expr;
 use super::ids::{PouId, Stamp};
 use super::invariant::broken;
+use super::policy::ParsePolicy;
 use super::scalar::{ScalarType, Signedness};
 use super::str_expr::StrExpr;
 use super::types::Encoding;
@@ -107,6 +108,12 @@ pub enum Param {
 /// 1-based position of the first code unit of its second string's first
 /// occurrence in its first; both yield an `INT`. The others yield a string
 /// of their encoding, and take each length and position as an `INT`.
+///
+/// A conversion from a `STRING` reads a number of its target type, as the
+/// [`ParsePolicy`] it names says, and has a variant for each target width
+/// and signedness; a bit string converts as the unsigned integer of its
+/// width. A conversion to a `STRING` writes an integer of at most 32 bits or
+/// a `REAL`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Intrinsic {
     /// `SHL` of a 32-bit bit string: a `BYTE`, `WORD` or `DWORD`.
@@ -321,6 +328,33 @@ pub enum Intrinsic {
     MidString,
     /// `MID`: a length of a `WSTRING`, from a position.
     MidWString,
+    /// `STRING_TO_USINT` and `STRING_TO_BYTE`.
+    StringToU8(ParsePolicy),
+    /// `STRING_TO_SINT`.
+    StringToI8(ParsePolicy),
+    /// `STRING_TO_UINT` and `STRING_TO_WORD`.
+    StringToU16(ParsePolicy),
+    /// `STRING_TO_INT`.
+    StringToI16(ParsePolicy),
+    /// `STRING_TO_UDINT` and `STRING_TO_DWORD`.
+    StringToU32(ParsePolicy),
+    /// `STRING_TO_DINT`.
+    StringToI32(ParsePolicy),
+    /// `STRING_TO_ULINT` and `STRING_TO_LWORD`.
+    StringToU64(ParsePolicy),
+    /// `STRING_TO_LINT`.
+    StringToI64(ParsePolicy),
+    /// `STRING_TO_REAL`.
+    StringToF32(ParsePolicy),
+    /// `STRING_TO_LREAL`.
+    StringToF64(ParsePolicy),
+    /// The conversion of a `SINT`, `INT` or `DINT` to a `STRING`.
+    I32ToString,
+    /// The conversion of a `USINT`, `UINT`, `UDINT`, `BYTE`, `WORD` or
+    /// `DWORD` to a `STRING`.
+    U32ToString,
+    /// `REAL_TO_STRING`.
+    F32ToString,
 }
 
 const U32: Param = Param::Value(ScalarType::I32(Signedness::Unsigned));
@@ -530,6 +564,19 @@ impl Intrinsic {
             Intrinsic::LeftWString | Intrinsic::RightWString => {
                 Signature::fixed(&[WSTRING, I32], WSTRING)
             }
+            Intrinsic::StringToU8(_) | Intrinsic::StringToU16(_) | Intrinsic::StringToU32(_) => {
+                Signature::fixed(&[STRING], U32)
+            }
+            Intrinsic::StringToI8(_) | Intrinsic::StringToI16(_) | Intrinsic::StringToI32(_) => {
+                Signature::fixed(&[STRING], I32)
+            }
+            Intrinsic::StringToU64(_) => Signature::fixed(&[STRING], U64),
+            Intrinsic::StringToI64(_) => Signature::fixed(&[STRING], I64),
+            Intrinsic::StringToF32(_) => Signature::fixed(&[STRING], F32),
+            Intrinsic::StringToF64(_) => Signature::fixed(&[STRING], F64),
+            Intrinsic::I32ToString => Signature::fixed(&[I32], STRING),
+            Intrinsic::U32ToString => Signature::fixed(&[U32], STRING),
+            Intrinsic::F32ToString => Signature::fixed(&[F32], STRING),
         }
     }
 
@@ -642,6 +689,19 @@ impl Intrinsic {
             Intrinsic::RightWString => "right_wstring",
             Intrinsic::MidString => "mid_string",
             Intrinsic::MidWString => "mid_wstring",
+            Intrinsic::StringToU8(_) => "string_to_u8",
+            Intrinsic::StringToI8(_) => "string_to_i8",
+            Intrinsic::StringToU16(_) => "string_to_u16",
+            Intrinsic::StringToI16(_) => "string_to_i16",
+            Intrinsic::StringToU32(_) => "string_to_u32",
+            Intrinsic::StringToI32(_) => "string_to_i32",
+            Intrinsic::StringToU64(_) => "string_to_u64",
+            Intrinsic::StringToI64(_) => "string_to_i64",
+            Intrinsic::StringToF32(_) => "string_to_f32",
+            Intrinsic::StringToF64(_) => "string_to_f64",
+            Intrinsic::I32ToString => "i32_to_string",
+            Intrinsic::U32ToString => "u32_to_string",
+            Intrinsic::F32ToString => "f32_to_string",
         }
     }
 }

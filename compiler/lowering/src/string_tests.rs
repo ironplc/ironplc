@@ -104,19 +104,46 @@ fn lower_statement_when_string_function_yields_string_then_call_of_capacity() {
     );
 }
 
-/// A string conversion and a comparison of strings are not lowered yet.
+/// REQ-LOW-lowering-073, REQ-LOW-lowering-168: a conversion from a `STRING`
+/// reads a number of the call's type, a bit string as the unsigned integer of
+/// its width, as the program's parse policy says. A conversion to a
+/// `STRING` writes a number of its operation type into a string of the
+/// default capacity.
 #[test]
-fn lower_statement_when_string_conversion_or_comparison_then_unsupported() {
+fn lower_statement_when_string_conversion_then_intrinsic_of_number_type() {
     let outcome = lower(
-        "PROGRAM main VAR s : STRING; x : BOOL; n : DINT; END_VAR
-            s := DINT_TO_STRING(n);
-            x := s = 'abc';
+        "PROGRAM main VAR s : STRING; n : DINT; u : UDINT; w : WORD; r : LREAL; i : INT; END_VAR
             n := STRING_TO_DINT(s);
+            w := STRING_TO_WORD('7');
+            r := STRING_TO_LREAL(s);
+            s := DINT_TO_STRING(n);
+            s := UDINT_TO_STRING(u);
+            s := CONCAT(INT_TO_STRING(i), 'x');
          END_PROGRAM",
         "main",
     );
     assert_eq!(
         outcome.statements,
-        ["unsupported", "unsupported", "unsupported"]
+        [
+            "assign v0^.f1 (call string_to_i32[reject,trap] i32s (read string[254] v0^.f0))",
+            "assign v0^.f3 (truncate 16 (call string_to_u16[reject,trap] i32u (literal string[1] \"7\")))",
+            "assign v0^.f4 (call string_to_f64[reject,trap] f64 (read string[254] v0^.f0))",
+            "assign-str v0^.f0 (call i32_to_string string[254] (read i32s v0^.f1))",
+            "assign-str v0^.f0 (call u32_to_string string[254] (read i32u v0^.f2))",
+            "assign-str v0^.f0 (call concat_string string[255] (call i32_to_string string[254] (read i32s v0^.f5)) (literal string[1] \"x\"))",
+        ]
     );
+}
+
+/// A comparison of strings is not lowered yet.
+#[test]
+fn lower_statement_when_comparison_of_strings_then_unsupported() {
+    let outcome = lower(
+        "PROGRAM main VAR s : STRING; x : BOOL; END_VAR
+            x := s = 'abc';
+            x := s < s;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(outcome.statements, ["unsupported", "unsupported"]);
 }

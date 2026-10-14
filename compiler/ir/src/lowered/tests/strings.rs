@@ -260,3 +260,47 @@ fn str_call_when_argument_not_taken_or_two_programs_then_internal_error() {
         "StrExpr::call"
     ));
 }
+
+/// REQ-LOW-lowering-073: a conversion from a `STRING` reads a number of its
+/// target type as the policy it names says, and one to a `STRING` writes a
+/// string of the capacity lowering gives it. Neither converts a `WSTRING`,
+/// and each takes the type its intrinsic names.
+#[test]
+fn call_when_string_conversion_then_number_or_string_of_its_intrinsic() {
+    let mut f = fixture();
+    let (s, _, w) = strings(&mut f);
+    let lenient = ParsePolicy {
+        non_numeric: NonNumeric::IgnoreTrailing,
+        failure: ParseFailure::Zero,
+    };
+    let parse = Expr::call(
+        Intrinsic::StringToI32(lenient),
+        vec![str_arg(&f, s)],
+        span(),
+    )
+    .unwrap();
+    assert_eq!(parse.ty(), ScalarType::I32(Signedness::Signed));
+    assert_eq!(
+        parse.to_string(),
+        "(call string_to_i32[ignore-trailing,zero] i32s (read string[10] v8))"
+    );
+    let unsigned = ScalarType::I32(Signedness::Unsigned);
+    let seven = || Arg::Value(Expr::integer(7, unsigned, span()).unwrap());
+    let write = StrExpr::call(Intrinsic::U32ToString, vec![seven()], 254, span()).unwrap();
+    assert_eq!(
+        write.to_string(),
+        "(call u32_to_string string[254] (const i32u 7))"
+    );
+    let strict = ParsePolicy {
+        non_numeric: NonNumeric::Reject,
+        failure: ParseFailure::Trap,
+    };
+    assert!(is_internal_error_naming(
+        Expr::call(Intrinsic::StringToF64(strict), vec![str_arg(&f, w)], span()),
+        "Expr::call"
+    ));
+    assert!(is_internal_error_naming(
+        StrExpr::call(Intrinsic::I32ToString, vec![seven()], 254, span()),
+        "StrExpr::call"
+    ));
+}
