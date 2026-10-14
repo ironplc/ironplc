@@ -12,11 +12,14 @@
 //!     e : (RED, GREEN);          (* an anonymous enumeration *)
 //!     s : INT (0..10);            (* an anonymous subrange *)
 //!     r : REF_TO INT;            (* an anonymous reference type *)
+//!     t : STRING[8];             (* a string type of capacity 8 *)
 //! END_VAR
 //! ```
 //!
 //! Each such declaration declares a type of its own, so two declarations
-//! that spell the same shape get two ids (ADR-0055).
+//! that spell the same shape get two ids (ADR-0055). A sized string's type is
+//! named by its elementary type, `STRING` or `WSTRING`, though `id_of` that
+//! name is the unsized type.
 //!
 //! The pass also records the declared type of each field of a structure or
 //! function block type in the environment
@@ -29,7 +32,7 @@ use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::type_id::TypeId;
 
-use crate::intermediates::{array, enumeration, subrange, TypeResolution};
+use crate::intermediates::{array, enumeration, string, subrange, TypeResolution};
 use crate::type_environment::TypeEnvironment;
 
 pub fn apply(
@@ -56,8 +59,15 @@ fn declared_type_id(
     let anonymous = match init {
         InitialValueAssignmentKind::None(_) => return None,
         InitialValueAssignmentKind::Simple(si) => return env.id_of(&si.type_name),
-        // A sized string is its unsized elementary type for now.
-        InitialValueAssignmentKind::String(si) => return env.id_of(&si.type_name()),
+        // A sized string has a type of its own, which records its capacity;
+        // an unsized one is its elementary type.
+        InitialValueAssignmentKind::String(si) => {
+            let elementary = env.id_of(&si.type_name())?;
+            return match si.length {
+                Some(_) => Some(type_environment.insert_sized_string(elementary, string::from(si))),
+                None => Some(elementary),
+            };
+        }
         InitialValueAssignmentKind::EnumeratedType(e) => return env.id_of(&e.type_name),
         InitialValueAssignmentKind::FunctionBlock(fb) => return env.id_of(&fb.type_name),
         InitialValueAssignmentKind::FunctionBlockCall(fbc) => return env.id_of(&fbc.type_name),
@@ -160,6 +170,7 @@ mod tests {
     use crate::semantic_context::SemanticContext;
     use crate::semantic_type::SemanticType;
     use crate::test_helpers::parse_and_resolve_types_with_options;
+    use ironplc_dsl::core::Id;
     use ironplc_dsl::visitor::Visitor;
     use ironplc_parser::options::{CompilerOptions, Dialect};
     use std::collections::HashMap;
@@ -205,6 +216,7 @@ VAR
   e : (RED, GREEN);
   r : REF_TO INT;
   t : STRING[8];
+  u : STRING;
 END_VAR
 END_PROGRAM
 ";
@@ -217,7 +229,50 @@ END_PROGRAM
 
         assert_eq!(ids["n"], types.id_of(&TypeName::from("DINT")));
         assert_eq!(ids["p"], types.id_of(&TypeName::from("POINT")));
-        assert_eq!(ids["t"], types.id_of(&TypeName::from("STRING")));
+        assert_eq!(ids["u"], types.id_of(&TypeName::from("STRING")));
+    }
+
+    /// REQ-LOW-analyzer-053: a sized string has a type of its own, which
+    /// records its capacity and is named by its elementary type.
+    #[test]
+    fn apply_when_sized_string_then_type_of_its_capacity_named_by_elementary() {
+        let (library, context) = resolve(PROGRAM);
+        let id = declared_ids(&library)["t"].unwrap();
+        let types = context.types();
+
+        assert_ne!(Some(id), types.id_of(&TypeName::from("STRING")));
+        assert_eq!(types.name_of(id), Some(&TypeName::from("STRING")));
+        assert_eq!(
+            types.get_by_id(id).unwrap().representation,
+            SemanticType::String {
+                max_len: Some(8),
+                char_width: ironplc_container::CharWidth::Narrow,
+            }
+        );
+    }
+
+    /// REQ-LOW-analyzer-053: a sized string field of a structure or a
+    /// function block has a type of its capacity, as a variable does.
+    #[test]
+    fn apply_when_sized_string_field_then_field_type_of_its_capacity() {
+        let (_, context) = resolve(
+            "TYPE Named : STRUCT n : WSTRING[4]; END_STRUCT; END_TYPE
+             FUNCTION_BLOCK Block VAR_OUTPUT f : STRING[6]; END_VAR END_FUNCTION_BLOCK
+             PROGRAM main END_PROGRAM",
+        );
+        let types = context.types();
+        let capacity = |record: &str, field: &str| -> Option<u128> {
+            let record = types.id_of(&TypeName::from(record))?;
+            let field_type = types.field_type(record, &Id::from(field))?;
+            let SemanticType::String { max_len, .. } = types.get_by_id(field_type)?.representation
+            else {
+                return None;
+            };
+            max_len
+        };
+
+        assert_eq!(capacity("Named", "n"), Some(4));
+        assert_eq!(capacity("Block", "f"), Some(6));
     }
 
     #[test]
