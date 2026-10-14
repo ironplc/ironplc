@@ -395,9 +395,10 @@ Each leg asserts something the others do not.
   user selects a target (a CLI option, a project setting). Record it in the
   ADR, document it in `docs/reference/compiler/ironplcc.rst`, and keep the
   bytecode backend the default unless the ADR says otherwise.
-- **Other front ends**: the language server, the playground and the MCP
-  server compile to bytecode. Wire the new backend into one only when the
-  target runs there.
+- **The playground**: runs bytecode only. A new backend does not plug into
+  it.
+- **Other front ends**: the language server and the MCP server compile to
+  bytecode. Wire the new backend into one only when the target runs there.
 - **Problem codes**: choose between P9997 (a fixed limit of the target's
   format), P9999 (not built yet) and P9998 (a broken invariant) as
   [problem-code-management.md](problem-code-management.md#choosing-between-p9997-and-p9999)
