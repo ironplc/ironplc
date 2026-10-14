@@ -137,6 +137,12 @@ pub struct ForParts {
 
 /// Counts `control` from `from` to `to` by `step`, running `body` each time.
 ///
+/// Whether `place` can be a `For`'s control variable: a variable, or a field
+/// of the current instance.
+pub fn is_loop_control(place: &Place) -> bool {
+    matches!(place.path(), [] | [Projection::Deref, Projection::Field(_)])
+}
+
 /// `control` is a variable or a field of the current instance whose
 /// operation type is an integer; `from` and `to` have that type, `from`
 /// already fits `control`'s storage, and `step` is a nonzero constant of it
@@ -162,10 +168,7 @@ pub(crate) fn build_for(
     else {
         return refuse(format!("the control variable {control} is not an integer"));
     };
-    if !matches!(
-        control.path(),
-        [] | [Projection::Deref, Projection::Field(_)]
-    ) {
+    if !is_loop_control(&control) {
         return refuse(format!(
             "the control variable {control} is not a variable or a field of the instance"
         ));

@@ -29,6 +29,7 @@ use ironplc_ir::lowered::{
 use ironplc_lowering::{Lowering, StatementLowering};
 
 use crate::compile::{CompileContext, OpType, OpWidth, ParamPassing, Signedness, UserFunctionInfo};
+use crate::compile_call::passes_by_reference;
 use crate::emit::Emitter;
 
 mod expr;
@@ -228,7 +229,7 @@ fn expr_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, expr: &Expr) -> 
             args,
         } => {
             user_function(lowering, ctx, *pou)
-                .is_some_and(|function| function.params.len() == args.len())
+                .is_some_and(|function| passes(&function.params, args))
                 && args_can_emit(lowering, ctx, args)
         }
         ExprKind::Call {
@@ -245,13 +246,16 @@ fn args_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, args: &[Arg]) ->
     args.iter().all(|arg| match arg {
         Arg::Value(value) => expr_can_emit(lowering, ctx, value),
         Arg::Str(value) => string::str_can_emit(lowering, ctx, value),
+        Arg::Ref(place) => place::variable_name(lowering, ctx, place)
+            .is_some_and(|name| passes_by_reference(ctx, &name)),
     })
 }
 
 /// The function `pou` as this backend's layout knows it, by the name the
 /// lowered program keeps on the POU, when the backend passes each of its
-/// arguments by value and it returns a value on the stack: not a string or a
-/// structure. `None` for any other function.
+/// arguments by value or by reference, not as a string, and it returns a
+/// value on the stack: not a string or a structure. `None` for any other
+/// function.
 pub(super) fn user_function(
     lowering: &Lowering<'_>,
     ctx: &CompileContext,
@@ -259,13 +263,25 @@ pub(super) fn user_function(
 ) -> Option<UserFunctionInfo> {
     let name = lowering.pous().name(pou)?.to_string().to_lowercase();
     let function = ctx.user_functions.get(&name)?;
-    let by_value = function
-        .params
-        .iter()
-        .all(|param| matches!(param, ParamPassing::Value));
+    let passed = function.params.iter().all(|param| match param {
+        ParamPassing::Value | ParamPassing::Reference => true,
+        ParamPassing::String(_) => false,
+    });
     let scalar =
         function.return_string_info.is_none() && function.return_struct_desc_index.is_none();
-    (by_value && scalar).then(|| function.clone())
+    (passed && scalar).then(|| function.clone())
+}
+
+/// Whether `args` are one for each of `params`, each passed as its
+/// parameter takes it: a value by value, and a place by reference.
+fn passes(params: &[ParamPassing], args: &[Arg]) -> bool {
+    params.len() == args.len()
+        && params.iter().zip(args).all(|(param, arg)| {
+            matches!(
+                (param, arg),
+                (ParamPassing::Value, Arg::Value(_)) | (ParamPassing::Reference, Arg::Ref(_))
+            )
+        })
 }
 
 /// Whether `place` has storage this backend reaches as one value of type

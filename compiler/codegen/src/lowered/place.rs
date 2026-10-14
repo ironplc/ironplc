@@ -8,6 +8,9 @@
 //! lowered subscripts in the placeholders' places. Both routes then address
 //! an element through the same code, bounds check included, and what a
 //! reference variable refers to through the same indirect load and store.
+//! What a function's `VAR_IN_OUT` parameter refers to is rebuilt as the
+//! parameter's own name, which codegen's layout reaches through the
+//! reference the parameter's slot holds.
 
 use ironplc_dsl::core::{Id, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -16,7 +19,7 @@ use ironplc_dsl::textual::{
     StructuredVariable, SymbolicVariableKind, Variable,
 };
 use ironplc_ir::lowered::{
-    Const, Expr, Place as LoweredPlace, Projection, TypeId, TypeKind, TypeTable,
+    Const, Expr, Nullability, Place as LoweredPlace, Projection, TypeId, TypeKind, TypeTable,
 };
 use ironplc_lowering::Lowering;
 
@@ -57,7 +60,7 @@ pub(super) fn resolve<'l, 'a>(
         Diagnostic::internal_error_at(Label::span(span.clone(), "A lowered place has no storage"))
     };
     let mut subscripts = Vec::new();
-    let reference = reference(lowering, place, &mut subscripts).ok_or_else(no_storage)?;
+    let reference = reference(lowering, ctx, place, &mut subscripts).ok_or_else(no_storage)?;
     // The whole of what a reference variable refers to: `p^`.
     if let SymbolicVariableKind::Deref(deref) = reference {
         let target = type_info(lowering.types(), place.ty());
@@ -72,11 +75,27 @@ pub(super) fn resolve<'l, 'a>(
     })
 }
 
+/// The name of the variable `place` is the whole of, as this backend's
+/// layout knows it: a variable, a field of the current instance, or what a
+/// `VAR_IN_OUT` parameter refers to. `None` for any other place.
+pub(super) fn variable_name(
+    lowering: &Lowering<'_>,
+    ctx: &CompileContext,
+    place: &LoweredPlace,
+) -> Option<Id> {
+    let SymbolicVariableKind::Named(named) = reference(lowering, ctx, place, &mut Vec::new())?
+    else {
+        return None;
+    };
+    Some(named.name)
+}
+
 /// The variable reference `place` stands for, with the subscript at
 /// position `k` of `subscripts` as the literal `k`; `None` for a place this
 /// backend does not reach yet.
 fn reference<'l>(
     lowering: &Lowering<'_>,
+    ctx: &CompileContext,
     place: &'l LoweredPlace,
     subscripts: &mut Vec<&'l Expr>,
 ) -> Option<SymbolicVariableKind> {
@@ -117,14 +136,28 @@ fn reference<'l>(
                 })
             }
             Projection::Deref => {
-                let (target, _) = types.reference(ty)?;
+                let (target, nullability) = types.reference(ty)?;
                 ty = target;
-                SymbolicVariableKind::Deref(DerefVariable {
-                    variable: Box::new(reference),
-                })
+                match nullability {
+                    Nullability::Nullable => SymbolicVariableKind::Deref(DerefVariable {
+                        variable: Box::new(reference),
+                    }),
+                    Nullability::NonNull => in_out(ctx, reference)?,
+                }
             }
         };
     }
+    Some(reference)
+}
+
+/// `reference`, when it names a `VAR_IN_OUT` parameter of the function
+/// being compiled: the only non-null reference this backend follows outside
+/// a body's instance parameter.
+fn in_out(ctx: &CompileContext, reference: SymbolicVariableKind) -> Option<SymbolicVariableKind> {
+    let SymbolicVariableKind::Named(named) = &reference else {
+        return None;
+    };
+    ctx.in_out_ref_slot(&named.name)?;
     Some(reference)
 }
 

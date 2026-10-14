@@ -14,7 +14,9 @@ use ironplc_analyzer::{BitShift, BuiltinFunction, FormOf, NumericFunction};
 use ironplc_dsl::common::ElementaryTypeName;
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_dsl::textual::{CompareOp, Expr as AstExpr, Function, Operator};
+use ironplc_dsl::textual::{
+    CompareOp, Expr as AstExpr, ExprKind as AstExprKind, Function, Operator,
+};
 use ironplc_ir::lowered::{
     Arg, BinaryOp, CompareOp as LoweredCompareOp, Expr, Intrinsic, Param, ScalarType, Signedness,
     TypeId, TypeKind, TypeTable,
@@ -306,8 +308,8 @@ impl Lowering<'_> {
     }
 
     /// `args` of a call of `intrinsic`, each lowered as what its parameter
-    /// takes: a value or a string. `None` when one of them is not supported,
-    /// or is of another type than its parameter's, which the analyzer did not
+    /// takes ([`Self::arg`]). `None` when one of them is not supported, or is
+    /// of another type than its parameter's, which the analyzer did not
     /// convert to it.
     pub(crate) fn intrinsic_args(
         &mut self,
@@ -318,18 +320,37 @@ impl Lowering<'_> {
         let signature = intrinsic.signature();
         let mut lowered = Vec::with_capacity(args.len());
         for (index, arg) in args.iter().enumerate() {
-            let arg = match signature.param(index) {
-                Some(Param::Value(_)) => self.expr(frame, arg)?.map(Arg::Value),
-                Some(Param::Str(_)) => self.str_expr(frame, arg)?.map(Arg::Str),
-                None => None,
+            let Some(param) = signature.param(index) else {
+                return Ok(None);
             };
-            let Some(arg) = arg else {
+            let Some(arg) = self.arg(frame, param, arg)? else {
                 return Ok(None);
             };
             lowered.push(arg);
         }
         let passed: Vec<Param> = lowered.iter().map(Arg::param).collect();
         Ok(signature.takes(&passed).then_some(lowered))
+    }
+
+    /// `expr` lowered as what `param` takes: a value, a string, or the place
+    /// a variable names, passed by reference. `None` when it is not
+    /// supported.
+    pub(crate) fn arg(
+        &mut self,
+        frame: &BodyFrame,
+        param: Param,
+        expr: &AstExpr,
+    ) -> Result<Option<Arg>, Diagnostic> {
+        Ok(match param {
+            Param::Value(_) => self.expr(frame, expr)?.map(Arg::Value),
+            Param::Str(_) => self.str_expr(frame, expr)?.map(Arg::Str),
+            Param::Ref(_) => {
+                let AstExprKind::Variable(variable) = &expr.kind else {
+                    return Ok(None);
+                };
+                self.variable_place(frame, variable)?.map(Arg::Ref)
+            }
+        })
     }
 
     /// The function form of an operator, `expr`: the expression the

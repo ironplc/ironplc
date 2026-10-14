@@ -214,16 +214,15 @@ fn lower_statement_when_return_then_return() {
     assert_eq!(outcome.statements, ["assign v0 (read i32s v1)", "return"]);
 }
 
-/// A `VAR_IN_OUT` is a reference to the caller's variable, which lowering
-/// does not express until calls bind one.
+/// A function block's `VAR_IN_OUT` is a field its call binds, which lowering
+/// does not express yet.
 #[test]
-fn lower_statement_when_var_in_out_then_unsupported() {
+fn lower_statement_when_block_var_in_out_then_unsupported() {
     let outcome = lower(
-        "FUNCTION f : DINT VAR_IN_OUT a : DINT; END_VAR
+        "FUNCTION_BLOCK fb VAR_IN_OUT a : DINT; END_VAR
             a := 1;
-            f := 1;
-         END_FUNCTION",
-        "f",
+         END_FUNCTION_BLOCK",
+        "fb",
     );
-    assert_eq!(outcome.statements[0], "unsupported");
+    assert_eq!(outcome.statements, ["unsupported"]);
 }
