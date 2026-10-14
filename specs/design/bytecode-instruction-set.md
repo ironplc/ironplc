@@ -644,9 +644,11 @@ These are dispatched inline in the VM main loop rather than through the shared b
 | 0x039F | CONV_STR_TO_I32 | 1 | [data_offset] → [I32] | Parse decimal; 0 on failure |
 | 0x03A0 | CONV_F32_TO_STR | 1 | [F32] → [buf_idx] | Float to decimal string |
 | 0x03A1 | CONV_STR_TO_F32 | 1 | [data_offset] → [F32] | Parse decimal; 0.0 on failure |
-| 0x03A2 | CMP_STR | 2 | [data_offset, data_offset] → [I32] | Three-way lexicographic compare; −1 / 0 / +1 |
+| 0x03A2 | CMP_STR | 2 | [data_offset, data_offset] → [I32] | Three-way compare by code unit; −1 / 0 / +1 |
 
 `CMP_STR` is how the compiler lowers `=`, `<>`, `<`, `<=`, `>`, `>=` on strings: emit `CMP_STR`, then compare its result to 0 with the ordinary integer comparison opcodes.
+
+The first code unit that differs decides the order, and a string that is a prefix of the other is less. A `WSTRING` code unit is compared as a number, not by its little-endian bytes, so `"$0100"` is greater than `"$00FF"`.
 
 `CONV_STR_TO_I32` and `CONV_STR_TO_F32` trim whitespace, accept Rust's decimal syntax, and yield 0 or 0.0 on failure. Codegen no longer emits either (every `STRING_TO_<numeric>` target is on the policy block below); the VM keeps their handlers because a func_id is a permanent wire-format commitment.
 
