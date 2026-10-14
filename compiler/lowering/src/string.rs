@@ -1,6 +1,6 @@
 //! Strings: a string literal, the string at a place, the assignment of a
-//! string to a string place, calls of the standard string functions, and
-//! conversions to and from a `STRING`.
+//! string to a string place, calls of the standard string functions,
+//! conversions to and from a `STRING`, and comparisons of strings.
 //!
 //! A literal is in the encoding its delimiter spells: `'abc'` is a `STRING`
 //! and `"abc"` a `WSTRING` (ADR-0016). The analyzer reports a literal stored
@@ -17,6 +17,9 @@
 //! recorded for the call, as the program's parse policy says. A conversion
 //! to a `STRING` writes its number into a string of the default capacity
 //! (REQ-LOW-lowering-168).
+//!
+//! A comparison of two strings, which share an encoding as a string
+//! function's do, compares the order its `Intrinsic` gives them with zero.
 
 use ironplc_analyzer::{BuiltinFunction, StringFunction};
 use ironplc_container::DEFAULT_STRING_MAX_LENGTH;
@@ -25,8 +28,8 @@ use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{Expr as AstExpr, ExprKind as AstExprKind, Function};
 use ironplc_ir::lowered::{
-    Arg, Encoding, Intrinsic, NarrowWidth, Param, Place, ScalarType, Signedness, Stmt, StrExpr,
-    TypeKind,
+    Arg, CompareOp, Encoding, Expr, Intrinsic, NarrowWidth, Param, Place, ScalarType, Signedness,
+    Stmt, StrExpr, TypeKind,
 };
 
 use crate::expr::Lowered;
@@ -202,6 +205,43 @@ impl Lowering<'_> {
         self.intrinsic_call(frame, expr, intrinsic, &[value])
     }
 
+    /// The comparison `op` of `left` and `right`, strings of `encoding`: the
+    /// order the intrinsic of `encoding` gives them, compared with zero.
+    pub(crate) fn string_compare(
+        &mut self,
+        frame: &BodyFrame,
+        encoding: Encoding,
+        op: CompareOp,
+        (left, right): (&AstExpr, &AstExpr),
+        span: SourceSpan,
+    ) -> Lowered {
+        let intrinsic = match encoding {
+            Encoding::Narrow => Intrinsic::CompareString,
+            Encoding::Wide => Intrinsic::CompareWString,
+        };
+        let Some(args) = self.intrinsic_args(frame, intrinsic, &[left, right])? else {
+            return Ok(None);
+        };
+        let order = Expr::call(intrinsic, args, span.clone())?;
+        let zero = Expr::integer(0, order.ty(), span.clone())?;
+        Expr::compare(op, order, zero, span).map(Some)
+    }
+
+    /// The encoding of the string type the analyzer recorded for `expr`;
+    /// `None` when it recorded no string type.
+    pub(crate) fn string_encoding(
+        &mut self,
+        expr: &AstExpr,
+    ) -> Result<Option<Encoding>, Diagnostic> {
+        let Some(ty) = self.recorded_type(expr)? else {
+            return Ok(None);
+        };
+        let Some(TypeKind::String(shape)) = self.program.types().kind(ty) else {
+            return Ok(None);
+        };
+        Ok(Some(shape.encoding))
+    }
+
     /// The intrinsic of the string function `function` for the encoding the
     /// analyzer recorded for its first argument; `None` when it recorded no
     /// string type.
@@ -224,13 +264,10 @@ impl Lowering<'_> {
         let Some(first) = args.first() else {
             return Ok(None);
         };
-        let Some(ty) = self.recorded_type(first)? else {
+        let Some(encoding) = self.string_encoding(first)? else {
             return Ok(None);
         };
-        let Some(TypeKind::String(shape)) = self.program.types().kind(ty) else {
-            return Ok(None);
-        };
-        Ok(Some(match shape.encoding {
+        Ok(Some(match encoding {
             Encoding::Narrow => narrow,
             Encoding::Wide => wide,
         }))

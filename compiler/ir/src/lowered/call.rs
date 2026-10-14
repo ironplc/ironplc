@@ -328,6 +328,12 @@ pub enum Intrinsic {
     MidString,
     /// `MID`: a length of a `WSTRING`, from a position.
     MidWString,
+    /// The order of two `STRING`s: -1, 0 or 1 as the first is less than,
+    /// equal to or greater than the second.
+    CompareString,
+    /// The order of two `WSTRING`s: -1, 0 or 1 as the first is less than,
+    /// equal to or greater than the second.
+    CompareWString,
     /// `STRING_TO_USINT` and `STRING_TO_BYTE`.
     StringToU8(ParsePolicy),
     /// `STRING_TO_SINT`.
@@ -564,6 +570,8 @@ impl Intrinsic {
             Intrinsic::LeftWString | Intrinsic::RightWString => {
                 Signature::fixed(&[WSTRING, I32], WSTRING)
             }
+            Intrinsic::CompareString => Signature::fixed(&[STRING, STRING], I32),
+            Intrinsic::CompareWString => Signature::fixed(&[WSTRING, WSTRING], I32),
             Intrinsic::StringToU8(_) | Intrinsic::StringToU16(_) | Intrinsic::StringToU32(_) => {
                 Signature::fixed(&[STRING], U32)
             }
@@ -689,6 +697,8 @@ impl Intrinsic {
             Intrinsic::RightWString => "right_wstring",
             Intrinsic::MidString => "mid_string",
             Intrinsic::MidWString => "mid_wstring",
+            Intrinsic::CompareString => "compare_string",
+            Intrinsic::CompareWString => "compare_wstring",
             Intrinsic::StringToU8(_) => "string_to_u8",
             Intrinsic::StringToI8(_) => "string_to_i8",
             Intrinsic::StringToU16(_) => "string_to_u16",

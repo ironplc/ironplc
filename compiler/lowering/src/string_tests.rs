@@ -135,15 +135,27 @@ fn lower_statement_when_string_conversion_then_intrinsic_of_number_type() {
     );
 }
 
-/// A comparison of strings is not lowered yet.
+/// REQ-LOW-lowering-169: a comparison of two strings compares with zero the
+/// order the intrinsic of their encoding gives them, in the operator and the
+/// function form (REQ-LOW-lowering-101), whichever string is a literal.
 #[test]
-fn lower_statement_when_comparison_of_strings_then_unsupported() {
+fn lower_statement_when_comparison_of_strings_then_order_compared_with_zero() {
     let outcome = lower(
-        "PROGRAM main VAR s : STRING; x : BOOL; END_VAR
+        "PROGRAM main VAR s : STRING[5]; w : WSTRING; x : BOOL; END_VAR
             x := s = 'abc';
-            x := s < s;
+            x := LT(s, CONCAT(s, s));
+            x := 'abc' <> s;
+            x := w >= \"xy\";
          END_PROGRAM",
         "main",
     );
-    assert_eq!(outcome.statements, ["unsupported", "unsupported"]);
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f2 (eq (call compare_string i32s (read string[5] v0^.f0) (literal string[3] \"abc\")) (const i32s 0))",
+            "assign v0^.f2 (lt (call compare_string i32s (read string[5] v0^.f0) (call concat_string string[10] (read string[5] v0^.f0) (read string[5] v0^.f0))) (const i32s 0))",
+            "assign v0^.f2 (ne (call compare_string i32s (literal string[3] \"abc\") (read string[5] v0^.f0)) (const i32s 0))",
+            "assign v0^.f2 (ge (call compare_wstring i32s (read wstring[254] v0^.f1) (literal wstring[2] \"xy\")) (const i32s 0))",
+        ]
+    );
 }
