@@ -60,10 +60,7 @@ pub fn try_from_values(
 
     check_ordinals_fit_dint(enumerated_values.values())?;
     let members = EnumerationMembers::from_values(enumerated_values.values(), default);
-    Ok(TypeAttributes::new(
-        enumerated_values.values_span(),
-        SemanticType::Enumeration { members },
-    ))
+    Ok(TypeAttributes::new(SemanticType::Enumeration { members }))
 }
 
 /// Fails with P2044 at the first value whose ordinal is outside the range of

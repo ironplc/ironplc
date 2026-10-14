@@ -14,7 +14,6 @@ use ironplc_problems::Problem;
 
 /// Try to create the semantic type information from the structure specification.
 pub fn try_from(
-    node_name: &TypeName,
     spec: &StructureDeclaration,
     type_environment: &TypeEnvironment,
 ) -> Result<TypeAttributes, Diagnostic> {
@@ -38,10 +37,7 @@ pub fn try_from(
         });
     }
 
-    Ok(TypeAttributes::new(
-        node_name.span(),
-        SemanticType::Structure { fields },
-    ))
+    Ok(TypeAttributes::new(SemanticType::Structure { fields }))
 }
 
 /// Determines whether a structure field has a default value based on its initializer.

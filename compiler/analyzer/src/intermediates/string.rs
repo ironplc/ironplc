@@ -2,7 +2,6 @@ use crate::{semantic_type::SemanticType, type_environment::TypeAttributes};
 
 use ironplc_container::CharWidth;
 use ironplc_dsl::common::{StringDeclaration, StringInitializer, StringType};
-use ironplc_dsl::core::Located;
 
 /// Maps an IEC 61131-3 `StringType` to its per-code-unit byte width per
 /// ADR-0016: STRING is Latin-1 (1 byte), WSTRING is UTF-16LE (2 bytes).
@@ -15,26 +14,20 @@ fn char_width_for(width: &StringType) -> CharWidth {
 
 pub fn from(initializer: &StringInitializer) -> TypeAttributes {
     // String type with specific length: MY_STRING : STRING[10];
-    TypeAttributes::new(
-        initializer.span(),
-        SemanticType::String {
-            max_len: initializer
-                .length
-                .as_ref()
-                .and_then(|len| len.as_integer().map(|i| i.value)),
-            char_width: char_width_for(&initializer.width),
-        },
-    )
+    TypeAttributes::new(SemanticType::String {
+        max_len: initializer
+            .length
+            .as_ref()
+            .and_then(|len| len.as_integer().map(|i| i.value)),
+        char_width: char_width_for(&initializer.width),
+    })
 }
 
 pub fn from_decl(decl: &StringDeclaration) -> TypeAttributes {
-    TypeAttributes::new(
-        decl.type_name.span(),
-        SemanticType::String {
-            max_len: decl.length.as_integer().map(|i| i.value),
-            char_width: char_width_for(&decl.width),
-        },
-    )
+    TypeAttributes::new(SemanticType::String {
+        max_len: decl.length.as_integer().map(|i| i.value),
+        char_width: char_width_for(&decl.width),
+    })
 }
 
 #[cfg(test)]

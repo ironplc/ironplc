@@ -4,8 +4,6 @@
 //! with categorization information. Memory layout information is accessed directly
 //! through SemanticType methods.
 
-use ironplc_dsl::core::{Located, SourceSpan};
-
 use crate::{
     semantic_type::SemanticType, standard_function_block::StandardFunctionBlock,
     type_category::TypeCategory,
@@ -14,9 +12,6 @@ use crate::{
 /// Attributes associated with a type in the type environment.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeAttributes {
-    /// The location in source code that defined the type.
-    /// TODO this should be unnecessary since the TypeName already has a span.
-    pub span: SourceSpan,
     /// The semantic type that describes the type
     pub representation: SemanticType,
     /// Category of the type (elementary, user-defined, or derived)
@@ -29,10 +24,9 @@ pub struct TypeAttributes {
 
 impl TypeAttributes {
     /// Creates new TypeAttributes with calculated type category
-    pub fn new(span: SourceSpan, representation: SemanticType) -> Self {
+    pub fn new(representation: SemanticType) -> Self {
         let type_category = TypeCategory::for_type(&representation);
         Self {
-            span,
             representation,
             type_category,
             standard_block: None,
@@ -44,17 +38,6 @@ impl TypeAttributes {
         self.standard_block = Some(block);
         self
     }
-
-    /// Creates new TypeAttributes for elementary types
-    pub fn elementary(representation: SemanticType) -> Self {
-        Self::new(SourceSpan::default(), representation)
-    }
-}
-
-impl Located for TypeAttributes {
-    fn span(&self) -> SourceSpan {
-        self.span.clone()
-    }
 }
 
 #[cfg(test)]
@@ -64,21 +47,10 @@ mod tests {
 
     #[test]
     fn type_attributes_constructor_sets_correct_fields() {
-        let attrs = TypeAttributes::new(
-            SourceSpan::default(),
-            SemanticType::Int {
-                size: ByteSized::B32,
-            },
-        );
+        let attrs = TypeAttributes::new(SemanticType::Int {
+            size: ByteSized::B32,
+        });
 
         assert_eq!(attrs.type_category, TypeCategory::Elementary);
-    }
-
-    #[test]
-    fn type_attributes_elementary_constructor() {
-        let attrs = TypeAttributes::elementary(SemanticType::Bool);
-
-        assert_eq!(attrs.type_category, TypeCategory::Elementary);
-        assert_eq!(attrs.span, SourceSpan::default());
     }
 }

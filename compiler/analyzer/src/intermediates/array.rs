@@ -80,7 +80,6 @@ pub fn try_from(
             };
 
             Ok(TypeResolution::Type(TypeAttributes::new(
-                node_name.span(),
                 SemanticType::Array {
                     element_type: Box::new(resolved_element_type),
                     dimensions,
@@ -355,18 +354,15 @@ mod tests {
         // First create a base array type
         env.insert_type(
             &TypeName::from("BASE_ARRAY"),
-            TypeAttributes::new(
-                SourceSpan::default(),
-                SemanticType::Array {
-                    element_type: Box::new(SemanticType::Int {
-                        size: ByteSized::B16,
-                    }),
-                    dimensions: vec![ArrayDimension {
-                        lower: 1,
-                        upper: 10,
-                    }],
-                },
-            ),
+            TypeAttributes::new(SemanticType::Array {
+                element_type: Box::new(SemanticType::Int {
+                    size: ByteSized::B16,
+                }),
+                dimensions: vec![ArrayDimension {
+                    lower: 1,
+                    upper: 10,
+                }],
+            }),
         );
 
         let spec = SpecificationKind::Named(TypeName::from("BASE_ARRAY"));

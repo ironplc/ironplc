@@ -281,10 +281,10 @@ impl LspProject {
         // alongside the per-POU registry, so we don't need to filter
         // those again here.
         for view in context.user_defined_types() {
-            if view.attributes.span().file_id != file_id {
+            if view.name.span().file_id != file_id {
                 continue;
             }
-            let range = span_to_range(contents, &view.attributes.span());
+            let range = span_to_range(contents, &view.name.span());
             #[allow(deprecated)]
             symbols.push(DocumentSymbol {
                 name: view.name.to_string(),
@@ -1055,6 +1055,22 @@ INVALID_SYNTAX"
         assert_eq!(symbols.len(), 1);
         assert_eq!(symbols[0].name, "MyEnum");
         assert_eq!(symbols[0].kind, lsp_types::SymbolKind::ENUM);
+    }
+
+    #[test]
+    fn document_symbols_when_alias_of_structure_then_range_at_alias_name() {
+        let mut proj = new_empty_project();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+        let content = "TYPE\nMyStruct : STRUCT\n  field1 : INT;\nEND_STRUCT;\nEND_TYPE\nTYPE\nMyAlias : MyStruct;\nEND_TYPE";
+        proj.change_text_document(&url, content.to_owned());
+        let _ = proj.semantic(&url);
+
+        let result = proj.document_symbols(&url);
+
+        let symbols = cast!(result, lsp_types::DocumentSymbolResponse::Nested);
+        let alias = symbols.iter().find(|s| s.name == "MyAlias").unwrap();
+        assert_eq!(alias.range.start.line, 6);
+        assert_eq!(alias.range.start.character, 0);
     }
 
     #[test]
