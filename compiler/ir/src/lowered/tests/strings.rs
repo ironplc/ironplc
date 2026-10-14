@@ -304,3 +304,36 @@ fn call_when_string_conversion_then_number_or_string_of_its_intrinsic() {
         "StrExpr::call"
     ));
 }
+
+/// REQ-LOW-lowering-050: a comparison of strings orders two strings of the
+/// encoding its intrinsic names, of any capacity, and yields a `DINT`.
+#[test]
+fn call_when_compare_strings_of_intrinsic_encoding_then_int_result() {
+    let mut f = fixture();
+    let (s, t, w) = strings(&mut f);
+    let order = Expr::call(
+        Intrinsic::CompareString,
+        vec![str_arg(&f, s), str_arg(&f, t)],
+        span(),
+    )
+    .unwrap();
+    assert_eq!(order.ty(), ScalarType::I32(Signedness::Signed));
+    assert_eq!(
+        order.to_string(),
+        "(call compare_string i32s (read string[10] v8) (read string[10] v9))"
+    );
+    let wide = Expr::call(
+        Intrinsic::CompareWString,
+        vec![str_arg(&f, w), Arg::Str(literal("ab", Encoding::Wide))],
+        span(),
+    );
+    assert!(wide.is_ok());
+    assert!(is_internal_error_naming(
+        Expr::call(
+            Intrinsic::CompareString,
+            vec![str_arg(&f, s), str_arg(&f, w)],
+            span()
+        ),
+        "Expr::call"
+    ));
+}

@@ -176,12 +176,11 @@ pub(super) fn emit_intrinsic_call(
     let strings = emit_args(emitter, ctx, lowering, args)?;
     match instruction {
         Instruction::Builtin(builtin) => emitter.emit_builtin(builtin)?,
-        Instruction::BuiltinOfString(builtin) => {
-            let [string] = strings[..] else {
-                return Err(strings_not_taken(span));
-            };
-            let offset = ctx.add_i32_constant(string as i32);
-            emitter.emit_load_const_i32(offset);
+        Instruction::BuiltinOfStrings(builtin) => {
+            for string in strings {
+                let offset = ctx.add_i32_constant(string as i32);
+                emitter.emit_load_const_i32(offset);
+            }
             emitter.emit_builtin(builtin)?;
         }
         Instruction::OneString(emit) => {
@@ -234,9 +233,9 @@ fn strings_not_taken(span: &SourceSpan) -> Diagnostic {
 pub(super) enum Instruction {
     /// A VM builtin (ADR-0008).
     Builtin(u16),
-    /// A VM builtin that also takes the data region offset of the call's
-    /// one string, as a value after the call's values.
-    BuiltinOfString(u16),
+    /// A VM builtin that also takes the data region offset of each of the
+    /// call's strings, in order, as values after the call's values.
+    BuiltinOfStrings(u16),
     /// A string opcode, emitted with the data region offset of the call's
     /// one string.
     OneString(fn(&mut Emitter, u32)),
@@ -251,7 +250,7 @@ pub(super) enum Instruction {
 /// until it has an instruction here (REQ-LOW-codegen-074).
 pub(super) fn instruction_of(intrinsic: Intrinsic, args: usize) -> Option<Instruction> {
     // A `STRING_TO_*` has a builtin for each target and policy.
-    let parse = |target, policy| Instruction::BuiltinOfString(parse_builtin(target, policy));
+    let parse = |target, policy| Instruction::BuiltinOfStrings(parse_builtin(target, policy));
     // A `MUX` has a builtin for each number of inputs after its selector.
     let mux = |base: u16| {
         u16::try_from(args.saturating_sub(1))
@@ -369,6 +368,9 @@ pub(super) fn instruction_of(intrinsic: Intrinsic, args: usize) -> Option<Instru
         Intrinsic::MidString | Intrinsic::MidWString => {
             return Some(Instruction::OneString(Emitter::emit_mid_str))
         }
+        Intrinsic::CompareString | Intrinsic::CompareWString => {
+            return Some(Instruction::BuiltinOfStrings(builtin::CMP_STR))
+        }
         Intrinsic::StringToU8(policy) => return Some(parse(Target::U8, policy)),
         Intrinsic::StringToI8(policy) => return Some(parse(Target::I8, policy)),
         Intrinsic::StringToU16(policy) => return Some(parse(Target::U16, policy)),
@@ -443,7 +445,7 @@ mod tests {
         let builtin_of = |intrinsic, args| match instruction_of(intrinsic, args) {
             Some(Instruction::Builtin(builtin)) => Some(builtin),
             Some(
-                Instruction::BuiltinOfString(_)
+                Instruction::BuiltinOfStrings(_)
                 | Instruction::OneString(_)
                 | Instruction::TwoStrings(_),
             )

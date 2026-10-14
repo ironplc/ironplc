@@ -1,6 +1,6 @@
-//! Tests of string assignments, of the standard string functions and of
-//! conversions to and from a `STRING`, compiled from the lowered program,
-//! with every statement required to lower.
+//! Tests of string assignments, of the standard string functions, of
+//! conversions to and from a `STRING` and of comparisons of strings, compiled
+//! from the lowered program, with every statement required to lower.
 
 use rstest::rstest;
 
@@ -219,6 +219,58 @@ fn compile_when_string_conversion_lowered_then_same_code_as_ast(#[case] statemen
     let source = format!(
         "PROGRAM main
            VAR s : STRING; n : DINT; u : UDINT; q : LINT; r : REAL; l : LREAL; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    assert_same_code(&source);
+}
+
+/// Of two strings, the first code unit that differs decides their order, and
+/// a string that is a prefix of the other is less (REQ-LOW-codegen-089).
+#[test]
+fn run_when_strings_compared_then_values() {
+    let snapshot = run_lowered(
+        "PROGRAM main
+           VAR s : STRING := 'abc'; t : STRING := 'abd'; w : WSTRING := \"xy\";
+               eq, ne, lt, le, gt, ge, prefix, wide, cond : BOOL; END_VAR
+           eq := s = 'abc';
+           ne := s <> t;
+           lt := s < t;
+           le := LE(t, s);
+           gt := CONCAT(s, 'x') > s;
+           ge := s >= 'abc';
+           prefix := 'ab' < s;
+           wide := w > \"x\";
+           IF s < t THEN cond := TRUE; END_IF;
+         END_PROGRAM",
+    );
+    let read = |name| snapshot.read_as::<u64>(name);
+    assert_eq!(read("eq"), 1);
+    assert_eq!(read("ne"), 1);
+    assert_eq!(read("lt"), 1);
+    assert_eq!(read("le"), 0);
+    assert_eq!(read("gt"), 1);
+    assert_eq!(read("ge"), 1);
+    assert_eq!(read("prefix"), 1);
+    assert_eq!(read("wide"), 1);
+    assert_eq!(read("cond"), 1);
+}
+
+/// A comparison of strings compiles to the same instructions and constants
+/// by both routes: its strings are passed as `LEN`'s are, and the order the
+/// builtin gives them is compared with zero.
+#[rstest]
+#[case::eq_literal("x := s = 'abc';")]
+#[case::lt_variables("x := s < t;")]
+#[case::function_form("x := GE(s, t);")]
+#[case::literal_first("x := 'abc' <> s;")]
+#[case::call_operand("x := CONCAT(s, t) > s;")]
+#[case::wide("x := w <= w;")]
+#[case::if_condition("IF s = t THEN x := TRUE; END_IF;")]
+fn compile_when_string_comparison_lowered_then_same_code_as_ast(#[case] statement: &str) {
+    let source = format!(
+        "PROGRAM main
+           VAR s : STRING; t : STRING; w : WSTRING; x : BOOL; END_VAR
            {statement}
          END_PROGRAM"
     );

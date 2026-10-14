@@ -1580,7 +1580,11 @@ bits of its width, read as an unsigned integer, modulo the power of ten its
 digits hold, so `INT_TO_BCD` of a `SINT` of -1 is `BYTE#16#55`. `LEN` counts
 the code units of its string, and `FIND` gives the 1-based position, in code
 units, of the first occurrence of its second string in its first, or 0 when
-there is none or the second string is empty. Of the other string functions,
+there is none or the second string is empty. `CompareString` and
+`CompareWString` give -1, 0 or 1 as their first string is less than, equal to
+or greater than their second: the first code unit that differs decides, by
+its value, and a string that is a prefix of the other is less. Of the other
+string functions,
 a negative length counts as 0 and a length past the end of the string stops
 at its end; a position of `MID`, `DELETE` or `REPLACE` below 1 counts as 1,
 one of `INSERT` below 0 as 0, and a position past the end as the end. A
@@ -1791,7 +1795,7 @@ implements it.
 | `TRUNC(x)` | A `Convert` to the integer the analyzer recorded for the call, narrowed where it is stored, as an arithmetic result is |
 | Enumerated value | `Const` |
 | `MOVE(x)`, parenthesised expression | The operand |
-| Comparison of strings | `Call` of a string comparison `Intrinsic` |
+| Comparison of strings, such as `s < t` | A `Compare` with zero of the `Call` of the `Intrinsic` that orders two strings of their encoding (REQ-LOW-lowering-169) |
 | Conversion from a `STRING`, such as `STRING_TO_DINT(s)` | `Call` of the `Intrinsic` that reads a number of the call's type, a bit string as the unsigned integer of its width, carrying the parse policy (REQ-LOW-lowering-073) |
 | Conversion to a `STRING`, such as `DINT_TO_STRING(n)` | A `StrExpr` `Call` of the `Intrinsic` that writes a number of its operation type, of the default capacity (REQ-LOW-lowering-168) |
 | Standard string function, such as `LEN(s)` or `CONCAT(s, t)` | `Call` of its `Intrinsic` for the encoding of its strings: an `Expr` for `LEN` and `FIND`, and a `StrExpr` with room for every code unit of its strings for one that yields a string (REQ-LOW-lowering-167) |
@@ -1825,6 +1829,10 @@ lower to the arithmetic of the typed time function they resolve to, which
 follows from the units of the types the analyzer recorded rather than from the
 overload's name: `dt + t`, `ADD(dt, t)` and `ADD_DT_TIME(dt, t)` lower to
 `dt + t / 1000`.
+
+**REQ-LOW-lowering-169** A comparison of two strings compares with zero the
+order the `Intrinsic` of their encoding gives them: `s < t` lowers to
+`(lt (call compare_string i32s s t) (const i32s 0))`.
 
 Codegen has already folded the cross product of access kind and base shape
 into one addressing path (`compile_place.rs`) and one bit write

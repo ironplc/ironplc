@@ -9,9 +9,9 @@ use crate::common::{bc, compile_by_route, parse, Snapshot};
 
 const SOURCE: &str = "
 PROGRAM main
-  VAR a : DINT; s : STRING; b : BOOL; END_VAR
+  VAR a : DINT; t : TON; b : BOOL; END_VAR
   a := a + 1;
-  b := s = 'x';
+  t(IN := b);
   a := a * 2;
 END_PROGRAM
 ";

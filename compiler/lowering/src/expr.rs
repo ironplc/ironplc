@@ -297,6 +297,8 @@ impl Lowering<'_> {
             .map(|is_bool| if is_bool { logical } else { bitwise }))
     }
 
+    /// The comparison `op` of `left` and `right`; of two strings, through
+    /// the order of their intrinsic ([`Self::string_compare`]).
     pub(crate) fn compare(
         &mut self,
         frame: &BodyFrame,
@@ -305,6 +307,9 @@ impl Lowering<'_> {
         right: &AstExpr,
         span: SourceSpan,
     ) -> Lowered {
+        if let Some(encoding) = self.string_encoding(left)? {
+            return self.string_compare(frame, encoding, op, (left, right), span);
+        }
         let Some(lhs) = self.expr(frame, left)? else {
             return Ok(None);
         };
