@@ -51,5 +51,5 @@ See [specs/steering/common-tasks.md](specs/steering/common-tasks.md) for complet
 2. **BDD-style test names**: `function_when_condition_then_result`
 3. **Module size limit**: Max 1000 lines per module
 4. **No duplicated content** - Including in documentation; share via `docs/includes/` and `.. include::` ([Avoid Duplication](specs/steering/development-standards.md#avoid-duplication))
-5. **Problem codes**: Must be documented in `docs/compiler/problems/P####.rst`
+5. **Problem codes**: Must be documented in `docs/reference/compiler/problems/P####.rst`
 6. **Version numbers**: Automatically managed - do not edit manually
