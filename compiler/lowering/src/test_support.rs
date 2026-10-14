@@ -7,7 +7,7 @@ use ironplc_dsl::core::FileId;
 use ironplc_dsl::textual::StmtKind;
 use ironplc_parser::options::CompilerOptions;
 
-use ironplc_ir::lowered::Variable;
+use ironplc_ir::lowered::{NonNumeric, ParseFailure, ParsePolicy, Variable};
 
 use crate::{Body, Lowering, StatementLowering};
 
@@ -43,7 +43,11 @@ pub(crate) fn lower_bodies(source: &str, pous: &[&str]) -> Outcome {
         .expect("the source parses");
     let (library, context) = analyze(&[&library], &options).expect("the source analyzes");
     let analysis = CleanAnalysis::new(&library, &context).expect("analysis reports nothing");
-    let mut lowering = Lowering::new(&analysis);
+    let parse = ParsePolicy {
+        non_numeric: NonNumeric::Reject,
+        failure: ParseFailure::Trap,
+    };
+    let mut lowering = Lowering::new(&analysis, parse);
     let mut statements = Vec::new();
     for pou in pous {
         let (body, stmts) = body_of(&library, pou);

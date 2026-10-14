@@ -1,6 +1,6 @@
-//! Tests of string assignments and of the standard string functions,
-//! compiled from the lowered program, with every statement required to
-//! lower.
+//! Tests of string assignments, of the standard string functions and of
+//! conversions to and from a `STRING`, compiled from the lowered program,
+//! with every statement required to lower.
 
 use rstest::rstest;
 
@@ -162,6 +162,63 @@ fn compile_when_string_function_lowered_then_same_code_as_ast(#[case] statement:
     let source = format!(
         "PROGRAM main
            VAR s : STRING; t : STRING[3]; w : WSTRING; n : DINT; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    assert_same_code(&source);
+}
+
+/// A conversion from a `STRING` reads a number of its target type, the
+/// whole string less surrounding whitespace under the default policy; one to
+/// a `STRING` writes its number's decimal text (REQ-LOW-codegen-089).
+#[test]
+fn run_when_string_conversion_then_values() {
+    let snapshot = run_lowered(
+        "PROGRAM main
+           VAR s : STRING := ' 42 '; f : STRING := '1.5'; n : DINT; u : UDINT; i : SINT;
+               r : REAL; l : LREAL; q : LINT; neg : INT := -7; big : UDINT := 4000000000;
+               x : REAL := 2.5; t1, t2, t3 : STRING; END_VAR
+           n := STRING_TO_DINT(s);
+           u := STRING_TO_UDINT('4000000000');
+           i := STRING_TO_SINT('-12');
+           r := STRING_TO_REAL(f);
+           l := STRING_TO_LREAL('2.25');
+           q := STRING_TO_LINT('-9000000000');
+           t1 := INT_TO_STRING(neg);
+           t2 := UDINT_TO_STRING(big);
+           t3 := REAL_TO_STRING(x);
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<i32>("n"), 42);
+    assert_eq!(snapshot.read_as::<u64>("u"), 4_000_000_000);
+    assert_eq!(snapshot.read_as::<i32>("i"), -12);
+    assert_eq!(snapshot.read_as::<f32>("r"), 1.5);
+    assert_eq!(snapshot.read_as::<f64>("l"), 2.25);
+    assert_eq!(snapshot.read_as::<i64>("q"), -9_000_000_000);
+    assert_eq!(snapshot.read("t1"), "-7");
+    assert_eq!(snapshot.read("t2"), "4000000000");
+    assert_eq!(snapshot.read("t3"), "2.5");
+}
+
+/// A conversion to or from a `STRING` compiles to the same instructions and
+/// constants by both routes: a string read as a number is passed by the
+/// offset of its slot, and a number written as a string is a temporary
+/// buffer.
+#[rstest]
+#[case::to_dint("n := STRING_TO_DINT(s);")]
+#[case::to_udint_of_literal("u := STRING_TO_UDINT('7');")]
+#[case::to_lint("q := STRING_TO_LINT(s);")]
+#[case::to_real("r := STRING_TO_REAL(s);")]
+#[case::to_lreal("l := STRING_TO_LREAL(s);")]
+#[case::to_dint_of_call("n := STRING_TO_DINT(LEFT(s, 2));")]
+#[case::from_dint("s := DINT_TO_STRING(n);")]
+#[case::from_udint("s := UDINT_TO_STRING(u);")]
+#[case::from_real("s := REAL_TO_STRING(r);")]
+#[case::from_dint_in_call("s := CONCAT(DINT_TO_STRING(n), 'x');")]
+fn compile_when_string_conversion_lowered_then_same_code_as_ast(#[case] statement: &str) {
+    let source = format!(
+        "PROGRAM main
+           VAR s : STRING; n : DINT; u : UDINT; q : LINT; r : REAL; l : LREAL; END_VAR
            {statement}
          END_PROGRAM"
     );

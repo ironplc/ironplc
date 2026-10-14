@@ -20,6 +20,7 @@ mod ids;
 mod invariant;
 mod loops;
 mod place;
+mod policy;
 mod print;
 mod program;
 mod scalar;
@@ -33,6 +34,7 @@ pub use expr::{BinaryOp, CompareOp, Const, Expr, ExprKind, ShortCircuitOp, Unary
 pub use ids::{FieldIdx, LoopId, PouId, TypeId, VarId};
 pub use loops::{counts_down, ForParts, LoopScope};
 pub use place::{Place, Projection};
+pub use policy::{NonNumeric, ParseFailure, ParsePolicy};
 pub use program::ProgramBuilder;
 pub use scalar::{ScalarType, Signedness};
 pub use stmt::{store_narrowing, CaseArm, CaseLabel, Stmt, StmtKind};

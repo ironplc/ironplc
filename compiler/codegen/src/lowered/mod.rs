@@ -33,8 +33,11 @@ use crate::emit::Emitter;
 
 mod expr;
 mod place;
+mod policy;
 mod stmt;
 mod string;
+
+pub(crate) use policy::parse_policy;
 
 /// Which route codegen compiles a statement by.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]

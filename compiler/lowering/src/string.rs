@@ -1,5 +1,6 @@
 //! Strings: a string literal, the string at a place, the assignment of a
-//! string to a string place, and calls of the standard string functions.
+//! string to a string place, calls of the standard string functions, and
+//! conversions to and from a `STRING`.
 //!
 //! A literal is in the encoding its delimiter spells: `'abc'` is a `STRING`
 //! and `"abc"` a `WSTRING` (ADR-0016). The analyzer reports a literal stored
@@ -11,13 +12,22 @@
 //! `LEN` and `FIND` yield a number, an `Expr`; the others yield a string, a
 //! `StrExpr` with room for every code unit of their strings
 //! (REQ-LOW-lowering-167).
+//!
+//! A conversion from a `STRING` reads a number of the type the analyzer
+//! recorded for the call, as the program's parse policy says. A conversion
+//! to a `STRING` writes its number into a string of the default capacity
+//! (REQ-LOW-lowering-168).
 
 use ironplc_analyzer::{BuiltinFunction, StringFunction};
-use ironplc_dsl::common::{ConstantKind, StringType};
+use ironplc_container::DEFAULT_STRING_MAX_LENGTH;
+use ironplc_dsl::common::{ConstantKind, ElementaryTypeName, StringType};
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{Expr as AstExpr, ExprKind as AstExprKind, Function};
-use ironplc_ir::lowered::{Arg, Encoding, Intrinsic, Param, Place, Stmt, StrExpr, TypeKind};
+use ironplc_ir::lowered::{
+    Arg, Encoding, Intrinsic, NarrowWidth, Param, Place, ScalarType, Signedness, Stmt, StrExpr,
+    TypeKind,
+};
 
 use crate::expr::Lowered;
 use crate::variables::BodyFrame;
@@ -57,11 +67,9 @@ impl Lowering<'_> {
         self.intrinsic_call(frame, expr, intrinsic, args)
     }
 
-    /// The string the call `func`, the expression `expr`, yields, when it is
-    /// a call of a standard string function that yields a string. Its
-    /// capacity is the sum of its strings' (REQ-LOW-lowering-167): room for
-    /// every code unit `CONCAT`, `INSERT` and `REPLACE` join, and for all
-    /// `LEFT`, `RIGHT`, `MID` and `DELETE` can keep of their one string.
+    /// The string the call `func`, the expression `expr`, yields: a call of
+    /// a standard string function that yields a string, or a conversion to a
+    /// `STRING`. `None` for a call of any other function.
     fn string_call(
         &mut self,
         frame: &BodyFrame,
@@ -73,21 +81,42 @@ impl Lowering<'_> {
             .context()
             .functions()
             .get(&func.name)
-            .and_then(|signature| signature.builtin_function.as_ref());
-        let Some(BuiltinFunction::String(function)) = builtin else {
-            return Ok(None);
-        };
-        let function = *function;
+            .and_then(|signature| signature.builtin_function.clone());
         // The analyzer wrote the call in normal form: its inputs in the order
         // of the function's parameters.
         let args: Vec<&AstExpr> = func.inputs().collect();
-        let Some(intrinsic) = self.string_intrinsic(function, &args)? else {
+        if let Some(BuiltinFunction::String(function)) = builtin {
+            return self.string_function_string(frame, expr, function, &args);
+        }
+        if let Some(BuiltinFunction::Conversion {
+            target: ElementaryTypeName::STRING,
+            ..
+        }) = builtin
+        {
+            return self.number_to_string(frame, expr, &args);
+        }
+        Ok(None)
+    }
+
+    /// The string the call `expr` of the string function `function` with
+    /// `args` yields, where it yields one. Its capacity is the sum of its
+    /// strings' (REQ-LOW-lowering-167): room for every code unit `CONCAT`,
+    /// `INSERT` and `REPLACE` join, and for all `LEFT`, `RIGHT`, `MID` and
+    /// `DELETE` can keep of their one string.
+    fn string_function_string(
+        &mut self,
+        frame: &BodyFrame,
+        expr: &AstExpr,
+        function: StringFunction,
+        args: &[&AstExpr],
+    ) -> Result<Option<StrExpr>, Diagnostic> {
+        let Some(intrinsic) = self.string_intrinsic(function, args)? else {
             return Ok(None);
         };
         let Param::Str(_) = intrinsic.signature().result() else {
             return Ok(None);
         };
-        let Some(args) = self.intrinsic_args(frame, intrinsic, &args)? else {
+        let Some(args) = self.intrinsic_args(frame, intrinsic, args)? else {
             return Ok(None);
         };
         let capacity = args.iter().fold(0u32, |sum, arg| match arg {
@@ -95,6 +124,82 @@ impl Lowering<'_> {
             Arg::Value(_) => sum,
         });
         StrExpr::call(intrinsic, args, capacity, expr.span()).map(Some)
+    }
+
+    /// The conversion of `args`, one number, to a `STRING`, the expression
+    /// `expr`: the intrinsic that writes a number of its operation type, into
+    /// a string of the default capacity (REQ-LOW-lowering-168).
+    fn number_to_string(
+        &mut self,
+        frame: &BodyFrame,
+        expr: &AstExpr,
+        args: &[&AstExpr],
+    ) -> Result<Option<StrExpr>, Diagnostic> {
+        let [value] = args else {
+            return Ok(None);
+        };
+        let Some((_, operated)) = self.operated_type(value)? else {
+            return Ok(None);
+        };
+        let intrinsic = match operated {
+            ScalarType::I32(Signedness::Signed) => Intrinsic::I32ToString,
+            ScalarType::I32(Signedness::Unsigned) => Intrinsic::U32ToString,
+            ScalarType::F32 => Intrinsic::F32ToString,
+            ScalarType::I64(_)
+            | ScalarType::F64
+            | ScalarType::Bool
+            | ScalarType::Ref
+            | ScalarType::Interface => return Ok(None),
+        };
+        let Some(args) = self.intrinsic_args(frame, intrinsic, args)? else {
+            return Ok(None);
+        };
+        let capacity = u32::from(DEFAULT_STRING_MAX_LENGTH);
+        StrExpr::call(intrinsic, args, capacity, expr.span()).map(Some)
+    }
+
+    /// `STRING_TO_*(value)`, the expression `expr`: the intrinsic that reads
+    /// a number of the type the analyzer recorded for the call, as the
+    /// program's parse policy says. A bit string reads as the unsigned
+    /// integer of its width.
+    pub(crate) fn string_to_number(
+        &mut self,
+        frame: &BodyFrame,
+        expr: &AstExpr,
+        value: &AstExpr,
+    ) -> Lowered {
+        let Some((target, operated)) = self.operated_type(expr)? else {
+            return Ok(None);
+        };
+        let parse = self.parse;
+        let intrinsic = match operated {
+            ScalarType::I32(signedness) => {
+                let [bits_8, bits_16, bits_32] = match signedness {
+                    Signedness::Signed => [
+                        Intrinsic::StringToI8(parse),
+                        Intrinsic::StringToI16(parse),
+                        Intrinsic::StringToI32(parse),
+                    ],
+                    Signedness::Unsigned => [
+                        Intrinsic::StringToU8(parse),
+                        Intrinsic::StringToU16(parse),
+                        Intrinsic::StringToU32(parse),
+                    ],
+                };
+                match self.program.types().narrowed_storage(target) {
+                    Some(NarrowWidth::B8) => bits_8,
+                    Some(NarrowWidth::B16) => bits_16,
+                    None => bits_32,
+                    Some(NarrowWidth::B32) => return Ok(None),
+                }
+            }
+            ScalarType::I64(Signedness::Signed) => Intrinsic::StringToI64(parse),
+            ScalarType::I64(Signedness::Unsigned) => Intrinsic::StringToU64(parse),
+            ScalarType::F32 => Intrinsic::StringToF32(parse),
+            ScalarType::F64 => Intrinsic::StringToF64(parse),
+            ScalarType::Bool | ScalarType::Ref | ScalarType::Interface => return Ok(None),
+        };
+        self.intrinsic_call(frame, expr, intrinsic, &[value])
     }
 
     /// The intrinsic of the string function `function` for the encoding the

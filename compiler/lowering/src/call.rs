@@ -1,15 +1,17 @@
 //! Calls of functions. A call of a user-defined function is a `Call` of its
 //! POU (`function.rs`). Of the standard functions, a function form of an
 //! operator, and `MOVE`, lower to what the operator, or the operand, lowers
-//! to; a type conversion and `TRUNC` to a `Convert`; `SIZEOF` to a constant;
+//! to; a type conversion between numbers and `TRUNC` to a `Convert`;
+//! `SIZEOF` to a constant;
 //! a time or date function to arithmetic (`time.rs`); any other function is
 //! the `Intrinsic` for its function at its operand types
 //! (REQ-LOW-lowering-147), a string function at the encoding of its strings
-//! (`string.rs`). The match over the analyzer's `BuiltinFunction`
+//! and a conversion to or from a `STRING` at its number's type (`string.rs`). The match over the analyzer's `BuiltinFunction`
 //! names every function, so one the analyzer adds is not lowered until it
 //! has an arm here.
 
 use ironplc_analyzer::{BitShift, BuiltinFunction, FormOf, NumericFunction};
+use ironplc_dsl::common::ElementaryTypeName;
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{CompareOp, Expr as AstExpr, Function, Operator};
@@ -93,7 +95,13 @@ impl Lowering<'_> {
                 [value] => self.trunc(frame, expr, value),
                 _ => Ok(None),
             },
-            BuiltinFunction::Conversion { .. } => match args.as_slice() {
+            BuiltinFunction::Conversion { source, target } => match args.as_slice() {
+                // A conversion to a `STRING` yields a string, a `StrExpr`
+                // (`string.rs`).
+                [_] if target == ElementaryTypeName::STRING => Ok(None),
+                [value] if source == ElementaryTypeName::STRING => {
+                    self.string_to_number(frame, expr, value)
+                }
                 [value] => self.conversion(frame, expr, value),
                 _ => Ok(None),
             },
@@ -150,9 +158,7 @@ impl Lowering<'_> {
     /// is a comparison with zero.
     fn conversion(&mut self, frame: &BodyFrame, expr: &AstExpr, value: &AstExpr) -> Lowered {
         let span = expr.span();
-        // The analyzer recorded the target as the type of the call. A
-        // conversion to or from a `STRING` is not lowered yet: a `STRING` has
-        // no operation type, so the call or its input does not lower.
+        // The analyzer recorded the target as the type of the call.
         let Some((target, to)) = self.operated_type(expr)? else {
             return Ok(None);
         };

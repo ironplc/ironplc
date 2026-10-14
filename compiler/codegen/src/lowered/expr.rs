@@ -1,6 +1,7 @@
 //! Emits a lowered expression.
 
 use ironplc_container::opcode::builtin;
+use ironplc_container::opcode::builtin::str_to_num::Target;
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::{
@@ -9,6 +10,7 @@ use ironplc_ir::lowered::{
 };
 use ironplc_lowering::Lowering;
 
+use super::policy::parse_builtin;
 use super::string::str_arg_offset;
 use super::{op_type, user_function};
 use crate::compile::{CompileContext, OpWidth, Signedness};
@@ -174,6 +176,14 @@ pub(super) fn emit_intrinsic_call(
     let strings = emit_args(emitter, ctx, lowering, args)?;
     match instruction {
         Instruction::Builtin(builtin) => emitter.emit_builtin(builtin)?,
+        Instruction::BuiltinOfString(builtin) => {
+            let [string] = strings[..] else {
+                return Err(strings_not_taken(span));
+            };
+            let offset = ctx.add_i32_constant(string as i32);
+            emitter.emit_load_const_i32(offset);
+            emitter.emit_builtin(builtin)?;
+        }
         Instruction::OneString(emit) => {
             let [string] = strings[..] else {
                 return Err(strings_not_taken(span));
@@ -224,6 +234,9 @@ fn strings_not_taken(span: &SourceSpan) -> Diagnostic {
 pub(super) enum Instruction {
     /// A VM builtin (ADR-0008).
     Builtin(u16),
+    /// A VM builtin that also takes the data region offset of the call's
+    /// one string, as a value after the call's values.
+    BuiltinOfString(u16),
     /// A string opcode, emitted with the data region offset of the call's
     /// one string.
     OneString(fn(&mut Emitter, u32)),
@@ -237,6 +250,8 @@ pub(super) enum Instruction {
 /// for. The match names every intrinsic, so one the IR adds does not compile
 /// until it has an instruction here (REQ-LOW-codegen-074).
 pub(super) fn instruction_of(intrinsic: Intrinsic, args: usize) -> Option<Instruction> {
+    // A `STRING_TO_*` has a builtin for each target and policy.
+    let parse = |target, policy| Instruction::BuiltinOfString(parse_builtin(target, policy));
     // A `MUX` has a builtin for each number of inputs after its selector.
     let mux = |base: u16| {
         u16::try_from(args.saturating_sub(1))
@@ -354,6 +369,19 @@ pub(super) fn instruction_of(intrinsic: Intrinsic, args: usize) -> Option<Instru
         Intrinsic::MidString | Intrinsic::MidWString => {
             return Some(Instruction::OneString(Emitter::emit_mid_str))
         }
+        Intrinsic::StringToU8(policy) => return Some(parse(Target::U8, policy)),
+        Intrinsic::StringToI8(policy) => return Some(parse(Target::I8, policy)),
+        Intrinsic::StringToU16(policy) => return Some(parse(Target::U16, policy)),
+        Intrinsic::StringToI16(policy) => return Some(parse(Target::I16, policy)),
+        Intrinsic::StringToU32(policy) => return Some(parse(Target::U32, policy)),
+        Intrinsic::StringToI32(policy) => return Some(parse(Target::I32, policy)),
+        Intrinsic::StringToU64(policy) => return Some(parse(Target::U64, policy)),
+        Intrinsic::StringToI64(policy) => return Some(parse(Target::I64, policy)),
+        Intrinsic::StringToF32(policy) => return Some(parse(Target::F32, policy)),
+        Intrinsic::StringToF64(policy) => return Some(parse(Target::F64, policy)),
+        Intrinsic::I32ToString => builtin::CONV_I32_TO_STR,
+        Intrinsic::U32ToString => builtin::CONV_U32_TO_STR,
+        Intrinsic::F32ToString => builtin::CONV_F32_TO_STR,
     }))
 }
 
@@ -414,7 +442,12 @@ mod tests {
     fn instruction_of_when_mux_then_builtin_for_its_number_of_inputs() {
         let builtin_of = |intrinsic, args| match instruction_of(intrinsic, args) {
             Some(Instruction::Builtin(builtin)) => Some(builtin),
-            Some(Instruction::OneString(_) | Instruction::TwoStrings(_)) | None => None,
+            Some(
+                Instruction::BuiltinOfString(_)
+                | Instruction::OneString(_)
+                | Instruction::TwoStrings(_),
+            )
+            | None => None,
         };
         assert_eq!(
             builtin_of(Intrinsic::MuxF64, 3),
