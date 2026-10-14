@@ -204,11 +204,14 @@ impl Lowering<'_> {
                 return Ok(Some(Expr::boolean(value, span)));
             }
             ConstantKind::BitStringLiteral(literal) => i128::try_from(literal.value.value).ok(),
-            ConstantKind::CharacterString(_)
-            | ConstantKind::Duration(_)
-            | ConstantKind::TimeOfDay(_)
-            | ConstantKind::Date(_)
-            | ConstantKind::DateAndTime(_) => return Ok(None),
+            // A time or date is the count it is stored as (ADR-0025): the
+            // milliseconds of a duration or a time of day, and the seconds
+            // since 1970-01-01 of a date or a date and time.
+            ConstantKind::Duration(literal) => Some(literal.interval.whole_milliseconds()),
+            ConstantKind::TimeOfDay(literal) => Some(literal.whole_milliseconds().into()),
+            ConstantKind::Date(literal) => Some(literal.seconds_since_epoch().into()),
+            ConstantKind::DateAndTime(literal) => Some(literal.seconds_since_epoch().into()),
+            ConstantKind::CharacterString(_) => return Ok(None),
         };
         let Some(integer) = integer else {
             return Ok(None);

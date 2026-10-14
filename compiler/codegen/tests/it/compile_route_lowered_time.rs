@@ -54,8 +54,8 @@ fn run_when_time_functions_then_values() {
 }
 
 /// A typed time function, an operator or function form that resolves to
-/// one, and `DT_TO_TOD` compile to the same instructions and constants by
-/// both routes. `DT_TO_DATE` is left out: the AST route reads its operand
+/// one, `DT_TO_TOD` and a time or date literal compile to the same
+/// instructions and constants by both routes. `DT_TO_DATE` is left out: the AST route reads its operand
 /// twice, and the lowered route once (REQ-LOW-lowering-165).
 #[rstest]
 #[case::add_time("t := ADD_TIME(t, t2);")]
@@ -77,6 +77,11 @@ fn run_when_time_functions_then_values() {
 #[case::add_ltime_widened_operator("lt := lt + t;")]
 #[case::add_time_fold("t := ADD(t, t2, t);")]
 #[case::div_time_form("t := DIV(t, n);")]
+#[case::duration_literal("t := T#1S500MS;")]
+#[case::time_of_day_literal("c := TOD#10:00:00;")]
+#[case::date_literal("d := D#1970-01-02;")]
+#[case::date_and_time_literal("s := DT#1970-01-02-00:00:10;")]
+#[case::literal_operand("s := s + T#4S;")]
 fn compile_when_time_function_lowered_then_same_code_as_ast(#[case] statement: &str) {
     let source = format!(
         "PROGRAM main
