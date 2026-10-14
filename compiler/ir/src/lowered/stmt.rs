@@ -8,13 +8,16 @@ use super::ids::{LoopId, Stamp, TypeId};
 use super::invariant::broken;
 use super::place::Place;
 use super::scalar::ScalarType;
-use super::types::{NarrowWidth, Nullability, TypeTable};
+use super::str_expr::StrExpr;
+use super::types::{NarrowWidth, Nullability, TypeKind, TypeTable};
 
 /// What a statement does.
 #[derive(Clone, Debug)]
 pub enum StmtKind {
     /// Stores a scalar value at a place.
     Assign { place: Place, value: Expr },
+    /// Stores a string at a place of a string type.
+    AssignStr { place: Place, value: StrExpr },
     /// Replaces the `bits` bits of the value at `place` that start at bit
     /// `shift` with the low `bits` bits of `value`, leaving the others as
     /// they were. The place is named once, so it is evaluated once.
@@ -159,6 +162,52 @@ impl Stmt {
         let program = Some(place.stamp());
         Ok(Self {
             kind: StmtKind::Assign { place, value },
+            span,
+            program,
+        })
+    }
+
+    /// Stores the string `value` at `place`, a string of the same encoding
+    /// (REQ-LOW-lowering-050). A value longer than the place's capacity keeps
+    /// its first code units (REQ-LOW-codegen-056).
+    pub(crate) fn assign_str(
+        types: &TypeTable,
+        place: Place,
+        value: StrExpr,
+        span: SourceSpan,
+    ) -> Result<Self, Diagnostic> {
+        const CONSTRUCTOR: &str = "Stmt::assign_str";
+        if value
+            .program()
+            .is_some_and(|program| program != place.stamp())
+        {
+            return Err(broken(
+                CONSTRUCTOR,
+                &span,
+                "the value reads places of another program",
+            ));
+        }
+        let Some(TypeKind::String(shape)) = types.kind(place.ty()) else {
+            return Err(broken(
+                CONSTRUCTOR,
+                &span,
+                format!("{} is not a string", place.ty()),
+            ));
+        };
+        if shape.encoding != value.shape().encoding {
+            return Err(broken(
+                CONSTRUCTOR,
+                &span,
+                format!(
+                    "a {:?} string cannot be stored at {}",
+                    value.shape().encoding,
+                    place.ty()
+                ),
+            ));
+        }
+        let program = Some(place.stamp());
+        Ok(Self {
+            kind: StmtKind::AssignStr { place, value },
             span,
             program,
         })

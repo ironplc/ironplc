@@ -34,6 +34,7 @@ use crate::emit::Emitter;
 mod expr;
 mod place;
 mod stmt;
+mod string;
 
 /// Which route codegen compiles a statement by.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -156,6 +157,10 @@ fn can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, stmt: &Stmt) -> bool 
     match stmt.kind() {
         StmtKind::Assign { place, value } => {
             reaches(lowering, ctx, place, value.ty()) && expr_can_emit(lowering, ctx, value)
+        }
+        StmtKind::AssignStr { place, value } => {
+            string::string_storage(lowering, ctx, place).is_some()
+                && string::str_can_emit(lowering, ctx, value)
         }
         StmtKind::AssignBits { place, value, .. } => {
             lowering

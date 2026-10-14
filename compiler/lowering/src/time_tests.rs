@@ -151,3 +151,28 @@ fn lower_statement_when_date_and_time_split_then_reads_it_once() {
         ]
     );
 }
+
+/// A time or date literal is the count it is stored as (ADR-0025): the
+/// milliseconds of a duration or a time of day, and the seconds since
+/// 1970-01-01 of a date or a date and time.
+#[test]
+fn lower_statement_when_time_or_date_literal_then_constant_of_its_count() {
+    let outcome = lower(
+        "PROGRAM main VAR t : TIME; c : TOD; d : DATE; s : DT; END_VAR
+            t := T#1s500ms;
+            c := TOD#01:00:00.25;
+            d := D#1970-01-02;
+            s := DT#1970-01-02-00:01:00;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f0 (const i32s 1500)",
+            "assign v0^.f1 (const i32u 3600250)",
+            "assign v0^.f2 (const i32u 86400)",
+            "assign v0^.f3 (const i32u 86460)",
+        ]
+    );
+}
