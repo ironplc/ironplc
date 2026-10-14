@@ -1,11 +1,15 @@
 //! Calls: what a call calls, and the arguments it passes.
 
 use super::expr::Expr;
+use super::ids::PouId;
 use super::scalar::{ScalarType, Signedness};
 
 /// What a call calls.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Callee {
+    /// A function of the program, whose parameters and result its POU
+    /// declares.
+    User(PouId),
     /// An operation the compiler implements itself.
     Intrinsic(Intrinsic),
 }

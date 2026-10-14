@@ -56,11 +56,11 @@ impl fmt::Display for Expr {
             ExprKind::ShortCircuit { op, lhs, rhs } => {
                 write!(f, "({} {lhs} {rhs})", short_circuit(*op))
             }
-            ExprKind::Call {
-                callee: Callee::Intrinsic(intrinsic),
-                args,
-            } => {
-                write!(f, "(call {} {ty}", intrinsic.name())?;
+            ExprKind::Call { callee, args } => {
+                match callee {
+                    Callee::User(pou) => write!(f, "(call {pou} {ty}")?,
+                    Callee::Intrinsic(intrinsic) => write!(f, "(call {} {ty}", intrinsic.name())?,
+                }
                 for Arg::Value(value) in args {
                     write!(f, " {value}")?;
                 }

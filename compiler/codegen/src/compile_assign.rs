@@ -10,7 +10,6 @@ use ironplc_dsl::textual::{Assignment, Expr, SymbolicVariableKind, Variable};
 use super::compile::CompileContext;
 use super::compile_array::{emit_flat_index, resolve_access, ResolvedAccess};
 use super::compile_expr::{compile_expr, emit_truncation, resolve_variable_name, variable_span};
-use super::compile_fb_init::compile_fb_field_store;
 use super::compile_partial_access::{compile_partial_access_assignment, PartialAccess};
 use super::compile_place::Place;
 use crate::emit::Emitter;
@@ -43,8 +42,7 @@ pub(crate) fn compile_assignment(
             &assignment.target,
             expr_type_info(ctx, &assignment.value),
         )?;
-        compile_expr(emitter, ctx, &assignment.value)?;
-        return place.emit_store(emitter, ctx);
+        return assign_to_place(emitter, ctx, &place, &assignment.value);
     }
 
     // A bit or partial access target replaces bits of its base
@@ -66,20 +64,10 @@ pub(crate) fn compile_assignment(
         _ => None,
     };
     if let Some((symbolic, structured)) = fixed_offset_field {
-        // Function block instance field write (e.g. `timer.IN := TRUE`).
-        // FB instances live in `ctx.fb_instances` rather than
-        // `ctx.struct_vars`, and their fields are stored in the data
-        // region addressed via FB_STORE_PARAM.
-        if let SymbolicVariableKind::Named(named) = structured.record.as_ref() {
-            if compile_fb_field_store(
-                emitter,
-                ctx,
-                &named.name,
-                &structured.field,
-                &assignment.value,
-            )? {
-                return Ok(());
-            }
+        // A field of a function block instance (`timer.IN := TRUE`), which
+        // lives in the instance's data region rather than in a structure.
+        if let Some(place) = Place::fb_field(ctx, structured)? {
+            return assign_to_place(emitter, ctx, &place, &assignment.value);
         }
 
         // STRING fields are composite (multi-slot) and handled via the
@@ -207,6 +195,7 @@ fn assign_to_place(
     place: &Place<&Expr>,
     value: &Expr,
 ) -> Result<(), Diagnostic> {
-    compile_expr(emitter, ctx, value)?;
-    place.emit_store(emitter, ctx)
+    place.emit_assign(emitter, ctx, |emitter, ctx| {
+        compile_expr(emitter, ctx, value)
+    })
 }

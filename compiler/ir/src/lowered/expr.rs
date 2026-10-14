@@ -3,12 +3,13 @@
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
 
-use super::call::{Arg, Callee};
-use super::ids::Stamp;
+use super::call::{Arg, Callee, Intrinsic};
+use super::ids::{PouId, Stamp, VarId};
 use super::invariant::broken;
 use super::place::Place;
 use super::scalar::{ScalarType, Signedness};
 use super::types::{NarrowWidth, TypeTable};
+use super::variables::{PouTable, VariableTable};
 
 /// The value of a constant: a `BOOL`, or a value at one of the four operation
 /// widths, so a value always fits its type and a backend emits it as it is.
@@ -429,20 +430,18 @@ impl Expr {
         ))
     }
 
-    /// The result of calling `callee` with `args`. There is one argument for
-    /// each of the callee's parameters, of the parameter's type, and one or
-    /// more for a last parameter that repeats (REQ-LOW-ir-145). The arguments
-    /// read places of one program.
-    pub fn call(callee: Callee, args: Vec<Arg>, span: SourceSpan) -> Result<Self, Diagnostic> {
+    /// The result of calling `intrinsic` with `args`. There is one argument
+    /// for each of its parameters, of the parameter's type, and one or more
+    /// for a last parameter that repeats (REQ-LOW-ir-145). The arguments read
+    /// places of one program.
+    pub fn call(
+        intrinsic: Intrinsic,
+        args: Vec<Arg>,
+        span: SourceSpan,
+    ) -> Result<Self, Diagnostic> {
         const CONSTRUCTOR: &str = "Expr::call";
-        let Callee::Intrinsic(intrinsic) = callee;
         let signature = intrinsic.signature();
-        let types: Vec<ScalarType> = args
-            .iter()
-            .map(|arg| match arg {
-                Arg::Value(value) => value.ty,
-            })
-            .collect();
+        let types = arg_types(&args);
         if !signature.takes(&types) {
             return Err(broken(
                 CONSTRUCTOR,
@@ -450,12 +449,89 @@ impl Expr {
                 format!("{} takes {signature}, not {types:?}", intrinsic.name()),
             ));
         }
+        let result = signature.result();
+        Self::of_call(
+            CONSTRUCTOR,
+            Callee::Intrinsic(intrinsic),
+            args,
+            result,
+            span,
+        )
+    }
+
+    /// The result of calling the function `pou` that `pous` declares with
+    /// `args`: one argument for each of its parameters, in order, at the
+    /// parameter's operation type (REQ-LOW-lowering-071,
+    /// REQ-LOW-lowering-072). The arguments read places of the program the
+    /// tables belong to.
+    pub(crate) fn call_function(
+        types: &TypeTable,
+        variables: &VariableTable,
+        pous: &PouTable,
+        pou: PouId,
+        args: Vec<Arg>,
+        span: SourceSpan,
+    ) -> Result<Self, Diagnostic> {
+        const CONSTRUCTOR: &str = "ProgramBuilder::call";
+        let Some(signature) = pous.function(pou) else {
+            return Err(broken(
+                CONSTRUCTOR,
+                &span,
+                format!("{pou} is not a function of this program"),
+            ));
+        };
+        let operated = |var: VarId| {
+            variables
+                .get(var)
+                .and_then(|variable| types.operation_type(variable.ty()))
+        };
+        let params: Option<Vec<ScalarType>> = signature
+            .parameters()
+            .iter()
+            .map(|param| operated(*param))
+            .collect();
+        let (Some(params), Some(result)) = (params, operated(signature.result())) else {
+            return Err(broken(
+                CONSTRUCTOR,
+                &span,
+                format!("{pou} has a parameter or result that is not a scalar"),
+            ));
+        };
+        let types = arg_types(&args);
+        if types != params {
+            return Err(broken(
+                CONSTRUCTOR,
+                &span,
+                format!("{pou} takes {params:?}, not {types:?}"),
+            ));
+        }
+        if let Some(other) = args.iter().find_map(|Arg::Value(value)| value.program) {
+            if other != pou.stamp() {
+                return Err(broken(
+                    CONSTRUCTOR,
+                    &span,
+                    "the arguments belong to another program",
+                ));
+            }
+        }
+        Self::of_call(CONSTRUCTOR, Callee::User(pou), args, result, span)
+    }
+
+    /// The `ty` result of calling `callee` with `args`, whose types the
+    /// caller checked, when the arguments read places of one program.
+    fn of_call(
+        constructor: &str,
+        callee: Callee,
+        args: Vec<Arg>,
+        ty: ScalarType,
+        span: SourceSpan,
+    ) -> Result<Self, Diagnostic> {
         let mut program = None;
         for Arg::Value(value) in &args {
             match (program, value.program) {
                 (Some(one), Some(other)) if one != other => {
                     return Err(broken(
-                        CONSTRUCTOR,
+                        constructor,
                         &span,
                         "the arguments belong to two different programs",
                     ))
@@ -464,11 +540,7 @@ impl Expr {
                 (Some(_), _) => {}
             }
         }
-        Ok(Self::new(
-            ExprKind::Call { callee, args },
-            signature.result(),
-            span,
-        ))
+        Ok(Self::new(ExprKind::Call { callee, args }, ty, span))
     }
 
     fn new(kind: ExprKind, ty: ScalarType, span: SourceSpan) -> Self {
@@ -526,4 +598,13 @@ impl Expr {
     pub fn span(&self) -> &SourceSpan {
         &self.span
     }
+}
+
+/// The type of each of `args`.
+fn arg_types(args: &[Arg]) -> Vec<ScalarType> {
+    args.iter()
+        .map(|arg| match arg {
+            Arg::Value(value) => value.ty,
+        })
+        .collect()
 }

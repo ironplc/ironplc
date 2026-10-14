@@ -23,6 +23,7 @@ use super::compile_call::compile_function_call;
 use super::compile_comparison::compile_comparison;
 use super::compile_method::compile_method_call_expression;
 use super::compile_partial_access::{compile_partial_access_read, PartialAccess};
+use super::compile_place::Place;
 use super::compile_short_circuit::{compile_short_circuit, ShortCircuitOp};
 use super::type_info::{expr_representation, expr_type_info};
 use crate::emit::Emitter;
@@ -539,35 +540,10 @@ pub(crate) fn compile_variable_read(
         Variable::Symbolic(SymbolicVariableKind::Structured(structured))
             if !matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) =>
         {
-            // Function block instance field read (e.g. `timer.Q`). FB instances
-            // live in `ctx.fb_instances` rather than `ctx.struct_vars`, and
-            // their fields are stored in the data region addressed via
-            // FB_LOAD_PARAM.
-            if let SymbolicVariableKind::Named(named) = structured.record.as_ref() {
-                if let Some(fb_info) = ctx.fb_instances.get(&named.name) {
-                    let field_name = structured.field.to_string().to_lowercase();
-                    let field_idx =
-                        fb_info
-                            .field_indices
-                            .get(&field_name)
-                            .copied()
-                            .ok_or_else(|| {
-                                Diagnostic::not_implemented(Label::span(
-                                    structured.field.span(),
-                                    format!(
-                                        "Unknown field '{}' on function block '{}' \
-                                         (reading a PROPERTY is not supported yet)",
-                                        structured.field, named.name
-                                    ),
-                                ))
-                            })?;
-                    let var_index = fb_info.var_index;
-                    emitter.emit_fb_load_instance(var_index);
-                    emitter.emit_fb_load_param(field_idx);
-                    emitter.emit_swap();
-                    emitter.emit_pop();
-                    return Ok(());
-                }
+            // A field of a function block instance (`timer.Q`), which lives in
+            // the instance's data region rather than in a structure.
+            if let Some(place) = Place::fb_field(ctx, structured)? {
+                return place.emit_load(emitter, ctx);
             }
 
             // STRING fields are composite (multi-slot) and stored in the data

@@ -13,9 +13,9 @@
 use ironplc_container::{SlotIndex, VarIndex};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{Expr, SymbolicVariableKind, Variable};
+use ironplc_dsl::textual::{Expr, StructuredVariable, SymbolicVariableKind, Variable};
 
-use super::compile::{CompileContext, OpType, VarTypeInfo, DEFAULT_OP_TYPE};
+use super::compile::{CompileContext, OpType, OpWidth, VarTypeInfo, DEFAULT_OP_TYPE};
 use super::compile_array::{
     emit_flat_index, resolve_symbolic_access, ArrayVarInfo, DimensionInfo, ResolvedAccess,
 };
@@ -55,6 +55,10 @@ enum Address<S> {
         through_ref: bool,
         index: ElementIndex<S>,
     },
+    /// A field of the function block instance whose data region `instance`
+    /// holds: `FB_LOAD_PARAM` and `FB_STORE_PARAM` on the instance
+    /// `FB_LOAD_INSTANCE` pushes.
+    FbField { instance: VarIndex, field: u8 },
 }
 
 /// The index of an [`Address::Element`] within its slot array.
@@ -82,6 +86,9 @@ impl<'ast> Place<&'ast Expr> {
         // A field at a fixed offset in a structure. In `a[i].field` the record
         // is an element of an array of structures, which resolves below.
         if let SymbolicVariableKind::Structured(structured) = base {
+            if let Some(place) = Self::fb_field(ctx, structured)? {
+                return Ok(place);
+            }
             if !matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) {
                 let (var_index, desc_index, slot, _op_type, field_type) =
                     resolve_struct_field_access(ctx, structured)?;
@@ -103,6 +110,60 @@ impl<'ast> Place<&'ast Expr> {
             _ => None,
         };
         Self::from_access(ctx, resolve_symbolic_access(ctx, base)?, name, span)
+    }
+
+    /// The field of a function block instance that `structured` names
+    /// (`timer.Q`), or `None` when its record is not an instance. A field is
+    /// stored at its operation type, unnarrowed.
+    pub(crate) fn fb_field(
+        ctx: &CompileContext,
+        structured: &StructuredVariable,
+    ) -> Result<Option<Self>, Diagnostic> {
+        let SymbolicVariableKind::Named(named) = structured.record.as_ref() else {
+            return Ok(None);
+        };
+        Self::instance_field(ctx, &named.name, &structured.field)
+    }
+
+    /// The field `field` of the function block instance named `instance`, or
+    /// `None` when no instance has that name.
+    pub(crate) fn instance_field(
+        ctx: &CompileContext,
+        instance_name: &Id,
+        field: &Id,
+    ) -> Result<Option<Self>, Diagnostic> {
+        let Some(instance) = ctx.fb_instances.get(instance_name) else {
+            return Ok(None);
+        };
+        let name = field.to_string().to_lowercase();
+        let index = instance.field_indices.get(&name).copied().ok_or_else(|| {
+            Diagnostic::not_implemented(Label::span(
+                field.span(),
+                format!(
+                    "Unknown field '{field}' on function block '{instance_name}' \
+                     (a PROPERTY is not supported yet)"
+                ),
+            ))
+        })?;
+        let type_info = instance
+            .field_op_types
+            .get(&name)
+            .map(|(op_width, signedness)| VarTypeInfo {
+                op_width: *op_width,
+                signedness: *signedness,
+                storage_bits: match op_width {
+                    OpWidth::W32 | OpWidth::F32 => 32,
+                    OpWidth::W64 | OpWidth::F64 => 64,
+                },
+            });
+        Ok(Some(Place {
+            address: Address::FbField {
+                instance: instance.var_index,
+                field: index,
+            },
+            type_info,
+            span: field.span(),
+        }))
     }
 
     /// Builds the place that `access`, already resolved from a variable
@@ -202,6 +263,7 @@ impl<S> Place<S> {
         let address = match self.address {
             Address::Variable(var_index) => Address::Variable(var_index),
             Address::Indirect(ref_slot) => Address::Indirect(ref_slot),
+            Address::FbField { instance, field } => Address::FbField { instance, field },
             Address::Element {
                 var_index,
                 desc_index,
@@ -253,6 +315,12 @@ impl<S: Subscript> Place<S> {
         match &self.address {
             Address::Variable(var_index) => emit_load_var(emitter, *var_index, self.op_type()),
             Address::Indirect(ref_slot) => emit_load_in_out(emitter, *ref_slot),
+            Address::FbField { instance, field } => {
+                emitter.emit_fb_load_instance(*instance);
+                emitter.emit_fb_load_param(*field);
+                emitter.emit_swap();
+                emitter.emit_pop();
+            }
             Address::Element {
                 var_index,
                 desc_index,
@@ -270,6 +338,68 @@ impl<S: Subscript> Place<S> {
         Ok(())
     }
 
+    /// Compiles the value `push` leaves on the stack and stores it in the
+    /// place, truncated to the place's type.
+    pub(crate) fn emit_assign(
+        &self,
+        emitter: &mut Emitter,
+        ctx: &mut CompileContext,
+        push: impl FnOnce(&mut Emitter, &mut CompileContext) -> Result<(), Diagnostic>,
+    ) -> Result<(), Diagnostic> {
+        self.assign(emitter, ctx, push, true)
+    }
+
+    /// As [`Place::emit_assign`], for a value that already fits the place's
+    /// type, as every value the lowered program stores does
+    /// (REQ-LOW-lowering-046).
+    pub(crate) fn emit_assign_fitting(
+        &self,
+        emitter: &mut Emitter,
+        ctx: &mut CompileContext,
+        push: impl FnOnce(&mut Emitter, &mut CompileContext) -> Result<(), Diagnostic>,
+    ) -> Result<(), Diagnostic> {
+        self.assign(emitter, ctx, push, false)
+    }
+
+    /// Stores the value `push` leaves in the place, truncated when
+    /// `truncate`. `FB_STORE_PARAM` takes its instance below the value, so a
+    /// field's instance is pushed first.
+    fn assign(
+        &self,
+        emitter: &mut Emitter,
+        ctx: &mut CompileContext,
+        push: impl FnOnce(&mut Emitter, &mut CompileContext) -> Result<(), Diagnostic>,
+        truncate: bool,
+    ) -> Result<(), Diagnostic> {
+        match &self.address {
+            Address::FbField { instance, field } => {
+                emitter.emit_fb_load_instance(*instance);
+                push(emitter, ctx)?;
+                if truncate {
+                    self.emit_truncation(emitter);
+                }
+                emitter.emit_fb_store_param(*field);
+                emitter.emit_pop();
+                Ok(())
+            }
+            Address::Variable(_) | Address::Indirect(_) | Address::Element { .. } => {
+                push(emitter, ctx)?;
+                if truncate {
+                    self.emit_store(emitter, ctx)
+                } else {
+                    self.emit_store_fitting(emitter, ctx)
+                }
+            }
+        }
+    }
+
+    /// Truncates the value on the stack to the place's type.
+    fn emit_truncation(&self, emitter: &mut Emitter) {
+        if let Some(type_info) = self.type_info {
+            emit_truncation(emitter, type_info);
+        }
+    }
+
     /// Pops a value, truncates it to the place's type, and stores it in the
     /// place.
     ///
@@ -280,9 +410,7 @@ impl<S: Subscript> Place<S> {
         emitter: &mut Emitter,
         ctx: &mut CompileContext,
     ) -> Result<(), Diagnostic> {
-        if let Some(type_info) = self.type_info {
-            emit_truncation(emitter, type_info);
-        }
+        self.emit_truncation(emitter);
         self.emit_store_fitting(emitter, ctx)
     }
 
@@ -297,11 +425,7 @@ impl<S: Subscript> Place<S> {
         ctx: &mut CompileContext,
         modify: impl FnOnce(&mut Emitter, &mut CompileContext) -> Result<(), Diagnostic>,
     ) -> Result<(), Diagnostic> {
-        let truncate = |emitter: &mut Emitter| {
-            if let Some(type_info) = self.type_info {
-                emit_truncation(emitter, type_info);
-            }
-        };
+        let truncate = |emitter: &mut Emitter| self.emit_truncation(emitter);
         match &self.address {
             Address::Variable(var_index) => {
                 emit_load_var(emitter, *var_index, self.op_type());
@@ -317,6 +441,16 @@ impl<S: Subscript> Place<S> {
                 truncate(emitter);
                 emitter.emit_swap();
                 emitter.emit_store_indirect();
+            }
+            // `FB_LOAD_PARAM` leaves the instance below the value, where
+            // `FB_STORE_PARAM` takes it.
+            Address::FbField { instance, field } => {
+                emitter.emit_fb_load_instance(*instance);
+                emitter.emit_fb_load_param(*field);
+                modify(emitter, ctx)?;
+                truncate(emitter);
+                emitter.emit_fb_store_param(*field);
+                emitter.emit_pop();
             }
             Address::Element {
                 var_index,
@@ -357,6 +491,12 @@ impl<S: Subscript> Place<S> {
             Address::Indirect(ref_slot) => {
                 emitter.emit_load_var_i64(*ref_slot);
                 emitter.emit_store_indirect();
+            }
+            Address::FbField { instance, field } => {
+                emitter.emit_fb_load_instance(*instance);
+                emitter.emit_swap();
+                emitter.emit_fb_store_param(*field);
+                emitter.emit_pop();
             }
             Address::Element {
                 var_index,

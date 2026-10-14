@@ -23,11 +23,12 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::StmtKind as AstStmtKind;
 use ironplc_ir::lowered::{
     Arg, Callee, Const, Expr, ExprKind, Field, NarrowWidth, Nullability, Place as LoweredPlace,
-    Projection, ScalarType, Signedness as LoweredSignedness, Stmt, StmtKind, TypeId, TypeKind,
+    PouId, Projection, ScalarType, Signedness as LoweredSignedness, Stmt, StmtKind, TypeId,
+    TypeKind,
 };
 use ironplc_lowering::{Lowering, StatementLowering};
 
-use crate::compile::{CompileContext, OpType, OpWidth, Signedness};
+use crate::compile::{CompileContext, OpType, OpWidth, ParamPassing, Signedness, UserFunctionInfo};
 use crate::emit::Emitter;
 
 mod expr;
@@ -215,15 +216,46 @@ fn expr_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, expr: &Expr) -> 
             expr_can_emit(lowering, ctx, lhs) && expr_can_emit(lowering, ctx, rhs)
         }
         ExprKind::Call {
+            callee: Callee::User(pou),
+            args,
+        } => {
+            user_function(lowering, ctx, *pou)
+                .is_some_and(|function| function.params.len() == args.len())
+                && args_can_emit(lowering, ctx, args)
+        }
+        ExprKind::Call {
             callee: Callee::Intrinsic(intrinsic),
             args,
         } => {
-            expr::builtin_of(*intrinsic, args.len()).is_some()
-                && args.iter().all(|arg| match arg {
-                    Arg::Value(value) => expr_can_emit(lowering, ctx, value),
-                })
+            expr::builtin_of(*intrinsic, args.len()).is_some() && args_can_emit(lowering, ctx, args)
         }
     }
+}
+
+fn args_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, args: &[Arg]) -> bool {
+    args.iter().all(|arg| match arg {
+        Arg::Value(value) => expr_can_emit(lowering, ctx, value),
+    })
+}
+
+/// The function `pou` as this backend's layout knows it, by the name the
+/// lowered program keeps on the POU, when the backend passes each of its
+/// arguments by value and it returns a value on the stack: not a string or a
+/// structure. `None` for any other function.
+pub(super) fn user_function(
+    lowering: &Lowering<'_>,
+    ctx: &CompileContext,
+    pou: PouId,
+) -> Option<UserFunctionInfo> {
+    let name = lowering.pous().name(pou)?.to_string().to_lowercase();
+    let function = ctx.user_functions.get(&name)?;
+    let by_value = function
+        .params
+        .iter()
+        .all(|param| matches!(param, ParamPassing::Value));
+    let scalar =
+        function.return_string_info.is_none() && function.return_struct_desc_index.is_none();
+    (by_value && scalar).then(|| function.clone())
 }
 
 /// Whether `place` has storage this backend reaches as one value of type

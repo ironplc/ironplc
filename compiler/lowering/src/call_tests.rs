@@ -115,19 +115,16 @@ fn lower_statement_when_unsigned_shift_count_then_converted_to_parameter_type() 
     );
 }
 
-/// A call of a user-defined function and bits read through a reference are
-/// not lowered yet.
+/// Bits read through a reference are not lowered yet.
 #[test]
-fn lower_statement_when_call_or_read_not_supported_then_unsupported() {
+fn lower_statement_when_bits_read_through_reference_then_unsupported() {
     let outcome = lower(
-        "FUNCTION F : DINT VAR_INPUT a : DINT; END_VAR F := a; END_FUNCTION
-         PROGRAM main VAR x : BOOL; p : REF_TO WORD; r : DINT; END_VAR
-            r := F(1);
+        "PROGRAM main VAR x : BOOL; p : REF_TO WORD; END_VAR
             x := p^.3;
          END_PROGRAM",
         "main",
     );
-    assert_eq!(outcome.statements, ["unsupported", "unsupported"]);
+    assert_eq!(outcome.statements, ["unsupported"]);
 }
 
 /// REQ-LOW-lowering-101: an operator and its function form lower to the same

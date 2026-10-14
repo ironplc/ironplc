@@ -1,23 +1,25 @@
-//! Calls of standard functions. A function form of an operator, and `MOVE`,
-//! lower to what the operator, or the operand, lowers to; a type conversion
-//! and `TRUNC` to a `Convert`; `SIZEOF` to a constant; a time or date
-//! function to arithmetic (`time.rs`); any other function is the `Intrinsic`
-//! for its function at its operand types (REQ-LOW-lowering-147). The match over the analyzer's `BuiltinFunction`
-//! names every function, so one the analyzer adds is not lowered until it has
-//! an arm here.
+//! Calls of functions. A call of a user-defined function is a `Call` of its
+//! POU (`function.rs`). Of the standard functions, a function form of an
+//! operator, and `MOVE`, lower to what the operator, or the operand, lowers
+//! to; a type conversion and `TRUNC` to a `Convert`; `SIZEOF` to a constant;
+//! a time or date function to arithmetic (`time.rs`); any other function is
+//! the `Intrinsic` for its function at its operand types
+//! (REQ-LOW-lowering-147). The match over the analyzer's `BuiltinFunction`
+//! names every function, so one the analyzer adds is not lowered until it
+//! has an arm here.
 
 use ironplc_analyzer::{BitShift, BuiltinFunction, FormOf, NumericFunction};
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{CompareOp, Expr as AstExpr, Function, Operator};
 use ironplc_ir::lowered::{
-    Arg, BinaryOp, Callee, CompareOp as LoweredCompareOp, Expr, Intrinsic, ScalarType, Signedness,
-    TypeId, TypeKind, TypeTable,
+    Arg, BinaryOp, CompareOp as LoweredCompareOp, Expr, Intrinsic, ScalarType, Signedness, TypeId,
+    TypeKind, TypeTable,
 };
 
 use crate::expr::Lowered;
 use crate::variables::BodyFrame;
-use crate::Lowering;
+use crate::{Body, Lowering};
 
 impl Lowering<'_> {
     /// The call `func`, the expression `expr`.
@@ -27,15 +29,16 @@ impl Lowering<'_> {
         expr: &AstExpr,
         func: &Function,
     ) -> Lowered {
-        // A call of a user-defined function is not lowered yet.
-        let Some(builtin) = self
-            .analysis
-            .context()
-            .functions()
-            .get(&func.name)
-            .and_then(|signature| signature.builtin_function.clone())
-        else {
+        let Some(signature) = self.analysis.context().functions().get(&func.name) else {
             return Ok(None);
+        };
+        let Some(builtin) = signature.builtin_function.clone() else {
+            return match self.body_named(&func.name) {
+                Some(Body::Function(function)) => {
+                    self.user_function_call(frame, expr, func, function)
+                }
+                Some(Body::Program(_) | Body::FunctionBlock(_)) | None => Ok(None),
+            };
         };
         // The analyzer wrote the call in normal form: its inputs in the order
         // of the function's parameters.
@@ -297,7 +300,7 @@ impl Lowering<'_> {
             return Ok(None);
         }
         Expr::call(
-            Callee::Intrinsic(intrinsic),
+            intrinsic,
             args.into_iter().map(Arg::Value).collect(),
             expr.span(),
         )
