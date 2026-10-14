@@ -185,8 +185,7 @@ fn convert(constant: &ConstantKind, representation: &SemanticType) -> Option<Con
 
 /// Whether a time-like type of `size` holds `count`.
 fn counted(count: i128, size: &ByteSized, signed: bool) -> bool {
-    let bits = u32::from(size.as_bytes()) * 8;
-    value_range::fits(count, bits, signed)
+    value_range::fits(count, u32::from(size.bits()), signed)
 }
 
 /// The member of a temporal family a type of `size` is.

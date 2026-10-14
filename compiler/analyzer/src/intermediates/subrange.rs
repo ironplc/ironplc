@@ -10,14 +10,7 @@ use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::*;
 use ironplc_problems::Problem;
 
-/// Result of processing a subrange specification
-#[derive(Debug, Clone, PartialEq)]
-pub enum TypeResolution {
-    /// Create a new subrange type with the given attributes
-    Type(TypeAttributes),
-    /// Create an alias to an existing type
-    Alias(TypeName),
-}
+use super::TypeResolution;
 
 /// Try to create the semantic type information from the subrange specification.
 pub fn try_from(
