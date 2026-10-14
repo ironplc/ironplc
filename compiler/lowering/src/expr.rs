@@ -55,6 +55,9 @@ impl Lowering<'_> {
                         return self.numeric_call(frame, expr, NumericFunction::Expt, &args);
                     }
                 };
+                if self.is_temporal(expr)? {
+                    return self.time_arithmetic(frame, expr, op, &binary.left, &binary.right);
+                }
                 if !self.is_arithmetic(expr)? {
                     return Ok(None);
                 }

@@ -1762,7 +1762,7 @@ implements it.
 | Method call `inst.m(a)` | `Call` of the method with `Ref(inst)` first (REQ-LOW-lowering-076) |
 | Operator function form `ADD(a, b, c)` | Left fold of `Binary` |
 | `a ** b` | `Call` of the `EXPT` `Intrinsic`, as `EXPT(a, b)` is |
-| Typed time function `ADD_DT_TIME(a, b)` | Scalar arithmetic at the signed integer of the function's width, converting between the milliseconds of a `TIME` or `TIME_OF_DAY` and the seconds of a `DATE` or `DATE_AND_TIME` (ADR-0025) |
+| Typed time function `ADD_DT_TIME(a, b)`, and an operator or function form on times and dates such as `a + b` (REQ-LOW-lowering-166) | Scalar arithmetic at the signed integer of the result's width, on the milliseconds of a `TIME` or `TIME_OF_DAY` and the seconds of a `DATE` or `DATE_AND_TIME` (ADR-0025): `b` converted to the unit `a` counts in, the operation, then the result converted to the unit its type counts in. A duration scaled by a real is converted to the real's type and back |
 | `DT_TO_DATE(x)` | `(x / 86400) * 86400`, which reads `x` once (REQ-LOW-lowering-165) |
 | `DT_TO_TOD(x)` | `(x MOD 86400) * 1000` |
 | Explicit conversion such as `REAL_TO_INT(x)` | A `Convert` where the operation type changes, then a `Truncate` where the storage narrows; a conversion to `BOOL` is a `Compare` with zero |
@@ -1794,6 +1794,12 @@ P9999.
 **REQ-LOW-lowering-165** A desugaring evaluates each argument of the call it
 stands for once: `DT_TO_DATE(x)` is `(x / 86400) * 86400` rather than
 `x - x MOD 86400`.
+
+**REQ-LOW-lowering-166** An operator on times and dates, and its function form,
+lower to the arithmetic of the typed time function they resolve to, which
+follows from the units of the types the analyzer recorded rather than from the
+overload's name: `dt + t`, `ADD(dt, t)` and `ADD_DT_TIME(dt, t)` lower to
+`dt + t / 1000`.
 
 Codegen has already folded the cross product of access kind and base shape
 into one addressing path (`compile_place.rs`) and one bit write
