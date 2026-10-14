@@ -25,7 +25,7 @@ fn options() -> CompilerOptions {
 
 /// Compiles `source` with every statement lowered and runs it for one scan.
 /// The scan fails the test if it leaves a value on the operand stack.
-fn run_lowered(source: &str) -> Snapshot {
+pub(crate) fn run_lowered(source: &str) -> Snapshot {
     let options = options();
     let (library, context) = parse(source, &options);
     let container = compile_by_route(&library, &context, &options, Route::RequireLowered)
@@ -210,7 +210,7 @@ fn compile_when_control_flow_lowered_then_same_code_as_ast(#[case] statement: &s
 
 /// Fails unless `source`, with every statement lowered, compiles to the same
 /// code and constants as by the AST route.
-fn assert_same_code(source: &str) {
+pub(crate) fn assert_same_code(source: &str) {
     let options = options();
     let (library, context) = parse(source, &options);
     let ast = compile_by_route(&library, &context, &options, Route::Ast).unwrap();

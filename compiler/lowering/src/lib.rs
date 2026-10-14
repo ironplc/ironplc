@@ -27,6 +27,7 @@ mod control;
 mod expr;
 mod place;
 mod statement;
+mod time;
 mod types;
 mod variables;
 
@@ -40,6 +41,8 @@ mod place_tests;
 mod test_support;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod time_tests;
 
 use std::collections::HashMap;
 

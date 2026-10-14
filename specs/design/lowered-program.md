@@ -1762,7 +1762,9 @@ implements it.
 | Method call `inst.m(a)` | `Call` of the method with `Ref(inst)` first (REQ-LOW-lowering-076) |
 | Operator function form `ADD(a, b, c)` | Left fold of `Binary` |
 | `a ** b` | `Call` of the `EXPT` `Intrinsic`, as `EXPT(a, b)` is |
-| Typed time function `ADD_DT_TIME(a, b)` | Scalar arithmetic with the unit conversion `compile_time_arith.rs` applies today |
+| Typed time function `ADD_DT_TIME(a, b)` | Scalar arithmetic at the signed integer of the function's width, converting between the milliseconds of a `TIME` or `TIME_OF_DAY` and the seconds of a `DATE` or `DATE_AND_TIME` (ADR-0025) |
+| `DT_TO_DATE(x)` | `(x / 86400) * 86400`, which reads `x` once (REQ-LOW-lowering-165) |
+| `DT_TO_TOD(x)` | `(x MOD 86400) * 1000` |
 | Explicit conversion such as `REAL_TO_INT(x)` | A `Convert` where the operation type changes, then a `Truncate` where the storage narrows; a conversion to `BOOL` is a `Compare` with zero |
 | `TRUNC(x)` | A `Convert` to the integer the analyzer recorded for the call, narrowed where it is stored, as an arithmetic result is |
 | Enumerated value | `Const` |
@@ -1788,6 +1790,10 @@ names its place once.
 language's storage widths, never from a backend's layout. For a type whose size
 only a layout gives, such as a structure, a string or an enumeration, it is
 P9999.
+
+**REQ-LOW-lowering-165** A desugaring evaluates each argument of the call it
+stands for once: `DT_TO_DATE(x)` is `(x / 86400) * 86400` rather than
+`x - x MOD 86400`.
 
 Codegen has already folded the cross product of access kind and base shape
 into one addressing path (`compile_place.rs`) and one bit write
