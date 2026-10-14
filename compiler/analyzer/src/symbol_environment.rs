@@ -7,8 +7,6 @@ use ironplc_dsl::textual::SelfRefKind;
 use ironplc_dsl::type_id::TypeId;
 use ironplc_problems::Problem;
 
-use crate::enumeration_values::EnumerationValues;
-
 /// A scope's position in the nesting tree: the chain of declaration
 /// names from the library root.
 ///
@@ -395,13 +393,6 @@ pub struct SymbolEnvironment {
     global_symbols: IndexMap<Id, SymbolInfo>,
     /// Scoped symbols (variables within functions, function blocks, etc.)
     scoped_symbols: IndexMap<ScopeKind, IndexMap<Id, SymbolInfo>>,
-    /// The values of each enumeration type, in declaration order, and the
-    /// enumeration each alias names.
-    ///
-    /// Kept apart from the named symbols: an enumeration value is always
-    /// read through its type (`Colors#Red`), and two enumerations, or an
-    /// enumeration and a variable, may use the same name.
-    enumeration_values: EnumerationValues,
     /// Whether a body may use a `VAR_GLOBAL` directly, without a
     /// `VAR_EXTERNAL` naming it. The vendor dialects that declare globals
     /// in top-level lists (`--allow-top-level-var-global`) allow it; IEC
@@ -414,7 +405,6 @@ impl SymbolEnvironment {
         Self {
             global_symbols: IndexMap::new(),
             scoped_symbols: IndexMap::new(),
-            enumeration_values: EnumerationValues::default(),
             bare_globals: false,
         }
     }
@@ -529,17 +519,6 @@ impl SymbolEnvironment {
         }
         symbols.insert(name.clone(), info);
         Ok(())
-    }
-
-    /// Records `name` as a value of the enumeration type `enum_type`.
-    pub fn insert_enumeration_value(&mut self, name: &Id, enum_type: &TypeName) {
-        self.enumeration_values.insert(enum_type, name);
-    }
-
-    /// Records that the enumeration `alias` is declared as an alias of
-    /// `base`, so it has the values of `base`.
-    pub fn insert_enumeration_alias(&mut self, alias: &TypeName, base: &TypeName) {
-        self.enumeration_values.insert_alias(alias, base);
     }
 
     /// Finds a symbol visible from the given scope.
@@ -776,13 +755,6 @@ impl SymbolEnvironment {
         self.global_symbols
             .iter()
             .chain(self.scoped_symbols.values().flat_map(|scope| scope.iter()))
-    }
-
-    /// Get all enumeration values for a specific enumeration type, in
-    /// declaration order; for an alias, the values of the enumeration it
-    /// names.
-    pub fn get_enumeration_values_for_type(&self, enum_type: &TypeName) -> Vec<&Id> {
-        self.enumeration_values.values_of(enum_type)
     }
 }
 

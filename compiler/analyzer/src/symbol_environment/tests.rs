@@ -169,68 +169,6 @@ fn edge_cases_and_error_conditions_when_handling_edge_cases_then_handles_correct
 }
 
 #[test]
-fn get_enumeration_values_for_type_when_values_of_two_types_then_returns_matching_only() {
-    let mut env = SymbolEnvironment::new();
-    let enum_type = TypeName::from("COLOR");
-    let other_type = TypeName::from("SIZE");
-    env.insert_enumeration_value(&Id::from("RED"), &enum_type);
-    env.insert_enumeration_value(&Id::from("SMALL"), &other_type);
-    env.insert_enumeration_value(&Id::from("GREEN"), &enum_type);
-    // A variable is not an enumeration value.
-    env.insert(&Id::from("PLAIN"), SymbolKind::Variable, &ScopeKind::Global)
-        .unwrap();
-
-    let values = env.get_enumeration_values_for_type(&enum_type);
-
-    assert_eq!(values, vec![&Id::from("RED"), &Id::from("GREEN")]);
-}
-
-#[test]
-fn get_enumeration_values_for_type_when_two_types_share_value_then_each_keeps_it() {
-    let mut env = SymbolEnvironment::new();
-    let colors = TypeName::from("Colors");
-    let lights = TypeName::from("Lights");
-    env.insert_enumeration_value(&Id::from("Red"), &colors);
-    env.insert_enumeration_value(&Id::from("Green"), &colors);
-    env.insert_enumeration_value(&Id::from("Red"), &lights);
-
-    assert_eq!(
-        env.get_enumeration_values_for_type(&colors),
-        vec![&Id::from("Red"), &Id::from("Green")]
-    );
-    assert_eq!(
-        env.get_enumeration_values_for_type(&lights),
-        vec![&Id::from("Red")]
-    );
-}
-
-#[test]
-fn insert_when_global_shares_enumeration_value_name_then_both_kept() {
-    let mut env = SymbolEnvironment::new();
-    let colors = TypeName::from("Colors");
-    env.insert_enumeration_value(&Id::from("Red"), &colors);
-    global(&mut env, "Red", SymbolKind::Variable).unwrap();
-    env.insert_enumeration_alias(&TypeName::from("Paint"), &colors);
-
-    let global = env.find(&Id::from("Red"), &ScopeKind::Global).unwrap();
-    assert_eq!(global.kind, SymbolKind::Variable);
-    assert_eq!(
-        env.get_enumeration_values_for_type(&colors),
-        vec![&Id::from("Red")]
-    );
-}
-
-#[test]
-fn get_enumeration_values_for_type_when_no_matching_values_then_returns_empty() {
-    let mut env = SymbolEnvironment::new();
-    env.insert(&Id::from("PLAIN"), SymbolKind::Variable, &ScopeKind::Global)
-        .unwrap();
-
-    let values = env.get_enumeration_values_for_type(&TypeName::from("COLOR"));
-    assert!(values.is_empty());
-}
-
-#[test]
 fn symbol_info_span_and_scope_when_creating_symbol_info_then_has_correct_span_and_scope() {
     let span = ironplc_dsl::core::SourceSpan::default();
     let scope = ScopeKind::Named(Id::from("TEST_FUNCTION").into());
@@ -524,20 +462,6 @@ fn get_variables_in_scope_when_several_declared_then_returns_declaration_order()
         .map(|(id, _)| id)
         .collect();
     let expected: Vec<&Id> = variables.iter().collect();
-    assert_eq!(actual, expected);
-}
-
-#[test]
-fn get_enumeration_values_for_type_when_several_declared_then_returns_declaration_order() {
-    let mut env = SymbolEnvironment::new();
-    let enum_type = TypeName::from("Color");
-    let values = names("value");
-    for name in &values {
-        env.insert_enumeration_value(name, &enum_type);
-    }
-
-    let actual = env.get_enumeration_values_for_type(&enum_type);
-    let expected: Vec<&Id> = values.iter().collect();
     assert_eq!(actual, expected);
 }
 
