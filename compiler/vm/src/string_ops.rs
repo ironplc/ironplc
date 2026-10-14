@@ -197,9 +197,8 @@ pub(crate) fn compare_code_units(left: &[u8], right: &[u8], char_width: CharWidt
 
 /// The wide code units whose bytes are `bytes`.
 fn wide_code_units(bytes: &[u8]) -> impl Iterator<Item = u16> + '_ {
-    bytes
-        .chunks_exact(2)
-        .map(|unit| u16::from_le_bytes([unit[0], unit[1]]))
+    let (units, _) = bytes.as_chunks::<2>();
+    units.iter().map(|unit| u16::from_le_bytes(*unit))
 }
 
 /// Read the per-code-unit [`CharWidth`] from a string header at `offset`.
