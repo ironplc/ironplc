@@ -12,6 +12,7 @@ Before making changes, read the relevant steering files in `specs/steering/`:
 - **[IEC 61131-3 Compliance](specs/steering/iec-61131-3-compliance.md)** - Standards compliance and validation rules (especially relevant for `**/analyzer/**` files)
 - **[PLCopen XML Module](specs/steering/plcopen-xml-module.md)** - Architecture and patterns for the PLCopen XML parsing module (especially relevant for `compiler/sources/src/xml/` files)
 - **[Syntax Support Guide](specs/steering/syntax-support-guide.md)** - Checklist and patterns for adding new syntax support, including `--allow-x` flags, plc2plc round-trip tests, and end-to-end execution tests (especially relevant for `**/parser/**`, `**/codegen/**`, `**/plc2plc/**` files)
+- **[Backend Guide](specs/steering/backend-guide.md)** - Checklist and rules for adding a backend that consumes the lowered program: crate boundaries, layout, meaning of operations, testing against the bytecode backend, and what every backend does when the IR changes (especially relevant for `**/ir/**`, `**/codegen/**` files)
 - **[Problem Code Management](specs/steering/problem-code-management.md)** - Problem codes, diagnostics, and `compiler/problems/` workflows
 - **[Extension Testing Requirements](specs/steering/extension-testing-requirements.md)** - VS Code extension CI gates and invariants (especially relevant for `integrations/vscode/**`)
 - **[Steering File Guidelines](specs/steering/steering-file-guidelines.md)** - How IronPLC maintains steering docs and the pointer pattern
