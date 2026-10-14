@@ -232,7 +232,8 @@ fn expr_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, expr: &Expr) -> 
             callee: Callee::Intrinsic(intrinsic),
             args,
         } => {
-            expr::builtin_of(*intrinsic, args.len()).is_some() && args_can_emit(lowering, ctx, args)
+            expr::instruction_of(*intrinsic, args.len()).is_some()
+                && args_can_emit(lowering, ctx, args)
         }
     }
 }
@@ -240,6 +241,7 @@ fn expr_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, expr: &Expr) -> 
 fn args_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, args: &[Arg]) -> bool {
     args.iter().all(|arg| match arg {
         Arg::Value(value) => expr_can_emit(lowering, ctx, value),
+        Arg::Str(value) => string::str_can_emit(lowering, ctx, value),
     })
 }
 

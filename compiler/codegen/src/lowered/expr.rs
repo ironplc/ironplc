@@ -8,6 +8,7 @@ use ironplc_ir::lowered::{
 };
 use ironplc_lowering::Lowering;
 
+use super::string::str_arg_offset;
 use super::{op_type, user_function};
 use crate::compile::{CompileContext, OpWidth, Signedness};
 use crate::compile_arith::convert;
@@ -133,9 +134,9 @@ pub(super) fn emit_expr(
                     "A call of a function not passed its arguments by value",
                 ))
             })?;
-            for Arg::Value(value) in args {
-                emit_expr(emitter, ctx, lowering, value)?;
-            }
+            // A function of the program takes only values
+            // (`ProgramBuilder::call`), so no string offsets come back.
+            emit_args(emitter, ctx, lowering, args)?;
             emitter.emit_call(
                 function.function_id,
                 function.num_params,
@@ -148,35 +149,86 @@ pub(super) fn emit_expr(
             callee: Callee::Intrinsic(intrinsic),
             args,
         } => {
-            // `can_emit` leaves to the AST a call with no builtin.
-            let builtin = builtin_of(*intrinsic, args.len()).ok_or_else(|| {
+            // `can_emit` leaves to the AST a call with no instruction.
+            let instruction = instruction_of(*intrinsic, args.len()).ok_or_else(|| {
                 Diagnostic::internal_error_at(Label::span(
                     expr.span().clone(),
-                    "A call of an intrinsic with no builtin",
+                    "A call of an intrinsic with no instruction",
                 ))
             })?;
-            for Arg::Value(value) in args {
-                emit_expr(emitter, ctx, lowering, value)?;
+            let strings = emit_args(emitter, ctx, lowering, args)?;
+            match instruction {
+                Instruction::Builtin(builtin) => emitter.emit_builtin(builtin)?,
+                Instruction::LenStr => {
+                    let [string] = strings[..] else {
+                        return Err(strings_not_taken(expr));
+                    };
+                    emitter.emit_len_str(string);
+                }
+                Instruction::FindStr => {
+                    let [in1, in2] = strings[..] else {
+                        return Err(strings_not_taken(expr));
+                    };
+                    emitter.emit_find_str(in1, in2);
+                }
             }
-            emitter.emit_builtin(builtin)?;
         }
     }
     Ok(())
 }
 
-/// The VM builtin that computes a call of `intrinsic` with `args` arguments
-/// (ADR-0008); `None` for a `MUX` of more inputs than the VM has a builtin
+/// Passes each of `args`, in order: a value on the stack, and a string as
+/// the data region offset of a slot that holds it. Returns the offsets of
+/// the strings, in order.
+fn emit_args(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    lowering: &Lowering<'_>,
+    args: &[Arg],
+) -> Result<Vec<u32>, Diagnostic> {
+    let mut strings = Vec::new();
+    for arg in args {
+        match arg {
+            Arg::Value(value) => emit_expr(emitter, ctx, lowering, value)?,
+            Arg::Str(value) => strings.push(str_arg_offset(emitter, ctx, lowering, value)?),
+        }
+    }
+    Ok(strings)
+}
+
+/// The internal error for a call whose strings are not the ones its
+/// instruction takes, which the IR's signature check rules out.
+fn strings_not_taken(expr: &Expr) -> Diagnostic {
+    Diagnostic::internal_error_at(Label::span(
+        expr.span().clone(),
+        "A call of an intrinsic with strings its instruction does not take",
+    ))
+}
+
+/// How this backend computes a call of an intrinsic.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Instruction {
+    /// A VM builtin (ADR-0008), which takes the call's values on the stack.
+    Builtin(u16),
+    /// `LEN_STR`, of the string at one data region offset.
+    LenStr,
+    /// `FIND_STR`, of the strings at two data region offsets.
+    FindStr,
+}
+
+/// The instruction that computes a call of `intrinsic` with `args`
+/// arguments; `None` for a `MUX` of more inputs than the VM has a builtin
 /// for. The match names every intrinsic, so one the IR adds does not compile
-/// until it has a builtin here (REQ-LOW-codegen-074).
-pub(super) fn builtin_of(intrinsic: Intrinsic, args: usize) -> Option<u16> {
+/// until it has an instruction here (REQ-LOW-codegen-074).
+pub(super) fn instruction_of(intrinsic: Intrinsic, args: usize) -> Option<Instruction> {
     // A `MUX` has a builtin for each number of inputs after its selector.
     let mux = |base: u16| {
         u16::try_from(args.saturating_sub(1))
             .ok()
             .filter(|inputs| *inputs <= builtin::MUX_MAX_INPUTS)
-            .map(|inputs| base + inputs)
+            .map(|inputs| Instruction::Builtin(base + inputs))
     };
-    Some(match intrinsic {
+    Some(Instruction::Builtin(match intrinsic {
         Intrinsic::ShlU32 => builtin::SHL_I32,
         Intrinsic::ShlU64 => builtin::SHL_I64,
         Intrinsic::ShrU32 => builtin::SHR_I32,
@@ -259,7 +311,9 @@ pub(super) fn builtin_of(intrinsic: Intrinsic, args: usize) -> Option<u16> {
         Intrinsic::IntToBcdI16 | Intrinsic::IntToBcdU16 => builtin::INT_TO_BCD_16,
         Intrinsic::IntToBcdI32 | Intrinsic::IntToBcdU32 => builtin::INT_TO_BCD_32,
         Intrinsic::IntToBcdI64 | Intrinsic::IntToBcdU64 => builtin::INT_TO_BCD_64,
-    })
+        Intrinsic::LenString | Intrinsic::LenWString => return Some(Instruction::LenStr),
+        Intrinsic::FindString | Intrinsic::FindWString => return Some(Instruction::FindStr),
+    }))
 }
 
 /// Narrows the value on the stack to `width` bits of `signedness`.
@@ -316,15 +370,15 @@ mod tests {
     /// A `MUX` has a builtin for each number of inputs after its selector
     /// that the VM takes, and none for more.
     #[test]
-    fn builtin_of_when_mux_then_builtin_for_its_number_of_inputs() {
+    fn instruction_of_when_mux_then_builtin_for_its_number_of_inputs() {
         assert_eq!(
-            builtin_of(Intrinsic::MuxF64, 3),
-            Some(builtin::MUX_F64_BASE + 2)
+            instruction_of(Intrinsic::MuxF64, 3),
+            Some(Instruction::Builtin(builtin::MUX_F64_BASE + 2))
         );
         assert_eq!(
-            builtin_of(Intrinsic::MuxU32, 17),
-            Some(builtin::MUX_I32_BASE + 16)
+            instruction_of(Intrinsic::MuxU32, 17),
+            Some(Instruction::Builtin(builtin::MUX_I32_BASE + 16))
         );
-        assert_eq!(builtin_of(Intrinsic::MuxI64, 18), None);
+        assert_eq!(instruction_of(Intrinsic::MuxI64, 18), None);
     }
 }

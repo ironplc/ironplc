@@ -1,17 +1,23 @@
-//! Strings: a string literal, the string at a place, and the assignment of a
-//! string to a string place.
+//! Strings: a string literal, the string at a place, the assignment of a
+//! string to a string place, and calls of the string functions that yield a
+//! number.
 //!
 //! A literal is in the encoding its delimiter spells: `'abc'` is a `STRING`
 //! and `"abc"` a `WSTRING` (ADR-0016). The analyzer reports a literal stored
 //! at a string of the other encoding (P4035), so the assignment refuses one
 //! as a broken invariant (REQ-LOW-lowering-050).
+//!
+//! A string function's strings share an encoding, which the analyzer checks
+//! (P4034), so the encoding of its first string chooses its `Intrinsic`.
 
+use ironplc_analyzer::StringFunction;
 use ironplc_dsl::common::{ConstantKind, StringType};
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{Expr as AstExpr, ExprKind as AstExprKind};
-use ironplc_ir::lowered::{Encoding, Place, Stmt, StrExpr};
+use ironplc_ir::lowered::{Encoding, Intrinsic, Place, Stmt, StrExpr, TypeKind};
 
+use crate::expr::Lowered;
 use crate::variables::BodyFrame;
 use crate::Lowering;
 
@@ -30,9 +36,46 @@ impl Lowering<'_> {
         self.program.assign_str(place, value, span).map(Some)
     }
 
+    /// The call `expr` of the string function `function` with `args`. `LEN`
+    /// and `FIND` yield an `INT`; the functions that yield a string are not
+    /// lowered yet.
+    pub(crate) fn string_function_call(
+        &mut self,
+        frame: &BodyFrame,
+        expr: &AstExpr,
+        function: StringFunction,
+        args: &[&AstExpr],
+    ) -> Lowered {
+        let [narrow, wide] = match function {
+            StringFunction::Len => [Intrinsic::LenString, Intrinsic::LenWString],
+            StringFunction::Find => [Intrinsic::FindString, Intrinsic::FindWString],
+            StringFunction::Replace
+            | StringFunction::Insert
+            | StringFunction::Delete
+            | StringFunction::Left
+            | StringFunction::Right
+            | StringFunction::Mid
+            | StringFunction::Concat => return Ok(None),
+        };
+        let Some(first) = args.first() else {
+            return Ok(None);
+        };
+        let Some(ty) = self.recorded_type(first)? else {
+            return Ok(None);
+        };
+        let Some(TypeKind::String(shape)) = self.program.types().kind(ty) else {
+            return Ok(None);
+        };
+        let intrinsic = match shape.encoding {
+            Encoding::Narrow => narrow,
+            Encoding::Wide => wide,
+        };
+        self.intrinsic_call(frame, expr, intrinsic, args)
+    }
+
     /// The string `expr` makes; `None` for one lowering does not support
     /// yet, such as a call of a string function.
-    fn str_expr(
+    pub(crate) fn str_expr(
         &mut self,
         frame: &BodyFrame,
         expr: &AstExpr,

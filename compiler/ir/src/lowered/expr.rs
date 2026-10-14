@@ -3,7 +3,7 @@
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
 
-use super::call::{Arg, Callee, Intrinsic};
+use super::call::{Arg, Callee, Intrinsic, Param};
 use super::ids::{PouId, Stamp, VarId};
 use super::invariant::broken;
 use super::place::Place;
@@ -441,12 +441,12 @@ impl Expr {
     ) -> Result<Self, Diagnostic> {
         const CONSTRUCTOR: &str = "Expr::call";
         let signature = intrinsic.signature();
-        let types = arg_types(&args);
-        if !signature.takes(&types) {
+        let passed = passed(&args);
+        if !signature.takes(&passed) {
             return Err(broken(
                 CONSTRUCTOR,
                 &span,
-                format!("{} takes {signature}, not {types:?}", intrinsic.name()),
+                format!("{} takes {signature}, not {passed:?}", intrinsic.name()),
             ));
         }
         let result = signature.result();
@@ -485,10 +485,10 @@ impl Expr {
                 .get(var)
                 .and_then(|variable| types.operation_type(variable.ty()))
         };
-        let params: Option<Vec<ScalarType>> = signature
+        let params: Option<Vec<Param>> = signature
             .parameters()
             .iter()
-            .map(|param| operated(*param))
+            .map(|param| operated(*param).map(Param::Value))
             .collect();
         let (Some(params), Some(result)) = (params, operated(signature.result())) else {
             return Err(broken(
@@ -497,15 +497,15 @@ impl Expr {
                 format!("{pou} has a parameter or result that is not a scalar"),
             ));
         };
-        let types = arg_types(&args);
-        if types != params {
+        let passed = passed(&args);
+        if passed != params {
             return Err(broken(
                 CONSTRUCTOR,
                 &span,
-                format!("{pou} takes {params:?}, not {types:?}"),
+                format!("{pou} takes {params:?}, not {passed:?}"),
             ));
         }
-        if let Some(other) = args.iter().find_map(|Arg::Value(value)| value.program) {
+        if let Some(other) = args.iter().find_map(Arg::program) {
             if other != pou.stamp() {
                 return Err(broken(
                     CONSTRUCTOR,
@@ -527,8 +527,8 @@ impl Expr {
         span: SourceSpan,
     ) -> Result<Self, Diagnostic> {
         let mut program = None;
-        for Arg::Value(value) in &args {
-            match (program, value.program) {
+        for arg in &args {
+            match (program, arg.program()) {
                 (Some(one), Some(other)) if one != other => {
                     return Err(broken(
                         constructor,
@@ -553,9 +553,7 @@ impl Expr {
             ExprKind::Binary { lhs, rhs, .. }
             | ExprKind::Compare { lhs, rhs, .. }
             | ExprKind::ShortCircuit { lhs, rhs, .. } => lhs.program.or(rhs.program),
-            ExprKind::Call { args, .. } => args.iter().find_map(|arg| match arg {
-                Arg::Value(value) => value.program,
-            }),
+            ExprKind::Call { args, .. } => args.iter().find_map(Arg::program),
         };
         Self {
             kind,
@@ -600,11 +598,7 @@ impl Expr {
     }
 }
 
-/// The type of each of `args`.
-fn arg_types(args: &[Arg]) -> Vec<ScalarType> {
-    args.iter()
-        .map(|arg| match arg {
-            Arg::Value(value) => value.ty,
-        })
-        .collect()
+/// What each of `args` passes.
+fn passed(args: &[Arg]) -> Vec<Param> {
+    args.iter().map(Arg::param).collect()
 }

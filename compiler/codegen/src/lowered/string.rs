@@ -4,8 +4,9 @@
 //! VM's temporary buffers (ADR-0052): a literal by `LOAD_CONST_STR`, the
 //! string at a place by `STR_LOAD_VAR`. `STR_STORE_VAR` copies a buffer into
 //! a place, keeping the code units its capacity holds (REQ-LOW-codegen-056).
-//! While both routes exist, a string place is found where this backend's
-//! layout stores it, by name.
+//! A string function's instruction takes each string as the data region
+//! offset of a slot that holds it. While both routes exist, a string place is
+//! found where this backend's layout stores it, by name.
 
 use ironplc_container::CharWidth;
 use ironplc_dsl::core::SourceSpan;
@@ -15,6 +16,7 @@ use ironplc_lowering::Lowering;
 
 use super::storage_name;
 use crate::compile::{emit_string_literal_load, CompileContext, StringVarInfo};
+use crate::compile_string::allocate_string_temp;
 use crate::emit::Emitter;
 
 /// Stores the string `value` at `place`.
@@ -51,6 +53,37 @@ pub(super) fn string_storage<'c>(
     ctx.string_vars.get(&storage_name(lowering, place)?)
 }
 
+/// The data region offset of a slot that holds the string `value`, as the
+/// AST route's `resolve_string_arg` gives it: the place's own slot for the
+/// string at a place, and otherwise a temporary slot of `value`'s encoding
+/// and capacity that `value` is computed into.
+pub(super) fn str_arg_offset(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    lowering: &Lowering<'_>,
+    value: &StrExpr,
+) -> Result<u32, Diagnostic> {
+    if let StrExprKind::Read(place) = value.kind() {
+        if let Some(place) = string_storage(lowering, ctx, place) {
+            return Ok(place.data_offset);
+        }
+    }
+    let shape = value.shape();
+    // A string header records a capacity of at most `u16::MAX` code units
+    // (ADR-0035).
+    let capacity = u16::try_from(shape.capacity).unwrap_or(u16::MAX);
+    let offset = allocate_string_temp(
+        emitter,
+        ctx,
+        char_width(shape.encoding),
+        capacity,
+        value.span(),
+    )?;
+    emit_str_expr(emitter, ctx, lowering, value)?;
+    emitter.emit_str_store_var(offset);
+    Ok(offset)
+}
+
 /// Computes `value` into a temporary buffer, leaving the buffer's index on
 /// the stack.
 fn emit_str_expr(
@@ -61,11 +94,7 @@ fn emit_str_expr(
 ) -> Result<(), Diagnostic> {
     match value.kind() {
         StrExprKind::Literal(chars) => {
-            let char_width = match value.shape().encoding {
-                Encoding::Narrow => CharWidth::Narrow,
-                Encoding::Wide => CharWidth::Wide,
-            };
-            emit_string_literal_load(emitter, ctx, chars, char_width);
+            emit_string_literal_load(emitter, ctx, chars, char_width(value.shape().encoding));
         }
         StrExprKind::Read(place) => {
             let place =
@@ -74,6 +103,14 @@ fn emit_str_expr(
         }
     }
     Ok(())
+}
+
+/// The width of a code unit of `encoding` in this backend's strings.
+fn char_width(encoding: Encoding) -> CharWidth {
+    match encoding {
+        Encoding::Narrow => CharWidth::Narrow,
+        Encoding::Wide => CharWidth::Wide,
+    }
 }
 
 /// The internal error for a string place `can_emit` should have left to the
