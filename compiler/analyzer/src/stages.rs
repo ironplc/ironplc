@@ -45,7 +45,7 @@ use crate::{
     xform_resolve_constant_expressions, xform_resolve_decl_types, xform_resolve_expr_types,
     xform_resolve_initial_values, xform_resolve_late_bound_expr_kind,
     xform_resolve_late_bound_type_initializer, xform_resolve_symbol_and_function_environment,
-    xform_resolve_type_aliases, xform_resolve_type_decl_environment, xform_toposort_declarations,
+    xform_resolve_type_decl_environment, xform_toposort_declarations,
 };
 
 /// Analyze runs semantic analysis on the set of files as a self-contained and complete unit.
@@ -331,10 +331,6 @@ pub fn resolve_types(
     // ABS of an unsigned value is the value itself; no back end sees it.
     library = run_reverting_on_error(library, &mut diagnostics, |lib| {
         xform_remove_unsigned_abs::apply(lib, &type_environment)
-    });
-
-    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
-        xform_resolve_type_aliases::apply(lib, &mut symbol_environment)
     });
 
     // Mark every variable the program never writes as CONSTANT, so the
