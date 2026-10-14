@@ -291,9 +291,6 @@ mod tests {
     #[test]
     fn type_symbol_kind_from_semantic_type_when_enumeration_then_enumeration() {
         let kind = TypeSymbolKind::from(&SemanticType::Enumeration {
-            underlying_type: Box::new(SemanticType::Int {
-                size: crate::semantic_type::ByteSized::B8,
-            }),
             members: crate::enumeration_members::EnumerationMembers::default(),
         });
         assert_eq!(kind, TypeSymbolKind::Enumeration);

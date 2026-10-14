@@ -177,7 +177,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
                     .as_ref()
                     .map(|value| &value.value);
                 let attributes =
-                    enumeration::try_from_values(enumerated_values_initializer, None, default)?;
+                    enumeration::try_from_values(enumerated_values_initializer, default)?;
                 self.insert_type(&node.type_name, attributes);
             }
             InitialValueAssignmentKind::EnumeratedType(_enumerated_initial_value_assignment) => {
@@ -288,7 +288,6 @@ impl Fold<Diagnostic> for TypeEnvironment {
             SpecificationKind::Inline(spec_values) => {
                 let attributes = enumeration::try_from_values(
                     spec_values,
-                    node.spec_init.underlying_type.clone(),
                     node.spec_init.default.as_ref().map(|value| &value.value),
                 )?;
                 self.insert_type(&node.type_name, attributes);

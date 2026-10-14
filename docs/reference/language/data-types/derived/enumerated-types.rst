@@ -140,7 +140,7 @@ Base Type (Language Extension)
 
 .. include:: ../../../../includes/requires-dialect-extension.rst
 
-A declaration can name the elementary type the members are stored in:
+A declaration can name a base type after its members:
 
 .. playground::
    :allows: enum-base-type
@@ -159,7 +159,8 @@ A declaration can name the elementary type the members are stored in:
        END_IF;
    END_PROGRAM
 
-Without it, IronPLC picks the smallest type that holds every member's value.
+IronPLC accepts the base type and stores the enumeration as a ``DINT``
+whatever type it names, as it stores every enumeration.
 
 Related Problem Codes
 ---------------------

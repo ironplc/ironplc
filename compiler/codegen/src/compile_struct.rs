@@ -19,6 +19,7 @@ use ironplc_container::{ContainerBuilder, SlotIndex, VarIndex};
 use super::compile::{
     CompileContext, OpType, OpWidth, Signedness, VarTypeInfo, DEFAULT_STRING_MAX_LENGTH,
 };
+use super::compile_enum::enum_var_type_info;
 use super::compile_expr::emit_truncation;
 use crate::emit::Emitter;
 
@@ -95,9 +96,11 @@ pub(crate) fn resolve_field_op_type(field_type: &SemanticType) -> Option<OpType>
             ByteSized::B64 => Some((OpWidth::F64, Signedness::Signed)),
             _ => Some((OpWidth::F32, Signedness::Signed)),
         },
-        SemanticType::Enumeration {
-            underlying_type, ..
-        } => resolve_field_op_type(underlying_type),
+        // Every enumeration operates as a DINT (REQ-EN-codegen-003).
+        SemanticType::Enumeration { .. } => {
+            let dint = enum_var_type_info();
+            Some((dint.op_width, dint.signedness))
+        }
         SemanticType::Subrange { base_type, .. } => resolve_field_op_type(base_type),
         SemanticType::Reference { .. } => Some((OpWidth::W64, Signedness::Unsigned)),
         // Composite types are not loaded/stored as single values
@@ -329,11 +332,8 @@ pub(crate) fn var_type_info_for_field(field_type: &SemanticType) -> Option<VarTy
         | SemanticType::Date { size }
         | SemanticType::TimeOfDay { size }
         | SemanticType::DateAndTime { size } => size.bits(),
-        SemanticType::Enumeration {
-            underlying_type, ..
-        } => {
-            return var_type_info_for_field(underlying_type);
-        }
+        // Every enumeration is stored as a DINT (REQ-EN-codegen-003).
+        SemanticType::Enumeration { .. } => return Some(enum_var_type_info()),
         SemanticType::Subrange { base_type, .. } => {
             return var_type_info_for_field(base_type);
         }
@@ -727,9 +727,6 @@ mod tests {
         }
         types.extend([
             SemanticType::Enumeration {
-                underlying_type: Box::new(SemanticType::Int {
-                    size: ByteSized::B16,
-                }),
                 members: EnumerationMembers::default(),
             },
             SemanticType::Subrange {

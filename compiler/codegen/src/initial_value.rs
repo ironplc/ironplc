@@ -399,7 +399,7 @@ impl Reader<'_> {
             return self.string(literal, representation);
         }
         let storage = storage(representation);
-        let value = match (constant, storage) {
+        let value = match (constant, &storage) {
             (ConstantKind::Boolean(literal), SemanticType::Bool) => {
                 Scalar::Bool(literal.value == Boolean::True)
             }
@@ -435,10 +435,7 @@ impl Reader<'_> {
             }
             _ => return Err(self.error("Initial value is not a literal of its type")),
         };
-        Ok(InitialValue::Scalar(ScalarValue {
-            storage: storage.clone(),
-            value,
-        }))
+        Ok(InitialValue::Scalar(ScalarValue { storage, value }))
     }
 
     /// The value the member `value` gives a place of the enumeration
@@ -453,7 +450,7 @@ impl Reader<'_> {
             .and_then(|members| members.ordinal_of(&value.value))
             .ok_or_else(|| self.error("Enumerated initial value is not a member"))?;
         Ok(InitialValue::Scalar(ScalarValue {
-            storage: storage(representation).clone(),
+            storage: storage(representation),
             value: Scalar::Integer(i128::from(ordinal)),
         }))
     }
@@ -505,15 +502,15 @@ fn expression(expr: &Expr, representation: &SemanticType) -> InitialValue {
 }
 
 /// The elementary type a value of `representation` is stored as: the type
-/// itself for an elementary type, the base type of a subrange and the
-/// underlying type of an enumeration.
-fn storage(representation: &SemanticType) -> &SemanticType {
+/// itself for an elementary type, the base type of a subrange and a `DINT`
+/// for an enumeration (REQ-EN-codegen-003).
+fn storage(representation: &SemanticType) -> SemanticType {
     match representation {
         SemanticType::Subrange { base_type, .. } => storage(base_type),
-        SemanticType::Enumeration {
-            underlying_type, ..
-        } => storage(underlying_type),
-        other => other,
+        SemanticType::Enumeration { .. } => SemanticType::Int {
+            size: ByteSized::B32,
+        },
+        other => other.clone(),
     }
 }
 
