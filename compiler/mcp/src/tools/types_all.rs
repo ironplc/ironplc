@@ -359,6 +359,24 @@ mod tests {
     }
 
     #[test]
+    fn build_response_when_alias_of_elementary_type_then_kind_alias_with_target_type() {
+        let resp = build(&with_program("TYPE Flag : BOOL; END_TYPE"));
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        let entry = resp.types.iter().find(|t| t.name == "Flag").unwrap();
+        assert_eq!(entry.kind, "alias");
+        assert_eq!(entry.target_type.as_deref(), Some("BOOL"));
+    }
+
+    #[test]
+    fn build_response_when_sized_string_type_then_kind_string_with_length() {
+        let resp = build(&with_program("TYPE Label : STRING[10]; END_TYPE"));
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        let entry = resp.types.iter().find(|t| t.name == "Label").unwrap();
+        assert_eq!(entry.kind, "string");
+        assert_eq!(entry.length, Some(10));
+    }
+
+    #[test]
     fn build_response_when_struct_has_string_and_wstring_fields_then_each_field_type_distinguishes_encoding(
     ) {
         let resp = build(&with_program(

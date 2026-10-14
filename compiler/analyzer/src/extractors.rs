@@ -398,6 +398,29 @@ mod tests {
     }
 
     #[test]
+    fn user_defined_types_when_alias_of_elementary_or_sized_string_then_returned() {
+        let ctx = analyze_source(
+            "TYPE\nMyBool : BOOL;\nMyInt : INT := 5;\nMyStr : STRING[10];\nEND_TYPE\nPROGRAM p\nEND_PROGRAM",
+        );
+        let types = ctx.user_defined_types();
+        let kind_of = |name: &str| {
+            types
+                .iter()
+                .find(|t| t.name == &TypeName::from(name))
+                .map(|t| t.kind)
+        };
+        assert_eq!(kind_of("MyBool"), Some(TypeSymbolKind::Alias));
+        assert_eq!(kind_of("MyInt"), Some(TypeSymbolKind::Alias));
+        assert_eq!(kind_of("MyStr"), Some(TypeSymbolKind::String));
+    }
+
+    #[test]
+    fn user_defined_types_excludes_elementary_types() {
+        let ctx = analyze_source("PROGRAM p\nEND_PROGRAM");
+        assert!(ctx.user_defined_types().is_empty());
+    }
+
+    #[test]
     fn user_defined_types_excludes_function_block_types() {
         let ctx = analyze_source(
             "FUNCTION_BLOCK fb\nEND_FUNCTION_BLOCK\nPROGRAM p\nVAR inst : fb; END_VAR\nEND_PROGRAM",

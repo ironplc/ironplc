@@ -1,21 +1,16 @@
 //! Type attributes for the IronPLC compiler.
 //!
-//! This module provides the TypeAttributes struct that combines type representation
-//! with categorization information. Memory layout information is accessed directly
+//! This module provides the TypeAttributes struct that the type environment
+//! holds for each type. Memory layout information is accessed directly
 //! through SemanticType methods.
 
-use crate::{
-    semantic_type::SemanticType, standard_function_block::StandardFunctionBlock,
-    type_category::TypeCategory,
-};
+use crate::{semantic_type::SemanticType, standard_function_block::StandardFunctionBlock};
 
 /// Attributes associated with a type in the type environment.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeAttributes {
     /// The semantic type that describes the type
     pub representation: SemanticType,
-    /// Category of the type (elementary, user-defined, or derived)
-    pub type_category: TypeCategory,
     /// Which standard function block the type is, for the types the type
     /// environment provides for them; `None` for every other type, including
     /// a user-defined block of the same name.
@@ -23,12 +18,11 @@ pub struct TypeAttributes {
 }
 
 impl TypeAttributes {
-    /// Creates new TypeAttributes with calculated type category
+    /// Creates new TypeAttributes for a type that is not a standard function
+    /// block.
     pub fn new(representation: SemanticType) -> Self {
-        let type_category = TypeCategory::for_type(&representation);
         Self {
             representation,
-            type_category,
             standard_block: None,
         }
     }
@@ -46,11 +40,11 @@ mod tests {
     use crate::semantic_type::{ByteSized, SemanticType};
 
     #[test]
-    fn type_attributes_constructor_sets_correct_fields() {
+    fn new_when_called_then_not_standard_block() {
         let attrs = TypeAttributes::new(SemanticType::Int {
             size: ByteSized::B32,
         });
 
-        assert_eq!(attrs.type_category, TypeCategory::Elementary);
+        assert_eq!(attrs.standard_block, None);
     }
 }
