@@ -180,7 +180,6 @@ impl Lowering<'_> {
                     nullability: Nullability::Nullable,
                 }
             }
-            SemanticType::Function { .. } => return Ok(None),
         };
         self.program
             .push_type(TypeEntry { name, kind }, &span)

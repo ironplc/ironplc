@@ -1,7 +1,7 @@
 //! Structure type processing
 //!
 //! This module handles creating structure types from structure declarations,
-//! including field validation, offset calculation, and memory layout.
+//! including field validation.
 
 use crate::intermediates::enumeration::try_from_values;
 use crate::intermediates::subrange::TypeResolution;
@@ -20,9 +20,8 @@ pub fn try_from(
 ) -> Result<TypeAttributes, Diagnostic> {
     // Note: Field name uniqueness is validated by semantic rules, not here
 
-    // Resolve field types and calculate offsets
+    // Resolve field types
     let mut fields = Vec::new();
-    let mut current_offset = 0u32;
 
     for element in &spec.elements {
         // Resolve the field type from the initial value assignment
@@ -31,39 +30,18 @@ pub fn try_from(
         // Determine if this field has a default value
         let has_default = field_has_default(&element.init, type_environment);
 
-        // Calculate field alignment and adjust offset if needed
-        let field_alignment = field_type.alignment_bytes() as u32;
-        let aligned_offset = align_offset(current_offset, field_alignment);
-        // Use 0 for unknown sizes - the structure's overall size_in_bytes() will return None
-        let field_size = field_type.size_in_bytes().unwrap_or(0);
-
-        // Create the field
-        let field = SemanticStructField {
+        fields.push(SemanticStructField {
             name: element.name.clone(),
             field_type,
-            offset: aligned_offset,
             var_type: None, // Structure fields don't have input/output distinction
             has_default,
-        };
-
-        fields.push(field);
-
-        // Update offset for next field
-        current_offset = aligned_offset + field_size;
+        });
     }
 
     Ok(TypeAttributes::new(
         node_name.span(),
         SemanticType::Structure { fields },
     ))
-}
-
-/// Aligns an offset to the specified alignment boundary
-fn align_offset(offset: u32, alignment: u32) -> u32 {
-    if alignment == 0 {
-        return offset;
-    }
-    offset.div_ceil(alignment) * alignment
 }
 
 /// Determines whether a structure field has a default value based on its initializer.
@@ -336,39 +314,6 @@ mod tests {
         result.unwrap_err()
     }
 
-    #[test]
-    fn align_offset_with_various_alignments_then_aligns_correctly() {
-        // Test alignment to 1-byte boundary (no change)
-        assert_eq!(align_offset(0, 1), 0);
-        assert_eq!(align_offset(1, 1), 1);
-        assert_eq!(align_offset(5, 1), 5);
-
-        // Test alignment to 2-byte boundary
-        assert_eq!(align_offset(0, 2), 0);
-        assert_eq!(align_offset(1, 2), 2);
-        assert_eq!(align_offset(2, 2), 2);
-        assert_eq!(align_offset(3, 2), 4);
-
-        // Test alignment to 4-byte boundary
-        assert_eq!(align_offset(0, 4), 0);
-        assert_eq!(align_offset(1, 4), 4);
-        assert_eq!(align_offset(4, 4), 4);
-        assert_eq!(align_offset(5, 4), 8);
-
-        // Test alignment to 8-byte boundary
-        assert_eq!(align_offset(0, 8), 0);
-        assert_eq!(align_offset(1, 8), 8);
-        assert_eq!(align_offset(8, 8), 8);
-        assert_eq!(align_offset(9, 8), 16);
-    }
-
-    #[test]
-    fn align_offset_with_zero_alignment_then_returns_original() {
-        assert_eq!(align_offset(0, 0), 0);
-        assert_eq!(align_offset(5, 0), 5);
-        assert_eq!(align_offset(100, 0), 100);
-    }
-
     // Parser-based tests (more readable and maintainable)
 
     #[test]
@@ -399,10 +344,6 @@ END_TYPE
         // Check field types
         assert!(matches!(fields[0].field_type, SemanticType::Int { .. }));
         assert!(matches!(fields[1].field_type, SemanticType::Bool));
-
-        // Check field offsets (INT at 0, BOOL at 2 due to alignment)
-        assert_eq!(fields[0].offset, 0);
-        assert_eq!(fields[1].offset, 2);
     }
 
     #[test]
@@ -606,36 +547,7 @@ END_TYPE
     }
 
     #[test]
-    fn parse_structure_with_nested_structure_then_calculates_correct_offsets() {
-        let program = "
-TYPE
-    Point : STRUCT
-        x : INT := 0;
-        y : INT := 0;
-    END_STRUCT;
-    Line : STRUCT
-        start : Point;
-        endPt : Point;
-    END_STRUCT;
-END_TYPE
-        ";
-        let env = parse_and_apply(program);
-
-        let line_type = env.get(&TypeName::from("Line")).unwrap();
-        let fields = cast_struct!(
-            &line_type.representation,
-            SemanticType::Structure { fields }
-        );
-
-        // Point is 4 bytes (2x INT with 2-byte alignment), so:
-        // - start at offset 0
-        // - endPt at offset 4
-        assert_eq!(fields[0].offset, 0);
-        assert_eq!(fields[1].offset, 4);
-    }
-
-    #[test]
-    fn parse_structure_with_mixed_nested_and_primitive_fields_then_correct_layout() {
+    fn parse_structure_with_mixed_nested_and_primitive_fields_then_keeps_declaration_order() {
         let program = "
 TYPE
     Point : STRUCT
@@ -658,12 +570,15 @@ END_TYPE
         );
 
         assert_eq!(fields.len(), 3);
-        // id (DINT) at offset 0 (4 bytes)
-        // position (Point) at offset 4 (4 bytes, 2-byte alignment)
-        // active (BOOL) at offset 8 (1 byte)
-        assert_eq!(fields[0].offset, 0);
-        assert_eq!(fields[1].offset, 4);
-        assert_eq!(fields[2].offset, 8);
+        assert_eq!(fields[0].name, Id::from("id"));
+        assert!(matches!(fields[0].field_type, SemanticType::Int { .. }));
+        assert_eq!(fields[1].name, Id::from("position"));
+        assert!(matches!(
+            fields[1].field_type,
+            SemanticType::Structure { .. }
+        ));
+        assert_eq!(fields[2].name, Id::from("active"));
+        assert!(matches!(fields[2].field_type, SemanticType::Bool));
     }
 
     // Array field tests

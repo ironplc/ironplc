@@ -324,7 +324,6 @@ fn assign_storage(
             let name = crate::compile_enum::debug_name(types, Some(type_id));
             (iec_type_tag::DINT, name)
         }
-        SemanticType::Function { .. } => (iec_type_tag::OTHER, String::new()),
         _ => assign_scalar_storage(ctx, decl, id, types, type_id),
     })
 }

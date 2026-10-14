@@ -104,8 +104,7 @@ pub(crate) fn resolve_field_op_type(field_type: &SemanticType) -> Option<OpType>
         SemanticType::Structure { .. }
         | SemanticType::Array { .. }
         | SemanticType::String { .. }
-        | SemanticType::FunctionBlock { .. }
-        | SemanticType::Function { .. } => None,
+        | SemanticType::FunctionBlock { .. } => None,
     }
 }
 
@@ -523,7 +522,6 @@ mod tests {
         SemanticStructField {
             name: Id::from(name),
             field_type,
-            offset: 0,
             var_type: None,
             has_default: false,
         }
@@ -756,10 +754,6 @@ mod tests {
             SemanticType::FunctionBlock {
                 name: "FB".to_string(),
                 fields: vec![],
-            },
-            SemanticType::Function {
-                return_type: None,
-                parameters: vec![],
             },
         ]);
 

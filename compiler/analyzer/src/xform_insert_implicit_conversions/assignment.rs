@@ -116,8 +116,7 @@ impl ImplicitConversions<'_> {
             | SemanticType::String { .. }
             | SemanticType::Structure { .. }
             | SemanticType::Array { .. }
-            | SemanticType::FunctionBlock { .. }
-            | SemanticType::Function { .. } => None,
+            | SemanticType::FunctionBlock { .. } => None,
         }
     }
 

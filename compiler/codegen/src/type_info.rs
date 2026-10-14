@@ -124,8 +124,7 @@ pub(crate) fn operand_type_info(representation: &SemanticType) -> Option<VarType
         SemanticType::String { .. }
         | SemanticType::Structure { .. }
         | SemanticType::Array { .. }
-        | SemanticType::FunctionBlock { .. }
-        | SemanticType::Function { .. } => None,
+        | SemanticType::FunctionBlock { .. } => None,
     }
 }
 
@@ -167,17 +166,16 @@ pub(crate) fn elementary_type_info(elementary: &ElementaryTypeName) -> Option<Va
 /// `VarTypeInfo::storage_bits` is a *value* width -- how many bits of the
 /// operand `TRUNC` keeps, and what bounds the values the type can hold. It is
 /// not a footprint and nothing addresses bits with it. The analyzer states
-/// size as a footprint in bytes, and the two coincide for every elementary
-/// type but one, which is why deriving the first from the second is sound.
+/// that width (`SemanticType::bit_width`) for every elementary type but one.
 ///
 /// Returns `None` for types this backend does not operate on arithmetically
 /// (STRING and WSTRING, which are handled through the data region, and the
 /// composite types).
 fn var_type_info(representation: &SemanticType) -> Option<VarTypeInfo> {
     // BOOL is the exception the doc comment above refers to: it holds one bit
-    // of value in a byte of footprint, so the analyzer's byte-granular size
-    // cannot state it. The value 1 also marks BOOL for the conversion path,
-    // which tests an operand for zero rather than keeping its low bit.
+    // of value, which the analyzer's width does not state. The value 1 also
+    // marks BOOL for the conversion path, which tests an operand for zero
+    // rather than keeping its low bit.
     if matches!(representation, SemanticType::Bool) {
         return Some(VarTypeInfo {
             op_width: OpWidth::W32,
@@ -206,11 +204,10 @@ fn var_type_info(representation: &SemanticType) -> Option<VarTypeInfo> {
         | SemanticType::Array { .. }
         | SemanticType::Subrange { .. }
         | SemanticType::FunctionBlock { .. }
-        | SemanticType::Function { .. }
         | SemanticType::Reference { .. } => return None,
     };
 
-    let storage_bits = u8::try_from(representation.size_in_bytes()? * 8).ok()?;
+    let storage_bits = representation.bit_width()?;
     let op_width = match representation {
         SemanticType::Real { .. } if storage_bits <= 32 => OpWidth::F32,
         SemanticType::Real { .. } => OpWidth::F64,

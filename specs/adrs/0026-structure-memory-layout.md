@@ -178,3 +178,20 @@ This ADR covers structures containing:
 - Structures containing STRING or WSTRING fields — these require data region sub-allocation for the string's `[max_length][cur_length][data]` layout within the structure's data region block, plus copy semantics for structure assignment
 - Structures containing function block instances — these require FB lifecycle management (init/call) for embedded instances
 - Structures containing arrays of strings or arrays of function blocks
+
+### Postscript (2026-10-13): The Analyzer No Longer Computes Byte Offsets
+
+The analyzer no longer computes a byte offset for each field, nor a byte
+size and alignment for each type. Nothing read them: codegen lays a structure
+out in slots, as decided here, and computes the slot offsets itself.
+
+Step 1 of the [migration path](#migration-path-to-packed-layout) named the
+analyzer's offsets. Under
+[ADR-0059](0059-backends-depend-only-on-the-ir-crate.md) a backend depends
+only on `ironplc-ir`, whose type table holds no layout
+([Lowered Program](../design/lowered-program.md)), so a backend could not
+read them in any case. A packed layout computes its byte offsets and sizes in
+the backend, from the field types the lowered program states.
+
+The decision stands: slots now, and a packed layout later without new opcodes
+or a new container format.

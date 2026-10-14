@@ -180,6 +180,16 @@ mod tests {
         }
     }
 
+    /// The width of the underlying type of the enumeration `representation`.
+    fn underlying_bit_width(representation: &SemanticType) -> Option<u8> {
+        match representation {
+            SemanticType::Enumeration {
+                underlying_type, ..
+            } => underlying_type.bit_width(),
+            _ => None,
+        }
+    }
+
     #[test]
     fn resolve_ordinal_values_when_all_implicit_then_sequential() {
         let values = vec![value("A"), value("B"), value("C")];
@@ -410,7 +420,7 @@ END_TYPE
         // Check that the enumeration type was created
         let attributes = env.get(&TypeName::from("LEVEL")).unwrap();
         assert!(attributes.representation.is_enumeration());
-        assert_eq!(Some(1), attributes.representation.size_in_bytes());
+        assert_eq!(Some(8), underlying_bit_width(&attributes.representation));
     }
 
     #[test]
@@ -433,7 +443,7 @@ END_TYPE
         // Check that the enumeration type was created
         let attributes = env.get(&TypeName::from("LEVEL2")).unwrap();
         assert!(attributes.representation.is_enumeration());
-        assert_eq!(Some(1), attributes.representation.size_in_bytes());
+        assert_eq!(Some(8), underlying_bit_width(&attributes.representation));
     }
 
     #[test]
@@ -455,7 +465,7 @@ END_TYPE
         // WORD is explicitly specified -- 2 bytes, even though only 2
         // members would otherwise size to 1 byte automatically.
         let attributes = env.get(&TypeName::from("E_Small")).unwrap();
-        assert_eq!(Some(2), attributes.representation.size_in_bytes());
+        assert_eq!(Some(16), underlying_bit_width(&attributes.representation));
     }
 
     #[test]
@@ -478,7 +488,7 @@ END_TYPE
         // explicit value 300 requires 2 bytes -- sizing must be based on
         // the resolved value, not just the member count.
         let attributes = env.get(&TypeName::from("E_Sparse")).unwrap();
-        assert_eq!(Some(2), attributes.representation.size_in_bytes());
+        assert_eq!(Some(16), underlying_bit_width(&attributes.representation));
     }
 
     /// The members of the type `name` names, as (member, ordinal) pairs,
