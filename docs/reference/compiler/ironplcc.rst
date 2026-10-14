@@ -322,11 +322,10 @@ Options
 
 ``--allow-enum-base-type``
    Allow the base-type suffix on an enumeration declaration (e.g.
-   ``(A, B) WORD``), naming the elementary type the members are stored in.
-   IEC 61131-3 has no such form — nothing may follow an enumerated
-   specification — so the suffix is an extension, and not an Edition 3
-   addition as explicit member values are. Without it the compiler picks the
-   smallest type that holds every member's value. Produces
+   ``(A, B) WORD``), naming a base type; IronPLC stores every enumeration as
+   a ``DINT`` whatever it names. IEC 61131-3 has no such form — nothing may
+   follow an enumerated specification — so the suffix is an extension, and
+   not an Edition 3 addition as explicit member values are. Produces
    :doc:`P4056 </reference/compiler/problems/P4056>` when used without this
    flag.
 

@@ -935,9 +935,6 @@ mod tests {
 
         // Test non-primitive types
         assert!(!SemanticType::Enumeration {
-            underlying_type: Box::new(SemanticType::Int {
-                size: ByteSized::B8
-            }),
             members: crate::enumeration_members::EnumerationMembers::default(),
         }
         .is_primitive());
@@ -1031,9 +1028,6 @@ mod tests {
             TypeAttributes::new(
                 SourceSpan::default(),
                 SemanticType::Enumeration {
-                    underlying_type: Box::new(SemanticType::Int {
-                        size: ByteSized::B8,
-                    }),
                     members: crate::enumeration_members::EnumerationMembers::default(),
                 },
             ),

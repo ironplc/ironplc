@@ -35,7 +35,7 @@ The design builds on:
 
 **REQ-EN-codegen-002** The ordinal is the runtime integer value stored in the variable slot. No translation table is consulted at runtime.
 
-**REQ-EN-codegen-003** At codegen level, all enumeration values are stored as DINT (signed 32-bit integer, W32). The analyzer's `SemanticType::Enumeration { underlying_type }` uses B8/B16 for semantic sizing, but the codegen always uses `VarTypeInfo { op_width: W32, signedness: Signed, storage_bits: 32 }`. This avoids unnecessary truncation opcodes since every VM slot is 64 bits wide and there is no memory savings from narrow storage.
+**REQ-EN-codegen-003** At codegen level, all enumeration values are stored as DINT (signed 32-bit integer, W32), whatever base type the declaration names: codegen uses `VarTypeInfo { op_width: W32, signedness: Signed, storage_bits: 32 }`. This avoids unnecessary truncation opcodes since every VM slot is 64 bits wide and there is no memory savings from narrow storage. The analyzer records no storage type for an enumeration.
 
 **REQ-EN-codegen-004** Enumerations support only assignment (`:=`), equality comparison (`=`, `<>`), and CASE matching. Arithmetic operators (ADD, SUB, MUL, DIV, MOD, EXPT) are not valid on enumeration types.
 

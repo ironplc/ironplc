@@ -74,9 +74,6 @@ mod tests {
         );
         assert_eq!(
             TypeCategory::for_type(&SemanticType::Enumeration {
-                underlying_type: Box::new(SemanticType::Int {
-                    size: ByteSized::B8
-                }),
                 members: crate::enumeration_members::EnumerationMembers::default(),
             }),
             TypeCategory::UserDefined

@@ -67,7 +67,7 @@ fn declared_type_id(
         }) => return env.id_of(type_name),
         InitialValueAssignmentKind::SimpleExpr(se) => return env.id_of(&se.type_name),
         InitialValueAssignmentKind::EnumeratedValues(values) => {
-            enumeration::try_from_values(values, None, None).ok()?
+            enumeration::try_from_values(values, None).ok()?
         }
         InitialValueAssignmentKind::Subrange(subrange) => {
             match subrange::try_from(name, &subrange.spec, env).ok()? {

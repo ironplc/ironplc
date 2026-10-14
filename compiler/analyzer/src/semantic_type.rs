@@ -93,10 +93,9 @@ pub enum SemanticType {
         char_width: CharWidth,
     },
 
-    /// User-defined enumeration type
+    /// User-defined enumeration type. Every enumeration is stored and
+    /// operated on as a `DINT` (REQ-EN-codegen-003).
     Enumeration {
-        /// The underlying primitive type (usually Int { size: 8 })
-        underlying_type: Box<SemanticType>,
         /// The members, their ordinals and the default. Not compared by
         /// `PartialEq` (see [`EnumerationMembers`]).
         members: EnumerationMembers,
@@ -854,9 +853,6 @@ mod tests {
         );
         assert_eq!(
             SemanticType::Enumeration {
-                underlying_type: Box::new(SemanticType::Int {
-                    size: ByteSized::B8
-                }),
                 members: crate::enumeration_members::EnumerationMembers::default(),
             }
             .slot_count(),

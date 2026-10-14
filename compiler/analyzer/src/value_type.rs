@@ -404,9 +404,6 @@ mod tests {
         let id = anonymous(
             &mut types,
             SemanticType::Enumeration {
-                underlying_type: Box::new(SemanticType::Int {
-                    size: ByteSized::B8,
-                }),
                 members: crate::enumeration_members::EnumerationMembers::default(),
             },
         );
@@ -424,9 +421,6 @@ mod tests {
             TypeAttributes::new(
                 SourceSpan::default(),
                 SemanticType::Enumeration {
-                    underlying_type: Box::new(SemanticType::Int {
-                        size: ByteSized::B8,
-                    }),
                     members: crate::enumeration_members::EnumerationMembers::default(),
                 },
             ),
