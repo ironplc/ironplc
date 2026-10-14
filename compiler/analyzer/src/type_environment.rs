@@ -249,10 +249,11 @@ pub fn elementary_type(type_name: &TypeName) -> Option<&'static SemanticType> {
 /// A type in the environment: what it is, and the name it was declared with.
 #[derive(Debug)]
 struct TypeEntry {
-    /// The name the type was first entered under, or `None` for an
-    /// anonymous type (see [`TypeEnvironment::insert_anonymous`]). It is for
-    /// people reading diagnostics and debug output -- a type's identity is
-    /// its [`TypeId`], never its name.
+    /// The name the type was first entered under, the elementary type's name
+    /// for a sized string (see [`TypeEnvironment::insert_sized_string`]), or
+    /// `None` for an anonymous type (see [`TypeEnvironment::insert_anonymous`]).
+    /// It is for people reading diagnostics and debug output -- a type's
+    /// identity is its [`TypeId`], never its name.
     name: Option<TypeName>,
     attributes: crate::type_attributes::TypeAttributes,
 }
@@ -356,14 +357,33 @@ impl TypeEnvironment {
         &mut self,
         attributes: crate::type_attributes::TypeAttributes,
     ) -> TypeId {
+        self.insert_unbound(None, attributes)
+    }
+
+    /// Adds the sized string type `attributes`, such as the `STRING[10]` of
+    /// `s : STRING[10]`, and returns its id. Its representation records its
+    /// capacity (REQ-LOW-analyzer-053), and it has the name of the elementary
+    /// string type `elementary`, so whatever asks a type's name sees the
+    /// string type it is. The name is not entered in the environment: `id_of`
+    /// of it is still `elementary`.
+    pub(crate) fn insert_sized_string(
+        &mut self,
+        elementary: TypeId,
+        attributes: crate::type_attributes::TypeAttributes,
+    ) -> TypeId {
+        let name = self.name_of(elementary).cloned();
+        self.insert_unbound(name, attributes)
+    }
+
+    /// Adds a type under a new id, named `name`, without entering the name:
+    /// no name maps to the type.
+    fn insert_unbound(
+        &mut self,
+        name: Option<TypeName>,
+        attributes: crate::type_attributes::TypeAttributes,
+    ) -> TypeId {
         let id = self.allocate();
-        self.entries.insert(
-            id,
-            TypeEntry {
-                name: None,
-                attributes,
-            },
-        );
+        self.entries.insert(id, TypeEntry { name, attributes });
         id
     }
 

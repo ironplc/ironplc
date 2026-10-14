@@ -259,16 +259,21 @@ pub(crate) fn describe(types: &TypeEnvironment, id: TypeId) -> String {
     }
 }
 
-/// The type `id` identifies, as Structured Text writes it: an elementary
-/// type in upper case (`DINT`), any other named type by its declared name,
-/// and an anonymous type by its shape, as [`describe`] gives it.
+/// The type `id` identifies, as Structured Text writes it: a type named by
+/// an elementary type in upper case (`DINT`, and `STRING` for a
+/// `STRING[10]`), any other named type by its declared name, and an
+/// anonymous type by its shape, as [`describe`] gives it.
 ///
 /// [`describe`] names an elementary type as the environment registered it
 /// (`dint`), which is how diagnostics show it. This is for output read as
 /// source, such as the annotated rendering of `ironplcc echo --types`.
 pub fn spelling(types: &TypeEnvironment, id: TypeId) -> String {
     let described = describe(types, id);
-    if elementary_debug_tag(id).is_some() {
+    let named_by_elementary = types
+        .name_of(id)
+        .and_then(|name| types.id_of(name))
+        .is_some_and(|named| elementary_debug_tag(named).is_some());
+    if named_by_elementary {
         return described.to_uppercase();
     }
     described
@@ -445,6 +450,24 @@ mod tests {
         assert_eq!(spelling(&types, dint), "DINT");
         assert_eq!(spelling(&types, named), "Color");
         assert_eq!(spelling(&types, array), "ARRAY[1..2] OF DINT");
+    }
+
+    #[test]
+    fn spelling_when_sized_string_then_upper_case_elementary() {
+        let mut types = environment();
+        let string = types.id_of(&TypeName::from("STRING")).unwrap();
+        let sized = types.insert_sized_string(
+            string,
+            TypeAttributes::new(
+                SourceSpan::default(),
+                SemanticType::String {
+                    max_len: Some(20),
+                    char_width: CharWidth::Narrow,
+                },
+            ),
+        );
+
+        assert_eq!(spelling(&types, sized), "STRING");
     }
 
     #[test]
