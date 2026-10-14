@@ -29,7 +29,7 @@ use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::type_id::TypeId;
 
-use crate::intermediates::{array, enumeration, subrange};
+use crate::intermediates::{array, enumeration, subrange, TypeResolution};
 use crate::type_environment::TypeEnvironment;
 
 pub fn apply(
@@ -71,19 +71,19 @@ fn declared_type_id(
         }
         InitialValueAssignmentKind::Subrange(subrange) => {
             match subrange::try_from(name, &subrange.spec, env).ok()? {
-                subrange::TypeResolution::Type(attributes) => attributes,
-                subrange::TypeResolution::Alias(alias) => return env.id_of(&alias),
+                TypeResolution::Type(attributes) => attributes,
+                TypeResolution::Alias(alias) => return env.id_of(&alias),
             }
         }
         InitialValueAssignmentKind::Array(a) => match array::try_from(name, &a.spec, env).ok()? {
-            array::TypeResolution::Type(attributes) => {
+            TypeResolution::Type(attributes) => {
                 let id = type_environment.insert_anonymous(attributes);
                 if let SpecificationKind::Inline(elements) = &a.spec {
                     type_environment.record_array_element(id, elements);
                 }
                 return Some(id);
             }
-            array::TypeResolution::Alias(alias) => return env.id_of(&alias),
+            TypeResolution::Alias(alias) => return env.id_of(&alias),
         },
         // A reference type is one type however often it is spelled
         // (see `TypeEnvironment::reference_to`).
@@ -93,12 +93,12 @@ fn declared_type_id(
                 ReferenceTarget::Array(subranges) => {
                     let spec = SpecificationKind::Inline(subranges.clone());
                     match array::try_from(name, &spec, env).ok()? {
-                        array::TypeResolution::Type(attributes) => {
+                        TypeResolution::Type(attributes) => {
                             let id = type_environment.insert_anonymous(attributes);
                             type_environment.record_array_element(id, subranges);
                             id
                         }
-                        array::TypeResolution::Alias(alias) => env.id_of(&alias)?,
+                        TypeResolution::Alias(alias) => env.id_of(&alias)?,
                     }
                 }
             };

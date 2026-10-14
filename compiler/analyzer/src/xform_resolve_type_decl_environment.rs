@@ -215,10 +215,10 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 // Handle subrange specifications like: TYPE MY_RANGE : INT (1..100); END_TYPE
                 let result = subrange::try_from(&node.type_name, &subrange.spec, self)?;
                 match result {
-                    subrange::TypeResolution::Type(attributes) => {
+                    TypeResolution::Type(attributes) => {
                         self.insert_type(&node.type_name, attributes);
                     }
-                    subrange::TypeResolution::Alias(base_type_name) => {
+                    TypeResolution::Alias(base_type_name) => {
                         self.insert_alias(&node.type_name, &base_type_name)?;
                     }
                 }
@@ -239,11 +239,11 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 // Handle array specifications like: TYPE MY_ARRAY : ARRAY [1..10] OF INT; END_TYPE
                 let result = array::try_from(&node.type_name, &array_init.spec, self)?;
                 match result {
-                    array::TypeResolution::Type(attributes) => {
+                    TypeResolution::Type(attributes) => {
                         self.insert_type(&node.type_name, attributes);
                         self.record_declared_array_element(&node.type_name, &array_init.spec);
                     }
-                    array::TypeResolution::Alias(base_type_name) => {
+                    TypeResolution::Alias(base_type_name) => {
                         self.insert_alias(&node.type_name, &base_type_name)?;
                     }
                 }
@@ -323,10 +323,10 @@ impl Fold<Diagnostic> for TypeEnvironment {
         let result = subrange::try_from(&node.type_name, &node.spec, self)?;
 
         match result {
-            subrange::TypeResolution::Type(attributes) => {
+            TypeResolution::Type(attributes) => {
                 self.insert_type(&node.type_name, attributes);
             }
-            subrange::TypeResolution::Alias(base_type_name) => {
+            TypeResolution::Alias(base_type_name) => {
                 self.insert_alias(&node.type_name, &base_type_name)?;
             }
         }
@@ -342,11 +342,11 @@ impl Fold<Diagnostic> for TypeEnvironment {
         let result = array::try_from(&node.type_name, &node.spec, self)?;
 
         match result {
-            array::TypeResolution::Type(attributes) => {
+            TypeResolution::Type(attributes) => {
                 self.insert_type(&node.type_name, attributes);
                 self.record_declared_array_element(&node.type_name, &node.spec);
             }
-            array::TypeResolution::Alias(base_type_name) => {
+            TypeResolution::Alias(base_type_name) => {
                 self.insert_alias(&node.type_name, &base_type_name)?;
             }
         }

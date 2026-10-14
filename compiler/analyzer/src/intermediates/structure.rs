@@ -4,7 +4,7 @@
 //! including field validation.
 
 use crate::intermediates::enumeration::try_from_values;
-use crate::intermediates::subrange::TypeResolution;
+use crate::intermediates::TypeResolution;
 use crate::semantic_type::{SemanticStructField, SemanticType};
 use crate::type_environment::{TypeAttributes, TypeEnvironment};
 use ironplc_dsl::common::*;
@@ -245,10 +245,8 @@ fn resolve_field_type(
             )?;
 
             match array_result {
-                crate::intermediates::array::TypeResolution::Type(attrs) => {
-                    Ok(attrs.representation)
-                }
-                crate::intermediates::array::TypeResolution::Alias(base_name) => {
+                TypeResolution::Type(attrs) => Ok(attrs.representation),
+                TypeResolution::Alias(base_name) => {
                     let base_attrs = type_environment.get(&base_name).ok_or_else(|| {
                         Diagnostic::problem(
                             Problem::StructFieldTypeNotDeclared,

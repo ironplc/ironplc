@@ -12,7 +12,7 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 
-use crate::intermediates::array;
+use crate::intermediates::{array, TypeResolution};
 use crate::semantic_type::{ByteSized, SemanticType};
 use crate::symbol_environment::duplicate_declaration;
 use crate::type_id;
@@ -607,8 +607,8 @@ impl TypeEnvironment {
                 let array_spec = SpecificationKind::Inline(array_subranges.clone());
                 let result = array::try_from(declaring, &array_spec, self)?;
                 match result {
-                    array::TypeResolution::Type(attrs) => Ok(attrs.representation),
-                    array::TypeResolution::Alias(base_type_name) => Ok(self
+                    TypeResolution::Type(attrs) => Ok(attrs.representation),
+                    TypeResolution::Alias(base_type_name) => Ok(self
                         .get(&base_type_name)
                         .ok_or_else(|| Diagnostic::internal_error())?
                         .representation
