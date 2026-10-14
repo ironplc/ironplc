@@ -29,7 +29,8 @@ impl ComparisonOperands<'_> {
 }
 
 /// An operand as the type it is operated at: `DINT->LINT` for a `DINT`
-/// converted to `LINT`, `LINT` for an operand operated on as it is.
+/// converted to `LINT`, `LINT->DINT checked` for an `LINT` whose conversion
+/// to `DINT` is checked, `LINT` for an operand operated on as it is.
 pub(super) fn describe(types: &TypeEnvironment, expr: &Expr) -> String {
     let name = |expr: &Expr| {
         expr.expr_type
@@ -39,7 +40,11 @@ pub(super) fn describe(types: &TypeEnvironment, expr: &Expr) -> String {
     };
     match &expr.kind {
         ExprKind::ImplicitConversion(conversion) => {
-            format!("{}->{}", name(&conversion.value), name(expr))
+            let converted = format!("{}->{}", name(&conversion.value), name(expr));
+            match conversion.kind {
+                ConversionKind::Ordinary => converted,
+                ConversionKind::Checked => format!("{converted} checked"),
+            }
         }
         _ => name(expr),
     }

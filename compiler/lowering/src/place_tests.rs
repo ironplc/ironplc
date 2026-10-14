@@ -81,8 +81,9 @@ fn lower_statement_when_unsigned_subscript_fits_dint_then_converted_to_dint() {
     );
 }
 
-/// REQ-LOW-lowering-161: a subscript whose type holds values outside `DINT`
-/// is not lowered until the analyzer records its conversion as checked.
+/// REQ-LOW-lowering-161: a subscript whose type holds values outside `DINT`,
+/// whose conversion the analyzer records as checked (REQ-LOW-analyzer-162),
+/// is not lowered yet.
 #[test]
 fn lower_statement_when_subscript_exceeds_dint_then_unsupported() {
     let outcome = lower(

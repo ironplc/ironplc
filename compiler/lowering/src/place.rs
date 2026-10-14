@@ -3,7 +3,7 @@
 
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_dsl::textual::{Expr as AstExpr, ExprKind as AstExprKind, SymbolicVariableKind};
+use ironplc_dsl::textual::{Expr as AstExpr, SymbolicVariableKind};
 use ironplc_ir::lowered::{Expr, Place};
 
 use crate::variables::BodyFrame;
@@ -70,19 +70,12 @@ impl Lowering<'_> {
     }
 
     /// A subscript, a `DINT` (REQ-LOW-lowering-161). The analyzer converts a
-    /// subscript of another type to `DINT`. That conversion is exact for a
-    /// type whose values all fit a `DINT`; for any other, such as a `UDINT`,
-    /// it would wrap, so such a subscript is not lowered until the analyzer
-    /// records its conversion as checked (REQ-LOW-analyzer-162). A `BOOL`
-    /// subscript, which analysis does not reject yet, is not lowered. A
-    /// numeric subscript of another type the analyzer did not convert is a
+    /// subscript of another type to `DINT`, by a checked conversion for a
+    /// type that holds values a `DINT` does not (REQ-LOW-analyzer-162). A
+    /// `BOOL` subscript, which analysis does not reject yet, is not lowered.
+    /// A numeric subscript of another type the analyzer did not convert is a
     /// defect, which building the `Index` reports (REQ-LOW-lowering-094).
     fn subscript(&mut self, frame: &BodyFrame, subscript: &AstExpr) -> Made<Expr> {
-        if let AstExprKind::ImplicitConversion(conversion) = &subscript.kind {
-            if !self.fits_dint(&conversion.value)? {
-                return Ok(None);
-            }
-        }
         let Some(value) = self.expr(frame, subscript)? else {
             return Ok(None);
         };
@@ -90,20 +83,5 @@ impl Lowering<'_> {
             return Ok(None);
         }
         Ok(Some(value))
-    }
-
-    /// Whether every value of `expr`'s type fits a `DINT`.
-    fn fits_dint(&mut self, expr: &AstExpr) -> Result<bool, Diagnostic> {
-        let Some(recorded) = expr.expr_type.as_ref().and_then(|ty| ty.type_id()) else {
-            return Ok(false);
-        };
-        let Some(ty) = self.lowered_type(recorded)? else {
-            return Ok(false);
-        };
-        Ok(self
-            .program
-            .types()
-            .value_range(ty)
-            .is_some_and(|(min, max)| i128::from(i32::MIN) <= min && max <= i128::from(i32::MAX)))
     }
 }

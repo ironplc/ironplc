@@ -7,7 +7,10 @@
 //! subrange. The target of a dereference is the variable the reference
 //! refers to. The bounds and step of a `FOR` loop are converted to the type
 //! of its control variable the same way, and an array subscript to `DINT`,
-//! the type a subscript is compiled at.
+//! the type a subscript is compiled at. The conversion of a subscript whose
+//! type holds values a `DINT` does not is checked
+//! ([`ConversionKind::Checked`]): it traps on such a value rather than
+//! wrapping it to the position of another element.
 //!
 //! It records a conversion where the value has a type of its own, which a
 //! literal does not. A value converts to its context when it is a variable, an
@@ -33,8 +36,8 @@
 //! A directly represented target is not recorded yet.
 
 use ironplc_dsl::textual::{
-    ArrayVariable, Assignment, Expr, ExprKind, FbCall, For, Function, ParamAssignmentKind,
-    PartialAccessSize, SymbolicVariableKind, Variable,
+    ArrayVariable, Assignment, ConversionKind, Expr, ExprKind, FbCall, For, Function,
+    ParamAssignmentKind, PartialAccessSize, SymbolicVariableKind, Variable,
 };
 use ironplc_dsl::type_id::TypeId;
 
@@ -144,15 +147,50 @@ impl ImplicitConversions<'_> {
 
     /// Records the conversion of each subscript of `array` to `DINT`, the
     /// type a subscript is compiled at. An unsigned subscript is converted to
-    /// it whatever its width, and a 64-bit subscript is narrowed to it,
-    /// as the code generator narrowed it before the conversion was recorded;
-    /// whether a subscript should index at 64 bits is a separate decision.
+    /// it whatever its width, and a 64-bit subscript is narrowed to it: no
+    /// backend indexes at 64 bits. The conversion of a subscript whose type
+    /// holds values a `DINT` does not, such as a `UDINT` or an `LINT`, is
+    /// checked (REQ-LOW-analyzer-162), so that a subscript of 4294967297
+    /// selects no element rather than the element at 1.
     pub(super) fn record_subscript_conversions(&self, array: &mut ArrayVariable) {
         let Some(dint) = self.dint() else {
             return;
         };
         for subscript in &mut array.subscripts {
             self.record_conversion_to(subscript, dint);
+            if let ExprKind::ImplicitConversion(conversion) = &mut subscript.kind {
+                if !self.holds_only_dint_values(&conversion.value) {
+                    conversion.kind = ConversionKind::Checked;
+                }
+            }
+        }
+    }
+
+    /// Whether every value of the type of `expr` is a value of a `DINT`. A
+    /// subrange holds what its base type does, so that the check does not
+    /// depend on a bound no operation enforces.
+    fn holds_only_dint_values(&self, expr: &Expr) -> bool {
+        let Some(representation) = concrete(expr)
+            .and_then(|id| self.context.types().get_by_id(id))
+            .map(|attributes| attributes.representation.operated_as())
+        else {
+            return false;
+        };
+        match representation {
+            SemanticType::Int { size } | SemanticType::Time { size } => size.bits() <= 32,
+            SemanticType::UInt { size }
+            | SemanticType::Bytes { size }
+            | SemanticType::Date { size }
+            | SemanticType::TimeOfDay { size }
+            | SemanticType::DateAndTime { size } => size.bits() < 32,
+            SemanticType::Bool | SemanticType::Enumeration { .. } => true,
+            SemanticType::Real { .. }
+            | SemanticType::Reference { .. }
+            | SemanticType::Subrange { .. }
+            | SemanticType::String { .. }
+            | SemanticType::Structure { .. }
+            | SemanticType::Array { .. }
+            | SemanticType::FunctionBlock { .. } => false,
         }
     }
 
