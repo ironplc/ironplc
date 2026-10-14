@@ -118,7 +118,8 @@ pub(crate) enum ResolvedAccess<'ctx, 'ast> {
 /// `STR_LOAD_ARRAY_ELEM` and `STR_STORE_ARRAY_ELEM` address an element as
 /// `base + flat_index * stride`, reading `base` from a variable. The
 /// structure's variable holds the start of the whole structure rather than of
-/// the array, so the array's start is first computed into a scratch variable.
+/// the array, so the array's start is first computed into a scratch variable
+/// ([`StringPlace`](super::compile_string_place::StringPlace)).
 pub(crate) struct StructStringElement<'ast> {
     /// Struct variable table index (holds struct data_offset).
     pub var_index: VarIndex,
@@ -135,27 +136,6 @@ pub(crate) struct StructStringElement<'ast> {
     pub dimensions: Vec<DimensionInfo>,
     /// Subscript expressions.
     pub subscripts: Vec<&'ast Expr>,
-}
-
-impl StructStringElement<'_> {
-    /// Emits what `STR_LOAD_ARRAY_ELEM` and `STR_STORE_ARRAY_ELEM` need
-    /// before they run: stores `struct_data_offset + field_byte_offset` into
-    /// the scratch variable, then pushes the flat element index. The caller
-    /// follows with either opcode, passing `scratch_var_index` and
-    /// `string_desc_index`.
-    pub(crate) fn emit_base_and_index(
-        &self,
-        emitter: &mut Emitter,
-        ctx: &mut CompileContext,
-        span: &SourceSpan,
-    ) -> Result<(), Diagnostic> {
-        emitter.emit_load_var_i32(self.var_index);
-        let offset_const = ctx.add_i32_constant(self.field_byte_offset as i32);
-        emitter.emit_load_const_i32(offset_const);
-        emitter.emit_add_i32();
-        emitter.emit_store_var_i32(self.scratch_var_index);
-        emit_flat_index(emitter, ctx, &self.subscripts, &self.dimensions, span)
-    }
 }
 
 /// Resolves a variable reference into its access kind.

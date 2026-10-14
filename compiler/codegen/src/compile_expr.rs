@@ -25,6 +25,7 @@ use super::compile_method::compile_method_call_expression;
 use super::compile_partial_access::{compile_partial_access_read, PartialAccess};
 use super::compile_place::Place;
 use super::compile_short_circuit::{compile_short_circuit, ShortCircuitOp};
+use super::compile_string_place::StringPlace;
 use super::type_info::{expr_representation, expr_type_info};
 use crate::emit::Emitter;
 
@@ -533,6 +534,20 @@ pub(crate) fn compile_variable_read(
     if let Some(access) = PartialAccess::of(variable) {
         return compile_partial_access_read(emitter, ctx, &access);
     }
+    // A field of a function block instance (`timer.Q`), which lives in the
+    // instance's data region rather than in a structure.
+    if let Variable::Symbolic(SymbolicVariableKind::Structured(structured)) = variable {
+        if !matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) {
+            if let Some(place) = Place::fb_field(ctx, structured)? {
+                return place.emit_load(emitter, ctx);
+            }
+        }
+    }
+    // A STRING is copied from the data region into a temporary buffer, whose
+    // index a string assignment or a string function's argument consumes.
+    if let Some(place) = StringPlace::resolve(ctx, variable)? {
+        return place.emit_load(emitter, ctx);
+    }
     match variable {
         // The guard excludes `s.arr[i].field`, whose record is an array
         // element rather than a fixed-offset struct field. That shape falls
@@ -540,37 +555,6 @@ pub(crate) fn compile_variable_read(
         Variable::Symbolic(SymbolicVariableKind::Structured(structured))
             if !matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) =>
         {
-            // A field of a function block instance (`timer.Q`), which lives in
-            // the instance's data region rather than in a structure.
-            if let Some(place) = Place::fb_field(ctx, structured)? {
-                return place.emit_load(emitter, ctx);
-            }
-
-            // STRING fields are composite (multi-slot) and stored in the data
-            // region, so we intercept before resolve_struct_field_access which
-            // only supports single-slot (primitive/enum) fields.
-            let (root_name, slot_offset, field_type) = crate::compile_struct::walk_struct_chain(
-                ctx,
-                &structured.record,
-                &structured.field,
-                0,
-            )?;
-            if matches!(
-                &field_type,
-                ironplc_analyzer::semantic_type::SemanticType::String { .. }
-            ) {
-                // `walk_struct_chain` found this structure variable above.
-                let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
-                    Diagnostic::internal_error_at(Label::span(
-                        structured.span(),
-                        format!("Variable '{}' is not a structure", root_name),
-                    ))
-                })?;
-                let byte_offset = struct_info.data_offset + slot_offset.raw() * 8;
-                emitter.emit_str_load_var(byte_offset);
-                return Ok(());
-            }
-
             let (var_index, desc_index, slot_offset, _op_type, _field_type) =
                 crate::compile_struct::resolve_struct_field_access(ctx, structured)?;
             let idx_const = ctx.add_i32_constant(slot_offset.raw() as i32);
@@ -579,17 +563,6 @@ pub(crate) fn compile_variable_read(
             Ok(())
         }
         _ => {
-            // Check if this is a string variable (stored in data region).
-            // String reads emit str_load_var to produce a buf_idx on the stack,
-            // which is consumed by string assignment or string function args.
-            if let Some(var_name) = resolve_variable_name(variable) {
-                if let Some(info) = ctx.string_vars.get(var_name) {
-                    let data_offset = info.data_offset;
-                    emitter.emit_str_load_var(data_offset);
-                    return Ok(());
-                }
-            }
-
             match crate::compile_array::resolve_access(ctx, variable)? {
                 crate::compile_array::ResolvedAccess::Scalar { var_index } => {
                     emit_load_var(emitter, var_index, op_type);
@@ -600,7 +573,6 @@ pub(crate) fn compile_variable_read(
                 crate::compile_array::ResolvedAccess::ArrayElement { info, subscripts } => {
                     let arr_var_index = info.var_index;
                     let arr_desc_index = info.desc_index;
-                    let is_string_elem = info.is_string_element;
                     let dim_info: Vec<_> = info
                         .dimensions
                         .iter()
@@ -618,11 +590,7 @@ pub(crate) fn compile_variable_read(
                         &dim_info,
                         &span,
                     )?;
-                    if is_string_elem {
-                        emitter.emit_str_load_array_elem(arr_var_index, arr_desc_index);
-                    } else {
-                        emitter.emit_load_array(arr_var_index, arr_desc_index);
-                    }
+                    emitter.emit_load_array(arr_var_index, arr_desc_index);
                 }
                 crate::compile_array::ResolvedAccess::DerefArrayElement { info, subscripts } => {
                     let ref_var_index = info.var_index;
@@ -667,12 +635,12 @@ pub(crate) fn compile_variable_read(
                     emitter.emit_add_i64();
                     emitter.emit_load_array(var_index, desc_index);
                 }
-                crate::compile_array::ResolvedAccess::StructFieldStringArrayElement(element) => {
-                    element.emit_base_and_index(emitter, ctx, &variable_span(variable))?;
-                    emitter.emit_str_load_array_elem(
-                        element.scratch_var_index,
-                        element.string_desc_index,
-                    );
+                // `StringPlace::resolve` addressed every string above.
+                crate::compile_array::ResolvedAccess::StructFieldStringArrayElement(_) => {
+                    return Err(Diagnostic::internal_error_at(Label::span(
+                        variable_span(variable),
+                        "A STRING element read as a value in one slot",
+                    )));
                 }
             }
             Ok(())
