@@ -1,4 +1,5 @@
-//! VM-specific edge case tests for the BUILTIN EXPT_I32 opcode.
+//! VM-specific edge case tests for the BUILTIN EXPT_I32 and EXPT_U32
+//! opcodes.
 //!
 //! Basic correctness (e.g., 2**10 = 1024) is covered by end_to_end_expt.rs.
 //! These tests cover traps and overflow wrapping that cannot be expressed
@@ -35,6 +36,20 @@ fn execute_when_expt_i32_overflow_then_wraps() {
         crate::common::run_and_read_i32(&bytecode, 1, &[2, 31]),
         i32::MIN
     );
+}
+
+#[test]
+fn execute_when_expt_u32_exponent_has_top_bit_then_no_trap() {
+    // The exponent's bits are u32::MAX, not -1: 1 ** u32::MAX is 1.
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0] (1)
+        0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1] (-1, u32::MAX)
+        0x94, 0xA7, 0x03,  // BUILTIN EXPT_U32
+        0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+        0x8C,              // RET_VOID
+    ];
+    assert_eq!(crate::common::run_and_read_i32(&bytecode, 1, &[1, -1]), 1);
 }
 
 #[test]

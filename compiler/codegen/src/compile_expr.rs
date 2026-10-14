@@ -4,7 +4,7 @@
 //! and typed opcode emission helpers. Separated from compile.rs to
 //! keep module sizes within the 1000-line guideline.
 
-use ironplc_analyzer::SemanticType;
+use ironplc_analyzer::{NumericFunction, SemanticType};
 use ironplc_container::{opcode, VarIndex};
 use ironplc_dsl::common::{BitStringLiteral, Boolean, ConstantKind, SignedInteger};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
@@ -19,6 +19,7 @@ use super::compile::{
     DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH,
 };
 use super::compile_arith::compile_binary_arith;
+use super::compile_builtin::lookup_builtin;
 use super::compile_call::compile_function_call;
 use super::compile_comparison::compile_comparison;
 use super::compile_method::compile_method_call_expression;
@@ -1134,13 +1135,10 @@ pub(crate) fn emit_mod(emitter: &mut Emitter, op_type: OpType) {
     }
 }
 
-/// POW dispatch. Width-only shape, but emits `EXPT_*` builtins rather than
-/// dedicated `emit_pow_*` opcodes, so it stays hand-written.
+/// POW dispatch: `a ** b` is `EXPT(a, b)`, so it emits the builtin
+/// [`lookup_builtin`] chooses for `EXPT` at `op_type`.
 pub(crate) fn emit_pow(emitter: &mut Emitter, op_type: OpType) -> Result<(), Diagnostic> {
-    emitter.emit_builtin(match op_type.0 {
-        OpWidth::W32 => opcode::builtin::EXPT_I32,
-        OpWidth::W64 => opcode::builtin::EXPT_I64,
-        OpWidth::F32 => opcode::builtin::EXPT_F32,
-        OpWidth::F64 => opcode::builtin::EXPT_F64,
-    })
+    let func_id = lookup_builtin(NumericFunction::Expt, op_type.0, op_type.1)
+        .ok_or_else(Diagnostic::internal_error)?;
+    emitter.emit_builtin(func_id)
 }

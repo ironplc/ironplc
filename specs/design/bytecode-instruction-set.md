@@ -516,7 +516,7 @@ Builtins are monomorphized by the compiler: a generic IEC 61131-3 signature (`AN
 | Range | Category |
 |-------|----------|
 | 0x0000–0x033F | Unassigned |
-| 0x0340–0x03A6 | Numeric, bitwise shift/rotate, selection, conversion, BCD, and string-conversion builtins |
+| 0x0340–0x03A8 | Numeric, bitwise shift/rotate, selection, conversion, BCD, and string-conversion builtins |
 | 0x03A7–0x03FF | Unassigned |
 | 0x0402–0x0410 | `MUX` on I32 (base 0x0400 + arity) |
 | 0x0422–0x0430 | `MUX` on I64 (base 0x0420 + arity) |
@@ -566,6 +566,8 @@ Builtins are monomorphized by the compiler: a generic IEC 61131-3 signature (`AN
 | 0x03A4 | MOD_F64 | 2 | Floating modulo, sign of dividend; `x % 0.0` is NaN, not a trap |
 | 0x03A5 | TRUNC_F32 | 1 | `f32::trunc` |
 | 0x03A6 | MOD_F32 | 2 | Floating modulo on F32 |
+| 0x03A7 | EXPT_U32 | 2 | Unsigned `a ** b`, wrapped to 32 bits; never traps |
+| 0x03A8 | EXPT_U64 | 2 | Unsigned `a ** b`, wrapped to 64 bits; never traps |
 
 #### Math builtins
 

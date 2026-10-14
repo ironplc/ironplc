@@ -392,6 +392,14 @@ declare_builtins! {
     /// variant of [`MOD_F64`] (`x % 0.0` is NaN, not a trap).
     MOD_F32 = 0x03A6, args 2;
 
+    /// EXPT for 32-bit unsigned integers: pops exponent (b) and base (a),
+    /// pushes a ** b, wrapped to 32 bits. The exponent is unsigned, so it is
+    /// never negative and never traps.
+    EXPT_U32 = 0x03A7, args 2;
+
+    /// EXPT for 64-bit unsigned integers: as [`EXPT_U32`], at 64 bits.
+    EXPT_U64 = 0x03A8, args 2;
+
     // =========================================================================
     // STRING_TO_<numeric> under behavior policies (ADR-0049)
     //
