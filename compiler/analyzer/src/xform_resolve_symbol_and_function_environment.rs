@@ -430,16 +430,9 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
         &mut self,
         node: &ironplc_dsl::common::EnumerationDeclaration,
     ) -> Result<Self::Value, Infallible> {
-        // Add the enumeration type itself
+        // Add the enumeration type itself. Its values are recorded with the
+        // type, in the type environment.
         self.declare_global(&node.type_name.name, SymbolKind::Type);
-
-        // Add each enumeration value
-        if let ironplc_dsl::common::SpecificationKind::Inline(values) = &node.spec_init.spec {
-            for value in &values.values {
-                self.symbol_env
-                    .insert_enumeration_value(&value.value, &node.type_name);
-            }
-        }
 
         node.recurse_visit(self)
     }
