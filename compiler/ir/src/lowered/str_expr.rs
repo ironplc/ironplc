@@ -9,6 +9,7 @@
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
 
+use super::call::{program_of, Arg, Intrinsic, Param};
 use super::ids::Stamp;
 use super::invariant::broken;
 use super::place::Place;
@@ -21,6 +22,8 @@ pub enum StrExprKind {
     Literal(Vec<char>),
     /// The string at a place.
     Read(Place),
+    /// The string a standard string function yields (REQ-LOW-lowering-052).
+    Call { callee: Intrinsic, args: Vec<Arg> },
 }
 
 /// A string value of the encoding and capacity of its shape.
@@ -64,6 +67,34 @@ impl StrExpr {
             shape: StringShape { encoding, capacity },
             span,
             program: None,
+        })
+    }
+
+    /// The string `callee` yields from `args`, with room for `capacity` code
+    /// units, the capacity lowering gives the result. There is one argument
+    /// for each of its parameters, of what the parameter takes
+    /// (REQ-LOW-ir-145), and the arguments read places of one program.
+    pub fn call(
+        callee: Intrinsic,
+        args: Vec<Arg>,
+        capacity: u32,
+        span: SourceSpan,
+    ) -> Result<Self, Diagnostic> {
+        const CONSTRUCTOR: &str = "StrExpr::call";
+        let Param::Str(encoding) = callee.signature().result() else {
+            return Err(broken(
+                CONSTRUCTOR,
+                &span,
+                format!("{} yields a value, not a string", callee.name()),
+            ));
+        };
+        callee.check_args(CONSTRUCTOR, &args, &span)?;
+        let program = program_of(CONSTRUCTOR, &args, &span)?;
+        Ok(Self {
+            kind: StrExprKind::Call { callee, args },
+            shape: StringShape { encoding, capacity },
+            span,
+            program,
         })
     }
 

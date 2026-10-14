@@ -77,15 +77,41 @@ fn lower_statement_when_len_or_find_then_intrinsic_of_encoding() {
     );
 }
 
-/// A string function that yields a string, a call with one as its argument,
-/// and a comparison of strings are not lowered yet.
+/// REQ-LOW-lowering-167: a string function that yields a string is a call of
+/// the intrinsic for its encoding, with room for every code unit of its
+/// strings, and is itself a string argument of another call.
 #[test]
-fn lower_statement_when_string_function_or_comparison_then_unsupported() {
+fn lower_statement_when_string_function_yields_string_then_call_of_capacity() {
     let outcome = lower(
-        "PROGRAM main VAR s : STRING; x : BOOL; n : INT; END_VAR
-            s := CONCAT(s, 'x');
-            x := s = 'abc';
+        "PROGRAM main VAR s : STRING[5]; t : STRING; w : WSTRING[4]; n : DINT; END_VAR
+            t := CONCAT(s, 'ab');
+            t := MID(s, 2, 1);
             n := LEN(LEFT(s, 2));
+            w := INSERT(w, \"xy\", 1);
+            t := CONCAT(CONCAT(s, s), 'c');
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign-str v0^.f1 (call concat_string string[7] (read string[5] v0^.f0) (literal string[2] \"ab\"))",
+            "assign-str v0^.f1 (call mid_string string[5] (read string[5] v0^.f0) (const i32s 2) (const i32s 1))",
+            "assign v0^.f3 (call len_string i32s (call left_string string[5] (read string[5] v0^.f0) (const i32s 2)))",
+            "assign-str v0^.f2 (call insert_wstring wstring[6] (read wstring[4] v0^.f2) (literal wstring[2] \"xy\") (const i32s 1))",
+            "assign-str v0^.f1 (call concat_string string[11] (call concat_string string[10] (read string[5] v0^.f0) (read string[5] v0^.f0)) (literal string[1] \"c\"))",
+        ]
+    );
+}
+
+/// A string conversion and a comparison of strings are not lowered yet.
+#[test]
+fn lower_statement_when_string_conversion_or_comparison_then_unsupported() {
+    let outcome = lower(
+        "PROGRAM main VAR s : STRING; x : BOOL; n : DINT; END_VAR
+            s := DINT_TO_STRING(n);
+            x := s = 'abc';
+            n := STRING_TO_DINT(s);
          END_PROGRAM",
         "main",
     );

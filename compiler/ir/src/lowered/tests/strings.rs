@@ -1,5 +1,5 @@
-//! Tests of string expressions, the `AssignStr` statement and calls that
-//! take strings.
+//! Tests of string expressions, the `AssignStr` statement and calls of the
+//! string functions.
 
 use super::*;
 
@@ -156,5 +156,107 @@ fn call_when_string_arguments_read_two_programs_then_internal_error() {
             span()
         ),
         "Expr::call"
+    ));
+}
+
+/// REQ-LOW-lowering-052: a standard string function that yields a string is
+/// a call of its intrinsic, of the encoding the intrinsic names and the
+/// capacity lowering gives it, with each length and position a value.
+#[test]
+fn str_call_when_arguments_of_intrinsic_then_string_of_given_capacity() {
+    let mut f = fixture();
+    let (s, _, w) = strings(&mut f);
+    let concat = StrExpr::call(
+        Intrinsic::ConcatString,
+        vec![str_arg(&f, s), Arg::Str(literal("ab", Encoding::Narrow))],
+        12,
+        span(),
+    )
+    .unwrap();
+    assert_eq!(
+        concat.shape(),
+        StringShape {
+            encoding: Encoding::Narrow,
+            capacity: 12
+        }
+    );
+    assert_eq!(
+        concat.to_string(),
+        "(call concat_string string[12] (read string[10] v8) (literal string[2] \"ab\"))"
+    );
+    let mid = StrExpr::call(
+        Intrinsic::MidWString,
+        vec![str_arg(&f, w), Arg::Value(int(2)), Arg::Value(int(1))],
+        10,
+        span(),
+    )
+    .unwrap();
+    assert_eq!(
+        mid.to_string(),
+        "(call mid_wstring wstring[10] (read wstring[10] v10) (const i32s 2) (const i32s 1))"
+    );
+    let nested = StrExpr::call(
+        Intrinsic::LeftString,
+        vec![Arg::Str(concat), Arg::Value(int(3))],
+        12,
+        span(),
+    );
+    assert!(nested.is_ok());
+}
+
+/// A call yields what its intrinsic yields: a string function that yields a
+/// string is never a value, and one that yields a number never a string.
+#[test]
+fn call_when_intrinsic_yields_other_kind_then_internal_error() {
+    let mut f = fixture();
+    let (s, _, _) = strings(&mut f);
+    assert!(is_internal_error_naming(
+        StrExpr::call(Intrinsic::LenString, vec![str_arg(&f, s)], 10, span()),
+        "StrExpr::call"
+    ));
+    assert!(is_internal_error_naming(
+        Expr::call(
+            Intrinsic::ConcatString,
+            vec![str_arg(&f, s), str_arg(&f, s)],
+            span()
+        ),
+        "Expr::call"
+    ));
+}
+
+/// REQ-LOW-ir-145: each argument of a string call passes what its parameter
+/// takes, and the arguments read places of one program.
+#[test]
+fn str_call_when_argument_not_taken_or_two_programs_then_internal_error() {
+    let mut f = fixture();
+    let mut g = fixture();
+    let (s, _, w) = strings(&mut f);
+    let (other, _, _) = strings(&mut g);
+    assert!(is_internal_error_naming(
+        StrExpr::call(
+            Intrinsic::LeftString,
+            vec![Arg::Value(int(3)), Arg::Value(int(3))],
+            10,
+            span()
+        ),
+        "StrExpr::call"
+    ));
+    assert!(is_internal_error_naming(
+        StrExpr::call(
+            Intrinsic::ConcatString,
+            vec![str_arg(&f, s), str_arg(&f, w)],
+            20,
+            span()
+        ),
+        "StrExpr::call"
+    ));
+    assert!(is_internal_error_naming(
+        StrExpr::call(
+            Intrinsic::ConcatString,
+            vec![str_arg(&f, s), str_arg(&g, other)],
+            20,
+            span()
+        ),
+        "StrExpr::call"
     ));
 }

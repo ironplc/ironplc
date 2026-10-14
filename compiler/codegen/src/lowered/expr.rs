@@ -1,6 +1,7 @@
 //! Emits a lowered expression.
 
 use ironplc_container::opcode::builtin;
+use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::{
     Arg, BinaryOp, Callee, CompareOp, Const, Expr, ExprKind, Intrinsic, NarrowWidth,
@@ -148,30 +149,42 @@ pub(super) fn emit_expr(
         ExprKind::Call {
             callee: Callee::Intrinsic(intrinsic),
             args,
-        } => {
-            // `can_emit` leaves to the AST a call with no instruction.
-            let instruction = instruction_of(*intrinsic, args.len()).ok_or_else(|| {
-                Diagnostic::internal_error_at(Label::span(
-                    expr.span().clone(),
-                    "A call of an intrinsic with no instruction",
-                ))
-            })?;
-            let strings = emit_args(emitter, ctx, lowering, args)?;
-            match instruction {
-                Instruction::Builtin(builtin) => emitter.emit_builtin(builtin)?,
-                Instruction::LenStr => {
-                    let [string] = strings[..] else {
-                        return Err(strings_not_taken(expr));
-                    };
-                    emitter.emit_len_str(string);
-                }
-                Instruction::FindStr => {
-                    let [in1, in2] = strings[..] else {
-                        return Err(strings_not_taken(expr));
-                    };
-                    emitter.emit_find_str(in1, in2);
-                }
-            }
+        } => emit_intrinsic_call(emitter, ctx, lowering, *intrinsic, args, expr.span())?,
+    }
+    Ok(())
+}
+
+/// Emits the call of `intrinsic` with `args`, at `span`: its arguments, then
+/// its instruction, which leaves a value or a temporary buffer on the stack.
+pub(super) fn emit_intrinsic_call(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    lowering: &Lowering<'_>,
+    intrinsic: Intrinsic,
+    args: &[Arg],
+    span: &SourceSpan,
+) -> Result<(), Diagnostic> {
+    // `can_emit` leaves to the AST a call with no instruction.
+    let instruction = instruction_of(intrinsic, args.len()).ok_or_else(|| {
+        Diagnostic::internal_error_at(Label::span(
+            span.clone(),
+            "A call of an intrinsic with no instruction",
+        ))
+    })?;
+    let strings = emit_args(emitter, ctx, lowering, args)?;
+    match instruction {
+        Instruction::Builtin(builtin) => emitter.emit_builtin(builtin)?,
+        Instruction::OneString(emit) => {
+            let [string] = strings[..] else {
+                return Err(strings_not_taken(span));
+            };
+            emit(emitter, string);
+        }
+        Instruction::TwoStrings(emit) => {
+            let [in1, in2] = strings[..] else {
+                return Err(strings_not_taken(span));
+            };
+            emit(emitter, in1, in2);
         }
     }
     Ok(())
@@ -198,22 +211,25 @@ fn emit_args(
 
 /// The internal error for a call whose strings are not the ones its
 /// instruction takes, which the IR's signature check rules out.
-fn strings_not_taken(expr: &Expr) -> Diagnostic {
+fn strings_not_taken(span: &SourceSpan) -> Diagnostic {
     Diagnostic::internal_error_at(Label::span(
-        expr.span().clone(),
+        span.clone(),
         "A call of an intrinsic with strings its instruction does not take",
     ))
 }
 
-/// How this backend computes a call of an intrinsic.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// How this backend computes a call of an intrinsic. Each takes the call's
+/// values on the stack.
+#[derive(Clone, Copy, Debug)]
 pub(super) enum Instruction {
-    /// A VM builtin (ADR-0008), which takes the call's values on the stack.
+    /// A VM builtin (ADR-0008).
     Builtin(u16),
-    /// `LEN_STR`, of the string at one data region offset.
-    LenStr,
-    /// `FIND_STR`, of the strings at two data region offsets.
-    FindStr,
+    /// A string opcode, emitted with the data region offset of the call's
+    /// one string.
+    OneString(fn(&mut Emitter, u32)),
+    /// A string opcode, emitted with the data region offsets of the call's
+    /// two strings.
+    TwoStrings(fn(&mut Emitter, u32, u32)),
 }
 
 /// The instruction that computes a call of `intrinsic` with `args`
@@ -311,8 +327,33 @@ pub(super) fn instruction_of(intrinsic: Intrinsic, args: usize) -> Option<Instru
         Intrinsic::IntToBcdI16 | Intrinsic::IntToBcdU16 => builtin::INT_TO_BCD_16,
         Intrinsic::IntToBcdI32 | Intrinsic::IntToBcdU32 => builtin::INT_TO_BCD_32,
         Intrinsic::IntToBcdI64 | Intrinsic::IntToBcdU64 => builtin::INT_TO_BCD_64,
-        Intrinsic::LenString | Intrinsic::LenWString => return Some(Instruction::LenStr),
-        Intrinsic::FindString | Intrinsic::FindWString => return Some(Instruction::FindStr),
+        Intrinsic::LenString | Intrinsic::LenWString => {
+            return Some(Instruction::OneString(Emitter::emit_len_str))
+        }
+        Intrinsic::FindString | Intrinsic::FindWString => {
+            return Some(Instruction::TwoStrings(Emitter::emit_find_str))
+        }
+        Intrinsic::ConcatString | Intrinsic::ConcatWString => {
+            return Some(Instruction::TwoStrings(Emitter::emit_concat_str))
+        }
+        Intrinsic::InsertString | Intrinsic::InsertWString => {
+            return Some(Instruction::TwoStrings(Emitter::emit_insert_str))
+        }
+        Intrinsic::ReplaceString | Intrinsic::ReplaceWString => {
+            return Some(Instruction::TwoStrings(Emitter::emit_replace_str))
+        }
+        Intrinsic::DeleteString | Intrinsic::DeleteWString => {
+            return Some(Instruction::OneString(Emitter::emit_delete_str))
+        }
+        Intrinsic::LeftString | Intrinsic::LeftWString => {
+            return Some(Instruction::OneString(Emitter::emit_left_str))
+        }
+        Intrinsic::RightString | Intrinsic::RightWString => {
+            return Some(Instruction::OneString(Emitter::emit_right_str))
+        }
+        Intrinsic::MidString | Intrinsic::MidWString => {
+            return Some(Instruction::OneString(Emitter::emit_mid_str))
+        }
     }))
 }
 
@@ -321,7 +362,7 @@ pub(super) fn emit_truncate(
     emitter: &mut Emitter,
     width: NarrowWidth,
     signedness: Signedness,
-    span: &ironplc_dsl::core::SourceSpan,
+    span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
     match (width, signedness) {
         (NarrowWidth::B8, Signedness::Signed) => emitter.emit_trunc_i8(),
@@ -371,14 +412,18 @@ mod tests {
     /// that the VM takes, and none for more.
     #[test]
     fn instruction_of_when_mux_then_builtin_for_its_number_of_inputs() {
+        let builtin_of = |intrinsic, args| match instruction_of(intrinsic, args) {
+            Some(Instruction::Builtin(builtin)) => Some(builtin),
+            Some(Instruction::OneString(_) | Instruction::TwoStrings(_)) | None => None,
+        };
         assert_eq!(
-            instruction_of(Intrinsic::MuxF64, 3),
-            Some(Instruction::Builtin(builtin::MUX_F64_BASE + 2))
+            builtin_of(Intrinsic::MuxF64, 3),
+            Some(builtin::MUX_F64_BASE + 2)
         );
         assert_eq!(
-            instruction_of(Intrinsic::MuxU32, 17),
-            Some(Instruction::Builtin(builtin::MUX_I32_BASE + 16))
+            builtin_of(Intrinsic::MuxU32, 17),
+            Some(builtin::MUX_I32_BASE + 16)
         );
-        assert_eq!(instruction_of(Intrinsic::MuxI64, 18), None);
+        assert!(instruction_of(Intrinsic::MuxI64, 18).is_none());
     }
 }

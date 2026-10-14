@@ -265,7 +265,7 @@ fn lower_statement_when_var_external_then_global_variable() {
 fn lower_statement_when_not_supported_yet_then_unsupported() {
     let outcome = lower(
         "PROGRAM main VAR s : STRING; a : DINT; r : REAL; END_VAR
-            s := CONCAT(s, 'x');
+            s := DINT_TO_STRING(a);
             a := STRING_TO_DINT(s);
             FOR a := 1 TO 3 BY a DO r := r; END_FOR;
          END_PROGRAM",

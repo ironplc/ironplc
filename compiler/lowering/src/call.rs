@@ -285,8 +285,7 @@ impl Lowering<'_> {
         self.intrinsic_call(frame, expr, intrinsic, args)
     }
 
-    /// The call `expr` of `intrinsic` with `args`, each lowered as what its
-    /// parameter takes: a value or a string.
+    /// The call `expr` of `intrinsic` with `args`.
     pub(crate) fn intrinsic_call(
         &mut self,
         frame: &BodyFrame,
@@ -294,6 +293,22 @@ impl Lowering<'_> {
         intrinsic: Intrinsic,
         args: &[&AstExpr],
     ) -> Lowered {
+        let Some(args) = self.intrinsic_args(frame, intrinsic, args)? else {
+            return Ok(None);
+        };
+        Expr::call(intrinsic, args, expr.span()).map(Some)
+    }
+
+    /// `args` of a call of `intrinsic`, each lowered as what its parameter
+    /// takes: a value or a string. `None` when one of them is not supported,
+    /// or is of another type than its parameter's, which the analyzer did not
+    /// convert to it.
+    pub(crate) fn intrinsic_args(
+        &mut self,
+        frame: &BodyFrame,
+        intrinsic: Intrinsic,
+        args: &[&AstExpr],
+    ) -> Result<Option<Vec<Arg>>, Diagnostic> {
         let signature = intrinsic.signature();
         let mut lowered = Vec::with_capacity(args.len());
         for (index, arg) in args.iter().enumerate() {
@@ -307,13 +322,8 @@ impl Lowering<'_> {
             };
             lowered.push(arg);
         }
-        // An argument of another type than its parameter's is one the
-        // analyzer did not convert to it, and is not lowered.
         let passed: Vec<Param> = lowered.iter().map(Arg::param).collect();
-        if !signature.takes(&passed) {
-            return Ok(None);
-        }
-        Expr::call(intrinsic, lowered, expr.span()).map(Some)
+        Ok(signature.takes(&passed).then_some(lowered))
     }
 
     /// The function form of an operator, `expr`: the expression the

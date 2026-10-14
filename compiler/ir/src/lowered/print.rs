@@ -63,12 +63,7 @@ impl fmt::Display for Expr {
                     Callee::User(pou) => write!(f, "(call {pou} {ty}")?,
                     Callee::Intrinsic(intrinsic) => write!(f, "(call {} {ty}", intrinsic.name())?,
                 }
-                for arg in args {
-                    match arg {
-                        Arg::Value(value) => write!(f, " {value}")?,
-                        Arg::Str(value) => write!(f, " {value}")?,
-                    }
-                }
+                write_args(f, args)?;
                 f.write_str(")")
             }
         }
@@ -88,8 +83,21 @@ impl fmt::Display for StrExpr {
                 write!(f, "(literal {ty}[{}] {text:?})", shape.capacity)
             }
             StrExprKind::Read(place) => write!(f, "(read {ty}[{}] {place})", shape.capacity),
+            StrExprKind::Call { callee, args } => {
+                write!(f, "(call {} {ty}[{}]", callee.name(), shape.capacity)?;
+                write_args(f, args)?;
+                f.write_str(")")
+            }
         }
     }
+}
+
+/// Each of a call's `args`, after a space.
+fn write_args(f: &mut fmt::Formatter<'_>, args: &[Arg]) -> fmt::Result {
+    args.iter().try_for_each(|arg| match arg {
+        Arg::Value(value) => write!(f, " {value}"),
+        Arg::Str(value) => write!(f, " {value}"),
+    })
 }
 
 impl fmt::Display for Stmt {
