@@ -5,14 +5,17 @@ use std::collections::HashMap;
 
 use ironplc_container::CharWidth;
 use ironplc_dsl::{
-    common::{ArraySubranges, ElementaryTypeName, ReferenceTarget, SpecificationKind, TypeName},
+    common::{
+        ArrayElementType, ArraySubranges, ElementaryTypeName, ReferenceTarget, SpecificationKind,
+        TypeName,
+    },
     core::{Id, Located},
     diagnostic::{Diagnostic, Label},
     textual::{Expr, ExprType},
 };
 use ironplc_problems::Problem;
 
-use crate::intermediates::{array, TypeResolution};
+use crate::intermediates::{array, string, TypeResolution};
 use crate::semantic_type::{ByteSized, SemanticType};
 use crate::symbol_environment::duplicate_declaration;
 use crate::type_id;
@@ -561,9 +564,11 @@ impl TypeEnvironment {
     }
 
     /// Records that the array type `array` has the element type
-    /// `elements` spells: the element's own type, or the reference type to
-    /// it for `ARRAY[..] OF REF_TO T`. Nothing is recorded when the element
-    /// type is not known.
+    /// `elements` spells: the element's own type, a type of its own for a
+    /// sized string, which records its capacity as a sized string
+    /// variable's does (REQ-LOW-analyzer-053), or the reference type to the
+    /// element for `ARRAY[..] OF REF_TO T`. Nothing is recorded when the
+    /// element type is not known.
     pub(crate) fn record_array_element(&mut self, array: TypeId, elements: &ArraySubranges) {
         let Some(element) = self.id_of(&elements.type_name.to_type_name()) else {
             return;
@@ -574,7 +579,16 @@ impl TypeEnvironment {
                 None => return,
             }
         } else {
-            element
+            let sized = match &elements.type_name {
+                ArrayElementType::String(spec) | ArrayElementType::WString(spec) => {
+                    spec.length.as_ref().map(|_| string::from_spec(spec))
+                }
+                ArrayElementType::Named(_) => None,
+            };
+            match sized {
+                Some(attributes) => self.insert_sized_string(element, attributes),
+                None => element,
+            }
         };
         self.array_elements.insert(array, element);
     }
