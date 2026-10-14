@@ -42,23 +42,14 @@ backend makes again is a decision two backends can make differently.
 
 ## Quick Checklist
 
-- [ ] **Plan PR**: A non-trivial change follows the
-      [Development Process](development-standards.md#development-process); a
-      backend is a plan PR, prefactor PRs, then core change PRs
-- [ ] **ADR**: Record the choice of target and toolchain in `specs/adrs/`
-      (the encoder or code generation library, the runtime that hosts the
-      program, and how a user selects the target)
 - [ ] **Design doc**: Add `specs/design/<target>-backend.md` with requirement
       IDs slugged to the new crate (`REQ-<AREA>-<crate-slug>-NNN`; see
       [Design Requirement](development-standards.md#design-requirement))
-- [ ] **Prefactors**: Move anything the backend needs out of a crate it may not
-      depend on (see [Shared Pieces Still in Bytecode Crates](#shared-pieces-still-in-bytecode-crates))
+- [ ] **Shared pieces**: Move anything the backend needs out of a crate it may
+      not depend on (see [Shared Pieces Still in Bytecode Crates](#shared-pieces-still-in-bytecode-crates))
 - [ ] **Crate**: A new crate under `compiler/`, a member of the workspace,
       depending on `ironplc-ir` and none of the forbidden crates
-- [ ] **Lint**: `#![deny(clippy::wildcard_enum_match_arm)]` at the crate root,
-      with a test that the attribute is there
-- [ ] **Manifest test**: A test that the crate's `[dependencies]` name none of
-      the forbidden crates
+- [ ] **Lint**: `#![deny(clippy::wildcard_enum_match_arm)]` at the crate root
 - [ ] **Capability checks**: Check the execution model against what the
       target can run, and report each limit
 - [ ] **Layout**: Computed once, before emission, keyed by id
@@ -75,9 +66,6 @@ backend makes again is a decision two backends can make differently.
       the selected backend
 - [ ] **Problem codes**: Each new target limit has a documented code
 - [ ] **User docs**: How to select the target, and what it cannot run
-- [ ] **Steering**: Add the new crate's path to this guide's pointer patterns
-      (`.kiro/steering/backend-guide.md`, and the "especially relevant for" hint
-      in `CLAUDE.md` and `CURSOR.md`)
 - [ ] **CI**: `cd compiler && just`
 
 ## Never Decide What Lowering Decided
@@ -118,23 +106,26 @@ versions are managed by the release tooling (`shared-version = true` in
 |---|---|---|
 | `ironplc-ir` | Yes | The lowered program, and the re-exported `SourceSpan`, `FileId`, `Label` and `Diagnostic` |
 | `ironplc-problems` | Yes | The `Problem` a target-limit diagnostic names |
-| The target's own libraries (an encoder, LLVM bindings) | Yes, through the ADR | Keep them minimal and cross-platform (Windows, macOS, Linux) |
+| The target's own libraries (an encoder, LLVM bindings) | Yes | Keep them minimal and cross-platform (Windows, macOS, Linux) |
 | `ironplc-dsl`, `ironplc-parser`, `ironplc-analyzer`, `ironplc-lowering` | **Never**, outside `[dev-dependencies]` | The compiler, not a reviewer, keeps a backend from reaching the AST or analysis ([ADR-0059](../adrs/0059-backends-depend-only-on-the-ir-crate.md)) |
 | `ironplc-codegen`, `ironplc-vm`, `ironplc-container` | **Never**, outside `[dev-dependencies]` | They are another backend and its target. Depending on one couples two targets that must stay independent |
 
 Name `SourceSpan`, `FileId`, `Label` and `Diagnostic` through `ironplc-ir`,
 never through `ironplc-dsl`.
 
-**Enforce the boundary with a test.** The bytecode backend's requirement is
-REQ-LOW-codegen-002. Give the new crate its own requirement in its design doc,
-and a test that reads `Cargo.toml` and fails if `[dependencies]` names a
-forbidden crate.
+**The backend does not test its own boundary.** A check outside every backend
+reads each backend crate's manifest and fails if `[dependencies]` names a
+forbidden crate (the rule the design states for the bytecode backend as
+REQ-LOW-codegen-002). It finds backend crates itself, so a new backend is
+covered from its first commit without registering anywhere and without a test
+of its own.
 
 ### Shared pieces still in bytecode crates
 
 Some things every backend needs grew up inside the bytecode backend. When you
-need one, move it in a **prefactor PR** to `ironplc-ir` (or to a small crate
-both backends can depend on). Never add a dependency on the crate that holds it.
+need one, move it to `ironplc-ir` (or to a small crate both backends can depend
+on) before the backend uses it. Never add a dependency on the crate that holds
+it.
 
 - **`SourceLookup`** (`codegen/src/source_lookup.rs`): how a backend reads the
   source bytes its debug information hashes.
@@ -158,9 +149,9 @@ both backends can depend on). Never add a dependency on the crate that holds it.
 #![deny(clippy::wildcard_enum_match_arm)]
 ```
 
-Add a test that the attribute is present, as `ironplc-ir` and
-`ironplc-lowering` do (`crate_root_when_read_then_denies_wildcard_enum_match_arm`):
-a test cannot observe a lint that is not configured.
+The same check outside every backend fails when a backend's crate root lacks
+the attribute, since a test cannot observe a lint that is not configured. The
+backend writes no test for it.
 
 The lint does not see a wildcard inside a tuple or slice pattern. Split
 `match (op, ty) { …, _ => … }` into one exhaustive match per enum, which
@@ -231,12 +222,10 @@ deliberately carries none of it (REQ-LOW-lowering-027).
 - **Size string storage from the capacity of each value**, never from other
   strings in the program (REQ-LOW-codegen-055).
 - **Each instance has one storage for its fields**, which a body addresses in
-  place through its instance parameter
-  ([ADR-0062](../adrs/0062-a-body-works-on-its-instances-fields-in-place.md)).
-  Do **not** copy the bytecode VM, which copies fields in and out around a
-  body until [issue 2120](https://github.com/ironplc/ironplc/issues/2120)
-  lands. A new backend meets REQ-LOW-codegen-037 and REQ-LOW-codegen-038 from
-  the start.
+  place through its instance parameter, so a write is visible at once and
+  survives a trap
+  ([ADR-0062](../adrs/0062-a-body-works-on-its-instances-fields-in-place.md);
+  REQ-LOW-codegen-037, REQ-LOW-codegen-038).
 
 ### 3. Emit
 
@@ -364,7 +353,10 @@ Each leg asserts something the others do not.
 | **Capability checks** | Each target-limit diagnostic and its code | A check analysis makes |
 | **Structure** (backend crate) | Only what end-to-end cannot localize: layout, encoding, branch offsets | "The right instruction was emitted", which end-to-end covers |
 | **Encoding guard** | If the artifact outlives a compile (a file another tool loads), the encoding of each instruction is pinned, as `codegen/tests/it/wire_format.rs` pins opcodes | — |
-| **Crate shape** | The manifest test, and the lint conformance test | — |
+
+The dependency boundary and the crate-root lint are checked outside the
+backend (see [What the crate may depend on](#what-the-crate-may-depend-on)), so
+they are not among a backend's tests.
 
 - **The end-to-end suite is the regression net.** Every behavior a backend
   implements is proven there, on every backend, by programs that read
@@ -391,10 +383,9 @@ Each leg asserts something the others do not.
   lowered program to the backend the user selected (REQ-LOW-project-005).
   `check` already runs lowering, so it reports nothing new for a target;
   target limits come from the backend at compile time.
-- **Target selection**: the first backend after the bytecode one decides how a
-  user selects a target (a CLI option, a project setting). Record it in the
-  ADR, document it in `docs/reference/compiler/ironplcc.rst`, and keep the
-  bytecode backend the default unless the ADR says otherwise.
+- **Target selection**: document how a user selects the target in
+  `docs/reference/compiler/ironplcc.rst`. The bytecode backend stays the
+  default.
 - **The playground**: runs bytecode only. A new backend does not plug into
   it.
 - **Other front ends**: the language server and the MCP server compile to
@@ -432,14 +423,19 @@ handles it. That is the point
 
 - **Reaching for the AST "just here"**: the backend depends on a forbidden
   crate, or a function lowering already exposes is reimplemented from source
-  names. The manifest test catches the first; the
+  names. The dependency check outside the backend catches the first; the
   [table above](#never-decide-what-lowering-decided) catches the second.
 - **Wildcard arms**: `_ => Err(Diagnostic::internal_error())` over an IR enum
   turns the next new variant into a run-time defect instead of a compile
   error.
-- **Copying the bytecode VM's quirks**: copying function block fields in and
-  out around a body, or giving every temporary string one size. Both are
-  limits of the VM with issues of their own (2120, 2118), not the meaning.
+- **Copying function block fields in and out around a body**, as the bytecode
+  VM does until [issue 2120](https://github.com/ironplc/ironplc/issues/2120)
+  is resolved. That is a limit of the VM, not the meaning: a body works on its
+  instance's fields in place.
+- **Giving every temporary string one size**, as the bytecode VM does until
+  [issue 2118](https://github.com/ironplc/ironplc/issues/2118) is resolved.
+  That is a limit of the VM, not the meaning: each value's storage is sized
+  from its own capacity.
 - **Mapping an operation onto undefined behavior**: LLVM's `sdiv` and
   `fptosi`, C's signed overflow, a shift by the full width. The result
   compiles and passes nominal tests, and the optimizer miscompiles the edge.
@@ -460,26 +456,24 @@ handles it. That is the point
 
 ### Example: Adding a WebAssembly Backend
 
-#### Step 1: Plan, ADR and design
+#### Step 1: Design
 
-Open a plan PR. Write the ADR (which encoder, which host runtime, how the user
-selects the target) and `specs/design/wasm-backend.md`: the layout, how each
-node is realized, every difference between WebAssembly's instructions and
-§3.10, the capability checks, and requirement IDs such as
+Write `specs/design/wasm-backend.md`: the encoder and the host runtime, the
+layout, how each node is realized, every difference between WebAssembly's
+instructions and §3.10, the capability checks, and requirement IDs such as
 `REQ-WASM-wasm-001`.
 
-#### Step 2: Prefactors
+#### Step 2: Shared pieces
 
-One PR each, branched from `main`, each behavior preserving: move
-`SourceLookup` to `ironplc-ir`; make the end-to-end harness a trait the
+Move `SourceLookup` to `ironplc-ir`; make the end-to-end harness a trait the
 bytecode backend implements, with a way to mark a test a backend cannot run
 yet; share the trap codes.
 
 #### Step 3: The crate
 
-Create `compiler/wasm` with the crate root above, the manifest and lint
-tests, and an entry point that reports every construct it does not handle yet
-as P9999 at that construct's span.
+Create `compiler/wasm` with the crate root above and an entry point that
+reports every construct it does not handle yet as P9999 at that construct's
+span.
 
 #### Step 4: A minimal path
 
@@ -489,20 +483,17 @@ test as not yet supported by this backend.
 
 #### Step 5: Grow
 
-Add one node kind or one group of `Intrinsic` variants per PR, each removing
-the marks from the end-to-end tests it makes pass, until none remain. Add the
+Add one node kind or one group of `Intrinsic` variants at a time, each
+removing the marks from the end-to-end tests it makes pass, until none remain. Add the
 programs for each §3.10 rule as the operation lands.
 
 #### Step 6: Wire in
 
-Select the backend in `ironplc_project::compile`, add the CLI option, document
-it and every new problem code, and add `compiler/wasm/**` to this guide's
-pointer patterns.
+Select the backend in `ironplc_project::compile`, add the CLI option, and
+document it and every new problem code.
 
 #### Step 7: Run CI
 
 ```bash
 cd compiler && just
 ```
-
-All checks must pass before creating a PR.
