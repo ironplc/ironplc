@@ -2300,6 +2300,7 @@ parser! {
         not: not.is_some(),
         src,
         tgt,
+        value: None,
       })
     } / name:(n:variable_name() _ tok(TokenType::Assignment) { n })? _ expr:expression() {
       match name {

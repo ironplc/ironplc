@@ -470,8 +470,8 @@ impl ImplicitConversions<'_> {
                     inputs.push((&mut input.expr, at));
                 }
                 ParamAssignmentKind::PositionalInput(input) => inputs.push((&mut input.expr, None)),
-                // An output is stored into a variable by the call, not
-                // computed into the block (#2125).
+                // An output is stored into a variable after the call, not
+                // into the block; `record_fb_call_outputs` converts it.
                 ParamAssignmentKind::Output(_) => {}
             }
         }

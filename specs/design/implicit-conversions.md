@@ -188,7 +188,13 @@ A reference refers only to a variable of the type it names (P2032), so the conve
 
 **REQ-IC-analyzer-080** An assignment through a dereference is checked as an assignment to the variable the reference refers to: `p^ := d` on a `REF_TO SINT` and a `DINT` reports P4035, and `p^ := f(d)` with `f` returning a `DINT` reports P4027, as `s := d` and `s := f(d)` on a `SINT` do.
 
-A directly represented variable (`%QW0 := w`) is not recorded yet, and neither is a function block output stored by a call (`fb(OUT => x)`), which codegen stores at the field's operation type without a conversion ([#2125](https://github.com/ironplc/ironplc/issues/2125)).
+A function block call stores each output it assigns (`fb(q => x)`) in its target after the call. The binding pass records the value it stores on the output assignment: the output read from the instance, `fb.q`, and `NOT fb.q` for a negated output (see [Call Binding](call-binding.md)). The rules check that value against the target, and the pass converts it to the target's type, as they check and convert the value of `x := fb.q`. Codegen used to store the output at the field's operation type without a conversion, which read a `REAL` output's bits as an `LREAL` and sign-extended an unsigned one, and an output that does not fit its target was stored without a diagnostic ([#2125](https://github.com/ironplc/ironplc/issues/2125)).
+
+**REQ-IC-analyzer-106** An output assignment is checked as the assignment of the output to its target is: `f(ql => i)` on an `LINT` output and an `INT` reports P4035 as `i := f.ql` does, and so do a `BOOL` output, negated or not, and a `REAL` output stored in a `DINT`, and the `TIME` output `ET` of a `TON` stored in a `DINT`; `f(qs => i)` on a `SINT` output and `t(ET => lt)` on an `LTIME` report nothing.
+
+**REQ-IC-analyzer-107** The value an output assignment stores is converted to the type of its target as an assigned value is: the `REAL` of `f(q => lr)` on an `LREAL` is converted to `LREAL`, the `UDINT` of `f(qu => lu)` on an `LINT` to `LINT`, the `TIME` of `t(ET => lt)` on a `TON` to `LTIME`, and a `DINT` stored in a subrange of `LINT` to `LINT`; the `SINT` of `f(qs => i)` on an `INT` is not converted.
+
+A directly represented variable (`%QW0 := w`) is not recorded yet.
 
 ### References
 
@@ -368,6 +374,8 @@ that type's width as a value stored in the variable directly is (ADR-0001).
 **REQ-IC-codegen-014** A time or date stored in a variable or input of its long type keeps its value: `ld := d` with `d = D#2100-01-01` stores `LDATE#2100-01-01` where it stored a date thousands of millennia away, and so do `ldt := dt` after 2038, `keep(x := d)` on an `LDATE` input, `lt := t` with `t = T#-5s` and `ltod := tod`.
 
 **REQ-IC-codegen-009** The result of a call to a user-defined function or a method, and a dereference, stored in a wider target keep their value: `l := big(u)` with `big` returning the `UDINT` 4000000000 stores 4000000000, as do `l := k.Big()` and `l := p^`, and `lr := half(3.0)` with `half` returning a `REAL` stores 1.5.
+
+**REQ-IC-codegen-022** A function block output stored by a call in a target of another type keeps its value: `f(q => lr)` with the `REAL` output `q = 1.5` stores 1.5 in an `LREAL`, `f(qu => lu)` with the `UDINT` output `qu = 4000000000` stores 4000000000 in an `LINT`, `f(qd => a[2])` with the `DINT` output `qd = -5` stores -5 in an element of an `ARRAY OF LINT`, and `c(CD := TRUE, CV => l)` on a `CTD` counted below zero stores -1 in an `LINT`.
 
 An arithmetic operation, in the operator and the function form, computes at
 its own result type: a typed overload's routine, or the numeric type at whose

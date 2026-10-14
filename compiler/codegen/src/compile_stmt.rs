@@ -18,12 +18,11 @@ use ironplc_dsl::textual::{
 use super::compile::{
     CompileContext, CurrentFunctionReturn, OpType, OpWidth, Signedness, DEFAULT_STRING_MAX_LENGTH,
 };
-use super::compile_assign::compile_assignment;
+use super::compile_assign::{compile_assignment, compile_store};
 use super::compile_expr::{
     compile_condition, compile_expr, emit_classified_cmp_br, emit_eq, emit_ge, emit_le,
-    emit_load_var, emit_store_var, op_type, resolve_variable, try_classify_cmp,
+    emit_load_var, op_type, try_classify_cmp,
 };
-use super::compile_fb_init::resolve_fb_field_op_type;
 use super::compile_loop::{compile_for, compile_repeat, compile_while};
 use super::compile_method::compile_method_call_statement;
 use crate::emit::Emitter;
@@ -194,7 +193,6 @@ fn compile_fb_call(
         .ok_or_else(|| Diagnostic::todo_with_span(fb_call.span()))?;
     let type_id = fb_info.type_id;
     let field_indices = fb_info.field_indices.clone();
-    let field_op_types = fb_info.field_op_types.clone();
     let var_index = fb_info.var_index;
 
     // Push FB instance reference.
@@ -235,27 +233,24 @@ fn compile_fb_call(
         ctx.record_call_edge(user_fb.function_id);
     }
 
-    // Read output parameters.
-    for param in &fb_call.params {
-        if let ParamAssignmentKind::Output(output) = param {
-            let field_name = output.src.to_string().to_lowercase();
-            let field_idx = field_indices
-                .get(&field_name)
-                .ok_or_else(|| Diagnostic::todo_with_span(output.src.span()))?;
-            emitter.emit_fb_load_param(*field_idx);
-            // `NOT q => v` stores the inverse of a `BOOL` output; the
-            // analyzer rejects a negated output of any other type (P4083).
-            if output.not {
-                emitter.emit_bool_not();
-            }
-            let target_index = resolve_variable(ctx, &output.tgt)?;
-            let op_type = resolve_fb_field_op_type(&field_op_types, &field_name);
-            emit_store_var(emitter, target_index, op_type);
-        }
-    }
-
     // Discard fb_ref.
     emitter.emit_pop();
+
+    // Store each output in its target. The analyzer recorded the value an
+    // output stores, the output read from the instance after the call and
+    // inverted for `NOT q => v`, converted to the target's type, so it
+    // compiles as the assignment of that value (REQ-CB-analyzer-036).
+    for param in &fb_call.params {
+        if let ParamAssignmentKind::Output(output) = param {
+            let value = output.value.as_ref().ok_or_else(|| {
+                Diagnostic::internal_error_at(Label::span(
+                    output.src.span(),
+                    "Output of a function block call the analyzer did not bind",
+                ))
+            })?;
+            compile_store(emitter, ctx, &output.tgt, value)?;
+        }
+    }
     Ok(())
 }
 

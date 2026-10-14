@@ -224,7 +224,10 @@ impl RuleFunctionCallTypeCheck<'_> {
     /// and the dereference of one (`deref`), which stores into the variable
     /// the reference refers to; user-defined targets (enums, structures,
     /// arrays, function blocks) are skipped to avoid false positives.
-    fn check_assignment_type(&mut self, target: &Variable, deref: bool, value: &Expr) {
+    ///
+    /// `label` names the value in the diagnostic: an assigned value, or the
+    /// output an output assignment stores.
+    fn check_assignment_type(&mut self, target: &Variable, deref: bool, value: &Expr, label: &str) {
         // Function-call right-hand sides are validated by `check_return_type`.
         if matches!(value.kind, ExprKind::Function(_)) {
             return;
@@ -274,7 +277,7 @@ impl RuleFunctionCallTypeCheck<'_> {
             self.diagnostics.push(
                 Diagnostic::problem(
                     Problem::AssignmentTypeMismatch,
-                    Label::span(value.span(), "Assignment value"),
+                    Label::span(value.span(), label),
                 )
                 .with_context("target", &nv.name.original().to_string())
                 .with_context("target_type", &target_type.to_string())
@@ -298,7 +301,16 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
 
     fn visit_assignment(&mut self, node: &Assignment) -> Result<Self::Value, Infallible> {
         self.check_return_type(&node.target, node.deref, &node.value);
-        self.check_assignment_type(&node.target, node.deref, &node.value);
+        self.check_assignment_type(&node.target, node.deref, &node.value, "Assignment value");
+        node.recurse_visit(self)
+    }
+
+    /// An output assignment stores the value the binding pass recorded for
+    /// it, `inst.q` after the call, so it is checked as `v := inst.q` is.
+    fn visit_output(&mut self, node: &Output) -> Result<Self::Value, Infallible> {
+        if let Some(value) = &node.value {
+            self.check_assignment_type(&node.tgt, false, value, "Output value");
+        }
         node.recurse_visit(self)
     }
 
@@ -388,6 +400,9 @@ mod integer_result_tests;
 
 #[cfg(test)]
 mod label_tests;
+
+#[cfg(test)]
+mod output_tests;
 
 #[cfg(test)]
 mod ref_to_argument_tests;

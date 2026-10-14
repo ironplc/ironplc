@@ -180,6 +180,7 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
     fn fold_fb_call(&mut self, node: FbCall) -> Result<FbCall, Infallible> {
         let mut node = node.recurse_fold(self)?;
         self.record_fb_call_inputs(&mut node);
+        self.record_fb_call_outputs(&mut node);
         self.type_fb_call_literals(&mut node);
         Ok(node)
     }

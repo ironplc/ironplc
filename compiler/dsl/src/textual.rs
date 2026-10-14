@@ -773,6 +773,35 @@ pub struct Output {
     pub not: bool,
     pub src: Id,
     pub tgt: Variable,
+    /// The value the call stores in `tgt`. The analyzer writes it for each
+    /// output of a function block call whose arguments bind, as
+    /// [`Output::read_from`] reads it, and records its conversion to the
+    /// type of `tgt` on it, as on the value of an assignment. The parser
+    /// leaves it `None`: it is not source syntax, and the output is written
+    /// as `src => tgt`.
+    pub value: Option<Expr>,
+}
+
+impl Output {
+    /// The value this output of the function block instance `instance`
+    /// has after the call: `instance.src`, inverted for a negated output
+    /// (`NOT q => v`), written where `src` is.
+    pub fn read_from(&self, instance: &Id) -> Expr {
+        let span = self.src.span();
+        let mut record = instance.clone();
+        record.span = span.clone();
+        let read = Expr::new(ExprKind::Variable(Variable::Symbolic(
+            SymbolicVariableKind::Structured(StructuredVariable {
+                record: Box::new(SymbolicVariableKind::Named(NamedVariable { name: record })),
+                field: self.src.clone(),
+            }),
+        )));
+        if self.not {
+            Expr::unary(UnaryOp::Not, read).with_span(span)
+        } else {
+            read
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Recurse)]
@@ -1321,6 +1350,7 @@ mod tests {
             not: false,
             src: Id::from("out1"),
             tgt: Variable::named("result"),
+            value: None,
         });
         assert_eq!(format!("{pa}"), "out1 => result");
     }
@@ -1331,8 +1361,46 @@ mod tests {
             not: true,
             src: Id::from("out1"),
             tgt: Variable::named("result"),
+            value: None,
         });
         assert_eq!(format!("{pa}"), "NOT out1 => result");
+    }
+
+    fn output(not: bool) -> Output {
+        Output {
+            not,
+            src: Id::from("q").with_position(SourceSpan::range(10, 11)),
+            tgt: Variable::named("result"),
+            value: None,
+        }
+    }
+
+    #[test]
+    fn read_from_when_output_then_instance_field_where_output_written() {
+        let read = output(false).read_from(&Id::from("inst"));
+        assert_eq!(format!("{read}"), "inst.q");
+        assert_eq!(read.span, SourceSpan::range(10, 11));
+    }
+
+    #[test]
+    fn read_from_when_negated_output_then_not_of_instance_field() {
+        let read = output(true).read_from(&Id::from("inst"));
+        let ExprKind::UnaryOp(unary) = &read.kind else {
+            panic!("expected a NOT, got {read:?}");
+        };
+        assert_eq!(unary.op, UnaryOp::Not);
+        assert_eq!(format!("{}", unary.term), "inst.q");
+        assert_eq!(read.span, SourceSpan::range(10, 11));
+    }
+
+    #[test]
+    fn display_when_param_assignment_output_with_value_then_arrow() {
+        let mut out = output(false);
+        out.value = Some(out.read_from(&Id::from("inst")));
+        assert_eq!(
+            format!("{}", ParamAssignmentKind::Output(out)),
+            "q => result"
+        );
     }
 
     #[test]
