@@ -1936,7 +1936,7 @@ How the three targets are expected to realise the same node:
 | `Truncate` | `TRUNC_*` | Sign or zero extension from the narrow width | `trunc`, then `sext` or `zext` |
 | Signed `Div` | `DIV_I32`, `DIV_I64`, which wrap the most negative value divided by -1 | `i32.div_s` behind a guard for that case | `sdiv` behind guards for a zero divisor and for that case |
 | `Convert` from a real to an integer | `CONV_F32_TO_I32` and siblings, which saturate | `i32.trunc_sat_f32_s` and siblings | `llvm.fptosi.sat` and siblings |
-| `ConvertChecked` | A range check that traps, then the conversion | A comparison and `unreachable`, then the conversion | A comparison and a branch to the trap, then `trunc` |
+| `ConvertChecked` | A subscript check builtin (`CHECK_SUBSCRIPT_*`), which traps `V4007` outside the range of `DINT` | A comparison and `unreachable`, then the conversion | A comparison and a branch to the trap, then `trunc` |
 | `Deref` | Load and store indirect, which trap on null | A load or store, behind an explicit null check for a nullable reference | A `load` or `store`, behind an explicit null check for a nullable reference |
 | `Loop`, `Exit`, `Continue` | Labels and jumps | `loop`, `block`, `br` | Basic blocks and `br` |
 | `For` | Labels and jumps, with a fused compare and branch | The expansion to `Loop` | Basic blocks, with the bounds left for LLVM's loop passes |

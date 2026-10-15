@@ -1,10 +1,10 @@
 //! Scalar expressions.
 //!
 //! Each expression is lowered at the type the analyzer recorded for it
-//! (`Expr::expr_type`), and each ordinary conversion the analyzer recorded
-//! (`ExprKind::ImplicitConversion`) becomes a `Convert`. Lowering decides no
-//! literal type and no conversion itself (REQ-LOW-lowering-094). A checked
-//! conversion, which the IR cannot state yet, is not lowered.
+//! (`Expr::expr_type`), and each conversion the analyzer recorded
+//! (`ExprKind::ImplicitConversion`) becomes a `Convert`, or a
+//! `ConvertChecked` for a checked one (REQ-LOW-lowering-163). Lowering
+//! decides no literal type and no conversion itself (REQ-LOW-lowering-094).
 
 use ironplc_analyzer::NumericFunction;
 use ironplc_dsl::common::{Boolean, ConstantKind};
@@ -123,25 +123,31 @@ impl Lowering<'_> {
                 }
             }
             AstExprKind::ImplicitConversion(conversion) => {
-                match conversion.kind {
-                    ConversionKind::Ordinary => {}
-                    ConversionKind::Checked => return Ok(None),
-                }
                 let Some((_, to)) = self.operated_type(expr)? else {
                     return Ok(None);
                 };
                 let Some(value) = self.expr(frame, &conversion.value)? else {
                     return Ok(None);
                 };
-                if value.ty() == to {
-                    // The two types are operated alike, as an `INT` widened
-                    // to a `DINT` is: nothing converts.
-                    return Ok(Some(value));
+                match conversion.kind {
+                    ConversionKind::Ordinary => {
+                        if value.ty() == to {
+                            // The two types are operated alike, as an `INT`
+                            // widened to a `DINT` is: nothing converts.
+                            return Ok(Some(value));
+                        }
+                        if !(value.ty().is_numeric() && to.is_numeric()) {
+                            return Ok(None);
+                        }
+                        Expr::convert(value, to, span).map(Some)
+                    }
+                    ConversionKind::Checked => {
+                        if !(value.ty().is_integer() && to.is_integer()) {
+                            return Ok(None);
+                        }
+                        Expr::convert_checked(value, to, span).map(Some)
+                    }
                 }
-                if !(value.ty().is_numeric() && to.is_numeric()) {
-                    return Ok(None);
-                }
-                Expr::convert(value, to, span).map(Some)
             }
             AstExprKind::EnumeratedValue(value) => {
                 let Some((_, ty)) = self.operated_type(expr)? else {

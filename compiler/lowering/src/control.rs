@@ -327,6 +327,7 @@ fn integer_constant(expr: &Expr) -> Option<i128> {
         } => integer_constant(value).map(|value| -value),
         ExprKind::Convert(value) => integer_constant(value),
         ExprKind::Read(_)
+        | ExprKind::ConvertChecked(_)
         | ExprKind::Truncate { .. }
         | ExprKind::Unary { .. }
         | ExprKind::Binary { .. }
