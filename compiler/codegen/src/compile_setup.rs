@@ -214,7 +214,7 @@ fn assign_storage(
                 .get_by_id(type_id)
                 .and_then(|attributes| attributes.standard_block);
             if let Some((type_id, num_fields, field_map)) = standard_block.map(standard_fb_layout) {
-                let field_op_types = standard_fb_field_op_types(ctx, decl);
+                let field_types = standard_fb_field_types(ctx, decl);
                 // Standard library function block.
                 let instance_size = num_fields as u32 * 8;
                 let data_offset = crate::data_region::reserve(ctx, instance_size, &span)?;
@@ -226,16 +226,16 @@ fn assign_storage(
                         type_id,
                         data_offset,
                         field_indices: field_map,
-                        field_op_types,
+                        field_types,
                     },
                 );
-            } else if let Some((num_fields, type_id, field_indices, field_op_types)) =
+            } else if let Some((num_fields, type_id, field_indices, field_types)) =
                 ctx.user_fb_types.get(&fb_name).map(|user_fb| {
                     (
                         user_fb.num_fields,
                         user_fb.type_id,
                         user_fb.field_indices.clone(),
-                        user_fb.field_op_types.clone(),
+                        user_fb.field_types.clone(),
                     )
                 })
             {
@@ -250,7 +250,7 @@ fn assign_storage(
                         type_id,
                         data_offset,
                         field_indices,
-                        field_op_types,
+                        field_types,
                     },
                 );
             }
@@ -412,10 +412,10 @@ fn iec_type_tag_of(types: &TypeEnvironment, type_id: TypeId) -> u8 {
 /// type's width and signedness, so it must render as that type -- a `LINT`
 /// subrange rendered as 32 bits shows only the low word. `OTHER` when the
 /// base type is not elementary.
-/// The operation type of each field of the standard function block instance
-/// `decl` declares, from the declared type of the field: a `CTU_LINT`'s `PV`
-/// and `CV` are operated as `LINT`s.
-fn standard_fb_field_op_types(ctx: &CompileContext, decl: &VarDecl) -> HashMap<String, OpType> {
+/// The type of each field of the standard function block instance `decl`
+/// declares, from the declared type of the field: a `CTU_LINT`'s `PV` and
+/// `CV` are operated as `LINT`s, and a `CTU`'s are stored as `INT`s.
+fn standard_fb_field_types(ctx: &CompileContext, decl: &VarDecl) -> HashMap<String, VarTypeInfo> {
     let Some(SemanticType::FunctionBlock { fields, .. }) =
         decl.type_id.and_then(|id| ctx.types.get(&id))
     else {
@@ -425,10 +425,7 @@ fn standard_fb_field_op_types(ctx: &CompileContext, decl: &VarDecl) -> HashMap<S
         .iter()
         .filter_map(|field| {
             let info = crate::type_info::operand_type_info(&field.field_type)?;
-            Some((
-                field.name.to_string().to_lowercase(),
-                (info.op_width, info.signedness),
-            ))
+            Some((field.name.to_string().to_lowercase(), info))
         })
         .collect()
 }

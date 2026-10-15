@@ -110,9 +110,9 @@ pub(crate) fn emit_fb_instance_member_initializers(
 fn field_op_type(ctx: &CompileContext, instance_name: &Id, field: &Id) -> Option<OpType> {
     ctx.fb_instances
         .get(instance_name)?
-        .field_op_types
+        .field_types
         .get(&field.to_string().to_lowercase())
-        .copied()
+        .map(|field_type| (field_type.op_width, field_type.signedness))
 }
 
 /// The operation type a scalar member value is stored at: the type of its

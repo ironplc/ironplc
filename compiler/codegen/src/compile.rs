@@ -108,6 +108,14 @@ pub(crate) type OpType = (OpWidth, Signedness);
 /// The default operation type: 32-bit signed (used for pure-constant expressions).
 pub(crate) const DEFAULT_OP_TYPE: OpType = (OpWidth::W32, Signedness::Signed);
 
+/// The type of a value of the default operation type, stored at its full
+/// width.
+pub(crate) const DEFAULT_VAR_TYPE_INFO: VarTypeInfo = VarTypeInfo {
+    op_width: OpWidth::W32,
+    signedness: Signedness::Signed,
+    storage_bits: 32,
+};
+
 /// Maximum number of data-region slots (or array elements) that a single variable
 /// may occupy. Keeps flat-index arithmetic within i32 range.
 pub(crate) const MAX_DATA_REGION_SLOTS: u32 = 32768;
@@ -534,7 +542,7 @@ fn compile_program_with_functions(
     for (next_function_id, fb_decl) in (2_u16..).zip(fb_decls.iter()) {
         let fb_name = fb_decl.name.name.to_string().to_uppercase();
         let mut field_indices: HashMap<String, u8> = HashMap::new();
-        let mut field_op_types: HashMap<String, OpType> = HashMap::new();
+        let mut field_types: HashMap<String, VarTypeInfo> = HashMap::new();
         let mut field_decls_tmp: Vec<&VarDecl> = Vec::new();
 
         for decl in &fb_decl.variables {
@@ -556,11 +564,12 @@ fn compile_program_with_functions(
             if let Some(id) = decl.identifier.symbolic_id() {
                 let name = id.to_string().to_lowercase();
                 field_indices.insert(name.clone(), i as u8);
-                // A field is operated at its declared type, whatever kind of
-                // declaration declares it: a subrange at its base type.
-                let op_type = crate::type_info::decl_type_info(&ctx, decl)
-                    .map_or(DEFAULT_OP_TYPE, |vti| (vti.op_width, vti.signedness));
-                field_op_types.insert(name, op_type);
+                // A field is operated and stored at its declared type,
+                // whatever kind of declaration declares it: a subrange at its
+                // base type.
+                let field_type =
+                    crate::type_info::decl_type_info(&ctx, decl).unwrap_or(DEFAULT_VAR_TYPE_INFO);
+                field_types.insert(name, field_type);
             }
         }
 
@@ -574,7 +583,7 @@ fn compile_program_with_functions(
                 field_indices,
                 function_id: FunctionId::new(next_function_id),
                 var_offset: 0, // updated after program vars are assigned
-                field_op_types,
+                field_types,
                 methods: HashMap::new(),
             },
         );
@@ -1048,10 +1057,10 @@ pub(crate) struct FbInstanceInfo {
     pub(crate) data_offset: u32,
     /// Maps field name (lowercase) to field index.
     pub(crate) field_indices: HashMap<String, u8>,
-    /// Maps field name (lowercase) to the operation type of its declared
-    /// type, which a value stored in the field or read from it is
-    /// compiled at.
-    pub(crate) field_op_types: HashMap<String, OpType>,
+    /// Maps field name (lowercase) to its declared type: the operation type
+    /// a value stored in the field or read from it is compiled at, and the
+    /// width a store narrows it to.
+    pub(crate) field_types: HashMap<String, VarTypeInfo>,
 }
 
 /// Metadata for a compiled user-defined function block type.
@@ -1066,8 +1075,9 @@ pub(crate) struct UserFbTypeInfo {
     pub(crate) function_id: FunctionId,
     /// Variable table offset where the FB body's slots start.
     pub(crate) var_offset: u16,
-    /// Maps field name (lowercase) to its op type for codegen at call sites.
-    pub(crate) field_op_types: HashMap<String, OpType>,
+    /// Maps field name (lowercase) to its declared type, as
+    /// [`FbInstanceInfo::field_types`].
+    pub(crate) field_types: HashMap<String, VarTypeInfo>,
     /// Maps method name (lowercase) to compilation metadata (OOP
     /// extension, ADR-0041 Phase 1). Populated in two steps: `function_id`,
     /// `num_params`, `param_names_in_order`, and `has_return_value` are known

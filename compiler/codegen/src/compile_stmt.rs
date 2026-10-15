@@ -22,7 +22,7 @@ use super::compile_assign::compile_assignment;
 use super::compile_call_output::{store_outputs, CallOutputs};
 use super::compile_expr::{
     compile_condition, compile_expr, emit_classified_cmp_br, emit_eq, emit_ge, emit_le,
-    emit_load_var, op_type, try_classify_cmp,
+    emit_load_var, emit_truncation, op_type, try_classify_cmp,
 };
 use super::compile_loop::{compile_for, compile_repeat, compile_while};
 use super::compile_method::compile_method_call_statement;
@@ -194,6 +194,7 @@ fn compile_fb_call(
         .ok_or_else(|| Diagnostic::todo_with_span(fb_call.span()))?;
     let type_id = fb_info.type_id;
     let field_indices = fb_info.field_indices.clone();
+    let field_types = fb_info.field_types.clone();
     let var_index = fb_info.var_index;
 
     // Push FB instance reference.
@@ -208,6 +209,11 @@ fn compile_fb_call(
                     .get(&field_name)
                     .ok_or_else(|| Diagnostic::todo_with_span(input.name.span()))?;
                 compile_expr(emitter, ctx, &input.expr)?;
+                // An input is stored as an assignment to the field is:
+                // narrowed to the field's declared type.
+                if let Some(field_type) = field_types.get(&field_name) {
+                    emit_truncation(emitter, *field_type);
+                }
                 emitter.emit_fb_store_param(*field_idx);
             }
             // The binding pass names every input of a call that binds, and

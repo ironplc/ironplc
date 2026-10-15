@@ -15,7 +15,7 @@ use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, StructuredVariable, SymbolicVariableKind, Variable};
 
-use super::compile::{CompileContext, OpType, OpWidth, VarTypeInfo, DEFAULT_OP_TYPE};
+use super::compile::{CompileContext, OpType, VarTypeInfo, DEFAULT_OP_TYPE};
 use super::compile_array::{
     emit_flat_index, resolve_symbolic_access, ArrayVarInfo, DimensionInfo, ResolvedAccess,
 };
@@ -114,7 +114,8 @@ impl<'ast> Place<&'ast Expr> {
 
     /// The field of a function block instance that `structured` names
     /// (`timer.Q`), or `None` when its record is not an instance. A field is
-    /// stored at its operation type, unnarrowed.
+    /// operated at its declared type, and a store narrows to it as a store
+    /// to a variable of that type does.
     pub(crate) fn fb_field(
         ctx: &CompileContext,
         structured: &StructuredVariable,
@@ -145,17 +146,7 @@ impl<'ast> Place<&'ast Expr> {
                 ),
             ))
         })?;
-        let type_info = instance
-            .field_op_types
-            .get(&name)
-            .map(|(op_width, signedness)| VarTypeInfo {
-                op_width: *op_width,
-                signedness: *signedness,
-                storage_bits: match op_width {
-                    OpWidth::W32 | OpWidth::F32 => 32,
-                    OpWidth::W64 | OpWidth::F64 => 64,
-                },
-            });
+        let type_info = instance.field_types.get(&name).copied();
         Ok(Some(Place {
             address: Address::FbField {
                 instance: instance.var_index,
