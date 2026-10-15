@@ -18,7 +18,8 @@ use ironplc_dsl::textual::{
 use super::compile::{
     CompileContext, CurrentFunctionReturn, OpType, OpWidth, Signedness, DEFAULT_STRING_MAX_LENGTH,
 };
-use super::compile_assign::{compile_assignment, compile_store};
+use super::compile_assign::compile_assignment;
+use super::compile_call_output::{store_outputs, CallOutputs};
 use super::compile_expr::{
     compile_condition, compile_expr, emit_classified_cmp_br, emit_eq, emit_ge, emit_le,
     emit_load_var, op_type, try_classify_cmp,
@@ -236,22 +237,13 @@ fn compile_fb_call(
     // Discard fb_ref.
     emitter.emit_pop();
 
-    // Store each output in its target. The analyzer recorded the value an
-    // output stores, the output read from the instance after the call and
-    // inverted for `NOT q => v`, converted to the target's type, so it
-    // compiles as the assignment of that value (REQ-CB-analyzer-036).
-    for param in &fb_call.params {
-        if let ParamAssignmentKind::Output(output) = param {
-            let value = output.value.as_ref().ok_or_else(|| {
-                Diagnostic::internal_error_at(Label::span(
-                    output.src.span(),
-                    "Output of a function block call the analyzer did not bind",
-                ))
-            })?;
-            compile_store(emitter, ctx, &output.tgt, value)?;
-        }
-    }
-    Ok(())
+    // An output of a function block is a field of its instance.
+    store_outputs(
+        emitter,
+        ctx,
+        CallOutputs::Instance(fb_call.var_name.clone()),
+        &fb_call.params,
+    )
 }
 
 /// Compiles a slice of statements.

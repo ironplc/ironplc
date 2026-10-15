@@ -29,7 +29,7 @@ use ironplc_ir::lowered::{
 use ironplc_lowering::{Lowering, StatementLowering};
 
 use crate::compile::{CompileContext, OpType, OpWidth, ParamPassing, Signedness, UserFunctionInfo};
-use crate::compile_call::passes_by_reference;
+use crate::compile_user_call::passes_by_reference;
 use crate::emit::Emitter;
 
 mod expr;

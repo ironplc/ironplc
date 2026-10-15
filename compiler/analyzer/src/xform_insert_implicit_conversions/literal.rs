@@ -66,6 +66,7 @@ impl ImplicitConversions<'_> {
             | ExprKind::LateBound(_)
             | ExprKind::EnumeratedValue(_)
             | ExprKind::Ref(_)
+            | ExprKind::CallOutput(_)
             | ExprKind::Null(_) => {}
             // A negation or `NOT` computes at its own numeric type, as an
             // arithmetic operation does.
@@ -546,6 +547,7 @@ impl ImplicitConversions<'_> {
             | ExprKind::Ref(_)
             | ExprKind::Deref(_)
             | ExprKind::ImplicitConversion(_)
+            | ExprKind::CallOutput(_)
             | ExprKind::Null(_) => self.own_or_default(condition),
         }
     }

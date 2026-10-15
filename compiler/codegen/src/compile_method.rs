@@ -9,11 +9,13 @@
 //! convention. Structurally this mirrors `compile_fn::compile_user_function`
 //! closely; the differences are exactly the parts of that convention.
 
+use std::collections::HashMap;
+
 use ironplc_container::{ContainerBuilder, FunctionId, VarIndex};
 use ironplc_dsl::common::{
-    FunctionBlockDeclaration, FunctionReturnType, MethodDeclaration, TypeName,
+    FunctionBlockDeclaration, FunctionReturnType, MethodDeclaration, TypeName, VariableType,
 };
-use ironplc_dsl::core::Located;
+use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{MethodCall, MethodReceiver, ParamAssignmentKind};
 
@@ -22,6 +24,7 @@ use ironplc_analyzer::TypeEnvironment;
 use super::compile::{
     finalize_function, CompileContext, CompiledFunction, CurrentFunctionReturn, DEFAULT_OP_TYPE,
 };
+use super::compile_call_output::{store_outputs, CallOutputs};
 use super::compile_expr::{compile_expr, emit_load_var};
 use super::compile_setup::emit_function_local_prologue;
 use super::compile_stmt::compile_statements;
@@ -77,7 +80,10 @@ pub(crate) fn compile_user_fb_methods(
         ctx.variables = saved_variables;
         ctx.var_types = saved_var_types;
 
-        let result = compiled_method?;
+        let CompiledMethod {
+            compiled: result,
+            outputs,
+        } = compiled_method?;
 
         // `result.num_locals` spans from `field_var_off` (not
         // `param_var_off`) through this method's own locals -- see the
@@ -96,6 +102,7 @@ pub(crate) fn compile_user_fb_methods(
         {
             info.param_var_off = param_var_off.raw();
             info.max_stack_depth = result.max_stack_depth;
+            info.outputs = outputs;
         }
 
         compiled.push(result);
@@ -118,7 +125,7 @@ fn compile_user_method(
     ctx: &mut CompileContext,
     _builder: &mut ContainerBuilder,
     types: &TypeEnvironment,
-) -> Result<CompiledFunction, Diagnostic> {
+) -> Result<CompiledMethod, Diagnostic> {
     let mut current_index = param_var_off;
     let mut num_params: u16 = 0;
 
@@ -139,13 +146,18 @@ fn compile_user_method(
         }
     }
 
-    // Second pass: local variables (VAR, VAR_TEMP).
+    // Second pass: local variables (VAR, VAR_TEMP) and outputs (VAR_OUTPUT),
+    // which start again on every call as a local does.
+    let mut outputs = HashMap::new();
     for decl in method.all_variables() {
-        if !decl.var_type.is_local() {
+        if !decl.var_type.is_local() && decl.var_type != VariableType::Output {
             continue;
         }
         if let Some(id) = decl.identifier.symbolic_id() {
             ctx.variables.insert(id.clone(), current_index);
+            if decl.var_type == VariableType::Output {
+                outputs.insert(id.clone(), current_index);
+            }
             // A local operates at its declared type, as a parameter does.
             if let Some(type_info) = decl_type_info(ctx, decl) {
                 ctx.var_types.insert(id.clone(), type_info);
@@ -245,16 +257,25 @@ fn compile_user_method(
 
     let finalized = finalize_function(&mut method_emitter, ctx)?;
 
-    Ok(CompiledFunction {
-        function_id,
-        bytecode: finalized.bytecode,
-        max_stack_depth: finalized.max_stack_depth,
-        max_temp_depth: finalized.max_temp_depth,
-        num_locals,
-        num_params,
-        name: method.name.to_string(),
-        line_map: finalized.line_map,
+    Ok(CompiledMethod {
+        compiled: CompiledFunction {
+            function_id,
+            bytecode: finalized.bytecode,
+            max_stack_depth: finalized.max_stack_depth,
+            max_temp_depth: finalized.max_temp_depth,
+            num_locals,
+            num_params,
+            name: method.name.to_string(),
+            line_map: finalized.line_map,
+        },
+        outputs,
     })
+}
+
+/// A compiled method, and the slot of each of its outputs.
+struct CompiledMethod {
+    compiled: CompiledFunction,
+    outputs: HashMap<Id, VarIndex>,
 }
 
 /// Compiles a method call (`instance.MethodName(args)`, OOP extension,
@@ -343,6 +364,7 @@ fn compile_method_call(
     let num_params = method_info.num_params;
     let has_return_value = method_info.has_return_value;
     let max_stack_depth = method_info.max_stack_depth;
+    let outputs = method_info.outputs.clone();
 
     // The analyzer wrote the call in normal form (`call-binding.md`), and
     // `rule_method_call_declared` requires every input (P4018), so the call
@@ -358,7 +380,7 @@ fn compile_method_call(
                     "Positional argument of a method call the analyzer did not bind",
                 )))
             }
-            // Methods have no VAR_OUTPUT `=>` call syntax in this slice.
+            // Stored in their targets after the call.
             ParamAssignmentKind::Output(_) => {}
         }
     }
@@ -402,6 +424,10 @@ fn compile_method_call(
         has_return_value,
         max_stack_depth,
     );
+
+    // A method leaves its outputs in its own output variables; storing them
+    // leaves the instance and the return value on the stack.
+    store_outputs(emitter, ctx, CallOutputs::Variables(outputs), &call.params)?;
 
     Ok(has_return_value)
 }

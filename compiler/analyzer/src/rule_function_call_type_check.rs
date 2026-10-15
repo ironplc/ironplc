@@ -62,6 +62,7 @@ use crate::{
     rule_string_encoding_compat,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    semantic_type::SemanticType,
     symbol_environment::ScopeTracker,
     type_compat::is_checkable_type,
     value_type::{self, ValueType},
@@ -213,6 +214,32 @@ impl RuleFunctionCallTypeCheck<'_> {
             })
     }
 
+    /// A negated output assignment, `NOT q => v`, inverts a `BOOL`; on an
+    /// output of any other type it has no meaning, so it is rejected (P4083)
+    /// rather than left for a later stage to interpret. `value` is the value
+    /// `output` stores, `NOT` of the call's output. Returns whether it
+    /// reported.
+    fn check_negated_output(&mut self, output: &Output, value: &Expr) -> bool {
+        let ExprKind::UnaryOp(negation) = &value.kind else {
+            return false;
+        };
+        if !output.not {
+            return false;
+        }
+        let representation = self.context.types().representation_of_expr(&negation.term);
+        if representation.is_none_or(|representation| *representation == SemanticType::Bool) {
+            return false;
+        }
+        self.diagnostics.push(
+            Diagnostic::problem(
+                Problem::NegatedOutputNotBool,
+                Label::span(output.src.span(), "Negated output"),
+            )
+            .with_context_id("output", &output.src),
+        );
+        true
+    }
+
     /// Checks whether the value assigned in an assignment statement is
     /// type-compatible with the target variable. Emits P4035 on a mismatch.
     ///
@@ -306,10 +333,14 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
     }
 
     /// An output assignment stores the value the binding pass recorded for
-    /// it, `inst.q` after the call, so it is checked as `v := inst.q` is.
+    /// it, the output the call leaves, so it is checked as `v := inst.q`
+    /// after the call is. A negated output that is not a `BOOL` is P4083,
+    /// and nothing else is reported for it.
     fn visit_output(&mut self, node: &Output) -> Result<Self::Value, Infallible> {
         if let Some(value) = &node.value {
-            self.check_assignment_type(&node.tgt, false, value, "Output value");
+            if !self.check_negated_output(node, value) {
+                self.check_assignment_type(&node.tgt, false, value, "Output value");
+            }
         }
         node.recurse_visit(self)
     }
@@ -318,20 +349,6 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
         let func_sig = self.context.functions.get(&node.name);
 
         if let Some(signature) = func_sig {
-            // Emit NotImplemented for output arguments on user-defined functions.
-            // Standard-library functions do not take output arguments.
-            if !signature.is_stdlib() {
-                for p in &node.param_assignment {
-                    if let ParamAssignmentKind::Output(_) = p {
-                        self.diagnostics
-                            .push(Diagnostic::not_implemented(Label::span(
-                                node.name.span(),
-                                "Function call with output argument",
-                            )));
-                    }
-                }
-            }
-
             // Check each positional argument type against the parameter type.
             // Standard-library functions are checked too: their parameters use
             // generic ANY_* categories (or concrete types for the conversion

@@ -164,7 +164,7 @@ pub(crate) fn compile_expr(
         // `REF(var)`: a reference to a named variable. Only a named variable
         // has a reference yet.
         ExprKind::Ref(variable) => match resolve_variable_name(variable) {
-            Some(name) => crate::compile_call::emit_reference(emitter, ctx, name),
+            Some(name) => crate::compile_user_call::emit_reference(emitter, ctx, name),
             None => Err(Diagnostic::todo_with_span(variable.span())),
         },
         ExprKind::Deref(inner) => {
@@ -188,6 +188,9 @@ pub(crate) fn compile_expr(
                     crate::compile_subscript::emit_subscript_check(emitter, from, to, &expr.span())
                 }
             }
+        }
+        ExprKind::CallOutput(output) => {
+            crate::compile_call_output::compile_call_output(emitter, ctx, expr, output)
         }
         ExprKind::Null(_) => {
             emit_null(emitter, ctx);

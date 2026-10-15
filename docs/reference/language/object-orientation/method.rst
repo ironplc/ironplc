@@ -86,6 +86,14 @@ initial value. A positional argument goes to a ``VAR_INPUT``, never to a
 ``VAR_IN_OUT``, which is supplied by name. Calling a method that declares a
 ``VAR_IN_OUT`` is not supported yet.
 
+A method's ``VAR_OUTPUT`` is stored with ``=>`` after the method returns, as
+a function's is (see :doc:`/reference/language/pous/function`), and starts
+from its initial value on every call:
+
+.. code-block::
+
+   motor.Measure(rpm => current_rpm);
+
 Example
 -------
 

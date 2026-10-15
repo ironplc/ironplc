@@ -113,10 +113,11 @@ struct InitialValueFolder<'a> {
 
 impl InitialValueFolder<'_> {
     /// Marks the variables of a function or method that start again on
-    /// every call: its `VAR` and `VAR_TEMP` declarations.
+    /// every call: its `VAR`, `VAR_TEMP` and `VAR_OUTPUT` declarations.
     fn mark_reset_on_call(variables: &mut [VarDecl]) {
         for variable in variables {
-            variable.reset_on_call = variable.var_type.is_local();
+            variable.reset_on_call =
+                variable.var_type.is_local() || variable.var_type == VariableType::Output;
         }
     }
 

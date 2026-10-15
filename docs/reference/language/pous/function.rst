@@ -38,11 +38,40 @@ Example
        Square := x * x;
    END_FUNCTION
 
-Functions may have ``VAR_INPUT`` and ``VAR_IN_OUT`` parameters and local
-``VAR`` variables. Functions must not have ``VAR_OUTPUT`` parameters (use
-function blocks for those). Because a function has no state, it cannot
-declare or invoke a function block instance; that is reported as
+Functions may have ``VAR_INPUT``, ``VAR_IN_OUT`` and ``VAR_OUTPUT``
+parameters and local ``VAR`` variables. Because a function has no state, it
+cannot declare or invoke a function block instance; that is reported as
 :doc:`P4054 </reference/compiler/problems/P4054>`.
+
+Output Parameters
+-----------------
+
+A ``VAR_OUTPUT`` parameter gives the caller a value besides the function's
+result. A call stores it in a variable with ``=>`` after the function
+returns:
+
+.. code-block::
+
+   FUNCTION DivMod : DINT
+       VAR_INPUT
+           a : DINT;
+           b : DINT;
+       END_VAR
+       VAR_OUTPUT
+           remainder : DINT;
+       END_VAR
+
+       DivMod := a / b;
+       remainder := a MOD b;
+   END_FUNCTION
+
+   quotient := DivMod(a := 7, b := 2, remainder => rest);
+
+An output starts from its initial value on every call, as a local variable
+does. It is converted to the type of the variable it is stored in, as an
+assigned value is, and one that variable cannot hold is
+:doc:`P4035 </reference/compiler/problems/P4035>`. ``NOT done => idle``
+stores the inverse of a ``BOOL`` output.
 
 In/Out Parameters
 -----------------
@@ -103,9 +132,12 @@ Related Problem Codes
 ---------------------
 
 - :doc:`/reference/compiler/problems/P4001` — Mixed named and positional arguments
+- :doc:`/reference/compiler/problems/P4004` — Output assignment names no output
 - :doc:`/reference/compiler/problems/P4018` — Wrong number of arguments
 - :doc:`/reference/compiler/problems/P4023` — Named argument is not a parameter
 - :doc:`/reference/compiler/problems/P4024` — Parameter named twice
+- :doc:`/reference/compiler/problems/P4035` — Output does not fit the variable it is stored in
+- :doc:`/reference/compiler/problems/P4083` — Negated output is not a ``BOOL``
 - :doc:`/reference/compiler/problems/P4058` — ``VAR_IN_OUT`` argument is not a variable
 - :doc:`/reference/compiler/problems/P4059` — ``VAR_IN_OUT`` argument type is not the parameter type
 - :doc:`/reference/compiler/problems/P4060` — ``VAR_IN_OUT`` argument cannot be proved writable

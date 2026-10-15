@@ -681,8 +681,10 @@ fn apply_when_pou_variables_then_only_function_and_method_locals_reset_on_call()
     let source = "
 FUNCTION_BLOCK fb
 VAR count : INT; END_VAR
+VAR_OUTPUT done : BOOL; END_VAR
 METHOD bump : INT
 VAR m : INT := 6; END_VAR
+VAR_OUTPUT mq : INT; END_VAR
 bump := m;
 END_METHOD
 END_FUNCTION_BLOCK
@@ -690,6 +692,7 @@ FUNCTION f : DINT
 VAR_INPUT a : DINT; END_VAR
 VAR v : DINT; END_VAR
 VAR_TEMP t : DINT; END_VAR
+VAR_OUTPUT q : DINT; END_VAR
 f := a + v + t;
 END_FUNCTION
 PROGRAM main
@@ -701,6 +704,8 @@ END_PROGRAM";
     assert!(decl(&library, "f", "v").reset_on_call);
     assert!(decl(&library, "f", "t").reset_on_call);
     assert!(decl(&library, "fb.bump", "m").reset_on_call);
+    assert!(decl(&library, "f", "q").reset_on_call);
+    assert!(decl(&library, "fb.bump", "mq").reset_on_call);
     assert!(
         function(&library, "f")
             .result
@@ -710,6 +715,7 @@ END_PROGRAM";
     );
     assert!(!decl(&library, "f", "a").reset_on_call);
     assert!(!decl(&library, "fb", "count").reset_on_call);
+    assert!(!decl(&library, "fb", "done").reset_on_call);
     assert!(!decl(&library, "main", "p").reset_on_call);
 }
 

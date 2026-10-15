@@ -181,7 +181,9 @@ impl Lowering<'_> {
                 Ok(Some(Expr::ref_to(place, span)))
             }
             AstExprKind::Null(_) => Ok(Some(Expr::null(span))),
-            AstExprKind::MethodCall(_) => Ok(None),
+            // A call's output is read by the call statement that leaves it,
+            // which is not lowered yet.
+            AstExprKind::MethodCall(_) | AstExprKind::CallOutput(_) => Ok(None),
         }
     }
 

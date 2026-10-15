@@ -664,6 +664,7 @@ impl Located for ExprKind {
             ExprKind::Ref(var) => var.span(),
             ExprKind::Deref(expr) => expr.span(),
             ExprKind::ImplicitConversion(conversion) => conversion.value.span(),
+            ExprKind::CallOutput(output) => output.span(),
             ExprKind::Null(span) => span.clone(),
         }
     }
@@ -690,6 +691,14 @@ pub enum ExprKind {
     /// semantic rules, to record for the backends and the language server a
     /// conversion the language makes. See ADR-0056.
     ImplicitConversion(Box<ImplicitConversion>),
+    /// The value the enclosing call left in its output of this name, read
+    /// after the call returns: the value an output assignment (`q => v`)
+    /// stores in its target.
+    ///
+    /// The parser never produces one: the analyzer writes it as the value of
+    /// an output assignment ([`Output::value`]), and nowhere else. A backend
+    /// reads it from wherever the call it compiles leaves that output.
+    CallOutput(Id),
     Null(SourceSpan),
 }
 
@@ -765,6 +774,8 @@ impl fmt::Display for ExprKind {
             ExprKind::Deref(expr) => write!(f, "{expr}^"),
             // Not source syntax: it is written as the expression it converts.
             ExprKind::ImplicitConversion(conversion) => write!(f, "{}", conversion.value),
+            // Not source syntax: it is written as the output it reads.
+            ExprKind::CallOutput(output) => write!(f, "{output}"),
             ExprKind::Null(_) => write!(f, "NULL"),
         }
     }
@@ -802,29 +813,21 @@ pub struct Output {
     pub tgt: Variable,
     /// The value the call stores in `tgt`. The analyzer writes it for each
     /// output of a function block call whose arguments bind, as
-    /// [`Output::read_from`] reads it, and records its conversion to the
-    /// type of `tgt` on it, as on the value of an assignment. The parser
-    /// leaves it `None`: it is not source syntax, and the output is written
-    /// as `src => tgt`.
+    /// [`Output::read`] reads it, and records its conversion to the type of
+    /// `tgt` on it, as on the value of an assignment. The parser leaves it
+    /// `None`: it is not source syntax, and the output is written as
+    /// `src => tgt`.
     pub value: Option<Expr>,
 }
 
 impl Output {
-    /// The value this output of the function block instance `instance`
-    /// has after the call: `instance.src`, inverted for a negated output
+    /// The value this output has after the call: the
+    /// [`ExprKind::CallOutput`] named `src`, inverted for a negated output
     /// (`NOT q => v`), written where `src` is.
-    pub fn read_from(&self, instance: &Id) -> Expr {
-        let span = self.src.span();
-        let mut record = instance.clone();
-        record.span = span.clone();
-        let read = Expr::new(ExprKind::Variable(Variable::Symbolic(
-            SymbolicVariableKind::Structured(StructuredVariable {
-                record: Box::new(SymbolicVariableKind::Named(NamedVariable { name: record })),
-                field: self.src.clone(),
-            }),
-        )));
+    pub fn read(&self) -> Expr {
+        let read = Expr::new(ExprKind::CallOutput(self.src.clone()));
         if self.not {
-            Expr::unary(UnaryOp::Not, read).with_span(span)
+            Expr::unary(UnaryOp::Not, read).with_span(self.src.span())
         } else {
             read
         }
@@ -1403,27 +1406,32 @@ mod tests {
     }
 
     #[test]
-    fn read_from_when_output_then_instance_field_where_output_written() {
-        let read = output(false).read_from(&Id::from("inst"));
-        assert_eq!(format!("{read}"), "inst.q");
+    fn read_when_output_then_call_output_where_output_written() {
+        let read = output(false).read();
+        assert_eq!(read.kind, ExprKind::CallOutput(Id::from("q")));
         assert_eq!(read.span, SourceSpan::range(10, 11));
     }
 
     #[test]
-    fn read_from_when_negated_output_then_not_of_instance_field() {
-        let read = output(true).read_from(&Id::from("inst"));
+    fn read_when_negated_output_then_not_of_call_output() {
+        let read = output(true).read();
         let ExprKind::UnaryOp(unary) = &read.kind else {
             panic!("expected a NOT, got {read:?}");
         };
         assert_eq!(unary.op, UnaryOp::Not);
-        assert_eq!(format!("{}", unary.term), "inst.q");
+        assert_eq!(unary.term.kind, ExprKind::CallOutput(Id::from("q")));
         assert_eq!(read.span, SourceSpan::range(10, 11));
+    }
+
+    #[test]
+    fn display_when_call_output_then_output_name() {
+        assert_eq!(format!("{}", output(false).read()), "q");
     }
 
     #[test]
     fn display_when_param_assignment_output_with_value_then_arrow() {
         let mut out = output(false);
-        out.value = Some(out.read_from(&Id::from("inst")));
+        out.value = Some(out.read());
         assert_eq!(
             format!("{}", ParamAssignmentKind::Output(out)),
             "q => result"
