@@ -60,6 +60,7 @@ mod compile_struct;
 mod compile_struct_init;
 mod compile_subscript;
 mod compile_time_arith;
+mod compile_user_call;
 mod data_region;
 mod emit;
 mod execution;
