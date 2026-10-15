@@ -13,6 +13,11 @@ use ironplc_problems::Problem;
 use super::TypeResolution;
 
 /// Try to create the semantic type information from the subrange specification.
+///
+/// The bounds are kept in the order they are written. Whether the minimum is
+/// less than the maximum is `rule_range_limits`'s to report (P2002): it sees
+/// every subrange, including one declared in place for a variable or a
+/// structure field.
 pub fn try_from(
     node_name: &TypeName,
     spec: &SubrangeSpecificationKind,
@@ -63,22 +68,6 @@ pub fn try_from(
             } else {
                 end.value.value as i128
             };
-
-            // Validate range
-            if min_value > max_value {
-                return Err(Diagnostic::problem(
-                    Problem::SubrangeMinStrictlyLessMax,
-                    Label::span(node_name.span(), "Subrange declaration"),
-                )
-                .with_secondary(Label::span(
-                    start.value.span(),
-                    format!("Minimum value: {}", min_value),
-                ))
-                .with_secondary(Label::span(
-                    end.value.span(),
-                    format!("Maximum value: {}", max_value),
-                )));
-            }
 
             // Validate range is within base type bounds
             base_type
@@ -348,13 +337,13 @@ mod tests {
     }
 
     #[test]
-    fn try_from_with_invalid_range_then_p0004_error() {
+    fn try_from_when_bounds_reversed_then_creates_type_with_bounds_as_written() {
         let env = TypeEnvironmentBuilder::new()
             .with_elementary_types()
             .build()
             .unwrap();
 
-        // Create an invalid subrange specification: INT (100..1) - min > max
+        // INT (100..1): the order of the bounds is rule_range_limits's to check
         let spec = SpecificationKind::Inline(SubrangeSpecification {
             type_name: ElementaryTypeName::INT,
             subrange: Subrange {
@@ -375,10 +364,17 @@ mod tests {
             },
         });
 
-        let result = try_from(&TypeName::from("INVALID_RANGE"), &spec, &env);
-        assert!(result.is_err());
-        let error = result.unwrap_err();
-        assert_eq!(Problem::SubrangeMinStrictlyLessMax.code(), error.code);
+        let result = try_from(&TypeName::from("REVERSED_RANGE"), &spec, &env).unwrap();
+        let attrs = cast!(result, TypeResolution::Type);
+        let (min_value, max_value) = cast_struct!(
+            attrs.representation,
+            SemanticType::Subrange {
+                min_value,
+                max_value
+            }
+        );
+        assert_eq!(min_value, 100);
+        assert_eq!(max_value, 1);
     }
 
     #[test]
@@ -558,10 +554,11 @@ END_TYPE
     }
 
     #[test]
-    fn apply_when_subrange_invalid_range_then_error() {
+    fn apply_when_subrange_bounds_reversed_then_later_types_resolved() {
         let program = "
 TYPE
-INVALID_RANGE : INT (100..1) := 50;
+REVERSED_RANGE : INT (100..1) := 50;
+LATER_RANGE : INT (1..10) := 5;
 END_TYPE
         ";
         let input =
@@ -571,13 +568,10 @@ END_TYPE
             .with_elementary_types()
             .build()
             .unwrap();
-        let result = apply(input, &mut env);
-        assert!(result.is_err());
-        let error = result.unwrap_err();
-        assert_eq!(
-            Problem::SubrangeMinStrictlyLessMax.code(),
-            error.first().unwrap().code
-        );
+        let (_, diagnostics) = apply(input, &mut env).unwrap();
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        assert!(env.get(&TypeName::from("REVERSED_RANGE")).is_some());
+        assert!(env.get(&TypeName::from("LATER_RANGE")).is_some());
     }
 
     #[test]
