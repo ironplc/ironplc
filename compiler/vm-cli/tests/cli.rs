@@ -815,6 +815,40 @@ fn write_compiled_container(path: &Path, source: &str) {
     std::fs::write(path, &buf).unwrap();
 }
 
+/// A `UDINT` subscript whose value is outside the range of `DINT` halts the
+/// program with V4007, rather than selecting the element its bits would name
+/// as a `DINT`.
+#[test]
+fn run_when_subscript_outside_dint_then_exit_1_and_v4007() -> Result<(), Box<dyn std::error::Error>>
+{
+    let dir = TempDir::new()?;
+    let container_path = dir.path().join("subscript.iplc");
+    write_compiled_container(
+        &container_path,
+        "
+PROGRAM main
+  VAR
+    values : ARRAY[-3..5] OF INT;
+    i : UDINT := 4294967295;
+    result : INT;
+  END_VAR
+  result := values[i];
+END_PROGRAM
+",
+    );
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
+    cmd.arg("run").arg(&container_path).arg("--scans").arg("1");
+    cmd.assert()
+        .code(1)
+        .stderr(predicate::str::contains("V4007"))
+        .stderr(predicate::str::contains(
+            "array subscript 4294967295 is outside the range of DINT",
+        ));
+
+    Ok(())
+}
+
 /// A `STRING_TO_UDINT` compiled under the strict default (reject, trap)
 /// halts the program with V4006 at the first non-convertible input, and the
 /// message names the offending string (ADR-0049).

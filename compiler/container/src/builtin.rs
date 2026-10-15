@@ -401,6 +401,20 @@ declare_builtins! {
     /// EXPT for 64-bit unsigned integers: as [`EXPT_U32`], at 64 bits.
     EXPT_U64 = 0x03A8, args 2;
 
+    // --- Array subscript checks ---
+
+    /// Checks a signed 64-bit array subscript: pops it and pushes it as a
+    /// signed 32-bit integer, or traps (V4007) when it is outside that
+    /// range, so that it names no element rather than the one its low bits
+    /// would.
+    CHECK_SUBSCRIPT_I64 = 0x03A9, args 1;
+
+    /// As [`CHECK_SUBSCRIPT_I64`], for an unsigned 64-bit subscript.
+    CHECK_SUBSCRIPT_U64 = 0x03AA, args 1;
+
+    /// As [`CHECK_SUBSCRIPT_I64`], for an unsigned 32-bit subscript.
+    CHECK_SUBSCRIPT_U32 = 0x03AB, args 1;
+
     // =========================================================================
     // STRING_TO_<numeric> under behavior policies (ADR-0049)
     //

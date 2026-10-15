@@ -14,6 +14,7 @@ use ironplc_parser::options::CompilerOptions;
 use proptest::prelude::*;
 use proptest::sample::select;
 use rstest::rstest;
+use spec_test_macro::spec_test;
 
 use crate::common::scalar::{Num, Scalar, INTEGERS};
 use crate::common::Snapshot;
@@ -85,12 +86,6 @@ fn end_to_end_when_integer_exponent_is_negative_then_traps(
 )]
 // Analysis checks a literal subscript, but not one that names a constant.
 #[case::subscript_names_a_constant("cells : ARRAY[1..3] OF DINT; r : DINT;", "r := cells[LIMIT];")]
-// A 64-bit subscript is not cut to 32 bits before the check: this one would
-// otherwise select element 1.
-#[case::subscript_beyond_32_bits(
-    "cells : ARRAY[0..3] OF DINT; i : LINT := 4294967297; r : DINT;",
-    "r := cells[i];"
-)]
 // The check is on the position counted across every dimension (ADR-0023),
 // so the last row's fifth column lies past the end of a three by four array.
 #[case::position_past_last_dimension(
@@ -105,6 +100,38 @@ fn end_to_end_when_subscript_out_of_bounds_then_traps(
     let variables = format!("CONSTANT LIMIT : DINT := 4; END_VAR VAR {variables}");
 
     assert_eq!(trap_between(&variables, statement), trapped("V4005"));
+}
+
+/// A subscript outside the range of `DINT` traps before the array is
+/// reached, rather than wrapping to the position of another element: each
+/// of these would otherwise select one.
+#[spec_test(REQ_IC_codegen_022)]
+#[rstest]
+#[case::lint_beyond_32_bits(
+    "cells : ARRAY[0..3] OF DINT; i : LINT := 4294967297; r : DINT;",
+    "r := cells[i];"
+)]
+#[case::udint_top_bit_set(
+    "cells : ARRAY[-3..100] OF DINT; i : UDINT := 4294967295;",
+    "cells[i] := 5;"
+)]
+#[case::dword_top_bit_set(
+    "cells : ARRAY[-3..100] OF DINT; i : DWORD := 16#FFFFFFFF; r : DINT;",
+    "r := cells[i];"
+)]
+#[case::ulint_top_bit_set(
+    "cells : ARRAY[-3..100] OF DINT; i : ULINT := 18446744073709551615;",
+    "cells[i] := 5;"
+)]
+#[case::lword_beyond_32_bits(
+    "grid : ARRAY[0..1, 0..1] OF DINT; i : LWORD := 16#100000000; r : DINT;",
+    "r := grid[0, i];"
+)]
+fn end_to_end_when_subscript_outside_dint_then_traps(
+    #[case] variables: &str,
+    #[case] statement: &str,
+) {
+    assert_eq!(trap_between(variables, statement), trapped("V4007"));
 }
 
 /// ADR-0023 checks the position, not each subscript against its own
@@ -137,22 +164,21 @@ fn any_subscript() -> impl Strategy<Value = (Scalar, Num)> {
     select(INTEGERS.to_vec()).prop_flat_map(|ty| (Just(ty), ty.any()))
 }
 
-/// The lower bound of the array a subscript of type `ty` indexes: -3 for a
-/// signed type and 0 for an unsigned one.
-///
-/// An unsigned subscript whose top bit is set is read as a negative number
-/// today, so on an array with a negative lower bound it selects an element
-/// where it should trap. That defect is not pinned here: from zero, either
-/// reading of the subscript traps.
-fn lower_bound(ty: Scalar) -> i128 {
-    ty.store(-3).min(0)
-}
+/// The lower bound of every array a subscript indexes in these tests:
+/// below zero, so that a subscript read as another number, such as an
+/// unsigned one whose top bit is set read as a negative one, would select an
+/// element.
+const LOWER: i128 = -3;
 
-/// What a store to `cells[subscript]` does when the array starts at `lower`
+/// What a store to `cells[subscript]` does when the array starts at `LOWER`
 /// and ends at 100: reaches the element the subscript names, or traps and
-/// reaches none, which leaves `found` at -99.
-fn store_outcome(lower: i128, subscript: i128) -> (Option<&'static str>, i128) {
-    if (lower..=100).contains(&subscript) {
+/// reaches none, which leaves `found` at -99. A subscript outside the range
+/// of `DINT` traps before the array is reached (V4007), and any other that
+/// names no element when the array is (V4005).
+fn store_outcome(subscript: i128) -> (Option<&'static str>, i128) {
+    if i32::try_from(subscript).is_err() {
+        (Some("V4007"), -99)
+    } else if (LOWER..=100).contains(&subscript) {
         (None, subscript)
     } else {
         (Some("V4005"), -99)
@@ -162,15 +188,15 @@ fn store_outcome(lower: i128, subscript: i128) -> (Option<&'static str>, i128) {
 proptest! {
     // A subscript of any integer type selects the element it names, or traps
     // when it names none. The value is not cut to a narrower width first: a
-    // subscript of 4294967297 names no element of this array. `found` is the
-    // subscript of the element the store reached, found by searching with a
-    // DINT.
+    // subscript of 4294967297, or a UDINT whose top bit is set, names no
+    // element of this array. `found` is the subscript of the element the
+    // store reached, found by searching with a DINT.
     #[test]
     fn end_to_end_when_subscript_arbitrary_then_selects_its_element_or_traps(
         (ty, subscript) in any_subscript(),
     ) {
         let subscript = subscript.trunc();
-        let lower = lower_bound(ty);
+        let lower = LOWER;
         let source = format!(
             "
 PROGRAM main
@@ -188,7 +214,7 @@ END_PROGRAM
 
         prop_assert_eq!(
             (fault.map(|fault| fault.trap.v_code()), snapshot.read_as::<i128>("found")),
-            store_outcome(lower, subscript)
+            store_outcome(subscript)
         );
     }
 }
