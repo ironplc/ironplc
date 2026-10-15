@@ -9,24 +9,26 @@ use crate::variables::BodyFrame;
 use crate::Lowering;
 
 impl Lowering<'_> {
-    /// Lowers the statement `stmt` of the body of `frame`, or `None` when
-    /// lowering does not support it, or something inside it, yet.
+    /// Lowers the statement `stmt` of the body of `frame` to the statements
+    /// it runs, in order, or `None` when lowering does not support it, or
+    /// something inside it, yet. Each statement lowers to one statement.
     pub(crate) fn statement(
         &mut self,
         frame: &BodyFrame,
         stmt: &AstStmtKind,
-    ) -> Result<Option<Stmt>, Diagnostic> {
+    ) -> Result<Option<Vec<Stmt>>, Diagnostic> {
+        let one = |stmt: Result<Option<Stmt>, Diagnostic>| Ok(stmt?.map(|stmt| vec![stmt]));
         match stmt {
-            AstStmtKind::Assignment(assignment) => self.assignment(frame, assignment),
-            AstStmtKind::If(stmt) => self.if_statement(frame, stmt),
-            AstStmtKind::Case(stmt) => self.case_statement(frame, stmt),
-            AstStmtKind::For(stmt) => self.for_statement(frame, stmt),
-            AstStmtKind::While(stmt) => self.while_statement(frame, stmt),
-            AstStmtKind::Repeat(stmt) => self.repeat_statement(frame, stmt),
-            AstStmtKind::Exit(span) => self.exit_statement(span),
-            AstStmtKind::Continue(span) => self.continue_statement(span),
+            AstStmtKind::Assignment(assignment) => one(self.assignment(frame, assignment)),
+            AstStmtKind::If(stmt) => one(self.if_statement(frame, stmt)),
+            AstStmtKind::Case(stmt) => one(self.case_statement(frame, stmt)),
+            AstStmtKind::For(stmt) => one(self.for_statement(frame, stmt)),
+            AstStmtKind::While(stmt) => one(self.while_statement(frame, stmt)),
+            AstStmtKind::Repeat(stmt) => one(self.repeat_statement(frame, stmt)),
+            AstStmtKind::Exit(span) => one(self.exit_statement(span)),
+            AstStmtKind::Continue(span) => one(self.continue_statement(span)),
             // The AST keeps no span for a `RETURN`.
-            AstStmtKind::Return => Ok(Some(Stmt::return_(SourceSpan::default()))),
+            AstStmtKind::Return => one(Ok(Some(Stmt::return_(SourceSpan::default())))),
             AstStmtKind::FbCall(_) | AstStmtKind::MethodCall(_) => Ok(None),
         }
     }
