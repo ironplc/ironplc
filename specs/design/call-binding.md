@@ -214,6 +214,11 @@ function or method declares the output with: `CallOutput(q)` of an `LINT`
 for `q => l` on a function, and `CallOutput(mq)` of a `REAL` for `mq => lr`
 on a method.
 
+**REQ-CB-analyzer-038** An output assignment is checked against its target as
+the assignment of the value it stores is: a structure output `p` stored in a
+target of the identical type, `f(p => q)`, is accepted as `q := f.p` is, and
+one stored in a target of another type is P2037.
+
 **REQ-CB-codegen-020** A function block call with positional inputs stores
 them in the block's `VAR_INPUT` parameters in declaration order.
 

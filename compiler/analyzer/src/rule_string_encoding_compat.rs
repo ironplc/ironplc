@@ -17,13 +17,15 @@
 //! * the string arguments of one call, those bound to `ANY_STRING` inputs
 //!   such as the two of `CONCAT` or `FIND`, which share one encoding;
 //! * a value stored into a string variable, element or field, by an
-//!   assignment or by an output assignment of a function block call, which
-//!   stores the output the call leaves (`f(s => w)` as `w := f.s`).
+//!   assignment or by an output assignment of a call, which stores the
+//!   output the call leaves (`f(s => w)` as `w := f.s`).
 //!
 //! A literal or a function result stored into a named variable is the
 //! exception: the assignment and return-type checks already report that
 //! mismatch (P4035, P4027), so this rule leaves it to them, and they leave the
-//! cases this rule reports to it through [`mixes_encodings`]. Whether the
+//! cases this rule reports to it through [`mixes_encodings`]. A variable, a
+//! field of a structure or function block instance, and an output are this
+//! rule's wherever they are stored. Whether the
 //! characters of a literal fit its encoding is `rule_string_literal_char_range`
 //! (P4052).
 //!
@@ -165,6 +167,11 @@ fn mismatched_assignment(
     let value_encoding = match (target, &value.kind) {
         (Variable::Symbolic(SymbolicVariableKind::Named(_)), ExprKind::Variable(var)) => {
             variable_encoding(var, context, scope)?
+        }
+        // The output an output assignment stores, `f(s => w)`, is this
+        // rule's as `w := f.s` is.
+        (Variable::Symbolic(SymbolicVariableKind::Named(_)), ExprKind::CallOutput(_)) => {
+            expr_encoding(value, context, scope)?
         }
         (Variable::Symbolic(SymbolicVariableKind::Named(_)), _) => return None,
         _ => expr_encoding(value, context, scope)?,
@@ -470,10 +477,41 @@ END_PROGRAM
         )
     }
 
+    /// A `STRING` field of a function block instance, and the output a call
+    /// stores, mix encodings with a `WSTRING` as a `STRING` variable does.
+    #[spec_test(REQ_IC_analyzer_108)]
+    #[rstest]
+    #[case::string_field_read("f(); w := f.s;")]
+    #[case::string_output("f(s => w);")]
+    #[case::wstring_field_read("f(); s := f.w;")]
+    #[case::wstring_output("f(w => s);")]
+    fn apply_when_string_field_or_output_stored_in_other_encoding_then_p4034(#[case] body: &str) {
+        assert_eq!(check(&output_program(body)), codes(MIXED));
+    }
+
+    rule_err!(
+        /// A function's output is stored as a block's is.
+        #[spec_test(REQ_IC_analyzer_108)]
+        apply_when_function_string_output_stored_in_wstring_then_p4034,
+        "
+FUNCTION F : DINT
+  VAR_OUTPUT s : STRING; END_VAR
+  F := 0;
+END_FUNCTION
+PROGRAM main
+  VAR
+    r : DINT;
+    w : WSTRING[10];
+  END_VAR
+  r := F(s => w);
+END_PROGRAM
+",
+        [Problem::StringEncodingMismatch]
+    );
+
     /// An output assignment stores the output the call leaves, and this rule
     /// reports for it what it reports for the assignment of that output read
-    /// from the instance: P4035 owns both while the rule leaves a value it
-    /// does not read as a variable to the assignment check.
+    /// from the instance.
     #[spec_test(REQ_IC_analyzer_106)]
     #[rstest]
     #[case::string_output_to_wstring("f(s => w);", "f(); w := f.s;")]

@@ -69,7 +69,6 @@ fn problem_codes(body: &str) -> Vec<String> {
 #[case::real_to_integer("f(qr => d);")]
 #[case::negated_bool_to_integer("f(NOT qb => d);")]
 #[case::standard_block("t(ET => d);")]
-#[case::string_to_wstring("f(qstr => w);")]
 #[case::function("r := F(x := 1, fq => i);")]
 #[case::method("f.M(mq => i);")]
 fn apply_when_output_not_assignable_to_target_then_p4035(#[case] body: &str) {
@@ -77,6 +76,17 @@ fn apply_when_output_not_assignable_to_target_then_p4035(#[case] body: &str) {
         problem_codes(body),
         vec![Problem::AssignmentTypeMismatch.code().to_string()]
     );
+}
+
+/// A `STRING` stored in a `WSTRING` is P4034, which
+/// `rule_string_encoding_compat` reports for a field read and an output
+/// alike, so this rule reports nothing for either.
+#[spec_test(REQ_IC_analyzer_108)]
+#[rstest]
+#[case::field_read("f(); w := f.qstr;")]
+#[case::output("f(qstr => w);")]
+fn apply_when_string_output_stored_in_wstring_then_left_to_encoding_rule(#[case] body: &str) {
+    assert!(problem_codes(body).is_empty());
 }
 
 #[spec_test(REQ_IC_analyzer_106)]

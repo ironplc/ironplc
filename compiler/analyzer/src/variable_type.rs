@@ -15,7 +15,7 @@
 //! let element = variable_type::of(&kind, context, &self.scope.current());
 //! ```
 
-use ironplc_dsl::{common::*, core::Id, textual::*};
+use ironplc_dsl::{common::*, core::Id, textual::*, type_id::TypeId};
 
 use crate::{
     semantic_context::SemanticContext, semantic_type::SemanticType, symbol_environment::ScopeKind,
@@ -78,6 +78,7 @@ pub(crate) fn of(
         SymbolicVariableKind::Structured(structured) => {
             let record_type = of(&structured.record, context, scope)?;
             struct_field_type(&record_type, &structured.field)
+                .or_else(|| recorded_field_type(structured, context, scope))
         }
         SymbolicVariableKind::Array(array) => {
             let array_type = of(&array.subscripted_variable, context, scope)?;
@@ -117,6 +118,59 @@ pub(crate) fn declared<'a>(
         .declared()?
         .type_id?;
     Some(&context.types().get_by_id(type_id)?.representation)
+}
+
+/// The type of the field `structured` names, from the field types the type
+/// environment records for each declaration (`TypeEnvironment::field_type`).
+///
+/// A function block's representation lists only the fields whose types were
+/// known when the block was entered in the type environment, before a
+/// late-bound type resolved: a field declared as a structure, a string or an
+/// array is missing from it. The recorded field types hold every field, so
+/// `f.p` and `f.s` have the types the block declares them with.
+fn recorded_field_type(
+    structured: &StructuredVariable,
+    context: &SemanticContext,
+    scope: &ScopeKind,
+) -> Option<SemanticType> {
+    let types = context.types();
+    let record = type_id_of(&structured.record, context, scope)?;
+    let field = types.field_type(record, &structured.field)?;
+    Some(types.get_by_id(field)?.representation.clone())
+}
+
+/// The id of the type of the variable a reference names, walking through
+/// field accesses, array subscripts and dereferences by the type ids the
+/// type environment records. `None` for a bit or partial access, and for
+/// `THIS^` and `SUPER^`.
+fn type_id_of(
+    kind: &SymbolicVariableKind,
+    context: &SemanticContext,
+    scope: &ScopeKind,
+) -> Option<TypeId> {
+    let types = context.types();
+    match kind {
+        SymbolicVariableKind::Named(named) => {
+            context
+                .symbols()
+                .resolve_variable(&named.name, scope)
+                .declared()?
+                .type_id
+        }
+        SymbolicVariableKind::Structured(structured) => types.field_type(
+            type_id_of(&structured.record, context, scope)?,
+            &structured.field,
+        ),
+        SymbolicVariableKind::Array(array) => {
+            types.element_type(type_id_of(&array.subscripted_variable, context, scope)?)
+        }
+        SymbolicVariableKind::Deref(deref) => {
+            types.referenced_type(type_id_of(&deref.variable, context, scope)?)
+        }
+        SymbolicVariableKind::BitAccess(_)
+        | SymbolicVariableKind::PartialAccess(_)
+        | SymbolicVariableKind::SelfRef(_) => None,
+    }
 }
 
 /// Finds the type of a field within a structure or function block type.
