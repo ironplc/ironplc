@@ -72,3 +72,31 @@ fn compile_when_block_field_lowered_then_same_code_as_ast(#[case] statement: &st
     );
     assert_same_code(&source);
 }
+
+/// A statement in the body of a block whose variables include an array,
+/// references and a string, which the block's lowered type holds in the
+/// order it declares them (REQ-LOW-lowering-170), compiles to the same
+/// instructions and constants by both routes, as does a read of the output
+/// the block declares after them.
+#[rstest]
+#[case::ref_of_field("own := REF(n);")]
+#[case::through_reference_field("own^ := own^ + 1;")]
+#[case::reference_copied("copy := src;")]
+#[case::element_through_reference("n := src^[1];")]
+#[case::element_through_copied_reference("copy^[0] := 99;")]
+fn compile_when_block_field_of_any_type_lowered_then_same_code_as_ast(#[case] statement: &str) {
+    let source = format!(
+        "FUNCTION_BLOCK H
+           VAR_INPUT src : REF_TO ARRAY[0..4] OF INT; END_VAR
+           VAR a : ARRAY[0..4] OF INT; own : REF_TO DINT; copy : REF_TO ARRAY[0..4] OF INT;
+               n : DINT; s : STRING[8]; END_VAR
+           VAR_OUTPUT o : DINT; END_VAR
+           {statement}
+         END_FUNCTION_BLOCK
+         PROGRAM main
+           VAR h : H; d : DINT; END_VAR
+           d := h.o;
+         END_PROGRAM"
+    );
+    assert_same_code(&source);
+}

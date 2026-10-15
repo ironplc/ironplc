@@ -98,10 +98,39 @@ impl<'a> Lowering<'a> {
     }
 
     /// The instance of a program: a type with a field for each variable the
-    /// program declares, other than a `VAR_TEMP` or a `VAR_EXTERNAL`.
+    /// program declares ([`Self::instance_fields`]).
     fn program_instance(&mut self, pou: PouId, name: &Id, variables: &[VarDecl]) -> Made<Instance> {
+        let Some(fields) = self.instance_fields(variables)? else {
+            return Ok(None);
+        };
+        let program = self.program.push_type(
+            TypeEntry {
+                name: Some(DebugName::new(name.to_string(), name.span())),
+                kind: TypeKind::Program { fields, body: pou },
+            },
+            &name.span(),
+        )?;
+        self.instance(pou, name, program).map(Some)
+    }
+
+    /// The instance of a function block: the block's own type.
+    fn block_instance(&mut self, pou: PouId, name: &Id) -> Made<Instance> {
+        let types = self.analysis.context().types();
+        let Some(id) = types.id_of(&TypeName::from(&name.to_string())) else {
+            return Ok(None);
+        };
+        let Some(block) = self.lowered_type(id)? else {
+            return Ok(None);
+        };
+        self.instance(pou, name, block).map(Some)
+    }
+
+    /// The fields of the instance of a program or function block that
+    /// declares `variables`: one for each variable, other than a `VAR_TEMP`
+    /// or a `VAR_EXTERNAL`, in the order they are declared. `None` when
+    /// lowering cannot express the type of one of them yet.
+    pub(crate) fn instance_fields(&mut self, variables: &[VarDecl]) -> Made<Vec<Field>> {
         let mut fields = Vec::new();
-        let mut field_names = Vec::new();
         for decl in variables {
             let section = match decl.var_type {
                 VariableType::VarTemp | VariableType::External => continue,
@@ -124,38 +153,8 @@ impl<'a> Lowering<'a> {
                 Some(section),
                 ty,
             ));
-            field_names.push(field_name.clone());
         }
-        let program = self.program.push_type(
-            TypeEntry {
-                name: Some(DebugName::new(name.to_string(), name.span())),
-                kind: TypeKind::Program { fields, body: pou },
-            },
-            &name.span(),
-        )?;
-        self.instance(pou, name, program, field_names).map(Some)
-    }
-
-    /// The instance of a function block: the block's own type, whose fields
-    /// are the analyzer's, in the analyzer's order.
-    fn block_instance(&mut self, pou: PouId, name: &Id) -> Made<Instance> {
-        let types = self.analysis.context().types();
-        let Some(id) = types.id_of(&TypeName::from(&name.to_string())) else {
-            return Ok(None);
-        };
-        let Some(attributes) = types.get_by_id(id) else {
-            return Ok(None);
-        };
-        let ironplc_analyzer::SemanticType::FunctionBlock { fields, .. } =
-            &attributes.representation
-        else {
-            return Ok(None);
-        };
-        let field_names = fields.iter().map(|field| field.name.clone()).collect();
-        let Some(block) = self.lowered_type(id)? else {
-            return Ok(None);
-        };
-        self.instance(pou, name, block, field_names).map(Some)
+        Ok(Some(fields))
     }
 
     /// The instance parameter of the body of `pou`, a non-null reference to
@@ -165,8 +164,15 @@ impl<'a> Lowering<'a> {
         pou: PouId,
         name: &Id,
         instance_type: TypeId,
-        field_names: Vec<Id>,
     ) -> Result<Instance, Diagnostic> {
+        let field_names = self
+            .program
+            .types()
+            .fields(instance_type)
+            .unwrap_or_default()
+            .iter()
+            .map(|field| Id::from(&field.name.to_string()))
+            .collect();
         let this_type = self.non_null_reference(instance_type, &name.span())?;
         let this = self.program.push_variable(
             DebugName::new("THIS", name.span()),

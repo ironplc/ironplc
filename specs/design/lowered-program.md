@@ -567,6 +567,19 @@ through its instance parameter (see [Places](#34-places)). A method's instance
 parameter is also its first parameter (see
 [Callees, arguments and intrinsics](#38-callees-arguments-and-intrinsics)).
 
+The fields of a program's or function block's type are the variables it
+declares, whatever their types, so a block's type is the same whether its body
+is lowered or an instance of it is a field of another. A standard function
+block declares no variables: its fields are the ones the analyzer gives its
+type, and the ones lowering synthesizes (see
+[Synthesized state](#synthesized-state)). The fields a block inherits through
+`EXTENDS` are not among them yet, so a statement that names one is not
+lowered.
+
+**REQ-LOW-lowering-170** The type of a program, or of a function block the
+library declares, has one field for each variable it declares other than a
+`VAR_TEMP` or a `VAR_EXTERNAL`, in the order it declares them.
+
 The type table describes types as the language defines them. The width of an
 `INT` is part of the language; where a field sits in memory, how many slots a
 value takes and how wide a reference is are each backend's layout. Today's
