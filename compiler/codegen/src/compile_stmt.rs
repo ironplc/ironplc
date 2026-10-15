@@ -22,8 +22,9 @@ use super::compile_assign::compile_assignment;
 use super::compile_call_output::{store_outputs, CallOutputs};
 use super::compile_expr::{
     compile_condition, compile_expr, emit_classified_cmp_br, emit_eq, emit_ge, emit_le,
-    emit_load_var, emit_truncation, op_type, try_classify_cmp,
+    emit_load_var, op_type, try_classify_cmp,
 };
+use super::compile_fb_call::FbCallSite;
 use super::compile_loop::{compile_for, compile_repeat, compile_while};
 use super::compile_method::compile_method_call_statement;
 use crate::emit::Emitter;
@@ -188,33 +189,12 @@ fn compile_fb_call(
     ctx: &mut CompileContext,
     fb_call: &FbCall,
 ) -> Result<(), Diagnostic> {
-    let fb_info = ctx
-        .fb_instances
-        .get(&fb_call.var_name)
-        .ok_or_else(|| Diagnostic::todo_with_span(fb_call.span()))?;
-    let type_id = fb_info.type_id;
-    let field_indices = fb_info.field_indices.clone();
-    let field_types = fb_info.field_types.clone();
-    let var_index = fb_info.var_index;
-
-    // Push FB instance reference.
-    emitter.emit_fb_load_instance(var_index);
-
-    // Store input parameters.
+    let call = FbCallSite::open(emitter, ctx, &fb_call.var_name, &fb_call.span())?;
     for param in &fb_call.params {
         match param {
             ParamAssignmentKind::NamedInput(input) => {
-                let field_name = input.name.to_string().to_lowercase();
-                let field_idx = field_indices
-                    .get(&field_name)
-                    .ok_or_else(|| Diagnostic::todo_with_span(input.name.span()))?;
                 compile_expr(emitter, ctx, &input.expr)?;
-                // An input is stored as an assignment to the field is:
-                // narrowed to the field's declared type.
-                if let Some(field_type) = field_types.get(&field_name) {
-                    emit_truncation(emitter, *field_type);
-                }
-                emitter.emit_fb_store_param(*field_idx);
+                call.store_input(emitter, &input.name)?;
             }
             // The binding pass names every input of a call that binds, and
             // the rules reject one that does not.
@@ -227,21 +207,7 @@ fn compile_fb_call(
             ParamAssignmentKind::Output(_) => {}
         }
     }
-
-    // Call the function block. Record a call-graph edge for user-defined
-    // FBs (intrinsic FBs have no PLC body and never recurse into the
-    // dispatch loop, so they contribute no frames).
-    emitter.emit_fb_call(type_id);
-    if let Some(user_fb) = ctx
-        .user_fb_types
-        .values()
-        .find(|info| info.type_id == type_id)
-    {
-        ctx.record_call_edge(user_fb.function_id);
-    }
-
-    // Discard fb_ref.
-    emitter.emit_pop();
+    call.close(emitter, ctx);
 
     // An output of a function block is a field of its instance.
     store_outputs(
