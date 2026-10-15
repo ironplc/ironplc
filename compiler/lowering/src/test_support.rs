@@ -53,7 +53,11 @@ pub(crate) fn lower_bodies(source: &str, pous: &[&str]) -> Outcome {
         let (body, stmts) = body_of(&library, pou);
         for stmt in stmts {
             let text = match lowering.lower_statement(body, stmt) {
-                Ok(StatementLowering::Lowered(lowered)) => lowered.to_string(),
+                Ok(StatementLowering::Lowered(lowered)) => lowered
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join("\n"),
                 Ok(StatementLowering::Unsupported) => "unsupported".to_string(),
                 Err(diagnostic) => panic!("lowering reported {diagnostic:?}"),
             };

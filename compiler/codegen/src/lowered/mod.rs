@@ -120,9 +120,15 @@ fn compile_by_route(
         None => None,
     };
     match lowered {
-        Some(lowered) if can_emit(&route.lowering, ctx, &lowered) => {
+        Some(lowered)
+            if lowered
+                .iter()
+                .all(|lowered| can_emit(&route.lowering, ctx, lowered)) =>
+        {
             crate::compile_stmt::record_statement_position(emitter, ctx, stmt);
-            stmt::emit_stmt(emitter, ctx, &route.lowering, &lowered)?;
+            for lowered in &lowered {
+                stmt::emit_stmt(emitter, ctx, &route.lowering, lowered)?;
+            }
             route.counts.lowered += 1;
             Ok(true)
         }

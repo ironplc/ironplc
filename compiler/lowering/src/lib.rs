@@ -75,8 +75,9 @@ pub enum Body<'a> {
 /// What lowering made of one statement.
 #[derive(Clone, Debug)]
 pub enum StatementLowering {
-    /// The statement, with everything inside it, lowered.
-    Lowered(Box<Stmt>),
+    /// The statement, with everything inside it, lowered: the statements it
+    /// lowers to, in the order they run.
+    Lowered(Vec<Stmt>),
     /// The statement, or something inside it, is not one lowering supports
     /// yet. Not a defect: the statement is compiled from the AST.
     Unsupported,
@@ -138,7 +139,7 @@ impl<'a> Lowering<'a> {
             return Ok(StatementLowering::Unsupported);
         };
         Ok(match self.statement(&frame, stmt)? {
-            Some(lowered) => StatementLowering::Lowered(Box::new(lowered)),
+            Some(lowered) => StatementLowering::Lowered(lowered),
             None => StatementLowering::Unsupported,
         })
     }

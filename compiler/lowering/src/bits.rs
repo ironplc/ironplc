@@ -7,12 +7,13 @@
 
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_dsl::textual::{Assignment, Expr as AstExpr, SymbolicVariableKind};
+use ironplc_dsl::textual::{Expr as AstExpr, SymbolicVariableKind};
 use ironplc_ir::lowered::{
     Arg, BinaryOp, CompareOp, Expr, Intrinsic, ScalarType, Signedness, Stmt,
 };
 
 use crate::expr::Lowered;
+use crate::statement::Store;
 use crate::variables::BodyFrame;
 use crate::Lowering;
 
@@ -25,20 +26,20 @@ impl Lowering<'_> {
         base: &SymbolicVariableKind,
         shift: u8,
         bits: u8,
-        assignment: &Assignment,
+        store: &Store,
     ) -> Result<Option<Stmt>, Diagnostic> {
-        if assignment.deref || through_reference(base) {
+        if store.deref || through_reference(base) {
             return Ok(None);
         }
         // The base of `d.%B1.3` is itself a bit selection, not a place.
         let Some(place) = self.symbolic_place(frame, base)? else {
             return Ok(None);
         };
-        let Some(value) = self.expr(frame, &assignment.value)? else {
+        let Some(value) = self.expr(frame, store.value)? else {
             return Ok(None);
         };
         self.program
-            .assign_bits(place, shift, bits, value, assignment.span())
+            .assign_bits(place, shift, bits, value, store.span.clone())
             .map(Some)
     }
 
