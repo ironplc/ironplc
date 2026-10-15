@@ -8,9 +8,9 @@ codegen end-to-end programs, about 1,184 top-level statements are function
 block calls, of about 1,400 that compile from the AST. About 557 call
 user-defined blocks and about 626 call standard blocks.
 
-Behaviour does not change. A call compiles to the same instructions on both
-routes, apart from the one difference named under
-[Known difference](#known-difference).
+Behaviour does not change. Once #2292 lands, a call compiles to the same
+instructions on both routes (see
+[Narrow input fields](#narrow-input-fields)).
 
 Tracking issue: #2289.
 
@@ -107,23 +107,19 @@ the work, not a change of decision.
   keeps the design's shape.
 - **Outputs** are emitted like any other store.
 
-### Known difference
+### Narrow input fields
 
-A narrow input field is the one place the routes can differ:
+The routes used to differ on a value stored in a narrow field of a block:
 - **Lowered route.** It narrows every store to a narrow type
-  (REQ-LOW-lowering-046), including a store to a function block's input field.
-- **AST route.** It stores a function block field at 32 or 64 bits and never
-  narrows it (`compile_place.rs:154`, and `compile_fb_call`'s inputs). So
-  `f(x := a + b)`, with `x` an `INT` and `a + b` equal to 40000, stores 40000
-  in the field today.
+  (REQ-LOW-lowering-046), including a store to a function block's field.
+- **AST route.** It stored a function block field at 32 or 64 bits and never
+  narrowed it. So `f(x := a + b)` and `f.x := a + b`, with `x` an `INT` and
+  `a + b` equal to 40000, stored 40000 in the field.
 
-The two agree whenever the value fits the field. The lowered route already
-narrows `f.x := a + b` outside a call, so a call's inputs then behave as that
-assignment already does.
-
-If an end-to-end test shows the difference, the core PR lists that program as
-a known difference, as the design's "The routes check each other" allows. It
-does not change either route.
+#2292 fixes the AST route first: a store to a field, including each input of
+a call, narrows to the field's declared type. Core 1 starts after it lands, so
+a call's inputs compile to the same instructions on both routes. A constant
+that fits its field compiles with no truncation on either route.
 
 ### What stays on the AST route
 
