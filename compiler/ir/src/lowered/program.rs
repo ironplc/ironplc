@@ -225,6 +225,12 @@ impl ProgramBuilder {
         Stmt::assign_str(&self.types, place, value, span)
     }
 
+    /// Runs the body of the function block `instance` is an instance of, on
+    /// `instance`; see [`Stmt`] for what it must be.
+    pub fn fb_call(&self, instance: Place, span: SourceSpan) -> Result<Stmt, Diagnostic> {
+        Stmt::fb_call(&self.types, instance, span)
+    }
+
     /// Replaces `bits` bits of the value at `place`, starting at bit `shift`,
     /// with the low bits of `value`; see [`Stmt`] for what they must be.
     pub fn assign_bits(

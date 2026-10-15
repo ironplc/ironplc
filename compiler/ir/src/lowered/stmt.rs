@@ -4,7 +4,7 @@ use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
 
 use super::expr::{Const, Expr, ExprKind};
-use super::ids::{LoopId, Stamp, TypeId};
+use super::ids::{LoopId, PouId, Stamp, TypeId};
 use super::invariant::broken;
 use super::place::Place;
 use super::scalar::ScalarType;
@@ -27,6 +27,10 @@ pub enum StmtKind {
         bits: u8,
         value: Expr,
     },
+    /// Runs the body of the function block `block` on `instance`, an
+    /// instance of it. A call's inputs and outputs are the assignments
+    /// around it (REQ-LOW-lowering-069).
+    FbCall { instance: Place, block: PouId },
     /// Runs `then` when `cond` is true and `otherwise` when it is false.
     If {
         cond: Expr,
@@ -265,6 +269,30 @@ impl Stmt {
                 bits,
                 value,
             },
+            span,
+            program,
+        })
+    }
+
+    /// Runs the body of the function block `instance` is an instance of, on
+    /// `instance`. The block is the body of the place's type, so the two
+    /// cannot disagree (REQ-LOW-ir-171).
+    pub(crate) fn fb_call(
+        types: &TypeTable,
+        instance: Place,
+        span: SourceSpan,
+    ) -> Result<Self, Diagnostic> {
+        let Some(TypeKind::FunctionBlock { body, .. }) = types.kind(instance.ty()) else {
+            return Err(broken(
+                "Stmt::fb_call",
+                &span,
+                format!("{} is not a function block", instance.ty()),
+            ));
+        };
+        let block = *body;
+        let program = Some(instance.stamp());
+        Ok(Self {
+            kind: StmtKind::FbCall { instance, block },
             span,
             program,
         })

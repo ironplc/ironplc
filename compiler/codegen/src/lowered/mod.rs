@@ -34,6 +34,7 @@ use crate::compile_user_call::passes_by_reference;
 use crate::emit::Emitter;
 
 mod expr;
+mod fb_call;
 mod place;
 mod policy;
 mod stmt;
@@ -207,6 +208,9 @@ fn can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, stmt: &Stmt) -> bool 
         StmtKind::Loop {
             body, continuing, ..
         } => all(body) && all(continuing),
+        StmtKind::FbCall { instance, block } => {
+            fb_call::reaches_block(lowering, ctx, instance, *block)
+        }
         StmtKind::Exit(_) | StmtKind::Continue(_) | StmtKind::Return => true,
     }
 }

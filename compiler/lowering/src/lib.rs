@@ -25,6 +25,7 @@ mod bits;
 mod call;
 mod control;
 mod expr;
+mod fb_call;
 mod function;
 mod place;
 mod statement;
@@ -37,6 +38,8 @@ mod variables;
 mod call_tests;
 #[cfg(test)]
 mod control_tests;
+#[cfg(test)]
+mod fb_call_tests;
 #[cfg(test)]
 mod function_tests;
 #[cfg(test)]
@@ -61,7 +64,8 @@ use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::StmtKind;
 use ironplc_ir::lowered::{
-    LoopScope, ParsePolicy, PouId, PouTable, ProgramBuilder, Stmt, TypeTable, VarId, VariableTable,
+    LoopScope, ParsePolicy, Place, PouId, PouTable, ProgramBuilder, Stmt, TypeTable, VarId,
+    VariableTable,
 };
 
 /// The body a statement belongs to.
@@ -106,6 +110,9 @@ pub struct Lowering<'a> {
     bodies: HashMap<PouId, Option<variables::BodyFrame>>,
     /// The loops enclosing the statement being lowered, innermost last.
     loops: Vec<LoopScope>,
+    /// The function block instance whose call's outputs are being lowered,
+    /// whose fields the call outputs read.
+    call_instance: Option<Place>,
 }
 
 impl<'a> Lowering<'a> {
@@ -121,6 +128,7 @@ impl<'a> Lowering<'a> {
             pou_ids: HashMap::new(),
             bodies: HashMap::new(),
             loops: Vec::new(),
+            call_instance: None,
         }
     }
 

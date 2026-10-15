@@ -94,6 +94,7 @@ fn naming(id: LoopId, stmt: &Stmt) -> u32 {
         StmtKind::Assign { .. }
         | StmtKind::AssignBits { .. }
         | StmtKind::AssignStr { .. }
+        | StmtKind::FbCall { .. }
         | StmtKind::Return => 0,
     }
 }

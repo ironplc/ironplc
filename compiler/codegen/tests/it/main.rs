@@ -41,6 +41,7 @@ mod compile_program_count;
 mod compile_reproducible;
 mod compile_route;
 mod compile_route_lowered;
+mod compile_route_lowered_fb_call;
 mod compile_route_lowered_fb_field;
 mod compile_route_lowered_function;
 mod compile_route_lowered_ref;

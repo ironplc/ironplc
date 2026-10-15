@@ -187,9 +187,10 @@ impl Lowering<'_> {
                 Ok(Some(Expr::ref_to(place, span)))
             }
             AstExprKind::Null(_) => Ok(Some(Expr::null(span))),
-            // A call's output is read by the call statement that leaves it,
-            // which is not lowered yet.
-            AstExprKind::MethodCall(_) | AstExprKind::CallOutput(_) => Ok(None),
+            // The output of the function block call whose outputs are being
+            // stored (`fb_call.rs`).
+            AstExprKind::CallOutput(output) => self.call_output(output, span),
+            AstExprKind::MethodCall(_) => Ok(None),
         }
     }
 

@@ -751,6 +751,8 @@ mod calls;
 
 mod control;
 
+mod fb_calls;
+
 mod places;
 
 mod strings;
