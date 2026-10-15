@@ -132,6 +132,13 @@ its type", and every rule reads that answer:
   `SemanticType`. `TypeEnvironment::get_by_id` answers for any `type_id`.
   To type a reference, never take a field's type from the fields a
   representation lists: a field's type is the one its declaration records.
+- A function block's fields, with their sections, are in the environment
+  only (`TypeEnvironment::block_fields`, `block_field`); its
+  `SemanticType::FunctionBlock` names the block and lists none. A
+  representation never changes once its type is entered, because copies of it
+  are taken into other types (an array's element, a reference's target).
+  Never add state to a representation that is filled in later; record it in
+  the environment by the type's id.
 
 A rule that copies declarations into a `HashMap` or `ScopedTable` of its own as
 it walks gets the scoping wrong in ways the environment already gets right: it

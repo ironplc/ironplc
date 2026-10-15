@@ -502,7 +502,7 @@ fn compile_program_with_functions(
     let mut ctx = CompileContext::new();
     ctx.lowered_route = lowered_route;
     ctx.types = crate::type_info::type_representations(types);
-    ctx.block_members = crate::initial_value::block_members(fb_decls, &ctx.types);
+    ctx.block_members = crate::initial_value::block_members(types);
     ctx.operand_names = crate::type_info::operand_names(types);
     ctx.builtin_functions = crate::compile_call::builtin_functions_by_name(functions);
     ctx.method_owners = method_owners.clone();

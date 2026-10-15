@@ -168,13 +168,19 @@ impl RuleFunctionCallInOutArgument<'_> {
                 // Only a function block's inputs are assignable from
                 // outside the instance; its outputs, locals and VAR_IN_OUT
                 // are not.
-                match variable_type::of(&structured.record, self.context, &self.scope.current()) {
-                    Some(SemanticType::FunctionBlock { fields, .. }) => fields
-                        .iter()
-                        .find(|field| field.name == structured.field)
-                        .is_some_and(|field| {
-                            matches!(field.var_type, Some(FunctionBlockVarType::Input))
-                        }),
+                let types = self.context.types();
+                let record = variable_type::type_id(
+                    &structured.record,
+                    self.context.symbols(),
+                    types,
+                    &self.scope.current(),
+                );
+                match record.and_then(|record| Some((record, types.get_by_id(record)?))) {
+                    Some((record, attributes)) if attributes.representation.is_function_block() => {
+                        types
+                            .block_field(record, &structured.field)
+                            .is_some_and(|field| field.var_type == FunctionBlockVarType::Input)
+                    }
                     Some(_) => true,
                     None => false,
                 }

@@ -154,27 +154,6 @@ pub(crate) fn declared_type_id(
     symbols.resolve_variable(name, scope).declared()?.type_id
 }
 
-/// Finds the representation of the field `field_name` among the fields the
-/// structure or function block type `parent_type` lists.
-///
-/// For a check that walks a representation it already holds, such as the
-/// nested initializer of a structure field. A reference to a field is typed
-/// by [`type_id`], which goes by the field's declared type id.
-pub(crate) fn struct_field_type(
-    parent_type: &SemanticType,
-    field_name: &Id,
-) -> Option<SemanticType> {
-    let fields = match parent_type {
-        SemanticType::Structure { fields } => fields,
-        SemanticType::FunctionBlock { fields, .. } => fields,
-        _ => return None,
-    };
-    fields
-        .iter()
-        .find(|f| f.name == *field_name)
-        .map(|f| f.field_type.clone())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -38,7 +38,7 @@ use ironplc_problems::Problem;
 use std::convert::Infallible;
 
 use crate::call_binding::{bind, normal_form, BindProblem};
-use crate::callee_resolution::{instance_type, receiver_block, BlockParameters, CallParameters};
+use crate::callee_resolution::{instance_type, receiver_block, CallParameters, MethodParameters};
 use crate::function_environment::FunctionEnvironment;
 use crate::symbol_environment::{ScopeTracker, SymbolEnvironment};
 use crate::type_environment::TypeEnvironment;
@@ -53,7 +53,7 @@ pub fn apply(
     functions: &FunctionEnvironment,
 ) -> (Library, Vec<Diagnostic>) {
     let mut binder = CallArgumentBinder {
-        parameters: BlockParameters::of_library(&lib),
+        parameters: MethodParameters::of_library(&lib),
         symbols,
         types,
         functions,
@@ -65,8 +65,8 @@ pub fn apply(
 }
 
 struct CallArgumentBinder<'a> {
-    /// The parameters of every block and method a call can name.
-    parameters: BlockParameters,
+    /// The parameters of every method a call can name.
+    parameters: MethodParameters,
     symbols: &'a SymbolEnvironment,
     types: &'a TypeEnvironment,
     functions: &'a FunctionEnvironment,
@@ -118,7 +118,7 @@ impl Fold<Infallible> for CallArgumentBinder<'_> {
             self.symbols,
             self.types,
         )
-        .and_then(|block| self.parameters.of(&block, self.types));
+        .and_then(|block| CallParameters::of_block(&block, self.types));
         if let Some(parameters) = parameters {
             node.params = match normal_form(&parameters, node.params) {
                 Ok(mut normal) => {
