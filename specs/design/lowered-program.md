@@ -1176,14 +1176,41 @@ ordinary `Assign`, `AssignStr` or `Copy`, and a `VAR_IN_OUT` input is an
 `Assign` of a `RefTo`, so an output whose target has a wider type carries the
 `Convert` the analyzer recorded. The analyzer records an output's assignment
 on the output itself: the value it stores, the call's output converted to the
-target's type ([Call Binding](call-binding.md)). Codegen compiles each output
-as the assignment of that value to its target, reading the call's output
-from the instance's field (`compile_call_output.rs`).
+target's type ([Call Binding](call-binding.md)). Lowering lowers each output
+to the assignment of that value to its target, with the call's output a read
+of the instance's field, as the route that reads the AST compiles it
+(`compile_call_output.rs`). Every statement a call lowers to has the call's
+span.
 
 **REQ-LOW-lowering-069** A function block call lowers to the assignments of
 its inputs to the instance's fields, in the order of the call's normal form
 ([Call Binding](call-binding.md)), then an `FbCall`, then the assignments of
 its outputs from the instance's fields, in that order.
+
+**REQ-LOW-ir-171** The instance of an `FbCall` is a place whose type is a
+function block, and its block is that type's body.
+
+Not lowered yet, so each stays on the route that reads the AST:
+
+- a call of a standard function block, which lowering does not generate yet
+  (REQ-LOW-lowering-077);
+- a call that binds a `VAR_IN_OUT` of the block;
+- a call whose input or output lowering does not store yet, such as a
+  structure, which needs a `Copy`.
+
+While both routes exist, the bytecode backend emits the stores of a call's
+inputs and its `FbCall` as the route that reads the AST emits a call
+(`compile_fb_call.rs`): the instance pushed once, each input narrowed and
+stored in its field, then `FB_CALL` on the instance's slot. A call so
+compiles to the same instructions by either route, and the VM copies the
+instance's fields in and out around the body for every statement of it
+(see "One field model per body" under
+[Delivery Constraints](#delivery-constraints)). The backend reaches an
+instance by name, as the route that reads the AST does, so an instance that
+route cannot call, such as one declared inside a function block
+([issue 1553](https://github.com/ironplc/ironplc/issues/1553)) or reached
+through `VAR_EXTERNAL`
+([issue 1858](https://github.com/ironplc/ironplc/issues/1858)), stays on it.
 
 The order of the inputs among themselves is the order of the call's normal
 form: the order the block declares them, whatever order the call writes them

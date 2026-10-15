@@ -3,7 +3,7 @@
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{Assignment, Expr as AstExpr, StmtKind as AstStmtKind, Variable};
-use ironplc_ir::lowered::{Expr, Stmt, TypeKind};
+use ironplc_ir::lowered::{Expr, Place, Stmt, TypeKind};
 
 use crate::variables::BodyFrame;
 use crate::Lowering;
@@ -11,7 +11,9 @@ use crate::Lowering;
 impl Lowering<'_> {
     /// Lowers the statement `stmt` of the body of `frame` to the statements
     /// it runs, in order, or `None` when lowering does not support it, or
-    /// something inside it, yet. Each statement lowers to one statement.
+    /// something inside it, yet. A function block call lowers to the stores
+    /// of its inputs, the call and the stores of its outputs; every other
+    /// statement lowers to one statement.
     pub(crate) fn statement(
         &mut self,
         frame: &BodyFrame,
@@ -29,7 +31,8 @@ impl Lowering<'_> {
             AstStmtKind::Continue(span) => one(self.continue_statement(span)),
             // The AST keeps no span for a `RETURN`.
             AstStmtKind::Return => one(Ok(Some(Stmt::return_(SourceSpan::default())))),
-            AstStmtKind::FbCall(_) | AstStmtKind::MethodCall(_) => Ok(None),
+            AstStmtKind::FbCall(call) => self.fb_call(frame, call),
+            AstStmtKind::MethodCall(_) => Ok(None),
         }
     }
 
@@ -77,6 +80,19 @@ impl Lowering<'_> {
         if deref {
             place = self.program.deref(place, &target.span())?;
         }
+        self.store_at(frame, place, value, span)
+    }
+
+    /// Stores the source value `value` at `place`: a string, or a scalar
+    /// value narrowed to the place's storage unless it already fits
+    /// (REQ-LOW-lowering-046).
+    pub(crate) fn store_at(
+        &mut self,
+        frame: &BodyFrame,
+        place: Place,
+        value: &AstExpr,
+        span: SourceSpan,
+    ) -> Result<Option<Stmt>, Diagnostic> {
         if let Some(TypeKind::String(_)) = self.program.types().kind(place.ty()) {
             return self.string_assignment(frame, place, value, span);
         }

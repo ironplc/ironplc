@@ -39,9 +39,7 @@ pub(super) fn emit_stmts(
         lowering,
         loops: Vec::new(),
     };
-    stmts
-        .iter()
-        .try_for_each(|stmt| emission.stmt(emitter, ctx, stmt))
+    emission.sequence(emitter, ctx, stmts, false)
 }
 
 /// What emitting a statement needs besides the compile context.
@@ -59,9 +57,41 @@ impl Emission<'_, '_> {
         ctx: &mut CompileContext,
         stmts: &[Stmt],
     ) -> Result<(), Diagnostic> {
-        for stmt in stmts {
-            record_position(emitter, ctx, stmt.span());
-            self.stmt(emitter, ctx, stmt)?;
+        self.sequence(emitter, ctx, stmts, true)
+    }
+
+    /// Emits `stmts` in order, at each one's source position when `record`.
+    /// The stores of a function block call's inputs and the call are emitted
+    /// together, as the AST route emits a call (`fb_call.rs`).
+    fn sequence(
+        &mut self,
+        emitter: &mut Emitter,
+        ctx: &mut CompileContext,
+        stmts: &[Stmt],
+        record: bool,
+    ) -> Result<(), Diagnostic> {
+        let mut rest = stmts;
+        while let [first, ..] = rest {
+            if record {
+                record_position(emitter, ctx, first.span());
+            }
+            let emitted = match super::fb_call::call_site(self.lowering, ctx, rest) {
+                Some(call) => {
+                    super::fb_call::emit_call_site(
+                        emitter,
+                        ctx,
+                        self.lowering,
+                        &call,
+                        first.span(),
+                    )?;
+                    call.len()
+                }
+                None => {
+                    self.stmt(emitter, ctx, first)?;
+                    1
+                }
+            };
+            rest = &rest[emitted..];
         }
         Ok(())
     }
@@ -100,6 +130,13 @@ impl Emission<'_, '_> {
                         emit_expr(emitter, ctx, lowering, value)
                     })
                 })
+            }
+            // A call is emitted with the stores of its inputs (`sequence`);
+            // one on its own has none.
+            StmtKind::FbCall { instance, .. } => {
+                let call = super::fb_call::bare_call(self.lowering, ctx, instance)
+                    .ok_or_else(|| super::fb_call::no_instance(span))?;
+                super::fb_call::emit_call_site(emitter, ctx, self.lowering, &call, span)
             }
             StmtKind::If {
                 cond,
@@ -540,6 +577,7 @@ fn if_parts(stmt: &Stmt) -> Option<(&Expr, &[Stmt], &[Stmt])> {
         StmtKind::Assign { .. }
         | StmtKind::AssignBits { .. }
         | StmtKind::AssignStr { .. }
+        | StmtKind::FbCall { .. }
         | StmtKind::Case { .. }
         | StmtKind::For { .. }
         | StmtKind::Loop { .. }
