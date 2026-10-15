@@ -222,7 +222,7 @@ A field of a structure has its declared type, a subrange field its base type, wh
 
 **REQ-IC-analyzer-094** An argument of a subrange parameter's base type is accepted, and a wider one is not: `f(i)` and `f(s + 1)` with a parameter of a subrange of `INT` report nothing, and `f(d)` on a `DINT` reports P4026.
 
-**REQ-IC-analyzer-095** A field of a structure has its declared type wherever the structure is, and a subrange field its base type: `h.items[1].a` on an array field of structures with a `DINT` field `a` is a `DINT`, converted to `LINT` in `l := h.items[1].a`, and the subrange field `it.r` of a subrange of `INT` is an `INT`.
+**REQ-IC-analyzer-095** A field of a structure has its declared type wherever the structure is, and a subrange field its base type: `h.items[1].a` on an array field of structures with a `DINT` field `a` is a `DINT`, converted to `LINT` in `l := h.items[1].a`, and the subrange field `it.r` of a subrange of `INT` is an `INT`, so `r := s.v` on a `REAL` and a subrange field `v` of a subrange of `INT` reports nothing, and `r := h.items[1].a` reports P4035.
 
 **REQ-IC-analyzer-103** A field of a structure or function block has the type it is declared with, as a variable does, whatever kind of type that is: the `STRING[10]` field `h.name` is a `STRING`, the `WSTRING[10]` field `h.wide` a `WSTRING`, the element `h.names[2]` of an `ARRAY[1..2] OF WSTRING[10]` field a `WSTRING`, a field of the enumeration `COLOR` a `COLOR`, and so is a function block output `inst.state` of that enumeration.
 
@@ -391,7 +391,7 @@ error, rather than compiled at the type of the expression it is used in,
 which is how a subrange operand and a field reached through an array of
 structures used to compile.
 
-**REQ-IC-codegen-012** An operation on a subrange or on a field reached through an array of structures computes at its own type, as on a variable of the base or field type: `gt := s > l` with `s = 10` on a subrange of `INT` and `l = 4294967297` stores `FALSE`, `l := s * s` with `s = 100000` on a subrange of `DINT` wraps at 32 bits as `DINT * DINT` does, `l := MAX(u, v)` with `u = 4000000000` on a subrange of `UDINT` stores 4000000000, and `l := h.items[1].a * h.items[2].a` on `DINT` fields of 100000 wraps at 32 bits.
+**REQ-IC-codegen-012** An operation on a subrange or on a field reached through an array of structures computes at its own type, as on a variable of the base or field type: `gt := s > l` with `s = 10` on a subrange of `INT` and `l = 4294967297` stores `FALSE`, `l := s * s` with `s = 100000` on a subrange of `DINT` wraps at 32 bits as `DINT * DINT` does, `l := MAX(u, v)` with `u = 4000000000` on a subrange of `UDINT` stores 4000000000, `l := h.items[1].a * h.items[2].a` on `DINT` fields of 100000 wraps at 32 bits, and a `REAL` or `LREAL` target converts such a field's value rather than reading its bits: `r := s.v` with a subrange field `v = 7` of a subrange of `INT` stores 7.0, and `lr := h.items[1].a` with `a = -5` stores -5.0.
 
 **REQ-IC-codegen-017** The result of a standard function whose signature fixes its type keeps its value in a wider target: `lr := INT_TO_REAL(i)` with `i = 3` stores 3.0, `l := DINT_TO_UDINT(d)` with `d = -5` stores 4294967291, and `SUB_DT_TIME` and `DT_TO_DATE` of a date after 2038 stored in an `LDT` and an `LDATE` keep the date.
 
