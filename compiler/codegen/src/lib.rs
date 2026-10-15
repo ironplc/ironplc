@@ -44,6 +44,7 @@ mod compile_call_output;
 mod compile_comparison;
 mod compile_enum;
 mod compile_expr;
+mod compile_fb_call;
 mod compile_fb_init;
 mod compile_fn;
 mod compile_initial_value;
