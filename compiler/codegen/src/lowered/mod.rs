@@ -211,8 +211,11 @@ fn expr_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, expr: &Expr) -> 
         return false;
     }
     match expr.kind() {
-        ExprKind::Const(_) => true,
+        ExprKind::Const(_) | ExprKind::Null => true,
         ExprKind::Read(place) => reaches(lowering, ctx, place, expr.ty()),
+        // A reference to a variable, or to what a `VAR_IN_OUT` parameter
+        // refers to, as the AST route makes one.
+        ExprKind::RefTo(place) => place::variable_name(lowering, ctx, place).is_some(),
         ExprKind::Truncate { width, value } => {
             !matches!(width, NarrowWidth::B32) && expr_can_emit(lowering, ctx, value)
         }
@@ -354,7 +357,9 @@ pub(super) fn constant(expr: &Expr) -> Option<Const> {
         | ExprKind::Binary { .. }
         | ExprKind::Compare { .. }
         | ExprKind::ShortCircuit { .. }
-        | ExprKind::Call { .. } => None,
+        | ExprKind::Call { .. }
+        | ExprKind::RefTo(_)
+        | ExprKind::Null => None,
     }
 }
 
@@ -369,7 +374,9 @@ pub(super) fn read(expr: &Expr) -> Option<&LoweredPlace> {
         | ExprKind::Binary { .. }
         | ExprKind::Compare { .. }
         | ExprKind::ShortCircuit { .. }
-        | ExprKind::Call { .. } => None,
+        | ExprKind::Call { .. }
+        | ExprKind::RefTo(_)
+        | ExprKind::Null => None,
     }
 }
 

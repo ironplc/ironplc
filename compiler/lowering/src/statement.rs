@@ -39,8 +39,9 @@ impl Lowering<'_> {
         frame: &BodyFrame,
         assignment: &Assignment,
     ) -> Result<Option<Stmt>, Diagnostic> {
-        // `REF=`, `S=` and `R=` are not lowered yet.
-        if assignment.ref_bind || assignment.set_bind || assignment.reset_bind {
+        // `S=` and `R=` are not lowered yet. `r REF= x` is `r := REF(x)`:
+        // the parser writes its value as `REF(x)`.
+        if assignment.set_bind || assignment.reset_bind {
             return Ok(None);
         }
         if let Variable::Symbolic(target) = &assignment.target {

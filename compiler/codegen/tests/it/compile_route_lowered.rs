@@ -17,6 +17,7 @@ fn options() -> CompilerOptions {
     CompilerOptions {
         allow_continue: true,
         allow_ref_to: true,
+        allow_reference_to: true,
         allow_partial_access_syntax: true,
         allow_sizeof: true,
         ..CompilerOptions::default()
