@@ -1,0 +1,48 @@
+=====
+V4007
+=====
+
+.. problem-summary:: V4007
+
+The program accessed an array element with a subscript whose value is outside
+the range of ``DINT``. A subscript is a ``DINT``, so a subscript of a wider
+type, such as ``LINT``, ``UDINT``, ``ULINT``, ``DWORD`` or ``LWORD``, names no
+element when its value does not fit one. The program stops rather than
+selecting the element that the low bits of the value would name.
+
+Example
+-------
+
+The following code will generate error V4007:
+
+.. playground::
+
+   PROGRAM Main
+   VAR
+       values : ARRAY[-3..5] OF INT;
+       i : UDINT := 4294967295;
+       result : INT;
+   END_VAR
+   result := values[i];  (* Error: 4294967295 is outside the range of DINT *)
+   END_PROGRAM
+
+The subscript ``4294967295`` is not a ``DINT`` value. Read as a ``DINT``, its
+bits would be ``-1``, an element of ``values``, so the program stops instead.
+A subscript that is a ``DINT`` value but outside the bounds of the array is
+reported as :doc:`V4005 </reference/runtime/problems/V4005>`.
+
+To fix this error, ensure the subscript is within the bounds of the array
+before the access:
+
+.. playground::
+
+   PROGRAM Main
+   VAR
+       values : ARRAY[-3..5] OF INT;
+       i : UDINT := 4294967295;
+       result : INT;
+   END_VAR
+   IF i <= 5 THEN
+       result := values[i];
+   END_IF;
+   END_PROGRAM

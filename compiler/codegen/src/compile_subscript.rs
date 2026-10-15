@@ -5,11 +5,13 @@
 //! program. [`Subscript`] is what that computation needs of one subscript.
 
 use ironplc_dsl::common::ConstantKind;
-use ironplc_dsl::core::Located;
+use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, ExprKind, UnaryOp};
 
-use super::compile::{CompileContext, OpWidth};
+use ironplc_container::opcode;
+
+use super::compile::{CompileContext, OpType, OpWidth, Signedness};
 use super::compile_expr::{compile_expr, op_type};
 use crate::emit::Emitter;
 
@@ -40,6 +42,37 @@ impl Subscript for &Expr {
         }
         compile_expr(emitter, ctx, self)
     }
+}
+
+/// Emits the check of an array subscript of the type `from`, on the stack,
+/// that leaves it a `DINT` (`to`), or traps (V4007) when it is outside the
+/// range of `DINT`. The analyzer records such a check, a checked conversion,
+/// for a subscript whose type holds values a `DINT` does not
+/// (REQ-LOW-analyzer-162); a check from any other type is a defect.
+pub(crate) fn emit_subscript_check(
+    emitter: &mut Emitter,
+    from: OpType,
+    to: OpType,
+    span: &SourceSpan,
+) -> Result<(), Diagnostic> {
+    let not_a_subscript = || {
+        Diagnostic::internal_error_at(Label::span(
+            span.clone(),
+            format!("A checked conversion from {from:?} to {to:?}, not of a subscript"),
+        ))
+    };
+    if to != (OpWidth::W32, Signedness::Signed) {
+        return Err(not_a_subscript());
+    }
+    let func_id = match from {
+        (OpWidth::W64, Signedness::Signed) => opcode::builtin::CHECK_SUBSCRIPT_I64,
+        (OpWidth::W64, Signedness::Unsigned) => opcode::builtin::CHECK_SUBSCRIPT_U64,
+        (OpWidth::W32, Signedness::Unsigned) => opcode::builtin::CHECK_SUBSCRIPT_U32,
+        (OpWidth::W32, Signedness::Signed) | (OpWidth::F32 | OpWidth::F64, _) => {
+            return Err(not_a_subscript())
+        }
+    };
+    emitter.emit_builtin(func_id)
 }
 
 /// Extracts an i32 value from an expression if it is a literal integer.

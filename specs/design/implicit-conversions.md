@@ -409,7 +409,9 @@ Every other variable of a function, a method or a function block body -- a local
 
 A typed time or date function compiles each operand at the type the analyzer recorded for it, which is the width the routine computes at. An operand of another width is an internal error (P9998), not widened as the code generator used to widen a short operand of a long form and the number a duration is scaled by. The analyzer writes a typed fold as the calls it folds to, so no step widens the previous step's result on the stack.
 
-An array subscript and a shift or rotate count compile at the type the analyzer recorded for them, which is `DINT`, or `LINT` for the count of a value operated at 64 bits. One of another width is an internal error, not narrowed or widened as the code generator used to. The code generator compiles a checked conversion as an ordinary one: it does not trap on a subscript the conversion's type does not hold.
+An array subscript and a shift or rotate count compile at the type the analyzer recorded for them, which is `DINT`, or `LINT` for the count of a value operated at 64 bits. One of another width is an internal error, not narrowed or widened as the code generator used to. The code generator compiles a checked conversion of a subscript as a subscript check (`CHECK_SUBSCRIPT_I64`, `CHECK_SUBSCRIPT_U64` or `CHECK_SUBSCRIPT_U32`), which leaves a value in the range of `DINT` as it is and traps (`V4007`) on any other.
+
+**REQ-IC-codegen-022** A subscript whose conversion the analyzer recorded as checked traps with `V4007` when its value is outside the range of `DINT`, rather than selecting the element at the position its low bits name: an `LINT` subscript of 4294967297 on `ARRAY[0..3]`, and a `UDINT` subscript of 4294967295, a `DWORD` of `16#FFFFFFFF` and a `ULINT` of 18446744073709551615 on `ARRAY[-3..100]`, each trap.
 
 **REQ-IC-codegen-015** A subscript or shift count whose conversion the analyzer did not record is an internal error: with the recorded conversions removed, `a[l]`, `a[d + l]`, `SHL(dw, l)` and `SHL(lw, d)` report P9998, and `a[d]` and `SHL(dw, d)` compile.
 

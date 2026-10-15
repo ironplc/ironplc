@@ -1556,8 +1556,8 @@ rather than trap. So the conversion of a subscript is checked. Where a
 subscript's type holds values `DINT` does not (`UDINT`, `LINT`, `ULINT`,
 `DWORD`, `LWORD`), the analyzer records its conversion as a checked one, and
 lowering translates that into a `ConvertChecked`. A narrower subscript type
-converts exactly and needs no check. Today the conversion wraps; the
-end-to-end tests leave that case out rather than pin it.
+converts exactly and needs no check. The bytecode VM checks such a subscript
+with a builtin that traps `V4007` on a value outside the range of `DINT`.
 
 **REQ-LOW-analyzer-162** Analysis records the conversion to `DINT` of a
 subscript whose type holds values outside the range of `DINT` as a checked
@@ -1567,8 +1567,8 @@ conversion, and of any other subscript as an ordinary one.
 `ConvertChecked`, and an ordinary one into a `Convert`.
 
 **REQ-LOW-codegen-164** A `ConvertChecked` whose operand lies outside the
-range of its type traps as a subscript out of bounds does: a `UDINT`
-subscript of 4,294,967,295 traps on `ARRAY[-3..100]`.
+range of its type traps, as a subscript out of bounds does, and selects no
+element: a `UDINT` subscript of 4,294,967,295 traps on `ARRAY[-3..100]`.
 
 **REQ-LOW-codegen-089** An `Intrinsic` means what the IEC 61131-3 standard
 function means, with these choices where the standard leaves room: the count

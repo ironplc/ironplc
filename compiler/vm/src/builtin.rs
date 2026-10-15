@@ -525,6 +525,18 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
             stack.push(Slot::from_f32(a as f32))?;
             Ok(())
         }
+        opcode::builtin::CHECK_SUBSCRIPT_I64 => {
+            let value = stack.pop()?.as_i64();
+            push_subscript(stack, value.into())
+        }
+        opcode::builtin::CHECK_SUBSCRIPT_U64 => {
+            let value = stack.pop()?.as_i64() as u64;
+            push_subscript(stack, value.into())
+        }
+        opcode::builtin::CHECK_SUBSCRIPT_U32 => {
+            let value = stack.pop()?.as_i32() as u32;
+            push_subscript(stack, value.into())
+        }
         opcode::builtin::CONV_U32_TO_I64 => {
             let a = stack.pop()?.as_i32() as u32;
             stack.push(Slot::from_i64(a as u64 as i64))?;
@@ -641,6 +653,14 @@ fn dispatch_mux_f64(n: usize, stack: &mut OperandStack) -> Result<(), Trap> {
 
 /// `LIMIT` as IEC 61131-3 defines it, `MIN(MAX(IN, MN), MX)`. Unlike
 /// `Ord::clamp`, it does not panic when `MN > MX`; the result is then `MX`.
+/// Pushes the array subscript `value` as a `DINT`, or traps when it is
+/// outside the range of `DINT`.
+fn push_subscript(stack: &mut OperandStack, value: i128) -> Result<(), Trap> {
+    let subscript = i32::try_from(value).map_err(|_| Trap::SubscriptOutOfRange { value })?;
+    stack.push(Slot::from_i32(subscript))?;
+    Ok(())
+}
+
 fn limit<T: Ord>(val: T, mn: T, mx: T) -> T {
     val.max(mn).min(mx)
 }
