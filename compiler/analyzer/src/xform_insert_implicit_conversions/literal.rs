@@ -94,7 +94,8 @@ impl ImplicitConversions<'_> {
                 if let Some(own) = own {
                     self.record_one_type_call(func, own);
                 }
-                self.type_call_literals(func, own, numeric, context, numeric_pair)
+                self.type_call_literals(func, own, numeric, context, numeric_pair);
+                self.type_output_target_literals(&mut func.param_assignment);
             }
             ExprKind::MethodCall(call) => self.type_method_call_literals(call),
             ExprKind::Variable(variable) => self.type_variable_literals(variable),
@@ -295,6 +296,18 @@ impl ImplicitConversions<'_> {
                 None => self.type_own(arg),
             }
         }
+        self.type_output_target_literals(&mut call.params);
+    }
+
+    /// Types the literals of the subscripts of each output target of a call,
+    /// as those of an assignment's target are: an output assignment stores
+    /// in its target as an assignment does.
+    fn type_output_target_literals(&self, params: &mut [ParamAssignmentKind]) {
+        for param in params {
+            if let ParamAssignmentKind::Output(output) = param {
+                self.type_variable_literals(&mut output.tgt);
+            }
+        }
     }
 
     /// The input arguments of the method call `call`, each with the type its
@@ -447,6 +460,7 @@ impl ImplicitConversions<'_> {
                 None => self.type_own(input),
             }
         }
+        self.type_output_target_literals(&mut node.params);
     }
 
     /// The inputs of the function block call `node`, each with the type of
