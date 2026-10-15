@@ -1257,8 +1257,9 @@ simpler. But it differs from an output in three ways a program can observe:
   the parameter's width rather than converted, which needs the `Convert` the
   analyzer records.
 
-Codegen assigns outputs only for a function block call today, and a method
-call ignores an output argument (`compile_method.rs`).
+Codegen reads a function's or method's outputs from its own output variables
+after the call instead, which the flat variable table makes safe
+(ADR-0046).
 
 **REQ-LOW-lowering-092** An argument for a function's or method's
 `VAR_OUTPUT` parameter is a `Ref` to a compiler-provided temporary of the

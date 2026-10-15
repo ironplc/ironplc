@@ -33,7 +33,7 @@
 //! ```
 use ironplc_dsl::{
     common::*,
-    core::{Id, Located},
+    core::Located,
     diagnostic::{Diagnostic, Label},
     scope::ScopeNode,
     textual::*,
@@ -47,7 +47,6 @@ use crate::{
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
-    semantic_type::{FunctionBlockVarType, SemanticType},
     symbol_environment::ScopeTracker,
 };
 use ironplc_parser::options::CompilerOptions;
@@ -112,54 +111,6 @@ impl<'a> RuleFunctionBlockUse<'a> {
         )
     }
 
-    /// Whether the output `output` of the function block `block` is a
-    /// `BOOL`, from its declaration or, for a standard block, its type.
-    /// `None` when the block has no such output, which the binding reports.
-    fn output_is_bool(&self, block: &TypeName, output: &Id) -> Option<bool> {
-        let types = self.context.types();
-        if let Some(fb) = self.function_blocks.get(block) {
-            let decl = fb.variables.iter().find(|decl| {
-                decl.var_type == VariableType::Output
-                    && decl.identifier.symbolic_id() == Some(output)
-            })?;
-            let representation = decl
-                .type_id
-                .and_then(|id| types.get_by_id(id))
-                .map(|attributes| &attributes.representation);
-            return Some(matches!(representation, Some(SemanticType::Bool)));
-        }
-        match &types.get(block)?.representation {
-            SemanticType::FunctionBlock { fields, .. } => fields
-                .iter()
-                .find(|field| {
-                    field.name == *output && field.var_type == Some(FunctionBlockVarType::Output)
-                })
-                .map(|field| field.field_type == SemanticType::Bool),
-            _ => None,
-        }
-    }
-
-    /// A negated output assignment, `NOT q => v`, inverts a `BOOL`; on an
-    /// output of any other type it has no meaning, so it is rejected rather
-    /// than left for a later stage to interpret.
-    fn check_negated_outputs(&mut self, block: &TypeName, fb_call: &FbCall) {
-        for param in &fb_call.params {
-            let ParamAssignmentKind::Output(output) = param else {
-                continue;
-            };
-            if output.not && self.output_is_bool(block, &output.src) == Some(false) {
-                self.diagnostics.push(
-                    Diagnostic::problem(
-                        Problem::NegatedOutputNotBool,
-                        Label::span(output.src.span(), "Negated output"),
-                    )
-                    .with_context_type("function block", block)
-                    .with_context_id("output", &output.src),
-                );
-            }
-        }
-    }
-
     fn not_in_scope(fb_call: &FbCall) -> Diagnostic {
         Diagnostic::problem(
             Problem::FunctionBlockNotInScope,
@@ -211,7 +162,6 @@ impl Visitor<Infallible> for RuleFunctionBlockUse<'_> {
                 let diagnostics =
                     self.check_assignments(&function_block_name, &parameters, fb_call);
                 self.diagnostics.extend(diagnostics);
-                self.check_negated_outputs(&function_block_name, fb_call);
             }
         }
 
@@ -548,26 +498,6 @@ inst(q => x, Q => y);
 END_PROGRAM",
         Problem::FunctionCallDuplicateNamedArg,
         "Q"
-    );
-
-    rule_err!(
-        #[spec_test(REQ_CB_analyzer_026)]
-        apply_when_negated_output_not_bool_then_negated_output_not_bool,
-        &call("inst(NOT q => x);"),
-        [Problem::NegatedOutputNotBool]
-    );
-
-    rule_ok!(
-        #[spec_test(REQ_CB_analyzer_026)]
-        apply_when_negated_output_bool_then_ok,
-        &call("inst(NOT done => d);")
-    );
-
-    rule_err!(
-        #[spec_test(REQ_CB_analyzer_026)]
-        apply_when_negated_standard_output_not_bool_then_negated_output_not_bool,
-        &timer_call("t(IN := TRUE, NOT ET => e);"),
-        [Problem::NegatedOutputNotBool]
     );
 
     rule_ok!(

@@ -35,6 +35,26 @@ END_PROGRAM
     "STRING\n",
     "STRING"
 )]
+#[case::string_output_of_function(
+    "
+FUNCTION F : DINT
+VAR_INPUT x : DINT; END_VAR
+VAR_OUTPUT name : STRING; END_VAR
+    name := 'motor';
+    F := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    r : DINT;
+    s : STRING;
+END_VAR
+    r := F(x := 1, name => s);
+END_PROGRAM
+",
+    "name => s",
+    "name"
+)]
 #[case::property_read(
     "
 FUNCTION_BLOCK FB_Motor

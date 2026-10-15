@@ -77,6 +77,7 @@ mod end_to_end_bitstring;
 mod end_to_end_bitwise_width;
 mod end_to_end_bool;
 mod end_to_end_call_binding;
+mod end_to_end_call_outputs;
 mod end_to_end_call_result_width;
 mod end_to_end_call_semantics;
 mod end_to_end_case;

@@ -105,17 +105,20 @@ function, function block and method call whose arguments bind:
 - then one output assignment for each `VAR_OUTPUT` the call reads, in
   declaration order, keeping its negation.
 
-An output assignment of a function block call also records the value the
-call stores in its target (`Output::value`): the output the call leaves,
-`ExprKind::CallOutput(q)`, and `NOT` of it for a negated output, written
-where the output is named. A call output is not source syntax and appears
-nowhere else. It is read where the call leaves its outputs, which for a
-function block is the instance's field, so it is the value `v := inst.q`
-after the call would assign. The resolver types it as that read, the rules
-check it against the target, and the recording pass converts it to the
-target's type, as they do that assignment's
-([Implicit Conversions](implicit-conversions.md)). The output of a function
-or method call records none yet.
+An output assignment also records the value the call stores in its target
+(`Output::value`): the output the call leaves, `ExprKind::CallOutput(q)`,
+and `NOT` of it for a negated output, written where the output is named. A
+call output is not source syntax and appears nowhere else. It is read where
+the call leaves its outputs: for a function block, the instance's field, so
+it is the value `v := inst.q` after the call would assign; for a function or
+a method, the output variable of the callee, which no other call can have
+changed before it is read, since a function or method does not recurse. It
+has the type the output is declared with, `inst.q`'s for a function block.
+The rules check it against the target, and the recording pass converts it
+to the target's type, as they do an assigned value's
+([Implicit Conversions](implicit-conversions.md)). A negated output that is
+not a `BOOL` is P4083, and nothing else is reported for it: the `NOT` is the
+analyzer's, not an operation the program wrote.
 
 The callee of a method call is the method its receiver's block declares or
 inherits ([Methods](#methods)), so a call to an inherited method is written
@@ -165,7 +168,8 @@ a parameter twice is P4024.
 checked by the same rules as a call of a user-defined one.
 
 **REQ-CB-analyzer-026** A negated output assignment (`NOT q => v`) whose
-output is not a `BOOL` is P4083.
+output is not a `BOOL` is P4083, and nothing else, of a function block, a
+function and a method call alike.
 
 **REQ-CB-analyzer-027** A negated output assignment keeps its negation.
 
@@ -203,6 +207,12 @@ arguments bind records the value the call stores in its target, written
 where the output is named: the call output `q`, of the type `inst.q` has, for
 `q => v`, and `NOT` of the call output `done` for `NOT done => d`, for a
 user-defined and a standard block.
+
+**REQ-CB-analyzer-037** Each output assignment of a function or method call
+whose arguments bind records the call output it stores, of the type the
+function or method declares the output with: `CallOutput(q)` of an `LINT`
+for `q => l` on a function, and `CallOutput(mq)` of a `REAL` for `mq => lr`
+on a method.
 
 **REQ-CB-codegen-020** A function block call with positional inputs stores
 them in the block's `VAR_INPUT` parameters in declaration order.
@@ -266,3 +276,30 @@ P4018.
 
 **REQ-CB-codegen-050** An input a function block call omits keeps the value
 the previous call gave it.
+
+### Outputs
+
+A call stores each output it assigns in its target after the callee
+returns, in the order of its normal form, as the assignment of the value the
+analyzer recorded for it (see [Normal form](#normal-form)). A function block
+leaves its outputs in its instance's fields, which keep their values between
+calls. A function or a method leaves them in its own output variables, in
+its region of the variable table, and the caller reads them from there. Like
+a local, an output of a function or method starts again from its initial
+value on every call (REQ-IV-analyzer-050), so a call that does not assign it
+leaves its initial value.
+
+**REQ-CB-codegen-060** A function call stores each output in its target after
+the call, converted to the target's type: `r := F(x := 3, q => lr, u => lu)`
+with a `REAL` output of 1.5 and a `UDINT` output of 4000000000 stores 1.5 in
+an `LREAL` and 4000000000 in an `LINT`, `NOT done => nd` stores the inverse
+of a `BOOL` output, and the return value is the function's.
+
+**REQ-CB-codegen-061** A method call stores each output in its target after
+the call, in a statement and in an expression: `mr := k.M(x := 5, mq => mlr)`
+with a `REAL` output of 2.5 stores 2.5 in an `LREAL`, and `k.M(x := 6, mn =>
+a[2])` stores the output in an element of an array.
+
+**REQ-CB-codegen-062** An output of a function or method starts again from its
+initial value on every call: two calls of a function that adds its input to
+its output store each input alone.

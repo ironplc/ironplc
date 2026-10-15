@@ -23,7 +23,7 @@ Enable compilation and execution of user-defined IEC 61131-3 functions. A user-d
 - `ANY_*` type parameters (stdlib functions only)
 - Implicit type widening/coercion
 - Recursive call detection (IEC 61131-3 forbids recursion, but we don't enforce this yet)
-- `VAR_OUTPUT` parameters on user-defined functions (`VAR_IN_OUT` was added later; see [VAR_IN_OUT parameters](var-in-out-parameters.md))
+- `VAR_OUTPUT` parameters on user-defined functions (both were added later; see [VAR_IN_OUT parameters](var-in-out-parameters.md) and [VAR_OUTPUT parameters](#var_output-parameters))
 
 ## Key Decisions
 
@@ -104,6 +104,19 @@ New problem codes: `FunctionCallArgTypeMismatch`, `FunctionCallReturnTypeMismatc
 
 A `VAR_IN_OUT` parameter takes an argument like a `VAR_INPUT` does and is
 passed by reference. See [VAR_IN_OUT parameters](var-in-out-parameters.md).
+
+### VAR_OUTPUT parameters
+
+A `VAR_OUTPUT` parameter occupies a slot of the function's region after the
+parameters, with the local variables, and starts again from its initial
+value on every call, as a local does. A call's output assignment
+(`q => v`) stores it in its target after `CALL` returns: the analyzer
+records the value it stores, the call's output converted to the target's
+type, and the call site reads the output from the function's slot. The
+flat variable table makes that read safe: a function does not recurse, so
+no other call of it changes the slot before the caller reads it. A method's
+outputs are stored the same way after `METHOD_CALL`. See
+[Call Binding](call-binding.md), section Outputs.
 
 ### Debug Section
 

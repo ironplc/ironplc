@@ -11,6 +11,7 @@ use ironplc_dsl::textual::{
 
 use super::call_args::collect_input_args;
 use super::compile::{CompileContext, ParamPassing, UserFunctionInfo};
+use super::compile_call_output::{store_outputs, CallOutputs};
 use super::compile_expr::compile_expr;
 use super::compile_string::resolve_string_arg;
 use crate::emit::Emitter;
@@ -97,6 +98,14 @@ pub(crate) fn compile_user_function_call(
         func_info.max_stack_depth,
     );
     ctx.record_call_edge(func_info.function_id);
+    // A function leaves its outputs in its own output variables; storing
+    // them leaves the return value on the stack.
+    store_outputs(
+        emitter,
+        ctx,
+        CallOutputs::Variables(func_info.outputs.clone()),
+        &func.param_assignment,
+    )?;
     // For STRING-returning functions, the CALL leaves a buf_idx on the stack
     // (from emit_str_load_var in the function epilogue). The caller's
     // assignment path will consume it via emit_str_store_var.

@@ -165,6 +165,7 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
         let mut node = node.recurse_fold(self)?;
         if let StmtKind::MethodCall(call) = &mut node {
             self.record_method_arguments(call);
+            self.record_call_outputs(&mut call.params);
             self.type_method_call_statement_literals(call);
         }
         Ok(node)
@@ -180,7 +181,7 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
     fn fold_fb_call(&mut self, node: FbCall) -> Result<FbCall, Infallible> {
         let mut node = node.recurse_fold(self)?;
         self.record_fb_call_inputs(&mut node);
-        self.record_fb_call_outputs(&mut node);
+        self.record_call_outputs(&mut node.params);
         self.type_fb_call_literals(&mut node);
         Ok(node)
     }
@@ -196,7 +197,10 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
                 self.record_fold_operands(&mut node);
                 self.record_one_type_inputs(&mut node);
             }
-            ExprKind::MethodCall(call) => self.record_method_arguments(call),
+            ExprKind::MethodCall(call) => {
+                self.record_method_arguments(call);
+                self.record_call_outputs(&mut call.params);
+            }
             // A comparison's operands are recorded by `fold_compare_expr`;
             // the operands of `AND`, `OR` and `XOR` here, since they are
             // converted to the operation's own type.
@@ -235,6 +239,7 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
     fn fold_function(&mut self, node: Function) -> Result<Function, Infallible> {
         let mut node = node.recurse_fold(self)?;
         self.record_argument_conversions(&mut node);
+        self.record_call_outputs(&mut node.param_assignment);
         if is_comparison_form(&node) {
             // The comparison forms are binary; any other shape is one a rule
             // reported.

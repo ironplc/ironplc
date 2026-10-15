@@ -4,6 +4,8 @@
 //! including variable setup, body compilation, and metadata registration.
 //! Separated from compile.rs to keep module sizes within the 1000-line guideline.
 
+use std::collections::HashMap;
+
 use ironplc_container::debug_section::{iec_type_tag, var_section, VarNameEntry};
 use ironplc_container::{ContainerBuilder, FunctionId, VarIndex};
 use ironplc_dsl::common::{
@@ -176,13 +178,18 @@ pub(crate) fn compile_user_function(
         }
     }
 
-    // Second pass: local variables (VAR, VAR_TEMP).
+    // Second pass: local variables (VAR, VAR_TEMP) and outputs (VAR_OUTPUT),
+    // which start again on every call as a local does.
+    let mut outputs = HashMap::new();
     for decl in &func_decl.variables {
-        if !decl.var_type.is_local() {
+        if !decl.var_type.is_local() && decl.var_type != VariableType::Output {
             continue;
         }
         if let Some(id) = decl.identifier.symbolic_id() {
             ctx.variables.insert(id.clone(), current_index);
+            if decl.var_type == VariableType::Output {
+                outputs.insert(id.clone(), current_index);
+            }
             push_local_var_name(ctx, current_index, function_id, decl, id, types);
             // A local operates at its declared type, as a parameter does.
             if let Some(type_info) = decl_type_info(ctx, decl) {
@@ -412,6 +419,7 @@ pub(crate) fn compile_user_function(
             return_string_info,
             return_struct_desc_index,
             max_stack_depth: finalized.max_stack_depth,
+            outputs,
         },
     );
 

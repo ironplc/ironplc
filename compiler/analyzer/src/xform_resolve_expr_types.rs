@@ -41,14 +41,14 @@ pub fn apply(
     options: &CompilerOptions,
 ) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>> {
     let inherited_fields = collect_inherited_fields(&lib);
-    let method_return_types = collect_method_return_types(&lib);
+    let methods = collect_method_types(&lib);
     let function_block_inputs =
         enumerated_value_type::function_block_inputs(&lib, &inherited_fields);
     let named_enumerations = enumerated_value_type::named_enumerations(type_environment);
     let mut resolver = ExprTypeResolver {
         symbols,
         scope: ScopeTracker::default(),
-        method_return_types,
+        methods,
         type_environment,
         function_environment,
         options: *options,
@@ -67,14 +67,20 @@ pub fn apply(
     Ok((library, diagnostics))
 }
 
-/// The return type of every method callable on every function block, by
-/// function block type and method name: the block's own methods, then those
-/// it inherits through `EXTENDS` (ADR-0041 Phase 1 static dispatch). `None`
-/// for a method without a return type.
+/// The types of a method a call reads: its return type, `None` for a method
+/// without one, and the type each output is declared with.
+struct MethodTypes {
+    return_type: Option<TypeName>,
+    outputs: HashMap<Id, TypeId>,
+}
+
+/// The types of every method callable on every function block, by function
+/// block type and method name: the block's own methods, then those it
+/// inherits through `EXTENDS` (ADR-0041 Phase 1 static dispatch).
 ///
 /// Built before the fold, which consumes the library, so the resolver can
 /// type a method call without holding a reference into it.
-fn collect_method_return_types(lib: &Library) -> HashMap<TypeName, HashMap<Id, Option<TypeName>>> {
+fn collect_method_types(lib: &Library) -> HashMap<TypeName, HashMap<Id, MethodTypes>> {
     let function_blocks = FunctionBlocks::from_library(lib);
     let method_names: Vec<&Id> = lib
         .elements
@@ -91,13 +97,24 @@ fn collect_method_return_types(lib: &Library) -> HashMap<TypeName, HashMap<Id, O
         let LibraryElementKind::FunctionBlockDeclaration(fb) = element else {
             continue;
         };
-        let callable: HashMap<Id, Option<TypeName>> = method_names
+        let callable: HashMap<Id, MethodTypes> = method_names
             .iter()
             .filter_map(|name| {
                 let (_, method) = function_blocks.resolve_method(&fb.name, name)?;
+                let outputs = method
+                    .variables
+                    .iter()
+                    .filter(|decl| decl.var_type == VariableType::Output)
+                    .filter_map(|decl| {
+                        Some((decl.identifier.symbolic_id()?.clone(), decl.type_id?))
+                    })
+                    .collect();
                 Some((
                     method.name.clone(),
-                    method.return_type.as_ref().map(|rt| rt.to_type_name()),
+                    MethodTypes {
+                        return_type: method.return_type.as_ref().map(|rt| rt.to_type_name()),
+                        outputs,
+                    },
                 ))
             })
             .collect();
@@ -170,8 +187,8 @@ struct ExprTypeResolver<'a> {
     /// The variables in scope, by the scope the traversal is in.
     symbols: &'a SymbolEnvironment,
     scope: ScopeTracker,
-    /// See [`collect_method_return_types`].
-    method_return_types: HashMap<TypeName, HashMap<Id, Option<TypeName>>>,
+    /// See [`collect_method_types`].
+    methods: HashMap<TypeName, HashMap<Id, MethodTypes>>,
     type_environment: &'a mut TypeEnvironment,
     function_environment: &'a FunctionEnvironment,
     /// The compiler options, which decide whether a bit-string operand of
@@ -195,6 +212,15 @@ enum CallFrame {
     /// A call of the function block instance of this name: its output `q`
     /// has the type `instance.q` has.
     Instance(Id),
+    /// A call of the function of this name: an output has the type its
+    /// signature declares.
+    Function(Id),
+    /// A call of a method on a receiver: an output has the type the method
+    /// declares it with. A receiver other than an instance has none.
+    Method {
+        receiver: MethodReceiver,
+        method: Id,
+    },
 }
 
 impl ExprTypeResolver<'_> {
@@ -298,13 +324,9 @@ impl ExprTypeResolver<'_> {
                 let MethodReceiver::Instance(instance) = &call.receiver else {
                     return None;
                 };
-                let fb_type = self
-                    .type_environment
-                    .name_of(self.declared_type_id(instance)?)?;
                 let return_type = self
-                    .method_return_types
-                    .get(fb_type)?
-                    .get(&call.method)?
+                    .method_types(instance, &call.method)?
+                    .return_type
                     .clone()?;
                 self.expr_type_named(return_type)
             }
@@ -339,8 +361,10 @@ impl ExprTypeResolver<'_> {
     }
 
     /// The type of the output `output` of the innermost call the fold is
-    /// inside: the type the read of that output of the instance has.
-    fn call_output_type(&self, output: &Id) -> Option<TypeId> {
+    /// inside: for a function block, the type the read of that output of the
+    /// instance has; for a function or method, the type it declares the
+    /// output with.
+    fn call_output_type(&mut self, output: &Id) -> Option<TypeId> {
         match self.calls.last()? {
             CallFrame::Instance(instance) => {
                 self.symbolic_type_id(&SymbolicVariableKind::Structured(StructuredVariable {
@@ -350,7 +374,40 @@ impl ExprTypeResolver<'_> {
                     field: output.clone(),
                 }))
             }
+            CallFrame::Function(function) => {
+                let parameter = self
+                    .function_environment
+                    .get(function)?
+                    .parameters
+                    .iter()
+                    .find(|parameter| parameter.is_output && parameter.name == *output)?;
+                let declared = self.type_environment.id_of(&parameter.param_type)?;
+                // A `REF_TO` parameter records the type it references.
+                if parameter.is_reference {
+                    self.type_environment.reference_to(declared)
+                } else {
+                    Some(declared)
+                }
+            }
+            CallFrame::Method {
+                receiver: MethodReceiver::Instance(instance),
+                method,
+            } => self
+                .method_types(instance, method)?
+                .outputs
+                .get(output)
+                .copied(),
+            CallFrame::Method { .. } => None,
         }
+    }
+
+    /// The types of the method `method` called on the function block
+    /// instance `instance`: the one its block declares or inherits.
+    fn method_types(&self, instance: &Id, method: &Id) -> Option<&MethodTypes> {
+        let block = self
+            .type_environment
+            .name_of(self.declared_type_id(instance)?)?;
+        self.methods.get(block)?.get(method)
     }
 
     /// The type of the unqualified enumerated value `ev` used where a value
@@ -803,6 +860,23 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
         let target = self.variable_context(&node.target).map(OwnedContext::from);
         self.type_from_context(&mut node.value, target.as_ref().map(OwnedContext::get));
         Ok(node)
+    }
+
+    fn fold_function(&mut self, node: Function) -> Result<Function, Diagnostic> {
+        self.calls.push(CallFrame::Function(node.name.clone()));
+        let folded = node.recurse_fold(self);
+        self.calls.pop();
+        folded
+    }
+
+    fn fold_method_call(&mut self, node: MethodCall) -> Result<MethodCall, Diagnostic> {
+        self.calls.push(CallFrame::Method {
+            receiver: node.receiver.clone(),
+            method: node.method.clone(),
+        });
+        let folded = node.recurse_fold(self);
+        self.calls.pop();
+        folded
     }
 
     fn fold_fb_call(&mut self, node: FbCall) -> Result<FbCall, Diagnostic> {

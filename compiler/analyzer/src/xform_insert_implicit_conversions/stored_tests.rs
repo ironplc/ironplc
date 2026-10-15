@@ -81,6 +81,11 @@ fn stored_values(source: &str, options: &CompilerOptions) -> Vec<String> {
 /// `source` store, in source order, each as [`describe`] shows it; `none`
 /// for an output that records no value.
 fn output_values(source: &str) -> Vec<String> {
+    output_values_with(source, &CompilerOptions::default())
+}
+
+/// As [`output_values`], analyzing `source` under `options`.
+fn output_values_with(source: &str, options: &CompilerOptions) -> Vec<String> {
     struct OutputValues<'a> {
         types: &'a TypeEnvironment,
         values: Vec<String>,
@@ -95,9 +100,8 @@ fn output_values(source: &str) -> Vec<String> {
             node.recurse_visit(self)
         }
     }
-    let options = CompilerOptions::default();
-    let library = ironplc_parser::parse_program(source, &FileId::default(), &options).unwrap();
-    let (library, context) = analyze(&[&library], &options).unwrap();
+    let library = ironplc_parser::parse_program(source, &FileId::default(), options).unwrap();
+    let (library, context) = analyze(&[&library], options).unwrap();
     assert!(
         !context.has_diagnostics(),
         "unexpected diagnostics: {:?}",
@@ -154,6 +158,26 @@ fn apply_when_standard_function_block_output_then_converted_to_type_of_its_targe
 fn apply_when_function_block_output_target_of_other_kind_then_converted_to_its_type() {
     let source = output_program("r : R; a : ARRAY[1..2] OF LINT;", "f(qs => a[1], qd => r);");
     assert_eq!(output_values(&source), vec!["SINT->LINT", "DINT->LINT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_107)]
+#[test]
+fn apply_when_function_and_method_output_then_converted_to_type_of_its_target() {
+    let source = "FUNCTION_BLOCK K
+        METHOD M VAR_OUTPUT mq : UDINT; END_VAR END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION F : DINT VAR_INPUT x : DINT; END_VAR VAR_OUTPUT q : REAL; s : SINT; END_VAR
+        F := x; END_FUNCTION
+        PROGRAM main VAR k : K; r : DINT; lr : LREAL; i : INT; l : LINT; END_VAR
+        r := F(x := 1, q => lr, s => i); k.M(mq => l); END_PROGRAM";
+    let options = CompilerOptions {
+        allow_fb_inheritance: true,
+        ..CompilerOptions::default()
+    };
+    assert_eq!(
+        output_values_with(source, &options),
+        vec!["REAL->LREAL", "SINT", "UDINT->LINT"]
+    );
 }
 
 /// A function block `B` with an `LINT` input `x` and an input `r` of `R`, a

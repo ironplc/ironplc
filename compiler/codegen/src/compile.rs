@@ -619,6 +619,7 @@ fn compile_program_with_functions(
                         params,
                         has_return_value: method.return_type.is_some(),
                         max_stack_depth: 0, // updated once the method is compiled
+                        outputs: HashMap::new(), // set once the method is compiled
                     },
                 );
             }
@@ -1030,6 +1031,9 @@ pub(crate) struct UserFunctionInfo {
     pub(crate) return_struct_desc_index: Option<u16>,
     /// Maximum stack depth used by this function's body.
     pub(crate) max_stack_depth: u16,
+    /// The slot of each `VAR_OUTPUT`, which a call reads its outputs from
+    /// after the function returns.
+    pub(crate) outputs: HashMap<Id, VarIndex>,
 }
 
 /// Tracks state during compilation of a single program.
@@ -1097,6 +1101,9 @@ pub(crate) struct UserMethodInfo {
     /// method is actually compiled; used for the scan function's
     /// worst-case stack accounting, same as `max_fb_body_stack`.
     pub(crate) max_stack_depth: u16,
+    /// The slot of each `VAR_OUTPUT`, which a call reads its outputs from
+    /// after the method returns. Empty until the method is compiled.
+    pub(crate) outputs: HashMap<Id, VarIndex>,
 }
 
 /// A VAR_INPUT or VAR_IN_OUT parameter of a user-defined method.

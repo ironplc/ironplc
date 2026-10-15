@@ -4,13 +4,13 @@ P4083
 
 .. problem-summary:: P4083
 
-This error occurs when a function block call negates an output that is not a
-``BOOL``. An output assignment written ``NOT q => v`` stores the inverse of the
+This error occurs when a call negates an output that is not a ``BOOL``. An output assignment written ``NOT q => v`` stores the inverse of the
 output ``q`` in ``v``, and only a ``BOOL`` has an inverse in that sense: the
 assignment has no meaning for an ``INT``, a ``TIME`` or any other type.
 
-The compiler reports this error for an output of a user-defined function block
-and for an output of a standard one, such as the ``ET`` output of a ``TON``.
+The compiler reports this error for an output of a function block, user-defined
+or standard (such as the ``ET`` output of a ``TON``), of a function and of a
+method.
 
 Example
 -------
