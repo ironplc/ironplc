@@ -1688,7 +1688,7 @@ today.
 | Decision | Made today in | Recorded as | In the lowered program |
 |---|---|---|---|
 | Type of an untyped literal | The analyzer (ADR-0056); the literals of a completed initializer are written at the type they are stored as ([Initial Values](initial-values.md)) | The literal's `expr_type`, as `ExprType::Inferred` | A `Const` of that type |
-| Implicit conversion | The analyzer for operands, assigned values, the arguments of functions, methods and function block calls, loop bounds, the results of calls and dereferences, subscripts, shift counts and string positions, and function block outputs stored by a call (ADR-0056) | `ExprKind::ImplicitConversion`, checked for a subscript that may not fit `DINT` (REQ-LOW-analyzer-162) | `Convert`, or `ConvertChecked` |
+| Implicit conversion | The analyzer for operands, assigned values, the arguments of functions, methods and function block calls, loop bounds, the results of calls and dereferences, subscripts, shift counts and string positions, and the outputs of function block, function and method calls stored by the call (ADR-0056) | `ExprKind::ImplicitConversion`, checked for a subscript that may not fit `DINT` (REQ-LOW-analyzer-162) | `Convert`, or `ConvertChecked` |
 | Arithmetic overload | Analyzer's `resolve_arithmetic_overload` | The expression's `expr_type`, and its operands' conversions | A `Binary` at the result type, or the desugared time arithmetic |
 | Operand type of a comparison | The analyzer ([Comparison Operand Type](comparison-operand-type.md)) | Its operands' conversions | A `Compare` at that type |
 | Argument order and count | `xform_bind_call_arguments` for every call ([Call Binding](call-binding.md)) | The call's normal form: named, in declaration order | `Vec<Arg>` matched to parameters |
@@ -2327,8 +2327,8 @@ This section constrains the order of work; it is not a work breakdown.
   on it. The recording pass already covers most contexts: operands,
   assignments, the arguments of functions, methods and function block calls,
   loop bounds, the results of calls and dereferences, conditions, subscripts,
-  shift counts, string positions, function block outputs stored by a call
-  and the types of literals. The context it does not record yet, a directly
+  shift counts, string positions, the outputs a call stores and the types of
+  literals. The context it does not record yet, a directly
   represented variable, comes next
   ([issue 2050](https://github.com/ironplc/ironplc/issues/2050)). A statement
   that needs a decision the analyzer does not record yet stays on the route
