@@ -51,6 +51,8 @@ impl fmt::Display for Expr {
                 },
             },
             ExprKind::Read(place) => write!(f, "(read {ty} {place})"),
+            ExprKind::RefTo(place) => write!(f, "(ref_to {place})"),
+            ExprKind::Null => write!(f, "(null)"),
             ExprKind::Convert(value) => write!(f, "(convert {ty} {value})"),
             ExprKind::Truncate { width, value } => write!(f, "(truncate {} {value})", width.bits()),
             ExprKind::Unary { op, value } => write!(f, "({} {ty} {value})", unary(*op)),
