@@ -2,21 +2,24 @@
 //!
 //! A string lives in the data region. Its value is computed into one of the
 //! VM's temporary buffers (ADR-0052): a literal by `LOAD_CONST_STR`, the
-//! string at a place by `STR_LOAD_VAR`, and a string function's result by
-//! its opcode. `STR_STORE_VAR` copies a buffer into a place, keeping the code
-//! units its capacity holds (REQ-LOW-codegen-056). A string function's
-//! instruction takes each string as the data region offset of a slot that
-//! holds it. While both routes exist, a string place is found where this
-//! backend's layout stores it, by name.
+//! string at a place by `STR_LOAD_VAR` or `STR_LOAD_ARRAY_ELEM`, and a string
+//! function's result by its opcode. `STR_STORE_VAR` and
+//! `STR_STORE_ARRAY_ELEM` copy a buffer into a place, keeping the code units
+//! its capacity holds (REQ-LOW-codegen-056). A string function's instruction
+//! takes each string as the data region offset of a slot that holds it.
+//! While both routes exist, a string place is found where this backend's
+//! layout stores it, as the AST route finds it
+//! ([`StringPlace`](crate::compile_string_place::StringPlace)).
 
 use ironplc_container::CharWidth;
 use ironplc_dsl::core::SourceSpan;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_ir::lowered::{Encoding, Place as LoweredPlace, StrExpr, StrExprKind};
 use ironplc_lowering::Lowering;
 
 use super::expr::{emit_intrinsic_call, instruction_of};
-use super::{args_can_emit, storage_name};
+use super::place::resolve_string;
+use super::{args_can_emit, storage_name, subscripts_can_emit};
 use crate::compile::{emit_string_literal_load, CompileContext, StringVarInfo};
 use crate::compile_string::allocate_string_temp;
 use crate::emit::Emitter;
@@ -31,26 +34,35 @@ pub(super) fn emit_assign_str(
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
     emit_str_expr(emitter, ctx, lowering, value)?;
-    let place = string_storage(lowering, ctx, place).ok_or_else(|| no_storage(span))?;
-    emitter.emit_str_store_var(place.data_offset);
-    Ok(())
+    resolve_string(lowering, ctx, place, span)?.emit_store(emitter, ctx)
 }
 
 /// Whether this backend reaches every string place `value` reads.
 pub(super) fn str_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, value: &StrExpr) -> bool {
     match value.kind() {
         StrExprKind::Literal(_) => true,
-        StrExprKind::Read(place) => string_storage(lowering, ctx, place).is_some(),
+        StrExprKind::Read(place) => reaches_string(lowering, ctx, place),
         StrExprKind::Call { callee, args } => {
             instruction_of(*callee, args.len()).is_some() && args_can_emit(lowering, ctx, args)
         }
     }
 }
 
-/// Where this backend's layout stores the string `place`: a string variable,
-/// or a string field of the current instance, by name. `None` for any other
-/// place.
-pub(super) fn string_storage<'c>(
+/// Whether this backend reaches the string `place`, and every subscript on
+/// the way to it.
+pub(super) fn reaches_string(
+    lowering: &Lowering<'_>,
+    ctx: &CompileContext,
+    place: &LoweredPlace,
+) -> bool {
+    subscripts_can_emit(lowering, ctx, place)
+        && resolve_string(lowering, ctx, place, &SourceSpan::default()).is_ok()
+}
+
+/// The string variable `place` is, or the string field of the current
+/// instance, which this backend keeps in a slot of its own, by name. `None`
+/// for any other place.
+fn string_storage<'c>(
     lowering: &Lowering<'_>,
     ctx: &'c CompileContext,
     place: &LoweredPlace,
@@ -102,9 +114,7 @@ fn emit_str_expr(
             emit_string_literal_load(emitter, ctx, chars, char_width(value.shape().encoding));
         }
         StrExprKind::Read(place) => {
-            let place =
-                string_storage(lowering, ctx, place).ok_or_else(|| no_storage(value.span()))?;
-            emitter.emit_str_load_var(place.data_offset);
+            resolve_string(lowering, ctx, place, value.span())?.emit_load(emitter, ctx)?;
         }
         StrExprKind::Call { callee, args } => {
             emit_intrinsic_call(emitter, ctx, lowering, *callee, args, value.span())?
@@ -119,13 +129,4 @@ fn char_width(encoding: Encoding) -> CharWidth {
         Encoding::Narrow => CharWidth::Narrow,
         Encoding::Wide => CharWidth::Wide,
     }
-}
-
-/// The internal error for a string place `can_emit` should have left to the
-/// AST route.
-fn no_storage(span: &SourceSpan) -> Diagnostic {
-    Diagnostic::internal_error_at(Label::span(
-        span.clone(),
-        "A lowered string place has no string storage",
-    ))
 }

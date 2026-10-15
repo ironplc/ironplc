@@ -163,7 +163,7 @@ fn can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, stmt: &Stmt) -> bool 
             reaches(lowering, ctx, place, value.ty()) && expr_can_emit(lowering, ctx, value)
         }
         StmtKind::AssignStr { place, value } => {
-            string::string_storage(lowering, ctx, place).is_some()
+            string::reaches_string(lowering, ctx, place)
                 && string::str_can_emit(lowering, ctx, value)
         }
         StmtKind::AssignBits { place, value, .. } => {
@@ -292,15 +292,23 @@ fn reaches(
     place: &LoweredPlace,
     ty: ScalarType,
 ) -> bool {
-    let subscripts_can_emit = place.path().iter().all(|projection| match projection {
+    subscripts_can_emit(lowering, ctx, place)
+        && place::resolve(lowering, ctx, place, &SourceSpan::default())
+            .is_ok_and(|storage| op_type(ty) == Some(storage.op_type()))
+}
+
+/// Whether this backend emits every subscript on the way to `place`.
+fn subscripts_can_emit(
+    lowering: &Lowering<'_>,
+    ctx: &CompileContext,
+    place: &LoweredPlace,
+) -> bool {
+    place.path().iter().all(|projection| match projection {
         Projection::Index(subscripts) => subscripts
             .iter()
             .all(|subscript| expr_can_emit(lowering, ctx, subscript)),
         Projection::Field(_) | Projection::Deref => true,
-    });
-    subscripts_can_emit
-        && place::resolve(lowering, ctx, place, &SourceSpan::default())
-            .is_ok_and(|storage| op_type(ty) == Some(storage.op_type()))
+    })
 }
 
 /// The name this backend's layout knows a variable `place` by: the
