@@ -36,10 +36,11 @@ fn read_i32(instance: &[u8], field: usize) -> Result<i32, Trap> {
     read_field::<4>(instance, field).map(i32::from_le_bytes)
 }
 
-/// Writes an i32 to an FB instance field.
+/// Writes an i32 to an FB instance field, sign-extended as
+/// [`crate::value::Slot::from_i32`] holds it, so that `FB_LOAD_PARAM` reads
+/// the field as the slot a store of the same value would have written.
 fn write_i32(instance: &mut [u8], field: usize, value: i32) -> Result<(), Trap> {
-    // Zero-extend, so the upper 4 bytes are zero for slot consistency.
-    write_field(instance, field, u64::from(value as u32).to_le_bytes())
+    write_field(instance, field, i64::from(value).to_le_bytes())
 }
 
 /// Reads an i64 from an FB instance field.
@@ -286,8 +287,11 @@ trait CounterValue: Copy + PartialOrd {
     fn down(self) -> Self;
 }
 
+/// Implements [`CounterValue`] for `$t`, read from its first `$bytes` bytes
+/// and written as the slot `$slot` holds it: a signed value sign-extended and
+/// an unsigned one zero-extended, as a store of the value writes the slot.
 macro_rules! counter_value {
-    ($t:ty, $bytes:literal) => {
+    ($t:ty, $bytes:literal, $slot:ty) => {
         impl CounterValue for $t {
             const ZERO: Self = 0;
 
@@ -295,13 +299,8 @@ macro_rules! counter_value {
                 read_field::<$bytes>(instance, field).map(<$t>::from_le_bytes)
             }
 
-            /// Writes the value, zeroing the rest of the 8-byte slot.
             fn write(self, instance: &mut [u8], field: usize) -> Result<(), Trap> {
-                let mut slot = [0u8; FIELD_SIZE];
-                for (to, from) in slot.iter_mut().zip(self.to_le_bytes()) {
-                    *to = from;
-                }
-                write_field(instance, field, slot)
+                write_field(instance, field, <$slot>::from(self).to_le_bytes())
             }
 
             fn up(self) -> Self {
@@ -315,10 +314,10 @@ macro_rules! counter_value {
     };
 }
 
-counter_value!(i32, 4);
-counter_value!(u32, 4);
-counter_value!(i64, 8);
-counter_value!(u64, 8);
+counter_value!(i32, 4, i64);
+counter_value!(u32, 4, u64);
+counter_value!(i64, 8, i64);
+counter_value!(u64, 8, u64);
 
 /// Runs `count` at the type `width` names.
 macro_rules! at_width {
@@ -603,6 +602,27 @@ mod counter_tests {
         assert_eq!(read_i32(&instance, CTD_Q).unwrap(), 1);
     }
 
+    #[spec_test(REQ_CW_vm_004)]
+    #[test]
+    fn ctd_when_int_cv_counts_below_zero_then_field_holds_it_sign_extended() {
+        let mut instance = vec![0u8; CTD_INSTANCE_FIELDS * FIELD_SIZE];
+        write_i32(&mut instance, CTD_CD, 1).unwrap();
+
+        ctd(&mut instance, CounterWidth::I32).unwrap();
+
+        assert_eq!(read_i64(&instance, CTD_CV).unwrap(), -1);
+    }
+
+    #[spec_test(REQ_CW_vm_004)]
+    #[test]
+    fn ctu_when_udint_cv_at_maximum_then_field_holds_it_zero_extended() {
+        let mut instance = counter_at(CTU_INSTANCE_FIELDS, CTU_CV, u32::MAX);
+
+        ctu(&mut instance, CounterWidth::U32).unwrap();
+
+        assert_eq!(read_i64(&instance, CTU_CV).unwrap(), i64::from(u32::MAX));
+    }
+
     #[spec_test(REQ_CW_vm_002)]
     #[test]
     fn ctud_when_ulint_loads_preset_above_largest_lint_then_cv_holds_it() {
@@ -637,6 +657,24 @@ mod tests {
     }
 
     #[test]
+    fn write_i32_when_negative_then_sign_extended_as_a_slot() {
+        let mut instance = [0u8; FIELD_SIZE];
+
+        write_i32(&mut instance, 0, -1).unwrap();
+
+        assert_eq!(instance, [0xFF; FIELD_SIZE]);
+    }
+
+    #[test]
+    fn write_i32_when_positive_then_upper_bytes_zero() {
+        let mut instance = [0xFFu8; FIELD_SIZE];
+
+        write_i32(&mut instance, 0, 1).unwrap();
+
+        assert_eq!(instance, [1, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
     fn write_i32_when_field_partly_past_instance_then_data_region_out_of_bounds() {
         let mut instance = [0u8; FIELD_SIZE + 4];
 
@@ -654,15 +692,6 @@ mod tests {
             write_i64(&mut instance, 1, 7),
             Err(Trap::DataRegionOutOfBounds(8))
         );
-    }
-
-    #[test]
-    fn write_i32_when_negative_then_upper_bytes_zero() {
-        let mut instance = [0xFFu8; FIELD_SIZE];
-
-        write_i32(&mut instance, 0, -1).unwrap();
-
-        assert_eq!(instance, [0xFF, 0xFF, 0xFF, 0xFF, 0, 0, 0, 0]);
     }
 
     #[test]

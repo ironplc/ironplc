@@ -444,13 +444,15 @@ the AST is deleted.
 
 Which states analysis rules out is established case by case, not assumed.
 Some of what codegen handles is reached by programs analysis accepts. The
-analyzer does not record a function block output stored by a call yet, so
-`fb(OUT => x)` reaches codegen with no conversion, and codegen stores the
-output at the field's operation type
-([Implicit Conversions](implicit-conversions.md),
-[issue 2125](https://github.com/ironplc/ironplc/issues/2125)). A path like
-that does not become a P9998 in lowering. The analyzer first either
-rejects the program or records a decision for it.
+analyzer does not record the conversion of a value stored in a directly
+represented variable yet (`%QW0 := w`,
+[Implicit Conversions](implicit-conversions.md)), so such an assignment
+reaches codegen with no conversion. A path like that does not become a P9998
+in lowering. The analyzer first either rejects the program or records a
+decision for it, as it does for a function block output stored by a call:
+it records the value the output stores, converted to its target's type, and
+rejects an output its target cannot hold
+([issue 2125](https://github.com/ironplc/ironplc/issues/2125)).
 
 ## 3. The Lowered Program
 
@@ -1158,8 +1160,11 @@ instance's fields, the block's body runs (`FbCall`), and its outputs are
 assigned from the instance's fields to their targets. Each assignment is an
 ordinary `Assign`, `AssignStr` or `Copy`, and a `VAR_IN_OUT` input is an
 `Assign` of a `RefTo`, so an output whose target has a wider type carries the
-`Convert` the analyzer recorded. Today codegen stores an output at the field's
-operation type, with no conversion (`compile_stmt.rs`).
+`Convert` the analyzer recorded. The analyzer records an output's assignment
+on the output itself: the value it stores, the field read after the call and
+converted to the target's type ([Call Binding](call-binding.md)). Codegen
+compiles each output as the assignment of that value to its target
+(`compile_stmt.rs`).
 
 **REQ-LOW-lowering-069** A function block call lowers to the assignments of
 its inputs to the instance's fields, in the order of the call's normal form
@@ -1681,7 +1686,7 @@ today.
 | Decision | Made today in | Recorded as | In the lowered program |
 |---|---|---|---|
 | Type of an untyped literal | The analyzer (ADR-0056); the literals of a completed initializer are written at the type they are stored as ([Initial Values](initial-values.md)) | The literal's `expr_type`, as `ExprType::Inferred` | A `Const` of that type |
-| Implicit conversion | The analyzer for operands, assigned values, the arguments of functions, methods and function block calls, loop bounds, the results of calls and dereferences, subscripts, shift counts and string positions (ADR-0056); codegen stores a function block output at the field's type unconverted | `ExprKind::ImplicitConversion`, checked for a subscript that may not fit `DINT` (REQ-LOW-analyzer-162) | `Convert`, or `ConvertChecked` |
+| Implicit conversion | The analyzer for operands, assigned values, the arguments of functions, methods and function block calls, loop bounds, the results of calls and dereferences, subscripts, shift counts and string positions, and function block outputs stored by a call (ADR-0056) | `ExprKind::ImplicitConversion`, checked for a subscript that may not fit `DINT` (REQ-LOW-analyzer-162) | `Convert`, or `ConvertChecked` |
 | Arithmetic overload | Analyzer's `resolve_arithmetic_overload` | The expression's `expr_type`, and its operands' conversions | A `Binary` at the result type, or the desugared time arithmetic |
 | Operand type of a comparison | The analyzer ([Comparison Operand Type](comparison-operand-type.md)) | Its operands' conversions | A `Compare` at that type |
 | Argument order and count | `xform_bind_call_arguments` for every call ([Call Binding](call-binding.md)) | The call's normal form: named, in declaration order | `Vec<Arg>` matched to parameters |
@@ -2320,10 +2325,9 @@ This section constrains the order of work; it is not a work breakdown.
   on it. The recording pass already covers most contexts: operands,
   assignments, the arguments of functions, methods and function block calls,
   loop bounds, the results of calls and dereferences, conditions, subscripts,
-  shift counts, string positions and the types of literals. The contexts it
-  does not record yet, a function block output stored by a call
-  ([issue 2125](https://github.com/ironplc/ironplc/issues/2125)) and a
-  directly represented variable, come next, and so does marking a subscript's
+  shift counts, string positions, function block outputs stored by a call
+  and the types of literals. The context it does not record yet, a directly
+  represented variable, comes next, and so does marking a subscript's
   conversion as checked (REQ-LOW-analyzer-162)
   ([issue 2050](https://github.com/ironplc/ironplc/issues/2050)). A statement
   that needs a decision the analyzer does not record yet stays on the route

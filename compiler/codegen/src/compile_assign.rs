@@ -45,17 +45,28 @@ pub(crate) fn compile_assignment(
         return assign_to_place(emitter, ctx, &place, &assignment.value);
     }
 
+    compile_store(emitter, ctx, &assignment.target, &assignment.value)
+}
+
+/// Compiles `target := value`: `value` at the type the analyzer recorded for
+/// it, stored in `target`.
+pub(crate) fn compile_store(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    target: &Variable,
+    value: &Expr,
+) -> Result<(), Diagnostic> {
     // A bit or partial access target replaces bits of its base
     // (read-modify-write).
-    if let Some(access) = PartialAccess::of(&assignment.target) {
-        return compile_partial_access_assignment(emitter, ctx, &access, &assignment.value);
+    if let Some(access) = PartialAccess::of(target) {
+        return compile_partial_access_assignment(emitter, ctx, &access, value);
     }
 
     // Check if the target is a structured variable (struct field write).
     // Excludes `s.arr[i].field := ...`, whose record is an array
     // element rather than a fixed-offset struct field. That shape
     // falls through to the `resolve_access` dispatch below.
-    let fixed_offset_field = match &assignment.target {
+    let fixed_offset_field = match target {
         Variable::Symbolic(symbolic @ SymbolicVariableKind::Structured(structured))
             if !matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) =>
         {
@@ -67,7 +78,7 @@ pub(crate) fn compile_assignment(
         // A field of a function block instance (`timer.IN := TRUE`), which
         // lives in the instance's data region rather than in a structure.
         if let Some(place) = Place::fb_field(ctx, structured)? {
-            return assign_to_place(emitter, ctx, &place, &assignment.value);
+            return assign_to_place(emitter, ctx, &place, value);
         }
 
         // STRING fields are composite (multi-slot) and handled via the
@@ -93,24 +104,24 @@ pub(crate) fn compile_assignment(
             let byte_offset = struct_info.data_offset + slot_offset.raw() * 8;
             // Produce the RHS at the field's declared encoding, the
             // same as any other string destination (ADR-0034).
-            compile_string_value(emitter, ctx, &assignment.value, char_width)?;
+            compile_string_value(emitter, ctx, value, char_width)?;
             emitter.emit_str_store_var(byte_offset);
             return Ok(());
         }
 
         let place = Place::resolve(ctx, symbolic)?;
-        return assign_to_place(emitter, ctx, &place, &assignment.value);
+        return assign_to_place(emitter, ctx, &place, value);
     }
 
     // Whole-aggregate assignment (`x := y` where x is an array or a
     // structure). Emits COPY_REGION, which moves the bytes rather
     // than the data-region offset the scalar arm below would copy.
-    if crate::compile_aggregate::try_compile_whole_assignment(emitter, ctx, assignment)? {
+    if crate::compile_aggregate::try_compile_whole_assignment(emitter, ctx, target, value)? {
         return Ok(());
     }
 
     // Look up the target variable's type info.
-    let target_name = resolve_variable_name(&assignment.target);
+    let target_name = resolve_variable_name(target);
 
     // Check if the target is a STRING variable (stored in data region).
     let string_info = target_name
@@ -120,10 +131,10 @@ pub(crate) fn compile_assignment(
     if let Some((data_offset, char_width)) = string_info {
         // String target: produce the RHS as a temp buffer at the
         // target's encoding, then STR_STORE_VAR (ADR-0034).
-        compile_string_value(emitter, ctx, &assignment.value, char_width)?;
+        compile_string_value(emitter, ctx, value, char_width)?;
         emitter.emit_str_store_var(data_offset);
     } else {
-        match resolve_access(ctx, &assignment.target)? {
+        match resolve_access(ctx, target)? {
             ResolvedAccess::ArrayElement { info, subscripts } if info.is_string_element => {
                 // Copy fields from info (borrows ctx) before using ctx mutably.
                 let arr_var_index = info.var_index;
@@ -133,21 +144,15 @@ pub(crate) fn compile_assignment(
                 // String array: produce the RHS as a temp buffer at the
                 // element's encoding, then the flat index, then
                 // STR_STORE_ARRAY_ELEM (ADR-0034).
-                compile_string_value(emitter, ctx, &assignment.value, element_char_width)?;
-                emit_flat_index(
-                    emitter,
-                    ctx,
-                    &subscripts,
-                    &dim_info,
-                    &variable_span(&assignment.target),
-                )?;
+                compile_string_value(emitter, ctx, value, element_char_width)?;
+                emit_flat_index(emitter, ctx, &subscripts, &dim_info, &variable_span(target))?;
                 emitter.emit_str_store_array_elem(arr_var_index, arr_desc_index);
             }
             ResolvedAccess::StructFieldStringArrayElement(element) => {
                 // The RHS produces, at the element's encoding, the
                 // temp buffer index the store consumes (ADR-0034).
-                compile_string_value(emitter, ctx, &assignment.value, element.char_width)?;
-                element.emit_base_and_index(emitter, ctx, &variable_span(&assignment.target))?;
+                compile_string_value(emitter, ctx, value, element.char_width)?;
+                element.emit_base_and_index(emitter, ctx, &variable_span(target))?;
                 emitter.emit_str_store_array_elem(
                     element.scratch_var_index,
                     element.string_desc_index,
@@ -163,25 +168,14 @@ pub(crate) fn compile_assignment(
                 let ref_var_index = info.var_index;
                 let arr_desc_index = info.desc_index;
                 let dim_info = info.dimensions.clone();
-                compile_expr(emitter, ctx, &assignment.value)?;
+                compile_expr(emitter, ctx, value)?;
                 emit_truncation(emitter, element_vti);
-                emit_flat_index(
-                    emitter,
-                    ctx,
-                    &subscripts,
-                    &dim_info,
-                    &variable_span(&assignment.target),
-                )?;
+                emit_flat_index(emitter, ctx, &subscripts, &dim_info, &variable_span(target))?;
                 emitter.emit_store_array_deref(ref_var_index, arr_desc_index);
             }
             access => {
-                let place = Place::from_access(
-                    ctx,
-                    access,
-                    target_name,
-                    variable_span(&assignment.target),
-                )?;
-                assign_to_place(emitter, ctx, &place, &assignment.value)?;
+                let place = Place::from_access(ctx, access, target_name, variable_span(target))?;
+                assign_to_place(emitter, ctx, &place, value)?;
             }
         }
     }

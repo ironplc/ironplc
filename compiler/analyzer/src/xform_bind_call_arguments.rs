@@ -13,6 +13,15 @@
 //! receiver's block declares or inherits, and a function call against the
 //! function's signature. See `specs/design/call-binding.md`.
 //!
+//! Each output assignment of a function block call that binds also records
+//! the value the call stores in its target
+//! ([`ironplc_dsl::textual::Output::read_from`]): the output read from the
+//! instance after the call, `inst.q`, inverted for a negated output. The
+//! resolver types it as it types any read of `inst.q`, the rules check it
+//! against the target as they check an assigned value, and the recording pass
+//! converts it to the target's type, so an output assignment is checked and
+//! compiled as the assignment `v := inst.q` after the call is.
+//!
 //! A call whose arguments do not bind keeps them as written. For a function
 //! block or method call, `rule_function_block_invocation` or
 //! `rule_method_call_declared` reports why. For a function call, this pass
@@ -21,10 +30,11 @@
 //! argument count.
 
 use ironplc_dsl::common::Library;
+use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::scope::ScopeNode;
-use ironplc_dsl::textual::{FbCall, Function, MethodCall};
+use ironplc_dsl::textual::{FbCall, Function, MethodCall, ParamAssignmentKind};
 use ironplc_problems::Problem;
 use std::convert::Infallible;
 
@@ -108,7 +118,11 @@ impl Fold<Infallible> for CallArgumentBinder<'_> {
         .and_then(|block| self.parameters.of(&block, self.types));
         if let Some(parameters) = parameters {
             node.params = match normal_form(&parameters, node.params) {
-                Ok(normal) | Err(normal) => normal,
+                Ok(mut normal) => {
+                    read_outputs(&node.var_name, &mut normal);
+                    normal
+                }
+                Err(args) => args,
             };
         }
         Ok(node)
@@ -129,6 +143,17 @@ impl Fold<Infallible> for CallArgumentBinder<'_> {
             };
         }
         Ok(node)
+    }
+}
+
+/// Records, on each output assignment of `args`, the arguments of a call to
+/// the function block instance `instance` that bind, the value the call
+/// stores in its target.
+fn read_outputs(instance: &Id, args: &mut [ParamAssignmentKind]) {
+    for arg in args {
+        if let ParamAssignmentKind::Output(output) = arg {
+            output.value = Some(output.read_from(instance));
+        }
     }
 }
 
@@ -155,8 +180,10 @@ fn function_call_problem(problem: &BindProblem) -> Option<Diagnostic> {
 
 #[cfg(test)]
 mod tests {
-    use ironplc_dsl::core::FileId;
-    use ironplc_dsl::textual::{Function, MethodCall, StmtKind};
+    use ironplc_dsl::core::{FileId, Located, SourceSpan};
+    use ironplc_dsl::textual::{
+        ExprKind, ExprType, Function, MethodCall, Output, ParamAssignmentKind, StmtKind,
+    };
     use ironplc_dsl::visitor::Visitor;
     use ironplc_parser::{options::CompilerOptions, parse_program};
     use spec_test_macro::spec_test;
@@ -388,6 +415,115 @@ inst(b := 2, nope := 1);
 END_PROGRAM"
         );
         assert_eq!(vec!["b := 2, nope := 1"], calls(&program));
+    }
+
+    /// The value each output assignment of every function block call in
+    /// `program` stores, after type resolution, with its type: `q => r:
+    /// inst.q (DINT)`, or `q => r: none` when the call records none.
+    fn output_values(program: &str) -> Vec<String> {
+        let options = CompilerOptions::default();
+        let lib = parse_program(program, &FileId::default(), &options).unwrap();
+        let (lib, context) = resolve_types(&[&lib], &options).unwrap();
+        struct Outputs(Vec<Output>);
+        impl Visitor<()> for Outputs {
+            type Value = ();
+            fn visit_output(&mut self, node: &Output) -> Result<(), ()> {
+                self.0.push(node.clone());
+                node.recurse_visit(self)
+            }
+        }
+        let mut outputs = Outputs(vec![]);
+        let _ = outputs.walk(&lib);
+        outputs
+            .0
+            .iter()
+            .map(|output| {
+                let value = match &output.value {
+                    None => "none".to_string(),
+                    Some(value) => {
+                        let ty = value
+                            .expr_type
+                            .as_ref()
+                            .and_then(ExprType::type_id)
+                            .and_then(|id| context.types().name_of(id))
+                            .map(|name| name.to_string().to_uppercase())
+                            .unwrap_or_else(|| "untyped".to_string());
+                        let read = match &value.kind {
+                            ExprKind::UnaryOp(unary) => format!("NOT {}", unary.term),
+                            _ => value.to_string(),
+                        };
+                        format!("{read} ({ty})")
+                    }
+                };
+                let output = ParamAssignmentKind::Output(output.clone());
+                format!("{output}: {value}")
+            })
+            .collect()
+    }
+
+    #[spec_test(REQ_CB_analyzer_036)]
+    fn apply_when_output_assigned_then_value_reads_output_of_instance() {
+        let program = format!(
+            "{BLOCK}
+PROGRAM main VAR inst : FB; r : LINT; d : BOOL; END_VAR
+inst(NOT done => d, q => r);
+END_PROGRAM"
+        );
+        assert_eq!(
+            vec![
+                "q => r: inst.q (DINT)",
+                "NOT done => d: NOT inst.done (BOOL)"
+            ],
+            output_values(&program)
+        );
+    }
+
+    #[spec_test(REQ_CB_analyzer_036)]
+    fn apply_when_standard_block_output_assigned_then_value_reads_output_of_instance() {
+        let program = "
+PROGRAM main VAR t : TON; e : LTIME; END_VAR
+t(IN := TRUE, ET => e);
+END_PROGRAM";
+        assert_eq!(vec!["ET => e: t.ET (TIME)"], output_values(program));
+    }
+
+    #[spec_test(REQ_CB_analyzer_036)]
+    fn apply_when_output_assigned_then_value_written_where_output_named() {
+        let program = format!(
+            "{BLOCK}
+PROGRAM main VAR inst : FB; r : DINT; END_VAR
+inst(q => r);
+END_PROGRAM"
+        );
+        let options = CompilerOptions::default();
+        let lib = parse_program(&program, &FileId::default(), &options).unwrap();
+        let (lib, _) = resolve_types(&[&lib], &options).unwrap();
+        struct Spans(Vec<(SourceSpan, SourceSpan)>);
+        impl Visitor<()> for Spans {
+            type Value = ();
+            fn visit_output(&mut self, node: &Output) -> Result<(), ()> {
+                let value = node.value.as_ref().unwrap().span.clone();
+                self.0.push((node.src.span(), value));
+                Ok(())
+            }
+        }
+        let mut spans = Spans(vec![]);
+        let _ = spans.walk(&lib);
+        let [(src, value)] = spans.0.as_slice() else {
+            panic!("expected one output, got {:?}", spans.0);
+        };
+        assert_eq!(src, value);
+    }
+
+    #[test]
+    fn apply_when_arguments_do_not_bind_then_output_has_no_value() {
+        let program = format!(
+            "{BLOCK}
+PROGRAM main VAR inst : FB; r : DINT; END_VAR
+inst(nope := 1, q => r);
+END_PROGRAM"
+        );
+        assert_eq!(vec!["q => r: none"], output_values(&program));
     }
 
     #[test]

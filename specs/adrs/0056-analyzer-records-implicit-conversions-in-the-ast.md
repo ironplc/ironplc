@@ -220,3 +220,25 @@ extends this one and does not supersede it.
 The pass this ADR calls "a lowering pass" records decisions rather than
 lowering anything, so it is now called the **recording pass**. "Lowering"
 names only the stage after analysis. The decision above is unchanged.
+
+### Function block outputs (postscript)
+
+An output assignment of a function block call, `fb(q => x)`, stores the
+output in `x` after the call, and codegen stored it at the output's own
+type: a `REAL` output's bits were read as an `LREAL`, and an unsigned output
+was sign-extended into an `LINT` (#2125). The source names the output, not an
+expression, so there was no operand for a conversion node to wrap.
+
+Two ways to record it were considered: a target type on the `Output` node,
+which a backend would read alongside `ImplicitConversion` to convert the
+field it loads; or the output read as an expression. The second was chosen.
+The binding pass records on each output assignment of a call that binds the
+value it stores, `fb.q` (`NOT fb.q` for a negated output), written where the
+output is named. It is typed and converted as the value of `x := fb.q` is,
+so the conversion is an `ImplicitConversion` like every other, and an output
+the target cannot hold is now rejected as that assignment is (P4035). The analyzed tree holds an expression the program did not
+write, as it already did for a conversion; the plain rendering writes the
+output as `q => x`, and the annotated rendering adds the value's comment. An
+output of a function or method call has no instance field to read and
+records none. See `specs/design/call-binding.md` and
+`specs/design/implicit-conversions.md`. The decision above is unchanged.

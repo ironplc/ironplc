@@ -2065,6 +2065,11 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
             self.write_ws("NOT");
         }
         self.visit_id(&node.src)?;
+        // The value the output stores is written as the output it reads,
+        // followed by its comment: `q (* REAL -> LREAL *) => lr`.
+        if let (Some(type_name), Some(value)) = (self.type_name, &node.value) {
+            self.write_ws(&type_comment::comment(value, type_name));
+        }
         self.write_ws("=>");
         self.visit_variable(&node.tgt)
     }

@@ -26,10 +26,14 @@
 //! compiled at the target's width rather than converted to it, so there is
 //! no conversion to record.
 //!
+//! An output assignment of a function block call (`f(q => v)`) stores the
+//! value the binding pass recorded on it, the output read from the instance
+//! after the call, and converts it as the value of `v := f.q` is converted.
+//!
 //! A directly represented target is not recorded yet.
 
 use ironplc_dsl::textual::{
-    ArrayVariable, Assignment, Expr, ExprKind, For, Function, ParamAssignmentKind,
+    ArrayVariable, Assignment, Expr, ExprKind, FbCall, For, Function, ParamAssignmentKind,
     PartialAccessSize, SymbolicVariableKind, Variable,
 };
 use ironplc_dsl::type_id::TypeId;
@@ -54,6 +58,24 @@ impl ImplicitConversions<'_> {
         }
         if let Some(target) = self.assigned_at(&node.target, node.deref) {
             self.record_conversion_to(&mut node.value, target);
+        }
+    }
+
+    /// Records the conversion of the value each output assignment of `node`
+    /// stores to the type of its target, as an assigned value's.
+    pub(super) fn record_fb_call_outputs(&self, node: &mut FbCall) {
+        for param in &mut node.params {
+            let ParamAssignmentKind::Output(output) = param else {
+                continue;
+            };
+            // The binding pass records the value of an output of a call
+            // whose arguments bind; the rules reject any other call.
+            let Some(value) = &mut output.value else {
+                continue;
+            };
+            if let Some(target) = self.assigned_at(&output.tgt, false) {
+                self.record_conversion_to(value, target);
+            }
         }
     }
 

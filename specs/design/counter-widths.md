@@ -28,6 +28,10 @@ One implementation of each counter is generic over the integer it counts in, so 
 
 **REQ-CW-vm-003** Counting saturates at the bounds of the counter's type: a `CTU_UDINT` at the largest `UDINT` stays there, and a `CTD_ULINT` at 0 stays at 0 with `Q` `TRUE`.
 
+A counter writes `CV` as a store of the value writes a slot: a signed 32-bit count sign-extended and an unsigned one zero-extended. A value read from a 32-bit signed slot widens to 64 bits as it is, so a `CTD` counted below zero, stored in an `LINT`, used to read as 4294967295 rather than -1.
+
+**REQ-CW-vm-004** A counter writes `CV` extended by the signedness of its width: a `CTD` counted down from 0 holds -1 in all 64 bits of its field, and a `CTU_UDINT` at the largest `UDINT` holds it with the upper 32 bits zero.
+
 **REQ-CW-codegen-001** A counter of each width keeps the values of its type end to end: a `CTD_LINT` and a `CTUD_LINT` loaded with 5,000,000,000 hold it in `CV`, read as a field and as an output; a `CTU_UDINT` with a preset of 3,000,000,000 keeps `Q` `FALSE`; a `CTD_UDINT` counting down from 0 stays at 0; and a `CTD_ULINT` loaded with 10,000,000,000,000,000,000 holds it.
 
 ## Out of scope

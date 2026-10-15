@@ -156,6 +156,10 @@ undecided, as an expression with no type is.
 
 **REQ-ETR-plc2plc-006** The annotated rendering re-parses to the same library as the plain rendering of the same library.
 
+An output assignment of a function block call stores a value the analyzer recorded but the program does not write: the output read from the instance after the call (see [Call Binding](call-binding.md)). The annotated rendering writes that value's comment after the output.
+
+**REQ-ETR-plc2plc-007** An output assignment is written with the comment of the value it stores after the output's name: `f(q (* REAL -> LREAL *) => out)`, and `f(NOT done (* BOOL *) => flag)` for a negated output.
+
 **REQ-ETR-analyzer-001** `value_type::spelling` writes an elementary type in upper case, any other named type by its declared name, and an anonymous type by its shape: `DINT`, `Color`, `ARRAY[1..2] OF DINT`.
 
 The output is the analyzed program rather than the source: declarations are

@@ -16,7 +16,9 @@
 //! * the two sides of a comparison;
 //! * the string arguments of one call, those bound to `ANY_STRING` inputs
 //!   such as the two of `CONCAT` or `FIND`, which share one encoding;
-//! * a value stored into a string variable, element or field.
+//! * a value stored into a string variable, element or field, by an
+//!   assignment or by an output assignment of a function block call, which
+//!   stores the output read from the instance (`f(s => w)` as `w := f.s`).
 //!
 //! A literal or a function result stored into a named variable is the
 //! exception: the assignment and return-type checks already report that
@@ -254,6 +256,18 @@ impl Visitor<Infallible> for RuleStringEncodingCompat<'_> {
         node.recurse_visit(self)
     }
 
+    fn visit_output(&mut self, node: &Output) -> Result<Self::Value, Infallible> {
+        let scope = self.scope.current();
+        if let Some(value) = &node.value {
+            if let Some((target_enc, value_enc)) =
+                mismatched_assignment(&node.tgt, value, self.context, &scope)
+            {
+                self.report(value.span(), &target_enc, &value_enc);
+            }
+        }
+        node.recurse_visit(self)
+    }
+
     fn visit_compare_expr(&mut self, node: &CompareExpr) -> Result<Self::Value, Infallible> {
         let scope = self.scope.current();
         let left_enc = expr_encoding(&node.left, self.context, &scope);
@@ -278,6 +292,7 @@ mod tests {
     use crate::test_helpers::{codes, edition3_options, rule_codes};
     use ironplc_parser::options::CompilerOptions;
     use rstest::rstest;
+    use spec_test_macro::spec_test;
 
     /// No problems: the encodings agree, or another rule reports the mix.
     const OK: &[Problem] = &[];
@@ -434,6 +449,45 @@ END_PROGRAM
 ",
         [Problem::StringEncodingMismatch]
     );
+
+    /// A program whose block outputs a `STRING` and a `WSTRING`, and whose
+    /// body is `body`.
+    fn output_program(body: &str) -> String {
+        format!(
+            "
+FUNCTION_BLOCK FB
+  VAR_OUTPUT s : STRING; w : WSTRING; END_VAR
+END_FUNCTION_BLOCK
+PROGRAM main
+  VAR
+    f : FB;
+    s : STRING[10];
+    w : WSTRING[10];
+  END_VAR
+  {body}
+END_PROGRAM
+"
+        )
+    }
+
+    /// An output assignment stores the output read from the instance, and
+    /// this rule reports for it what it reports for the assignment of that
+    /// read: P4035 owns both while the rule cannot see the encoding of a
+    /// block's field.
+    #[spec_test(REQ_IC_analyzer_106)]
+    #[rstest]
+    #[case::string_output_to_wstring("f(s => w);", "f(); w := f.s;")]
+    #[case::wstring_output_to_string("f(w => s);", "f(); s := f.w;")]
+    #[case::same_encoding("f(s => s);", "f(); s := f.s;")]
+    fn apply_when_output_then_reports_as_assignment_of_output(
+        #[case] output: &str,
+        #[case] assignment: &str,
+    ) {
+        assert_eq!(
+            check(&output_program(assignment)),
+            check(&output_program(output))
+        );
+    }
 
     rule_ok!(
         apply_when_string_assigned_string_then_ok,

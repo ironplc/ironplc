@@ -24,6 +24,13 @@ TYPE
     Color : (Red, Green, Blue);
 END_TYPE
 
+FUNCTION_BLOCK Block
+VAR_OUTPUT
+    q : REAL;
+    done : BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+
 FUNCTION Pass : LREAL
 VAR_INPUT
     x : LREAL;
@@ -41,6 +48,7 @@ VAR
     c : Color;
     v : INT;
     r : REF_TO INT;
+    f : Block;
 END_VAR
 {body}
 END_PROGRAM"
@@ -71,6 +79,21 @@ fn write_to_string_with_types_when_implicit_conversion_then_comment_shows_from_a
     assert_eq!(
         statements("flag := big > total;"),
         vec!["flag := ( big (* LINT *) > total (* DINT -> LINT *) ) (* BOOL *) ;"]
+    );
+}
+
+#[spec_test(REQ_ETR_plc2plc_007)]
+fn write_to_string_with_types_when_output_assigned_then_comment_after_output() {
+    let (_, rendered) =
+        analyze_and_render_with_types(&program("f(q => out, NOT done => flag);"), &edition3());
+    let call = rendered
+        .lines()
+        .find(|line| line.contains("=>"))
+        .map(str::trim)
+        .unwrap_or_else(|| panic!("no output assignment in {rendered}"));
+    assert_eq!(
+        "f ( q (* REAL -> LREAL *) => out , NOT done (* BOOL *) => flag ) ;",
+        call
     );
 }
 

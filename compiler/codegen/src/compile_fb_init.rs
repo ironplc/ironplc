@@ -10,34 +10,15 @@
 //! copy of the store sequence makes the two observably the same thing at
 //! runtime.
 
-use std::collections::HashMap;
-
 use crate::initial_value::{InitialValue, ScalarValue};
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 
-use super::compile::{CompileContext, OpType, DEFAULT_OP_TYPE};
+use super::compile::{CompileContext, OpType};
 use super::compile_expr::compile_expr;
 use super::compile_initial_value::{emit_reference, emit_scalar, is_cleared};
 use super::compile_place::Place;
 use crate::emit::Emitter;
-
-/// Resolves the operand type of the field `field_name` of a function block
-/// instance: the operation type of the field's declared type, for a
-/// user-defined block and a standard one alike. A `CTU_LINT`'s `PV` is
-/// stored as the `LINT` the analyzer converted its input to.
-///
-/// A field of a type the backend does not operate on as one value (a
-/// string, an aggregate) has none, and takes the default slot type.
-pub(crate) fn resolve_fb_field_op_type(
-    field_op_types: &HashMap<String, OpType>,
-    field_name: &str,
-) -> OpType {
-    field_op_types
-        .get(field_name)
-        .copied()
-        .unwrap_or(DEFAULT_OP_TYPE)
-}
 
 /// Emits a store into `field` of the function block instance named
 /// `instance_name` of the value `push` leaves on the stack, through the
