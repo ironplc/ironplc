@@ -9,7 +9,7 @@
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
 
-use super::call::Arg;
+use super::call::{Arg, Param};
 use super::expr::Expr;
 use super::ids::{FieldIdx, LoopId, PouId, Stamp, TypeId, VarId};
 use super::invariant::broken;
@@ -157,9 +157,11 @@ impl ProgramBuilder {
         Expr::read(&self.types, place, span)
     }
 
-    /// Declares the POU `pou` a function that takes each of `parameters` by
-    /// value, in order, and returns the value of `result`. Each is a
-    /// variable `pou` owns, of a type with an operation type.
+    /// Declares the POU `pou` a function that takes each of `parameters`, in
+    /// order, and returns the value of `result`. Each is a variable `pou`
+    /// owns, of a type with an operation type: a parameter of a non-null
+    /// reference type is a `VAR_IN_OUT`, taken by reference, and any other is
+    /// taken by value.
     pub fn declare_function(
         &mut self,
         pou: PouId,
@@ -186,6 +188,14 @@ impl ProgramBuilder {
         }
         self.pous
             .declare_function(pou, FunctionSignature::new(parameters, result), span)
+    }
+
+    /// What each parameter of the function `pou` takes, in order; `None`
+    /// when `pou` is not a function of this program.
+    pub fn params(&self, pou: PouId) -> Option<Vec<Param>> {
+        self.pous
+            .function(pou)?
+            .params(&self.types, &self.variables)
     }
 
     /// The result of calling the function `pou` with `args`; see

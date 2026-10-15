@@ -124,7 +124,7 @@ impl Lowering<'_> {
         };
         let capacity = args.iter().fold(0u32, |sum, arg| match arg {
             Arg::Str(value) => sum.saturating_add(value.shape().capacity),
-            Arg::Value(_) => sum,
+            Arg::Value(_) | Arg::Ref(_) => sum,
         });
         StrExpr::call(intrinsic, args, capacity, expr.span()).map(Some)
     }

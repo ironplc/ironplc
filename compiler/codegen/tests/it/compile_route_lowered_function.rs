@@ -73,3 +73,80 @@ fn compile_when_user_function_call_lowered_then_same_code_as_ast(#[case] stateme
     );
     assert_same_code(&source);
 }
+
+/// Functions with a `VAR_IN_OUT`: one adding to the variable a call passes,
+/// one passing its own on, and one swapping two.
+const IN_OUT_FUNCTIONS: &str = "
+    FUNCTION INC : DINT VAR_IN_OUT v : DINT; END_VAR VAR_INPUT n : DINT; END_VAR
+      v := v + n;
+      INC := v;
+    END_FUNCTION
+    FUNCTION INC_TWICE : DINT VAR_IN_OUT w : DINT; END_VAR
+      INC_TWICE := INC(w, 1) + INC(w, 1);
+    END_FUNCTION
+    FUNCTION SWAP : BOOL VAR_IN_OUT a : DINT; b : DINT; END_VAR VAR t : DINT; END_VAR
+      t := a;
+      a := b;
+      b := t;
+      SWAP := TRUE;
+    END_FUNCTION";
+
+/// A function reads and writes the variable a call passes for its
+/// `VAR_IN_OUT`, and passes on one it was passed (REQ-LOW-lowering-033).
+#[test]
+fn run_when_in_out_passed_then_callee_writes_callers_variable() {
+    let snapshot = run_lowered(&format!(
+        "{IN_OUT_FUNCTIONS}
+         PROGRAM main
+           VAR x : DINT := 5; r1 : DINT; r2 : DINT; i : DINT := 1; j : DINT := 2;
+               ok : BOOL; END_VAR
+           r1 := INC(v := x, n := 2);
+           r2 := INC_TWICE(x);
+           ok := SWAP(i, j);
+         END_PROGRAM"
+    ));
+    assert_eq!(snapshot.read_as::<i32>("r1"), 7);
+    assert_eq!(snapshot.read_as::<i32>("r2"), 17);
+    assert_eq!(snapshot.read_as::<i32>("x"), 9);
+    assert_eq!(snapshot.read_as::<i32>("i"), 2);
+    assert_eq!(snapshot.read_as::<i32>("j"), 1);
+    assert_eq!(snapshot.read_as::<i32>("ok"), 1);
+}
+
+/// Bits written to a function's `VAR_IN_OUT` are written to the caller's
+/// variable through its reference, leaving the other bits as they were. The
+/// AST route reports the write as not implemented.
+#[test]
+fn run_when_in_out_has_bits_written_then_callers_variable() {
+    let snapshot = run_lowered(
+        "FUNCTION SET0 : BOOL VAR_IN_OUT w : WORD; END_VAR
+           w.0 := TRUE;
+           SET0 := w.1;
+         END_FUNCTION
+         PROGRAM main
+           VAR m : WORD := 16#0102; r : BOOL; END_VAR
+           r := SET0(m);
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<u64>("m"), 0x0103);
+    assert_eq!(snapshot.read_as::<u64>("r"), 1);
+}
+
+/// A call of a function with a `VAR_IN_OUT`, and the function's body,
+/// compile to the same instructions and constants by both routes: the call
+/// passes a variable's index, or the reference a `VAR_IN_OUT` of the caller
+/// holds, and the body loads and stores through it.
+#[rstest]
+#[case::variable("d := INC(v := d, n := e);")]
+#[case::passed_on("d := INC_TWICE(e);")]
+#[case::two_in_outs("x := SWAP(i, k);")]
+fn compile_when_in_out_call_lowered_then_same_code_as_ast(#[case] statement: &str) {
+    let source = format!(
+        "{IN_OUT_FUNCTIONS}
+         PROGRAM main
+           VAR d : DINT; e : DINT; i : DINT; k : DINT; x : BOOL; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    assert_same_code(&source);
+}

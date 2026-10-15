@@ -133,6 +133,7 @@ fn write_args(f: &mut fmt::Formatter<'_>, args: &[Arg]) -> fmt::Result {
     args.iter().try_for_each(|arg| match arg {
         Arg::Value(value) => write!(f, " {value}"),
         Arg::Str(value) => write!(f, " {value}"),
+        Arg::Ref(place) => write!(f, " (ref {place})"),
     })
 }
 

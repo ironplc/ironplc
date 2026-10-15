@@ -11,7 +11,8 @@ use ironplc_dsl::textual::{
     Case, CaseSelectionKind, Expr as AstExpr, For, If, Repeat, StmtKind as AstStmtKind, While,
 };
 use ironplc_ir::lowered::{
-    CaseArm, CaseLabel, Const, Expr, ExprKind, ForParts, LoopScope, ScalarType, Stmt, UnaryOp,
+    is_loop_control, CaseArm, CaseLabel, Const, Expr, ExprKind, ForParts, LoopScope, ScalarType,
+    Stmt, UnaryOp,
 };
 
 use crate::variables::BodyFrame;
@@ -164,6 +165,11 @@ impl Lowering<'_> {
         let Some(control) = self.named_place(frame, &stmt.control, &stmt.control.span())? else {
             return Ok(None);
         };
+        // What a `VAR_IN_OUT` refers to is not a control variable yet, on
+        // either route.
+        if !is_loop_control(&control) {
+            return Ok(None);
+        }
         let Some(ty) = self.program.types().operation_type(control.ty()) else {
             return Ok(None);
         };

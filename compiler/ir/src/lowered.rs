@@ -32,7 +32,7 @@ mod variables;
 pub use call::{Arg, Callee, Intrinsic, Param, Signature};
 pub use expr::{BinaryOp, CompareOp, Const, Expr, ExprKind, ShortCircuitOp, UnaryOp};
 pub use ids::{FieldIdx, LoopId, PouId, TypeId, VarId};
-pub use loops::{counts_down, ForParts, LoopScope};
+pub use loops::{counts_down, is_loop_control, ForParts, LoopScope};
 pub use place::{Place, Projection};
 pub use policy::{NonNumeric, ParseFailure, ParsePolicy};
 pub use program::ProgramBuilder;

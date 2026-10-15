@@ -4,8 +4,9 @@ use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
 
 use super::expr::Expr;
-use super::ids::{PouId, Stamp};
+use super::ids::{PouId, Stamp, TypeId};
 use super::invariant::broken;
+use super::place::Place;
 use super::policy::ParsePolicy;
 use super::scalar::{ScalarType, Signedness};
 use super::str_expr::StrExpr;
@@ -29,15 +30,19 @@ pub enum Arg {
     Value(Expr),
     /// A string, passed by value.
     Str(StrExpr),
+    /// A place, passed by reference: the callee reads and writes the
+    /// caller's place, as a `VAR_IN_OUT` does (REQ-LOW-lowering-075).
+    Ref(Place),
 }
 
 impl Arg {
-    /// What the argument passes: a value of its type, or a string of its
-    /// encoding.
+    /// What the argument passes: a value of its type, a string of its
+    /// encoding, or a place of its type.
     pub fn param(&self) -> Param {
         match self {
             Arg::Value(value) => Param::Value(value.ty()),
             Arg::Str(value) => Param::Str(value.shape().encoding),
+            Arg::Ref(place) => Param::Ref(place.ty()),
         }
     }
 
@@ -46,6 +51,7 @@ impl Arg {
         match self {
             Arg::Value(value) => value.program(),
             Arg::Str(value) => value.program(),
+            Arg::Ref(place) => Some(place.root().stamp()),
         }
     }
 }
@@ -74,14 +80,16 @@ pub(crate) fn program_of(
     Ok(program)
 }
 
-/// What one parameter of an intrinsic takes (REQ-LOW-lowering-072), or what
-/// the intrinsic yields.
+/// What one parameter of a callee takes (REQ-LOW-lowering-072), or what an
+/// intrinsic yields.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Param {
     /// A value at this operation type.
     Value(ScalarType),
     /// A string of this encoding, of any capacity.
     Str(Encoding),
+    /// A place of this type, passed by reference.
+    Ref(TypeId),
 }
 
 /// An operation the compiler implements itself, at one set of operand types:

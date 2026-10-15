@@ -8,6 +8,9 @@
 //!   `x` in the body of `Main` is `this^.x` (REQ-LOW-lowering-034);
 //! * a variable of a function, and a `VAR_TEMP` of any body, is a variable
 //!   of its own;
+//! * a `VAR_IN_OUT` of a function is a variable of its own of a non-null
+//!   reference type, and a use of it is what it refers to: `v` is `v^`
+//!   (REQ-LOW-lowering-033);
 //! * a global is a variable of its own, and a `VAR_EXTERNAL` names the
 //!   global it refers to rather than a variable of its own
 //!   (REQ-LOW-lowering-022).
@@ -164,16 +167,7 @@ impl<'a> Lowering<'a> {
         instance_type: TypeId,
         field_names: Vec<Id>,
     ) -> Result<Instance, Diagnostic> {
-        let this_type = self.program.push_type(
-            TypeEntry {
-                name: None,
-                kind: TypeKind::Reference {
-                    target: instance_type,
-                    nullability: Nullability::NonNull,
-                },
-            },
-            &name.span(),
-        )?;
+        let this_type = self.non_null_reference(instance_type, &name.span())?;
         let this = self.program.push_variable(
             DebugName::new("THIS", name.span()),
             Owner::Pou(pou),
@@ -202,17 +196,25 @@ impl<'a> Lowering<'a> {
             | Resolution::Undeclared => return Ok(None),
         };
         if decl.scope == ScopeKind::Global {
-            return self.declared_variable(decl, info, Owner::Global, span);
+            return self.declared_variable(decl, info, Owner::Global, false, span);
         }
         if decl.scope != frame.scope {
             // A field a function block inherits through `EXTENDS`.
             return Ok(None);
         }
         if info.variable_type == Some(VariableType::InOut) {
-            // A `VAR_IN_OUT` is a reference to the caller's variable, reached
-            // through `^`, which lowering does not express until calls bind
-            // one.
-            return Ok(None);
+            // A function's `VAR_IN_OUT` is a non-null reference to the
+            // caller's variable, reached through `^`
+            // (REQ-LOW-lowering-033). One of a program or function block is
+            // a field its call binds, which lowering does not express yet.
+            if frame.instance.is_some() {
+                return Ok(None);
+            }
+            let owner = Owner::Pou(frame.pou);
+            let Some(parameter) = self.declared_variable(decl, info, owner, true, span)? else {
+                return Ok(None);
+            };
+            return self.program.deref(parameter, span).map(Some);
         }
         let is_temp = info.variable_type == Some(VariableType::VarTemp);
         match &frame.instance {
@@ -231,17 +233,21 @@ impl<'a> Lowering<'a> {
                 let place = self.program.field(instance_place, field, span)?;
                 Ok(Some(place))
             }
-            Some(_) | None => self.declared_variable(decl, info, Owner::Pou(frame.pou), span),
+            Some(_) | None => {
+                self.declared_variable(decl, info, Owner::Pou(frame.pou), false, span)
+            }
         }
     }
 
     /// The whole of the variable `decl` declares, allocated the first time
-    /// it is reached; `None` when lowering cannot express its type yet.
+    /// it is reached: of its declared type, or, `by_reference`, of a non-null
+    /// reference to it. `None` when lowering cannot express its type yet.
     fn declared_variable(
         &mut self,
         decl: DeclRef,
         info: &SymbolInfo,
         owner: Owner,
+        by_reference: bool,
         span: &SourceSpan,
     ) -> Made<Place> {
         let id = match self.declared.get(&decl) {
@@ -250,9 +256,12 @@ impl<'a> Lowering<'a> {
                 let Some(type_id) = info.type_id else {
                     return Ok(None);
                 };
-                let Some(ty) = self.lowered_type(type_id)? else {
+                let Some(mut ty) = self.lowered_type(type_id)? else {
                     return Ok(None);
                 };
+                if by_reference {
+                    ty = self.non_null_reference(ty, &info.span)?;
+                }
                 let name = DebugName::new(decl.name.to_string(), info.span.clone());
                 let id = self.program.push_variable(name, owner, ty)?;
                 self.declared.insert(decl, id);
@@ -260,5 +269,23 @@ impl<'a> Lowering<'a> {
             }
         };
         self.program.var(id, span).map(Some)
+    }
+
+    /// A non-null reference to `target` (REQ-LOW-lowering-035).
+    fn non_null_reference(
+        &mut self,
+        target: TypeId,
+        span: &SourceSpan,
+    ) -> Result<TypeId, Diagnostic> {
+        self.program.push_type(
+            TypeEntry {
+                name: None,
+                kind: TypeKind::Reference {
+                    target,
+                    nullability: Nullability::NonNull,
+                },
+            },
+            span,
+        )
     }
 }
