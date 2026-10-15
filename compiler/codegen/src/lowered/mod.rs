@@ -29,6 +29,7 @@ use ironplc_ir::lowered::{
 use ironplc_lowering::{Lowering, StatementLowering};
 
 use crate::compile::{CompileContext, OpType, OpWidth, ParamPassing, Signedness, UserFunctionInfo};
+use crate::compile_subscript::subscript_check;
 use crate::compile_user_call::passes_by_reference;
 use crate::emit::Emitter;
 
@@ -222,6 +223,14 @@ fn expr_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, expr: &Expr) -> 
         ExprKind::Convert(value) | ExprKind::Unary { value, .. } => {
             expr_can_emit(lowering, ctx, value)
         }
+        // A checked conversion, which this backend traps on only for a
+        // subscript, as a subscript check does.
+        ExprKind::ConvertChecked(value) => {
+            op_type(value.ty())
+                .zip(op_type(expr.ty()))
+                .is_some_and(|(from, to)| subscript_check(from, to).is_some())
+                && expr_can_emit(lowering, ctx, value)
+        }
         ExprKind::Binary { lhs, rhs, .. }
         | ExprKind::Compare { lhs, rhs, .. }
         | ExprKind::ShortCircuit { lhs, rhs, .. } => {
@@ -360,6 +369,7 @@ pub(super) fn constant(expr: &Expr) -> Option<Const> {
         ExprKind::Const(value) => Some(*value),
         ExprKind::Read(_)
         | ExprKind::Convert(_)
+        | ExprKind::ConvertChecked(_)
         | ExprKind::Truncate { .. }
         | ExprKind::Unary { .. }
         | ExprKind::Binary { .. }
@@ -377,6 +387,7 @@ pub(super) fn read(expr: &Expr) -> Option<&LoweredPlace> {
         ExprKind::Read(place) => Some(place),
         ExprKind::Const(_)
         | ExprKind::Convert(_)
+        | ExprKind::ConvertChecked(_)
         | ExprKind::Truncate { .. }
         | ExprKind::Unary { .. }
         | ExprKind::Binary { .. }

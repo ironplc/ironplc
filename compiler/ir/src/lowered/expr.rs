@@ -141,6 +141,10 @@ pub enum ExprKind {
     Read(Place),
     /// The operand converted to the expression's type.
     Convert(Box<Expr>),
+    /// The integer operand converted to the integer type of the expression,
+    /// as `Convert` converts it, when that type holds the operand's value.
+    /// Any other value traps (REQ-LOW-codegen-164).
+    ConvertChecked(Box<Expr>),
     /// The low `bits` bits of the operand, sign-extended for a signed type and
     /// zero-extended for an unsigned one.
     Truncate {
@@ -290,6 +294,37 @@ impl Expr {
             ));
         }
         Ok(Self::new(ExprKind::Convert(Box::new(value)), ty, span))
+    }
+
+    /// The integer `value` converted to the integer type `ty`, trapping on a
+    /// value `ty` does not hold (REQ-LOW-lowering-163). `value`'s type must
+    /// hold values `ty` does not: a conversion that cannot trap is a
+    /// [`Expr::convert`].
+    pub fn convert_checked(
+        value: Expr,
+        ty: ScalarType,
+        span: SourceSpan,
+    ) -> Result<Self, Diagnostic> {
+        let may_not_fit = value
+            .ty
+            .integer_range()
+            .zip(ty.integer_range())
+            .is_some_and(|((low, high), (min, max))| low < min || max < high);
+        if !may_not_fit {
+            return Err(broken(
+                "Expr::convert_checked",
+                &span,
+                format!(
+                    "cannot convert {} to {ty} by a checked conversion",
+                    value.ty
+                ),
+            ));
+        }
+        Ok(Self::new(
+            ExprKind::ConvertChecked(Box::new(value)),
+            ty,
+            span,
+        ))
     }
 
     /// The low bits of the integer `value`, `width` of them, extended back to
@@ -541,6 +576,7 @@ impl Expr {
             ExprKind::Const(_) | ExprKind::Null => None,
             ExprKind::Read(place) | ExprKind::RefTo(place) => Some(place.stamp()),
             ExprKind::Convert(value)
+            | ExprKind::ConvertChecked(value)
             | ExprKind::Truncate { value, .. }
             | ExprKind::Unary { value, .. } => value.program,
             ExprKind::Binary { lhs, rhs, .. }

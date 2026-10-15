@@ -20,6 +20,7 @@ use crate::compile_expr::{
     emit_add, emit_div, emit_eq, emit_ge, emit_gt, emit_le, emit_lt, emit_mod, emit_mul, emit_ne,
     emit_neg, emit_null, emit_sub,
 };
+use crate::compile_subscript::emit_subscript_check;
 use crate::compile_user_call::emit_reference;
 use crate::emit::Emitter;
 
@@ -46,6 +47,11 @@ pub(super) fn emit_expr(
             emit_expr(emitter, ctx, lowering, value)?;
             let from = op_type(value.ty()).unwrap_or(op);
             convert(emitter, from, op)?;
+        }
+        ExprKind::ConvertChecked(value) => {
+            emit_expr(emitter, ctx, lowering, value)?;
+            let from = op_type(value.ty()).unwrap_or(op);
+            emit_subscript_check(emitter, from, op, expr.span())?;
         }
         ExprKind::Truncate { width, value } => {
             emit_expr(emitter, ctx, lowering, value)?;

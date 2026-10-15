@@ -292,6 +292,68 @@ fn compile_when_place_lowered_then_same_code_as_ast(#[case] statement: &str) {
     assert_same_code(&source);
 }
 
+/// A subscript whose type holds values a `DINT` does not selects the element
+/// it names when its value is a `DINT` (REQ-LOW-codegen-164).
+#[test]
+fn run_when_subscript_wider_than_dint_then_selects_its_element() {
+    let snapshot = run_lowered(
+        "PROGRAM main
+           VAR a : ARRAY[-3..5] OF DINT; ud : UDINT := 1; l : LINT := -3; ul : ULINT := 5;
+               dw : DWORD := 2; r1 : DINT; r2 : DINT; END_VAR
+           a[ud] := 10;
+           a[l] := a[ud] + 1;
+           a[ul] := 12;
+           a[dw] := a[l] + a[ul];
+           r1 := a[-3];
+           r2 := a[2];
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<i64>("r1"), 11);
+    assert_eq!(snapshot.read_as::<i64>("r2"), 23);
+}
+
+/// REQ-LOW-codegen-164: a subscript outside the range of `DINT` traps
+/// rather than selecting the element its low bits name, `a[-1]` for a
+/// `UDINT` of 4294967295.
+#[rstest]
+#[case::udint("i : UDINT := 4294967295;")]
+#[case::lint("i : LINT := -4294967297;")]
+#[case::ulint("i : ULINT := 18446744073709551615;")]
+fn run_when_subscript_outside_dint_then_traps(#[case] subscript: &str) {
+    let options = options();
+    let source = format!(
+        "PROGRAM main VAR a : ARRAY[-3..5] OF DINT; {subscript} END_VAR
+           a[i] := 1;
+         END_PROGRAM"
+    );
+    let (library, context) = parse(&source, &options);
+    let container = compile_by_route(&library, &context, &options, Route::RequireLowered)
+        .expect("every statement lowers");
+    let Err(fault) = run_one_scan(&container) else {
+        panic!("the scan does not trap");
+    };
+    assert_eq!(fault.trap.v_code(), "V4007");
+}
+
+/// A subscript whose conversion to `DINT` is checked compiles to the same
+/// instructions and constants by both routes: the subscript check of its
+/// type.
+#[rstest]
+#[case::udint("a[ud] := a[ud] + 1;")]
+#[case::lint("a[l] := a[l + 1];")]
+#[case::ulint_and_lword("a[ul] := a[lw];")]
+#[case::dword_in_two_dimensions("m[dw, 0] := 1;")]
+fn compile_when_checked_subscript_lowered_then_same_code_as_ast(#[case] statement: &str) {
+    let source = format!(
+        "PROGRAM main
+           VAR a : ARRAY[0..5] OF DINT; m : ARRAY[0..2, 0..3] OF DINT; ud : UDINT; l : LINT;
+               ul : ULINT; dw : DWORD; lw : LWORD; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    assert_same_code(&source);
+}
+
 /// What a reference refers to is read and written through it: a variable, a
 /// narrow variable, whose store wraps at its width, and an element of an
 /// array. The references are bound by their declarations, since `REF(x)` is

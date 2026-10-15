@@ -55,24 +55,28 @@ pub(crate) fn emit_subscript_check(
     to: OpType,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
-    let not_a_subscript = || {
+    let func_id = subscript_check(from, to).ok_or_else(|| {
         Diagnostic::internal_error_at(Label::span(
             span.clone(),
             format!("A checked conversion from {from:?} to {to:?}, not of a subscript"),
         ))
-    };
-    if to != (OpWidth::W32, Signedness::Signed) {
-        return Err(not_a_subscript());
-    }
-    let func_id = match from {
-        (OpWidth::W64, Signedness::Signed) => opcode::builtin::CHECK_SUBSCRIPT_I64,
-        (OpWidth::W64, Signedness::Unsigned) => opcode::builtin::CHECK_SUBSCRIPT_U64,
-        (OpWidth::W32, Signedness::Unsigned) => opcode::builtin::CHECK_SUBSCRIPT_U32,
-        (OpWidth::W32, Signedness::Signed) | (OpWidth::F32 | OpWidth::F64, _) => {
-            return Err(not_a_subscript())
-        }
-    };
+    })?;
     emitter.emit_builtin(func_id)
+}
+
+/// The builtin that checks an array subscript of the type `from` and leaves
+/// it a `DINT` (`to`); `None` when `from` holds no value outside the range of
+/// `DINT`, or `to` is not `DINT`.
+pub(crate) fn subscript_check(from: OpType, to: OpType) -> Option<u16> {
+    if to != (OpWidth::W32, Signedness::Signed) {
+        return None;
+    }
+    match from {
+        (OpWidth::W64, Signedness::Signed) => Some(opcode::builtin::CHECK_SUBSCRIPT_I64),
+        (OpWidth::W64, Signedness::Unsigned) => Some(opcode::builtin::CHECK_SUBSCRIPT_U64),
+        (OpWidth::W32, Signedness::Unsigned) => Some(opcode::builtin::CHECK_SUBSCRIPT_U32),
+        (OpWidth::W32, Signedness::Signed) | (OpWidth::F32 | OpWidth::F64, _) => None,
+    }
 }
 
 /// Extracts an i32 value from an expression if it is a literal integer.

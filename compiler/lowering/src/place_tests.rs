@@ -81,19 +81,27 @@ fn lower_statement_when_unsigned_subscript_fits_dint_then_converted_to_dint() {
     );
 }
 
-/// REQ-LOW-lowering-161: a subscript whose type holds values outside `DINT`,
-/// whose conversion the analyzer records as checked (REQ-LOW-analyzer-162),
-/// is not lowered yet.
+/// REQ-LOW-lowering-163: a subscript whose type holds values outside
+/// `DINT`, whose conversion the analyzer records as checked
+/// (REQ-LOW-analyzer-162), is converted to `DINT` by a `ConvertChecked`.
 #[test]
-fn lower_statement_when_subscript_exceeds_dint_then_unsupported() {
+fn lower_statement_when_subscript_exceeds_dint_then_convert_checked() {
     let outcome = lower(
         "PROGRAM main VAR a : ARRAY[1..5] OF DINT; ud : UDINT; l : LINT; END_VAR
             a[ud] := 1;
-            a[l] := 1;
+            a[l] := a[l + 1];
          END_PROGRAM",
         "main",
     );
-    assert_eq!(outcome.statements, ["unsupported", "unsupported"]);
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f0[(convert_checked i32s (read i32u v0^.f1))] (const i32s 1)",
+            "assign v0^.f0[(convert_checked i32s (read i64s v0^.f2))] \
+             (read i32s v0^.f0[(convert_checked i32s \
+             (add i64s (read i64s v0^.f2) (const i64s 1)))])",
+        ]
+    );
 }
 
 /// `REF(x)` is a reference to the place `x` names, and `NULL` the null

@@ -412,6 +412,7 @@ fn fits(types: &TypeTable, place: TypeId, width: NarrowWidth, value: &Expr) -> b
             .value_range(source.ty())
             .is_some_and(|(low, high)| min <= low && high <= max),
         ExprKind::Convert(_)
+        | ExprKind::ConvertChecked(_)
         | ExprKind::Unary { .. }
         | ExprKind::Binary { .. }
         | ExprKind::Compare { .. }

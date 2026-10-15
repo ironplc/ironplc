@@ -272,6 +272,35 @@ fn convert_when_same_type_then_internal_error() {
     assert_eq!(widened.ty(), ScalarType::I64(Signedness::Signed));
 }
 
+/// REQ-LOW-lowering-163: a checked conversion narrows an integer to a type
+/// that does not hold every value of the operand's, and prints as one.
+#[test]
+fn convert_checked_when_type_may_not_hold_value_then_checked_and_otherwise_internal_error() {
+    let lint = Expr::convert(int(1), ScalarType::I64(Signedness::Signed), span()).unwrap();
+    let checked = Expr::convert_checked(lint, DINT, span()).unwrap();
+    assert_eq!(checked.ty(), DINT);
+    assert_eq!(
+        checked.to_string(),
+        "(convert_checked i32s (convert i64s (const i32s 1)))"
+    );
+    let udint = Expr::convert(int(1), ScalarType::I32(Signedness::Unsigned), span()).unwrap();
+    assert!(Expr::convert_checked(udint, DINT, span()).is_ok());
+
+    assert!(is_internal_error_naming(
+        Expr::convert_checked(int(1), ScalarType::I64(Signedness::Signed), span()),
+        "Expr::convert_checked"
+    ));
+    assert!(is_internal_error_naming(
+        Expr::convert_checked(int(1), DINT, span()),
+        "Expr::convert_checked"
+    ));
+    let real = Expr::real(1.0, ScalarType::F64, span()).unwrap();
+    assert!(is_internal_error_naming(
+        Expr::convert_checked(real, DINT, span()),
+        "Expr::convert_checked"
+    ));
+}
+
 /// REQ-LOW-lowering-047: a read has the operation type of the place's type.
 #[test]
 fn read_when_place_is_int_then_operation_type_of_int() {
