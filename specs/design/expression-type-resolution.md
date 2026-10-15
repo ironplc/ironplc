@@ -50,6 +50,23 @@ A declaration carries the id of the type it declares in
 The pass runs before the `SymbolEnvironment` is built, so each variable's
 `SymbolInfo::type_id` holds the same id as its declaration.
 
+A field is declared as a variable is, so the pass also records, in the
+`TypeEnvironment`, the id of the declared type of each field of a structure
+or function block (`TypeEnvironment::field_type`), and the block each
+function block `EXTENDS`, whose fields an instance of the derived block has
+too. Only a function block the library declares is recorded as a base: a
+structure has no fields a block inherits, and the symbol environment and code
+generation do not inherit a standard block's, so typing them here would let a
+program pass analysis and fail later. A function block's type is entered
+before declared types are resolved, so that `f : FB` resolves to it while its
+variables' types do not yet; the pass lists the block's fields on its type
+once they do. A repeated block name keeps its first declaration (P4013), so a
+later declaration records nothing on its type.
+
+**REQ-ETR-analyzer-002** The type of a function block lists one field for each `VAR_INPUT`, `VAR_OUTPUT`, `VAR_IN_OUT` and `VAR` variable the block declares, in the order it declares them, whatever the variable's type: a structure, a string, an array and a reference are listed as an `INT` is, and a `VAR_TEMP` is not listed.
+
+**REQ-ETR-analyzer-003** A field a function block inherits through `EXTENDS` has the type the block that declares it gives it: `field_type` of the derived block and `count`, an `INT` the base block declares, is `INT`. A base that is not a function block the library declares gives no field: `EXTENDS Pair` on a structure `Pair` does not make `Pair`'s field `f` a field of the block, and `EXTENDS TON` does not make `Q` one.
+
 `expr_type` is left out of `Expr`'s equality: its ids are allocated per
 compilation, so an expected expression built by hand cannot know them.
 
@@ -73,6 +90,16 @@ on each expression from its operands' types:
 | Dereference | the referenced type (`TypeEnvironment::referenced_type`) |
 | `NULL` | `Null` |
 | Implicit conversion | the type it converts to, recorded when the node is inserted |
+
+A variable reference is typed by one walk, by type id
+(`variable_type::type_id`): the variable's declared type, then
+`TypeEnvironment::field_type` for a field, `element_type` for a subscript and
+`referenced_type` for a dereference. A rule that asks the type of a reference
+(`variable_type::of`) takes the representation of the type the same walk
+reaches. Neither reads a field's type from the fields a representation lists,
+so a field has the one type its declaration records.
+
+**REQ-ETR-analyzer-004** A rule asking the type of a field of a function block instance gets the type the field is declared with, whatever kind of type it is: on a block with a structure output `p`, a `STRING` output `s` and an `ARRAY[1..3] OF INT` variable `a`, `f.p` is the structure, `f.s` a `STRING`, `f.a` the array, `f.a[2]` an `INT`, and `f.p.x` the type of the structure's field `x`.
 
 After the semantic rules, `xform_insert_implicit_conversions` records the
 conversions the language makes without the program spelling them: an

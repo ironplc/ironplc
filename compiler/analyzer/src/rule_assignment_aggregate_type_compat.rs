@@ -130,7 +130,7 @@ impl RuleAggregateAssignment<'_> {
         let value_type = match &value.kind {
             ExprKind::Variable(Variable::Symbolic(
                 source @ (SymbolicVariableKind::Named(_) | SymbolicVariableKind::Structured(_)),
-            )) => variable_type::of(source, self.context, &self.scope.current()),
+            )) => variable_type::of(source, self.context, &self.scope.current()).cloned(),
             // The output a call stores has the type the analyzer recorded
             // for it: the type the output is declared with.
             ExprKind::CallOutput(_) => self.context.types().representation_of_expr(value).cloned(),

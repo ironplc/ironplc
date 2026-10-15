@@ -178,7 +178,7 @@ A standard function whose signature fixes its result type -- a type conversion (
 
 **REQ-IC-analyzer-036** A subrange target converts the value to the subrange's base type.
 
-A value assigned to a function block field is converted to the field's declared type, and one assigned through a dereference to the type the reference refers to. The type of a user-defined function block lists only the fields declared with a simple type, so the pass reads a field's declared type from the block's declaration: a subrange field is operated at its base type, like a subrange variable.
+A value assigned to a function block field is converted to the field's declared type, and one assigned through a dereference to the type the reference refers to. The pass reads a field's declared type from the type environment (`TypeEnvironment::field_type`), which records it for every field a block declares or inherits: a subrange field is operated at its base type, like a subrange variable.
 
 **REQ-IC-analyzer-038** A value assigned to a function block field is converted to the field's declared type: in `b.x := d` on an `LINT` field and a `DINT` the `DINT` is converted to `LINT`, and so is a `DINT` assigned to a field of a subrange of `LINT`.
 

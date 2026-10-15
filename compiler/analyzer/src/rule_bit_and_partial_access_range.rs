@@ -109,7 +109,7 @@ impl RuleBitAndPartialAccessRange<'_> {
     /// name), or the type has no bits to select, which this reports.
     fn selectable_bits(&mut self, variable: &SymbolicVariableKind) -> Option<u128> {
         let accessed_type = variable_type::of(variable, self.context, &self.scope.current())?;
-        let bits = bit_width(&accessed_type);
+        let bits = bit_width(accessed_type);
         if bits.is_none() {
             self.diagnostics.push(
                 Diagnostic::problem(

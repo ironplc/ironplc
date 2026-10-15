@@ -16,19 +16,18 @@ use std::collections::HashMap;
 
 use crate::builtin_function::{BuiltinFunction, InputsOfOneType, OneTypeResult};
 use crate::callee_resolution::FunctionBlocks;
-use crate::enumerated_value_type::{self, Context, EnumeratedValueType, OwnedContext};
+use crate::enumerated_value_type::{self, EnumeratedValueType};
 use crate::function_environment::FunctionEnvironment;
 use crate::intermediates::arithmetic_overload::{
     resolve_arithmetic_fold, resolve_arithmetic_overload, Overload,
 };
 use crate::intermediates::common_operand::common_operand_of;
-use crate::intermediates::inherited_fields::collect_inherited_fields;
 use crate::intermediates::numeric_operation::literal_default_type;
 use crate::intermediates::operator_function_form::{operator_function_form, FormOf};
-use crate::semantic_type::SemanticType;
 use crate::symbol_environment::{ScopeTracker, SymbolEnvironment};
 use crate::type_environment::TypeEnvironment;
 use crate::value_type::operand_type_name;
+use crate::variable_type;
 use ironplc_parser::options::CompilerOptions;
 
 /// Returns the library with every expression's type, and the unqualified
@@ -40,10 +39,7 @@ pub fn apply(
     function_environment: &FunctionEnvironment,
     options: &CompilerOptions,
 ) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>> {
-    let inherited_fields = collect_inherited_fields(&lib);
     let methods = collect_method_types(&lib);
-    let function_block_inputs =
-        enumerated_value_type::function_block_inputs(&lib, &inherited_fields);
     let named_enumerations = enumerated_value_type::named_enumerations(type_environment);
     let mut resolver = ExprTypeResolver {
         symbols,
@@ -53,7 +49,6 @@ pub fn apply(
         function_environment,
         options: *options,
         named_enumerations,
-        function_block_inputs,
         ambiguous: Vec::new(),
         calls: Vec::new(),
     };
@@ -163,26 +158,6 @@ fn prefer_concrete(left: &Option<ExprType>, right: &Option<ExprType>) -> Option<
     }
 }
 
-/// Maps an [`SemanticType`] to its canonical elementary [`TypeName`].
-///
-/// Delegates to [`TypeEnvironment::elementary_type_name_for`] for the simple
-/// cases. That helper does a strict equality lookup against the elementary
-/// types table, which only contains `String { max_len: None }`. A struct
-/// field declared `STRING[n]` resolves to `String { max_len: Some(n) }` and
-/// would otherwise return `None`, so we handle strings explicitly.
-fn semantic_type_to_elementary_type_name(
-    env: &TypeEnvironment,
-    it: &SemanticType,
-) -> Option<TypeName> {
-    if let Some(tn) = env.elementary_type_name_for(it.operated_as()) {
-        return Some(tn);
-    }
-    match it {
-        SemanticType::String { .. } => Some(TypeName::from("STRING")),
-        _ => None,
-    }
-}
-
 struct ExprTypeResolver<'a> {
     /// The variables in scope, by the scope the traversal is in.
     symbols: &'a SymbolEnvironment,
@@ -196,8 +171,6 @@ struct ExprTypeResolver<'a> {
     options: CompilerOptions,
     /// See [`enumerated_value_type::named_enumerations`].
     named_enumerations: Vec<TypeId>,
-    /// See [`enumerated_value_type::function_block_inputs`].
-    function_block_inputs: HashMap<TypeName, HashMap<Id, TypeId>>,
     /// The unqualified enumerated values left ambiguous so far. A value
     /// leaves the list when the place it is used in gives it a type.
     ambiguous: Vec<EnumeratedValue>,
@@ -416,7 +389,7 @@ impl ExprTypeResolver<'_> {
     fn unqualified_enumerated_value_type(
         &mut self,
         ev: &EnumeratedValue,
-        context: Option<Context>,
+        context: Option<TypeId>,
     ) -> Option<ExprType> {
         // The anonymous enumerations of the variables in scope, each
         // declared in place (`e : (A, B)`).
@@ -450,7 +423,7 @@ impl ExprTypeResolver<'_> {
 
     /// Gives `expr` the type `context` expects when `expr` is an
     /// unqualified enumerated value that `context`, an enumeration, declares.
-    fn type_from_context(&mut self, expr: &mut Expr, context: Option<Context>) {
+    fn type_from_context(&mut self, expr: &mut Expr, context: Option<TypeId>) {
         if context.is_none() {
             return;
         }
@@ -467,40 +440,21 @@ impl ExprTypeResolver<'_> {
         }
     }
 
-    /// What a value compared with or assigned to `variable` is expected to
-    /// be: its type, or for a structure field of enumeration type, which has
-    /// no type id here, its members.
-    fn variable_context(&self, variable: &Variable) -> Option<Context<'_>> {
-        if let Some(id) = self.variable_type_id(variable) {
-            return Some(Context::Type(id));
-        }
-        let Variable::Symbolic(SymbolicVariableKind::Structured(sv)) = variable else {
-            return None;
-        };
-        let parent = self.resolve_parent_struct_type(sv.record.as_ref())?;
-        let field = parent
-            .member_fields()?
-            .iter()
-            .find(|f| f.name == sv.field)?;
-        field.field_type.enumeration_members().map(Context::Members)
-    }
-
-    /// What a value compared with `expr` is expected to be.
-    fn expr_context(&self, expr: &Expr) -> Option<Context<'_>> {
+    /// The type a value compared with `expr` is expected to have.
+    fn expr_context(&self, expr: &Expr) -> Option<TypeId> {
         match (&expr.expr_type, &expr.kind) {
-            (Some(ExprType::Concrete(id)), _) => Some(Context::Type(*id)),
-            (None, ExprKind::Variable(variable)) => self.variable_context(variable),
+            (Some(ExprType::Concrete(id)), _) => Some(*id),
+            (None, ExprKind::Variable(variable)) => self.variable_type_id(variable),
             _ => None,
         }
     }
 
     /// The type a value the input `input` of the function block instance
-    /// `instance` receives is expected to have.
+    /// `instance` receives is expected to have: the declared type of the
+    /// field, own or inherited.
     fn function_block_input_type(&self, instance: &Id, input: &Id) -> Option<TypeId> {
-        let fb_type = self
-            .type_environment
-            .name_of(self.declared_type_id(instance)?)?;
-        self.function_block_inputs.get(fb_type)?.get(input).copied()
+        self.type_environment
+            .field_type(self.declared_type_id(instance)?, input)
     }
 
     /// The type `type_name` names: a literal of the category a generic name
@@ -607,10 +561,7 @@ impl ExprTypeResolver<'_> {
     /// The id of the type the variable `name` names from the current scope
     /// was declared with.
     fn declared_type_id(&self, name: &Id) -> Option<TypeId> {
-        self.symbols
-            .resolve_variable(name, &self.scope.current())
-            .declared()?
-            .type_id
+        variable_type::declared_type_id(name, self.symbols, &self.scope.current())
     }
 
     /// The id of the type of the value `var` names.
@@ -664,137 +615,15 @@ impl ExprTypeResolver<'_> {
         }
     }
 
-    /// Resolves the type of a member access expression (e.g., `setup.FLAG` or
-    /// `timer.Q`).
-    ///
-    /// Walks the member chain to find the root variable, looks up its type
-    /// definition, then finds the leaf member's type.
-    fn resolve_structured_variable_type(&self, sv: &StructuredVariable) -> Option<TypeName> {
-        self.type_environment
-            .elementary_type_name_for(self.field_type(sv)?.operated_as())
-    }
-
-    /// The type of the member `sv` accesses, as its representation: a field's
-    /// type is known by its representation only.
-    fn field_type<'b>(&'b self, sv: &StructuredVariable) -> Option<&'b SemanticType> {
-        let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
-        parent_type
-            .member_fields()?
-            .iter()
-            .find(|f| f.name == sv.field)
-            .map(|f| &f.field_type)
-    }
-
-    /// Resolves a `SymbolicVariableKind` to the `SemanticType` whose
-    /// members it exposes.
-    ///
-    /// For `Structured`, recursively resolves the parent and finds the nested
-    /// member type, and for an element of an array that is a field
-    /// (`h.items[1]`), the array's element type. For anything else -- a
-    /// variable, an element of an array variable, a dereferenced reference --
-    /// takes the type its id names, when that is a structure or function
-    /// block.
-    fn resolve_parent_struct_type<'b>(
-        &'b self,
-        kind: &SymbolicVariableKind,
-    ) -> Option<&'b SemanticType> {
-        let representation = match kind {
-            SymbolicVariableKind::Structured(sv) => self.field_type(sv)?,
-            SymbolicVariableKind::Array(array) => match array.subscripted_variable.as_ref() {
-                SymbolicVariableKind::Structured(sv) => self.field_element_type(sv)?,
-                _ => self.representation_of(kind)?,
-            },
-            _ => self.representation_of(kind)?,
-        };
-        representation.has_members().then_some(representation)
-    }
-
-    /// The type the id of the symbolic variable `kind` names, as its
-    /// representation.
-    fn representation_of(&self, kind: &SymbolicVariableKind) -> Option<&SemanticType> {
-        let id = self.symbolic_type_id(kind)?;
-        Some(&self.type_environment.get_by_id(id)?.representation)
-    }
-
-    /// The element type of the array the member access `sv` names
-    /// (`DATA.DIRS`), as its representation.
-    fn field_element_type<'b>(&'b self, sv: &StructuredVariable) -> Option<&'b SemanticType> {
-        match self.field_type(sv)? {
-            SemanticType::Array { element_type, .. } => Some(element_type),
-            _ => None,
-        }
-    }
-
-    /// Resolves the element type of an array that lives inside a struct field.
-    ///
-    /// For an expression like `DATA.DIRS[i, j]`, `sv` is the `DATA.DIRS`
-    /// struct field access. Walks the struct chain to find `DIRS`'s
-    /// `SemanticType::Array`, then returns the element type's
-    /// canonical `TypeName`.
-    fn resolve_struct_field_array_element_type(&self, sv: &StructuredVariable) -> Option<TypeName> {
-        semantic_type_to_elementary_type_name(self.type_environment, self.field_element_type(sv)?)
-    }
-
-    /// The id of the declared type of the member `sv` accesses: the field of
-    /// the structure or function block type its record has. `None` when the
-    /// record's type is not known or records no type for the field.
-    fn field_type_id(&self, sv: &StructuredVariable) -> Option<TypeId> {
-        let record = self.symbolic_type_id(&sv.record)?;
-        self.type_environment.field_type(record, &sv.field)
-    }
-
-    /// The id of the type of the value the symbolic variable `kind` names:
-    /// the declared type of a variable, the element type of a subscript,
-    /// the referenced type of a dereference and the field type of a member
-    /// access.
+    /// The id of the type of the value the symbolic variable `kind` names
+    /// (see [`variable_type::type_id`]).
     fn symbolic_type_id(&self, kind: &SymbolicVariableKind) -> Option<TypeId> {
-        match kind {
-            SymbolicVariableKind::Named(nv) => self.declared_type_id(&nv.name),
-            SymbolicVariableKind::Array(arr_var) => {
-                let element = self
-                    .symbolic_type_id(&arr_var.subscripted_variable)
-                    .and_then(|array| self.type_environment.element_type(array));
-                if element.is_some() {
-                    return element;
-                }
-                // Array subscript on a struct field (e.g. `DATA.DIRS[i, j]`)
-                // whose declared type was not recorded: the element type is
-                // resolved through the struct chain's representations.
-                let SymbolicVariableKind::Structured(sv) = arr_var.subscripted_variable.as_ref()
-                else {
-                    return None;
-                };
-                self.type_environment
-                    .id_of(&self.resolve_struct_field_array_element_type(sv)?)
-            }
-            SymbolicVariableKind::Structured(sv) => self.field_type_id(sv).or_else(|| {
-                self.type_environment
-                    .id_of(&self.resolve_structured_variable_type(sv)?)
-            }),
-            SymbolicVariableKind::BitAccess(_) => {
-                self.type_environment.id_of(&TypeName::from("BOOL"))
-            }
-            SymbolicVariableKind::PartialAccess(pa) => {
-                let type_name = match pa.size {
-                    PartialAccessSize::Byte => "BYTE",
-                    PartialAccessSize::Word => "WORD",
-                    PartialAccessSize::DWord => "DWORD",
-                    PartialAccessSize::LWord => "LWORD",
-                };
-                self.type_environment.id_of(&TypeName::from(type_name))
-            }
-            SymbolicVariableKind::Deref(deref_var) => {
-                let reference = self.symbolic_type_id(&deref_var.variable)?;
-                self.type_environment.referenced_type(reference)
-            }
-            SymbolicVariableKind::SelfRef(_) => {
-                // THIS^/SUPER^ has no resolvable type until function-block
-                // member resolution exists. Unreachable in practice:
-                // `fold_self_ref_variable` rejects the construct before any
-                // type resolution runs. See issue #1406.
-                None
-            }
-        }
+        variable_type::type_id(
+            kind,
+            self.symbols,
+            self.type_environment,
+            &self.scope.current(),
+        )
     }
 }
 
@@ -840,10 +669,10 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
                     | CompareOp::AndThen
                     | CompareOp::OrElse
             ) {
-                let left = self.expr_context(&compare.left).map(OwnedContext::from);
-                let right = self.expr_context(&compare.right).map(OwnedContext::from);
-                self.type_from_context(&mut compare.right, left.as_ref().map(OwnedContext::get));
-                self.type_from_context(&mut compare.left, right.as_ref().map(OwnedContext::get));
+                let left = self.expr_context(&compare.left);
+                let right = self.expr_context(&compare.right);
+                self.type_from_context(&mut compare.right, left);
+                self.type_from_context(&mut compare.left, right);
             }
         }
 
@@ -857,8 +686,8 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
     fn fold_assignment(&mut self, node: Assignment) -> Result<Assignment, Diagnostic> {
         let mut node = node.recurse_fold(self)?;
         // An unqualified enumerated value assigned has the target's type.
-        let target = self.variable_context(&node.target).map(OwnedContext::from);
-        self.type_from_context(&mut node.value, target.as_ref().map(OwnedContext::get));
+        let target = self.variable_type_id(&node.target);
+        self.type_from_context(&mut node.value, target);
         Ok(node)
     }
 
@@ -887,9 +716,7 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
         // An unqualified enumerated value passed to an input has its type.
         for param in &mut node.params {
             if let ParamAssignmentKind::NamedInput(input) = param {
-                let input_type = self
-                    .function_block_input_type(&node.var_name, &input.name)
-                    .map(Context::Type);
+                let input_type = self.function_block_input_type(&node.var_name, &input.name);
                 self.type_from_context(&mut input.expr, input_type);
             }
         }

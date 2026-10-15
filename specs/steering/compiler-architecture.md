@@ -124,9 +124,14 @@ its type", and every rule reads that answer:
   function block, never to ask which variable a name is.
 - `ScopeTracker` names the scope a visitor is in. Feed it from `enter_scope`
   and `exit_scope`, and pass `current()` to `resolve_variable`.
-- `variable_type::declared` gives a name's declared `SemanticType`, and
-  `variable_type::of` walks a reference such as `s.field[i]` to the element it
-  names. `TypeEnvironment::get_by_id` answers for any `type_id`.
+- `variable_type::type_id` walks a reference such as `s.field[i]` to the type
+  of the element it names, by type id: `TypeEnvironment::field_type` for a
+  field (own or inherited through `EXTENDS`), `element_type` for a subscript
+  and `referenced_type` for a dereference. `variable_type::of` gives the
+  representation of that type, and `variable_type::declared` a name's declared
+  `SemanticType`. `TypeEnvironment::get_by_id` answers for any `type_id`.
+  To type a reference, never take a field's type from the fields a
+  representation lists: a field's type is the one its declaration records.
 
 A rule that copies declarations into a `HashMap` or `ScopedTable` of its own as
 it walks gets the scoping wrong in ways the environment already gets right: it

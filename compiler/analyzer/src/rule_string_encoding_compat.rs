@@ -138,7 +138,7 @@ fn variable_encoding(
     ) {
         return None;
     }
-    encoding_of(&variable_type::of(kind, context, scope)?)
+    encoding_of(variable_type::of(kind, context, scope)?)
 }
 
 /// The encoding of the string value `expr` produces, or `None` when it is

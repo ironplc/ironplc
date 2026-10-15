@@ -1,17 +1,17 @@
-//! The declared types of function block fields and method parameters,
-//! collected from the library before the pass folds it.
+//! The declared types of method parameters, collected from the library
+//! before the pass folds it.
 //!
-//! A value stored in a field of a function block, or passed to a parameter of
-//! a method, is converted to the type the field or parameter is declared
-//! with, and an untyped literal takes that type. The analyzer cannot read it
-//! from the type of the block: that type lists only the fields declared with
-//! a simple type, and a method's parameters not at all. So the declarations
-//! are read here, once, before the library is folded.
+//! A value passed to a parameter of a method is converted to the type the
+//! parameter is declared with, and an untyped literal takes that type. The
+//! analyzer cannot read it from the type of the block, which does not list a
+//! block's methods, so the declarations are read here, once, before the
+//! library is folded. A field of a block has its declared type in the type
+//! environment (`TypeEnvironment::field_type`).
 //!
 //! A declared type is the elementary type the value is operated as: its own,
-//! or its base type for a subrange. A field or parameter that is not a single
-//! numeric value (an enumeration, a string, an aggregate, a reference) has
-//! none, and nothing is converted to it.
+//! or its base type for a subrange. A parameter that is not a single numeric
+//! value (an enumeration, a string, an aggregate, a reference) has none, and
+//! nothing is converted to it.
 
 use std::collections::HashMap;
 
@@ -28,11 +28,9 @@ use crate::type_environment::TypeEnvironment;
 pub(super) type Parameters = Vec<(Id, Option<TypeId>)>;
 
 /// What the declarations of the user-defined function blocks in a library
-/// say about the types their fields and method parameters are declared with.
+/// say about the types their method parameters are declared with.
 #[derive(Default)]
 pub(super) struct Declarations {
-    /// The declared type of each field, by block and field name.
-    fields: HashMap<(Id, Id), Option<TypeId>>,
     /// The input parameters of each method, by the block that declares it
     /// and the method's name.
     methods: HashMap<(Id, Id), Parameters>,
@@ -53,14 +51,6 @@ impl Declarations {
                 continue;
             };
             let name = &block.name.name;
-            for decl in &block.variables {
-                if let Some(field) = decl.identifier.symbolic_id() {
-                    let at = declared_type(types, decl);
-                    declarations
-                        .fields
-                        .insert((name.clone(), field.clone()), at);
-                }
-            }
             for method in &block.methods {
                 let parameters = method
                     .variables
@@ -77,13 +67,6 @@ impl Declarations {
             }
         }
         declarations
-    }
-
-    /// The declared type of the field `field` of the user-defined function
-    /// block `block`: `None` when `block` is not one or has no such field,
-    /// `Some(None)` when the field is not a single numeric value.
-    pub(super) fn field(&self, block: &Id, field: &Id) -> Option<Option<TypeId>> {
-        self.fields.get(&(block.clone(), field.clone())).copied()
     }
 
     /// The input parameters of the method `method` called on an instance

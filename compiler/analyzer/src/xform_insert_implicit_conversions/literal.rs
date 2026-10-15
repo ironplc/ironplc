@@ -402,25 +402,21 @@ impl ImplicitConversions<'_> {
     }
 
     /// The declared type of the field `field` of the function block
-    /// instance `instance`, as the elementary type it is operated as. `None`
-    /// when `instance` is not a function block instance, or the field is not
-    /// a single numeric value.
+    /// instance `instance`, own or inherited, as the elementary type it is
+    /// operated as. `None` when `instance` is not a function block instance,
+    /// or the field is not a single numeric value.
     pub(super) fn function_block_field_at(&self, instance: &Id, field: &Id) -> Option<TypeId> {
-        let representation =
-            variable_type::declared(instance, self.context, &self.scope.current())?;
-        let SemanticType::FunctionBlock { name, fields } = representation else {
+        let types = self.context.types();
+        let block = variable_type::declared_type_id(
+            instance,
+            self.context.symbols(),
+            &self.scope.current(),
+        )?;
+        if !types.get_by_id(block)?.representation.is_function_block() {
             return None;
-        };
-        // The type of a user-defined block lists only the fields declared
-        // with a simple type, so its fields come from its declaration. A
-        // standard block's type lists every field.
-        match self.declarations.field(&Id::from(name.as_str()), field) {
-            Some(at) => at,
-            None => fields
-                .iter()
-                .find(|candidate| candidate.name == *field)
-                .and_then(|candidate| elementary_of(self.context.types(), &candidate.field_type)),
         }
+        let field_type = types.field_type(block, field)?;
+        elementary_of(types, &types.get_by_id(field_type)?.representation)
     }
 
     /// Types the literals of the bounds and step of `node` by its control

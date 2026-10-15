@@ -96,18 +96,18 @@ impl RuleTaskConfiguration<'_> {
             return;
         }
 
-        let declared_type = variable_type::declared(name, self.context, &ScopeKind::Global);
+        let types = self.context.types();
+        let declared_type =
+            variable_type::declared_type_id(name, self.context.symbols(), &ScopeKind::Global);
         let trigger_type = match &reference.structure_element_name {
-            None => declared_type.cloned(),
-            Some(field) => {
-                declared_type.and_then(|parent| variable_type::struct_field_type(parent, field))
-            }
+            None => declared_type,
+            Some(field) => declared_type.and_then(|parent| types.field_type(parent, field)),
         };
         // A global whose type did not resolve is reported where it is
         // declared; repeating that here would add nothing.
         if trigger_type
-            .as_ref()
-            .is_some_and(|t| *t != SemanticType::Bool)
+            .and_then(|id| types.get_by_id(id))
+            .is_some_and(|t| t.representation != SemanticType::Bool)
         {
             self.diagnostics.push(
                 Diagnostic::problem(
