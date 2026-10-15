@@ -7,7 +7,7 @@
 use ironplc_analyzer::semantic_type::{ByteSized, FunctionBlockVarType, SemanticType};
 use ironplc_container::{CharWidth, DEFAULT_STRING_MAX_LENGTH};
 use ironplc_dsl::common::TypeName;
-use ironplc_dsl::core::{Located, SourceSpan};
+use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::type_id::TypeId as AnalyzerTypeId;
 use ironplc_ir::execution::DebugName;
@@ -16,7 +16,7 @@ use ironplc_ir::lowered::{
     TypeEntry, TypeId, TypeKind, WideWidth,
 };
 
-use crate::Lowering;
+use crate::{Body, Lowering};
 
 /// A lowered type, `None` when lowering cannot express it yet, or a P9998
 /// when the analyzer's type breaks an invariant of the type table.
@@ -154,13 +154,22 @@ impl Lowering<'_> {
                 TypeKind::Structure { fields }
             }
             SemanticType::FunctionBlock { name, fields } => {
-                let Some(fields) = self.fields(
-                    id,
-                    fields
-                        .iter()
-                        .map(|f| (&f.name, f.var_type.as_ref().map(section))),
-                )?
-                else {
+                let fields = match self.body_named(&Id::from(name)) {
+                    // A block the library declares has a field for each
+                    // variable it declares, as a program does. The analyzer's
+                    // fields leave out each one whose type it had not
+                    // resolved when it recorded them, such as an array.
+                    Some(Body::FunctionBlock(block)) => self.instance_fields(&block.variables)?,
+                    // A standard function block, every field of which is
+                    // elementary.
+                    Some(Body::Program(_) | Body::Function(_)) | None => self.fields(
+                        id,
+                        fields
+                            .iter()
+                            .map(|f| (&f.name, f.var_type.as_ref().map(section))),
+                    )?,
+                };
+                let Some(fields) = fields else {
                     return Ok(None);
                 };
                 TypeKind::FunctionBlock {

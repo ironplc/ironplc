@@ -193,7 +193,7 @@ fn lower_statement_when_var_temp_then_own_variable() {
 }
 
 /// REQ-LOW-lowering-034: a function block's variable is a field of its
-/// instance, in the order the analyzer gives the block's fields.
+/// instance, in the order the block declares its variables.
 #[test]
 fn lower_statement_when_function_block_variable_then_field_of_instance() {
     let outcome = lower(
@@ -209,6 +209,49 @@ fn lower_statement_when_function_block_variable_then_field_of_instance() {
         outcome.statements,
         ["assign v0^.f1 (add i32s (read i32s v0^.f1) (read i32s v0^.f0))"]
     );
+}
+
+/// REQ-LOW-lowering-170: a function block's array, reference, string and
+/// inline enumeration variables are fields of its instance like any other,
+/// each at its place in the order the block declares them.
+#[test]
+fn lower_statement_when_function_block_variable_of_any_type_then_field_in_declared_order() {
+    let outcome = lower(
+        "FUNCTION_BLOCK holder
+            VAR_INPUT src : REF_TO ARRAY[0..4] OF INT; END_VAR
+            VAR a : ARRAY[0..4] OF INT; own : REF_TO DINT; n : DINT; s : STRING[8];
+                e : (P, Q); END_VAR
+            own := REF(n);
+            own^ := own^ + 1;
+            src^[1] := a[2];
+            CASE e OF Q: n := 2; END_CASE;
+         END_FUNCTION_BLOCK
+         PROGRAM main VAR h : holder; END_VAR h(); END_PROGRAM",
+        "holder",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f2 (ref_to v0^.f3)",
+            "assign v0^.f2^ (add i32s (read i32s v0^.f2^) (const i32s 1))",
+            "assign v0^.f0^[(const i32s 1)] (read i32s v0^.f1[(const i32s 2)])",
+            "case (read i32s v0^.f5)\nof 1\n  assign v0^.f3 (const i32s 2)\nend",
+        ]
+    );
+}
+
+/// REQ-LOW-lowering-170: a function block has the same type whether its body
+/// is lowered or an instance of it is a field: an output declared after an
+/// array is the second field of the instance a program holds.
+#[test]
+fn lower_statement_when_field_of_block_instance_after_array_then_its_declared_position() {
+    let outcome = lower(
+        "FUNCTION_BLOCK block VAR a : ARRAY[1..2] OF DINT; END_VAR VAR_OUTPUT o : DINT; END_VAR
+         END_FUNCTION_BLOCK
+         PROGRAM main VAR b : block; out : DINT; END_VAR out := b.o; END_PROGRAM",
+        "main",
+    );
+    assert_eq!(outcome.statements, ["assign v0^.f1 (read i32s v0^.f0.f1)"]);
 }
 
 /// REQ-LOW-lowering-020: two variables of one name in different scopes are
