@@ -901,6 +901,28 @@ fn apply_when_subscript_then_takes_default_type() {
     assert_eq!(literal_types(source), vec!["DINT"]);
 }
 
+/// The first literal is the function's `F := 0`, and the method's `M := 0`
+/// after it; the rest are the subscripts of the outputs' targets.
+#[spec_test(REQ_IC_analyzer_069)]
+#[test]
+fn apply_when_output_target_subscript_literal_then_takes_dint() {
+    let source = "FUNCTION F : DINT VAR_OUTPUT q : DINT; END_VAR F := 0; END_FUNCTION
+        FUNCTION_BLOCK Acc
+        VAR_OUTPUT q : DINT; END_VAR
+        METHOD M : DINT VAR_OUTPUT mq : DINT; END_VAR M := 0; END_METHOD
+        END_FUNCTION_BLOCK
+        PROGRAM main VAR a : Acc; r : DINT; arr : ARRAY[1..3] OF LINT; END_VAR
+        a(q => arr[1]); r := F(q => arr[2]); a.M(mq => arr[3]); END_PROGRAM";
+    let options = CompilerOptions {
+        allow_fb_inheritance: true,
+        ..CompilerOptions::default()
+    };
+    assert_eq!(
+        literal_types_with(source, &options),
+        vec!["DINT", "DINT", "DINT", "DINT", "DINT"]
+    );
+}
+
 #[spec_test(REQ_IC_analyzer_065)]
 #[test]
 fn apply_when_case_selector_then_literals_take_its_type() {

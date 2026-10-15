@@ -304,6 +304,8 @@ Every construct a literal can sit in either passes the type of its context on, c
 
 **REQ-IC-analyzer-064** A literal subscript of an array access whose subscripts are not all literals takes `DINT`.
 
+**REQ-IC-analyzer-069** A literal subscript of the target of an output assignment takes `DINT`, as one of an assignment's target does: the `2` of `f(q => a[2])`, `r := F(q => a[2])` and `k.M(mq => a[2])`.
+
 **REQ-IC-analyzer-065** The literals of a `CASE` selector take the selector's type, and those of an `IF`, `WHILE` or `REPEAT` condition the type the condition is tested at.
 
 **REQ-IC-analyzer-067** An operation on one value of a numeric type passes its own type, not its context's, to its literal inputs: the count `1` of `lw := SHL(w, 1)` on an `LWORD` and a `DWORD` is a `DINT`, since the `DWORD` is shifted at 32 bits.
