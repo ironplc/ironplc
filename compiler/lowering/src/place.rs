@@ -78,8 +78,8 @@ impl Lowering<'_> {
     /// numeric subscript of another type the analyzer did not convert is a
     /// defect, which building the `Index` reports (REQ-LOW-lowering-094).
     fn subscript(&mut self, frame: &BodyFrame, subscript: &AstExpr) -> Made<Expr> {
-        if let AstExprKind::ImplicitConversion(converted) = &subscript.kind {
-            if !self.fits_dint(converted)? {
+        if let AstExprKind::ImplicitConversion(conversion) = &subscript.kind {
+            if !self.fits_dint(&conversion.value)? {
                 return Ok(None);
             }
         }

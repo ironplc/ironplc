@@ -18,12 +18,16 @@ deciding them.
 // compiler/dsl/src/textual.rs
 pub enum ExprKind {
     // ...
-    ImplicitConversion(Box<Expr>),
+    ImplicitConversion(Box<ImplicitConversion>),
+}
+
+pub struct ImplicitConversion {
+    pub value: Expr,
 }
 ```
 
-The inner expression keeps its own type. The type of the enclosing `Expr`
-(`expr_type`) is the type the value is converted to. The parser never produces
+The converted expression, `value`, keeps its own type. The type of the
+enclosing `Expr` (`expr_type`) is the type the value is converted to. The parser never produces
 the node; it is written (`Display`, plc2plc) as the expression it converts.
 
 ## The pass

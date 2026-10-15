@@ -439,6 +439,15 @@ pub struct UnaryExpr {
     pub term: Expr,
 }
 
+/// A conversion the language makes without the program spelling it: the
+/// value of `value`, which keeps its own type, converted to the type of the
+/// enclosing [`Expr`].
+#[derive(Debug, Clone, PartialEq, Recurse)]
+pub struct ImplicitConversion {
+    /// The expression converted.
+    pub value: Expr,
+}
+
 #[derive(Debug, Clone, PartialEq, Recurse)]
 pub struct Function {
     pub name: Id,
@@ -598,7 +607,7 @@ impl Expr {
     pub fn implicit_conversion(inner: Expr, target: TypeId) -> Expr {
         let span = inner.span.clone();
         Expr {
-            kind: ExprKind::ImplicitConversion(Box::new(inner)),
+            kind: ExprKind::ImplicitConversion(Box::new(ImplicitConversion { value: inner })),
             expr_type: Some(ExprType::Concrete(target)),
             span,
         }
@@ -634,7 +643,7 @@ impl Located for ExprKind {
             ExprKind::LateBound(late) => late.value.span(),
             ExprKind::Ref(var) => var.span(),
             ExprKind::Deref(expr) => expr.span(),
-            ExprKind::ImplicitConversion(inner) => inner.span(),
+            ExprKind::ImplicitConversion(conversion) => conversion.value.span(),
             ExprKind::Null(span) => span.clone(),
         }
     }
@@ -655,14 +664,12 @@ pub enum ExprKind {
     LateBound(LateBound),
     Ref(Box<Variable>),
     Deref(Box<Expr>),
-    /// A conversion the language makes without the program spelling it: the
-    /// value of the inner expression, which keeps its own type, converted to
-    /// the type of the enclosing [`Expr`].
+    /// A conversion the language makes without the program spelling it.
     ///
     /// The parser never produces one: the analyzer inserts it after the
     /// semantic rules, to record for the backends and the language server a
     /// conversion the language makes. See ADR-0056.
-    ImplicitConversion(Box<Expr>),
+    ImplicitConversion(Box<ImplicitConversion>),
     Null(SourceSpan),
 }
 
@@ -737,7 +744,7 @@ impl fmt::Display for ExprKind {
             ExprKind::Ref(var) => write!(f, "REF({var})"),
             ExprKind::Deref(expr) => write!(f, "{expr}^"),
             // Not source syntax: it is written as the expression it converts.
-            ExprKind::ImplicitConversion(inner) => write!(f, "{inner}"),
+            ExprKind::ImplicitConversion(conversion) => write!(f, "{}", conversion.value),
             ExprKind::Null(_) => write!(f, "NULL"),
         }
     }

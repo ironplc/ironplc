@@ -97,7 +97,8 @@ impl ImplicitConversions<'_> {
             }
             ExprKind::MethodCall(call) => self.type_method_call_literals(call),
             ExprKind::Variable(variable) => self.type_variable_literals(variable),
-            ExprKind::Deref(inner) | ExprKind::ImplicitConversion(inner) => self.type_own(inner),
+            ExprKind::Deref(inner) => self.type_own(inner),
+            ExprKind::ImplicitConversion(conversion) => self.type_own(&mut conversion.value),
         }
     }
 
