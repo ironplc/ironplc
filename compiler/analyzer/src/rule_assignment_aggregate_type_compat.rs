@@ -25,6 +25,12 @@
 //!   destination. Reporting here as well would produce two diagnostics for
 //!   one mistake.
 //!
+//! The source may be a variable, a field of a structure or of a function
+//! block instance (`r := f.p`), or the output an output assignment stores
+//! (`f(p => q)`), which is checked as `q := f.p` after the call is
+//! (`specs/design/call-binding.md`). A negated output is not an aggregate,
+//! and `rule_function_call_type_check` reports it (P4083).
+//!
 //! Everything else reaching an aggregate target is rejected, including a
 //! source whose type does not resolve at all. Codegen relies on that: having
 //! reached `COPY_REGION` emission with an aggregate destination, an
@@ -122,9 +128,12 @@ impl RuleAggregateAssignment<'_> {
         }
 
         let value_type = match &value.kind {
-            ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(source))) => {
-                self.declared_type(&source.name)
-            }
+            ExprKind::Variable(Variable::Symbolic(
+                source @ (SymbolicVariableKind::Named(_) | SymbolicVariableKind::Structured(_)),
+            )) => variable_type::of(source, self.context, &self.scope.current()),
+            // The output a call stores has the type the analyzer recorded
+            // for it: the type the output is declared with.
+            ExprKind::CallOutput(_) => self.context.types().representation_of_expr(value).cloned(),
             _ => None,
         };
         // An unresolvable source is a mismatch too: nothing other than a
@@ -161,12 +170,63 @@ impl Visitor<Infallible> for RuleAggregateAssignment<'_> {
         self.check_aggregate_assignment(&node.target, &node.value);
         node.recurse_visit(self)
     }
+
+    /// An output assignment stores the value the binding pass recorded for
+    /// it, the output the call leaves, so it is checked as `q := f.p` after
+    /// the call is.
+    fn visit_output(&mut self, node: &Output) -> Result<(), Infallible> {
+        if let (Some(value), false) = (&node.value, node.not) {
+            self.check_aggregate_assignment(&node.tgt, value);
+        }
+        node.recurse_visit(self)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::test_helpers::fb_inheritance_options;
     use ironplc_problems::Problem;
+    use spec_test_macro::spec_test;
+
+    /// A function block with a structure output `p`, called as `f`, and two
+    /// structures: `r` and `q` of the output's type, and `w` of another.
+    fn block_with_structure_output(body: &str) -> String {
+        format!(
+            "
+TYPE
+  P : STRUCT
+    a : DINT;
+    b : REAL;
+  END_STRUCT;
+  Wide : STRUCT
+    a : DINT;
+    b : REAL;
+    c : DINT;
+  END_STRUCT;
+END_TYPE
+
+FUNCTION_BLOCK FB
+VAR_INPUT
+  x : DINT;
+END_VAR
+VAR_OUTPUT
+  p : P;
+END_VAR
+  p.a := x;
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+  f : FB;
+  r : P;
+  q : P;
+  w : Wide;
+END_VAR
+  {body}
+END_PROGRAM
+"
+        )
+    }
 
     fn program_with(declarations: &str, body: &str) -> String {
         format!("PROGRAM main\nVAR\n{declarations}END_VAR\n{body}END_PROGRAM\n")
@@ -546,5 +606,40 @@ END_FUNCTION_BLOCK
 ",
         [Problem::AggregateAssignmentTypeMismatch],
         fb_inheritance_options()
+    );
+
+    rule_ok!(
+        /// A field of a function block instance has the type the block
+        /// declares it with, a structure included.
+        #[spec_test(REQ_VB_analyzer_051)]
+        apply_when_structure_field_of_block_read_into_same_type_then_accepted,
+        &block_with_structure_output("f(x := 1);\n  r := f.p;")
+    );
+
+    rule_err_at!(
+        apply_when_structure_field_of_block_read_into_other_type_then_reports_mismatch,
+        &block_with_structure_output("f(x := 1);\n  w := f.p;"),
+        Problem::AggregateAssignmentTypeMismatch,
+        "f.p"
+    );
+
+    rule_ok!(
+        #[spec_test(REQ_CB_analyzer_038)]
+        apply_when_structure_output_stored_in_same_type_then_accepted,
+        &block_with_structure_output("f(x := 1, p => q);")
+    );
+
+    rule_err!(
+        #[spec_test(REQ_CB_analyzer_038)]
+        apply_when_structure_output_stored_in_other_type_then_reports_mismatch,
+        &block_with_structure_output("f(x := 1, p => w);"),
+        [Problem::AggregateAssignmentTypeMismatch]
+    );
+
+    rule_ok!(
+        /// A negated output is not an aggregate; `NOT p` of a structure is
+        /// P4083, which another rule reports.
+        apply_when_structure_output_negated_then_left_to_negated_output_rule,
+        &block_with_structure_output("f(x := 1, NOT p => q);")
     );
 }

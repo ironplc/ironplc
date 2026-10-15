@@ -196,6 +196,8 @@ A call stores each output it assigns (`fb(q => x)`, `f(q => x)`, `k.M(q => x)`) 
 
 **REQ-IC-analyzer-106** An output assignment is checked as the assignment of the output to its target is: `f(ql => i)` on an `LINT` output and an `INT` reports P4035 as `i := f.ql` does, and so do a `BOOL` and a `REAL` output stored in a `DINT`, the `TIME` output `ET` of a `TON` stored in a `DINT`, and an `LINT` output of a function or a method stored in an `INT`; `f(qs => i)` on a `SINT` output and `t(ET => lt)` on an `LTIME` report nothing.
 
+**REQ-IC-analyzer-108** A `STRING` stored in a `WSTRING`, or a `WSTRING` in a `STRING`, is P4034 and nothing else whatever names the value: `w := s` on a `STRING` variable, `w := f.s` on a `STRING` output of a function block instance, and the output assignments `f(s => w)` and `r := F(s => w)` that store a block's and a function's `STRING` output.
+
 **REQ-IC-analyzer-107** The value an output assignment stores is converted to the type of its target as an assigned value is, for a function block, a function and a method call alike: the `REAL` of `f(q => lr)` on an `LREAL` is converted to `LREAL`, the `UDINT` of `f(qu => lu)` on an `LINT` to `LINT`, the `TIME` of `t(ET => lt)` on a `TON` to `LTIME`, a `DINT` stored in a subrange of `LINT` to `LINT`, and a function's `REAL` output and a method's `UDINT` output stored in an `LREAL` and an `LINT` to their types; the `SINT` of `f(qs => i)` on an `INT` is not converted.
 
 A directly represented variable (`%QW0 := w`) is not recorded yet.
