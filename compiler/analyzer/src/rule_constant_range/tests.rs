@@ -788,6 +788,26 @@ fn apply_when_call_argument_out_of_range_then_err(
     );
 }
 
+/// An input a block inherits through `EXTENDS` is checked as one it declares.
+#[test]
+fn apply_when_inherited_input_argument_out_of_range_then_err() {
+    let program = format!(
+        "{SMALL_TYPES}FUNCTION_BLOCK DERIVED EXTENDS HOLD
+VAR_INPUT own : USINT; END_VAR
+END_FUNCTION_BLOCK
+{}",
+        program_with("d : DERIVED;\n", "d(i := 300, r := 1.0E300, own := 300);\n")
+    );
+    assert_eq!(
+        rule_codes_after_conversions(super::apply, &program, &edition3_options()),
+        codes(&[
+            Problem::ConstantOverflow,
+            Problem::RealLiteralOutOfRange,
+            Problem::ConstantOverflow
+        ])
+    );
+}
+
 /// A standard function's `ANY_NUM` argument is checked against the type the
 /// call computes at, and the argument of a conversion function against its
 /// source type.

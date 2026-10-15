@@ -191,6 +191,27 @@ impl TypeEnvironment {
         self.field_names(self.alias_base(record)?)
     }
 
+    /// Every field of an instance of the function block `block`: those it
+    /// inherits through `EXTENDS`, from the root of its chain down, then
+    /// those it declares, each block's in the order it declares them. A
+    /// name declared again down the chain (P4044) is listed once, where the
+    /// nearer block declares it. `None` when `block` is not a function block
+    /// whose fields are recorded.
+    pub fn instance_fields(&self, block: TypeId) -> Option<Vec<&BlockField>> {
+        let chain: Vec<&BlockRecord> = self.inherited_records(block).collect();
+        if chain.is_empty() {
+            return None;
+        }
+        let mut fields: Vec<&BlockField> = Vec::new();
+        for record in chain.into_iter().rev() {
+            for field in &record.fields {
+                fields.retain(|listed| listed.name != field.name);
+                fields.push(field);
+            }
+        }
+        Some(fields)
+    }
+
     /// The function blocks an instance of `block` takes its fields from,
     /// nearest first: `block`, the block it `EXTENDS`, that block's base,
     /// and so on. An alias of a block starts at the block it names. Empty
@@ -387,6 +408,60 @@ mod tests {
 
         assert_eq!(env.block_field(own, &Id::from("missing")), None);
         assert_eq!(env.field_type(derived, &Id::from("Q")), None);
+    }
+
+    /// The names of `fields`.
+    fn names(fields: Option<Vec<&BlockField>>) -> Option<Vec<String>> {
+        fields.map(|fields| fields.iter().map(|field| field.name.to_string()).collect())
+    }
+
+    #[test]
+    fn instance_fields_when_block_extends_then_root_fields_first() {
+        let mut env = environment();
+        let (root, middle, leaf) = (
+            block(&mut env, "Root"),
+            block(&mut env, "Middle"),
+            block(&mut env, "Leaf"),
+        );
+        let input = |name| field(&env, name, FunctionBlockVarType::Input);
+        let (a, b, c, d) = (input("a"), input("b"), input("c"), input("d"));
+
+        env.record_block(root, vec![a, b], vec![], None);
+        env.record_block(middle, vec![c], vec![], Some(root));
+        env.record_block(leaf, vec![d], vec![], Some(middle));
+
+        assert_eq!(
+            names(env.instance_fields(leaf)),
+            Some(vec!["a".into(), "b".into(), "c".into(), "d".into()])
+        );
+        assert_eq!(
+            names(env.instance_fields(root)),
+            Some(vec!["a".into(), "b".into()])
+        );
+    }
+
+    /// A derived block that declares a name it inherits (P4044) has one
+    /// field of that name, the one it declares.
+    #[test]
+    fn instance_fields_when_inherited_name_redeclared_then_listed_once_as_derived() {
+        let mut env = environment();
+        let (base, derived) = (block(&mut env, "Base"), block(&mut env, "Derived"));
+        let a = field(&env, "a", FunctionBlockVarType::Input);
+        let b = field(&env, "b", FunctionBlockVarType::Input);
+        let redeclared = field(&env, "a", FunctionBlockVarType::Output);
+
+        env.record_block(base, vec![a, b], vec![], None);
+        env.record_block(derived, vec![redeclared.clone()], vec![], Some(base));
+
+        let fields = env.instance_fields(derived).unwrap();
+        assert_eq!(fields.len(), 2);
+        assert_eq!(fields[1], &redeclared);
+    }
+
+    #[test]
+    fn instance_fields_when_not_function_block_then_none() {
+        let env = environment();
+        assert_eq!(env.instance_fields(id(&env, "INT")), None);
     }
 
     #[test]

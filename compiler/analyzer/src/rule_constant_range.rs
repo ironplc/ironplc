@@ -604,8 +604,9 @@ impl RuleConstantRange<'_> {
 
     /// Checks each input argument of a function block call against the type
     /// of the input it binds to: a named argument by name among the
-    /// `VAR_INPUT` and `VAR_IN_OUT` variables, a positional one by position
-    /// among the `VAR_INPUT` variables.
+    /// `VAR_INPUT` and `VAR_IN_OUT` variables of an instance, inherited ones
+    /// included, a positional one by position among its `VAR_INPUT`
+    /// variables.
     fn check_fb_call_arguments(&mut self, node: &FbCall) {
         let types = self.type_environment;
         let Some(fields) = variable_type::declared_type_id(
@@ -613,7 +614,7 @@ impl RuleConstantRange<'_> {
             self.context.symbols(),
             &self.scope.current(),
         )
-        .and_then(|block| types.block_fields(block)) else {
+        .and_then(|block| types.instance_fields(block)) else {
             return;
         };
 

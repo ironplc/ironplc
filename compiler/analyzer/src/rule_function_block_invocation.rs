@@ -487,6 +487,39 @@ END_PROGRAM",
         "Q"
     );
 
+    /// A block that extends another, and a program that calls an instance of
+    /// it with `call`.
+    fn derived_call(call: &str) -> String {
+        format!(
+            "
+FUNCTION_BLOCK Base
+VAR_INPUT count : INT; END_VAR
+VAR_OUTPUT seen : INT; END_VAR
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK Derived EXTENDS Base
+VAR_INPUT speed : INT; END_VAR
+END_FUNCTION_BLOCK
+PROGRAM main
+VAR d : Derived; r : INT; END_VAR
+{call}
+END_PROGRAM"
+        )
+    }
+
+    rule_ok!(
+        #[spec_test(REQ_CB_analyzer_053)]
+        apply_when_derived_block_names_inherited_input_and_output_then_ok,
+        &derived_call("d(count := 3, speed := 4, seen => r);"),
+        crate::test_helpers::edition3_options()
+    );
+
+    rule_err!(
+        apply_when_derived_block_names_input_no_block_declares_then_missing_input,
+        &derived_call("d(count := 3, nope := 4);"),
+        [Problem::FunctionInvocationMissingInput],
+        crate::test_helpers::edition3_options()
+    );
+
     rule_ok!(
         #[spec_test(REQ_CB_analyzer_025)]
         apply_when_standard_block_positional_then_ok,
