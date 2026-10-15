@@ -342,6 +342,20 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
             stack.push(Slot::from_f32(a % b))?;
             Ok(())
         }
+        opcode::builtin::EXPT_U32 => {
+            let b = stack.pop()?.as_i32() as u32;
+            let a = stack.pop()?.as_i32() as u32;
+            stack.push(Slot::from_i32(a.wrapping_pow(b) as i32))?;
+            Ok(())
+        }
+        opcode::builtin::EXPT_U64 => {
+            // Two's complement multiplication wraps to the same bits signed
+            // or unsigned, so only the exponent is read differently.
+            let b = stack.pop()?.as_i64() as u64;
+            let a = stack.pop()?.as_i64();
+            stack.push(Slot::from_i64(wrapping_pow_i64(a, b)))?;
+            Ok(())
+        }
         opcode::builtin::EXPT_I64 => {
             let b = stack.pop()?.as_i64();
             let a = stack.pop()?.as_i64();

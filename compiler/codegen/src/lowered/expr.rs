@@ -10,11 +10,13 @@ use ironplc_ir::lowered::{
 };
 use ironplc_lowering::Lowering;
 
+use super::place::variable_name;
 use super::policy::parse_builtin;
 use super::string::str_arg_offset;
 use super::{op_type, user_function};
 use crate::compile::{CompileContext, OpWidth, Signedness};
 use crate::compile_arith::convert;
+use crate::compile_user_call::emit_reference;
 use crate::compile_expr::{
     emit_add, emit_div, emit_eq, emit_ge, emit_gt, emit_le, emit_lt, emit_mod, emit_mul, emit_ne,
     emit_neg, emit_sub,
@@ -130,16 +132,16 @@ pub(super) fn emit_expr(
             args,
         } => {
             // `can_emit` leaves to the AST a call of a function this backend
-            // does not pass every argument of by value.
+            // does not pass every argument of.
             let function = user_function(lowering, ctx, *pou).ok_or_else(|| {
                 Diagnostic::internal_error_at(Label::span(
                     expr.span().clone(),
-                    "A call of a function not passed its arguments by value",
+                    "A call of a function this backend does not pass its arguments",
                 ))
             })?;
-            // A function of the program takes only values
+            // A function of the program takes values and places
             // (`ProgramBuilder::call`), so no string offsets come back.
-            emit_args(emitter, ctx, lowering, args)?;
+            emit_args(emitter, ctx, lowering, args, expr.span())?;
             emitter.emit_call(
                 function.function_id,
                 function.num_params,
@@ -173,7 +175,7 @@ pub(super) fn emit_intrinsic_call(
             "A call of an intrinsic with no instruction",
         ))
     })?;
-    let strings = emit_args(emitter, ctx, lowering, args)?;
+    let strings = emit_args(emitter, ctx, lowering, args, span)?;
     match instruction {
         Instruction::Builtin(builtin) => emitter.emit_builtin(builtin)?,
         Instruction::BuiltinOfStrings(builtin) => {
@@ -199,20 +201,33 @@ pub(super) fn emit_intrinsic_call(
     Ok(())
 }
 
-/// Passes each of `args`, in order: a value on the stack, and a string as
-/// the data region offset of a slot that holds it. Returns the offsets of
-/// the strings, in order.
+/// Passes each of `args` of the call at `span`, in order: a value on the
+/// stack, a string as the data region offset of a slot that holds it, and a
+/// place by reference, as the AST route passes a `VAR_IN_OUT` argument.
+/// Returns the offsets of the strings, in order.
 fn emit_args(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     lowering: &Lowering<'_>,
     args: &[Arg],
+    span: &SourceSpan,
 ) -> Result<Vec<u32>, Diagnostic> {
     let mut strings = Vec::new();
     for arg in args {
         match arg {
             Arg::Value(value) => emit_expr(emitter, ctx, lowering, value)?,
             Arg::Str(value) => strings.push(str_arg_offset(emitter, ctx, lowering, value)?),
+            Arg::Ref(place) => {
+                // `can_emit` leaves to the AST a place this backend does not
+                // pass by reference.
+                let name = variable_name(lowering, ctx, place).ok_or_else(|| {
+                    Diagnostic::internal_error_at(Label::span(
+                        span.clone(),
+                        "A place this backend does not pass by reference",
+                    ))
+                })?;
+                emit_reference(emitter, ctx, &name)?;
+            }
         }
     }
     Ok(strings)
@@ -277,6 +292,8 @@ pub(super) fn instruction_of(intrinsic: Intrinsic, args: usize) -> Option<Instru
         Intrinsic::AbsF64 => builtin::ABS_F64,
         Intrinsic::ExptI32 => builtin::EXPT_I32,
         Intrinsic::ExptI64 => builtin::EXPT_I64,
+        Intrinsic::ExptU32 => builtin::EXPT_U32,
+        Intrinsic::ExptU64 => builtin::EXPT_U64,
         Intrinsic::ExptF32 => builtin::EXPT_F32,
         Intrinsic::ExptF64 => builtin::EXPT_F64,
         Intrinsic::SqrtF32 => builtin::SQRT_F32,

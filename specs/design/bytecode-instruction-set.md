@@ -516,8 +516,8 @@ Builtins are monomorphized by the compiler: a generic IEC 61131-3 signature (`AN
 | Range | Category |
 |-------|----------|
 | 0x0000–0x033F | Unassigned |
-| 0x0340–0x03A6 | Numeric, bitwise shift/rotate, selection, conversion, BCD, and string-conversion builtins |
-| 0x03A7–0x03FF | Unassigned |
+| 0x0340–0x03A8 | Numeric, bitwise shift/rotate, selection, conversion, BCD, and string-conversion builtins |
+| 0x03A9–0x03FF | Unassigned |
 | 0x0402–0x0410 | `MUX` on I32 (base 0x0400 + arity) |
 | 0x0422–0x0430 | `MUX` on I64 (base 0x0420 + arity) |
 | 0x0442–0x0450 | `MUX` on F32 (base 0x0440 + arity) |
@@ -566,6 +566,8 @@ Builtins are monomorphized by the compiler: a generic IEC 61131-3 signature (`AN
 | 0x03A4 | MOD_F64 | 2 | Floating modulo, sign of dividend; `x % 0.0` is NaN, not a trap |
 | 0x03A5 | TRUNC_F32 | 1 | `f32::trunc` |
 | 0x03A6 | MOD_F32 | 2 | Floating modulo on F32 |
+| 0x03A7 | EXPT_U32 | 2 | Unsigned `a ** b`, wrapped to 32 bits; never traps |
+| 0x03A8 | EXPT_U64 | 2 | Unsigned `a ** b`, wrapped to 64 bits; never traps |
 
 #### Math builtins
 
@@ -644,9 +646,11 @@ These are dispatched inline in the VM main loop rather than through the shared b
 | 0x039F | CONV_STR_TO_I32 | 1 | [data_offset] → [I32] | Parse decimal; 0 on failure |
 | 0x03A0 | CONV_F32_TO_STR | 1 | [F32] → [buf_idx] | Float to decimal string |
 | 0x03A1 | CONV_STR_TO_F32 | 1 | [data_offset] → [F32] | Parse decimal; 0.0 on failure |
-| 0x03A2 | CMP_STR | 2 | [data_offset, data_offset] → [I32] | Three-way lexicographic compare; −1 / 0 / +1 |
+| 0x03A2 | CMP_STR | 2 | [data_offset, data_offset] → [I32] | Three-way compare by code unit; −1 / 0 / +1 |
 
 `CMP_STR` is how the compiler lowers `=`, `<>`, `<`, `<=`, `>`, `>=` on strings: emit `CMP_STR`, then compare its result to 0 with the ordinary integer comparison opcodes.
+
+The first code unit that differs decides the order, and a string that is a prefix of the other is less. A `WSTRING` code unit is compared as a number, not by its little-endian bytes, so `"$0100"` is greater than `"$00FF"`.
 
 `CONV_STR_TO_I32` and `CONV_STR_TO_F32` trim whitespace, accept Rust's decimal syntax, and yield 0 or 0.0 on failure. Codegen no longer emits either (every `STRING_TO_<numeric>` target is on the policy block below); the VM keeps their handlers because a func_id is a permanent wire-format commitment.
 

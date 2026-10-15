@@ -1,16 +1,17 @@
 //! Scalar expressions.
 //!
 //! Each expression is lowered at the type the analyzer recorded for it
-//! (`Expr::expr_type`), and each conversion the analyzer recorded
+//! (`Expr::expr_type`), and each ordinary conversion the analyzer recorded
 //! (`ExprKind::ImplicitConversion`) becomes a `Convert`. Lowering decides no
-//! literal type and no conversion itself (REQ-LOW-lowering-094).
+//! literal type and no conversion itself (REQ-LOW-lowering-094). A checked
+//! conversion, which the IR cannot state yet, is not lowered.
 
 use ironplc_analyzer::NumericFunction;
 use ironplc_dsl::common::{Boolean, ConstantKind};
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
-    CompareOp as AstCompareOp, Expr as AstExpr, ExprKind as AstExprKind, Operator,
+    CompareOp as AstCompareOp, ConversionKind, Expr as AstExpr, ExprKind as AstExprKind, Operator,
     UnaryOp as AstUnaryOp, Variable,
 };
 use ironplc_ir::lowered::{
@@ -121,11 +122,15 @@ impl Lowering<'_> {
                     AstCompareOp::GtEq => self.compare(frame, CompareOp::Ge, left, right, span),
                 }
             }
-            AstExprKind::ImplicitConversion(inner) => {
+            AstExprKind::ImplicitConversion(conversion) => {
+                match conversion.kind {
+                    ConversionKind::Ordinary => {}
+                    ConversionKind::Checked => return Ok(None),
+                }
                 let Some((_, to)) = self.operated_type(expr)? else {
                     return Ok(None);
                 };
-                let Some(value) = self.expr(frame, inner)? else {
+                let Some(value) = self.expr(frame, &conversion.value)? else {
                     return Ok(None);
                 };
                 if value.ty() == to {

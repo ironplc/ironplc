@@ -439,6 +439,32 @@ pub struct UnaryExpr {
     pub term: Expr,
 }
 
+/// A conversion the language makes without the program spelling it: the
+/// value of `value`, which keeps its own type, converted to the type of the
+/// enclosing [`Expr`].
+#[derive(Debug, Clone, PartialEq, Recurse)]
+pub struct ImplicitConversion {
+    /// The expression converted.
+    pub value: Expr,
+    /// What the conversion does with a value its type does not hold.
+    #[recurse(ignore)]
+    pub kind: ConversionKind,
+}
+
+/// What an [`ImplicitConversion`] does with a value outside the range of the
+/// type it converts to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConversionKind {
+    /// Converts as the language converts a value of one type to another, so
+    /// an integer narrowed to a type that does not hold it wraps.
+    Ordinary,
+    /// Converts as an ordinary conversion does a value the type holds, and
+    /// traps on any other. The analyzer records one for an array subscript
+    /// whose type holds values outside the range of `DINT`, so that such a
+    /// subscript selects no element rather than another one.
+    Checked,
+}
+
 #[derive(Debug, Clone, PartialEq, Recurse)]
 pub struct Function {
     pub name: Id,
@@ -593,12 +619,15 @@ impl Expr {
         Expr::new(ExprKind::UnaryOp(Box::new(UnaryExpr { op, term })))
     }
 
-    /// Creates the implicit conversion of `inner` to the type `target`,
-    /// written where `inner` was written.
+    /// Creates the ordinary implicit conversion of `inner` to the type
+    /// `target`, written where `inner` was written.
     pub fn implicit_conversion(inner: Expr, target: TypeId) -> Expr {
         let span = inner.span.clone();
         Expr {
-            kind: ExprKind::ImplicitConversion(Box::new(inner)),
+            kind: ExprKind::ImplicitConversion(Box::new(ImplicitConversion {
+                value: inner,
+                kind: ConversionKind::Ordinary,
+            })),
             expr_type: Some(ExprType::Concrete(target)),
             span,
         }
@@ -634,7 +663,7 @@ impl Located for ExprKind {
             ExprKind::LateBound(late) => late.value.span(),
             ExprKind::Ref(var) => var.span(),
             ExprKind::Deref(expr) => expr.span(),
-            ExprKind::ImplicitConversion(inner) => inner.span(),
+            ExprKind::ImplicitConversion(conversion) => conversion.value.span(),
             ExprKind::CallOutput(output) => output.span(),
             ExprKind::Null(span) => span.clone(),
         }
@@ -656,14 +685,12 @@ pub enum ExprKind {
     LateBound(LateBound),
     Ref(Box<Variable>),
     Deref(Box<Expr>),
-    /// A conversion the language makes without the program spelling it: the
-    /// value of the inner expression, which keeps its own type, converted to
-    /// the type of the enclosing [`Expr`].
+    /// A conversion the language makes without the program spelling it.
     ///
     /// The parser never produces one: the analyzer inserts it after the
     /// semantic rules, to record for the backends and the language server a
     /// conversion the language makes. See ADR-0056.
-    ImplicitConversion(Box<Expr>),
+    ImplicitConversion(Box<ImplicitConversion>),
     /// The value the enclosing call left in its output of this name, read
     /// after the call returns: the value an output assignment (`q => v`)
     /// stores in its target.
@@ -746,7 +773,7 @@ impl fmt::Display for ExprKind {
             ExprKind::Ref(var) => write!(f, "REF({var})"),
             ExprKind::Deref(expr) => write!(f, "{expr}^"),
             // Not source syntax: it is written as the expression it converts.
-            ExprKind::ImplicitConversion(inner) => write!(f, "{inner}"),
+            ExprKind::ImplicitConversion(conversion) => write!(f, "{}", conversion.value),
             // Not source syntax: it is written as the output it reads.
             ExprKind::CallOutput(output) => write!(f, "{output}"),
             ExprKind::Null(_) => write!(f, "NULL"),

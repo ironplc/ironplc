@@ -4,7 +4,7 @@
 //! and typed opcode emission helpers. Separated from compile.rs to
 //! keep module sizes within the 1000-line guideline.
 
-use ironplc_analyzer::SemanticType;
+use ironplc_analyzer::{NumericFunction, SemanticType};
 use ironplc_container::{opcode, VarIndex};
 use ironplc_dsl::common::{BitStringLiteral, Boolean, ConstantKind, SignedInteger};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
@@ -19,12 +19,14 @@ use super::compile::{
     DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH,
 };
 use super::compile_arith::compile_binary_arith;
+use super::compile_builtin::lookup_builtin;
 use super::compile_call::compile_function_call;
 use super::compile_comparison::compile_comparison;
 use super::compile_method::compile_method_call_expression;
 use super::compile_partial_access::{compile_partial_access_read, PartialAccess};
 use super::compile_place::Place;
 use super::compile_short_circuit::{compile_short_circuit, ShortCircuitOp};
+use super::compile_string_place::StringPlace;
 use super::type_info::{expr_representation, expr_type_info};
 use crate::emit::Emitter;
 
@@ -180,11 +182,13 @@ pub(crate) fn compile_expr(
         }
         // The analyzer decided the conversion (ADR-0056): the inner value is
         // compiled at its own type, so it widens by its own signedness, and
-        // converted to the type the node records.
-        ExprKind::ImplicitConversion(inner) => {
-            let from = self::op_type(ctx, inner)?;
+        // converted to the type the node records. A checked conversion is
+        // compiled as an ordinary one: this route does not trap on a value
+        // the type does not hold.
+        ExprKind::ImplicitConversion(conversion) => {
+            let from = self::op_type(ctx, &conversion.value)?;
             let to = self::op_type(ctx, expr)?;
-            compile_expr(emitter, ctx, inner)?;
+            compile_expr(emitter, ctx, &conversion.value)?;
             crate::compile_arith::convert(emitter, from, to)
         }
         ExprKind::CallOutput(output) => {
@@ -536,6 +540,20 @@ pub(crate) fn compile_variable_read(
     if let Some(access) = PartialAccess::of(variable) {
         return compile_partial_access_read(emitter, ctx, &access);
     }
+    // A field of a function block instance (`timer.Q`), which lives in the
+    // instance's data region rather than in a structure.
+    if let Variable::Symbolic(SymbolicVariableKind::Structured(structured)) = variable {
+        if !matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) {
+            if let Some(place) = Place::fb_field(ctx, structured)? {
+                return place.emit_load(emitter, ctx);
+            }
+        }
+    }
+    // A STRING is copied from the data region into a temporary buffer, whose
+    // index a string assignment or a string function's argument consumes.
+    if let Some(place) = StringPlace::resolve(ctx, variable)? {
+        return place.emit_load(emitter, ctx);
+    }
     match variable {
         // The guard excludes `s.arr[i].field`, whose record is an array
         // element rather than a fixed-offset struct field. That shape falls
@@ -543,37 +561,6 @@ pub(crate) fn compile_variable_read(
         Variable::Symbolic(SymbolicVariableKind::Structured(structured))
             if !matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) =>
         {
-            // A field of a function block instance (`timer.Q`), which lives in
-            // the instance's data region rather than in a structure.
-            if let Some(place) = Place::fb_field(ctx, structured)? {
-                return place.emit_load(emitter, ctx);
-            }
-
-            // STRING fields are composite (multi-slot) and stored in the data
-            // region, so we intercept before resolve_struct_field_access which
-            // only supports single-slot (primitive/enum) fields.
-            let (root_name, slot_offset, field_type) = crate::compile_struct::walk_struct_chain(
-                ctx,
-                &structured.record,
-                &structured.field,
-                0,
-            )?;
-            if matches!(
-                &field_type,
-                ironplc_analyzer::semantic_type::SemanticType::String { .. }
-            ) {
-                // `walk_struct_chain` found this structure variable above.
-                let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
-                    Diagnostic::internal_error_at(Label::span(
-                        structured.span(),
-                        format!("Variable '{}' is not a structure", root_name),
-                    ))
-                })?;
-                let byte_offset = struct_info.data_offset + slot_offset.raw() * 8;
-                emitter.emit_str_load_var(byte_offset);
-                return Ok(());
-            }
-
             let (var_index, desc_index, slot_offset, _op_type, _field_type) =
                 crate::compile_struct::resolve_struct_field_access(ctx, structured)?;
             let idx_const = ctx.add_i32_constant(slot_offset.raw() as i32);
@@ -582,17 +569,6 @@ pub(crate) fn compile_variable_read(
             Ok(())
         }
         _ => {
-            // Check if this is a string variable (stored in data region).
-            // String reads emit str_load_var to produce a buf_idx on the stack,
-            // which is consumed by string assignment or string function args.
-            if let Some(var_name) = resolve_variable_name(variable) {
-                if let Some(info) = ctx.string_vars.get(var_name) {
-                    let data_offset = info.data_offset;
-                    emitter.emit_str_load_var(data_offset);
-                    return Ok(());
-                }
-            }
-
             match crate::compile_array::resolve_access(ctx, variable)? {
                 crate::compile_array::ResolvedAccess::Scalar { var_index } => {
                     emit_load_var(emitter, var_index, op_type);
@@ -603,7 +579,6 @@ pub(crate) fn compile_variable_read(
                 crate::compile_array::ResolvedAccess::ArrayElement { info, subscripts } => {
                     let arr_var_index = info.var_index;
                     let arr_desc_index = info.desc_index;
-                    let is_string_elem = info.is_string_element;
                     let dim_info: Vec<_> = info
                         .dimensions
                         .iter()
@@ -621,11 +596,7 @@ pub(crate) fn compile_variable_read(
                         &dim_info,
                         &span,
                     )?;
-                    if is_string_elem {
-                        emitter.emit_str_load_array_elem(arr_var_index, arr_desc_index);
-                    } else {
-                        emitter.emit_load_array(arr_var_index, arr_desc_index);
-                    }
+                    emitter.emit_load_array(arr_var_index, arr_desc_index);
                 }
                 crate::compile_array::ResolvedAccess::DerefArrayElement { info, subscripts } => {
                     let ref_var_index = info.var_index;
@@ -670,12 +641,12 @@ pub(crate) fn compile_variable_read(
                     emitter.emit_add_i64();
                     emitter.emit_load_array(var_index, desc_index);
                 }
-                crate::compile_array::ResolvedAccess::StructFieldStringArrayElement(element) => {
-                    element.emit_base_and_index(emitter, ctx, &variable_span(variable))?;
-                    emitter.emit_str_load_array_elem(
-                        element.scratch_var_index,
-                        element.string_desc_index,
-                    );
+                // `StringPlace::resolve` addressed every string above.
+                crate::compile_array::ResolvedAccess::StructFieldStringArrayElement(_) => {
+                    return Err(Diagnostic::internal_error_at(Label::span(
+                        variable_span(variable),
+                        "A STRING element read as a value in one slot",
+                    )));
                 }
             }
             Ok(())
@@ -1137,13 +1108,10 @@ pub(crate) fn emit_mod(emitter: &mut Emitter, op_type: OpType) {
     }
 }
 
-/// POW dispatch. Width-only shape, but emits `EXPT_*` builtins rather than
-/// dedicated `emit_pow_*` opcodes, so it stays hand-written.
+/// POW dispatch: `a ** b` is `EXPT(a, b)`, so it emits the builtin
+/// [`lookup_builtin`] chooses for `EXPT` at `op_type`.
 pub(crate) fn emit_pow(emitter: &mut Emitter, op_type: OpType) -> Result<(), Diagnostic> {
-    emitter.emit_builtin(match op_type.0 {
-        OpWidth::W32 => opcode::builtin::EXPT_I32,
-        OpWidth::W64 => opcode::builtin::EXPT_I64,
-        OpWidth::F32 => opcode::builtin::EXPT_F32,
-        OpWidth::F64 => opcode::builtin::EXPT_F64,
-    })
+    let func_id = lookup_builtin(NumericFunction::Expt, op_type.0, op_type.1)
+        .ok_or_else(Diagnostic::internal_error)?;
+    emitter.emit_builtin(func_id)
 }

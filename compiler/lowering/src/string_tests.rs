@@ -32,14 +32,17 @@ fn lower_statement_when_string_assigned_then_assign_str() {
 }
 
 /// REQ-LOW-analyzer-053: the string at a place has the capacity its
-/// declaration gives, as a variable or a structure's field.
+/// declaration gives, as a variable, a structure's field or an array's
+/// element.
 #[test]
 fn lower_statement_when_sized_string_read_then_capacity_of_its_declaration() {
     let outcome = lower(
         "TYPE Named : STRUCT n : WSTRING[4]; END_STRUCT; END_TYPE
-         PROGRAM main VAR s : STRING[5]; t : STRING; w : WSTRING; r : Named; END_VAR
+         PROGRAM main VAR s : STRING[5]; t : STRING; w : WSTRING; r : Named;
+             a : ARRAY[1..3] OF STRING[8]; END_VAR
             t := s;
             w := r.n;
+            t := a[2];
          END_PROGRAM",
         "main",
     );
@@ -48,6 +51,7 @@ fn lower_statement_when_sized_string_read_then_capacity_of_its_declaration() {
         [
             "assign-str v0^.f1 (read string[5] v0^.f0)",
             "assign-str v0^.f2 (read wstring[4] v0^.f3.f0)",
+            "assign-str v0^.f1 (read string[8] v0^.f4[(const i32s 2)])",
         ]
     );
 }

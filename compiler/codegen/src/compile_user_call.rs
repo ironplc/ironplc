@@ -131,22 +131,37 @@ fn compile_reference_arg(
         }
         _ => None,
     };
-    // An elementary variable has type info and lives in its own slot; a
-    // string, array, structure or instance lives in the data region.
-    let single_slot = |name: &&Id| {
-        ctx.var_type_info(name).is_some()
-            && !ctx.string_vars.contains_key(*name)
-            && !ctx.array_vars.contains_key(*name)
-            && !ctx.struct_vars.contains_key(*name)
-            && !ctx.struct_array_vars.contains_key(*name)
-            && !ctx.fb_instances.contains_key(*name)
-    };
-    let Some(name) = name.filter(single_slot) else {
+    let Some(name) = name.filter(|name| passes_by_reference(ctx, name)) else {
         return Err(Diagnostic::not_implemented(Label::span(
             arg.span(),
             "VAR_IN_OUT argument that is not a named variable of an elementary type",
         )));
     };
+    emit_reference(emitter, ctx, name)
+}
+
+/// Whether this backend passes the variable `name` to a `VAR_IN_OUT`
+/// parameter: a variable of an elementary type, which has type info and
+/// lives in its own slot, unlike a string, array, structure or instance,
+/// which lives in the data region. A `VAR_IN_OUT` parameter of the function
+/// being compiled is one.
+pub(crate) fn passes_by_reference(ctx: &CompileContext, name: &Id) -> bool {
+    ctx.var_type_info(name).is_some()
+        && !ctx.string_vars.contains_key(name)
+        && !ctx.array_vars.contains_key(name)
+        && !ctx.struct_vars.contains_key(name)
+        && !ctx.struct_array_vars.contains_key(name)
+        && !ctx.fb_instances.contains_key(name)
+}
+
+/// Pushes a reference to the variable `name`, which
+/// [`passes_by_reference`]: its own, or the one a `VAR_IN_OUT` parameter's
+/// slot holds, passed on.
+pub(crate) fn emit_reference(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    name: &Id,
+) -> Result<(), Diagnostic> {
     if let Some(ref_slot) = ctx.in_out_ref_slot(name) {
         emitter.emit_load_var_i64(ref_slot);
     } else {

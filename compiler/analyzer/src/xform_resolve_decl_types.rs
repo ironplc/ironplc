@@ -275,6 +275,48 @@ END_PROGRAM
         assert_eq!(capacity("Block", "f"), Some(6));
     }
 
+    /// REQ-LOW-analyzer-053: a sized string element of an array, inline or
+    /// of a named array type, has a type of its capacity, named by its
+    /// elementary type, as a variable does.
+    #[test]
+    fn apply_when_array_of_sized_string_then_element_type_of_its_capacity() {
+        let (library, context) = resolve(
+            "TYPE Names : ARRAY[1..2] OF WSTRING[4]; END_TYPE
+             PROGRAM main VAR a : ARRAY[1..3] OF STRING[8]; n : Names; END_VAR END_PROGRAM",
+        );
+        let ids = declared_ids(&library);
+        let types = context.types();
+        let element = |array: TypeId| {
+            let element = types.element_type(array).unwrap();
+            let name = types.name_of(element).cloned();
+            (
+                name,
+                types.get_by_id(element).unwrap().representation.clone(),
+            )
+        };
+
+        assert_eq!(
+            element(ids["a"].unwrap()),
+            (
+                Some(TypeName::from("STRING")),
+                SemanticType::String {
+                    max_len: Some(8),
+                    char_width: ironplc_container::CharWidth::Narrow,
+                }
+            )
+        );
+        assert_eq!(
+            element(ids["n"].unwrap()),
+            (
+                Some(TypeName::from("WSTRING")),
+                SemanticType::String {
+                    max_len: Some(4),
+                    char_width: ironplc_container::CharWidth::Wide,
+                }
+            )
+        );
+    }
+
     #[test]
     fn apply_when_inline_array_then_anonymous_array_with_dimensions() {
         let (library, context) = resolve(PROGRAM);

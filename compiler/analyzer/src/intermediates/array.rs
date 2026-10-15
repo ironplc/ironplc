@@ -5,13 +5,13 @@
 
 use crate::semantic_type::{ArrayDimension, SemanticType};
 use crate::type_environment::{TypeAttributes, TypeEnvironment};
-use ironplc_container::CharWidth;
+
 use ironplc_dsl::common::*;
 use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::*;
 use ironplc_problems::Problem;
 
-use super::TypeResolution;
+use super::{string, TypeResolution};
 
 /// Try to create the semantic type information from the array specification.
 pub fn try_from(
@@ -26,20 +26,9 @@ pub fn try_from(
 
             // Resolve the element type representation based on the element type kind
             let element_repr = match &array_subranges.type_name {
-                ArrayElementType::String(spec) => SemanticType::String {
-                    max_len: spec
-                        .length
-                        .as_ref()
-                        .and_then(|len| len.as_integer().map(|i| i.value)),
-                    char_width: CharWidth::Narrow,
-                },
-                ArrayElementType::WString(spec) => SemanticType::String {
-                    max_len: spec
-                        .length
-                        .as_ref()
-                        .and_then(|len| len.as_integer().map(|i| i.value)),
-                    char_width: CharWidth::Wide,
-                },
+                ArrayElementType::String(spec) | ArrayElementType::WString(spec) => {
+                    string::from_spec(spec).representation
+                }
                 ArrayElementType::Named(_) => {
                     let element_type =
                         type_environment.get(&element_type_name).ok_or_else(|| {
@@ -202,6 +191,7 @@ mod tests {
     use super::*;
     use crate::semantic_type::{ByteSized, SemanticType};
     use crate::type_environment::TypeEnvironmentBuilder;
+    use ironplc_container::CharWidth;
     use ironplc_dsl::common::TypeName;
     use ironplc_dsl::core::SourceSpan;
     use ironplc_test::{cast, cast_struct};

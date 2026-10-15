@@ -7,9 +7,10 @@
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
 
+use super::call::Param;
 use super::ids::{PouId, Stamp, TypeId, VarId};
 use super::invariant::broken;
-use super::types::TypeTable;
+use super::types::{Nullability, TypeTable};
 use crate::execution::DebugName;
 
 /// What a variable belongs to.
@@ -132,6 +133,28 @@ impl FunctionSignature {
 
     pub fn result(&self) -> VarId {
         self.result
+    }
+
+    /// What each parameter takes, in order: a value at its operation type,
+    /// or, for a `VAR_IN_OUT`, a non-null reference, the place its argument
+    /// passes (REQ-LOW-lowering-033). `None` when one is neither.
+    pub(crate) fn params(
+        &self,
+        types: &TypeTable,
+        variables: &VariableTable,
+    ) -> Option<Vec<Param>> {
+        self.parameters
+            .iter()
+            .map(|var| {
+                let ty = variables.get(*var)?.ty();
+                match types.reference(ty) {
+                    Some((target, Nullability::NonNull)) => Some(Param::Ref(target)),
+                    Some((_, Nullability::Nullable)) | None => {
+                        types.operation_type(ty).map(Param::Value)
+                    }
+                }
+            })
+            .collect()
     }
 }
 

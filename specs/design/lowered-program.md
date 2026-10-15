@@ -1574,8 +1574,9 @@ subscript of 4,294,967,295 traps on `ARRAY[-3..100]`.
 **REQ-LOW-codegen-089** An `Intrinsic` means what the IEC 61131-3 standard
 function means, with these choices where the standard leaves room: the count
 of `SHL` and `SHR` is taken modulo the operation width, `SHR` fills with
-zeros, `EXPT` of an integer base by a negative exponent traps, `ABS` of the
-most negative value of its operation type wraps to that value, and
+zeros, `EXPT` of a signed integer base by a negative exponent traps while
+`EXPT` of unsigned integers reads its exponent as unsigned and never traps,
+`ABS` of the most negative value of its operation type wraps to that value, and
 `LIMIT(MN, IN, MX)` is `MIN(MAX(IN, MN), MX)`, so `MX` when `MN` is greater
 than `MX`, and `MUX` clamps its selector to its inputs, so a selector below
 zero gives the first input and one past the last gives the last. Of reals,
@@ -2328,8 +2329,7 @@ This section constrains the order of work; it is not a work breakdown.
   loop bounds, the results of calls and dereferences, conditions, subscripts,
   shift counts, string positions, function block outputs stored by a call
   and the types of literals. The context it does not record yet, a directly
-  represented variable, comes next, and so does marking a subscript's
-  conversion as checked (REQ-LOW-analyzer-162)
+  represented variable, comes next
   ([issue 2050](https://github.com/ironplc/ironplc/issues/2050)). A statement
   that needs a decision the analyzer does not record yet stays on the route
   that reads the AST.

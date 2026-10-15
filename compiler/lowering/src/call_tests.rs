@@ -165,17 +165,21 @@ fn lower_statement_when_operator_function_form_then_same_as_operator() {
     }
 }
 
-/// REQ-LOW-lowering-147: `ABS` and `EXPT` are the intrinsic for their
-/// function at the signed integer or real type they compute at, as are the
-/// real functions of two inputs. The exponent of a real is converted to it.
+/// REQ-LOW-lowering-147: `ABS` is the intrinsic for its function at the
+/// signed integer or real type it computes at, `EXPT` at the signed or
+/// unsigned integer or real type, as are the real functions of two inputs.
+/// The exponent of a real is converted to it.
 #[test]
 fn lower_statement_when_numeric_function_then_intrinsic_call() {
     let outcome = lower(
-        "PROGRAM main VAR i : INT; d : DINT; l : LINT; r : REAL; x : LREAL; END_VAR
+        "PROGRAM main VAR i : INT; d : DINT; l : LINT; r : REAL; x : LREAL; u : UDINT;
+             ul : ULINT; END_VAR
             i := ABS(i);
             l := ABS(l);
             x := ABS(x);
             d := EXPT(d, 2);
+            u := EXPT(u, u);
+            ul := ul ** ul;
             r := EXPT(r, d);
             r := ATAN2(r, r);
             x := __MOD(x, x);
@@ -189,6 +193,8 @@ fn lower_statement_when_numeric_function_then_intrinsic_call() {
             "assign v0^.f2 (call abs_i64 i64s (read i64s v0^.f2))",
             "assign v0^.f4 (call abs_f64 f64 (read f64 v0^.f4))",
             "assign v0^.f1 (call expt_i32 i32s (read i32s v0^.f1) (const i32s 2))",
+            "assign v0^.f5 (call expt_u32 i32u (read i32u v0^.f5) (read i32u v0^.f5))",
+            "assign v0^.f6 (call expt_u64 i64u (read i64u v0^.f6) (read i64u v0^.f6))",
             "assign v0^.f3 (call expt_f32 f32 (read f32 v0^.f3) (convert f32 (read i32s v0^.f1)))",
             "assign v0^.f3 (call atan2_f32 f32 (read f32 v0^.f3) (read f32 v0^.f3))",
             "assign v0^.f4 (call mod_f64 f64 (read f64 v0^.f4) (read f64 v0^.f4))",
@@ -232,18 +238,6 @@ fn lower_statement_when_real_function_then_intrinsic_at_its_width() {
             "{function}"
         );
     }
-}
-
-/// `EXPT` of an unsigned integer is not lowered yet.
-#[test]
-fn lower_statement_when_numeric_function_not_supported_then_unsupported() {
-    let outcome = lower(
-        "PROGRAM main VAR u : UDINT; END_VAR
-            u := EXPT(u, 2);
-         END_PROGRAM",
-        "main",
-    );
-    assert_eq!(outcome.statements, ["unsupported"]);
 }
 
 /// REQ-LOW-lowering-147: a selection function is the intrinsic for its

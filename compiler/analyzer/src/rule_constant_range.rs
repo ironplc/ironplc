@@ -179,7 +179,7 @@ fn signed_value(is_neg: bool, magnitude: u128) -> Option<i128> {
 /// which the program did not state (see the module doc).
 fn type_as_written<'t>(types: &'t TypeEnvironment, expr: &Expr) -> Option<&'t SemanticType> {
     match (&expr.kind, &expr.expr_type) {
-        (ExprKind::ImplicitConversion(inner), _) => type_as_written(types, inner),
+        (ExprKind::ImplicitConversion(conversion), _) => type_as_written(types, &conversion.value),
         (_, Some(ExprType::Inferred(_))) => None,
         _ => types.representation_of_expr(expr),
     }
@@ -391,8 +391,9 @@ impl RuleConstantRange<'_> {
             ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Neg => {
                 self.check_expr(&unary.term, expected)
             }
-            ExprKind::Expression(inner) | ExprKind::ImplicitConversion(inner) => {
-                self.check_expr(inner, expected)
+            ExprKind::Expression(inner) => self.check_expr(inner, expected),
+            ExprKind::ImplicitConversion(conversion) => {
+                self.check_expr(&conversion.value, expected)
             }
             _ => {}
         }
@@ -813,7 +814,9 @@ impl Visitor<Infallible> for OwnTypes<'_, '_> {
         node.recurse_visit(self)?;
         match &node.kind {
             ExprKind::Const(constant) => self.rule.check_recorded_type(constant, node),
-            ExprKind::ImplicitConversion(inner) => self.rule.check_operand(inner, node),
+            ExprKind::ImplicitConversion(conversion) => {
+                self.rule.check_operand(&conversion.value, node)
+            }
             _ => {}
         }
         Ok(())

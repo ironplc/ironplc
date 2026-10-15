@@ -4,8 +4,9 @@ use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
 
 use super::expr::Expr;
-use super::ids::{PouId, Stamp};
+use super::ids::{PouId, Stamp, TypeId};
 use super::invariant::broken;
+use super::place::Place;
 use super::policy::ParsePolicy;
 use super::scalar::{ScalarType, Signedness};
 use super::str_expr::StrExpr;
@@ -29,15 +30,19 @@ pub enum Arg {
     Value(Expr),
     /// A string, passed by value.
     Str(StrExpr),
+    /// A place, passed by reference: the callee reads and writes the
+    /// caller's place, as a `VAR_IN_OUT` does (REQ-LOW-lowering-075).
+    Ref(Place),
 }
 
 impl Arg {
-    /// What the argument passes: a value of its type, or a string of its
-    /// encoding.
+    /// What the argument passes: a value of its type, a string of its
+    /// encoding, or a place of its type.
     pub fn param(&self) -> Param {
         match self {
             Arg::Value(value) => Param::Value(value.ty()),
             Arg::Str(value) => Param::Str(value.shape().encoding),
+            Arg::Ref(place) => Param::Ref(place.ty()),
         }
     }
 
@@ -46,6 +51,7 @@ impl Arg {
         match self {
             Arg::Value(value) => value.program(),
             Arg::Str(value) => value.program(),
+            Arg::Ref(place) => Some(place.root().stamp()),
         }
     }
 }
@@ -74,14 +80,16 @@ pub(crate) fn program_of(
     Ok(program)
 }
 
-/// What one parameter of an intrinsic takes (REQ-LOW-lowering-072), or what
-/// the intrinsic yields.
+/// What one parameter of a callee takes (REQ-LOW-lowering-072), or what an
+/// intrinsic yields.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Param {
     /// A value at this operation type.
     Value(ScalarType),
     /// A string of this encoding, of any capacity.
     Str(Encoding),
+    /// A place of this type, passed by reference.
+    Ref(TypeId),
 }
 
 /// An operation the compiler implements itself, at one set of operand types:
@@ -93,8 +101,9 @@ pub enum Param {
 /// width (REQ-LOW-codegen-089). A rotate of a `BYTE` or a `WORD` keeps its bits
 /// within that width, so it has a variant of its own.
 ///
-/// A numeric function takes and returns values of one type. `ABS` and `EXPT`
-/// take a signed integer or a real; the other numeric functions take a real.
+/// A numeric function takes and returns values of one type. `ABS` takes a
+/// signed integer or a real, `EXPT` any integer or real, and the other
+/// numeric functions a real.
 /// The selection functions `MIN`, `MAX`, `LIMIT` and `SEL` take any integer
 /// or real, and `SEL` also its selector, a `BOOL`. `MUX` takes a `DINT`
 /// selector, then two or more inputs of its type: its last parameter repeats.
@@ -152,6 +161,10 @@ pub enum Intrinsic {
     ExptI32,
     /// `EXPT` of a 64-bit signed integer, by an exponent of the same type.
     ExptI64,
+    /// `EXPT` of a 32-bit unsigned integer, by an exponent of the same type.
+    ExptU32,
+    /// `EXPT` of a 64-bit unsigned integer, by an exponent of the same type.
+    ExptU64,
     /// `EXPT` of a `REAL`, by a `REAL` exponent.
     ExptF32,
     /// `EXPT` of an `LREAL`, by an `LREAL` exponent.
@@ -482,6 +495,8 @@ impl Intrinsic {
             Intrinsic::AbsI64 => Signature::fixed(&[I64], I64),
             Intrinsic::ExptI32 => Signature::fixed(&[I32, I32], I32),
             Intrinsic::ExptI64 => Signature::fixed(&[I64, I64], I64),
+            Intrinsic::ExptU32 => Signature::fixed(&[U32, U32], U32),
+            Intrinsic::ExptU64 => Signature::fixed(&[U64, U64], U64),
             Intrinsic::AbsF32
             | Intrinsic::SqrtF32
             | Intrinsic::LnF32
@@ -609,6 +624,8 @@ impl Intrinsic {
             Intrinsic::AbsF64 => "abs_f64",
             Intrinsic::ExptI32 => "expt_i32",
             Intrinsic::ExptI64 => "expt_i64",
+            Intrinsic::ExptU32 => "expt_u32",
+            Intrinsic::ExptU64 => "expt_u64",
             Intrinsic::ExptF32 => "expt_f32",
             Intrinsic::ExptF64 => "expt_f64",
             Intrinsic::SqrtF32 => "sqrt_f32",

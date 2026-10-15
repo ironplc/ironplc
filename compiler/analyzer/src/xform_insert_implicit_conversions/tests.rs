@@ -29,7 +29,8 @@ impl ComparisonOperands<'_> {
 }
 
 /// An operand as the type it is operated at: `DINT->LINT` for a `DINT`
-/// converted to `LINT`, `LINT` for an operand operated on as it is.
+/// converted to `LINT`, `LINT->DINT checked` for an `LINT` whose conversion
+/// to `DINT` is checked, `LINT` for an operand operated on as it is.
 pub(super) fn describe(types: &TypeEnvironment, expr: &Expr) -> String {
     let name = |expr: &Expr| {
         expr.expr_type
@@ -38,7 +39,13 @@ pub(super) fn describe(types: &TypeEnvironment, expr: &Expr) -> String {
             .map_or("?".to_string(), |name| name.to_string().to_uppercase())
     };
     match &expr.kind {
-        ExprKind::ImplicitConversion(inner) => format!("{}->{}", name(inner), name(expr)),
+        ExprKind::ImplicitConversion(conversion) => {
+            let converted = format!("{}->{}", name(&conversion.value), name(expr));
+            match conversion.kind {
+                ConversionKind::Ordinary => converted,
+                ConversionKind::Checked => format!("{converted} checked"),
+            }
+        }
         _ => name(expr),
     }
 }
@@ -316,8 +323,8 @@ fn apply_when_nested_in_condition_then_conversion_spans_operand() {
     impl Visitor<Infallible> for Conversions {
         type Value = ();
         fn visit_expr(&mut self, node: &Expr) -> Result<(), Infallible> {
-            if let ExprKind::ImplicitConversion(inner) = &node.kind {
-                assert_eq!(node.span, inner.span);
+            if let ExprKind::ImplicitConversion(conversion) = &node.kind {
+                assert_eq!(node.span, conversion.value.span);
                 self.0.push(node.to_string());
             }
             node.recurse_visit(self)

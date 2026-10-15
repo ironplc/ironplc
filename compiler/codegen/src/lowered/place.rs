@@ -8,6 +8,9 @@
 //! lowered subscripts in the placeholders' places. Both routes then address
 //! an element through the same code, bounds check included, and what a
 //! reference variable refers to through the same indirect load and store.
+//! What a function's `VAR_IN_OUT` parameter refers to is rebuilt as the
+//! parameter's own name, which codegen's layout reaches through the
+//! reference the parameter's slot holds.
 
 use ironplc_dsl::core::{Id, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -16,7 +19,7 @@ use ironplc_dsl::textual::{
     StructuredVariable, SymbolicVariableKind, Variable,
 };
 use ironplc_ir::lowered::{
-    Const, Expr, Place as LoweredPlace, Projection, TypeId, TypeKind, TypeTable,
+    Const, Expr, Nullability, Place as LoweredPlace, Projection, TypeId, TypeKind, TypeTable,
 };
 use ironplc_lowering::Lowering;
 
@@ -24,6 +27,7 @@ use super::expr::emit_expr;
 use super::{constant, instance_field, op_type};
 use crate::compile::{CompileContext, OpWidth, VarTypeInfo};
 use crate::compile_place::Place;
+use crate::compile_string_place::StringPlace;
 use crate::compile_subscript::Subscript;
 use crate::emit::Emitter;
 
@@ -53,23 +57,73 @@ pub(super) fn resolve<'l, 'a>(
     place: &'l LoweredPlace,
     span: &SourceSpan,
 ) -> Result<Place<LoweredSubscript<'l, 'a>>, Diagnostic> {
-    let no_storage = || {
-        Diagnostic::internal_error_at(Label::span(span.clone(), "A lowered place has no storage"))
-    };
     let mut subscripts = Vec::new();
-    let reference = reference(lowering, place, &mut subscripts).ok_or_else(no_storage)?;
+    let reference =
+        reference(lowering, ctx, place, &mut subscripts).ok_or_else(|| no_storage(span))?;
     // The whole of what a reference variable refers to: `p^`.
     if let SymbolicVariableKind::Deref(deref) = reference {
         let target = type_info(lowering.types(), place.ty());
         return Place::through_reference(ctx, &Variable::Symbolic(*deref.variable), target);
     }
     Place::resolve(ctx, &reference)?.try_map_subscripts(|placeholder| {
-        let expr = placeholder
-            .literal()
-            .and_then(|position| subscripts.get(usize::try_from(position).ok()?))
-            .ok_or_else(no_storage)?;
-        Ok(LoweredSubscript { lowering, expr })
+        lowered_subscript(lowering, &subscripts, placeholder, span)
     })
+}
+
+/// The name of the variable `place` is the whole of, as this backend's
+/// layout knows it: a variable, a field of the current instance, or what a
+/// `VAR_IN_OUT` parameter refers to. `None` for any other place.
+pub(super) fn variable_name(
+    lowering: &Lowering<'_>,
+    ctx: &CompileContext,
+    place: &LoweredPlace,
+) -> Option<Id> {
+    let SymbolicVariableKind::Named(named) = reference(lowering, ctx, place, &mut Vec::new())?
+    else {
+        return None;
+    };
+    Some(named.name)
+}
+
+/// Where codegen's layout stores the string `place`: a string variable, an
+/// element of a string array or a string field of a structure, as the AST
+/// route finds it.
+pub(super) fn resolve_string<'l, 'a>(
+    lowering: &'l Lowering<'a>,
+    ctx: &CompileContext,
+    place: &'l LoweredPlace,
+    span: &SourceSpan,
+) -> Result<StringPlace<LoweredSubscript<'l, 'a>>, Diagnostic> {
+    let mut subscripts = Vec::new();
+    let reference =
+        reference(lowering, ctx, place, &mut subscripts).ok_or_else(|| no_storage(span))?;
+    let reference = Variable::Symbolic(reference);
+    StringPlace::resolve(ctx, &reference)?
+        .ok_or_else(|| no_storage(span))?
+        .try_map_subscripts(|placeholder| {
+            lowered_subscript(lowering, &subscripts, placeholder, span)
+        })
+}
+
+/// The lowered subscript the literal `placeholder` stands for: the one at
+/// its position in `subscripts`.
+fn lowered_subscript<'l, 'a>(
+    lowering: &'l Lowering<'a>,
+    subscripts: &[&'l Expr],
+    placeholder: &AstExpr,
+    span: &SourceSpan,
+) -> Result<LoweredSubscript<'l, 'a>, Diagnostic> {
+    let expr = placeholder
+        .literal()
+        .and_then(|position| subscripts.get(usize::try_from(position).ok()?))
+        .ok_or_else(|| no_storage(span))?;
+    Ok(LoweredSubscript { lowering, expr })
+}
+
+/// The internal error for a place `can_emit` should have left to the AST
+/// route.
+fn no_storage(span: &SourceSpan) -> Diagnostic {
+    Diagnostic::internal_error_at(Label::span(span.clone(), "A lowered place has no storage"))
 }
 
 /// The variable reference `place` stands for, with the subscript at
@@ -77,6 +131,7 @@ pub(super) fn resolve<'l, 'a>(
 /// backend does not reach yet.
 fn reference<'l>(
     lowering: &Lowering<'_>,
+    ctx: &CompileContext,
     place: &'l LoweredPlace,
     subscripts: &mut Vec<&'l Expr>,
 ) -> Option<SymbolicVariableKind> {
@@ -117,14 +172,28 @@ fn reference<'l>(
                 })
             }
             Projection::Deref => {
-                let (target, _) = types.reference(ty)?;
+                let (target, nullability) = types.reference(ty)?;
                 ty = target;
-                SymbolicVariableKind::Deref(DerefVariable {
-                    variable: Box::new(reference),
-                })
+                match nullability {
+                    Nullability::Nullable => SymbolicVariableKind::Deref(DerefVariable {
+                        variable: Box::new(reference),
+                    }),
+                    Nullability::NonNull => in_out(ctx, reference)?,
+                }
             }
         };
     }
+    Some(reference)
+}
+
+/// `reference`, when it names a `VAR_IN_OUT` parameter of the function
+/// being compiled: the only non-null reference this backend follows outside
+/// a body's instance parameter.
+fn in_out(ctx: &CompileContext, reference: SymbolicVariableKind) -> Option<SymbolicVariableKind> {
+    let SymbolicVariableKind::Named(named) = &reference else {
+        return None;
+    };
+    ctx.in_out_ref_slot(&named.name)?;
     Some(reference)
 }
 

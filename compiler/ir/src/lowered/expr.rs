@@ -4,7 +4,7 @@ use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
 
 use super::call::{program_of, Arg, Callee, Intrinsic, Param};
-use super::ids::{PouId, Stamp, VarId};
+use super::ids::{PouId, Stamp};
 use super::invariant::broken;
 use super::place::Place;
 use super::scalar::{ScalarType, Signedness};
@@ -460,9 +460,9 @@ impl Expr {
 
     /// The result of calling the function `pou` that `pous` declares with
     /// `args`: one argument for each of its parameters, in order, at the
-    /// parameter's operation type (REQ-LOW-lowering-071,
-    /// REQ-LOW-lowering-072). The arguments read places of the program the
-    /// tables belong to.
+    /// parameter's operation type, or a place of the type a `VAR_IN_OUT`
+    /// parameter refers to (REQ-LOW-lowering-071, REQ-LOW-lowering-072). The
+    /// arguments read places of the program the tables belong to.
     pub(crate) fn call_function(
         types: &TypeTable,
         variables: &VariableTable,
@@ -479,17 +479,10 @@ impl Expr {
                 format!("{pou} is not a function of this program"),
             ));
         };
-        let operated = |var: VarId| {
-            variables
-                .get(var)
-                .and_then(|variable| types.operation_type(variable.ty()))
-        };
-        let params: Option<Vec<Param>> = signature
-            .parameters()
-            .iter()
-            .map(|param| operated(*param).map(Param::Value))
-            .collect();
-        let (Some(params), Some(result)) = (params, operated(signature.result())) else {
+        let result = variables
+            .get(signature.result())
+            .and_then(|variable| types.operation_type(variable.ty()));
+        let (Some(params), Some(result)) = (signature.params(types, variables), result) else {
             return Err(broken(
                 CONSTRUCTOR,
                 &span,

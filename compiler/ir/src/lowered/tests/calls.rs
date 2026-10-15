@@ -212,3 +212,45 @@ fn declare_function_when_variable_not_its_own_scalar_or_declared_twice_then_inte
         "ProgramBuilder::declare_function"
     ));
 }
+
+/// REQ-LOW-lowering-033, REQ-LOW-lowering-072: a function's `VAR_IN_OUT`
+/// parameter, a variable of a non-null reference type, takes a `Ref` to a
+/// place of the type it refers to: not a value, nor a place of another type.
+/// A nullable reference parameter, a `REF_TO`, takes its value.
+#[test]
+fn call_when_in_out_parameter_then_takes_ref_to_place_of_its_type() {
+    let mut f = fixture();
+    let pou = f.b.push_pou(name("inc"));
+    let (dint, ref_to) = (f.ty(f.dint), f.ty(f.reference));
+    let in_out = f.b.push_type(
+        entry(TypeKind::Reference {
+            target: dint,
+            nullability: Nullability::NonNull,
+        }),
+        &span(),
+    );
+    let in_out = in_out.unwrap();
+    let mut var = |text: &str, ty| f.b.push_variable(name(text), Owner::Pou(pou), ty).unwrap();
+    let parameters = vec![var("v", in_out), var("r", ref_to)];
+    let result = var("inc", dint);
+    f.b.declare_function(pou, parameters, result, &span())
+        .unwrap();
+    assert_eq!(
+        f.b.params(pou),
+        Some(vec![Param::Ref(dint), Param::Value(ScalarType::Ref)])
+    );
+    let reference = || Arg::Value(f.read(f.reference));
+    let args = vec![Arg::Ref(f.place(f.dint)), reference()];
+    let call = f.b.call(pou, args, span()).unwrap();
+    assert_eq!(call.to_string(), "(call pou1 i32s (ref v0) (read ref v7))");
+    let refused = [
+        vec![Arg::Value(f.read(f.dint)), reference()],
+        vec![Arg::Ref(f.place(f.int)), reference()],
+    ];
+    for args in refused {
+        assert!(is_internal_error_naming(
+            f.b.call(pou, args, span()),
+            "ProgramBuilder::call"
+        ));
+    }
+}
