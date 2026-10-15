@@ -85,10 +85,13 @@ pub(crate) fn lookup_builtin(
 ) -> Option<u16> {
     use opcode::builtin;
     match function {
-        NumericFunction::Expt => numeric_builtin!(
+        NumericFunction::Expt => signed_numeric_builtin!(
             op_width,
+            signedness,
             builtin::EXPT_I32,
+            builtin::EXPT_U32,
             builtin::EXPT_I64,
+            builtin::EXPT_U64,
             builtin::EXPT_F32,
             builtin::EXPT_F64
         ),
@@ -296,9 +299,9 @@ mod tests {
 
     #[test]
     fn lookup_builtin_when_all_width_numeric_then_selects_by_width() {
-        // EXPT/ABS/SEL are defined for every op width, independent of sign.
-        // An unsigned ABS never reaches code generation: the analyzer
-        // removes it (`xform_remove_unsigned_abs`).
+        // ABS and SEL are defined for every op width, independent of sign,
+        // and so is EXPT of a real. An unsigned ABS never reaches code
+        // generation: the analyzer removes it (`xform_remove_unsigned_abs`).
         assert_eq!(
             lookup_builtin(NumericFunction::Abs, OpWidth::W32, Signedness::Signed),
             Some(builtin::ABS_I32)
@@ -330,6 +333,15 @@ mod tests {
         assert_eq!(
             lookup_builtin(NumericFunction::Max, OpWidth::W64, Signedness::Unsigned),
             Some(builtin::MAX_U64)
+        );
+        // An unsigned exponent is never negative, so it never traps.
+        assert_eq!(
+            lookup_builtin(NumericFunction::Expt, OpWidth::W32, Signedness::Unsigned),
+            Some(builtin::EXPT_U32)
+        );
+        assert_eq!(
+            lookup_builtin(NumericFunction::Expt, OpWidth::W64, Signedness::Unsigned),
+            Some(builtin::EXPT_U64)
         );
         // Float variants ignore signedness.
         assert_eq!(
