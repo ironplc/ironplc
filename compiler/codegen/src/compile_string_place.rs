@@ -136,6 +136,38 @@ impl<S> StringPlace<S> {
     pub(crate) fn char_width(&self) -> CharWidth {
         self.char_width
     }
+
+    /// The same place with each subscript replaced by what `replace` makes
+    /// of it, or the first error `replace` returns.
+    pub(crate) fn try_map_subscripts<T, E>(
+        self,
+        replace: impl FnMut(S) -> Result<T, E>,
+    ) -> Result<StringPlace<T>, E> {
+        let address = match self.address {
+            StringAddress::Fixed(offset) => StringAddress::Fixed(offset),
+            StringAddress::Element {
+                var_index,
+                desc_index,
+                within,
+                dimensions,
+                subscripts,
+            } => StringAddress::Element {
+                var_index,
+                desc_index,
+                within,
+                dimensions,
+                subscripts: subscripts
+                    .into_iter()
+                    .map(replace)
+                    .collect::<Result<_, E>>()?,
+            },
+        };
+        Ok(StringPlace {
+            address,
+            char_width: self.char_width,
+            span: self.span,
+        })
+    }
 }
 
 impl<S: Subscript> StringPlace<S> {

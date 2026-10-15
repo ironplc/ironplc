@@ -1,6 +1,7 @@
-//! Tests of string assignments, of the standard string functions, of
-//! conversions to and from a `STRING` and of comparisons of strings, compiled
-//! from the lowered program, with every statement required to lower.
+//! Tests of string assignments, of strings that are elements of arrays or
+//! fields of structures, of the standard string functions, of conversions to
+//! and from a `STRING` and of comparisons of strings, compiled from the
+//! lowered program, with every statement required to lower.
 
 use rstest::rstest;
 
@@ -41,6 +42,67 @@ fn compile_when_string_assignment_lowered_then_same_code_as_ast(#[case] statemen
     let source = format!(
         "PROGRAM main
            VAR s : STRING; t : STRING; n : STRING[3]; w : WSTRING; x : WSTRING; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    assert_same_code(&source);
+}
+
+/// The types the tests of string elements and fields use: a structure with a
+/// string field and a string array field, and one with an array of those.
+const STRING_PLACES: &str = "
+    TYPE Item : STRUCT label : STRING[6]; tags : ARRAY[1..2] OF STRING[4]; END_STRUCT; END_TYPE
+    TYPE Holder : STRUCT items : ARRAY[1..2] OF Item; END_STRUCT; END_TYPE";
+
+/// A string is read and written as an element of an array, a field of a
+/// structure, an element of a structure's array field and a field of an
+/// element of an array of structures, each keeping the code units its
+/// capacity holds (REQ-LOW-codegen-056), and is passed from there to a string
+/// function.
+#[test]
+fn run_when_string_elements_and_fields_then_values() {
+    let snapshot = run_lowered(&format!(
+        "{STRING_PLACES}
+         PROGRAM main
+           VAR names : ARRAY[1..3] OF STRING[8]; p : Item; h : Holder; i : DINT := 2;
+               r1, r2, r3, r4, r5 : STRING; n : DINT; END_VAR
+           names[i] := 'abcdefghij';
+           p.label := 'label';
+           p.tags[i] := 'tag';
+           h.items[i].label := names[i];
+           r1 := names[2];
+           r2 := p.label;
+           r3 := p.tags[2];
+           r4 := h.items[2].label;
+           r5 := CONCAT(p.label, names[i]);
+           n := LEN(names[i]);
+         END_PROGRAM"
+    ));
+    assert_eq!(snapshot.read("r1"), "abcdefgh");
+    assert_eq!(snapshot.read("r2"), "label");
+    assert_eq!(snapshot.read("r3"), "tag");
+    assert_eq!(snapshot.read("r4"), "abcdef");
+    assert_eq!(snapshot.read("r5"), "labelabcdefgh");
+    assert_eq!(snapshot.read_as::<i32>("n"), 8);
+}
+
+/// A string element or field is stored, loaded and passed to a string
+/// function with the same instructions and constants by both routes.
+#[rstest]
+#[case::element_store("names[i] := s;")]
+#[case::element_load("s := names[2];")]
+#[case::field_store("p.label := 'x';")]
+#[case::field_load("s := p.label;")]
+#[case::element_of_field("p.tags[i] := p.label;")]
+#[case::field_of_element("h.items[i].label := s;")]
+#[case::len_of_element("n := LEN(names[i]);")]
+#[case::concat_of_field_and_element("s := CONCAT(p.label, names[1]);")]
+fn compile_when_string_element_or_field_lowered_then_same_code_as_ast(#[case] statement: &str) {
+    let source = format!(
+        "{STRING_PLACES}
+         PROGRAM main
+           VAR names : ARRAY[1..3] OF STRING[8]; p : Item; h : Holder; i : DINT; s : STRING;
+               n : DINT; END_VAR
            {statement}
          END_PROGRAM"
     );
