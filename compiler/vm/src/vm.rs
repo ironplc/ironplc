@@ -1605,7 +1605,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                         string_ops::verify_encoding(left_width, right_width)?;
                         let w = left_width.as_usize();
 
-                        // Lengths are code units; compare the full byte spans.
+                        // Lengths are code units; compare the full spans.
                         let left_len =
                             string_ops::str_read_cur_len(data_region, left_offset) as usize * w;
                         let left_start = left_offset + STRING_HEADER_BYTES;
@@ -1616,7 +1616,9 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                         let right_start = right_offset + STRING_HEADER_BYTES;
                         let right_data = &data_region[right_start..right_start + right_len];
 
-                        let cmp_val = match left_data.cmp(right_data) {
+                        let order =
+                            string_ops::compare_code_units(left_data, right_data, left_width);
+                        let cmp_val = match order {
                             core::cmp::Ordering::Less => -1i32,
                             core::cmp::Ordering::Equal => 0i32,
                             core::cmp::Ordering::Greater => 1i32,

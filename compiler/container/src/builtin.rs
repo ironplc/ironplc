@@ -360,7 +360,8 @@ declare_builtins! {
     /// Stack: pop data_offset (i32), push parsed f32 (0.0 on failure).
     CONV_STR_TO_F32 = 0x03A1, args 1;
 
-    /// Three-way lexicographic string comparison.
+    /// Three-way string comparison by code unit: the first code unit that
+    /// differs decides, and a string that is a prefix of the other is less.
     /// Pops right_data_offset (i32) then left_data_offset (i32).
     /// Pushes -1 (left < right), 0 (equal), or +1 (left > right) as i32.
     CMP_STR = 0x03A2, args 2;

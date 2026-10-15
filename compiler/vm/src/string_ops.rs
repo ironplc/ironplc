@@ -1,3 +1,5 @@
+use core::cmp::Ordering;
+
 use ironplc_container::{CharWidth, STRING_HEADER_BYTES};
 
 use crate::error::Trap;
@@ -180,6 +182,23 @@ pub(crate) fn copy_code_units(
 ) {
     let n = units * char_width.as_usize();
     dst[dst_byte..dst_byte + n].copy_from_slice(&src[src_byte..src_byte + n]);
+}
+
+/// The order of the strings whose code units, at `char_width`, are `left`
+/// and `right`: the first code unit that differs decides, and a string that
+/// is a prefix of the other is less. A wide code unit is stored
+/// little-endian, so it is compared as a number rather than byte by byte.
+pub(crate) fn compare_code_units(left: &[u8], right: &[u8], char_width: CharWidth) -> Ordering {
+    match char_width {
+        CharWidth::Narrow => left.cmp(right),
+        CharWidth::Wide => wide_code_units(left).cmp(wide_code_units(right)),
+    }
+}
+
+/// The wide code units whose bytes are `bytes`.
+fn wide_code_units(bytes: &[u8]) -> impl Iterator<Item = u16> + '_ {
+    let (units, _) = bytes.as_chunks::<2>();
+    units.iter().map(|unit| u16::from_le_bytes(*unit))
 }
 
 /// Read the per-code-unit [`CharWidth`] from a string header at `offset`.
@@ -426,6 +445,39 @@ mod tests {
         let mut buf = [0u8; 32];
         write_string_header(&mut buf, 0, 10, 4, CharWidth::Wide);
         assert_eq!(u16::from_le_bytes([buf[4], buf[5]]), 2);
+    }
+
+    #[test]
+    fn compare_code_units_when_narrow_then_orders_by_byte() {
+        assert_eq!(
+            compare_code_units(b"abc", b"abd", CharWidth::Narrow),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_code_units(b"ab", b"abc", CharWidth::Narrow),
+            Ordering::Less
+        );
+    }
+
+    #[test]
+    fn compare_code_units_when_wide_units_differ_in_both_bytes_then_orders_by_unit() {
+        // U+0100 is greater than U+00FF, though its first stored byte is less.
+        let left = 0x0100u16.to_le_bytes();
+        let right = 0x00FFu16.to_le_bytes();
+        assert_eq!(
+            compare_code_units(&left, &right, CharWidth::Wide),
+            Ordering::Greater
+        );
+    }
+
+    #[test]
+    fn compare_code_units_when_wide_prefix_then_less() {
+        let left = [b'a', 0];
+        let right = [b'a', 0, b'b', 0];
+        assert_eq!(
+            compare_code_units(&left, &right, CharWidth::Wide),
+            Ordering::Less
+        );
     }
 
     #[test]
