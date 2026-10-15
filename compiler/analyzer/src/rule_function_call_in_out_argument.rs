@@ -432,6 +432,10 @@ END_PROGRAM"
         "FUNCTION_BLOCK Inner VAR_INPUT i : DINT; END_VAR END_FUNCTION_BLOCK
 PROGRAM main VAR fb : Inner; r : DINT; END_VAR r := INC(1, fb.i); END_PROGRAM"
     )]
+    #[case::field_of_function_block_structure_input(
+        "FUNCTION_BLOCK Inner VAR_INPUT p : Pair; END_VAR END_FUNCTION_BLOCK
+PROGRAM main VAR fb : Inner; r : DINT; END_VAR r := INC(1, fb.p.a); END_PROGRAM"
+    )]
     fn apply_when_in_out_argument_provably_writable_then_ok(#[case] caller: &str) {
         let diagnostics = apply_to_caller(caller);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");

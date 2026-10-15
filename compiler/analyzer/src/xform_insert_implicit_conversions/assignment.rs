@@ -231,7 +231,7 @@ impl ImplicitConversions<'_> {
     }
 
     pub(super) fn type_of(&self, kind: &SymbolicVariableKind) -> Option<SemanticType> {
-        variable_type::of(kind, self.context, &self.scope.current())
+        variable_type::of(kind, self.context, &self.scope.current()).cloned()
     }
 
     /// The operation width of the numeric type of `expr`.

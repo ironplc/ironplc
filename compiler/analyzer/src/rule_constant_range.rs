@@ -420,7 +420,7 @@ impl RuleConstantRange<'_> {
                     PartialAccessSize::LWord => ByteSized::B64,
                 },
             }),
-            _ => variable_type::of(kind, self.context, &self.scope.current()),
+            _ => variable_type::of(kind, self.context, &self.scope.current()).cloned(),
         }
     }
 

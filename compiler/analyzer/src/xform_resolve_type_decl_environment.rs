@@ -12,10 +12,10 @@
 //! The transformation succeeds when all data type declarations
 //! resolve to a declared type.
 use crate::intermediates::*;
-use crate::semantic_type::{FunctionBlockVarType, SemanticStructField, SemanticType};
+use crate::semantic_type::SemanticType;
 use crate::type_environment::TypeEnvironment;
 use ironplc_dsl::common::*;
-use ironplc_dsl::core::{Id, Located};
+use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_problems::Problem;
@@ -372,62 +372,12 @@ impl Fold<Diagnostic> for TypeEnvironment {
     ) -> Result<FunctionBlockDeclaration, Diagnostic> {
         // Register the user-defined function block in the type environment
         // so that variable declarations like `myFb : MY_FB` resolve to
-        // SemanticType::FunctionBlock, just like stdlib FBs.
-        let mut fields = Vec::new();
-
-        for decl in &node.variables {
-            let var_type = match decl.var_type {
-                VariableType::Input => Some(FunctionBlockVarType::Input),
-                VariableType::Output => Some(FunctionBlockVarType::Output),
-                VariableType::InOut => Some(FunctionBlockVarType::InOut),
-                VariableType::Var => Some(FunctionBlockVarType::Internal),
-                _ => None,
-            };
-            let var_type = match var_type {
-                Some(vt) => vt,
-                None => continue,
-            };
-
-            if let Some(id) = decl.identifier.symbolic_id() {
-                let field_type = match &decl.initializer {
-                    InitialValueAssignmentKind::Simple(simple) => self
-                        .get(&simple.type_name)
-                        .ok_or_else(|| {
-                            Diagnostic::problem(
-                                Problem::ParentTypeNotDeclared,
-                                Label::span(simple.type_name.span(), "Field type"),
-                            )
-                        })?
-                        .representation
-                        .clone(),
-                    InitialValueAssignmentKind::FunctionBlock(fb_init) => self
-                        .get(&fb_init.type_name)
-                        .ok_or_else(|| {
-                            Diagnostic::problem(
-                                Problem::ParentTypeNotDeclared,
-                                Label::span(fb_init.type_name.span(), "Field type"),
-                            )
-                        })?
-                        .representation
-                        .clone(),
-                    _ => {
-                        // Skip field types we can't resolve yet (strings, arrays, etc.)
-                        continue;
-                    }
-                };
-
-                fields.push(SemanticStructField {
-                    name: Id::from(id.to_string().as_str()),
-                    field_type,
-                    var_type: Some(var_type),
-                    has_default: false,
-                });
-            }
-        }
-
+        // SemanticType::FunctionBlock, just like stdlib FBs. Its fields are
+        // its variables, whose types are not resolved yet:
+        // `xform_resolve_decl_types` lists them once they are.
         let attrs = crate::type_attributes::TypeAttributes::new(SemanticType::FunctionBlock {
             name: node.name.name.to_string(),
-            fields,
+            fields: vec![],
         });
         self.insert_type(&node.name, attrs);
 

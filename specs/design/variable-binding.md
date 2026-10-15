@@ -222,11 +222,10 @@ with, as `TypeEnvironment::field_type` records it, whatever that type is: the
 output `p` of a function block instance `f`, declared as a structure, makes
 `f.p` that structure, and a `STRING` output `s` makes `f.s` a `STRING`.
 
-A function block's `SemanticType` lists only the fields whose types were known
-when the block was entered in the type environment, before a late-bound type
-resolved, so it leaves out a field declared as a structure, a string or an
-array. `variable_type::of` reads such a field's type from the field types the
-environment records.
+`variable_type::of` walks a reference by type id, through
+`TypeEnvironment::field_type` for a field, and never reads a field's type from
+the fields a representation lists (see
+[Expression Type Resolution](expression-type-resolution.md)).
 
 ## Readers
 

@@ -16,7 +16,7 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use crate::intermediates::{array, string, TypeResolution};
-use crate::semantic_type::{ByteSized, SemanticType};
+use crate::semantic_type::{ByteSized, SemanticStructField, SemanticType};
 use crate::symbol_environment::duplicate_declaration;
 use crate::type_id;
 use ironplc_dsl::type_id::TypeId;
@@ -293,6 +293,10 @@ pub struct TypeEnvironment {
     /// field of an enumeration, a `WSTRING` or an array of `WSTRING` could not
     /// otherwise be traced back to it.
     fields: HashMap<(TypeId, Id), TypeId>,
+    /// The function block each function block `EXTENDS`, by the id of the
+    /// block that extends it. An instance of the derived block has the
+    /// fields of the block it extends as well as its own.
+    extended: HashMap<TypeId, TypeId>,
     /// The repeated declarations met while populating, until the transform
     /// that populates the environment drains them with
     /// [`Self::take_duplicates`]. Recorded rather than returned so that a
@@ -313,6 +317,7 @@ impl TypeEnvironment {
             array_elements: HashMap::new(),
             alias_bases: HashMap::new(),
             fields: HashMap::new(),
+            extended: HashMap::new(),
             duplicates: Vec::new(),
         }
     }
@@ -516,6 +521,28 @@ impl TypeEnvironment {
         self.fields.insert((record, field.clone()), field_type);
     }
 
+    /// Lists `fields` as the fields of the function block type `block`, in
+    /// place of the empty list the block was entered with: a block's fields
+    /// are its variables, whose types are known only after the block is
+    /// entered. Does nothing when `block` is not a function block type.
+    pub(crate) fn list_function_block_fields(
+        &mut self,
+        block: TypeId,
+        fields: Vec<SemanticStructField>,
+    ) {
+        if let Some(TypeEntry {
+            attributes:
+                crate::type_attributes::TypeAttributes {
+                    representation: SemanticType::FunctionBlock { fields: listed, .. },
+                    ..
+                },
+            ..
+        }) = self.entries.get_mut(&block)
+        {
+            *listed = fields;
+        }
+    }
+
     /// Records the type of each field of the standard function block
     /// `block`, every one of which is an elementary type, as the declaration
     /// of a user-defined block records its fields'.
@@ -541,15 +568,63 @@ impl TypeEnvironment {
         }
     }
 
+    /// Records that the function block `derived` `EXTENDS` the function
+    /// block `base`, so that [`Self::field_type`] finds the fields `derived`
+    /// inherits.
+    ///
+    /// Only a function block the library declares is recorded, as either
+    /// end. A base of another kind, such as a structure, has no fields a
+    /// block inherits, and the program is rejected. A standard block such as
+    /// `TON` is not a base the symbol environment or code generation
+    /// inherits from, so typing its fields here would let a program pass
+    /// analysis and fail later. A block keeps the first base recorded for it,
+    /// and a block that names itself is not recorded: the `EXTENDS` graph is
+    /// acyclic by the time types are recorded, and recording no such edge
+    /// keeps the lookup finite whatever it is given.
+    pub(crate) fn record_extends(&mut self, derived: TypeId, base: TypeId) {
+        if derived != base && self.is_declared_block(derived) && self.is_declared_block(base) {
+            self.extended.entry(derived).or_insert(base);
+        }
+    }
+
+    /// Whether `id` is a function block the library declares, rather than a
+    /// standard block or a type of another kind.
+    fn is_declared_block(&self, id: TypeId) -> bool {
+        self.get_by_id(id).is_some_and(|attributes| {
+            attributes.representation.is_function_block() && attributes.standard_block.is_none()
+        })
+    }
+
+    /// Whether the type `id` was entered from the declaration that spells
+    /// `name` at its span. `false` for a later declaration of a name the
+    /// environment already held, which keeps the first (P2007, P4013), and
+    /// for a declaration of a name the environment provides itself, such as
+    /// a standard function block.
+    pub(crate) fn entered_from(&self, id: TypeId, name: &TypeName) -> bool {
+        // `SourceSpan` equality holds for any two spans, so the positions
+        // are compared.
+        let (spelled, entered) = (name.span(), self.name_of(id).map(|name| name.span()));
+        entered.is_some_and(|entered| {
+            entered.start == spelled.start
+                && entered.end == spelled.end
+                && entered.file_id == spelled.file_id
+        })
+    }
+
     /// The id of the declared type of the field `field` of the structure or
     /// function block type `record`, or `None` when `record` has no such
     /// field or its type is not known. A field of an alias of a structure is
-    /// the field of the structure it names.
+    /// the field of the structure it names, and a field a function block
+    /// inherits through `EXTENDS` is the field of the block that declares
+    /// it.
     pub fn field_type(&self, record: TypeId, field: &Id) -> Option<TypeId> {
-        match self.fields.get(&(record, field.clone())) {
-            Some(field_type) => Some(*field_type),
-            None => self.field_type(self.alias_base(record)?, field),
+        if let Some(field_type) = self.fields.get(&(record, field.clone())) {
+            return Some(*field_type);
         }
+        let next = self
+            .alias_base(record)
+            .or_else(|| self.extended.get(&record).copied())?;
+        self.field_type(next, field)
     }
 
     /// The type the alias `alias` names (`BYTE` for `TYPE MyByte : BYTE`),
@@ -1122,6 +1197,40 @@ mod tests {
         assert_eq!(field("ctu", "CV"), id("int"));
         assert_eq!(field("ctu_lint", "PV"), id("lint"));
         assert_eq!(field("ctu", "MISSING"), None);
+    }
+
+    /// A function block entered with no fields.
+    fn block(env: &mut TypeEnvironment, name: &str) -> TypeId {
+        env.insert_anonymous(TypeAttributes::new(SemanticType::FunctionBlock {
+            name: name.to_string(),
+            fields: vec![],
+        }))
+    }
+
+    #[test]
+    fn record_extends_when_block_names_itself_then_not_recorded() {
+        let mut env = TypeEnvironment::new();
+        let block = block(&mut env, "Block");
+        env.record_extends(block, block);
+
+        assert_eq!(env.field_type(block, &Id::from("missing")), None);
+    }
+
+    #[test]
+    fn list_function_block_fields_when_not_function_block_then_unchanged() {
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        let int = env.id_of(&TypeName::from("INT")).unwrap();
+        env.list_function_block_fields(int, vec![]);
+
+        assert_eq!(
+            env.get_by_id(int).unwrap().representation,
+            SemanticType::Int {
+                size: ByteSized::B16
+            }
+        );
     }
 
     #[test]

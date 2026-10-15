@@ -156,9 +156,8 @@ impl Lowering<'_> {
             SemanticType::FunctionBlock { name, fields } => {
                 let fields = match self.body_named(&Id::from(name)) {
                     // A block the library declares has a field for each
-                    // variable it declares, as a program does. The analyzer's
-                    // fields leave out each one whose type it had not
-                    // resolved when it recorded them, such as an array.
+                    // variable it declares, as a program does
+                    // (REQ-LOW-lowering-170).
                     Some(Body::FunctionBlock(block)) => self.instance_fields(&block.variables)?,
                     // A standard function block, every field of which is
                     // elementary.

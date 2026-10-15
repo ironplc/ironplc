@@ -9,14 +9,16 @@ use ironplc_dsl::common::{
 
 /// For every `FUNCTION_BLOCK` with an `EXTENDS` clause, returns the
 /// transitive list of fields inherited from its ancestor chain (not
-/// including its own fields). Base-to-derived order, so a caller that
-/// applies its own fields last resolves a name to the nearest
+/// including its own fields), as declarations. Base-to-derived order, so a
+/// caller that applies its own fields last resolves a name to the nearest
 /// declaration. No program that survives analysis has two declarations
 /// of one name to choose between -- `rule_extends_field_duplicated`
 /// (`P4044`) rejects a derived function block that redeclares an
-/// inherited field -- but that rule runs after the transforms that use
-/// this list, so the order still decides what those transforms see for
-/// a program on its way to being rejected.
+/// inherited field, and is what reads this list.
+///
+/// The type of an inherited field is not read from here: the type
+/// environment records the block each block extends, and
+/// `TypeEnvironment::field_type` finds an inherited field through it.
 ///
 /// Assumes the `EXTENDS` graph is acyclic -- enforced by
 /// `xform_toposort_declarations`'s `RecursiveCycle` check, which runs
