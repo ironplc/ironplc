@@ -288,7 +288,7 @@ impl LspProject {
             #[allow(deprecated)]
             symbols.push(DocumentSymbol {
                 name: view.name.to_string(),
-                detail: Some(format!("{:?}", view.attributes.type_category)),
+                detail: Some(view.kind.as_str().to_string()),
                 kind: type_kind_to_symbol_kind(view.kind),
                 tags: None,
                 deprecated: None,
@@ -1037,6 +1037,7 @@ INVALID_SYNTAX"
         assert_eq!(symbols.len(), 1);
         assert_eq!(symbols[0].name, "MyStruct");
         assert_eq!(symbols[0].kind, lsp_types::SymbolKind::STRUCT);
+        assert_eq!(symbols[0].detail.as_deref(), Some("structure"));
     }
 
     #[test]

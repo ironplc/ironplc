@@ -90,7 +90,6 @@ mod string_similarity;
 pub mod symbol_environment;
 pub mod system_globals;
 mod type_attributes;
-mod type_category;
 mod type_compat;
 mod type_environment;
 pub mod type_id;
@@ -141,7 +140,6 @@ pub use semantic_context::{SemanticContext, SemanticContextBuilder};
 pub use semantic_type::SemanticType;
 pub use standard_function_block::{CounterWidth, StandardFunctionBlock};
 pub use type_attributes::TypeAttributes;
-pub use type_category::TypeCategory;
 pub use type_environment::{elementary_type, TypeEnvironment, TypeEnvironmentBuilder};
 
 #[cfg(test)]

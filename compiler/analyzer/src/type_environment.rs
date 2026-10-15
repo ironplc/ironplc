@@ -744,16 +744,18 @@ impl TypeEnvironment {
             .map(|(id, entry)| (*id, &entry.attributes))
     }
 
-    /// Returns an iterator over user-defined types, excluding elementary types
-    /// and function block types.
+    /// Every named type but the elementary types and the function blocks, in
+    /// no particular order. An alias of an elementary type (`MyBool : BOOL`)
+    /// and a sized string type (`MyStr : STRING[10]`) are types of their own,
+    /// with ids of their own, so they are listed.
     pub fn iter_user_defined(
         &self,
     ) -> impl Iterator<Item = (&TypeName, &crate::type_attributes::TypeAttributes)> {
-        use crate::type_category::TypeCategory;
-        self.iter().filter(|(_, attrs)| {
-            attrs.type_category != TypeCategory::Elementary
-                && !matches!(attrs.representation, SemanticType::FunctionBlock { .. })
-        })
+        self.names
+            .iter()
+            .filter(|(_, id)| type_id::elementary_debug_tag(**id).is_none())
+            .filter_map(|(name, id)| Some((name, self.get_by_id(*id)?)))
+            .filter(|(_, attrs)| !attrs.representation.is_function_block())
     }
 }
 
