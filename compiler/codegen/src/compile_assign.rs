@@ -4,7 +4,7 @@
 //! 1000-line guideline.
 
 use ironplc_dsl::core::Located;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{Assignment, Expr, SymbolicVariableKind, Variable};
 
 use super::compile::CompileContext;
@@ -12,6 +12,7 @@ use super::compile_array::{emit_flat_index, resolve_access, ResolvedAccess};
 use super::compile_expr::{compile_expr, emit_truncation, resolve_variable_name, variable_span};
 use super::compile_partial_access::{compile_partial_access_assignment, PartialAccess};
 use super::compile_place::Place;
+use super::compile_string_place::StringPlace;
 use crate::emit::Emitter;
 use crate::string_width::compile_string_value;
 use crate::type_info::expr_type_info;
@@ -81,32 +82,9 @@ pub(crate) fn compile_store(
             return assign_to_place(emitter, ctx, &place, value);
         }
 
-        // STRING fields are composite (multi-slot) and handled via the
-        // data region, so we intercept before resolve_struct_field_access
-        // which only supports single-slot (primitive/enum) fields.
-        let (root_name, slot_offset, field_type) = crate::compile_struct::walk_struct_chain(
-            ctx,
-            &structured.record,
-            &structured.field,
-            0,
-        )?;
-        if let ironplc_analyzer::semantic_type::SemanticType::String { char_width, .. } =
-            &field_type
-        {
-            let char_width = *char_width;
-            // `walk_struct_chain` found this structure variable above.
-            let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
-                Diagnostic::internal_error_at(Label::span(
-                    structured.span(),
-                    format!("Variable '{}' is not a structure", root_name),
-                ))
-            })?;
-            let byte_offset = struct_info.data_offset + slot_offset.raw() * 8;
-            // Produce the RHS at the field's declared encoding, the
-            // same as any other string destination (ADR-0034).
-            compile_string_value(emitter, ctx, value, char_width)?;
-            emitter.emit_str_store_var(byte_offset);
-            return Ok(());
+        // A STRING field lives in the data region, not in one slot.
+        if let Some(place) = StringPlace::resolve(ctx, target)? {
+            return assign_string(emitter, ctx, &place, value);
         }
 
         let place = Place::resolve(ctx, symbolic)?;
@@ -120,66 +98,47 @@ pub(crate) fn compile_store(
         return Ok(());
     }
 
-    // Look up the target variable's type info.
-    let target_name = resolve_variable_name(target);
+    // A STRING variable or array element lives in the data region, not in
+    // one slot.
+    if let Some(place) = StringPlace::resolve(ctx, target)? {
+        return assign_string(emitter, ctx, &place, value);
+    }
 
-    // Check if the target is a STRING variable (stored in data region).
-    let string_info = target_name
-        .and_then(|name| ctx.string_vars.get(name))
-        .map(|info| (info.data_offset, info.char_width));
-
-    if let Some((data_offset, char_width)) = string_info {
-        // String target: produce the RHS as a temp buffer at the
-        // target's encoding, then STR_STORE_VAR (ADR-0034).
-        compile_string_value(emitter, ctx, value, char_width)?;
-        emitter.emit_str_store_var(data_offset);
-    } else {
-        match resolve_access(ctx, target)? {
-            ResolvedAccess::ArrayElement { info, subscripts } if info.is_string_element => {
-                // Copy fields from info (borrows ctx) before using ctx mutably.
-                let arr_var_index = info.var_index;
-                let arr_desc_index = info.desc_index;
-                let element_char_width = info.string_char_width;
-                let dim_info = info.dimensions.clone();
-                // String array: produce the RHS as a temp buffer at the
-                // element's encoding, then the flat index, then
-                // STR_STORE_ARRAY_ELEM (ADR-0034).
-                compile_string_value(emitter, ctx, value, element_char_width)?;
-                emit_flat_index(emitter, ctx, &subscripts, &dim_info, &variable_span(target))?;
-                emitter.emit_str_store_array_elem(arr_var_index, arr_desc_index);
-            }
-            ResolvedAccess::StructFieldStringArrayElement(element) => {
-                // The RHS produces, at the element's encoding, the
-                // temp buffer index the store consumes (ADR-0034).
-                compile_string_value(emitter, ctx, value, element.char_width)?;
-                element.emit_base_and_index(emitter, ctx, &variable_span(target))?;
-                emitter.emit_str_store_array_elem(
-                    element.scratch_var_index,
-                    element.string_desc_index,
-                );
-            }
-            // `a^[i] := v` where `a` is a STRING array rather than a
-            // reference to one. The analyzer accepts the dereference, and
-            // this has always compiled to a single-slot store through `a`.
-            // A place refuses a STRING element, so this shape keeps its
-            // own store until the analyzer rejects the dereference.
-            ResolvedAccess::DerefArrayElement { info, subscripts } if info.is_string_element => {
-                let element_vti = info.element_var_type_info;
-                let ref_var_index = info.var_index;
-                let arr_desc_index = info.desc_index;
-                let dim_info = info.dimensions.clone();
-                compile_expr(emitter, ctx, value)?;
-                emit_truncation(emitter, element_vti);
-                emit_flat_index(emitter, ctx, &subscripts, &dim_info, &variable_span(target))?;
-                emitter.emit_store_array_deref(ref_var_index, arr_desc_index);
-            }
-            access => {
-                let place = Place::from_access(ctx, access, target_name, variable_span(target))?;
-                assign_to_place(emitter, ctx, &place, value)?;
-            }
+    match resolve_access(ctx, target)? {
+        // `a^[i] := v` where `a` is a STRING array rather than a reference to
+        // one. The analyzer accepts the dereference, and this has always
+        // compiled to a single-slot store through `a`. A place refuses a
+        // STRING element, so this shape keeps its own store until the
+        // analyzer rejects the dereference.
+        ResolvedAccess::DerefArrayElement { info, subscripts } if info.is_string_element => {
+            let element_vti = info.element_var_type_info;
+            let ref_var_index = info.var_index;
+            let arr_desc_index = info.desc_index;
+            let dim_info = info.dimensions.clone();
+            compile_expr(emitter, ctx, value)?;
+            emit_truncation(emitter, element_vti);
+            emit_flat_index(emitter, ctx, &subscripts, &dim_info, &variable_span(target))?;
+            emitter.emit_store_array_deref(ref_var_index, arr_desc_index);
+        }
+        access => {
+            let target_name = resolve_variable_name(target);
+            let place = Place::from_access(ctx, access, target_name, variable_span(target))?;
+            assign_to_place(emitter, ctx, &place, value)?;
         }
     }
     Ok(())
+}
+
+/// Stores `value`, produced as a temporary buffer at the encoding of the
+/// string `place` holds (ADR-0034), there.
+fn assign_string(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    place: &StringPlace<&Expr>,
+    value: &Expr,
+) -> Result<(), Diagnostic> {
+    compile_string_value(emitter, ctx, value, place.char_width())?;
+    place.emit_store(emitter, ctx)
 }
 
 /// Compiles `value` at the type `place` holds, and stores it there.
