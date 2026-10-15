@@ -16,11 +16,11 @@ use super::string::str_arg_offset;
 use super::{op_type, user_function};
 use crate::compile::{CompileContext, OpWidth, Signedness};
 use crate::compile_arith::convert;
-use crate::compile_user_call::emit_reference;
 use crate::compile_expr::{
     emit_add, emit_div, emit_eq, emit_ge, emit_gt, emit_le, emit_lt, emit_mod, emit_mul, emit_ne,
     emit_neg, emit_sub,
 };
+use crate::compile_user_call::emit_reference;
 use crate::emit::Emitter;
 
 pub(super) fn emit_expr(
