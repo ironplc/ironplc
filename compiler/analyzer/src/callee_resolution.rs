@@ -25,9 +25,9 @@ use ironplc_dsl::core::Id;
 use ironplc_dsl::textual::MethodReceiver;
 
 use crate::function_environment::FunctionSignature;
-use crate::semantic_type::{FunctionBlockVarType, SemanticStructField, SemanticType};
+use crate::semantic_type::FunctionBlockVarType;
 use crate::symbol_environment::{Resolution, ScopeKind, SymbolEnvironment};
-use crate::type_environment::TypeEnvironment;
+use crate::type_environment::{BlockField, TypeEnvironment};
 
 /// The function blocks a library declares, by name.
 pub(crate) struct FunctionBlocks<'a> {
@@ -196,24 +196,23 @@ impl MethodOwners {
     }
 }
 
-/// The parameters of every function block a call can name, and of every
-/// method a call can reach on one: each block the library declares, from its
-/// declaration, each standard block, from its type's fields, and each method,
-/// from the declaration of the block that declares it.
+/// The parameters of every method a call can reach on a function block the
+/// library declares, from the declaration of the block that declares it. A
+/// block's own parameters are its fields, which the type environment records
+/// ([`CallParameters::of_block`]).
 ///
 /// Owned, so that a pass that consumes the library as it folds it can ask.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct BlockParameters {
-    declared: HashMap<TypeName, CallParameters>,
+pub(crate) struct MethodParameters {
     /// The parameters of each method, by the block that declares it and the
     /// method's name.
     methods: HashMap<(TypeName, Id), CallParameters>,
     owners: MethodOwners,
 }
 
-impl BlockParameters {
-    /// The parameters of every function block `lib` declares, and of their
-    /// methods.
+impl MethodParameters {
+    /// The parameters of the methods of every function block `lib`
+    /// declares.
     pub(crate) fn of_library(lib: &Library) -> Self {
         let blocks = FunctionBlocks::from_library(lib);
         let methods = blocks
@@ -228,13 +227,7 @@ impl BlockParameters {
                 })
             })
             .collect();
-        let declared = blocks
-            .by_name
-            .into_iter()
-            .map(|(name, block)| (name, CallParameters::of_declaration(block)))
-            .collect();
-        BlockParameters {
-            declared,
+        MethodParameters {
             methods,
             owners: MethodOwners::of_library(lib),
         }
@@ -246,23 +239,6 @@ impl BlockParameters {
     pub(crate) fn method(&self, block: &TypeName, method: &Id) -> Option<&CallParameters> {
         let owner = self.owners.declaring_block(block, method)?;
         self.methods.get(&(owner.clone(), method.clone()))
-    }
-
-    /// The parameters of the function block `block`: a block the library
-    /// declares, or a standard block, whose type in `types` records which
-    /// one it is. `None` for any other type.
-    pub(crate) fn of(&self, block: &TypeName, types: &TypeEnvironment) -> Option<CallParameters> {
-        if let Some(parameters) = self.declared.get(block) {
-            return Some(parameters.clone());
-        }
-        let attributes = types.get(block)?;
-        attributes.standard_block?;
-        match &attributes.representation {
-            SemanticType::FunctionBlock { fields, .. } => {
-                Some(CallParameters::of_standard_block(fields))
-            }
-            _ => None,
-        }
     }
 }
 
@@ -324,14 +300,22 @@ impl CallParameters {
         }
     }
 
-    /// The parameters of a standard function block, from the fields of its
-    /// type. A standard block's type lists every field it has, which the
-    /// type of a user-defined block does not.
-    pub(crate) fn of_standard_block(fields: &[SemanticStructField]) -> Self {
+    /// The parameters of the function block `block`, a block the library
+    /// declares or a standard block: the inputs, in-outs and outputs the
+    /// type environment records for it, in order. `None` for any other
+    /// type.
+    pub(crate) fn of_block(block: &TypeName, types: &TypeEnvironment) -> Option<Self> {
+        Some(Self::of_block_fields(
+            types.block_fields(types.id_of(block)?)?,
+        ))
+    }
+
+    /// The parameters among the fields `fields` of a function block.
+    fn of_block_fields(fields: &[BlockField]) -> Self {
         let parameters = fields
             .iter()
             .filter_map(|field| {
-                let section = match field.var_type? {
+                let section = match field.var_type {
                     FunctionBlockVarType::Input => ParameterSection::Input,
                     FunctionBlockVarType::InOut => ParameterSection::InOut,
                     FunctionBlockVarType::Output => ParameterSection::Output,
@@ -715,18 +699,22 @@ END_FUNCTION_BLOCK";
         assert_eq!(None, section_of(&parameters, "hidden"));
     }
 
+    /// A block the library declares has the parameters its declaration
+    /// lists, as the type environment records them.
     #[test]
-    fn call_parameters_when_standard_block_then_inputs_and_outputs_of_its_type() {
+    fn call_parameters_when_declared_block_then_same_as_its_declaration() {
+        let (lib, context) = parse_and_resolve_types_with_options(PARAMETERS, &oop_options());
+        let declared = CallParameters::of_declaration(block(&lib, "FB_Params"));
+
+        let recorded = CallParameters::of_block(&TypeName::from("FB_Params"), context.types());
+
+        assert_eq!(recorded, Some(declared));
+    }
+
+    #[test]
+    fn call_parameters_when_standard_block_then_inputs_and_outputs_it_records() {
         let (_, context) = parse_and_resolve_types_with_options(PARAMETERS, &oop_options());
-        let SemanticType::FunctionBlock { fields, .. } = &context
-            .types()
-            .get(&TypeName::from("CTU"))
-            .unwrap()
-            .representation
-        else {
-            panic!("CTU is a function block");
-        };
-        let parameters = CallParameters::of_standard_block(fields);
+        let parameters = CallParameters::of_block(&TypeName::from("CTU"), context.types()).unwrap();
         assert_eq!(vec!["CU", "R", "PV"], names(parameters.positional()));
         assert_eq!(
             Some(ParameterSection::Output),
@@ -880,7 +868,7 @@ END_FUNCTION_BLOCK",
     /// The names of the parameters of `method` called on `block`, in
     /// `program`.
     fn method_parameter_names(program: &str, block: &str, method: &str) -> Option<Vec<String>> {
-        let parameters = BlockParameters::of_library(&parse(program));
+        let parameters = MethodParameters::of_library(&parse(program));
         parameters
             .method(&TypeName::from(block), &Id::from(method))
             .map(|parameters| names(parameters.iter()))

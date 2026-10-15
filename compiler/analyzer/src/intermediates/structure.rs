@@ -32,7 +32,6 @@ pub fn try_from(
         fields.push(SemanticStructField {
             name: element.name.clone(),
             field_type,
-            var_type: None, // Structure fields don't have input/output distinction
             has_default,
         });
     }

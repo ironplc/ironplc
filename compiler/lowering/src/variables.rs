@@ -125,11 +125,12 @@ impl<'a> Lowering<'a> {
         self.instance(pou, name, block).map(Some)
     }
 
-    /// The fields of the instance of a program or function block that
-    /// declares `variables`: one for each variable, other than a `VAR_TEMP`
-    /// or a `VAR_EXTERNAL`, in the order they are declared. `None` when
-    /// lowering cannot express the type of one of them yet.
-    pub(crate) fn instance_fields(&mut self, variables: &[VarDecl]) -> Made<Vec<Field>> {
+    /// The fields of the instance of a program that declares `variables`:
+    /// one for each variable, other than a `VAR_TEMP` or a `VAR_EXTERNAL`,
+    /// in the order they are declared, as a function block's are (see
+    /// `block_fields` in `types.rs`). `None` when lowering cannot express the
+    /// type of one of them yet.
+    fn instance_fields(&mut self, variables: &[VarDecl]) -> Made<Vec<Field>> {
         let mut fields = Vec::new();
         for decl in variables {
             let section = match decl.var_type {

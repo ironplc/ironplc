@@ -189,6 +189,7 @@ mod tests {
     use ironplc_parser::options::CompilerOptions;
     use ironplc_problems::Problem;
     use rstest::rstest;
+    use spec_test_macro::spec_test;
 
     use crate::test_helpers::{
         codes, configuration_with_globals as config, diagnostic_codes,
@@ -246,6 +247,32 @@ END_TYPE
         let reported = rule_codes(super::apply, &source, &CompilerOptions::default());
 
         assert_eq!(reported, codes(&[Problem::ExternalMatchesNoGlobal]));
+    }
+
+    /// The type of a function block holds no copy of the block's fields,
+    /// so an array of a block declared before the block -- a top-level
+    /// `VAR_GLOBAL` is placed ahead of every declaration -- is the same type
+    /// as one declared after it.
+    #[spec_test(REQ_ETR_analyzer_005)]
+    #[test]
+    fn apply_when_global_array_of_block_declared_before_block_then_ok() {
+        let source = "
+VAR_GLOBAL g : ARRAY[1..2] OF Counter; END_VAR
+FUNCTION_BLOCK Counter
+  VAR_OUTPUT count : INT := 7; label : STRING[4]; END_VAR
+END_FUNCTION_BLOCK
+PROGRAM main
+  VAR_EXTERNAL g : ARRAY[1..2] OF Counter; END_VAR
+END_PROGRAM
+";
+        let options = CompilerOptions {
+            allow_top_level_var_global: true,
+            ..CompilerOptions::default()
+        };
+
+        let reported = rule_codes(super::apply, source, &options);
+
+        assert_eq!(reported, codes(&[]));
     }
 
     rule_err_at!(

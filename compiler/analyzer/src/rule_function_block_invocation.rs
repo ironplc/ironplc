@@ -43,7 +43,7 @@ use ironplc_problems::Problem;
 use std::convert::Infallible;
 
 use crate::{
-    callee_resolution::{instance_type, BlockParameters, CallParameters, FunctionBlocks},
+    callee_resolution::{instance_type, CallParameters, FunctionBlocks},
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
@@ -57,18 +57,13 @@ pub fn apply(
     _options: &CompilerOptions,
 ) -> SemanticResult {
     let function_blocks = FunctionBlocks::from_library(lib);
-    let parameters = BlockParameters::of_library(lib);
 
     // Walk the library to find all references to function blocks
-    run_rule(
-        RuleFunctionBlockUse::new(&function_blocks, &parameters, context),
-        lib,
-    )
+    run_rule(RuleFunctionBlockUse::new(&function_blocks, context), lib)
 }
 
 struct RuleFunctionBlockUse<'a> {
     function_blocks: &'a FunctionBlocks<'a>,
-    parameters: &'a BlockParameters,
     context: &'a SemanticContext,
 
     /// The scope the walk is in, which an instance is looked up from.
@@ -77,14 +72,9 @@ struct RuleFunctionBlockUse<'a> {
     diagnostics: Vec<Diagnostic>,
 }
 impl<'a> RuleFunctionBlockUse<'a> {
-    fn new(
-        function_blocks: &'a FunctionBlocks<'a>,
-        parameters: &'a BlockParameters,
-        context: &'a SemanticContext,
-    ) -> Self {
+    fn new(function_blocks: &'a FunctionBlocks<'a>, context: &'a SemanticContext) -> Self {
         Self {
             function_blocks,
-            parameters,
             context,
             scope: ScopeTracker::default(),
             diagnostics: Vec::new(),
@@ -153,10 +143,7 @@ impl Visitor<Infallible> for RuleFunctionBlockUse<'_> {
         };
 
         // A block the library declares, or a standard one.
-        match self
-            .parameters
-            .of(&function_block_name, self.context.types())
-        {
+        match CallParameters::of_block(&function_block_name, self.context.types()) {
             None => self.diagnostics.push(Self::not_in_scope(fb_call)),
             Some(parameters) => {
                 let diagnostics =

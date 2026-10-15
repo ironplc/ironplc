@@ -7,7 +7,7 @@
 use ironplc_analyzer::semantic_type::{ByteSized, FunctionBlockVarType, SemanticType};
 use ironplc_container::{CharWidth, DEFAULT_STRING_MAX_LENGTH};
 use ironplc_dsl::common::TypeName;
-use ironplc_dsl::core::{Id, Located, SourceSpan};
+use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::type_id::TypeId as AnalyzerTypeId;
 use ironplc_ir::execution::DebugName;
@@ -16,7 +16,7 @@ use ironplc_ir::lowered::{
     TypeEntry, TypeId, TypeKind, WideWidth,
 };
 
-use crate::{Body, Lowering};
+use crate::Lowering;
 
 /// A lowered type, `None` when lowering cannot express it yet, or a P9998
 /// when the analyzer's type breaks an invariant of the type table.
@@ -153,22 +153,8 @@ impl Lowering<'_> {
                 };
                 TypeKind::Structure { fields }
             }
-            SemanticType::FunctionBlock { name, fields } => {
-                let fields = match self.body_named(&Id::from(name)) {
-                    // A block the library declares has a field for each
-                    // variable it declares, as a program does
-                    // (REQ-LOW-lowering-170).
-                    Some(Body::FunctionBlock(block)) => self.instance_fields(&block.variables)?,
-                    // A standard function block, every field of which is
-                    // elementary.
-                    Some(Body::Program(_) | Body::Function(_)) | None => self.fields(
-                        id,
-                        fields
-                            .iter()
-                            .map(|f| (&f.name, f.var_type.as_ref().map(section))),
-                    )?,
-                };
-                let Some(fields) = fields else {
+            SemanticType::FunctionBlock { name } => {
+                let Some(fields) = self.block_fields(id)? else {
                     return Ok(None);
                 };
                 TypeKind::FunctionBlock {
@@ -234,6 +220,33 @@ impl Lowering<'_> {
             lowered.push(Field::new(&name.to_string(), name.span(), section, ty));
         }
         Ok(Some(lowered))
+    }
+
+    /// The fields of the function block `block`, a block the library
+    /// declares and a standard block alike: one for each variable the type
+    /// environment records for it, in the order the block declares them, as
+    /// a program's are (REQ-LOW-lowering-170). `None` when lowering cannot
+    /// express the type of one of them yet.
+    fn block_fields(&mut self, block: AnalyzerTypeId) -> Result<Option<Vec<Field>>, Diagnostic> {
+        let Some(recorded) = self.analysis.context().types().block_fields(block) else {
+            return Ok(None);
+        };
+        let mut fields = Vec::with_capacity(recorded.len());
+        for field in recorded {
+            let Some(field_type) = field.field_type else {
+                return Ok(None);
+            };
+            let Some(ty) = self.lowered_type(field_type)? else {
+                return Ok(None);
+            };
+            fields.push(Field::new(
+                &field.name.to_string(),
+                field.name.span(),
+                Some(section(&field.var_type)),
+                ty,
+            ));
+        }
+        Ok(Some(fields))
     }
 
     /// The lowered type of an elementary type, such as a subrange's base.

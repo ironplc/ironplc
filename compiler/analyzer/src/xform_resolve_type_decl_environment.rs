@@ -374,10 +374,10 @@ impl Fold<Diagnostic> for TypeEnvironment {
         // so that variable declarations like `myFb : MY_FB` resolve to
         // SemanticType::FunctionBlock, just like stdlib FBs. Its fields are
         // its variables, whose types are not resolved yet:
-        // `xform_resolve_decl_types` lists them once they are.
+        // `xform_resolve_decl_types` records them in the environment once
+        // they are, never in the block's type.
         let attrs = crate::type_attributes::TypeAttributes::new(SemanticType::FunctionBlock {
             name: node.name.name.to_string(),
-            fields: vec![],
         });
         self.insert_type(&node.name, attrs);
 

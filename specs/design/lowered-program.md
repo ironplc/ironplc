@@ -569,10 +569,11 @@ parameter is also its first parameter (see
 
 The fields of a program's or function block's type are the variables it
 declares, whatever their types, so a block's type is the same whether its body
-is lowered or an instance of it is a field of another. A standard function
-block declares no variables: its fields are the ones the analyzer gives its
-type, and the ones lowering synthesizes (see
-[Synthesized state](#synthesized-state)). The fields a block inherits through
+is lowered or an instance of it is a field of another. A function block's
+fields, of a block the library declares and of a standard block alike, are the
+ones the analyzer's type environment records for it
+(`TypeEnvironment::block_fields`); a standard block also has the ones lowering
+synthesizes (see [Synthesized state](#synthesized-state)). The fields a block inherits through
 `EXTENDS` are not among them yet, so a statement that names one is not
 lowered.
 

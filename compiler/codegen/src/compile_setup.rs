@@ -213,8 +213,10 @@ fn assign_storage(
             let standard_block = types
                 .get_by_id(type_id)
                 .and_then(|attributes| attributes.standard_block);
-            if let Some((type_id, num_fields, field_map)) = standard_block.map(standard_fb_layout) {
-                let field_types = standard_fb_field_types(ctx, decl);
+            if let Some((fb_type_id, num_fields, field_map)) =
+                standard_block.map(standard_fb_layout)
+            {
+                let field_types = standard_fb_field_types(types, type_id);
                 // Standard library function block.
                 let instance_size = num_fields as u32 * 8;
                 let data_offset = crate::data_region::reserve(ctx, instance_size, &span)?;
@@ -223,7 +225,7 @@ fn assign_storage(
                     id.clone(),
                     FbInstanceInfo {
                         var_index: index,
-                        type_id,
+                        type_id: fb_type_id,
                         data_offset,
                         field_indices: field_map,
                         field_types,
@@ -407,29 +409,27 @@ fn iec_type_tag_of(types: &TypeEnvironment, type_id: TypeId) -> u8 {
     }
 }
 
-/// The debug type tag of a subrange type: the tag of the elementary type it
-/// is a range of (REQ-SR-023). A subrange's slot holds its value at the base
-/// type's width and signedness, so it must render as that type -- a `LINT`
-/// subrange rendered as 32 bits shows only the low word. `OTHER` when the
-/// base type is not elementary.
-/// The type of each field of the standard function block instance `decl`
-/// declares, from the declared type of the field: a `CTU_LINT`'s `PV` and
-/// `CV` are operated as `LINT`s, and a `CTU`'s are stored as `INT`s.
-fn standard_fb_field_types(ctx: &CompileContext, decl: &VarDecl) -> HashMap<String, VarTypeInfo> {
-    let Some(SemanticType::FunctionBlock { fields, .. }) =
-        decl.type_id.and_then(|id| ctx.types.get(&id))
-    else {
-        return HashMap::new();
-    };
-    fields
+/// The type of each field of the standard function block `block`, from the
+/// declared type of the field the type environment records: a `CTU_LINT`'s
+/// `PV` and `CV` are operated as `LINT`s, and a `CTU`'s are stored as `INT`s.
+fn standard_fb_field_types(types: &TypeEnvironment, block: TypeId) -> HashMap<String, VarTypeInfo> {
+    types
+        .block_fields(block)
+        .unwrap_or_default()
         .iter()
         .filter_map(|field| {
-            let info = crate::type_info::operand_type_info(&field.field_type)?;
+            let field_type = &types.get_by_id(field.field_type?)?.representation;
+            let info = crate::type_info::operand_type_info(field_type)?;
             Some((field.name.to_string().to_lowercase(), info))
         })
         .collect()
 }
 
+/// The debug type tag of a subrange type: the tag of the elementary type it
+/// is a range of (REQ-SR-023). A subrange's slot holds its value at the base
+/// type's width and signedness, so it must render as that type -- a `LINT`
+/// subrange rendered as 32 bits shows only the low word. `OTHER` when the
+/// base type is not elementary.
 fn subrange_iec_type_tag(types: &TypeEnvironment, subrange: &SemanticType) -> u8 {
     let mut base = subrange;
     while let SemanticType::Subrange { base_type, .. } = base {

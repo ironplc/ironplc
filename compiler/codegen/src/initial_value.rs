@@ -16,7 +16,7 @@
 use std::collections::HashMap;
 
 use ironplc_analyzer::semantic_type::ByteSized;
-use ironplc_analyzer::SemanticType;
+use ironplc_analyzer::{SemanticType, TypeEnvironment};
 use ironplc_container::{CharWidth, DEFAULT_STRING_MAX_LENGTH};
 use ironplc_dsl::common::*;
 use ironplc_dsl::core::{Id, Located, SourceSpan};
@@ -113,31 +113,31 @@ impl Scalar {
     }
 }
 
-/// The type of every variable of each user-defined function block, by the
-/// block's name and then the variable's, both lower case.
+/// The type of every field of each function block, user-defined and
+/// standard, by the block's name and then the field's, both lower case.
 ///
-/// The representation of a function block in the type environment leaves
-/// out the variables whose types it does not lay out (strings, arrays), so
-/// the value of an instance is read against the block's declarations.
+/// A function block's type names the block and lists none of its fields:
+/// the type environment records them (`TypeEnvironment::block_fields`), and
+/// the value of an instance is read against those.
 pub(crate) type BlockMembers = HashMap<String, HashMap<String, SemanticType>>;
 
-/// The types of the variables of the function blocks `blocks`.
-pub(crate) fn block_members(
-    blocks: &[&FunctionBlockDeclaration],
-    types: &HashMap<TypeId, SemanticType>,
-) -> BlockMembers {
-    blocks
-        .iter()
-        .map(|block| {
-            let members = block
-                .variables
+/// The types of the fields of every function block in `types`.
+pub(crate) fn block_members(types: &TypeEnvironment) -> BlockMembers {
+    types
+        .iter_ids()
+        .filter_map(|(id, attributes)| {
+            let SemanticType::FunctionBlock { name } = &attributes.representation else {
+                return None;
+            };
+            let members = types
+                .block_fields(id)?
                 .iter()
-                .filter_map(|decl| {
-                    let name = decl.identifier.symbolic_id()?.to_string().to_lowercase();
-                    Some((name, declared_type(decl, types)?))
+                .filter_map(|field| {
+                    let field_type = &types.get_by_id(field.field_type?)?.representation;
+                    Some((field.name.to_string().to_lowercase(), field_type.clone()))
                 })
                 .collect();
-            (block.name.name.to_string().to_lowercase(), members)
+            Some((name.to_lowercase(), members))
         })
         .collect()
 }
@@ -318,27 +318,21 @@ impl Reader<'_> {
         members: &[StructureElementInit],
         representation: &SemanticType,
     ) -> Result<InitialValue, Diagnostic> {
-        let fields = representation
-            .member_fields()
-            .ok_or_else(|| self.error("Member initializer for a type without fields"))?;
-        let expected = match representation {
+        match representation {
+            SemanticType::Structure { fields } if fields.len() != members.len() => {
+                return Err(self.error("Structure initializer does not list every field"));
+            }
             // An instance holds a value for each field that is not a
             // `VAR_IN_OUT` or `VAR_EXTERNAL`; which those are is the
             // analyzer's to say, so only the names are checked.
-            SemanticType::FunctionBlock { .. } => None,
-            _ => Some(fields.len()),
-        };
-        if expected.is_some_and(|count| count != members.len()) {
-            return Err(self.error("Structure initializer does not list every field"));
+            SemanticType::Structure { .. } | SemanticType::FunctionBlock { .. } => {}
+            _ => return Err(self.error("Member initializer for a type without fields")),
         }
         let values = members
             .iter()
             .map(|member| {
-                let field_type = fields
-                    .iter()
-                    .find(|field| field.name == member.name)
-                    .map(|field| &field.field_type)
-                    .or_else(|| self.block_member(representation, &member.name))
+                let field_type = self
+                    .member_type(representation, &member.name)
                     .ok_or_else(|| self.error("Member initializer names no field"))?;
                 Ok(FieldValue {
                     name: member.name.clone(),
@@ -349,15 +343,25 @@ impl Reader<'_> {
         Ok(InitialValue::Structure(values))
     }
 
-    /// The type of the variable `name` of the user-defined function block
-    /// `representation`, as the block declares it.
-    fn block_member(&self, representation: &SemanticType, name: &Id) -> Option<&SemanticType> {
-        let SemanticType::FunctionBlock { name: block, .. } = representation else {
-            return None;
-        };
-        self.blocks
-            .get(&block.to_lowercase())?
-            .get(&name.to_string().to_lowercase())
+    /// The type of the field `name` of the structure or function block
+    /// `representation`: one the structure's type lists, or one the type
+    /// environment records for the block.
+    fn member_type<'r>(
+        &'r self,
+        representation: &'r SemanticType,
+        name: &Id,
+    ) -> Option<&'r SemanticType> {
+        match representation {
+            SemanticType::Structure { fields } => fields
+                .iter()
+                .find(|field| field.name == *name)
+                .map(|field| &field.field_type),
+            SemanticType::FunctionBlock { name: block } => self
+                .blocks
+                .get(&block.to_lowercase())?
+                .get(&name.to_string().to_lowercase()),
+            _ => None,
+        }
     }
 
     /// The value one member of a structure initializer gives a field of

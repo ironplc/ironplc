@@ -52,18 +52,34 @@ The pass runs before the `SymbolEnvironment` is built, so each variable's
 
 A field is declared as a variable is, so the pass also records, in the
 `TypeEnvironment`, the id of the declared type of each field of a structure
-or function block (`TypeEnvironment::field_type`), and the block each
-function block `EXTENDS`, whose fields an instance of the derived block has
-too. Only a function block the library declares is recorded as a base: a
-structure has no fields a block inherits, and the symbol environment and code
-generation do not inherit a standard block's, so typing them here would let a
-program pass analysis and fail later. A function block's type is entered
-before declared types are resolved, so that `f : FB` resolves to it while its
-variables' types do not yet; the pass lists the block's fields on its type
-once they do. A repeated block name keeps its first declaration (P4013), so a
-later declaration records nothing on its type.
+or function block (`TypeEnvironment::field_type`).
 
-**REQ-ETR-analyzer-002** The type of a function block lists one field for each `VAR_INPUT`, `VAR_OUTPUT`, `VAR_IN_OUT` and `VAR` variable the block declares, in the order it declares them, whatever the variable's type: a structure, a string, an array and a reference are listed as an `INT` is, and a `VAR_TEMP` is not listed.
+A type's representation never changes once the type is entered, and a
+function block's type names the block and lists none of its fields. A block's
+type is entered before declared types are resolved, so that `f : FB` resolves
+to it, and by the time its variables' types are known it has been copied into
+the types that use it: an array of the block declared ahead of it, such as a
+top-level `VAR_GLOBAL`, which is placed before every other declaration. A
+field list in the type would be in each copy as the copy was taken, and two
+copies of one block could disagree. So the environment records a block's
+fields -- its `VAR_INPUT`, `VAR_OUTPUT`, `VAR_IN_OUT` and `VAR` variables, in
+order, each with its section and the id of its declared type -- and every
+reader looks them up by the block's id (`TypeEnvironment::block_fields`,
+`block_field`, `field_type`). A standard block's fields are recorded the same
+way when the environment is built.
+
+A block's fields and the block it `EXTENDS`, whose fields an instance of the
+derived block has too, are recorded together, once
+(`TypeEnvironment::record_block`): a repeated block name keeps its first
+declaration (P4013), and a library block named like a standard one records
+nothing on the standard block. Only a function block the library declares is
+recorded as a base: a structure has no fields a block inherits, and the symbol
+environment and code generation do not inherit a standard block's, so typing
+them here would let a program pass analysis and fail later.
+
+**REQ-ETR-analyzer-002** The type environment records one field for each `VAR_INPUT`, `VAR_OUTPUT`, `VAR_IN_OUT` and `VAR` variable a function block declares, in the order it declares them, with its section and the id of its declared type, whatever that type: a structure, a string, an array and a reference are recorded as an `INT` is, and a `VAR_TEMP` is not. The block's type lists none of them.
+
+**REQ-ETR-analyzer-005** Two declarations that spell the same array of a function block declare types of the same shape wherever they are in the library: a top-level `VAR_GLOBAL g : ARRAY[1..2] OF Counter`, placed before every block, and `VAR_EXTERNAL g : ARRAY[1..2] OF Counter` in a program are the same type, so the external matches the global.
 
 **REQ-ETR-analyzer-003** A field a function block inherits through `EXTENDS` has the type the block that declares it gives it: `field_type` of the derived block and `count`, an `INT` the base block declares, is `INT`. A base that is not a function block the library declares gives no field: `EXTENDS Pair` on a structure `Pair` does not make `Pair`'s field `f` a field of the block, and `EXTENDS TON` does not make `Q` one.
 

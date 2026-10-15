@@ -522,7 +522,6 @@ mod tests {
         SemanticStructField {
             name: Id::from(name),
             field_type,
-            var_type: None,
             has_default: false,
         }
     }
@@ -628,7 +627,6 @@ mod tests {
             "fb",
             SemanticType::FunctionBlock {
                 name: "MyFB".to_string(),
-                fields: vec![],
             },
         )];
         let result = build_struct_fields(&fields, &SourceSpan::default());
@@ -750,7 +748,6 @@ mod tests {
             },
             SemanticType::FunctionBlock {
                 name: "FB".to_string(),
-                fields: vec![],
             },
         ]);
 
