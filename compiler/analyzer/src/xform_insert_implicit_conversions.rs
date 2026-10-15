@@ -212,6 +212,7 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
             | ExprKind::Ref(_)
             | ExprKind::Deref(_)
             | ExprKind::ImplicitConversion(_)
+            | ExprKind::CallOutput(_)
             | ExprKind::Null(_) => {}
         }
         Ok(node)

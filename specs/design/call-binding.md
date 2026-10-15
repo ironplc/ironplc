@@ -106,14 +106,16 @@ function, function block and method call whose arguments bind:
   declaration order, keeping its negation.
 
 An output assignment of a function block call also records the value the
-call stores in its target (`Output::value`): the output read from the
-instance after the call, `inst.q`, and `NOT inst.q` for a negated output,
-written where the output is named. It is the value `v := inst.q` after the
-call would assign, so the resolver types it, the rules check it against the
-target, and the recording pass converts it to the target's type, as they do
-that assignment's ([Implicit Conversions](implicit-conversions.md)). The
-output of a function or method call has no instance field to read, and
-records none.
+call stores in its target (`Output::value`): the output the call leaves,
+`ExprKind::CallOutput(q)`, and `NOT` of it for a negated output, written
+where the output is named. A call output is not source syntax and appears
+nowhere else. It is read where the call leaves its outputs, which for a
+function block is the instance's field, so it is the value `v := inst.q`
+after the call would assign. The resolver types it as that read, the rules
+check it against the target, and the recording pass converts it to the
+target's type, as they do that assignment's
+([Implicit Conversions](implicit-conversions.md)). The output of a function
+or method call records none yet.
 
 The callee of a method call is the method its receiver's block declares or
 inherits ([Methods](#methods)), so a call to an inherited method is written
@@ -198,8 +200,9 @@ normal form.
 
 **REQ-CB-analyzer-036** Each output assignment of a function block call whose
 arguments bind records the value the call stores in its target, written
-where the output is named: `inst.q` of the output's type for `q => v`, and
-`NOT inst.done` for `NOT done => d`, for a user-defined and a standard block.
+where the output is named: the call output `q`, of the type `inst.q` has, for
+`q => v`, and `NOT` of the call output `done` for `NOT done => d`, for a
+user-defined and a standard block.
 
 **REQ-CB-codegen-020** A function block call with positional inputs stores
 them in the block's `VAR_INPUT` parameters in declaration order.

@@ -307,8 +307,8 @@ impl Lowering<'_> {
                 self.program.read_str(place, span).map(Some)
             }
             AstExprKind::Function(func) => self.string_call(frame, expr, func),
-            // A string a reference refers to and a method's string result
-            // are not lowered yet.
+            // A string a reference refers to, a method's string result and a
+            // call's string output are not lowered yet.
             AstExprKind::Deref(_)
             | AstExprKind::MethodCall(_)
             | AstExprKind::Compare(_)
@@ -318,6 +318,7 @@ impl Lowering<'_> {
             | AstExprKind::LateBound(_)
             | AstExprKind::Ref(_)
             | AstExprKind::ImplicitConversion(_)
+            | AstExprKind::CallOutput(_)
             | AstExprKind::Null(_) => Ok(None),
         }
     }

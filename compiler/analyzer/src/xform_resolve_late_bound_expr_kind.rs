@@ -346,6 +346,7 @@ impl Fold<Diagnostic> for DeclarationResolver<'_> {
                 Ok(ExprKind::ImplicitConversion(Box::new(folded)))
             }
             ExprKind::Null(span) => Ok(ExprKind::Null(span)),
+            ExprKind::CallOutput(output) => Ok(ExprKind::CallOutput(output)),
             ExprKind::LateBound(node) => match self.current_type {
                 VariableType::None => Ok(self.resolve_late_bound(node.value)),
                 VariableType::Simple => Ok(self.resolve_late_bound(node.value)),

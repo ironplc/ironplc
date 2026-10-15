@@ -55,6 +55,7 @@ pub fn apply(
         named_enumerations,
         function_block_inputs,
         ambiguous: Vec::new(),
+        calls: Vec::new(),
     };
 
     let library = resolver.fold_library(lib).map_err(|e| vec![e])?;
@@ -183,6 +184,17 @@ struct ExprTypeResolver<'a> {
     /// The unqualified enumerated values left ambiguous so far. A value
     /// leaves the list when the place it is used in gives it a type.
     ambiguous: Vec<EnumeratedValue>,
+    /// The calls the fold is inside, innermost last: an
+    /// [`ExprKind::CallOutput`] reads an output of the innermost.
+    calls: Vec<CallFrame>,
+}
+
+/// A call whose arguments the fold is inside, for the type of the outputs a
+/// [`ExprKind::CallOutput`] reads from it.
+enum CallFrame {
+    /// A call of the function block instance of this name: its output `q`
+    /// has the type `instance.q` has.
+    Instance(Id),
 }
 
 impl ExprTypeResolver<'_> {
@@ -322,6 +334,22 @@ impl ExprTypeResolver<'_> {
             // converts, so it is recorded on the node, which `fold_expr`
             // keeps.
             ExprKind::ImplicitConversion(_) => None,
+            ExprKind::CallOutput(output) => self.call_output_type(output).map(ExprType::Concrete),
+        }
+    }
+
+    /// The type of the output `output` of the innermost call the fold is
+    /// inside: the type the read of that output of the instance has.
+    fn call_output_type(&self, output: &Id) -> Option<TypeId> {
+        match self.calls.last()? {
+            CallFrame::Instance(instance) => {
+                self.symbolic_type_id(&SymbolicVariableKind::Structured(StructuredVariable {
+                    record: Box::new(SymbolicVariableKind::Named(NamedVariable {
+                        name: instance.clone(),
+                    })),
+                    field: output.clone(),
+                }))
+            }
         }
     }
 
@@ -778,7 +806,10 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
     }
 
     fn fold_fb_call(&mut self, node: FbCall) -> Result<FbCall, Diagnostic> {
-        let mut node = node.recurse_fold(self)?;
+        self.calls.push(CallFrame::Instance(node.var_name.clone()));
+        let folded = node.recurse_fold(self);
+        self.calls.pop();
+        let mut node = folded?;
         // An unqualified enumerated value passed to an input has its type.
         for param in &mut node.params {
             if let ParamAssignmentKind::NamedInput(input) = param {

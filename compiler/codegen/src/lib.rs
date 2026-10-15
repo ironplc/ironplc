@@ -40,6 +40,7 @@ mod compile_array_struct;
 mod compile_assign;
 mod compile_builtin;
 mod compile_call;
+mod compile_call_output;
 mod compile_comparison;
 mod compile_enum;
 mod compile_expr;

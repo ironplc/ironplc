@@ -306,7 +306,8 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
     }
 
     /// An output assignment stores the value the binding pass recorded for
-    /// it, `inst.q` after the call, so it is checked as `v := inst.q` is.
+    /// it, the output the call leaves, so it is checked as `v := inst.q`
+    /// after the call is.
     fn visit_output(&mut self, node: &Output) -> Result<Self::Value, Infallible> {
         if let Some(value) = &node.value {
             self.check_assignment_type(&node.tgt, false, value, "Output value");

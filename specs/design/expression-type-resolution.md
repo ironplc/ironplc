@@ -156,7 +156,7 @@ undecided, as an expression with no type is.
 
 **REQ-ETR-plc2plc-006** The annotated rendering re-parses to the same library as the plain rendering of the same library.
 
-An output assignment of a function block call stores a value the analyzer recorded but the program does not write: the output read from the instance after the call (see [Call Binding](call-binding.md)). The annotated rendering writes that value's comment after the output.
+An output assignment of a function block call stores a value the analyzer recorded but the program does not write: the output the call leaves (see [Call Binding](call-binding.md)). The annotated rendering writes that value's comment after the output.
 
 **REQ-ETR-plc2plc-007** An output assignment is written with the comment of the value it stores after the output's name: `f(q (* REAL -> LREAL *) => out)`, and `f(NOT done (* BOOL *) => flag)` for a negated output.
 

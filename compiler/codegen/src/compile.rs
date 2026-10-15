@@ -1211,6 +1211,9 @@ pub(crate) struct CompileContext<'a> {
     /// [`in_out_ref_slot`]: CompileContext::in_out_ref_slot
     /// [`var_index`]: CompileContext::var_index
     pub(crate) in_out_params: HashSet<Id>,
+    /// Where the call whose outputs are being stored leaves them, for the
+    /// `CallOutput` each output stores; `None` outside a call's outputs.
+    pub(crate) call_outputs: Option<crate::compile_call_output::CallOutputs>,
 }
 
 /// Describes how a `RETURN` statement should yield the function's value.
@@ -1260,6 +1263,7 @@ impl CompileContext<'_> {
             current_function_return: None,
             current_function_id: None,
             call_graph: HashMap::new(),
+            call_outputs: None,
         }
     }
 

@@ -167,7 +167,12 @@ impl Lowering<'_> {
                     late_bound.value
                 ),
             ))),
-            AstExprKind::MethodCall(_) | AstExprKind::Ref(_) | AstExprKind::Null(_) => Ok(None),
+            // A call's output is read by the call statement that leaves it,
+            // which is not lowered yet.
+            AstExprKind::MethodCall(_)
+            | AstExprKind::Ref(_)
+            | AstExprKind::CallOutput(_)
+            | AstExprKind::Null(_) => Ok(None),
         }
     }
 

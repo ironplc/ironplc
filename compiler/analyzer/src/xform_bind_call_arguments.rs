@@ -15,12 +15,12 @@
 //!
 //! Each output assignment of a function block call that binds also records
 //! the value the call stores in its target
-//! ([`ironplc_dsl::textual::Output::read_from`]): the output read from the
-//! instance after the call, `inst.q`, inverted for a negated output. The
-//! resolver types it as it types any read of `inst.q`, the rules check it
-//! against the target as they check an assigned value, and the recording pass
-//! converts it to the target's type, so an output assignment is checked and
-//! compiled as the assignment `v := inst.q` after the call is.
+//! ([`ironplc_dsl::textual::Output::read`]): the output the call leaves,
+//! `CallOutput(q)`, inverted for a negated output. The resolver types it as
+//! the output's declared type, the rules check it against the target as they
+//! check an assigned value, and the recording pass converts it to the
+//! target's type, so an output assignment is checked and compiled as an
+//! assignment of the output's value is.
 //!
 //! A call whose arguments do not bind keeps them as written. For a function
 //! block or method call, `rule_function_block_invocation` or
@@ -30,7 +30,6 @@
 //! argument count.
 
 use ironplc_dsl::common::Library;
-use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::scope::ScopeNode;
@@ -119,7 +118,7 @@ impl Fold<Infallible> for CallArgumentBinder<'_> {
         if let Some(parameters) = parameters {
             node.params = match normal_form(&parameters, node.params) {
                 Ok(mut normal) => {
-                    read_outputs(&node.var_name, &mut normal);
+                    read_outputs(&mut normal);
                     normal
                 }
                 Err(args) => args,
@@ -146,13 +145,12 @@ impl Fold<Infallible> for CallArgumentBinder<'_> {
     }
 }
 
-/// Records, on each output assignment of `args`, the arguments of a call to
-/// the function block instance `instance` that bind, the value the call
-/// stores in its target.
-fn read_outputs(instance: &Id, args: &mut [ParamAssignmentKind]) {
+/// Records, on each output assignment of `args`, the arguments of a call
+/// that bind, the value the call stores in its target.
+fn read_outputs(args: &mut [ParamAssignmentKind]) {
     for arg in args {
         if let ParamAssignmentKind::Output(output) = arg {
-            output.value = Some(output.read_from(instance));
+            output.value = Some(output.read());
         }
     }
 }
@@ -182,7 +180,7 @@ fn function_call_problem(problem: &BindProblem) -> Option<Diagnostic> {
 mod tests {
     use ironplc_dsl::core::{FileId, Located, SourceSpan};
     use ironplc_dsl::textual::{
-        ExprKind, ExprType, Function, MethodCall, Output, ParamAssignmentKind, StmtKind,
+        Expr, ExprKind, ExprType, Function, MethodCall, Output, ParamAssignmentKind, StmtKind,
     };
     use ironplc_dsl::visitor::Visitor;
     use ironplc_parser::{options::CompilerOptions, parse_program};
@@ -419,7 +417,7 @@ END_PROGRAM"
 
     /// The value each output assignment of every function block call in
     /// `program` stores, after type resolution, with its type: `q => r:
-    /// inst.q (DINT)`, or `q => r: none` when the call records none.
+    /// CallOutput(q) (DINT)`, or `q => r: none` when the call records none.
     fn output_values(program: &str) -> Vec<String> {
         let options = CompilerOptions::default();
         let lib = parse_program(program, &FileId::default(), &options).unwrap();
@@ -448,11 +446,7 @@ END_PROGRAM"
                             .and_then(|id| context.types().name_of(id))
                             .map(|name| name.to_string().to_uppercase())
                             .unwrap_or_else(|| "untyped".to_string());
-                        let read = match &value.kind {
-                            ExprKind::UnaryOp(unary) => format!("NOT {}", unary.term),
-                            _ => value.to_string(),
-                        };
-                        format!("{read} ({ty})")
+                        format!("{} ({ty})", read(value))
                     }
                 };
                 let output = ParamAssignmentKind::Output(output.clone());
@@ -461,8 +455,17 @@ END_PROGRAM"
             .collect()
     }
 
+    /// `value`, with a call output written as `CallOutput(q)`.
+    fn read(value: &Expr) -> String {
+        match &value.kind {
+            ExprKind::UnaryOp(unary) => format!("NOT {}", read(&unary.term)),
+            ExprKind::CallOutput(output) => format!("CallOutput({output})"),
+            _ => value.to_string(),
+        }
+    }
+
     #[spec_test(REQ_CB_analyzer_036)]
-    fn apply_when_output_assigned_then_value_reads_output_of_instance() {
+    fn apply_when_output_assigned_then_value_reads_call_output() {
         let program = format!(
             "{BLOCK}
 PROGRAM main VAR inst : FB; r : LINT; d : BOOL; END_VAR
@@ -471,20 +474,23 @@ END_PROGRAM"
         );
         assert_eq!(
             vec![
-                "q => r: inst.q (DINT)",
-                "NOT done => d: NOT inst.done (BOOL)"
+                "q => r: CallOutput(q) (DINT)",
+                "NOT done => d: NOT CallOutput(done) (BOOL)"
             ],
             output_values(&program)
         );
     }
 
     #[spec_test(REQ_CB_analyzer_036)]
-    fn apply_when_standard_block_output_assigned_then_value_reads_output_of_instance() {
+    fn apply_when_standard_block_output_assigned_then_value_reads_call_output() {
         let program = "
 PROGRAM main VAR t : TON; e : LTIME; END_VAR
 t(IN := TRUE, ET => e);
 END_PROGRAM";
-        assert_eq!(vec!["ET => e: t.ET (TIME)"], output_values(program));
+        assert_eq!(
+            vec!["ET => e: CallOutput(ET) (TIME)"],
+            output_values(program)
+        );
     }
 
     #[spec_test(REQ_CB_analyzer_036)]

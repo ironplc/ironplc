@@ -1,6 +1,6 @@
 //! Tests for an output assignment of a function block call, which stores the
-//! output read from the instance after the call and is checked as the
-//! assignment of that read is: `f(q => v)` as `v := f.q`.
+//! output the call leaves and is checked as the assignment of that output
+//! read from the instance is: `f(q => v)` as `v := f.q`.
 
 use crate::test_helpers::{edition3_options, rule_diagnostics};
 use ironplc_problems::Problem;

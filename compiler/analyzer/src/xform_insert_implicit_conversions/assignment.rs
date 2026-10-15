@@ -27,8 +27,8 @@
 //! no conversion to record.
 //!
 //! An output assignment of a function block call (`f(q => v)`) stores the
-//! value the binding pass recorded on it, the output read from the instance
-//! after the call, and converts it as the value of `v := f.q` is converted.
+//! value the binding pass recorded on it, the output the call leaves, and
+//! converts it as the value of `v := f.q` is converted.
 //!
 //! A directly represented target is not recorded yet.
 
@@ -216,8 +216,8 @@ impl ImplicitConversions<'_> {
             // operation, a negation or `NOT` computes at its own.
             ExprKind::Variable(_) | ExprKind::BinaryOp(_) | ExprKind::UnaryOp(_) => true,
             // A recorded conversion compiles to the type it records, then to
-            // its context's.
-            ExprKind::ImplicitConversion(_) => true,
+            // its context's, and a call's output is read at its declared type.
+            ExprKind::ImplicitConversion(_) | ExprKind::CallOutput(_) => true,
             ExprKind::Expression(inner) => self.converts_to_its_context(inner),
             // A user-defined function returns its declared type, and so does a
             // standard function whose signature fixes its result type (a type

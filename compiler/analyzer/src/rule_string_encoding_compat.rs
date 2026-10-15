@@ -18,7 +18,7 @@
 //!   such as the two of `CONCAT` or `FIND`, which share one encoding;
 //! * a value stored into a string variable, element or field, by an
 //!   assignment or by an output assignment of a function block call, which
-//!   stores the output read from the instance (`f(s => w)` as `w := f.s`).
+//!   stores the output the call leaves (`f(s => w)` as `w := f.s`).
 //!
 //! A literal or a function result stored into a named variable is the
 //! exception: the assignment and return-type checks already report that
@@ -470,10 +470,10 @@ END_PROGRAM
         )
     }
 
-    /// An output assignment stores the output read from the instance, and
-    /// this rule reports for it what it reports for the assignment of that
-    /// read: P4035 owns both while the rule cannot see the encoding of a
-    /// block's field.
+    /// An output assignment stores the output the call leaves, and this rule
+    /// reports for it what it reports for the assignment of that output read
+    /// from the instance: P4035 owns both while the rule leaves a value it
+    /// does not read as a variable to the assignment check.
     #[spec_test(REQ_IC_analyzer_106)]
     #[rstest]
     #[case::string_output_to_wstring("f(s => w);", "f(); w := f.s;")]

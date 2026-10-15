@@ -187,6 +187,9 @@ pub(crate) fn compile_expr(
             compile_expr(emitter, ctx, inner)?;
             crate::compile_arith::convert(emitter, from, to)
         }
+        ExprKind::CallOutput(output) => {
+            crate::compile_call_output::compile_call_output(emitter, ctx, output)
+        }
         ExprKind::Null(_) => {
             // NULL → push null sentinel (u64::MAX) as a u64 constant.
             let pool_index = ctx.add_i64_constant(u64::MAX as i64);

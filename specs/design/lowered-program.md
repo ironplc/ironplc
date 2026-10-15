@@ -1161,10 +1161,10 @@ assigned from the instance's fields to their targets. Each assignment is an
 ordinary `Assign`, `AssignStr` or `Copy`, and a `VAR_IN_OUT` input is an
 `Assign` of a `RefTo`, so an output whose target has a wider type carries the
 `Convert` the analyzer recorded. The analyzer records an output's assignment
-on the output itself: the value it stores, the field read after the call and
-converted to the target's type ([Call Binding](call-binding.md)). Codegen
-compiles each output as the assignment of that value to its target
-(`compile_stmt.rs`).
+on the output itself: the value it stores, the call's output converted to the
+target's type ([Call Binding](call-binding.md)). Codegen compiles each output
+as the assignment of that value to its target, reading the call's output
+from the instance's field (`compile_call_output.rs`).
 
 **REQ-LOW-lowering-069** A function block call lowers to the assignments of
 its inputs to the instance's fields, in the order of the call's normal form
