@@ -89,10 +89,9 @@ impl Bits {
     }
 
     /// Whether the bits are shifted into or out of position. A shift by zero
-    /// changes nothing; a partial access skips it, but a bit access has
-    /// always emitted it, and still does.
+    /// changes nothing, so it is skipped.
     fn shifts(&self) -> bool {
-        self.shift > 0 || self.bits == 1
+        self.shift > 0
     }
 
     /// A mask of `bits` set bits, starting at bit 0.
