@@ -27,18 +27,21 @@ use crate::compile_partial_access::Bits;
 use crate::compile_stmt::{emit_return, record_position};
 use crate::emit::{self, Emitter};
 
-/// Emits the top-level statement `stmt`.
-pub(super) fn emit_stmt(
+/// Emits `stmts`, the statements one top-level statement lowered to, in
+/// order, at the source position of that statement.
+pub(super) fn emit_stmts(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     lowering: &Lowering<'_>,
-    stmt: &Stmt,
+    stmts: &[Stmt],
 ) -> Result<(), Diagnostic> {
-    Emission {
+    let mut emission = Emission {
         lowering,
         loops: Vec::new(),
-    }
-    .stmt(emitter, ctx, stmt)
+    };
+    stmts
+        .iter()
+        .try_for_each(|stmt| emission.stmt(emitter, ctx, stmt))
 }
 
 /// What emitting a statement needs besides the compile context.

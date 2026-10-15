@@ -23,7 +23,7 @@ use crate::Lowering;
 type Made<T> = Result<Option<T>, Diagnostic>;
 
 impl Lowering<'_> {
-    /// Lowers every statement of `stmts`.
+    /// Lowers every statement of `stmts`, each to the statements it runs.
     pub(crate) fn statements(
         &mut self,
         frame: &BodyFrame,
@@ -31,10 +31,10 @@ impl Lowering<'_> {
     ) -> Made<Vec<Stmt>> {
         let mut lowered = Vec::with_capacity(stmts.len());
         for stmt in stmts {
-            let Some(stmt) = self.statement(frame, stmt)? else {
+            let Some(stmts) = self.statement(frame, stmt)? else {
                 return Ok(None);
             };
-            lowered.push(stmt);
+            lowered.extend(stmts);
         }
         Ok(Some(lowered))
     }
