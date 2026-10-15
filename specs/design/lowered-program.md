@@ -2328,8 +2328,7 @@ This section constrains the order of work; it is not a work breakdown.
   loop bounds, the results of calls and dereferences, conditions, subscripts,
   shift counts, string positions, function block outputs stored by a call
   and the types of literals. The context it does not record yet, a directly
-  represented variable, comes next, and so does marking a subscript's
-  conversion as checked (REQ-LOW-analyzer-162)
+  represented variable, comes next
   ([issue 2050](https://github.com/ironplc/ironplc/issues/2050)). A statement
   that needs a decision the analyzer does not record yet stays on the route
   that reads the AST.

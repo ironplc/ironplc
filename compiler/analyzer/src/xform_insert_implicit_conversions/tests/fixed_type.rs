@@ -58,9 +58,11 @@ fn string_positions(name: &str) -> &'static [usize] {
 /// declaring a variable of each type the tests use.
 fn fixed_type_values(body: &str) -> Vec<String> {
     let source = format!(
-        "PROGRAM main
+        "TYPE SMALL : LINT(0..3); END_TYPE
+         PROGRAM main
          VAR a : ARRAY[0..3] OF INT; x : INT; s : SINT; d : DINT; l : LINT; u : UINT;
-             ul : ULINT; dw : DWORD; lw : LWORD; st : STRING[10]; END_VAR
+             ud : UDINT; ul : ULINT; w : WORD; dw : DWORD; lw : LWORD; st : STRING[10];
+             r : SMALL; END_VAR
          {body}
          END_PROGRAM"
     );
@@ -82,11 +84,17 @@ fn fixed_type_values(body: &str) -> Vec<String> {
 
 #[spec_test(REQ_IC_analyzer_100)]
 #[rstest]
-#[case::lint_variable("x := a[l];", "LINT->DINT")]
-#[case::lint_arithmetic("x := a[d + l];", "LINT->DINT")]
-#[case::assignment_target("a[l] := 5;", "LINT->DINT")]
+#[case::lint_variable("x := a[l];", "LINT->DINT checked")]
+#[case::lint_arithmetic("x := a[d + l];", "LINT->DINT checked")]
+#[case::assignment_target("a[l] := 5;", "LINT->DINT checked")]
 #[case::narrower_integer("x := a[s];", "SINT")]
 #[case::unsigned_integer("x := a[u];", "UINT->DINT")]
+#[case::unsigned_of_dint_width("x := a[ud];", "UDINT->DINT checked")]
+#[case::unsigned_64_bit("x := a[ul];", "ULINT->DINT checked")]
+#[case::bit_string("x := a[w];", "WORD->DINT")]
+#[case::bit_string_of_dint_width("x := a[dw];", "DWORD->DINT checked")]
+#[case::bit_string_64_bit("x := a[lw];", "LWORD->DINT checked")]
+#[case::subrange_of_lint("x := a[r];", "LINT->DINT checked")]
 #[case::dint("x := a[d];", "DINT")]
 fn apply_when_subscript_of_other_operation_type_then_converted_to_dint(
     #[case] body: &str,

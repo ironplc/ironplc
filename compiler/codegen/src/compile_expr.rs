@@ -182,7 +182,9 @@ pub(crate) fn compile_expr(
         }
         // The analyzer decided the conversion (ADR-0056): the inner value is
         // compiled at its own type, so it widens by its own signedness, and
-        // converted to the type the node records.
+        // converted to the type the node records. A checked conversion is
+        // compiled as an ordinary one: this route does not trap on a value
+        // the type does not hold.
         ExprKind::ImplicitConversion(conversion) => {
             let from = self::op_type(ctx, &conversion.value)?;
             let to = self::op_type(ctx, expr)?;

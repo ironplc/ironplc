@@ -446,6 +446,23 @@ pub struct UnaryExpr {
 pub struct ImplicitConversion {
     /// The expression converted.
     pub value: Expr,
+    /// What the conversion does with a value its type does not hold.
+    #[recurse(ignore)]
+    pub kind: ConversionKind,
+}
+
+/// What an [`ImplicitConversion`] does with a value outside the range of the
+/// type it converts to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConversionKind {
+    /// Converts as the language converts a value of one type to another, so
+    /// an integer narrowed to a type that does not hold it wraps.
+    Ordinary,
+    /// Converts as an ordinary conversion does a value the type holds, and
+    /// traps on any other. The analyzer records one for an array subscript
+    /// whose type holds values outside the range of `DINT`, so that such a
+    /// subscript selects no element rather than another one.
+    Checked,
 }
 
 #[derive(Debug, Clone, PartialEq, Recurse)]
@@ -602,12 +619,15 @@ impl Expr {
         Expr::new(ExprKind::UnaryOp(Box::new(UnaryExpr { op, term })))
     }
 
-    /// Creates the implicit conversion of `inner` to the type `target`,
-    /// written where `inner` was written.
+    /// Creates the ordinary implicit conversion of `inner` to the type
+    /// `target`, written where `inner` was written.
     pub fn implicit_conversion(inner: Expr, target: TypeId) -> Expr {
         let span = inner.span.clone();
         Expr {
-            kind: ExprKind::ImplicitConversion(Box::new(ImplicitConversion { value: inner })),
+            kind: ExprKind::ImplicitConversion(Box::new(ImplicitConversion {
+                value: inner,
+                kind: ConversionKind::Ordinary,
+            })),
             expr_type: Some(ExprType::Concrete(target)),
             span,
         }
