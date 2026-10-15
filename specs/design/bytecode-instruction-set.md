@@ -517,7 +517,7 @@ Builtins are monomorphized by the compiler: a generic IEC 61131-3 signature (`AN
 |-------|----------|
 | 0x0000–0x033F | Unassigned |
 | 0x0340–0x03A8 | Numeric, bitwise shift/rotate, selection, conversion, BCD, and string-conversion builtins |
-| 0x03A7–0x03FF | Unassigned |
+| 0x03A9–0x03FF | Unassigned |
 | 0x0402–0x0410 | `MUX` on I32 (base 0x0400 + arity) |
 | 0x0422–0x0430 | `MUX` on I64 (base 0x0420 + arity) |
 | 0x0442–0x0450 | `MUX` on F32 (base 0x0440 + arity) |
