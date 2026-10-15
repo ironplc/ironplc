@@ -1866,11 +1866,9 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         &mut self,
         node: &dsl::textual::CaseStatementGroup,
     ) -> Result<Self::Value, Diagnostic> {
-        for selector in node.selectors.iter() {
-            self.visit_case_selection_kind(selector)?;
-            self.write_ws(":");
-            self.newline();
-        }
+        visit_comma_separated!(self, node.selectors.iter(), CaseSelectionKind);
+        self.write_ws(":");
+        self.newline();
 
         self.indent();
 
