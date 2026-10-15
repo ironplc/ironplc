@@ -172,12 +172,18 @@ impl Lowering<'_> {
                     late_bound.value
                 ),
             ))),
+            // `REF(x)`: a reference to the place `x` names, which for a
+            // `VAR_IN_OUT` is the place it refers to.
+            AstExprKind::Ref(variable) => {
+                let Some(place) = self.variable_place(frame, variable)? else {
+                    return Ok(None);
+                };
+                Ok(Some(Expr::ref_to(place, span)))
+            }
+            AstExprKind::Null(_) => Ok(Some(Expr::null(span))),
             // A call's output is read by the call statement that leaves it,
             // which is not lowered yet.
-            AstExprKind::MethodCall(_)
-            | AstExprKind::Ref(_)
-            | AstExprKind::CallOutput(_)
-            | AstExprKind::Null(_) => Ok(None),
+            AstExprKind::MethodCall(_) | AstExprKind::CallOutput(_) => Ok(None),
         }
     }
 

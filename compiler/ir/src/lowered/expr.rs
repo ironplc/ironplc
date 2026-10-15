@@ -171,6 +171,10 @@ pub enum ExprKind {
         callee: Callee,
         args: Vec<Arg>,
     },
+    /// A reference to a place.
+    RefTo(Place),
+    /// The null reference.
+    Null,
 }
 
 /// A scalar expression: what it computes, the type it is operated at, and the
@@ -260,6 +264,16 @@ impl Expr {
             )
         })?;
         Ok(Self::new(ExprKind::Read(place), ty, span))
+    }
+
+    /// A reference to `place`.
+    pub fn ref_to(place: Place, span: SourceSpan) -> Self {
+        Self::new(ExprKind::RefTo(place), ScalarType::Ref, span)
+    }
+
+    /// The null reference.
+    pub fn null(span: SourceSpan) -> Self {
+        Self::new(ExprKind::Null, ScalarType::Ref, span)
     }
 
     /// `value` converted to `ty`, which must differ from its type
@@ -524,8 +538,8 @@ impl Expr {
 
     fn new(kind: ExprKind, ty: ScalarType, span: SourceSpan) -> Self {
         let program = match &kind {
-            ExprKind::Const(_) => None,
-            ExprKind::Read(place) => Some(place.stamp()),
+            ExprKind::Const(_) | ExprKind::Null => None,
+            ExprKind::Read(place) | ExprKind::RefTo(place) => Some(place.stamp()),
             ExprKind::Convert(value)
             | ExprKind::Truncate { value, .. }
             | ExprKind::Unary { value, .. } => value.program,

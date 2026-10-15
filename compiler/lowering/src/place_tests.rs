@@ -96,6 +96,28 @@ fn lower_statement_when_subscript_exceeds_dint_then_unsupported() {
     assert_eq!(outcome.statements, ["unsupported", "unsupported"]);
 }
 
+/// `REF(x)` is a reference to the place `x` names, and `NULL` the null
+/// reference, each stored in and compared with a `REF_TO`.
+#[test]
+fn lower_statement_when_ref_and_null_then_ref_to_and_null() {
+    let outcome = lower(
+        "PROGRAM main VAR x : DINT; p : REF_TO DINT; b : BOOL; END_VAR
+            p := REF(x);
+            b := p = NULL;
+            p := NULL;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f1 (ref_to v0^.f0)",
+            "assign v0^.f2 (eq (read ref v0^.f1) (null))",
+            "assign v0^.f1 (null)",
+        ]
+    );
+}
+
 /// REQ-LOW-lowering-032: what a reference refers to is a `Deref` of the
 /// place holding the reference, read and written, and a store through a
 /// reference to a narrow variable is narrowed.

@@ -428,6 +428,30 @@ fn compare_when_references_ordered_then_internal_error() {
     ));
 }
 
+/// A reference to a place and the null reference are values of type `Ref`,
+/// compared for equality and stored in a nullable reference; neither is
+/// stored in a non-null one (REQ-LOW-lowering-036).
+#[test]
+fn ref_to_and_null_when_stored_then_nullable_reference_only() {
+    let f = fixture();
+    let to_d = Expr::ref_to(f.place(f.dint), span());
+    let null = Expr::null(span());
+    assert_eq!(to_d.ty(), ScalarType::Ref);
+    assert_eq!(null.ty(), ScalarType::Ref);
+    assert_eq!(to_d.to_string(), "(ref_to v0)");
+    assert_eq!(null.to_string(), "(null)");
+    assert!(Expr::compare(CompareOp::Eq, f.read(f.reference), null.clone(), span()).is_ok());
+    assert!(f.b.assign(f.place(f.reference), to_d, span()).is_ok());
+    assert!(f
+        .b
+        .assign(f.place(f.reference), null.clone(), span())
+        .is_ok());
+    assert!(is_internal_error_naming(
+        f.b.assign(f.place(f.this), null, span()),
+        "Stmt::assign"
+    ));
+}
+
 /// REQ-LOW-lowering-048: the logical forms apply only to a `BOOL`, and the
 /// bitwise forms only to an integer.
 #[test]

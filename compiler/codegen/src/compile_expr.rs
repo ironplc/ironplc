@@ -160,19 +160,12 @@ pub(crate) fn compile_expr(
         }
         ExprKind::Function(func) => compile_function_call(emitter, ctx, expr, func, at),
         ExprKind::MethodCall(call) => compile_method_call_expression(emitter, ctx, call),
-        ExprKind::Ref(variable) => {
-            // REF(param) of a VAR_IN_OUT parameter is the reference its slot
-            // already holds: the caller's variable.
-            if let Some(ref_slot) = in_out_ref_slot(ctx, variable) {
-                emitter.emit_load_var_i64(ref_slot);
-                return Ok(());
-            }
-            // REF(var) → push the variable's table index as a u64 constant.
-            let var_index = resolve_variable(ctx, variable)?;
-            let pool_index = ctx.add_i64_constant(var_index.into());
-            emitter.emit_load_const_i64(pool_index);
-            Ok(())
-        }
+        // `REF(var)`: a reference to a named variable. Only a named variable
+        // has a reference yet.
+        ExprKind::Ref(variable) => match resolve_variable_name(variable) {
+            Some(name) => crate::compile_user_call::emit_reference(emitter, ctx, name),
+            None => Err(Diagnostic::todo_with_span(variable.span())),
+        },
         ExprKind::Deref(inner) => {
             // var^ → compile the reference expression (produces a var index),
             // then emit LOAD_INDIRECT to load the referenced variable's value.
@@ -195,9 +188,7 @@ pub(crate) fn compile_expr(
             crate::compile_call_output::compile_call_output(emitter, ctx, expr, output)
         }
         ExprKind::Null(_) => {
-            // NULL → push null sentinel (u64::MAX) as a u64 constant.
-            let pool_index = ctx.add_i64_constant(u64::MAX as i64);
-            emitter.emit_load_const_i64(pool_index);
+            emit_null(emitter, ctx);
             Ok(())
         }
     }
@@ -654,13 +645,10 @@ pub(crate) fn compile_variable_read(
     }
 }
 
-/// Returns the slot holding the reference when `variable` names a
-/// `VAR_IN_OUT` parameter of the function being compiled.
-pub(crate) fn in_out_ref_slot(ctx: &CompileContext, variable: &Variable) -> Option<VarIndex> {
-    match variable {
-        Variable::Symbolic(SymbolicVariableKind::Named(named)) => ctx.in_out_ref_slot(&named.name),
-        _ => None,
-    }
+/// Pushes the null reference, which the VM holds as `u64::MAX`.
+pub(crate) fn emit_null(emitter: &mut Emitter, ctx: &mut CompileContext) {
+    let pool_index = ctx.add_i64_constant(u64::MAX as i64);
+    emitter.emit_load_const_i64(pool_index);
 }
 
 /// Loads the value of the variable a `VAR_IN_OUT` parameter refers to.

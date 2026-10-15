@@ -332,6 +332,8 @@ fn integer_constant(expr: &Expr) -> Option<i128> {
         | ExprKind::Binary { .. }
         | ExprKind::Compare { .. }
         | ExprKind::ShortCircuit { .. }
-        | ExprKind::Call { .. } => None,
+        | ExprKind::Call { .. }
+        | ExprKind::RefTo(_)
+        | ExprKind::Null => None,
     }
 }

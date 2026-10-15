@@ -71,6 +71,29 @@ fn lower_statement_when_function_has_in_out_then_body_derefs_and_call_passes_ref
     );
 }
 
+/// `REF(v)` of a function's `VAR_IN_OUT` is a reference to what `v`
+/// refers to, the caller's variable, not to the parameter.
+#[test]
+fn lower_statement_when_ref_of_in_out_then_ref_to_what_it_refers_to() {
+    let outcome = lower_bodies(
+        "FUNCTION F : BOOL VAR_IN_OUT v : DINT; END_VAR VAR p : REF_TO DINT; END_VAR
+            p := REF(v);
+            F := p <> NULL;
+         END_FUNCTION
+         PROGRAM main VAR x : DINT; END_VAR
+            x := 1;
+         END_PROGRAM",
+        &["F"],
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0 (ref_to v1^)",
+            "assign v2 (ne (read ref v0) (null))",
+        ]
+    );
+}
+
 /// A call of a function with a `VAR_OUTPUT` or a string parameter is not
 /// lowered yet.
 #[test]

@@ -5,7 +5,7 @@ use ironplc_container::opcode::builtin::str_to_num::Target;
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::{
-    Arg, BinaryOp, Callee, CompareOp, Const, Expr, ExprKind, Intrinsic, NarrowWidth,
+    Arg, BinaryOp, Callee, CompareOp, Const, Expr, ExprKind, Intrinsic, NarrowWidth, Place,
     ShortCircuitOp, UnaryOp,
 };
 use ironplc_lowering::Lowering;
@@ -18,7 +18,7 @@ use crate::compile::{CompileContext, OpWidth, Signedness};
 use crate::compile_arith::convert;
 use crate::compile_expr::{
     emit_add, emit_div, emit_eq, emit_ge, emit_gt, emit_le, emit_lt, emit_mod, emit_mul, emit_ne,
-    emit_neg, emit_sub,
+    emit_neg, emit_null, emit_sub,
 };
 use crate::compile_user_call::emit_reference;
 use crate::emit::Emitter;
@@ -40,6 +40,8 @@ pub(super) fn emit_expr(
         ExprKind::Read(place) => {
             super::place::resolve(lowering, ctx, place, expr.span())?.emit_load(emitter, ctx)?;
         }
+        ExprKind::RefTo(place) => emit_ref(emitter, ctx, lowering, place, expr.span())?,
+        ExprKind::Null => emit_null(emitter, ctx),
         ExprKind::Convert(value) => {
             emit_expr(emitter, ctx, lowering, value)?;
             let from = op_type(value.ty()).unwrap_or(op);
@@ -217,20 +219,28 @@ fn emit_args(
         match arg {
             Arg::Value(value) => emit_expr(emitter, ctx, lowering, value)?,
             Arg::Str(value) => strings.push(str_arg_offset(emitter, ctx, lowering, value)?),
-            Arg::Ref(place) => {
-                // `can_emit` leaves to the AST a place this backend does not
-                // pass by reference.
-                let name = variable_name(lowering, ctx, place).ok_or_else(|| {
-                    Diagnostic::internal_error_at(Label::span(
-                        span.clone(),
-                        "A place this backend does not pass by reference",
-                    ))
-                })?;
-                emit_reference(emitter, ctx, &name)?;
-            }
+            Arg::Ref(place) => emit_ref(emitter, ctx, lowering, place, span)?,
         }
     }
     Ok(strings)
+}
+
+/// Pushes a reference to `place`, a variable or what a `VAR_IN_OUT`
+/// parameter refers to. `can_emit` leaves any other place to the AST.
+fn emit_ref(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    lowering: &Lowering<'_>,
+    place: &Place,
+    span: &SourceSpan,
+) -> Result<(), Diagnostic> {
+    let name = variable_name(lowering, ctx, place).ok_or_else(|| {
+        Diagnostic::internal_error_at(Label::span(
+            span.clone(),
+            "A place this backend has no reference to",
+        ))
+    })?;
+    emit_reference(emitter, ctx, &name)
 }
 
 /// The internal error for a call whose strings are not the ones its
