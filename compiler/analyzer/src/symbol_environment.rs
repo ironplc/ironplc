@@ -331,12 +331,16 @@ fn is_named_as_variable(kind: &SymbolKind) -> bool {
     is_variable(kind) || *kind == SymbolKind::ResultVariable
 }
 
+/// Whether `kind` is a member of a function block: a variable, or a
+/// property, which shares its block's scope with the block's variables.
+fn is_member(kind: &SymbolKind) -> bool {
+    is_variable(kind) || *kind == SymbolKind::Property
+}
+
 /// The problem a second declaration of a name in one scope is: `P4014` for
-/// a variable or property repeating a variable or property, otherwise whatever a repeated global
-/// declaration is.
+/// a variable or property repeating a variable or property, otherwise
+/// whatever a repeated global declaration is.
 fn repeated_symbol(existing: &SymbolKind, repeat: &SymbolKind) -> Option<Problem> {
-    // A property shares its block's scope with the block's variables.
-    let is_member = |kind: &SymbolKind| is_variable(kind) || *kind == SymbolKind::Property;
     if is_member(existing) && is_member(repeat) {
         return Some(Problem::SymbolDeclDuplicated);
     }
@@ -668,24 +672,45 @@ impl SymbolEnvironment {
             for depth in (1..=segments.len()).rev() {
                 scopes.push(ScopeKind::Named(ScopePath::new(segments[..depth].to_vec())));
             }
-            // The base chain. The analyzer rejects a cycle in it, but a
-            // name seen twice still ends the walk rather than looping.
-            let mut seen = vec![segments[0].clone()];
-            let mut unit = &segments[0];
-            while let Some(base) = self
-                .function_block(unit)
-                .and_then(|info| info.extends.as_ref())
-            {
-                if seen.contains(&base.name) {
-                    break;
-                }
-                seen.push(base.name.clone());
-                scopes.push(ScopeKind::Named(ScopePath::new(vec![base.name.clone()])));
-                unit = &base.name;
-            }
+            scopes.extend(self.base_scopes(&segments[0]));
         }
         scopes.push(ScopeKind::Global);
         scopes
+    }
+
+    /// The scopes of the function blocks `unit` `EXTENDS`, nearest first.
+    /// Empty when `unit` is not a function block or extends nothing.
+    fn base_scopes(&self, unit: &Id) -> Vec<ScopeKind> {
+        let mut scopes = Vec::new();
+        // The analyzer rejects a cycle in the chain, but a name seen twice
+        // still ends the walk rather than looping.
+        let mut seen = vec![unit.clone()];
+        let mut unit = unit;
+        while let Some(base) = self
+            .function_block(unit)
+            .and_then(|info| info.extends.as_ref())
+        {
+            if seen.contains(&base.name) {
+                break;
+            }
+            seen.push(base.name.clone());
+            scopes.push(ScopeKind::Named(ScopePath::new(vec![base.name.clone()])));
+            unit = &base.name;
+        }
+        scopes
+    }
+
+    /// The member named `name` that the function block `block` inherits:
+    /// the nearest variable or property of that name that a block it
+    /// `EXTENDS` declares, with the name as that declaration spells it.
+    /// `None` when no block in the chain declares one, whatever `block`
+    /// itself declares.
+    pub fn inherited_member(&self, name: &Id, block: &Id) -> Option<(&Id, &SymbolInfo)> {
+        self.base_scopes(block).iter().find_map(|scope| {
+            self.symbols_in(scope)?
+                .get_key_value(name)
+                .filter(|(_, info)| is_member(&info.kind))
+        })
     }
 
     /// The variables visible from `scope`, as [`Self::find`] would see

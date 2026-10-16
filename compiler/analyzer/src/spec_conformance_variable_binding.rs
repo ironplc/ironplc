@@ -796,3 +796,34 @@ fn analyzer_spec_req_vb_063_each_accessor_has_its_own_scope() {
     assert!(!analyze_codes(BLOCK_WITH_PROPERTY, &options)
         .contains(&Problem::SymbolDeclDuplicated.code().to_string()));
 }
+
+/// REQ-VB-analyzer-064: A variable a derived block declares with the name of
+/// a property a base block declares is P4044.
+#[spec_test(REQ_VB_analyzer_064)]
+fn analyzer_spec_req_vb_064_variable_named_as_inherited_property_is_p4044() {
+    let source = "
+FUNCTION_BLOCK FB_Base
+  VAR
+    _pos : INT;
+  END_VAR
+  PROPERTY Position : INT
+  GET
+    Position := _pos;
+  END_GET
+  END_PROPERTY
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Middle EXTENDS FB_Base
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Middle
+  VAR
+    Position : INT;
+  END_VAR
+END_FUNCTION_BLOCK";
+
+    assert_eq!(
+        analyze_codes(source, &fb_inheritance_options()),
+        codes(&[Problem::ExtendsFieldNameDuplicated])
+    );
+}
