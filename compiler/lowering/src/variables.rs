@@ -8,9 +8,12 @@
 //!   `x` in the body of `Main` is `this^.x` (REQ-LOW-lowering-034);
 //! * a variable of a function, and a `VAR_TEMP` of any body, is a variable
 //!   of its own;
-//! * a `VAR_IN_OUT` of a function is a variable of its own of a non-null
-//!   reference type, and a use of it is what it refers to: `v` is `v^`
-//!   (REQ-LOW-lowering-033);
+//! * a `VAR_IN_OUT` or `VAR_OUTPUT` of a function is a variable of its own
+//!   of a non-null reference type, and a use of it is what it refers to: `v`
+//!   is `v^` (REQ-LOW-lowering-033, REQ-LOW-lowering-092);
+//! * a method has the variables a function has, and reaches the fields of
+//!   its function block through its instance parameter, as the block's body
+//!   does;
 //! * a global is a variable of its own, and a `VAR_EXTERNAL` names the
 //!   global it refers to rather than a variable of its own
 //!   (REQ-LOW-lowering-022).
@@ -36,19 +39,22 @@ pub(crate) struct BodyFrame {
     pub(crate) pou: PouId,
     /// The scope the body's names are resolved from.
     pub(crate) scope: ScopeKind,
-    /// The instance a program or function block body works on; `None` for a
-    /// function.
+    /// The instance a program, function block or method body works on;
+    /// `None` for a function.
     pub(crate) instance: Option<Instance>,
 }
 
 /// The instance parameter of a body and the fields of its type.
 #[derive(Clone, Debug)]
 pub(crate) struct Instance {
-    this: VarId,
+    pub(crate) this: VarId,
     /// The type of the instance `this` refers to.
     instance_type: TypeId,
     /// The name of each field of the instance's type, by position.
     field_names: Vec<Id>,
+    /// The scope that declares the fields: the body's own for a program or
+    /// function block, and its block's for a method.
+    scope: ScopeKind,
 }
 
 /// A value lowering made, `None` when it cannot express it yet, or a P9998.
@@ -58,23 +64,40 @@ impl<'a> Lowering<'a> {
     /// The frame of `body`, made the first time a statement of it is
     /// lowered; `None` when lowering cannot express the body's instance yet.
     pub(crate) fn frame(&mut self, body: Body<'a>) -> Made<BodyFrame> {
-        let name = match body {
-            Body::Program(program) => program.name.clone(),
-            Body::FunctionBlock(block) => block.name.name.clone(),
-            Body::Function(function) => function.name.clone(),
+        let (pou, path) = match body {
+            Body::Program(program) => (self.named_pou(&program.name), vec![program.name.clone()]),
+            Body::FunctionBlock(block) => (
+                self.named_pou(&block.name.name),
+                vec![block.name.name.clone()],
+            ),
+            Body::Function(function) => {
+                (self.named_pou(&function.name), vec![function.name.clone()])
+            }
+            Body::Method { block, method } => (
+                self.method_pou(&block.name.name, &method.name),
+                vec![block.name.name.clone(), method.name.clone()],
+            ),
         };
-        let pou = self.pou(&name.to_string(), &name.span());
         if let Some(frame) = self.bodies.get(&pou) {
             return Ok(frame.clone());
         }
-        let scope = ScopeKind::Named(ScopePath::new(vec![name.clone()]));
+        let scope = ScopeKind::Named(ScopePath::new(path));
         let instance = match body {
             Body::Program(program) if !program.access_variables.is_empty() => None,
             Body::Program(program) => self
-                .program_instance(pou, &name, &program.variables)?
+                .program_instance(pou, &program.name, &program.variables)?
                 .map(Some),
-            Body::FunctionBlock(_) => self.block_instance(pou, &name)?.map(Some),
+            Body::FunctionBlock(block) => self
+                .block_instance(pou, &block.name.name, scope.clone())?
+                .map(Some),
             Body::Function(_) => Some(None),
+            // A method works on an instance of its block, whose fields its
+            // block's scope declares.
+            Body::Method { block, .. } => {
+                let fields = ScopeKind::Named(ScopePath::new(vec![block.name.name.clone()]));
+                self.block_instance(pou, &block.name.name, fields)?
+                    .map(Some)
+            }
         };
         let frame = instance.map(|instance| BodyFrame {
             pou,
@@ -97,6 +120,25 @@ impl<'a> Lowering<'a> {
         pou
     }
 
+    /// The POU `name` names.
+    fn named_pou(&mut self, name: &Id) -> PouId {
+        self.pou(&name.to_string(), &name.span())
+    }
+
+    /// The method `method` of the function block `block`, named after the
+    /// method. A method's key is no identifier, so it is no other POU's.
+    pub(crate) fn method_pou(&mut self, block: &Id, method: &Id) -> PouId {
+        let key = format!("{block}.{method}").to_lowercase();
+        if let Some(pou) = self.pou_ids.get(&key) {
+            return *pou;
+        }
+        let block = self.named_pou(block);
+        let name = DebugName::new(method.to_string(), method.span());
+        let pou = self.program.push_method_pou(name, block);
+        self.pou_ids.insert(key, pou);
+        pou
+    }
+
     /// The instance of a program: a type with a field for each variable the
     /// program declares ([`Self::instance_fields`]).
     fn program_instance(&mut self, pou: PouId, name: &Id, variables: &[VarDecl]) -> Made<Instance> {
@@ -110,11 +152,13 @@ impl<'a> Lowering<'a> {
             },
             &name.span(),
         )?;
-        self.instance(pou, name, program).map(Some)
+        let scope = ScopeKind::Named(ScopePath::new(vec![name.clone()]));
+        self.instance(pou, name, program, scope).map(Some)
     }
 
-    /// The instance of a function block: the block's own type.
-    fn block_instance(&mut self, pou: PouId, name: &Id) -> Made<Instance> {
+    /// The instance of a function block, the body of `pou` works on: the
+    /// block's own type, whose fields `scope` declares.
+    fn block_instance(&mut self, pou: PouId, name: &Id, scope: ScopeKind) -> Made<Instance> {
         let types = self.analysis.context().types();
         let Some(id) = types.id_of(&TypeName::from(&name.to_string())) else {
             return Ok(None);
@@ -122,7 +166,7 @@ impl<'a> Lowering<'a> {
         let Some(block) = self.lowered_type(id)? else {
             return Ok(None);
         };
-        self.instance(pou, name, block).map(Some)
+        self.instance(pou, name, block, scope).map(Some)
     }
 
     /// The fields of the instance of a program that declares `variables`:
@@ -159,12 +203,13 @@ impl<'a> Lowering<'a> {
     }
 
     /// The instance parameter of the body of `pou`, a non-null reference to
-    /// `instance_type`.
+    /// `instance_type`, whose fields `scope` declares.
     fn instance(
         &mut self,
         pou: PouId,
         name: &Id,
         instance_type: TypeId,
+        scope: ScopeKind,
     ) -> Result<Instance, Diagnostic> {
         let field_names = self
             .program
@@ -184,6 +229,7 @@ impl<'a> Lowering<'a> {
             this,
             instance_type,
             field_names,
+            scope,
         })
     }
 
@@ -205,45 +251,58 @@ impl<'a> Lowering<'a> {
         if decl.scope == ScopeKind::Global {
             return self.declared_variable(decl, info, Owner::Global, false, span);
         }
+        if let Some(instance) = frame
+            .instance
+            .as_ref()
+            .filter(|instance| instance.scope == decl.scope)
+        {
+            match info.variable_type {
+                // A `VAR_TEMP` of a program or function block is a variable
+                // of its body; one of a block, named in a method, is not
+                // lowered yet.
+                Some(VariableType::VarTemp) if decl.scope == frame.scope => {
+                    let owner = Owner::Pou(frame.pou);
+                    return self.declared_variable(decl, info, owner, false, span);
+                }
+                // A `VAR_IN_OUT` of a program or function block is a field
+                // its call binds, which lowering does not express yet.
+                Some(VariableType::VarTemp | VariableType::InOut) => return Ok(None),
+                Some(_) | None => {}
+            }
+            let position = instance
+                .field_names
+                .iter()
+                .position(|field| *field == decl.name);
+            let Some(field) = position
+                .and_then(|position| self.program.field_idx(instance.instance_type, position))
+            else {
+                return Ok(None);
+            };
+            let this = self.program.var(instance.this, span)?;
+            let instance_place = self.program.deref(this, span)?;
+            let place = self.program.field(instance_place, field, span)?;
+            return Ok(Some(place));
+        }
         if decl.scope != frame.scope {
             // A field a function block inherits through `EXTENDS`.
             return Ok(None);
         }
-        if info.variable_type == Some(VariableType::InOut) {
-            // A function's `VAR_IN_OUT` is a non-null reference to the
-            // caller's variable, reached through `^`
-            // (REQ-LOW-lowering-033). One of a program or function block is
-            // a field its call binds, which lowering does not express yet.
-            if frame.instance.is_some() {
-                return Ok(None);
-            }
-            let owner = Owner::Pou(frame.pou);
+        // A variable of a function or method. Its `VAR_IN_OUT` is a non-null
+        // reference to the caller's variable, and its `VAR_OUTPUT` one to the
+        // temporary the call passes for it, each reached through `^`
+        // (REQ-LOW-lowering-033, REQ-LOW-lowering-092).
+        let owner = Owner::Pou(frame.pou);
+        let by_reference = matches!(
+            info.variable_type,
+            Some(VariableType::InOut | VariableType::Output)
+        );
+        if by_reference {
             let Some(parameter) = self.declared_variable(decl, info, owner, true, span)? else {
                 return Ok(None);
             };
             return self.program.deref(parameter, span).map(Some);
         }
-        let is_temp = info.variable_type == Some(VariableType::VarTemp);
-        match &frame.instance {
-            Some(instance) if !is_temp => {
-                let position = instance
-                    .field_names
-                    .iter()
-                    .position(|field| *field == decl.name);
-                let Some(field) = position
-                    .and_then(|position| self.program.field_idx(instance.instance_type, position))
-                else {
-                    return Ok(None);
-                };
-                let this = self.program.var(instance.this, span)?;
-                let instance_place = self.program.deref(this, span)?;
-                let place = self.program.field(instance_place, field, span)?;
-                Ok(Some(place))
-            }
-            Some(_) | None => {
-                self.declared_variable(decl, info, Owner::Pou(frame.pou), false, span)
-            }
-        }
+        self.declared_variable(decl, info, owner, false, span)
     }
 
     /// The whole of the variable `decl` declares, allocated the first time

@@ -19,6 +19,7 @@ use ironplc_lowering::Lowering;
 
 use super::expr::emit_expr;
 use super::place::variable_name;
+use super::same_span;
 use crate::compile::CompileContext;
 use crate::compile_fb_call::FbCallSite;
 use crate::emit::Emitter;
@@ -175,12 +176,6 @@ fn same_projection(step: &Projection, other: &Projection) -> bool {
         Projection::Deref => matches!(other, Projection::Deref),
         Projection::Index(_) => false,
     }
-}
-
-/// Whether two spans are the same text. `SourceSpan`'s own equality holds
-/// for any two spans.
-fn same_span(span: &SourceSpan, other: &SourceSpan) -> bool {
-    span.start == other.start && span.end == other.end && span.file_id == other.file_id
 }
 
 /// What `expr` narrows, when it is a `Truncate`.

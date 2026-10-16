@@ -3,13 +3,15 @@
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
 
-use super::expr::{Const, Expr, ExprKind};
+use super::call::{program_of, Arg, Callee};
+use super::expr::{check_user_call, Const, Expr, ExprKind};
 use super::ids::{LoopId, PouId, Stamp, TypeId};
 use super::invariant::broken;
 use super::place::Place;
 use super::scalar::ScalarType;
 use super::str_expr::StrExpr;
 use super::types::{NarrowWidth, Nullability, TypeKind, TypeTable};
+use super::variables::{PouTable, VariableTable};
 
 /// What a statement does.
 #[derive(Clone, Debug)]
@@ -31,6 +33,9 @@ pub enum StmtKind {
     /// instance of it. A call's inputs and outputs are the assignments
     /// around it (REQ-LOW-lowering-069).
     FbCall { instance: Place, block: PouId },
+    /// Calls `callee` with `args`, discarding its result, if any. A call of
+    /// a method is one, wherever its result is not used.
+    Call { callee: Callee, args: Vec<Arg> },
     /// Runs `then` when `cond` is true and `otherwise` when it is false.
     If {
         cond: Expr,
@@ -293,6 +298,29 @@ impl Stmt {
         let program = Some(instance.stamp());
         Ok(Self {
             kind: StmtKind::FbCall { instance, block },
+            span,
+            program,
+        })
+    }
+
+    /// Calls the function or method `pou` that `pous` declares with `args`,
+    /// which [`check_user_call`] describes, discarding its result, if any.
+    pub(crate) fn call(
+        types: &TypeTable,
+        variables: &VariableTable,
+        pous: &PouTable,
+        pou: PouId,
+        args: Vec<Arg>,
+        span: SourceSpan,
+    ) -> Result<Self, Diagnostic> {
+        const CONSTRUCTOR: &str = "ProgramBuilder::call_stmt";
+        check_user_call(CONSTRUCTOR, types, variables, pous, pou, &args, &span)?;
+        let program = program_of(CONSTRUCTOR, &args, &span)?;
+        Ok(Self {
+            kind: StmtKind::Call {
+                callee: Callee::User(pou),
+                args,
+            },
             span,
             program,
         })
