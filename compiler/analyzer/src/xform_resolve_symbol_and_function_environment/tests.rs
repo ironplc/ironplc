@@ -1,11 +1,13 @@
 //! Unit tests for `xform_resolve_symbol_and_function_environment`.
 
+use ironplc_container::CharWidth;
 use ironplc_dsl::common::{FunctionReturnType, TypeName};
 use ironplc_dsl::core::Id;
 use ironplc_problems::Problem;
 
 use crate::{
     function_environment::FunctionEnvironment,
+    semantic_type::SemanticType,
     symbol_environment::{ScopeKind, ScopePath, SymbolEnvironment, SymbolKind},
     test_helpers::{parse_and_resolve_types, parse_and_resolve_types_with_options},
     xform_resolve_symbol_and_function_environment::apply_impl,
@@ -1011,4 +1013,61 @@ END_PROGRAM";
     let second = program.find("COUNT").unwrap();
     assert_eq!(diagnostics[0].primary.location.start, second);
     assert_eq!(diagnostics[0].secondary[0].location.start, first);
+}
+
+/// REQ-LOW-analyzer-053: the result of a function or method that is a string
+/// of a stated length has a type of its own, which records the length as
+/// its capacity and is named by its elementary type, as a declared string's
+/// does. A result that states no length has the elementary type.
+#[test]
+fn apply_when_result_is_sized_string_then_result_type_of_its_capacity() {
+    let options = ironplc_parser::options::CompilerOptions {
+        allow_fb_inheritance: true,
+        ..Default::default()
+    };
+    let (_library, context) = parse_and_resolve_types_with_options(
+        "FUNCTION F : STRING[20] F := 'a'; END_FUNCTION
+         FUNCTION W : WSTRING[8] W := \"a\"; END_FUNCTION
+         FUNCTION U : STRING U := 'a'; END_FUNCTION
+         FUNCTION_BLOCK Block
+           METHOD M : STRING[5] M := 'a'; END_METHOD
+         END_FUNCTION_BLOCK",
+        &options,
+    );
+    let types = context.types();
+    let result_type = |path: &[&str]| {
+        let path: Vec<Id> = path.iter().map(|name| Id::from(name)).collect();
+        let name = path.last().unwrap().clone();
+        let info = context
+            .symbols()
+            .find(&name, &ScopeKind::Named(ScopePath::new(path)))
+            .unwrap();
+        assert_eq!(info.kind, SymbolKind::ResultVariable);
+        info.type_id.unwrap()
+    };
+    let capacity = |path: &[&str]| {
+        let SemanticType::String {
+            max_len,
+            char_width,
+        } = types.get_by_id(result_type(path))?.representation
+        else {
+            return None;
+        };
+        Some((max_len, char_width))
+    };
+
+    assert_eq!(capacity(&["F"]), Some((Some(20), CharWidth::Narrow)));
+    assert_eq!(capacity(&["W"]), Some((Some(8), CharWidth::Wide)));
+    assert_eq!(
+        capacity(&["Block", "M"]),
+        Some((Some(5), CharWidth::Narrow))
+    );
+    assert_eq!(
+        types.name_of(result_type(&["F"])),
+        Some(&TypeName::from("STRING"))
+    );
+    assert_eq!(
+        Some(result_type(&["U"])),
+        types.id_of(&TypeName::from("STRING"))
+    );
 }
