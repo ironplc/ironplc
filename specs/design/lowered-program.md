@@ -581,6 +581,19 @@ lowered.
 library declares, has one field for each variable it declares other than a
 `VAR_TEMP` or a `VAR_EXTERNAL`, in the order it declares them.
 
+A function block type may record its *base*, the function block type it
+extends. It then begins with the base's fields, of the same names, sections
+and types, so field `i` of the base is field `i` of the block. A body that
+reaches field `i` of its instance parameter reaches the same field whichever
+of the two its instance is, and a reference to an instance of the block
+passes for a reference to an instance of its base (REQ-LOW-ir-173), with
+nothing converted. A backend lays a block's fields out so that its base's
+come first, laid out as the base's are. Lowering records no base yet.
+
+**REQ-LOW-ir-176** A function block type that records a base begins with the
+base's fields, of the same names, sections and types, and the type table
+refuses one that does not.
+
 The type table describes types as the language defines them. The width of an
 `INT` is part of the language; where a field sits in memory, how many slots a
 value takes and how wide a reference is are each backend's layout. Today's
@@ -1414,7 +1427,9 @@ its outputs.
 **REQ-LOW-ir-173** A `Call` statement passes its callee one argument for
 each parameter, as a `Call` expression does, and discards the callee's
 result. A method's first parameter is a non-null reference to an instance of
-the function block the method belongs to.
+the function block the method belongs to, and a `Ref` to an instance of a
+block that extends it passes for it, as for any parameter that refers to a
+function block instance.
 
 Not lowered yet, so each stays on the route that reads the AST:
 

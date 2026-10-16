@@ -194,10 +194,13 @@ pub enum TypeKind {
     Structure {
         fields: Vec<Field>,
     },
-    /// A function block; each field has a section.
+    /// A function block; each field has a section. One that extends another
+    /// function block type, `base`, begins with that type's fields
+    /// (REQ-LOW-ir-176).
     FunctionBlock {
         fields: Vec<Field>,
         body: PouId,
+        base: Option<TypeId>,
     },
     /// A program; each field has a section.
     Program {
@@ -239,9 +242,10 @@ impl TypeTable {
     /// Every type the entry refers to is already in the table. A subrange's
     /// base is an integer type whose range holds `min` to `max`, an array has
     /// at least one dimension and each lower bound is at most its upper
-    /// bound, a structure's fields have no section, and a function block's or
-    /// program's fields each have one. An entry that breaks one of these is a
-    /// P9998 and is not added.
+    /// bound, a structure's fields have no section, a function block's or
+    /// program's fields each have one, and a function block that extends
+    /// another begins with that block's fields (REQ-LOW-ir-176). An entry
+    /// that breaks one of these is a P9998 and is not added.
     pub(crate) fn push(
         &mut self,
         entry: TypeEntry,
@@ -309,10 +313,65 @@ impl TypeTable {
                 }
             }
             TypeKind::Structure { fields } => sections(fields, false),
-            TypeKind::FunctionBlock { fields, .. } | TypeKind::Program { fields, .. } => {
-                sections(fields, true)
+            TypeKind::FunctionBlock { fields, base, .. } => {
+                sections(fields, true)?;
+                match base {
+                    Some(base) => self.check_base(fields, *base),
+                    None => Ok(()),
+                }
             }
+            TypeKind::Program { fields, .. } => sections(fields, true),
             TypeKind::Reference { target, .. } => known(target),
+        }
+    }
+
+    /// Why a function block with `fields` cannot extend `base`, if it cannot:
+    /// `base` is a function block type of the table, and `fields` begin with
+    /// its fields, of the same names, sections and types (REQ-LOW-ir-176). So
+    /// field `i` of the base is field `i` of every block that extends it, and
+    /// a body that reaches field `i` of its instance reaches the same field
+    /// whichever of the two its instance is.
+    fn check_base(&self, fields: &[Field], base: TypeId) -> Result<(), String> {
+        let Some(TypeKind::FunctionBlock {
+            fields: inherited, ..
+        }) = self.kind(base)
+        else {
+            return Err(format!("base {base} is not a function block of the table"));
+        };
+        let begins = inherited.len() <= fields.len()
+            && inherited.iter().zip(fields).all(|(inherited, field)| {
+                inherited.ty == field.ty
+                    && inherited.section == field.section
+                    && inherited
+                        .name
+                        .to_string()
+                        .eq_ignore_ascii_case(&field.name.to_string())
+            });
+        if begins {
+            Ok(())
+        } else {
+            Err(format!(
+                "the fields do not begin with those of the base {base}"
+            ))
+        }
+    }
+
+    /// Whether the function block type `block` is `base`, or extends it
+    /// directly or through the blocks it extends (REQ-LOW-ir-176). The walk
+    /// ends, since a block's base is in the table before the block is.
+    pub fn extends(&self, block: TypeId, base: TypeId) -> bool {
+        let mut block = block;
+        loop {
+            if block == base {
+                return true;
+            }
+            let Some(TypeKind::FunctionBlock {
+                base: Some(next), ..
+            }) = self.kind(block)
+            else {
+                return false;
+            };
+            block = *next;
         }
     }
 
