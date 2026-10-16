@@ -27,6 +27,7 @@ mod control;
 mod expr;
 mod fb_call;
 mod function;
+mod hoist;
 mod place;
 mod statement;
 mod string;
@@ -123,10 +124,9 @@ pub struct Lowering<'a> {
     /// Where the call whose outputs are being lowered leaves them, which
     /// its call outputs read.
     call_outputs: Option<CallOutputs>,
-    /// The call of a function or method with outputs whose result is being
-    /// stored, by its address, and the temporary that holds its result
-    /// (`function.rs`).
-    call_result: Option<(usize, Place)>,
+    /// The parts of the calls with outputs of the assignment being lowered
+    /// (`hoist.rs`); `None` outside an assignment.
+    hoisting: Option<hoist::Hoisting>,
     /// The block that declares each method a call can reach, as the
     /// analyzer resolves it (ADR-0041).
     method_owners: MethodOwners,
@@ -157,7 +157,7 @@ impl<'a> Lowering<'a> {
             bodies: HashMap::new(),
             loops: Vec::new(),
             call_outputs: None,
-            call_result: None,
+            hoisting: None,
             method_owners: MethodOwners::of_library(analysis.library()),
         }
     }

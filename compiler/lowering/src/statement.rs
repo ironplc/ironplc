@@ -16,7 +16,7 @@ impl Lowering<'_> {
     /// something inside it, yet. A function block call lowers to the stores
     /// of its inputs, the call and the stores of its outputs, and an
     /// assignment of a call of a function with outputs to the call, the
-    /// stores of its outputs and the assignment (`function.rs`); every other
+    /// stores of its outputs and the assignment (`hoist.rs`); every other
     /// statement lowers to one statement.
     pub(crate) fn statement(
         &mut self,
@@ -25,12 +25,7 @@ impl Lowering<'_> {
     ) -> Result<Option<Vec<Stmt>>, Diagnostic> {
         let one = |stmt: Result<Option<Stmt>, Diagnostic>| Ok(stmt?.map(|stmt| vec![stmt]));
         match stmt {
-            AstStmtKind::Assignment(assignment) => {
-                match self.call_with_outputs(frame, &assignment.value) {
-                    Some(call) => self.assignment_of_call(frame, assignment, call),
-                    None => one(self.assignment(frame, assignment)),
-                }
-            }
+            AstStmtKind::Assignment(assignment) => self.assignment_statement(frame, assignment),
             AstStmtKind::If(stmt) => one(self.if_statement(frame, stmt)),
             AstStmtKind::Case(stmt) => one(self.case_statement(frame, stmt)),
             AstStmtKind::For(stmt) => one(self.for_statement(frame, stmt)),

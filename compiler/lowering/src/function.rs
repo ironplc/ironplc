@@ -18,9 +18,9 @@
 //!
 //! A call of a function or method with outputs is lowered as a value only
 //! where it is the whole value of an assignment, `r := F(a, q => x)`, inside
-//! the conversion the analyzer recorded, if any. It lowers to three parts,
-//! in the order the AST route runs them, each with the assignment's span
-//! (REQ-LOW-lowering-172):
+//! the conversion the analyzer recorded, if any (`hoist.rs`). It lowers to
+//! three parts, in the order the AST route runs them, each with the
+//! assignment's span (REQ-LOW-lowering-172):
 //!
 //! 1. the call, stored in a temporary of the result's type;
 //! 2. the assignment of each output to its target, of the value the
@@ -52,7 +52,7 @@ use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::oop::MethodDeclaration;
 use ironplc_dsl::textual::{
-    Assignment, Expr as AstExpr, ExprKind as AstExprKind, Function, MethodCall, MethodReceiver,
+    Expr as AstExpr, ExprKind as AstExprKind, Function, MethodCall, MethodReceiver,
     ParamAssignmentKind,
 };
 use ironplc_ir::execution::DebugName;
@@ -120,7 +120,7 @@ impl<'v, 'a> UserCall<'v, 'a> {
 
     /// The address of the call, which tells one call in the source from
     /// another.
-    fn address(self) -> usize {
+    pub(crate) fn address(self) -> usize {
         match self {
             UserCall::Function { call, .. } => std::ptr::from_ref(call) as usize,
             UserCall::Method { call, .. } => std::ptr::from_ref(call) as usize,
@@ -192,15 +192,7 @@ impl<'a> Lowering<'a> {
             return Ok(None);
         };
         if has_outputs(&parameters) {
-            // A call with outputs is the whole value of the assignment
-            // `assignment_of_call` lowers, which stored the call's result in
-            // a temporary first.
-            return match self.call_result.clone() {
-                Some((address, result)) if address == call.address() => {
-                    self.read(result, expr.span())
-                }
-                Some(_) | None => Ok(None),
-            };
+            return self.hoisted_call(frame, expr, call, &parameters);
         }
         let Some(args) = self.call_args(frame, call, &parameters, &expr.span())? else {
             return Ok(None);
@@ -292,23 +284,28 @@ impl<'a> Lowering<'a> {
             .then_some(call)
     }
 
-    /// `assignment`, whose value is `call`, which has outputs, inside the
-    /// conversion the analyzer recorded: the call stored in a temporary, the
-    /// assignments of its outputs, then the assignment of the temporary
-    /// (REQ-LOW-lowering-092, REQ-LOW-lowering-172).
-    pub(crate) fn assignment_of_call(
+    /// The call `call`, the expression `expr`, of a function or method with
+    /// outputs, whose parameters are `parameters`, in the value of the
+    /// assignment being lowered (`hoist.rs`): a read of the temporary its
+    /// part stores its result in. The part is the call stored in that
+    /// temporary, then the assignments of the call's outputs from their
+    /// temporaries (REQ-LOW-lowering-092, REQ-LOW-lowering-172). `None`
+    /// outside an assignment.
+    fn hoisted_call(
         &mut self,
         frame: &BodyFrame,
-        assignment: &Assignment,
+        expr: &AstExpr,
         call: UserCall<'_, 'a>,
-    ) -> Made<Vec<Stmt>> {
-        // Every part is the statement the assignment is, for the line map
-        // (REQ-LOW-lowering-063).
-        let span = assignment.span();
-        let Some(parameters) = call.parameters() else {
+        parameters: &[(&Id, Section)],
+    ) -> Lowered {
+        let Some(hoisting) = &self.hoisting else {
             return Ok(None);
         };
-        let Some(args) = self.call_args(frame, call, &parameters, &span)? else {
+        if let Some(result) = hoisting.result(call.address()) {
+            return self.read(result.clone(), expr.span());
+        }
+        let span = hoisting.span().clone();
+        let Some(args) = self.call_args(frame, call, parameters, &span)? else {
             return Ok(None);
         };
         let Some(result_type) = self.result_type(args.pou) else {
@@ -317,7 +314,7 @@ impl<'a> Lowering<'a> {
         let value = self.program.call(args.pou, args.args, call.name_span())?;
         let label = format!("{}()", call.callee());
         let result = self.temporary(frame, label, result_type, &span)?;
-        let mut stmts = vec![self.assign_value(result.clone(), value, span.clone())?];
+        let mut part = vec![self.assign_value(result.clone(), value, span.clone())?];
         let Some(outputs) = self.outputs(
             frame,
             CallOutputs::Temporaries(args.temporaries),
@@ -327,15 +324,12 @@ impl<'a> Lowering<'a> {
         else {
             return Ok(None);
         };
-        stmts.extend(outputs);
-        let enclosing = self.call_result.replace((call.address(), result));
-        let stored = self.assignment(frame, assignment);
-        self.call_result = enclosing;
-        let Some(stored) = stored? else {
+        part.extend(outputs);
+        let Some(hoisting) = self.hoisting.as_mut() else {
             return Ok(None);
         };
-        stmts.push(stored);
-        Ok(Some(stmts))
+        hoisting.push(call.address(), part, result.clone());
+        self.read(result, expr.span())
     }
 
     /// The method `call` calls in the body of `frame`: one the block of its
