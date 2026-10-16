@@ -10,7 +10,9 @@
 //! reference variable refers to through the same indirect load and store.
 //! What a function's `VAR_IN_OUT` parameter refers to is rebuilt as the
 //! parameter's own name, which codegen's layout reaches through the
-//! reference the parameter's slot holds.
+//! reference the parameter's slot holds, and what its `VAR_OUTPUT` parameter
+//! refers to as the parameter's own name too, whose slot codegen's layout
+//! keeps the output in.
 
 use ironplc_dsl::core::{Id, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -19,7 +21,8 @@ use ironplc_dsl::textual::{
     StructuredVariable, SymbolicVariableKind, Variable,
 };
 use ironplc_ir::lowered::{
-    Const, Expr, Nullability, Place as LoweredPlace, Projection, TypeId, TypeKind, TypeTable,
+    Const, Expr, Nullability, Owner, Place as LoweredPlace, Projection, TypeId, TypeKind,
+    TypeTable, Variable as LoweredVariable,
 };
 use ironplc_lowering::Lowering;
 
@@ -229,7 +232,7 @@ fn reference<'l>(
                     Nullability::Nullable => SymbolicVariableKind::Deref(DerefVariable {
                         variable: Box::new(reference),
                     }),
-                    Nullability::NonNull => in_out(ctx, reference)?,
+                    Nullability::NonNull => by_reference(lowering, ctx, root, reference)?,
                 }
             }
         };
@@ -237,15 +240,32 @@ fn reference<'l>(
     Some(reference)
 }
 
-/// `reference`, when it names a `VAR_IN_OUT` parameter of the function
-/// being compiled: the only non-null reference this backend follows outside
-/// a body's instance parameter.
-fn in_out(ctx: &CompileContext, reference: SymbolicVariableKind) -> Option<SymbolicVariableKind> {
+/// `reference`, when it names a parameter of the function being compiled,
+/// `root`, that refers to a place of the caller: a `VAR_IN_OUT`, whose slot
+/// holds a reference this backend follows, or a `VAR_OUTPUT`, whose value
+/// this backend keeps in the parameter's own slot for the call to read once
+/// the function returns (ADR-0046). They are the only non-null references
+/// this backend follows outside a body's instance parameter.
+fn by_reference(
+    lowering: &Lowering<'_>,
+    ctx: &CompileContext,
+    root: &LoweredVariable,
+    reference: SymbolicVariableKind,
+) -> Option<SymbolicVariableKind> {
     let SymbolicVariableKind::Named(named) = &reference else {
         return None;
     };
-    ctx.in_out_ref_slot(&named.name)?;
-    Some(reference)
+    if ctx.in_out_ref_slot(&named.name).is_some() {
+        return Some(reference);
+    }
+    // Lowering makes no other non-null reference a variable of a function
+    // or method than its `VAR_IN_OUT`s and `VAR_OUTPUT`s
+    // (REQ-LOW-lowering-035).
+    let Owner::Pou(owner) = root.owner() else {
+        return None;
+    };
+    let compiled = super::is_current_body(lowering, ctx, owner);
+    (compiled && ctx.variables.contains_key(&named.name)).then_some(reference)
 }
 
 /// What this backend knows a value of the lowered type `ty` as: the type it

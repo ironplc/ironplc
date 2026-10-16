@@ -165,6 +165,13 @@ fn write_stmt(f: &mut fmt::Formatter<'_>, stmt: &Stmt, depth: usize) -> fmt::Res
             value,
         } => write!(f, "assign-bits {place} {shift} {bits} {value}"),
         StmtKind::FbCall { instance, block } => write!(f, "fb-call {instance} {block}"),
+        StmtKind::Call { callee, args } => {
+            match callee {
+                Callee::User(pou) => write!(f, "call {pou}")?,
+                Callee::Intrinsic(intrinsic) => write!(f, "call {intrinsic}")?,
+            }
+            write_args(f, args)
+        }
         StmtKind::If {
             cond,
             then,

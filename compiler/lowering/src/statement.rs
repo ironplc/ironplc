@@ -12,7 +12,9 @@ impl Lowering<'_> {
     /// Lowers the statement `stmt` of the body of `frame` to the statements
     /// it runs, in order, or `None` when lowering does not support it, or
     /// something inside it, yet. A function block call lowers to the stores
-    /// of its inputs, the call and the stores of its outputs; every other
+    /// of its inputs, the call and the stores of its outputs, and an
+    /// assignment of a call of a function with outputs to the call, the
+    /// stores of its outputs and the assignment (`function.rs`); every other
     /// statement lowers to one statement.
     pub(crate) fn statement(
         &mut self,
@@ -21,7 +23,12 @@ impl Lowering<'_> {
     ) -> Result<Option<Vec<Stmt>>, Diagnostic> {
         let one = |stmt: Result<Option<Stmt>, Diagnostic>| Ok(stmt?.map(|stmt| vec![stmt]));
         match stmt {
-            AstStmtKind::Assignment(assignment) => one(self.assignment(frame, assignment)),
+            AstStmtKind::Assignment(assignment) => {
+                match self.call_with_outputs(frame, &assignment.value) {
+                    Some(call) => self.assignment_of_call(frame, assignment, call),
+                    None => one(self.assignment(frame, assignment)),
+                }
+            }
             AstStmtKind::If(stmt) => one(self.if_statement(frame, stmt)),
             AstStmtKind::Case(stmt) => one(self.case_statement(frame, stmt)),
             AstStmtKind::For(stmt) => one(self.for_statement(frame, stmt)),
@@ -32,12 +39,12 @@ impl Lowering<'_> {
             // The AST keeps no span for a `RETURN`.
             AstStmtKind::Return => one(Ok(Some(Stmt::return_(SourceSpan::default())))),
             AstStmtKind::FbCall(call) => self.fb_call(frame, call),
-            AstStmtKind::MethodCall(_) => Ok(None),
+            AstStmtKind::MethodCall(call) => self.method_call_statement(frame, call),
         }
     }
 
     /// `target := value`.
-    fn assignment(
+    pub(crate) fn assignment(
         &mut self,
         frame: &BodyFrame,
         assignment: &Assignment,
@@ -100,7 +107,7 @@ impl Lowering<'_> {
             // An aggregate is not assigned as one scalar value.
             return Ok(None);
         };
-        let Some(mut value) = self.expr(frame, value)? else {
+        let Some(value) = self.expr(frame, value)? else {
             return Ok(None);
         };
         if value.ty() != operated {
@@ -112,10 +119,21 @@ impl Lowering<'_> {
                 return Ok(None);
             }
         }
+        self.assign_value(place, value, span).map(Some)
+    }
+
+    /// Stores the lowered scalar `value` at `place`, narrowed to the place's
+    /// storage unless it already fits (REQ-LOW-lowering-046).
+    pub(crate) fn assign_value(
+        &mut self,
+        place: Place,
+        mut value: Expr,
+        span: SourceSpan,
+    ) -> Result<Stmt, Diagnostic> {
         if let Some(width) = self.program.store_narrowing(place.ty(), &value) {
             let span = value.span().clone();
             value = Expr::truncate(width, value, span)?;
         }
-        self.program.assign(place, value, span).map(Some)
+        self.program.assign(place, value, span)
     }
 }

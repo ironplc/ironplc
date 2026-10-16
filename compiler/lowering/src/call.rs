@@ -42,7 +42,9 @@ impl Lowering<'_> {
                 Some(Body::Function(function)) => {
                     self.user_function_call(frame, expr, func, function)
                 }
-                Some(Body::Program(_) | Body::FunctionBlock(_)) | None => Ok(None),
+                Some(Body::Program(_) | Body::FunctionBlock(_) | Body::Method { .. }) | None => {
+                    Ok(None)
+                }
             };
         };
         // The analyzer wrote the call in normal form: its inputs in the order

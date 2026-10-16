@@ -26,9 +26,10 @@ pub(crate) fn lower(source: &str, pou: &str) -> Outcome {
 }
 
 /// Lowers the top-level statements of each POU of `pous`, in order, with one
-/// [`Lowering`], so that their variables share one table. The source may
-/// use `AND_THEN`, `OR_ELSE`, `CONTINUE`, explicit enumeration values,
-/// `REF_TO`, partial access (`x.%B1`) and `SIZEOF`.
+/// [`Lowering`], so that their variables share one table. A method is named
+/// `Block.Method`. The source may use `AND_THEN`, `OR_ELSE`, `CONTINUE`,
+/// explicit enumeration values, `REF_TO`, partial access (`x.%B1`),
+/// `SIZEOF` and methods.
 pub(crate) fn lower_bodies(source: &str, pous: &[&str]) -> Outcome {
     let options = CompilerOptions {
         allow_short_circuit_operators: true,
@@ -37,6 +38,7 @@ pub(crate) fn lower_bodies(source: &str, pous: &[&str]) -> Outcome {
         allow_ref_to: true,
         allow_partial_access_syntax: true,
         allow_sizeof: true,
+        allow_fb_inheritance: true,
         ..CompilerOptions::default()
     };
     let library = ironplc_parser::parse_program(source, &FileId::from_string("test.st"), &options)
@@ -76,6 +78,17 @@ pub(crate) fn lower_bodies(source: &str, pous: &[&str]) -> Outcome {
 }
 
 fn body_of<'a>(library: &'a Library, pou: &str) -> (Body<'a>, &'a [StmtKind]) {
+    if let Some((block_name, method_name)) = pou.split_once('.') {
+        let (Body::FunctionBlock(block), _) = body_of(library, block_name) else {
+            panic!("no function block {block_name}");
+        };
+        let method = block
+            .methods
+            .iter()
+            .find(|method| method.name.to_string() == method_name)
+            .expect("the block declares the method");
+        return (Body::Method { block, method }, &method.body);
+    }
     for element in &library.elements {
         match element {
             LibraryElementKind::ProgramDeclaration(program) if program.name.to_string() == pou => {

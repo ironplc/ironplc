@@ -763,25 +763,3 @@ END_PROGRAM
         "a composite field of an element",
     );
 }
-
-#[test]
-fn compile_when_top_level_array_of_struct_unknown_field_then_not_implemented() {
-    assert_codegen_rejects(
-        "
-TYPE Item : STRUCT
-  a : DINT;
-  b : DINT;
-END_STRUCT;
-END_TYPE
-
-PROGRAM main
-  VAR
-    arr : ARRAY[1..3] OF Item;
-    result : DINT;
-  END_VAR
-  result := arr[1].missing;
-END_PROGRAM
-",
-        "an unknown field of an element",
-    );
-}

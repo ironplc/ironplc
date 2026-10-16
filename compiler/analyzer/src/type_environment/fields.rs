@@ -16,9 +16,9 @@
 //! differ. A type's representation never changes once it is entered; the
 //! fields of a block are looked up by the block's id.
 //!
-//! A block's fields and the block it `EXTENDS` are recorded together, once
-//! (see [`TypeEnvironment::record_block`]), so they cannot come from two
-//! declarations.
+//! A block's fields, the names of its properties and the block it `EXTENDS`
+//! are recorded together, once (see [`TypeEnvironment::record_block`]), so
+//! they cannot come from two declarations.
 
 use ironplc_dsl::common::TypeName;
 use ironplc_dsl::core::Id;
@@ -47,7 +47,12 @@ pub struct BlockField {
 pub(super) struct BlockRecord {
     /// The fields the block declares, in the order it declares them.
     fields: Vec<BlockField>,
-    /// The block it `EXTENDS`, whose fields an instance of it also has.
+    /// The names of the properties the block declares. A selection on an
+    /// instance may name one as it names a field; property access is not
+    /// implemented, so nothing records a property's type.
+    properties: Vec<Id>,
+    /// The block it `EXTENDS`, whose fields and properties an instance of it
+    /// also has.
     base: Option<TypeId>,
 }
 
@@ -78,7 +83,8 @@ impl TypeEnvironment {
     }
 
     /// Records the fields of the function block `block`, in the order it
-    /// declares them, and the block it `EXTENDS`.
+    /// declares them, the names of its properties, and the block it
+    /// `EXTENDS`.
     ///
     /// A block is recorded once: a later call for the same block, such as
     /// for a repeated declaration of its name (P4013) or a library block
@@ -95,6 +101,7 @@ impl TypeEnvironment {
         &mut self,
         block: TypeId,
         fields: Vec<BlockField>,
+        properties: Vec<Id>,
         base: Option<TypeId>,
     ) {
         let is_block = self
@@ -104,11 +111,18 @@ impl TypeEnvironment {
             return;
         }
         let base = base.filter(|base| *base != block && self.is_declared_block(*base));
-        self.blocks.insert(block, BlockRecord { fields, base });
+        self.blocks.insert(
+            block,
+            BlockRecord {
+                fields,
+                properties,
+                base,
+            },
+        );
     }
 
     /// Records the fields of the standard function block `name`, each of
-    /// which has an elementary type.
+    /// which has an elementary type. A standard block has no properties.
     pub(super) fn record_standard_block(&mut self, name: &TypeName, fields: &[StandardField]) {
         let Some(block) = self.id_of(name) else {
             return;
@@ -124,7 +138,7 @@ impl TypeEnvironment {
                 })
             })
             .collect();
-        self.record_block(block, fields, None);
+        self.record_block(block, fields, Vec::new(), None);
     }
 
     /// The fields the function block `block` declares, in the order it
@@ -138,13 +152,43 @@ impl TypeEnvironment {
     /// The field `name` of an instance of the function block `block`: one
     /// the block declares, else one it inherits through `EXTENDS`.
     pub fn block_field(&self, block: TypeId, name: &Id) -> Option<&BlockField> {
-        self.inheritance_chain(block).find_map(|block| {
-            self.blocks
-                .get(&block)?
-                .fields
-                .iter()
-                .find(|field| field.name == *name)
-        })
+        self.inherited_records(block)
+            .find_map(|record| record.fields.iter().find(|field| field.name == *name))
+    }
+
+    /// Whether `name` is a property of an instance of the function block
+    /// `block`: one the block declares, or one it inherits through
+    /// `EXTENDS`.
+    pub fn has_property(&self, block: TypeId, name: &Id) -> bool {
+        self.inherited_records(block)
+            .any(|record| record.properties.contains(name))
+    }
+
+    /// The names of the fields a selection on a value of the type `record`
+    /// may name, or `None` when `record` is neither a structure nor a
+    /// function block whose fields the environment records.
+    ///
+    /// A block's are the fields it declares, in the order it declares them,
+    /// then those of each block it inherits from, nearest first. A
+    /// structure's are the fields its type lists, in the order it declares
+    /// them: the structure's record decides only that the type is a declared
+    /// structure, because it leaves out a field whose type did not resolve
+    /// and keeps no order. An interface is entered as an empty structure but
+    /// never recorded as one, so the answer for it is `None`, not an empty
+    /// list. An alias has the names of the type it names.
+    pub fn field_names(&self, record: TypeId) -> Option<Vec<&Id>> {
+        if self.recorded_block(record).is_some() {
+            return Some(
+                self.inherited_records(record)
+                    .flat_map(|block| block.fields.iter().map(|field| &field.name))
+                    .collect(),
+            );
+        }
+        if self.structures.contains_key(&record) {
+            let fields = self.get_by_id(record)?.representation.structure_fields()?;
+            return Some(fields.iter().map(|field| &field.name).collect());
+        }
+        self.field_names(self.alias_base(record)?)
     }
 
     /// The function blocks an instance of `block` takes its fields from,
@@ -158,6 +202,13 @@ impl TypeEnvironment {
             self.recorded_block(self.blocks.get(block)?.base?)
         })
         .take(self.blocks.len())
+    }
+
+    /// The records of the blocks of `block`'s [`Self::inheritance_chain`],
+    /// nearest first.
+    fn inherited_records(&self, block: TypeId) -> impl Iterator<Item = &BlockRecord> + '_ {
+        self.inheritance_chain(block)
+            .filter_map(|block| self.blocks.get(&block))
     }
 
     /// The id of the declared type of the field `field` of the structure or
@@ -207,10 +258,13 @@ impl TypeEnvironment {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::semantic_context::SemanticContext;
     use crate::semantic_type::SemanticType;
+    use crate::test_helpers::{fb_inheritance_options, parse_and_resolve_types_with_options};
     use crate::type_attributes::TypeAttributes;
     use crate::type_environment::TypeEnvironmentBuilder;
     use rstest::rstest;
+    use spec_test_macro::spec_test;
 
     /// An environment with the elementary types and the standard blocks.
     fn environment() -> TypeEnvironment {
@@ -290,16 +344,24 @@ mod tests {
         let a = field(&env, "a", FunctionBlockVarType::Input);
         let b = field(&env, "b", FunctionBlockVarType::Output);
 
-        env.record_block(derived, vec![a.clone()], Some(first));
-        env.record_block(derived, vec![b], Some(second));
+        env.record_block(
+            derived,
+            vec![a.clone()],
+            vec![Id::from("Kept")],
+            Some(first),
+        );
+        env.record_block(derived, vec![b], vec![Id::from("Dropped")], Some(second));
 
         assert_eq!(env.block_fields(derived), Some([a].as_slice()));
         env.record_block(
             first,
             vec![field(&env, "x", FunctionBlockVarType::Internal)],
+            vec![],
             None,
         );
         assert!(env.block_field(derived, &Id::from("x")).is_some());
+        assert!(env.has_property(derived, &Id::from("Kept")));
+        assert!(!env.has_property(derived, &Id::from("Dropped")));
     }
 
     #[test]
@@ -308,7 +370,7 @@ mod tests {
         let int = env.id_of(&TypeName::from("INT")).unwrap();
         let a = field(&env, "a", FunctionBlockVarType::Input);
 
-        env.record_block(int, vec![a], None);
+        env.record_block(int, vec![a], vec![], None);
 
         assert_eq!(env.block_fields(int), None);
     }
@@ -320,8 +382,8 @@ mod tests {
         let derived = block(&mut env, "Derived");
         let ton = env.id_of(&TypeName::from("TON")).unwrap();
 
-        env.record_block(own, vec![], Some(own));
-        env.record_block(derived, vec![], Some(ton));
+        env.record_block(own, vec![], vec![], Some(own));
+        env.record_block(derived, vec![], vec![], Some(ton));
 
         assert_eq!(env.block_field(own, &Id::from("missing")), None);
         assert_eq!(env.field_type(derived, &Id::from("Q")), None);
@@ -352,9 +414,9 @@ mod tests {
         let a = block(&mut env, "A");
         let b = block(&mut env, "B");
         let c = block(&mut env, "C");
-        env.record_block(a, vec![], None);
-        env.record_block(b, vec![], Some(a));
-        env.record_block(c, vec![], Some(b));
+        env.record_block(a, vec![], vec![], None);
+        env.record_block(b, vec![], vec![], Some(a));
+        env.record_block(c, vec![], vec![], Some(b));
         env
     }
 
@@ -403,9 +465,96 @@ mod tests {
         let mut env = environment();
         let a = block(&mut env, "A");
         let b = block(&mut env, "B");
-        env.record_block(a, vec![], Some(b));
-        env.record_block(b, vec![], Some(a));
+        env.record_block(a, vec![], vec![], Some(b));
+        env.record_block(b, vec![], vec![], Some(a));
 
         assert!(env.inheritance_chain(a).count() <= env.blocks.len());
+    }
+
+    /// A library with a structure whose fields are not in name order, an
+    /// alias of it, an interface with a property, and a block `Derived` that
+    /// extends `Base`, each declaring a field and a property.
+    const SELECTIONS: &str = "
+TYPE
+  Point : STRUCT y : INT; x : INT; END_STRUCT;
+  AliasOfPoint : Point;
+END_TYPE
+INTERFACE I_Axis
+PROPERTY Position : REAL
+GET
+END_GET
+END_PROPERTY
+END_INTERFACE
+FUNCTION_BLOCK Base
+VAR_INPUT
+  b : INT;
+END_VAR
+PROPERTY Speed : REAL
+GET
+  Speed := 1.0;
+END_GET
+END_PROPERTY
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK Derived EXTENDS Base
+VAR_OUTPUT
+  d : BOOL;
+END_VAR
+VAR_INPUT
+  c : INT;
+END_VAR
+PROPERTY Mode : INT
+GET
+  Mode := 1;
+END_GET
+END_PROPERTY
+END_FUNCTION_BLOCK";
+
+    /// The context resolution builds for [`SELECTIONS`].
+    fn selections() -> SemanticContext {
+        let (_, context) =
+            parse_and_resolve_types_with_options(SELECTIONS, &fb_inheritance_options());
+        context
+    }
+
+    /// The names `field_names` gives for the type `name`, as written.
+    fn field_names_of(env: &TypeEnvironment, name: &str) -> Option<Vec<String>> {
+        let names = env.field_names(id(env, name))?;
+        Some(names.iter().map(|name| name.to_string()).collect())
+    }
+
+    #[spec_test(REQ_ETR_analyzer_007)]
+    #[rstest]
+    #[case::structure_in_declaration_order("Point", Some(&["y", "x"][..]))]
+    #[case::alias_of_structure("AliasOfPoint", Some(&["y", "x"][..]))]
+    #[case::block_own_then_inherited("Derived", Some(&["d", "c", "b"][..]))]
+    #[case::standard_block("TON", Some(&["IN", "PT", "Q", "ET"][..]))]
+    #[case::interface("I_Axis", None)]
+    #[case::elementary("INT", None)]
+    fn field_names_when_type_then_names_a_selection_may_name(
+        #[case] type_name: &str,
+        #[case] expected: Option<&[&str]>,
+    ) {
+        let context = selections();
+        let expected = expected.map(|names| names.iter().map(|name| name.to_string()).collect());
+
+        assert_eq!(field_names_of(context.types(), type_name), expected);
+    }
+
+    #[spec_test(REQ_ETR_analyzer_007)]
+    #[rstest]
+    #[case::own("Derived", "Mode", true)]
+    #[case::inherited("Derived", "Speed", true)]
+    #[case::of_derived_block_only("Base", "Mode", false)]
+    #[case::field_is_not_a_property("Derived", "d", false)]
+    #[case::standard_block("TON", "Q", false)]
+    fn has_property_when_name_then_whether_block_or_base_declares_property(
+        #[case] block: &str,
+        #[case] name: &str,
+        #[case] expected: bool,
+    ) {
+        let context = selections();
+        let env = context.types();
+
+        assert_eq!(env.has_property(id(env, block), &Id::from(name)), expected);
     }
 }

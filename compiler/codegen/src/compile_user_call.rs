@@ -3,14 +3,14 @@
 //! Separated from `compile_call.rs` to keep module sizes within the
 //! 1000-line guideline.
 
-use ironplc_dsl::core::{Id, Located};
+use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
     Expr, ExprKind, Function, ParamAssignmentKind, SymbolicVariableKind, Variable,
 };
 
 use super::call_args::collect_input_args;
-use super::compile::{CompileContext, ParamPassing, UserFunctionInfo};
+use super::compile::{CompileContext, ParamPassing, StringParamInfo, UserFunctionInfo};
 use super::compile_call_output::{store_outputs, CallOutputs};
 use super::compile_expr::compile_expr;
 use super::compile_string::resolve_string_arg;
@@ -58,23 +58,7 @@ pub(crate) fn compile_user_function_call(
         })?;
         match passing {
             ParamPassing::String(str_info) => {
-                // Copy the string argument into the function's parameter space.
-                // Initialize the destination header, then copy the string data.
-                emitter.emit_str_init(
-                    str_info.data_offset,
-                    str_info.max_length,
-                    str_info.char_width,
-                );
-                // The parameter slot was just initialized at its declared
-                // encoding, and the copy below has to agree with it.
-                let src_offset =
-                    resolve_string_arg(emitter, ctx, arg, &func.name.span(), str_info.char_width)?;
-                emitter.emit_str_load_var(src_offset);
-                emitter.emit_str_store_var(str_info.data_offset);
-
-                // Push a dummy value for the CALL stack pop.
-                let zero_idx = ctx.add_i32_constant(0);
-                emitter.emit_load_const_i32(zero_idx);
+                compile_string_arg(emitter, ctx, arg, &str_info, &func.name.span())?;
             }
             // The analyzer converted an argument of another width to the
             // parameter's type (ADR-0056).
@@ -109,6 +93,29 @@ pub(crate) fn compile_user_function_call(
     // For STRING-returning functions, the CALL leaves a buf_idx on the stack
     // (from emit_str_load_var in the function epilogue). The caller's
     // assignment path will consume it via emit_str_store_var.
+    Ok(())
+}
+
+/// Compiles an argument passed to the string parameter `param`: copies it
+/// into the parameter's run of the data region, then pushes a dummy value
+/// for the slot `CALL` or `METHOD_CALL` pops. `span` is the call's.
+pub(crate) fn compile_string_arg(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    arg: &Expr,
+    param: &StringParamInfo,
+    span: &SourceSpan,
+) -> Result<(), Diagnostic> {
+    // Initialize the destination header, then copy the string data.
+    emitter.emit_str_init(param.data_offset, param.max_length, param.char_width);
+    // The parameter was just initialized at its declared encoding, and the
+    // copy below has to agree with it.
+    let src_offset = resolve_string_arg(emitter, ctx, arg, span, param.char_width)?;
+    emitter.emit_str_load_var(src_offset);
+    emitter.emit_str_store_var(param.data_offset);
+
+    let zero_idx = ctx.add_i32_constant(0);
+    emitter.emit_load_const_i32(zero_idx);
     Ok(())
 }
 
