@@ -66,7 +66,9 @@ impl Lowering<'_> {
             }
             AstExprKind::UnaryOp(unary) => match unary.op {
                 AstUnaryOp::Neg => {
-                    if !self.is_arithmetic(expr)? {
+                    // A duration is negated as the signed integer it is
+                    // stored as (ADR-0025).
+                    if !(self.is_arithmetic(expr)? || self.is_duration(expr)?) {
                         return Ok(None);
                     }
                     let Some(value) = self.expr(frame, &unary.term)? else {
