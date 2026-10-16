@@ -14,10 +14,12 @@
 //! inputs, its `CALL` or `METHOD_CALL`, the stores of its outputs, then the
 //! result, stored as the AST route stores it or dropped. Neither kind of
 //! temporary has storage of its own. The result is the value the call
-//! leaves on the stack, which stays there while the outputs are stored. An
-//! output is the callee's own variable, which this backend's layout keeps
-//! the output in and which keeps its value until the callee is called again
-//! (ADR-0046), so a call passes no reference for it.
+//! leaves on the stack, which stays there while the outputs are stored, and
+//! the read of the result's temporary takes it from there
+//! (`CompileContext::results_on_stack`). An output is the callee's own
+//! variable, which this backend's layout keeps the output in and which keeps
+//! its value until the callee is called again (ADR-0046), so a call passes
+//! no reference for it.
 
 use std::collections::HashMap;
 
@@ -29,7 +31,7 @@ use ironplc_ir::lowered::{
 };
 use ironplc_lowering::Lowering;
 
-use super::expr::{emit_operation, emit_user_call};
+use super::expr::{emit_expr, emit_operation, emit_user_call};
 use super::method::{emit_method_call, method_site, MethodSite};
 use super::place::{resolve, resolve_string};
 use super::string::reaches_string;
@@ -40,9 +42,33 @@ use crate::compile::{CompileContext, StringVarInfo, UserFunctionInfo};
 use crate::compile_expr::emit_load_var;
 use crate::emit::Emitter;
 
-/// The parts of a call of a function or method with outputs, or of a call
-/// statement of a method, at the head of a list of lowered statements.
-pub(super) struct OutputCall<'s> {
+/// The calls of functions or methods with outputs at the head of a list of
+/// lowered statements, and what their results go to.
+pub(super) enum OutputCall<'s> {
+    /// An assignment whose value has calls with outputs: the part of each
+    /// call, in the order they run, then `store`, the assignment's target
+    /// and value, which reads each call's result from its temporary.
+    Assignment {
+        parts: Vec<Part<'s>>,
+        store: (&'s LoweredPlace, &'s Expr),
+    },
+    /// A call statement of a method, whose result, if any, is dropped.
+    Statement(Call<'s>),
+}
+
+/// The part of a call with outputs in the value of an assignment: the call,
+/// stored in the temporary `result`, and the assignments of its outputs.
+pub(super) struct Part<'s> {
+    call: Call<'s>,
+    /// The call inside the narrowing of its result, if any, which is stored
+    /// in `result`.
+    value: &'s Expr,
+    result: VarId,
+}
+
+/// A call of a function or method with outputs, and the assignments of its
+/// outputs.
+pub(super) struct Call<'s> {
     /// The callee, as this backend's layout knows it.
     target: Target,
     /// The call's arguments for the callee's inputs and in-outs, in order.
@@ -51,37 +77,12 @@ pub(super) struct OutputCall<'s> {
     temporaries: Vec<(VarId, Output)>,
     /// The assignments of the outputs.
     outputs: &'s [Stmt],
-    /// What the call's result goes to.
-    form: Form<'s>,
-}
-
-/// A call's callee, its arguments for the callee's inputs and in-outs, and
-/// where the callee leaves the output each temporary is passed for.
-struct Parts<'s> {
-    target: Target,
-    inputs: Vec<&'s Arg>,
-    temporaries: Vec<(VarId, Output)>,
 }
 
 /// The callee of a call, as this backend's layout knows it.
 enum Target {
     Function(UserFunctionInfo),
     Method(MethodSite),
-}
-
-/// What a call's result goes to.
-enum Form<'s> {
-    /// The assignment of the call: `value`, stored in the result's
-    /// temporary, is the call inside the narrowing of its result, if any;
-    /// `store` is the assignment of the result, its target and its value, a
-    /// read of the result's temporary inside the conversion the analyzer
-    /// recorded.
-    Assignment {
-        value: &'s Expr,
-        store: (&'s LoweredPlace, &'s Expr),
-    },
-    /// A call statement of a method, whose result, if any, is dropped.
-    Statement,
 }
 
 /// Where a callee leaves one of its outputs, in this backend's layout.
@@ -114,30 +115,43 @@ impl Target {
 impl OutputCall<'_> {
     /// How many statements the call is.
     pub(super) fn len(&self) -> usize {
-        let call = match self.form {
-            Form::Assignment { .. } => 2,
-            Form::Statement => 1,
-        };
-        self.outputs.len() + call
+        match self {
+            OutputCall::Assignment { parts, .. } => {
+                parts
+                    .iter()
+                    .map(|part| 1 + part.call.outputs.len())
+                    .sum::<usize>()
+                    + 1
+            }
+            OutputCall::Statement(call) => 1 + call.outputs.len(),
+        }
     }
 
     /// Whether this backend emits every part of the call.
     pub(super) fn can_emit(&self, lowering: &Lowering<'_>, ctx: &CompileContext) -> bool {
+        match self {
+            OutputCall::Assignment {
+                parts,
+                store: (target, stored),
+            } => {
+                parts.iter().all(|part| {
+                    part.call.can_emit(lowering, ctx) && operations_can_emit(part.value)
+                }) && operations_can_emit(stored)
+                    && reaches(lowering, ctx, target, stored.ty())
+            }
+            OutputCall::Statement(call) => call.can_emit(lowering, ctx),
+        }
+    }
+}
+
+impl Call<'_> {
+    /// Whether this backend passes the call's inputs and emits the
+    /// assignment of each of its outputs.
+    fn can_emit(&self, lowering: &Lowering<'_>, ctx: &CompileContext) -> bool {
         let inputs = self.inputs.iter().copied();
         let passed = match &self.target {
             Target::Function(function) => passes(&function.params, inputs),
             Target::Method(site) => site.takes(inputs),
-        };
-        let stored = match self.form {
-            Form::Assignment {
-                value,
-                store: (target, stored),
-            } => {
-                operations_can_emit(value)
-                    && operations_can_emit(stored)
-                    && reaches(lowering, ctx, target, stored.ty())
-            }
-            Form::Statement => true,
         };
         passed
             && args_can_emit(lowering, ctx, self.inputs.iter().copied())
@@ -145,7 +159,6 @@ impl OutputCall<'_> {
                 .outputs
                 .iter()
                 .all(|output| self.output_can_emit(lowering, ctx, output))
-            && stored
     }
 
     /// Whether this backend emits `stmt`, the assignment of an output read
@@ -189,11 +202,11 @@ impl OutputCall<'_> {
     }
 }
 
-/// The call at the head of `stmts`, all of whose parts have one span:
+/// The calls at the head of `stmts`, all of whose statements have one span:
 ///
-/// * the assignment of a call with outputs: the call stored in a temporary,
-///   the assignments of the outputs, then the assignment of a read of the
-///   temporary;
+/// * an assignment whose value is a call with outputs: the call's part, the
+///   call stored in a temporary then the assignments of its outputs, then the
+///   assignment of a read of the temporary;
 /// * a call statement of a method, then the assignments of its outputs.
 ///
 /// `None` when `stmts` does not start with one.
@@ -207,70 +220,39 @@ pub(super) fn output_call<'s>(
     };
     let span = first.span();
     match first.kind() {
-        StmtKind::Assign { place, value } => {
-            let result = whole(place)?;
-            let ExprKind::Call {
-                callee: Callee::User(pou),
-                args,
-            } = innermost(value).kind()
-            else {
+        StmtKind::Assign { .. } => {
+            let mut parts = Vec::new();
+            let mut rest = stmts;
+            while let Some((part, len)) = part(lowering, ctx, rest, span) {
+                parts.push(part);
+                rest = &rest[len..];
+            }
+            // One part, whose result the assignment reads inside operations
+            // of one operand.
+            let ([part], [stored, ..]) = (parts.as_slice(), rest) else {
                 return None;
             };
-            let Parts {
-                target,
-                inputs,
-                temporaries,
-            } = call_target(lowering, ctx, *pou, args)?;
-            if temporaries.is_empty() {
+            if !(same_span(stored.span(), span) && reads(stored, part.result)) {
                 return None;
             }
-            let end = rest.iter().position(|stmt| reads(stmt, result))?;
-            let StmtKind::Assign {
-                place: assigned,
-                value: stored,
-            } = rest[end].kind()
-            else {
+            let StmtKind::Assign { place, value } = stored.kind() else {
                 return None;
             };
-            if !rest[..=end].iter().all(|stmt| same_span(stmt.span(), span)) {
-                return None;
-            }
-            Some(OutputCall {
-                target,
-                inputs,
-                temporaries,
-                outputs: &rest[..end],
-                form: Form::Assignment {
-                    value,
-                    store: (assigned, stored),
-                },
+            Some(OutputCall::Assignment {
+                parts,
+                store: (place, value),
             })
         }
         StmtKind::Call {
             callee: Callee::User(pou),
             args,
         } => {
-            let Parts {
-                target,
-                inputs,
-                temporaries,
-            } = call_target(lowering, ctx, *pou, args)?;
-            let Target::Method(_) = target else {
+            let mut call = call_target(lowering, ctx, *pou, args)?;
+            let Target::Method(_) = call.target else {
                 return None;
             };
-            let outputs = rest
-                .iter()
-                .take_while(|stmt| {
-                    same_span(stmt.span(), span) && assigns_output(&temporaries, stmt)
-                })
-                .count();
-            Some(OutputCall {
-                target,
-                inputs,
-                temporaries,
-                outputs: &rest[..outputs],
-                form: Form::Statement,
-            })
+            call.outputs = outputs_of(&call.temporaries, rest, span);
+            Some(OutputCall::Statement(call))
         }
         StmtKind::Call { .. }
         | StmtKind::AssignStr { .. }
@@ -287,16 +269,72 @@ pub(super) fn output_call<'s>(
     }
 }
 
-/// The callee of the call of `pou` with `args`, the arguments for its
-/// inputs and in-outs, and where it leaves the output each other argument
-/// passes a temporary for. A method's first argument, its receiver, is
-/// neither.
+/// The part at the head of `stmts`, at `span`, and how many statements it
+/// is: the assignment of a call with outputs to a temporary, inside the
+/// narrowing of its result, if any, then the assignments of its outputs.
+fn part<'s>(
+    lowering: &Lowering<'_>,
+    ctx: &CompileContext,
+    stmts: &'s [Stmt],
+    span: &SourceSpan,
+) -> Option<(Part<'s>, usize)> {
+    let [first, rest @ ..] = stmts else {
+        return None;
+    };
+    let StmtKind::Assign { place, value } = first.kind() else {
+        return None;
+    };
+    if !same_span(first.span(), span) {
+        return None;
+    }
+    let result = whole(place)?;
+    let ExprKind::Call {
+        callee: Callee::User(pou),
+        args,
+    } = innermost(value).kind()
+    else {
+        return None;
+    };
+    let mut call = call_target(lowering, ctx, *pou, args)?;
+    if call.temporaries.is_empty() {
+        return None;
+    }
+    call.outputs = outputs_of(&call.temporaries, rest, span);
+    let len = 1 + call.outputs.len();
+    Some((
+        Part {
+            call,
+            value,
+            result,
+        },
+        len,
+    ))
+}
+
+/// The assignments of outputs read from `temporaries` at the head of
+/// `stmts`, at `span`.
+fn outputs_of<'s>(
+    temporaries: &[(VarId, Output)],
+    stmts: &'s [Stmt],
+    span: &SourceSpan,
+) -> &'s [Stmt] {
+    let count = stmts
+        .iter()
+        .take_while(|stmt| same_span(stmt.span(), span) && assigns_output(temporaries, stmt))
+        .count();
+    &stmts[..count]
+}
+
+/// The call of `pou` with `args`: its callee, the arguments for its inputs
+/// and in-outs, and where it leaves the output each other argument passes a
+/// temporary for, with no assignments of its outputs yet. A method's first
+/// argument, its receiver, is neither.
 fn call_target<'s>(
     lowering: &Lowering<'_>,
     ctx: &CompileContext,
     pou: PouId,
     args: &'s [Arg],
-) -> Option<Parts<'s>> {
+) -> Option<Call<'s>> {
     let (target, receivers) = match user_function(lowering, ctx, pou) {
         Some(function) => (Target::Function(function), 0),
         None => (Target::Method(method_site(lowering, ctx, pou, args)?), 1),
@@ -322,10 +360,11 @@ fn call_target<'s>(
         };
         temporaries.push((whole(temporary)?, output));
     }
-    Some(Parts {
+    Some(Call {
         target,
         inputs,
         temporaries,
+        outputs: &[],
     })
 }
 
@@ -337,55 +376,36 @@ pub(super) fn emit_output_call(
     call: &OutputCall<'_>,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
-    let inputs = || call.inputs.iter().copied();
-    let outputs = |emitter: &mut Emitter, ctx: &mut CompileContext| {
-        call.outputs
-            .iter()
-            .try_for_each(|output| emit_output(emitter, ctx, lowering, call, output))
-    };
-    match (&call.target, &call.form) {
-        (
-            Target::Function(function),
-            Form::Assignment {
-                value,
-                store: (target, stored),
-            },
-        ) => resolve(lowering, ctx, target, span)?.emit_assign_fitting(
+    match call {
+        OutputCall::Assignment {
+            parts,
+            store: (target, stored),
+        } => resolve(lowering, ctx, target, span)?.emit_assign_fitting(
             emitter,
             ctx,
             |emitter, ctx| {
-                emit_around(emitter, ctx, value, |emitter, ctx| {
-                    emit_user_call(emitter, ctx, lowering, function, inputs(), span)
-                })?;
-                outputs(emitter, ctx)?;
-                // The result is the value the call left on the stack.
-                emit_around(emitter, ctx, stored, |_, _| Ok(()))
+                for part in parts {
+                    emit_part(emitter, ctx, lowering, part, span)?;
+                }
+                // Each result is the value its call left on the stack.
+                emit_expr(emitter, ctx, lowering, stored)?;
+                all_results_read(ctx, span)
             },
         ),
-        (
-            Target::Method(site),
-            Form::Assignment {
-                value,
-                store: (target, stored),
-            },
-        ) => resolve(lowering, ctx, target, span)?.emit_assign_fitting(
-            emitter,
-            ctx,
-            |emitter, ctx| {
-                emit_around(emitter, ctx, value, |emitter, ctx| {
-                    emit_method_call(emitter, ctx, lowering, site, inputs(), span)?;
-                    outputs(emitter, ctx)?;
-                    // Drop the instance from beneath the result.
-                    emitter.emit_swap();
-                    emitter.emit_pop();
-                    Ok(())
-                })?;
-                emit_around(emitter, ctx, stored, |_, _| Ok(()))
-            },
-        ),
-        (Target::Method(site), Form::Statement) => {
-            emit_method_call(emitter, ctx, lowering, site, inputs(), span)?;
-            outputs(emitter, ctx)?;
+        OutputCall::Statement(call) => {
+            // `output_call` makes a statement only of a method's call.
+            let Target::Method(site) = &call.target else {
+                return Err(no_output(span));
+            };
+            emit_method_call(
+                emitter,
+                ctx,
+                lowering,
+                site,
+                call.inputs.iter().copied(),
+                span,
+            )?;
+            call.emit_outputs(emitter, ctx, lowering)?;
             // Drop the result, if any, and the instance beneath it.
             if site.has_return_value {
                 emitter.emit_pop();
@@ -393,8 +413,84 @@ pub(super) fn emit_output_call(
             emitter.emit_pop();
             Ok(())
         }
-        // `output_call` makes a statement only of a method's call.
-        (Target::Function(_), Form::Statement) => Err(no_output(span)),
+    }
+}
+
+/// Emits `part`, whose span is `span`: its call, which leaves its result on
+/// the stack, then the stores of its outputs. The result stays on the stack
+/// for the read of its temporary to take.
+fn emit_part(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    lowering: &Lowering<'_>,
+    part: &Part<'_>,
+    span: &SourceSpan,
+) -> Result<(), Diagnostic> {
+    let call = &part.call;
+    let inputs = call.inputs.iter().copied();
+    match &call.target {
+        Target::Function(function) => {
+            emit_around(emitter, ctx, part.value, |emitter, ctx| {
+                emit_user_call(emitter, ctx, lowering, function, inputs, span)
+            })?;
+            call.emit_outputs(emitter, ctx, lowering)?;
+        }
+        Target::Method(site) => emit_around(emitter, ctx, part.value, |emitter, ctx| {
+            emit_method_call(emitter, ctx, lowering, site, inputs, span)?;
+            call.emit_outputs(emitter, ctx, lowering)?;
+            // Drop the instance from beneath the result.
+            emitter.emit_swap();
+            emitter.emit_pop();
+            Ok(())
+        })?,
+    }
+    ctx.results_on_stack.push(part.result);
+    Ok(())
+}
+
+/// Whether `place` is the temporary of a call's result that this backend
+/// left on the stack (`emit_part`), which a read of it takes: it is then on
+/// the stack no longer.
+pub(super) fn take_result(ctx: &mut CompileContext, place: &LoweredPlace) -> bool {
+    let Some(variable) = whole(place) else {
+        return false;
+    };
+    let Some(position) = ctx
+        .results_on_stack
+        .iter()
+        .position(|result| *result == variable)
+    else {
+        return false;
+    };
+    ctx.results_on_stack.remove(position);
+    true
+}
+
+/// Refuses an assignment that left a result of one of its calls on the
+/// stack unread, which `can_emit` should have left to the AST route.
+fn all_results_read(ctx: &mut CompileContext, span: &SourceSpan) -> Result<(), Diagnostic> {
+    if ctx.results_on_stack.is_empty() {
+        return Ok(());
+    }
+    ctx.results_on_stack.clear();
+    Err(Diagnostic::internal_error_at(Label::span(
+        span.clone(),
+        "A result of a lowered call this backend did not read",
+    )))
+}
+
+impl Call<'_> {
+    /// Emits the stores of the call's outputs, each read where the callee
+    /// left it.
+    fn emit_outputs(
+        &self,
+        emitter: &mut Emitter,
+        ctx: &mut CompileContext,
+        lowering: &Lowering<'_>,
+    ) -> Result<(), Diagnostic> {
+        self.outputs
+            .iter()
+            .try_for_each(|output| emit_output(emitter, ctx, lowering, self, output))
     }
 }
 
@@ -404,7 +500,7 @@ fn emit_output(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     lowering: &Lowering<'_>,
-    call: &OutputCall<'_>,
+    call: &Call<'_>,
     stmt: &Stmt,
 ) -> Result<(), Diagnostic> {
     let span = stmt.span();
