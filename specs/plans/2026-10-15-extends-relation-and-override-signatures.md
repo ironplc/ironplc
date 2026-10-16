@@ -183,7 +183,9 @@ Both apply on every dialect, as `rule_extends_field_duplicated` does:
 
 ## Prefactoring
 
-Two prefactors, each behaviour-preserving with existing expectations unchanged:
+One prefactor, behaviour-preserving with existing expectations unchanged. It
+does two things, which land together because both make the block record the
+one answer about a block's inheritance:
 
 1. **Follow `EXTENDS` through the type environment everywhere it is walked
    after the environment exists.** `base_of`; `FunctionBlocks` follows
@@ -200,7 +202,7 @@ Two prefactors, each behaviour-preserving with existing expectations unchanged:
    *name* resolved again, as today, so a `STRING[10]` result still types its
    call as `STRING` and every expression type is unchanged.
 
-Without them, core 1 would add another resolution of the base name, and core
+Without it, core 1 would add another resolution of the base name, and core
 2 would build a second private method table beside `collect_method_types`, or
 a third beside #1901's.
 
@@ -242,7 +244,7 @@ a third beside #1901's.
 - **#1901** (interface conformance) stalled on its size. Once core 2 lands it
   can be re-cut small, comparing through `method` and `same_type` instead of
   its own `TypeKey`. Not part of this plan.
-- **#2199** (call binding plan) touches `callee_resolution.rs`; prefactor 1
+- **#2199** (call binding plan) touches `callee_resolution.rs`; the prefactor
   changes the constructors there.
 
 ## Design doc reference
@@ -255,30 +257,30 @@ requirement IDs; the rule tests are the conformance tests.
 
 ## File map
 
-| File | Prefactor 1 | Prefactor 2 | Core 1 | Core 2 |
-|---|---|---|---|---|
-| `analyzer/src/type_environment/fields.rs` | `base_of` | `BlockRecord::methods`, `record_block` takes them, `method` | | |
-| `analyzer/src/type_environment/methods.rs` (new) | | `MethodSignature` | | comparison, first difference |
-| `analyzer/src/type_environment.rs` | | | | `same_type` |
-| `analyzer/src/xform_resolve_decl_types.rs` | | build each method's signature | | |
-| `analyzer/src/callee_resolution.rs` | `chain` follows the relation; constructors take the environment | | | |
-| `analyzer/src/xform_resolve_expr_types.rs` | pass the environment | `method` replaces `collect_method_types` | | |
-| `analyzer/src/{rule_method_call_declared,rule_function_block_invocation,write_collector,xform_bind_call_arguments}.rs`, `xform_insert_implicit_conversions/declared.rs`, `codegen/src/compile.rs`, `lowering/src/lib.rs` | pass the environment | | | |
-| `analyzer/src/xform_resolve_symbol_and_function_environment.rs` | | | `extends` from `base_of` | |
-| `analyzer/src/rule_extends_base_declared.rs` (new) | | | rule + tests | |
-| `analyzer/src/rule_method_override_signature.rs` (new) | | | | rule + tests |
-| `analyzer/src/stages.rs`, `analyzer/src/lib.rs` | | | register | register |
-| `problems/resources/problem-codes.csv` | | | P-base | P-override |
-| `docs/reference/compiler/problems/P####.rst` (new) | | | P-base | P-override |
-| `docs/reference/language/object-orientation/extends.rst` | | | the base is a declared function block | an override keeps the signature |
-| `specs/design/beckhoff-twincat-dialect.md` §1.4 | | | the relation, P-base | the override rule, XAE results |
-| `analyzer/src/callee_resolution.rs`, `xform_bind_call_arguments.rs` (fixtures) | | | | Decision 2 |
+| File | Prefactor | Core 1 | Core 2 |
+|---|---|---|---|
+| `analyzer/src/type_environment/fields.rs` | `base_of`; `BlockRecord::methods`, `record_block` takes them, `method` | | |
+| `analyzer/src/type_environment/methods.rs` (new) | `MethodSignature` | | comparison, first difference |
+| `analyzer/src/type_environment.rs` | | | `same_type` |
+| `analyzer/src/xform_resolve_decl_types.rs` | build each method's signature | | |
+| `analyzer/src/callee_resolution.rs` | `chain` follows the relation; constructors take the environment | | |
+| `analyzer/src/xform_resolve_expr_types.rs` | pass the environment; `method` replaces `collect_method_types` | | |
+| `analyzer/src/{rule_method_call_declared,rule_function_block_invocation,write_collector,xform_bind_call_arguments}.rs`, `xform_insert_implicit_conversions/declared.rs`, `codegen/src/compile.rs`, `lowering/src/lib.rs` | pass the environment | | |
+| `analyzer/src/xform_resolve_symbol_and_function_environment.rs` | | `extends` from `base_of` | |
+| `analyzer/src/rule_extends_base_declared.rs` (new) | | rule + tests | |
+| `analyzer/src/rule_method_override_signature.rs` (new) | | | rule + tests |
+| `analyzer/src/stages.rs`, `analyzer/src/lib.rs` | | register | register |
+| `problems/resources/problem-codes.csv` | | P-base | P-override |
+| `docs/reference/compiler/problems/P####.rst` (new) | | P-base | P-override |
+| `docs/reference/language/object-orientation/extends.rst` | | the base is a declared function block | an override keeps the signature |
+| `specs/design/beckhoff-twincat-dialect.md` §1.4 | | the relation, P-base | the override rule, XAE results |
+| `analyzer/src/callee_resolution.rs`, `xform_bind_call_arguments.rs` (fixtures) | | | Decision 2 |
 
 ## Tasks
 
 Tracking issue: opened when this plan is approved, listing core 1 and core 2.
 
-### Prefactor 1: follow `EXTENDS` through the type environment
+### Prefactor: the block record answers a block's inheritance
 
 - [ ] `TypeEnvironment::base_of`, with unit tests: no base, a declared base,
       a structure, a standard block.
@@ -286,10 +288,6 @@ Tracking issue: opened when this plan is approved, listing core 1 and core 2.
       `MethodOwners::of_library` and `BlockParameters::of_library` take the
       type environment; update every caller, codegen's and lowering's
       included.
-- [ ] `cd compiler && just`.
-
-### Prefactor 2: method signatures in the block record
-
 - [ ] `MethodSignature` (reusing `ParameterSection`); `BlockRecord::methods`;
       `record_block` takes them; `method`, with unit tests: own, inherited,
       overridden (nearest wins), sized string result, unresolved parameter
