@@ -447,7 +447,7 @@ mod tests {
             .unwrap();
         for (block, _) in bases {
             types.insert_type(
-                &TypeName::from(*block),
+                &TypeName::from(block),
                 TypeAttributes::new(SemanticType::FunctionBlock {
                     name: block.to_string(),
                 }),
