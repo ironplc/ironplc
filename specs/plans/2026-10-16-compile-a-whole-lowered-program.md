@@ -1,7 +1,7 @@
 # Plan: Compile a Whole Lowered Program
 
-Tracking issue: to be opened with this plan; it lists every PR below and stays
-open until they have all landed.
+Tracking issue: #2344. It lists every PR below and stays open until they have
+all landed.
 
 ## Goal
 
