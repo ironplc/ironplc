@@ -22,7 +22,9 @@ use crate::type_id;
 use ironplc_dsl::type_id::TypeId;
 
 mod fields;
+mod methods;
 pub use fields::BlockField;
+pub(crate) use methods::MethodSignature;
 
 static ELEMENTARY_TYPES_LOWER_CASE: [(&str, ElementaryTypeName, SemanticType); 29] = [
     // signed_integer_type_name

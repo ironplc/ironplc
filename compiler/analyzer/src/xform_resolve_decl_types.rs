@@ -25,8 +25,8 @@
 //! function block type in the environment
 //! ([`TypeEnvironment::field_type`]): a field is declared as a variable is.
 //! A function block's fields -- its `VAR_INPUT`, `VAR_OUTPUT`, `VAR_IN_OUT`
-//! and `VAR` variables, in order -- the names of its properties and the
-//! block it `EXTENDS` are recorded together
+//! and `VAR` variables, in order -- the names of its properties, the
+//! signatures of its methods and the block it `EXTENDS` are recorded together
 //! ([`TypeEnvironment::record_block`]), and the block's type lists none of
 //! them.
 //!
@@ -197,8 +197,13 @@ impl Fold<Diagnostic> for DeclTypeResolver<'_> {
                 .iter()
                 .map(|property| property.name.clone())
                 .collect();
+            let methods = node
+                .methods
+                .iter()
+                .map(|method| self.type_environment.method_signature(method))
+                .collect();
             self.type_environment
-                .record_block(function_block, fields, properties, base);
+                .record_block(function_block, fields, properties, methods, base);
         }
         Ok(node)
     }

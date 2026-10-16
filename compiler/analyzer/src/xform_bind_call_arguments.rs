@@ -53,7 +53,7 @@ pub fn apply(
     functions: &FunctionEnvironment,
 ) -> (Library, Vec<Diagnostic>) {
     let mut binder = CallArgumentBinder {
-        parameters: MethodParameters::of_library(&lib),
+        parameters: MethodParameters::of_library(&lib, types),
         symbols,
         types,
         functions,

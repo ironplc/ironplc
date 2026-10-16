@@ -16,14 +16,17 @@
 //! differ. A type's representation never changes once it is entered; the
 //! fields of a block are looked up by the block's id.
 //!
-//! A block's fields, the names of its properties and the block it `EXTENDS`
-//! are recorded together, once (see [`TypeEnvironment::record_block`]), so
-//! they cannot come from two declarations.
+//! A block's fields, the names of its properties, the signatures of its
+//! methods and the block it `EXTENDS` are recorded together, once (see
+//! [`TypeEnvironment::record_block`]), so they cannot come from two
+//! declarations. Everything that follows `EXTENDS` after the environment is
+//! built follows the base recorded here.
 
 use ironplc_dsl::common::TypeName;
 use ironplc_dsl::core::Id;
 use ironplc_dsl::type_id::TypeId;
 
+use super::methods::MethodSignature;
 use super::TypeEnvironment;
 use crate::intermediates::stdlib_function_block::StandardField;
 use crate::semantic_type::FunctionBlockVarType;
@@ -51,8 +54,11 @@ pub(super) struct BlockRecord {
     /// instance may name one as it names a field; property access is not
     /// implemented, so nothing records a property's type.
     properties: Vec<Id>,
-    /// The block it `EXTENDS`, whose fields and properties an instance of it
-    /// also has.
+    /// The signatures of the methods the block declares, in the order it
+    /// declares them; not those it inherits.
+    methods: Vec<MethodSignature>,
+    /// The block it `EXTENDS`, whose fields, properties and methods an
+    /// instance of it also has.
     base: Option<TypeId>,
 }
 
@@ -83,8 +89,8 @@ impl TypeEnvironment {
     }
 
     /// Records the fields of the function block `block`, in the order it
-    /// declares them, the names of its properties, and the block it
-    /// `EXTENDS`.
+    /// declares them, the names of its properties, the signatures of its
+    /// methods, and the block it `EXTENDS`.
     ///
     /// A block is recorded once: a later call for the same block, such as
     /// for a repeated declaration of its name (P4013) or a library block
@@ -102,6 +108,7 @@ impl TypeEnvironment {
         block: TypeId,
         fields: Vec<BlockField>,
         properties: Vec<Id>,
+        methods: Vec<MethodSignature>,
         base: Option<TypeId>,
     ) {
         let is_block = self
@@ -116,13 +123,15 @@ impl TypeEnvironment {
             BlockRecord {
                 fields,
                 properties,
+                methods,
                 base,
             },
         );
     }
 
     /// Records the fields of the standard function block `name`, each of
-    /// which has an elementary type. A standard block has no properties.
+    /// which has an elementary type. A standard block has no properties and
+    /// no methods.
     pub(super) fn record_standard_block(&mut self, name: &TypeName, fields: &[StandardField]) {
         let Some(block) = self.id_of(name) else {
             return;
@@ -138,7 +147,7 @@ impl TypeEnvironment {
                 })
             })
             .collect();
-        self.record_block(block, fields, Vec::new(), None);
+        self.record_block(block, fields, Vec::new(), Vec::new(), None);
     }
 
     /// The fields the function block `block` declares, in the order it
@@ -162,6 +171,29 @@ impl TypeEnvironment {
     pub fn has_property(&self, block: TypeId, name: &Id) -> bool {
         self.inherited_records(block)
             .any(|record| record.properties.contains(name))
+    }
+
+    /// The method `name` of an instance of the function block `block`, and
+    /// the block that declares it: `block`, else the nearest block it
+    /// inherits from through `EXTENDS` that declares a method of that name.
+    pub(crate) fn method(&self, block: TypeId, name: &Id) -> Option<(TypeId, &MethodSignature)> {
+        self.inheritance_chain(block).find_map(|declaring| {
+            let method = self
+                .blocks
+                .get(&declaring)?
+                .methods
+                .iter()
+                .find(|method| method.name == *name)?;
+            Some((declaring, method))
+        })
+    }
+
+    /// The block the function block `block` `EXTENDS`, as recorded: only a
+    /// function block the library declares (see [`Self::record_block`]).
+    /// `None` when `block` extends nothing, extends a name that is not such
+    /// a block, or is not a recorded block itself.
+    pub(crate) fn base_of(&self, block: TypeId) -> Option<TypeId> {
+        self.blocks.get(&block)?.base
     }
 
     /// The names of the fields a selection on a value of the type `record`
@@ -369,14 +401,22 @@ mod tests {
             derived,
             vec![a.clone()],
             vec![Id::from("Kept")],
+            vec![],
             Some(first),
         );
-        env.record_block(derived, vec![b], vec![Id::from("Dropped")], Some(second));
+        env.record_block(
+            derived,
+            vec![b],
+            vec![Id::from("Dropped")],
+            vec![],
+            Some(second),
+        );
 
         assert_eq!(env.block_fields(derived), Some([a].as_slice()));
         env.record_block(
             first,
             vec![field(&env, "x", FunctionBlockVarType::Internal)],
+            vec![],
             vec![],
             None,
         );
@@ -391,7 +431,7 @@ mod tests {
         let int = env.id_of(&TypeName::from("INT")).unwrap();
         let a = field(&env, "a", FunctionBlockVarType::Input);
 
-        env.record_block(int, vec![a], vec![], None);
+        env.record_block(int, vec![a], vec![], vec![], None);
 
         assert_eq!(env.block_fields(int), None);
     }
@@ -403,8 +443,8 @@ mod tests {
         let derived = block(&mut env, "Derived");
         let ton = env.id_of(&TypeName::from("TON")).unwrap();
 
-        env.record_block(own, vec![], vec![], Some(own));
-        env.record_block(derived, vec![], vec![], Some(ton));
+        env.record_block(own, vec![], vec![], vec![], Some(own));
+        env.record_block(derived, vec![], vec![], vec![], Some(ton));
 
         assert_eq!(env.block_field(own, &Id::from("missing")), None);
         assert_eq!(env.field_type(derived, &Id::from("Q")), None);
@@ -426,9 +466,9 @@ mod tests {
         let input = |name| field(&env, name, FunctionBlockVarType::Input);
         let (a, b, c, d) = (input("a"), input("b"), input("c"), input("d"));
 
-        env.record_block(root, vec![a, b], vec![], None);
-        env.record_block(middle, vec![c], vec![], Some(root));
-        env.record_block(leaf, vec![d], vec![], Some(middle));
+        env.record_block(root, vec![a, b], vec![], vec![], None);
+        env.record_block(middle, vec![c], vec![], vec![], Some(root));
+        env.record_block(leaf, vec![d], vec![], vec![], Some(middle));
 
         assert_eq!(
             names(env.instance_fields(leaf)),
@@ -450,8 +490,14 @@ mod tests {
         let b = field(&env, "b", FunctionBlockVarType::Input);
         let redeclared = field(&env, "a", FunctionBlockVarType::Output);
 
-        env.record_block(base, vec![a, b], vec![], None);
-        env.record_block(derived, vec![redeclared.clone()], vec![], Some(base));
+        env.record_block(base, vec![a, b], vec![], vec![], None);
+        env.record_block(
+            derived,
+            vec![redeclared.clone()],
+            vec![],
+            vec![],
+            Some(base),
+        );
 
         let fields = env.instance_fields(derived).unwrap();
         assert_eq!(fields.len(), 2);
@@ -489,9 +535,9 @@ mod tests {
         let a = block(&mut env, "A");
         let b = block(&mut env, "B");
         let c = block(&mut env, "C");
-        env.record_block(a, vec![], vec![], None);
-        env.record_block(b, vec![], vec![], Some(a));
-        env.record_block(c, vec![], vec![], Some(b));
+        env.record_block(a, vec![], vec![], vec![], None);
+        env.record_block(b, vec![], vec![], vec![], Some(a));
+        env.record_block(c, vec![], vec![], vec![], Some(b));
         env
     }
 
@@ -540,8 +586,8 @@ mod tests {
         let mut env = environment();
         let a = block(&mut env, "A");
         let b = block(&mut env, "B");
-        env.record_block(a, vec![], vec![], Some(b));
-        env.record_block(b, vec![], vec![], Some(a));
+        env.record_block(a, vec![], vec![], vec![], Some(b));
+        env.record_block(b, vec![], vec![], vec![], Some(a));
 
         assert!(env.inheritance_chain(a).count() <= env.blocks.len());
     }

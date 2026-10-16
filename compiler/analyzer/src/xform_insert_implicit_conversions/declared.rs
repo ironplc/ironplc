@@ -43,7 +43,7 @@ impl Declarations {
     /// `lib`.
     pub(super) fn collect(lib: &Library, types: &TypeEnvironment) -> Self {
         let mut declarations = Declarations {
-            owners: MethodOwners::of_library(lib),
+            owners: MethodOwners::of_library(lib, types),
             ..Declarations::default()
         };
         for element in &lib.elements {

@@ -12,10 +12,8 @@ use ironplc_dsl::fold::Fold;
 use ironplc_dsl::scope::ScopeNode;
 use ironplc_dsl::textual::*;
 use ironplc_dsl::type_id::TypeId;
-use std::collections::HashMap;
 
 use crate::builtin_function::{BuiltinFunction, InputsOfOneType, OneTypeResult};
-use crate::callee_resolution::FunctionBlocks;
 use crate::enumerated_value_type::{self, EnumeratedValueType};
 use crate::function_environment::FunctionEnvironment;
 use crate::intermediates::arithmetic_overload::{
@@ -25,7 +23,7 @@ use crate::intermediates::common_operand::common_operand_of;
 use crate::intermediates::numeric_operation::literal_default_type;
 use crate::intermediates::operator_function_form::{operator_function_form, FormOf};
 use crate::symbol_environment::{ScopeTracker, SymbolEnvironment};
-use crate::type_environment::TypeEnvironment;
+use crate::type_environment::{MethodSignature, TypeEnvironment};
 use crate::value_type::operand_type_name;
 use crate::variable_type;
 use ironplc_parser::options::CompilerOptions;
@@ -39,12 +37,10 @@ pub fn apply(
     function_environment: &FunctionEnvironment,
     options: &CompilerOptions,
 ) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>> {
-    let methods = collect_method_types(&lib);
     let named_enumerations = enumerated_value_type::named_enumerations(type_environment);
     let mut resolver = ExprTypeResolver {
         symbols,
         scope: ScopeTracker::default(),
-        methods,
         type_environment,
         function_environment,
         options: *options,
@@ -60,62 +56,6 @@ pub fn apply(
         .map(enumerated_value_type::ambiguous)
         .collect();
     Ok((library, diagnostics))
-}
-
-/// The types of a method a call reads: its return type, `None` for a method
-/// without one, and the type each output is declared with.
-struct MethodTypes {
-    return_type: Option<TypeName>,
-    outputs: HashMap<Id, TypeId>,
-}
-
-/// The types of every method callable on every function block, by function
-/// block type and method name: the block's own methods, then those it
-/// inherits through `EXTENDS` (ADR-0041 Phase 1 static dispatch).
-///
-/// Built before the fold, which consumes the library, so the resolver can
-/// type a method call without holding a reference into it.
-fn collect_method_types(lib: &Library) -> HashMap<TypeName, HashMap<Id, MethodTypes>> {
-    let function_blocks = FunctionBlocks::from_library(lib);
-    let method_names: Vec<&Id> = lib
-        .elements
-        .iter()
-        .filter_map(|element| match element {
-            LibraryElementKind::FunctionBlockDeclaration(fb) => Some(fb),
-            _ => None,
-        })
-        .flat_map(|fb| fb.methods.iter().map(|m| &m.name))
-        .collect();
-
-    let mut result = HashMap::new();
-    for element in &lib.elements {
-        let LibraryElementKind::FunctionBlockDeclaration(fb) = element else {
-            continue;
-        };
-        let callable: HashMap<Id, MethodTypes> = method_names
-            .iter()
-            .filter_map(|name| {
-                let (_, method) = function_blocks.resolve_method(&fb.name, name)?;
-                let outputs = method
-                    .variables
-                    .iter()
-                    .filter(|decl| decl.var_type == VariableType::Output)
-                    .filter_map(|decl| {
-                        Some((decl.identifier.symbolic_id()?.clone(), decl.type_id?))
-                    })
-                    .collect();
-                Some((
-                    method.name.clone(),
-                    MethodTypes {
-                        return_type: method.return_type.as_ref().map(|rt| rt.to_type_name()),
-                        outputs,
-                    },
-                ))
-            })
-            .collect();
-        result.insert(fb.name.clone(), callable);
-    }
-    result
 }
 
 /// Returns true if the type name is an IEC 61131-3 generic type category.
@@ -162,8 +102,6 @@ struct ExprTypeResolver<'a> {
     /// The variables in scope, by the scope the traversal is in.
     symbols: &'a SymbolEnvironment,
     scope: ScopeTracker,
-    /// See [`collect_method_types`].
-    methods: HashMap<TypeName, HashMap<Id, MethodTypes>>,
     type_environment: &'a mut TypeEnvironment,
     function_environment: &'a FunctionEnvironment,
     /// The compiler options, which decide whether a bit-string operand of
@@ -297,10 +235,10 @@ impl ExprTypeResolver<'_> {
                 let MethodReceiver::Instance(instance) = &call.receiver else {
                     return None;
                 };
-                let return_type = self
-                    .method_types(instance, &call.method)?
-                    .return_type
-                    .clone()?;
+                // The result's type named again, as a function call's
+                // is, so a `STRING[10]` result types the call as `STRING`.
+                let result = self.method(instance, &call.method)?.result_type()?;
+                let return_type = self.type_environment.name_of(result)?.clone();
                 self.expr_type_named(return_type)
             }
             ExprKind::EnumeratedValue(ev) => match &ev.type_name {
@@ -365,22 +303,18 @@ impl ExprTypeResolver<'_> {
             CallFrame::Method {
                 receiver: MethodReceiver::Instance(instance),
                 method,
-            } => self
-                .method_types(instance, method)?
-                .outputs
-                .get(output)
-                .copied(),
+            } => self.method(instance, method)?.output_type(output),
             CallFrame::Method { .. } => None,
         }
     }
 
-    /// The types of the method `method` called on the function block
+    /// The signature of the method `method` called on the function block
     /// instance `instance`: the one its block declares or inherits.
-    fn method_types(&self, instance: &Id, method: &Id) -> Option<&MethodTypes> {
-        let block = self
-            .type_environment
-            .name_of(self.declared_type_id(instance)?)?;
-        self.methods.get(block)?.get(method)
+    fn method(&self, instance: &Id, method: &Id) -> Option<&MethodSignature> {
+        let block = self.declared_type_id(instance)?;
+        self.type_environment
+            .method(block, method)
+            .map(|(_, signature)| signature)
     }
 
     /// The type of the unqualified enumerated value `ev` used where a value
