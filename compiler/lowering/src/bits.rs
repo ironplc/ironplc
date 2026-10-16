@@ -19,8 +19,9 @@ use crate::Lowering;
 impl Lowering<'_> {
     /// `x.3 := v` or `x.%B1 := v`, the bits `target` selects set to
     /// `value`: one `AssignBits` that names the base place once
-    /// (REQ-LOW-lowering-102). Bits reached through a reference (`deref`, or
-    /// `p^.3`) are not lowered yet.
+    /// (REQ-LOW-lowering-102). Bits of the whole of what a reference refers
+    /// to, `p^.3`, are not lowered yet, nor is a dereference of the bits
+    /// themselves, `x.3^ := v` (`deref`).
     pub(crate) fn bits_assignment(
         &mut self,
         frame: &BodyFrame,
@@ -32,7 +33,7 @@ impl Lowering<'_> {
         let Some((base, shift, bits)) = selected_bits(target) else {
             return Ok(None);
         };
-        if deref || through_reference(base) {
+        if deref || is_dereference(base) {
             return Ok(None);
         }
         // The base of `d.%B1.3` is itself a bit selection, not a place.
@@ -74,7 +75,7 @@ impl Lowering<'_> {
         let Some((base, shift, bits)) = selected_bits(symbolic) else {
             return Ok(None);
         };
-        if through_reference(base) {
+        if is_dereference(base) {
             return Ok(None);
         }
         let span = symbolic.span();
@@ -169,17 +170,21 @@ pub(crate) fn selected_bits(
     Some((base.as_ref(), shift, bits))
 }
 
-/// Whether the variable `symbolic` names is reached through a dereference.
+/// Whether `base`, the base of a bit or partial access, is the whole of what
+/// a reference refers to, as in `p^.3`.
 ///
-/// Codegen does not address bits through a reference from the AST yet, as in
-/// `p^.3`, so while both routes exist such bits are not lowered either.
-fn through_reference(symbolic: &SymbolicVariableKind) -> bool {
-    match symbolic {
+/// Codegen's AST route addresses bits of an element reached through a
+/// reference (`p^[1].3`), but reports bits of the whole of what a reference
+/// refers to as not implemented. So while both routes exist, such bits are
+/// not lowered either.
+fn is_dereference(base: &SymbolicVariableKind) -> bool {
+    match base {
         SymbolicVariableKind::Deref(_) => true,
-        SymbolicVariableKind::Named(_) | SymbolicVariableKind::SelfRef(_) => false,
-        SymbolicVariableKind::Array(array) => through_reference(&array.subscripted_variable),
-        SymbolicVariableKind::Structured(structured) => through_reference(&structured.record),
-        SymbolicVariableKind::BitAccess(access) => through_reference(&access.variable),
-        SymbolicVariableKind::PartialAccess(access) => through_reference(&access.variable),
+        SymbolicVariableKind::Named(_)
+        | SymbolicVariableKind::SelfRef(_)
+        | SymbolicVariableKind::Array(_)
+        | SymbolicVariableKind::Structured(_)
+        | SymbolicVariableKind::BitAccess(_)
+        | SymbolicVariableKind::PartialAccess(_) => false,
     }
 }

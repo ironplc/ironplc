@@ -224,10 +224,13 @@ END_PROGRAM
 }
 
 /// A base that is not a single-slot place is reported as not implemented
-/// rather than compiled to write somewhere else.
+/// rather than compiled to write somewhere else, by both routes. So are bits
+/// of the whole of what a reference refers to, read or written.
 #[rstest]
 #[case::bits_of_bits("d : DWORD;", "d.%B1.3 := TRUE;")]
 #[case::through_reference("x : BYTE; p : REF_TO BYTE;", "p := REF(x); p^.3 := TRUE;")]
+#[case::part_through_reference("x : WORD; p : REF_TO WORD;", "p := REF(x); p^.%B1 := 1;")]
+#[case::read_through_reference("x : BYTE; p : REF_TO BYTE; r : BOOL;", "p := REF(x); r := p^.3;")]
 fn partial_access_when_base_is_not_a_place_then_not_implemented(
     #[case] decls: &str,
     #[case] body: &str,
