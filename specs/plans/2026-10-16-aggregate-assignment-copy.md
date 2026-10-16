@@ -94,43 +94,25 @@ lowered program is correct for them; only the bytecode bridge declines them.
   - an element target;
   - a field of another instance as source;
   - an instance copy (never produced by lowering, but declined anyway).
-- `emit` for `Copy` calls the shared function from the prefactor below, so
-  both routes emit the same sequence by construction: load the source's slot,
-  then `COPY_REGION dst_var, dst_desc, src_desc`.
+- `emit` for `Copy` emits exactly the AST route's sequence
+  (`compile_aggregate.rs`): load the source's slot at the default slot type
+  an aggregate value has, then `COPY_REGION dst_var, dst_desc, src_desc`.
+  The bridge tests compare the bytes with the AST route's.
 - The new arms live in a small `lowered/aggregate.rs` module to keep
   `lowered/mod.rs` (445 lines) and `lowered/stmt.rs` (626 lines) focused.
 
 ## Prefactoring
 
-**Prefactor: split `compile_aggregate.rs` into resolving a region and
-emitting a copy between two named regions.**
+None. The AST route (`compile_aggregate.rs`) is not changed: the goal is that
+it becomes dead code and is deleted, so reshaping it to share code with the
+bridge would be work thrown away.
 
-`try_compile_whole_assignment` today interleaves three things:
-
-- matching the AST target shape;
-- resolving the regions (`resolve_region`, `resolve_source_descriptor`);
-- emitting the copy (`compile_expr` of the source, then
-  `emit_copy_region`).
-
-The bridge needs the second and third parts without the AST, and copying them
-would duplicate the `is_ref` rule and the emitted sequence. The prefactor
-exposes, from `compile_aggregate.rs`:
-
-- `pub(crate) fn region(ctx, name: &Id) -> Option<Region>`: the existing
-  `resolve_region`, unchanged in behaviour (its `Result` never carries an
-  error today, so it becomes an `Option`);
-- `pub(crate) fn emit_variable_copy(emitter, ctx, dst: &Id, src: &Id) ->
-  Result<bool, Diagnostic>`: resolves both regions by name, loads the source
-  by compiling a read of the named variable `src` (the same
-  `compile_variable_read` the AST route reaches through `compile_expr`, at
-  the default slot type an aggregate value has), and emits `COPY_REGION`.
-  Returns `Ok(false)` when either name is not an aggregate region.
-
-`try_compile_whole_assignment` keeps its AST target and source matching. For
-a variable source it calls `emit_variable_copy`; for a struct-returning call
-it keeps today's `compile_expr` path. Existing tests pass unchanged, and the
-emitted bytes are identical (the existing `end_to_end_aggregate_copy.rs` and
-the codegen snapshot tests cover this).
+The bridge therefore owns its own region lookup (`ctx.struct_vars`, or a
+non-`is_ref` entry of `ctx.array_vars`) and its own two-instruction emission
+in `lowered/aggregate.rs`. These repeat a few lines of
+`compile_aggregate.rs` on purpose, for as long as both routes exist; when the
+AST route is removed, the bridge's copy is the only one left. The bridge
+tests pin the two to the same bytes until then.
 
 No other prefactoring is needed:
 
@@ -156,9 +138,6 @@ In the core PR, in `specs/design/lowered-program.md`:
   (`end_to_end_aggregate_copy.rs`, including `x := x`).
 
 ## File map
-
-**Prefactor PR**
-- `compiler/codegen/src/compile_aggregate.rs`: modified (split).
 
 **Core PR**
 - `compiler/ir/src/lowered/stmt.rs`: `StmtKind::Copy`, `Stmt::copy`.
@@ -215,13 +194,6 @@ In the core PR, in `specs/design/lowered-program.md`:
   lowered statements. `lowered_floor` in `compiler/justfile` is not changed.
 
 ## Tasks
-
-### Prefactor PR: shared region copy
-
-- [ ] Split `compile_aggregate.rs` into `region` and `emit_variable_copy`;
-      route the variable-source case of `try_compile_whole_assignment`
-      through it.
-- [ ] `cd compiler && just` exits 0 with no test edits.
 
 ### Core PR: lower and emit `Copy`
 
