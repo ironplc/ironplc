@@ -24,10 +24,8 @@ impl Lowering<'_> {
         let one = |stmt: Result<Option<Stmt>, Diagnostic>| Ok(stmt?.map(|stmt| vec![stmt]));
         match stmt {
             AstStmtKind::Assignment(assignment) => {
-                match self.call_with_outputs(&assignment.value) {
-                    Some((func, function)) => {
-                        self.assignment_of_call(frame, assignment, func, function)
-                    }
+                match self.call_with_outputs(frame, &assignment.value) {
+                    Some(call) => self.assignment_of_call(frame, assignment, call),
                     None => one(self.assignment(frame, assignment)),
                 }
             }
@@ -41,7 +39,7 @@ impl Lowering<'_> {
             // The AST keeps no span for a `RETURN`.
             AstStmtKind::Return => one(Ok(Some(Stmt::return_(SourceSpan::default())))),
             AstStmtKind::FbCall(call) => self.fb_call(frame, call),
-            AstStmtKind::MethodCall(_) => Ok(None),
+            AstStmtKind::MethodCall(call) => self.method_call_statement(frame, call),
         }
     }
 

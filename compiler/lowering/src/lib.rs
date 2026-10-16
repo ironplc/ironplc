@@ -43,6 +43,8 @@ mod fb_call_tests;
 #[cfg(test)]
 mod function_tests;
 #[cfg(test)]
+mod method_tests;
+#[cfg(test)]
 mod place_tests;
 #[cfg(test)]
 mod string_tests;
@@ -56,12 +58,13 @@ mod time_tests;
 use std::collections::HashMap;
 
 use ironplc_analyzer::symbol_environment::DeclRef;
-use ironplc_analyzer::CleanAnalysis;
+use ironplc_analyzer::{CleanAnalysis, MethodOwners};
 use ironplc_dsl::common::{
     FunctionBlockDeclaration, FunctionDeclaration, LibraryElementKind, ProgramDeclaration,
 };
 use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_dsl::oop::MethodDeclaration;
 use ironplc_dsl::textual::StmtKind;
 use ironplc_ir::lowered::{
     LoopScope, ParsePolicy, Place, PouId, PouTable, ProgramBuilder, Stmt, TypeTable, VarId,
@@ -74,6 +77,11 @@ pub enum Body<'a> {
     Program(&'a ProgramDeclaration),
     FunctionBlock(&'a FunctionBlockDeclaration),
     Function(&'a FunctionDeclaration),
+    /// A method of the function block `block` declares.
+    Method {
+        block: &'a FunctionBlockDeclaration,
+        method: &'a MethodDeclaration,
+    },
 }
 
 /// What lowering made of one statement.
@@ -113,10 +121,13 @@ pub struct Lowering<'a> {
     /// Where the call whose outputs are being lowered leaves them, which
     /// its call outputs read.
     call_outputs: Option<CallOutputs>,
-    /// The call of a function with outputs whose result is being stored,
-    /// by its address, and the temporary that holds its result
+    /// The call of a function or method with outputs whose result is being
+    /// stored, by its address, and the temporary that holds its result
     /// (`function.rs`).
     call_result: Option<(usize, Place)>,
+    /// The block that declares each method a call can reach, as the
+    /// analyzer resolves it (ADR-0041).
+    method_owners: MethodOwners,
 }
 
 /// Where a call leaves its outputs for the assignments of its outputs to
@@ -125,8 +136,8 @@ pub struct Lowering<'a> {
 enum CallOutputs {
     /// In the fields of the function block instance it called.
     Instance(Place),
-    /// In the temporary it passed for each output of a function, by the
-    /// output's name (REQ-LOW-lowering-092).
+    /// In the temporary it passed for each output of a function or method,
+    /// by the output's name (REQ-LOW-lowering-092).
     Temporaries(Vec<(Id, Place)>),
 }
 
@@ -145,6 +156,7 @@ impl<'a> Lowering<'a> {
             loops: Vec::new(),
             call_outputs: None,
             call_result: None,
+            method_owners: MethodOwners::of_library(analysis.library()),
         }
     }
 
@@ -170,7 +182,8 @@ impl<'a> Lowering<'a> {
 
     /// Lowers `stmt`, a top-level statement of the body of the program,
     /// function block or function named `pou` in the library the analysis
-    /// holds. A POU of another kind, such as a method, is unsupported.
+    /// holds. A method's statement is lowered by
+    /// [`Self::lower_method_statement_of`].
     pub fn lower_statement_of(
         &mut self,
         pou: &Id,
@@ -178,6 +191,28 @@ impl<'a> Lowering<'a> {
     ) -> Result<StatementLowering, Diagnostic> {
         match self.body_named(pou) {
             Some(body) => self.lower_statement(body, stmt),
+            None => Ok(StatementLowering::Unsupported),
+        }
+    }
+
+    /// Lowers `stmt`, a top-level statement of the body of the method
+    /// `method` of the function block `block`, as [`Self::lower_statement`]
+    /// does.
+    pub fn lower_method_statement_of(
+        &mut self,
+        block: &Id,
+        method: &Id,
+        stmt: &StmtKind,
+    ) -> Result<StatementLowering, Diagnostic> {
+        let Some(Body::FunctionBlock(block)) = self.body_named(block) else {
+            return Ok(StatementLowering::Unsupported);
+        };
+        match block
+            .methods
+            .iter()
+            .find(|declared| declared.name == *method)
+        {
+            Some(method) => self.lower_statement(Body::Method { block, method }, stmt),
             None => Ok(StatementLowering::Unsupported),
         }
     }

@@ -28,7 +28,9 @@ use ironplc_ir::lowered::{
 };
 use ironplc_lowering::{Lowering, StatementLowering};
 
-use crate::compile::{CompileContext, OpType, OpWidth, ParamPassing, Signedness, UserFunctionInfo};
+use crate::compile::{
+    CompileContext, CurrentBody, OpType, OpWidth, ParamPassing, Signedness, UserFunctionInfo,
+};
 use crate::compile_subscript::subscript_check;
 use crate::compile_user_call::passes_by_reference;
 use crate::emit::Emitter;
@@ -36,6 +38,7 @@ use crate::emit::Emitter;
 mod expr;
 mod fb_call;
 mod fn_call;
+mod method;
 mod place;
 mod policy;
 mod stmt;
@@ -114,13 +117,16 @@ fn compile_by_route(
     ctx: &mut CompileContext,
     stmt: &AstStmtKind,
 ) -> Result<bool, Diagnostic> {
-    let lowered = match ctx.current_pou.clone() {
-        Some(pou) => match route.lowering.lower_statement_of(&pou, stmt)? {
-            StatementLowering::Lowered(lowered) => Some(lowered),
-            StatementLowering::Unsupported => None,
-        },
-        // A method body: not lowered yet.
-        None => None,
+    let lowering = match ctx.current_body.clone() {
+        Some(CurrentBody::Pou(pou)) => route.lowering.lower_statement_of(&pou, stmt)?,
+        Some(CurrentBody::Method { block, method }) => route
+            .lowering
+            .lower_method_statement_of(&block, &method, stmt)?,
+        None => StatementLowering::Unsupported,
+    };
+    let lowered = match lowering {
+        StatementLowering::Lowered(lowered) => Some(lowered),
+        StatementLowering::Unsupported => None,
     };
     match lowered {
         Some(lowered) if can_emit_all(&route.lowering, ctx, &lowered) => {
@@ -225,6 +231,9 @@ fn can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, stmt: &Stmt) -> bool 
         StmtKind::FbCall { instance, block } => {
             fb_call::reaches_block(lowering, ctx, instance, *block)
         }
+        // A call statement is emitted with the assignments of its outputs
+        // (`can_emit_all`).
+        StmtKind::Call { .. } => false,
         StmtKind::Exit(_) | StmtKind::Continue(_) | StmtKind::Return => true,
     }
 }
@@ -253,11 +262,17 @@ fn expr_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, expr: &Expr) -> 
         ExprKind::Call {
             callee: Callee::User(pou),
             args,
-        } => {
-            user_function(lowering, ctx, *pou)
-                .is_some_and(|function| passes(&function.params, args.iter()))
-                && args_can_emit(lowering, ctx, args)
-        }
+        } => match user_function(lowering, ctx, *pou) {
+            Some(function) => {
+                passes(&function.params, args.iter()) && args_can_emit(lowering, ctx, args)
+            }
+            // A method's value: its receiver, then a value for each input.
+            None => method::method_site(lowering, ctx, *pou, args).is_some_and(|site| {
+                site.has_return_value
+                    && site.takes(args[1..].iter())
+                    && args_can_emit(lowering, ctx, &args[1..])
+            }),
+        },
         ExprKind::Call {
             callee: Callee::Intrinsic(intrinsic),
             args,
@@ -316,6 +331,10 @@ pub(super) fn user_function(
     ctx: &CompileContext,
     pou: PouId,
 ) -> Option<UserFunctionInfo> {
+    // A method is called by `METHOD_CALL` (`method.rs`), whatever its name.
+    if lowering.pous().method_of(pou).is_some() {
+        return None;
+    }
     let name = lowering.pous().name(pou)?.to_string().to_lowercase();
     let function = ctx.user_functions.get(&name)?;
     let passed = function.params.iter().all(|param| match param {
@@ -404,6 +423,24 @@ pub(super) fn instance_field<'l, 'p>(
     let (instance, _) = types.reference(root)?;
     let declared = types.fields(instance)?.get(field.index() as usize)?;
     Some((declared, rest))
+}
+
+/// Whether `pou` is the body being compiled.
+pub(super) fn is_current_body(lowering: &Lowering<'_>, ctx: &CompileContext, pou: PouId) -> bool {
+    let pous = lowering.pous();
+    let named = |pou: PouId, name: &Id| {
+        pous.name(pou)
+            .is_some_and(|named| Id::from(&named.to_string()) == *name)
+    };
+    match (&ctx.current_body, pous.method_of(pou)) {
+        (Some(CurrentBody::Pou(name)), None) => named(pou, name),
+        (Some(CurrentBody::Method { block, method }), Some(of)) => {
+            named(pou, method) && named(of, block)
+        }
+        (Some(CurrentBody::Pou(_)), Some(_))
+        | (Some(CurrentBody::Method { .. }), None)
+        | (None, _) => false,
+    }
 }
 
 /// Whether two spans are the same text. `SourceSpan`'s own equality holds

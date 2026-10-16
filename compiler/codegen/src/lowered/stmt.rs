@@ -134,6 +134,11 @@ impl Emission<'_, '_> {
                     .ok_or_else(|| super::fb_call::no_instance(span))?;
                 super::fb_call::emit_call_site(emitter, ctx, self.lowering, &call, span)
             }
+            // `sequence` emits a call statement with its outputs.
+            StmtKind::Call { .. } => Err(Diagnostic::internal_error_at(Label::span(
+                span.clone(),
+                "A lowered call statement outside the statements of its call",
+            ))),
             StmtKind::If {
                 cond,
                 then,
@@ -574,6 +579,7 @@ fn if_parts(stmt: &Stmt) -> Option<(&Expr, &[Stmt], &[Stmt])> {
         | StmtKind::AssignBits { .. }
         | StmtKind::AssignStr { .. }
         | StmtKind::FbCall { .. }
+        | StmtKind::Call { .. }
         | StmtKind::Case { .. }
         | StmtKind::For { .. }
         | StmtKind::Loop { .. }

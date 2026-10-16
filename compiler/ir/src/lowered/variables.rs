@@ -119,19 +119,23 @@ impl VariableTable {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FunctionSignature {
     parameters: Vec<VarId>,
-    result: VarId,
+    result: Option<VarId>,
 }
 
 impl FunctionSignature {
-    pub(crate) fn new(parameters: Vec<VarId>, result: VarId) -> Self {
+    pub(crate) fn new(parameters: Vec<VarId>, result: Option<VarId>) -> Self {
         Self { parameters, result }
     }
 
+    /// The parameters, in order: a method's instance parameter first
+    /// (REQ-LOW-lowering-076).
     pub fn parameters(&self) -> &[VarId] {
         &self.parameters
     }
 
-    pub fn result(&self) -> VarId {
+    /// The result variable; `None` for a method without a result, whose
+    /// call is only a statement.
+    pub fn result(&self) -> Option<VarId> {
         self.result
     }
 
@@ -159,11 +163,13 @@ impl FunctionSignature {
     }
 }
 
-/// One POU: its name, and its signature when it is a function a call reaches.
+/// One POU: its name, its signature when it is a function or method a call
+/// reaches, and, for a method, the body of the function block it belongs to.
 #[derive(Clone, Debug)]
 struct PouEntry {
     name: DebugName,
     function: Option<FunctionSignature>,
+    method_of: Option<PouId>,
 }
 
 /// Every POU of a lowered program, by [`PouId`]. A
@@ -183,12 +189,14 @@ impl PouTable {
         }
     }
 
-    /// Adds the POU named `name` and returns the id that names it.
-    pub(crate) fn push(&mut self, name: DebugName) -> PouId {
+    /// Adds the POU named `name`, a method of the function block whose body
+    /// `method_of` is, if any, and returns the id that names it.
+    pub(crate) fn push(&mut self, name: DebugName, method_of: Option<PouId>) -> PouId {
         let id = PouId::new(self.stamp, self.pous.len() as u32);
         self.pous.push(PouEntry {
             name,
             function: None,
+            method_of,
         });
         id
     }
@@ -199,14 +207,20 @@ impl PouTable {
         self.entry(id).map(|entry| &entry.name)
     }
 
-    /// The signature of the function `id`, or `None` if it is not one this
-    /// table declares.
+    /// The signature of the function or method `id`, or `None` if it is not
+    /// one this table declares.
     pub fn function(&self, id: PouId) -> Option<&FunctionSignature> {
         self.entry(id).and_then(|entry| entry.function.as_ref())
     }
 
-    /// Declares the POU `id` a function of `signature`, or a P9998 at `span`
-    /// if this table did not allocate `id` or declares it already.
+    /// The body of the function block whose method `id` is, or `None` if
+    /// `id` is not a method this table declares.
+    pub fn method_of(&self, id: PouId) -> Option<PouId> {
+        self.entry(id).and_then(|entry| entry.method_of)
+    }
+
+    /// Declares the POU `id` a function or method of `signature`, or a P9998
+    /// at `span` if this table did not allocate `id` or declares it already.
     pub(crate) fn declare_function(
         &mut self,
         id: PouId,

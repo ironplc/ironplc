@@ -208,15 +208,12 @@ fn by_reference(
         return Some(reference);
     }
     // Lowering makes no other non-null reference a variable of a function
-    // than its `VAR_IN_OUT`s and `VAR_OUTPUT`s (REQ-LOW-lowering-035).
+    // or method than its `VAR_IN_OUT`s and `VAR_OUTPUT`s
+    // (REQ-LOW-lowering-035).
     let Owner::Pou(owner) = root.owner() else {
         return None;
     };
-    let compiled = lowering
-        .pous()
-        .name(owner)
-        .zip(ctx.current_pou.as_ref())
-        .is_some_and(|(owner, current)| Id::from(&owner.to_string()) == *current);
+    let compiled = super::is_current_body(lowering, ctx, owner);
     (compiled && ctx.variables.contains_key(&named.name)).then_some(reference)
 }
 

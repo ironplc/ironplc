@@ -147,7 +147,7 @@ fn call_when_arguments_of_function_parameters_then_result_type() {
         .unwrap();
     let signature = f.b.pous().function(pou).unwrap();
     assert_eq!(signature.parameters(), parameters);
-    assert_eq!(signature.result(), result);
+    assert_eq!(signature.result(), Some(result));
     let args = vec![Arg::Value(f.read(f.dint)), Arg::Value(f.read(f.lreal))];
     let call = f.b.call(pou, args, span()).unwrap();
     assert_eq!(call.ty(), DINT);

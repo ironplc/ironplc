@@ -134,12 +134,11 @@ impl Lowering<'_> {
 
     /// Where the call whose outputs are being lowered left its output
     /// `output`: the field `output` of a function block's instance, or the
-    /// temporary a function call passed for it. `None` for a name that is
-    /// not one of its outputs, such as `ENO`.
+    /// temporary a function or method call passed for it. `None` for a name
+    /// that is not one of its outputs, such as `ENO`.
     pub(crate) fn call_output_place(&mut self, output: &Id) -> Made<Place> {
-        // A call output is written only on an output assignment. Outside the
-        // outputs of a function block or function call, it is the output of
-        // a method call, which is not lowered yet.
+        // A call output is written only on an output assignment, which is
+        // lowered only with the outputs of its call.
         match self.call_outputs.clone() {
             Some(CallOutputs::Instance(instance)) => {
                 self.block_field(&instance, output, Section::Output)

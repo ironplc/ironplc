@@ -11,7 +11,7 @@
 
 use std::collections::HashMap;
 
-use ironplc_container::{ContainerBuilder, FunctionId, VarIndex};
+use ironplc_container::{FunctionId, VarIndex};
 use ironplc_dsl::common::{
     FunctionBlockDeclaration, FunctionReturnType, InitialValueAssignmentKind, MethodDeclaration,
     TypeName, VariableType,
@@ -23,8 +23,8 @@ use ironplc_dsl::textual::{MethodCall, MethodReceiver, ParamAssignmentKind};
 use ironplc_analyzer::TypeEnvironment;
 
 use super::compile::{
-    finalize_function, CompileContext, CompiledFunction, CurrentFunctionReturn, ParamPassing,
-    DEFAULT_OP_TYPE,
+    finalize_function, CompileContext, CompiledFunction, CurrentBody, CurrentFunctionReturn,
+    ParamPassing, StringVarInfo, DEFAULT_OP_TYPE,
 };
 use super::compile_call_output::{store_outputs, CallOutputs};
 use super::compile_expr::{compile_expr, emit_load_var};
@@ -49,7 +49,6 @@ pub(crate) fn compile_user_fb_methods(
     field_var_off: u16,
     var_offset: &mut VarIndex,
     ctx: &mut CompileContext,
-    builder: &mut ContainerBuilder,
     types: &TypeEnvironment,
 ) -> Result<Vec<CompiledFunction>, Diagnostic> {
     let mut compiled = Vec::new();
@@ -73,12 +72,12 @@ pub(crate) fn compile_user_fb_methods(
         let saved_string_vars = ctx.string_vars.clone();
 
         let compiled_method = compile_user_method(
+            &fb_decl.name.name,
             method,
             function_id,
             field_var_off,
             param_var_off,
             ctx,
-            builder,
             types,
         );
 
@@ -90,6 +89,7 @@ pub(crate) fn compile_user_fb_methods(
             compiled: result,
             params,
             outputs,
+            string_outputs,
         } = compiled_method?;
 
         // `result.num_locals` spans from `field_var_off` (not
@@ -110,6 +110,7 @@ pub(crate) fn compile_user_fb_methods(
             info.param_var_off = param_var_off.raw();
             info.max_stack_depth = result.max_stack_depth;
             info.outputs = outputs;
+            info.string_outputs = string_outputs;
             for param in &mut info.params {
                 if let Some(passing) = params.get(&param.name) {
                     param.passing = passing.clone();
@@ -130,12 +131,12 @@ pub(crate) fn compile_user_fb_methods(
 /// the existing variable-lookup machinery -- no special-casing needed
 /// here beyond not touching those entries).
 fn compile_user_method(
+    block: &Id,
     method: &MethodDeclaration,
     function_id: FunctionId,
     field_var_off: u16,
     param_var_off: VarIndex,
     ctx: &mut CompileContext,
-    _builder: &mut ContainerBuilder,
     types: &TypeEnvironment,
 ) -> Result<CompiledMethod, Diagnostic> {
     let mut current_index = param_var_off;
@@ -261,10 +262,12 @@ fn compile_user_method(
     let saved_current_fn = ctx.current_function_id.take();
     ctx.current_function_id = Some(function_id);
 
-    // A method body is not lowered yet.
-    let saved_pou = ctx.current_pou.take();
+    let saved_body = ctx.current_body.replace(CurrentBody::Method {
+        block: block.clone(),
+        method: method.name.clone(),
+    });
     compile_statements(&mut method_emitter, ctx, &body)?;
-    ctx.current_pou = saved_pou;
+    ctx.current_body = saved_body;
 
     ctx.current_function_id = saved_current_fn;
     ctx.current_function_return = saved_return_ctx;
@@ -288,6 +291,10 @@ fn compile_user_method(
             ))
         })
         .collect();
+    let string_outputs = outputs
+        .keys()
+        .filter_map(|id| Some((id.clone(), ctx.string_vars.get(id)?.clone())))
+        .collect();
 
     Ok(CompiledMethod {
         compiled: CompiledFunction {
@@ -302,15 +309,17 @@ fn compile_user_method(
         },
         params,
         outputs,
+        string_outputs,
     })
 }
 
-/// A compiled method, how a call passes each of its input parameters, and
-/// the slot of each of its outputs.
+/// A compiled method, how a call passes each of its input parameters, the
+/// slot of each of its outputs, and where each string output is.
 struct CompiledMethod {
     compiled: CompiledFunction,
     params: HashMap<Id, ParamPassing>,
     outputs: HashMap<Id, VarIndex>,
+    string_outputs: HashMap<Id, StringVarInfo>,
 }
 
 /// Compiles a method call (`instance.MethodName(args)`, OOP extension,

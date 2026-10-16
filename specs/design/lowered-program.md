@@ -1365,6 +1365,42 @@ parameter, and the first argument of every call to a method is a `Ref` to the
 receiver's place, except a call through an interface (see
 [Calls through an interface](#calls-through-an-interface)).
 
+A method's POU records the function block it belongs to from when it is
+made, so a backend knows a method's body and calls as the block's. Its body
+reaches the block's fields through its instance parameter, as the block's
+body does, and its own parameters, locals and result as a function's are.
+A call whose result is used is a `Call` expression. One whose result is not
+used is a `Call` statement, which discards the result, if the method has
+one. A method without a result is called only by a statement. A call with
+outputs is lowered as a function's is (REQ-LOW-lowering-092,
+REQ-LOW-lowering-172): a `Call` statement is followed by the assignments of
+its outputs.
+
+**REQ-LOW-ir-173** A `Call` statement passes its callee one argument for
+each parameter, as a `Call` expression does, and discards the callee's
+result. A method's first parameter is a non-null reference to an instance of
+the function block the method belongs to.
+
+Not lowered yet, so each stays on the route that reads the AST:
+
+- a call through `THIS^` or `SUPER^`, which analysis does not resolve yet;
+- a call of a method the receiver's block inherits through `EXTENDS`;
+- a call of a method with an input, an in-out or a result that is a string or
+  an aggregate (REQ-LOW-lowering-079);
+- a call with outputs anywhere but a statement or the whole value of an
+  assignment, as for a function.
+
+While both routes exist, the bytecode backend emits a method's call as the
+route that reads the AST emits it (`compile_method.rs`): the receiver's
+instance pushed with `FB_LOAD_INSTANCE`, each input, then `METHOD_CALL`,
+which copies the instance's fields in and out around the body. The call
+leaves the instance beneath the result, which the backend drops once the
+outputs are stored. It reaches the receiver by name, as that route does, so
+an instance it cannot reach, such as one declared inside a function block,
+stays on it. A method's outputs, strings included, are read from the
+method's own variables, as a function's are, and a method's body is asked
+for its statements as any other body is.
+
 #### Calls through an interface
 
 An interface value refers to one function block instance whose concrete type
@@ -2482,8 +2518,8 @@ This section constrains the order of work; it is not a work breakdown.
   ([Standard function blocks](#standard-function-blocks)) are the exception:
   they differ only for a selector or subscript with a side effect, or an
   `_INT` counter past the range of `INT`, and the programs that show them are
-  listed as known differences. So is a program that reads a function's
-  string output, which only the lowered route compiles
+  listed as known differences. So is a program that reads a function's or
+  a method's string output, which only the lowered route compiles
   (REQ-LOW-lowering-172).
 - **Progress cannot fall.** CI reports how many top-level statements of the
   end-to-end programs took the lowered route. The number does not fall.

@@ -45,6 +45,7 @@ mod compile_route_lowered_fb_call;
 mod compile_route_lowered_fb_field;
 mod compile_route_lowered_function;
 mod compile_route_lowered_function_output;
+mod compile_route_lowered_method;
 mod compile_route_lowered_ref;
 mod compile_route_lowered_string;
 mod compile_route_lowered_time;

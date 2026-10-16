@@ -10,6 +10,7 @@ use ironplc_ir::lowered::{
 };
 use ironplc_lowering::Lowering;
 
+use super::method::{emit_method_call, method_site};
 use super::place::variable_name;
 use super::policy::parse_builtin;
 use super::string::str_arg_offset;
@@ -121,15 +122,22 @@ pub(super) fn emit_expr(
             callee: Callee::User(pou),
             args,
         } => {
-            // `can_emit` leaves to the AST a call of a function this backend
-            // does not pass every argument of.
-            let function = user_function(lowering, ctx, *pou).ok_or_else(|| {
-                Diagnostic::internal_error_at(Label::span(
-                    expr.span().clone(),
-                    "A call of a function this backend does not pass its arguments",
-                ))
-            })?;
-            emit_user_call(emitter, ctx, lowering, &function, args, expr.span())?;
+            if let Some(function) = user_function(lowering, ctx, *pou) {
+                emit_user_call(emitter, ctx, lowering, &function, args, expr.span())?;
+            } else {
+                // `can_emit` leaves to the AST a call of a function or
+                // method this backend does not pass every argument of.
+                let site = method_site(lowering, ctx, *pou, args).ok_or_else(|| {
+                    Diagnostic::internal_error_at(Label::span(
+                        expr.span().clone(),
+                        "A call of a function this backend does not pass its arguments",
+                    ))
+                })?;
+                emit_method_call(emitter, ctx, lowering, &site, &args[1..], expr.span())?;
+                // Drop the instance from beneath the result.
+                emitter.emit_swap();
+                emitter.emit_pop();
+            }
         }
         ExprKind::Call {
             callee: Callee::Intrinsic(intrinsic),
