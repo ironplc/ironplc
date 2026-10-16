@@ -45,6 +45,16 @@ like a standard one runs the user-defined block's body.
 **REQ-CB-codegen-002** An instance of a standard function block runs the VM
 block for its recorded identity.
 
+An instance of a block that `EXTENDS` another has the inputs, in-outs and
+outputs each block up its chain declares as well as its own, and a call binds
+them alike. The type environment lists an instance's fields from the root of
+the chain down (`TypeEnvironment::instance_fields`), so normal form writes
+the inherited arguments first. Code generation does not yet lay out the
+fields a derived block inherits, so it reports such a call as not implemented
+(P9999), as it does a read of an inherited field.
+
+**REQ-CB-analyzer-053** A call to a block that `EXTENDS` another binds an argument to an input or output the block inherits as it does one the block declares, and writes the inherited arguments first: with `count` and `seen` declared by the base and `speed` and `twice` by the derived block, `d(twice => r, speed := x, seen => s, count := 3)` binds as `d(count := 3, speed := x, seen => s, twice => r)`, and `d(1, 2)` as `d(count := 1, speed := 2)`.
+
 ### Methods
 
 A method call resolves statically

@@ -391,6 +391,35 @@ END_PROGRAM"
         assert_eq!(vec!["a := 1, b := 2"], calls(&program));
     }
 
+    /// A call to a block that extends another binds the inputs and outputs
+    /// it inherits, and writes them ahead of the block's own.
+    #[spec_test(REQ_CB_analyzer_053)]
+    fn apply_when_block_extends_then_inherited_arguments_first() {
+        let blocks = "
+FUNCTION_BLOCK Base
+VAR_INPUT count : DINT; END_VAR
+VAR_OUTPUT seen : DINT; END_VAR
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK Derived EXTENDS Base
+VAR_INPUT speed : DINT; END_VAR
+VAR_OUTPUT twice : DINT; END_VAR
+END_FUNCTION_BLOCK";
+        let program = format!(
+            "{blocks}
+PROGRAM main VAR d : Derived; x : DINT; r : DINT; s : DINT; END_VAR
+d(twice => r, speed := x, seen => s, count := 3);
+d(1, 2);
+END_PROGRAM"
+        );
+        assert_eq!(
+            vec![
+                "count := 3, speed := x, seen => s, twice => r",
+                "count := 1, speed := 2"
+            ],
+            calls(&program)
+        );
+    }
+
     #[test]
     fn apply_when_standard_block_positional_then_named_inputs() {
         let program = "

@@ -301,17 +301,17 @@ impl CallParameters {
     }
 
     /// The parameters of the function block `block`, a block the library
-    /// declares or a standard block: the inputs, in-outs and outputs the
-    /// type environment records for it, in order. `None` for any other
-    /// type.
+    /// declares or a standard block: the inputs, in-outs and outputs of an
+    /// instance of it that the type environment records, those it inherits
+    /// through `EXTENDS` first, in order. `None` for any other type.
     pub(crate) fn of_block(block: &TypeName, types: &TypeEnvironment) -> Option<Self> {
         Some(Self::of_block_fields(
-            types.block_fields(types.id_of(block)?)?,
+            types.instance_fields(types.id_of(block)?)?,
         ))
     }
 
     /// The parameters among the fields `fields` of a function block.
-    fn of_block_fields(fields: &[BlockField]) -> Self {
+    fn of_block_fields(fields: Vec<&BlockField>) -> Self {
         let parameters = fields
             .iter()
             .filter_map(|field| {
