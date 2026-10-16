@@ -608,9 +608,15 @@ fn compile_program_with_functions(
                     continue;
                 }
                 if let Some(id) = decl.identifier.symbolic_id() {
+                    // A string's passing is known once the method is
+                    // compiled, which gives the string its storage.
+                    let passing = match decl.var_type {
+                        VariableType::InOut => ParamPassing::Reference,
+                        _ => ParamPassing::Value,
+                    };
                     params.push(UserMethodParam {
                         name: id.clone(),
-                        in_out: decl.var_type == VariableType::InOut,
+                        passing,
                     });
                 }
             }
@@ -988,7 +994,7 @@ pub(crate) struct StringParamInfo {
 }
 
 /// How a call site passes an argument to one input parameter
-/// (`VAR_INPUT`/`VAR_IN_OUT`) of a user-defined function.
+/// (`VAR_INPUT`/`VAR_IN_OUT`) of a user-defined function or method.
 #[derive(Clone)]
 pub(crate) enum ParamPassing {
     /// The argument's value is pushed onto the operand stack at its own
@@ -996,7 +1002,8 @@ pub(crate) enum ParamPassing {
     /// `CALL` stores it in the parameter's slot.
     Value,
     /// The argument is copied into the parameter's data region space before
-    /// `CALL`, and a dummy value is pushed for the slot `CALL` pops.
+    /// `CALL` or `METHOD_CALL`, and a dummy value is pushed for the slot the
+    /// call pops.
     String(StringParamInfo),
     /// A `VAR_IN_OUT` argument: the variable's reference (its
     /// variable-table index) is pushed, and the function reads and writes
@@ -1119,8 +1126,10 @@ pub(crate) struct UserMethodInfo {
 /// A VAR_INPUT or VAR_IN_OUT parameter of a user-defined method.
 pub(crate) struct UserMethodParam {
     pub(crate) name: Id,
-    /// Whether the parameter is a VAR_IN_OUT.
-    pub(crate) in_out: bool,
+    /// How a call site passes the argument for it. A string parameter is
+    /// passed by value until the method is compiled, which gives it the run
+    /// of the data region a call copies its argument into.
+    pub(crate) passing: ParamPassing,
 }
 
 pub(crate) struct CompileContext<'a> {
