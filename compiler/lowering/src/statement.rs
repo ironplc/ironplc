@@ -17,8 +17,21 @@ impl Lowering<'_> {
     /// of its inputs, the call and the stores of its outputs, and an
     /// assignment of a call of a function with outputs to the call, the
     /// stores of its outputs and the assignment (`hoist.rs`); every other
-    /// statement lowers to one statement.
+    /// statement lowers to one statement. The calls with a string result in
+    /// it come first (`string_result.rs`).
     pub(crate) fn statement(
+        &mut self,
+        frame: &BodyFrame,
+        stmt: &AstStmtKind,
+    ) -> Result<Option<Vec<Stmt>>, Diagnostic> {
+        self.with_moved_calls(stmt.span(), |lowering| {
+            lowering.statement_parts(frame, stmt)
+        })
+    }
+
+    /// Lowers `stmt`, as [`Self::statement`] does, without the calls moved
+    /// out of it.
+    fn statement_parts(
         &mut self,
         frame: &BodyFrame,
         stmt: &AstStmtKind,

@@ -328,3 +328,82 @@ fn declare_function_when_result_is_string_then_internal_error() {
         "ProgramBuilder::declare_function"
     ));
 }
+
+/// A function `mk` of the fixture's program whose result is a `STRING[10]`,
+/// returned through its first parameter, then a `DINT` input; the string
+/// type, and `main`'s temporary of that type for a call to pass.
+fn returning_string(f: &mut Fixture) -> (PouId, Vec<VarId>, TypeId, VarId) {
+    let pou = f.b.push_pou(name("mk"));
+    let shape = StringShape {
+        encoding: Encoding::Narrow,
+        capacity: 10,
+    };
+    let string =
+        f.b.push_type(entry(TypeKind::String(shape)), &span())
+            .unwrap();
+    let result = f.b.push_type(
+        entry(TypeKind::Reference {
+            target: string,
+            nullability: Nullability::NonNull,
+        }),
+        &span(),
+    );
+    let (result, dint) = (result.unwrap(), f.ty(f.dint));
+    let Owner::Pou(main) = f.b.variables().get(f.dint).unwrap().owner() else {
+        panic!("the fixture's variables belong to main");
+    };
+    let mut var = |text: &str, owner, ty| f.b.push_variable(name(text), owner, ty).unwrap();
+    let parameters = vec![
+        var("mk", Owner::Pou(pou), result),
+        var("n", Owner::Pou(pou), dint),
+    ];
+    let temporary = var("mk()", Owner::Pou(main), string);
+    (pou, parameters, string, temporary)
+}
+
+/// REQ-LOW-lowering-071, REQ-LOW-ir-181: a function whose result is a
+/// string returns it through its first parameter, a non-null reference to
+/// the string, which a call passes a `Ref` to a place of the string's type.
+/// The call is a statement: the function has no value.
+#[test]
+fn declare_function_returning_through_when_parameter_refers_to_string_then_call_is_statement() {
+    let mut f = fixture();
+    let (pou, parameters, string, temporary) = returning_string(&mut f);
+    f.b.declare_function_returning_through(pou, parameters.clone(), &span())
+        .unwrap();
+    let signature = f.b.pous().function(pou).unwrap();
+    assert_eq!(signature.result_parameter(), Some(parameters[0]));
+    assert_eq!(signature.result(), None);
+    assert_eq!(
+        f.b.params(pou),
+        Some(vec![Param::Ref(string), Param::Value(DINT)])
+    );
+    let args = || vec![Arg::Ref(f.place(temporary)), Arg::Value(f.read(f.dint))];
+    let call = f.b.call_stmt(pou, args(), span()).unwrap();
+    assert_eq!(call.to_string(), "call pou1 (ref v10) (read i32s v0)");
+    assert!(is_internal_error_naming(
+        f.b.call(pou, args(), span()),
+        "ProgramBuilder::call"
+    ));
+}
+
+/// REQ-LOW-ir-181: a result parameter is a non-null reference to a string,
+/// first among the parameters of a function.
+#[test]
+fn declare_function_returning_through_when_first_not_reference_to_string_then_internal_error() {
+    let mut f = fixture();
+    let (pou, parameters, _, _) = returning_string(&mut f);
+    let (dint, reference) = (parameters[1], f.reference);
+    let refused = [
+        vec![],
+        vec![dint],
+        vec![dint, parameters[0]],
+        vec![reference],
+    ];
+    for parameters in refused {
+        assert!(is_internal_error_naming(
+            f.b.declare_function_returning_through(pou, parameters, &span()),
+            "ProgramBuilder::declare_function_returning_through"
+        ));
+    }
+}

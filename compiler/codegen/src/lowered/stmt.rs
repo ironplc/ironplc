@@ -73,7 +73,13 @@ impl Emission<'_, '_> {
         record: bool,
     ) -> Result<(), Diagnostic> {
         let mut rest = stmts;
-        while let [first, ..] = rest {
+        while let [first, rest_after_first @ ..] = rest {
+            // A call with a string result is emitted where its result is
+            // read (`string_result.rs`).
+            if super::string_result::is_moved(ctx, first) {
+                rest = rest_after_first;
+                continue;
+            }
             if record {
                 record_position(emitter, ctx, first.span());
             }
