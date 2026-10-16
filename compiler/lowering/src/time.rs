@@ -43,6 +43,21 @@ impl Lowering<'_> {
         Ok(unit.is_some())
     }
 
+    /// Whether the analyzer recorded a duration, a `TIME` or an `LTIME`, for
+    /// `expr`. A date or a time of day counts from an epoch, so it is not.
+    pub(crate) fn is_duration(&mut self, expr: &AstExpr) -> Result<bool, Diagnostic> {
+        let Some(ty) = self.recorded_type(expr)? else {
+            return Ok(false);
+        };
+        Ok(matches!(
+            self.program.types().kind(ty),
+            Some(TypeKind::Temporal {
+                kind: TemporalKind::Time,
+                ..
+            })
+        ))
+    }
+
     /// The typed time function `function`, the expression `expr`, of `args`.
     pub(crate) fn time_function(
         &mut self,

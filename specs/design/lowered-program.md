@@ -1913,6 +1913,7 @@ implements it.
 | Operator function form `ADD(a, b, c)` | Left fold of `Binary` |
 | `a ** b` | `Call` of the `EXPT` `Intrinsic`, as `EXPT(a, b)` is |
 | Typed time function `ADD_DT_TIME(a, b)`, and an operator or function form on times and dates such as `a + b` (REQ-LOW-lowering-166) | Scalar arithmetic at the signed integer of the result's width, on the milliseconds of a `TIME` or `TIME_OF_DAY` and the seconds of a `DATE` or `DATE_AND_TIME` (ADR-0025): `b` converted to the unit `a` counts in, the operation, then the result converted to the unit its type counts in. A duration scaled by a real is converted to the real's type and back |
+| Negated duration `-t` | `Neg` of the signed integer the duration is stored as (ADR-0025), the milliseconds of a `TIME` at 32 bits and of an `LTIME` at 64 |
 | `DT_TO_DATE(x)` | `(x / 86400) * 86400`, which reads `x` once (REQ-LOW-lowering-165) |
 | `DT_TO_TOD(x)` | `(x MOD 86400) * 1000` |
 | Explicit conversion such as `REAL_TO_INT(x)` | A `Convert` where the operation type changes, then a `Truncate` where the storage narrows; a conversion to `BOOL` is a `Compare` with zero |
