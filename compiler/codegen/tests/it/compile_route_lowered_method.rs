@@ -167,8 +167,9 @@ fn run_when_method_has_string_output_then_stored() {
     assert_eq!(snapshot.read_as::<i32>("r"), 2);
 }
 
-/// A call of a method the receiver's block inherits stays on the route that
-/// reads the AST.
+/// A call of a method the receiver's block inherits from a block that
+/// declares a field stays on the route that reads the AST, which reports it
+/// as not implemented (REQ-LOW-codegen-178).
 #[test]
 fn compile_when_inherited_method_called_then_lowered_route_leaves_it() {
     let source = format!(
@@ -185,4 +186,53 @@ fn compile_when_inherited_method_called_then_lowered_route_leaves_it() {
         lowered.err().map(|diagnostic| diagnostic.code),
         Some("P9999".to_string())
     );
+}
+
+/// A block with a method of a result and no fields, a block that extends it
+/// with a field of its own, and two levels of blocks that extend it with
+/// none.
+const INHERITED: &str = "
+    FUNCTION_BLOCK Base
+      METHOD Get : DINT
+        VAR_INPUT k : DINT; END_VAR
+        Get := k * 10;
+      END_METHOD
+    END_FUNCTION_BLOCK
+    FUNCTION_BLOCK Derived EXTENDS Base VAR n : DINT; END_VAR END_FUNCTION_BLOCK
+    FUNCTION_BLOCK Middle EXTENDS Base END_FUNCTION_BLOCK
+    FUNCTION_BLOCK Leaf EXTENDS Middle END_FUNCTION_BLOCK";
+
+/// REQ-LOW-lowering-177: a method a block inherits from one that declares no
+/// fields runs on an instance of the derived block, and through a block in
+/// between.
+#[test]
+fn run_when_method_inherited_from_base_without_fields_then_base_method_runs() {
+    let snapshot = run_lowered(&format!(
+        "{INHERITED}
+         PROGRAM main VAR d : Derived; l : Leaf; r1 : DINT; r2 : DINT; END_VAR
+           r1 := d.Get(k := 2);
+           r2 := l.Get(k := 4) + 1;
+         END_PROGRAM"
+    ));
+    assert_eq!(snapshot.read_as::<i32>("r1"), 20);
+    assert_eq!(snapshot.read_as::<i32>("r2"), 41);
+}
+
+/// REQ-LOW-codegen-178: a call of a method a block inherits from one that
+/// declares no fields compiles to the same instructions and constants by
+/// both routes: the derived instance pushed, each input, then `METHOD_CALL`
+/// of the base's method, which copies no field.
+#[rstest]
+#[case::stored_result("r := d.Get(k := 2);")]
+#[case::unused_result("d.Get(k := 3);")]
+#[case::through_block_in_between("r := l.Get(k := 4) + 1;")]
+fn compile_when_method_inherited_from_base_without_fields_then_same_code_as_ast(
+    #[case] statement: &str,
+) {
+    assert_same_code(&format!(
+        "{INHERITED}
+         PROGRAM main VAR d : Derived; l : Leaf; r : DINT; END_VAR
+           {statement}
+         END_PROGRAM"
+    ));
 }

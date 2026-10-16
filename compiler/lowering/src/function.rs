@@ -42,7 +42,8 @@
 //! result that is a string, a parameter or a result that is an aggregate
 //! (REQ-LOW-lowering-079), a call with `EN` or `ENO` (REQ-LOW-lowering-160),
 //! a call through `THIS^` or `SUPER^`, and a call of a method its receiver's
-//! block inherits through `EXTENDS`. The route that reads the AST passes no
+//! block inherits from a block whose type it does not extend in the lowered
+//! program (REQ-LOW-lowering-177). The route that reads the AST passes no
 //! string to a `VAR_IN_OUT` (`compile_reference_arg`).
 
 use ironplc_analyzer::symbol_environment::Resolution;
@@ -289,10 +290,13 @@ impl<'a> Lowering<'a> {
         self.read(result, expr.span())
     }
 
-    /// The method `call` calls in the body of `frame`: one the block of its
-    /// receiver, an instance, declares, which the analyzer resolved
-    /// (ADR-0041). `None` for a call through `THIS^` or `SUPER^`, and for a
-    /// method the block inherits.
+    /// The method `call` calls in the body of `frame`: the one the block of
+    /// its receiver, an instance, declares, or else the nearest block it
+    /// extends, which the analyzer resolved (ADR-0041). `None` for a call
+    /// through `THIS^` or `SUPER^`. The receiver of an inherited method is
+    /// passed for an instance of the block that declares it, which
+    /// `call_args` accepts when the receiver's type extends that block's
+    /// (REQ-LOW-lowering-177).
     fn method_call<'v>(&self, frame: &BodyFrame, call: &'v MethodCall) -> Option<UserCall<'v, 'a>> {
         let MethodReceiver::Instance(instance) = &call.receiver else {
             return None;
@@ -307,10 +311,7 @@ impl<'a> Lowering<'a> {
         let declaring = self
             .method_owners
             .declaring_block(block_name, &call.method)?;
-        if declaring != block_name {
-            return None;
-        }
-        let block = self.block_named(block_name)?;
+        let block = self.block_named(declaring)?;
         let method = block
             .methods
             .iter()
@@ -407,10 +408,16 @@ impl<'a> Lowering<'a> {
             return Ok(None);
         }
         // A `VAR_IN_OUT`'s variable, and a receiver, is of its parameter's
-        // type, which the analyzer checked; one lowered to another type
-        // stays on the AST.
-        let passed: Vec<Param> = args.iter().map(Arg::param).collect();
-        if passed != params {
+        // type, which the analyzer checked, or a receiver of a block that
+        // extends the method's; one lowered to another type, such as a
+        // receiver of a block whose type records no base, stays on the AST.
+        let types = self.program.types();
+        let passes = args.len() == params.len()
+            && args
+                .iter()
+                .zip(&params)
+                .all(|(arg, param)| arg.param().passes_for(*param, types));
+        if !passes {
             return Ok(None);
         }
         Ok(Some(CallArgs {

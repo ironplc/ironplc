@@ -356,6 +356,13 @@ impl TypeTable {
         }
     }
 
+    /// Whether a function block with `fields` can extend `base`: `base` is a
+    /// function block type of the table, and `fields` begin with its fields,
+    /// of the same names, sections and types (REQ-LOW-ir-176).
+    pub fn can_extend(&self, fields: &[Field], base: TypeId) -> bool {
+        self.check_base(fields, base).is_ok()
+    }
+
     /// Whether the function block type `block` is `base`, or extends it
     /// directly or through the blocks it extends (REQ-LOW-ir-176). The walk
     /// ends, since a block's base is in the table before the block is.

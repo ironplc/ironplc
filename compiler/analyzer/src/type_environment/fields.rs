@@ -216,7 +216,7 @@ impl TypeEnvironment {
     /// nearest first: `block`, the block it `EXTENDS`, that block's base,
     /// and so on. An alias of a block starts at the block it names. Empty
     /// when `block` is not a function block whose fields are recorded.
-    pub(crate) fn inheritance_chain(&self, block: TypeId) -> impl Iterator<Item = TypeId> + '_ {
+    pub fn inheritance_chain(&self, block: TypeId) -> impl Iterator<Item = TypeId> + '_ {
         // The `EXTENDS` graph is acyclic, which declaration sorting
         // enforces; the bound only keeps a walk finite whatever it meets.
         std::iter::successors(self.recorded_block(block), |block| {

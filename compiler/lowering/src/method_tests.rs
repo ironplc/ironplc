@@ -108,7 +108,9 @@ fn lower_statement_when_method_body_then_fields_through_instance() {
     );
 }
 
-/// A call of a method the receiver's block inherits is not lowered yet.
+/// A call of a method the receiver's block inherits from a block that
+/// declares fields, whose type the receiver's does not extend in the
+/// lowered program yet (REQ-LOW-lowering-177), is not lowered yet.
 #[test]
 fn lower_statement_when_inherited_method_then_unsupported() {
     let outcome = lower(
@@ -156,4 +158,64 @@ fn lower_statement_when_method_has_string_input_then_str_after_receiver() {
              (const i32s 10)) (call len_wstring i32s (read wstring[8] v3)))",
         ]
     );
+}
+
+/// A block with a method of a result and no fields, a block that extends
+/// it with a field of its own, one that extends it with none, one that
+/// extends that, and one that extends a block with a field.
+const INHERITED: &str = "
+FUNCTION_BLOCK Base
+METHOD Get : DINT
+  VAR_INPUT k : DINT; END_VAR
+  Get := k;
+END_METHOD
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK Derived EXTENDS Base VAR n : DINT; END_VAR END_FUNCTION_BLOCK
+FUNCTION_BLOCK Middle EXTENDS Base END_FUNCTION_BLOCK
+FUNCTION_BLOCK Leaf EXTENDS Middle END_FUNCTION_BLOCK
+FUNCTION_BLOCK Under EXTENDS Derived END_FUNCTION_BLOCK";
+
+/// REQ-LOW-lowering-177: a call of a method a block inherits from a block
+/// that declares no fields is a call of that block's method with a `Ref` to
+/// the receiver first, whatever fields the receiver's own block declares,
+/// and through a block in between that declares none.
+#[test]
+fn lower_statement_when_method_inherited_from_base_without_fields_then_call_of_base_method() {
+    let outcome = lower(
+        &format!(
+            "{INHERITED}
+             PROGRAM main VAR d : Derived; l : Leaf; r : DINT; END_VAR
+               r := d.Get(k := 1);
+               r := l.Get(k := 2);
+               d.Get(k := 3);
+             END_PROGRAM"
+        ),
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f2 (call pou5 i32s (ref v0^.f0) (const i32s 1))",
+            "assign v0^.f2 (call pou5 i32s (ref v0^.f1) (const i32s 2))",
+            "call pou5 (ref v0^.f0) (const i32s 3)",
+        ]
+    );
+}
+
+/// REQ-LOW-lowering-177: a block whose type does not begin with the fields
+/// of the block it extends, as one that extends a block with a field does
+/// while inherited fields are not in its type, extends no block in the
+/// lowered program, so a call of a method it inherits is not lowered.
+#[test]
+fn lower_statement_when_method_inherited_through_block_with_fields_then_unsupported() {
+    let outcome = lower(
+        &format!(
+            "{INHERITED}
+             PROGRAM main VAR u : Under; r : DINT; END_VAR
+               r := u.Get(k := 1);
+             END_PROGRAM"
+        ),
+        "main",
+    );
+    assert_eq!(outcome.statements, ["unsupported"]);
 }
