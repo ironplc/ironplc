@@ -248,12 +248,21 @@ pub fn parse_and_run_rounds(
 /// Parses, compiles and loads `source`, then hands `f` a [`Session`] to drive
 /// it across scans, reading and writing variables by name.
 pub fn run_scans(source: &str, options: &CompilerOptions, f: impl FnOnce(&mut Session<'_, '_>)) {
-    let container = parse_and_compile_to_run(source, options);
-    let mut bufs = VmBuffers::from_container(&container);
-    let mut vm = load_and_start(&container, &mut bufs).unwrap();
+    run_compiled_scans(&parse_and_compile_to_run(source, options), f);
+}
+
+/// Loads the compiled `container`, then hands `f` a [`Session`] to drive it
+/// across scans, as [`run_scans`] does, and returns what `f` returns.
+pub fn run_compiled_scans<T>(
+    container: &Container,
+    f: impl FnOnce(&mut Session<'_, '_>) -> T,
+) -> T {
+    let mut bufs = VmBuffers::from_container(container);
+    let mut vm = load_and_start(container, &mut bufs).unwrap();
     assert_stack_balanced(&vm, "after init");
-    f(&mut Session::new(&container, &mut vm));
+    let observed = f(&mut Session::new(container, &mut vm));
     assert_stack_balanced(&vm, "after scenario");
+    observed
 }
 
 /// A single step in a function-block (`TON`/`CTU`/`R_TRIG`/`RS`/…) driver

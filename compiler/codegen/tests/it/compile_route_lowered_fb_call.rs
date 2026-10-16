@@ -1,15 +1,17 @@
-//! Tests of calls of user-defined function blocks compiled from the lowered
-//! program (REQ-LOW-lowering-069), with every statement required to lower,
-//! and one scan of each program checked to leave every variable as the
-//! route that reads the AST leaves it.
+//! Tests of calls of function blocks, user-defined and standard, compiled
+//! from the lowered program (REQ-LOW-lowering-069), with every statement
+//! required to lower, and one scan of each program checked to leave every
+//! variable as the route that reads the AST leaves it.
 
 use ironplc_codegen::Route;
 use ironplc_parser::options::CompilerOptions;
 
 use rstest::rstest;
 
-use crate::common::{compile_by_route, parse, parse_and_compile_to_run, Snapshot};
-use crate::compile_route_lowered::{assert_same_code, run_lowered};
+use crate::common::{
+    compile_by_route, parse, parse_and_compile_to_run, run_compiled_scans, Duration, Snapshot,
+};
+use crate::compile_route_lowered::{assert_same_code, options, run_lowered};
 
 /// A block whose outputs are its inputs' sum, whether the sum is positive,
 /// a `REAL`, a `UDINT` and a count of its calls.
@@ -141,7 +143,7 @@ fn compile_when_block_called_then_same_code_as_ast(#[case] statement: &str) {
 /// fail alike.
 #[test]
 fn compile_when_instance_declared_in_block_then_lowered_route_leaves_it() {
-    let source = format!(
+    assert_routes_fail_alike(&format!(
         "{BLOCK}
          FUNCTION_BLOCK Outer
            VAR inner : FB; n : DINT; END_VAR
@@ -150,13 +152,260 @@ fn compile_when_instance_declared_in_block_then_lowered_route_leaves_it() {
          PROGRAM main VAR o : Outer; END_VAR
            o();
          END_PROGRAM"
-    );
+    ));
+}
+
+/// Fails unless compiling `source` fails with P9999 by the route that reads
+/// the AST, and by the lowered route where lowering supports a statement.
+fn assert_routes_fail_alike(source: &str) {
     let options = CompilerOptions::default();
-    let (library, context) = parse(&source, &options);
-    let ast = compile_by_route(&library, &context, &options, Route::Ast);
-    let lowered = compile_by_route(&library, &context, &options, Route::PreferLowered);
+    let (library, context) = parse(source, &options);
+    let code = |route| {
+        compile_by_route(&library, &context, &options, route)
+            .err()
+            .map(|diagnostic| diagnostic.code)
+    };
+    let not_implemented = Some("P9999".to_string());
     assert_eq!(
-        ast.err().map(|diagnostic| diagnostic.code),
-        lowered.err().map(|diagnostic| diagnostic.code)
+        [code(Route::Ast), code(Route::PreferLowered)],
+        [not_implemented.clone(), not_implemented]
+    );
+}
+
+/// The variables of a program that calls standard function blocks: one of
+/// each type a field of one takes.
+const STANDARD_VARS: &str = "b : BOOL; nb : BOOL; i : INT; n : INT; d : DINT; l : LINT;
+    u : UDINT; ul : ULINT; et : TIME;";
+
+/// A call of a standard function block compiles to the same instructions and
+/// constants by both routes: a timer, a counter at two widths, an edge
+/// detector with a negated output, a bistable, an input narrowed to its
+/// field, a call written with positional inputs, which the analyzer writes in
+/// normal form, and calls inside an `IF` and a `FOR`. So does a read of a
+/// counter's field, stored narrowed to its target as an output is.
+#[rstest]
+#[case::timer("t : TON;", "t(IN := b, PT := T#5S, Q => b, ET => et);")]
+#[case::counter_int("c : CTU;", "c(CU := b, PV := i, Q => b, CV => i);")]
+#[case::counter_lint("c : CTU_LINT;", "c(CU := b, R := FALSE, PV := l, CV => l);")]
+#[case::edge_detector("e : R_TRIG;", "e(CLK := b, NOT Q => nb);")]
+#[case::bistable("s : SR;", "s(S1 := b, R := NOT b, Q1 => b);")]
+#[case::narrowed_input("c : CTU;", "c(CU := b, PV := i + n);")]
+#[case::positional("c : CTU;", "c(TRUE, FALSE, 1);")]
+#[case::inside_if("t : TOF;", "IF b THEN t(IN := nb, PT := et, Q => b); END_IF;")]
+#[case::field_read("c : CTU;", "i := c.CV;")]
+#[case::inside_for(
+    "c : CTD_DINT;",
+    "FOR d := 1 TO 3 DO c(CD := b, PV := d, CV => d); END_FOR;"
+)]
+fn compile_when_standard_block_called_then_same_code_as_ast(
+    #[case] instance: &str,
+    #[case] statement: &str,
+) {
+    assert_same_code(&format!(
+        "PROGRAM main
+           VAR {instance} {STANDARD_VARS} END_VAR
+           {statement}
+         END_PROGRAM"
+    ));
+}
+
+/// Every input and output of every timer, edge detector and bistable is a
+/// field of the VM's block, which the lowered route stores and reads as the
+/// route that reads the AST does.
+#[rstest]
+#[case::ton("TON", "f(IN := b, PT := et, Q => b, ET => et);")]
+#[case::tof("TOF", "f(IN := b, PT := et, Q => b, ET => et);")]
+#[case::tp("TP", "f(IN := b, PT := et, Q => b, ET => et);")]
+#[case::r_trig("R_TRIG", "f(CLK := b, Q => b);")]
+#[case::f_trig("F_TRIG", "f(CLK := b, Q => b);")]
+#[case::sr("SR", "f(S1 := b, R := b, Q1 => b);")]
+#[case::rs("RS", "f(S := b, R1 := b, Q1 => b);")]
+fn compile_when_every_input_and_output_bound_then_same_code_as_ast(
+    #[case] block: &str,
+    #[case] statement: &str,
+) {
+    assert_same_code(&format!(
+        "PROGRAM main
+           VAR f : {block}; {STANDARD_VARS} END_VAR
+           {statement}
+         END_PROGRAM"
+    ));
+}
+
+/// Every input and output of every counter, at every width, is a field of
+/// the VM's block for that width, which the lowered route stores and reads
+/// as the route that reads the AST does. `{v}` stands for a variable of the
+/// width.
+#[rstest]
+fn compile_when_every_counter_input_and_output_bound_then_same_code_as_ast(
+    #[values(
+        ("CTU", "f(CU := b, R := b, PV := {v}, Q => b, CV => {v});"),
+        ("CTD", "f(CD := b, LD := b, PV := {v}, Q => b, CV => {v});"),
+        ("CTUD", "f(CU := b, CD := b, R := b, LD := b, PV := {v}, QU => b, QD => b, CV => {v});")
+    )]
+    counter: (&str, &str),
+    #[values(("", "i"), ("_DINT", "d"), ("_LINT", "l"), ("_UDINT", "u"), ("_ULINT", "ul"))] width: (
+        &str,
+        &str,
+    ),
+) {
+    let (block, statement) = counter;
+    let (suffix, variable) = width;
+    assert_same_code(&format!(
+        "PROGRAM main
+           VAR f : {block}{suffix}; {STANDARD_VARS} END_VAR
+           {}
+         END_PROGRAM",
+        statement.replace("{v}", variable)
+    ));
+}
+
+/// One scan of calls of standard function blocks leaves the outputs the VM's
+/// blocks give: a counter counts its first rising edge, a down counter
+/// loads its preset, an up-down counter counts up at its own width, an edge
+/// detector sees its first rising edge, and each bistable keeps its dominant
+/// input.
+#[test]
+fn run_when_standard_blocks_called_then_outputs_of_vm_blocks() {
+    let snapshot = run_lowered_agreeing(
+        "PROGRAM main
+           VAR c : CTU_DINT; down : CTD; ud : CTUD_ULINT; e : R_TRIG; s : SR; r : RS;
+               cv : DINT; cq : BOOL; dv : INT; dq : BOOL; udv : ULINT; uq : BOOL;
+               eq : BOOL; sq : BOOL; rq : BOOL; END_VAR
+           c(CU := TRUE, PV := 1, Q => cq, CV => cv);
+           down(CD := FALSE, LD := TRUE, PV := 3, Q => dq, CV => dv);
+           ud(CU := TRUE, PV := 2, QU => uq, CV => udv);
+           e(CLK := TRUE, Q => eq);
+           s(S1 := TRUE, R := TRUE, Q1 => sq);
+           r(S := TRUE, R1 := TRUE, Q1 => rq);
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<i32>("cv"), 1);
+    assert_eq!(snapshot.read_as::<i32>("cq"), 1);
+    assert_eq!(snapshot.read_as::<i32>("dv"), 3);
+    assert_eq!(snapshot.read_as::<i32>("dq"), 0);
+    assert_eq!(snapshot.read_as::<u64>("udv"), 1);
+    assert_eq!(snapshot.read_as::<i32>("uq"), 0);
+    assert_eq!(snapshot.read_as::<i32>("eq"), 1);
+    assert_eq!(snapshot.read_as::<i32>("sq"), 1);
+    assert_eq!(snapshot.read_as::<i32>("rq"), 0);
+}
+
+/// REQ-LOW-lowering-046: a standard block's input is narrowed to its field
+/// once, as the route that reads the AST narrows it: `PV` of a `CTU` is an
+/// `INT`, so `a + b`, 40000, is stored as -25536.
+#[test]
+fn run_when_standard_block_input_outside_field_then_narrowed_once() {
+    let snapshot = run_lowered_agreeing(
+        "PROGRAM main
+           VAR c : CTU; a : INT := 20000; b : INT := 20000; preset : DINT; END_VAR
+           c(CU := FALSE, PV := a + b);
+           preset := c.PV;
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<i32>("preset"), -25536);
+}
+
+/// An `_INT` counter behaves as it does by the route that reads the AST: the
+/// VM's block counts its `CV` in 32 bits, past the range of `INT`, and a
+/// store of it in an `INT`, by an output or by a read of the field, narrows
+/// it to the target.
+#[test]
+fn run_when_int_counter_counts_past_int_then_stored_narrowed() {
+    let snapshot = run_lowered_agreeing(
+        "PROGRAM main VAR d : CTD; out : INT; read : INT; END_VAR
+           d(CD := FALSE, LD := TRUE, PV := -32768);
+           d(CD := TRUE, LD := FALSE, CV => out);
+           read := d.CV;
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<i32>("out"), 32767);
+    assert_eq!(snapshot.read_as::<i32>("read"), 32767);
+}
+
+/// A call with positional inputs stores each in the field the analyzer
+/// names for it.
+#[test]
+fn run_when_standard_block_called_positionally_then_inputs_stored() {
+    let snapshot = run_lowered_agreeing(
+        "PROGRAM main
+           VAR c : CTU; cv : INT; pv : INT; q : BOOL; END_VAR
+           c(TRUE, FALSE, 1);
+           cv := c.CV;
+           pv := c.PV;
+           q := c.Q;
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<i32>("cv"), 1);
+    assert_eq!(snapshot.read_as::<i32>("pv"), 1);
+    assert_eq!(snapshot.read_as::<i32>("q"), 1);
+}
+
+/// A timer called from the lowered route keeps its state from one round to
+/// the next, and reads each round's time, as one called from the route that
+/// reads the AST: its output and elapsed time after each of several rounds
+/// are the same by both routes.
+#[test]
+fn run_when_timer_called_over_rounds_then_same_outputs_as_ast() {
+    let source = "PROGRAM main
+           VAR t : TON; done : BOOL; elapsed : TIME; END_VAR
+           t(IN := TRUE, PT := T#5S, Q => done, ET => elapsed);
+         END_PROGRAM";
+    let options = options();
+    let (library, context) = parse(source, &options);
+    let observe = |route| {
+        let container = compile_by_route(&library, &context, &options, route).unwrap();
+        run_compiled_scans(&container, |session| {
+            [0, 2, 4, 6].map(|seconds| {
+                session.scan(seconds * 1_000_000).unwrap();
+                (
+                    session.read_as::<i32>("done"),
+                    session.read_as::<Duration>("elapsed"),
+                )
+            })
+        })
+    };
+    let lowered = observe(Route::RequireLowered);
+    assert_eq!(lowered, observe(Route::Ast));
+    assert_eq!(
+        lowered,
+        [
+            (0, Duration::ZERO),
+            (0, Duration::seconds(2)),
+            (0, Duration::seconds(4)),
+            (1, Duration::seconds(5)),
+        ]
+    );
+}
+
+/// A call of a standard block's instance declared inside a function block
+/// stays on the route that reads the AST, which cannot call one (#1553), so
+/// both routes fail alike.
+#[test]
+fn compile_when_standard_instance_declared_in_block_then_routes_fail_alike() {
+    assert_routes_fail_alike(
+        "FUNCTION_BLOCK Outer VAR t : TON; END_VAR t(IN := TRUE); END_FUNCTION_BLOCK
+         PROGRAM main VAR o : Outer; END_VAR o(); END_PROGRAM",
+    );
+}
+
+/// A call of a standard block's instance a program reaches through
+/// `VAR_EXTERNAL`, which the route that reads the AST calls by its name,
+/// compiles to the same instructions by both routes.
+#[test]
+fn compile_when_standard_instance_external_then_same_code_as_ast() {
+    assert_same_code(
+        "PROGRAM main
+           VAR_EXTERNAL t : TON; END_VAR
+           VAR q : BOOL; END_VAR
+           t(IN := TRUE, PT := T#1S, Q => q);
+         END_PROGRAM
+         CONFIGURATION config
+           VAR_GLOBAL t : TON; END_VAR
+           RESOURCE res ON PLC
+             TASK plc_task(INTERVAL := T#100MS, PRIORITY := 1);
+             PROGRAM plc_task_instance WITH plc_task : main;
+           END_RESOURCE
+         END_CONFIGURATION",
     );
 }

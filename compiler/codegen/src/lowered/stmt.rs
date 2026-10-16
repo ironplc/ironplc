@@ -102,11 +102,15 @@ impl Emission<'_, '_> {
         match stmt.kind() {
             StmtKind::Assign { place, value } => {
                 let lowering = self.lowering;
-                super::place::resolve(lowering, ctx, place, span)?.emit_assign_fitting(
-                    emitter,
-                    ctx,
-                    |emitter, ctx| emit_expr(emitter, ctx, lowering, value),
-                )
+                let storage = super::place::resolve(lowering, ctx, place, span)?;
+                let push = |emitter: &mut Emitter, ctx: &mut CompileContext| {
+                    emit_expr(emitter, ctx, lowering, value)
+                };
+                if super::place::reads_standard_block_field(lowering, ctx, value) {
+                    storage.emit_assign(emitter, ctx, push)
+                } else {
+                    storage.emit_assign_fitting(emitter, ctx, push)
+                }
             }
             StmtKind::AssignStr { place, value } => {
                 super::string::emit_assign_str(emitter, ctx, self.lowering, place, value, span)

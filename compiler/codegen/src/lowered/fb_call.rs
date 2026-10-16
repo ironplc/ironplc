@@ -21,6 +21,7 @@ use super::expr::emit_expr;
 use super::place::variable_name;
 use super::same_span;
 use crate::compile::CompileContext;
+use crate::compile_call::standard_fb_layout;
 use crate::compile_fb_call::FbCallSite;
 use crate::emit::Emitter;
 
@@ -111,7 +112,13 @@ pub(super) fn emit_call_site(
 }
 
 /// Whether this backend calls `block` on `instance`: an instance it reaches
-/// by name, of the user-defined block whose body it compiled for `block`.
+/// by name, of the user-defined block whose body it compiled for `block`, or
+/// of the VM's block for the standard block `block` is named after.
+///
+/// Lowering does not generate the standard blocks yet (issue 2288), so a
+/// standard block's POU has no body in the lowered program, and `FB_CALL`
+/// runs the VM's block on the instance, as the route that reads the AST
+/// calls it.
 pub(super) fn reaches_block(
     lowering: &Lowering<'_>,
     ctx: &CompileContext,
@@ -123,11 +130,18 @@ pub(super) fn reaches_block(
     else {
         return false;
     };
-    lowering
-        .pous()
-        .name(block)
-        .and_then(|name| ctx.user_fb_types.get(&name.to_string().to_uppercase()))
-        .is_some_and(|block| block.type_id == fb_instance.type_id)
+    let Some(name) = lowering.pous().name(block) else {
+        return false;
+    };
+    let name = name.to_string().to_uppercase();
+    let type_id = match ctx.user_fb_types.get(&name) {
+        Some(user_fb) => Some(user_fb.type_id),
+        None => ctx
+            .standard_blocks
+            .get(&name)
+            .map(|standard| standard_fb_layout(*standard).0),
+    };
+    type_id == Some(fb_instance.type_id)
 }
 
 /// The internal error for a call `can_emit` should have left to the AST

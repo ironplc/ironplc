@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use ironplc_analyzer::{
     BuiltinFunction, CounterWidth, FormOf, FunctionEnvironment, StandardFunctionBlock,
-    StringFunction,
+    StringFunction, TypeEnvironment,
 };
 use ironplc_container::opcode;
 use ironplc_dsl::common::{ElementaryTypeName, TypeName};
@@ -648,6 +648,20 @@ pub(crate) fn standard_fb_layout(
         RTrig => (opcode::fb_type::R_TRIG, 3, edge_trig_fb_fields()),
         FTrig => (opcode::fb_type::F_TRIG, 3, edge_trig_fb_fields()),
     }
+}
+
+/// The standard function block each type of `types` is, by the type's
+/// upper-case name, as the type environment records it: the block whose VM
+/// block [`standard_fb_layout`] gives a lowered call of a POU of that name.
+pub(crate) fn standard_blocks_by_name(
+    types: &TypeEnvironment,
+) -> HashMap<String, StandardFunctionBlock> {
+    types
+        .iter()
+        .filter_map(|(name, attributes)| {
+            Some((name.to_string().to_uppercase(), attributes.standard_block?))
+        })
+        .collect()
 }
 
 /// Returns the shared field map for timer FBs (TON, TOF, TP).
