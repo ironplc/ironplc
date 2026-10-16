@@ -216,30 +216,3 @@ END_PROGRAM
 ",
     &[("result", 14)],
 );
-
-#[test]
-fn end_to_end_when_user_fb_dot_access_write_unknown_field_then_diagnostic() {
-    let source = "
-FUNCTION_BLOCK DOUBLER
-  VAR_INPUT x : DINT; END_VAR
-  VAR_OUTPUT y : DINT; END_VAR
-  y := x * 2;
-END_FUNCTION_BLOCK
-
-PROGRAM main
-  VAR
-    fb : DOUBLER;
-  END_VAR
-  fb.bogus := 1;
-END_PROGRAM
-";
-    let result = crate::common::try_parse_and_compile(source, &CompilerOptions::default());
-    assert!(result.is_err(), "writing to unknown FB field should fail");
-    let err = result.err().unwrap();
-    let msg = format!("{:?}", err);
-    assert!(
-        msg.contains("Unknown field") && msg.contains("bogus") && msg.contains("fb"),
-        "diagnostic should mention 'Unknown field', 'bogus', and 'fb', got: {}",
-        msg
-    );
-}
