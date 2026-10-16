@@ -8,10 +8,10 @@
 //! the units each type is stored in.
 //!
 //! A numeric pair computes at the width and signedness of its own result
-//! type rather than of the variable it is assigned to, and the result is
-//! converted to the enclosing operation type. That is ADR-0001's
+//! type rather than of the variable it is assigned to. That is ADR-0001's
 //! promote-operate-truncate applied to the expression: `INT + REAL` adds as
-//! `REAL`, and `DINT * DINT` assigned to a `LINT` multiplies at 32 bits.
+//! `REAL`, and `DINT * DINT` assigned to a `LINT` multiplies at 32 bits; the
+//! analyzer records the conversion of the result to the `LINT`.
 //!
 //! The analyzer decided which operand converts (ADR-0056): an operand of
 //! another width arrives wrapped in an `ImplicitConversion` to the result
@@ -25,13 +25,13 @@
 //!
 //! See `specs/design/arithmetic-operator-overloads.md`.
 
-use ironplc_analyzer::{typed_overload, Intrinsic};
+use ironplc_analyzer::{typed_overload, BuiltinFunction};
 use ironplc_dsl::common::{ElementaryTypeName, GenericTypeName, TypeName};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{BinaryExpr, Expr, Function, Operator};
 
-use super::call_args::collect_positional_args;
+use super::call_args::collect_input_args;
 use super::compile::{CompileContext, OpType, VarTypeInfo};
 use super::compile_call::{compile_left_fold, emit_conversion_opcode};
 use super::compile_expr::{compile_expr, emit_arithmetic_op};
@@ -43,15 +43,13 @@ use crate::emit::Emitter;
 /// result on the stack.
 ///
 /// A pair with a typed overload compiles through its typed routine. A pair
-/// whose result type is numeric computes at that type and converts the
-/// result to `op_type`, the operation type of the enclosing expression. The
-/// analyzer resolves every pair to one or the other.
+/// whose result type is numeric computes at that type. The analyzer resolves
+/// every pair to one or the other.
 pub(crate) fn compile_binary_arith(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     expr: &Expr,
     binary: &BinaryExpr,
-    op_type: OpType,
 ) -> Result<(), Diagnostic> {
     if let Some(name) = typed_step(ctx, &binary.op, &binary.left, &binary.right) {
         let span = binary.left.span();
@@ -63,11 +61,9 @@ pub(crate) fn compile_binary_arith(
     else {
         return Err(unresolved_operation(expr.span()));
     };
-    compile_at(emitter, ctx, natural, op_type, |emitter, ctx, at| {
-        compile_expr(emitter, ctx, &binary.left, at)?;
-        compile_expr(emitter, ctx, &binary.right, at)?;
-        emit_arithmetic_op(emitter, &binary.op, at)
-    })
+    compile_expr(emitter, ctx, &binary.left)?;
+    compile_expr(emitter, ctx, &binary.right)?;
+    emit_arithmetic_op(emitter, &binary.op, natural)
 }
 
 /// Compiles a call to the function form of the arithmetic operator `op`,
@@ -76,18 +72,17 @@ pub(crate) fn compile_binary_arith(
 /// A pair with a typed overload compiles through its typed routine; the
 /// analyzer writes a typed fold of three or more inputs as the two-input calls
 /// it folds to. Otherwise every step computes at the call's numeric result
-/// type `result`, at whose width the analyzer placed every input, and the
-/// result is converted to `op_type`. A fold whose steps compute at different
-/// types arrives as the two-input calls it folds to, each its own call.
+/// type `result`, at whose width the analyzer placed every input. A fold
+/// whose steps compute at different types arrives as the two-input calls it
+/// folds to, each its own call.
 pub(crate) fn compile_arith_fold(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     func: &Function,
     op: &Operator,
     result: Option<&TypeName>,
-    op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
+    let args = collect_input_args(func);
     if let [first, second, rest @ ..] = args.as_slice() {
         if let Some(name) = typed_step(ctx, op, first, second) {
             let span = func.name.span();
@@ -103,10 +98,8 @@ pub(crate) fn compile_arith_fold(
     let Some(natural) = numeric_inputs_op_type(ctx, result, &args) else {
         return Err(unresolved_operation(func.name.span()));
     };
-    compile_at(emitter, ctx, natural, op_type, |emitter, ctx, at| {
-        compile_left_fold(emitter, ctx, func, at, |emitter, at| {
-            emit_arithmetic_op(emitter, op, at)
-        })
+    compile_left_fold(emitter, ctx, func, natural, |emitter, at| {
+        emit_arithmetic_op(emitter, op, at)
     })
 }
 
@@ -135,7 +128,8 @@ fn compile_typed(
 ) -> Result<(), Diagnostic> {
     // Every typed name the analyzer answers with is registered as a time
     // function; a test pins it for both widths of every overload.
-    let Some(Intrinsic::Time { function, long }) = ctx.intrinsics.get(&Id::from(name)).cloned()
+    let Some(BuiltinFunction::Time { function, long }) =
+        ctx.builtin_functions.get(&Id::from(name)).cloned()
     else {
         return Err(Diagnostic::internal_error_at(Label::span(
             span,
@@ -171,36 +165,6 @@ fn unresolved_operation(span: SourceSpan) -> Diagnostic {
         span,
         "Arithmetic operation has no typed overload or numeric type its inputs are converted to",
     ))
-}
-
-/// Compiles, by `compile`, an operation at the operation type `at`, then
-/// converts the result to `op_type`, the operation type of the enclosing
-/// expression.
-pub(crate) fn compile_at(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    at: OpType,
-    op_type: OpType,
-    compile: impl FnOnce(&mut Emitter, &mut CompileContext, OpType) -> Result<(), Diagnostic>,
-) -> Result<(), Diagnostic> {
-    compile(emitter, ctx, at)?;
-    convert_to_context(emitter, at, op_type)
-}
-
-/// Converts the value on the stack, computed at its own operation type
-/// `own`, to `context`, the operation type of the expression that encloses
-/// it.
-///
-/// This is the one place codegen converts a value without the analyzer
-/// having recorded the conversion (ADR-0056). Every other conversion is
-/// one the analyzer recorded in an `ImplicitConversion`, or one the
-/// program wrote, such as `INT_TO_REAL`.
-pub(crate) fn convert_to_context(
-    emitter: &mut Emitter,
-    own: OpType,
-    context: OpType,
-) -> Result<(), Diagnostic> {
-    convert(emitter, own, context)
 }
 
 /// Emits the conversion of the value on the stack from `from` to `to`, or

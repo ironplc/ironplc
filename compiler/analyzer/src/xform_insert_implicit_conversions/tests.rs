@@ -29,7 +29,8 @@ impl ComparisonOperands<'_> {
 }
 
 /// An operand as the type it is operated at: `DINT->LINT` for a `DINT`
-/// converted to `LINT`, `LINT` for an operand operated on as it is.
+/// converted to `LINT`, `LINT->DINT checked` for an `LINT` whose conversion
+/// to `DINT` is checked, `LINT` for an operand operated on as it is.
 pub(super) fn describe(types: &TypeEnvironment, expr: &Expr) -> String {
     let name = |expr: &Expr| {
         expr.expr_type
@@ -38,7 +39,13 @@ pub(super) fn describe(types: &TypeEnvironment, expr: &Expr) -> String {
             .map_or("?".to_string(), |name| name.to_string().to_uppercase())
     };
     match &expr.kind {
-        ExprKind::ImplicitConversion(inner) => format!("{}->{}", name(inner), name(expr)),
+        ExprKind::ImplicitConversion(conversion) => {
+            let converted = format!("{}->{}", name(&conversion.value), name(expr));
+            match conversion.kind {
+                ConversionKind::Ordinary => converted,
+                ConversionKind::Checked => format!("{converted} checked"),
+            }
+        }
         _ => name(expr),
     }
 }
@@ -55,11 +62,11 @@ impl Visitor<Infallible> for ComparisonOperands<'_> {
     }
 
     fn visit_function(&mut self, node: &Function) -> Result<(), Infallible> {
-        if let [ParamAssignmentKind::PositionalInput(left), ParamAssignmentKind::PositionalInput(right)] =
-            node.param_assignment.as_slice()
-        {
-            let pair = [self.describe(&left.expr), self.describe(&right.expr)];
-            self.operands.push(pair);
+        if let [left, right] = node.param_assignment.as_slice() {
+            if let (Some(left), Some(right)) = (left.input_expr(), right.input_expr()) {
+                let pair = [self.describe(left), self.describe(right)];
+                self.operands.push(pair);
+            }
         }
         node.recurse_visit(self)
     }
@@ -316,8 +323,8 @@ fn apply_when_nested_in_condition_then_conversion_spans_operand() {
     impl Visitor<Infallible> for Conversions {
         type Value = ();
         fn visit_expr(&mut self, node: &Expr) -> Result<(), Infallible> {
-            if let ExprKind::ImplicitConversion(inner) = &node.kind {
-                assert_eq!(node.span, inner.span);
+            if let ExprKind::ImplicitConversion(conversion) = &node.kind {
+                assert_eq!(node.span, conversion.value.span);
                 self.0.push(node.to_string());
             }
             node.recurse_visit(self)
@@ -345,13 +352,19 @@ fn apply_when_typed_literal_out_of_range_of_narrower_operand_then_rules_still_re
 }
 
 #[spec_test(REQ_IC_analyzer_020)]
-#[test]
-fn apply_when_arithmetic_operand_narrower_then_converted_to_result_type() {
-    let source = arithmetic_program("REAL", "i : INT; r : REAL;", "i + r");
-    assert_eq!(
-        arithmetic_operands(&source),
-        operands(&[&["INT->REAL", "REAL"]])
-    );
+#[rstest]
+#[case::narrower("REAL", "i : INT; r : REAL;", "i + r", ["INT->REAL", "REAL"])]
+#[case::unsigned_left("DINT", "us : USINT; d : DINT;", "us + d", ["USINT->DINT", "DINT"])]
+#[case::unsigned_right("DINT", "us : USINT; d : DINT;", "d - us", ["DINT", "USINT->DINT"])]
+#[case::function_form("DINT", "ui : UINT; d : DINT;", "MUL(ui, d)", ["UINT->DINT", "DINT"])]
+fn apply_when_arithmetic_operand_of_another_operation_type_then_converted_to_result_type(
+    #[case] target: &str,
+    #[case] vars: &str,
+    #[case] value: &str,
+    #[case] expected: [&str; 2],
+) {
+    let source = arithmetic_program(target, vars, value);
+    assert_eq!(arithmetic_operands(&source), operands(&[&expected]));
 }
 
 #[spec_test(REQ_IC_analyzer_021)]
@@ -362,10 +375,17 @@ fn apply_when_arithmetic_operand_is_literal_then_literal_takes_result_type() {
 }
 
 #[spec_test(REQ_IC_analyzer_022)]
-#[test]
-fn apply_when_arithmetic_operands_share_a_width_then_unchanged() {
-    let source = arithmetic_program("INT", "i : INT; s : SINT;", "i + s");
-    assert_eq!(arithmetic_operands(&source), operands(&[&["INT", "SINT"]]));
+#[rstest]
+#[case::signed("INT", "i : INT; s : SINT;", "i + s", ["INT", "SINT"])]
+#[case::unsigned("UINT", "us : USINT; ui : UINT;", "us + ui", ["USINT", "UINT"])]
+fn apply_when_arithmetic_operands_share_an_operation_type_then_unchanged(
+    #[case] target: &str,
+    #[case] vars: &str,
+    #[case] value: &str,
+    #[case] expected: [&str; 2],
+) {
+    let source = arithmetic_program(target, vars, value);
+    assert_eq!(arithmetic_operands(&source), operands(&[&expected]));
 }
 
 #[spec_test(REQ_IC_analyzer_023)]
@@ -393,6 +413,34 @@ fn apply_when_fold_has_three_inputs_then_written_as_the_calls_it_folds_to() {
         arithmetic_operands(&source),
         operands(&[&["DINT->LINT", "LINT"], &["DINT", "DINT"]])
     );
+}
+
+#[spec_test(REQ_CB_analyzer_035)]
+#[test]
+fn apply_when_fold_has_three_inputs_then_each_call_it_folds_to_in_normal_form() {
+    let source = arithmetic_program("LINT", "d : DINT; e : DINT; l : LINT;", "ADD(d, e, l)");
+    let options = CompilerOptions::default();
+    let library = ironplc_parser::parse_program(&source, &FileId::default(), &options).unwrap();
+    let (library, _) = analyze(&[&library], &options).unwrap();
+    struct Calls(Vec<String>);
+    impl Visitor<Infallible> for Calls {
+        type Value = ();
+        fn visit_function(&mut self, node: &Function) -> Result<(), Infallible> {
+            let names: Vec<String> = node
+                .param_assignment
+                .iter()
+                .map(|arg| match arg {
+                    ParamAssignmentKind::NamedInput(input) => input.name.to_string(),
+                    _ => "?".to_owned(),
+                })
+                .collect();
+            self.0.push(names.join(", "));
+            node.recurse_visit(self)
+        }
+    }
+    let mut calls = Calls(vec![]);
+    let Ok(()) = calls.walk(&library);
+    assert_eq!(vec!["IN1, IN2", "IN1, IN2"], calls.0);
 }
 
 #[spec_test(REQ_IC_analyzer_026)]
@@ -438,10 +486,45 @@ fn apply_when_function_form_assigned_to_wider_target_then_result_converted() {
 }
 
 #[spec_test(REQ_IC_analyzer_032)]
+#[rstest]
+#[case::signed("INT", "s : SINT;", "s", "SINT")]
+#[case::unsigned("UDINT", "u : UINT;", "u", "UINT")]
+#[case::bit_string("DWORD", "b : BYTE;", "b", "BYTE")]
+fn apply_when_value_shares_target_operation_type_then_unchanged(
+    #[case] target: &str,
+    #[case] vars: &str,
+    #[case] value: &str,
+    #[case] expected: &str,
+) {
+    let source = arithmetic_program(target, vars, value);
+    assert_eq!(assigned_values(&source), vec![expected]);
+}
+
+#[spec_test(REQ_IC_analyzer_105)]
+#[rstest]
+#[case::usint_to_dint("DINT", "u : USINT;", "u", "USINT->DINT")]
+#[case::uint_to_dint("DINT", "u : UINT;", "u", "UINT->DINT")]
+#[case::arithmetic("DINT", "u : UINT; v : UINT;", "u + v", "UINT->DINT")]
+#[case::usint_to_int("INT", "u : USINT;", "u", "USINT->INT")]
+fn apply_when_value_of_target_width_and_other_signedness_then_converted_to_target_type(
+    #[case] target: &str,
+    #[case] vars: &str,
+    #[case] value: &str,
+    #[case] expected: &str,
+) {
+    let source = arithmetic_program(target, vars, value);
+    assert_eq!(assigned_values(&source), vec![expected]);
+}
+
+#[spec_test(REQ_IC_analyzer_105)]
 #[test]
-fn apply_when_value_shares_target_width_then_unchanged() {
-    let source = arithmetic_program("INT", "s : SINT;", "s");
-    assert_eq!(assigned_values(&source), vec!["SINT"]);
+fn apply_when_bit_string_widened_to_signed_integer_of_its_width_then_converted() {
+    let options = CompilerOptions {
+        allow_cross_family_widening: true,
+        ..CompilerOptions::default()
+    };
+    let source = arithmetic_program("DINT", "b : BYTE;", "b");
+    assert_eq!(assigned_values_with(&source, &options), vec!["BYTE->DINT"]);
 }
 
 #[spec_test(REQ_IC_analyzer_037)]
@@ -534,10 +617,18 @@ fn call_program(param: &str, vars: &str, args: &str) -> String {
 }
 
 #[spec_test(REQ_IC_analyzer_040)]
-#[test]
-fn apply_when_argument_narrower_than_parameter_then_converted_to_parameter_type() {
-    let source = call_program("LINT", "d : DINT;", "d");
-    assert_eq!(call_arguments(&source, "f"), vec!["DINT->LINT"]);
+#[rstest]
+#[case::narrower("LINT", "d : DINT;", "d", "DINT->LINT")]
+#[case::unsigned_of_parameter_width("DINT", "us : USINT;", "us", "USINT->DINT")]
+#[case::unsigned_arithmetic("DINT", "us : USINT;", "us + us", "USINT->DINT")]
+fn apply_when_argument_of_another_operation_type_then_converted_to_parameter_type(
+    #[case] param: &str,
+    #[case] vars: &str,
+    #[case] args: &str,
+    #[case] expected: &str,
+) {
+    let source = call_program(param, vars, args);
+    assert_eq!(call_arguments(&source, "f"), vec![expected]);
 }
 
 #[test]
@@ -547,10 +638,17 @@ fn apply_when_argument_is_negation_then_converted_to_parameter_type() {
 }
 
 #[spec_test(REQ_IC_analyzer_041)]
-#[test]
-fn apply_when_argument_shares_parameter_width_then_unchanged() {
-    let source = call_program("INT", "s : SINT;", "s");
-    assert_eq!(call_arguments(&source, "f"), vec!["SINT"]);
+#[rstest]
+#[case::signed("INT", "s : SINT;", "s", "SINT")]
+#[case::unsigned("UINT", "us : USINT;", "us", "USINT")]
+fn apply_when_argument_shares_parameter_operation_type_then_unchanged(
+    #[case] param: &str,
+    #[case] vars: &str,
+    #[case] args: &str,
+    #[case] expected: &str,
+) {
+    let source = call_program(param, vars, args);
+    assert_eq!(call_arguments(&source, "f"), vec![expected]);
 }
 
 #[spec_test(REQ_IC_analyzer_042)]
@@ -801,6 +899,28 @@ fn apply_when_subscript_then_takes_default_type() {
     let source = "PROGRAM main VAR a : ARRAY[1..2, 1..2] OF LINT; i : DINT; x : LINT; END_VAR
         x := a[1, i]; END_PROGRAM";
     assert_eq!(literal_types(source), vec!["DINT"]);
+}
+
+/// The first literal is the function's `F := 0`, and the method's `M := 0`
+/// after it; the rest are the subscripts of the outputs' targets.
+#[spec_test(REQ_IC_analyzer_069)]
+#[test]
+fn apply_when_output_target_subscript_literal_then_takes_dint() {
+    let source = "FUNCTION F : DINT VAR_OUTPUT q : DINT; END_VAR F := 0; END_FUNCTION
+        FUNCTION_BLOCK Acc
+        VAR_OUTPUT q : DINT; END_VAR
+        METHOD M : DINT VAR_OUTPUT mq : DINT; END_VAR M := 0; END_METHOD
+        END_FUNCTION_BLOCK
+        PROGRAM main VAR a : Acc; r : DINT; arr : ARRAY[1..3] OF LINT; END_VAR
+        a(q => arr[1]); r := F(q => arr[2]); a.M(mq => arr[3]); END_PROGRAM";
+    let options = CompilerOptions {
+        allow_fb_inheritance: true,
+        ..CompilerOptions::default()
+    };
+    assert_eq!(
+        literal_types_with(source, &options),
+        vec!["DINT", "DINT", "DINT", "DINT", "DINT"]
+    );
 }
 
 #[spec_test(REQ_IC_analyzer_065)]

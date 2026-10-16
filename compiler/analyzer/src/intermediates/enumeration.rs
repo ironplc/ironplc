@@ -1,8 +1,8 @@
 use crate::enumeration_members::EnumerationMembers;
-use crate::semantic_type::{ByteSized, SemanticType};
+use crate::semantic_type::SemanticType;
 use crate::type_environment::TypeAttributes;
 use ironplc_dsl::common::*;
-use ironplc_dsl::core::Id;
+use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::*;
 use ironplc_problems::Problem;
 
@@ -14,9 +14,9 @@ use ironplc_problems::Problem;
 /// documented example (`Red := 2, Green, Blue := 10` -> Green resolves to
 /// 3) and every real file found using this syntax.
 ///
-/// Used both for sizing (`try_from_values` below) and for the members
-/// recorded with the type ([`EnumerationMembers`]), so both agree on what
-/// each member's runtime value actually is.
+/// Used both for the range check (`try_from_values` below) and for the
+/// members recorded with the type ([`EnumerationMembers`]), so both agree on
+/// what each member's runtime value actually is.
 pub fn resolve_ordinal_values(values: &[EnumeratedValue]) -> Vec<i64> {
     let mut resolved = Vec::with_capacity(values.len());
     let mut next = 0i64;
@@ -26,92 +26,59 @@ pub fn resolve_ordinal_values(values: &[EnumeratedValue]) -> Vec<i64> {
             None => next,
         };
         resolved.push(ordinal);
-        next = ordinal + 1;
+        // An explicit value can be as large as an `i64` holds; the member
+        // after it is then out of range too, and reported as such.
+        next = ordinal.saturating_add(1);
     }
     resolved
-}
-
-/// Maps the CODESYS/TwinCAT enum base-type suffix (`(A, B) BYTE;`) to the
-/// byte size it specifies, overriding the automatic value-based sizing.
-fn byte_sized_for_underlying_type(type_name: ElementaryTypeName) -> ByteSized {
-    match type_name {
-        ElementaryTypeName::SINT | ElementaryTypeName::USINT | ElementaryTypeName::BYTE => {
-            ByteSized::B8
-        }
-        ElementaryTypeName::INT | ElementaryTypeName::UINT | ElementaryTypeName::WORD => {
-            ByteSized::B16
-        }
-        ElementaryTypeName::DINT | ElementaryTypeName::UDINT | ElementaryTypeName::DWORD => {
-            ByteSized::B32
-        }
-        ElementaryTypeName::LINT | ElementaryTypeName::ULINT | ElementaryTypeName::LWORD => {
-            ByteSized::B64
-        }
-        // Not reachable via the grammar (enum_underlying_type() only
-        // accepts integer_type_name()/bit_string_type_name()), but a
-        // reasonable default keeps this exhaustive without panicking.
-        _ => ByteSized::B32,
-    }
 }
 
 /// Try to create the semantic type information for the enumerated
 /// values initializer.
 ///
-/// This function determines how many bytes are needed to represent the
-/// enumerated values -- either from an explicit base-type suffix
-/// (`underlying_type_override`), or automatically from the resolved
-/// ordinal values (which may exceed the member count when explicit
-/// values are used).
-///
+/// The most members an enumeration may declare (P2020).
+const MAX_MEMBERS: usize = 65_536;
+
 /// The type records its members, their ordinals and `default`, the
-/// declared default value (see [`EnumerationMembers`]).
+/// declared default value (see [`EnumerationMembers`]). Every enumeration is
+/// stored as a `DINT` (REQ-EN-codegen-003), whatever base type its
+/// declaration names, so the type records none.
 pub fn try_from_values(
     enumerated_values: &dyn HasEnumeratedValues,
-    underlying_type_override: Option<ElementaryTypeName>,
     default: Option<&Id>,
 ) -> Result<TypeAttributes, Diagnostic> {
-    let members = EnumerationMembers::from_values(enumerated_values.values(), default);
-    if let Some(type_name) = underlying_type_override {
-        return Ok(TypeAttributes::new(
-            enumerated_values.values_span(),
-            SemanticType::Enumeration {
-                underlying_type: Box::new(SemanticType::Int {
-                    size: byte_sized_for_underlying_type(type_name),
-                }),
-                members,
-            },
-        ));
-    }
-
-    // Enumeration with values: MY_ENUM : (VAL1, VAL2, VAL3);
-    let resolved = resolve_ordinal_values(enumerated_values.values());
-    let max_value = resolved.into_iter().max().unwrap_or(0);
-    let range = max_value.max(0) as u128 + 1;
-    let underlying_type = if range <= 256 {
-        SemanticType::Int {
-            size: ByteSized::B8,
-        }
-    } else if range <= 65_536 {
-        SemanticType::Int {
-            size: ByteSized::B16,
-        }
-    } else {
-        // We could support more than 65k values, but I cannot imagine a reasonable
-        // program with that many states. We can change this if we can find such
-        // a program, we can enable more states here.
+    // We could support more than 65k members, but I cannot imagine a reasonable
+    // program with that many states. We can change this if we can find such
+    // a program.
+    if enumerated_values.values().len() > MAX_MEMBERS {
         return Err(Diagnostic::problem(
             Problem::EnumerationTooManyValues,
             Label::span(enumerated_values.values_span(), "Enumeration declaration"),
-        ));
-    };
+        )
+        .with_context("members", &enumerated_values.values().len().to_string()));
+    }
 
-    Ok(TypeAttributes::new(
-        enumerated_values.values_span(),
-        SemanticType::Enumeration {
-            underlying_type: Box::new(underlying_type),
-            members,
-        },
-    ))
+    check_ordinals_fit_dint(enumerated_values.values())?;
+    let members = EnumerationMembers::from_values(enumerated_values.values(), default);
+    Ok(TypeAttributes::new(SemanticType::Enumeration { members }))
+}
+
+/// Fails with P2044 at the first value whose ordinal is outside the range of
+/// `DINT`. Every enumeration is stored and operated on as a `DINT`
+/// (REQ-EN-codegen-003), whatever its base type, so an ordinal outside that
+/// range has no value at runtime (REQ-EN-codegen-084).
+fn check_ordinals_fit_dint(values: &[EnumeratedValue]) -> Result<(), Diagnostic> {
+    for (value, ordinal) in values.iter().zip(resolve_ordinal_values(values)) {
+        if i32::try_from(ordinal).is_err() {
+            return Err(Diagnostic::problem(
+                Problem::EnumValueOutOfRange,
+                Label::span(value.span(), "Enumeration value"),
+            )
+            .with_context_id("value", &value.value)
+            .with_context("ordinal", &ordinal.to_string()));
+        }
+    }
+    Ok(())
 }
 
 /// The type an alias of the enumeration `base` declares (`PAINT : COLOR`):
@@ -180,8 +147,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_when_10_enumeration_values_then_uses_8bit_underlying_type() {
-        // Create an enumeration with less than 256 values to test 8-bit underlying type
+    fn apply_when_10_enumeration_values_then_creates_enum() {
         let mut values = Vec::new();
         for i in 0..10 {
             values.push(format!("VALUE_{i}"));
@@ -209,14 +175,12 @@ END_TYPE
             .unwrap();
         let _library = apply(input, &mut env).unwrap();
 
-        // Check that the enumeration uses 16-bit underlying type
         let attributes = env.get(&TypeName::from("SMALL_ENUM")).unwrap();
         assert!(attributes.representation.is_enumeration());
     }
 
     #[test]
-    fn apply_when_257_enumeration_values_then_uses_16bit_underlying_type() {
-        // Create an enumeration with more than 256 values to test 16-bit underlying type
+    fn apply_when_257_enumeration_values_then_creates_enum() {
         let mut values = Vec::new();
         for i in 0..257 {
             values.push(format!("VALUE_{i}"));
@@ -244,14 +208,13 @@ END_TYPE
             .unwrap();
         let _library = apply(input, &mut env).unwrap();
 
-        // Check that the enumeration uses 16-bit underlying type
         let attributes = env.get(&TypeName::from("LARGE_ENUM")).unwrap();
         assert!(attributes.representation.is_enumeration());
     }
 
     #[test]
     fn apply_when_very_large_enumeration_then_error() {
-        // Create an enumeration with more than 65,536 values to test 32-bit underlying type
+        // More members than an enumeration may declare (P2020)
         let mut values = Vec::new();
         for i in 0..65_537 {
             values.push(format!("VALUE_{i}"));
@@ -285,6 +248,80 @@ END_TYPE
         );
     }
 
+    /// The problems that declaring the types of `program` reports.
+    fn declaration_errors(program: &str) -> Vec<ironplc_dsl::diagnostic::Diagnostic> {
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
+                .unwrap();
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        apply(input, &mut env).err().unwrap_or_default()
+    }
+
+    /// REQ-EN-codegen-084: an ordinal above `DINT` is reported, whatever the
+    /// enumeration's base type.
+    #[test]
+    fn apply_when_explicit_value_above_dint_with_base_type_then_p2044() {
+        let errors =
+            declaration_errors("TYPE BIG : (SMALL := 0, HUGE := 5000000000) LINT; END_TYPE");
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].code, Problem::EnumValueOutOfRange.code());
+        assert!(errors[0].described.iter().any(|item| item.contains("HUGE")));
+    }
+
+    /// REQ-EN-codegen-084: an ordinal below `DINT` is reported.
+    #[test]
+    fn apply_when_explicit_value_below_dint_then_p2044() {
+        let errors = declaration_errors("TYPE E : (LOW := -2147483649, HIGH); END_TYPE");
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].code, Problem::EnumValueOutOfRange.code());
+    }
+
+    /// REQ-EN-codegen-084: a value numbered on past the largest `DINT` is
+    /// reported, at that value.
+    #[test]
+    fn apply_when_value_numbered_past_dint_then_p2044_at_that_value() {
+        let errors = declaration_errors("TYPE E : (TOP := 2147483647, OVER) DINT; END_TYPE");
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].code, Problem::EnumValueOutOfRange.code());
+        assert!(errors[0].described.iter().any(|item| item.contains("OVER")));
+    }
+
+    /// One value above 16 bits, with no base type, is an enumeration rather
+    /// than P2020, which is about the number of members.
+    #[test]
+    fn apply_when_value_above_16_bits_without_base_type_then_creates_enum() {
+        let input = ironplc_parser::parse_program(
+            "TYPE E : (A := 100000, B); END_TYPE",
+            &FileId::default(),
+            &CompilerOptions::default(),
+        )
+        .unwrap();
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        apply(input, &mut env).unwrap();
+        let attributes = env.get(&TypeName::from("E")).unwrap();
+        assert!(attributes.representation.is_enumeration());
+    }
+
+    #[test]
+    fn apply_when_values_at_dint_bounds_then_creates_enum() {
+        let errors = declaration_errors(
+            "TYPE E : (BOTTOM := -2147483648, TOP := 2147483647) DINT; END_TYPE",
+        );
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn resolve_ordinal_values_when_explicit_value_at_i64_max_then_next_saturates() {
+        let values = vec![value_with("A", i64::MAX), value("B")];
+        assert_eq!(resolve_ordinal_values(&values), vec![i64::MAX, i64::MAX]);
+    }
+
     #[test]
     fn apply_when_enumeration_in_simple_declaration_then_creates_enum() {
         let program = "
@@ -304,7 +341,6 @@ END_TYPE
         // Check that the enumeration type was created
         let attributes = env.get(&TypeName::from("LEVEL")).unwrap();
         assert!(attributes.representation.is_enumeration());
-        assert_eq!(Some(1), attributes.representation.size_in_bytes());
     }
 
     #[test]
@@ -327,11 +363,10 @@ END_TYPE
         // Check that the enumeration type was created
         let attributes = env.get(&TypeName::from("LEVEL2")).unwrap();
         assert!(attributes.representation.is_enumeration());
-        assert_eq!(Some(1), attributes.representation.size_in_bytes());
     }
 
     #[test]
-    fn apply_when_enum_base_type_suffix_then_uses_specified_size() {
+    fn apply_when_enum_base_type_suffix_then_creates_enum() {
         let program = "
 TYPE
 E_Small : (A, B) WORD;
@@ -346,33 +381,10 @@ END_TYPE
             .unwrap();
         let _library = apply(input, &mut env).unwrap();
 
-        // WORD is explicitly specified -- 2 bytes, even though only 2
-        // members would otherwise size to 1 byte automatically.
+        // The suffix names a base type, and every enumeration is a DINT
+        // whatever it names (REQ-EN-codegen-003).
         let attributes = env.get(&TypeName::from("E_Small")).unwrap();
-        assert_eq!(Some(2), attributes.representation.size_in_bytes());
-    }
-
-    #[test]
-    fn apply_when_enum_explicit_value_exceeds_member_count_then_sizes_from_value() {
-        let program = "
-TYPE
-E_Sparse : (A := 300, B);
-END_TYPE
-        ";
-        let input =
-            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
-                .unwrap();
-        let mut env = TypeEnvironmentBuilder::new()
-            .with_elementary_types()
-            .build()
-            .unwrap();
-        let _library = apply(input, &mut env).unwrap();
-
-        // Only 2 members (would auto-size to 1 byte by count), but the
-        // explicit value 300 requires 2 bytes -- sizing must be based on
-        // the resolved value, not just the member count.
-        let attributes = env.get(&TypeName::from("E_Sparse")).unwrap();
-        assert_eq!(Some(2), attributes.representation.size_in_bytes());
+        assert!(attributes.representation.is_enumeration());
     }
 
     /// The members of the type `name` names, as (member, ordinal) pairs,

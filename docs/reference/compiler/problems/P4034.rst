@@ -35,6 +35,12 @@ An element of a ``STRING`` array and a ``STRING`` field of a structure hold a
 ``STRING`` just as a ``STRING`` variable does. Storing a ``WSTRING`` into one,
 as in ``names[1] := wide`` or ``names[1] := "abc"``, is the same error.
 
+A ``STRING`` output of a function block holds a ``STRING`` too, whether it is
+read from the instance or stored by an output assignment. With ``fb`` an
+instance of a block whose output ``text`` is a ``STRING``, ``wide := fb.text``
+and ``fb(text => wide)`` are each this error, and so is an output assignment
+that stores a function's ``STRING`` output in a ``WSTRING``.
+
 To fix this error, use variables of the same string type on both sides:
 
 .. code-block::

@@ -19,15 +19,16 @@ fn init_test_logger() {
 #[macro_use]
 mod test_macros;
 
+mod builtin_function;
 mod call_assignment_check;
+mod call_binding;
 mod callee_resolution;
 mod clean_analysis;
 mod constant_folding;
 mod enumerated_value_type;
 pub mod enumeration_members;
-mod enumeration_values;
+pub mod execution_model;
 mod function_environment;
-mod intrinsic;
 mod result;
 mod rule_abstract_not_instantiated;
 mod rule_array_index_range;
@@ -69,6 +70,7 @@ mod rule_string_length_range;
 mod rule_string_literal_char_range;
 mod rule_struct_initializer_expression_allowed;
 mod rule_support;
+mod rule_task_configuration;
 mod rule_task_names_unique;
 mod rule_temporal_literal_range;
 mod rule_unsupported_extension;
@@ -78,30 +80,30 @@ mod rule_var_decl_const_initialized;
 mod rule_var_decl_const_not_fb;
 mod rule_var_decl_global_const_requires_external_const;
 mod rule_var_decl_initializer_type_compat;
+mod rule_var_external_matches_global;
 mod scoped_table;
 mod semantic_context;
 pub mod semantic_type;
 pub mod stages;
+pub mod standard_function_block;
 mod string_similarity;
 pub mod symbol_environment;
 pub mod system_globals;
 mod type_attributes;
-mod type_category;
 mod type_compat;
 mod type_environment;
 pub mod type_id;
-mod type_table;
 pub mod value_range;
 pub mod value_type;
 mod variable_type;
 mod write_collector;
+mod xform_bind_call_arguments;
 mod xform_fold_constant_expressions;
 mod xform_fold_initializer_expressions;
 mod xform_insert_implicit_conversions;
 mod xform_insert_implicit_deref;
 mod xform_int_to_bool_initializer;
 mod xform_mark_unwritten_constants;
-mod xform_named_to_positional_args;
 mod xform_remove_unsigned_abs;
 mod xform_resolve_adr;
 mod xform_resolve_constant_expressions;
@@ -111,7 +113,6 @@ pub mod xform_resolve_initial_values;
 mod xform_resolve_late_bound_expr_kind;
 mod xform_resolve_late_bound_type_initializer;
 mod xform_resolve_symbol_and_function_environment;
-mod xform_resolve_type_aliases;
 mod xform_resolve_type_decl_environment;
 mod xform_toposort_declarations;
 
@@ -121,6 +122,11 @@ mod intermediates;
 pub mod extractors;
 
 // Re-export public types for external use
+pub use builtin_function::{
+    BitShift, BuiltinFunction, InputsOfOneType, NumericFunction, OneTypeResult, StringFunction,
+    TimeFunction,
+};
+pub use callee_resolution::MethodOwners;
 pub use clean_analysis::CleanAnalysis;
 pub use function_environment::{
     FunctionEnvironment, FunctionEnvironmentBuilder, FunctionSignature,
@@ -129,19 +135,12 @@ pub use intermediates::arithmetic_overload::{
     resolve_arithmetic_fold, resolve_arithmetic_overload, typed_overload, FoldFailure, Overload,
     TypedOverload,
 };
-pub use intermediates::enumeration::resolve_ordinal_values;
 pub use intermediates::operator_function_form::FormOf;
-pub use intrinsic::{
-    BitShift, InputsOfOneType, Intrinsic, NumericFunction, OneTypeResult, StringFunction,
-    TimeFunction,
-};
 pub use semantic_context::{SemanticContext, SemanticContextBuilder};
 pub use semantic_type::SemanticType;
+pub use standard_function_block::{CounterWidth, StandardFunctionBlock};
 pub use type_attributes::TypeAttributes;
-pub use type_category::TypeCategory;
-pub use type_environment::{
-    elementary_type, TypeEnvironment, TypeEnvironmentBuilder, UsageContext,
-};
+pub use type_environment::{elementary_type, TypeEnvironment, TypeEnvironmentBuilder};
 
 #[cfg(test)]
 mod test_helpers;
@@ -165,3 +164,5 @@ mod spec_conformance_constant_inference;
 mod spec_conformance_keyword_function_forms;
 #[cfg(test)]
 mod spec_conformance_pointer_to;
+#[cfg(test)]
+mod spec_conformance_variable_binding;

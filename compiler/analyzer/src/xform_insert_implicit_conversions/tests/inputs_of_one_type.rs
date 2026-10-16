@@ -5,7 +5,7 @@ use super::*;
 
 /// The variables the programs of these tests declare.
 const VARS: &str = "s : SINT; i : INT; d : DINT; e : DINT; l : LINT; k : LINT; n : INT;
-    r : REAL; lr : LREAL; g : BOOL;";
+    us : USINT; ui : UINT; r : REAL; lr : LREAL; g : BOOL;";
 
 /// The inputs of every call to `name` in a program assigning `value` to a
 /// variable of type `target`, each as [`describe`] shows it.
@@ -20,13 +20,14 @@ fn strings(values: &[&str]) -> Vec<String> {
 #[spec_test(REQ_IC_analyzer_073)]
 #[rstest]
 #[case::max("MAX(i, l)", "MAX", &["INT->LINT", "LINT"])]
+#[case::unsigned_of_result_width("MAX(us, d)", "MAX", &["USINT->DINT", "DINT"])]
 #[case::min_widest_first("MIN(l, d)", "MIN", &["LINT", "DINT->LINT"])]
 #[case::limit("LIMIT(i, d, l)", "LIMIT", &["INT->LINT", "DINT->LINT", "LINT"])]
 #[case::sel("SEL(g, i, l)", "SEL", &["BOOL", "INT->LINT", "LINT"])]
 #[case::mux("MUX(n, i, l)", "MUX", &["INT", "INT->LINT", "LINT"])]
 #[case::atan2("ATAN2(r, lr)", "ATAN2", &["REAL->LREAL", "LREAL"])]
 #[case::expt_exponent("EXPT(r, l)", "EXPT", &["REAL", "LINT->REAL"])]
-fn apply_when_input_of_another_width_then_converted_to_result_type(
+fn apply_when_input_of_another_operation_type_then_converted_to_result_type(
     #[case] value: &str,
     #[case] name: &str,
     #[case] expected: &[&str],
@@ -35,15 +36,22 @@ fn apply_when_input_of_another_width_then_converted_to_result_type(
 }
 
 #[spec_test(REQ_IC_analyzer_074)]
-#[test]
-fn apply_when_inputs_share_result_width_then_unchanged() {
-    assert_eq!(inputs("INT", "MAX(s, i)", "MAX"), strings(&["SINT", "INT"]));
+#[rstest]
+#[case::signed("INT", "MAX(s, i)", &["SINT", "INT"])]
+#[case::unsigned("UINT", "MAX(us, ui)", &["USINT", "UINT"])]
+fn apply_when_inputs_share_result_operation_type_then_unchanged(
+    #[case] target: &str,
+    #[case] value: &str,
+    #[case] expected: &[&str],
+) {
+    assert_eq!(inputs(target, value, "MAX"), strings(expected));
 }
 
 #[spec_test(REQ_IC_analyzer_075)]
 #[rstest]
 #[case::wide_mux_selector("MUX(k, d, e)", "MUX", &["LINT->DINT", "DINT", "DINT"])]
 #[case::narrow_mux_selector("MUX(n, d, e)", "MUX", &["INT", "DINT", "DINT"])]
+#[case::unsigned_mux_selector("MUX(us, d, e)", "MUX", &["USINT->DINT", "DINT", "DINT"])]
 #[case::sel_selector("SEL(g, d, e)", "SEL", &["BOOL", "DINT", "DINT"])]
 fn apply_when_selector_then_converted_to_dint_or_left_a_bool(
     #[case] value: &str,

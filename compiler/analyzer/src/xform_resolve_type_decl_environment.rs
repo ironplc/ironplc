@@ -12,10 +12,10 @@
 //! The transformation succeeds when all data type declarations
 //! resolve to a declared type.
 use crate::intermediates::*;
-use crate::semantic_type::{FunctionBlockVarType, SemanticStructField, SemanticType};
+use crate::semantic_type::SemanticType;
 use crate::type_environment::TypeEnvironment;
 use ironplc_dsl::common::*;
-use ironplc_dsl::core::{Id, Located};
+use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_problems::Problem;
@@ -107,12 +107,10 @@ impl TypeEnvironment {
                         },
                     ))
                 }
-                // FunctionBlock and Function types are POUs (Program Organization Units),
-                // not TYPE declarations, so they should never appear in the type environment.
+                // A function block is a POU (Program Organization Unit), not a TYPE
+                // declaration, so it should never appear here.
                 // If we reach this branch, it indicates a bug in the compiler.
-                SemanticType::FunctionBlock { .. } | SemanticType::Function { .. } => {
-                    Err(Diagnostic::internal_error())
-                }
+                SemanticType::FunctionBlock { .. } => Err(Diagnostic::internal_error()),
                 // Primitive types are handled by the is_primitive() check above,
                 // so reaching this branch indicates a bug in the compiler
                 SemanticType::Bool
@@ -179,7 +177,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
                     .as_ref()
                     .map(|value| &value.value);
                 let attributes =
-                    enumeration::try_from_values(enumerated_values_initializer, None, default)?;
+                    enumeration::try_from_values(enumerated_values_initializer, default)?;
                 self.insert_type(&node.type_name, attributes);
             }
             InitialValueAssignmentKind::EnumeratedType(_enumerated_initial_value_assignment) => {
@@ -217,10 +215,10 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 // Handle subrange specifications like: TYPE MY_RANGE : INT (1..100); END_TYPE
                 let result = subrange::try_from(&node.type_name, &subrange.spec, self)?;
                 match result {
-                    subrange::TypeResolution::Type(attributes) => {
+                    TypeResolution::Type(attributes) => {
                         self.insert_type(&node.type_name, attributes);
                     }
-                    subrange::TypeResolution::Alias(base_type_name) => {
+                    TypeResolution::Alias(base_type_name) => {
                         self.insert_alias(&node.type_name, &base_type_name)?;
                     }
                 }
@@ -241,11 +239,11 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 // Handle array specifications like: TYPE MY_ARRAY : ARRAY [1..10] OF INT; END_TYPE
                 let result = array::try_from(&node.type_name, &array_init.spec, self)?;
                 match result {
-                    array::TypeResolution::Type(attributes) => {
+                    TypeResolution::Type(attributes) => {
                         self.insert_type(&node.type_name, attributes);
                         self.record_declared_array_element(&node.type_name, &array_init.spec);
                     }
-                    array::TypeResolution::Alias(base_type_name) => {
+                    TypeResolution::Alias(base_type_name) => {
                         self.insert_alias(&node.type_name, &base_type_name)?;
                     }
                 }
@@ -290,7 +288,6 @@ impl Fold<Diagnostic> for TypeEnvironment {
             SpecificationKind::Inline(spec_values) => {
                 let attributes = enumeration::try_from_values(
                     spec_values,
-                    node.spec_init.underlying_type.clone(),
                     node.spec_init.default.as_ref().map(|value| &value.value),
                 )?;
                 self.insert_type(&node.type_name, attributes);
@@ -313,7 +310,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
         node: StructureDeclaration,
     ) -> Result<StructureDeclaration, Diagnostic> {
         // Use the structure processing module to create the structure type
-        let attrs = crate::intermediates::structure::try_from(&node.type_name, &node, self)?;
+        let attrs = crate::intermediates::structure::try_from(&node, self)?;
         self.insert_type(&node.type_name, attrs);
         Ok(node)
     }
@@ -325,10 +322,10 @@ impl Fold<Diagnostic> for TypeEnvironment {
         let result = subrange::try_from(&node.type_name, &node.spec, self)?;
 
         match result {
-            subrange::TypeResolution::Type(attributes) => {
+            TypeResolution::Type(attributes) => {
                 self.insert_type(&node.type_name, attributes);
             }
-            subrange::TypeResolution::Alias(base_type_name) => {
+            TypeResolution::Alias(base_type_name) => {
                 self.insert_alias(&node.type_name, &base_type_name)?;
             }
         }
@@ -344,11 +341,11 @@ impl Fold<Diagnostic> for TypeEnvironment {
         let result = array::try_from(&node.type_name, &node.spec, self)?;
 
         match result {
-            array::TypeResolution::Type(attributes) => {
+            TypeResolution::Type(attributes) => {
                 self.insert_type(&node.type_name, attributes);
                 self.record_declared_array_element(&node.type_name, &node.spec);
             }
-            array::TypeResolution::Alias(base_type_name) => {
+            TypeResolution::Alias(base_type_name) => {
                 self.insert_alias(&node.type_name, &base_type_name)?;
             }
         }
@@ -362,12 +359,9 @@ impl Fold<Diagnostic> for TypeEnvironment {
     ) -> Result<ReferenceDeclaration, Diagnostic> {
         let target_type = self.resolve_reference_target(&node.type_name, &node.target)?;
 
-        let attrs = crate::type_attributes::TypeAttributes::new(
-            node.type_name.span(),
-            SemanticType::Reference {
-                target_type: Box::new(target_type),
-            },
-        );
+        let attrs = crate::type_attributes::TypeAttributes::new(SemanticType::Reference {
+            target_type: Box::new(target_type),
+        });
         self.insert_type(&node.type_name, attrs);
         Ok(node)
     }
@@ -378,78 +372,13 @@ impl Fold<Diagnostic> for TypeEnvironment {
     ) -> Result<FunctionBlockDeclaration, Diagnostic> {
         // Register the user-defined function block in the type environment
         // so that variable declarations like `myFb : MY_FB` resolve to
-        // SemanticType::FunctionBlock, just like stdlib FBs.
-        let mut fields = Vec::new();
-        let mut current_offset = 0u32;
-
-        for decl in &node.variables {
-            let var_type = match decl.var_type {
-                VariableType::Input => Some(FunctionBlockVarType::Input),
-                VariableType::Output => Some(FunctionBlockVarType::Output),
-                VariableType::InOut => Some(FunctionBlockVarType::InOut),
-                VariableType::Var => Some(FunctionBlockVarType::Internal),
-                _ => None,
-            };
-            let var_type = match var_type {
-                Some(vt) => vt,
-                None => continue,
-            };
-
-            if let Some(id) = decl.identifier.symbolic_id() {
-                let field_type = match &decl.initializer {
-                    InitialValueAssignmentKind::Simple(simple) => self
-                        .get(&simple.type_name)
-                        .ok_or_else(|| {
-                            Diagnostic::problem(
-                                Problem::ParentTypeNotDeclared,
-                                Label::span(simple.type_name.span(), "Field type"),
-                            )
-                        })?
-                        .representation
-                        .clone(),
-                    InitialValueAssignmentKind::FunctionBlock(fb_init) => self
-                        .get(&fb_init.type_name)
-                        .ok_or_else(|| {
-                            Diagnostic::problem(
-                                Problem::ParentTypeNotDeclared,
-                                Label::span(fb_init.type_name.span(), "Field type"),
-                            )
-                        })?
-                        .representation
-                        .clone(),
-                    _ => {
-                        // Skip field types we can't resolve yet (strings, arrays, etc.)
-                        continue;
-                    }
-                };
-
-                let alignment = field_type.alignment_bytes() as u32;
-                let aligned_offset = if alignment == 0 {
-                    current_offset
-                } else {
-                    current_offset.div_ceil(alignment) * alignment
-                };
-                let size = field_type.size_in_bytes().unwrap_or(0);
-
-                fields.push(SemanticStructField {
-                    name: Id::from(id.to_string().as_str()),
-                    field_type,
-                    offset: aligned_offset,
-                    var_type: Some(var_type),
-                    has_default: false,
-                });
-
-                current_offset = aligned_offset + size;
-            }
-        }
-
-        let attrs = crate::type_attributes::TypeAttributes::new(
-            node.name.span(),
-            SemanticType::FunctionBlock {
-                name: node.name.name.to_string(),
-                fields,
-            },
-        );
+        // SemanticType::FunctionBlock, just like stdlib FBs. Its fields are
+        // its variables, whose types are not resolved yet:
+        // `xform_resolve_decl_types` records them in the environment once
+        // they are, never in the block's type.
+        let attrs = crate::type_attributes::TypeAttributes::new(SemanticType::FunctionBlock {
+            name: node.name.name.to_string(),
+        });
         self.insert_type(&node.name, attrs);
 
         Ok(node)
@@ -473,10 +402,8 @@ impl Fold<Diagnostic> for TypeEnvironment {
         // `InterfaceDeclaration` itself always triggers P9999 via
         // `rule_unsupported_extension`, which blocks codegen for the whole
         // project before this representation could matter.
-        let attrs = crate::type_attributes::TypeAttributes::new(
-            node.name.span(),
-            SemanticType::Structure { fields: vec![] },
-        );
+        let attrs =
+            crate::type_attributes::TypeAttributes::new(SemanticType::Structure { fields: vec![] });
         self.insert_type(&TypeName::from_id(&node.name), attrs);
         Ok(node)
     }
@@ -602,6 +529,31 @@ END_TYPE
         assert_eq!(diagnostics[0].code, Problem::TypeDeclNameDuplicated.code());
         assert_eq!(library.elements.len(), 2);
         assert!(env.get(&TypeName::from("LEVEL")).is_some());
+    }
+
+    /// The first declaration of a repeated alias is labeled at its own
+    /// name, not at the declaration of the type it aliases.
+    #[test]
+    fn apply_when_alias_repeated_then_p2007_labels_first_alias() {
+        let program = "
+TYPE
+Base : STRUCT x : INT; END_STRUCT;
+END_TYPE
+TYPE
+Again : Base;
+END_TYPE
+TYPE
+Again : BOOL;
+END_TYPE
+        ";
+        let (result, _env) = parse_and_apply_with_elementary_types(program);
+        let (_, diagnostics) = result.unwrap();
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, Problem::TypeDeclNameDuplicated.code());
+        let first = program.find("Again").unwrap();
+        let second = program.rfind("Again").unwrap();
+        assert_eq!(diagnostics[0].primary.location.start, second);
+        assert_eq!(diagnostics[0].secondary[0].location.start, first);
     }
 
     #[test]

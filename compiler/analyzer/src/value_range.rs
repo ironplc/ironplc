@@ -44,9 +44,9 @@ pub fn fits(count: i128, bits: u32, signed: bool) -> bool {
 /// any other: `BYTE#256` is not a byte (ADR-0053).
 pub fn of(representation: &SemanticType) -> Option<(i128, i128)> {
     match representation {
-        SemanticType::Int { size } => Some(for_integer(u32::from(size.as_bytes()) * 8, true)),
+        SemanticType::Int { size } => Some(for_integer(u32::from(size.bits()), true)),
         SemanticType::UInt { size } | SemanticType::Bytes { size } => {
-            Some(for_integer(u32::from(size.as_bytes()) * 8, false))
+            Some(for_integer(u32::from(size.bits()), false))
         }
         // A subrange states its own bounds, which are narrower than the base
         // type's by construction (`rule_range_limits` rejects the

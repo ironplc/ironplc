@@ -113,6 +113,15 @@ END_PROGRAM
     run(5_000_000), expect("q1", 0), expect("q2", 1),
     run(9_000_000), expect("q1", 0), expect("q2", 0),
 ])]
+// Once the delay has run out, Q stays FALSE and ET stays at PT for as long
+// as IN stays FALSE.
+#[case::q_and_et_hold_after_delay(TOF_ENABLE_Q_ET, &[
+    write("enable", 1), run(0),
+    write("enable", 0), run(1_000_000),
+    run(7_000_000), expect("result", 0), expect("elapsed", Duration::seconds(5)),
+    run(9_000_000), expect("result", 0), expect("elapsed", Duration::seconds(5)),
+    run(30_000_000), expect("result", 0), expect("elapsed", Duration::seconds(5)),
+])]
 fn end_to_end_fb_tof(#[case] source: &str, #[case] steps: &[FbStep]) {
     drive_fb(source, &CompilerOptions::default(), steps);
 }

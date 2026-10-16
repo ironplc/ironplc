@@ -33,7 +33,7 @@
 //! ```
 use ironplc_dsl::{
     common::*,
-    core::{Id, Located},
+    core::Located,
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
@@ -41,6 +41,7 @@ use ironplc_problems::Problem;
 use std::convert::Infallible;
 
 use crate::{
+    enumeration_members::EnumerationMembers,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
@@ -71,37 +72,28 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
         }
     }
 
-    /// Returns enumeration values for a given enumeration type name.
-    ///
-    /// Uses the TypeEnvironment to resolve aliases and the SymbolEnvironment to find values.
-    /// Handles alias chains by following references to base enumeration types.
-    ///
-    /// Returns Ok containing the list of valid enumeration value IDs.
+    /// The members of the enumeration `type_name` names, as the type
+    /// environment records them. An alias (`B : A`) has the members of the
+    /// enumeration it names.
     ///
     /// # Errors
     ///
-    /// Returns Err(String) description of the error if:
-    ///
-    /// * a type name does not exist
-    /// * the type is not an enumeration
-    /// * there's a circular reference in the alias chain
+    /// `EnumNotDeclared` when `type_name` names no type, or a type that is
+    /// not an enumeration.
     fn find_enum_declaration_values(
         &self,
         type_name: &TypeName,
-    ) -> Result<Vec<&'a Id>, Diagnostic> {
-        // Check if the type exists and is an enumeration
-        if !self.context.types().is_enumeration(type_name) {
-            return Err(Diagnostic::problem(
-                Problem::EnumNotDeclared,
-                Label::span(type_name.span(), "Type is not an enumeration"),
-            ));
-        }
-
-        // Get all enumeration values for the type from the symbol environment
-        Ok(self
-            .context
-            .symbols()
-            .get_enumeration_values_for_type(type_name))
+    ) -> Result<&'a EnumerationMembers, Diagnostic> {
+        self.context
+            .types()
+            .get(type_name)
+            .and_then(|attributes| attributes.representation.enumeration_members())
+            .ok_or_else(|| {
+                Diagnostic::problem(
+                    Problem::EnumNotDeclared,
+                    Label::span(type_name.span(), "Type is not an enumeration"),
+                )
+            })
     }
 }
 
@@ -118,8 +110,8 @@ impl Visitor<Infallible> for RuleDeclaredEnumeratedValues<'_> {
         &mut self,
         init: &EnumeratedInitialValueAssignment,
     ) -> Result<Self::Value, Infallible> {
-        let defined_values = match self.find_enum_declaration_values(&init.type_name) {
-            Ok(values) => values,
+        let members = match self.find_enum_declaration_values(&init.type_name) {
+            Ok(members) => members,
             Err(diagnostic) => {
                 // The type is not an enumeration, so there is nothing to check
                 // this initializer's value against. Report that and carry on to
@@ -129,8 +121,7 @@ impl Visitor<Infallible> for RuleDeclaredEnumeratedValues<'_> {
             }
         };
         if let Some(value) = &init.initial_value {
-            // Check if the value is in the list of defined enumeration values
-            if !defined_values.iter().any(|id| **id == value.value) {
+            if !members.contains(&value.value) {
                 self.diagnostics.push(
                     Diagnostic::problem(
                         Problem::EnumValueNotDefined,

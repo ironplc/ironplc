@@ -25,17 +25,16 @@
 //! into a declared destination is *encoded for* that destination rather than
 //! checked against it, which is [`compile_string_value`].
 
-use ironplc_analyzer::{Intrinsic, SemanticType, StringFunction};
+use ironplc_analyzer::{BuiltinFunction, SemanticType, StringFunction};
 use ironplc_container::CharWidth;
 use ironplc_dsl::common::{ConstantKind, ElementaryTypeName};
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, ExprKind, Function, SymbolicVariableKind, Variable};
 
-use super::call_args::collect_positional_args;
+use super::call_args::collect_input_args;
 use super::compile::{
-    emit_string_literal_load, CompileContext, DEFAULT_OP_TYPE, DEFAULT_STRING_MAX_LENGTH,
-    NARROW_CHAR_WIDTH,
+    emit_string_literal_load, CompileContext, DEFAULT_STRING_MAX_LENGTH, NARROW_CHAR_WIDTH,
 };
 use super::compile_expr::{compile_expr, variable_span};
 use super::type_info::expr_representation;
@@ -210,9 +209,9 @@ fn string_bound_of(field_type: &SemanticType) -> Option<Option<u16>> {
 /// analyzer typed it as a string and codegen does not know how -- so it is
 /// reported as one, naming the call, rather than sized at a guess.
 fn function_bound(ctx: &CompileContext, func: &Function) -> Result<Option<u16>, Diagnostic> {
-    match ctx.intrinsics.get(&func.name) {
-        Some(Intrinsic::String(function)) => string_function_bound(ctx, func, *function),
-        Some(Intrinsic::Conversion {
+    match ctx.builtin_functions.get(&func.name) {
+        Some(BuiltinFunction::String(function)) => string_function_bound(ctx, func, *function),
+        Some(BuiltinFunction::Conversion {
             target: ElementaryTypeName::STRING,
             ..
         }) => Ok(None),
@@ -237,7 +236,7 @@ fn string_function_bound(
 ) -> Result<Option<u16>, Diagnostic> {
     match function {
         StringFunction::Concat | StringFunction::Insert | StringFunction::Replace => {
-            let args = collect_positional_args(func);
+            let args = collect_input_args(func);
             let Some(first) = args.first() else {
                 return Err(unknown_string_bound(
                     func.name.span(),
@@ -254,7 +253,7 @@ fn string_function_bound(
         StringFunction::Left
         | StringFunction::Right
         | StringFunction::Mid
-        | StringFunction::Delete => match collect_positional_args(func).first() {
+        | StringFunction::Delete => match collect_input_args(func).first() {
             Some(first) => string_expr_bound(ctx, first),
             None => Err(unknown_string_bound(
                 func.name.span(),
@@ -396,7 +395,7 @@ pub(crate) fn compile_string_value(
         }
     }
 
-    compile_expr(emitter, ctx, expr, DEFAULT_OP_TYPE)
+    compile_expr(emitter, ctx, expr)
 }
 
 /// The span to blame an operand's encoding on: its own when it has one, and
@@ -447,7 +446,7 @@ mod tests {
 
     use super::*;
     use crate::compile::StringVarInfo;
-    use crate::compile_call::intrinsics_by_name;
+    use crate::compile_call::builtin_functions_by_name;
     use ironplc_analyzer::FunctionEnvironmentBuilder;
 
     /// A narrow literal of `len` code units.
@@ -482,9 +481,9 @@ mod tests {
 
     /// A context that knows the standard functions, as one compiling an
     /// analyzed program does.
-    fn context() -> CompileContext {
+    fn context() -> CompileContext<'static> {
         let mut ctx = CompileContext::new();
-        ctx.intrinsics = intrinsics_by_name(
+        ctx.builtin_functions = builtin_functions_by_name(
             &FunctionEnvironmentBuilder::new()
                 .with_stdlib_functions()
                 .build(),
@@ -494,7 +493,7 @@ mod tests {
 
     /// A context that declares one narrow string variable `s` of capacity
     /// `max_length`.
-    fn context_with_string(max_length: u16) -> CompileContext {
+    fn context_with_string(max_length: u16) -> CompileContext<'static> {
         let mut ctx = context();
         ctx.string_vars.insert(
             Id::from("s"),

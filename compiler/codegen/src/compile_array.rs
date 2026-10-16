@@ -4,17 +4,16 @@
 //! array read/write compilation. Separated from compile.rs to
 //! keep module sizes within the 1000-line guideline.
 
-use ironplc_dsl::common::{ArrayInitialElementKind, ConstantKind};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{Expr, ExprKind, SymbolicVariableKind, UnaryOp, Variable};
+use ironplc_dsl::textual::{Expr, SymbolicVariableKind, Variable};
 use ironplc_problems::Problem;
 
 use ironplc_analyzer::semantic_type::{ArrayDimension, ByteSized, SemanticType};
 use ironplc_container::{CharWidth, ContainerBuilder, SlotIndex, VarIndex};
 
 use super::compile::{CompileContext, OpWidth, Signedness, VarTypeInfo};
-use super::compile_expr::{compile_expr, op_type};
+use super::compile_subscript::Subscript;
 use crate::emit::Emitter;
 
 /// Normalized array specification, independent of AST representation.
@@ -119,7 +118,8 @@ pub(crate) enum ResolvedAccess<'ctx, 'ast> {
 /// `STR_LOAD_ARRAY_ELEM` and `STR_STORE_ARRAY_ELEM` address an element as
 /// `base + flat_index * stride`, reading `base` from a variable. The
 /// structure's variable holds the start of the whole structure rather than of
-/// the array, so the array's start is first computed into a scratch variable.
+/// the array, so the array's start is first computed into a scratch variable
+/// ([`StringPlace`](super::compile_string_place::StringPlace)).
 pub(crate) struct StructStringElement<'ast> {
     /// Struct variable table index (holds struct data_offset).
     pub var_index: VarIndex,
@@ -136,27 +136,6 @@ pub(crate) struct StructStringElement<'ast> {
     pub dimensions: Vec<DimensionInfo>,
     /// Subscript expressions.
     pub subscripts: Vec<&'ast Expr>,
-}
-
-impl StructStringElement<'_> {
-    /// Emits what `STR_LOAD_ARRAY_ELEM` and `STR_STORE_ARRAY_ELEM` need
-    /// before they run: stores `struct_data_offset + field_byte_offset` into
-    /// the scratch variable, then pushes the flat element index. The caller
-    /// follows with either opcode, passing `scratch_var_index` and
-    /// `string_desc_index`.
-    pub(crate) fn emit_base_and_index(
-        &self,
-        emitter: &mut Emitter,
-        ctx: &mut CompileContext,
-        span: &SourceSpan,
-    ) -> Result<(), Diagnostic> {
-        emitter.emit_load_var_i32(self.var_index);
-        let offset_const = ctx.add_i32_constant(self.field_byte_offset as i32);
-        emitter.emit_load_const_i32(offset_const);
-        emitter.emit_add_i32();
-        emitter.emit_store_var_i32(self.scratch_var_index);
-        emit_flat_index(emitter, ctx, &self.subscripts, &self.dimensions, span)
-    }
 }
 
 /// Resolves a variable reference into its access kind.
@@ -720,59 +699,15 @@ pub(crate) fn register_array_variable(
     Ok((type_tag, type_name_str))
 }
 
-/// Recursively walks the `ArrayInitialElementKind` tree and produces
-/// a flat `Vec<ConstantKind>` of initial values in element order.
-pub(crate) fn flatten_array_initial_values(
-    elements: &[ArrayInitialElementKind],
-) -> Result<Vec<ConstantKind>, Diagnostic> {
-    let mut result = Vec::new();
-    for elem in elements {
-        match elem {
-            ArrayInitialElementKind::Constant(value) => {
-                result.push(value.clone());
-            }
-            ArrayInitialElementKind::EnumValue(value) => {
-                return Err(Diagnostic::not_implemented(Label::span(
-                    value.span(),
-                    "Enumerated value in an array initializer",
-                )));
-            }
-            ArrayInitialElementKind::Repeated(repeated) => {
-                let count = repeated.size.value as usize;
-                match repeated.init.as_ref().as_ref() {
-                    Some(inner) => {
-                        let inner_values =
-                            flatten_array_initial_values(std::slice::from_ref(inner))?;
-                        for _ in 0..count {
-                            result.extend_from_slice(&inner_values);
-                        }
-                    }
-                    None => {
-                        let zero = ConstantKind::integer_literal("0")
-                            .map_err(|_| Diagnostic::internal_error())?;
-                        for _ in 0..count {
-                            result.push(zero.clone());
-                        }
-                    }
-                }
-            }
-            ArrayInitialElementKind::Structure(_) | ArrayInitialElementKind::Expression(_) => {
-                return Err(Diagnostic::internal_error());
-            }
-        }
-    }
-    Ok(result)
-}
-
 /// Emits bytecode to compute the 0-based flat index from subscript expressions.
 ///
 /// For constant subscripts, computes the flat index at compile time.
 /// For variable subscripts, emits i64 arithmetic:
 ///   `(s_0 - l_0) * stride_0 + (s_1 - l_1) * stride_1 + ...`
-pub(crate) fn emit_flat_index(
+pub(crate) fn emit_flat_index<S: Subscript>(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    subscripts: &[&Expr],
+    subscripts: &[S],
     dimensions: &[DimensionInfo],
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
@@ -790,18 +725,9 @@ pub(crate) fn emit_flat_index(
         return Ok(());
     }
 
-    // Variable case: emit runtime computation using i64 arithmetic. Each
-    // subscript compiles at its own type, which the analyzer converted to
-    // `DINT` where its width differed.
+    // Variable case: emit runtime computation using i64 arithmetic.
     for (k, (subscript, dim)) in subscripts.iter().zip(dimensions.iter()).enumerate() {
-        let own = op_type(ctx, subscript)?;
-        if own.0 != OpWidth::W32 {
-            return Err(Diagnostic::internal_error_at(Label::span(
-                subscript.span(),
-                "Array subscript of a width other than DINT's, and the analyzer recorded no conversion",
-            )));
-        }
-        compile_expr(emitter, ctx, subscript, own)?;
+        subscript.emit(emitter, ctx)?;
         if dim.lower_bound != 0 {
             let lb_const = ctx.add_i64_constant(dim.lower_bound as i64);
             emitter.emit_load_const_i64(lb_const);
@@ -824,14 +750,14 @@ pub(crate) fn emit_flat_index(
 /// Returns `Err` if a literal subscript is out of bounds. Analysis reports such
 /// a subscript first (`rule_array_index_range`, P2027), so this is the fallback
 /// for a caller that compiles without analysis.
-fn try_constant_flat_index(
-    subscripts: &[&Expr],
+fn try_constant_flat_index<S: Subscript>(
+    subscripts: &[S],
     dimensions: &[DimensionInfo],
     span: &SourceSpan,
 ) -> Result<Option<i32>, Diagnostic> {
     let mut flat_index: i32 = 0;
     for (subscript, dim) in subscripts.iter().zip(dimensions.iter()) {
-        let value = match try_extract_integer_literal(subscript) {
+        let value = match subscript.literal() {
             Some(v) => v,
             None => return Ok(None),
         };
@@ -845,31 +771,4 @@ fn try_constant_flat_index(
         flat_index += (value - dim.lower_bound) * dim.stride as i32;
     }
     Ok(Some(flat_index))
-}
-
-/// Extracts an i32 value from an expression if it is a literal integer.
-/// Returns `None` for any non-literal expression.
-fn try_extract_integer_literal(expr: &Expr) -> Option<i32> {
-    match &expr.kind {
-        ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
-            let unsigned = i32::try_from(lit.value.value.value).ok()?;
-            if lit.value.is_neg {
-                unsigned.checked_neg()
-            } else {
-                Some(unsigned)
-            }
-        }
-        ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Neg => match &unary.term.kind {
-            ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
-                let val = i32::try_from(lit.value.value.value).ok()?;
-                if lit.value.is_neg {
-                    Some(val)
-                } else {
-                    val.checked_neg()
-                }
-            }
-            _ => None,
-        },
-        _ => None,
-    }
 }

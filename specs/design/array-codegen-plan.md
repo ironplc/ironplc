@@ -1329,7 +1329,7 @@ Each PR is independently reviewable. Pre-work PRs are pure refactoring with zero
 | `compiler/codegen/src/compile_array.rs` | **New file**: `ArraySpec`, `DimensionInfo`, `ArrayVarInfo`, `ResolvedAccess`, `resolve_access()`, `register_array_variable()`, `emit_flat_index()`, constant folding helpers |
 | `compiler/codegen/src/compile.rs` | Widen `data_region_offset` to `u32`, add `array_vars` to `CompileContext`, thread `TypeEnvironment`, update `assign_variables()`, `emit_initial_values()`, `compile_variable_read()`, `compile_statement()` dispatch sites |
 | `compiler/problems/resources/problem-codes.csv` | Add `P2027,ArrayIndexOutOfBounds` |
-| `docs/compiler/problems/P2027.rst` | Document the compile-time array index out of bounds diagnostic |
+| `docs/reference/compiler/problems/P2027.rst` | Document the compile-time array index out of bounds diagnostic |
 | `compiler/vm/src/error.rs` | Add `ArrayIndexOutOfBounds` trap variant; widen `DataRegionOutOfBounds` from `u16` to `u32` (Pre-work PR 0b) |
 | `compiler/vm/resources/problem-codes.csv` | Add `V4005` |
 | `compiler/vm/src/vm.rs` | Add LOAD_ARRAY and STORE_ARRAY handlers, array descriptor loading |

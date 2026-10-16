@@ -19,6 +19,7 @@ use ironplc_container::{ContainerBuilder, SlotIndex, VarIndex};
 use super::compile::{
     CompileContext, OpType, OpWidth, Signedness, VarTypeInfo, DEFAULT_STRING_MAX_LENGTH,
 };
+use super::compile_enum::enum_var_type_info;
 use super::compile_expr::emit_truncation;
 use crate::emit::Emitter;
 
@@ -62,9 +63,6 @@ pub(crate) struct StructFieldInfo {
     pub slot_offset: SlotIndex,
     /// The field's semantic type (for nested resolution).
     pub field_type: SemanticType,
-    /// Op type for leaf (primitive/enum) fields. `None` for structure/array
-    /// fields (which are accessed via further resolution).
-    pub op_type: Option<OpType>,
     /// For STRING fields, the maximum character length. `None` for non-STRING fields.
     pub string_max_length: Option<u16>,
 }
@@ -98,17 +96,18 @@ pub(crate) fn resolve_field_op_type(field_type: &SemanticType) -> Option<OpType>
             ByteSized::B64 => Some((OpWidth::F64, Signedness::Signed)),
             _ => Some((OpWidth::F32, Signedness::Signed)),
         },
-        SemanticType::Enumeration {
-            underlying_type, ..
-        } => resolve_field_op_type(underlying_type),
+        // Every enumeration operates as a DINT (REQ-EN-codegen-003).
+        SemanticType::Enumeration { .. } => {
+            let dint = enum_var_type_info();
+            Some((dint.op_width, dint.signedness))
+        }
         SemanticType::Subrange { base_type, .. } => resolve_field_op_type(base_type),
         SemanticType::Reference { .. } => Some((OpWidth::W64, Signedness::Unsigned)),
         // Composite types are not loaded/stored as single values
         SemanticType::Structure { .. }
         | SemanticType::Array { .. }
         | SemanticType::String { .. }
-        | SemanticType::FunctionBlock { .. }
-        | SemanticType::Function { .. } => None,
+        | SemanticType::FunctionBlock { .. } => None,
     }
 }
 
@@ -144,7 +143,6 @@ pub(crate) fn build_struct_fields(
             Diagnostic::not_implemented(Label::span(span.clone(), msg))
         })?;
         let name = field.name.to_string().to_lowercase();
-        let op_type = resolve_field_op_type(&field.field_type);
         let string_max_length = match &field.field_type {
             SemanticType::String { max_len, .. } => {
                 Some(max_len.unwrap_or(DEFAULT_STRING_MAX_LENGTH as u128) as u16)
@@ -170,7 +168,6 @@ pub(crate) fn build_struct_fields(
             name,
             slot_offset,
             field_type: field.field_type.clone(),
-            op_type,
             string_max_length,
         });
         slot_offset = SlotIndex::new(slot_offset.raw() + field_slots);
@@ -334,12 +331,9 @@ pub(crate) fn var_type_info_for_field(field_type: &SemanticType) -> Option<VarTy
         | SemanticType::Time { size }
         | SemanticType::Date { size }
         | SemanticType::TimeOfDay { size }
-        | SemanticType::DateAndTime { size } => size.into(),
-        SemanticType::Enumeration {
-            underlying_type, ..
-        } => {
-            return var_type_info_for_field(underlying_type);
-        }
+        | SemanticType::DateAndTime { size } => size.bits(),
+        // Every enumeration is stored as a DINT (REQ-EN-codegen-003).
+        SemanticType::Enumeration { .. } => return Some(enum_var_type_info()),
         SemanticType::Subrange { base_type, .. } => {
             return var_type_info_for_field(base_type);
         }
@@ -528,8 +522,6 @@ mod tests {
         SemanticStructField {
             name: Id::from(name),
             field_type,
-            offset: 0,
-            var_type: None,
             has_default: false,
         }
     }
@@ -604,7 +596,6 @@ mod tests {
         assert_eq!(field_list[0].name, "s");
         assert_eq!(field_list[0].slot_offset, SlotIndex::new(0));
         assert_eq!(field_list[0].string_max_length, Some(255));
-        assert!(field_list[0].op_type.is_none());
     }
 
     #[test]
@@ -636,7 +627,6 @@ mod tests {
             "fb",
             SemanticType::FunctionBlock {
                 name: "MyFB".to_string(),
-                fields: vec![],
             },
         )];
         let result = build_struct_fields(&fields, &SourceSpan::default());
@@ -735,9 +725,6 @@ mod tests {
         }
         types.extend([
             SemanticType::Enumeration {
-                underlying_type: Box::new(SemanticType::Int {
-                    size: ByteSized::B16,
-                }),
                 members: EnumerationMembers::default(),
             },
             SemanticType::Subrange {
@@ -761,11 +748,6 @@ mod tests {
             },
             SemanticType::FunctionBlock {
                 name: "FB".to_string(),
-                fields: vec![],
-            },
-            SemanticType::Function {
-                return_type: None,
-                parameters: vec![],
             },
         ]);
 

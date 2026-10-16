@@ -17,6 +17,10 @@ This check applies only when the assignment target is a whole array or whole
 structure. Writing a single element or field (``a[1] := b[1]``,
 ``a.x := b.x``) is unaffected.
 
+An output assignment of a call (``fb(p => target)``) stores the output in its
+target after the call, so it is checked as ``target := fb.p`` is: a whole
+structure output stored in a structure of another type is this error.
+
 Example
 -------
 

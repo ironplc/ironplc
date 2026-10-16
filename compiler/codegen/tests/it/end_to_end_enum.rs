@@ -200,3 +200,69 @@ END_PROGRAM
     assert!(debug.enum_defs.iter().any(|e| e.type_name == "COLOR"));
     assert!(debug.enum_defs.iter().any(|e| e.type_name == "LEVEL"));
 }
+
+// --- An enumeration field holds every ordinal (issue 2238) ---
+//
+// Every enumeration is stored as a DINT (REQ-EN-codegen-003), in a structure
+// field as in a variable. A field once kept only the low 8 or 16 bits of an
+// ordinal: an ordinal of 200 read back as -56.
+
+fn explicit_values() -> CompilerOptions {
+    CompilerOptions {
+        allow_enum_explicit_values: true,
+        ..CompilerOptions::default()
+    }
+}
+
+e2e_i32_with!(
+    end_to_end_when_struct_enum_field_assigned_ordinal_above_127_then_holds_it,
+    explicit_values(),
+    "TYPE E : (NEG := -56, BIG := 200); END_TYPE
+     TYPE S : STRUCT c : E; END_STRUCT; END_TYPE
+     PROGRAM main VAR s : S; is_big : DINT; is_neg : DINT; END_VAR
+       s.c := BIG;
+       IF s.c = BIG THEN is_big := 1; ELSE is_big := 0; END_IF;
+       IF s.c = NEG THEN is_neg := 1; ELSE is_neg := 0; END_IF;
+     END_PROGRAM",
+    &[("is_big", 1), ("is_neg", 0)],
+);
+
+e2e_i32_with!(
+    end_to_end_when_struct_enum_field_initialized_ordinal_above_127_then_holds_it,
+    explicit_values(),
+    "TYPE E : (NEG := -56, BIG := 200); END_TYPE
+     TYPE S : STRUCT c : E; END_STRUCT; END_TYPE
+     PROGRAM main VAR s : S := (c := BIG); is_big : DINT; END_VAR
+       IF s.c = BIG THEN is_big := 1; ELSE is_big := 0; END_IF;
+     END_PROGRAM",
+    &[("is_big", 1)],
+);
+
+e2e_i32_with!(
+    end_to_end_when_struct_enum_field_assigned_ordinal_above_32767_then_holds_it,
+    explicit_values(),
+    "TYPE E : (SMALL := 1, BIG := 40000); END_TYPE
+     TYPE S : STRUCT c : E; END_STRUCT; END_TYPE
+     PROGRAM main VAR s : S; is_big : DINT; END_VAR
+       s.c := BIG;
+       IF s.c = BIG THEN is_big := 1; ELSE is_big := 0; END_IF;
+     END_PROGRAM",
+    &[("is_big", 1)],
+);
+
+#[test]
+fn end_to_end_when_struct_enum_field_assigned_member_past_127_then_holds_it() {
+    // Standard IEC 61131-3, no flag: the members of an enumeration of 130
+    // values count up to 129.
+    let members: Vec<String> = (0..130).map(|i| format!("V{i}")).collect();
+    let source = format!(
+        "TYPE E : ({}); END_TYPE
+         TYPE S : STRUCT c : E; END_STRUCT; END_TYPE
+         PROGRAM main VAR s : S; is_last : DINT; END_VAR
+           s.c := V129;
+           IF s.c = V129 THEN is_last := 1; ELSE is_last := 0; END_IF;
+         END_PROGRAM",
+        members.join(", ")
+    );
+    crate::common::assert_run::<i32>(&source, &[("is_last", 1)]);
+}

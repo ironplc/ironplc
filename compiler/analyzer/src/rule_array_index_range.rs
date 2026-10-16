@@ -92,7 +92,7 @@ impl DiagnosticVisitor for RuleArrayIndexRange<'_> {
     }
 }
 
-impl RuleArrayIndexRange<'_> {
+impl<'a> RuleArrayIndexRange<'a> {
     /// Checks each literal subscript of `node` against its dimension of the
     /// array `node` subscripts.
     fn check(&mut self, node: &ArrayVariable) {
@@ -105,7 +105,7 @@ impl RuleArrayIndexRange<'_> {
         if dimensions.is_empty() || dimensions.len() != node.subscripts.len() {
             return;
         }
-        for (subscript, dimension) in node.subscripts.iter().zip(&dimensions) {
+        for (subscript, dimension) in node.subscripts.iter().zip(dimensions) {
             if let ExprKind::Const(ConstantKind::IntegerLiteral(literal)) = &subscript.kind {
                 self.check_literal(literal, dimension);
             }
@@ -116,11 +116,11 @@ impl RuleArrayIndexRange<'_> {
     ///
     /// `variable_type::of` answers a dereference with the reference's own
     /// type, so `p^[6]` is checked against the type `p` refers to.
-    fn subscripted_type(&self, kind: &SymbolicVariableKind) -> Option<SemanticType> {
+    fn subscripted_type(&self, kind: &SymbolicVariableKind) -> Option<&'a SemanticType> {
         let subscripted = variable_type::of(kind, self.context, &self.scope.current())?;
         match (kind, subscripted) {
             (SymbolicVariableKind::Deref(_), SemanticType::Reference { target_type }) => {
-                Some(*target_type)
+                Some(target_type)
             }
             (_, subscripted) => Some(subscripted),
         }
@@ -337,6 +337,23 @@ VAR
     s : S;
 END_VAR
     s.f[6] := 1;
+END_PROGRAM",
+        [Problem::ArrayIndexOutOfBounds]
+    );
+
+    rule_err!(
+        apply_when_function_block_array_output_then_err,
+        "FUNCTION_BLOCK Block
+VAR_OUTPUT
+    a : ARRAY[1..5] OF INT;
+END_VAR
+END_FUNCTION_BLOCK
+PROGRAM main
+VAR
+    f : Block;
+    x : INT;
+END_VAR
+    x := f.a[6];
 END_PROGRAM",
         [Problem::ArrayIndexOutOfBounds]
     );

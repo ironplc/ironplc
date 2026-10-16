@@ -19,11 +19,12 @@ use super::compile::{
     CompileContext, CurrentFunctionReturn, OpType, OpWidth, Signedness, DEFAULT_STRING_MAX_LENGTH,
 };
 use super::compile_assign::compile_assignment;
+use super::compile_call_output::{store_outputs, CallOutputs};
 use super::compile_expr::{
     compile_condition, compile_expr, emit_classified_cmp_br, emit_eq, emit_ge, emit_le,
-    emit_load_var, emit_store_var, op_type, resolve_variable, try_classify_cmp,
+    emit_load_var, op_type, try_classify_cmp,
 };
-use super::compile_fb_init::resolve_fb_field_op_type;
+use super::compile_fb_call::FbCallSite;
 use super::compile_loop::{compile_for, compile_repeat, compile_while};
 use super::compile_method::compile_method_call_statement;
 use crate::emit::Emitter;
@@ -58,7 +59,11 @@ pub(crate) fn compile_statements(
     statements: &Statements,
 ) -> Result<(), Diagnostic> {
     for stmt in &statements.body {
-        compile_statement(emitter, ctx, stmt)?;
+        // A top-level statement takes the lowered route where the route asks
+        // for it and lowering supports it.
+        if !crate::lowered::try_compile_statement(emitter, ctx, stmt)? {
+            compile_statement(emitter, ctx, stmt)?;
+        }
     }
     Ok(())
 }
@@ -73,12 +78,21 @@ pub(crate) fn compile_statements(
 /// source bytes for it (the [`crate::EmptyLookup`] case), no entry is
 /// recorded — there's no useful (line, column) to surface, and a
 /// `file_id` without a position would only confuse a debugger.
-fn record_statement_position(
+pub(crate) fn record_statement_position(
     emitter: &mut crate::emit::Emitter,
     ctx: &CompileContext,
     stmt: &StmtKind,
 ) {
-    let span = stmt.span();
+    record_position(emitter, ctx, &stmt.span());
+}
+
+/// Records `span` as the source position of the opcodes that follow, as
+/// [`record_statement_position`] does for a statement.
+pub(crate) fn record_position(
+    emitter: &mut crate::emit::Emitter,
+    ctx: &CompileContext,
+    span: &SourceSpan,
+) {
     let Some(file_id) = ctx.debug_source_files.get(&span.file_id) else {
         return;
     };
@@ -120,23 +134,7 @@ fn compile_statement(
         StmtKind::While(while_stmt) => compile_while(emitter, ctx, while_stmt),
         StmtKind::Repeat(repeat_stmt) => compile_repeat(emitter, ctx, repeat_stmt),
         StmtKind::Return => {
-            // Inside a function with a return value, an early RETURN must
-            // first push the current return-value variable so the caller
-            // sees a value on the stack (matching the trailing load+RET
-            // emitted at the end of the function body).
-            match ctx.current_function_return {
-                Some(CurrentFunctionReturn::Scalar { var_index, op_type }) => {
-                    emit_load_var(emitter, var_index, op_type);
-                    emitter.emit_ret();
-                }
-                Some(CurrentFunctionReturn::String { data_offset }) => {
-                    emitter.emit_str_load_var(data_offset);
-                    emitter.emit_ret();
-                }
-                None => {
-                    emitter.emit_ret_void();
-                }
-            }
+            emit_return(emitter, ctx);
             Ok(())
         }
         // Analysis rejects an EXIT or CONTINUE outside a loop
@@ -158,66 +156,66 @@ fn compile_statement(
     }
 }
 
+/// Emits a `RETURN` from the current body.
+///
+/// Inside a function with a return value, an early RETURN must first push
+/// the current return-value variable so the caller sees a value on the stack
+/// (matching the trailing load+RET emitted at the end of the function body).
+pub(crate) fn emit_return(emitter: &mut Emitter, ctx: &CompileContext) {
+    match ctx.current_function_return {
+        Some(CurrentFunctionReturn::Scalar { var_index, op_type }) => {
+            emit_load_var(emitter, var_index, op_type);
+            emitter.emit_ret();
+        }
+        Some(CurrentFunctionReturn::String { data_offset }) => {
+            emitter.emit_str_load_var(data_offset);
+            emitter.emit_ret();
+        }
+        None => {
+            emitter.emit_ret_void();
+        }
+    }
+}
+
 /// Compiles a function block invocation: stores inputs, calls FB, reads outputs.
+///
+/// The analyzer has written the call's arguments in normal form
+/// (`specs/design/call-binding.md`): one named input for each input the call
+/// supplies, in the order the block declares them, then its outputs in
+/// declaration order. They are compiled in that order, which is the order
+/// they are evaluated in. An input the call omits keeps its value.
 fn compile_fb_call(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     fb_call: &FbCall,
 ) -> Result<(), Diagnostic> {
-    let fb_info = ctx
-        .fb_instances
-        .get(&fb_call.var_name)
-        .ok_or_else(|| Diagnostic::todo_with_span(fb_call.span()))?;
-    let type_id = fb_info.type_id;
-    let field_indices = fb_info.field_indices.clone();
-    let field_op_types = fb_info.field_op_types.clone();
-    let var_index = fb_info.var_index;
-
-    // Push FB instance reference.
-    emitter.emit_fb_load_instance(var_index);
-
-    // Store input parameters.
+    let call = FbCallSite::open(emitter, ctx, &fb_call.var_name, &fb_call.span())?;
     for param in &fb_call.params {
-        if let ParamAssignmentKind::NamedInput(input) = param {
-            let field_name = input.name.to_string().to_lowercase();
-            let field_idx = field_indices
-                .get(&field_name)
-                .ok_or_else(|| Diagnostic::todo_with_span(input.name.span()))?;
-            let op_type = resolve_fb_field_op_type(&field_op_types, &field_name);
-            compile_expr(emitter, ctx, &input.expr, op_type)?;
-            emitter.emit_fb_store_param(*field_idx);
+        match param {
+            ParamAssignmentKind::NamedInput(input) => {
+                compile_expr(emitter, ctx, &input.expr)?;
+                call.store_input(emitter, &input.name)?;
+            }
+            // The binding pass names every input of a call that binds, and
+            // the rules reject one that does not.
+            ParamAssignmentKind::PositionalInput(input) => {
+                return Err(Diagnostic::internal_error_at(Label::span(
+                    input.expr.span(),
+                    "Positional input of a function block call the analyzer did not bind",
+                )));
+            }
+            ParamAssignmentKind::Output(_) => {}
         }
     }
+    call.close(emitter, ctx);
 
-    // Call the function block. Record a call-graph edge for user-defined
-    // FBs (intrinsic FBs have no PLC body and never recurse into the
-    // dispatch loop, so they contribute no frames).
-    emitter.emit_fb_call(type_id);
-    if let Some(user_fb) = ctx
-        .user_fb_types
-        .values()
-        .find(|info| info.type_id == type_id)
-    {
-        ctx.record_call_edge(user_fb.function_id);
-    }
-
-    // Read output parameters.
-    for param in &fb_call.params {
-        if let ParamAssignmentKind::Output(output) = param {
-            let field_name = output.src.to_string().to_lowercase();
-            let field_idx = field_indices
-                .get(&field_name)
-                .ok_or_else(|| Diagnostic::todo_with_span(output.src.span()))?;
-            emitter.emit_fb_load_param(*field_idx);
-            let target_index = resolve_variable(ctx, &output.tgt)?;
-            let op_type = resolve_fb_field_op_type(&field_op_types, &field_name);
-            emit_store_var(emitter, target_index, op_type);
-        }
-    }
-
-    // Discard fb_ref.
-    emitter.emit_pop();
-    Ok(())
+    // An output of a function block is a field of its instance.
+    store_outputs(
+        emitter,
+        ctx,
+        CallOutputs::Instance(fb_call.var_name.clone()),
+        &fb_call.params,
+    )
 }
 
 /// Compiles a slice of statements.
@@ -382,7 +380,7 @@ impl CaseSelector<'_> {
         label: CaseLabelValue<'_>,
         cmp: fn(&mut Emitter, OpType),
     ) -> Result<(), Diagnostic> {
-        compile_expr(emitter, ctx, self.expr, self.op_type)?;
+        compile_expr(emitter, ctx, self.expr)?;
         match self.op_type.0 {
             OpWidth::W32 => {
                 let pool_index = ctx.add_i32_constant(label.to_i32(self.op_type.1)?);
@@ -498,7 +496,7 @@ fn compile_case_selector(
         CaseSelectionKind::EnumeratedValue(ev) => {
             // REQ-EN-codegen-040: Load selector, load ordinal constant, compare with EQ_I32.
             // The label is a value of the selector's type.
-            compile_expr(emitter, ctx, selector.expr, selector.op_type)?;
+            compile_expr(emitter, ctx, selector.expr)?;
             let members = crate::compile_enum::members_of_expr(ctx, selector.expr);
             let ordinal = crate::compile_enum::ordinal_in(members, ev)?;
             let pool_index = ctx.add_i32_constant(ordinal);

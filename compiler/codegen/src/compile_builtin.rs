@@ -6,15 +6,15 @@
 //! width-specific `BUILTIN` func_id computes it. Separated from
 //! `compile_call.rs` to keep module sizes within the 1000-line guideline.
 
-use ironplc_analyzer::{BitShift, Intrinsic, NumericFunction};
+use ironplc_analyzer::{BitShift, NumericFunction};
 use ironplc_container::opcode;
 use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, Function};
 
-use super::call_args::{collect_positional_args, wrong_arg_count};
+use super::call_args::{collect_input_args, wrong_arg_count};
 use super::compile::{CompileContext, OpType, OpWidth, Signedness};
-use super::compile_expr::{compile_expr, op_type, storage_bits};
+use super::compile_expr::{compile_expr, storage_bits};
 use crate::emit::Emitter;
 
 /// Builds the opcode for a builtin defined across all four operation widths
@@ -85,10 +85,13 @@ pub(crate) fn lookup_builtin(
 ) -> Option<u16> {
     use opcode::builtin;
     match function {
-        NumericFunction::Expt => numeric_builtin!(
+        NumericFunction::Expt => signed_numeric_builtin!(
             op_width,
+            signedness,
             builtin::EXPT_I32,
+            builtin::EXPT_U32,
             builtin::EXPT_I64,
+            builtin::EXPT_U64,
             builtin::EXPT_F32,
             builtin::EXPT_F64
         ),
@@ -164,10 +167,9 @@ pub(crate) fn lookup_builtin(
 ///
 /// A function of several inputs of one type (`MIN`, `MAX`, `LIMIT`, `SEL`,
 /// `EXPT`, `ATAN2`) computes at the type the analyzer recorded for the call,
-/// and compiles each argument at the type it recorded for that: an input of
+/// and each argument compiles at the type it recorded for that: an input of
 /// the function's type at `op_type`'s width, to which it converted one of
-/// another width, and `SEL`'s selector as the `BOOL` it is (ADR-0056). A
-/// function of one input compiles it at `op_type`.
+/// another width, and `SEL`'s selector as the `BOOL` it is (ADR-0056).
 pub(crate) fn compile_numeric(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -181,20 +183,14 @@ pub(crate) fn compile_numeric(
     let expected_args =
         opcode::builtin::arg_count_opt(func_id).ok_or_else(Diagnostic::internal_error)? as usize;
 
-    let args = collect_positional_args(func);
+    let args = collect_input_args(func);
 
     if args.len() != expected_args {
         return Err(wrong_arg_count(func));
     }
 
-    let of_one_type = Intrinsic::Numeric(function).inputs_of_one_type().is_some();
     for arg in &args {
-        let arg_op_type = if of_one_type {
-            self::op_type(ctx, arg)?
-        } else {
-            op_type
-        };
-        compile_expr(emitter, ctx, arg, arg_op_type)?;
+        compile_expr(emitter, ctx, arg)?;
     }
 
     emitter.emit_builtin(func_id)?;
@@ -240,7 +236,7 @@ pub(crate) fn compile_shift_rotate(
     shift: BitShift,
 ) -> Result<(), Diagnostic> {
     // Compile IN (value) with the inferred op_type
-    compile_expr(emitter, ctx, args[0], op_type)?;
+    compile_expr(emitter, ctx, args[0])?;
     // Compile N (shift count) at its own type: the analyzer converted it to
     // `LINT` for a value operated at 64 bits and to `DINT` otherwise.
     let count = super::compile_expr::op_type(ctx, args[1])?;
@@ -254,7 +250,7 @@ pub(crate) fn compile_shift_rotate(
             "Shift count of a width other than the shifted value's, and the analyzer recorded no conversion",
         )));
     }
-    compile_expr(emitter, ctx, args[1], count)?;
+    compile_expr(emitter, ctx, args[1])?;
 
     // Determine storage bits for narrow-type ROL/ROR selection
     let bits = storage_bits(ctx, args[0])?;
@@ -303,9 +299,9 @@ mod tests {
 
     #[test]
     fn lookup_builtin_when_all_width_numeric_then_selects_by_width() {
-        // EXPT/ABS/SEL are defined for every op width, independent of sign.
-        // An unsigned ABS never reaches code generation: the analyzer
-        // removes it (`xform_remove_unsigned_abs`).
+        // ABS and SEL are defined for every op width, independent of sign,
+        // and so is EXPT of a real. An unsigned ABS never reaches code
+        // generation: the analyzer removes it (`xform_remove_unsigned_abs`).
         assert_eq!(
             lookup_builtin(NumericFunction::Abs, OpWidth::W32, Signedness::Signed),
             Some(builtin::ABS_I32)
@@ -337,6 +333,15 @@ mod tests {
         assert_eq!(
             lookup_builtin(NumericFunction::Max, OpWidth::W64, Signedness::Unsigned),
             Some(builtin::MAX_U64)
+        );
+        // An unsigned exponent is never negative, so it never traps.
+        assert_eq!(
+            lookup_builtin(NumericFunction::Expt, OpWidth::W32, Signedness::Unsigned),
+            Some(builtin::EXPT_U32)
+        );
+        assert_eq!(
+            lookup_builtin(NumericFunction::Expt, OpWidth::W64, Signedness::Unsigned),
+            Some(builtin::EXPT_U64)
         );
         // Float variants ignore signedness.
         assert_eq!(

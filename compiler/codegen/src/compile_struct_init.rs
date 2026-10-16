@@ -1,163 +1,59 @@
 //! Structure initialization code generation.
 //!
-//! Emits the init-function code that gives each field of a structure
-//! variable its initial value: an explicit initializer when the declaration
-//! has one, otherwise the type's default. Separated from `compile_struct.rs`
-//! to keep module sizes within the 1000-line guideline.
+//! Stores the starting value the analyzer resolved for a structure variable,
+//! or an array of structures, into its data region: every field and element,
+//! however deeply nested. Separated from `compile_struct.rs` to keep module
+//! sizes within the 1000-line guideline.
 
-use std::collections::HashMap;
-
-use ironplc_dsl::core::{Located, SourceSpan};
+use crate::initial_value::{InitialValue, StringValue};
+use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 
-use ironplc_analyzer::semantic_type::SemanticType;
+use ironplc_analyzer::semantic_type::{ArrayDimension, SemanticType};
 use ironplc_container::{SlotIndex, VarIndex};
-use ironplc_dsl::common::{StructInitialValueAssignmentKind, StructureElementInit};
 
-use super::compile::{CompileContext, OpType, OpWidth, DEFAULT_STRING_MAX_LENGTH};
-use super::compile_array_struct::ElementStringField;
-use super::compile_expr::compile_constant;
-use super::compile_setup::emit_zero_const;
-use super::compile_struct::{build_struct_fields, emit_truncation_for_field, StructVarInfo};
+use super::compile::{string_region_size, CompileContext, DEFAULT_STRING_MAX_LENGTH};
+use super::compile_array_struct::{ElementStringField, StructArrayVarInfo};
+use super::compile_initial_value::{emit_reference, emit_scalar, emit_string_store, is_cleared};
+use super::compile_struct::{
+    build_struct_fields, emit_truncation_for_field, resolve_field_op_type, StructVarInfo,
+};
 use crate::emit::Emitter;
 
-/// Emits a constant load for the type-appropriate default value of a struct field.
-///
-/// For subrange types, emits the subrange's lower bound (min_value) as an i32/i64
-/// constant, since IEC 61131-3 §2.4.3.1 specifies the default is the "leftmost
-/// value" of the subrange. For all other types, emits zero via `emit_zero_const`.
-fn emit_default_for_field(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    field_type: &SemanticType,
-    op_type: OpType,
-) -> Result<(), Diagnostic> {
-    if let Some(ordinal) = crate::compile_enum::field_default_ordinal(field_type) {
-        // An enumeration field starts at the enumeration's default.
-        let pool_index = ctx.add_i32_constant(ordinal);
-        emitter.emit_load_const_i32(pool_index);
-    } else if let SemanticType::Subrange { min_value, .. } = field_type {
-        match op_type.0 {
-            OpWidth::W32 => {
-                let pool_index = ctx.add_i32_constant(*min_value as i32);
-                emitter.emit_load_const_i32(pool_index);
-            }
-            OpWidth::W64 => {
-                let pool_index = ctx.add_i64_constant(*min_value as i64);
-                emitter.emit_load_const_i64(pool_index);
-            }
-            _ => {
-                emit_zero_const(emitter, ctx, op_type);
-            }
-        }
-    } else {
-        emit_zero_const(emitter, ctx, op_type);
-    }
-    Ok(())
-}
-
-/// Compiles an explicit initial value for a structure field.
-///
-/// Handles constant expressions (integer/real/boolean literals) and
-/// enumerated values from `StructInitialValueAssignmentKind`.
-///
-/// An `Array` or `Structure` initializer is an internal error here: `op_type`
-/// is `None` for a struct- or array-typed field, so those go through the
-/// recursion in `initialize_struct_fields` and never reach this function.
-fn compile_struct_field_init(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    init: &StructInitialValueAssignmentKind,
-    field_type: &SemanticType,
-    op_type: OpType,
-) -> Result<(), Diagnostic> {
-    match init {
-        StructInitialValueAssignmentKind::Constant(constant) => {
-            compile_constant(emitter, ctx, constant, op_type)
-        }
-        StructInitialValueAssignmentKind::EnumeratedValue(ev) => {
-            // REQ-EN-codegen-050: Resolve enum value to ordinal, as a member
-            // of the field's type, and push as i32 constant.
-            let ordinal = crate::compile_enum::ordinal_in(field_type.enumeration_members(), ev)?;
-            let pool_index = ctx.add_i32_constant(ordinal);
-            emitter.emit_load_const_i32(pool_index);
-            Ok(())
-        }
-        StructInitialValueAssignmentKind::Array(_)
-        | StructInitialValueAssignmentKind::Structure(_) => Err(Diagnostic::internal_error()),
-        StructInitialValueAssignmentKind::Expression(expr) => {
-            // A general (possibly non-constant) expression, e.g.
-            // `pDevice^.Delta` -- `ironplcc check` fully supports this;
-            // codegen does not yet implement evaluating it at instance
-            // construction time.
-            Err(Diagnostic::not_implemented(Label::span(
-                expr.span(),
-                "Expression-valued struct/FB-instance field initializer",
-            )))
-        }
-        StructInitialValueAssignmentKind::LateBound(late_bound) => {
-            // `xform_resolve_late_bound_expr_kind` replaces every one of
-            // these with an enumerated value or an expression, so reaching
-            // codegen with one means that pass did not run.
-            Err(Diagnostic::internal_error_at(Label::span(
-                late_bound.value.span(),
-                "Unresolved struct/FB-instance field initializer",
-            )))
-        }
-    }
-}
-
-/// Pre-extracted field info for initialization, avoiding borrow conflicts.
-///
-/// Created by extracting data from `StructFieldInfo` before passing `ctx`
-/// mutably to `initialize_struct_fields`.
-pub(crate) struct FieldInitInfo {
-    pub name: String,
-    pub slot_offset: SlotIndex,
-    pub field_type: SemanticType,
-    pub op_type: Option<OpType>,
-    /// For STRING fields, the maximum character length. `None` for non-STRING fields.
-    pub string_max_length: Option<u16>,
+/// When the stores of a region's initialization run.
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum Writes {
+    /// Once, when the program starts, over a data region that starts
+    /// cleared.
+    Once,
+    /// On every call of a function, over whatever the last call left.
+    EveryCall,
 }
 
 /// Emits the initialization of a structure variable: stores its data-region
-/// offset into the variable's slot, then initializes every field.
-///
-/// `element_inits` are the explicit field initializers from the declaration,
-/// empty when there are none.
+/// offset into the variable's slot, then `value` into every field.
 pub(crate) fn initialize_struct_variable(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     info: &StructVarInfo,
-    element_inits: &[StructureElementInit],
+    value: &InitialValue,
+    writes: Writes,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
     let offset_const = ctx.add_i32_constant(info.data_offset as i32);
     emitter.emit_load_const_i32(offset_const);
     emitter.emit_store_var_i32(info.var_index);
 
-    let fields: Vec<FieldInitInfo> = info
-        .fields
-        .iter()
-        .map(|f| FieldInitInfo {
-            name: f.name.clone(),
-            slot_offset: f.slot_offset,
-            field_type: f.field_type.clone(),
-            op_type: f.op_type,
-            string_max_length: f.string_max_length,
-        })
-        .collect();
-
-    initialize_struct_fields(
-        emitter,
-        ctx,
-        info.var_index,
-        info.desc_index,
-        info.data_offset,
-        &fields,
-        element_inits,
-        span,
-    )?;
+    let mut region = Region {
+        var_index: info.var_index,
+        desc_index: info.desc_index,
+        data_offset: info.data_offset,
+        writes,
+        span: span.clone(),
+        element_strings: Vec::new(),
+    };
+    let field_types = struct_field_types(&info.fields);
+    region.structure(emitter, ctx, &field_types, value, 0, Position::Field)?;
 
     initialize_element_strings(
         emitter,
@@ -166,7 +62,53 @@ pub(crate) fn initialize_struct_variable(
         info.scratch_var_index,
         &info.element_strings,
         span,
-    )
+    )?;
+    region.store_element_strings(emitter, ctx);
+    Ok(())
+}
+
+/// Emits the initialization of a variable that is an array of structures:
+/// stores its data-region offset into the variable's slot, writes the header
+/// of every element's STRING fields, then stores `value` into every element.
+pub(crate) fn initialize_struct_array_variable(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    info: &StructArrayVarInfo,
+    value: &InitialValue,
+    writes: Writes,
+    span: &SourceSpan,
+) -> Result<(), Diagnostic> {
+    let offset_const = ctx.add_i32_constant(info.data_offset as i32);
+    emitter.emit_load_const_i32(offset_const);
+    emitter.emit_store_var_i32(info.var_index);
+    initialize_element_strings(
+        emitter,
+        ctx,
+        info.data_offset,
+        info.scratch_var_index,
+        &info.element_strings,
+        span,
+    )?;
+
+    let mut region = Region {
+        var_index: info.var_index,
+        desc_index: info.desc_index,
+        data_offset: info.data_offset,
+        writes,
+        span: span.clone(),
+        element_strings: Vec::new(),
+    };
+    region.array(
+        emitter,
+        ctx,
+        &info.element_type,
+        &info.dimensions,
+        value,
+        0,
+        Position::Field,
+    )?;
+    region.store_element_strings(emitter, ctx);
+    Ok(())
 }
 
 /// Writes the header of every element's copy of each STRING field of an
@@ -177,7 +119,7 @@ pub(crate) fn initialize_struct_variable(
 /// address from a variable, so it is first computed into the scratch
 /// variable. Without this, the headers stay zeroed, and a zero `char_width`
 /// traps on first access.
-pub(crate) fn initialize_element_strings(
+fn initialize_element_strings(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     data_offset: u32,
@@ -195,13 +137,7 @@ pub(crate) fn initialize_element_strings(
         ))
     })?;
     for field in fields {
-        let byte_offset = field
-            .slot_offset
-            .checked_mul(8)
-            .and_then(|offset| offset.checked_add(data_offset))
-            .ok_or_else(|| {
-                Diagnostic::not_supported(Label::span(span.clone(), "Data region overflow"))
-            })?;
+        let byte_offset = byte_offset(data_offset, field.slot_offset, span)?;
         let offset_const = ctx.add_i32_constant(byte_offset as i32);
         emitter.emit_load_const_i32(offset_const);
         emitter.emit_store_var_i32(scratch);
@@ -210,123 +146,317 @@ pub(crate) fn initialize_element_strings(
     Ok(())
 }
 
-/// Initializes fields of a structure variable.
-///
-/// Emits constant-load + STORE_ARRAY for each leaf field. Uses explicit
-/// initial values from `element_inits` when available, otherwise emits
-/// type-appropriate defaults (zero or subrange lower bound).
-///
-/// `span` locates the variable declaration being initialized; a nested field
-/// type the compiler cannot lay out is reported there.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn initialize_struct_fields(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
+/// Where in a region a value is stored, which decides how its STRING
+/// headers are written.
+#[derive(Clone, Copy, PartialEq)]
+enum Position {
+    /// A field of the variable's structure, or of a structure field of it:
+    /// a STRING header is written where the field is met.
+    Field,
+    /// An element of an array that is such a field, or the variable.
+    Element,
+    /// A field of a structure that is an element of an array: the header of
+    /// a STRING field is written for every element at once, through the
+    /// field's strided descriptor, after the fields are stored.
+    ElementField,
+    /// Deeper inside an array element, where no STRING header is written.
+    Nested,
+}
+
+/// A data region being initialized, addressed as one flat array of slots.
+struct Region {
     var_index: VarIndex,
     desc_index: u16,
-    struct_data_offset: u32,
-    fields: &[FieldInitInfo],
-    element_inits: &[StructureElementInit],
-    span: &SourceSpan,
-) -> Result<(), Diagnostic> {
-    // Build a map of explicit initializers
-    let init_map: HashMap<String, &StructInitialValueAssignmentKind> = element_inits
-        .iter()
-        .map(|e| (e.name.to_string().to_lowercase(), &e.init))
-        .collect();
+    data_offset: u32,
+    writes: Writes,
+    span: SourceSpan,
+    /// The STRING values of array elements, stored after the headers the
+    /// element strings' descriptors write: `(byte offset, value)`.
+    element_strings: Vec<(u32, StringValue)>,
+}
 
-    // Iterate over fields in declaration order (Vec guarantees deterministic order)
-    for field_info in fields {
-        let slot_idx = field_info.slot_offset;
+impl Region {
+    /// Stores the fields of the structure `value` at slot `base`. `fields`
+    /// are the structure's fields with their slot offsets in it.
+    fn structure(
+        &mut self,
+        emitter: &mut Emitter,
+        ctx: &mut CompileContext,
+        fields: &[(String, SlotIndex, SemanticType)],
+        value: &InitialValue,
+        base: u32,
+        position: Position,
+    ) -> Result<(), Diagnostic> {
+        for (name, slot_offset, field_type) in fields {
+            let field_value = field_value(value, name).ok_or_else(|| self.missing(name))?;
+            let slot = base + slot_offset.raw();
+            self.value(emitter, ctx, field_type, field_value, slot, position)?;
+        }
+        Ok(())
+    }
 
-        if let Some(op_type) = field_info.op_type {
-            // Leaf field (primitive/enum)
-            if let Some(init_value) = init_map.get(&field_info.name) {
-                // Emit explicit initial value
-                compile_struct_field_init(
-                    emitter,
-                    ctx,
-                    init_value,
-                    &field_info.field_type,
-                    op_type,
-                )?;
-            } else {
-                // Emit type-appropriate default value
-                emit_default_for_field(emitter, ctx, &field_info.field_type, op_type)?;
-            }
-
-            // Truncate narrow types (e.g., SINT stored in W32 slot)
-            emit_truncation_for_field(emitter, &field_info.field_type);
-
-            // Store to field slot
-            let idx_const = ctx.add_i32_constant(slot_idx.raw() as i32);
-            emitter.emit_load_const_i32(idx_const);
-            emitter.emit_store_array(var_index, desc_index);
-        } else if let SemanticType::Structure { fields } = &field_info.field_type {
-            // Nested structure field — recursively initialize inner fields.
-            // Extract nested initializers from the init map for this field.
-            let nested_inits: Vec<StructureElementInit> =
-                if let Some(StructInitialValueAssignmentKind::Structure(nested)) =
-                    init_map.get(&field_info.name)
-                {
-                    nested.to_vec()
-                } else {
-                    // No explicit init — inner fields will be default-initialized.
-                    vec![]
+    /// Stores `value`, of `value_type`, at slot `slot`.
+    fn value(
+        &mut self,
+        emitter: &mut Emitter,
+        ctx: &mut CompileContext,
+        value_type: &SemanticType,
+        value: &InitialValue,
+        slot: u32,
+        position: Position,
+    ) -> Result<(), Diagnostic> {
+        match value_type {
+            SemanticType::Structure { fields } => {
+                let (infos, _) = build_struct_fields(fields, &self.span)?;
+                let fields: Vec<_> = infos
+                    .into_iter()
+                    .map(|f| (f.name, f.slot_offset, f.field_type))
+                    .collect();
+                let inner = match position {
+                    Position::Field => Position::Field,
+                    Position::Element => Position::ElementField,
+                    Position::ElementField | Position::Nested => Position::Nested,
                 };
-
-            // Build inner field metadata with offsets adjusted to the parent's base.
-            let (inner_fields, _) = build_struct_fields(fields, span)?;
-            let inner_field_infos: Vec<FieldInitInfo> = inner_fields
-                .iter()
-                .map(|f| FieldInitInfo {
-                    name: f.name.clone(),
-                    slot_offset: SlotIndex::new(slot_idx.raw() + f.slot_offset.raw()),
-                    field_type: f.field_type.clone(),
-                    op_type: f.op_type,
-                    string_max_length: f.string_max_length,
-                })
-                .collect();
-
-            initialize_struct_fields(
-                emitter,
-                ctx,
-                var_index,
-                desc_index,
-                struct_data_offset,
-                &inner_field_infos,
-                &nested_inits,
-                span,
-            )?;
-        } else if let SemanticType::String { char_width, .. } = &field_info.field_type {
-            // STRING field — initialize the header in the data region.
-            if let Some(max_length) = field_info.string_max_length {
-                let byte_offset = struct_data_offset + slot_idx.raw() * 8;
-                emitter.emit_str_init(byte_offset, max_length, *char_width);
+                self.structure(emitter, ctx, &fields, value, slot, inner)
             }
-        } else if let SemanticType::Array {
-            element_type,
-            dimensions: array_dims,
-        } = &field_info.field_type
-        {
-            if let SemanticType::String {
+            SemanticType::String {
                 max_len,
                 char_width,
-            } = element_type.as_ref()
-            {
-                // STRING/WSTRING array field — initialize headers for each string element.
-                let max_length = max_len.unwrap_or(DEFAULT_STRING_MAX_LENGTH as u128) as u16;
-                let total_elements = array_dims
-                    .iter()
-                    .fold(1u32, |acc, d| acc * (d.upper - d.lower + 1) as u32);
-                let stride = super::compile::string_region_size(max_length, *char_width);
-                let field_byte_offset = struct_data_offset + slot_idx.raw() * 8;
-                for i in 0..total_elements {
-                    let elem_byte_offset = field_byte_offset + i * stride;
-                    emitter.emit_str_init(elem_byte_offset, max_length, *char_width);
+            } => {
+                let InitialValue::String(string) = value else {
+                    return Err(self.mismatch());
+                };
+                let byte_offset = byte_offset(self.data_offset, slot, &self.span)?;
+                match position {
+                    Position::Field => {
+                        let max_length =
+                            max_len.unwrap_or(DEFAULT_STRING_MAX_LENGTH as u128) as u16;
+                        emitter.emit_str_init(byte_offset, max_length, *char_width);
+                        emit_string_store(emitter, ctx, string, byte_offset);
+                    }
+                    Position::ElementField => {
+                        if !string.chars.is_empty() {
+                            self.element_strings.push((byte_offset, string.clone()));
+                        }
+                    }
+                    Position::Element | Position::Nested => self.unreachable_string(string)?,
                 }
+                Ok(())
             }
+            SemanticType::Array {
+                element_type,
+                dimensions,
+            } => self.array(
+                emitter,
+                ctx,
+                element_type,
+                dimensions,
+                value,
+                slot,
+                position,
+            ),
+            _ => self.leaf(emitter, ctx, value_type, value, slot, position),
         }
     }
-    Ok(())
+
+    /// Stores the elements of the array `value` from slot `base`.
+    #[allow(clippy::too_many_arguments)]
+    fn array(
+        &mut self,
+        emitter: &mut Emitter,
+        ctx: &mut CompileContext,
+        element_type: &SemanticType,
+        dimensions: &[ArrayDimension],
+        value: &InitialValue,
+        base: u32,
+        position: Position,
+    ) -> Result<(), Diagnostic> {
+        let InitialValue::Array(elements) = value else {
+            return Err(self.mismatch());
+        };
+        if let SemanticType::String {
+            max_len,
+            char_width,
+        } = element_type
+        {
+            return self.string_array(
+                emitter,
+                ctx,
+                elements,
+                *max_len,
+                *char_width,
+                dimensions,
+                base,
+                position,
+            );
+        }
+        let element_slots = element_type.slot_count().map_err(|_| {
+            Diagnostic::not_implemented(Label::span(
+                self.span.clone(),
+                "Array element type is unsupported",
+            ))
+        })?;
+        let inner = match position {
+            Position::Field => Position::Element,
+            Position::Element | Position::ElementField | Position::Nested => Position::Nested,
+        };
+        for (index, element) in elements.iter().enumerate() {
+            let slot = base + index as u32 * element_slots;
+            self.value(emitter, ctx, element_type, element, slot, inner)?;
+        }
+        Ok(())
+    }
+
+    /// Stores the elements of a STRING array field, which are packed one
+    /// string region apart rather than in whole slots.
+    #[allow(clippy::too_many_arguments)]
+    fn string_array(
+        &mut self,
+        emitter: &mut Emitter,
+        ctx: &mut CompileContext,
+        elements: &[InitialValue],
+        max_len: Option<u128>,
+        char_width: ironplc_container::CharWidth,
+        dimensions: &[ArrayDimension],
+        base: u32,
+        position: Position,
+    ) -> Result<(), Diagnostic> {
+        let strings = elements
+            .iter()
+            .map(|element| match element {
+                InitialValue::String(string) => Ok(string),
+                _ => Err(self.mismatch()),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        if position != Position::Field {
+            // No header is written for a STRING array inside an array
+            // element, so no value can be stored there either.
+            for string in strings {
+                self.unreachable_string(string)?;
+            }
+            return Ok(());
+        }
+        let max_length = max_len.unwrap_or(DEFAULT_STRING_MAX_LENGTH as u128) as u16;
+        let total_elements = dimensions
+            .iter()
+            .fold(1u32, |acc, d| acc * (d.upper - d.lower + 1) as u32);
+        let stride = string_region_size(max_length, char_width);
+        let field_byte_offset = byte_offset(self.data_offset, base, &self.span)?;
+        for index in 0..total_elements {
+            emitter.emit_str_init(field_byte_offset + index * stride, max_length, char_width);
+        }
+        for (index, string) in strings.into_iter().enumerate() {
+            emit_string_store(
+                emitter,
+                ctx,
+                string,
+                field_byte_offset + index as u32 * stride,
+            );
+        }
+        Ok(())
+    }
+
+    /// Stores the scalar or reference `value`, of `value_type`, at slot
+    /// `slot`. A cleared value inside an array is not stored when the region
+    /// starts cleared.
+    fn leaf(
+        &mut self,
+        emitter: &mut Emitter,
+        ctx: &mut CompileContext,
+        value_type: &SemanticType,
+        value: &InitialValue,
+        slot: u32,
+        position: Position,
+    ) -> Result<(), Diagnostic> {
+        if self.writes == Writes::Once && position != Position::Field && is_cleared(value) {
+            return Ok(());
+        }
+        let op_type = resolve_field_op_type(value_type).ok_or_else(|| {
+            Diagnostic::not_implemented(Label::span(
+                self.span.clone(),
+                "Structure field type is unsupported",
+            ))
+        })?;
+        match value {
+            InitialValue::Scalar(scalar) => emit_scalar(emitter, ctx, scalar, op_type, &self.span)?,
+            InitialValue::Reference(reference) => emit_reference(emitter, ctx, reference)?,
+            // A field initializer that is an expression (an extension) is
+            // evaluated when the instance is created, which a structure
+            // field does not support yet.
+            InitialValue::Expression(_) => {
+                return Err(Diagnostic::not_implemented(Label::span(
+                    self.span.clone(),
+                    "Expression-valued struct/FB-instance field initializer",
+                )))
+            }
+            _ => return Err(self.mismatch()),
+        }
+        emit_truncation_for_field(emitter, value_type);
+        let idx_const = ctx.add_i32_constant(slot as i32);
+        emitter.emit_load_const_i32(idx_const);
+        emitter.emit_store_array(self.var_index, self.desc_index);
+        Ok(())
+    }
+
+    /// Stores the STRING values of array elements, whose headers have been
+    /// written by now.
+    fn store_element_strings(&mut self, emitter: &mut Emitter, ctx: &mut CompileContext) {
+        for (byte_offset, string) in std::mem::take(&mut self.element_strings) {
+            emit_string_store(emitter, ctx, &string, byte_offset);
+        }
+    }
+
+    /// Refuses a STRING value where no header is written.
+    fn unreachable_string(&self, string: &StringValue) -> Result<(), Diagnostic> {
+        match string.chars.is_empty() {
+            true => Ok(()),
+            false => Err(Diagnostic::not_implemented(Label::span(
+                self.span.clone(),
+                "Initial value of a STRING nested inside an array element",
+            ))),
+        }
+    }
+
+    fn missing(&self, name: &str) -> Diagnostic {
+        Diagnostic::internal_error_at(Label::span(
+            self.span.clone(),
+            format!("Initial value has no value for field '{name}'"),
+        ))
+    }
+
+    fn mismatch(&self) -> Diagnostic {
+        Diagnostic::internal_error_at(Label::span(
+            self.span.clone(),
+            "Initial value does not have the shape of its type",
+        ))
+    }
+}
+
+/// The fields of a structure variable as `(name, slot offset, type)`.
+fn struct_field_types(
+    fields: &[super::compile_struct::StructFieldInfo],
+) -> Vec<(String, SlotIndex, SemanticType)> {
+    fields
+        .iter()
+        .map(|f| (f.name.clone(), f.slot_offset, f.field_type.clone()))
+        .collect()
+}
+
+/// The value of the field `name` (lower case) of the structure `value`.
+fn field_value<'a>(value: &'a InitialValue, name: &str) -> Option<&'a InitialValue> {
+    match value {
+        InitialValue::Structure(fields) => fields
+            .iter()
+            .find(|field| field.name.lower_case() == name)
+            .map(|field| &field.value),
+        _ => None,
+    }
+}
+
+/// The byte offset in the data region of slot `slot` of the region that
+/// starts at `data_offset`.
+fn byte_offset(data_offset: u32, slot: u32, span: &SourceSpan) -> Result<u32, Diagnostic> {
+    slot.checked_mul(8)
+        .and_then(|offset| offset.checked_add(data_offset))
+        .ok_or_else(|| Diagnostic::not_supported(Label::span(span.clone(), "Data region overflow")))
 }

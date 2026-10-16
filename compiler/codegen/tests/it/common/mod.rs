@@ -8,6 +8,7 @@
 //! - `variables`: resolving a name to a variable, and to its VM slot
 //! - `value`: the [`Value`] a test observes, and typed expectations
 //! - `slot_value`: decoding a VM slot into a [`Value`], and encoding one
+//! - [`scalar`]: the elementary types as numbers, for tests with a Rust oracle
 //!
 //! Everything tests use is re-exported here, so they name it as
 //! `crate::common::<item>`.
@@ -21,6 +22,7 @@ pub mod bc;
 #[macro_use]
 mod assert;
 mod run;
+pub mod scalar;
 mod session;
 mod slot_value;
 mod snapshot;

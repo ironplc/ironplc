@@ -174,3 +174,11 @@ pub fn run_and_expect_trap_i32(bytecode: &[u8], num_vars: u16, constants: &[i32]
     let mut vm = load_and_start(&c, &mut b).unwrap();
     vm.run_round(0).unwrap_err().trap
 }
+
+/// Runs bytecode with i64 constants expecting a trap, returns the trap.
+pub fn run_and_expect_trap_i64(bytecode: &[u8], num_vars: u16, constants: &[i64]) -> Trap {
+    let c = single_function_container_i64(bytecode, num_vars, constants);
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = load_and_start(&c, &mut b).unwrap();
+    vm.run_round(0).unwrap_err().trap
+}

@@ -33,7 +33,7 @@ END_FUNCTION_BLOCK";
 
     assert!(diagnostics.is_empty());
     let attributes = symbol_env
-        .get(
+        .find(
             &Id::from("LEVEL"),
             &ScopeKind::Named(Id::from("LOGGER").into()),
         )
@@ -41,7 +41,7 @@ END_FUNCTION_BLOCK";
     assert_eq!(attributes.kind, SymbolKind::Parameter);
 
     let attributes = symbol_env
-        .get(&Id::from("LOGGER"), &ScopeKind::Global)
+        .find(&Id::from("LOGGER"), &ScopeKind::Global)
         .unwrap();
     assert_eq!(attributes.kind, SymbolKind::FunctionBlock);
 }
@@ -71,7 +71,7 @@ END_FUNCTION_BLOCK";
 
     // Check that input parameters are captured
     let reset_symbol = symbol_env
-        .get(
+        .find(
             &Id::from("Reset"),
             &ScopeKind::Named(Id::from("Counter").into()),
         )
@@ -79,7 +79,7 @@ END_FUNCTION_BLOCK";
     assert_eq!(reset_symbol.kind, SymbolKind::Parameter);
 
     let count_symbol = symbol_env
-        .get(
+        .find(
             &Id::from("Count"),
             &ScopeKind::Named(Id::from("Counter").into()),
         )
@@ -88,7 +88,7 @@ END_FUNCTION_BLOCK";
 
     // Check that output parameters are captured
     let out_symbol = symbol_env
-        .get(
+        .find(
             &Id::from("OUT"),
             &ScopeKind::Named(Id::from("Counter").into()),
         )
@@ -97,7 +97,7 @@ END_FUNCTION_BLOCK";
 
     // Check that local variables are captured
     let cnt_symbol = symbol_env
-        .get(
+        .find(
             &Id::from("Cnt"),
             &ScopeKind::Named(Id::from("Counter").into()),
         )
@@ -106,7 +106,7 @@ END_FUNCTION_BLOCK";
 
     // Check that function block is captured
     let counter_symbol = symbol_env
-        .get(&Id::from("Counter"), &ScopeKind::Global)
+        .find(&Id::from("Counter"), &ScopeKind::Global)
         .unwrap();
     assert_eq!(counter_symbol.kind, SymbolKind::FunctionBlock);
 }
@@ -131,7 +131,7 @@ END_FUNCTION";
 
     // Functions are NOT registered in symbol environment (only in function environment)
     assert!(symbol_env
-        .get(&Id::from("ADD_INTS"), &ScopeKind::Global)
+        .find(&Id::from("ADD_INTS"), &ScopeKind::Global)
         .is_none());
 
     // Check function is in function environment with correct signature

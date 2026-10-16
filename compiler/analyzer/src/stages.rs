@@ -12,6 +12,7 @@ use ironplc_problems::Problem;
 use log::debug;
 
 use crate::{
+    execution_model,
     function_environment::FunctionEnvironmentBuilder,
     ironplc_dsl::common::Library,
     result::SemanticResult,
@@ -29,21 +30,22 @@ use crate::{
     rule_program_var_hides_global, rule_range_limits, rule_real_literal_range, rule_ref_to,
     rule_return_type_declared, rule_stdlib_type_redefinition, rule_string_encoding_compat,
     rule_string_length_range, rule_string_literal_char_range,
-    rule_struct_initializer_expression_allowed, rule_task_names_unique,
+    rule_struct_initializer_expression_allowed, rule_task_configuration, rule_task_names_unique,
     rule_temporal_literal_range, rule_unsupported_extension, rule_use_declared_enumerated_value,
     rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
     rule_var_decl_global_const_requires_external_const, rule_var_decl_initializer_type_compat,
+    rule_var_external_matches_global,
     semantic_context::SemanticContext,
     symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
     system_globals::SYSTEM_UPTIME_GLOBALS,
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
-    type_table, xform_fold_constant_expressions, xform_fold_initializer_expressions,
+    xform_bind_call_arguments, xform_fold_constant_expressions, xform_fold_initializer_expressions,
     xform_insert_implicit_conversions, xform_insert_implicit_deref, xform_int_to_bool_initializer,
-    xform_mark_unwritten_constants, xform_named_to_positional_args, xform_remove_unsigned_abs,
-    xform_resolve_adr, xform_resolve_constant_expressions, xform_resolve_decl_types,
-    xform_resolve_expr_types, xform_resolve_initial_values, xform_resolve_late_bound_expr_kind,
+    xform_mark_unwritten_constants, xform_remove_unsigned_abs, xform_resolve_adr,
+    xform_resolve_constant_expressions, xform_resolve_decl_types, xform_resolve_expr_types,
+    xform_resolve_initial_values, xform_resolve_late_bound_expr_kind,
     xform_resolve_late_bound_type_initializer, xform_resolve_symbol_and_function_environment,
-    xform_resolve_type_aliases, xform_resolve_type_decl_environment, xform_toposort_declarations,
+    xform_resolve_type_decl_environment, xform_toposort_declarations,
 };
 
 /// Analyze runs semantic analysis on the set of files as a self-contained and complete unit.
@@ -81,18 +83,6 @@ pub fn analyze(
     // program wrote it through the conversion that wraps it.
     if let Err(diagnostics) = rule_constant_range::apply(&library, &context, options) {
         context.add_diagnostics(diagnostics);
-    }
-
-    // TODO this is currently in progress. It isn't clear to me yet how this will influence
-    // semantic analysis, but it should because the type table should influence rule checking.
-    // For now, this is just after the rules as they were originally written.
-    match type_table::apply(&library) {
-        Ok(type_table_result) => {
-            debug!("{type_table_result:?}");
-        }
-        Err(diagnostics) => {
-            context.add_diagnostics(diagnostics);
-        }
     }
 
     Ok((library, context))
@@ -306,12 +296,19 @@ pub fn resolve_types(
         )
     });
 
-    // Convert named function call arguments to positional.
-    // Best effort: a diagnosed call keeps its named arguments, which is the
-    // state reverting would leave every call in -- including the valid ones.
-    library = run_best_effort(library, &mut diagnostics, |lib| {
-        xform_named_to_positional_args::apply(lib, &function_environment)
-    });
+    // Write every call's arguments in normal form: named, in the order the
+    // callee declares its parameters, which is the order they are evaluated
+    // in (specs/design/call-binding.md). Best effort: a call that does not
+    // bind keeps its arguments, and the problem is reported, here for a
+    // function call and by the rules for the others.
+    let (bound, binding_diagnostics) = xform_bind_call_arguments::apply(
+        library,
+        &symbol_environment,
+        &type_environment,
+        &function_environment,
+    );
+    library = bound;
+    diagnostics.extend(binding_diagnostics);
 
     // Resolve expression types using the function environment. Best effort:
     // an unqualified enumerated value whose type is ambiguous is diagnosed
@@ -336,10 +333,6 @@ pub fn resolve_types(
         xform_remove_unsigned_abs::apply(lib, &type_environment)
     });
 
-    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
-        xform_resolve_type_aliases::apply(lib, &mut symbol_environment)
-    });
-
     // Mark every variable the program never writes as CONSTANT, so the
     // semantic rules and codegen see one notion of a constant variable.
     // Runs last: it needs bare identifiers resolved to variables, `ADR`
@@ -360,6 +353,10 @@ pub fn resolve_types(
     debug!("Symbol Environment:");
     debug!("{symbol_environment:?}");
 
+    // What runs, and when, resolved once next to `reachable`, so that a
+    // backend builds from it rather than deciding it again.
+    let model = execution_model::resolve(&library, options);
+
     let mut context = SemanticContext::new(
         type_environment,
         function_environment,
@@ -367,6 +364,7 @@ pub fn resolve_types(
         reachable,
         *options,
     )
+    .with_execution_model(model)
     .with_type_defaults(type_defaults);
     context.add_diagnostics(diagnostics);
 
@@ -406,6 +404,7 @@ pub(crate) fn semantic(
         rule_program_var_hides_global::apply,
         rule_no_top_level_var_global::apply,
         rule_operator_operand_type_check::apply,
+        rule_task_configuration::apply,
         rule_task_names_unique::apply,
         rule_stdlib_type_redefinition::apply,
         rule_string_encoding_compat::apply,
@@ -421,6 +420,7 @@ pub(crate) fn semantic(
         rule_var_decl_const_not_fb::apply,
         rule_var_decl_initializer_type_compat::apply,
         rule_var_decl_global_const_requires_external_const::apply,
+        rule_var_external_matches_global::apply,
         rule_mixed_located_var_declarations::apply,
         rule_pou_hierarchy::apply,
         rule_bit_and_partial_access_range::apply,

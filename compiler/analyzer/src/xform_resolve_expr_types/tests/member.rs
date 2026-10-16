@@ -100,3 +100,15 @@ fn apply_when_field_of_any_type_then_has_declared_type(
 ) {
     assert_eq!(declared_field_type(value), Some(expected.to_string()));
 }
+
+/// A field a function block inherits through `EXTENDS`, read from outside
+/// the instance, has the type the block that declares it gives it.
+#[test]
+fn apply_when_inherited_field_of_function_block_then_has_declared_type() {
+    let program = "
+FUNCTION_BLOCK Base VAR_OUTPUT count : LINT; END_VAR END_FUNCTION_BLOCK
+FUNCTION_BLOCK Derived EXTENDS Base END_FUNCTION_BLOCK
+PROGRAM main VAR d : Derived; x : LINT; END_VAR x := d.count; END_PROGRAM";
+    let resolved = run_pass_with_options(program, &crate::test_helpers::fb_inheritance_options());
+    assert_type_eq(&collect_assignment_types(&resolved)[0], "LINT");
+}

@@ -24,7 +24,7 @@ This guidance is particularly relevant when working with:
 
 1. **Choose the next available code**: Use the next sequential P#### number
 2. **Add to CSV**: Update `compiler/problems/resources/problem-codes.csv`
-3. **Create documentation**: Add `docs/compiler/problems/P####.rst`
+3. **Create documentation**: Add `docs/reference/compiler/problems/P####.rst`
 4. **Implement usage**: Use the problem code in diagnostic creation
 5. **Add tests**: Verify the error is generated correctly
 
@@ -40,7 +40,7 @@ P2016,SubrangeOutOfBounds,Subrange is outside base type bounds
 
 ### Documentation Template
 
-Create `docs/compiler/problems/P####.rst`:
+Create `docs/reference/compiler/problems/P####.rst`:
 
 ```rst
 =====

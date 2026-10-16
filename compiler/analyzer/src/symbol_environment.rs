@@ -7,8 +7,6 @@ use ironplc_dsl::textual::SelfRefKind;
 use ironplc_dsl::type_id::TypeId;
 use ironplc_problems::Problem;
 
-use crate::enumeration_values::EnumerationValues;
-
 /// A scope's position in the nesting tree: the chain of declaration
 /// names from the library root.
 ///
@@ -105,13 +103,6 @@ impl ScopeTracker {
         let mut path = self.path.clone();
         path.push(Self::name_of(node));
         ScopeKind::Named(ScopePath::new(path))
-    }
-
-    /// The outermost declaration the traversal is inside, such as the
-    /// function block a method belongs to, or `None` outside every
-    /// declaration.
-    pub(crate) fn unit(&self) -> Option<&Id> {
-        self.path.first()
     }
 }
 
@@ -282,6 +273,13 @@ pub struct DeclRef {
 
 /// What a name refers to when a body uses it as a variable. See
 /// [`SymbolEnvironment::resolve_variable`].
+///
+/// `decl` names the variable, and `info` describes the declaration the name
+/// reaches from where it is used. They are the same declaration except
+/// through a `VAR_EXTERNAL`: `decl` is then the global the external names,
+/// which is the variable a read or a write reaches, and `info` is the
+/// `VAR_EXTERNAL` declaration itself, whose qualifier is the one the body
+/// sees.
 #[derive(Debug, Clone)]
 pub enum Resolution<'a> {
     /// A variable the reference may use.
@@ -364,9 +362,9 @@ fn reserved_name(name: &Id) -> Diagnostic {
 /// The problem a second global declaration of a name is, when `existing`
 /// and `repeat` are both declarations and at least one is a program or a
 /// configuration. A pair of types or function blocks is the type
-/// environment's to report. The global scope also holds enumeration values,
-/// structure elements and global variables, whose uniqueness other rules
-/// own, so a pair involving one of those is `None`.
+/// environment's to report. The global scope also holds global variables.
+/// A variable repeating a variable is [`repeated_symbol`]'s to report, so a
+/// pair involving a variable is `None` here.
 fn repeated_declaration(existing: &SymbolKind, repeat: &SymbolKind) -> Option<Problem> {
     let is_declaration = |kind: &SymbolKind| {
         matches!(
@@ -413,13 +411,6 @@ pub struct SymbolEnvironment {
     global_symbols: IndexMap<Id, SymbolInfo>,
     /// Scoped symbols (variables within functions, function blocks, etc.)
     scoped_symbols: IndexMap<ScopeKind, IndexMap<Id, SymbolInfo>>,
-    /// The values of each enumeration type, in declaration order, and the
-    /// enumeration each alias names.
-    ///
-    /// Kept apart from the named symbols: an enumeration value is always
-    /// read through its type (`Colors#Red`), and two enumerations, or an
-    /// enumeration and a variable, may use the same name.
-    enumeration_values: EnumerationValues,
     /// Whether a body may use a `VAR_GLOBAL` directly, without a
     /// `VAR_EXTERNAL` naming it. The vendor dialects that declare globals
     /// in top-level lists (`--allow-top-level-var-global`) allow it; IEC
@@ -432,7 +423,6 @@ impl SymbolEnvironment {
         Self {
             global_symbols: IndexMap::new(),
             scoped_symbols: IndexMap::new(),
-            enumeration_values: EnumerationValues::default(),
             bare_globals: false,
         }
     }
@@ -549,17 +539,6 @@ impl SymbolEnvironment {
         Ok(())
     }
 
-    /// Records `name` as a value of the enumeration type `enum_type`.
-    pub fn insert_enumeration_value(&mut self, name: &Id, enum_type: &TypeName) {
-        self.enumeration_values.insert(enum_type, name);
-    }
-
-    /// Records that the enumeration `alias` is declared as an alias of
-    /// `base`, so it has the values of `base`.
-    pub fn insert_enumeration_alias(&mut self, alias: &TypeName, base: &TypeName) {
-        self.enumeration_values.insert_alias(alias, base);
-    }
-
     /// Finds a symbol visible from the given scope.
     ///
     /// Walks outward through the enclosing scopes and then the global
@@ -595,9 +574,15 @@ impl SymbolEnvironment {
     ///    it, unless the dialect lets a body use globals directly
     ///    ([`Self::with_bare_globals`]). A global the compiler provides is
     ///    always usable.
+    /// 3. **A `VAR_EXTERNAL` is its global.** A name that reaches a
+    ///    `VAR_EXTERNAL` declaration resolves to the global variable of
+    ///    that name, which the declaration gives the body access to. The
+    ///    external is not a variable of its own, so every unit that names
+    ///    one global through an external resolves to one [`DeclRef`].
     ///
-    /// A `VAR_EXTERNAL` resolves to its own declaration, in the scope that
-    /// declares it, and not to the global it names.
+    /// An external that names no global variable is an error, which
+    /// `rule_var_external_matches_global` reports. It resolves to its own
+    /// declaration, so that the rest of the body is still checked.
     pub fn resolve_variable(&self, name: &Id, from: &ScopeKind) -> Resolution<'_> {
         let Some((declared, info)) = self.find_declaration(name, from) else {
             return Resolution::Undeclared;
@@ -605,15 +590,37 @@ impl SymbolEnvironment {
         if !is_named_as_variable(&info.kind) {
             return Resolution::NotAVariable;
         }
-        let decl = DeclRef {
-            scope: info.scope.clone(),
-            name: declared.clone(),
+        let global = info
+            .is_external
+            .then(|| self.global_variable(name))
+            .flatten();
+        let decl = match global {
+            Some((global_name, _)) => DeclRef {
+                scope: ScopeKind::Global,
+                name: global_name.clone(),
+            },
+            None => DeclRef {
+                scope: info.scope.clone(),
+                name: declared.clone(),
+            },
         };
         if self.is_usable(info) {
             Resolution::Variable { decl, info }
         } else {
             Resolution::GlobalNotVisible { decl, info }
         }
+    }
+
+    /// The global variable named `name`, with the name as its declaration
+    /// spells it: one a `VAR_GLOBAL` block declares, or one the compiler
+    /// provides. `None` when the global scope declares no variable of that
+    /// name, whatever else it declares under it.
+    ///
+    /// This is the variable a `VAR_EXTERNAL` declaration of `name` names.
+    pub fn global_variable(&self, name: &Id) -> Option<(&Id, &SymbolInfo)> {
+        self.global_symbols
+            .get_key_value(name)
+            .filter(|(_, info)| is_variable(&info.kind))
     }
 
     /// Whether a body may use the variable `info` describes by name: every
@@ -710,12 +717,6 @@ impl SymbolEnvironment {
             .collect()
     }
 
-    /// Get a symbol by name and scope (alias for find)
-    #[allow(dead_code)]
-    pub fn get(&self, name: &Id, scope: &ScopeKind) -> Option<&SymbolInfo> {
-        self.find(name, scope)
-    }
-
     /// Returns all program declarations from the global scope.
     pub fn get_programs(&self) -> Vec<(&Id, &SymbolInfo)> {
         self.global_symbols
@@ -772,13 +773,6 @@ impl SymbolEnvironment {
         self.global_symbols
             .iter()
             .chain(self.scoped_symbols.values().flat_map(|scope| scope.iter()))
-    }
-
-    /// Get all enumeration values for a specific enumeration type, in
-    /// declaration order; for an alias, the values of the enumeration it
-    /// names.
-    pub fn get_enumeration_values_for_type(&self, enum_type: &TypeName) -> Vec<&Id> {
-        self.enumeration_values.values_of(enum_type)
     }
 }
 

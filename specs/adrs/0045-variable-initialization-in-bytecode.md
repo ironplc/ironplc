@@ -101,3 +101,26 @@ The `init_function_id` field occupies bytes 14-15 of `ProgramInstanceEntry`, whi
 Every compiled program uses:
 - `init_function_id = 0` (function 0 = init)
 - `entry_function_id = 1` (function 1 = scan)
+
+### Postscript (2026-10-11): who decides the value
+
+When this decision was made, the init function's code generator also decided
+*what* each variable starts at: it read each declaration's initializer and
+chose a default itself, differently for a program, a function, a function
+block, a structure and an array. That premise no longer holds, and the
+decision above is unaffected by the change.
+
+An analyzer pass now resolves the starting value of every declaration -- its
+initializer, else its type's declared default, else the type's implicit
+default, for every field and element -- and completes the declaration's
+initializer with it. Code generation runs the pass on a copy of the analyzed
+library as the first step of lowering, so the analyzed library stays the
+program as written. A completed initializer lists every field and element,
+holds every scalar as a literal of the type it is stored as, and marks the
+parts the program did not write with synthesized spans. A function's or
+method's result gets a declaration of its own to hold its value. The pass also
+records which declarations start again on every call (`reset_on_call`), which
+the function prologue of ADR-0024 resets. The init function and the prologue
+store the values the completed initializers hold and decide none, as ADR-0056
+has codegen compile the conversions the analyzer records rather than decide
+them. See `specs/design/initial-values.md`.

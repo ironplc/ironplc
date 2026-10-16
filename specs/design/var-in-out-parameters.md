@@ -11,12 +11,13 @@ than compiled with by-value semantics.
 
 | Section | Status |
 |---|---|
-| [Writable arguments](#writable-arguments), [Argument list](#argument-list), [Rules](#rules) | Implemented for function calls: P4058, P4059, P4060. P4061 and P4062 (function blocks) are not. Function block and method calls do not yet include `VAR_IN_OUT` in the positional order. |
+| [Writable arguments](#writable-arguments), [Argument list](#argument-list), [Rules](#rules) | Implemented for function calls: P4058, P4059, P4060. P4061 and P4062 (function blocks) are not. A function block or method call passes a `VAR_IN_OUT` by name only ([Call Binding](call-binding.md)). |
 | [Constant arguments](#constant-arguments) | Not implemented; `VAR_IN_OUT CONSTANT` is not parsed. |
 | [References](#references) | Variable references and their instance-scope check are implemented. Data-region references, `REF_ELEM` and `REF_BASE` are not. |
 | [Call site](#call-site), [Parameter slots](#parameter-slots) | Implemented for functions with an elementary parameter, when the argument is a named variable or a forwarded `VAR_IN_OUT`. |
 | [Accesses by parameter type](#accesses-by-parameter-type) | Elementary: implemented. `REF_TO`, strings, arrays, structures and instances: not implemented. |
-| [Function blocks](#function-blocks), [Methods](#methods) | Not implemented: their `VAR_IN_OUT` is still passed by value. |
+| [Function blocks](#function-blocks) | Not implemented: a function block's `VAR_IN_OUT` is still passed by value. |
+| [Methods](#methods) | Not implemented: a method call that binds a `VAR_IN_OUT` is reported as not implemented (P9999), not passed by value ([Call Binding](call-binding.md)). |
 | [Refusing unhandled sites](#refusing-unhandled-sites) | The refusal is implemented. The `FOR` control variable, bit and partial access writes, and `=>` targets are refused rather than handled. |
 | [Debug information](#debug-information) | Implemented. |
 
@@ -192,12 +193,15 @@ feature.
 A call's argument list is the `VAR_INPUT` and `VAR_IN_OUT` declarations, in
 declaration order. `FunctionSignature::input_parameters` and
 `input_parameter_count` iterate over parameters that are
-`is_input_compatible()`, the same list `xform_named_to_positional_args` orders
-named arguments by. So the arity check (P4018), positional binding and the
-named-to-positional rewrite all agree, whichever order the two kinds of
-parameter are declared in. Function block and method calls bind by the same
-list through `call_assignment_check::bind_inputs`, which also has to include
-`VAR_IN_OUT` in the positional order.
+`is_input_compatible()`, the same list a positional argument of a function
+binds to and the binding pass writes a call's named inputs in
+([Call Binding](call-binding.md)). So the arity check (P4018), positional
+binding and the normal form all agree, whichever order the two kinds of
+parameter are declared in.
+
+Function block and method calls differ: a positional argument binds to the
+`VAR_INPUT` declarations alone, in declaration order, and a `VAR_IN_OUT` is
+passed by name ([Call Binding](call-binding.md)).
 
 ### Rules
 

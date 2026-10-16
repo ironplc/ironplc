@@ -46,12 +46,12 @@ impl UnsignedAbsRemover<'_> {
         if !function.name.original().eq_ignore_ascii_case("ABS") {
             return None;
         }
-        let [ParamAssignmentKind::PositionalInput(input)] = function.param_assignment.as_slice()
-        else {
+        let [arg] = function.param_assignment.as_slice() else {
             return None;
         };
-        match self.type_environment.representation_of_expr(&input.expr)? {
-            SemanticType::UInt { .. } => Some(input.expr.clone()),
+        let input = arg.input_expr()?;
+        match self.type_environment.representation_of_expr(input)? {
+            SemanticType::UInt { .. } => Some(input.clone()),
             _ => None,
         }
     }

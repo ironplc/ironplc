@@ -9,23 +9,26 @@
 //! convention. Structurally this mirrors `compile_fn::compile_user_function`
 //! closely; the differences are exactly the parts of that convention.
 
+use std::collections::HashMap;
+
 use ironplc_container::{ContainerBuilder, FunctionId, VarIndex};
 use ironplc_dsl::common::{
-    FunctionBlockDeclaration, FunctionReturnType, InitialValueAssignmentKind, MethodDeclaration,
+    FunctionBlockDeclaration, FunctionReturnType, MethodDeclaration, TypeName, VariableType,
 };
-use ironplc_dsl::core::Located;
+use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{Expr, MethodCall, MethodReceiver, ParamAssignmentKind};
+use ironplc_dsl::textual::{MethodCall, MethodReceiver, ParamAssignmentKind};
 
 use ironplc_analyzer::TypeEnvironment;
 
 use super::compile::{
     finalize_function, CompileContext, CompiledFunction, CurrentFunctionReturn, DEFAULT_OP_TYPE,
 };
+use super::compile_call_output::{store_outputs, CallOutputs};
 use super::compile_expr::{compile_expr, emit_load_var};
 use super::compile_setup::emit_function_local_prologue;
 use super::compile_stmt::compile_statements;
-use super::type_info::{decl_type_info, resolve_type_name};
+use super::type_info::{decl_type_info, named_type_info};
 use crate::emit::Emitter;
 
 /// Compiles every `METHOD` declared on `fb_decl`, in declaration order.
@@ -77,7 +80,10 @@ pub(crate) fn compile_user_fb_methods(
         ctx.variables = saved_variables;
         ctx.var_types = saved_var_types;
 
-        let result = compiled_method?;
+        let CompiledMethod {
+            compiled: result,
+            outputs,
+        } = compiled_method?;
 
         // `result.num_locals` spans from `field_var_off` (not
         // `param_var_off`) through this method's own locals -- see the
@@ -96,6 +102,7 @@ pub(crate) fn compile_user_fb_methods(
         {
             info.param_var_off = param_var_off.raw();
             info.max_stack_depth = result.max_stack_depth;
+            info.outputs = outputs;
         }
 
         compiled.push(result);
@@ -117,8 +124,8 @@ fn compile_user_method(
     param_var_off: VarIndex,
     ctx: &mut CompileContext,
     _builder: &mut ContainerBuilder,
-    _types: &TypeEnvironment,
-) -> Result<CompiledFunction, Diagnostic> {
+    types: &TypeEnvironment,
+) -> Result<CompiledMethod, Diagnostic> {
     let mut current_index = param_var_off;
     let mut num_params: u16 = 0;
 
@@ -129,42 +136,46 @@ fn compile_user_method(
         }
         if let Some(id) = decl.identifier.symbolic_id() {
             ctx.variables.insert(id.clone(), current_index);
-            if let InitialValueAssignmentKind::Simple(_) = &decl.initializer {
-                if let Some(type_info) = decl_type_info(ctx, decl) {
-                    ctx.var_types.insert(id.clone(), type_info);
-                }
+            // A parameter operates at its declared type, whatever kind of
+            // declaration declares it, as a function's does.
+            if let Some(type_info) = decl_type_info(ctx, decl) {
+                ctx.var_types.insert(id.clone(), type_info);
             }
             current_index = VarIndex::new(current_index.raw() + 1);
             num_params += 1;
         }
     }
 
-    // Second pass: local variables (VAR, VAR_TEMP).
+    // Second pass: local variables (VAR, VAR_TEMP) and outputs (VAR_OUTPUT),
+    // which start again on every call as a local does.
+    let mut outputs = HashMap::new();
     for decl in method.all_variables() {
-        if !decl.var_type.is_local() {
+        if !decl.var_type.is_local() && decl.var_type != VariableType::Output {
             continue;
         }
         if let Some(id) = decl.identifier.symbolic_id() {
             ctx.variables.insert(id.clone(), current_index);
-            if let InitialValueAssignmentKind::Simple(_) = &decl.initializer {
-                if let Some(type_info) = decl_type_info(ctx, decl) {
-                    ctx.var_types.insert(id.clone(), type_info);
-                }
+            if decl.var_type == VariableType::Output {
+                outputs.insert(id.clone(), current_index);
+            }
+            // A local operates at its declared type, as a parameter does.
+            if let Some(type_info) = decl_type_info(ctx, decl) {
+                ctx.var_types.insert(id.clone(), type_info);
             }
             current_index = VarIndex::new(current_index.raw() + 1);
         }
     }
 
     // Always allocate a return-value slot, even for a method with no
-    // return type: `emit_function_local_prologue` unconditionally
-    // zero-initializes "the return variable", so a void method gets one
-    // harmless unused slot rather than special-casing the prologue call.
+    // return type: `emit_function_local_prologue` clears it, so a void
+    // method gets one harmless unused slot rather than special-casing the
+    // prologue call.
     let return_var_index = current_index;
     let return_id = method.name.clone();
     let has_return_value = method.return_type.is_some();
 
     let return_op_type = match &method.return_type {
-        Some(FunctionReturnType::Named(type_name)) => resolve_type_name(&type_name.name)
+        Some(FunctionReturnType::Named(type_name)) => named_type_info(ctx, types, type_name)
             .map(|info| (info.op_width, info.signedness))
             .unwrap_or(DEFAULT_OP_TYPE),
         Some(FunctionReturnType::String(spec)) | Some(FunctionReturnType::WString(spec)) => {
@@ -188,7 +199,7 @@ fn compile_user_method(
     if has_return_value {
         ctx.variables.insert(return_id.clone(), return_var_index);
         if let Some(FunctionReturnType::Named(type_name)) = &method.return_type {
-            if let Some(type_info) = resolve_type_name(&type_name.name) {
+            if let Some(type_info) = named_type_info(ctx, types, type_name) {
                 ctx.var_types.insert(return_id.clone(), type_info);
             }
         }
@@ -210,6 +221,7 @@ fn compile_user_method(
         &mut method_emitter,
         ctx,
         &method.variables,
+        has_return_value.then_some(&method.result),
         &return_id,
         return_var_index,
         return_op_type,
@@ -228,7 +240,10 @@ fn compile_user_method(
     let saved_current_fn = ctx.current_function_id.take();
     ctx.current_function_id = Some(function_id);
 
+    // A method body is not lowered yet.
+    let saved_pou = ctx.current_pou.take();
     compile_statements(&mut method_emitter, ctx, &body)?;
+    ctx.current_pou = saved_pou;
 
     ctx.current_function_id = saved_current_fn;
     ctx.current_function_return = saved_return_ctx;
@@ -242,30 +257,40 @@ fn compile_user_method(
 
     let finalized = finalize_function(&mut method_emitter, ctx)?;
 
-    Ok(CompiledFunction {
-        function_id,
-        bytecode: finalized.bytecode,
-        max_stack_depth: finalized.max_stack_depth,
-        max_temp_depth: finalized.max_temp_depth,
-        num_locals,
-        num_params,
-        name: method.name.to_string(),
-        line_map: finalized.line_map,
+    Ok(CompiledMethod {
+        compiled: CompiledFunction {
+            function_id,
+            bytecode: finalized.bytecode,
+            max_stack_depth: finalized.max_stack_depth,
+            max_temp_depth: finalized.max_temp_depth,
+            num_locals,
+            num_params,
+            name: method.name.to_string(),
+            line_map: finalized.line_map,
+        },
+        outputs,
     })
+}
+
+/// A compiled method, and the slot of each of its outputs.
+struct CompiledMethod {
+    compiled: CompiledFunction,
+    outputs: HashMap<Id, VarIndex>,
 }
 
 /// Compiles a method call (`instance.MethodName(args)`, OOP extension,
 /// ADR-0041 Phase 1 static dispatch). See `METHOD_CALL`'s doc comment in
 /// `ironplc_container::opcode` for the calling convention.
 ///
-/// Scoped to methods declared directly on the instance's own function
-/// block type. A method reached only via the instance type's `EXTENDS`
-/// chain (already accepted by `rule_method_call_declared` at the
-/// semantic-analysis level) is not yet supported here: a derived type's
-/// data-region layout doesn't currently reserve storage for a base
-/// type's fields at all (`compile_user_function_block`'s field list
-/// comes from `fb_decl.variables` only, never flattened with inherited
-/// fields), so there is nothing correct to copy-in/copy-out from.
+/// The method is the one the analyzer resolved the call to
+/// ([`ironplc_analyzer::MethodOwners`]): the instance's block's own, or the
+/// nearest block it `EXTENDS` that declares one. A method a base block
+/// declares runs on the instance only when the base block has no fields: a
+/// derived block's data-region layout does not yet reserve storage for a
+/// base block's fields (`compile_user_function_block`'s field list comes from
+/// `fb_decl.variables` only, never flattened with inherited fields), so
+/// there is nothing correct to copy in and out. Such a call is reported as
+/// not implemented.
 ///
 /// Leaves the instance reference on the stack with the return value, if
 /// the method has one, on top of it, and returns whether it does. The
@@ -300,7 +325,31 @@ fn compile_method_call(
         .find(|(_, info)| info.type_id == type_id)
         .map(|(name, _)| name.clone())
         .ok_or_else(|| Diagnostic::todo_with_span(call.span()))?;
-    let fb_type_info = &ctx.user_fb_types[&fb_name];
+
+    // `rule_method_call_declared` rejects a call no block in the chain
+    // declares a method for (P4046).
+    let declaring = ctx
+        .method_owners
+        .declaring_block(&TypeName::from(fb_name.as_str()), &call.method)
+        .map(|block| block.to_string().to_uppercase())
+        .ok_or_else(|| {
+            Diagnostic::internal_error_at(Label::span(
+                call.span(),
+                "Method call the analyzer resolved to no method",
+            ))
+        })?;
+    let fb_type_info = ctx.user_fb_types.get(&declaring).ok_or_else(|| {
+        Diagnostic::internal_error_at(Label::span(
+            call.span(),
+            "Method of a function block that has no layout",
+        ))
+    })?;
+    if declaring != fb_name && fb_type_info.num_fields > 0 {
+        return Err(Diagnostic::not_implemented(Label::span(
+            call.span(),
+            "Method of a base function block that declares fields, called on an instance of a derived block",
+        )));
+    }
 
     let method_name = call.method.to_string().to_lowercase();
     let method_info = fb_type_info
@@ -313,42 +362,53 @@ fn compile_method_call(
     let num_fields = fb_type_info.num_fields as u8;
     let param_var_off = ironplc_container::VarIndex::new(method_info.param_var_off);
     let num_params = method_info.num_params;
-    let param_names_in_order = method_info.param_names_in_order.clone();
-    let param_op_types = method_info.param_op_types.clone();
     let has_return_value = method_info.has_return_value;
     let max_stack_depth = method_info.max_stack_depth;
+    let outputs = method_info.outputs.clone();
+
+    // The analyzer wrote the call in normal form (`call-binding.md`), and
+    // `rule_method_call_declared` requires every input (P4018), so the call
+    // names each parameter once, in declaration order. Anything else is a
+    // compiler bug.
+    let mut inputs = Vec::with_capacity(call.params.len());
+    for param in &call.params {
+        match param {
+            ParamAssignmentKind::NamedInput(input) => inputs.push(input),
+            ParamAssignmentKind::PositionalInput(input) => {
+                return Err(Diagnostic::internal_error_at(Label::span(
+                    input.expr.span(),
+                    "Positional argument of a method call the analyzer did not bind",
+                )))
+            }
+            // Stored in their targets after the call.
+            ParamAssignmentKind::Output(_) => {}
+        }
+    }
+    let params = &method_info.params;
+    let in_order = inputs.len() == params.len()
+        && inputs
+            .iter()
+            .zip(params)
+            .all(|(input, param)| input.name == param.name);
+    if !in_order {
+        return Err(Diagnostic::internal_error_at(Label::span(
+            call.span(),
+            "Method call whose arguments are not in normal form",
+        )));
+    }
+    // A VAR_IN_OUT is passed by reference, which this route cannot do
+    // (`var-in-out-parameters.md`); lowering does.
+    if let Some((input, _)) = inputs.iter().zip(params).find(|(_, param)| param.in_out) {
+        return Err(Diagnostic::not_implemented(Label::span(
+            input.name.span(),
+            "VAR_IN_OUT parameter of a METHOD",
+        )));
+    }
 
     emitter.emit_fb_load_instance(var_index);
 
-    // Resolve named/positional args to the method's declared VAR_INPUT
-    // order (arity and name validity already checked by
-    // rule_method_call_declared, so any argument that doesn't line up
-    // here indicates a codegen bug, not a user error -- hence `todo`
-    // rather than a user-facing diagnostic).
-    let mut ordered_args: Vec<Option<&Expr>> = vec![None; param_names_in_order.len()];
-    for param in &call.params {
-        match param {
-            ParamAssignmentKind::PositionalInput(p) => {
-                if let Some(slot) = ordered_args.iter_mut().find(|s| s.is_none()) {
-                    *slot = Some(&p.expr);
-                }
-            }
-            ParamAssignmentKind::NamedInput(n) => {
-                let name = n.name.to_string().to_lowercase();
-                if let Some(idx) = param_names_in_order.iter().position(|p| *p == name) {
-                    ordered_args[idx] = Some(&n.expr);
-                }
-            }
-            ParamAssignmentKind::Output(_) => {
-                // Methods have no VAR_OUTPUT `=>` call syntax in this slice.
-            }
-        }
-    }
-
-    for (i, arg) in ordered_args.iter().enumerate() {
-        let expr = arg.ok_or_else(|| Diagnostic::todo_with_span(call.span()))?;
-        let op_type = param_op_types.get(i).copied().unwrap_or(DEFAULT_OP_TYPE);
-        compile_expr(emitter, ctx, expr, op_type)?;
+    for input in &inputs {
+        compile_expr(emitter, ctx, &input.expr)?;
     }
 
     // Record a call-graph edge; unlike FB_CALL, a method call is always
@@ -364,6 +424,10 @@ fn compile_method_call(
         has_return_value,
         max_stack_depth,
     );
+
+    // A method leaves its outputs in its own output variables; storing them
+    // leaves the instance and the return value on the stack.
+    store_outputs(emitter, ctx, CallOutputs::Variables(outputs), &call.params)?;
 
     Ok(has_return_value)
 }

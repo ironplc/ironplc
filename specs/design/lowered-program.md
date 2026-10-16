@@ -92,12 +92,23 @@ describe:
   literals (ADR-0056): those of operands, assigned values, the arguments of
   functions, methods and function block calls, loop bounds, and the results
   of calls and dereferences. It types a function of several inputs, such as
-  `MAX`, and the bitwise operators by the type every input widens to. The
-  conversions codegen still makes itself go through one function,
-  `convert_to_context`. Codegen asks the overload resolver a second time only
+  `MAX`, and the bitwise operators by the type every input widens to, and
+  records the conversion of a subscript, a shift count and a string
+  position. Codegen compiles every expression at its own type and makes no
+  conversion of its own. Codegen asks the overload resolver a second time only
   for an operand pair with a typed overload, such as time arithmetic.
 - Bit and partial access, and assignments to most targets that occupy one
   slot, compile through one addressing path (`Place`).
+- The analyzer resolves the execution model: which configuration is built,
+  which program instance runs under which task, how each task is scheduled
+  and which globals exist ([The Resolved Execution Model](execution-model.md)).
+  It is plain data in `ironplc-ir`, and codegen builds the task table and
+  globals from it without reading a configuration's declarations.
+- The analyzer's `xform_resolve_initial_values` completes every initializer
+  with the whole starting value of its declaration
+  ([Initial Values Completed by the Analyzer](initial-values.md)). Codegen
+  runs it on a copy of the library as the first step of `compile`, and stores
+  each value as the completed initializer states it.
 
 The rest of this section describes the problem as it was measured, because
 that is what the design answers.
@@ -275,7 +286,9 @@ Lowering is two new crates:
   the `Intrinsic` enum, and the expansions a backend may call instead of
   implementing a node (REQ-LOW-ir-068). It depends only on `ironplc-dsl`, for
   ids, source spans and diagnostics, and re-exports what a backend needs from
-  it.
+  it: `SourceSpan`, `FileId`, `Label` and `Diagnostic`. A backend names them
+  through `ironplc-ir`, so it needs no dependency on `ironplc-dsl`
+  (REQ-LOW-codegen-002).
 - **`ironplc-lowering`** is the pass that builds a lowered program, a program
   in the IR, from a clean analysis.
 
@@ -309,6 +322,15 @@ at a given call site, and does not compile the analyzer at all. The lowered
 program carries its own type table (see
 [Program, POUs and variables](#32-program-pous-and-variables)), so a backend
 needs nothing more.
+
+`ironplc-ir` already exists, holding the execution model (see
+[The Resolved Execution Model](execution-model.md)). Until `ironplc-lowering`
+exists, the analyzer builds that model and so depends on `ironplc-ir`, and
+codegen depends on both, contrary to the table above
+([ADR-0065](../adrs/0065-the-analyzer-builds-the-execution-model-until-lowering-exists.md)).
+The analyzer's `execution_model` module reads only what a clean analysis
+holds, so that it moves into `ironplc-lowering` unchanged, and the analyzer
+then drops the dependency.
 
 **REQ-LOW-lowering-001** The lowering entry point takes a clean analysis (see
 [The Clean-Analysis Gate](#2-the-clean-analysis-gate)) and returns either a
@@ -369,14 +391,29 @@ serves the MCP server and the playground, `lsp_runner.rs`, the benchmarks, and
 the tests of codegen and of the VM command line.
 
 ```rust
-pub struct CleanAnalysis<'a> { library: &'a Library, context: &'a SemanticContext }
+pub struct CleanAnalysis<'a> {
+    library: &'a Library,
+    context: &'a SemanticContext,
+    execution_model: ExecutionModel,   // resolved from `library` by `new`
+    declarations: Declarations<'a>,    // the declaration behind each model id
+}
 
 impl<'a> CleanAnalysis<'a> {
     // The error is the context's diagnostics.
     pub fn new(library: &'a Library, context: &'a SemanticContext)
         -> Result<Self, &'a [Diagnostic]>;
+    pub fn execution_model(&self) -> &ExecutionModel;
+    pub fn program_declaration(&self, id: ProgramId) -> Option<&'a ProgramDeclaration>;
+    pub fn global_declaration(&self, id: GlobalId) -> Option<&'a VarDecl>;
 }
 ```
+
+`new` resolves the execution model from the library it holds, so the model
+codegen builds from is always that library's. `program_declaration` and
+`global_declaration` are how codegen reaches a program's body and a declared
+global's type and initial value by model id, and they go away when the
+lowered program carries bodies, types and initial values (see
+[What a backend still reads](execution-model.md#what-a-backend-still-reads)).
 
 Lowering takes the same value. Nothing about the gate changes when lowering
 arrives: codegen passes the clean analysis it receives on to lowering.
@@ -407,13 +444,15 @@ the AST is deleted.
 
 Which states analysis rules out is established case by case, not assumed.
 Some of what codegen handles is reached by programs analysis accepts. The
-analyzer does not record a function block output stored by a call yet, so
-`fb(OUT => x)` reaches codegen with no conversion, and codegen stores the
-output at the field's operation type
-([Implicit Conversions](implicit-conversions.md),
-[issue 2125](https://github.com/ironplc/ironplc/issues/2125)). A path like
-that does not become a P9998 in lowering. The analyzer first either
-rejects the program or records a decision for it.
+analyzer does not record the conversion of a value stored in a directly
+represented variable yet (`%QW0 := w`,
+[Implicit Conversions](implicit-conversions.md)), so such an assignment
+reaches codegen with no conversion. A path like that does not become a P9998
+in lowering. The analyzer first either rejects the program or records a
+decision for it, as it does for a function block output stored by a call:
+it records the value the output stores, converted to its target's type, and
+rejects an output its target cannot hold
+([issue 2125](https://github.com/ironplc/ironplc/issues/2125)).
 
 ## 3. The Lowered Program
 
@@ -430,13 +469,18 @@ Everything is referred to by an id allocated during lowering, never by name.
 | `PouId` | A program, function, function block or method | The lower-case key of `user_functions`, the upper-case key of `user_fb_types` |
 | `FieldIdx` | A field of a structure, function block or program, by position. Every variable a function block or program declares, other than `VAR_TEMP` and `VAR_EXTERNAL`, is a field of its instance, and so is every field lowering synthesizes for it (see [Synthesized state](#synthesized-state)) | The lower-case field name in `field_index` and `field_indices` |
 | `LoopId` | One `Loop` or `For` | The top of the `loop_labels` stack |
-| `TypeId` | A type (ADR-0055, unchanged) | Unchanged |
+| `TypeId` | A type of the lowered program's type table | The analyzer's `TypeId` (ADR-0055), which lowering maps to one of its own |
 
 Each id is a type of its own, a newtype over an integer such as
 `struct VarId(u32)`, and not a type alias. An alias such as `type VarId = u32`
 would let a `PouId` be passed where a `VarId` is expected, and the compiler
-would accept it; that mix-up is what separate ids exist to prevent. `TypeId`
-is already a newtype.
+would accept it; that mix-up is what separate ids exist to prevent.
+
+The lowered program numbers its types itself rather than reusing the
+analyzer's `TypeId`. Two types it needs have no analyzer id: the type of a
+program's instance, and the non-null reference type of a body's instance
+parameter. A backend therefore never sees an analyzer id, which also keeps
+it from needing one (REQ-LOW-codegen-002).
 
 **REQ-LOW-ir-019** `VarId`, `PouId`, `FieldIdx`, `LoopId` and `TypeId` are
 distinct types, so a value of one cannot be used where another is expected.
@@ -459,8 +503,7 @@ pub struct Program {
     pub variables: Vec<Variable>,      // indexed by VarId
     pub pous: Vec<Pou>,                // indexed by PouId
     pub init: Vec<Stmt>,               // initial values of every global and instance, run once
-    pub instances: Vec<ProgramInstance>, // the global holding each program instance, and its task
-    pub tasks: Vec<Task>,
+    pub execution: ExecutionModel,     // resources, tasks and program instances (execution-model.md)
 }
 
 pub struct Variable {
@@ -492,7 +535,7 @@ pub enum TypeKind {
     BitString { bits: u8 },
     Real { bits: u8 },
     Temporal { kind: TemporalKind, bits: u8 },
-    Enumeration { underlying: TypeId, values: Vec<Id> },
+    Enumeration { underlying: TypeId, values: Vec<(Id, i32)> }, // each value's ordinal
     Subrange { base: TypeId, min: i128, max: i128 },
     String(StringShape),
     Array { element: TypeId, dimensions: Vec<(i32, i32)> },
@@ -511,6 +554,12 @@ pub struct Field {
 }
 ```
 
+What runs and when is the execution model that `ironplc-ir` already holds
+([The Resolved Execution Model](execution-model.md)). The lowered program
+holds it rather than repeating it, and its `ProgramId` and `GlobalId` become,
+or are replaced by, the `PouId` of the program's body and the `VarId` of the
+global.
+
 A program, like a function block, has an instance: the global that a program
 configuration declares holds it, and the program's variables are the fields of
 its type. A program, function block or method body reaches its own instance
@@ -518,13 +567,33 @@ through its instance parameter (see [Places](#34-places)). A method's instance
 parameter is also its first parameter (see
 [Callees, arguments and intrinsics](#38-callees-arguments-and-intrinsics)).
 
+The fields of a program's or function block's type are the variables it
+declares, whatever their types, so a block's type is the same whether its body
+is lowered or an instance of it is a field of another. A function block's
+fields, of a block the library declares and of a standard block alike, are the
+ones the analyzer's type environment records for it
+(`TypeEnvironment::block_fields`); a standard block also has the ones lowering
+synthesizes (see [Synthesized state](#synthesized-state)). The fields a block inherits through
+`EXTENDS` are not among them yet, so a statement that names one is not
+lowered.
+
+**REQ-LOW-lowering-170** The type of a program, or of a function block the
+library declares, has one field for each variable it declares other than a
+`VAR_TEMP` or a `VAR_EXTERNAL`, in the order it declares them.
+
 The type table describes types as the language defines them. The width of an
 `INT` is part of the language; where a field sits in memory, how many slots a
 value takes and how wide a reference is are each backend's layout. Today's
-`SemanticType` carries both: `SemanticStructField::offset` is a byte
-offset, `slot_count` sizes strings with the container's `string_region_size`,
-and a reference is sized as a 64-bit variable-table index. Lowering builds its
-table from `SemanticType` and carries none of those.
+`SemanticType` carries one piece of layout: `slot_count` sizes strings with
+the container's `string_region_size`. Lowering builds its table from
+`SemanticType` and does not carry it.
+
+An enumeration's values carry the ordinals the analyzer decided for them
+(`EnumerationMembers`): an explicit value (`GREEN := 5`), or one more than the
+value before. An enumerated value lowers to its ordinal as a `Const`, and so
+does a `CASE` label naming one. Every enumeration operates as a `DINT`, and
+analysis reports an ordinal outside its range (P2044, REQ-EN-codegen-084), so
+each ordinal fits one; lowering reports one that does not as P9998.
 
 **REQ-LOW-lowering-027** The type table holds no size, offset or slot count,
 and refers to the type of every field, element, enumeration, subrange and
@@ -556,6 +625,14 @@ should become declarative (a value per place), and how a warm restart that
 keeps `RETAIN` variables is expressed, are revisited with support for
 `RETAIN` variables (see [Scope](#scope)).
 
+Lowering takes each starting value from a completed initializer. The
+analyzer's `xform_resolve_initial_values` completes each declaration's initializer with
+its whole starting value: every field and element listed, every scalar a
+literal of the type it is stored as
+([Initial Values Completed by the Analyzer](initial-values.md)). Lowering runs
+it on a copy of the library, as codegen does today, and translates each
+completed initializer into statements.
+
 The initial values of an instance's fields are written where the instance is
 declared, as statements through the place that holds it, so an instance's own
 initializer (`t : MyFb := (x := 7)`) needs no further mechanism. The locals of
@@ -569,7 +646,10 @@ today.
 An unreachable POU is never lowered. Analysis still checks every POU, so
 `check` reports a problem in an unreachable POU as it does today. It does not
 report a construct the compiler cannot generate yet there, because that POU
-is never generated. A library with no configuration therefore lowers nothing.
+is never generated. A library with no program instance therefore lowers
+nothing. A library with a `PROGRAM` but no `CONFIGURATION` has instances: the
+execution model gives it an implicit configuration whose instances make its
+programs reachable.
 
 **REQ-LOW-lowering-026** Every variable's `ty` is present in the type table.
 
@@ -612,17 +692,26 @@ a comparison of two arrays from being writable.
 | Aggregate | arrays, structures, function block and program instances | `Place` only; there is no aggregate expression |
 
 `ScalarType` is today's `OpType`, one of four operation widths (32-bit integer,
-64-bit integer, 32-bit float, 64-bit float) with a signedness, plus a
-reference kind and an interface kind. Widths narrower than 32 bits exist only
-as the storage of a place (ADR-0001). `StringShape` is an encoding
+64-bit integer, 32-bit float, 64-bit float) with a signedness, plus a `BOOL`
+kind, a reference kind and an interface kind. Widths narrower than 32 bits
+exist only as the storage of a place (ADR-0001). `StringShape` is an encoding
 (ADR-0034) and a capacity: today the encoding is the string type the analyzer
 records, and `string_width.rs` works out the capacity. Today the capacity may
 be unknown; in the IR it is always stated (see
 [String capacity](#string-capacity)).
 
 ```rust
-pub enum ScalarType { I32(Signedness), I64(Signedness), F32, F64, Ref, Interface }
+pub enum ScalarType { Bool, I32(Signedness), I64(Signedness), F32, F64, Ref, Interface }
 ```
+
+A `BOOL` is a type of its own rather than an integer of some width. Today the
+bytecode backend computes and stores a `BOOL` as a signed 32-bit value
+(`type_info.rs`), the operation type of a `DINT`. That is that backend's
+layout, not the language: another backend may compute a `BOOL` as one byte, or
+pack several into the bits of one word, and it can only do so if the lowered
+program says which values are `BOOL`s. A `BOOL` becomes an integer only by an
+explicit conversion such as `BOOL_TO_INT`, a `Convert`, and an integer becomes
+a `BOOL` by a comparison with zero.
 
 The operation widths are ADR-0001's, and this design assumes them. They are
 part of what a program means, not a choice a target makes, because an
@@ -795,6 +884,7 @@ pub enum ExprKind {
     Const(Const),                                   // I32, I64, F32 or F64
     Read(Place),
     Convert(Box<Expr>),                             // to `ty`, from the operand's type
+    ConvertChecked(Box<Expr>),                      // as `Convert`, trapping when the value does not fit `ty`
     Truncate { bits: u8, value: Box<Expr> },        // wrap to a storage width (ADR-0001)
     Unary { op: UnaryOp, value: Box<Expr> },        // Neg, BitNot, BoolNot
     Binary { op: BinaryOp, lhs: Box<Expr>, rhs: Box<Expr> },
@@ -845,14 +935,15 @@ is not optional and is never a generic category such as `ANY_INT`.
 `Binary` itself.
 
 **REQ-LOW-lowering-043** The operands of a `Compare` have the same type as each
-other, and the `Compare` itself has the operation type of `BOOL`.
+other, and the `Compare` itself has the type `Bool`.
 
-A `ScalarType` does not say whether a value is a `BOOL`. Today codegen
-computes a `BOOL` as a signed 32-bit value (`type_info.rs`), the operation
-type of a `DINT`, and a `UDINT` and a `DWORD` share the unsigned one. It
-chooses between a logical and a bitwise operator from the signedness alone
-(`compile_expr.rs`). Lowering knows which from the source type and chooses
-operators accordingly (REQ-LOW-lowering-048); a backend never needs to.
+Today codegen computes a `BOOL` at the operation type of a `DINT`, and a
+`UDINT` and a `DWORD` share the unsigned one, so it chooses between a logical
+and a bitwise operator from the signedness alone (`compile_expr.rs`). In the
+lowered program a `BOOL` has its own `ScalarType`, so the logical operators
+apply only to `Bool` and the bitwise ones only to integers, and a constructor
+refuses any other pairing (REQ-LOW-lowering-048). No `BOOL` is converted to or
+from a number implicitly.
 
 **REQ-LOW-lowering-044** A `Convert` changes type: its operand's type differs
 from its own.
@@ -944,6 +1035,14 @@ At first, lowering gives each intermediate result the bound codegen computes
 for it today, so the move is behaviour preserving. A later change to how
 lowering chooses a capacity is a change to lowering and no backend.
 
+**REQ-LOW-lowering-167** The result of a standard string function that
+yields a string has the sum of the capacities of its string arguments: room
+for every code unit `CONCAT`, `INSERT` and `REPLACE` join, and for every one
+`LEFT`, `RIGHT`, `MID` and `DELETE` can keep of their one string.
+
+**REQ-LOW-lowering-168** The result of a conversion to a string has the
+default capacity.
+
 The bytecode backend cannot meet REQ-LOW-codegen-055 yet, and lowering cannot
 fix that. The VM's pool of temporary buffers is sized once, by two container
 header fields, `num_temp_bufs` and `max_temp_buf_bytes`
@@ -988,6 +1087,10 @@ pub enum StmtKind {
     Continue(LoopId),
     Return,
 }
+
+pub struct CaseArm { labels: Vec<CaseLabel>, body: Vec<Stmt> }
+
+pub enum CaseLabel { Value(Const), Range(Const, Const) }      // a range includes both ends
 ```
 
 `Loop` repeats `body` then `continuing` until an `Exit` leaves it. `Continue`
@@ -1024,6 +1127,11 @@ ranges of the selector's type.
 
 **REQ-LOW-lowering-065** `AssignBits` names a bit range that lies within the
 storage width of its place's type.
+
+`AssignBits` replaces the `bits` bits of the place's value that start at bit
+`shift` with the low `bits` bits of its value, and leaves the other bits as
+they were. The value is a `BOOL` for one bit, a 32-bit integer for up to 32
+bits, and a 64-bit integer for more.
 
 The arms of a `Case` are tried in order and the first arm with a matching
 label runs, as `compile_case` does today.
@@ -1066,12 +1174,49 @@ instance's fields, the block's body runs (`FbCall`), and its outputs are
 assigned from the instance's fields to their targets. Each assignment is an
 ordinary `Assign`, `AssignStr` or `Copy`, and a `VAR_IN_OUT` input is an
 `Assign` of a `RefTo`, so an output whose target has a wider type carries the
-`Convert` the analyzer recorded. Today codegen stores an output at the field's
-operation type, with no conversion (`compile_stmt.rs`).
+`Convert` the analyzer recorded. The analyzer records an output's assignment
+on the output itself: the value it stores, the call's output converted to the
+target's type ([Call Binding](call-binding.md)). Lowering lowers each output
+to the assignment of that value to its target, with the call's output a read
+of the instance's field, as the route that reads the AST compiles it
+(`compile_call_output.rs`). Every statement a call lowers to has the call's
+span.
 
 **REQ-LOW-lowering-069** A function block call lowers to the assignments of
-its inputs to the instance's fields, then an `FbCall`, then the assignments of
+its inputs to the instance's fields, in the order of the call's normal form
+([Call Binding](call-binding.md)), then an `FbCall`, then the assignments of
 its outputs from the instance's fields, in that order.
+
+**REQ-LOW-ir-171** The instance of an `FbCall` is a place whose type is a
+function block, and its block is that type's body.
+
+Not lowered yet, so each stays on the route that reads the AST:
+
+- a call of a standard function block, which lowering does not generate yet
+  (REQ-LOW-lowering-077);
+- a call that binds a `VAR_IN_OUT` of the block;
+- a call whose input or output lowering does not store yet, such as a
+  structure, which needs a `Copy`.
+
+While both routes exist, the bytecode backend emits the stores of a call's
+inputs and its `FbCall` as the route that reads the AST emits a call
+(`compile_fb_call.rs`): the instance pushed once, each input narrowed and
+stored in its field, then `FB_CALL` on the instance's slot. A call so
+compiles to the same instructions by either route, and the VM copies the
+instance's fields in and out around the body for every statement of it
+(see "One field model per body" under
+[Delivery Constraints](#delivery-constraints)). The backend reaches an
+instance by name, as the route that reads the AST does, so an instance that
+route cannot call, such as one declared inside a function block
+([issue 1553](https://github.com/ironplc/ironplc/issues/1553)) or reached
+through `VAR_EXTERNAL`
+([issue 1858](https://github.com/ironplc/ironplc/issues/1858)), stays on it.
+
+The order of the inputs among themselves is the order of the call's normal
+form: the order the block declares them, whatever order the call writes them
+in. Codegen evaluates them in that order, as it evaluates the arguments of a
+function or a method in the order of the parameters, and the end-to-end tests
+record it (`end_to_end_evaluation_order.rs`).
 
 ### 3.8 Callees, arguments and intrinsics
 
@@ -1105,9 +1250,14 @@ passed to a call as an `Arg`:
 
 Keeping the two apart matters because a backend may implement both by passing
 an address. Then the difference is only whether the backend copies first, and
-a node that says so cannot be forgotten. Today `ParamPassing` has no mode for a
-by-value aggregate input, and such a parameter falls through to the scalar
-default (`ParamPassing::Value(DEFAULT_OP_TYPE)` in `compile_fn.rs`).
+a node that says so cannot be forgotten. Today codegen does not support an
+array or structure input to a function or function block. Inside the body
+the parameter has no array or structure storage, so reading an element or a
+field of it is reported as P9999 (`compile_array.rs`, `compile_struct.rs`).
+A call still passes one scalar value for the parameter
+(`ParamPassing::Value`), which is harmless only because a body that reads
+the parameter never compiles. Lowering reports such an input as P9999 until
+it provides `Arg::Copy` for it.
 
 A function whose result is a string or an aggregate returns it through a
 result parameter: a hidden parameter of non-null reference type, after a
@@ -1148,8 +1298,9 @@ simpler. But it differs from an output in three ways a program can observe:
   the parameter's width rather than converted, which needs the `Convert` the
   analyzer records.
 
-Codegen assigns outputs only for a function block call today, and a method
-call ignores an output argument (`compile_method.rs`).
+Codegen reads a function's or method's outputs from its own output variables
+after the call instead, which the flat variable table makes safe
+(ADR-0046).
 
 **REQ-LOW-lowering-092** An argument for a function's or method's
 `VAR_OUTPUT` parameter is a `Ref` to a compiler-provided temporary of the
@@ -1245,7 +1396,9 @@ allow, such as the square root of an integer, therefore cannot be written. That
 is Goal 2 applied to intrinsics, and the choice
 [ADR-0004](../adrs/0004-separate-type-families-over-polymorphic-opcodes.md)
 made for the VM's opcodes. With the exhaustive match of REQ-LOW-codegen-074, a
-backend that compiles handles every combination. The analyzer resolves a
+backend that compiles handles every combination. `MUX` takes two or more
+inputs after its selector, so its last parameter repeats: `MuxF64` is one
+operation on `LREAL`s, whatever the number of inputs. The analyzer resolves a
 generic function such as `ADD` on `ANY_NUM` to one type before lowering sees
 it.
 
@@ -1277,6 +1430,11 @@ structure or function block type is a `Copy`, and an argument for a
 ([ADR-0049](../adrs/0049-behavior-policies-selected-at-compile-time.md))
 selects among `Intrinsic` variants during lowering; a backend receives no
 policy options.
+
+An operation with a policy has one variant for each set of operand types,
+which carries the alternative lowering selected: `StringToI32(ParsePolicy)`
+reads a `DINT` as the `ParsePolicy` it names says, and a backend's match on it
+names every alternative.
 
 **REQ-LOW-codegen-074** The bytecode backend maps `Intrinsic` to a `func_id`
 with a match that has no wildcard arm, so adding a variant fails to compile
@@ -1310,18 +1468,18 @@ program uses to a function block POU of the lowered program, and no node of
 the lowered program names a standard function block.
 
 The lowered blocks start from what the bytecode VM's intrinsics do today, so
-the move changes no program, with one exception. Today codegen sends
-`CTU_INT`, `CTU_DINT`, `CTU_UDINT`, `CTU_LINT` and `CTU_ULINT` to one VM
-intrinsic, which reads and writes `PV` and `CV` as signed 32-bit values
-(`compile_call.rs`, `vm/src/intrinsic.rs`), and the down and up-down counters
-do the same. A lowered counter computes at its own width, so a wide counter
-past the 32-bit range behaves differently. That is a correction, like those
-under [Backend Contract](#7-backend-contract).
+the move changes no program, with one exception. Each counter counts in its
+own width and saturates at its type's bounds ([Counter Widths](counter-widths.md)),
+except `CTU_INT`, `CTD_INT` and `CTUD_INT`, which the VM counts and saturates
+in 32 bits rather than at the bounds of `INT`. A lowered counter computes at
+its own width, so an `_INT` counter past the range of `INT` behaves
+differently. That is a correction, like those under
+[Backend Contract](#7-backend-contract).
 
 **REQ-LOW-codegen-078** For every standard function block, the block lowering
 generates leaves the instance's visible fields with the values the bytecode
-VM's intrinsic leaves, for the same inputs and round times, except where a
-wide counter's value lies outside the 32-bit range.
+VM's intrinsic leaves, for the same inputs and round times, except where an
+`_INT` counter's value lies outside the range of `INT`.
 
 ### 3.9 Invariants by construction
 
@@ -1342,9 +1500,21 @@ constructor; it does not build the node.
 This puts the invariants in one place, upstream of every backend. A backend
 relies on them without re-checking, which is what lets its matches be total.
 
-**REQ-LOW-lowering-082** `ironplc-ir`, `ironplc-lowering` and every backend crate deny
-`clippy::wildcard_enum_match_arm`, so a match over a lowered enum names every
-variant.
+A loop is opened before its body is built and closed by building the `Loop` or
+`For` from it. Only the open loop makes an `Exit` or `Continue` naming it, and
+closing the loop checks that each one it made is inside its body, so
+REQ-LOW-lowering-062 holds by construction.
+
+**REQ-LOW-lowering-082** `ironplc-ir`, `ironplc-lowering` and every backend's code
+over the lowered program deny `clippy::wildcard_enum_match_arm`, so a match over
+a lowered enum names every variant.
+
+A backend crate denies the lint at its root. `ironplc-codegen` denies it at the
+root of its bridge from the lowered program (`src/lowered/`), because its AST
+route predates the rule. The lint does not see a wildcard inside a tuple or
+slice pattern, such as the last arm of `match (op, ty, width) { ..., _ => None }`.
+Such a match is split into one exhaustive match per enum, which leaves a
+wildcard only over a number or a slice length.
 
 ### 3.10 Meaning of operations
 
@@ -1375,7 +1545,8 @@ zero and saturates at the range of its operation type; a NaN converts to 0. A
 `Convert` from an integer to a real rounds to nearest. Between integer
 operation types, a `Convert` to a wider type sign-extends a signed operand and
 zero-extends an unsigned one, a `Convert` to a narrower type keeps the low 32
-bits, and a change of signedness alone keeps the bits.
+bits, and a change of signedness alone keeps the bits. A `Convert` from a
+`BOOL` gives 1 for `TRUE` and 0 for `FALSE`.
 
 **REQ-LOW-codegen-087** A `Truncate` keeps the low `bits` bits of its operand,
 then sign-extends them for a signed type and zero-extends them for an unsigned
@@ -1412,10 +1583,63 @@ never hands the VM an address it has not checked. The lowered program carries
 subscripts, never an address or a flat position, so no backend receives an
 address it did not check.
 
+Every subscript is a 32-bit signed integer, a `DINT`. The analyzer converts a
+subscript of another type to `DINT` (see [Implicit Conversions](implicit-conversions.md)),
+so a 64-bit subscript is narrowed, and no backend indexes at 64 bits. No
+program IronPLC targets needs an array of more than 2^31 elements, and 64-bit
+index arithmetic is slow on the 32-bit targets a PLC runtime often has.
+
+**REQ-LOW-lowering-161** The subscripts of an `Index` are of type `DINT`.
+
+A plain conversion to `DINT` wraps, so a subscript outside the range of
+`DINT`, such as a `UDINT` of 4,294,967,295, would become another position,
+here -1, and on an array whose bounds include it would select an element
+rather than trap. So the conversion of a subscript is checked. Where a
+subscript's type holds values `DINT` does not (`UDINT`, `LINT`, `ULINT`,
+`DWORD`, `LWORD`), the analyzer records its conversion as a checked one, and
+lowering translates that into a `ConvertChecked`. A narrower subscript type
+converts exactly and needs no check. The bytecode VM checks such a subscript
+with a builtin that traps `V4007` on a value outside the range of `DINT`.
+
+**REQ-LOW-analyzer-162** Analysis records the conversion to `DINT` of a
+subscript whose type holds values outside the range of `DINT` as a checked
+conversion, and of any other subscript as an ordinary one.
+
+**REQ-LOW-lowering-163** Lowering translates a checked conversion into a
+`ConvertChecked`, and an ordinary one into a `Convert`.
+
+**REQ-LOW-codegen-164** A `ConvertChecked` whose operand lies outside the
+range of its type traps, as a subscript out of bounds does, and selects no
+element: a `UDINT` subscript of 4,294,967,295 traps on `ARRAY[-3..100]`.
+
 **REQ-LOW-codegen-089** An `Intrinsic` means what the IEC 61131-3 standard
 function means, with these choices where the standard leaves room: the count
 of `SHL` and `SHR` is taken modulo the operation width, `SHR` fills with
-zeros, and `EXPT` of an integer base by a negative exponent traps.
+zeros, `EXPT` of a signed integer base by a negative exponent traps while
+`EXPT` of unsigned integers reads its exponent as unsigned and never traps,
+`ABS` of the most negative value of its operation type wraps to that value, and
+`LIMIT(MN, IN, MX)` is `MIN(MAX(IN, MN), MX)`, so `MX` when `MN` is greater
+than `MX`, and `MUX` clamps its selector to its inputs, so a selector below
+zero gives the first input and one past the last gives the last. Of reals,
+`MIN` and `MAX` give the other input when one is NaN, and `LIMIT` gives NaN
+when any input is. `BCD_TO_INT` decodes each four bits of its operand's width
+as a digit, four bits above 9 as 0, and `INT_TO_BCD` encodes its operand's
+bits of its width, read as an unsigned integer, modulo the power of ten its
+digits hold, so `INT_TO_BCD` of a `SINT` of -1 is `BYTE#16#55`. `LEN` counts
+the code units of its string, and `FIND` gives the 1-based position, in code
+units, of the first occurrence of its second string in its first, or 0 when
+there is none or the second string is empty. `CompareString` and
+`CompareWString` give -1, 0 or 1 as their first string is less than, equal to
+or greater than their second: the first code unit that differs decides, by
+its value, and a string that is a prefix of the other is less. Of the other
+string functions,
+a negative length counts as 0 and a length past the end of the string stops
+at its end; a position of `MID`, `DELETE` or `REPLACE` below 1 counts as 1,
+one of `INSERT` below 0 as 0, and a position past the end as the end. A
+conversion from a `STRING` reads a number as the policies its variant names
+say, and the number is one its target type holds; a conversion to a `STRING`
+writes an integer's decimal digits, after a `-` when it is negative, and a
+`REAL` as the shortest decimal that reads back as it, without an exponent.
 
 A real function such as `SIN` or `EXP` is computed with the target's own
 primitive: Rust's `f64` methods on the bytecode VM (`vm/src/builtin.rs`), and
@@ -1504,14 +1728,15 @@ today.
 
 | Decision | Made today in | Recorded as | In the lowered program |
 |---|---|---|---|
-| Type of an untyped literal | The analyzer (ADR-0056), except a member initializer of a function block instance, which codegen builds itself | The literal's `expr_type`, as `ExprType::Inferred` | A `Const` of that type |
-| Implicit conversion | The analyzer for operands, assigned values, the arguments of functions, methods and function block calls, loop bounds, and the results of calls and dereferences (ADR-0056); codegen, through `convert_to_context`, for the contexts the analyzer does not record yet, such as a condition, a subscript and a function block output | `ExprKind::ImplicitConversion` | `Convert` |
+| Type of an untyped literal | The analyzer (ADR-0056); the literals of a completed initializer are written at the type they are stored as ([Initial Values](initial-values.md)) | The literal's `expr_type`, as `ExprType::Inferred` | A `Const` of that type |
+| Implicit conversion | The analyzer for operands, assigned values, the arguments of functions, methods and function block calls, loop bounds, the results of calls and dereferences, subscripts, shift counts and string positions, and the outputs of function block, function and method calls stored by the call (ADR-0056) | `ExprKind::ImplicitConversion`, checked for a subscript that may not fit `DINT` (REQ-LOW-analyzer-162) | `Convert`, or `ConvertChecked` |
 | Arithmetic overload | Analyzer's `resolve_arithmetic_overload` | The expression's `expr_type`, and its operands' conversions | A `Binary` at the result type, or the desugared time arithmetic |
 | Operand type of a comparison | The analyzer ([Comparison Operand Type](comparison-operand-type.md)) | Its operands' conversions | A `Compare` at that type |
-| Argument order and count | `xform_named_to_positional_args` for a function call, then re-checked at 27 sites in codegen; codegen for a method call (`compile_method.rs`) and, by name, for a function block call (`compile_stmt.rs`) | Positional arguments | `Vec<Arg>` matched to parameters |
+| Argument order and count | `xform_bind_call_arguments` for every call ([Call Binding](call-binding.md)) | The call's normal form: named, in declaration order | `Vec<Arg>` matched to parameters |
 | Whether an interface value can hold only one concrete type | Not made; calls through an interface are not compiled | The concrete types the value can hold (REQ-LOW-analyzer-107) | A direct method call, or a `Callee::Interface` |
 | Capacity of a string declared without one | Codegen and `slot_count`, from `DEFAULT_STRING_MAX_LENGTH` | The string type's capacity (REQ-LOW-analyzer-053) | The capacity of its `StringShape` |
 | Enumeration ordinal | The analyzer, when the type enters the type environment (`EnumerationMembers`); codegen looks the ordinal up (`compile_enum.rs`) | Each member's ordinal, explicit (`GREEN := 5`) or counted on from the one before, and the type's default member, on `SemanticType::Enumeration` | `Const` |
+| Declaration a variable name refers to | The analyzer's `SymbolEnvironment::resolve_variable` ([Variable Binding](variable-binding.md)); codegen resolves names again, from tables of its own (`scope.rs`) | Not in the `Library`: the function answers from the `SemanticContext`, with a `DeclRef` that names the declaration by its scope and its name ([ADR-0066](../adrs/0066-name-resolution-is-an-analyzer-function.md)) | One `VarId` for each `DeclRef` (REQ-LOW-lowering-020, REQ-LOW-lowering-022) |
 
 **Decisions lowering makes**
 
@@ -1519,12 +1744,12 @@ today.
 |---|---|---|
 | Narrowing before a store | `emit_truncation` at each store site | `Truncate` |
 | Logical or bitwise operator | `emit_not` and the `AND`, `OR` and `XOR` emitters, from the signedness of the operation type | Distinct operators |
-| Callee | The analyzer's enum on the signature (to become `BuiltinFunction`, see [Names](#names)), dispatched by `compile_intrinsic`; then `lookup_builtin` picks a `func_id` from the operation width | `Callee`, with the `Intrinsic` for the operand types (REQ-LOW-lowering-147) |
+| Callee | The analyzer's `BuiltinFunction` on the signature, dispatched by `compile_intrinsic`; then `lookup_builtin` picks a `func_id` from the operation width | `Callee`, with the `Intrinsic` for the operand types (REQ-LOW-lowering-147) |
 | Implementers of a call through an interface | Not made; calls through an interface are not compiled | `Callee::Interface` (REQ-LOW-lowering-105) |
 | Capacity of an intermediate string result | Codegen: a bound per expression (`string_width.rs`), and a temporary buffer as large as the largest string in the program ([issue 2118](https://github.com/ironplc/ironplc/issues/2118)) | The capacity of the `StrExpr`'s `StringShape` |
 | Argument passing mode | `ParamPassing` in `compile.rs` | `Arg` variant |
 | Variable and field identity | Nine name-keyed maps; lower-cased field names | `VarId`, `FieldIdx` |
-| Default initial value | `emit_initial_values`; subrange lower bound, the enumeration's default member as the analyzer records it | `Assign` statements in `init` |
+| Default initial value | The analyzer's `xform_resolve_initial_values`, which codegen runs on a copy of the library and whose completed initializers `emit_initial_values` stores ([Initial Values](initial-values.md)) | `Assign` statements in `init` |
 | Function local re-initialization ([ADR-0024](../adrs/0024-function-local-reinit-via-bytecode-prologue.md)) | `emit_function_local_prologue` | Statements at the head of the function body |
 | Behaviour policy | `CodegenOptions::string_to_num` | `Intrinsic` variant |
 | Target of `EXIT` and `CONTINUE` | `loop_labels` stack, with a P9998 as a fallback | `LoopId` |
@@ -1577,8 +1802,13 @@ The user-facing problems codegen raises today fall into two groups:
   `EXIT` outside a loop, a recursive call, a string encoding mismatch or a
   constant out of range, as P9998.
 - **A limit of what the bytecode backend builds**: `TaskSingleNotSupported`,
-  `TaskParameterOutOfRange`, and `NoProgramDeclaration`, since a container
-  needs a program to run. It stays in that backend (REQ-LOW-codegen-113).
+  `TaskParameterOutOfRange`, `NoProgramDeclaration`, since a container needs
+  a program to run, `ConfigurationAmbiguous` (P4081) and
+  `ProgramInstanceTypeNotProgram` (P4080). Codegen checks each against the
+  execution model (`codegen/src/execution.rs`), and they stay in that backend
+  (REQ-LOW-codegen-113). The task parameters that make a program invalid, a
+  negative `INTERVAL` (P4078) and a `SINGLE` that names no `BOOL` global
+  (P4007, P4079), are already analyzer rules.
 
 **REQ-LOW-analyzer-095** Analysis reports a constant subscript outside its
 dimension's bounds as `ArrayIndexOutOfBounds`.
@@ -1605,13 +1835,20 @@ implements it.
 | Function block call with inputs and outputs | Assignments to the instance's fields, `FbCall`, assignments from them (REQ-LOW-lowering-069) |
 | Method call `inst.m(a)` | `Call` of the method with `Ref(inst)` first (REQ-LOW-lowering-076) |
 | Operator function form `ADD(a, b, c)` | Left fold of `Binary` |
-| Typed time function `ADD_DT_TIME(a, b)` | Scalar arithmetic with the unit conversion `compile_time_arith.rs` applies today |
+| `a ** b` | `Call` of the `EXPT` `Intrinsic`, as `EXPT(a, b)` is |
+| Typed time function `ADD_DT_TIME(a, b)`, and an operator or function form on times and dates such as `a + b` (REQ-LOW-lowering-166) | Scalar arithmetic at the signed integer of the result's width, on the milliseconds of a `TIME` or `TIME_OF_DAY` and the seconds of a `DATE` or `DATE_AND_TIME` (ADR-0025): `b` converted to the unit `a` counts in, the operation, then the result converted to the unit its type counts in. A duration scaled by a real is converted to the real's type and back |
+| `DT_TO_DATE(x)` | `(x / 86400) * 86400`, which reads `x` once (REQ-LOW-lowering-165) |
+| `DT_TO_TOD(x)` | `(x MOD 86400) * 1000` |
 | Explicit conversion such as `REAL_TO_INT(x)` | A `Convert` where the operation type changes, then a `Truncate` where the storage narrows; a conversion to `BOOL` is a `Compare` with zero |
+| `TRUNC(x)` | A `Convert` to the integer the analyzer recorded for the call, narrowed where it is stored, as an arithmetic result is |
 | Enumerated value | `Const` |
 | `MOVE(x)`, parenthesised expression | The operand |
-| Comparison of strings | `Call` of a string comparison `Intrinsic` |
+| Comparison of strings, such as `s < t` | A `Compare` with zero of the `Call` of the `Intrinsic` that orders two strings of their encoding (REQ-LOW-lowering-169) |
+| Conversion from a `STRING`, such as `STRING_TO_DINT(s)` | `Call` of the `Intrinsic` that reads a number of the call's type, a bit string as the unsigned integer of its width, carrying the parse policy (REQ-LOW-lowering-073) |
+| Conversion to a `STRING`, such as `DINT_TO_STRING(n)` | A `StrExpr` `Call` of the `Intrinsic` that writes a number of its operation type, of the default capacity (REQ-LOW-lowering-168) |
+| Standard string function, such as `LEN(s)` or `CONCAT(s, t)` | `Call` of its `Intrinsic` for the encoding of its strings: an `Expr` for `LEN` and `FIND`, and a `StrExpr` with room for every code unit of its strings for one that yields a string (REQ-LOW-lowering-167) |
 | Named argument | Positional `Arg` |
-| `SIZEOF(x)` | A `Const`: the bytes of `x`'s storage width, or the element bytes times the element count for an array, as codegen computes it today (`compile_sizeof`) |
+| `SIZEOF(x)` | A `Const`: the bytes of `x`'s storage width, or the element bytes times the element count for an array |
 | Standard function block (`TON`, `CTU_DINT`, ...) | A function block POU of the lowered program, generated by lowering (REQ-LOW-lowering-077) |
 
 `FOR` is not desugared; it is the `For` node, whose expansion
@@ -1627,8 +1864,23 @@ the place.
 names its place once.
 
 **REQ-LOW-lowering-103** `SIZEOF` lowers to a `Const` computed from the
-language's storage widths, never from a backend's layout; for a type whose size
-codegen does not compute today, such as a structure, it is P9999.
+language's storage widths, never from a backend's layout. For a type whose size
+only a layout gives, such as a structure, a string or an enumeration, it is
+P9999.
+
+**REQ-LOW-lowering-165** A desugaring evaluates each argument of the call it
+stands for once: `DT_TO_DATE(x)` is `(x / 86400) * 86400` rather than
+`x - x MOD 86400`.
+
+**REQ-LOW-lowering-166** An operator on times and dates, and its function form,
+lower to the arithmetic of the typed time function they resolve to, which
+follows from the units of the types the analyzer recorded rather than from the
+overload's name: `dt + t`, `ADD(dt, t)` and `ADD_DT_TIME(dt, t)` lower to
+`dt + t / 1000`.
+
+**REQ-LOW-lowering-169** A comparison of two strings compares with zero the
+order the `Intrinsic` of their encoding gives them: `s < t` lowers to
+`(lt (call compare_string i32s s t) (const i32s 0))`.
 
 Codegen has already folded the cross product of access kind and base shape
 into one addressing path (`compile_place.rs`) and one bit write
@@ -1720,16 +1972,18 @@ How the three targets are expected to realise the same node:
 
 | Lowered | Bytecode VM | WebAssembly (expected) | LLVM (expected) |
 |---|---|---|---|
-| `ScalarType` | I32, I64, F32 and F64 opcode families | `i32`, `i64`, `f32`, `f64` | `i32`, `i64`, `float`, `double` |
+| `ScalarType` | I32, I64, F32 and F64 opcode families; a `Bool` is an I32 | `i32`, `i64`, `f32`, `f64`; a `Bool` is an `i32`, or bits of a packed word | `i32`, `i64`, `float`, `double`; a `Bool` is an `i1` |
 | `ScalarType::Ref` | A 64-bit variable-table index | A 32-bit address in linear memory | `ptr` |
 | `Truncate` | `TRUNC_*` | Sign or zero extension from the narrow width | `trunc`, then `sext` or `zext` |
 | Signed `Div` | `DIV_I32`, `DIV_I64`, which wrap the most negative value divided by -1 | `i32.div_s` behind a guard for that case | `sdiv` behind guards for a zero divisor and for that case |
 | `Convert` from a real to an integer | `CONV_F32_TO_I32` and siblings, which saturate | `i32.trunc_sat_f32_s` and siblings | `llvm.fptosi.sat` and siblings |
+| `ConvertChecked` | A subscript check builtin (`CHECK_SUBSCRIPT_*`), which traps `V4007` outside the range of `DINT` | A comparison and `unreachable`, then the conversion | A comparison and a branch to the trap, then `trunc` |
 | `Deref` | Load and store indirect, which trap on null | A load or store, behind an explicit null check for a nullable reference | A `load` or `store`, behind an explicit null check for a nullable reference |
 | `Loop`, `Exit`, `Continue` | Labels and jumps | `loop`, `block`, `br` | Basic blocks and `br` |
 | `For` | Labels and jumps, with a fused compare and branch | The expansion to `Loop` | Basic blocks, with the bounds left for LLVM's loop passes |
 | `Case` | Compare and branch chain | `br_table` or a chain | `switch` |
 | `Place` | One of seven load and store opcode families, chosen by layout; a field of the current instance is the slot the VM copied it into, until [issue 2120](https://github.com/ironplc/ironplc/issues/2120) | An address in linear memory, from the instance parameter for a field of the current instance | A `getelementptr` from the variable's `alloca` or global, or from the instance parameter |
+| `Callee::User` | `CALL` of the function, which stores the arguments in its parameters' slots | `call` | `call` |
 | `Intrinsic` | `BUILTIN func_id` (ADR-0008) | A call to a runtime function, or inline instructions | An LLVM intrinsic such as `llvm.sqrt`, or a call to a runtime function |
 | `Callee::Interface` | As pull request 1870 decides; it proposes a table of instances read by `LOAD_INSTANCE`, then a branch to a `METHOD_CALL` per implementer | `br_table` or a branch over the implementers | A `switch` over the implementers, or a call through a table of functions |
 | `RoundTime` | The `uptime_us` of `run_round` | A value the host passes in | A global the runtime writes before each round |
@@ -1744,13 +1998,16 @@ Nothing is deleted before its last reader has moved to the lowered program.
 |---|---|---|
 | `SemanticContext` | Keep | None. It is lowering's input. |
 | `TypeEnvironment`, `TypeId` | Keep | Lowering builds the lowered program's type table from it. |
-| `SemanticType` (formerly `IntermediateType`) | Keep | Lowering reads it and does not carry `SemanticStructField::offset`, `slot_count` or the size of a reference into the lowered program. `slot_count` moves to the bytecode backend: it sizes strings with the container's `string_region_size`, which is VM layout. |
+| `SemanticType` (formerly `IntermediateType`) | Keep | Lowering reads it and does not carry `slot_count` into the lowered program. `slot_count` moves to the bytecode backend: it sizes strings with the container's `string_region_size`, which is VM layout. The byte offsets, sizes and alignments it once computed for fields are removed: nothing read them. |
 | `xform_insert_implicit_conversions` | Keep and extend | Records every implicit conversion and the type of every untyped literal (ADR-0056). It already records most of them; [issue 2050](https://github.com/ironplc/ironplc/issues/2050) finishes the rest. It is the recording pass (see [Names](#names)). |
 | `rule_constant_range` | Keep | It runs after the recording pass. It checks a literal against its recorded type, and reads through a conversion to check against the operand types as written (see [Decisions](#4-decisions)). |
 | `intermediates/` | Keep | Its signatures carry the `BuiltinFunction` identity. |
 | `FunctionEnvironment` | Keep | Signatures of built-in functions name their `BuiltinFunction` (REQ-LOW-analyzer-070). |
-| `Intrinsic` (`intrinsic.rs`) | Keep, renamed | Renamed `BuiltinFunction` (see [Names](#names)), so that `Intrinsic` names only the IR's typed enum. |
-| `SymbolEnvironment` | Keep | Supplies the declarations `VarId`s are allocated from. |
+| `BuiltinFunction` (`builtin_function.rs`) | Keep | Formerly `Intrinsic`; renamed (see [Names](#names)), so that `Intrinsic` names only the IR's typed enum. |
+| `SymbolEnvironment` | Keep | Supplies the declarations `VarId`s are allocated from: lowering asks `resolve_variable` which declaration each name refers to, and allocates one `VarId` for each `DeclRef` it answers with ([Variable Binding](variable-binding.md)). |
+| `execution_model` | Move to lowering | Builds the execution model until lowering exists (ADR-0065); moves into `ironplc-lowering` unchanged, and the analyzer drops its dependency on `ironplc-ir`. |
+| `xform_resolve_initial_values` | Keep | Completes every initializer ([Initial Values](initial-values.md)). Codegen runs it today, and lowering runs it once lowering exists. |
+| `CleanAnalysis::program_declaration`, `global_declaration` | Remove | Hand codegen declarations by execution model id until the lowered program carries bodies, types and initial values. |
 | `Expr::expr_type`, `VarDecl::type_id`, `ExprKind::LateBound` | Keep | Lowering is their last reader. |
 
 ### `CompileContext`
@@ -1759,7 +2016,7 @@ Nothing is deleted before its last reader has moved to the lowered program.
 
 | Fields | What they are | Disposition |
 |---|---|---|
-| `var_types`, `types`, `operand_names`, `intrinsics`, `compiler_options`, `string_to_num` | Language decisions and their inputs | Move to lowering. No backend holds them. |
+| `var_types`, `types`, `block_members`, `operand_names`, `intrinsics`, `compiler_options`, `string_to_num` | Language decisions and their inputs | Move to lowering. No backend holds them. |
 | `variables`, `string_vars`, `array_vars`, `struct_vars`, `struct_array_vars`, `fb_instances`, `in_out_params`, `user_functions`, `user_fb_types`, `next_user_fb_type_id` | Storage layout | Keep in the bytecode backend as its layout, keyed by id, immutable during emission. |
 | `constants`, `loop_labels`, `current_function_return`, `current_function_id`, `call_graph`, `data_region_offset`, `max_string_capacity`, `has_wide_string`, `debug_*` | Emission state | Keep in a smaller emit context. |
 
@@ -1769,7 +2026,8 @@ Nothing is deleted before its last reader has moved to the lowered program.
 |---|---|
 | `OpWidth`, `Signedness`, `OpType` | Move to `ironplc-ir` as `ScalarType`. |
 | `VarTypeInfo` | Dissolves. Operation type is on the expression; storage width comes from the place's type. |
-| `ArrayVarInfo`, `StructVarInfo`, `StructFieldInfo`, `StructArrayVarInfo`, `FbInstanceInfo`, `UserFunctionInfo`, `UserFbTypeInfo`, `UserMethodInfo`, `StringVarInfo` | Keep in the bytecode backend's layout, without their type fields (`StructFieldInfo::op_type` and `field_type`, `field_op_types`, `field_type_ids`, `param_op_types`, `element_var_type_info`). |
+| `ArrayVarInfo`, `StructVarInfo`, `StructFieldInfo`, `StructArrayVarInfo`, `FbInstanceInfo`, `UserFunctionInfo`, `UserFbTypeInfo`, `UserMethodInfo`, `StringVarInfo` | Keep in the bytecode backend's layout, without their type fields (`StructFieldInfo::field_type`, `field_op_types`, `element_var_type_info`). |
+| `InitialValue` (`initial_value.rs`) | Dissolves. The completed initializer becomes statements in `init`. |
 | `Place` (`compile_place.rs`), `ResolvedAccess` | Keep in the bytecode backend. They are that backend's addressing: the result of asking its layout how to reach a lowered `Place`. |
 | `ParamPassing` | Dissolves into `Arg`, which adds the by-value aggregate mode `ParamPassing` lacks. |
 | `Scope` (formerly `SavedFbScope`) | Absorbed into the bytecode backend's layout. Ids do not collide across scopes, and a function block's variables are fields of its instance. While both routes exist it is how a lowered statement finds its variables' storage (see [Delivery Constraints](#delivery-constraints)). |
@@ -1803,12 +2061,13 @@ first a `TypeRepr` and the second a `Type`, and rustc separates `hir::Ty`, as
 written, from `ty::Ty`. `SemanticType` is the second kind, so `TypeRepr` would
 name the wrong one.
 
-Two renames remain, each one mechanical prefactor:
+The analyzer's enum of built-in functions, formerly `Intrinsic`
+(`intrinsic.rs`), is `BuiltinFunction` (`builtin_function.rs`), so that
+`Intrinsic` names only the IR's typed enum (see
+[Position in the Pipeline](#1-position-in-the-pipeline)).
 
-- The analyzer's enum of built-in functions, today `Intrinsic`
-  (`intrinsic.rs`), becomes `BuiltinFunction`, so that `Intrinsic` names only
-  the IR's typed enum (see
-  [Position in the Pipeline](#1-position-in-the-pipeline)).
+One rename remains, a mechanical prefactor:
+
 - ADR-0056 and the doc comment of `xform_insert_implicit_conversions` call
   that transform "a lowering pass". The doc comment is reworded to call it the
   recording pass, as below, and ADR-0058 and a postscript to ADR-0056 record
@@ -1863,8 +2122,9 @@ of a NaN, and `SHL` by 33, and every backend runs the same programs.
 
 **Structure is tested mechanically.** REQ-LOW-codegen-002 is a test over the
 crate manifest. REQ-LOW-lowering-082 is enforced by clippy; its conformance
-test asserts that each crate root carries the `deny` attribute, since a test
-cannot observe a lint that is not configured.
+test asserts that each crate root, or for `ironplc-codegen` the root of its
+lowered bridge, carries the `deny` attribute, since a test cannot observe a
+lint that is not configured.
 
 **Standard function blocks are tested against the VM.** REQ-LOW-codegen-078
 is asserted by running each standard function block both ways, through the
@@ -2100,16 +2360,17 @@ This section constrains the order of work; it is not a work breakdown.
 
 **Before lowering covers a construct**
 
-- **Renames.** The renames that remain in [Names](#names) each land as one
+- **Renames.** The rename that remains in [Names](#names) lands as one
   mechanical prefactor.
 - **Decisions recorded first.** The analyzer records each decision in the
   first table of [Decisions](#4-decisions), and each check only codegen makes
   moves to an analyzer rule, before lowering covers a construct that depends
   on it. The recording pass already covers most contexts: operands,
   assignments, the arguments of functions, methods and function block calls,
-  loop bounds, the results of calls and dereferences, and the types of
-  literals. The contexts it does not record yet, such as a condition, a
-  subscript and a function block output, come next
+  loop bounds, the results of calls and dereferences, conditions, subscripts,
+  shift counts, string positions, the outputs a call stores and the types of
+  literals. The context it does not record yet, a directly
+  represented variable, comes next
   ([issue 2050](https://github.com/ironplc/ironplc/issues/2050)). A statement
   that needs a decision the analyzer does not record yet stays on the route
   that reads the AST.
@@ -2147,7 +2408,9 @@ This section constrains the order of work; it is not a work breakdown.
   bytecode backend finds a lowered variable's storage in the layout codegen
   builds today: through the current body's `Scope`, by name. A field of the
   current instance is found the same way. While the VM copies fields, that is
-  the slot holding the copy (see [Instance fields](#instance-fields)).
+  the slot holding the copy (see [Instance fields](#instance-fields)). The
+  function a `Callee::User` calls is found by the name its POU carries, as
+  the function the route that reads the AST compiled.
   REQ-LOW-codegen-122 and REQ-LOW-codegen-123 are met later. Once a POU's
   statements all lower, the backend builds its layout from the POU's lowered
   declarations, keyed by id and complete before emission. Both requirements
@@ -2175,11 +2438,11 @@ This section constrains the order of work; it is not a work breakdown.
   helpers compile each program both ways and compare the values of its
   variables by name (REQ-LOW-codegen-131). A disagreement fails the test. The
   corrections named under [Backend Contract](#7-backend-contract) and the
-  width of the wide counters
+  width of the `_INT` counters
   ([Standard function blocks](#standard-function-blocks)) are the exception:
-  they differ only for a selector or subscript with a side effect, or a counter
-  past the 32-bit range, and the programs that show them are listed as known
-  differences.
+  they differ only for a selector or subscript with a side effect, or an
+  `_INT` counter past the range of `INT`, and the programs that show them are
+  listed as known differences.
 - **Progress cannot fall.** CI reports how many top-level statements of the
   end-to-end programs took the lowered route. The number does not fall.
 - **The IR is readable from its first commit.** `ironplc-ir` writes a lowered
@@ -2187,7 +2450,8 @@ This section constrains the order of work; it is not a work breakdown.
   that text.
 - **Behaviour preserving.** Each stage is behaviour preserving and is
   delivered as a prefactor, apart from the two corrections named under
-  [Backend Contract](#7-backend-contract) and the width of the wide counters.
+  [Backend Contract](#7-backend-contract), the order of a function block's
+  inputs and the width of the `_INT` counters.
   The lowered route makes those corrections by construction.
 - **Target neutrality shown early.** A minimal WebAssembly path (one
   `PROGRAM`, integer arithmetic, assignment) is built as soon as a program of
@@ -2297,6 +2561,7 @@ these ADRs:
 | [ADR-0062](../adrs/0062-a-body-works-on-its-instances-fields-in-place.md) | A body works on its instance's fields in place; the bytecode VM's copy is removed by a change of its own ([Instance fields](#instance-fields)). |
 | [ADR-0063](../adrs/0063-a-call-through-an-interface-lists-its-implementers.md) | A call through an interface lists its implementers, and each backend chooses how to dispatch ([Calls through an interface](#calls-through-an-interface)). |
 | [ADR-0064](../adrs/0064-every-string-has-an-explicit-capacity.md) | Every string in the IR has an explicit capacity ([String capacity](#string-capacity)). |
+| [ADR-0065](../adrs/0065-the-analyzer-builds-the-execution-model-until-lowering-exists.md) | Until lowering exists, the analyzer builds the execution model in `ironplc-ir`, departing from ADR-0058 and ADR-0059 ([Position in the Pipeline](#1-position-in-the-pipeline)). |
 
 Two parts of this design are described but not yet decided, so neither has an
 ADR:

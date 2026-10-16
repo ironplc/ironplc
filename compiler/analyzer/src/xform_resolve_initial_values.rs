@@ -64,8 +64,10 @@
 //! function block member initialized by an expression (an extension) keeps
 //! the conversions the expression's compilation needs, and after the range
 //! rule, which checks the literals the program wrote. `analyze` does not run
-//! it yet: code generation still reads each initializer as the program wrote
-//! it. The defaults of the declared types are resolved earlier, by
+//! it: code generation runs it on a copy of the analyzed library as the
+//! first step of lowering, so the analyzed library stays the program as
+//! written for every other reader. The defaults of the declared types are
+//! resolved earlier, by
 //! [`TypeDefaults::of`], from the declarations as the program wrote them,
 //! and kept on the [`SemanticContext`].
 //!
@@ -111,10 +113,11 @@ struct InitialValueFolder<'a> {
 
 impl InitialValueFolder<'_> {
     /// Marks the variables of a function or method that start again on
-    /// every call: its `VAR` and `VAR_TEMP` declarations.
+    /// every call: its `VAR`, `VAR_TEMP` and `VAR_OUTPUT` declarations.
     fn mark_reset_on_call(variables: &mut [VarDecl]) {
         for variable in variables {
-            variable.reset_on_call = variable.var_type.is_local();
+            variable.reset_on_call =
+                variable.var_type.is_local() || variable.var_type == VariableType::Output;
         }
     }
 

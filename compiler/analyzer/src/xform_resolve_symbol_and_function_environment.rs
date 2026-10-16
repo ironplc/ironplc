@@ -34,7 +34,8 @@ use crate::{
     function_environment::{FunctionEnvironment, FunctionSignature},
     semantic_type::SemanticFunctionParameter,
     symbol_environment::{
-        duplicate_declaration, ScopeKind, ScopeTracker, SymbolEnvironment, SymbolInfo, SymbolKind,
+        duplicate_declaration, ScopeKind, ScopePath, ScopeTracker, SymbolEnvironment, SymbolInfo,
+        SymbolKind,
     },
     type_environment::TypeEnvironment,
 };
@@ -414,16 +415,25 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
         node.recurse_visit(self)
     }
 
-    fn visit_structure_element_declaration(
+    /// Declares each field of a structure in the scope of its structure
+    /// type.
+    ///
+    /// A field is not declared in the scope the type is declared in. That
+    /// is the global scope, and there a field would share one map with the
+    /// global variables: a field and a global of one name would replace
+    /// each other, and the name would then resolve to whichever was
+    /// declared last.
+    fn visit_structure_declaration(
         &mut self,
-        node: &ironplc_dsl::common::StructureElementDeclaration,
+        node: &ironplc_dsl::common::StructureDeclaration,
     ) -> Result<Self::Value, Infallible> {
-        let result = self.symbol_env.insert(
-            &node.name,
-            SymbolKind::StructureElement,
-            &self.current_scope(),
-        );
-        self.record(result);
+        let scope = ScopeKind::Named(ScopePath::from(node.type_name.name.clone()));
+        for element in &node.elements {
+            let result =
+                self.symbol_env
+                    .insert(&element.name, SymbolKind::StructureElement, &scope);
+            self.record(result);
+        }
         node.recurse_visit(self)
     }
 
@@ -431,16 +441,9 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
         &mut self,
         node: &ironplc_dsl::common::EnumerationDeclaration,
     ) -> Result<Self::Value, Infallible> {
-        // Add the enumeration type itself
+        // Add the enumeration type itself. Its values are recorded with the
+        // type, in the type environment.
         self.declare_global(&node.type_name.name, SymbolKind::Type);
-
-        // Add each enumeration value
-        if let ironplc_dsl::common::SpecificationKind::Inline(values) = &node.spec_init.spec {
-            for value in &values.values {
-                self.symbol_env
-                    .insert_enumeration_value(&value.value, &node.type_name);
-            }
-        }
 
         node.recurse_visit(self)
     }

@@ -52,8 +52,8 @@ use crate::{
     semantic_context::SemanticContext,
     semantic_type::SemanticType,
     type_environment::TypeEnvironment,
-    variable_type::struct_field_type,
 };
+use ironplc_dsl::type_id::TypeId;
 
 pub fn apply(
     lib: &Library,
@@ -140,34 +140,40 @@ impl RuleArrayInitializerLength<'_> {
     }
 
     /// Checks the array members of a structure or function block instance
-    /// initializer against the fields of `declared`.
-    fn check_members(&mut self, declared: &SemanticType, elements: &[StructureElementInit]) {
+    /// initializer against the fields of the type `record`, each of the type
+    /// the environment records for it.
+    fn check_members(&mut self, record: TypeId, elements: &[StructureElementInit]) {
         for element in elements {
-            let Some(field) = struct_field_type(declared, &element.name) else {
+            let Some(field) = self.types.field_type(record, &element.name) else {
                 continue;
             };
             match &element.init {
                 StructInitialValueAssignmentKind::Array(values) => {
-                    self.check(&field, values, element.name.span())
+                    if let Some(declared) = self.representation_of(field) {
+                        self.check(&declared, values, element.name.span());
+                    }
                 }
                 StructInitialValueAssignmentKind::Structure(members) => {
-                    self.check_members(&field, members)
+                    self.check_members(field, members)
                 }
                 _ => {}
             }
         }
     }
 
-    /// Checks `initializer`, which initializes a place of `declared`.
+    /// Checks `initializer`, which initializes a place of the type
+    /// `declared`.
     fn check_initializer(
         &mut self,
         initializer: &InitialValueAssignmentKind,
-        declared: &SemanticType,
+        declared: TypeId,
         span: SourceSpan,
     ) {
         match initializer {
             InitialValueAssignmentKind::Array(array) => {
-                self.check(declared, &array.initial_values, span)
+                if let Some(representation) = self.representation_of(declared) {
+                    self.check(&representation, &array.initial_values, span);
+                }
             }
             InitialValueAssignmentKind::Structure(structure) => {
                 self.check_members(declared, &structure.elements_init)
@@ -179,9 +185,9 @@ impl RuleArrayInitializerLength<'_> {
         }
     }
 
-    /// The representation of the type `type_name` names.
-    fn representation(&self, type_name: &TypeName) -> Option<SemanticType> {
-        Some(self.types.get(type_name)?.representation.clone())
+    /// The representation of the type `id`.
+    fn representation_of(&self, id: TypeId) -> Option<SemanticType> {
+        Some(self.types.get_by_id(id)?.representation.clone())
     }
 }
 
@@ -189,25 +195,25 @@ impl Visitor<Infallible> for RuleArrayInitializerLength<'_> {
     type Value = ();
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
-        if let Some(declared) = node
-            .type_id
-            .and_then(|id| self.types.get_by_id(id))
-            .map(|attributes| attributes.representation.clone())
-        {
-            self.check_initializer(&node.initializer, &declared, node.identifier.span());
+        if let Some(declared) = node.type_id {
+            self.check_initializer(&node.initializer, declared, node.identifier.span());
         }
         node.recurse_visit(self)
     }
 
     fn visit_simple_declaration(&mut self, node: &SimpleDeclaration) -> Result<(), Infallible> {
-        if let Some(declared) = self.representation(&node.type_name) {
-            self.check_initializer(&node.spec_and_init, &declared, node.type_name.span());
+        if let Some(declared) = self.types.id_of(&node.type_name) {
+            self.check_initializer(&node.spec_and_init, declared, node.type_name.span());
         }
         node.recurse_visit(self)
     }
 
     fn visit_array_declaration(&mut self, node: &ArrayDeclaration) -> Result<(), Infallible> {
-        if let Some(declared) = self.representation(&node.type_name) {
+        let declared = self
+            .types
+            .id_of(&node.type_name)
+            .and_then(|id| self.representation_of(id));
+        if let Some(declared) = declared {
             self.check(&declared, &node.init, node.type_name.span());
         }
         node.recurse_visit(self)
@@ -217,10 +223,10 @@ impl Visitor<Infallible> for RuleArrayInitializerLength<'_> {
         &mut self,
         node: &StructureDeclaration,
     ) -> Result<(), Infallible> {
-        if let Some(declared) = self.representation(&node.type_name) {
+        if let Some(structure) = self.types.id_of(&node.type_name) {
             for element in &node.elements {
-                if let Some(field) = struct_field_type(&declared, &element.name) {
-                    self.check_initializer(&element.init, &field, element.name.span());
+                if let Some(field) = self.types.field_type(structure, &element.name) {
+                    self.check_initializer(&element.init, field, element.name.span());
                 }
             }
         }

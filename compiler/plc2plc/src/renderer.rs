@@ -292,7 +292,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         // A conversion is written as its operand, without the operand's own
         // comment: the conversion's comment names the operand's type too.
         let written = match &node.kind {
-            dsl::textual::ExprKind::ImplicitConversion(inner) => inner.as_ref(),
+            dsl::textual::ExprKind::ImplicitConversion(conversion) => &conversion.value,
             _ => node,
         };
         // Parenthesised so the comment on the operand and the comment on the
@@ -1866,11 +1866,9 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         &mut self,
         node: &dsl::textual::CaseStatementGroup,
     ) -> Result<Self::Value, Diagnostic> {
-        for selector in node.selectors.iter() {
-            self.visit_case_selection_kind(selector)?;
-            self.write_ws(":");
-            self.newline();
-        }
+        visit_comma_separated!(self, node.selectors.iter(), CaseSelectionKind);
+        self.write_ws(":");
+        self.newline();
 
         self.indent();
 
@@ -2065,6 +2063,11 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
             self.write_ws("NOT");
         }
         self.visit_id(&node.src)?;
+        // The value the output stores is written as the output it reads,
+        // followed by its comment: `q (* REAL -> LREAL *) => lr`.
+        if let (Some(type_name), Some(value)) = (self.type_name, &node.value) {
+            self.write_ws(&type_comment::comment(value, type_name));
+        }
         self.write_ws("=>");
         self.visit_variable(&node.tgt)
     }
