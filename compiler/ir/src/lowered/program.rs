@@ -17,7 +17,7 @@ use super::loops::{build_for, build_loop, expand_for, ForParts, LoopScope};
 use super::place::Place;
 use super::stmt::{store_narrowing, Stmt};
 use super::str_expr::StrExpr;
-use super::types::{NarrowWidth, TypeEntry, TypeKind, TypeTable};
+use super::types::{NarrowWidth, Nullability, TypeEntry, TypeKind, TypeTable};
 use super::variables::{FunctionSignature, Owner, PouTable, VariableTable};
 use crate::execution::DebugName;
 
@@ -65,7 +65,13 @@ impl ProgramBuilder {
 
     /// Adds the POU named `name`.
     pub fn push_pou(&mut self, name: DebugName) -> PouId {
-        self.pous.push(name)
+        self.pous.push(name, None)
+    }
+
+    /// Adds the POU named `name`, a method of the function block whose body
+    /// is `block`.
+    pub fn push_method_pou(&mut self, name: DebugName, block: PouId) -> PouId {
+        self.pous.push(name, Some(block))
     }
 
     /// Adds the type `entry`; see [`TypeTable::push`] for what it must be. The
@@ -160,13 +166,61 @@ impl ProgramBuilder {
     /// Declares the POU `pou` a function that takes each of `parameters`, in
     /// order, and returns the value of `result`. Each is a variable `pou`
     /// owns, of a type with an operation type: a parameter of a non-null
-    /// reference type is a `VAR_IN_OUT`, taken by reference, and any other is
-    /// taken by value.
+    /// reference type is a `VAR_IN_OUT` or `VAR_OUTPUT`, taken by reference,
+    /// and any other is taken by value.
     pub fn declare_function(
         &mut self,
         pou: PouId,
         parameters: Vec<VarId>,
         result: VarId,
+        span: &SourceSpan,
+    ) -> Result<(), Diagnostic> {
+        const CONSTRUCTOR: &str = "ProgramBuilder::declare_function";
+        if self.pous.method_of(pou).is_some() {
+            return Err(broken(CONSTRUCTOR, span, format!("{pou} is a method")));
+        }
+        self.declare(CONSTRUCTOR, pou, parameters, Some(result), span)
+    }
+
+    /// Declares the POU `pou`, a method, one that takes each of `parameters`,
+    /// in order, and returns the value of `result`, if any. Its first
+    /// parameter is its instance parameter, a non-null reference to the
+    /// function block it is a method of (REQ-LOW-lowering-076); the others
+    /// are as a function's.
+    pub fn declare_method(
+        &mut self,
+        pou: PouId,
+        parameters: Vec<VarId>,
+        result: Option<VarId>,
+        span: &SourceSpan,
+    ) -> Result<(), Diagnostic> {
+        const CONSTRUCTOR: &str = "ProgramBuilder::declare_method";
+        let block = parameters
+            .first()
+            .and_then(|this| self.variables.get(*this))
+            .and_then(|this| match self.types.reference(this.ty()) {
+                Some((target, Nullability::NonNull)) => match self.types.kind(target) {
+                    Some(TypeKind::FunctionBlock { body, .. }) => Some(*body),
+                    Some(_) | None => None,
+                },
+                Some((_, Nullability::Nullable)) | None => None,
+            });
+        if block.is_none() || block != self.pous.method_of(pou) {
+            return Err(broken(
+                CONSTRUCTOR,
+                span,
+                format!("the first parameter of {pou} is not an instance of its block"),
+            ));
+        }
+        self.declare(CONSTRUCTOR, pou, parameters, result, span)
+    }
+
+    fn declare(
+        &mut self,
+        constructor: &str,
+        pou: PouId,
+        parameters: Vec<VarId>,
+        result: Option<VarId>,
         span: &SourceSpan,
     ) -> Result<(), Diagnostic> {
         let owned_scalar = |var: &VarId| {
@@ -177,11 +231,11 @@ impl ProgramBuilder {
         };
         if let Some(var) = parameters
             .iter()
-            .chain([&result])
+            .chain(result.as_ref())
             .find(|var| !owned_scalar(var))
         {
             return Err(broken(
-                "ProgramBuilder::declare_function",
+                constructor,
                 span,
                 format!("{var} is not a scalar variable of {pou}"),
             ));
@@ -198,10 +252,21 @@ impl ProgramBuilder {
             .params(&self.types, &self.variables)
     }
 
-    /// The result of calling the function `pou` with `args`; see
+    /// The result of calling the function or method `pou` with `args`; see
     /// [`Expr::call`] for an intrinsic.
     pub fn call(&self, pou: PouId, args: Vec<Arg>, span: SourceSpan) -> Result<Expr, Diagnostic> {
         Expr::call_function(&self.types, &self.variables, &self.pous, pou, args, span)
+    }
+
+    /// Calls the function or method `pou` with `args`, discarding its
+    /// result, if any; see [`Stmt`] for what they must be.
+    pub fn call_stmt(
+        &self,
+        pou: PouId,
+        args: Vec<Arg>,
+        span: SourceSpan,
+    ) -> Result<Stmt, Diagnostic> {
+        Stmt::call(&self.types, &self.variables, &self.pous, pou, args, span)
     }
 
     /// Stores `value` at `place`; see [`Stmt`] for what the value must be.

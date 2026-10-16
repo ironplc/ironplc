@@ -10,7 +10,7 @@ use ironplc_container::debug_section::{iec_type_tag, var_section, VarNameEntry};
 use ironplc_container::{ContainerBuilder, FunctionId, VarIndex};
 use ironplc_dsl::common::{
     FunctionBlockDeclaration, FunctionDeclaration, FunctionReturnType, InitialValueAssignmentKind,
-    VarDecl, VariableType,
+    StringInitializer, VarDecl, VariableType,
 };
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -19,9 +19,9 @@ use ironplc_analyzer::TypeEnvironment;
 
 use super::compile::{
     char_width_for_string_type, finalize_function, string_region_size, CompileContext,
-    CompiledFunction, CurrentFunctionReturn, ParamPassing, StringParamInfo, StringReturnInfo,
-    StringVarInfo, UserFunctionInfo, VarTypeInfo, DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH,
-    WIDE_CHAR_WIDTH,
+    CompiledFunction, CurrentBody, CurrentFunctionReturn, ParamPassing, StringParamInfo,
+    StringReturnInfo, StringVarInfo, UserFunctionInfo, VarTypeInfo, DEFAULT_OP_TYPE,
+    NARROW_CHAR_WIDTH, WIDE_CHAR_WIDTH,
 };
 use super::compile_expr::emit_load_var;
 use super::compile_setup::{
@@ -33,6 +33,61 @@ use super::compile_stmt::{
 use super::scope::Scope;
 use super::type_info::{decl_type_info, named_type_info, resolve_type_name};
 use crate::emit::Emitter;
+
+/// Reserves the run of the data region the string variable `id`, which
+/// `string_init` declares, is held in, and records it in `ctx.string_vars`.
+/// Every declared string of a function, function block or method is held
+/// in a run of its own, sized to its declared capacity.
+#[track_caller]
+pub(crate) fn register_string_variable(
+    ctx: &mut CompileContext,
+    id: &Id,
+    string_init: &StringInitializer,
+) -> Result<(), Diagnostic> {
+    let max_length = resolve_string_max_length(string_init)?;
+    let char_width = char_width_for_string_type(&string_init.width);
+
+    let total_bytes = string_region_size(max_length, char_width);
+    let data_offset = crate::data_region::reserve(ctx, total_bytes, &string_init.span())?;
+
+    if max_length > ctx.max_string_capacity {
+        ctx.max_string_capacity = max_length;
+    }
+
+    ctx.string_vars.insert(
+        id.clone(),
+        StringVarInfo {
+            data_offset,
+            max_length,
+            char_width,
+        },
+    );
+    Ok(())
+}
+
+/// How a call site passes an argument to the input parameter `decl`
+/// declares, once the callee's variables have their storage: by reference
+/// to a `VAR_IN_OUT`, copied into the parameter's run of the data region for
+/// a string, and by value otherwise.
+pub(crate) fn param_passing(ctx: &CompileContext, decl: &VarDecl) -> ParamPassing {
+    if decl.var_type == VariableType::InOut {
+        return ParamPassing::Reference;
+    }
+    let string = match &decl.initializer {
+        InitialValueAssignmentKind::String(_) => decl
+            .identifier
+            .symbolic_id()
+            .and_then(|id| ctx.string_vars.get(id)),
+        _ => None,
+    };
+    string.map_or(ParamPassing::Value, |info| {
+        ParamPassing::String(StringParamInfo {
+            data_offset: info.data_offset,
+            max_length: info.max_length,
+            char_width: info.char_width,
+        })
+    })
+}
 
 /// Records a debug [`VarNameEntry`] for a function- or FB-local variable
 /// (parameter or local) owned by `function_id`. Mirrors the program/global
@@ -141,25 +196,7 @@ pub(crate) fn compile_user_function(
             }
             match &decl.initializer {
                 InitialValueAssignmentKind::String(string_init) => {
-                    let max_length = resolve_string_max_length(string_init)?;
-                    let char_width = char_width_for_string_type(&string_init.width);
-
-                    let total_bytes = string_region_size(max_length, char_width);
-                    let data_offset =
-                        crate::data_region::reserve(ctx, total_bytes, &string_init.span())?;
-
-                    if max_length > ctx.max_string_capacity {
-                        ctx.max_string_capacity = max_length;
-                    }
-
-                    ctx.string_vars.insert(
-                        id.clone(),
-                        StringVarInfo {
-                            data_offset,
-                            max_length,
-                            char_width,
-                        },
-                    );
+                    register_string_variable(ctx, id, string_init)?;
                 }
                 InitialValueAssignmentKind::Reference(ref_init) => {
                     crate::compile_reference::register_reference_variable(
@@ -197,25 +234,7 @@ pub(crate) fn compile_user_function(
             }
             match &decl.initializer {
                 InitialValueAssignmentKind::String(string_init) => {
-                    let max_length = resolve_string_max_length(string_init)?;
-                    let char_width = char_width_for_string_type(&string_init.width);
-
-                    let total_bytes = string_region_size(max_length, char_width);
-                    let data_offset =
-                        crate::data_region::reserve(ctx, total_bytes, &string_init.span())?;
-
-                    if max_length > ctx.max_string_capacity {
-                        ctx.max_string_capacity = max_length;
-                    }
-
-                    ctx.string_vars.insert(
-                        id.clone(),
-                        StringVarInfo {
-                            data_offset,
-                            max_length,
-                            char_width,
-                        },
-                    );
+                    register_string_variable(ctx, id, string_init)?;
                 }
                 InitialValueAssignmentKind::Reference(ref_init) => {
                     crate::compile_reference::register_reference_variable(
@@ -359,9 +378,11 @@ pub(crate) fn compile_user_function(
     let saved_current_fn = ctx.current_function_id.take();
     ctx.current_function_id = Some(function_id);
 
-    let saved_pou = ctx.current_pou.replace(func_decl.name.clone());
+    let saved_body = ctx
+        .current_body
+        .replace(CurrentBody::Pou(func_decl.name.clone()));
     compile_statements(&mut func_emitter, ctx, &body)?;
-    ctx.current_pou = saved_pou;
+    ctx.current_body = saved_body;
 
     ctx.current_function_id = saved_current_fn;
     ctx.current_function_return = saved_return_ctx;
@@ -383,31 +404,17 @@ pub(crate) fn compile_user_function(
 
     // Record how a call site passes each parameter: by value, into the
     // parameter's string space, or by reference.
-    let mut params: Vec<ParamPassing> = Vec::new();
-    for decl in &func_decl.variables {
-        if !decl.var_type.is_input_compatible() {
-            continue;
-        }
-        if decl.var_type == VariableType::InOut {
-            params.push(ParamPassing::Reference);
-            continue;
-        }
-        let passing = match &decl.initializer {
-            InitialValueAssignmentKind::String(_) => decl
-                .identifier
-                .symbolic_id()
-                .and_then(|id| ctx.string_vars.get(id))
-                .map_or(ParamPassing::Value, |info| {
-                    ParamPassing::String(StringParamInfo {
-                        data_offset: info.data_offset,
-                        max_length: info.max_length,
-                        char_width: info.char_width,
-                    })
-                }),
-            _ => ParamPassing::Value,
-        };
-        params.push(passing);
-    }
+    let params: Vec<ParamPassing> = func_decl
+        .variables
+        .iter()
+        .filter(|decl| decl.var_type.is_input_compatible())
+        .map(|decl| param_passing(ctx, decl))
+        .collect();
+
+    let string_outputs = outputs
+        .keys()
+        .filter_map(|id| Some((id.clone(), ctx.string_vars.get(id)?.clone())))
+        .collect();
 
     ctx.user_functions.insert(
         func_name.to_string(),
@@ -420,6 +427,7 @@ pub(crate) fn compile_user_function(
             return_struct_desc_index,
             max_stack_depth: finalized.max_stack_depth,
             outputs,
+            string_outputs,
         },
     );
 
@@ -503,25 +511,7 @@ pub(crate) fn compile_user_function_block(
                     )?;
                 }
                 InitialValueAssignmentKind::String(string_init) => {
-                    let max_length = resolve_string_max_length(string_init)?;
-                    let char_width = char_width_for_string_type(&string_init.width);
-
-                    let total_bytes = string_region_size(max_length, char_width);
-                    let data_offset =
-                        crate::data_region::reserve(ctx, total_bytes, &string_init.span())?;
-
-                    if max_length > ctx.max_string_capacity {
-                        ctx.max_string_capacity = max_length;
-                    }
-
-                    ctx.string_vars.insert(
-                        id.clone(),
-                        StringVarInfo {
-                            data_offset,
-                            max_length,
-                            char_width,
-                        },
-                    );
+                    register_string_variable(ctx, id, string_init)?;
                 }
                 _ => {}
             }
@@ -539,9 +529,11 @@ pub(crate) fn compile_user_function_block(
     ctx.current_function_id = Some(function_id);
 
     let mut fb_emitter = Emitter::new();
-    let saved_pou = ctx.current_pou.replace(fb_decl.name.name.clone());
+    let saved_body = ctx
+        .current_body
+        .replace(CurrentBody::Pou(fb_decl.name.name.clone()));
     compile_body(&mut fb_emitter, ctx, &fb_decl.body, &fb_decl.name.span())?;
-    ctx.current_pou = saved_pou;
+    ctx.current_body = saved_body;
     fb_emitter.emit_ret_void();
 
     ctx.current_function_id = saved_current_fn;

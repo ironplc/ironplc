@@ -96,6 +96,7 @@ fn naming(id: LoopId, stmt: &Stmt) -> u32 {
         | StmtKind::AssignStr { .. }
         | StmtKind::Copy { .. }
         | StmtKind::FbCall { .. }
+        | StmtKind::Call { .. }
         | StmtKind::Return => 0,
     }
 }

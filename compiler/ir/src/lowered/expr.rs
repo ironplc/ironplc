@@ -507,11 +507,9 @@ impl Expr {
         )
     }
 
-    /// The result of calling the function `pou` that `pous` declares with
-    /// `args`: one argument for each of its parameters, in order, at the
-    /// parameter's operation type, or a place of the type a `VAR_IN_OUT`
-    /// parameter refers to (REQ-LOW-lowering-071, REQ-LOW-lowering-072). The
-    /// arguments read places of the program the tables belong to.
+    /// The result of calling the function or method `pou` that `pous`
+    /// declares with `args`, which [`check_user_call`] describes. A method
+    /// without a result is only called by a statement.
     pub(crate) fn call_function(
         types: &TypeTable,
         variables: &VariableTable,
@@ -521,40 +519,10 @@ impl Expr {
         span: SourceSpan,
     ) -> Result<Self, Diagnostic> {
         const CONSTRUCTOR: &str = "ProgramBuilder::call";
-        let Some(signature) = pous.function(pou) else {
-            return Err(broken(
-                CONSTRUCTOR,
-                &span,
-                format!("{pou} is not a function of this program"),
-            ));
+        let Some(result) = check_user_call(CONSTRUCTOR, types, variables, pous, pou, &args, &span)?
+        else {
+            return Err(broken(CONSTRUCTOR, &span, format!("{pou} has no result")));
         };
-        let result = variables
-            .get(signature.result())
-            .and_then(|variable| types.operation_type(variable.ty()));
-        let (Some(params), Some(result)) = (signature.params(types, variables), result) else {
-            return Err(broken(
-                CONSTRUCTOR,
-                &span,
-                format!("{pou} has a parameter or result that is not a scalar"),
-            ));
-        };
-        let passed: Vec<Param> = args.iter().map(Arg::param).collect();
-        if passed != params {
-            return Err(broken(
-                CONSTRUCTOR,
-                &span,
-                format!("{pou} takes {params:?}, not {passed:?}"),
-            ));
-        }
-        if let Some(other) = args.iter().find_map(Arg::program) {
-            if other != pou.stamp() {
-                return Err(broken(
-                    CONSTRUCTOR,
-                    &span,
-                    "the arguments belong to another program",
-                ));
-            }
-        }
         Self::of_call(CONSTRUCTOR, Callee::User(pou), args, result, span)
     }
 
@@ -625,4 +593,62 @@ impl Expr {
     pub fn span(&self) -> &SourceSpan {
         &self.span
     }
+}
+
+/// Refuses `args` unless they are one argument for each parameter of the
+/// function or method `pou` that `pous` declares, in order, at the
+/// parameter's operation type, or a place of the type a `VAR_IN_OUT`,
+/// `VAR_OUTPUT` or method's instance parameter refers to
+/// (REQ-LOW-lowering-071, REQ-LOW-lowering-072, REQ-LOW-lowering-076), that
+/// read places of the program the tables belong to. Returns the operation
+/// type of the result; `None` for a method without one.
+pub(crate) fn check_user_call(
+    constructor: &str,
+    types: &TypeTable,
+    variables: &VariableTable,
+    pous: &PouTable,
+    pou: PouId,
+    args: &[Arg],
+    span: &SourceSpan,
+) -> Result<Option<ScalarType>, Diagnostic> {
+    let Some(signature) = pous.function(pou) else {
+        return Err(broken(
+            constructor,
+            span,
+            format!("{pou} is not a function or method of this program"),
+        ));
+    };
+    // `None` for a result that is not a scalar.
+    let result = match signature.result() {
+        Some(result) => variables
+            .get(result)
+            .and_then(|variable| types.operation_type(variable.ty()))
+            .map(Some),
+        None => Some(None),
+    };
+    let (Some(params), Some(result)) = (signature.params(types, variables), result) else {
+        return Err(broken(
+            constructor,
+            span,
+            format!("{pou} has a parameter or result that is not a scalar"),
+        ));
+    };
+    let passed: Vec<Param> = args.iter().map(Arg::param).collect();
+    if passed != params {
+        return Err(broken(
+            constructor,
+            span,
+            format!("{pou} takes {params:?}, not {passed:?}"),
+        ));
+    }
+    if let Some(other) = args.iter().find_map(Arg::program) {
+        if other != pou.stamp() {
+            return Err(broken(
+                constructor,
+                span,
+                "the arguments belong to another program",
+            ));
+        }
+    }
+    Ok(result)
 }

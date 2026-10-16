@@ -77,9 +77,10 @@ reader looks them up by the block's id (`TypeEnvironment::block_fields`,
 `block_field`, `field_type`). A standard block's fields are recorded the same
 way when the environment is built.
 
-A block's fields and the block it `EXTENDS`, whose fields an instance of the
-derived block has too, are recorded together, once
-(`TypeEnvironment::record_block`): a repeated block name keeps its first
+A block's fields, the names of its properties and the block it `EXTENDS`,
+whose fields and properties an instance of the derived block has too, are
+recorded together, once (`TypeEnvironment::record_block`): a repeated block
+name keeps its first
 declaration (P4013), and a library block named like a standard one records
 nothing on the standard block. Only a function block the library declares is
 recorded as a base: a structure has no fields a block inherits, and the symbol
@@ -91,6 +92,19 @@ them here would let a program pass analysis and fail later.
 **REQ-ETR-analyzer-005** Two declarations that spell the same array of a function block declare types of the same shape wherever they are in the library: a top-level `VAR_GLOBAL g : ARRAY[1..2] OF Counter`, placed before every block, and `VAR_EXTERNAL g : ARRAY[1..2] OF Counter` in a program are the same type, so the external matches the global.
 
 **REQ-ETR-analyzer-003** A field a function block inherits through `EXTENDS` has the type the block that declares it gives it: `field_type` of the derived block and `count`, an `INT` the base block declares, is `INT`. A base that is not a function block the library declares gives no field: `EXTENDS Pair` on a structure `Pair` does not make `Pair`'s field `f` a field of the block, and `EXTENDS TON` does not make `Q` one.
+
+A selection `v.f` may name a field of `v`'s type or, on a function block, a
+property. The environment answers both, so that a rule asking whether `f`
+names anything reads one answer. `field_names` gives the names of the fields:
+a block's own fields in order, then those of each block it inherits from,
+nearest first, and a structure's in the order its type lists them. Only a type
+recorded as a structure or a block has any: an interface is entered as an
+empty structure, so that a variable of it resolves, and `field_names` gives
+nothing for it rather than an empty list. `has_property` says whether a block,
+or a block it inherits from, declares a property of a name. Only the name is
+recorded: property access is not implemented.
+
+**REQ-ETR-analyzer-007** On a block `Derived EXTENDS Base`, `field_names` lists `Derived`'s fields in declaration order, then `Base`'s. A structure's are in declaration order, as are an alias's of it; `field_names` of an interface or an elementary type is `None`. `has_property` of `Derived` holds for a property `Derived` declares and for one `Base` declares, and not for a field; `has_property` of `Base` does not hold for a property only `Derived` declares.
 
 `expr_type` is left out of `Expr`'s equality: its ids are allocated per
 compilation, so an expected expression built by hand cannot know them.

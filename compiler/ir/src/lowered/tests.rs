@@ -755,6 +755,8 @@ mod copies;
 
 mod fb_calls;
 
+mod methods;
+
 mod places;
 
 mod strings;
