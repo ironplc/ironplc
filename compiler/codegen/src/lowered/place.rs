@@ -63,13 +63,64 @@ pub(super) fn resolve<'l, 'a>(
     let mut subscripts = Vec::new();
     let reference =
         reference(lowering, ctx, place, &mut subscripts).ok_or_else(|| no_storage(span))?;
+    storage(lowering, ctx, place, reference, &subscripts, span)
+}
+
+/// Where the value a read of `place` loads is.
+pub(super) enum Load<'l, 'a> {
+    /// In this storage.
+    Stored(Place<LoweredSubscript<'l, 'a>>),
+    /// In what the reference this storage holds refers to: `refs[0]^`, whose
+    /// reference is not in a variable.
+    Referenced(Place<LoweredSubscript<'l, 'a>>),
+}
+
+/// Where the value a read of `place` loads is. What a reference that is not
+/// in a variable refers to is read by loading the reference and then what it
+/// refers to, as the AST route reads `e^`. A store to it is not: the AST
+/// route does not compile one.
+pub(super) fn resolve_load<'l, 'a>(
+    lowering: &'l Lowering<'a>,
+    ctx: &CompileContext,
+    place: &'l LoweredPlace,
+    span: &SourceSpan,
+) -> Result<Load<'l, 'a>, Diagnostic> {
+    let mut subscripts = Vec::new();
+    let reference =
+        reference(lowering, ctx, place, &mut subscripts).ok_or_else(|| no_storage(span))?;
+    let SymbolicVariableKind::Deref(deref) = reference else {
+        return storage(lowering, ctx, place, reference, &subscripts, span).map(Load::Stored);
+    };
+    // A reference in a variable keeps the indirect address that
+    // `resolve` gives it.
+    if let SymbolicVariableKind::Named(_) = *deref.variable {
+        let reference = SymbolicVariableKind::Deref(deref);
+        return storage(lowering, ctx, place, reference, &subscripts, span).map(Load::Stored);
+    }
+    Place::resolve(ctx, &deref.variable)?
+        .try_map_subscripts(|placeholder| {
+            lowered_subscript(lowering, &subscripts, placeholder, span)
+        })
+        .map(Load::Referenced)
+}
+
+/// Where codegen's layout stores `place`, which `reference` stands for with
+/// `subscripts` as its placeholders.
+fn storage<'l, 'a>(
+    lowering: &'l Lowering<'a>,
+    ctx: &CompileContext,
+    place: &'l LoweredPlace,
+    reference: SymbolicVariableKind,
+    subscripts: &[&'l Expr],
+    span: &SourceSpan,
+) -> Result<Place<LoweredSubscript<'l, 'a>>, Diagnostic> {
     // The whole of what a reference variable refers to: `p^`.
     if let SymbolicVariableKind::Deref(deref) = reference {
         let target = type_info(lowering.types(), place.ty());
         return Place::through_reference(ctx, &Variable::Symbolic(*deref.variable), target);
     }
     Place::resolve(ctx, &reference)?.try_map_subscripts(|placeholder| {
-        lowered_subscript(lowering, &subscripts, placeholder, span)
+        lowered_subscript(lowering, subscripts, placeholder, span)
     })
 }
 

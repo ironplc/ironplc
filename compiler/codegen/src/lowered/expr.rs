@@ -11,7 +11,7 @@ use ironplc_ir::lowered::{
 use ironplc_lowering::Lowering;
 
 use super::method::{emit_method_call, method_site};
-use super::place::variable_name;
+use super::place::{resolve_load, variable_name, Load};
 use super::policy::parse_builtin;
 use super::string::str_arg_offset;
 use super::{op_type, user_function};
@@ -39,9 +39,13 @@ pub(super) fn emit_expr(
     })?;
     match expr.kind() {
         ExprKind::Const(constant) => emit_constant(emitter, ctx, *constant),
-        ExprKind::Read(place) => {
-            super::place::resolve(lowering, ctx, place, expr.span())?.emit_load(emitter, ctx)?;
-        }
+        ExprKind::Read(place) => match resolve_load(lowering, ctx, place, expr.span())? {
+            Load::Stored(storage) => storage.emit_load(emitter, ctx)?,
+            Load::Referenced(storage) => {
+                storage.emit_load(emitter, ctx)?;
+                emitter.emit_load_indirect();
+            }
+        },
         ExprKind::RefTo(place) => emit_ref(emitter, ctx, lowering, place, expr.span())?,
         ExprKind::Null => emit_null(emitter, ctx),
         ExprKind::Convert(value)

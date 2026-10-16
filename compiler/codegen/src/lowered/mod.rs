@@ -244,7 +244,7 @@ fn expr_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, expr: &Expr) -> 
     }
     match expr.kind() {
         ExprKind::Const(_) | ExprKind::Null => true,
-        ExprKind::Read(place) => reaches(lowering, ctx, place, expr.ty()),
+        ExprKind::Read(place) => reads(lowering, ctx, place, expr.ty()),
         // A reference to a variable, or to what a `VAR_IN_OUT` parameter
         // refers to, as the AST route makes one.
         ExprKind::RefTo(place) => place::variable_name(lowering, ctx, place).is_some(),
@@ -369,6 +369,29 @@ fn reaches(
     subscripts_can_emit(lowering, ctx, place)
         && place::resolve(lowering, ctx, place, &SourceSpan::default())
             .is_ok_and(|storage| op_type(ty) == Some(storage.op_type()))
+}
+
+/// Whether this backend reads `place` as one value of type `ty`: from its
+/// storage, or through the reference its storage holds, as one value of the
+/// type the place gives what that reference refers to.
+fn reads(
+    lowering: &Lowering<'_>,
+    ctx: &CompileContext,
+    place: &LoweredPlace,
+    ty: ScalarType,
+) -> bool {
+    subscripts_can_emit(lowering, ctx, place)
+        && match place::resolve_load(lowering, ctx, place, &SourceSpan::default()) {
+            Ok(place::Load::Stored(storage)) => op_type(ty) == Some(storage.op_type()),
+            Ok(place::Load::Referenced(storage)) => {
+                op_type(ScalarType::Ref) == Some(storage.op_type())
+                    && lowering
+                        .types()
+                        .operation_type(place.ty())
+                        .is_some_and(|target| op_type(target) == op_type(ty))
+            }
+            Err(_) => false,
+        }
 }
 
 /// Whether this backend emits every subscript on the way to `place`.
