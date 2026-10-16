@@ -157,10 +157,11 @@ impl Lowering<'_> {
                 let Some(fields) = self.block_fields(id)? else {
                     return Ok(None);
                 };
+                let base = self.base(id, &fields)?;
                 TypeKind::FunctionBlock {
                     fields,
                     body: self.pou(name, &span),
-                    base: None,
+                    base,
                 }
             }
             SemanticType::Reference { .. } => {
@@ -248,6 +249,32 @@ impl Lowering<'_> {
             ));
         }
         Ok(Some(fields))
+    }
+
+    /// The lowered type of the block the function block `block` extends,
+    /// when `fields`, the lowered block's, begin with that type's
+    /// (REQ-LOW-lowering-177, REQ-LOW-ir-176). A block's lowered type has
+    /// only the fields it declares itself, so that is so only when the base's
+    /// type has none; otherwise the type records no base, and a call of a
+    /// method it inherits is not lowered.
+    fn base(&mut self, block: AnalyzerTypeId, fields: &[Field]) -> LoweredType {
+        let Some(base) = self
+            .analysis
+            .context()
+            .types()
+            .inheritance_chain(block)
+            .nth(1)
+        else {
+            return Ok(None);
+        };
+        let Some(base) = self.lowered_type(base)? else {
+            return Ok(None);
+        };
+        Ok(self
+            .program
+            .types()
+            .can_extend(fields, base)
+            .then_some(base))
     }
 
     /// The lowered type of an elementary type, such as a subrange's base.

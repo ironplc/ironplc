@@ -588,7 +588,15 @@ reaches field `i` of its instance parameter reaches the same field whichever
 of the two its instance is, and a reference to an instance of the block
 passes for a reference to an instance of its base (REQ-LOW-ir-173), with
 nothing converted. A backend lays a block's fields out so that its base's
-come first, laid out as the base's are. Lowering records no base yet.
+come first, laid out as the base's are.
+
+Lowering records a block's base when the block's lowered fields begin with
+the base type's. While a block's lowered type has only the fields it declares
+itself, that is so only when the base's type has no fields, so a block that
+extends one with a field records no base and extends nothing in the lowered
+program. When lowering gives a block the fields it inherits, it takes them
+from the type environment's `instance_fields`, which lists them from the root
+of the `EXTENDS` chain down, so every block then records its base.
 
 **REQ-LOW-ir-176** A function block type that records a base begins with the
 base's fields, of the same names, sections and types, and the type table
@@ -1476,7 +1484,8 @@ function block instance.
 Not lowered yet, so each stays on the route that reads the AST:
 
 - a call through `THIS^` or `SUPER^`, which analysis does not resolve yet;
-- a call of a method the receiver's block inherits through `EXTENDS`;
+- a call of a method the receiver's block inherits from a block its
+  lowered type does not extend, as one with a field (REQ-LOW-lowering-177);
 - a call of a method with an in-out or a result that is a string, or with an
   input, an in-out or a result that is an aggregate (REQ-LOW-lowering-079);
 - a call with outputs anywhere but a statement or the value of an
@@ -1494,6 +1503,29 @@ an instance it cannot reach, such as one declared inside a function block,
 stays on it. A method's outputs, strings included, are read from the
 method's own variables, as a function's are, and a method's body is asked
 for its statements as any other body is.
+
+A call of a method the receiver's block inherits is a call of the method of
+the block that declares it, as the analyzer resolves it (ADR-0041), with a
+`Ref` to the receiver first, which passes for that block's instance
+parameter when the receiver's type extends it (REQ-LOW-ir-173).
+
+**REQ-LOW-lowering-177** A call of a method that the receiver's block
+inherits from a block its lowered type extends is a `Call` of that block's
+method, with a `Ref` to the receiver first.
+
+While both routes exist, the bytecode backend finds an inherited method in
+the layout of the block that declares it, as the route that reads the AST
+does through `MethodOwners`, and pushes the derived instance. Its layout of
+a derived block holds none of the fields the block inherits
+([issue 1438](https://github.com/ironplc/ironplc/issues/1438)), so it calls
+the method only when the method's block declares none, and `METHOD_CALL`
+then copies no field. A call of a method of a block that declares fields
+stays on the route that reads the AST, which reports it as not implemented.
+
+**REQ-LOW-codegen-178** While both routes exist, the bytecode backend emits a
+call of a method a block inherits from a block that declares no fields as
+the route that reads the AST emits it, and leaves to that route a call of a
+method of a block that declares fields.
 
 #### Calls through an interface
 

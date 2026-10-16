@@ -10,7 +10,9 @@
 //! method leaves its outputs in its own variables, as a function does.
 //!
 //! The backend reaches the receiver by name, as the AST route does, and
-//! finds the method in its layout by the names of its block and itself.
+//! finds the method in its layout by the names of its block and itself. A
+//! method a block inherits is the method of the block that declares it, as
+//! the AST route finds it through `MethodOwners`.
 
 use std::collections::HashMap;
 
@@ -62,8 +64,8 @@ impl MethodSite {
 
 /// The call of the method `pou` with `args`, whose first is a `Ref` to the
 /// receiver: an instance this backend reaches by name, of the block whose
-/// method `pou` is. `None` when `pou` is no method, or this backend does not
-/// reach the receiver or the method.
+/// method `pou` is or of a block that extends it. `None` when `pou` is no
+/// method, or this backend does not reach the receiver or the method.
 pub(super) fn method_site(
     lowering: &Lowering<'_>,
     ctx: &CompileContext,
@@ -82,7 +84,12 @@ pub(super) fn method_site(
     let instance = ctx
         .fb_instances
         .get(&variable_name(lowering, ctx, receiver)?)?;
-    if instance.type_id != block.type_id {
+    // The lowered call passes an instance of a block that extends the
+    // method's (REQ-LOW-ir-176). This backend's layout of a derived block
+    // holds none of the fields it inherits, so, as on the route that reads
+    // the AST, the method runs on it only when its block declares none
+    // (REQ-LOW-codegen-178), and `METHOD_CALL` then copies no field.
+    if instance.type_id != block.type_id && block.num_fields > 0 {
         return None;
     }
     Some(MethodSite {
