@@ -208,13 +208,15 @@ a third beside #1901's.
 
 ## Decisions for review
 
-1. **Compare the whole signature, not only the return type.** #2145 asks for
-   the signature to be compared, but only the return type was probed for an
-   override. The same message, probed for interfaces in #1901, covers parameter
-   names, types, kinds, order and count, and the standard's signature includes
-   them. Recommended: the whole signature, and probe one renamed parameter on
-   an override in XAE before core 2 merges. The alternative is the return type
-   now and parameters later under the same code.
+1. **Compare the whole signature, not only the return type. Decided: the
+   whole signature.** #2145 asks for the signature to be compared, but only
+   the return type was probed for an override. The same message, probed for
+   interfaces in #1901, covers parameter names, types, kinds, order and count,
+   and the standard's signature includes them. Core 2 compares the return
+   type, the `VAR_INPUT`/`VAR_OUTPUT`/`VAR_IN_OUT` parameters (name, kind,
+   type, order, count) and the `R_EDGE`/`F_EDGE` inputs, and not locals. One
+   renamed parameter on an override is probed in XAE before core 2 merges; if
+   XAE accepts it, parameter names come out of the comparison.
 2. **Two fixtures on `main` override with different parameters**, and become
    programs analysis rejects: `OVERRIDES` in `callee_resolution.rs:877`, and
    `METHODS` (`xform_bind_call_arguments.rs:253`) with the `THIS^`/`SUPER^`
@@ -323,6 +325,8 @@ Tracking issue: opened when this plan is approved, listing core 1 and core 2.
       unresolved parameter type (not reported), and an undeclared base (P-base
       only).
 - [ ] Decision 2's fixture notes.
+- [ ] Probe a renamed parameter on an override in XAE (Decision 1), and
+      record the result in `beckhoff-twincat-dialect.md` §1.4.
 - [ ] `extends.rst` and `beckhoff-twincat-dialect.md` §1.4.
 - [ ] `cd compiler && just`, `cd docs && just`, `cd specs && just`.
 
