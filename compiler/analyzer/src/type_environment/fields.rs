@@ -138,16 +138,26 @@ impl TypeEnvironment {
     /// The field `name` of an instance of the function block `block`: one
     /// the block declares, else one it inherits through `EXTENDS`.
     pub fn block_field(&self, block: TypeId, name: &Id) -> Option<&BlockField> {
-        let mut record = self.block_record(block)?;
+        self.inheritance_chain(block).find_map(|block| {
+            self.blocks
+                .get(&block)?
+                .fields
+                .iter()
+                .find(|field| field.name == *name)
+        })
+    }
+
+    /// The function blocks an instance of `block` takes its fields from,
+    /// nearest first: `block`, the block it `EXTENDS`, that block's base,
+    /// and so on. An alias of a block starts at the block it names. Empty
+    /// when `block` is not a function block whose fields are recorded.
+    pub(crate) fn inheritance_chain(&self, block: TypeId) -> impl Iterator<Item = TypeId> + '_ {
         // The `EXTENDS` graph is acyclic, which declaration sorting
         // enforces; the bound only keeps a walk finite whatever it meets.
-        for _ in 0..=self.blocks.len() {
-            if let Some(field) = record.fields.iter().find(|field| field.name == *name) {
-                return Some(field);
-            }
-            record = self.block_record(record.base?)?;
-        }
-        None
+        std::iter::successors(self.recorded_block(block), |block| {
+            self.recorded_block(self.blocks.get(block)?.base?)
+        })
+        .take(self.blocks.len())
     }
 
     /// The id of the declared type of the field `field` of the structure or
@@ -173,10 +183,16 @@ impl TypeEnvironment {
     /// The record of the function block `block`, or of the block an alias
     /// of a block names.
     fn block_record(&self, block: TypeId) -> Option<&BlockRecord> {
-        match self.blocks.get(&block) {
-            Some(record) => Some(record),
-            None => self.block_record(self.alias_base(block)?),
+        self.blocks.get(&self.recorded_block(block)?)
+    }
+
+    /// The function block whose record `block` has: `block`, or the block
+    /// an alias of a block names. `None` when no block is recorded for it.
+    fn recorded_block(&self, block: TypeId) -> Option<TypeId> {
+        if self.blocks.contains_key(&block) {
+            return Some(block);
         }
+        self.recorded_block(self.alias_base(block)?)
     }
 
     /// Whether `id` is a function block the library declares, rather than a
@@ -194,6 +210,7 @@ mod tests {
     use crate::semantic_type::SemanticType;
     use crate::type_attributes::TypeAttributes;
     use crate::type_environment::TypeEnvironmentBuilder;
+    use rstest::rstest;
 
     /// An environment with the elementary types and the standard blocks.
     fn environment() -> TypeEnvironment {
@@ -326,5 +343,69 @@ mod tests {
             env.field_type(ton, &Id::from("PT")),
             env.id_of(&TypeName::from("TIME"))
         );
+    }
+
+    /// An environment with the blocks `A`, `B EXTENDS A` and `C EXTENDS B`,
+    /// recorded with no fields.
+    fn three_level_chain() -> TypeEnvironment {
+        let mut env = environment();
+        let a = block(&mut env, "A");
+        let b = block(&mut env, "B");
+        let c = block(&mut env, "C");
+        env.record_block(a, vec![], None);
+        env.record_block(b, vec![], Some(a));
+        env.record_block(c, vec![], Some(b));
+        env
+    }
+
+    #[rstest]
+    #[case::no_base("A", &["A"])]
+    #[case::one_level("B", &["B", "A"])]
+    #[case::two_levels("C", &["C", "B", "A"])]
+    fn inheritance_chain_when_block_then_it_and_its_bases_nearest_first(
+        #[case] start: &str,
+        #[case] expected: &[&str],
+    ) {
+        let env = three_level_chain();
+        let expected: Vec<TypeId> = expected.iter().map(|name| id(&env, name)).collect();
+
+        let chain: Vec<TypeId> = env.inheritance_chain(id(&env, start)).collect();
+
+        assert_eq!(chain, expected);
+    }
+
+    #[test]
+    fn inheritance_chain_when_alias_of_block_then_starts_at_the_block() {
+        let mut env = three_level_chain();
+        env.insert_alias(&TypeName::from("AliasOfC"), &TypeName::from("C"))
+            .unwrap();
+        let expected = vec![id(&env, "C"), id(&env, "B"), id(&env, "A")];
+
+        let chain: Vec<TypeId> = env.inheritance_chain(id(&env, "AliasOfC")).collect();
+
+        assert_eq!(chain, expected);
+    }
+
+    #[test]
+    fn inheritance_chain_when_no_block_recorded_then_empty() {
+        let mut env = environment();
+        let unrecorded = block(&mut env, "Unrecorded");
+        let int = id(&env, "INT");
+
+        assert_eq!(env.inheritance_chain(unrecorded).count(), 0);
+        assert_eq!(env.inheritance_chain(int).count(), 0);
+    }
+
+    /// Declaration sorting rejects an `EXTENDS` cycle before the environment
+    /// is built; the walk still ends if one is recorded.
+    #[test]
+    fn inheritance_chain_when_extends_cycle_then_walk_ends() {
+        let mut env = environment();
+        let a = block(&mut env, "A");
+        let b = block(&mut env, "B");
+        env.record_block(a, vec![], Some(b));
+        env.record_block(b, vec![], Some(a));
+
+        assert!(env.inheritance_chain(a).count() <= env.blocks.len());
     }
 }
