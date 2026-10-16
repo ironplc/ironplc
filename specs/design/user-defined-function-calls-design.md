@@ -100,6 +100,18 @@ New problem codes: `FunctionCallArgTypeMismatch`, `FunctionCallReturnTypeMismatc
 
 1. Pop the callee's frame and resume the caller. The top of the operand stack holds the return value, which remains on the stack for the caller.
 
+### String parameters, locals and outputs
+
+A `STRING` or `WSTRING` parameter, local or output of a function or a
+method is held in a run of the data region of its own, sized to its
+declared capacity (see
+[String Buffer Management](runtime-execution-model.md#string-buffer-management)).
+Its slot is unused. A call copies a string argument into its parameter's
+run before `CALL` or `METHOD_CALL`, cut to the parameter's capacity, and
+pushes a dummy value for the slot the call pops. The callee's prologue
+initializes a local's or output's run at every call, so it starts again
+from its initial value, as a scalar local does.
+
 ### VAR_IN_OUT parameters
 
 A `VAR_IN_OUT` parameter takes an argument like a `VAR_INPUT` does and is

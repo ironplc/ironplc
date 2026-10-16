@@ -608,9 +608,15 @@ fn compile_program_with_functions(
                     continue;
                 }
                 if let Some(id) = decl.identifier.symbolic_id() {
+                    // A string's passing is known once the method is
+                    // compiled, which gives the string its storage.
+                    let passing = match decl.var_type {
+                        VariableType::InOut => ParamPassing::Reference,
+                        _ => ParamPassing::Value,
+                    };
                     params.push(UserMethodParam {
                         name: id.clone(),
-                        in_out: decl.var_type == VariableType::InOut,
+                        passing,
                     });
                 }
             }
@@ -629,6 +635,7 @@ fn compile_program_with_functions(
                         has_return_value: method.return_type.is_some(),
                         max_stack_depth: 0, // updated once the method is compiled
                         outputs: HashMap::new(), // set once the method is compiled
+                        string_outputs: HashMap::new(), // set once the method is compiled
                     },
                 );
             }
@@ -715,7 +722,6 @@ fn compile_program_with_functions(
             field_var_off,
             &mut var_offset,
             &mut ctx,
-            &mut builder,
             types,
         )?;
         compiled_methods.extend(methods);
@@ -737,14 +743,14 @@ fn compile_program_with_functions(
     // emitted from inside the body records a call-graph edge.
     let mut scan_emitter = Emitter::new();
     ctx.current_function_id = Some(FunctionId::SCAN);
-    ctx.current_pou = Some(program.name.clone());
+    ctx.current_body = Some(CurrentBody::Pou(program.name.clone()));
     compile_body(
         &mut scan_emitter,
         &mut ctx,
         &program.body,
         &program.name.span(),
     )?;
-    ctx.current_pou = None;
+    ctx.current_body = None;
     ctx.current_function_id = None;
     scan_emitter.emit_ret_void();
 
@@ -988,7 +994,7 @@ pub(crate) struct StringParamInfo {
 }
 
 /// How a call site passes an argument to one input parameter
-/// (`VAR_INPUT`/`VAR_IN_OUT`) of a user-defined function.
+/// (`VAR_INPUT`/`VAR_IN_OUT`) of a user-defined function or method.
 #[derive(Clone)]
 pub(crate) enum ParamPassing {
     /// The argument's value is pushed onto the operand stack at its own
@@ -996,7 +1002,8 @@ pub(crate) enum ParamPassing {
     /// `CALL` stores it in the parameter's slot.
     Value,
     /// The argument is copied into the parameter's data region space before
-    /// `CALL`, and a dummy value is pushed for the slot `CALL` pops.
+    /// `CALL` or `METHOD_CALL`, and a dummy value is pushed for the slot the
+    /// call pops.
     String(StringParamInfo),
     /// A `VAR_IN_OUT` argument: the variable's reference (its
     /// variable-table index) is pushed, and the function reads and writes
@@ -1043,6 +1050,10 @@ pub(crate) struct UserFunctionInfo {
     /// The slot of each `VAR_OUTPUT`, which a call reads its outputs from
     /// after the function returns.
     pub(crate) outputs: HashMap<Id, VarIndex>,
+    /// Where in the data region each `STRING` or `WSTRING` `VAR_OUTPUT`
+    /// is, which a call the lowered route compiles reads it from after the
+    /// function returns.
+    pub(crate) string_outputs: HashMap<Id, StringVarInfo>,
 }
 
 /// Tracks state during compilation of a single program.
@@ -1114,13 +1125,28 @@ pub(crate) struct UserMethodInfo {
     /// The slot of each `VAR_OUTPUT`, which a call reads its outputs from
     /// after the method returns. Empty until the method is compiled.
     pub(crate) outputs: HashMap<Id, VarIndex>,
+    /// Where in the data region each `STRING` or `WSTRING` `VAR_OUTPUT`
+    /// is, which a call the lowered route compiles reads it from after the
+    /// method returns. Empty until the method is compiled.
+    pub(crate) string_outputs: HashMap<Id, StringVarInfo>,
 }
 
 /// A VAR_INPUT or VAR_IN_OUT parameter of a user-defined method.
 pub(crate) struct UserMethodParam {
     pub(crate) name: Id,
-    /// Whether the parameter is a VAR_IN_OUT.
-    pub(crate) in_out: bool,
+    /// How a call site passes the argument for it. A string parameter is
+    /// passed by value until the method is compiled, which gives it the run
+    /// of the data region a call copies its argument into.
+    pub(crate) passing: ParamPassing,
+}
+
+/// A body whose statements are being compiled.
+#[derive(Clone, Debug)]
+pub(crate) enum CurrentBody {
+    /// The body of the program, function block or function of this name.
+    Pou(Id),
+    /// The body of the method `method` of the function block `block`.
+    Method { block: Id, method: Id },
 }
 
 pub(crate) struct CompileContext<'a> {
@@ -1128,10 +1154,9 @@ pub(crate) struct CompileContext<'a> {
     /// compiles statements from the lowered program; `None` when every
     /// statement is compiled from the AST.
     pub(crate) lowered_route: Option<crate::lowered::LoweredRoute<'a>>,
-    /// The program, function block or function whose body is being
-    /// compiled, which lowering finds the statement's names in; `None`
-    /// outside such a body, as in a method.
-    pub(crate) current_pou: Option<Id>,
+    /// The body being compiled, which lowering finds the statement's names
+    /// in; `None` outside a body.
+    pub(crate) current_body: Option<CurrentBody>,
     /// Maps variable identifiers to their variable table indices.
     pub(crate) variables: HashMap<Id, VarIndex>,
     /// Maps variable identifiers to their type information.
@@ -1250,7 +1275,7 @@ impl CompileContext<'_> {
     pub(crate) fn new() -> Self {
         CompileContext {
             lowered_route: None,
-            current_pou: None,
+            current_body: None,
             variables: HashMap::new(),
             var_types: HashMap::new(),
             constants: Vec::new(),

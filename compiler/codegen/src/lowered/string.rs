@@ -18,8 +18,8 @@ use ironplc_ir::lowered::{Encoding, Place as LoweredPlace, StrExpr, StrExprKind}
 use ironplc_lowering::Lowering;
 
 use super::expr::{emit_intrinsic_call, instruction_of};
-use super::place::resolve_string;
-use super::{args_can_emit, storage_name, subscripts_can_emit};
+use super::place::{resolve_string, variable_name};
+use super::{args_can_emit, subscripts_can_emit};
 use crate::compile::{emit_string_literal_load, CompileContext, StringVarInfo};
 use crate::compile_string::allocate_string_temp;
 use crate::emit::Emitter;
@@ -59,15 +59,16 @@ pub(super) fn reaches_string(
         && resolve_string(lowering, ctx, place, &SourceSpan::default()).is_ok()
 }
 
-/// The string variable `place` is, or the string field of the current
-/// instance, which this backend keeps in a slot of its own, by name. `None`
-/// for any other place.
+/// The string variable `place` is, the string field of the current
+/// instance, or the string output of the function or method being compiled,
+/// which this backend keeps in a slot of its own, by name. `None` for any
+/// other place.
 fn string_storage<'c>(
     lowering: &Lowering<'_>,
     ctx: &'c CompileContext,
     place: &LoweredPlace,
 ) -> Option<&'c StringVarInfo> {
-    ctx.string_vars.get(&storage_name(lowering, place)?)
+    ctx.string_vars.get(&variable_name(lowering, ctx, place)?)
 }
 
 /// The data region offset of a slot that holds the string `value`, as the
