@@ -10,6 +10,7 @@ use ironplc_ir::lowered::{
 };
 use ironplc_lowering::Lowering;
 
+use super::fn_call::take_result;
 use super::method::{emit_method_call, method_site};
 use super::place::{resolve_load, variable_name, Load};
 use super::policy::parse_builtin;
@@ -39,6 +40,9 @@ pub(super) fn emit_expr(
     })?;
     match expr.kind() {
         ExprKind::Const(constant) => emit_constant(emitter, ctx, *constant),
+        // The result of a call with outputs, which the call left on the
+        // stack (`fn_call.rs`).
+        ExprKind::Read(place) if take_result(ctx, place) => {}
         ExprKind::Read(place) => match resolve_load(lowering, ctx, place, expr.span())? {
             Load::Stored(storage) => storage.emit_load(emitter, ctx)?,
             Load::Referenced(storage) => {
