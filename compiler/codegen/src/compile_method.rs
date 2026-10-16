@@ -13,7 +13,8 @@ use std::collections::HashMap;
 
 use ironplc_container::{ContainerBuilder, FunctionId, VarIndex};
 use ironplc_dsl::common::{
-    FunctionBlockDeclaration, FunctionReturnType, MethodDeclaration, TypeName, VariableType,
+    FunctionBlockDeclaration, FunctionReturnType, InitialValueAssignmentKind, MethodDeclaration,
+    TypeName, VariableType,
 };
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -22,12 +23,15 @@ use ironplc_dsl::textual::{MethodCall, MethodReceiver, ParamAssignmentKind};
 use ironplc_analyzer::TypeEnvironment;
 
 use super::compile::{
-    finalize_function, CompileContext, CompiledFunction, CurrentFunctionReturn, DEFAULT_OP_TYPE,
+    finalize_function, CompileContext, CompiledFunction, CurrentFunctionReturn, ParamPassing,
+    DEFAULT_OP_TYPE,
 };
 use super::compile_call_output::{store_outputs, CallOutputs};
 use super::compile_expr::{compile_expr, emit_load_var};
+use super::compile_fn::{param_passing, register_string_variable};
 use super::compile_setup::emit_function_local_prologue;
 use super::compile_stmt::compile_statements;
+use super::compile_user_call::compile_string_arg;
 use super::type_info::{decl_type_info, named_type_info};
 use crate::emit::Emitter;
 
@@ -66,6 +70,7 @@ pub(crate) fn compile_user_fb_methods(
         // frame bounds window.
         let saved_variables = ctx.variables.clone();
         let saved_var_types = ctx.var_types.clone();
+        let saved_string_vars = ctx.string_vars.clone();
 
         let compiled_method = compile_user_method(
             method,
@@ -79,9 +84,11 @@ pub(crate) fn compile_user_fb_methods(
 
         ctx.variables = saved_variables;
         ctx.var_types = saved_var_types;
+        ctx.string_vars = saved_string_vars;
 
         let CompiledMethod {
             compiled: result,
+            params,
             outputs,
         } = compiled_method?;
 
@@ -103,6 +110,11 @@ pub(crate) fn compile_user_fb_methods(
             info.param_var_off = param_var_off.raw();
             info.max_stack_depth = result.max_stack_depth;
             info.outputs = outputs;
+            for param in &mut info.params {
+                if let Some(passing) = params.get(&param.name) {
+                    param.passing = passing.clone();
+                }
+            }
         }
 
         compiled.push(result);
@@ -141,6 +153,10 @@ fn compile_user_method(
             if let Some(type_info) = decl_type_info(ctx, decl) {
                 ctx.var_types.insert(id.clone(), type_info);
             }
+            // A call copies a string argument into the parameter's run.
+            if let InitialValueAssignmentKind::String(string_init) = &decl.initializer {
+                register_string_variable(ctx, id, string_init)?;
+            }
             current_index = VarIndex::new(current_index.raw() + 1);
             num_params += 1;
         }
@@ -161,6 +177,11 @@ fn compile_user_method(
             // A local operates at its declared type, as a parameter does.
             if let Some(type_info) = decl_type_info(ctx, decl) {
                 ctx.var_types.insert(id.clone(), type_info);
+            }
+            // The prologue initializes a string local or output's run at
+            // every call.
+            if let InitialValueAssignmentKind::String(string_init) = &decl.initializer {
+                register_string_variable(ctx, id, string_init)?;
             }
             current_index = VarIndex::new(current_index.raw() + 1);
         }
@@ -257,6 +278,17 @@ fn compile_user_method(
 
     let finalized = finalize_function(&mut method_emitter, ctx)?;
 
+    let params = method
+        .all_variables()
+        .filter(|decl| decl.var_type.is_input_compatible())
+        .filter_map(|decl| {
+            Some((
+                decl.identifier.symbolic_id()?.clone(),
+                param_passing(ctx, decl),
+            ))
+        })
+        .collect();
+
     Ok(CompiledMethod {
         compiled: CompiledFunction {
             function_id,
@@ -268,13 +300,16 @@ fn compile_user_method(
             name: method.name.to_string(),
             line_map: finalized.line_map,
         },
+        params,
         outputs,
     })
 }
 
-/// A compiled method, and the slot of each of its outputs.
+/// A compiled method, how a call passes each of its input parameters, and
+/// the slot of each of its outputs.
 struct CompiledMethod {
     compiled: CompiledFunction,
+    params: HashMap<Id, ParamPassing>,
     outputs: HashMap<Id, VarIndex>,
 }
 
@@ -398,17 +433,30 @@ fn compile_method_call(
     }
     // A VAR_IN_OUT is passed by reference, which this route cannot do
     // (`var-in-out-parameters.md`); lowering does.
-    if let Some((input, _)) = inputs.iter().zip(params).find(|(_, param)| param.in_out) {
+    if let Some((input, _)) = inputs
+        .iter()
+        .zip(params)
+        .find(|(_, param)| matches!(param.passing, ParamPassing::Reference))
+    {
         return Err(Diagnostic::not_implemented(Label::span(
             input.name.span(),
             "VAR_IN_OUT parameter of a METHOD",
         )));
     }
+    let passings: Vec<ParamPassing> = params.iter().map(|param| param.passing.clone()).collect();
 
     emitter.emit_fb_load_instance(var_index);
 
-    for input in &inputs {
-        compile_expr(emitter, ctx, &input.expr)?;
+    for (input, passing) in inputs.iter().zip(passings) {
+        match passing {
+            ParamPassing::String(param) => {
+                compile_string_arg(emitter, ctx, &input.expr, &param, &call.span())?;
+            }
+            // A reference was refused above.
+            ParamPassing::Value | ParamPassing::Reference => {
+                compile_expr(emitter, ctx, &input.expr)?;
+            }
+        }
     }
 
     // Record a call-graph edge; unlike FB_CALL, a method call is always

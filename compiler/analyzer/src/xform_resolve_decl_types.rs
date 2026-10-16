@@ -32,6 +32,7 @@
 //! A declaration whose type cannot be resolved keeps `type_id: None`. The
 //! rules that check declarations report why; this pass stays silent.
 use ironplc_dsl::common::*;
+use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::type_id::TypeId;
@@ -157,16 +158,20 @@ impl Fold<Diagnostic> for DeclTypeResolver<'_> {
         &mut self,
         node: StructureDeclaration,
     ) -> Result<StructureDeclaration, Diagnostic> {
+        // A repeated type name keeps its first declaration (P2007): the
+        // environment records a structure once, and nothing on a type of
+        // another kind.
         if let Some(structure) = self.type_environment.id_of(&node.type_name) {
-            for element in &node.elements {
-                let name = TypeName::from_id(&element.name);
-                if let Some(field_type) =
-                    declared_type_id(self.type_environment, &name, &element.init)
-                {
-                    self.type_environment
-                        .record_field(structure, &element.name, field_type);
-                }
-            }
+            let fields: Vec<(Id, TypeId)> = node
+                .elements
+                .iter()
+                .filter_map(|element| {
+                    let name = TypeName::from_id(&element.name);
+                    let field_type = declared_type_id(self.type_environment, &name, &element.init)?;
+                    Some((element.name.clone(), field_type))
+                })
+                .collect();
+            self.type_environment.record_structure(structure, fields);
         }
         node.recurse_fold(self)
     }
@@ -199,7 +204,6 @@ mod tests {
     use crate::semantic_context::SemanticContext;
     use crate::semantic_type::SemanticType;
     use crate::test_helpers::parse_and_resolve_types_with_options;
-    use ironplc_dsl::core::Id;
     use ironplc_dsl::visitor::Visitor;
     use ironplc_parser::options::{CompilerOptions, Dialect};
     use rstest::rstest;
@@ -609,6 +613,46 @@ PROGRAM main END_PROGRAM";
         assert_eq!(field("b"), None);
         assert_eq!(field("y"), None);
         assert_eq!(listed, vec!["x".to_string()]);
+    }
+
+    /// REQ-ETR-analyzer-006: a repeated type name keeps its first
+    /// declaration (P2007), and a structure's recorded fields are that
+    /// declaration's, as its type's are: a later structure of the name adds
+    /// no field and changes no field's type.
+    #[spec_test(REQ_ETR_analyzer_006)]
+    #[rstest]
+    #[case::structure_repeated(
+        "TYPE Pair : STRUCT f : INT; END_STRUCT; END_TYPE
+         TYPE Pair : STRUCT f : STRING; g : BOOL; END_STRUCT; END_TYPE",
+        Some("INT")
+    )]
+    #[case::type_then_structure(
+        "TYPE Pair : INT; END_TYPE
+         TYPE Pair : STRUCT f : STRING; g : BOOL; END_STRUCT; END_TYPE",
+        None
+    )]
+    fn apply_when_type_name_repeated_then_fields_of_first_declaration(
+        #[case] declarations: &str,
+        #[case] field_f: Option<&str>,
+    ) {
+        let (_, context) = resolve(&format!("{declarations}\nPROGRAM main END_PROGRAM"));
+        let types = context.types();
+        let pair = types.id_of(&TypeName::from("Pair")).unwrap();
+        let listed: Vec<String> = types
+            .get_by_id(pair)
+            .unwrap()
+            .representation
+            .structure_fields()
+            .map(|fields| fields.iter().map(|field| field.name.to_string()).collect())
+            .unwrap_or_default();
+
+        assert_eq!(
+            types.field_type(pair, &Id::from("f")),
+            field_f.and_then(|name| types.id_of(&TypeName::from(name)))
+        );
+        assert_eq!(types.field_type(pair, &Id::from("g")), None);
+        let expected: &[&str] = if field_f.is_some() { &["f"] } else { &[] };
+        assert_eq!(listed, expected);
     }
 
     /// A library that declares a block of a standard block's name leaves the

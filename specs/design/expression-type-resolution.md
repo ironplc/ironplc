@@ -54,6 +54,15 @@ A field is declared as a variable is, so the pass also records, in the
 `TypeEnvironment`, the id of the declared type of each field of a structure
 or function block (`TypeEnvironment::field_type`).
 
+A structure's type lists its fields, and the environment records the id of
+each field's declared type beside it. The two are recorded by different
+passes, so they come from one declaration only if each takes the same one: a
+structure's field ids are recorded once (`TypeEnvironment::record_structure`),
+and only on a structure, so they are those of the declaration whose type the
+environment keeps, the first of a repeated name (P2007).
+
+**REQ-ETR-analyzer-006** A repeated type name keeps its first declaration's fields: with `TYPE Pair : STRUCT f : INT; END_STRUCT; END_TYPE` followed by a second `Pair` whose `f` is a `STRING` and which adds `g`, `field_type` of `Pair` and `f` is `INT`, and `Pair` has no field `g`. A structure declared after a type of another kind of its name, such as `TYPE Pair : INT`, records no field on that type.
+
 A type's representation never changes once the type is entered, and a
 function block's type names the block and lists none of its fields. A block's
 type is entered before declared types are resolved, so that `f : FB` resolves

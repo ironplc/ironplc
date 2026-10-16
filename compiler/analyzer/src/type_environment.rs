@@ -291,11 +291,11 @@ pub struct TypeEnvironment {
     /// which says what the type is but not what its values start at.
     alias_bases: HashMap<TypeId, TypeId>,
     /// The declared type of each field of a structure type, by the id of
-    /// the type and the field's name. The representation of a structure
+    /// the type, then the field's name. The representation of a structure
     /// holds each field's structure but not its type, so a field of an
     /// enumeration, a `WSTRING` or an array of `WSTRING` could not otherwise
     /// be traced back to it. See [`fields`].
-    fields: HashMap<(TypeId, Id), TypeId>,
+    structures: HashMap<TypeId, HashMap<Id, TypeId>>,
     /// The fields of each function block, and the block it `EXTENDS`, by the
     /// block's id. A block's type lists none of its fields. See [`fields`].
     blocks: HashMap<TypeId, fields::BlockRecord>,
@@ -318,7 +318,7 @@ impl TypeEnvironment {
             referenced: HashMap::new(),
             array_elements: HashMap::new(),
             alias_bases: HashMap::new(),
-            fields: HashMap::new(),
+            structures: HashMap::new(),
             blocks: HashMap::new(),
             duplicates: Vec::new(),
         }
