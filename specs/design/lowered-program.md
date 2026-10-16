@@ -1271,6 +1271,28 @@ A call still passes one scalar value for the parameter
 the parameter never compiles. Lowering reports such an input as P9999 until
 it provides `Arg::Copy` for it.
 
+A string is passed by value too. The argument for a `VAR_INPUT` of a `STRING`
+or `WSTRING` type is a `Str` of the parameter's encoding, of any capacity
+(REQ-LOW-lowering-072). The callee's parameter is a variable of the
+parameter's string type, its own copy, and a value longer than its capacity
+keeps its first code units (REQ-LOW-codegen-056). A `VAR_IN_OUT` of a string
+type is not lowered yet: the route that reads the AST passes no string by
+reference (`compile_reference_arg`).
+
+While both routes exist, the bytecode backend copies a string argument into
+the parameter's run of the callee's data region as the route that reads the
+AST copies it (`copy_string_arg` in `compile_user_call.rs`):
+
+1. `STR_INIT` of the parameter's header;
+2. the argument put in a slot, as that route puts it: a string variable is
+   its own slot, and any other string is computed into a temporary slot of
+   its capacity;
+3. the copy of the slot into the parameter;
+4. a dummy value for the slot `CALL` or `METHOD_CALL` pops.
+
+A call with a string argument so compiles to the same instructions by either
+route.
+
 A function whose result is a string or an aggregate returns it through a
 result parameter: a hidden parameter of non-null reference type, after a
 method's instance parameter and before the declared parameters. Every access
@@ -1335,8 +1357,9 @@ That is the order the route that reads the AST stores them in, so a variable
 that is both an output's target and `r` ends with the result. A call of a
 function with outputs anywhere else, such as inside an expression or a
 condition, stays on the route that reads the AST, and so does one whose
-function has a parameter other than an output, or a result, that is a string.
-An output may be a string, assigned by an `AssignStr` from its temporary.
+function has an in-out, or a result, that is a string. An input may be a
+string, passed as any input is, and so may an output, assigned by an
+`AssignStr` from its temporary.
 
 **REQ-LOW-lowering-172** An assignment whose value is a call of a function
 with outputs lowers to the assignment of the call to a temporary of the
@@ -1397,14 +1420,15 @@ Not lowered yet, so each stays on the route that reads the AST:
 
 - a call through `THIS^` or `SUPER^`, which analysis does not resolve yet;
 - a call of a method the receiver's block inherits through `EXTENDS`;
-- a call of a method with an input, an in-out or a result that is a string or
-  an aggregate (REQ-LOW-lowering-079);
+- a call of a method with an in-out or a result that is a string, or with an
+  input, an in-out or a result that is an aggregate (REQ-LOW-lowering-079);
 - a call with outputs anywhere but a statement or the whole value of an
   assignment, as for a function.
 
 While both routes exist, the bytecode backend emits a method's call as the
 route that reads the AST emits it (`compile_method.rs`): the receiver's
-instance pushed with `FB_LOAD_INSTANCE`, each input, then `METHOD_CALL`,
+instance pushed with `FB_LOAD_INSTANCE`, each input, a string copied into
+the method's parameter as for a function, then `METHOD_CALL`,
 which copies the instance's fields in and out around the body. The call
 leaves the instance beneath the result, which the backend drops once the
 outputs are stored. It reaches the receiver by name, as that route does, so

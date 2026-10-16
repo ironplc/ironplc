@@ -11,7 +11,9 @@ use ironplc_parser::options::CompilerOptions;
 use ironplc_vm::error::Trap;
 use rstest::rstest;
 
-use crate::common::{bc, compile_by_route, parse, run_one_scan, Snapshot};
+use crate::common::{
+    bc, compile_by_route, parse, parse_and_compile_to_run, run_one_scan, Snapshot,
+};
 
 pub(crate) fn options() -> CompilerOptions {
     CompilerOptions {
@@ -33,6 +35,13 @@ pub(crate) fn run_lowered(source: &str) -> Snapshot {
     let container = compile_by_route(&library, &context, &options, Route::RequireLowered)
         .expect("every statement lowers");
     Snapshot::run_compiled(container)
+}
+
+/// Runs `source` with every statement lowered, once one scan of it by each
+/// route is shown to leave every variable with the same value.
+pub(crate) fn run_lowered_agreeing(source: &str) -> Snapshot {
+    parse_and_compile_to_run(source, &options());
+    run_lowered(source)
 }
 
 /// An `EXIT` inside a `CASE` arm leaves the loop with the selector already

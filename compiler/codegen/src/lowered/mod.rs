@@ -28,9 +28,7 @@ use ironplc_ir::lowered::{
 };
 use ironplc_lowering::{Lowering, StatementLowering};
 
-use crate::compile::{
-    CompileContext, CurrentBody, OpType, OpWidth, ParamPassing, Signedness, UserFunctionInfo,
-};
+use crate::compile::{CompileContext, CurrentBody, OpType, OpWidth, Signedness, UserFunctionInfo};
 use crate::compile_subscript::subscript_check;
 use crate::compile_user_call::passes_by_reference;
 use crate::emit::Emitter;
@@ -270,7 +268,7 @@ fn expr_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, expr: &Expr) -> 
             Some(function) => {
                 passes(&function.params, args.iter()) && args_can_emit(lowering, ctx, args)
             }
-            // A method's value: its receiver, then a value for each input.
+            // A method's value: its receiver, then an argument for each input.
             None => method::method_site(lowering, ctx, *pou, args).is_some_and(|site| {
                 site.has_return_value
                     && site.takes(args[1..].iter())
@@ -326,10 +324,8 @@ fn args_can_emit<'s>(
 }
 
 /// The function `pou` as this backend's layout knows it, by the name the
-/// lowered program keeps on the POU, when the backend passes each of its
-/// arguments by value or by reference, not as a string, and it returns a
-/// value on the stack: not a string or a structure. `None` for any other
-/// function.
+/// lowered program keeps on the POU, when it returns a value on the stack:
+/// not a string or a structure. `None` for any other function.
 pub(super) fn user_function(
     lowering: &Lowering<'_>,
     ctx: &CompileContext,
@@ -341,13 +337,9 @@ pub(super) fn user_function(
     }
     let name = lowering.pous().name(pou)?.to_string().to_lowercase();
     let function = ctx.user_functions.get(&name)?;
-    let passed = function.params.iter().all(|param| match param {
-        ParamPassing::Value | ParamPassing::Reference => true,
-        ParamPassing::String(_) => false,
-    });
     let scalar =
         function.return_string_info.is_none() && function.return_struct_desc_index.is_none();
-    (passed && scalar).then(|| function.clone())
+    scalar.then(|| function.clone())
 }
 
 /// Whether `place` has storage this backend reaches as one value of type

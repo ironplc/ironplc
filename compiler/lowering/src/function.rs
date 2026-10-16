@@ -6,8 +6,10 @@
 //! order the function declares them (REQ-LOW-lowering-071): a `Value` for a
 //! `VAR_INPUT`, a `Ref` to the place its variable names for a `VAR_IN_OUT`
 //! (REQ-LOW-lowering-075), and a `Ref` to a temporary of the parameter's
-//! type for a `VAR_OUTPUT` (REQ-LOW-lowering-092). A `VAR_OUTPUT` may also be
-//! a string. The analyzer wrote the call in that order, as its normal form
+//! type for a `VAR_OUTPUT` (REQ-LOW-lowering-092). A `VAR_INPUT` may also be
+//! a string, held by value and passed a `Str` of its encoding
+//! (REQ-LOW-lowering-072), and a `VAR_OUTPUT` may be one too. The analyzer
+//! wrote the call in that order, as its normal form
 //! (`specs/design/call-binding.md`), and converted each input to its
 //! parameter's type (ADR-0056).
 //!
@@ -37,11 +39,12 @@
 //! the variables its body reads and writes, so a call and the body agree on
 //! them.
 //!
-//! Not lowered yet: a call with outputs anywhere else, a parameter other
-//! than an output, or a result, that is a string or an aggregate
+//! Not lowered yet: a call with outputs anywhere else, a `VAR_IN_OUT` or a
+//! result that is a string, a parameter or a result that is an aggregate
 //! (REQ-LOW-lowering-079), a call with `EN` or `ENO` (REQ-LOW-lowering-160),
 //! a call through `THIS^` or `SUPER^`, and a call of a method its receiver's
-//! block inherits through `EXTENDS`.
+//! block inherits through `EXTENDS`. The route that reads the AST passes no
+//! string to a `VAR_IN_OUT` (`compile_reference_arg`).
 
 use ironplc_analyzer::symbol_environment::Resolution;
 use ironplc_dsl::common::{
@@ -471,7 +474,8 @@ impl<'a> Lowering<'a> {
 
     /// The POU `call` calls, whose parameters are `parameters`, declared
     /// with its parameters and result the first time it is asked for; `None`
-    /// when one of them is not a scalar, or, for an output, a string.
+    /// when one of them is not a scalar, or, for an input or an output, a
+    /// string.
     fn callee_pou(&mut self, call: UserCall<'_, 'a>, parameters: &[(&Id, Section)]) -> Made<PouId> {
         let (body, result) = match call {
             UserCall::Function { function, .. } => (Body::Function(function), Some(&function.name)),
@@ -491,7 +495,7 @@ impl<'a> Lowering<'a> {
             variables.push(instance.this);
         }
         for (name, section) in parameters {
-            let string = *section == Section::Output;
+            let string = matches!(section, Section::Input | Section::Output);
             let Some(parameter) = self.scalar_variable(&frame, name, string)? else {
                 return Ok(None);
             };
@@ -524,17 +528,17 @@ impl<'a> Lowering<'a> {
     /// The variable `name` refers to in the body of `frame`, a function or
     /// method; `None` unless it is a variable of a scalar type, or a
     /// `VAR_IN_OUT` or `VAR_OUTPUT`, a reference to one. Where `string`, it
-    /// may refer to a string.
+    /// may also be a string, as a `VAR_INPUT` is, or refer to one, as a
+    /// `VAR_OUTPUT` does.
     fn scalar_variable(&mut self, frame: &BodyFrame, name: &Id, string: bool) -> Made<VarId> {
         let Some(place) = self.named_place(frame, name, &name.span())? else {
             return Ok(None);
         };
         let types = self.program.types();
-        let referred_string = matches!(place.path(), [Projection::Deref])
-            && matches!(types.kind(place.ty()), Some(TypeKind::String(_)));
         let whole = matches!(place.path(), [] | [Projection::Deref]);
         let scalar = whole && types.operation_type(place.ty()).is_some();
-        Ok((scalar || (string && referred_string)).then(|| place.root()))
+        let of_string = whole && matches!(types.kind(place.ty()), Some(TypeKind::String(_)));
+        Ok((scalar || (string && of_string)).then(|| place.root()))
     }
 
     /// The type of the result of the function or method `pou`; `None` for a

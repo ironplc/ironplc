@@ -10,7 +10,7 @@ use ironplc_dsl::diagnostic::Diagnostic;
 use super::call::Param;
 use super::ids::{PouId, Stamp, TypeId, VarId};
 use super::invariant::broken;
-use super::types::{Nullability, TypeTable};
+use super::types::{Nullability, TypeKind, TypeTable};
 use crate::execution::DebugName;
 
 /// What a variable belongs to.
@@ -139,10 +139,11 @@ impl FunctionSignature {
         self.result
     }
 
-    /// What each parameter takes, in order: a value at its operation type,
-    /// or, for a `VAR_IN_OUT` or a `VAR_OUTPUT`, a non-null reference, the
-    /// place its argument passes (REQ-LOW-lowering-033,
-    /// REQ-LOW-lowering-092). `None` when one is neither.
+    /// What each parameter takes, in order: a value at its operation type, a
+    /// string of its encoding, or, for a `VAR_IN_OUT` or a `VAR_OUTPUT`, a
+    /// non-null reference, the place its argument passes
+    /// (REQ-LOW-lowering-033, REQ-LOW-lowering-072, REQ-LOW-lowering-092).
+    /// `None` when one is none of these.
     pub(crate) fn params(
         &self,
         types: &TypeTable,
@@ -154,13 +155,21 @@ impl FunctionSignature {
                 let ty = variables.get(*var)?.ty();
                 match types.reference(ty) {
                     Some((target, Nullability::NonNull)) => Some(Param::Ref(target)),
-                    Some((_, Nullability::Nullable)) | None => {
-                        types.operation_type(ty).map(Param::Value)
-                    }
+                    Some((_, Nullability::Nullable)) | None => by_value(types, ty),
                 }
             })
             .collect()
     }
+}
+
+/// What a parameter of type `ty` takes by value: a value at its operation
+/// type, or a string of its encoding. `None` for an aggregate, which a
+/// parameter does not take yet.
+pub(crate) fn by_value(types: &TypeTable, ty: TypeId) -> Option<Param> {
+    if let Some(TypeKind::String(shape)) = types.kind(ty) {
+        return Some(Param::Str(shape.encoding));
+    }
+    types.operation_type(ty).map(Param::Value)
 }
 
 /// One POU: its name, its signature when it is a function or method a call

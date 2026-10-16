@@ -7,8 +7,8 @@
 use ironplc_codegen::Route;
 use rstest::rstest;
 
-use crate::common::{compile_by_route, parse, parse_and_compile_to_run, Snapshot};
-use crate::compile_route_lowered::{assert_same_code, options, run_lowered};
+use crate::common::{compile_by_route, parse};
+use crate::compile_route_lowered::{assert_same_code, options, run_lowered, run_lowered_agreeing};
 
 /// A block whose methods add to its count, read it scaled, and split it
 /// into a quotient output, whether that is positive, and a remainder.
@@ -31,13 +31,6 @@ const BLOCK: &str = "
         Split := n MOD k;
       END_METHOD
     END_FUNCTION_BLOCK";
-
-/// Runs `source` with every statement lowered, once one scan of it by each
-/// route is shown to leave every variable with the same value.
-fn run_lowered_agreeing(source: &str) -> Snapshot {
-    parse_and_compile_to_run(source, &options());
-    run_lowered(source)
-}
 
 /// REQ-LOW-lowering-076: a call runs the method on its receiver's fields,
 /// and two instances keep their own. A call whose result is not used drops

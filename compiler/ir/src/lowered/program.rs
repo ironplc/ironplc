@@ -18,7 +18,7 @@ use super::place::Place;
 use super::stmt::{store_narrowing, Stmt};
 use super::str_expr::StrExpr;
 use super::types::{NarrowWidth, Nullability, TypeEntry, TypeKind, TypeTable};
-use super::variables::{FunctionSignature, Owner, PouTable, VariableTable};
+use super::variables::{by_value, FunctionSignature, Owner, PouTable, VariableTable};
 use crate::execution::DebugName;
 
 /// Builds one lowered program.
@@ -165,9 +165,10 @@ impl ProgramBuilder {
 
     /// Declares the POU `pou` a function that takes each of `parameters`, in
     /// order, and returns the value of `result`. Each is a variable `pou`
-    /// owns, of a type with an operation type: a parameter of a non-null
-    /// reference type is a `VAR_IN_OUT` or `VAR_OUTPUT`, taken by reference,
-    /// and any other is taken by value.
+    /// owns. A parameter of a non-null reference type is a `VAR_IN_OUT` or
+    /// `VAR_OUTPUT`, taken by reference; any other is taken by value, and is
+    /// of a type with an operation type or a string (REQ-LOW-lowering-072).
+    /// The result is of a type with an operation type.
     pub fn declare_function(
         &mut self,
         pou: PouId,
@@ -223,17 +224,23 @@ impl ProgramBuilder {
         result: Option<VarId>,
         span: &SourceSpan,
     ) -> Result<(), Diagnostic> {
-        let owned_scalar = |var: &VarId| {
-            self.variables.get(*var).is_some_and(|variable| {
-                variable.owner() == Owner::Pou(pou)
-                    && self.types.operation_type(variable.ty()).is_some()
-            })
+        // The type of `var`, when `pou` owns it.
+        let owned = |var: &VarId| {
+            self.variables
+                .get(*var)
+                .filter(|variable| variable.owner() == Owner::Pou(pou))
+                .map(|variable| variable.ty())
         };
-        if let Some(var) = parameters
-            .iter()
-            .chain(result.as_ref())
-            .find(|var| !owned_scalar(var))
-        {
+        let taken = |var: &&VarId| owned(var).and_then(|ty| by_value(&self.types, ty));
+        let scalar = |var: &&VarId| owned(var).and_then(|ty| self.types.operation_type(ty));
+        if let Some(var) = parameters.iter().find(|var| taken(var).is_none()) {
+            return Err(broken(
+                constructor,
+                span,
+                format!("{var} is not a scalar or string variable of {pou}"),
+            ));
+        }
+        if let Some(var) = result.iter().find(|var| scalar(var).is_none()) {
             return Err(broken(
                 constructor,
                 span,

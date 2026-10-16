@@ -11,8 +11,8 @@ use ironplc_vm::error::Trap;
 
 use rstest::rstest;
 
-use crate::common::{compile_by_route, parse, parse_and_compile_to_run, run_one_scan, Snapshot};
-use crate::compile_route_lowered::{assert_same_code, run_lowered};
+use crate::common::{compile_by_route, parse, run_one_scan};
+use crate::compile_route_lowered::{assert_same_code, run_lowered, run_lowered_agreeing};
 
 /// A function whose outputs are its input plus one, whether that is
 /// positive, a `REAL` and a count of the calls of the output it writes
@@ -28,13 +28,6 @@ const FUNCTION: &str = "
       twice := twice * 2;
       F := a * 10;
     END_FUNCTION";
-
-/// Runs `source` with every statement lowered, once one scan of it by each
-/// route is shown to leave every variable with the same value.
-fn run_lowered_agreeing(source: &str) -> Snapshot {
-    parse_and_compile_to_run(source, &CompilerOptions::default());
-    run_lowered(source)
-}
 
 /// REQ-LOW-lowering-092: a call stores each output in its target once the
 /// function returns: a negated one inverted, one of a narrower type
