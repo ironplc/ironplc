@@ -227,6 +227,31 @@ output `p` of a function block instance `f`, declared as a structure, makes
 the fields a representation lists (see
 [Expression Type Resolution](expression-type-resolution.md)).
 
+## 5. Properties
+
+A `PROPERTY` of a function block is not a variable: reading or writing it
+calls its `GET` or `SET` accessor ([Lowered Program](lowered-program.md),
+section 4). Its name still takes part in the lookup, so that it hides what a
+variable of the same name farther out would have bound to. Each accessor is a
+method named after the property, with a scope of its own.
+
+**REQ-VB-analyzer-060** A property is declared in the scope of its function
+block. A name whose nearest declaration is a property is `NotAVariable`, and
+`rule_use_declared_symbolic_var` reports its use as not implemented (P9999).
+
+**REQ-VB-analyzer-061** A property is found before a global variable of the
+same name, and a property a block inherits through `EXTENDS` is found from the
+derived block, as a field is.
+
+**REQ-VB-analyzer-062** A property and a variable of the same name in one
+function block are P4014.
+
+**REQ-VB-analyzer-063** The `GET` and `SET` accessors of a property each have
+a scope of their own, `<property>.GET` and `<property>.SET` inside the block's
+scope, so a variable each declares under one name is two declarations. Inside
+`GET` the property's name is its result variable; inside `SET` it is the
+implicit input that holds the assigned value.
+
 ## Readers
 
 **The semantic rules.** Each of these asks `resolve_variable` which variable
