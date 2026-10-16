@@ -106,11 +106,27 @@ pub(crate) fn compile_string_arg(
     param: &StringParamInfo,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
+    // The parameter is initialized at its declared encoding, and the copy
+    // has to agree with it.
+    copy_string_arg(emitter, ctx, param, |emitter, ctx| {
+        resolve_string_arg(emitter, ctx, arg, span, param.char_width)
+    })
+}
+
+/// Copies a string argument into the string parameter `param`, then pushes
+/// a dummy value for the slot `CALL` or `METHOD_CALL` pops. `source` puts
+/// the argument in a slot of the data region and returns the slot's offset;
+/// it runs once the parameter's header is initialized, so the caller
+/// decides how the argument is resolved.
+pub(crate) fn copy_string_arg(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    param: &StringParamInfo,
+    source: impl FnOnce(&mut Emitter, &mut CompileContext) -> Result<u32, Diagnostic>,
+) -> Result<(), Diagnostic> {
     // Initialize the destination header, then copy the string data.
     emitter.emit_str_init(param.data_offset, param.max_length, param.char_width);
-    // The parameter was just initialized at its declared encoding, and the
-    // copy below has to agree with it.
-    let src_offset = resolve_string_arg(emitter, ctx, arg, span, param.char_width)?;
+    let src_offset = source(emitter, ctx)?;
     emitter.emit_str_load_var(src_offset);
     emitter.emit_str_store_var(param.data_offset);
 
