@@ -2,7 +2,10 @@
 //!
 //! A structure's type lists its fields, each with its representation, so its
 //! fields are recorded here only by the id of the type each is declared
-//! with, which the representation does not keep.
+//! with, which the representation does not keep. They are recorded once,
+//! from the declaration whose type the environment keeps (see
+//! [`TypeEnvironment::record_structure`]), so the two cannot come from two
+//! declarations.
 //!
 //! A function block's type (`SemanticType::FunctionBlock`) lists none of its
 //! fields: they are recorded here and nowhere else. A block's fields are its
@@ -49,10 +52,29 @@ pub(super) struct BlockRecord {
 }
 
 impl TypeEnvironment {
-    /// Records that the field `field` of the structure type `record` is
-    /// declared with the type `field_type`.
-    pub(crate) fn record_field(&mut self, record: TypeId, field: &Id, field_type: TypeId) {
-        self.fields.insert((record, field.clone()), field_type);
+    /// Records the id of the type each field of the structure `structure` is
+    /// declared with, by the field's name. A field whose type did not
+    /// resolve is left out; a rule reports it.
+    ///
+    /// A structure is recorded once, as a block is, so its fields are those
+    /// of the declaration whose type the environment keeps: the first of a
+    /// repeated name (P2007). A later declaration of the name records
+    /// nothing, whatever it declares, and nothing is recorded for a type
+    /// that is not a structure, such as a `TYPE Pair : INT` declared ahead
+    /// of a structure `Pair`.
+    pub(crate) fn record_structure(
+        &mut self,
+        structure: TypeId,
+        fields: impl IntoIterator<Item = (Id, TypeId)>,
+    ) {
+        let is_structure = self
+            .get_by_id(structure)
+            .is_some_and(|attributes| attributes.representation.is_structure());
+        if !is_structure || self.structures.contains_key(&structure) {
+            return;
+        }
+        self.structures
+            .insert(structure, fields.into_iter().collect());
     }
 
     /// Records the fields of the function block `block`, in the order it
@@ -135,7 +157,11 @@ impl TypeEnvironment {
     /// inherits through `EXTENDS` is the field of the block that declares
     /// it.
     pub fn field_type(&self, record: TypeId, field: &Id) -> Option<TypeId> {
-        if let Some(field_type) = self.fields.get(&(record, field.clone())) {
+        if let Some(field_type) = self
+            .structures
+            .get(&record)
+            .and_then(|fields| fields.get(field))
+        {
             return Some(*field_type);
         }
         if let Some(field) = self.block_field(record, field) {
@@ -190,12 +216,52 @@ mod tests {
         env.id_of(&type_name).unwrap()
     }
 
+    /// A structure entered under `name`, with no fields recorded.
+    fn structure(env: &mut TypeEnvironment, name: &str) -> TypeId {
+        let type_name = TypeName::from(name);
+        env.insert_type(
+            &type_name,
+            TypeAttributes::new(SemanticType::Structure { fields: vec![] }),
+        );
+        env.id_of(&type_name).unwrap()
+    }
+
+    fn id(env: &TypeEnvironment, name: &str) -> TypeId {
+        env.id_of(&TypeName::from(name)).unwrap()
+    }
+
     fn field(env: &TypeEnvironment, name: &str, var_type: FunctionBlockVarType) -> BlockField {
         BlockField {
             name: Id::from(name),
             var_type,
             field_type: env.id_of(&TypeName::from("INT")),
         }
+    }
+
+    #[test]
+    fn record_structure_when_recorded_twice_then_first_kept() {
+        let mut env = environment();
+        let pair = structure(&mut env, "Pair");
+        let (int, string) = (id(&env, "INT"), id(&env, "STRING"));
+
+        env.record_structure(pair, [(Id::from("f"), int)]);
+        env.record_structure(pair, [(Id::from("f"), string), (Id::from("g"), string)]);
+
+        assert_eq!(env.field_type(pair, &Id::from("f")), Some(int));
+        assert_eq!(env.field_type(pair, &Id::from("g")), None);
+    }
+
+    #[test]
+    fn record_structure_when_not_structure_then_nothing_recorded() {
+        let mut env = environment();
+        let block = block(&mut env, "Block");
+        let int = id(&env, "INT");
+
+        env.record_structure(int, [(Id::from("f"), int)]);
+        env.record_structure(block, [(Id::from("f"), int)]);
+
+        assert_eq!(env.field_type(int, &Id::from("f")), None);
+        assert_eq!(env.field_type(block, &Id::from("f")), None);
     }
 
     #[test]
