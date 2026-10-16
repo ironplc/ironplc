@@ -1,7 +1,7 @@
 //! Calls of function blocks.
 //!
-//! A call `f(x := 1, q => v)` of a user-defined function block lowers to
-//! three parts, in order (REQ-LOW-lowering-069):
+//! A call `f(x := 1, q => v)` of a function block lowers to three parts, in
+//! order (REQ-LOW-lowering-069):
 //!
 //! 1. the assignment of each input to its field of the instance, in the
 //!    order of the call's normal form, which the analyzer wrote
@@ -16,12 +16,17 @@
 //! Each part is the statement the source spells the same way would lower to,
 //! so `f(x := 1)` stores `1` as `f.x := 1` does.
 //!
-//! Not lowered yet: a call of a standard function block, which lowering does
-//! not generate yet (REQ-LOW-lowering-077), and a call that binds a
-//! `VAR_IN_OUT`. Neither does a call whose input or output lowering cannot
-//! store, such as a structure, which needs a `Copy`.
+//! A call of a standard function block (`TON`, `CTU_DINT`, ...) lowers the
+//! same way, to an `FbCall` of the POU named after the block. Lowering does
+//! not generate the standard blocks yet (issue 2288), so that POU has no body
+//! in the lowered program, and the bytecode backend runs the VM's own block
+//! on the instance. Until then, such an `FbCall` names a standard function
+//! block, which REQ-LOW-lowering-077 rules out once lowering generates them
+//! (ADR-0060).
+//!
+//! Not lowered yet: a call that binds a `VAR_IN_OUT`, and a call with an
+//! input or output lowering does not store yet, such as a structure output.
 
-use ironplc_analyzer::symbol_environment::Resolution;
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{FbCall, ParamAssignmentKind};
@@ -41,9 +46,6 @@ impl Lowering<'_> {
         // Every part is the statement the call is, for the line map
         // (REQ-LOW-lowering-063).
         let span = call.span();
-        if self.is_standard_block(frame, &call.var_name) {
-            return Ok(None);
-        }
         let Some(instance) = self.named_place(frame, &call.var_name, &call.var_name.span())? else {
             return Ok(None);
         };
@@ -172,19 +174,5 @@ impl Lowering<'_> {
         self.program
             .field(instance.clone(), field, &name.span())
             .map(Some)
-    }
-
-    /// Whether the instance `name` names in the body of `frame` is of a
-    /// standard function block, which the analyzer records on its type.
-    fn is_standard_block(&self, frame: &BodyFrame, name: &Id) -> bool {
-        let context = self.analysis.context();
-        let Resolution::Variable { info, .. } =
-            context.symbols().resolve_variable(name, &frame.scope)
-        else {
-            return false;
-        };
-        info.type_id
-            .and_then(|id| context.types().get_by_id(id))
-            .is_some_and(|attributes| attributes.standard_block.is_some())
     }
 }

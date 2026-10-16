@@ -1199,11 +1199,16 @@ function block, and its block is that type's body.
 
 Not lowered yet, so each stays on the route that reads the AST:
 
-- a call of a standard function block, which lowering does not generate yet
-  (REQ-LOW-lowering-077);
 - a call that binds a `VAR_IN_OUT` of the block;
 - a call whose input or output lowering does not store yet, such as a
-  structure, which needs a `Copy`.
+  structure output.
+
+Until lowering generates the standard function blocks
+([issue 2288](https://github.com/ironplc/ironplc/issues/2288)), a call of one
+lowers as any other call does, to an `FbCall` of a POU named after the block
+that has no body in the lowered program, and the bytecode backend calls the
+VM's own block on the instance. That `FbCall` names a standard function block,
+which REQ-LOW-lowering-077 rules out once lowering generates them.
 
 While both routes exist, the bytecode backend emits the stores of a call's
 inputs and its `FbCall` as the route that reads the AST emits a call
