@@ -164,6 +164,7 @@ fn write_stmt(f: &mut fmt::Formatter<'_>, stmt: &Stmt, depth: usize) -> fmt::Res
             bits,
             value,
         } => write!(f, "assign-bits {place} {shift} {bits} {value}"),
+        StmtKind::Copy { dst, src } => write!(f, "copy {dst} {src}"),
         StmtKind::FbCall { instance, block } => write!(f, "fb-call {instance} {block}"),
         StmtKind::If {
             cond,

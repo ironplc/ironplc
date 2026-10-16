@@ -225,6 +225,12 @@ impl ProgramBuilder {
         Stmt::assign_str(&self.types, place, value, span)
     }
 
+    /// Replaces the whole value at `dst` with the whole value at `src`; see
+    /// [`Stmt`] for what they must be.
+    pub fn copy(&self, dst: Place, src: Place, span: SourceSpan) -> Result<Stmt, Diagnostic> {
+        Stmt::copy(&self.types, dst, src, span)
+    }
+
     /// Runs the body of the function block `instance` is an instance of, on
     /// `instance`; see [`Stmt`] for what it must be.
     pub fn fb_call(&self, instance: Place, span: SourceSpan) -> Result<Stmt, Diagnostic> {

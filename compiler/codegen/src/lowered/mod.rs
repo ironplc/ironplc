@@ -33,6 +33,7 @@ use crate::compile_subscript::subscript_check;
 use crate::compile_user_call::passes_by_reference;
 use crate::emit::Emitter;
 
+mod aggregate;
 mod expr;
 mod fb_call;
 mod place;
@@ -208,6 +209,7 @@ fn can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, stmt: &Stmt) -> bool 
         StmtKind::Loop {
             body, continuing, ..
         } => all(body) && all(continuing),
+        StmtKind::Copy { dst, src } => aggregate::can_emit(lowering, ctx, dst, src),
         StmtKind::FbCall { instance, block } => {
             fb_call::reaches_block(lowering, ctx, instance, *block)
         }

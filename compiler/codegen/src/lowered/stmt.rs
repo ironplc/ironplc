@@ -133,6 +133,9 @@ impl Emission<'_, '_> {
             }
             // A call is emitted with the stores of its inputs (`sequence`);
             // one on its own has none.
+            StmtKind::Copy { dst, src } => {
+                super::aggregate::emit_copy(emitter, ctx, self.lowering, dst, src, span)
+            }
             StmtKind::FbCall { instance, .. } => {
                 let call = super::fb_call::bare_call(self.lowering, ctx, instance)
                     .ok_or_else(|| super::fb_call::no_instance(span))?;
@@ -577,6 +580,7 @@ fn if_parts(stmt: &Stmt) -> Option<(&Expr, &[Stmt], &[Stmt])> {
         StmtKind::Assign { .. }
         | StmtKind::AssignBits { .. }
         | StmtKind::AssignStr { .. }
+        | StmtKind::Copy { .. }
         | StmtKind::FbCall { .. }
         | StmtKind::Case { .. }
         | StmtKind::For { .. }
