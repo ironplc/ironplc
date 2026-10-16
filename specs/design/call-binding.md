@@ -112,8 +112,10 @@ call output is not source syntax and appears nowhere else. It is read where
 the call leaves its outputs: for a function block, the instance's field, so
 it is the value `v := inst.q` after the call would assign; for a function or
 a method, the output variable of the callee, which no other call can have
-changed before it is read, since a function or method does not recurse. It
-has the type the output is declared with, `inst.q`'s for a function block.
+changed before it is read, since a function or method does not recurse.
+Lowering reads it from the temporary the call passes for the output
+([Lowered Program](lowered-program.md), REQ-LOW-lowering-092). It has the
+type the output is declared with, `inst.q`'s for a function block.
 The rules check it against the target, and the recording pass converts it
 to the target's type, as they do an assigned value's
 ([Implicit Conversions](implicit-conversions.md)). A negated output that is

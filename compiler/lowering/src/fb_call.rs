@@ -29,7 +29,7 @@ use ironplc_ir::lowered::{Place, Section, Stmt};
 
 use crate::expr::Lowered;
 use crate::variables::BodyFrame;
-use crate::Lowering;
+use crate::{CallOutputs, Lowering};
 
 /// A lowered node, `None` when lowering does not support it, or something
 /// inside it, yet.
@@ -70,10 +70,9 @@ impl Lowering<'_> {
             stmts.push(stmt);
         }
         stmts.push(self.program.fb_call(instance.clone(), span.clone())?);
-        let enclosing = self.call_instance.replace(instance);
-        let outputs = self.outputs(frame, &call.params, &span);
-        self.call_instance = enclosing;
-        let Some(outputs) = outputs? else {
+        let Some(outputs) =
+            self.outputs(frame, CallOutputs::Instance(instance), &call.params, &span)?
+        else {
             return Ok(None);
         };
         stmts.extend(outputs);
@@ -81,9 +80,23 @@ impl Lowering<'_> {
     }
 
     /// The assignment of each output of `params` to its target, of the value
-    /// the analyzer recorded for it, while the call whose outputs they are is
-    /// the one [`Self::call_output`] reads from.
-    fn outputs(
+    /// the analyzer recorded for it, where the call whose outputs they are
+    /// left them in `left`, which [`Self::call_output`] reads.
+    pub(crate) fn outputs(
+        &mut self,
+        frame: &BodyFrame,
+        left: CallOutputs,
+        params: &[ParamAssignmentKind],
+        span: &SourceSpan,
+    ) -> Made<Vec<Stmt>> {
+        let enclosing = self.call_outputs.replace(left);
+        let stmts = self.output_stores(frame, params, span);
+        self.call_outputs = enclosing;
+        stmts
+    }
+
+    /// The assignment of each output of `params` to its target.
+    fn output_stores(
         &mut self,
         frame: &BodyFrame,
         params: &[ParamAssignmentKind],
@@ -111,18 +124,31 @@ impl Lowering<'_> {
     }
 
     /// The call output `output`, the expression whose span is `span`: a read
-    /// of the field `output` of the instance whose call is being lowered.
+    /// of where the call whose outputs are being lowered left it.
     pub(crate) fn call_output(&mut self, output: &Id, span: SourceSpan) -> Lowered {
-        // A call output is written only on an output assignment. Outside
-        // the outputs of a function block call, it is the output of a
-        // function or method call, which is not lowered yet.
-        let Some(instance) = self.call_instance.clone() else {
+        let Some(place) = self.call_output_place(output)? else {
             return Ok(None);
         };
-        let Some(field) = self.block_field(&instance, output, Section::Output)? else {
-            return Ok(None);
-        };
-        self.read(field, span)
+        self.read(place, span)
+    }
+
+    /// Where the call whose outputs are being lowered left its output
+    /// `output`: the field `output` of a function block's instance, or the
+    /// temporary a function call passed for it. `None` for a name that is
+    /// not one of its outputs, such as `ENO`.
+    pub(crate) fn call_output_place(&mut self, output: &Id) -> Made<Place> {
+        // A call output is written only on an output assignment. Outside the
+        // outputs of a function block or function call, it is the output of
+        // a method call, which is not lowered yet.
+        match self.call_outputs.clone() {
+            Some(CallOutputs::Instance(instance)) => {
+                self.block_field(&instance, output, Section::Output)
+            }
+            Some(CallOutputs::Temporaries(temporaries)) => Ok(temporaries
+                .into_iter()
+                .find_map(|(name, temporary)| (name == *output).then_some(temporary))),
+            None => Ok(None),
+        }
     }
 
     /// The field `name` of the function block instance `instance`, when it

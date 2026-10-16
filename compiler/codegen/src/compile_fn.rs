@@ -409,6 +409,11 @@ pub(crate) fn compile_user_function(
         params.push(passing);
     }
 
+    let string_outputs = outputs
+        .keys()
+        .filter_map(|id| Some((id.clone(), ctx.string_vars.get(id)?.clone())))
+        .collect();
+
     ctx.user_functions.insert(
         func_name.to_string(),
         UserFunctionInfo {
@@ -420,6 +425,7 @@ pub(crate) fn compile_user_function(
             return_struct_desc_index,
             max_stack_depth: finalized.max_stack_depth,
             outputs,
+            string_outputs,
         },
     );
 

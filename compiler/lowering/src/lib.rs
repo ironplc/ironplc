@@ -110,9 +110,24 @@ pub struct Lowering<'a> {
     bodies: HashMap<PouId, Option<variables::BodyFrame>>,
     /// The loops enclosing the statement being lowered, innermost last.
     loops: Vec<LoopScope>,
-    /// The function block instance whose call's outputs are being lowered,
-    /// whose fields the call outputs read.
-    call_instance: Option<Place>,
+    /// Where the call whose outputs are being lowered leaves them, which
+    /// its call outputs read.
+    call_outputs: Option<CallOutputs>,
+    /// The call of a function with outputs whose result is being stored,
+    /// by its address, and the temporary that holds its result
+    /// (`function.rs`).
+    call_result: Option<(usize, Place)>,
+}
+
+/// Where a call leaves its outputs for the assignments of its outputs to
+/// read.
+#[derive(Clone, Debug)]
+enum CallOutputs {
+    /// In the fields of the function block instance it called.
+    Instance(Place),
+    /// In the temporary it passed for each output of a function, by the
+    /// output's name (REQ-LOW-lowering-092).
+    Temporaries(Vec<(Id, Place)>),
 }
 
 impl<'a> Lowering<'a> {
@@ -128,7 +143,8 @@ impl<'a> Lowering<'a> {
             pou_ids: HashMap::new(),
             bodies: HashMap::new(),
             loops: Vec::new(),
-            call_instance: None,
+            call_outputs: None,
+            call_result: None,
         }
     }
 

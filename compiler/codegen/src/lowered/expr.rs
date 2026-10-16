@@ -14,7 +14,7 @@ use super::place::variable_name;
 use super::policy::parse_builtin;
 use super::string::str_arg_offset;
 use super::{op_type, user_function};
-use crate::compile::{CompileContext, OpWidth, Signedness};
+use crate::compile::{CompileContext, OpWidth, Signedness, UserFunctionInfo};
 use crate::compile_arith::convert;
 use crate::compile_expr::{
     emit_add, emit_div, emit_eq, emit_ge, emit_gt, emit_le, emit_lt, emit_mod, emit_mul, emit_ne,
@@ -43,30 +43,12 @@ pub(super) fn emit_expr(
         }
         ExprKind::RefTo(place) => emit_ref(emitter, ctx, lowering, place, expr.span())?,
         ExprKind::Null => emit_null(emitter, ctx),
-        ExprKind::Convert(value) => {
+        ExprKind::Convert(value)
+        | ExprKind::ConvertChecked(value)
+        | ExprKind::Truncate { value, .. }
+        | ExprKind::Unary { value, .. } => {
             emit_expr(emitter, ctx, lowering, value)?;
-            let from = op_type(value.ty()).unwrap_or(op);
-            convert(emitter, from, op)?;
-        }
-        ExprKind::ConvertChecked(value) => {
-            emit_expr(emitter, ctx, lowering, value)?;
-            let from = op_type(value.ty()).unwrap_or(op);
-            emit_subscript_check(emitter, from, op, expr.span())?;
-        }
-        ExprKind::Truncate { width, value } => {
-            emit_expr(emitter, ctx, lowering, value)?;
-            emit_truncate(emitter, *width, op.1, expr.span())?;
-        }
-        ExprKind::Unary { op: unary, value } => {
-            emit_expr(emitter, ctx, lowering, value)?;
-            match unary {
-                UnaryOp::Neg => emit_neg(emitter, op),
-                UnaryOp::BitNot => match op.0 {
-                    OpWidth::W64 => emitter.emit_bit_not_64(),
-                    OpWidth::W32 | OpWidth::F32 | OpWidth::F64 => emitter.emit_bit_not_32(),
-                },
-                UnaryOp::BoolNot => emitter.emit_bool_not(),
-            }
+            emit_operation(emitter, expr)?;
         }
         ExprKind::Binary {
             op: binary,
@@ -147,22 +129,80 @@ pub(super) fn emit_expr(
                     "A call of a function this backend does not pass its arguments",
                 ))
             })?;
-            // A function of the program takes values and places
-            // (`ProgramBuilder::call`), so no string offsets come back.
-            emit_args(emitter, ctx, lowering, args, expr.span())?;
-            emitter.emit_call(
-                function.function_id,
-                function.num_params,
-                function.var_offset,
-                function.max_stack_depth,
-            );
-            ctx.record_call_edge(function.function_id);
+            emit_user_call(emitter, ctx, lowering, &function, args, expr.span())?;
         }
         ExprKind::Call {
             callee: Callee::Intrinsic(intrinsic),
             args,
         } => emit_intrinsic_call(emitter, ctx, lowering, *intrinsic, args, expr.span())?,
     }
+    Ok(())
+}
+
+/// Applies `expr`, an operation of one operand, to the value of its operand
+/// on the stack: a conversion, a narrowing or a unary operation.
+pub(super) fn emit_operation(emitter: &mut Emitter, expr: &Expr) -> Result<(), Diagnostic> {
+    let op = op_type(expr.ty()).ok_or_else(|| {
+        Diagnostic::internal_error_at(Label::span(
+            expr.span().clone(),
+            "A lowered expression has no operation type",
+        ))
+    })?;
+    match expr.kind() {
+        ExprKind::Convert(value) => {
+            let from = op_type(value.ty()).unwrap_or(op);
+            convert(emitter, from, op)?;
+        }
+        ExprKind::ConvertChecked(value) => {
+            let from = op_type(value.ty()).unwrap_or(op);
+            emit_subscript_check(emitter, from, op, expr.span())?;
+        }
+        ExprKind::Truncate { width, .. } => emit_truncate(emitter, *width, op.1, expr.span())?,
+        ExprKind::Unary { op: unary, .. } => match unary {
+            UnaryOp::Neg => emit_neg(emitter, op),
+            UnaryOp::BitNot => match op.0 {
+                OpWidth::W64 => emitter.emit_bit_not_64(),
+                OpWidth::W32 | OpWidth::F32 | OpWidth::F64 => emitter.emit_bit_not_32(),
+            },
+            UnaryOp::BoolNot => emitter.emit_bool_not(),
+        },
+        ExprKind::Const(_)
+        | ExprKind::Read(_)
+        | ExprKind::Binary { .. }
+        | ExprKind::Compare { .. }
+        | ExprKind::ShortCircuit { .. }
+        | ExprKind::Call { .. }
+        | ExprKind::RefTo(_)
+        | ExprKind::Null => {
+            return Err(Diagnostic::internal_error_at(Label::span(
+                expr.span().clone(),
+                "A lowered expression that is not an operation of one operand",
+            )))
+        }
+    }
+    Ok(())
+}
+
+/// Calls the user-defined function `function` with `args`, the arguments it
+/// takes, at `span`, leaving its result on the stack.
+pub(super) fn emit_user_call<'s>(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    lowering: &Lowering<'_>,
+    function: &UserFunctionInfo,
+    args: impl IntoIterator<Item = &'s Arg>,
+    span: &SourceSpan,
+) -> Result<(), Diagnostic> {
+    // A function of the program takes values and places
+    // (`ProgramBuilder::call`), so no string offsets come back.
+    emit_args(emitter, ctx, lowering, args, span)?;
+    emitter.emit_call(
+        function.function_id,
+        function.num_params,
+        function.var_offset,
+        function.max_stack_depth,
+    );
+    ctx.record_call_edge(function.function_id);
     Ok(())
 }
 
@@ -213,11 +253,11 @@ pub(super) fn emit_intrinsic_call(
 /// stack, a string as the data region offset of a slot that holds it, and a
 /// place by reference, as the AST route passes a `VAR_IN_OUT` argument.
 /// Returns the offsets of the strings, in order.
-fn emit_args(
+fn emit_args<'s>(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     lowering: &Lowering<'_>,
-    args: &[Arg],
+    args: impl IntoIterator<Item = &'s Arg>,
     span: &SourceSpan,
 ) -> Result<Vec<u32>, Diagnostic> {
     let mut strings = Vec::new();

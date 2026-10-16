@@ -1043,6 +1043,10 @@ pub(crate) struct UserFunctionInfo {
     /// The slot of each `VAR_OUTPUT`, which a call reads its outputs from
     /// after the function returns.
     pub(crate) outputs: HashMap<Id, VarIndex>,
+    /// Where in the data region each `STRING` or `WSTRING` `VAR_OUTPUT`
+    /// is, which a call the lowered route compiles reads it from after the
+    /// function returns.
+    pub(crate) string_outputs: HashMap<Id, StringVarInfo>,
 }
 
 /// Tracks state during compilation of a single program.

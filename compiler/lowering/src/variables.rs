@@ -8,9 +8,9 @@
 //!   `x` in the body of `Main` is `this^.x` (REQ-LOW-lowering-034);
 //! * a variable of a function, and a `VAR_TEMP` of any body, is a variable
 //!   of its own;
-//! * a `VAR_IN_OUT` of a function is a variable of its own of a non-null
-//!   reference type, and a use of it is what it refers to: `v` is `v^`
-//!   (REQ-LOW-lowering-033);
+//! * a `VAR_IN_OUT` or `VAR_OUTPUT` of a function is a variable of its own
+//!   of a non-null reference type, and a use of it is what it refers to: `v`
+//!   is `v^` (REQ-LOW-lowering-033, REQ-LOW-lowering-092);
 //! * a global is a variable of its own, and a `VAR_EXTERNAL` names the
 //!   global it refers to rather than a variable of its own
 //!   (REQ-LOW-lowering-022).
@@ -209,11 +209,19 @@ impl<'a> Lowering<'a> {
             // A field a function block inherits through `EXTENDS`.
             return Ok(None);
         }
-        if info.variable_type == Some(VariableType::InOut) {
+        let by_reference = match info.variable_type {
+            Some(VariableType::InOut) => true,
+            // A program's or function block's `VAR_OUTPUT` is a field.
+            Some(VariableType::Output) => frame.instance.is_none(),
+            Some(_) | None => false,
+        };
+        if by_reference {
             // A function's `VAR_IN_OUT` is a non-null reference to the
-            // caller's variable, reached through `^`
-            // (REQ-LOW-lowering-033). One of a program or function block is
-            // a field its call binds, which lowering does not express yet.
+            // caller's variable, and its `VAR_OUTPUT` one to the temporary
+            // the call passes for it, each reached through `^`
+            // (REQ-LOW-lowering-033, REQ-LOW-lowering-092). A `VAR_IN_OUT`
+            // of a program or function block is a field its call binds,
+            // which lowering does not express yet.
             if frame.instance.is_some() {
                 return Ok(None);
             }

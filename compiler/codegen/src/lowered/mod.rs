@@ -35,6 +35,7 @@ use crate::emit::Emitter;
 
 mod expr;
 mod fb_call;
+mod fn_call;
 mod place;
 mod policy;
 mod stmt;
@@ -122,11 +123,7 @@ fn compile_by_route(
         None => None,
     };
     match lowered {
-        Some(lowered)
-            if lowered
-                .iter()
-                .all(|lowered| can_emit(&route.lowering, ctx, lowered)) =>
-        {
+        Some(lowered) if can_emit_all(&route.lowering, ctx, &lowered) => {
             crate::compile_stmt::record_statement_position(emitter, ctx, stmt);
             stmt::emit_stmts(emitter, ctx, &route.lowering, &lowered)?;
             route.counts.lowered += 1;
@@ -159,11 +156,28 @@ fn statement_span(stmt: &AstStmtKind) -> ironplc_dsl::core::SourceSpan {
     }
 }
 
+/// Whether this backend emits every statement of `stmts`, as `stmt.rs` emits
+/// them: the parts of an assignment of a call of a function with outputs
+/// together (`fn_call.rs`), and any other statement on its own.
+fn can_emit_all(lowering: &Lowering<'_>, ctx: &CompileContext, stmts: &[Stmt]) -> bool {
+    let mut rest = stmts;
+    while let [first, ..] = rest {
+        let taken = match fn_call::output_call(lowering, ctx, rest) {
+            Some(call) if call.can_emit(lowering, ctx) => call.len(),
+            Some(_) => return false,
+            None if can_emit(lowering, ctx, first) => 1,
+            None => return false,
+        };
+        rest = &rest[taken..];
+    }
+    true
+}
+
 /// Whether every place `stmt` names has storage this backend reaches as one
 /// value, at the operation type the lowered program gives it. A statement
 /// whose storage this backend does not reach yet is compiled from the AST.
 fn can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, stmt: &Stmt) -> bool {
-    let all = |stmts: &[Stmt]| stmts.iter().all(|stmt| can_emit(lowering, ctx, stmt));
+    let all = |stmts: &[Stmt]| can_emit_all(lowering, ctx, stmts);
     match stmt.kind() {
         StmtKind::Assign { place, value } => {
             reaches(lowering, ctx, place, value.ty()) && expr_can_emit(lowering, ctx, value)
@@ -225,19 +239,11 @@ fn expr_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, expr: &Expr) -> 
         // A reference to a variable, or to what a `VAR_IN_OUT` parameter
         // refers to, as the AST route makes one.
         ExprKind::RefTo(place) => place::variable_name(lowering, ctx, place).is_some(),
-        ExprKind::Truncate { width, value } => {
-            !matches!(width, NarrowWidth::B32) && expr_can_emit(lowering, ctx, value)
-        }
-        ExprKind::Convert(value) | ExprKind::Unary { value, .. } => {
-            expr_can_emit(lowering, ctx, value)
-        }
-        // A checked conversion, which this backend traps on only for a
-        // subscript, as a subscript check does.
-        ExprKind::ConvertChecked(value) => {
-            op_type(value.ty())
-                .zip(op_type(expr.ty()))
-                .is_some_and(|(from, to)| subscript_check(from, to).is_some())
-                && expr_can_emit(lowering, ctx, value)
+        ExprKind::Truncate { value, .. }
+        | ExprKind::Convert(value)
+        | ExprKind::ConvertChecked(value)
+        | ExprKind::Unary { value, .. } => {
+            operation_can_emit(expr) && expr_can_emit(lowering, ctx, value)
         }
         ExprKind::Binary { lhs, rhs, .. }
         | ExprKind::Compare { lhs, rhs, .. }
@@ -249,7 +255,7 @@ fn expr_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, expr: &Expr) -> 
             args,
         } => {
             user_function(lowering, ctx, *pou)
-                .is_some_and(|function| passes(&function.params, args))
+                .is_some_and(|function| passes(&function.params, args.iter()))
                 && args_can_emit(lowering, ctx, args)
         }
         ExprKind::Call {
@@ -262,8 +268,37 @@ fn expr_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, expr: &Expr) -> 
     }
 }
 
-fn args_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, args: &[Arg]) -> bool {
-    args.iter().all(|arg| match arg {
+/// Whether this backend applies `expr`, an operation of one operand, to the
+/// value of its operand.
+fn operation_can_emit(expr: &Expr) -> bool {
+    if op_type(expr.ty()).is_none() {
+        return false;
+    }
+    match expr.kind() {
+        ExprKind::Truncate { width, .. } => !matches!(width, NarrowWidth::B32),
+        ExprKind::Convert(_) | ExprKind::Unary { .. } => true,
+        // A checked conversion, which this backend traps on only for a
+        // subscript, as a subscript check does.
+        ExprKind::ConvertChecked(value) => op_type(value.ty())
+            .zip(op_type(expr.ty()))
+            .is_some_and(|(from, to)| subscript_check(from, to).is_some()),
+        ExprKind::Const(_)
+        | ExprKind::Read(_)
+        | ExprKind::Binary { .. }
+        | ExprKind::Compare { .. }
+        | ExprKind::ShortCircuit { .. }
+        | ExprKind::Call { .. }
+        | ExprKind::RefTo(_)
+        | ExprKind::Null => false,
+    }
+}
+
+fn args_can_emit<'s>(
+    lowering: &Lowering<'_>,
+    ctx: &CompileContext,
+    args: impl IntoIterator<Item = &'s Arg>,
+) -> bool {
+    args.into_iter().all(|arg| match arg {
         Arg::Value(value) => expr_can_emit(lowering, ctx, value),
         Arg::Str(value) => string::str_can_emit(lowering, ctx, value),
         Arg::Ref(place) => place::variable_name(lowering, ctx, place)
@@ -294,7 +329,7 @@ pub(super) fn user_function(
 
 /// Whether `args` are one for each of `params`, each passed as its
 /// parameter takes it: a value by value, and a place by reference.
-fn passes(params: &[ParamPassing], args: &[Arg]) -> bool {
+fn passes<'s>(params: &[ParamPassing], args: impl ExactSizeIterator<Item = &'s Arg>) -> bool {
     params.len() == args.len()
         && params.iter().zip(args).all(|(param, arg)| {
             matches!(
@@ -371,6 +406,12 @@ pub(super) fn instance_field<'l, 'p>(
     Some((declared, rest))
 }
 
+/// Whether two spans are the same text. `SourceSpan`'s own equality holds
+/// for any two spans.
+pub(super) fn same_span(span: &SourceSpan, other: &SourceSpan) -> bool {
+    span.start == other.start && span.end == other.end && span.file_id == other.file_id
+}
+
 /// The constant `expr` is; `None` for an expression that computes its value.
 pub(super) fn constant(expr: &Expr) -> Option<Const> {
     match expr.kind() {
@@ -380,6 +421,25 @@ pub(super) fn constant(expr: &Expr) -> Option<Const> {
         | ExprKind::ConvertChecked(_)
         | ExprKind::Truncate { .. }
         | ExprKind::Unary { .. }
+        | ExprKind::Binary { .. }
+        | ExprKind::Compare { .. }
+        | ExprKind::ShortCircuit { .. }
+        | ExprKind::Call { .. }
+        | ExprKind::RefTo(_)
+        | ExprKind::Null => None,
+    }
+}
+
+/// The operand of `expr` when it is an operation of one operand: a
+/// conversion, a narrowing or a unary operation.
+pub(super) fn operand(expr: &Expr) -> Option<&Expr> {
+    match expr.kind() {
+        ExprKind::Convert(value)
+        | ExprKind::ConvertChecked(value)
+        | ExprKind::Truncate { value, .. }
+        | ExprKind::Unary { value, .. } => Some(value),
+        ExprKind::Const(_)
+        | ExprKind::Read(_)
         | ExprKind::Binary { .. }
         | ExprKind::Compare { .. }
         | ExprKind::ShortCircuit { .. }

@@ -133,3 +133,31 @@ fn lower_statement_when_block_instance_is_field_of_block_then_field_called() {
         ["assign v0^.f0.f0 (read i32s v0^.f1)\nfb-call v0^.f0 pou1"]
     );
 }
+
+/// REQ-LOW-lowering-069: a string output is assigned to its target as a
+/// string is, from the instance's field.
+#[test]
+fn lower_statement_when_block_has_string_output_then_assigned_as_string() {
+    let outcome = lower(
+        "FUNCTION_BLOCK Named
+           VAR_INPUT n : DINT; END_VAR
+           VAR_OUTPUT s : STRING[8]; w : WSTRING; END_VAR
+           s := 'a';
+         END_FUNCTION_BLOCK
+         PROGRAM main
+           VAR f : Named; t : STRING[4]; u : WSTRING; END_VAR
+           f(n := 1, s => t, w => u);
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [[
+            "assign v0^.f0.f0 (const i32s 1)",
+            "fb-call v0^.f0 pou1",
+            "assign-str v0^.f1 (read string[8] v0^.f0.f1)",
+            "assign-str v0^.f2 (read wstring[254] v0^.f0.f2)",
+        ]
+        .join("\n")]
+    );
+}

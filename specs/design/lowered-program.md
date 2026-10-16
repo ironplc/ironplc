@@ -1307,6 +1307,46 @@ after the call instead, which the flat variable table makes safe
 parameter's type, and the call is followed by an assignment from that
 temporary to the output's target.
 
+The value of a call with outputs has to wait while the outputs are stored,
+and a temporary is where it waits. So a call of a function with outputs is
+lowered where it is the whole value of an assignment, inside the conversion
+the analyzer recorded, if any, as `r := F(a, q => x)` is. The assignment
+lowers to three parts, each with its span:
+
+1. the assignment of the call to a temporary of the result's type;
+2. the assignment of each output to its target, of the value the analyzer
+   recorded for it, the call output read from the output's temporary;
+3. the assignment to `r` of the result's temporary, converted as the
+   analyzer recorded.
+
+That is the order the route that reads the AST stores them in, so a variable
+that is both an output's target and `r` ends with the result. A call of a
+function with outputs anywhere else, such as inside an expression or a
+condition, stays on the route that reads the AST, and so does one whose
+function has a parameter other than an output, or a result, that is a string.
+An output may be a string, assigned by an `AssignStr` from its temporary.
+
+**REQ-LOW-lowering-172** An assignment whose value is a call of a function
+with outputs lowers to the assignment of the call to a temporary of the
+result's type, then the assignments of the call's outputs from their
+temporaries, then the assignment of the result's temporary, each with the
+assignment's span.
+
+While both routes exist, the bytecode backend emits the three parts as the
+route that reads the AST emits the assignment (`compile_user_call.rs`): the
+call, which leaves its result on the stack, the store of each output, read
+from the function's own output variable, then the store of the result. No
+temporary has storage: the result stays on the stack while the outputs are
+stored, and the backend's layout keeps each output in the function's
+variable until the function is called again (ADR-0046), so the call passes
+no reference for it. Inside the function's body, an output is that
+variable. The layout records where in the data region each `STRING` or
+`WSTRING` output is (`UserFunctionInfo::string_outputs`). The route that
+reads the AST does not read a string output, and reports one as P9999.
+Inside a function's body the VM reaches no variable of another function, so
+a function that reads the outputs of a function it calls traps
+(`InvalidVariableIndex`) on either route.
+
 A method is called like a function whose first parameter is its instance, and
 the first argument of the call is a `Ref` to the receiver. `inst.m(a)` passes
 `inst`; `THIS^.m(a)` passes the caller's own instance, `this^`; and
@@ -2442,7 +2482,9 @@ This section constrains the order of work; it is not a work breakdown.
   ([Standard function blocks](#standard-function-blocks)) are the exception:
   they differ only for a selector or subscript with a side effect, or an
   `_INT` counter past the range of `INT`, and the programs that show them are
-  listed as known differences.
+  listed as known differences. So is a program that reads a function's
+  string output, which only the lowered route compiles
+  (REQ-LOW-lowering-172).
 - **Progress cannot fall.** CI reports how many top-level statements of the
   end-to-end programs took the lowered route. The number does not fall.
 - **The IR is readable from its first commit.** `ironplc-ir` writes a lowered

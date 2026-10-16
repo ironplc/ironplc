@@ -136,8 +136,9 @@ impl FunctionSignature {
     }
 
     /// What each parameter takes, in order: a value at its operation type,
-    /// or, for a `VAR_IN_OUT`, a non-null reference, the place its argument
-    /// passes (REQ-LOW-lowering-033). `None` when one is neither.
+    /// or, for a `VAR_IN_OUT` or a `VAR_OUTPUT`, a non-null reference, the
+    /// place its argument passes (REQ-LOW-lowering-033,
+    /// REQ-LOW-lowering-092). `None` when one is neither.
     pub(crate) fn params(
         &self,
         types: &TypeTable,
