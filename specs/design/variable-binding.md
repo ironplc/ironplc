@@ -252,6 +252,10 @@ scope, so a variable each declares under one name is two declarations. Inside
 `GET` the property's name is its result variable; inside `SET` it is the
 implicit input that holds the assigned value.
 
+**REQ-VB-analyzer-064** A variable that a function block declares with the
+name of a property one of the blocks it `EXTENDS` declares is P4044, as one
+with the name of an inherited field is.
+
 ## Readers
 
 **The semantic rules.** Each of these asks `resolve_variable` which variable
