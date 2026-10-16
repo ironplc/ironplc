@@ -29,6 +29,9 @@ pub enum StmtKind {
         bits: u8,
         value: Expr,
     },
+    /// Replaces the whole value at `dst`, an array, a structure or a function
+    /// block instance, with the whole value at `src` (REQ-LOW-lowering-061).
+    Copy { dst: Place, src: Place },
     /// Runs the body of the function block `block` on `instance`, an
     /// instance of it. A call's inputs and outputs are the assignments
     /// around it (REQ-LOW-lowering-069).
@@ -274,6 +277,66 @@ impl Stmt {
                 bits,
                 value,
             },
+            span,
+            program,
+        })
+    }
+
+    /// Replaces the whole value at `dst` with the whole value at `src`.
+    ///
+    /// `dst` is an array, a structure or a function block instance, and `src`
+    /// has its type or, for an array or a structure, a type of the same shape
+    /// (REQ-LOW-lowering-061, [`TypeTable::same_shape`]). Both name places of
+    /// one program.
+    pub(crate) fn copy(
+        types: &TypeTable,
+        dst: Place,
+        src: Place,
+        span: SourceSpan,
+    ) -> Result<Self, Diagnostic> {
+        const CONSTRUCTOR: &str = "Stmt::copy";
+        if src.stamp() != dst.stamp() {
+            return Err(broken(
+                CONSTRUCTOR,
+                &span,
+                "the source is a place of another program",
+            ));
+        }
+        let aggregate = match types.kind(dst.ty()) {
+            Some(TypeKind::Array { .. } | TypeKind::Structure { .. }) => {
+                types.same_shape(dst.ty(), src.ty())
+            }
+            Some(TypeKind::FunctionBlock { .. }) => dst.ty() == src.ty(),
+            Some(
+                TypeKind::Bool
+                | TypeKind::Integer { .. }
+                | TypeKind::BitString { .. }
+                | TypeKind::Real { .. }
+                | TypeKind::Temporal { .. }
+                | TypeKind::Enumeration { .. }
+                | TypeKind::Subrange { .. }
+                | TypeKind::String(_)
+                | TypeKind::Program { .. }
+                | TypeKind::Reference { .. },
+            )
+            | None => {
+                return Err(broken(
+                    CONSTRUCTOR,
+                    &span,
+                    format!("{} is not an array, a structure or a block", dst.ty()),
+                ))
+            }
+        };
+        if !aggregate {
+            return Err(broken(
+                CONSTRUCTOR,
+                &span,
+                format!("a value of {} cannot be copied to {}", src.ty(), dst.ty()),
+            ));
+        }
+        let program = Some(dst.stamp());
+        Ok(Self {
+            kind: StmtKind::Copy { dst, src },
             span,
             program,
         })

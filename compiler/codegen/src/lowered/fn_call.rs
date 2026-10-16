@@ -165,6 +165,7 @@ impl OutputCall<'_> {
                 matches!(output, Some(Output::String(_))) && reaches_string(lowering, ctx, place)
             }
             StmtKind::AssignBits { .. }
+            | StmtKind::Copy { .. }
             | StmtKind::FbCall { .. }
             | StmtKind::Call { .. }
             | StmtKind::If { .. }
@@ -274,6 +275,7 @@ pub(super) fn output_call<'s>(
         StmtKind::Call { .. }
         | StmtKind::AssignStr { .. }
         | StmtKind::AssignBits { .. }
+        | StmtKind::Copy { .. }
         | StmtKind::FbCall { .. }
         | StmtKind::If { .. }
         | StmtKind::Case { .. }
@@ -437,6 +439,7 @@ fn emit_output(
             resolve_string(lowering, ctx, place, span)?.emit_store(emitter, ctx)
         }
         StmtKind::AssignBits { .. }
+        | StmtKind::Copy { .. }
         | StmtKind::FbCall { .. }
         | StmtKind::Call { .. }
         | StmtKind::If { .. }
@@ -555,6 +558,7 @@ fn assigns_output(temporaries: &[(VarId, Output)], stmt: &Stmt) -> bool {
             StrExprKind::Literal(_) | StrExprKind::Call { .. } => false,
         },
         StmtKind::AssignBits { .. }
+        | StmtKind::Copy { .. }
         | StmtKind::FbCall { .. }
         | StmtKind::Call { .. }
         | StmtKind::If { .. }

@@ -2,7 +2,9 @@
 
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_dsl::textual::{Assignment, Expr as AstExpr, StmtKind as AstStmtKind, Variable};
+use ironplc_dsl::textual::{
+    Assignment, Expr as AstExpr, ExprKind as AstExprKind, StmtKind as AstStmtKind, Variable,
+};
 use ironplc_ir::lowered::{Expr, Place, Stmt, TypeKind};
 
 use crate::variables::BodyFrame;
@@ -100,11 +102,28 @@ impl Lowering<'_> {
         value: &AstExpr,
         span: SourceSpan,
     ) -> Result<Option<Stmt>, Diagnostic> {
-        if let Some(TypeKind::String(_)) = self.program.types().kind(place.ty()) {
-            return self.string_assignment(frame, place, value, span);
+        match self.program.types().kind(place.ty()) {
+            Some(TypeKind::String(_)) => return self.string_assignment(frame, place, value, span),
+            Some(TypeKind::Array { .. } | TypeKind::Structure { .. }) => {
+                return self.aggregate_assignment(frame, place, value, span)
+            }
+            Some(
+                TypeKind::Bool
+                | TypeKind::Integer { .. }
+                | TypeKind::BitString { .. }
+                | TypeKind::Real { .. }
+                | TypeKind::Temporal { .. }
+                | TypeKind::Enumeration { .. }
+                | TypeKind::Subrange { .. }
+                | TypeKind::FunctionBlock { .. }
+                | TypeKind::Program { .. }
+                | TypeKind::Reference { .. },
+            )
+            | None => {}
         }
         let Some(operated) = self.program.types().operation_type(place.ty()) else {
-            // An aggregate is not assigned as one scalar value.
+            // A function block or program instance, which is not copied
+            // yet.
             return Ok(None);
         };
         let Some(value) = self.expr(frame, value)? else {
@@ -135,5 +154,24 @@ impl Lowering<'_> {
             value = Expr::truncate(width, value, span)?;
         }
         self.program.assign(place, value, span)
+    }
+
+    /// Copies the whole of the variable `value` to `place`, an array or a
+    /// structure (REQ-LOW-lowering-061). Any other source, such as a call of
+    /// a function that returns a structure, is not lowered yet.
+    fn aggregate_assignment(
+        &mut self,
+        frame: &BodyFrame,
+        place: Place,
+        value: &AstExpr,
+        span: SourceSpan,
+    ) -> Result<Option<Stmt>, Diagnostic> {
+        let AstExprKind::Variable(variable) = &value.kind else {
+            return Ok(None);
+        };
+        let Some(source) = self.variable_place(frame, variable)? else {
+            return Ok(None);
+        };
+        self.program.copy(place, source, span).map(Some)
     }
 }

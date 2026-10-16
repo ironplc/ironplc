@@ -1116,6 +1116,13 @@ its place's type.
 **REQ-LOW-lowering-061** The two places of a `Copy` have the same type or types
 of identical shape, as `value_type::check` accepts today.
 
+The destination of a `Copy` is an array, a structure or a function block
+instance. Two arrays have the same shape when their dimensions are the same
+and their elements have the same shape, and two structures when their fields
+have the same names, in order, and the same shapes; a function block instance
+is copied only from one of its own type. `ProgramBuilder::copy` reports a
+P9998 for places that break this.
+
 **REQ-LOW-lowering-062** Every `Exit` and `Continue` names a `Loop` or `For`
 that encloses it.
 
@@ -1687,6 +1694,12 @@ conversion, and of any other subscript as an ordinary one.
 **REQ-LOW-codegen-164** A `ConvertChecked` whose operand lies outside the
 range of its type traps, as a subscript out of bounds does, and selects no
 element: a `UDINT` subscript of 4,294,967,295 traps on `ARRAY[-3..100]`.
+
+**REQ-LOW-codegen-165** After a `Copy`, every element or field of its
+destination holds the value the same element or field of its source held
+before it, and the source is unchanged. The destination has storage of its
+own: a later store to it leaves the source as it is. A `Copy` of a place to
+itself changes nothing.
 
 **REQ-LOW-codegen-089** An `Intrinsic` means what the IEC 61131-3 standard
 function means, with these choices where the standard leaves room: the count

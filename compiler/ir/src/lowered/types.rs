@@ -494,6 +494,100 @@ impl TypeTable {
         (position < fields.len()).then(|| super::FieldIdx::new(self.stamp, position as u32))
     }
 
+    /// Whether a value of type `a` and one of type `b` have the same shape,
+    /// as the analyzer compares the representations of two types: arrays of
+    /// the same dimensions whose elements have the same shape, structures
+    /// whose fields have the same names, in order, and the same shapes, and
+    /// elementary types that are the same. Two enumerations have the same
+    /// shape, as their representations compare equal in the analyzer, and two
+    /// function blocks have when they are one block. The table keeps no
+    /// field defaults, which the analyzer also compares, so this accepts a
+    /// pair the analyzer may not.
+    pub fn same_shape(&self, a: TypeId, b: TypeId) -> bool {
+        if a == b {
+            return true;
+        }
+        let (Some(a), Some(b)) = (self.kind(a), self.kind(b)) else {
+            return false;
+        };
+        match (a, b) {
+            (TypeKind::Bool, TypeKind::Bool) => true,
+            (
+                TypeKind::Integer { width, signed },
+                TypeKind::Integer {
+                    width: other_width,
+                    signed: other_signed,
+                },
+            ) => width == other_width && signed == other_signed,
+            (TypeKind::BitString { width }, TypeKind::BitString { width: other }) => width == other,
+            (TypeKind::Real { width }, TypeKind::Real { width: other }) => width == other,
+            (
+                TypeKind::Temporal { kind, width },
+                TypeKind::Temporal {
+                    kind: other_kind,
+                    width: other_width,
+                },
+            ) => kind == other_kind && width == other_width,
+            (TypeKind::Enumeration { .. }, TypeKind::Enumeration { .. }) => true,
+            (
+                TypeKind::Subrange { base, min, max },
+                TypeKind::Subrange {
+                    base: other_base,
+                    min: other_min,
+                    max: other_max,
+                },
+            ) => min == other_min && max == other_max && self.same_shape(*base, *other_base),
+            (TypeKind::String(shape), TypeKind::String(other)) => shape == other,
+            (
+                TypeKind::Array {
+                    element,
+                    dimensions,
+                },
+                TypeKind::Array {
+                    element: other_element,
+                    dimensions: other_dimensions,
+                },
+            ) => dimensions == other_dimensions && self.same_shape(*element, *other_element),
+            (TypeKind::Structure { fields }, TypeKind::Structure { fields: other }) => {
+                fields.len() == other.len()
+                    && fields.iter().zip(other).all(|(field, other)| {
+                        field.name.to_string().to_lowercase()
+                            == other.name.to_string().to_lowercase()
+                            && self.same_shape(field.ty, other.ty)
+                    })
+            }
+            (
+                TypeKind::FunctionBlock { body, .. },
+                TypeKind::FunctionBlock {
+                    body: other_body, ..
+                },
+            ) => body == other_body,
+            (
+                TypeKind::Reference { target, .. },
+                TypeKind::Reference {
+                    target: other_target,
+                    ..
+                },
+            ) => self.same_shape(*target, *other_target),
+            (
+                TypeKind::Bool
+                | TypeKind::Integer { .. }
+                | TypeKind::BitString { .. }
+                | TypeKind::Real { .. }
+                | TypeKind::Temporal { .. }
+                | TypeKind::Enumeration { .. }
+                | TypeKind::Subrange { .. }
+                | TypeKind::String(_)
+                | TypeKind::Array { .. }
+                | TypeKind::Structure { .. }
+                | TypeKind::FunctionBlock { .. }
+                | TypeKind::Program { .. }
+                | TypeKind::Reference { .. },
+                _,
+            ) => false,
+        }
+    }
+
     /// The target and nullability of a reference type; `None` for any other.
     pub fn reference(&self, id: TypeId) -> Option<(TypeId, Nullability)> {
         match self.kind(id)? {

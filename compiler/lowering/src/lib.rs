@@ -39,6 +39,8 @@ mod call_tests;
 #[cfg(test)]
 mod control_tests;
 #[cfg(test)]
+mod copy_tests;
+#[cfg(test)]
 mod fb_call_tests;
 #[cfg(test)]
 mod function_tests;
