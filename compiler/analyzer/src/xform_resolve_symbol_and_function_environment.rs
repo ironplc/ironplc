@@ -18,8 +18,8 @@
 
 use ironplc_dsl::{
     common::{
-        AddressAssignment, InitialValueAssignmentKind, Library, LocationPrefix, SizePrefix,
-        TypeName, TypeReference, VariableType,
+        AddressAssignment, FunctionReturnType, InitialValueAssignmentKind, Library, LocationPrefix,
+        SizePrefix, TypeReference, VariableType,
     },
     core::{Id, Located},
     diagnostic::Diagnostic,
@@ -32,6 +32,7 @@ use std::convert::Infallible;
 
 use crate::{
     function_environment::{FunctionEnvironment, FunctionSignature},
+    intermediates::string,
     semantic_type::SemanticFunctionParameter,
     symbol_environment::{
         duplicate_declaration, ScopeKind, ScopePath, ScopeTracker, SymbolEnvironment, SymbolInfo,
@@ -45,12 +46,13 @@ use crate::{
 /// on the first declaration of each.
 ///
 /// A function's or method's result variable records the id of its return
-/// type from `type_environment`.
+/// type from `type_environment`, which gains a sized string type for a
+/// result that is a string of a stated length.
 pub fn apply(
     lib: Library,
     symbol_environment: &mut SymbolEnvironment,
     function_environment: &mut FunctionEnvironment,
-    type_environment: &TypeEnvironment,
+    type_environment: &mut TypeEnvironment,
 ) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>> {
     let diagnostics = resolve(
         &lib,
@@ -76,7 +78,7 @@ fn resolve(
     lib: &Library,
     symbol_env: &mut SymbolEnvironment,
     function_env: &mut FunctionEnvironment,
-    type_env: Option<&TypeEnvironment>,
+    type_env: Option<&mut TypeEnvironment>,
 ) -> Vec<Diagnostic> {
     let mut resolver = EnvironmentResolver {
         symbol_env,
@@ -96,7 +98,7 @@ struct EnvironmentResolver<'a> {
     symbol_env: &'a mut SymbolEnvironment,
     function_env: &'a mut FunctionEnvironment,
     /// Resolves the return type of a result variable, when given.
-    type_env: Option<&'a TypeEnvironment>,
+    type_env: Option<&'a mut TypeEnvironment>,
     /// The declaration the traversal is currently inside.
     scope: ScopeTracker,
     diagnostics: Vec<Diagnostic>,
@@ -118,9 +120,17 @@ impl<'a> EnvironmentResolver<'a> {
     /// method `node` that the traversal is about to enter, in that
     /// declaration's own scope. A variable the declaration declares with
     /// the same name replaces it.
-    fn declare_result_variable(&mut self, node: ScopeNode<'_>, name: &Id, return_type: &TypeName) {
+    fn declare_result_variable(
+        &mut self,
+        node: ScopeNode<'_>,
+        name: &Id,
+        return_type: &FunctionReturnType,
+    ) {
         let scope = self.scope.scope_of(&node);
-        let type_id = self.type_env.and_then(|types| types.id_of(return_type));
+        let type_id = self
+            .type_env
+            .as_deref_mut()
+            .and_then(|types| result_type_id(types, return_type));
         let info =
             SymbolInfo::new(SymbolKind::ResultVariable, scope, name.span()).with_type_id(type_id);
         let result = self.symbol_env.insert_info(name, info);
@@ -218,11 +228,7 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
         &mut self,
         node: &ironplc_dsl::common::FunctionDeclaration,
     ) -> Result<Self::Value, Infallible> {
-        self.declare_result_variable(
-            node.as_scope_node(),
-            &node.name,
-            &node.return_type.to_type_name(),
-        );
+        self.declare_result_variable(node.as_scope_node(), &node.name, &node.return_type);
 
         // Build function signature for function environment
         // (Functions are tracked in FunctionEnvironment, not SymbolEnvironment)
@@ -318,11 +324,7 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
         // A method without a return type is a procedure: it has no result
         // to assign.
         if let Some(return_type) = &node.return_type {
-            self.declare_result_variable(
-                node.as_scope_node(),
-                &node.name,
-                &return_type.to_type_name(),
-            );
+            self.declare_result_variable(node.as_scope_node(), &node.name, return_type);
         }
         node.recurse_visit(self)
     }
@@ -449,6 +451,28 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
     }
 
     // TODO should this handle parameters?
+}
+
+/// The id of the type of a result of `return_type`. A string of a stated
+/// length gets a type of its own that records the length as its capacity
+/// (REQ-LOW-analyzer-053), as a declared string does
+/// (`xform_resolve_decl_types`); any other result has the type its name
+/// names.
+fn result_type_id(
+    types: &mut TypeEnvironment,
+    return_type: &FunctionReturnType,
+) -> Option<ironplc_dsl::type_id::TypeId> {
+    let named = types.id_of(&return_type.to_type_name())?;
+    match return_type {
+        FunctionReturnType::String(spec) | FunctionReturnType::WString(spec)
+            if spec.length.is_some() =>
+        {
+            Some(types.insert_sized_string(named, string::from_spec(spec)))
+        }
+        FunctionReturnType::String(_)
+        | FunctionReturnType::WString(_)
+        | FunctionReturnType::Named(_) => Some(named),
+    }
 }
 
 fn format_address(addr: &AddressAssignment) -> String {

@@ -292,7 +292,7 @@ pub fn resolve_types(
             lib,
             &mut symbol_environment,
             &mut function_environment,
-            &type_environment,
+            &mut type_environment,
         )
     });
 
