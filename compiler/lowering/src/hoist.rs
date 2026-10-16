@@ -10,14 +10,19 @@
 //! assignment lowers to the parts, in the order lowering made them, then
 //! itself, each with the assignment's span.
 //!
-//! Only a call that is the whole value of the assignment, inside the
-//! conversions the analyzer recorded, is lowered so yet: an assignment that
-//! makes any other part is not lowered.
+//! Running the parts first keeps the order the source runs things in only
+//! when nothing else in the value runs before a call. So an assignment with
+//! parts is lowered only when it is an `Assign` of a scalar value, and its
+//! parts and value read the results as the values of a stack
+//! (`reads_results_in_order`, REQ-LOW-lowering-174). Any other is not
+//! lowered: `r := a + F(x := 1, n => a)` reads `a` before the call that
+//! writes it, and `x.3 := F(x := 1, n => x) > 0` reads `x` before the call on
+//! the route that reads the AST.
 
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::Assignment;
-use ironplc_ir::lowered::{Place, Stmt};
+use ironplc_ir::lowered::{reads_results_in_order, Place, Stmt, StmtKind};
 
 use crate::variables::BodyFrame;
 use crate::Lowering;
@@ -28,10 +33,9 @@ pub(crate) struct Hoisting {
     /// The assignment's span, which every part carries, for the line map
     /// (REQ-LOW-lowering-063).
     span: SourceSpan,
-    /// The parts, in the order lowering made them.
-    parts: Vec<Stmt>,
-    /// The temporary that holds each call's result, by the call's address.
-    results: Vec<(usize, Place)>,
+    /// The address of each call, the temporary that holds its result and its
+    /// part, in the order lowering made them.
+    parts: Vec<(usize, Place, Vec<Stmt>)>,
 }
 
 impl Hoisting {
@@ -43,15 +47,33 @@ impl Hoisting {
     /// The temporary that holds the result of the call at `address`, if
     /// lowering has made its part.
     pub(crate) fn result(&self, address: usize) -> Option<&Place> {
-        self.results
+        self.parts
             .iter()
-            .find_map(|(hoisted, result)| (*hoisted == address).then_some(result))
+            .find_map(|(hoisted, result, _)| (*hoisted == address).then_some(result))
     }
 
     /// Adds the part of the call at `address`, whose result `result` holds.
     pub(crate) fn push(&mut self, address: usize, part: Vec<Stmt>, result: Place) {
-        self.parts.extend(part);
-        self.results.push((address, result));
+        self.parts.push((address, result, part));
+    }
+
+    /// Whether running the parts, then `stored`, keeps the order the source
+    /// runs them in (REQ-LOW-lowering-174): `stored` assigns a scalar value,
+    /// and the parts and that value read the results as the values of a
+    /// stack. An `AssignBits` reads its place before its value on the route
+    /// that reads the AST.
+    fn keeps_order(&self, stored: &Stmt) -> bool {
+        let StmtKind::Assign { value, .. } = stored.kind() else {
+            return false;
+        };
+        let mut parts = Vec::with_capacity(self.parts.len());
+        for (_, result, part) in &self.parts {
+            let Some(StmtKind::Assign { value, .. }) = part.first().map(Stmt::kind) else {
+                return false;
+            };
+            parts.push((value, result.root()));
+        }
+        reads_results_in_order(&parts, value)
     }
 }
 
@@ -64,25 +86,26 @@ impl Lowering<'_> {
         frame: &BodyFrame,
         assignment: &Assignment,
     ) -> Result<Option<Vec<Stmt>>, Diagnostic> {
-        let Some(call) = self.call_with_outputs(frame, &assignment.value) else {
-            return Ok(self.assignment(frame, assignment)?.map(|stmt| vec![stmt]));
-        };
-        let address = call.address();
         let enclosing = self.hoisting.replace(Hoisting {
             span: assignment.span(),
             parts: Vec::new(),
-            results: Vec::new(),
         });
         let stored = self.assignment(frame, assignment);
         let hoisting = std::mem::replace(&mut self.hoisting, enclosing);
         let (Some(stored), Some(hoisting)) = (stored?, hoisting) else {
             return Ok(None);
         };
-        // Only the call that is the whole value has a part yet.
-        if !matches!(hoisting.results.as_slice(), [(hoisted, _)] if *hoisted == address) {
+        if hoisting.parts.is_empty() {
+            return Ok(Some(vec![stored]));
+        }
+        if !hoisting.keeps_order(&stored) {
             return Ok(None);
         }
-        let mut stmts = hoisting.parts;
+        let mut stmts: Vec<Stmt> = hoisting
+            .parts
+            .into_iter()
+            .flat_map(|(_, _, part)| part)
+            .collect();
         stmts.push(stored);
         Ok(Some(stmts))
     }

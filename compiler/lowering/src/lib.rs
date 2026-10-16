@@ -46,6 +46,8 @@ mod fb_call_tests;
 #[cfg(test)]
 mod function_tests;
 #[cfg(test)]
+mod hoist_tests;
+#[cfg(test)]
 mod method_tests;
 #[cfg(test)]
 mod place_tests;

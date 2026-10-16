@@ -130,6 +130,7 @@ fn compile_when_instance_declared_in_block_then_both_routes_fail() {
 #[case::in_expression("d := c.Get(scale := 2) + 1;")]
 #[case::outputs_of_statement("c.Split(k := 2, high => d, NOT done => b);")]
 #[case::outputs_of_assignment("d := c.Split(k := 3, high => d);")]
+#[case::outputs_inside_expression("d := c.Split(k := 3, high => d) + c.Split(k := 2, done => b);")]
 #[case::inside_if("IF b THEN c.Add(k := 1); END_IF;")]
 fn compile_when_method_called_then_same_code_as_ast(#[case] statement: &str) {
     assert_same_code(&format!(

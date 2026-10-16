@@ -205,21 +205,19 @@ fn lower_statement_when_function_with_outputs_called_inside_if_then_among_its_st
     );
 }
 
-/// A call of a function with outputs that is not the whole value of an
-/// assignment is not lowered yet.
+/// A call of a function with outputs in a condition is not lowered yet.
 #[test]
-fn lower_statement_when_call_with_outputs_inside_expression_then_unsupported() {
+fn lower_statement_when_call_with_outputs_in_condition_then_unsupported() {
     let outcome = lower(
         &format!(
             "{OUTPUTS}
-             PROGRAM main VAR i : INT; d : DINT; END_VAR
-               i := F(a := 1, q => d) + 1;
+             PROGRAM main VAR d : DINT; END_VAR
                IF F(a := 1) > 0 THEN d := 1; END_IF;
              END_PROGRAM"
         ),
         "main",
     );
-    assert_eq!(outcome.statements, ["unsupported", "unsupported"]);
+    assert_eq!(outcome.statements, ["unsupported"]);
 }
 
 /// REQ-LOW-lowering-071, REQ-LOW-lowering-072: a function's `STRING` and

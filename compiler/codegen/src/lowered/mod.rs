@@ -24,7 +24,7 @@ use ironplc_dsl::textual::StmtKind as AstStmtKind;
 use ironplc_ir::lowered::{
     Arg, Callee, Const, Expr, ExprKind, Field, NarrowWidth, Nullability, Place as LoweredPlace,
     PouId, Projection, ScalarType, Signedness as LoweredSignedness, Stmt, StmtKind, TypeId,
-    TypeKind,
+    TypeKind, VarId,
 };
 use ironplc_lowering::{Lowering, StatementLowering};
 
@@ -241,12 +241,26 @@ fn can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, stmt: &Stmt) -> bool 
 }
 
 fn expr_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, expr: &Expr) -> bool {
+    expr_can_emit_reading(lowering, ctx, expr, &[])
+}
+
+/// Whether this backend emits `expr`, in which a read of the whole of one of
+/// `results` takes the value a call left on the stack (`fn_call.rs`).
+fn expr_can_emit_reading(
+    lowering: &Lowering<'_>,
+    ctx: &CompileContext,
+    expr: &Expr,
+    results: &[VarId],
+) -> bool {
     if op_type(expr.ty()).is_none() {
         return false;
     }
     match expr.kind() {
         ExprKind::Const(_) | ExprKind::Null => true,
-        ExprKind::Read(place) => reads(lowering, ctx, place, expr.ty()),
+        ExprKind::Read(place) => {
+            (place.path().is_empty() && results.contains(&place.root()))
+                || reads(lowering, ctx, place, expr.ty())
+        }
         // A reference to a variable, or to what a `VAR_IN_OUT` parameter
         // refers to, as the AST route makes one.
         ExprKind::RefTo(place) => place::variable_name(lowering, ctx, place).is_some(),
@@ -254,25 +268,27 @@ fn expr_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, expr: &Expr) -> 
         | ExprKind::Convert(value)
         | ExprKind::ConvertChecked(value)
         | ExprKind::Unary { value, .. } => {
-            operation_can_emit(expr) && expr_can_emit(lowering, ctx, value)
+            operation_can_emit(expr) && expr_can_emit_reading(lowering, ctx, value, results)
         }
         ExprKind::Binary { lhs, rhs, .. }
         | ExprKind::Compare { lhs, rhs, .. }
         | ExprKind::ShortCircuit { lhs, rhs, .. } => {
-            expr_can_emit(lowering, ctx, lhs) && expr_can_emit(lowering, ctx, rhs)
+            expr_can_emit_reading(lowering, ctx, lhs, results)
+                && expr_can_emit_reading(lowering, ctx, rhs, results)
         }
         ExprKind::Call {
             callee: Callee::User(pou),
             args,
         } => match user_function(lowering, ctx, *pou) {
             Some(function) => {
-                passes(&function.params, args.iter()) && args_can_emit(lowering, ctx, args)
+                passes(&function.params, args.iter())
+                    && args_can_emit_reading(lowering, ctx, args, results)
             }
             // A method's value: its receiver, then an argument for each input.
             None => method::method_site(lowering, ctx, *pou, args).is_some_and(|site| {
                 site.has_return_value
                     && site.takes(args[1..].iter())
-                    && args_can_emit(lowering, ctx, &args[1..])
+                    && args_can_emit_reading(lowering, ctx, &args[1..], results)
             }),
         },
         ExprKind::Call {
@@ -280,7 +296,7 @@ fn expr_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, expr: &Expr) -> 
             args,
         } => {
             expr::instruction_of(*intrinsic, args.len()).is_some()
-                && args_can_emit(lowering, ctx, args)
+                && args_can_emit_reading(lowering, ctx, args, results)
         }
     }
 }
@@ -315,8 +331,19 @@ fn args_can_emit<'s>(
     ctx: &CompileContext,
     args: impl IntoIterator<Item = &'s Arg>,
 ) -> bool {
+    args_can_emit_reading(lowering, ctx, args, &[])
+}
+
+/// Whether this backend passes each of `args`, in which a read of the whole
+/// of one of `results` takes the value a call left on the stack.
+fn args_can_emit_reading<'s>(
+    lowering: &Lowering<'_>,
+    ctx: &CompileContext,
+    args: impl IntoIterator<Item = &'s Arg>,
+    results: &[VarId],
+) -> bool {
     args.into_iter().all(|arg| match arg {
-        Arg::Value(value) => expr_can_emit(lowering, ctx, value),
+        Arg::Value(value) => expr_can_emit_reading(lowering, ctx, value, results),
         Arg::Str(value) => string::str_can_emit(lowering, ctx, value),
         Arg::Ref(place) => place::variable_name(lowering, ctx, place)
             .is_some_and(|name| passes_by_reference(ctx, &name)),

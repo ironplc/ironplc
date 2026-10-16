@@ -19,27 +19,26 @@
 //! statement, followed by the assignments of its outputs.
 //!
 //! A call of a function or method with outputs is lowered as a value only
-//! where it is the whole value of an assignment, `r := F(a, q => x)`, inside
-//! the conversion the analyzer recorded, if any (`hoist.rs`). It lowers to
-//! three parts, in the order the AST route runs them, each with the
-//! assignment's span (REQ-LOW-lowering-172):
+//! in the value of an assignment, ahead of which it is lowered as its part
+//! (`hoist.rs`, REQ-LOW-lowering-172):
 //!
 //! 1. the call, stored in a temporary of the result's type;
 //! 2. the assignment of each output to its target, of the value the
 //!    analyzer recorded for it: the call output `q`, a read of the temporary
-//!    passed for `q`;
-//! 3. the assignment, of a read of the result's temporary.
+//!    passed for `q`.
 //!
-//! So an output reaches its target, converted, only once the call returns,
-//! and before the result does. A temporary belongs to the body the call is
-//! in, and each call has its own.
+//! The call's value is a read of the result's temporary. So an output
+//! reaches its target, converted, once the call returns, and before the
+//! assignment does. A temporary belongs to the body the call is in, and each
+//! call has its own.
 //!
 //! The function's or method's POU is declared with its parameters and
 //! result the first time a call reaches it. Its parameters and result are
 //! the variables its body reads and writes, so a call and the body agree on
 //! them.
 //!
-//! Not lowered yet: a call with outputs anywhere else, a `VAR_IN_OUT` or a
+//! Not lowered yet: a call with outputs anywhere else, or where running it
+//! first would change the order (REQ-LOW-lowering-174), a `VAR_IN_OUT` or a
 //! result that is a string, a parameter or a result that is an aggregate
 //! (REQ-LOW-lowering-079), a call with `EN` or `ENO` (REQ-LOW-lowering-160),
 //! a call through `THIS^` or `SUPER^`, and a call of a method its receiver's
@@ -55,8 +54,7 @@ use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::oop::MethodDeclaration;
 use ironplc_dsl::textual::{
-    Expr as AstExpr, ExprKind as AstExprKind, Function, MethodCall, MethodReceiver,
-    ParamAssignmentKind,
+    Expr as AstExpr, Function, MethodCall, MethodReceiver, ParamAssignmentKind,
 };
 use ironplc_ir::execution::DebugName;
 use ironplc_ir::lowered::{
@@ -241,50 +239,6 @@ impl<'a> Lowering<'a> {
         };
         stmts.extend(outputs);
         Ok(Some(stmts))
-    }
-
-    /// The call of a function or method with outputs that `value`, the
-    /// value of an assignment in the body of `frame`, is, inside the
-    /// conversion the analyzer recorded; `None` for any other value.
-    pub(crate) fn call_with_outputs<'v>(
-        &self,
-        frame: &BodyFrame,
-        value: &'v AstExpr,
-    ) -> Option<UserCall<'v, 'a>> {
-        let call = match &value.kind {
-            AstExprKind::Expression(inner) => return self.call_with_outputs(frame, inner),
-            AstExprKind::ImplicitConversion(conversion) => {
-                return self.call_with_outputs(frame, &conversion.value)
-            }
-            AstExprKind::Function(func) => {
-                let signature = self.analysis.context().functions().get(&func.name)?;
-                if signature.builtin_function.is_some() {
-                    return None;
-                }
-                let Some(Body::Function(function)) = self.body_named(&func.name) else {
-                    return None;
-                };
-                UserCall::Function {
-                    call: func,
-                    function,
-                }
-            }
-            AstExprKind::MethodCall(call) => self.method_call(frame, call)?,
-            AstExprKind::Compare(_)
-            | AstExprKind::BinaryOp(_)
-            | AstExprKind::UnaryOp(_)
-            | AstExprKind::Const(_)
-            | AstExprKind::EnumeratedValue(_)
-            | AstExprKind::Variable(_)
-            | AstExprKind::LateBound(_)
-            | AstExprKind::Ref(_)
-            | AstExprKind::Deref(_)
-            | AstExprKind::CallOutput(_)
-            | AstExprKind::Null(_) => return None,
-        };
-        call.parameters()
-            .is_some_and(|parameters| has_outputs(&parameters))
-            .then_some(call)
     }
 
     /// The call `call`, the expression `expr`, of a function or method with
