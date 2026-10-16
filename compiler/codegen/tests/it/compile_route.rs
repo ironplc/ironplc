@@ -7,11 +7,19 @@ use ironplc_parser::options::CompilerOptions;
 
 use crate::common::{bc, compile_by_route, parse, Snapshot};
 
+/// Three statements lowering supports, the function's and two of the
+/// program's, and one it does not yet: the assignment of a call of a function
+/// whose result is a structure, which a lowered call passes a temporary for
+/// (REQ-LOW-lowering-079).
 const SOURCE: &str = "
+TYPE P : STRUCT x : DINT; END_STRUCT; END_TYPE
+FUNCTION MakeP : P
+  MakeP.x := 1;
+END_FUNCTION
 PROGRAM main
-  VAR a : DINT; t : TON; b : BOOL; END_VAR
+  VAR a : DINT; p : P; END_VAR
   a := a + 1;
-  t(IN := b);
+  p := MakeP();
   a := a * 2;
 END_PROGRAM
 ";
@@ -40,7 +48,7 @@ fn compile_when_ast_route_then_every_statement_from_ast() {
 #[test]
 fn compile_when_prefer_lowered_then_unsupported_statement_from_ast() {
     let counts = route_counts(SOURCE, Route::PreferLowered).unwrap();
-    assert_eq!((counts.lowered, counts.from_ast), (2, 1));
+    assert_eq!((counts.lowered, counts.from_ast), (3, 1));
 }
 
 #[test]

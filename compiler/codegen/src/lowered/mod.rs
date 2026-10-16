@@ -36,6 +36,7 @@ use crate::compile_user_call::passes_by_reference;
 use crate::emit::Emitter;
 
 mod aggregate;
+mod call_args;
 mod expr;
 mod fb_call;
 mod fn_call;
@@ -45,6 +46,7 @@ mod policy;
 mod stmt;
 mod string;
 
+use call_args::passes;
 pub(crate) use policy::parse_policy;
 
 /// Which route codegen compiles a statement by.
@@ -346,18 +348,6 @@ pub(super) fn user_function(
     let scalar =
         function.return_string_info.is_none() && function.return_struct_desc_index.is_none();
     (passed && scalar).then(|| function.clone())
-}
-
-/// Whether `args` are one for each of `params`, each passed as its
-/// parameter takes it: a value by value, and a place by reference.
-fn passes<'s>(params: &[ParamPassing], args: impl ExactSizeIterator<Item = &'s Arg>) -> bool {
-    params.len() == args.len()
-        && params.iter().zip(args).all(|(param, arg)| {
-            matches!(
-                (param, arg),
-                (ParamPassing::Value, Arg::Value(_)) | (ParamPassing::Reference, Arg::Ref(_))
-            )
-        })
 }
 
 /// Whether `place` has storage this backend reaches as one value of type

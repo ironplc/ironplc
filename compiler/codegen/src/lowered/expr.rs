@@ -10,6 +10,7 @@ use ironplc_ir::lowered::{
 };
 use ironplc_lowering::Lowering;
 
+use super::call_args::emit_passed;
 use super::fn_call::take_result;
 use super::method::{emit_method_call, method_site};
 use super::place::{resolve_load, variable_name, Load};
@@ -209,9 +210,7 @@ pub(super) fn emit_user_call<'s>(
     args: impl IntoIterator<Item = &'s Arg>,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
-    // A function of the program takes values and places
-    // (`ProgramBuilder::call`), so no string offsets come back.
-    emit_args(emitter, ctx, lowering, args, span)?;
+    emit_passed(emitter, ctx, lowering, &function.params, args, span)?;
     emitter.emit_call(
         function.function_id,
         function.num_params,
@@ -289,7 +288,7 @@ fn emit_args<'s>(
 
 /// Pushes a reference to `place`, a variable or what a `VAR_IN_OUT`
 /// parameter refers to. `can_emit` leaves any other place to the AST.
-fn emit_ref(
+pub(super) fn emit_ref(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     lowering: &Lowering<'_>,

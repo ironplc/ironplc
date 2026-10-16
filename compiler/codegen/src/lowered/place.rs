@@ -139,6 +139,39 @@ pub(super) fn variable_name(
     Some(named.name)
 }
 
+/// Whether `expr` reads a field of an instance of a standard function block:
+/// an instance this backend reaches by name, of no user-defined block's type.
+///
+/// Until lowering generates the standard blocks (issue 2288), the VM's own
+/// block gives such a field its value, and may leave it outside the field's
+/// type: an `_INT` counter counts its `CV` in 32 bits ("Standard function
+/// blocks" in `specs/design/lowered-program.md`). So the lowered program's
+/// proof that a read fits the type it reads (REQ-LOW-lowering-046) does not
+/// hold for one, and a store of it is narrowed, as the route that reads the
+/// AST narrows every store.
+pub(super) fn reads_standard_block_field(
+    lowering: &Lowering<'_>,
+    ctx: &CompileContext,
+    expr: &Expr,
+) -> bool {
+    let Some(place) = super::read(expr) else {
+        return false;
+    };
+    let Some(SymbolicVariableKind::Structured(field)) =
+        reference(lowering, ctx, place, &mut Vec::new())
+    else {
+        return false;
+    };
+    let SymbolicVariableKind::Named(record) = field.record.as_ref() else {
+        return false;
+    };
+    ctx.fb_instances.get(&record.name).is_some_and(|instance| {
+        ctx.user_fb_types
+            .values()
+            .all(|block| block.type_id != instance.type_id)
+    })
+}
+
 /// Where codegen's layout stores the string `place`: a string variable, an
 /// element of a string array or a string field of a structure, as the AST
 /// route finds it.

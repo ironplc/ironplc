@@ -60,7 +60,7 @@ use ironplc_parser::options::{CompilerOptions, StringToNumFailure, StringToNumNo
 
 use ironplc_analyzer::{
     BuiltinFunction, CleanAnalysis, FunctionEnvironment, MethodOwners, SemanticType,
-    TypeEnvironment,
+    StandardFunctionBlock, TypeEnvironment,
 };
 
 use crate::emit::Emitter;
@@ -504,6 +504,7 @@ fn compile_program_with_functions(
     ctx.types = crate::type_info::type_representations(types);
     ctx.block_members = crate::initial_value::block_members(types);
     ctx.operand_names = crate::type_info::operand_names(types);
+    ctx.standard_blocks = crate::compile_call::standard_blocks_by_name(types);
     ctx.builtin_functions = crate::compile_call::builtin_functions_by_name(functions);
     ctx.method_owners = method_owners.clone();
     ctx.string_to_num = string_to_num;
@@ -1223,6 +1224,8 @@ pub(crate) struct CompileContext<'a> {
     pub(crate) user_functions: HashMap<String, UserFunctionInfo>,
     /// Maps user-defined FB type name (uppercase) to compilation metadata.
     pub(crate) user_fb_types: HashMap<String, UserFbTypeInfo>,
+    /// Maps standard FB type name (uppercase) to the block it is.
+    pub(crate) standard_blocks: HashMap<String, StandardFunctionBlock>,
     /// Next available type ID for user-defined function blocks.
     next_user_fb_type_id: u16,
     /// When compiling a function body that returns a value, describes how an
@@ -1298,6 +1301,7 @@ impl CompileContext<'_> {
             debug_source_files: crate::source_lookup::SourceFileRegistry::new(),
             user_functions: HashMap::new(),
             user_fb_types: HashMap::new(),
+            standard_blocks: HashMap::new(),
             next_user_fb_type_id: 0x1000,
             types: HashMap::new(),
             block_members: HashMap::new(),

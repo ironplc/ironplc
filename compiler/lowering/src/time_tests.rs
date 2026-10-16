@@ -176,3 +176,41 @@ fn lower_statement_when_time_or_date_literal_then_constant_of_its_count() {
         ]
     );
 }
+
+/// A duration is negated at the signed integer it is stored as (ADR-0025):
+/// the milliseconds of a `TIME` at 32 bits and of an `LTIME` at 64.
+#[test]
+fn lower_statement_when_duration_negated_then_negation_of_its_count() {
+    let outcome = lower(
+        "PROGRAM main VAR t : TIME; lt : LTIME; END_VAR
+            t := -t;
+            lt := -lt;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f0 (neg i32s (read i32s v0^.f0))",
+            "assign v0^.f1 (neg i64s (read i64s v0^.f1))",
+        ]
+    );
+}
+
+/// A time of day, a date and a date and time count from an epoch, so they
+/// are not negated: each stays unsupported.
+#[test]
+fn lower_statement_when_time_of_day_or_date_negated_then_unsupported() {
+    let outcome = lower(
+        "PROGRAM main VAR c : TOD; d : DATE; s : DT; END_VAR
+            c := -c;
+            d := -d;
+            s := -s;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        ["unsupported", "unsupported", "unsupported"]
+    );
+}

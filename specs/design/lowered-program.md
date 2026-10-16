@@ -1199,11 +1199,16 @@ function block, and its block is that type's body.
 
 Not lowered yet, so each stays on the route that reads the AST:
 
-- a call of a standard function block, which lowering does not generate yet
-  (REQ-LOW-lowering-077);
 - a call that binds a `VAR_IN_OUT` of the block;
 - a call whose input or output lowering does not store yet, such as a
-  structure, which needs a `Copy`.
+  structure output.
+
+Until lowering generates the standard function blocks
+([issue 2288](https://github.com/ironplc/ironplc/issues/2288)), a call of one
+lowers as any other call does, to an `FbCall` of a POU named after the block
+that has no body in the lowered program, and the bytecode backend calls the
+VM's own block on the instance. That `FbCall` names a standard function block,
+which REQ-LOW-lowering-077 rules out once lowering generates them.
 
 While both routes exist, the bytecode backend emits the stores of a call's
 inputs and its `FbCall` as the route that reads the AST emits a call
@@ -1926,6 +1931,7 @@ implements it.
 | Operator function form `ADD(a, b, c)` | Left fold of `Binary` |
 | `a ** b` | `Call` of the `EXPT` `Intrinsic`, as `EXPT(a, b)` is |
 | Typed time function `ADD_DT_TIME(a, b)`, and an operator or function form on times and dates such as `a + b` (REQ-LOW-lowering-166) | Scalar arithmetic at the signed integer of the result's width, on the milliseconds of a `TIME` or `TIME_OF_DAY` and the seconds of a `DATE` or `DATE_AND_TIME` (ADR-0025): `b` converted to the unit `a` counts in, the operation, then the result converted to the unit its type counts in. A duration scaled by a real is converted to the real's type and back |
+| Negated duration `-t` | `Neg` of the signed integer the duration is stored as (ADR-0025), the milliseconds of a `TIME` at 32 bits and of an `LTIME` at 64 |
 | `DT_TO_DATE(x)` | `(x / 86400) * 86400`, which reads `x` once (REQ-LOW-lowering-165) |
 | `DT_TO_TOD(x)` | `(x MOD 86400) * 1000` |
 | Explicit conversion such as `REAL_TO_INT(x)` | A `Convert` where the operation type changes, then a `Truncate` where the storage narrows; a conversion to `BOOL` is a `Compare` with zero |

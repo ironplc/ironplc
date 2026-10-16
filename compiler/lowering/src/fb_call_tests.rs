@@ -92,23 +92,79 @@ fn lower_statement_when_block_called_inside_if_then_among_its_statements() {
     );
 }
 
-/// A call of a standard function block, which lowering does not generate
-/// yet (REQ-LOW-lowering-077), and a call that binds a `VAR_IN_OUT`, are not
-/// lowered.
+/// A call that binds a `VAR_IN_OUT` is not lowered.
 #[test]
-fn lower_statement_when_standard_block_or_in_out_then_unsupported() {
+fn lower_statement_when_in_out_bound_then_unsupported() {
     let outcome = lower(
         "FUNCTION_BLOCK Acc
          VAR_IN_OUT total : DINT; END_VAR
            total := total + 1;
          END_FUNCTION_BLOCK
-         PROGRAM main VAR t : TON; c : Acc; n : DINT; done : BOOL; END_VAR
-           t(IN := TRUE, PT := T#1S, Q => done);
+         PROGRAM main VAR c : Acc; n : DINT; END_VAR
            c(total := n);
          END_PROGRAM",
         "main",
     );
-    assert_eq!(outcome.statements, ["unsupported", "unsupported"]);
+    assert_eq!(outcome.statements, ["unsupported"]);
+}
+
+/// REQ-LOW-lowering-069: a call of a standard timer lowers as a call of any
+/// other block: its inputs stored in the instance's fields, the call of the
+/// POU named after the block, then its outputs read from the fields.
+#[test]
+fn lower_statement_when_timer_called_then_inputs_call_and_outputs() {
+    let outcome = lower(
+        "PROGRAM main VAR t : TON; run : BOOL; done : BOOL; elapsed : TIME; END_VAR
+           t(IN := run, PT := T#5S, Q => done, ET => elapsed);
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [[
+            "assign v0^.f0.f0 (read bool v0^.f1)",
+            "assign v0^.f0.f1 (const i32s 5000)",
+            "fb-call v0^.f0 pou1",
+            "assign v0^.f2 (read bool v0^.f0.f2)",
+            "assign v0^.f3 (read i32s v0^.f0.f3)",
+        ]
+        .join("\n")]
+    );
+}
+
+/// REQ-LOW-lowering-069: a call of a standard counter stores each input it
+/// supplies, an input stored narrower than it is computed narrowed as any
+/// store is (REQ-LOW-lowering-046), and leaves an omitted input as it was.
+#[test]
+fn lower_statement_when_counter_called_then_inputs_call_and_outputs() {
+    let outcome = lower(
+        "PROGRAM main
+           VAR c : CTU; d : CTD_LINT; a : INT; b : INT; q : BOOL; n : INT; m : LINT; END_VAR
+           c(CU := q, PV := a + b, Q => q, CV => n);
+           d(CD := TRUE, PV := m, CV => m);
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            [
+                "assign v0^.f0.f0 (read bool v0^.f4)",
+                "assign v0^.f0.f2 (truncate 16 (add i32s (read i32s v0^.f2) (read i32s v0^.f3)))",
+                "fb-call v0^.f0 pou1",
+                "assign v0^.f4 (read bool v0^.f0.f3)",
+                "assign v0^.f5 (read i32s v0^.f0.f4)",
+            ]
+            .join("\n"),
+            [
+                "assign v0^.f1.f0 (const bool true)",
+                "assign v0^.f1.f2 (read i64s v0^.f6)",
+                "fb-call v0^.f1 pou2",
+                "assign v0^.f6 (read i64s v0^.f1.f4)",
+            ]
+            .join("\n"),
+        ]
+    );
 }
 
 /// A call in a block's body of an instance that is a field of the block

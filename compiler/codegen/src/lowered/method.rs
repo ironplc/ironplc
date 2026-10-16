@@ -16,11 +16,11 @@ use std::collections::HashMap;
 
 use ironplc_container::{FunctionId, VarIndex};
 use ironplc_dsl::core::{Id, SourceSpan};
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_ir::lowered::{Arg, PouId};
 use ironplc_lowering::Lowering;
 
-use super::expr::emit_expr;
+use super::call_args::{emit_passed, passes};
 use super::place::variable_name;
 use crate::compile::{CompileContext, ParamPassing, StringVarInfo};
 use crate::emit::Emitter;
@@ -48,15 +48,15 @@ pub(super) struct MethodSite {
 }
 
 impl MethodSite {
-    /// Whether `inputs` are one value for each of the method's inputs: the
-    /// only arguments this backend passes a method, as the AST route does.
+    /// Whether `inputs` are one for each of the method's inputs, each passed
+    /// as its parameter takes it. A method with a `VAR_IN_OUT` is not
+    /// called, as the AST route does not call one (`compile_method_call`).
     pub(super) fn takes<'s>(&self, inputs: impl ExactSizeIterator<Item = &'s Arg>) -> bool {
-        self.params.len() == inputs.len()
-            && self
-                .params
-                .iter()
-                .zip(inputs)
-                .all(|(param, arg)| matches!((param, arg), (ParamPassing::Value, Arg::Value(_))))
+        let in_out = self
+            .params
+            .iter()
+            .any(|param| matches!(param, ParamPassing::Reference));
+        !in_out && passes(&self.params, inputs)
     }
 }
 
@@ -116,15 +116,7 @@ pub(super) fn emit_method_call<'s>(
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
     emitter.emit_fb_load_instance(site.instance);
-    for input in inputs {
-        let Arg::Value(value) = input else {
-            return Err(Diagnostic::internal_error_at(Label::span(
-                span.clone(),
-                "A lowered method call this backend does not pass",
-            )));
-        };
-        emit_expr(emitter, ctx, lowering, value)?;
-    }
+    emit_passed(emitter, ctx, lowering, &site.params, inputs, span)?;
     ctx.record_call_edge(site.function_id);
     emitter.emit_method_call(
         site.function_id,
