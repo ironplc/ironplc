@@ -29,12 +29,13 @@ use ironplc_ir::lowered::{
 };
 use ironplc_lowering::Lowering;
 
+use super::call_args::passes;
 use super::expr::{emit_operation, emit_user_call};
 use super::method::{emit_method_call, method_site, MethodSite};
 use super::place::{resolve, resolve_string};
 use super::string::reaches_string;
 use super::{
-    args_can_emit, op_type, operand, operation_can_emit, passes, reaches, same_span, user_function,
+    args_can_emit, op_type, operand, operation_can_emit, reaches, same_span, user_function,
 };
 use crate::compile::{CompileContext, StringVarInfo, UserFunctionInfo};
 use crate::compile_expr::emit_load_var;
