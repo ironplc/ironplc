@@ -1,0 +1,65 @@
+=====
+P4084
+=====
+
+.. problem-summary:: P4084
+
+This error occurs when a field selection, such as ``pump.speed``, names a field
+that the type of the variable does not have.
+
+The fields of a structure are the ones its ``STRUCT`` declares. The fields of a
+function block instance are the block's ``VAR_INPUT``, ``VAR_OUTPUT``,
+``VAR_IN_OUT`` and ``VAR`` variables, including those it inherits through
+``EXTENDS``. A property of the function block is not reported by this error.
+
+Example
+-------
+
+The following code will generate error P4084:
+
+.. playground::
+
+   TYPE
+     Motor : STRUCT
+       speed : INT;
+       running : BOOL;
+     END_STRUCT;
+   END_TYPE
+
+   PROGRAM main
+     VAR
+       pump : Motor;
+     END_VAR
+     pump.sped := 100;  (* Error: Motor has no field sped *)
+   END_PROGRAM
+
+The structure ``Motor`` has the fields ``speed`` and ``running``, so ``sped``
+names nothing. When the name is close to a field's name, the compiler suggests
+that field.
+
+To fix this error, select a field the type declares:
+
+.. playground::
+
+   TYPE
+     Motor : STRUCT
+       speed : INT;
+       running : BOOL;
+     END_STRUCT;
+   END_TYPE
+
+   PROGRAM main
+     VAR
+       pump : Motor;
+     END_VAR
+     pump.speed := 100;
+   END_PROGRAM
+
+See Also
+--------
+
+- :doc:`/reference/language/data-types/derived/structure-types` — declaring the fields of a structure
+- :doc:`/reference/language/pous/function-block` — the inputs and outputs of a function block
+- :doc:`/reference/language/object-orientation/extends` — fields a function block inherits
+- :doc:`P4007` — a variable that is not declared
+- :doc:`P4046` — a method that is not declared

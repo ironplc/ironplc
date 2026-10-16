@@ -75,6 +75,7 @@ mod rule_task_names_unique;
 mod rule_temporal_literal_range;
 mod rule_unsupported_extension;
 mod rule_use_declared_enumerated_value;
+mod rule_use_declared_field;
 mod rule_use_declared_symbolic_var;
 mod rule_var_decl_const_initialized;
 mod rule_var_decl_const_not_fb;
