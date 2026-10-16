@@ -4,8 +4,10 @@
 //! This backend passes each argument as the route that reads the AST passes
 //! it (`compile_user_call.rs`, `compile_method.rs`), which the callee's
 //! layout records for each parameter as a [`ParamPassing`]: a value on the
-//! stack, or a place by reference. A function and a method pass their
-//! arguments alike, so both check and push them here.
+//! stack, a place by reference, or a string copied into the parameter's run
+//! of the data region, followed by the dummy value `CALL` or `METHOD_CALL`
+//! pops for its slot. A function and a method pass their arguments alike,
+//! so both check and push them here.
 
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -13,11 +15,14 @@ use ironplc_ir::lowered::Arg;
 use ironplc_lowering::Lowering;
 
 use super::expr::{emit_expr, emit_ref};
+use super::string::str_arg_offset;
 use crate::compile::{CompileContext, ParamPassing};
+use crate::compile_user_call::copy_string_arg;
 use crate::emit::Emitter;
 
 /// Whether `args` are one for each of `params`, each passed as its
-/// parameter takes it: a value by value, and a place by reference.
+/// parameter takes it: a value by value, a place by reference, and a string
+/// by copy.
 pub(super) fn passes<'s>(
     params: &[ParamPassing],
     args: impl ExactSizeIterator<Item = &'s Arg>,
@@ -58,7 +63,17 @@ pub(super) fn emit_passed<'s>(
                 };
                 emit_ref(emitter, ctx, lowering, place, span)?;
             }
-            ParamPassing::String(_) => return Err(not_passed(span)),
+            ParamPassing::String(param) => {
+                let Arg::Str(value) = arg else {
+                    return Err(not_passed(span));
+                };
+                // Put in a slot as the AST route's `resolve_string_arg` puts
+                // it: a string variable is its own slot, and any other string
+                // is computed into a temporary slot of its capacity.
+                copy_string_arg(emitter, ctx, param, |emitter, ctx| {
+                    str_arg_offset(emitter, ctx, lowering, value)
+                })?;
+            }
         }
     }
     match args.next() {
@@ -71,7 +86,9 @@ pub(super) fn emit_passed<'s>(
 fn passes_as(param: &ParamPassing, arg: &Arg) -> bool {
     matches!(
         (param, arg),
-        (ParamPassing::Value, Arg::Value(_)) | (ParamPassing::Reference, Arg::Ref(_))
+        (ParamPassing::Value, Arg::Value(_))
+            | (ParamPassing::Reference, Arg::Ref(_))
+            | (ParamPassing::String(_), Arg::Str(_))
     )
 }
 

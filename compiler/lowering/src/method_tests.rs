@@ -108,24 +108,52 @@ fn lower_statement_when_method_body_then_fields_through_instance() {
     );
 }
 
-/// A call of a method the receiver's block inherits, and one of a method
-/// with a string input, are not lowered yet.
+/// A call of a method the receiver's block inherits is not lowered yet.
 #[test]
-fn lower_statement_when_inherited_method_or_string_input_then_unsupported() {
+fn lower_statement_when_inherited_method_then_unsupported() {
     let outcome = lower(
         &format!(
             "{BLOCK}
              FUNCTION_BLOCK Derived EXTENDS Counter
-               METHOD Name
-                 VAR_INPUT s : STRING; END_VAR
-               END_METHOD
              END_FUNCTION_BLOCK
              PROGRAM main VAR d : Derived; END_VAR
                d.Add(k := 1);
-               d.Name(s := 'x');
              END_PROGRAM"
         ),
         "main",
     );
-    assert_eq!(outcome.statements, ["unsupported", "unsupported"]);
+    assert_eq!(outcome.statements, ["unsupported"]);
+}
+
+/// REQ-LOW-lowering-072, REQ-LOW-lowering-076: a method's string input is
+/// passed a `Str` of its encoding after the receiver, in a call whose result
+/// is used and in a call statement. The method's body reads the variable.
+#[test]
+fn lower_statement_when_method_has_string_input_then_str_after_receiver() {
+    let outcome = lower_bodies(
+        "FUNCTION_BLOCK Named
+           METHOD Len2 : DINT
+             VAR_INPUT v : STRING[4]; w : WSTRING[8]; END_VAR
+             Len2 := LEN(v) * 10 + LEN(w);
+           END_METHOD
+           METHOD Set
+             VAR_INPUT v : STRING; END_VAR
+           END_METHOD
+         END_FUNCTION_BLOCK
+         PROGRAM main VAR f : Named; t : STRING := 'ab'; r : DINT; END_VAR
+           r := f.Len2(v := 'hello', w := \"pq\");
+           f.Set(v := t);
+         END_PROGRAM",
+        &["main", "Named.Len2"],
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f2 (call pou2 i32s (ref v0^.f0) (literal string[5] \"hello\") \
+             (literal wstring[2] \"pq\"))",
+            "call pou3 (ref v0^.f0) (read string[254] v0^.f1)",
+            "assign v4 (add i32s (mul i32s (call len_string i32s (read string[4] v2)) \
+             (const i32s 10)) (call len_wstring i32s (read wstring[8] v3)))",
+        ]
+    );
 }

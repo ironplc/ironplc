@@ -206,25 +206,87 @@ fn lower_statement_when_function_with_outputs_called_inside_if_then_among_its_st
 }
 
 /// A call of a function with outputs that is not the whole value of an
-/// assignment, and a call with a string input, are not lowered yet.
+/// assignment is not lowered yet.
 #[test]
-fn lower_statement_when_call_with_outputs_inside_expression_or_string_input_then_unsupported() {
+fn lower_statement_when_call_with_outputs_inside_expression_then_unsupported() {
     let outcome = lower(
         &format!(
             "{OUTPUTS}
-             FUNCTION S : DINT VAR_INPUT a : STRING; END_VAR S := 1; END_FUNCTION
-             PROGRAM main VAR i : INT; d : DINT; t : STRING; END_VAR
+             PROGRAM main VAR i : INT; d : DINT; END_VAR
                i := F(a := 1, q => d) + 1;
                IF F(a := 1) > 0 THEN d := 1; END_IF;
-               d := S(t);
              END_PROGRAM"
         ),
         "main",
     );
+    assert_eq!(outcome.statements, ["unsupported", "unsupported"]);
+}
+
+/// REQ-LOW-lowering-071, REQ-LOW-lowering-072: a function's `STRING` and
+/// `WSTRING` inputs are variables of their string types, held by value,
+/// and a call passes each a `Str` of its encoding, of any capacity: a
+/// variable or a literal. The body reads the variables the call passes.
+#[test]
+fn lower_statement_when_function_has_string_inputs_then_strs_of_their_encodings() {
+    let outcome = lower_bodies(
+        "FUNCTION SAME_LEN : BOOL VAR_INPUT s : STRING[4]; w : WSTRING[8]; END_VAR
+           SAME_LEN := LEN(s) = LEN(w);
+         END_FUNCTION
+         PROGRAM main VAR ok : BOOL; t : STRING[10]; u : WSTRING; END_VAR
+           ok := SAME_LEN(t, u);
+           ok := SAME_LEN(w := \"x\", s := 'abcdef');
+         END_PROGRAM",
+        &["main", "SAME_LEN"],
+    );
     assert_eq!(
         outcome.statements,
-        ["unsupported", "unsupported", "unsupported"]
+        [
+            "assign v0^.f0 (call pou1 bool (read string[10] v0^.f1) (read wstring[254] v0^.f2))",
+            "assign v0^.f0 (call pou1 bool (literal string[6] \"abcdef\") \
+             (literal wstring[1] \"x\"))",
+            "assign v3 (eq (call len_string i32s (read string[4] v1)) \
+             (call len_wstring i32s (read wstring[8] v2)))",
+        ]
     );
+}
+
+/// REQ-LOW-lowering-072, REQ-LOW-lowering-092: a string input of a call
+/// with outputs is a `Str`, before the temporaries of its outputs.
+#[test]
+fn lower_statement_when_call_with_outputs_has_string_input_then_str_before_temporaries() {
+    let outcome = lower(
+        "FUNCTION PAD : DINT VAR_INPUT s : STRING; END_VAR VAR_OUTPUT n : DINT; END_VAR
+           n := LEN(s);
+           PAD := 1;
+         END_FUNCTION
+         PROGRAM main VAR r : DINT; k : DINT; END_VAR
+           r := PAD('abc', n => k);
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [[
+            "assign v5 (call pou1 i32s (literal string[3] \"abc\") (ref v4))",
+            "assign v0^.f1 (read i32s v4)",
+            "assign v0^.f0 (read i32s v5)",
+        ]
+        .join("\n")]
+    );
+}
+
+/// A `VAR_IN_OUT` of a string type is not lowered yet: the route that reads
+/// the AST passes no string by reference.
+#[test]
+fn lower_statement_when_function_has_string_in_out_then_unsupported() {
+    let outcome = lower(
+        "FUNCTION SIZE : DINT VAR_IN_OUT s : STRING; END_VAR SIZE := LEN(s); END_FUNCTION
+         PROGRAM main VAR r : DINT; t : STRING; END_VAR
+           r := SIZE(t);
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(outcome.statements, ["unsupported"]);
 }
 
 /// What a `VAR_IN_OUT` refers to is not a `FOR` loop's control variable yet,

@@ -187,8 +187,8 @@ fn call_when_arguments_do_not_match_function_then_internal_error() {
     }
 }
 
-/// A function's parameters and result are scalar variables it owns, and it
-/// is declared once.
+/// A function's parameters and result are variables it owns, none of them
+/// an aggregate, and it is declared once.
 #[test]
 fn declare_function_when_variable_not_its_own_scalar_or_declared_twice_then_internal_error() {
     let mut f = fixture();
@@ -253,4 +253,78 @@ fn call_when_in_out_parameter_then_takes_ref_to_place_of_its_type() {
             "ProgramBuilder::call"
         ));
     }
+}
+
+/// A function `g` of the fixture's program, taking a `STRING[10]` and a
+/// `WSTRING[10]` and returning a `DINT`, with its parameters and result.
+fn string_function(f: &mut Fixture) -> (PouId, Vec<VarId>, VarId) {
+    let pou = f.b.push_pou(name("g"));
+    let string = |b: &mut ProgramBuilder, encoding| {
+        let shape = StringShape {
+            encoding,
+            capacity: 10,
+        };
+        b.push_type(entry(TypeKind::String(shape)), &span())
+            .unwrap()
+    };
+    let narrow = string(&mut f.b, Encoding::Narrow);
+    let wide = string(&mut f.b, Encoding::Wide);
+    let dint = f.ty(f.dint);
+    let mut var = |text: &str, ty| f.b.push_variable(name(text), Owner::Pou(pou), ty).unwrap();
+    let parameters = vec![var("s", narrow), var("w", wide)];
+    let result = var("g", dint);
+    (pou, parameters, result)
+}
+
+fn literal(text: &str, encoding: Encoding) -> Arg {
+    Arg::Str(StrExpr::literal(text.chars().collect(), encoding, span()).unwrap())
+}
+
+/// REQ-LOW-lowering-072: a function's string parameter, held by value,
+/// takes a string of its encoding, of any capacity: not a value, nor a
+/// string of the other encoding.
+#[test]
+fn call_when_string_parameters_then_takes_strings_of_their_encodings() {
+    let mut f = fixture();
+    let (pou, parameters, result) = string_function(&mut f);
+    f.b.declare_function(pou, parameters, result, &span())
+        .unwrap();
+    assert_eq!(
+        f.b.params(pou),
+        Some(vec![
+            Param::Str(Encoding::Narrow),
+            Param::Str(Encoding::Wide)
+        ])
+    );
+    let args = vec![
+        literal("abcdefghijkl", Encoding::Narrow),
+        literal("x", Encoding::Wide),
+    ];
+    let call = f.b.call(pou, args, span()).unwrap();
+    assert_eq!(
+        call.to_string(),
+        "(call pou1 i32s (literal string[12] \"abcdefghijkl\") (literal wstring[1] \"x\"))"
+    );
+    let refused = [
+        vec![Arg::Value(f.read(f.dint)), literal("x", Encoding::Wide)],
+        vec![literal("a", Encoding::Wide), literal("x", Encoding::Wide)],
+    ];
+    for args in refused {
+        assert!(is_internal_error_naming(
+            f.b.call(pou, args, span()),
+            "ProgramBuilder::call"
+        ));
+    }
+}
+
+/// A function's result is a scalar variable: a string result is not one.
+#[test]
+fn declare_function_when_result_is_string_then_internal_error() {
+    let mut f = fixture();
+    let (pou, parameters, _) = string_function(&mut f);
+    let string_result = parameters[0];
+    assert!(is_internal_error_naming(
+        f.b.declare_function(pou, parameters, string_result, &span()),
+        "ProgramBuilder::declare_function"
+    ));
 }

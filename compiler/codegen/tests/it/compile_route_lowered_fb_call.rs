@@ -8,10 +8,8 @@ use ironplc_parser::options::CompilerOptions;
 
 use rstest::rstest;
 
-use crate::common::{
-    compile_by_route, parse, parse_and_compile_to_run, run_compiled_scans, Duration, Snapshot,
-};
-use crate::compile_route_lowered::{assert_same_code, options, run_lowered};
+use crate::common::{compile_by_route, parse, run_compiled_scans, Duration};
+use crate::compile_route_lowered::{assert_same_code, options, run_lowered_agreeing};
 
 /// A block whose outputs are its inputs' sum, whether the sum is positive,
 /// a `REAL`, a `UDINT` and a count of its calls.
@@ -25,13 +23,6 @@ const BLOCK: &str = "
       qu := u;
       calls := calls + 1;
     END_FUNCTION_BLOCK";
-
-/// Runs `source` with every statement lowered, once one scan of it by each
-/// route is shown to leave every variable with the same value.
-fn run_lowered_agreeing(source: &str) -> Snapshot {
-    parse_and_compile_to_run(source, &CompilerOptions::default());
-    run_lowered(source)
-}
 
 /// REQ-LOW-lowering-069: a call stores its inputs, in the order the block
 /// declares them, runs the block, and stores each output in its target: a
