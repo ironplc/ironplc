@@ -1,7 +1,6 @@
 # Plan: One `EXTENDS` Relation, and the Checks It Makes Possible
 
-Checked against `main` at `3da36ef7` (after #2296); line numbers are as of that
-commit.
+Checked against `main` at `122fa0dc`; line numbers are as of that commit.
 Every reproduction below was rerun there.
 
 Fixes [#2144](https://github.com/ironplc/ironplc/issues/2144) (an `EXTENDS` of
@@ -12,22 +11,28 @@ a different return type from its base is not reported).
 ## Goal
 
 The two issues have one cause: `EXTENDS` has only half a representation in
-the analyzer's environments. [#2296](https://github.com/ironplc/ironplc/pull/2296)
-gave the type environment the relation (`extended`,
-`type_environment.rs:299`), entered only between two blocks the library
-declares, but only `field_type` reads it. Every other consumer still resolves
-the source's `EXTENDS base` name (`dsl/src/oop.rs:204`) on its own, with its
-own idea of what a name that resolves to nothing means, and nothing reports
-an `EXTENDS` the environment did not enter (#2144). And no environment holds
-what a method of a block looks like in terms of types, so nothing can compare
-an override with the method it overrides (#2145).
+the analyzer's environments.
+
+The type environment now keeps a record of each function block the library
+declares (`BlockRecord`, `type_environment/fields.rs:47`): its fields, the
+names of its properties, and its base, entered only when the base is a
+function block the library declares (`record_block`, `:100`). Field lookup
+follows that base through `inheritance_chain` (`:219`). That is the
+relation this plan builds on (#2296, #2303, #2307, #2312).
+
+Everything else that follows `EXTENDS` still resolves the source's base *name*
+(`dsl/src/oop.rs:204`) on its own, with its own idea of what a name that
+resolves to nothing means. Nothing reports an `EXTENDS` the environment did
+not record (#2144). And no environment holds what a method of a block looks
+like in terms of types, so nothing can compare an override with the method it
+overrides (#2145).
 
 After this work:
 
 - **Every analysis that follows the `EXTENDS` chain follows the type
   environment's relation**, not the name.
-- **The type environment records each method's signature**: its result type
-  and its `VAR_INPUT`/`VAR_OUTPUT`/`VAR_IN_OUT` parameters, as type ids.
+- **The block record holds each method's signature**: its result type and its
+  `VAR_INPUT`/`VAR_OUTPUT`/`VAR_IN_OUT` parameters, as type ids.
 - **An `EXTENDS` that names no function block is reported** (new problem code),
   at the base name.
 - **A method whose signature differs from the method it overrides is
@@ -35,40 +40,43 @@ After this work:
 
 ## Current behaviour
 
-### Who resolves the base name
+### Who follows the base
 
-| Site | Resolves `EXTENDS base` by | A name that is not a declared block |
+| Site | Follows `EXTENDS base` by | A name that is not a declared block |
 |---|---|---|
 | `xform_toposort_declarations.rs:441` | adding a graph edge from the name | adds a node with no declaration |
-| `xform_resolve_decl_types.rs:202-205` → `TypeEnvironment::record_extends` (`type_environment.rs:584`) | the type id, entered only when both ends are blocks the library declares (#2296) | not entered; read only by `field_type` |
-| `xform_resolve_symbol_and_function_environment.rs:339` | copying the name into `SymbolInfo::extends` (`symbol_environment.rs:172`) | becomes a scope with no symbols on the lookup chain (`:659`), and `SUPER^`'s type (`:631`) |
+| `xform_resolve_decl_types.rs:188-201` → `record_block` | the type id, kept only when it is a block the library declares | not recorded; nothing reports it |
+| `type_environment/fields.rs:219` `inheritance_chain` | the recorded base | — |
+| `xform_resolve_symbol_and_function_environment.rs:339` | copying the name into `SymbolInfo::extends` (`symbol_environment.rs:188`) | a scope with no symbols in `visible_scopes` (`:668`) and `base_scopes` (`:683`), and `SUPER^`'s type (`self_type`, `:653`) |
 | `callee_resolution.rs:64` `FunctionBlocks::chain` | looking the name up among the library's declarations | ends the chain |
-| `intermediates/inherited_fields.rs:47,77` | the same, with its own map and memo | "silently contributes no inherited fields" (`:28`) |
 
 `FunctionBlocks::chain` serves `resolve_method`, `declaring_block`,
-`MethodOwners` (which code generation also builds, `codegen/src/compile.rs:299`)
-and `BlockParameters`. `collect_inherited_fields` now serves only
-`rule_extends_field_duplicated`.
+`MethodOwners` and `BlockParameters`. `MethodOwners::of_library` is built by
+code generation (`codegen/src/compile.rs:307`) and lowering
+(`lowering/src/lib.rs:161`) as well as by the analyzer.
+`SymbolEnvironment::inherited_member` (`:708`), which
+`rule_extends_field_duplicated` uses, walks `base_scopes`.
 
 ### Who knows a method's types
 
-`xform_resolve_expr_types.rs:67-118` (`MethodTypes`, `collect_method_types`)
+`xform_resolve_expr_types.rs:67-119` (`MethodTypes`, `collect_method_types`)
 builds a private table of each method's return type name and output type ids,
 by walking `FunctionBlocks::resolve_method`, to type method calls. Nothing else
 records a method's types; the open
-[#1901](https://github.com/ironplc/ironplc/pull/1901) builds another private
-comparison (`TypeKey`, `LengthKey`) to check interface conformance.
+[#1901](https://github.com/ironplc/ironplc/pull/1901), which stalled on its
+size, builds another private comparison (`TypeKey`, `LengthKey`) to check
+interface conformance.
 
 ### Reproductions
 
-`ironplcc check --dialect iec61131-3-ed3` and `--dialect twincat` give the same
+`ironplcc check --dialect iec61131-3-ed3`; `--dialect twincat` gave the same
 result for every row.
 
 | # | Program | Today | After |
 |---|---|---|---|
 | 1 | `FB_A EXTENDS FB_Missing` | accepted | P-base (core 1) |
 | 2 | `FB_A EXTENDS Pair`, `Pair` a structure | accepted | P-base (core 1) |
-| 3 | `FB_A EXTENDS TON` | accepted | P9999 (see [Decisions](#decisions-for-review)) |
+| 3 | `FB_A EXTENDS TON` | accepted | P9999 (core 1, Decision 3) |
 | 4 | `FB_Root.Describe : INT`, `FB_Mid EXTENDS FB_Root`, `FB_Mid.Describe : BOOL` | accepted | P-override (core 2) |
 | 5 | Override renames `VAR_INPUT a : INT` to `b` | accepted | P-override |
 | 6 | Override declares `VAR_IN_OUT a : INT` where the base has `VAR_INPUT a : INT` | accepted | P-override |
@@ -79,7 +87,8 @@ result for every row.
 | 11 | Both declare `VAR_IN_OUT a : ARRAY[1..3] OF INT` | accepted | accepted |
 
 P-base and P-override are the next two free codes when the core change PRs
-open: P4084 and P4085 on `main` today (P4066–P4068 are claimed by #1901).
+open: P4085 and P4086 on `main` today (P4084 is `FieldNotFound`; P4066–P4068
+are claimed by #1901).
 
 ### What XAE does
 
@@ -99,24 +108,25 @@ method to have the signature of the one it overrides.
 
 ### Where the relation lives
 
-In the **type environment**, beside the ones it already keeps per type
-(`alias_bases`, `fields`, and since #2296 `extended`). The relation is
-`extended`, as #2296 enters it; this plan adds readers and one more table:
+In the type environment's `BlockRecord`, which already holds a block's fields,
+property names and base. This plan adds one field and three queries:
 
 ```rust
-/// The signature of each method a function block declares, by the id of
-/// the block and the method's name. An inherited method is not entered
-/// under the block that inherits it.
-methods: HashMap<(TypeId, Id), MethodSignature>,
+pub(super) struct BlockRecord {
+    fields: Vec<BlockField>,
+    properties: Vec<Id>,
+    base: Option<TypeId>,
+    /// The signature of each method the block declares, in the order it
+    /// declares them. An inherited method is in its declaring block's record.
+    methods: Vec<MethodSignature>,
+}
 ```
 
-- `base_of(block) -> Option<TypeId>` and `inheritance_chain(block)`, reading
-  `extended`: the block, its base, that block's base, and so on, stopping at a
-  block seen before (a cycle is rejected by the toposort; this is a safety net,
-  as in every walk today).
+- `base_of(block) -> Option<TypeId>`: the recorded base, and
+  `inheritance_chain` (exists) made `pub(crate)` readers' entry point.
 - `method(block, name) -> Option<(TypeId, &MethodSignature)>`: the method the
-  nearest block in the chain declares, and that block. This is the answer
-  `FunctionBlocks::resolve_method` gives today, in types rather than
+  nearest block in `inheritance_chain` declares, and that block. This is the
+  answer `FunctionBlocks::resolve_method` gives today, in types rather than
   declarations.
 - `same_type(a, b) -> bool` (core 2): the same id, or two types spelled out in
   place whose representations are equal. A sized string and an in-place array,
@@ -124,51 +134,41 @@ methods: HashMap<(TypeId, Id), MethodSignature>,
   `STRING[10]` parameters are the same type with different ids. A `REF_TO` is
   already one id however often it is spelled.
 
-`MethodSignature` (new, `analyzer/src/method_signature.rs`) holds the name, the
-result (none, or a type id), the parameters in declaration order (name,
-`ParameterSection`, type id) and the `R_EDGE`/`F_EDGE` inputs in declaration
-order. A type the analyzer could not resolve is recorded as unknown; a rule
-that compares it skips that pair, because the undeclared type is reported
-already.
+`MethodSignature` (new, `analyzer/src/type_environment/methods.rs`) holds the
+name, the result (none, or a type id), the parameters in declaration order
+(name, `ParameterSection`, type id) and the `R_EDGE`/`F_EDGE` inputs in
+declaration order. A type the analyzer could not resolve is recorded as
+unknown; a rule that compares it skips that pair, because the undeclared type
+is reported already.
 
-**Not `SemanticType::FunctionBlock`.** That is a value's representation, cloned
-into every field of the block's type; a base and a method table are not part
-of a value. **Not the symbol environment.** It already copies the name, but it
-holds no types, and a signature is types. **Not a new environment.** The type
-environment already answers "what does this function block type have" for
-fields; a base and methods are the rest of that answer.
+`record_block` takes the methods with the fields, so a block is still recorded
+once, from the declaration the environment keeps.
 
-### Where it is entered
-
-- **The base**: unchanged, by `record_extends` (#2296). It already keeps the
-  first base of a block, and enters no structure, no standard block and no
-  name that is not declared.
-- **The methods**, in `xform_resolve_decl_types::fold_function_block_declaration`,
-  where the block's fields and base are recorded today: each method's
-  parameters have their type ids by then. A repeated block declaration
-  (`TypeEnvironment::entered_from` is false) records none. A sized string result is entered as a sized string
-  type, as a declaration of that type is.
+**Not `SemanticType::FunctionBlock`.** That is a value's representation; a
+method table is not part of a value. **Not the symbol environment.** It holds
+no types, and a signature is types.
 
 ### Who reads it
 
 - `FunctionBlocks::chain`, and through it `resolve_method`, `declaring_block`,
   `MethodOwners` and `BlockParameters`, follow `inheritance_chain` instead of
-  the AST name. Their constructors take the type environment.
-- `collect_inherited_fields` follows `inheritance_chain`.
+  the AST name. Their constructors take the type environment, which every
+  caller has (`analysis.context().types()` in codegen and lowering).
 - `xform_resolve_expr_types` types a method call from `method(block, name)`
   instead of `collect_method_types`, which is deleted.
 - The symbol environment records a block's `extends` from `base_of`, so a name
-  that is not a block is not a scope on the lookup chain and not `SUPER^`'s
-  type (core 1).
+  that is not a block is not a scope on the lookup chain, not walked by
+  `inherited_member`, and not `SUPER^`'s type (core 1).
 - The toposort keeps the AST name: it runs before the type environment exists,
   and decides the order the environment is built in.
 
 ### The rules
 
 - **`rule_extends_base_declared` (core 1).** A block whose source says
-  `EXTENDS base` but whose type has no `base_of` is reported at the base name,
-  with the block as context: P-base, or P9999 when the base is a standard
-  block (Decision 3). A repeated block declaration, already P4013, is skipped.
+  `EXTENDS base` but whose record has no `base_of` is reported at the base
+  name, with the block as context: P-base, or P9999 when the base is a
+  standard block (Decision 3). A repeated block declaration, already P4013,
+  is skipped (`TypeEnvironment::entered_from`).
 - **`rule_method_override_signature` (core 2).** For each method a block
   declares, the method `method(base, name)` finds is the one it overrides. When
   the two signatures differ, it is reported at the overriding method's name,
@@ -185,24 +185,24 @@ Both apply on every dialect, as `rule_extends_field_duplicated` does:
 
 Two prefactors, each behaviour-preserving with existing expectations unchanged:
 
-1. **Follow `EXTENDS` through the type environment.** `base_of` and
-   `inheritance_chain` over #2296's `extended`; the walks in `FunctionBlocks`
-   and `collect_inherited_fields` follow them. Both walks stop today at a name
-   the library does not declare as a block, which is exactly the base
-   `record_extends` does not enter, so nothing they answer changes. Their unit tests build the library with the resolving test
-   helpers instead of `parse_program`, so that the environment has the
-   relation: the fixtures and assertions stay the same. The symbol
+1. **Follow `EXTENDS` through the type environment everywhere it is walked
+   after the environment exists.** `base_of`; `FunctionBlocks` follows
+   `inheritance_chain`. It stops today at a name the library does not declare
+   as a block, which is exactly the base `record_block` does not record, so
+   nothing it answers changes. Its unit tests build the library with the
+   resolving test helpers instead of `parse_program`, so that the environment
+   has the relation: the fixtures and assertions stay the same. The symbol
    environment's `extends` does not move here: for a name that is not a block
    it changes what `SUPER^` is, which is core 1's change to make.
-2. **Record method signatures in the type environment and type method calls
-   from them.** `MethodSignature`, `methods`, `method`; `MethodTypes` and
-   `collect_method_types` are deleted. A call's type is the result type's
+2. **Record method signatures with the block, and type method calls from
+   them.** `MethodSignature`, `BlockRecord::methods`, `method`; `MethodTypes`
+   and `collect_method_types` are deleted. A call's type is the result type's
    *name* resolved again, as today, so a `STRING[10]` result still types its
    call as `STRING` and every expression type is unchanged.
 
-Without them, core 1 would add another resolution of the base name, and core 2
-would build a second private method table beside `collect_method_types`, or a
-third beside #1901's.
+Without them, core 1 would add another resolution of the base name, and core
+2 would build a second private method table beside `collect_method_types`, or
+a third beside #1901's.
 
 ## Decisions for review
 
@@ -213,19 +213,20 @@ third beside #1901's.
    them. Recommended: the whole signature, and probe one renamed parameter on
    an override in XAE before core 2 merges. The alternative is the return type
    now and parameters later under the same code.
-2. **Three fixtures on `main` override with different parameters**, and become
-   programs analysis rejects: `OVERRIDES` in `callee_resolution.rs:889`, and
-   `METHODS` and the `THIS^`/`SUPER^` program in `xform_bind_call_arguments.rs`
-   (REQ-CB-analyzer-028, -030). They test one pass on its own, so they keep
-   passing. Recommended: keep them, with a line on each saying analysis rejects
-   the program (P-override) and the test pins the pass alone. `call-binding.md`
-   is unchanged: a call is still bound against the method it reaches.
-3. **A standard function block as a base (row 3).** #2296 does not enter it,
-   because nothing inherits a standard block's fields or methods. Reporting it
-   as P-base ("not a declared function block") would be wrong: `TON` is
-   declared, and XAE extends library blocks. Recommended: core 1 reports it as
-   P9999 at the base name, so it is not accepted and then quietly ignored;
-   open an issue for inheriting from a standard block.
+2. **Two fixtures on `main` override with different parameters**, and become
+   programs analysis rejects: `OVERRIDES` in `callee_resolution.rs:877`, and
+   `METHODS` (`xform_bind_call_arguments.rs:253`) with the `THIS^`/`SUPER^`
+   program after it (REQ-CB-analyzer-028, -030). They test one pass on its own,
+   so they keep passing. Recommended: keep them, with a line on each saying
+   analysis rejects the program (P-override) and the test pins the pass alone.
+   `call-binding.md` is unchanged: a call is still bound against the method it
+   reaches.
+3. **A standard function block as a base (row 3).** `record_block` does not
+   record it, because nothing inherits a standard block's fields or methods.
+   Reporting it as P-base ("not a declared function block") would be wrong:
+   `TON` is declared, and XAE extends library blocks. Recommended: core 1
+   reports it as P9999 at the base name, so it is not accepted and then
+   quietly ignored; open an issue for inheriting from a standard block.
 4. **An alias is its own type.** `TYPE MyInt : INT` overriding `INT` is a
    different result type, as ADR-0055 makes every alias. Not probed in XAE.
 5. **Properties are not compared.** An overriding property of another type is
@@ -241,10 +242,8 @@ third beside #1901's.
 - **#1901** (interface conformance) stalled on its size. Once core 2 lands it
   can be re-cut small, comparing through `method` and `same_type` instead of
   its own `TypeKey`. Not part of this plan.
-- **#2066** (inherited property names) and **#2199** (call binding plan) touch
-  `callee_resolution.rs` and `inherited_fields.rs`; prefactor 1 changes the
-  constructors there.
-- **#2296** (merged) is the relation this plan reads.
+- **#2199** (call binding plan) touches `callee_resolution.rs`; prefactor 1
+  changes the constructors there.
 
 ## Design doc reference
 
@@ -258,13 +257,13 @@ requirement IDs; the rule tests are the conformance tests.
 
 | File | Prefactor 1 | Prefactor 2 | Core 1 | Core 2 |
 |---|---|---|---|---|
-| `analyzer/src/type_environment.rs` | `base_of`, `inheritance_chain` | `methods`, `method` | | `same_type` |
-| `analyzer/src/method_signature.rs` (new) | | `MethodSignature` | | comparison, first difference |
-| `analyzer/src/xform_resolve_decl_types.rs` | | record the methods | | |
+| `analyzer/src/type_environment/fields.rs` | `base_of` | `BlockRecord::methods`, `record_block` takes them, `method` | | |
+| `analyzer/src/type_environment/methods.rs` (new) | | `MethodSignature` | | comparison, first difference |
+| `analyzer/src/type_environment.rs` | | | | `same_type` |
+| `analyzer/src/xform_resolve_decl_types.rs` | | build each method's signature | | |
 | `analyzer/src/callee_resolution.rs` | `chain` follows the relation; constructors take the environment | | | |
-| `analyzer/src/intermediates/inherited_fields.rs` | follows the relation | | | |
-| `analyzer/src/xform_resolve_expr_types.rs` | | `method` replaces `collect_method_types` | | |
-| `analyzer/src/{rule_method_call_declared,rule_function_block_invocation,write_collector,xform_bind_call_arguments,rule_extends_field_duplicated}.rs`, `xform_insert_implicit_conversions/declared.rs`, `codegen/src/compile.rs` | pass the environment | | | |
+| `analyzer/src/xform_resolve_expr_types.rs` | pass the environment | `method` replaces `collect_method_types` | | |
+| `analyzer/src/{rule_method_call_declared,rule_function_block_invocation,write_collector,xform_bind_call_arguments}.rs`, `xform_insert_implicit_conversions/declared.rs`, `codegen/src/compile.rs`, `lowering/src/lib.rs` | pass the environment | | | |
 | `analyzer/src/xform_resolve_symbol_and_function_environment.rs` | | | `extends` from `base_of` | |
 | `analyzer/src/rule_extends_base_declared.rs` (new) | | | rule + tests | |
 | `analyzer/src/rule_method_override_signature.rs` (new) | | | | rule + tests |
@@ -281,20 +280,21 @@ Tracking issue: opened when this plan is approved, listing core 1 and core 2.
 
 ### Prefactor 1: follow `EXTENDS` through the type environment
 
-- [ ] `TypeEnvironment::base_of`, `inheritance_chain`, with unit tests: no
-      base, one level, two levels, a repeat ends the walk.
+- [ ] `TypeEnvironment::base_of`, with unit tests: no base, a declared base,
+      a structure, a standard block.
 - [ ] `FunctionBlocks` follows `inheritance_chain`; `from_library`,
       `MethodOwners::of_library` and `BlockParameters::of_library` take the
-      type environment; update every caller, codegen's included.
-- [ ] `collect_inherited_fields` follows `inheritance_chain`.
+      type environment; update every caller, codegen's and lowering's
+      included.
 - [ ] `cd compiler && just`.
 
-### Prefactor 2: method signatures in the type environment
+### Prefactor 2: method signatures in the block record
 
-- [ ] `MethodSignature` and `ParameterSection` reuse; `TypeEnvironment::methods`,
-      `record_method`, `method`, with unit tests: own, inherited, overridden
-      (nearest wins), sized string result, unresolved parameter type.
-- [ ] Record the methods in `xform_resolve_decl_types`.
+- [ ] `MethodSignature` (reusing `ParameterSection`); `BlockRecord::methods`;
+      `record_block` takes them; `method`, with unit tests: own, inherited,
+      overridden (nearest wins), sized string result, unresolved parameter
+      type.
+- [ ] Build each method's signature in `xform_resolve_decl_types`.
 - [ ] Type method calls from `method`; delete `MethodTypes` and
       `collect_method_types`.
 - [ ] `cd compiler && just`.
@@ -304,10 +304,11 @@ Tracking issue: opened when this plan is approved, listing core 1 and core 2.
 - [ ] P-base in `problem-codes.csv` and its page under
       `docs/reference/compiler/problems/`.
 - [ ] `rule_extends_base_declared`, registered in `stages.rs`; tests for rows
-      1–2, an interface as base, a declared base, and row 3 (P9999,
-      Decision 3).
+      1–2, an interface as base, a declared base, a repeated block
+      declaration, and row 3 (P9999, Decision 3).
 - [ ] The symbol environment's `extends` comes from `base_of`; test that
-      `SUPER^` of a block whose base is undeclared names no block.
+      `SUPER^` of a block whose base is undeclared names no block, and that
+      `inherited_member` does not walk it.
 - [ ] `extends.rst` and `beckhoff-twincat-dialect.md` §1.4.
 - [ ] `cd compiler && just`, `cd docs && just`, `cd specs && just`.
 
@@ -330,6 +331,5 @@ Tracking issue: opened when this plan is approved, listing core 1 and core 2.
 ### Cleanup
 
 - [ ] Issues for Decisions 3 and 5.
-- [ ] #1901 re-cut as a small PR comparing through `method` and `same_type`
-      (its size is what stalled it).
+- [ ] #1901 re-cut as a small PR comparing through `method` and `same_type`.
 - [ ] Close this plan PR unmerged, and the tracking issue.
