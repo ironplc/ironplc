@@ -16,6 +16,7 @@
 
 mod call;
 mod expr;
+mod hoisted;
 mod ids;
 mod invariant;
 mod loops;
@@ -31,6 +32,7 @@ mod variables;
 
 pub use call::{Arg, Callee, Intrinsic, Param, Signature};
 pub use expr::{BinaryOp, CompareOp, Const, Expr, ExprKind, ShortCircuitOp, UnaryOp};
+pub use hoisted::reads_results_in_order;
 pub use ids::{FieldIdx, LoopId, PouId, TypeId, VarId};
 pub use loops::{counts_down, is_loop_control, ForParts, LoopScope};
 pub use place::{Place, Projection};

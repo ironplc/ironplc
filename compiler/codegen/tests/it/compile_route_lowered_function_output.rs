@@ -1,6 +1,7 @@
 //! Tests of assignments of calls of user-defined functions with outputs
 //! compiled from the lowered program (REQ-LOW-lowering-092,
-//! REQ-LOW-lowering-172), with every statement required to lower. A program
+//! REQ-LOW-lowering-172, REQ-LOW-lowering-174), with every statement
+//! required to lower. A program
 //! with only scalar outputs is also checked to leave every variable as the
 //! route that reads the AST leaves it after one scan; that route does not
 //! read a string output.
@@ -132,6 +133,60 @@ fn compile_when_function_with_outputs_called_then_same_code_as_ast(#[case] state
     assert_same_code(&format!(
         "{FUNCTION}
          PROGRAM main VAR d : DINT; b : BOOL; lr : LREAL; END_VAR
+           {statement}
+         END_PROGRAM"
+    ));
+}
+
+/// REQ-LOW-lowering-172, REQ-LOW-lowering-174: calls with outputs inside
+/// an assignment's value run, and store their outputs, in the order the
+/// value evaluates them: two summed, one nested in another's input, one
+/// followed by a constant and one negated. The output the first of two
+/// calls stores is the input of the second, and the assignment's target,
+/// which the result overwrites.
+#[test]
+fn run_when_calls_with_outputs_inside_expression_then_in_order() {
+    let snapshot = run_lowered_agreeing(&format!(
+        "{FUNCTION}
+         PROGRAM main
+           VAR r1 : DINT; r2 : DINT; r3 : DINT; r4 : DINT; d : DINT := 1;
+               q1 : DINT; q2 : DINT; q3 : DINT; q4 : DINT; q5 : DINT; t : DINT; END_VAR
+           r1 := F(a := 1, q => q1) + F(a := 2, q => q2);
+           r2 := F(a := F(a := 1, q => q3), q => q4);
+           r3 := F(a := 3, q => q5) + 1;
+           r4 := -F(a := 4, twice => t);
+           d := F(a := d, q => d) + F(a := d, q => d);
+         END_PROGRAM"
+    ));
+    assert_eq!(snapshot.read_as::<i32>("r1"), 30);
+    assert_eq!(snapshot.read_as::<i32>("q1"), 2);
+    assert_eq!(snapshot.read_as::<i32>("q2"), 3);
+    assert_eq!(snapshot.read_as::<i32>("r2"), 100);
+    assert_eq!(snapshot.read_as::<i32>("q3"), 2);
+    assert_eq!(snapshot.read_as::<i32>("q4"), 11);
+    assert_eq!(snapshot.read_as::<i32>("r3"), 31);
+    assert_eq!(snapshot.read_as::<i32>("q5"), 4);
+    assert_eq!(snapshot.read_as::<i32>("r4"), -40);
+    assert_eq!(snapshot.read_as::<i32>("t"), 10);
+    assert_eq!(snapshot.read_as::<i32>("d"), 30);
+}
+
+/// REQ-LOW-codegen-175: an assignment with calls with outputs inside its
+/// value compiles to the same instructions and constants by both routes,
+/// with no storage for a temporary: each call, the stores of its outputs,
+/// then the rest of the value and the store of the result.
+#[rstest]
+#[case::sum("d := F(a := 1, q => d) + F(a := 2, q => k);")]
+#[case::nested("d := F(a := F(a := 1, q => k), q => d);")]
+#[case::then_constant("d := F(a := 3, q => k) + 1;")]
+#[case::negated("d := -F(a := 3, q => k);")]
+#[case::compared("b := F(a := 1, q => k) > F(a := 2, q => d);")]
+fn compile_when_calls_with_outputs_inside_expression_then_same_code_as_ast(
+    #[case] statement: &str,
+) {
+    assert_same_code(&format!(
+        "{FUNCTION}
+         PROGRAM main VAR d : DINT; k : DINT; b : BOOL; END_VAR
            {statement}
          END_PROGRAM"
     ));

@@ -1,25 +1,30 @@
 //! Emits a lowered call of a function or method with outputs, and a call
 //! statement of a method.
 //!
-//! `r := F(a, q => x)` lowers to three parts, each with the assignment's
-//! span (REQ-LOW-lowering-172): the call, stored in a temporary of the
-//! result's type, with a reference to a temporary for each output; the
-//! assignment of each output, read from its temporary; and the assignment
-//! to `r`, read from the result's temporary. A method call whose result is
-//! not used, `c.M(a, q => x);`, lowers to a `Call` statement, then the
-//! assignment of each output (REQ-LOW-lowering-092).
+//! An assignment whose value has calls with outputs, such as
+//! `r := F(a, q => x) + F(b, q => y)`, lowers to the part of each call, then
+//! the assignment, each with the assignment's span (REQ-LOW-lowering-172). A
+//! part is the call, stored in a temporary of the result's type, with a
+//! reference to a temporary for each output, then the assignment of each
+//! output, read from its temporary. The assignment reads each result from
+//! its temporary. A method call whose result is not used, `c.M(a, q => x);`,
+//! lowers to a `Call` statement, then the assignment of each output
+//! (REQ-LOW-lowering-092).
 //!
-//! The parts are emitted together, as the route that reads the AST emits
-//! the call (`compile_user_call.rs`, `compile_method.rs`): the call's
-//! inputs, its `CALL` or `METHOD_CALL`, the stores of its outputs, then the
-//! result, stored as the AST route stores it or dropped. Neither kind of
-//! temporary has storage of its own. The result is the value the call
-//! leaves on the stack, which stays there while the outputs are stored, and
-//! the read of the result's temporary takes it from there
-//! (`CompileContext::results_on_stack`). An output is the callee's own
-//! variable, which this backend's layout keeps the output in and which keeps
-//! its value until the callee is called again (ADR-0046), so a call passes
-//! no reference for it.
+//! The statements are emitted together, as the route that reads the AST
+//! emits the assignment (`compile_user_call.rs`, `compile_method.rs`): each
+//! call's inputs, its `CALL` or `METHOD_CALL` and the stores of its outputs,
+//! then the rest of the value and the store of the result, or the result
+//! dropped (REQ-LOW-codegen-175). Neither kind of temporary has storage of
+//! its own. A result is the value its call leaves on the stack, which stays
+//! there while the outputs are stored, and the read of the result's
+//! temporary takes it from there (`CompileContext::results_on_stack`). The
+//! order lowering checks (REQ-LOW-lowering-174), which this backend checks
+//! again before it emits the statements, makes each such read the next value
+//! the expression would have pushed. An output is the callee's own variable,
+//! which this backend's layout keeps the output in and which keeps its value
+//! until the callee is called again (ADR-0046), so a call passes no
+//! reference for it.
 
 use std::collections::HashMap;
 
@@ -27,7 +32,8 @@ use ironplc_container::VarIndex;
 use ironplc_dsl::core::{Id, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::{
-    Arg, Callee, Expr, ExprKind, Place as LoweredPlace, PouId, Stmt, StmtKind, StrExprKind, VarId,
+    reads_results_in_order, Arg, Callee, Expr, ExprKind, Place as LoweredPlace, PouId, Stmt,
+    StmtKind, StrExprKind, VarId,
 };
 use ironplc_lowering::Lowering;
 
@@ -37,7 +43,8 @@ use super::method::{emit_method_call, method_site, MethodSite};
 use super::place::{resolve, resolve_string};
 use super::string::reaches_string;
 use super::{
-    args_can_emit, op_type, operand, operation_can_emit, reaches, same_span, user_function,
+    args_can_emit_reading, expr_can_emit_reading, op_type, operand, operation_can_emit, reaches,
+    same_span, user_function,
 };
 use crate::compile::{CompileContext, StringVarInfo, UserFunctionInfo};
 use crate::compile_expr::emit_load_var;
@@ -135,27 +142,36 @@ impl OutputCall<'_> {
                 parts,
                 store: (target, stored),
             } => {
-                parts.iter().all(|part| {
-                    part.call.can_emit(lowering, ctx) && operations_can_emit(part.value)
-                }) && operations_can_emit(stored)
+                // Each result is read as the next value on the stack
+                // (REQ-LOW-lowering-174), which `emit_part` leaves there.
+                let results: Vec<VarId> = parts.iter().map(|part| part.result).collect();
+                let values: Vec<(&Expr, VarId)> =
+                    parts.iter().map(|part| (part.value, part.result)).collect();
+                reads_results_in_order(&values, stored)
+                    && parts.iter().all(|part| {
+                        part.call.can_emit(lowering, ctx, &results)
+                            && operations_can_emit(part.value)
+                    })
+                    && expr_can_emit_reading(lowering, ctx, stored, &results)
                     && reaches(lowering, ctx, target, stored.ty())
             }
-            OutputCall::Statement(call) => call.can_emit(lowering, ctx),
+            OutputCall::Statement(call) => call.can_emit(lowering, ctx, &[]),
         }
     }
 }
 
 impl Call<'_> {
-    /// Whether this backend passes the call's inputs and emits the
-    /// assignment of each of its outputs.
-    fn can_emit(&self, lowering: &Lowering<'_>, ctx: &CompileContext) -> bool {
+    /// Whether this backend passes the call's inputs, in which a read of one
+    /// of `results` takes the value an earlier call left on the stack, and
+    /// emits the assignment of each of its outputs.
+    fn can_emit(&self, lowering: &Lowering<'_>, ctx: &CompileContext, results: &[VarId]) -> bool {
         let inputs = self.inputs.iter().copied();
         let passed = match &self.target {
             Target::Function(function) => passes(&function.params, inputs),
             Target::Method(site) => site.takes(inputs),
         };
         passed
-            && args_can_emit(lowering, ctx, self.inputs.iter().copied())
+            && args_can_emit_reading(lowering, ctx, self.inputs.iter().copied(), results)
             && self
                 .outputs
                 .iter()
@@ -205,9 +221,9 @@ impl Call<'_> {
 
 /// The calls at the head of `stmts`, all of whose statements have one span:
 ///
-/// * an assignment whose value is a call with outputs: the call's part, the
-///   call stored in a temporary then the assignments of its outputs, then the
-///   assignment of a read of the temporary;
+/// * an assignment whose value has calls with outputs: the part of each,
+///   the call stored in a temporary then the assignments of its outputs,
+///   then the assignment, whose value reads the temporaries;
 /// * a call statement of a method, then the assignments of its outputs.
 ///
 /// `None` when `stmts` does not start with one.
@@ -228,12 +244,10 @@ pub(super) fn output_call<'s>(
                 parts.push(part);
                 rest = &rest[len..];
             }
-            // One part, whose result the assignment reads inside operations
-            // of one operand.
-            let ([part], [stored, ..]) = (parts.as_slice(), rest) else {
+            let [stored, ..] = rest else {
                 return None;
             };
-            if !(same_span(stored.span(), span) && reads(stored, part.result)) {
+            if parts.is_empty() || !same_span(stored.span(), span) {
                 return None;
             }
             let StmtKind::Assign { place, value } = stored.kind() else {
@@ -586,28 +600,6 @@ fn innermost(expr: &Expr) -> &Expr {
         expr = value;
     }
     expr
-}
-
-/// Whether `stmt` assigns a read of the variable `result`, inside
-/// operations of one operand.
-fn reads(stmt: &Stmt, result: VarId) -> bool {
-    let StmtKind::Assign { value, .. } = stmt.kind() else {
-        return false;
-    };
-    match innermost(value).kind() {
-        ExprKind::Read(place) => whole(place) == Some(result),
-        ExprKind::Const(_)
-        | ExprKind::Convert(_)
-        | ExprKind::ConvertChecked(_)
-        | ExprKind::Truncate { .. }
-        | ExprKind::Unary { .. }
-        | ExprKind::Binary { .. }
-        | ExprKind::Compare { .. }
-        | ExprKind::ShortCircuit { .. }
-        | ExprKind::Call { .. }
-        | ExprKind::RefTo(_)
-        | ExprKind::Null => false,
-    }
 }
 
 /// The variable `place` is the whole of.
