@@ -160,6 +160,7 @@ impl Lowering<'_> {
                 TypeKind::FunctionBlock {
                     fields,
                     body: self.pou(name, &span),
+                    base: None,
                 }
             }
             SemanticType::Reference { .. } => {

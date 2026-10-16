@@ -10,7 +10,7 @@ use super::place::Place;
 use super::policy::ParsePolicy;
 use super::scalar::{ScalarType, Signedness};
 use super::str_expr::StrExpr;
-use super::types::Encoding;
+use super::types::{Encoding, TypeTable};
 
 /// What a call calls.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -90,6 +90,20 @@ pub enum Param {
     Str(Encoding),
     /// A place of this type, passed by reference.
     Ref(TypeId),
+}
+
+impl Param {
+    /// Whether an argument that passes `self` passes for a parameter that
+    /// takes `param`, of a program whose types are `types`: the same, or a
+    /// place of a function block type that extends the one `param` takes,
+    /// which a reference to reaches as its base (REQ-LOW-ir-173,
+    /// REQ-LOW-ir-176).
+    pub fn passes_for(self, param: Param, types: &TypeTable) -> bool {
+        match (self, param) {
+            (Param::Ref(passed), Param::Ref(taken)) => types.extends(passed, taken),
+            (Param::Value(_) | Param::Str(_) | Param::Ref(_), _) => self == param,
+        }
+    }
 }
 
 /// An operation the compiler implements itself, at one set of operand types:

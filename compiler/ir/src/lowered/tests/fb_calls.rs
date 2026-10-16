@@ -29,6 +29,7 @@ fn block() -> Block {
             entry(TypeKind::FunctionBlock {
                 fields: vec![Field::new("n", span(), Some(Section::Input), dint)],
                 body,
+                base: None,
             }),
             &span(),
         )

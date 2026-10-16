@@ -36,6 +36,7 @@ fn method() -> Method {
             entry(TypeKind::FunctionBlock {
                 fields: vec![Field::new("n", span(), Some(Section::Local), dint_type)],
                 body,
+                base: None,
             }),
             &span(),
         )
@@ -184,5 +185,94 @@ fn declare_method_when_first_parameter_not_instance_then_internal_error() {
     assert!(is_internal_error_naming(
         m.b.declare_function(m.pou, vec![m.a], m.r, &span()),
         "ProgramBuilder::declare_function"
+    ));
+}
+
+impl Method {
+    /// A function block type that extends `base` with `fields`, and its body.
+    fn block_extending(
+        &mut self,
+        block: &str,
+        fields: Vec<Field>,
+        base: Option<TypeId>,
+    ) -> Result<TypeId, ironplc_dsl::diagnostic::Diagnostic> {
+        let body = self.b.push_pou(name(block));
+        self.b.push_type(
+            entry(TypeKind::FunctionBlock { fields, body, base }),
+            &span(),
+        )
+    }
+
+    /// A field of a function block of the type of `d`, named `text`.
+    fn dint_field(&self, text: &str) -> Field {
+        let dint = self.b.variables().get(self.dint).unwrap().ty();
+        Field::new(text, span(), Some(Section::Local), dint)
+    }
+}
+
+/// REQ-LOW-ir-176: a function block type that extends another begins with
+/// its fields, and extends it and every block it extends in turn; a block
+/// extends itself and no block that extends it.
+#[test]
+fn push_type_when_block_begins_with_base_fields_then_extends_it() {
+    let mut m = method();
+    let fields = vec![m.dint_field("n"), m.dint_field("k")];
+    let derived = m
+        .block_extending("Derived", fields.clone(), Some(m.counter))
+        .unwrap();
+    let leaf = m.block_extending("Leaf", fields, Some(derived)).unwrap();
+    let types = m.b.types();
+    assert!(types.extends(derived, m.counter));
+    assert!(types.extends(leaf, m.counter));
+    assert!(types.extends(m.counter, m.counter));
+    assert!(!types.extends(m.counter, derived));
+}
+
+/// REQ-LOW-ir-176: a function block type does not extend one whose fields
+/// it does not begin with, nor a type that is not a function block.
+#[test]
+fn push_type_when_block_does_not_begin_with_base_fields_then_internal_error() {
+    let mut m = method();
+    let renamed = vec![m.dint_field("k")];
+    let dint = m.b.variables().get(m.dint).unwrap().ty();
+    assert!(is_internal_error_naming(
+        m.block_extending("Missing", vec![], Some(m.counter)),
+        "TypeTable::push"
+    ));
+    assert!(is_internal_error_naming(
+        m.block_extending("Renamed", renamed, Some(m.counter)),
+        "TypeTable::push"
+    ));
+    assert!(is_internal_error_naming(
+        m.block_extending("OfInteger", vec![], Some(dint)),
+        "TypeTable::push"
+    ));
+}
+
+/// REQ-LOW-ir-173, REQ-LOW-ir-176: a method's instance parameter takes a
+/// `Ref` to an instance of a block that extends the method's block, and not
+/// one to an instance of an unrelated block.
+#[test]
+fn call_when_receiver_extends_method_block_then_passes() {
+    let mut m = method();
+    m.b.declare_method(m.pou, vec![m.this, m.a], Some(m.r), &span())
+        .unwrap();
+    let fields = vec![m.dint_field("n")];
+    let derived = m
+        .block_extending("Derived", fields.clone(), Some(m.counter))
+        .unwrap();
+    let other = m.block_extending("Other", fields, None).unwrap();
+    let main = m.b.variables().get(m.dint).unwrap().owner();
+    let mut args = |ty| {
+        let instance = m.b.push_variable(name("x"), main, ty).unwrap();
+        let mut args = m.args();
+        args[0] = Arg::Ref(m.b.var(instance, &span()).unwrap());
+        args
+    };
+    let (of_derived, of_other) = (args(derived), args(other));
+    assert!(m.b.call(m.pou, of_derived, span()).is_ok());
+    assert!(is_internal_error_naming(
+        m.b.call(m.pou, of_other, span()),
+        "ProgramBuilder::call"
     ));
 }

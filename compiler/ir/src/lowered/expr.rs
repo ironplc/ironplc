@@ -598,9 +598,10 @@ impl Expr {
 /// Refuses `args` unless they are one argument for each parameter of the
 /// function or method `pou` that `pous` declares, in order, at the
 /// parameter's operation type, or a place of the type a `VAR_IN_OUT`,
-/// `VAR_OUTPUT` or method's instance parameter refers to
-/// (REQ-LOW-lowering-071, REQ-LOW-lowering-072, REQ-LOW-lowering-076), that
-/// read places of the program the tables belong to. Returns the operation
+/// `VAR_OUTPUT` or method's instance parameter refers to, or of a function
+/// block type that extends it (REQ-LOW-lowering-071, REQ-LOW-lowering-072,
+/// REQ-LOW-lowering-076, REQ-LOW-ir-173), that read places of the program
+/// the tables belong to. Returns the operation
 /// type of the result; `None` for a method without one.
 pub(crate) fn check_user_call(
     constructor: &str,
@@ -634,7 +635,12 @@ pub(crate) fn check_user_call(
         ));
     };
     let passed: Vec<Param> = args.iter().map(Arg::param).collect();
-    if passed != params {
+    let passes = passed.len() == params.len()
+        && passed
+            .iter()
+            .zip(&params)
+            .all(|(passed, param)| passed.passes_for(*param, types));
+    if !passes {
         return Err(broken(
             constructor,
             span,
