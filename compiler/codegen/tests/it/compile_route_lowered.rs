@@ -386,11 +386,13 @@ fn run_when_read_and_written_through_references_then_values() {
 #[case::read("x := p^;")]
 #[case::write("p^ := 1;")]
 #[case::element("x := pa^[1];")]
+#[case::through_element("x := refs[0]^;")]
 fn run_when_null_reference_dereferenced_then_traps(#[case] statement: &str) {
     let options = options();
     let source = format!(
         "PROGRAM main
-           VAR x : DINT; p : REF_TO DINT; pa : REF_TO ARRAY[1..3] OF DINT; END_VAR
+           VAR x : DINT; p : REF_TO DINT; pa : REF_TO ARRAY[1..3] OF DINT;
+               refs : ARRAY[0..2] OF REF_TO DINT; END_VAR
            {statement}
          END_PROGRAM"
     );
@@ -405,21 +407,45 @@ fn run_when_null_reference_dereferenced_then_traps(#[case] statement: &str) {
 
 /// What a reference refers to, and an element of an array it refers to,
 /// compile to the same instructions and constants by both routes, the
-/// narrowed store through a reference to an `INT` included.
+/// narrowed store through a reference to an `INT` included. So does a read
+/// through a reference held in an element of an array, alone, in an
+/// expression or in a condition.
 #[rstest]
 #[case::read_and_write("p^ := p^ + 1;")]
 #[case::read_into_variable("x := p^;")]
 #[case::narrow_store("q^ := q^ + 1;")]
 #[case::element("pa^[i] := pa^[i + 1];")]
+#[case::through_element("x := refs[0]^;")]
+#[case::through_element_by_variable("x := refs[i]^;")]
+#[case::through_element_of_two_dimensions("x := grid[1, 0]^;")]
+#[case::through_element_in_expression("x := refs[0]^ + 1;")]
+#[case::through_element_in_condition("IF refs[0]^ = 42 THEN x := 1; END_IF;")]
+#[case::through_reference_to_element("x := rrefs[0]^;")]
 fn compile_when_dereference_lowered_then_same_code_as_ast(#[case] statement: &str) {
     let source = format!(
         "PROGRAM main
            VAR x : DINT; i : DINT; p : REF_TO DINT; q : REF_TO INT;
-               pa : REF_TO ARRAY[1..3] OF DINT; END_VAR
+               pa : REF_TO ARRAY[1..3] OF DINT; refs : ARRAY[0..2] OF REF_TO DINT;
+               grid : ARRAY[0..1, 0..1] OF REF_TO DINT;
+               rrefs : ARRAY[0..2] OF REFERENCE TO DINT; END_VAR
            {statement}
          END_PROGRAM"
     );
     assert_same_code(&source);
+}
+
+/// A store through a reference held in an element of an array is left to the
+/// AST route, which does not compile it yet.
+#[test]
+fn compile_when_store_through_element_then_left_to_ast() {
+    let options = options();
+    let source = "PROGRAM main
+           VAR refs : ARRAY[0..2] OF REF_TO DINT; END_VAR
+           refs[0]^ := 5;
+         END_PROGRAM";
+    let (library, context) = parse(source, &options);
+    let result = compile_by_route(&library, &context, &options, Route::PreferLowered);
+    assert_eq!(result.unwrap_err().code, "P9999");
 }
 
 /// A field reached through a reference a function receives, `p^.x`, is not
