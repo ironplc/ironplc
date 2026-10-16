@@ -153,7 +153,7 @@ fn run_when_continue_in_each_loop_then_next_iteration() {
 }
 
 /// Compiles `source` by `route`, and returns the bytecode of its program body.
-fn body_by_route(source: &str, route: Route) -> Vec<u8> {
+pub(crate) fn body_by_route(source: &str, route: Route) -> Vec<u8> {
     let options = options();
     let (library, context) = parse(source, &options);
     let container = compile_by_route(&library, &context, &options, route).unwrap();

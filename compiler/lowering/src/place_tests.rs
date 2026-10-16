@@ -187,8 +187,28 @@ fn lower_statement_when_bit_or_partial_write_then_assign_bits() {
     );
 }
 
-/// Bits reached through a reference, `p^.3`, are not lowered while codegen's
-/// AST route does not address them.
+/// Bits of an element reached through a reference are one `AssignBits` on
+/// the element, which is a `Deref` then an `Index`.
+#[test]
+fn lower_statement_when_bits_of_element_through_reference_written_then_assign_bits() {
+    let outcome = lower(
+        "PROGRAM main VAR p : REF_TO ARRAY[0..1] OF DWORD; b : BYTE; END_VAR
+            p^[1].0 := TRUE;
+            p^[1].%B2 := b;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign-bits v0^.f0^[(const i32s 1)] 0 1 (const bool true)",
+            "assign-bits v0^.f0^[(const i32s 1)] 16 8 (read i32u v0^.f1)",
+        ]
+    );
+}
+
+/// Bits of the whole of what a reference refers to, `p^.3`, are not lowered
+/// while codegen's AST route does not address them.
 #[test]
 fn lower_statement_when_bits_written_through_reference_then_unsupported() {
     let outcome = lower(

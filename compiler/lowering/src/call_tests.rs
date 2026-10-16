@@ -115,7 +115,26 @@ fn lower_statement_when_unsigned_shift_count_then_converted_to_parameter_type() 
     );
 }
 
-/// Bits read through a reference are not lowered yet.
+/// A read of bits of an element reached through a reference is the shift
+/// and mask over a read of the element, a `Deref` then an `Index`
+/// (REQ-LOW-lowering-100).
+#[test]
+fn lower_statement_when_bits_of_element_through_reference_read_then_shift_and_mask() {
+    let outcome = lower(
+        "PROGRAM main VAR x : BOOL; p : REF_TO ARRAY[0..1] OF DWORD; END_VAR
+            x := p^[1].3;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        ["assign v0^.f0 (ne (bit_and i32u (call shr_u32 i32u \
+          (read i32u v0^.f1^[(const i32s 1)]) (const i32s 3)) (const i32u 1)) (const i32u 0))"]
+    );
+}
+
+/// Bits of the whole of what a reference refers to, `p^.3`, are not read
+/// while codegen's AST route does not address them.
 #[test]
 fn lower_statement_when_bits_read_through_reference_then_unsupported() {
     let outcome = lower(

@@ -1,9 +1,13 @@
-//! Tests of references made and compared in the lowered program, with every
-//! statement required to lower: `REF(x)`, `r REF= x` and `NULL`.
+//! Tests of references made, compared and followed in the lowered program,
+//! with every statement required to lower: `REF(x)`, `r REF= x`, `NULL` and
+//! the bits of an element a reference reaches.
 
 use rstest::rstest;
 
-use crate::compile_route_lowered::{assert_same_code, run_lowered};
+use ironplc_codegen::Route;
+
+use crate::common::bc;
+use crate::compile_route_lowered::{assert_same_code, body_by_route, run_lowered};
 
 /// A reference made by `REF(x)` or `REF=` reaches its variable, read and
 /// written through it, and compares equal to another to the same variable
@@ -68,4 +72,66 @@ fn compile_when_reference_lowered_then_same_code_as_ast(#[case] statement: &str)
          END_PROGRAM"
     );
     assert_same_code(&source);
+}
+
+/// Bits and parts of an element of an array a reference refers to are
+/// written in the referenced array, leaving its other bits as they were,
+/// and read from it.
+#[test]
+fn run_when_bits_of_element_through_reference_then_referenced_array() {
+    let snapshot = run_lowered(
+        "PROGRAM main
+           VAR a : ARRAY[0..1] OF DWORD := [0, 16#12345678]; p : REF_TO ARRAY[0..1] OF DWORD;
+               b : BYTE := 16#FF; i : DINT := 1; x : BOOL; y : BOOL; r : DWORD; part : BYTE; END_VAR
+           p := REF(a);
+           p^[1].0 := TRUE;
+           p^[i].%B2 := b;
+           x := p^[1].3;
+           y := p^[i].2;
+           part := p^[1].%B3;
+           r := a[1];
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<u64>("r"), 0x12FF_5679);
+    assert_eq!(snapshot.read_as::<u64>("x"), 1);
+    assert_eq!(snapshot.read_as::<u64>("y"), 0);
+    assert_eq!(snapshot.read_as::<u64>("part"), 0x12);
+}
+
+/// A partial read of an element of an array a reference refers to compiles
+/// to the same instructions and constants by both routes.
+#[rstest]
+#[case::part_read("b := p^[1].%B2;")]
+#[case::part_read_by_variable("b := p^[i].%B2;")]
+fn compile_when_part_of_element_through_reference_read_then_same_code_as_ast(
+    #[case] statement: &str,
+) {
+    let source = format!(
+        "PROGRAM main
+           VAR p : REF_TO ARRAY[0..1] OF DWORD; b : BYTE; i : DINT; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    assert_same_code(&source);
+}
+
+/// REQ-LOW-codegen-121: a bit write to an element of an array a reference
+/// refers to evaluates the element's subscript once, keeping the address for
+/// the store, where the AST route evaluates it for the load and again for
+/// the store.
+#[test]
+fn compile_when_bit_written_to_element_through_reference_then_subscript_evaluated_once() {
+    let source = "PROGRAM main
+           VAR i : DINT; p : REF_TO ARRAY[0..1] OF DWORD; END_VAR
+           p^[i].3 := TRUE;
+         END_PROGRAM";
+    // i is var:0.
+    let load_i = bc::load_var_i32(0);
+    let loads = |code: Vec<u8>| {
+        code.windows(load_i.len())
+            .filter(|window| *window == load_i.as_slice())
+            .count()
+    };
+    assert_eq!(loads(body_by_route(source, Route::RequireLowered)), 1);
+    assert_eq!(loads(body_by_route(source, Route::Ast)), 2);
 }
