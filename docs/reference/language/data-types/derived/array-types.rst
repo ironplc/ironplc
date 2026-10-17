@@ -72,9 +72,6 @@ subscript for each dimension:
 ``rows[2, 3]`` and ``matrix[2][3]`` give the wrong number of subscripts for
 their arrays, which is error :doc:`P4085 </reference/compiler/problems/P4085>`.
 
-IronPLC checks programs that use arrays of arrays, but does not compile them
-yet.
-
 Constant Bounds (Language Extension)
 ------------------------------------
 
