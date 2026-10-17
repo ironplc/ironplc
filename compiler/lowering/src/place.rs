@@ -43,9 +43,16 @@ impl Lowering<'_> {
                     .map(Some)
             }
             SymbolicVariableKind::Array(array) => {
-                let Some(base) = self.symbolic_place(frame, &array.subscripted_variable)? else {
+                let Some(mut base) = self.symbolic_place(frame, &array.subscripted_variable)?
+                else {
                     return Ok(None);
                 };
+                // A subscript of a reference to an array indexes the array it
+                // refers to, as `r^[i]` does: a TwinCAT `REFERENCE TO`, and a
+                // `REF_TO` the analyzer lets a subscript follow without `^`.
+                if self.program.types().reference(base.ty()).is_some() {
+                    base = self.program.deref(base, &array.span())?;
+                }
                 let mut subscripts = Vec::with_capacity(array.subscripts.len());
                 for subscript in &array.subscripts {
                     let Some(subscript) = self.subscript(frame, subscript)? else {
