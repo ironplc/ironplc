@@ -1,12 +1,17 @@
-//! The signatures of the methods of function blocks.
+//! The signatures of the methods of function blocks and interfaces.
 //!
 //! A method's signature is what a call of it, and a method that overrides
 //! it, see: its result and its parameters, by the ids of their types. It is
 //! recorded with the block that declares the method (see
 //! [`TypeEnvironment::record_block`]), and a block's methods are found
-//! through the blocks it `EXTENDS` (see [`TypeEnvironment::method`]).
+//! through the blocks it `EXTENDS` (see [`TypeEnvironment::method`]). The
+//! method prototypes an interface declares have signatures of the same kind,
+//! recorded with the interface (see [`TypeEnvironment::record_interface`]).
 
-use ironplc_dsl::common::{EdgeDirection, FunctionReturnType, MethodDeclaration, VariableType};
+use ironplc_dsl::common::{
+    EdgeDirection, EdgeVarDecl, FunctionReturnType, MethodDeclaration, MethodPrototype, VarDecl,
+    VariableType,
+};
 use ironplc_dsl::core::Id;
 use ironplc_dsl::type_id::TypeId;
 
@@ -79,12 +84,40 @@ impl TypeEnvironment {
     /// stated length enters a sized string type, as
     /// [`Self::result_type_id`] does for any result.
     pub(crate) fn method_signature(&mut self, method: &MethodDeclaration) -> MethodSignature {
-        let result = match &method.return_type {
+        self.signature(
+            &method.name,
+            method.return_type.as_ref(),
+            &method.variables,
+            &method.edge_variables,
+        )
+    }
+
+    /// The signature of the method prototype `prototype` an interface
+    /// declares, as [`Self::method_signature`] gives a method's: a method
+    /// provides the prototype when the two signatures match.
+    pub(crate) fn prototype_signature(&mut self, prototype: &MethodPrototype) -> MethodSignature {
+        self.signature(
+            &prototype.name,
+            prototype.return_type.as_ref(),
+            &prototype.variables,
+            &prototype.edge_variables,
+        )
+    }
+
+    /// The signature of the method or method prototype `name` with the
+    /// return type, variables and edge inputs given.
+    fn signature(
+        &mut self,
+        name: &Id,
+        return_type: Option<&FunctionReturnType>,
+        variables: &[VarDecl],
+        edge_variables: &[EdgeVarDecl],
+    ) -> MethodSignature {
+        let result = match return_type {
             Some(return_type) => MethodResult::Value(self.result_type_id(return_type)),
             None => MethodResult::None,
         };
-        let parameters = method
-            .variables
+        let parameters = variables
             .iter()
             .filter(|decl| {
                 matches!(
@@ -100,13 +133,12 @@ impl TypeEnvironment {
                 })
             })
             .collect();
-        let edge_inputs = method
-            .edge_variables
+        let edge_inputs = edge_variables
             .iter()
             .map(|edge| (edge.identifier.clone(), edge.direction.clone()))
             .collect();
         MethodSignature {
-            name: method.name.clone(),
+            name: name.clone(),
             result,
             parameters,
             edge_inputs,
