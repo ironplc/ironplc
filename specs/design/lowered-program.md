@@ -2175,6 +2175,7 @@ implements it.
 | Bit and partial write | `AssignBits` |
 | `p^ := v` | `Assign` to a place ending in `Deref` |
 | `REF(x)^`, and `ADR(x)^`, which the analyzer makes `REF(x)^` | A `Read` of `x` |
+| A subscript of a reference to an array, `r[i]` (a TwinCAT `REFERENCE TO`, or a `REF_TO` the analyzer lets a subscript follow without `^`) | The `Index` of the `Deref`, as `r^[i]`. This corrects the route that reads the AST, which indexes the reference's own slot as though it held the array's data |
 | `S=`, `R=` | `If` on the value around an `Assign` of `TRUE` or `FALSE` |
 | `REF=` | `Assign` of a `RefTo` (already the analyzer's view) |
 | Function block call with inputs and outputs | Assignments to the instance's fields, `FbCall`, assignments from them (REQ-LOW-lowering-069) |
