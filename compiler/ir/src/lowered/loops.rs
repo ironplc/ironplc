@@ -127,7 +127,8 @@ pub(crate) fn build_loop(
 
 /// The parts of a `For` other than its id.
 pub struct ForParts {
-    /// The variable, or field of the current instance, that counts.
+    /// The variable, field of the current instance, or what a reference
+    /// variable refers to, that counts.
     pub control: Place,
     /// The first value of `control`, already narrowed to its storage.
     pub from: Expr,
@@ -140,16 +141,21 @@ pub struct ForParts {
 
 /// Counts `control` from `from` to `to` by `step`, running `body` each time.
 ///
-/// Whether `place` can be a `For`'s control variable: a variable, or a field
-/// of the current instance.
+/// Whether `place` can be a `For`'s control variable: a variable, a field of
+/// the current instance, or what a reference variable refers to, such as a
+/// function's `VAR_OUTPUT` parameter (REQ-LOW-lowering-067).
 pub fn is_loop_control(place: &Place) -> bool {
-    matches!(place.path(), [] | [Projection::Deref, Projection::Field(_)])
+    matches!(
+        place.path(),
+        [] | [Projection::Deref] | [Projection::Deref, Projection::Field(_)]
+    )
 }
 
-/// `control` is a variable or a field of the current instance whose
-/// operation type is an integer; `from` and `to` have that type, `from`
-/// already fits `control`'s storage, and `step` is a nonzero constant of it
-/// (REQ-LOW-lowering-066, REQ-LOW-lowering-067).
+/// `control` is a variable, a field of the current instance or what a
+/// reference variable refers to, whose operation type is an integer; `from`
+/// and `to` have that type, `from` already fits `control`'s storage, and
+/// `step` is a nonzero constant of it (REQ-LOW-lowering-066,
+/// REQ-LOW-lowering-067).
 pub(crate) fn build_for(
     types: &TypeTable,
     scope: LoopScope,
@@ -173,7 +179,7 @@ pub(crate) fn build_for(
     };
     if !is_loop_control(&control) {
         return refuse(format!(
-            "the control variable {control} is not a variable or a field of the instance"
+            "the control variable {control} is not a variable, a field of the instance or what a reference refers to"
         ));
     }
     if from.ty() != ty || to.ty() != ty {
