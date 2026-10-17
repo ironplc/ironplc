@@ -140,7 +140,15 @@ impl Emission<'_, '_> {
             // A call is emitted with the stores of its inputs (`sequence`);
             // one on its own has none.
             StmtKind::Copy { dst, src } => {
-                super::aggregate::emit_copy(emitter, ctx, self.lowering, dst, src, span)
+                match super::instance_copy::instance_copy(self.lowering, ctx, dst, src) {
+                    Some(copy) => {
+                        super::instance_copy::emit_instance_copy(emitter, &copy);
+                        Ok(())
+                    }
+                    None => {
+                        super::aggregate::emit_copy(emitter, ctx, self.lowering, dst, src, span)
+                    }
+                }
             }
             StmtKind::FbCall { instance, .. } => {
                 let call = super::fb_call::bare_call(self.lowering, ctx, instance)

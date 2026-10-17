@@ -1148,6 +1148,14 @@ have the same names, in order, and the same shapes; a function block instance
 is copied only from one of its own type. `ProgramBuilder::copy` reports a
 P9998 for places that break this.
 
+An instance assigned from another, `f := g`, lowers to a `Copy` of the whole
+instance, so `f` gets the values of `g`'s fields in storage of its own
+(REQ-LOW-codegen-165). The bytecode backend copies it field by field, with
+`FB_LOAD_PARAM` and `FB_STORE_PARAM`: every field of the block, including the
+ones a standard block keeps for itself, such as a timer's start time. This
+corrects the route that reads the AST, which stores `g`'s slot in `f`'s and so
+makes `f` an alias of `g`: a later call of `f` changes `g`.
+
 **REQ-LOW-lowering-062** Every `Exit` and `Continue` names a `Loop` or `For`
 that encloses it.
 
