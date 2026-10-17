@@ -2,6 +2,7 @@
 //! integer of its context's type (`TRUNC`, `BCD_TO_INT`, `SIZEOF`), and for
 //! `INT_TO_BCD`, whose result is the bit string as wide as its input.
 
+use super::call_arguments::call_arguments_with;
 use super::*;
 
 /// The variables the programs of these tests declare.
@@ -78,4 +79,21 @@ fn apply_when_int_to_bcd_then_bit_string_as_wide_as_input(
     #[case] expected: &str,
 ) {
     assert_eq!(assigned(target, value), expected);
+}
+
+#[spec_test(REQ_IC_analyzer_118)]
+#[rstest]
+#[case::hexadecimal("16#12")]
+#[case::decimal("18")]
+fn apply_when_bcd_to_int_of_integer_literal_then_literal_is_dword(#[case] literal: &str) {
+    let options = CompilerOptions {
+        allow_int_literal_to_bit_string: true,
+        ..CompilerOptions::default()
+    };
+    let source =
+        format!("PROGRAM main VAR d : DINT; END_VAR d := BCD_TO_INT({literal}); END_PROGRAM");
+    assert_eq!(
+        call_arguments_with(&source, "BCD_TO_INT", &options),
+        vec!["DWORD"]
+    );
 }
