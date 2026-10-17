@@ -23,6 +23,7 @@ use ironplc_dsl::type_id::TypeId;
 
 mod fields;
 mod methods;
+mod same_type;
 pub use fields::BlockField;
 pub(crate) use methods::MethodSignature;
 
