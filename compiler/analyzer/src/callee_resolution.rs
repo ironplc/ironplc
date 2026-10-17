@@ -29,13 +29,15 @@ use crate::semantic_type::FunctionBlockVarType;
 use crate::symbol_environment::{Resolution, ScopeKind, SymbolEnvironment};
 use crate::type_environment::{BlockField, TypeEnvironment};
 
-/// The function blocks a library declares, by name.
+/// The function blocks a library declares, by name, and the blocks they
+/// `EXTENDS` as the type environment records them.
 pub(crate) struct FunctionBlocks<'a> {
     by_name: HashMap<TypeName, &'a FunctionBlockDeclaration>,
+    types: &'a TypeEnvironment,
 }
 
 impl<'a> FunctionBlocks<'a> {
-    pub(crate) fn from_library(lib: &'a Library) -> Self {
+    pub(crate) fn from_library(lib: &'a Library, types: &'a TypeEnvironment) -> Self {
         let by_name = lib
             .elements
             .iter()
@@ -44,7 +46,7 @@ impl<'a> FunctionBlocks<'a> {
                 _ => None,
             })
             .collect();
-        FunctionBlocks { by_name }
+        FunctionBlocks { by_name, types }
     }
 
     /// The declaration of the function block named `name`, if the library
@@ -59,8 +61,11 @@ impl<'a> FunctionBlocks<'a> {
     }
 
     /// `fb_name`, then its `EXTENDS` base, then that base's base, and so
-    /// on. Stops at a block seen before: a cycle is independently invalid
-    /// (and rejected elsewhere), this is just a safety net.
+    /// on, each base the one the type environment records
+    /// ([`TypeEnvironment::base_of`]), so a name that is not a block the
+    /// library declares ends the chain. Stops at a block seen before: a
+    /// cycle is independently invalid (and rejected elsewhere), this is just
+    /// a safety net.
     fn chain(&self, fb_name: &TypeName) -> impl Iterator<Item = &'a FunctionBlockDeclaration> + '_ {
         let mut current = self.get(fb_name);
         let mut visited: HashSet<TypeName> = HashSet::new();
@@ -69,13 +74,16 @@ impl<'a> FunctionBlocks<'a> {
             if !visited.insert(fb.name.clone()) {
                 return None;
             }
-            current = fb
-                .oop
-                .as_ref()
-                .and_then(|oop| oop.base.as_ref())
-                .and_then(|base| self.get(base));
+            current = self.base_of(fb);
             Some(fb)
         })
+    }
+
+    /// The declaration of the block `fb` `EXTENDS`, as the type environment
+    /// records it.
+    fn base_of(&self, fb: &FunctionBlockDeclaration) -> Option<&'a FunctionBlockDeclaration> {
+        let base = self.types.base_of(self.types.id_of(&fb.name)?)?;
+        self.get(self.types.name_of(base)?)
     }
 
     /// Resolves `method_name` against `fb_name`'s own methods, then its
@@ -169,9 +177,9 @@ pub struct MethodOwners {
 
 impl MethodOwners {
     /// The owner of every method callable on every function block `lib`
-    /// declares.
-    pub fn of_library(lib: &Library) -> Self {
-        let blocks = FunctionBlocks::from_library(lib);
+    /// declares, whose bases `types` records.
+    pub fn of_library(lib: &Library, types: &TypeEnvironment) -> Self {
+        let blocks = FunctionBlocks::from_library(lib, types);
         let mut declaring = HashMap::new();
         for block in blocks.by_name.values() {
             for ancestor in blocks.chain(&block.name) {
@@ -213,8 +221,8 @@ pub(crate) struct MethodParameters {
 impl MethodParameters {
     /// The parameters of the methods of every function block `lib`
     /// declares.
-    pub(crate) fn of_library(lib: &Library) -> Self {
-        let blocks = FunctionBlocks::from_library(lib);
+    pub(crate) fn of_library(lib: &Library, types: &TypeEnvironment) -> Self {
+        let blocks = FunctionBlocks::from_library(lib, types);
         let methods = blocks
             .by_name
             .values()
@@ -229,7 +237,7 @@ impl MethodParameters {
             .collect();
         MethodParameters {
             methods,
-            owners: MethodOwners::of_library(lib),
+            owners: MethodOwners::of_library(lib, types),
         }
     }
 
@@ -398,8 +406,12 @@ impl CallParameters {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::semantic_context::SemanticContext;
+    use crate::semantic_type::SemanticType;
     use crate::symbol_environment::ScopePath;
     use crate::test_helpers::parse_and_resolve_types_with_options;
+    use crate::type_attributes::TypeAttributes;
+    use crate::type_environment::TypeEnvironmentBuilder;
     use ironplc_dsl::core::FileId;
     use ironplc_dsl::textual::{SelfRefKind, SelfRefVariable};
     use ironplc_parser::{options::CompilerOptions, parse_program};
@@ -412,10 +424,41 @@ mod tests {
         }
     }
 
-    /// Parses only: these lookups read declarations as the parser leaves
-    /// them, so no type resolution is needed.
+    /// Parses only, for the lookups that read declarations as the parser
+    /// leaves them.
     fn parse(program: &str) -> Library {
         parse_program(program, &FileId::default(), &oop_options()).unwrap()
+    }
+
+    /// Parses and resolves types, for the lookups that follow `EXTENDS`:
+    /// they follow the bases the type environment records.
+    fn resolve(program: &str) -> (Library, SemanticContext) {
+        parse_and_resolve_types_with_options(program, &oop_options())
+    }
+
+    /// A type environment holding a declared function block for each name,
+    /// with the base each `bases` entry gives it. Analysis rejects a cycle
+    /// in `EXTENDS` before it records one, so a test of the walks' safety
+    /// net records it by hand.
+    fn recording_bases(bases: &[(&str, &str)]) -> TypeEnvironment {
+        let mut types = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        for (block, _) in bases {
+            types.insert_type(
+                &TypeName::from(block),
+                TypeAttributes::new(SemanticType::FunctionBlock {
+                    name: block.to_string(),
+                }),
+            );
+        }
+        for (block, base) in bases {
+            let id = |name: &str| types.id_of(&TypeName::from(name));
+            let (block, base) = (id(block).unwrap(), id(base));
+            types.record_block(block, vec![], vec![], vec![], base);
+        }
+        types
     }
 
     const HIERARCHY: &str = "
@@ -432,8 +475,8 @@ END_FUNCTION_BLOCK";
 
     #[test]
     fn from_library_when_function_blocks_declared_then_finds_each_by_name() {
-        let lib = parse(HIERARCHY);
-        let fbs = FunctionBlocks::from_library(&lib);
+        let (lib, context) = resolve(HIERARCHY);
+        let fbs = FunctionBlocks::from_library(&lib, context.types());
         assert!(fbs.contains(&TypeName::from("FB_Base")));
         assert!(fbs.get(&TypeName::from("FB_Derived")).is_some());
         assert!(fbs.get(&TypeName::from("FB_Missing")).is_none());
@@ -441,8 +484,8 @@ END_FUNCTION_BLOCK";
 
     #[test]
     fn resolve_method_when_declared_on_own_block_then_returns_own_block() {
-        let lib = parse(HIERARCHY);
-        let fbs = FunctionBlocks::from_library(&lib);
+        let (lib, context) = resolve(HIERARCHY);
+        let fbs = FunctionBlocks::from_library(&lib, context.types());
         let (owner, method) = fbs
             .resolve_method(&TypeName::from("FB_Derived"), &Id::from("Stop"))
             .unwrap();
@@ -452,8 +495,8 @@ END_FUNCTION_BLOCK";
 
     #[test]
     fn resolve_method_when_declared_on_base_then_returns_base_block() {
-        let lib = parse(HIERARCHY);
-        let fbs = FunctionBlocks::from_library(&lib);
+        let (lib, context) = resolve(HIERARCHY);
+        let fbs = FunctionBlocks::from_library(&lib, context.types());
         let (owner, method) = fbs
             .resolve_method(&TypeName::from("FB_Derived"), &Id::from("Start"))
             .unwrap();
@@ -463,8 +506,8 @@ END_FUNCTION_BLOCK";
 
     #[test]
     fn resolve_method_when_not_declared_anywhere_then_none() {
-        let lib = parse(HIERARCHY);
-        let fbs = FunctionBlocks::from_library(&lib);
+        let (lib, context) = resolve(HIERARCHY);
+        let fbs = FunctionBlocks::from_library(&lib, context.types());
         assert!(fbs
             .resolve_method(&TypeName::from("FB_Derived"), &Id::from("Reset"))
             .is_none());
@@ -472,7 +515,7 @@ END_FUNCTION_BLOCK";
 
     #[test]
     fn declaring_block_when_field_inherited_then_returns_base_block() {
-        let lib = parse(
+        let (lib, context) = resolve(
             "
 FUNCTION_BLOCK FB_Base
 VAR
@@ -485,7 +528,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK",
         );
-        let fbs = FunctionBlocks::from_library(&lib);
+        let fbs = FunctionBlocks::from_library(&lib, context.types());
         let derived = TypeName::from("FB_Derived");
         assert_eq!(
             Some(TypeName::from("FB_Base")),
@@ -511,7 +554,8 @@ END_FUNCTION_BLOCK
 FUNCTION_BLOCK FB_B EXTENDS FB_A
 END_FUNCTION_BLOCK",
         );
-        let fbs = FunctionBlocks::from_library(&lib);
+        let types = recording_bases(&[("FB_A", "FB_B"), ("FB_B", "FB_A")]);
+        let fbs = FunctionBlocks::from_library(&lib, &types);
         assert!(fbs
             .resolve_method(&TypeName::from("FB_A"), &Id::from("Reset"))
             .is_none());
@@ -617,8 +661,16 @@ END_PROGRAM";
 
     /// The function block `name` that `lib` declares.
     fn block<'a>(lib: &'a Library, name: &str) -> &'a FunctionBlockDeclaration {
-        FunctionBlocks::from_library(lib)
-            .get(&TypeName::from(name))
+        lib.elements
+            .iter()
+            .find_map(|element| match element {
+                LibraryElementKind::FunctionBlockDeclaration(fb)
+                    if fb.name == TypeName::from(name) =>
+                {
+                    Some(fb)
+                }
+                _ => None,
+            })
             .unwrap()
     }
 
@@ -799,7 +851,8 @@ END_PROGRAM";
 
     /// The block that declares `method` called on `block`, in `RECEIVERS`.
     fn owner(block: &str, method: &str) -> Option<TypeName> {
-        MethodOwners::of_library(&parse(RECEIVERS))
+        let (lib, context) = resolve(RECEIVERS);
+        MethodOwners::of_library(&lib, context.types())
             .declaring_block(&TypeName::from(block), &Id::from(method))
             .cloned()
     }
@@ -858,7 +911,8 @@ END_FUNCTION_BLOCK
 FUNCTION_BLOCK FB_B EXTENDS FB_A
 END_FUNCTION_BLOCK",
         );
-        let owners = MethodOwners::of_library(&lib);
+        let types = recording_bases(&[("FB_A", "FB_B"), ("FB_B", "FB_A")]);
+        let owners = MethodOwners::of_library(&lib, &types);
         assert_eq!(
             Some(&TypeName::from("FB_A")),
             owners.declaring_block(&TypeName::from("FB_B"), &Id::from("M"))
@@ -868,7 +922,8 @@ END_FUNCTION_BLOCK",
     /// The names of the parameters of `method` called on `block`, in
     /// `program`.
     fn method_parameter_names(program: &str, block: &str, method: &str) -> Option<Vec<String>> {
-        let parameters = MethodParameters::of_library(&parse(program));
+        let (lib, context) = resolve(program);
+        let parameters = MethodParameters::of_library(&lib, context.types());
         parameters
             .method(&TypeName::from(block), &Id::from(method))
             .map(|parameters| names(parameters.iter()))

@@ -304,7 +304,7 @@ pub fn compile_with_route_counts(
         })
         .collect();
 
-    let method_owners = MethodOwners::of_library(library);
+    let method_owners = MethodOwners::of_library(library, context.types());
     let parse = crate::lowered::parse_policy(&options.string_to_num);
     let lowered_route = crate::lowered::LoweredRoute::new(options.route, || {
         ironplc_lowering::Lowering::new(&analysis, parse)

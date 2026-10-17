@@ -39,7 +39,7 @@ pub(crate) fn collect(
     function_environment: &FunctionEnvironment,
     symbol_environment: &SymbolEnvironment,
 ) -> CollectedWrites {
-    let function_blocks = FunctionBlocks::from_library(lib);
+    let function_blocks = FunctionBlocks::from_library(lib, type_environment);
     let mut collector = WriteCollector {
         function_blocks: &function_blocks,
         type_environment,

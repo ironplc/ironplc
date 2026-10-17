@@ -167,7 +167,7 @@ impl<'a> Lowering<'a> {
             loops: Vec::new(),
             call_outputs: None,
             hoisting: None,
-            method_owners: MethodOwners::of_library(analysis.library()),
+            method_owners: MethodOwners::of_library(analysis.library(), analysis.context().types()),
             moved: None,
         }
     }

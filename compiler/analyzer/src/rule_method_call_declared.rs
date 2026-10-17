@@ -66,7 +66,7 @@ pub fn apply(
     context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let function_blocks = FunctionBlocks::from_library(lib);
+    let function_blocks = FunctionBlocks::from_library(lib, context.types());
 
     run_rule(RuleMethodCallDeclared::new(&function_blocks, context), lib)
 }

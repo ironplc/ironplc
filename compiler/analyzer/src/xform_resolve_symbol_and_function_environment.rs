@@ -32,7 +32,6 @@ use std::convert::Infallible;
 
 use crate::{
     function_environment::{FunctionEnvironment, FunctionSignature},
-    intermediates::string,
     semantic_type::SemanticFunctionParameter,
     symbol_environment::{
         duplicate_declaration, ScopeKind, ScopePath, ScopeTracker, SymbolEnvironment, SymbolInfo,
@@ -130,7 +129,7 @@ impl<'a> EnvironmentResolver<'a> {
         let type_id = self
             .type_env
             .as_deref_mut()
-            .and_then(|types| result_type_id(types, return_type));
+            .and_then(|types| types.result_type_id(return_type));
         let info =
             SymbolInfo::new(SymbolKind::ResultVariable, scope, name.span()).with_type_id(type_id);
         let result = self.symbol_env.insert_info(name, info);
@@ -451,28 +450,6 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
     }
 
     // TODO should this handle parameters?
-}
-
-/// The id of the type of a result of `return_type`. A string of a stated
-/// length gets a type of its own that records the length as its capacity
-/// (REQ-LOW-analyzer-053), as a declared string does
-/// (`xform_resolve_decl_types`); any other result has the type its name
-/// names.
-fn result_type_id(
-    types: &mut TypeEnvironment,
-    return_type: &FunctionReturnType,
-) -> Option<ironplc_dsl::type_id::TypeId> {
-    let named = types.id_of(&return_type.to_type_name())?;
-    match return_type {
-        FunctionReturnType::String(spec) | FunctionReturnType::WString(spec)
-            if spec.length.is_some() =>
-        {
-            Some(types.insert_sized_string(named, string::from_spec(spec)))
-        }
-        FunctionReturnType::String(_)
-        | FunctionReturnType::WString(_)
-        | FunctionReturnType::Named(_) => Some(named),
-    }
 }
 
 fn format_address(addr: &AddressAssignment) -> String {
