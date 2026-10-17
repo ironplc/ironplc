@@ -159,8 +159,8 @@ impl Lowering<'_> {
 
     /// Copies the whole of the variable `value` to `place`, an array, a
     /// structure or a function block instance (REQ-LOW-lowering-061). Any
-    /// other source, such as a call of a function that returns a structure,
-    /// is not lowered yet.
+    /// other source is not lowered here; the assignment of a call of a
+    /// function that returns a structure is `structure_result.rs`'s.
     fn aggregate_assignment(
         &mut self,
         frame: &BodyFrame,
