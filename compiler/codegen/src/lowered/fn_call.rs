@@ -1,10 +1,17 @@
-//! Emits a lowered in-place call, and a call statement of a method.
+//! Emits a lowered in-place call, and a call statement of a method or of a
+//! function whose result is a structure.
 //!
 //! An in-place call is a call of a function or method with outputs, or of a
 //! function whose result is a string, and the stores of its outputs
 //! (REQ-LOW-lowering-172, REQ-LOW-lowering-179). A method call whose result
 //! is not used, `c.M(a, q => x);`, lowers to a `Call` statement, then the
-//! store of each output (REQ-LOW-lowering-092).
+//! store of each output (REQ-LOW-lowering-092). A call of a function whose
+//! result is a structure, `p := MK(v, n => k)`, lowers to a `Call`
+//! statement, the store of each output, then the copy of the result to its
+//! target (REQ-LOW-lowering-186), emitted as the route that reads the AST
+//! emits it (`compile_aggregate.rs`): the call leaves the offset of the
+//! function's structure on the stack, the outputs are stored, and
+//! `COPY_REGION` copies the structure to the target.
 //!
 //! Each is emitted as the route that reads the AST emits the call
 //! (`compile_user_call.rs`, `compile_method.rs`), where its expression is
@@ -28,13 +35,14 @@ use ironplc_ir::lowered::{
 };
 use ironplc_lowering::Lowering;
 
+use super::aggregate::{emit_copy_from_stack, reaches_region};
 use super::call_args::passes;
 use super::expr::{emit_operation, emit_user_call};
 use super::method::{emit_method_call, method_site, MethodSite};
 use super::place::{resolve, resolve_string};
 use super::string::reaches_string;
 use super::{
-    args_can_emit, op_type, operand, operation_can_emit, reaches, same_span, user_function,
+    args_can_emit, callee_function, op_type, operand, operation_can_emit, reaches, same_span,
 };
 use crate::compile::{CompileContext, StringVarInfo, UserFunctionInfo};
 use crate::compile_expr::emit_load_var;
@@ -51,6 +59,9 @@ pub(super) struct Call<'s> {
     temporaries: Vec<(VarId, Output)>,
     /// The stores of the outputs.
     outputs: &'s [Stmt],
+    /// The target the result of a call of a function whose result is a
+    /// structure is copied to.
+    result: Option<&'s LoweredPlace>,
 }
 
 /// The callee of a call, as this backend's layout knows it.
@@ -87,10 +98,10 @@ impl Target {
 }
 
 impl Call<'_> {
-    /// How many statements a call statement is: the call and the stores of
-    /// its outputs.
+    /// How many statements a call statement is: the call, the stores of its
+    /// outputs and the copy of its result, if any.
     pub(super) fn len(&self) -> usize {
-        1 + self.outputs.len()
+        1 + self.outputs.len() + usize::from(self.result.is_some())
     }
 
     /// Whether this backend passes the call's inputs and emits the store of
@@ -107,6 +118,9 @@ impl Call<'_> {
                 .outputs
                 .iter()
                 .all(|output| self.output_can_emit(lowering, ctx, output))
+            && self
+                .result
+                .is_none_or(|target| reaches_region(lowering, ctx, target))
     }
 
     /// Whether this backend emits `stmt`, the store of an output read from
@@ -159,9 +173,10 @@ impl Call<'_> {
     }
 }
 
-/// The call statement of a method at the head of `stmts`, then the stores
-/// of its outputs, all with the call's span. `None` when `stmts` does not
-/// start with one.
+/// The call statement at the head of `stmts`, then the stores of its
+/// outputs, all with the call's span: of a method, or of a function whose
+/// result is a structure, followed by the copy of the result to its target.
+/// `None` when `stmts` does not start with one.
 pub(super) fn output_call<'s>(
     lowering: &Lowering<'_>,
     ctx: &CompileContext,
@@ -178,11 +193,35 @@ pub(super) fn output_call<'s>(
         return None;
     };
     let mut call = call_target(lowering, ctx, *pou, args)?;
-    let Target::Method(_) = call.target else {
+    call.outputs = outputs_of(&call.temporaries, rest, first.span());
+    let result = match &call.target {
+        Target::Method(_) => None,
+        Target::Function(function) => {
+            function.return_struct_desc_index?;
+            Some(result_copy(
+                args,
+                &rest[call.outputs.len()..],
+                first.span(),
+            )?)
+        }
+    };
+    call.result = result;
+    Some(call)
+}
+
+/// The target of `copy`, the first of `stmts`, when it copies the whole of
+/// the temporary `args` passes for a function's result, with the call's
+/// span.
+fn result_copy<'s>(args: &[Arg], stmts: &'s [Stmt], span: &SourceSpan) -> Option<&'s LoweredPlace> {
+    let [Arg::Ref(result), ..] = args else {
         return None;
     };
-    call.outputs = outputs_of(&call.temporaries, rest, first.span());
-    Some(call)
+    let copy = stmts.first()?;
+    let StmtKind::Copy { dst, src } = copy.kind() else {
+        return None;
+    };
+    let copies_result = same_span(copy.span(), span) && whole(src)? == whole(result)?;
+    copies_result.then_some(dst)
 }
 
 /// Whether this backend emits `call`, an in-place call whose value is used:
@@ -195,7 +234,9 @@ pub(super) fn in_place_can_emit(
 ) -> bool {
     in_place(lowering, ctx, call).is_some_and(|emitted| {
         let has_value = match &emitted.target {
-            Target::Function(function) => function.return_string_info.is_none(),
+            Target::Function(function) => {
+                function.return_string_info.is_none() && function.return_struct_desc_index.is_none()
+            }
             Target::Method(site) => site.has_return_value,
         };
         has_value && emitted.can_emit(lowering, ctx)
@@ -291,7 +332,7 @@ fn call_target<'s>(
     args: &'s [Arg],
 ) -> Option<Call<'s>> {
     let signature = lowering.pous().function(pou)?;
-    let (target, receivers) = match user_function(lowering, ctx, pou) {
+    let (target, receivers) = match callee_function(lowering, ctx, pou) {
         Some(function) => {
             let result_parameter = usize::from(signature.result_parameter().is_some());
             (Target::Function(function), result_parameter)
@@ -324,12 +365,14 @@ fn call_target<'s>(
         inputs,
         temporaries,
         outputs: &[],
+        result: None,
     })
 }
 
-/// Emits `call`, the call statement of a method at `span`, then the stores
-/// of its outputs, and drops its result, if any, and the instance beneath
-/// it.
+/// Emits `call`, a call statement at `span`, then the stores of its
+/// outputs: of a method, then drops its result, if any, and the instance
+/// beneath it; of a function whose result is a structure, then copies the
+/// structure the call leaves to its target.
 pub(super) fn emit_call_statement(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -337,9 +380,26 @@ pub(super) fn emit_call_statement(
     call: &Call<'_>,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
-    // `output_call` makes a statement only of a method's call.
-    let Target::Method(site) = &call.target else {
-        return Err(no_output(span));
+    let site = match &call.target {
+        Target::Method(site) => site,
+        Target::Function(function) => {
+            // `output_call` makes a statement of a function's call only when
+            // its result is a structure, which it copies.
+            let (Some(target), Some(desc)) = (call.result, function.return_struct_desc_index)
+            else {
+                return Err(no_output(span));
+            };
+            emit_user_call(
+                emitter,
+                ctx,
+                lowering,
+                function,
+                call.inputs.iter().copied(),
+                span,
+            )?;
+            call.emit_outputs(emitter, ctx, lowering)?;
+            return emit_copy_from_stack(emitter, ctx, lowering, target, desc, span);
+        }
     };
     emit_method_call(
         emitter,

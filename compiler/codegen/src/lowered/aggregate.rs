@@ -59,6 +59,37 @@ pub(super) fn emit_copy(
     Ok(())
 }
 
+/// Whether this backend copies a structure or an array into `dst`: a whole
+/// variable or a field of the current instance that it keeps as a region.
+pub(super) fn reaches_region(
+    lowering: &Lowering<'_>,
+    ctx: &CompileContext,
+    dst: &LoweredPlace,
+) -> bool {
+    region(lowering, ctx, dst).is_some()
+}
+
+/// Emits the copy into `dst` of the structure or array whose region's offset
+/// is on the stack, sized by the descriptor `src_desc`: `COPY_REGION`, as
+/// the route that reads the AST copies a function's structure result.
+pub(super) fn emit_copy_from_stack(
+    emitter: &mut Emitter,
+    ctx: &CompileContext,
+    lowering: &Lowering<'_>,
+    dst: &LoweredPlace,
+    src_desc: u16,
+    span: &SourceSpan,
+) -> Result<(), Diagnostic> {
+    let Some(dst) = region(lowering, ctx, dst) else {
+        return Err(Diagnostic::internal_error_at(Label::span(
+            span.clone(),
+            "A lowered copy has no data region",
+        )));
+    };
+    emitter.emit_copy_region(dst.var_index, dst.desc_index, src_desc);
+    Ok(())
+}
+
 /// The data region of `place`, when it is a whole variable or a field of the
 /// current instance that this backend keeps as a structure or an array. A
 /// `REF_TO ARRAY` parameter's slot holds a variable index, not a region, so

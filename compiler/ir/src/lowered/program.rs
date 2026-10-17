@@ -183,13 +183,13 @@ impl ProgramBuilder {
         self.declare(CONSTRUCTOR, pou, parameters, Some(result), span)
     }
 
-    /// Declares the POU `pou` a function whose result is a string, which it
-    /// returns through its first parameter, the result parameter: a
-    /// non-null reference to a string, a variable `pou` owns
+    /// Declares the POU `pou` a function whose result is a string or a
+    /// structure, which it returns through its first parameter, the result
+    /// parameter: a non-null reference to the result, a variable `pou` owns
     /// (REQ-LOW-lowering-079). Its other parameters are as
-    /// [`Self::declare_function`]'s. A call of it is only a statement, which
-    /// passes a reference to a place of the string's type for the result
-    /// parameter.
+    /// [`Self::declare_function`]'s. A call of it passes a reference to a
+    /// place of the result's type for the result parameter, and is a
+    /// statement or, for a string, a string in-place call (REQ-LOW-ir-181).
     pub fn declare_function_returning_through(
         &mut self,
         pou: PouId,
@@ -201,18 +201,23 @@ impl ProgramBuilder {
             return Err(broken(CONSTRUCTOR, span, format!("{pou} is a method")));
         }
         let result = parameters.first().copied();
-        let to_string = result
+        let to_string_or_structure = result
             .and_then(|result| self.variables.get(result))
             .and_then(|result| match self.types.reference(result.ty()) {
                 Some((target, Nullability::NonNull)) => self.types.kind(target),
                 Some((_, Nullability::Nullable)) | None => None,
             })
-            .is_some_and(|target| matches!(target, TypeKind::String(_)));
-        let Some(result) = result.filter(|_| to_string) else {
+            .is_some_and(|target| {
+                matches!(target, TypeKind::String(_) | TypeKind::Structure { .. })
+            });
+        let Some(result) = result.filter(|_| to_string_or_structure) else {
             return Err(broken(
                 CONSTRUCTOR,
                 span,
-                format!("the first parameter of {pou} is not a non-null reference to a string"),
+                format!(
+                    "the first parameter of {pou} is not a non-null reference to a string \
+                     or a structure"
+                ),
             ));
         };
         self.check_parameters(CONSTRUCTOR, pou, &parameters, None, span)?;

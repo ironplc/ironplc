@@ -164,7 +164,8 @@ fn statement_span(stmt: &AstStmtKind) -> ironplc_dsl::core::SourceSpan {
 }
 
 /// Whether this backend emits every statement of `stmts`, as `stmt.rs` emits
-/// them: a method's call statement and the stores of its outputs together
+/// them: a call statement, the stores of its outputs and, for a function
+/// whose result is a structure, the copy of its result together
 /// (`fn_call.rs`), and any other statement on its own.
 fn can_emit_all(lowering: &Lowering<'_>, ctx: &CompileContext, stmts: &[Stmt]) -> bool {
     let mut rest = stmts;
@@ -233,8 +234,8 @@ fn can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, stmt: &Stmt) -> bool 
         StmtKind::FbCall { instance, block } => {
             fb_call::reaches_block(lowering, ctx, instance, *block)
         }
-        // A call statement is emitted with the stores of its outputs
-        // (`can_emit_all`).
+        // A call statement is emitted with the stores of its outputs and the
+        // copy of its result (`can_emit_all`).
         StmtKind::Call { .. } => false,
         StmtKind::Exit(_) | StmtKind::Continue(_) | StmtKind::Return => true,
     }
@@ -335,16 +336,25 @@ pub(super) fn user_function(
     ctx: &CompileContext,
     pou: PouId,
 ) -> Option<UserFunctionInfo> {
+    callee_function(lowering, ctx, pou)
+        .filter(|function| function.return_struct_desc_index.is_none())
+}
+
+/// The function `pou` as this backend's layout knows it, by the name the
+/// lowered program keeps on the POU, whatever its result: one whose result
+/// is a structure leaves the offset of the structure's region on the stack.
+/// `None` for a method.
+pub(super) fn callee_function(
+    lowering: &Lowering<'_>,
+    ctx: &CompileContext,
+    pou: PouId,
+) -> Option<UserFunctionInfo> {
     // A method is called by `METHOD_CALL` (`method.rs`), whatever its name.
     if lowering.pous().method_of(pou).is_some() {
         return None;
     }
     let name = lowering.pous().name(pou)?.to_string().to_lowercase();
-    let function = ctx.user_functions.get(&name)?;
-    function
-        .return_struct_desc_index
-        .is_none()
-        .then(|| function.clone())
+    ctx.user_functions.get(&name).cloned()
 }
 
 /// Whether `place` has storage this backend reaches as one value of type

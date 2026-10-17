@@ -8,18 +8,16 @@ use ironplc_parser::options::CompilerOptions;
 use crate::common::{bc, compile_by_route, parse, Snapshot};
 
 /// Three statements lowering supports, the function's and two of the
-/// program's, and one it does not yet: the assignment of a call of a function
-/// whose result is a structure, which a lowered call passes a temporary for
-/// (REQ-LOW-lowering-079).
+/// program's, and one it does not yet: a shift of a `BOOL`, which the route
+/// that reads the AST compiles.
 const SOURCE: &str = "
-TYPE P : STRUCT x : DINT; END_STRUCT; END_TYPE
-FUNCTION MakeP : P
-  MakeP.x := 1;
+FUNCTION One : DINT
+  One := 1;
 END_FUNCTION
 PROGRAM main
-  VAR a : DINT; p : P; END_VAR
-  a := a + 1;
-  p := MakeP();
+  VAR a : DINT; b : BOOL; END_VAR
+  a := a + One();
+  b := SHL(b, 1);
   a := a * 2;
 END_PROGRAM
 ";
