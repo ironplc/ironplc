@@ -57,8 +57,7 @@ fn lower_statement_when_method_called_then_call_with_receiver_first() {
 
 /// REQ-LOW-lowering-092, REQ-LOW-lowering-172: a method's outputs are
 /// passed as references to temporaries, and assigned from them after the
-/// call: after a `Call` statement, or between the call and the assignment
-/// of its result.
+/// call: after a `Call` statement, or as the stores of an in-place call.
 #[test]
 fn lower_statement_when_method_with_outputs_called_then_outputs_after_call() {
     let outcome = lower(
@@ -76,9 +75,8 @@ fn lower_statement_when_method_with_outputs_called_then_outputs_after_call() {
         [
             "call pou2 (ref v0^.f0) (const i32s 2) (ref v6) (ref v7)\n\
              assign v0^.f1 (read i32s v6)",
-            "assign v10 (call pou2 i32s (ref v0^.f0) (const i32s 3) (ref v8) (ref v9))\n\
-             assign v0^.f2 (bool_not bool (read bool v9))\n\
-             assign v0^.f3 (convert i64s (read i32s v10))",
+            "assign v0^.f3 (convert i64s (call-in-place pou2 i32s (ref v0^.f0) (const i32s 3) \
+             (ref v8) (ref v9) {assign v0^.f2 (bool_not bool (read bool v9))}))",
         ]
     );
 }

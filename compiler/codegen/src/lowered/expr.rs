@@ -11,7 +11,7 @@ use ironplc_ir::lowered::{
 use ironplc_lowering::Lowering;
 
 use super::call_args::emit_passed;
-use super::fn_call::take_result;
+use super::fn_call::emit_in_place;
 use super::method::{emit_method_call, method_site};
 use super::place::{resolve_load, variable_name, Load};
 use super::policy::parse_builtin;
@@ -41,9 +41,6 @@ pub(super) fn emit_expr(
     })?;
     match expr.kind() {
         ExprKind::Const(constant) => emit_constant(emitter, ctx, *constant),
-        // The result of a call with outputs, which the call left on the
-        // stack (`fn_call.rs`).
-        ExprKind::Read(place) if take_result(ctx, place) => {}
         ExprKind::Read(place) => match resolve_load(lowering, ctx, place, expr.span())? {
             Load::Stored(storage) => storage.emit_load(emitter, ctx)?,
             Load::Referenced(storage) => {
@@ -152,19 +149,9 @@ pub(super) fn emit_expr(
             callee: Callee::Intrinsic(intrinsic),
             args,
         } => emit_intrinsic_call(emitter, ctx, lowering, *intrinsic, args, expr.span())?,
-        // `can_emit` leaves a statement with an in-place call to the AST.
-        ExprKind::InPlaceCall(_) => return Err(in_place_not_emitted(expr.span())),
+        ExprKind::InPlaceCall(call) => emit_in_place(emitter, ctx, lowering, call, expr.span())?,
     }
     Ok(())
-}
-
-/// The internal error for an in-place call, which `can_emit` leaves to the
-/// AST route.
-pub(super) fn in_place_not_emitted(span: &SourceSpan) -> Diagnostic {
-    Diagnostic::internal_error_at(Label::span(
-        span.clone(),
-        "An in-place call this backend does not emit",
-    ))
 }
 
 /// Applies `expr`, an operation of one operand, to the value of its operand

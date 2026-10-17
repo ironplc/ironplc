@@ -755,8 +755,6 @@ mod copies;
 
 mod fb_calls;
 
-mod hoisted;
-
 mod in_place;
 
 mod methods;

@@ -18,19 +18,14 @@
 //! it has one, is a scalar. A call whose result is not used is a `Call`
 //! statement, followed by the assignments of its outputs.
 //!
-//! A call of a function or method with outputs is lowered as a value only
-//! in the value of an assignment, ahead of which it is lowered as its part
-//! (`hoist.rs`, REQ-LOW-lowering-172):
-//!
-//! 1. the call, stored in a temporary of the result's type;
-//! 2. the assignment of each output to its target, of the value the
-//!    analyzer recorded for it: the call output `q`, a read of the temporary
-//!    passed for `q`.
-//!
-//! The call's value is a read of the result's temporary. So an output
-//! reaches its target, converted, once the call returns, and before the
-//! assignment does. A temporary belongs to the body the call is in, and each
-//! call has its own.
+//! A call of a function or method with outputs in an expression is an
+//! in-place call (REQ-LOW-lowering-172): the call, then the store of each
+//! output in its target, of the value the analyzer recorded for it, the call
+//! output `q` a read of the temporary passed for `q`. The expression runs it
+//! where the source evaluates the call (REQ-LOW-lowering-174), so an output
+//! reaches its target, converted, once the call returns and before anything
+//! the source evaluates after the call. A temporary belongs to the body the
+//! call is in, and each call has its own.
 //!
 //! The function's or method's POU is declared with its parameters and
 //! result the first time a call reaches it. Its parameters and result are
@@ -39,18 +34,16 @@
 //!
 //! A function whose result is a string returns it through its result
 //! parameter, its first, to a temporary each call passes
-//! (REQ-LOW-lowering-079); a call of one is moved out of the statement it is
-//! in (`string_result.rs`).
+//! (REQ-LOW-lowering-079); a call of one is a string in-place call
+//! (`string_result.rs`).
 //!
-//! Not lowered yet: a call with outputs anywhere else, or where running it
-//! first would change the order (REQ-LOW-lowering-174), a `VAR_IN_OUT` that
-//! is a string, a string result of a function with outputs or of a method,
-//! a parameter or a result that is an aggregate (REQ-LOW-lowering-079), a
-//! call with `EN` or `ENO` (REQ-LOW-lowering-160), a call through `THIS^` or
-//! `SUPER^`, and a call of a method its receiver's block inherits from a
-//! block whose type it does not extend in the lowered program
-//! (REQ-LOW-lowering-177). The route that reads the AST passes no string to
-//! a `VAR_IN_OUT` (`compile_reference_arg`).
+//! Not lowered yet: a `VAR_IN_OUT` that is a string, a string result of a
+//! method, a parameter or a result that is an aggregate
+//! (REQ-LOW-lowering-079), a call with `EN` or `ENO` (REQ-LOW-lowering-160),
+//! a call through `THIS^` or `SUPER^`, and a call of a method its receiver's
+//! block inherits from a block whose type it does not extend in the lowered
+//! program (REQ-LOW-lowering-177). The route that reads the AST passes no
+//! string to a `VAR_IN_OUT` (`compile_reference_arg`).
 
 use ironplc_analyzer::symbol_environment::Resolution;
 use ironplc_dsl::common::{
@@ -118,23 +111,6 @@ impl<'v, 'a> UserCall<'v, 'a> {
         }
     }
 
-    /// Where the call names its callee.
-    fn name_span(self) -> SourceSpan {
-        match self {
-            UserCall::Function { call, .. } => call.name.span(),
-            UserCall::Method { call, .. } => call.method.span(),
-        }
-    }
-
-    /// The address of the call, which tells one call in the source from
-    /// another.
-    pub(crate) fn address(self) -> usize {
-        match self {
-            UserCall::Function { call, .. } => std::ptr::from_ref(call) as usize,
-            UserCall::Method { call, .. } => std::ptr::from_ref(call) as usize,
-        }
-    }
-
     /// The name and section of each parameter, in the order the callee
     /// declares them; `None` when one is not a `VAR_INPUT`, a `VAR_IN_OUT`
     /// or a `VAR_OUTPUT`.
@@ -197,25 +173,56 @@ impl<'a> Lowering<'a> {
         }
     }
 
-    /// The call `call`, the expression `expr`, a value.
+    /// The call `call`, the expression `expr`, a value: a `Call`, or an
+    /// in-place call of a callee with outputs.
     fn user_call(&mut self, frame: &BodyFrame, expr: &AstExpr, call: UserCall<'_, 'a>) -> Lowered {
-        let Some(parameters) = call.parameters() else {
-            return Ok(None);
-        };
-        if has_outputs(&parameters) {
-            return self.hoisted_call(frame, expr, call, &parameters);
-        }
-        let Some(args) = self.call_args(frame, call, &parameters, &expr.span())? else {
+        let span = expr.span();
+        let Some((args, stores)) = self.call_with_stores(frame, call, &span)? else {
             return Ok(None);
         };
         if self.result_type(args.pou).is_none() {
             // The analyzer rejects a value of a method without a result
-            // (P4057).
+            // (P4057), and a function whose result is a string is a string.
             return Ok(None);
         }
-        self.program
-            .call(args.pou, args.args, expr.span())
-            .map(Some)
+        match stores {
+            Some(stores) => self
+                .program
+                .call_in_place(args.pou, args.args, stores, span)
+                .map(Some),
+            None => self.program.call(args.pou, args.args, span).map(Some),
+        }
+    }
+
+    /// The arguments of `call`, at `span`, and, when its callee has
+    /// outputs, the store of each output the call assigns, from the
+    /// temporary passed for it (REQ-LOW-lowering-092).
+    pub(crate) fn call_with_stores(
+        &mut self,
+        frame: &BodyFrame,
+        call: UserCall<'_, 'a>,
+        span: &SourceSpan,
+    ) -> Made<(CallArgs, Option<Vec<Stmt>>)> {
+        let Some(parameters) = call.parameters() else {
+            return Ok(None);
+        };
+        let Some(mut args) = self.call_args(frame, call, &parameters, span)? else {
+            return Ok(None);
+        };
+        if !has_outputs(&parameters) {
+            return Ok(Some((args, None)));
+        }
+        let temporaries = std::mem::take(&mut args.temporaries);
+        let Some(stores) = self.outputs(
+            frame,
+            CallOutputs::Temporaries(temporaries),
+            call.params(),
+            span,
+        )?
+        else {
+            return Ok(None);
+        };
+        Ok(Some((args, Some(stores))))
     }
 
     /// The method call statement `call`: a `Call` statement, whose result,
@@ -231,72 +238,12 @@ impl<'a> Lowering<'a> {
         let Some(user_call) = self.method_call(frame, call) else {
             return Ok(None);
         };
-        let Some(parameters) = user_call.parameters() else {
+        let Some((args, stores)) = self.call_with_stores(frame, user_call, &span)? else {
             return Ok(None);
         };
-        let Some(args) = self.call_args(frame, user_call, &parameters, &span)? else {
-            return Ok(None);
-        };
-        let mut stmts = vec![self.program.call_stmt(args.pou, args.args, span.clone())?];
-        let Some(outputs) = self.outputs(
-            frame,
-            CallOutputs::Temporaries(args.temporaries),
-            &call.params,
-            &span,
-        )?
-        else {
-            return Ok(None);
-        };
-        stmts.extend(outputs);
+        let mut stmts = vec![self.program.call_stmt(args.pou, args.args, span)?];
+        stmts.extend(stores.unwrap_or_default());
         Ok(Some(stmts))
-    }
-
-    /// The call `call`, the expression `expr`, of a function or method with
-    /// outputs, whose parameters are `parameters`, in the value of the
-    /// assignment being lowered (`hoist.rs`): a read of the temporary its
-    /// part stores its result in. The part is the call stored in that
-    /// temporary, then the assignments of the call's outputs from their
-    /// temporaries (REQ-LOW-lowering-092, REQ-LOW-lowering-172). `None`
-    /// outside an assignment.
-    fn hoisted_call(
-        &mut self,
-        frame: &BodyFrame,
-        expr: &AstExpr,
-        call: UserCall<'_, 'a>,
-        parameters: &[(&Id, Section)],
-    ) -> Lowered {
-        let Some(hoisting) = &self.hoisting else {
-            return Ok(None);
-        };
-        if let Some(result) = hoisting.result(call.address()) {
-            return self.read(result.clone(), expr.span());
-        }
-        let span = hoisting.span().clone();
-        let Some(args) = self.call_args(frame, call, parameters, &span)? else {
-            return Ok(None);
-        };
-        let Some(result_type) = self.result_type(args.pou) else {
-            return Ok(None);
-        };
-        let value = self.program.call(args.pou, args.args, call.name_span())?;
-        let label = format!("{}()", call.callee());
-        let result = self.temporary(frame, label, result_type, &span)?;
-        let mut part = vec![self.assign_value(result.clone(), value, span.clone())?];
-        let Some(outputs) = self.outputs(
-            frame,
-            CallOutputs::Temporaries(args.temporaries),
-            call.params(),
-            &span,
-        )?
-        else {
-            return Ok(None);
-        };
-        part.extend(outputs);
-        let Some(hoisting) = self.hoisting.as_mut() else {
-            return Ok(None);
-        };
-        hoisting.push(call.address(), part, result.clone());
-        self.read(result, expr.span())
     }
 
     /// The method `call` calls in the body of `frame`: the one the block of
@@ -352,25 +299,6 @@ impl<'a> Lowering<'a> {
                 | LibraryElementKind::GlobalVarDeclarations(_)
                 | LibraryElementKind::InterfaceDeclaration(_) => None,
             })
-    }
-
-    /// The arguments of `call`, at `span`, when its callee declares no
-    /// outputs; `None` for a call of a function or method with outputs, which
-    /// a call in an expression is lowered as only in an assignment's value
-    /// (`hoist.rs`).
-    pub(crate) fn call_args_without_outputs(
-        &mut self,
-        frame: &BodyFrame,
-        call: UserCall<'_, 'a>,
-        span: &SourceSpan,
-    ) -> Made<CallArgs> {
-        let Some(parameters) = call.parameters() else {
-            return Ok(None);
-        };
-        if has_outputs(&parameters) {
-            return Ok(None);
-        }
-        self.call_args(frame, call, &parameters, span)
     }
 
     /// The arguments of `call`, whose callee's parameters are `parameters`,

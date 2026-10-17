@@ -62,9 +62,8 @@ impl Emission<'_, '_> {
 
     /// Emits `stmts` in order, at each one's source position when `record`.
     /// The stores of a function block call's inputs and the call are emitted
-    /// together, as the AST route emits a call (`fb_call.rs`), and so are the
-    /// parts of an assignment of a call of a function with outputs
-    /// (`fn_call.rs`).
+    /// together, as the AST route emits a call (`fb_call.rs`), and so are a
+    /// method's call statement and the stores of its outputs (`fn_call.rs`).
     fn sequence(
         &mut self,
         emitter: &mut Emitter,
@@ -73,13 +72,7 @@ impl Emission<'_, '_> {
         record: bool,
     ) -> Result<(), Diagnostic> {
         let mut rest = stmts;
-        while let [first, rest_after_first @ ..] = rest {
-            // A call with a string result is emitted where its result is
-            // read (`string_result.rs`).
-            if super::string_result::is_moved(ctx, first) {
-                rest = rest_after_first;
-                continue;
-            }
+        while let [first, ..] = rest {
             if record {
                 record_position(emitter, ctx, first.span());
             }
@@ -87,7 +80,13 @@ impl Emission<'_, '_> {
                 super::fb_call::emit_call_site(emitter, ctx, self.lowering, &call, first.span())?;
                 call.len()
             } else if let Some(call) = super::fn_call::output_call(self.lowering, ctx, rest) {
-                super::fn_call::emit_output_call(emitter, ctx, self.lowering, &call, first.span())?;
+                super::fn_call::emit_call_statement(
+                    emitter,
+                    ctx,
+                    self.lowering,
+                    &call,
+                    first.span(),
+                )?;
                 call.len()
             } else {
                 self.stmt(emitter, ctx, first)?;

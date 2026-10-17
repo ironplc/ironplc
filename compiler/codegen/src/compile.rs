@@ -1259,14 +1259,6 @@ pub(crate) struct CompileContext<'a> {
     /// Where the call whose outputs are being stored leaves them, for the
     /// `CallOutput` each output stores; `None` outside a call's outputs.
     pub(crate) call_outputs: Option<crate::compile_call_output::CallOutputs>,
-    /// The temporaries of the results the lowered calls with outputs being
-    /// emitted left on the stack, which a read of one takes instead of
-    /// loading it (`lowered/fn_call.rs`).
-    pub(crate) results_on_stack: Vec<ironplc_ir::lowered::VarId>,
-    /// The calls with a string result moved out of the lowered statement
-    /// being emitted, which a read of the temporary each writes its result
-    /// to emits (`lowered/string_result.rs`).
-    pub(crate) string_results: crate::lowered::StringResults,
 }
 
 /// Describes how a `RETURN` statement should yield the function's value.
@@ -1318,8 +1310,6 @@ impl CompileContext<'_> {
             current_function_id: None,
             call_graph: HashMap::new(),
             call_outputs: None,
-            results_on_stack: Vec::new(),
-            string_results: crate::lowered::StringResults::default(),
         }
     }
 

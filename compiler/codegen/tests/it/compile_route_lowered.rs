@@ -23,6 +23,7 @@ pub(crate) fn options() -> CompilerOptions {
         allow_partial_access_syntax: true,
         allow_sizeof: true,
         allow_fb_inheritance: true,
+        allow_short_circuit_operators: true,
         ..CompilerOptions::default()
     }
 }

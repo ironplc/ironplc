@@ -7,7 +7,7 @@
 
 use ironplc_codegen::Route;
 
-use crate::common::{compile_by_route, parse, parse_and_compile_to_run};
+use crate::common::{compile_by_route, parse};
 use crate::compile_route_lowered::{assert_same_code, options, run_lowered_agreeing};
 
 /// Functions whose results are strings: a `STRING[20]` input doubled, the
@@ -105,30 +105,27 @@ fn run_when_called_in_loop_then_buffers_released_and_pool_as_ast_route() {
     assert_eq!(header(Route::RequireLowered), header(Route::Ast));
 }
 
-/// REQ-LOW-lowering-180: a call in an `ELSIF` condition is not moved, since
-/// it would run when an earlier branch is taken, so its statement compiles
-/// from the AST.
+/// REQ-LOW-lowering-180: a call in an `ELSIF` condition is in place there,
+/// so it runs only when the conditions before it are false: it decides the
+/// second statement and not the first. The code differs from the route that
+/// reads the AST only in the jump that route emits after the last branch of
+/// an `IF` with no `ELSE`.
 #[test]
-fn compile_when_result_in_elsif_condition_then_from_ast() {
+fn run_when_result_in_elsif_condition_then_lowered_in_place() {
     let source = format!(
         "{FUNCTIONS}
-         PROGRAM main VAR a : STRING[20] := 'a'; n : DINT := 1; k : DINT; END_VAR
+         PROGRAM main VAR a : STRING[20] := 'a'; n : DINT := 1; k : DINT; j : DINT; END_VAR
            IF n > 0 THEN k := 1; ELSIF TWICE(a) = 'aa' THEN k := 2; END_IF;
+           IF n < 0 THEN j := 1; ELSIF TWICE(a) = 'aa' THEN j := 2; END_IF;
          END_PROGRAM"
     );
-    let options = options();
-    let (library, context) = parse(&source, &options);
-    let required = compile_by_route(&library, &context, &options, Route::RequireLowered);
-    assert_eq!(
-        required.err().map(|diagnostic| diagnostic.code),
-        Some("P9999".to_string())
-    );
-    parse_and_compile_to_run(&source, &options);
+    let snapshot = run_lowered_agreeing(&source);
+    assert_eq!(snapshot.read_as::<i32>("k"), 1);
+    assert_eq!(snapshot.read_as::<i32>("j"), 2);
 }
 
-/// REQ-LOW-lowering-179: a call in the argument of a call with outputs in an
-/// assignment's value (REQ-LOW-lowering-172) is moved before the
-/// assignment, ahead of the other call's part.
+/// REQ-LOW-lowering-179: a call in the argument of a call with outputs
+/// (REQ-LOW-lowering-172) is in place in that argument.
 #[test]
 fn run_when_result_is_argument_of_call_with_outputs_then_values() {
     let source = format!(

@@ -107,11 +107,11 @@ END_FUNCTION";
 
 /// REQ-LOW-lowering-092, REQ-LOW-lowering-172: a call of a function with
 /// outputs passes a reference to a temporary of each output's type, which
-/// the function's body writes through. The call's result is stored in a
-/// temporary of its own, then each output is assigned from its temporary,
-/// converted or negated as the analyzer recorded, then the assignment the
-/// call is the value of is made from the result's temporary, converted too.
-/// An output the call does not assign still has its temporary.
+/// the function's body writes through. The call is in place: after it, each
+/// output is stored from its temporary, converted or negated as the
+/// analyzer recorded, and the call's value is narrowed or converted where
+/// the assignment stores it. An output the call does not assign still has
+/// its temporary.
 #[test]
 fn lower_statement_when_function_with_outputs_called_then_call_outputs_then_result() {
     let outcome = lower_bodies(
@@ -127,21 +127,14 @@ fn lower_statement_when_function_with_outputs_called_then_call_outputs_then_resu
     assert_eq!(
         outcome.statements,
         [
-            [
-                "assign v9 (truncate 16 (call pou1 i32s (read i32s v0^.f1) (ref v6) (ref v7) \
-                 (ref v8)))",
-                "assign v0^.f1 (read i32s v6)",
-                "assign v0^.f2 (bool_not bool (read bool v7))",
-                "assign v0^.f3 (convert f64 (read f32 v8))",
-                "assign v0^.f0 (read i32s v9)",
-            ]
-            .join("\n"),
-            [
-                "assign v13 (truncate 16 (call pou1 i32s (const i32s 1) (ref v10) (ref v11) \
-                 (ref v12)))",
-                "assign v0^.f3 (convert f64 (read i32s v13))",
-            ]
-            .join("\n"),
+            "assign v0^.f0 (truncate 16 (call-in-place pou1 i32s (read i32s v0^.f1) (ref v6) \
+             (ref v7) (ref v8) {assign v0^.f1 (read i32s v6)} \
+             {assign v0^.f2 (bool_not bool (read bool v7))} \
+             {assign v0^.f3 (convert f64 (read f32 v8))}))"
+                .to_string(),
+            "assign v0^.f3 (convert f64 (call-in-place pou1 i32s (const i32s 1) (ref v9) \
+             (ref v10) (ref v11)))"
+                .to_string(),
             "assign v2^ (add i32s (read i32s v1) (const i32s 1))".to_string(),
             "assign v3^ (gt (read i32s v2^) (const i32s 0))".to_string(),
             "assign v4^ (const f32 1.5)".to_string(),
@@ -167,13 +160,8 @@ fn lower_statement_when_function_has_string_output_then_assigned_as_string() {
     );
     assert_eq!(
         outcome.statements[0],
-        [
-            "assign v6 (call pou1 bool (ref v4) (ref v5))",
-            "assign-str v0^.f1 (read string[8] v4)",
-            "assign-str v0^.f2 (read wstring[254] v5)",
-            "assign v0^.f0 (read bool v6)",
-        ]
-        .join("\n")
+        "assign v0^.f0 (call-in-place pou1 bool (ref v4) (ref v5) \
+         {assign-str v0^.f1 (read string[8] v4)} {assign-str v0^.f2 (read wstring[254] v5)})"
     );
     assert_eq!(
         outcome.statements[1],
@@ -181,8 +169,8 @@ fn lower_statement_when_function_has_string_output_then_assigned_as_string() {
     );
 }
 
-/// A call of a function with outputs inside an `IF` is among the
-/// statements of its branch.
+/// A call of a function with outputs inside an `IF` is in place in the
+/// statement of its branch.
 #[test]
 fn lower_statement_when_function_with_outputs_called_inside_if_then_among_its_statements() {
     let outcome = lower(
@@ -197,17 +185,16 @@ fn lower_statement_when_function_with_outputs_called_inside_if_then_among_its_st
     assert_eq!(
         outcome.statements,
         ["if (gt (read i32s v0^.f1) (const i32s 0))\n\
-          \x20 assign v9 (truncate 16 (call pou1 i32s (read i32s v0^.f1) (ref v6) (ref v7) \
-          (ref v8)))\n\
-          \x20 assign v0^.f1 (read i32s v6)\n\
-          \x20 assign v0^.f0 (read i32s v9)\n\
+          \x20 assign v0^.f0 (truncate 16 (call-in-place pou1 i32s (read i32s v0^.f1) (ref v6) \
+          (ref v7) (ref v8) {assign v0^.f1 (read i32s v6)}))\n\
           end"]
     );
 }
 
-/// A call of a function with outputs in a condition is not lowered yet.
+/// REQ-LOW-lowering-172: a call of a function with outputs in a condition
+/// is in place in the condition, which runs it where the `IF` evaluates it.
 #[test]
-fn lower_statement_when_call_with_outputs_in_condition_then_unsupported() {
+fn lower_statement_when_call_with_outputs_in_condition_then_in_place_in_condition() {
     let outcome = lower(
         &format!(
             "{OUTPUTS}
@@ -217,7 +204,15 @@ fn lower_statement_when_call_with_outputs_in_condition_then_unsupported() {
         ),
         "main",
     );
-    assert_eq!(outcome.statements, ["unsupported"]);
+    assert_eq!(
+        outcome.statements,
+        [
+            "if (gt (call-in-place pou1 i32s (const i32s 1) (ref v6) (ref v7) (ref v8)) \
+          (const i32s 0))\n\
+          \x20 assign v0^.f0 (const i32s 1)\n\
+          end"
+        ]
+    );
 }
 
 /// REQ-LOW-lowering-071, REQ-LOW-lowering-072: a function's `STRING` and
@@ -264,12 +259,10 @@ fn lower_statement_when_call_with_outputs_has_string_input_then_str_before_tempo
     );
     assert_eq!(
         outcome.statements,
-        [[
-            "assign v5 (call pou1 i32s (literal string[3] \"abc\") (ref v4))",
-            "assign v0^.f1 (read i32s v4)",
-            "assign v0^.f0 (read i32s v5)",
+        [
+            "assign v0^.f0 (call-in-place pou1 i32s (literal string[3] \"abc\") (ref v4) \
+          {assign v0^.f1 (read i32s v4)})"
         ]
-        .join("\n")]
     );
 }
 

@@ -143,6 +143,7 @@ mod end_to_end_func_forms_extensible;
 mod end_to_end_global;
 mod end_to_end_if;
 mod end_to_end_implicit_widening;
+mod end_to_end_in_place_call;
 mod end_to_end_initial_value_matrix;
 mod end_to_end_initial_values;
 mod end_to_end_inputs_of_one_type;
