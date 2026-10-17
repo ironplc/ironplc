@@ -215,30 +215,10 @@ mod tests {
     use super::*;
     use crate::semantic_context::SemanticContext;
     use crate::semantic_type::SemanticType;
-    use crate::test_helpers::parse_and_resolve_types_with_options;
-    use ironplc_dsl::visitor::Visitor;
+    use crate::test_helpers::{declared_ids, parse_and_resolve_types_with_options};
     use ironplc_parser::options::{CompilerOptions, Dialect};
     use rstest::rstest;
     use spec_test_macro::spec_test;
-    use std::collections::HashMap;
-    use std::convert::Infallible;
-
-    /// Every symbolic declaration's recorded type id, by variable name.
-    fn declared_ids(library: &Library) -> HashMap<String, Option<TypeId>> {
-        struct Collect(HashMap<String, Option<TypeId>>);
-        impl Visitor<Infallible> for Collect {
-            type Value = ();
-            fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
-                if let Some(id) = node.identifier.symbolic_id() {
-                    self.0.insert(id.to_string(), node.type_id);
-                }
-                Ok(())
-            }
-        }
-        let mut collect = Collect(HashMap::new());
-        let _ = collect.walk(library);
-        collect.0
-    }
 
     /// Resolves `program` under edition 3, which has `REF_TO`.
     fn resolve(program: &str) -> (Library, SemanticContext) {
