@@ -13,6 +13,7 @@ use crate::{
     xform_resolve_symbol_and_function_environment::apply_impl,
 };
 
+mod extends;
 mod property;
 
 #[test]

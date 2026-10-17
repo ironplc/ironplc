@@ -163,6 +163,8 @@ FUNCTION_BLOCK FB_AdvancedMotor EXTENDS FB_Motor IMPLEMENTS I_Drivable, I_Loggab
 
 **Design:** Add `Extends` and `Implements` as keyword tokens. The parser recognizes an optional `EXTENDS base_name` clause and an optional `IMPLEMENTS interface_list` clause after the function block name. These are stored as metadata on the function block AST node.
 
+**The base.** The type environment resolves `EXTENDS base_name` once, when it records the block (`TypeEnvironment::record_block`), and keeps it only when it is a function block the library declares (`TypeEnvironment::base_of`). Everything that follows the chain after the environment is built follows that record: field and method lookup, `FunctionBlocks`, and the symbol environment, so `SUPER^` and the inherited scopes see only a declared base. `rule_extends_base_declared` reports a base the environment did not keep, at the base name: a name that is not declared, or that names another kind of type, is P4086 (XAE: `No definition found for base class 'FB_Missing'`); a standard function block such as `TON` is P9999, because nothing inherits a standard block's fields or methods.
+
 #### 1.5 Member Qualifiers (Access Modifiers, `FINAL`, `ABSTRACT`, `OVERRIDE`)
 
 A member qualifier is a word between `FUNCTION_BLOCK`/`METHOD`/`PROPERTY` and the name. TwinCAT writes them after the keyword, not before it, as a `.TcPOU` `<Declaration>` shows (`METHOD PRIVATE Reset`):

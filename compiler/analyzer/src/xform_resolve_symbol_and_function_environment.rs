@@ -333,11 +333,26 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
         node: &ironplc_dsl::common::FunctionBlockDeclaration,
     ) -> Result<Self::Value, Infallible> {
         let name = &node.name.name;
+        // The base is the one the type environment records: only a function
+        // block the library declares (`rule_extends_base_declared` reports
+        // any other), so a name that is not one is no scope on the lookup
+        // chain and not `SUPER^`'s type.
+        let recorded = self.type_env.as_deref().is_some_and(|types| {
+            types
+                .id_of(&node.name)
+                .and_then(|block| types.base_of(block))
+                .is_some()
+        });
+        let extends = node
+            .oop
+            .as_ref()
+            .and_then(|oop| oop.base.clone())
+            .filter(|_| recorded);
         self.declare_global_symbol(
             name,
             SymbolInfo::new(SymbolKind::FunctionBlock, ScopeKind::Global, name.span())
                 .with_abstract(node.is_abstract())
-                .with_extends(node.oop.as_ref().and_then(|oop| oop.base.clone())),
+                .with_extends(extends),
         );
         let result = node.recurse_visit(self);
         // A property is declared in the block's scope after its variables,
