@@ -291,6 +291,14 @@ impl<S> Place<S> {
 
 impl<S: Subscript> Place<S> {
     /// The type the place's value is loaded and stored at.
+    /// The variable whose slot the place is, when it is the whole of one.
+    pub(crate) fn variable(&self) -> Option<VarIndex> {
+        match &self.address {
+            Address::Variable(var_index) => Some(*var_index),
+            Address::Indirect(_) | Address::Element { .. } | Address::FbField { .. } => None,
+        }
+    }
+
     pub(crate) fn op_type(&self) -> OpType {
         self.type_info
             .map(|ti| (ti.op_width, ti.signedness))
