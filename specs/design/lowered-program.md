@@ -579,7 +579,11 @@ lowered.
 
 **REQ-LOW-lowering-170** The type of a program, or of a function block the
 library declares, has one field for each variable it declares other than a
-`VAR_TEMP` or a `VAR_EXTERNAL`, in the order it declares them.
+`VAR_TEMP` or a `VAR_EXTERNAL`, in the order it declares them. A program's
+access paths (`VAR_ACCESS`) and its located variables with no name, which no
+statement names, are no fields, nor are the global variables a PLCopen XML
+program declares in its interface (`<globalVars>`), which are global
+variables.
 
 A function block type may record its *base*, the function block type it
 extends. It then begins with the base's fields, of the same names, sections

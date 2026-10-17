@@ -174,6 +174,27 @@ fn lower_statement_when_literals_at_real_type_then_real_constants() {
     );
 }
 
+/// REQ-LOW-lowering-170: a program's access path and a located variable with
+/// no name, which no statement names, are no fields of its instance, so its
+/// other variables are.
+#[test]
+fn lower_statement_when_program_declares_access_path_and_unnamed_located_then_lowered() {
+    let outcome = lower(
+        "PROGRAM main
+           VAR k : DINT; END_VAR
+           VAR AT %IX0.0 : BOOL; END_VAR
+           VAR n : DINT; END_VAR
+           VAR_ACCESS acc : k : DINT READ_WRITE; END_VAR
+           k := n + 1;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        ["assign v0^.f0 (add i32s (read i32s v0^.f1) (const i32s 1))"]
+    );
+}
+
 /// REQ-LOW-lowering-034: a `VAR_TEMP` is a variable of its own, not a field.
 #[test]
 fn lower_statement_when_var_temp_then_own_variable() {
