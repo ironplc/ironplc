@@ -133,6 +133,7 @@ P4065,ContinueOutsideLoop,CONTINUE statement is not inside a loop
 P4066,InterfaceNotImplemented,Value does not implement the interface it is used as
 P4067,InterfaceMemberMissing,Function block does not provide a member of an interface it implements
 P4068,InterfaceMemberMismatch,Function block member differs from the interface member it implements
+P4070,ImplementsNotInterface,IMPLEMENTS names a type that is not a declared interface
 P4072,ConditionTypeInvalid,Condition of IF or ELSIF or WHILE or REPEAT is not BOOL
 P2038,DateLiteralOutOfRange,Date literal is outside the range the date type can represent
 P2039,DurationLiteralOutOfRange,Duration literal is outside the range the duration type can represent

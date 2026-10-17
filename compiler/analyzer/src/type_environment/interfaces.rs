@@ -55,9 +55,6 @@ impl TypeEnvironment {
     /// The signatures of the method prototypes the interface `interface`
     /// declares; not those of the interfaces it extends. `None` when
     /// `interface` is not a recorded interface.
-    // Read by the `IMPLEMENTS` conformance check once it compares recorded
-    // signatures.
-    #[allow(dead_code)]
     pub(crate) fn interface_methods(&self, interface: TypeId) -> Option<&[MethodSignature]> {
         Some(&self.interfaces.get(&interface)?.methods)
     }
@@ -65,7 +62,6 @@ impl TypeEnvironment {
     /// The signatures of the property prototypes the interface `interface`
     /// declares; not those of the interfaces it extends. `None` when
     /// `interface` is not a recorded interface.
-    #[allow(dead_code)]
     pub(crate) fn interface_properties(&self, interface: TypeId) -> Option<&[PropertySignature]> {
         Some(&self.interfaces.get(&interface)?.properties)
     }

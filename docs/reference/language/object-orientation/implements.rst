@@ -53,12 +53,12 @@ Example
        END_VAR
    END_FUNCTION_BLOCK
 
-The function block must declare every method and property of the
-interface, and of the interfaces it extends, with the same signature: a
-method with the same return type and the same input, output and in-out
-variables, in the same order, and a property with the same type and every
-accessor the interface declares. A member inherited from a base type through
-``EXTENDS`` counts.
+The function block must provide every method and property of the
+interface, and of the interfaces it extends, with the same signature; see
+:doc:`P4067 </reference/compiler/problems/P4067>` and
+:doc:`P4068 </reference/compiler/problems/P4068>` for what must match. A
+member inherited from a base type through ``EXTENDS`` counts, and a type that
+extends a function block implements the interfaces the base implements.
 
 A type may implement several interfaces at once:
 

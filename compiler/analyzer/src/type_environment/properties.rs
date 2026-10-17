@@ -42,6 +42,20 @@ impl TypeEnvironment {
         }
     }
 
+    /// Whether the property `property` provides the property prototype
+    /// `prototype`: it has the same type, compared by
+    /// [`Self::same_type_if_resolved`], and every accessor the prototype
+    /// has. An extra accessor is allowed.
+    pub(crate) fn provides_property(
+        &self,
+        property: &PropertySignature,
+        prototype: &PropertySignature,
+    ) -> bool {
+        self.same_type_if_resolved(property.property_type, prototype.property_type)
+            && (property.get || !prototype.get)
+            && (property.set || !prototype.set)
+    }
+
     /// The signature of the property prototype `prototype` an interface
     /// declares, as [`Self::property_signature`] gives a property's.
     pub(crate) fn property_prototype_signature(

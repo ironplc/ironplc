@@ -1,5 +1,5 @@
 use super::apply;
-use crate::test_helpers::{codes, rule_codes};
+use crate::test_helpers::{codes, rule_codes, rule_diagnostics};
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
 use rstest::rstest;
@@ -149,12 +149,81 @@ fn apply_when_property_differs_then_error(#[case] from: &str, #[case] to: &str) 
     assert_eq!(mismatch(), check(&serial(&format!("{RESET}{SEND}{ready}"))));
 }
 
-#[test]
-fn apply_when_interface_not_declared_then_ok() {
-    assert_eq!(
-        codes(&[]),
-        check("FUNCTION_BLOCK FB_Other IMPLEMENTS I_Unknown\nEND_FUNCTION_BLOCK")
+#[rstest]
+#[case::undeclared("I_Unknown")]
+#[case::function_block("FB_Plain")]
+#[case::structure("S_Point")]
+fn apply_when_implements_names_no_interface_then_error(#[case] name: &str) {
+    let source = format!(
+        "TYPE S_Point : STRUCT x : INT; END_STRUCT; END_TYPE
+FUNCTION_BLOCK FB_Plain
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK FB_Other IMPLEMENTS {name}
+END_FUNCTION_BLOCK"
     );
+    assert_eq!(codes(&[Problem::ImplementsNotInterface]), check(&source));
+}
+
+#[test]
+fn apply_when_implements_interface_and_one_it_extends_then_each_problem_once() {
+    let source = format!(
+        "FUNCTION_BLOCK FB_Serial IMPLEMENTS I_Comm, I_Base\n{SEND}{READY}\nEND_FUNCTION_BLOCK"
+    );
+    assert_eq!(missing(), check(&source));
+}
+
+/// `FB_Base` implements `I_Comm` correctly; `FB_Derived` extends it,
+/// declaring `{members}`.
+fn derived(members: &str) -> String {
+    format!(
+        "FUNCTION_BLOCK FB_Base IMPLEMENTS I_Comm\n{RESET}{SEND}{READY}\nEND_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Base\n{members}\nEND_FUNCTION_BLOCK"
+    )
+}
+
+#[rstest]
+#[case::inherits_members("")]
+#[case::overrides_method_alike(SEND)]
+#[case::overrides_property_alike(READY)]
+fn apply_when_derived_block_inherits_interface_then_ok(#[case] members: &str) {
+    assert_eq!(codes(&[]), check(&derived(members)));
+}
+
+#[rstest]
+#[case::method_return_type(SEND, "Send : BOOL", "Send : INT")]
+#[case::method_parameter(SEND, "data : INT;", "data : DINT;")]
+#[case::property_type(READY, "Ready : BOOL", "Ready : INT")]
+fn apply_when_derived_block_overrides_differently_then_mismatch(
+    #[case] member: &str,
+    #[case] from: &str,
+    #[case] to: &str,
+) {
+    let member = member.replacen(from, to, 1);
+    assert_eq!(mismatch(), check(&derived(&member)));
+}
+
+#[test]
+fn apply_when_base_misses_member_then_only_base_reports() {
+    let source = format!(
+        "FUNCTION_BLOCK FB_Base IMPLEMENTS I_Comm\n{RESET}{READY}\nEND_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+END_FUNCTION_BLOCK"
+    );
+    assert_eq!(missing(), check(&source));
+}
+
+#[test]
+fn apply_when_derived_block_overrides_differently_then_reported_at_member() {
+    let send = SEND.replacen("Send : BOOL", "Send : INT", 1);
+    let program = format!("{INTERFACES}\n{}", derived(&send));
+    let diagnostics = rule_diagnostics(apply, &program, &options());
+
+    assert_eq!(1, diagnostics.len());
+    let primary = &diagnostics[0].primary.location;
+    assert_eq!("Send", &program[primary.start..primary.end]);
+    assert!(primary.start > program.find("FB_Derived EXTENDS").unwrap());
 }
 
 /// An interface `I_Shape` with one method whose parameter is `{parameter}`,

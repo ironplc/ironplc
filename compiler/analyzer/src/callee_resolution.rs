@@ -19,7 +19,7 @@ use std::collections::{HashMap, HashSet};
 
 use ironplc_dsl::common::{
     FunctionBlockDeclaration, HasVariables, Library, LibraryElementKind, MethodDeclaration,
-    PropertyDeclaration, TypeName, VariableType,
+    TypeName, VariableType,
 };
 use ironplc_dsl::core::Id;
 use ironplc_dsl::textual::MethodReceiver;
@@ -102,18 +102,6 @@ impl<'a> FunctionBlocks<'a> {
                 .find(|m| &m.name == method_name)
                 .map(|method| (fb, method))
         })
-    }
-
-    /// Resolves the property `property_name` against `fb_name`'s own
-    /// properties, then its `EXTENDS` chain, as [`Self::resolve_method`]
-    /// does for methods.
-    pub(crate) fn resolve_property(
-        &self,
-        fb_name: &TypeName,
-        property_name: &Id,
-    ) -> Option<&'a PropertyDeclaration> {
-        self.chain(fb_name)
-            .find_map(|fb| fb.properties.iter().find(|p| &p.name == property_name))
     }
 
     /// The block in `fb_name`'s `EXTENDS` chain -- `fb_name` itself first --

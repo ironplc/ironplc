@@ -56,6 +56,24 @@ impl Supertypes {
         }
         false
     }
+
+    /// Every direct or indirect supertype of `name`, each once, nearest
+    /// first: for a function block, its bases and every interface it
+    /// converts to. Stops at a cycle, as [`Self::is_subtype_of`] does.
+    pub fn all_of(&self, name: &TypeName) -> Vec<TypeName> {
+        let mut seen = HashSet::from([name]);
+        let mut found = Vec::new();
+        let mut pending = std::collections::VecDeque::from([name]);
+        while let Some(current) = pending.pop_front() {
+            for supertype in self.direct.get(current).into_iter().flatten() {
+                if seen.insert(supertype) {
+                    found.push(supertype.clone());
+                    pending.push_back(supertype);
+                }
+            }
+        }
+        found
+    }
 }
 
 #[cfg(test)]
@@ -87,6 +105,30 @@ mod tests {
     #[test]
     fn is_subtype_of_when_unrelated_then_false() {
         assert!(!hierarchy().is_subtype_of(&name("I_Base"), &name("I_Comm")));
+    }
+
+    #[test]
+    fn all_of_when_base_implements_extended_interface_then_each_supertype_once() {
+        let mut supertypes = hierarchy();
+        supertypes.insert(&name("FB_Twice"), vec![name("I_Comm"), name("I_Base")]);
+
+        assert_eq!(
+            vec![name("FB_Serial"), name("I_Comm"), name("I_Base")],
+            supertypes.all_of(&name("FB_Usb"))
+        );
+        assert_eq!(
+            vec![name("I_Comm"), name("I_Base")],
+            supertypes.all_of(&name("FB_Twice"))
+        );
+    }
+
+    #[test]
+    fn all_of_when_cycle_then_stops() {
+        let mut supertypes = Supertypes::default();
+        supertypes.insert(&name("A"), vec![name("B")]);
+        supertypes.insert(&name("B"), vec![name("A")]);
+
+        assert_eq!(vec![name("B")], supertypes.all_of(&name("A")));
     }
 
     #[test]
