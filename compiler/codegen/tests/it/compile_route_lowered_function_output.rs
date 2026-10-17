@@ -222,3 +222,47 @@ fn run_when_function_has_string_outputs_then_stored() {
     assert_eq!(snapshot.read("u"), "de");
     assert_eq!(snapshot.read("t2"), "");
 }
+
+/// A function and a method that count a `FOR` loop with a `VAR_OUTPUT`
+/// parameter, to a bound that is a variable and one that is a constant, and
+/// then compare the output with a constant.
+const OUTPUT_CONTROLS: &str = "
+    FUNCTION COUNT : DINT
+      VAR_INPUT top : DINT; END_VAR
+      VAR_OUTPUT n : DINT; END_VAR
+      FOR n := 1 TO top DO COUNT := COUNT + n; END_FOR;
+      IF n > 3 THEN COUNT := COUNT + 100; END_IF;
+    END_FUNCTION
+    FUNCTION_BLOCK B
+      VAR k : DINT; END_VAR
+      METHOD M : DINT
+        VAR_OUTPUT o : DINT; END_VAR
+        FOR o := 1 TO 3 DO k := k + 1; END_FOR;
+        M := k;
+      END_METHOD
+    END_FUNCTION_BLOCK
+    PROGRAM main
+      VAR f : B; s : DINT; n : DINT; m : DINT; o : DINT; END_VAR
+      s := COUNT(top := 3, n => n);
+      m := f.M(o => o);
+    END_PROGRAM";
+
+/// REQ-LOW-lowering-067: what a function's or a method's `VAR_OUTPUT`
+/// parameter refers to counts a `FOR` loop, and its comparison with a
+/// constant is one compare and branch, as the route that reads the AST
+/// compiles both.
+#[test]
+fn compile_when_output_counts_loop_then_same_code_as_ast() {
+    assert_same_code(OUTPUT_CONTROLS);
+}
+
+/// The loops leave each output one past its bound, which the call stores in
+/// its target, and the function's comparison of its output sees that value.
+#[test]
+fn run_when_output_counts_loop_then_left_past_bound() {
+    let snapshot = run_lowered_agreeing(OUTPUT_CONTROLS);
+    assert_eq!(snapshot.read_as::<i32>("s"), 106);
+    assert_eq!(snapshot.read_as::<i32>("n"), 4);
+    assert_eq!(snapshot.read_as::<i32>("m"), 3);
+    assert_eq!(snapshot.read_as::<i32>("o"), 4);
+}

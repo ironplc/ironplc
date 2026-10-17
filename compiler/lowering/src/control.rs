@@ -166,8 +166,9 @@ impl Lowering<'_> {
             return Ok(None);
         };
         // What a `VAR_IN_OUT` refers to is not a control variable yet, on
-        // either route.
-        if !is_loop_control(&control) {
+        // either route; what a `VAR_OUTPUT` parameter refers to is
+        // (REQ-LOW-lowering-067).
+        if !is_loop_control(&control) || self.is_in_out(frame, &stmt.control) {
             return Ok(None);
         }
         let Some(ty) = self.program.types().operation_type(control.ty()) else {
