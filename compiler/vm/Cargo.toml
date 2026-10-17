@@ -15,6 +15,10 @@ profiling = []
 
 [dependencies]
 ironplc-container = { path = "../container", version = "0.249.0" }
+# Verus specifications and the `verus!` macro. Pinned with `=` to the version
+# the pinned Verus release was cut with: `vstd` must match the `verus` binary
+# that verifies it, and `cargo update` must not move one without the other.
+vstd = { version = "=0.0.0-2026-10-04-0306", default-features = false }
 
 [dev-dependencies]
 ironplc-vm = { path = ".", features = ["test-support"] }
@@ -42,3 +46,8 @@ path = "tests/it/main.rs"
 
 [lints]
 workspace = true
+
+# Opts this crate into `cargo verus verify`. Only code inside `verus!` is
+# verified; the rest of the crate is compiled but not checked.
+[package.metadata.verus]
+verify = true

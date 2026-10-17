@@ -1,0 +1,81 @@
+name: Verus Verification
+on:
+  workflow_call:
+    inputs:
+      # Name deliberately avoids "ref"/"head"/"branch"/"sha"/"commit": those
+      # substrings make CodeQL read the checkout below as a pull request head
+      # checkout. See partial_compiler.yaml for the full explanation.
+      source-revision:
+        required: false
+        type: string
+        description: 'If not empty, then run for the specified branch name or tag'
+
+# Verification only reads the repository and produces no artifacts.
+# See specs/adrs/0032-ci-gating-and-secret-scoping.md.
+permissions:
+  contents: read
+
+env:
+  # The Verus release, its checksum, and the Rust toolchain it was built
+  # with (`verus --version` names it). Move all three together with the
+  # `vstd` pin in compiler/vm/Cargo.toml: `vstd` must be the version this
+  # release was cut with. Use a weekly `release/...` tag, not a
+  # `release/rolling/...` one, whose assets are deleted within days.
+  VERUS_RELEASE: 0.2026.10.04.426d8b0
+  VERUS_SHA256: 624018662868563a7bec0dd07be5e4dd0c3d61124b4b55105765884bf2d4d1a0
+  VERUS_RUST_TOOLCHAIN: 1.98.1
+  VERUSFMT_VERSION: 0.7.4
+  VERUSFMT_SHA256: bbc5cb02c01efeaf9e66c93443ae782b11c5d8fd88c67d558c23216222971f4f
+
+jobs:
+  verify:
+    name: Verify with Verus
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./compiler
+    steps:
+      - name: Checkout branch or tag ${{ inputs.source-revision }}
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        if: ${{ inputs.source-revision }}
+        with:
+          ref: ${{ inputs.source-revision }}
+      - name: Checkout HEAD
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        if: ${{ !inputs.source-revision }}
+
+      - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
+
+      # Verus links against this exact rustc. The rest of CI stays on stable.
+      - name: Install the Rust toolchain Verus needs
+        run: rustup toolchain install "$VERUS_RUST_TOOLCHAIN" --profile minimal
+
+      # The release bundles `verus`, `cargo-verus` and Z3. Downloading it is
+      # faster than restoring a 1.6 GB unpacked cache.
+      - name: Install Verus
+        run: |
+          curl -sSL --fail -o "$RUNNER_TEMP/verus.zip" \
+            "https://github.com/verus-lang/verus/releases/download/release%2F${VERUS_RELEASE}/verus-${VERUS_RELEASE}-x86-linux.zip"
+          echo "${VERUS_SHA256}  $RUNNER_TEMP/verus.zip" | sha256sum --check
+          unzip -q "$RUNNER_TEMP/verus.zip" -d "$RUNNER_TEMP/verus"
+          echo "$RUNNER_TEMP/verus/verus-x86-linux" >> "$GITHUB_PATH"
+
+      # rustfmt skips `verus!` bodies, so `just verify` checks them with
+      # verusfmt.
+      - name: Install verusfmt
+        run: |
+          curl -sSL --fail -o "$RUNNER_TEMP/verusfmt.tar.xz" \
+            "https://github.com/verus-lang/verusfmt/releases/download/v${VERUSFMT_VERSION}/verusfmt-x86_64-unknown-linux-gnu.tar.xz"
+          echo "${VERUSFMT_SHA256}  $RUNNER_TEMP/verusfmt.tar.xz" | sha256sum --check
+          tar -xJf "$RUNNER_TEMP/verusfmt.tar.xz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/verusfmt-x86_64-unknown-linux-gnu" >> "$GITHUB_PATH"
+
+      # Its own key: these artifacts are built by Verus's rustc, so they
+      # never match the stable-toolchain caches of the other jobs.
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: "compiler -> target"
+          key: verus-${{ env.VERUS_RELEASE }}
+
+      - name: Verify
+        run: just verify
