@@ -537,6 +537,7 @@ fn fits(types: &TypeTable, place: TypeId, width: NarrowWidth, value: &Expr) -> b
         | ExprKind::Compare { .. }
         | ExprKind::ShortCircuit { .. }
         | ExprKind::Call { .. }
+        | ExprKind::InPlaceCall(_)
         | ExprKind::RefTo(_)
         | ExprKind::Null => false,
     }

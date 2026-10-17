@@ -152,8 +152,19 @@ pub(super) fn emit_expr(
             callee: Callee::Intrinsic(intrinsic),
             args,
         } => emit_intrinsic_call(emitter, ctx, lowering, *intrinsic, args, expr.span())?,
+        // `can_emit` leaves a statement with an in-place call to the AST.
+        ExprKind::InPlaceCall(_) => return Err(in_place_not_emitted(expr.span())),
     }
     Ok(())
+}
+
+/// The internal error for an in-place call, which `can_emit` leaves to the
+/// AST route.
+pub(super) fn in_place_not_emitted(span: &SourceSpan) -> Diagnostic {
+    Diagnostic::internal_error_at(Label::span(
+        span.clone(),
+        "An in-place call this backend does not emit",
+    ))
 }
 
 /// Applies `expr`, an operation of one operand, to the value of its operand
@@ -189,6 +200,7 @@ pub(super) fn emit_operation(emitter: &mut Emitter, expr: &Expr) -> Result<(), D
         | ExprKind::Compare { .. }
         | ExprKind::ShortCircuit { .. }
         | ExprKind::Call { .. }
+        | ExprKind::InPlaceCall(_)
         | ExprKind::RefTo(_)
         | ExprKind::Null => {
             return Err(Diagnostic::internal_error_at(Label::span(

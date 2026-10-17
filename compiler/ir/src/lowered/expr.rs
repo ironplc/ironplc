@@ -5,9 +5,11 @@ use ironplc_dsl::diagnostic::Diagnostic;
 
 use super::call::{program_of, Arg, Callee, Intrinsic, Param};
 use super::ids::{PouId, Stamp};
+use super::in_place::InPlaceCall;
 use super::invariant::broken;
 use super::place::Place;
 use super::scalar::{ScalarType, Signedness};
+use super::stmt::Stmt;
 use super::types::{NarrowWidth, TypeTable};
 use super::variables::{PouTable, VariableTable};
 
@@ -175,6 +177,10 @@ pub enum ExprKind {
         callee: Callee,
         args: Vec<Arg>,
     },
+    /// The result of a call of a function or method with outputs, run where
+    /// the expression is evaluated: the call, then the stores of its
+    /// outputs (REQ-LOW-ir-182).
+    InPlaceCall(InPlaceCall),
     /// A reference to a place.
     RefTo(Place),
     /// The null reference.
@@ -526,6 +532,29 @@ impl Expr {
         Self::of_call(CONSTRUCTOR, Callee::User(pou), args, result, span)
     }
 
+    /// The result of calling the function or method `pou` that `pous`
+    /// declares with `args`, which [`check_user_call`] describes, in place:
+    /// the call, then `stores`, which [`InPlaceCall`] describes. The callee
+    /// has a value: a function that returns its result through a parameter
+    /// is called in place by a [`StrExpr`](super::StrExpr).
+    pub(crate) fn call_in_place(
+        types: &TypeTable,
+        variables: &VariableTable,
+        pous: &PouTable,
+        pou: PouId,
+        args: Vec<Arg>,
+        stores: Vec<Stmt>,
+        span: SourceSpan,
+    ) -> Result<Self, Diagnostic> {
+        const CONSTRUCTOR: &str = "ProgramBuilder::call_in_place";
+        let Some(result) = check_user_call(CONSTRUCTOR, types, variables, pous, pou, &args, &span)?
+        else {
+            return Err(broken(CONSTRUCTOR, &span, format!("{pou} has no value")));
+        };
+        let call = InPlaceCall::new(CONSTRUCTOR, pou, args, stores, &span)?;
+        Ok(Self::new(ExprKind::InPlaceCall(call), result, span))
+    }
+
     /// The `ty` result of calling `callee` with `args`, whose types the
     /// caller checked, when the arguments read places of one program.
     fn of_call(
@@ -551,6 +580,7 @@ impl Expr {
             | ExprKind::Compare { lhs, rhs, .. }
             | ExprKind::ShortCircuit { lhs, rhs, .. } => lhs.program.or(rhs.program),
             ExprKind::Call { args, .. } => args.iter().find_map(Arg::program),
+            ExprKind::InPlaceCall(call) => call.program(),
         };
         Self {
             kind,

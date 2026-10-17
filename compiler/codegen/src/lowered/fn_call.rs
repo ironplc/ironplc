@@ -190,7 +190,9 @@ impl Call<'_> {
             StmtKind::AssignStr { place, value } => {
                 let output = match value.kind() {
                     StrExprKind::Read(temporary) => self.output(temporary),
-                    StrExprKind::Literal(_) | StrExprKind::Call { .. } => None,
+                    StrExprKind::Literal(_)
+                    | StrExprKind::Call { .. }
+                    | StrExprKind::InPlaceCall { .. } => None,
                 };
                 matches!(output, Some(Output::String(_))) && reaches_string(lowering, ctx, place)
             }
@@ -541,7 +543,9 @@ fn emit_output(
         StmtKind::AssignStr { place, value } => {
             let output = match value.kind() {
                 StrExprKind::Read(temporary) => call.output(temporary),
-                StrExprKind::Literal(_) | StrExprKind::Call { .. } => None,
+                StrExprKind::Literal(_)
+                | StrExprKind::Call { .. }
+                | StrExprKind::InPlaceCall { .. } => None,
             };
             let Some(Output::String(string)) = output else {
                 return Err(no_output(span));
@@ -633,6 +637,7 @@ fn output_read<'t>(temporaries: &'t [(VarId, Output)], expr: &Expr) -> Option<&'
         | ExprKind::Compare { .. }
         | ExprKind::ShortCircuit { .. }
         | ExprKind::Call { .. }
+        | ExprKind::InPlaceCall(_)
         | ExprKind::RefTo(_)
         | ExprKind::Null => None,
     }
@@ -644,7 +649,9 @@ fn assigns_output(temporaries: &[(VarId, Output)], stmt: &Stmt) -> bool {
         StmtKind::Assign { value, .. } => output_read(temporaries, innermost(value)).is_some(),
         StmtKind::AssignStr { value, .. } => match value.kind() {
             StrExprKind::Read(temporary) => output_of(temporaries, temporary).is_some(),
-            StrExprKind::Literal(_) | StrExprKind::Call { .. } => false,
+            StrExprKind::Literal(_)
+            | StrExprKind::Call { .. }
+            | StrExprKind::InPlaceCall { .. } => false,
         },
         StmtKind::AssignBits { .. }
         | StmtKind::Copy { .. }

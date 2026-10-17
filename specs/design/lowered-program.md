@@ -912,6 +912,7 @@ pub enum ExprKind {
     Compare { op: CompareOp, lhs: Box<Expr>, rhs: Box<Expr> },
     ShortCircuit { op: ShortCircuitOp, lhs: Box<Expr>, rhs: Box<Expr> },
     Call { callee: Callee, args: Vec<Arg> },
+    InPlaceCall(InPlaceCall),                       // a call, then the stores of its outputs; see In-place calls
     RefTo(Place),
     InterfaceOf(Place),                             // the interface value for a function block instance
     Null,                                           // a null reference or a null interface value
@@ -995,13 +996,16 @@ pub enum StrExprKind {
     Literal(Vec<char>),
     Read(Place),
     Call { callee: Intrinsic, args: Vec<Arg> },   // a standard string function
+    InPlaceCall { call: InPlaceCall, result: VarId }, // the string a user function writes to `result`
 }
 ```
 
-A user function's string result is not a `StrExpr`. It is returned through a
-result parameter, and a call of the function in an expression runs as a
-statement before the expression, which reads the result from a temporary
-(see [Callees, arguments and intrinsics](#38-callees-arguments-and-intrinsics)).
+A user function's string result is returned through a result parameter, to
+a temporary its caller passes (see
+[Callees, arguments and intrinsics](#38-callees-arguments-and-intrinsics)).
+A call of the function is a `Call` statement, after which an expression reads
+the temporary, or an in-place call, which is the string the function wrote
+to the temporary (see [In-place calls](#in-place-calls)).
 
 **REQ-LOW-lowering-052** The callee of a string `Call` expression is an
 `Intrinsic`.
@@ -1340,8 +1344,8 @@ parameter.
 
 **REQ-LOW-ir-181** A function that returns its result through a result
 parameter has no value. Its result parameter is its first parameter, a
-non-null reference to a string, and a call of it is a `Call` statement, never
-a `Call` expression.
+non-null reference to a string, and a call of it is a `Call` statement or a
+string in-place call, never a `Call` expression or a scalar in-place call.
 
 A call of a function whose result is a string is usually part of an
 expression: `n := LEN(f(s))`, `s := CONCAT(f(a), f(b))`, `s := f(f('x'))`.
@@ -1519,6 +1523,53 @@ a function that reads the outputs of a function it calls traps
 an assignment with calls with outputs in its value as the route that reads
 the AST emits it, each call's result on the stack until the value reads it,
 and gives no result or output temporary storage of its own.
+
+#### In-place calls
+
+```rust
+pub struct InPlaceCall { pou: PouId, args: Vec<Arg>, stores: Vec<Stmt> }
+
+// ExprKind::InPlaceCall(InPlaceCall)                         the callee's result
+// StrExprKind::InPlaceCall { call: InPlaceCall, result: VarId }  the string written to `result`
+```
+
+An in-place call is a call of a user-defined function or method that does
+more than yield a value, held where the expression that uses it is
+evaluated: a call with outputs, whose outputs are stored once it returns,
+and a call of a function whose result is a string, which it writes to the
+temporary its caller passes. It holds the call and the stores of the call's
+outputs, so the expression runs all of it where the source evaluates the
+call:
+
+1. the arguments, in order, as a `Call`'s;
+2. the call;
+3. each store, in order;
+4. the expression goes on with the call's result: the value the callee
+   returned, or the string it wrote to `result`.
+
+Each store is an ordinary `Assign`, `AssignBits`, `AssignStr` or `Copy` of
+an output: its value is the temporary passed for the output, read whole,
+converted or narrowed as the analyzer recorded for its target
+(REQ-LOW-lowering-092). A store is never a statement that branches, loops or
+leaves, so an expression that holds one still runs from start to end. A
+string in-place call names the temporary it passes for the result
+parameter, whose type gives the string its shape.
+
+**REQ-LOW-ir-182** An in-place call passes its callee one argument for each
+parameter, as a `Call` does. A scalar in-place call calls a function or
+method with a value, and has that value's type.
+
+**REQ-LOW-ir-183** Each store of an in-place call is an `Assign`,
+`AssignBits`, `AssignStr` or `Copy` whose value is the whole of a place the
+call passes by `Ref`, read through any conversions or narrowing.
+
+**REQ-LOW-ir-184** A string in-place call calls a function that returns its
+result through a result parameter, passes a `Ref` to the whole of a
+temporary for it, names that temporary, and has the shape of the
+temporary's type.
+
+While both routes exist, the bytecode backend leaves a statement that holds
+an in-place call to the route that reads the AST.
 
 A method is called like a function whose first parameter is its instance, and
 the first argument of the call is a `Ref` to the receiver. `inst.m(a)` passes

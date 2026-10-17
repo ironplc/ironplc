@@ -205,6 +205,7 @@ fn untruncated(expr: &Expr) -> Option<&Expr> {
         | ExprKind::Compare { .. }
         | ExprKind::ShortCircuit { .. }
         | ExprKind::Call { .. }
+        | ExprKind::InPlaceCall(_)
         | ExprKind::RefTo(_)
         | ExprKind::Null => None,
     }
