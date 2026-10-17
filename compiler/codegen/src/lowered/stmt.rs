@@ -63,7 +63,8 @@ impl Emission<'_, '_> {
     /// Emits `stmts` in order, at each one's source position when `record`.
     /// The stores of a function block call's inputs and the call are emitted
     /// together, as the AST route emits a call (`fb_call.rs`), and so are a
-    /// method's call statement and the stores of its outputs (`fn_call.rs`).
+    /// call statement, the stores of its outputs and the copy of its result
+    /// (`fn_call.rs`).
     fn sequence(
         &mut self,
         emitter: &mut Emitter,

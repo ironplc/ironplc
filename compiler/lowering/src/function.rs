@@ -32,14 +32,16 @@
 //! the variables its body reads and writes, so a call and the body agree on
 //! them.
 //!
-//! A function whose result is a string returns it through its result
-//! parameter, its first, to a temporary each call passes
-//! (REQ-LOW-lowering-079); a call of one is a string in-place call
-//! (`string_result.rs`).
+//! A function whose result is a string or a structure returns it through
+//! its result parameter, its first, to a temporary each call passes
+//! (REQ-LOW-lowering-079). A call of one whose result is a string is a
+//! string in-place call (`string_result.rs`), and a call of one whose result
+//! is a structure is a call statement whose result is copied to its target
+//! (`structure_result.rs`).
 //!
-//! Not lowered yet: a `VAR_IN_OUT` that is a string, a string result of a
-//! method, a parameter or a result that is an aggregate
-//! (REQ-LOW-lowering-079), a call with `EN` or `ENO` (REQ-LOW-lowering-160),
+//! Not lowered yet: a `VAR_IN_OUT` that is a string, a string or structure
+//! result of a method, a parameter that is an aggregate, a result that is an
+//! array (REQ-LOW-lowering-079), a call with `EN` or `ENO` (REQ-LOW-lowering-160),
 //! a call through `THIS^` or `SUPER^`, and a call of a method its receiver's
 //! block inherits from a block whose type it does not extend in the lowered
 //! program (REQ-LOW-lowering-177). The route that reads the AST passes no
@@ -130,12 +132,12 @@ impl<'v, 'a> UserCall<'v, 'a> {
 }
 
 /// A call's arguments, the temporary it passes for each output, by the
-/// output's name, and the one it passes for a string result.
+/// output's name, and the one it passes for a string or structure result.
 pub(crate) struct CallArgs {
     pub(crate) pou: PouId,
     pub(crate) args: Vec<Arg>,
     temporaries: Vec<(Id, Place)>,
-    /// The temporary the function writes its string result to
+    /// The temporary the function writes its string or structure result to
     /// (REQ-LOW-lowering-079); `None` for any other callee.
     pub(crate) result: Option<Place>,
 }
@@ -182,7 +184,8 @@ impl<'a> Lowering<'a> {
         };
         if self.result_type(args.pou).is_none() {
             // The analyzer rejects a value of a method without a result
-            // (P4057), and a function whose result is a string is a string.
+            // (P4057), a function whose result is a string is a string, and
+            // one whose result is a structure is only assigned whole.
             return Ok(None);
         }
         match stores {
@@ -330,9 +333,9 @@ impl<'a> Lowering<'a> {
             declared.next();
             args.push(Arg::Ref(receiver));
         }
-        // A function whose result is a string writes it through its result
-        // parameter, to a new temporary of the string's type
-        // (REQ-LOW-lowering-079).
+        // A function whose result is a string or a structure writes it
+        // through its result parameter, to a new temporary of the result's
+        // type (REQ-LOW-lowering-079).
         let returns_through = self
             .program
             .pous()
@@ -431,8 +434,8 @@ impl<'a> Lowering<'a> {
             };
             variables.push(parameter);
         }
-        // A function's string result is its result parameter, first among
-        // its parameters (REQ-LOW-lowering-079).
+        // A function's string or structure result is its result parameter,
+        // first among its parameters (REQ-LOW-lowering-079).
         let result_parameter = match call {
             UserCall::Function { function, .. } => self.result_parameter(&frame, &function.name)?,
             UserCall::Method { .. } => None,
@@ -469,19 +472,19 @@ impl<'a> Lowering<'a> {
     }
 
     /// The result parameter of the function named `name`, whose body is
-    /// `frame`, when its result is a string: the variable its body reaches
-    /// the result through (REQ-LOW-lowering-079). `None` for any other
-    /// result.
+    /// `frame`, when its result is a string or a structure: the variable its
+    /// body reaches the result through (REQ-LOW-lowering-079). `None` for
+    /// any other result.
     fn result_parameter(&mut self, frame: &BodyFrame, name: &Id) -> Made<VarId> {
         let Some(place) = self.named_place(frame, name, &name.span())? else {
             return Ok(None);
         };
         let through = matches!(place.path(), [Projection::Deref]);
-        let string = matches!(
+        let returned = matches!(
             self.program.types().kind(place.ty()),
-            Some(TypeKind::String(_))
+            Some(TypeKind::String(_) | TypeKind::Structure { .. })
         );
-        Ok((through && string).then(|| place.root()))
+        Ok((through && returned).then(|| place.root()))
     }
 
     /// The variable `name` refers to in the body of `frame`, a function or

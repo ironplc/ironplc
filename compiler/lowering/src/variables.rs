@@ -293,12 +293,13 @@ impl<'a> Lowering<'a> {
         // reference to the caller's variable, and its `VAR_OUTPUT` one to the
         // temporary the call passes for it, each reached through `^`
         // (REQ-LOW-lowering-033, REQ-LOW-lowering-092). So is a function's
-        // string result, its result parameter (REQ-LOW-lowering-079).
+        // string or structure result, its result parameter
+        // (REQ-LOW-lowering-079).
         let owner = Owner::Pou(frame.pou);
         let by_reference = matches!(
             info.variable_type,
             Some(VariableType::InOut | VariableType::Output)
-        ) || self.is_string_result(frame, info)?;
+        ) || self.is_result_through_parameter(frame, info)?;
         if by_reference {
             let Some(parameter) = self.declared_variable(decl, info, owner, true, span)? else {
                 return Ok(None);
@@ -309,11 +310,13 @@ impl<'a> Lowering<'a> {
     }
 
     /// Whether `info` is the result of the function whose body `frame` is,
-    /// and the result is a string, which the function returns through its
-    /// result parameter (REQ-LOW-lowering-079). A method's result is a
-    /// scalar: the route that reads the AST does not compile a method whose
-    /// result is a string.
-    fn is_string_result(
+    /// and the result is a string or a structure, which the function returns
+    /// through its result parameter (REQ-LOW-lowering-079). A method's
+    /// result is not: the route that reads the AST does not compile a method
+    /// whose result is a string, and a method whose result is a structure is
+    /// not lowered yet. A function whose result is an array is not lowered:
+    /// the route that reads the AST does not compile one.
+    fn is_result_through_parameter(
         &mut self,
         frame: &BodyFrame,
         info: &SymbolInfo,
@@ -329,7 +332,7 @@ impl<'a> Lowering<'a> {
         };
         Ok(matches!(
             self.program.types().kind(ty),
-            Some(TypeKind::String(_))
+            Some(TypeKind::String(_) | TypeKind::Structure { .. })
         ))
     }
 

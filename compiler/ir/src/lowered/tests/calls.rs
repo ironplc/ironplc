@@ -387,8 +387,8 @@ fn declare_function_returning_through_when_parameter_refers_to_string_then_call_
     ));
 }
 
-/// REQ-LOW-ir-181: a result parameter is a non-null reference to a string,
-/// first among the parameters of a function.
+/// REQ-LOW-ir-181: a result parameter is a non-null reference to a string or
+/// a structure, first among the parameters of a function.
 #[test]
 fn declare_function_returning_through_when_first_not_reference_to_string_then_internal_error() {
     let mut f = fixture();
@@ -406,4 +406,49 @@ fn declare_function_returning_through_when_first_not_reference_to_string_then_in
             "ProgramBuilder::declare_function_returning_through"
         ));
     }
+}
+
+/// REQ-LOW-lowering-079, REQ-LOW-ir-181: a function whose result is a
+/// structure returns it through its first parameter, a non-null reference to
+/// the structure, as one whose result is a string does; a call of it is a
+/// statement. A reference to an array is refused: no function returns one.
+#[test]
+fn declare_function_returning_through_when_parameter_refers_to_structure_then_call_is_statement() {
+    let mut f = fixture();
+    let pou = f.b.push_pou(name("mk"));
+    let dint = f.ty(f.dint);
+    let structure = TypeKind::Structure {
+        fields: vec![Field::new("x", span(), None, dint)],
+    };
+    let structure = f.b.push_type(entry(structure), &span()).unwrap();
+    let array = TypeKind::Array {
+        dimensions: vec![(1, 2)],
+        element: dint,
+    };
+    let array = f.b.push_type(entry(array), &span()).unwrap();
+    let mut reference_to = |target| {
+        let kind = TypeKind::Reference {
+            target,
+            nullability: Nullability::NonNull,
+        };
+        f.b.push_type(entry(kind), &span()).unwrap()
+    };
+    let (to_structure, to_array) = (reference_to(structure), reference_to(array));
+    let Owner::Pou(main) = f.b.variables().get(f.dint).unwrap().owner() else {
+        panic!("the fixture's variables belong to main");
+    };
+    let mut var = |text: &str, owner, ty| f.b.push_variable(name(text), owner, ty).unwrap();
+    let result = var("mk", Owner::Pou(pou), to_structure);
+    let array_result = var("mk", Owner::Pou(pou), to_array);
+    let temporary = var("mk()", Owner::Pou(main), structure);
+    assert!(is_internal_error_naming(
+        f.b.declare_function_returning_through(pou, vec![array_result], &span()),
+        "ProgramBuilder::declare_function_returning_through"
+    ));
+    f.b.declare_function_returning_through(pou, vec![result], &span())
+        .unwrap();
+    assert_eq!(f.b.params(pou), Some(vec![Param::Ref(structure)]));
+    let call =
+        f.b.call_stmt(pou, vec![Arg::Ref(f.place(temporary))], span());
+    assert_eq!(call.unwrap().to_string(), "call pou1 (ref v10)");
 }

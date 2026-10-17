@@ -14,8 +14,10 @@ impl Lowering<'_> {
     /// Lowers the statement `stmt` of the body of `frame` to the statements
     /// it runs, in order, or `None` when lowering does not support it, or
     /// something inside it, yet. A function block call lowers to the stores
-    /// of its inputs, the call and the stores of its outputs, and a method
-    /// call statement to the call and the stores of its outputs; every
+    /// of its inputs, the call and the stores of its outputs, a method call
+    /// statement to the call and the stores of its outputs, and the
+    /// assignment of a call of a function whose result is a structure to the
+    /// call, the stores of its outputs and the copy of its result; every
     /// other statement lowers to one statement.
     pub(crate) fn statement(
         &mut self,
@@ -24,7 +26,12 @@ impl Lowering<'_> {
     ) -> Result<Option<Vec<Stmt>>, Diagnostic> {
         let one = |stmt: Result<Option<Stmt>, Diagnostic>| Ok(stmt?.map(|stmt| vec![stmt]));
         match stmt {
-            AstStmtKind::Assignment(assignment) => one(self.assignment(frame, assignment)),
+            AstStmtKind::Assignment(assignment) => {
+                match self.structure_result_assignment(frame, assignment)? {
+                    Some(statements) => Ok(Some(statements)),
+                    None => one(self.assignment(frame, assignment)),
+                }
+            }
             AstStmtKind::If(stmt) => one(self.if_statement(frame, stmt)),
             AstStmtKind::Case(stmt) => one(self.case_statement(frame, stmt)),
             AstStmtKind::For(stmt) => one(self.for_statement(frame, stmt)),

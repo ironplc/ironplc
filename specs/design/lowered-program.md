@@ -1334,10 +1334,11 @@ to the result goes through a `Deref`, as for a `VAR_IN_OUT`
 compiler-provided temporary of the result's type: scratch space the caller
 owns. A call of a function whose result is a string is a string in-place
 call, the string the function wrote to the temporary
-([In-place calls](#in-place-calls)). A scalar result stays the value of a
-`Call` expression, or of a scalar in-place call. Today a user function may
-also return a structure (`UserFunctionInfo::return_struct_desc_index`,
-`compile_aggregate.rs`), which is not lowered yet.
+([In-place calls](#in-place-calls)). A call of a function whose result is a
+structure is assigned whole to a structure, and is a `Call` statement whose
+temporary is then copied to the target. A scalar result stays the value of a
+`Call` expression, or of a scalar in-place call. A function whose result is
+an array is not lowered: the route that reads the AST does not compile one.
 
 The temporary is what keeps this safe. Passing the destination itself would
 let the callee write `s` while it still reads `s`, as `s := f(s)` does, and a
@@ -1353,8 +1354,9 @@ parameter.
 
 **REQ-LOW-ir-181** A function that returns its result through a result
 parameter has no value. Its result parameter is its first parameter, a
-non-null reference to a string, and a call of it is a `Call` statement or a
-string in-place call, never a `Call` expression or a scalar in-place call.
+non-null reference to a string or a structure, and a call of it is a `Call`
+statement or a string in-place call, never a `Call` expression or a scalar
+in-place call.
 
 A call of a function whose result is a string is usually part of an
 expression: `n := LEN(f(s))`, `s := CONCAT(f(a), f(b))`, `s := f(f('x'))`.
@@ -1367,6 +1369,28 @@ from it ([In-place calls](#in-place-calls)).
 to a string in-place call where the source evaluates the call, passing a
 `Ref` to a new temporary for the result parameter, with the stores of its
 outputs, if any.
+
+A call of a function whose result is a structure has no value to be part of
+an expression; the analyzer types it only where it is assigned whole,
+`p := MK(v := 3, n => k)`. The function writes its result to the temporary,
+the outputs reach their targets, then the result reaches its target, as the
+outputs of a call reach theirs before the value of the call is used.
+
+**REQ-LOW-lowering-186** The assignment of a call of a function whose result
+is a structure to a structure lowers to a `Call` statement passing a `Ref` to
+a new temporary for the result parameter, then the stores of its outputs, if
+any, then a `Copy` of the temporary to the target.
+
+While both routes exist, the bytecode backend emits these statements as the
+route that reads the AST emits the assignment (`compile_aggregate.rs`): the
+inputs, `CALL`, which leaves the offset of the function's structure on the
+stack, the stores of the outputs, then `COPY_REGION` into the target, sized
+by the function's descriptor for its result. The temporary has no storage of
+its own: it is the structure the function's body writes, which that
+backend's layout keeps as the function's variable of the function's name, so
+the body's `result^` is that variable. A target that is an element of an
+array or a field of a structure is left to the route that reads the AST,
+which does not compile one either.
 
 A function or method may also declare `VAR_OUTPUT`, which a call assigns to a
 place with `=>`. An output is passed the same way as a result: the argument is

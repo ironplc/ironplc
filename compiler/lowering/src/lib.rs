@@ -31,6 +31,7 @@ mod place;
 mod statement;
 mod string;
 mod string_result;
+mod structure_result;
 mod time;
 mod types;
 mod variables;
@@ -55,6 +56,8 @@ mod place_tests;
 mod string_result_tests;
 #[cfg(test)]
 mod string_tests;
+#[cfg(test)]
+mod structure_result_tests;
 #[cfg(test)]
 mod test_support;
 #[cfg(test)]
