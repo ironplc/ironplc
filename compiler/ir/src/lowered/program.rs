@@ -183,6 +183,46 @@ impl ProgramBuilder {
         self.declare(CONSTRUCTOR, pou, parameters, Some(result), span)
     }
 
+    /// Declares the POU `pou` a function whose result is a string, which it
+    /// returns through its first parameter, the result parameter: a
+    /// non-null reference to a string, a variable `pou` owns
+    /// (REQ-LOW-lowering-079). Its other parameters are as
+    /// [`Self::declare_function`]'s. A call of it is only a statement, which
+    /// passes a reference to a place of the string's type for the result
+    /// parameter.
+    pub fn declare_function_returning_through(
+        &mut self,
+        pou: PouId,
+        parameters: Vec<VarId>,
+        span: &SourceSpan,
+    ) -> Result<(), Diagnostic> {
+        const CONSTRUCTOR: &str = "ProgramBuilder::declare_function_returning_through";
+        if self.pous.method_of(pou).is_some() {
+            return Err(broken(CONSTRUCTOR, span, format!("{pou} is a method")));
+        }
+        let result = parameters.first().copied();
+        let to_string = result
+            .and_then(|result| self.variables.get(result))
+            .and_then(|result| match self.types.reference(result.ty()) {
+                Some((target, Nullability::NonNull)) => self.types.kind(target),
+                Some((_, Nullability::Nullable)) | None => None,
+            })
+            .is_some_and(|target| matches!(target, TypeKind::String(_)));
+        let Some(result) = result.filter(|_| to_string) else {
+            return Err(broken(
+                CONSTRUCTOR,
+                span,
+                format!("the first parameter of {pou} is not a non-null reference to a string"),
+            ));
+        };
+        self.check_parameters(CONSTRUCTOR, pou, &parameters, None, span)?;
+        self.pous.declare_function(
+            pou,
+            FunctionSignature::returning_through(parameters, result),
+            span,
+        )
+    }
+
     /// Declares the POU `pou`, a method, one that takes each of `parameters`,
     /// in order, and returns the value of `result`, if any. Its first
     /// parameter is its instance parameter, a non-null reference to the
@@ -224,6 +264,22 @@ impl ProgramBuilder {
         result: Option<VarId>,
         span: &SourceSpan,
     ) -> Result<(), Diagnostic> {
+        self.check_parameters(constructor, pou, &parameters, result, span)?;
+        self.pous
+            .declare_function(pou, FunctionSignature::new(parameters, result), span)
+    }
+
+    /// Refuses `parameters` and `result` unless each is a variable `pou`
+    /// owns, a parameter taken by value or by reference
+    /// ([`FunctionSignature::params`]) and the result a scalar.
+    fn check_parameters(
+        &self,
+        constructor: &str,
+        pou: PouId,
+        parameters: &[VarId],
+        result: Option<VarId>,
+        span: &SourceSpan,
+    ) -> Result<(), Diagnostic> {
         // The type of `var`, when `pou` owns it.
         let owned = |var: &VarId| {
             self.variables
@@ -247,8 +303,7 @@ impl ProgramBuilder {
                 format!("{var} is not a scalar variable of {pou}"),
             ));
         }
-        self.pous
-            .declare_function(pou, FunctionSignature::new(parameters, result), span)
+        Ok(())
     }
 
     /// What each parameter of the function `pou` takes, in order; `None`

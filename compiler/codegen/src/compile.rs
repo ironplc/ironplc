@@ -1263,6 +1263,10 @@ pub(crate) struct CompileContext<'a> {
     /// emitted left on the stack, which a read of one takes instead of
     /// loading it (`lowered/fn_call.rs`).
     pub(crate) results_on_stack: Vec<ironplc_ir::lowered::VarId>,
+    /// The calls with a string result moved out of the lowered statement
+    /// being emitted, which a read of the temporary each writes its result
+    /// to emits (`lowered/string_result.rs`).
+    pub(crate) string_results: crate::lowered::StringResults,
 }
 
 /// Describes how a `RETURN` statement should yield the function's value.
@@ -1315,6 +1319,7 @@ impl CompileContext<'_> {
             call_graph: HashMap::new(),
             call_outputs: None,
             results_on_stack: Vec::new(),
+            string_results: crate::lowered::StringResults::default(),
         }
     }
 

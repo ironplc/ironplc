@@ -22,7 +22,9 @@
 //! of one name in different scopes are different variables
 //! (REQ-LOW-lowering-020).
 
-use ironplc_analyzer::symbol_environment::{DeclRef, Resolution, ScopeKind, ScopePath, SymbolInfo};
+use ironplc_analyzer::symbol_environment::{
+    DeclRef, Resolution, ScopeKind, ScopePath, SymbolInfo, SymbolKind,
+};
 use ironplc_dsl::common::{TypeName, VarDecl, VariableType};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
@@ -290,12 +292,13 @@ impl<'a> Lowering<'a> {
         // A variable of a function or method. Its `VAR_IN_OUT` is a non-null
         // reference to the caller's variable, and its `VAR_OUTPUT` one to the
         // temporary the call passes for it, each reached through `^`
-        // (REQ-LOW-lowering-033, REQ-LOW-lowering-092).
+        // (REQ-LOW-lowering-033, REQ-LOW-lowering-092). So is a function's
+        // string result, its result parameter (REQ-LOW-lowering-079).
         let owner = Owner::Pou(frame.pou);
         let by_reference = matches!(
             info.variable_type,
             Some(VariableType::InOut | VariableType::Output)
-        );
+        ) || self.is_string_result(frame, info)?;
         if by_reference {
             let Some(parameter) = self.declared_variable(decl, info, owner, true, span)? else {
                 return Ok(None);
@@ -303,6 +306,31 @@ impl<'a> Lowering<'a> {
             return self.program.deref(parameter, span).map(Some);
         }
         self.declared_variable(decl, info, owner, false, span)
+    }
+
+    /// Whether `info` is the result of the function whose body `frame` is,
+    /// and the result is a string, which the function returns through its
+    /// result parameter (REQ-LOW-lowering-079). A method's result is a
+    /// scalar: the route that reads the AST does not compile a method whose
+    /// result is a string.
+    fn is_string_result(
+        &mut self,
+        frame: &BodyFrame,
+        info: &SymbolInfo,
+    ) -> Result<bool, Diagnostic> {
+        if frame.instance.is_some() || info.kind != SymbolKind::ResultVariable {
+            return Ok(false);
+        }
+        let Some(type_id) = info.type_id else {
+            return Ok(false);
+        };
+        let Some(ty) = self.lowered_type(type_id)? else {
+            return Ok(false);
+        };
+        Ok(matches!(
+            self.program.types().kind(ty),
+            Some(TypeKind::String(_))
+        ))
     }
 
     /// The whole of the variable `decl` declares, allocated the first time

@@ -43,9 +43,11 @@ mod place;
 mod policy;
 mod stmt;
 mod string;
+mod string_result;
 
 use call_args::passes;
 pub(crate) use policy::parse_policy;
+pub(crate) use string_result::StringResults;
 
 /// Which route codegen compiles a statement by.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -129,10 +131,19 @@ fn compile_by_route(
         StatementLowering::Lowered(lowered) => Some(lowered),
         StatementLowering::Unsupported => None,
     };
-    match lowered {
+    // The calls with a string result moved out of the statement, which are
+    // emitted where their results are read (`string_result.rs`).
+    ctx.string_results = match &lowered {
+        Some(lowered) => StringResults::of(&route.lowering, ctx, lowered),
+        None => StringResults::default(),
+    };
+    let compiled = match lowered {
         Some(lowered) if can_emit_all(&route.lowering, ctx, &lowered) => {
             crate::compile_stmt::record_statement_position(emitter, ctx, stmt);
             stmt::emit_stmts(emitter, ctx, &route.lowering, &lowered)?;
+            if !ctx.string_results.is_empty() {
+                return Err(string_result::not_emitted(&statement_span(stmt)));
+            }
             route.counts.lowered += 1;
             Ok(true)
         }
@@ -144,7 +155,9 @@ fn compile_by_route(
             route.counts.from_ast += 1;
             Ok(false)
         }
-    }
+    };
+    ctx.string_results = StringResults::default();
+    compiled
 }
 
 /// Where `stmt` is, for a diagnostic about it.
@@ -233,9 +246,12 @@ fn can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, stmt: &Stmt) -> bool 
         StmtKind::FbCall { instance, block } => {
             fb_call::reaches_block(lowering, ctx, instance, *block)
         }
-        // A call statement is emitted with the assignments of its outputs
-        // (`can_emit_all`).
-        StmtKind::Call { .. } => false,
+        // A call with a string result is emitted where its result is read
+        // (`string_result.rs`); any other call statement with the
+        // assignments of its outputs (`can_emit_all`).
+        StmtKind::Call { .. } => {
+            string_result::is_moved(ctx, stmt) && string_result::call_can_emit(lowering, ctx, stmt)
+        }
         StmtKind::Exit(_) | StmtKind::Continue(_) | StmtKind::Return => true,
     }
 }
@@ -351,8 +367,8 @@ fn args_can_emit_reading<'s>(
 }
 
 /// The function `pou` as this backend's layout knows it, by the name the
-/// lowered program keeps on the POU, when it returns a value on the stack:
-/// not a string or a structure. `None` for any other function.
+/// lowered program keeps on the POU, when it returns a value or a string's
+/// buffer on the stack: not a structure. `None` for any other function.
 pub(super) fn user_function(
     lowering: &Lowering<'_>,
     ctx: &CompileContext,
@@ -364,9 +380,10 @@ pub(super) fn user_function(
     }
     let name = lowering.pous().name(pou)?.to_string().to_lowercase();
     let function = ctx.user_functions.get(&name)?;
-    let scalar =
-        function.return_string_info.is_none() && function.return_struct_desc_index.is_none();
-    scalar.then(|| function.clone())
+    function
+        .return_struct_desc_index
+        .is_none()
+        .then(|| function.clone())
 }
 
 /// Whether `place` has storage this backend reaches as one value of type

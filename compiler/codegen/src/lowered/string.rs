@@ -19,7 +19,7 @@ use ironplc_lowering::Lowering;
 
 use super::expr::{emit_intrinsic_call, instruction_of};
 use super::place::{resolve_string, variable_name};
-use super::{args_can_emit, subscripts_can_emit};
+use super::{args_can_emit, string_result, subscripts_can_emit};
 use crate::compile::{emit_string_literal_load, CompileContext, StringVarInfo};
 use crate::compile_string::allocate_string_temp;
 use crate::emit::Emitter;
@@ -41,7 +41,11 @@ pub(super) fn emit_assign_str(
 pub(super) fn str_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, value: &StrExpr) -> bool {
     match value.kind() {
         StrExprKind::Literal(_) => true,
-        StrExprKind::Read(place) => reaches_string(lowering, ctx, place),
+        // The result of a moved call is the buffer the call leaves, emitted
+        // where it is read (`string_result.rs`).
+        StrExprKind::Read(place) => {
+            string_result::is_result(ctx, place) || reaches_string(lowering, ctx, place)
+        }
         StrExprKind::Call { callee, args } => {
             instruction_of(*callee, args.len()).is_some() && args_can_emit(lowering, ctx, args)
         }
@@ -115,7 +119,9 @@ fn emit_str_expr(
             emit_string_literal_load(emitter, ctx, chars, char_width(value.shape().encoding));
         }
         StrExprKind::Read(place) => {
-            resolve_string(lowering, ctx, place, value.span())?.emit_load(emitter, ctx)?;
+            if !string_result::emit_at_read(emitter, ctx, lowering, place)? {
+                resolve_string(lowering, ctx, place, value.span())?.emit_load(emitter, ctx)?;
+            }
         }
         StrExprKind::Call { callee, args } => {
             emit_intrinsic_call(emitter, ctx, lowering, *callee, args, value.span())?

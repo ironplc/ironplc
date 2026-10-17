@@ -999,8 +999,9 @@ pub enum StrExprKind {
 ```
 
 A user function's string result is not a `StrExpr`. It is returned through a
-result parameter (see
-[Callees, arguments and intrinsics](#38-callees-arguments-and-intrinsics)).
+result parameter, and a call of the function in an expression runs as a
+statement before the expression, which reads the result from a temporary
+(see [Callees, arguments and intrinsics](#38-callees-arguments-and-intrinsics)).
 
 **REQ-LOW-lowering-052** The callee of a string `Call` expression is an
 `Intrinsic`.
@@ -1337,6 +1338,79 @@ has a result parameter of non-null reference type, and every call to it passes
 a `Ref` to a compiler-provided temporary of the result's type for that
 parameter.
 
+**REQ-LOW-ir-181** A function that returns its result through a result
+parameter has no value. Its result parameter is its first parameter, a
+non-null reference to a string, and a call of it is a `Call` statement, never
+a `Call` expression.
+
+A call of a function whose result is a string is usually part of an
+expression: `n := LEN(f(s))`, `s := CONCAT(f(a), f(b))`, `s := f(f('x'))`.
+Its `Call` statement runs before the statement the expression is in, and the
+expression reads the temporary where the call's value is used. So
+`n := LEN(f(s))` lowers to a `Call` of `f` passing a reference to a
+temporary `t`, then `n := LEN(t)`. The calls of one statement run in the
+order the source runs them, so a call in another call's argument runs first.
+A statement inside another, such as one in an `IF`'s branch, has calls of its
+own, which run before it. Each `Call` has the span of the statement it runs
+before (REQ-LOW-lowering-063).
+
+**REQ-LOW-lowering-179** A call of a function whose result is a string, in a
+statement, lowers to a `Call` statement placed before the statement, with the
+statement's other such calls in the order they run, and to a read of the
+temporary it passes for the result where the call's value is used.
+
+Running a call before its statement means what running it where the source
+does means only when nothing evaluated in between can tell them apart. A
+function can write a global, a variable passed to its `VAR_IN_OUT`, or what a
+reference refers to. An operation can trap before the call runs, and the
+writes made before a trap stay (REQ-LOW-codegen-038). So a read of a
+variable, a call or an operation evaluated before the call keeps the
+statement from being lowered. So does a call that runs another number of
+times than once, or may not run:
+
+- in an `ELSIF` condition, which runs only when the conditions before it are
+  false;
+- in a `WHILE` or `REPEAT` condition, or the `TO` of a `FOR`, which runs on
+  every iteration;
+- in the selector of a `CASE`, which the route that reads the AST evaluates
+  once for each label it tests;
+- in a bit or partial write, which reads its place before its value;
+- on the right of `AND_THEN` or `OR_ELSE`, which may not run.
+
+`n := 1 + LEN(f(s))` and `s := CONCAT(f(a), f(b))` are lowered.
+`n := k + LEN(f(s))`, `s := CONCAT(t, f(s))` and
+`n := LEN(f(a)) + LEN(f(b))` are not yet, nor is a call of a function with
+outputs whose result is a string.
+
+**REQ-LOW-lowering-180** A statement whose calls of functions with a string
+result run before it is lowered only when, in the order the statement is
+evaluated, nothing is evaluated before each such call but its own arguments,
+the calls run before it, constants, string literals, references to places
+and reads of the temporaries of the calls run before it; and no such call is
+in an `ELSIF`, `WHILE` or `REPEAT` condition, the `TO` of a `FOR`, the
+selector of a `CASE`, a bit or partial write, or the right operand of
+`AND_THEN` or `OR_ELSE`.
+
+While both routes exist, the bytecode backend emits a call of a function
+whose result is a string where its temporary is read
+(`lowered/string_result.rs`). That is where the route that reads the AST
+compiles the call (`compile_user_call.rs`):
+
+1. the arguments;
+2. `STR_INIT` of the function's result, in the callee's data region;
+3. `CALL`, which leaves the result in a temporary buffer
+   ([ADR-0052](../adrs/0052-temp-string-buffers-released-on-consume.md)).
+
+The temporary has no storage of its own. Its read is the call, and the
+operation reading it consumes the buffer, as on the route that reads the AST:
+an `AssignStr` stores it, a string function's operand is copied into a
+temporary slot, and a call's argument into its parameter. A call so compiles
+to the same instructions by either route, with the same temporary buffers and
+slots. Emitting it where its temporary is read, rather than where its `Call`
+statement stands, means the same by REQ-LOW-lowering-180. Inside the
+function's body, the result parameter reaches the string the backend keeps
+the result in (`UserFunctionInfo::return_string_info`).
+
 A function or method may also declare `VAR_OUTPUT`, which a call assigns to a
 place with `=>`. An output is passed the same way as a result: the argument is
 a `Ref` to a compiler-provided temporary of the parameter's type, and after
@@ -1420,7 +1494,8 @@ bound, a target's subscript or a function block call's inputs, which are not
 the value of an assignment. A call whose function has an in-out, or a
 result, that is a string stays on that route too. An input may be a string,
 passed as any input is, and so may an output, assigned by an `AssignStr` from
-its temporary.
+its temporary. A call of a function without outputs whose result is a string
+is lowered by REQ-LOW-lowering-179.
 
 While both routes exist, the bytecode backend emits the parts and the
 assignment as the route that reads the AST emits the assignment
@@ -1487,7 +1562,9 @@ Not lowered yet, so each stays on the route that reads the AST:
 - a call of a method the receiver's block inherits from a block its
   lowered type does not extend, as one with a field (REQ-LOW-lowering-177);
 - a call of a method with an in-out or a result that is a string, or with an
-  input, an in-out or a result that is an aggregate (REQ-LOW-lowering-079);
+  input, an in-out or a result that is an aggregate (REQ-LOW-lowering-079).
+  The route that reads the AST reports a method whose result is a string as
+  P9999;
 - a call with outputs anywhere but a statement or the value of an
   assignment, or where REQ-LOW-lowering-174 does not hold, as for a
   function.

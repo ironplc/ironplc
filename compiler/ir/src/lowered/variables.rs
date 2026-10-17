@@ -120,23 +120,50 @@ impl VariableTable {
 pub struct FunctionSignature {
     parameters: Vec<VarId>,
     result: Option<VarId>,
+    /// The result parameter, the first of `parameters`, of a function
+    /// whose result is a string (REQ-LOW-lowering-079).
+    result_parameter: Option<VarId>,
 }
 
 impl FunctionSignature {
     pub(crate) fn new(parameters: Vec<VarId>, result: Option<VarId>) -> Self {
-        Self { parameters, result }
+        Self {
+            parameters,
+            result,
+            result_parameter: None,
+        }
+    }
+
+    /// The signature of a function that returns its result through its
+    /// first parameter, `parameters[0]`.
+    pub(crate) fn returning_through(parameters: Vec<VarId>, result_parameter: VarId) -> Self {
+        Self {
+            parameters,
+            result: None,
+            result_parameter: Some(result_parameter),
+        }
     }
 
     /// The parameters, in order: a method's instance parameter first
-    /// (REQ-LOW-lowering-076).
+    /// (REQ-LOW-lowering-076), and a function's result parameter first
+    /// (REQ-LOW-lowering-079).
     pub fn parameters(&self) -> &[VarId] {
         &self.parameters
     }
 
-    /// The result variable; `None` for a method without a result, whose
-    /// call is only a statement.
+    /// The variable that holds the result, the value of a call; `None` for
+    /// a method without a result, or a function that returns its result
+    /// through a parameter, whose call is only a statement.
     pub fn result(&self) -> Option<VarId> {
         self.result
+    }
+
+    /// The result parameter of a function whose result is a string: a
+    /// non-null reference to the temporary the caller passes, through which
+    /// the function writes its result (REQ-LOW-lowering-079). `None` for any
+    /// other function or method.
+    pub fn result_parameter(&self) -> Option<VarId> {
+        self.result_parameter
     }
 
     /// What each parameter takes, in order: a value at its operation type, a
