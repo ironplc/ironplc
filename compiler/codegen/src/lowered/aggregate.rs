@@ -1,4 +1,5 @@
-//! Emits a lowered `Copy`: a whole array or structure assigned from another.
+//! Emits a lowered `Copy`: a whole array or structure assigned from another,
+//! and an instance stored in a field of another instance.
 //!
 //! An aggregate variable's slot holds the byte offset of its data region,
 //! and `COPY_REGION` moves the bytes from the region whose offset is on the
@@ -16,15 +17,21 @@
 //! what such a field holds, in the block's body, a method or a caller, so no
 //! program tells the offset from a copy.
 //!
-//! Every other `Copy` is left to the AST route.
+//! So too for a function block instance stored in such a field, `g.inner :=
+//! f` or the input of a call, `g(inner := f)`: an instance's slot holds the
+//! data offset of its fields, and the field's slot takes it (issue 1553).
+//! Neither route calls the instance a field holds, or reads its fields.
+//!
+//! A `Copy` of a whole instance to another is `instance_copy.rs`'s. Every
+//! other `Copy` is left to the AST route.
 
 use ironplc_container::VarIndex;
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_ir::lowered::Place as LoweredPlace;
+use ironplc_ir::lowered::{Place as LoweredPlace, TypeKind};
 use ironplc_lowering::Lowering;
 
-use super::place::instance_slot;
+use super::place::{instance_slot, variable_name};
 use super::storage_name;
 use crate::compile::{CompileContext, DEFAULT_OP_TYPE};
 use crate::compile_expr::emit_load_var;
@@ -49,7 +56,9 @@ pub(super) fn can_emit(
         return from_region;
     }
     instance_slot(lowering, ctx, dst).is_some()
-        && (from_region || instance_slot(lowering, ctx, src).is_some())
+        && (from_region
+            || instance_slot(lowering, ctx, src).is_some()
+            || instance(lowering, ctx, src).is_some())
 }
 
 /// Emits the copy of `src` to `dst`: the source's data offset, then
@@ -105,8 +114,8 @@ pub(super) fn emit_copy_from_stack(
 }
 
 /// Pushes the data offset of `src`, the source of a copy into a field of an
-/// instance: the offset of its region, or the one the slot of the
-/// instance's field it is holds.
+/// instance: the offset of its region, the offset its slot holds when it is
+/// an instance, or the one the slot of the instance's field it is holds.
 pub(super) fn emit_source(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -116,6 +125,10 @@ pub(super) fn emit_source(
 ) -> Result<(), Diagnostic> {
     if let Some(region) = region(lowering, ctx, src) {
         emit_offset(emitter, &region);
+        return Ok(());
+    }
+    if let Some(var_index) = instance(lowering, ctx, src) {
+        emit_load_var(emitter, var_index, DEFAULT_OP_TYPE);
         return Ok(());
     }
     instance_slot(lowering, ctx, src)
@@ -137,6 +150,25 @@ fn no_region(span: &SourceSpan) -> Diagnostic {
         span.clone(),
         "A lowered copy has no data region",
     ))
+}
+
+/// The slot of `place`, when it is a function block instance this backend
+/// calls by name (`fb_call.rs`). A function's body sees the program's
+/// instances by name, and its own structures may share their names, so
+/// `place` must be an instance.
+fn instance(
+    lowering: &Lowering<'_>,
+    ctx: &CompileContext,
+    place: &LoweredPlace,
+) -> Option<VarIndex> {
+    if !matches!(
+        lowering.types().kind(place.ty()),
+        Some(TypeKind::FunctionBlock { .. })
+    ) {
+        return None;
+    }
+    let name = variable_name(lowering, ctx, place)?;
+    ctx.fb_instances.get(&name).map(|info| info.var_index)
 }
 
 /// The data region of `place`, when it is a whole variable or a field of the
