@@ -70,7 +70,7 @@ impl InPlaceCall {
             .iter()
             .filter_map(|arg| match arg {
                 Arg::Ref(place) => whole(place),
-                Arg::Value(_) | Arg::Str(_) => None,
+                Arg::Value(_) | Arg::Str(_) | Arg::Copy(_) => None,
             })
             .collect();
         if let Some(store) = stores.iter().find(|store| !moves_output(store, &passed)) {
