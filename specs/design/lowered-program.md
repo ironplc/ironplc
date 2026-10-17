@@ -1257,6 +1257,19 @@ route cannot call, such as one declared inside a function block
 through `VAR_EXTERNAL`
 ([issue 1858](https://github.com/ironplc/ironplc/issues/1858)), stays on it.
 
+That backend's layout keeps no data region yet for a string, structure or
+array field of an instance it reaches by name. The route that reads the AST
+keeps in the field's slot the index of the temporary buffer that holds a
+string, or the region offset of a structure or an array, and the bytecode
+backend stores and loads the same, by `FB_STORE_PARAM` and `FB_LOAD_PARAM`,
+for a call's input or output and for a field read or written outside a call.
+So a string stored in such a field does not reach the block's body by either
+route ([issue 1753](https://github.com/ironplc/ironplc/issues/1753)). A `Copy`
+to a structure or array field shares the source's region rather than meeting
+REQ-LOW-codegen-165, but neither route compiles a read of what such a field
+holds, in the block's body, a method or a caller, so no program observes the
+difference.
+
 The order of the inputs among themselves is the order of the call's normal
 form: the order the block declares them, whatever order the call writes them
 in. Codegen evaluates them in that order, as it evaluates the arguments of a
@@ -1917,7 +1930,9 @@ element: a `UDINT` subscript of 4,294,967,295 traps on `ARRAY[-3..100]`.
 destination holds the value the same element or field of its source held
 before it, and the source is unchanged. The destination has storage of its
 own: a later store to it leaves the source as it is. A `Copy` of a place to
-itself changes nothing.
+itself changes nothing. The bytecode backend does not meet this yet for a
+structure or array field of a function block instance, which no program
+reads (see [Statements](#37-statements)).
 
 **REQ-LOW-codegen-089** An `Intrinsic` means what the IEC 61131-3 standard
 function means, with these choices where the standard leaves room: the count
