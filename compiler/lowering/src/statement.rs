@@ -105,9 +105,11 @@ impl Lowering<'_> {
     ) -> Result<Option<Stmt>, Diagnostic> {
         match self.program.types().kind(place.ty()) {
             Some(TypeKind::String(_)) => return self.string_assignment(frame, place, value, span),
-            Some(TypeKind::Array { .. } | TypeKind::Structure { .. }) => {
-                return self.aggregate_assignment(frame, place, value, span)
-            }
+            Some(
+                TypeKind::Array { .. }
+                | TypeKind::Structure { .. }
+                | TypeKind::FunctionBlock { .. },
+            ) => return self.aggregate_assignment(frame, place, value, span),
             Some(
                 TypeKind::Bool
                 | TypeKind::Integer { .. }
@@ -116,15 +118,13 @@ impl Lowering<'_> {
                 | TypeKind::Temporal { .. }
                 | TypeKind::Enumeration { .. }
                 | TypeKind::Subrange { .. }
-                | TypeKind::FunctionBlock { .. }
                 | TypeKind::Program { .. }
                 | TypeKind::Reference { .. },
             )
             | None => {}
         }
         let Some(operated) = self.program.types().operation_type(place.ty()) else {
-            // A function block or program instance, which is not copied
-            // yet.
+            // A program instance, which is not assigned.
             return Ok(None);
         };
         let Some(value) = self.expr(frame, value)? else {
@@ -157,9 +157,10 @@ impl Lowering<'_> {
         self.program.assign(place, value, span)
     }
 
-    /// Copies the whole of the variable `value` to `place`, an array or a
-    /// structure (REQ-LOW-lowering-061). Any other source, such as a call of
-    /// a function that returns a structure, is not lowered yet.
+    /// Copies the whole of the variable `value` to `place`, an array, a
+    /// structure or a function block instance (REQ-LOW-lowering-061). Any
+    /// other source, such as a call of a function that returns a structure,
+    /// is not lowered yet.
     fn aggregate_assignment(
         &mut self,
         frame: &BodyFrame,

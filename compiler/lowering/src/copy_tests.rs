@@ -93,18 +93,22 @@ fn lower_statement_when_element_or_block_output_then_copy() {
     );
 }
 
-/// A function block instance is not copied yet. A structure a function
-/// returns is (`structure_result_tests.rs`).
+/// REQ-LOW-lowering-061: a function block instance assigned from another of
+/// its type, user-defined or standard, is a `Copy` of the whole instance.
 #[test]
-fn lower_statement_when_instance_assigned_then_unsupported() {
+fn lower_statement_when_instance_assigned_then_copy() {
     let outcome = lower(
         "FUNCTION_BLOCK B VAR_INPUT i : DINT; END_VAR END_FUNCTION_BLOCK
-         PROGRAM main VAR a : B; b : B; END_VAR
+         PROGRAM main VAR a : B; b : B; t : TON; u : TON; END_VAR
             a := b;
+            t := u;
          END_PROGRAM",
         "main",
     );
-    assert_eq!(outcome.statements, ["unsupported"]);
+    assert_eq!(
+        outcome.statements,
+        ["copy v0^.f0 v0^.f1", "copy v0^.f2 v0^.f3"]
+    );
 }
 
 /// REQ-LOW-lowering-061: an element of an array of arrays is an array, and

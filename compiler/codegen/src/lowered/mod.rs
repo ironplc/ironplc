@@ -38,6 +38,7 @@ mod call_args;
 mod expr;
 mod fb_call;
 mod fn_call;
+mod instance_copy;
 mod method;
 mod place;
 mod policy;
@@ -230,7 +231,10 @@ fn can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, stmt: &Stmt) -> bool 
         StmtKind::Loop {
             body, continuing, ..
         } => all(body) && all(continuing),
-        StmtKind::Copy { dst, src } => aggregate::can_emit(lowering, ctx, dst, src),
+        StmtKind::Copy { dst, src } => {
+            aggregate::can_emit(lowering, ctx, dst, src)
+                || instance_copy::instance_copy(lowering, ctx, dst, src).is_some()
+        }
         StmtKind::FbCall { instance, block } => {
             fb_call::reaches_block(lowering, ctx, instance, *block)
         }
