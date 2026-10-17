@@ -8,7 +8,9 @@ use ironplc_parser::options::CompilerOptions;
 
 use rstest::rstest;
 
-use crate::common::{compile_by_route, parse, run_compiled_scans, Duration};
+use crate::common::{
+    compile_by_route, parse, parse_and_compile_to_run, run_compiled_scans, Duration, Snapshot,
+};
 use crate::compile_route_lowered::{assert_same_code, options, run_lowered, run_lowered_agreeing};
 
 /// A block whose outputs are its inputs' sum, whether the sum is positive,
@@ -471,4 +473,32 @@ fn run_when_timer_assigned_while_timing_then_copy_keeps_its_start() {
             (Duration::seconds(5), Duration::ZERO),
         ]
     );
+}
+
+/// A function's body sees the program's instances by name. Its own
+/// structures named as two instances of one block are copied as structures,
+/// not taken for the instances, which keep their fields: both routes leave
+/// `r` as `a` was called.
+#[test]
+fn run_when_function_copies_structures_named_as_instances_then_instances_kept() {
+    let container = parse_and_compile_to_run(
+        "TYPE S : STRUCT n : DINT; END_STRUCT; END_TYPE
+         FUNCTION_BLOCK FBV
+           VAR_INPUT v : DINT; END_VAR
+         END_FUNCTION_BLOCK
+         FUNCTION F : DINT
+           VAR a : S; b : S; END_VAR
+           a := b;
+           F := 1;
+         END_FUNCTION
+         PROGRAM main
+           VAR a : FBV; b : FBV; k : DINT; r : DINT; END_VAR
+           a(v := 1);
+           b(v := 2);
+           k := F();
+           r := a.v;
+         END_PROGRAM",
+        &options(),
+    );
+    assert_eq!(Snapshot::run_compiled(container).read_as::<i32>("r"), 1);
 }

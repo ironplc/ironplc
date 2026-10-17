@@ -10,10 +10,14 @@
 //! itself, such as a timer's start time. A field is one slot, so each is
 //! copied whole. Only an instance this backend reaches by name is copied, as
 //! only one is called (`fb_call.rs`).
+//!
+//! A function's body sees the program's instances by name, and its own
+//! structures may share their names, so a `Copy` is taken for one of
+//! instances only when its places are function block instances.
 
 use ironplc_container::VarIndex;
 use ironplc_dsl::core::Id;
-use ironplc_ir::lowered::Place as LoweredPlace;
+use ironplc_ir::lowered::{Place as LoweredPlace, TypeKind};
 use ironplc_lowering::Lowering;
 
 use super::place::variable_name;
@@ -38,6 +42,13 @@ pub(super) fn instance_copy(
     dst: &LoweredPlace,
     src: &LoweredPlace,
 ) -> Option<InstanceCopy> {
+    // A `Copy`'s places have one type.
+    if !matches!(
+        lowering.types().kind(dst.ty()),
+        Some(TypeKind::FunctionBlock { .. })
+    ) {
+        return None;
+    }
     let instance = |place| {
         let name: Id = variable_name(lowering, ctx, place)?;
         ctx.fb_instances.get(&name)
