@@ -631,15 +631,15 @@ pub(crate) fn standard_fb_layout(
         Tp => (opcode::fb_type::TP, 6, timer_fb_fields()),
         // Each width of a counter counts in its own type: `INT` and `DINT`
         // in a signed 32-bit integer, the others in their own.
-        Ctu(Int | Dint) => (opcode::fb_type::CTU, 6, ctu_fb_fields()),
+        Ctu(Int | Dint) => (opcode::fb_type::CTU_DINT, 6, ctu_fb_fields()),
         Ctu(Udint) => (opcode::fb_type::CTU_UDINT, 6, ctu_fb_fields()),
         Ctu(Lint) => (opcode::fb_type::CTU_LINT, 6, ctu_fb_fields()),
         Ctu(Ulint) => (opcode::fb_type::CTU_ULINT, 6, ctu_fb_fields()),
-        Ctd(Int | Dint) => (opcode::fb_type::CTD, 6, ctd_fb_fields()),
+        Ctd(Int | Dint) => (opcode::fb_type::CTD_DINT, 6, ctd_fb_fields()),
         Ctd(Udint) => (opcode::fb_type::CTD_UDINT, 6, ctd_fb_fields()),
         Ctd(Lint) => (opcode::fb_type::CTD_LINT, 6, ctd_fb_fields()),
         Ctd(Ulint) => (opcode::fb_type::CTD_ULINT, 6, ctd_fb_fields()),
-        Ctud(Int | Dint) => (opcode::fb_type::CTUD, 10, ctud_fb_fields()),
+        Ctud(Int | Dint) => (opcode::fb_type::CTUD_DINT, 10, ctud_fb_fields()),
         Ctud(Udint) => (opcode::fb_type::CTUD_UDINT, 10, ctud_fb_fields()),
         Ctud(Lint) => (opcode::fb_type::CTUD_LINT, 10, ctud_fb_fields()),
         Ctud(Ulint) => (opcode::fb_type::CTUD_ULINT, 10, ctud_fb_fields()),

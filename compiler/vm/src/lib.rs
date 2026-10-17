@@ -24,6 +24,7 @@ pub mod error;
 pub(crate) mod frame_stack;
 pub mod freewheeling;
 pub(crate) mod intrinsic;
+pub(crate) mod intrinsic_id;
 #[cfg(feature = "profiling")]
 mod profile;
 pub(crate) mod scheduler;
