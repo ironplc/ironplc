@@ -16,12 +16,16 @@
 //! * the two sides of a comparison;
 //! * the string arguments of one call, those bound to `ANY_STRING` inputs
 //!   such as the two of `CONCAT` or `FIND`, which share one encoding;
-//! * a value stored into a string variable, element or field.
+//! * a value stored into a string variable, element or field, by an
+//!   assignment or by an output assignment of a call, which stores the
+//!   output the call leaves (`f(s => w)` as `w := f.s`).
 //!
 //! A literal or a function result stored into a named variable is the
 //! exception: the assignment and return-type checks already report that
 //! mismatch (P4035, P4027), so this rule leaves it to them, and they leave the
-//! cases this rule reports to it through [`mixes_encodings`]. Whether the
+//! cases this rule reports to it through [`mixes_encodings`]. A variable, a
+//! field of a structure or function block instance, and an output are this
+//! rule's wherever they are stored. Whether the
 //! characters of a literal fit its encoding is `rule_string_literal_char_range`
 //! (P4052).
 //!
@@ -134,7 +138,7 @@ fn variable_encoding(
     ) {
         return None;
     }
-    encoding_of(&variable_type::of(kind, context, scope)?)
+    encoding_of(variable_type::of(kind, context, scope)?)
 }
 
 /// The encoding of the string value `expr` produces, or `None` when it is
@@ -163,6 +167,11 @@ fn mismatched_assignment(
     let value_encoding = match (target, &value.kind) {
         (Variable::Symbolic(SymbolicVariableKind::Named(_)), ExprKind::Variable(var)) => {
             variable_encoding(var, context, scope)?
+        }
+        // The output an output assignment stores, `f(s => w)`, is this
+        // rule's as `w := f.s` is.
+        (Variable::Symbolic(SymbolicVariableKind::Named(_)), ExprKind::CallOutput(_)) => {
+            expr_encoding(value, context, scope)?
         }
         (Variable::Symbolic(SymbolicVariableKind::Named(_)), _) => return None,
         _ => expr_encoding(value, context, scope)?,
@@ -212,7 +221,7 @@ impl RuleStringEncodingCompat<'_> {
         let any_string = TypeName::from("ANY_STRING");
         let scope = self.scope.current();
         let mut first: Option<StringType> = None;
-        for (param, argument) in signature.bind_inputs(&node.param_assignment) {
+        for (param, argument) in signature.inputs_of(&node.param_assignment) {
             if param.param_type != any_string {
                 continue;
             }
@@ -254,6 +263,18 @@ impl Visitor<Infallible> for RuleStringEncodingCompat<'_> {
         node.recurse_visit(self)
     }
 
+    fn visit_output(&mut self, node: &Output) -> Result<Self::Value, Infallible> {
+        let scope = self.scope.current();
+        if let Some(value) = &node.value {
+            if let Some((target_enc, value_enc)) =
+                mismatched_assignment(&node.tgt, value, self.context, &scope)
+            {
+                self.report(value.span(), &target_enc, &value_enc);
+            }
+        }
+        node.recurse_visit(self)
+    }
+
     fn visit_compare_expr(&mut self, node: &CompareExpr) -> Result<Self::Value, Infallible> {
         let scope = self.scope.current();
         let left_enc = expr_encoding(&node.left, self.context, &scope);
@@ -278,6 +299,7 @@ mod tests {
     use crate::test_helpers::{codes, edition3_options, rule_codes};
     use ironplc_parser::options::CompilerOptions;
     use rstest::rstest;
+    use spec_test_macro::spec_test;
 
     /// No problems: the encodings agree, or another rule reports the mix.
     const OK: &[Problem] = &[];
@@ -434,6 +456,76 @@ END_PROGRAM
 ",
         [Problem::StringEncodingMismatch]
     );
+
+    /// A program whose block outputs a `STRING` and a `WSTRING`, and whose
+    /// body is `body`.
+    fn output_program(body: &str) -> String {
+        format!(
+            "
+FUNCTION_BLOCK FB
+  VAR_OUTPUT s : STRING; w : WSTRING; END_VAR
+END_FUNCTION_BLOCK
+PROGRAM main
+  VAR
+    f : FB;
+    s : STRING[10];
+    w : WSTRING[10];
+  END_VAR
+  {body}
+END_PROGRAM
+"
+        )
+    }
+
+    /// A `STRING` field of a function block instance, and the output a call
+    /// stores, mix encodings with a `WSTRING` as a `STRING` variable does.
+    #[spec_test(REQ_IC_analyzer_108)]
+    #[rstest]
+    #[case::string_field_read("f(); w := f.s;")]
+    #[case::string_output("f(s => w);")]
+    #[case::wstring_field_read("f(); s := f.w;")]
+    #[case::wstring_output("f(w => s);")]
+    fn apply_when_string_field_or_output_stored_in_other_encoding_then_p4034(#[case] body: &str) {
+        assert_eq!(check(&output_program(body)), codes(MIXED));
+    }
+
+    rule_err!(
+        /// A function's output is stored as a block's is.
+        #[spec_test(REQ_IC_analyzer_108)]
+        apply_when_function_string_output_stored_in_wstring_then_p4034,
+        "
+FUNCTION F : DINT
+  VAR_OUTPUT s : STRING; END_VAR
+  F := 0;
+END_FUNCTION
+PROGRAM main
+  VAR
+    r : DINT;
+    w : WSTRING[10];
+  END_VAR
+  r := F(s => w);
+END_PROGRAM
+",
+        [Problem::StringEncodingMismatch]
+    );
+
+    /// An output assignment stores the output the call leaves, and this rule
+    /// reports for it what it reports for the assignment of that output read
+    /// from the instance.
+    #[spec_test(REQ_IC_analyzer_106)]
+    #[rstest]
+    #[case::string_output_to_wstring("f(s => w);", "f(); w := f.s;")]
+    #[case::wstring_output_to_string("f(w => s);", "f(); s := f.w;")]
+    #[case::same_encoding("f(s => s);", "f(); s := f.s;")]
+    fn apply_when_output_then_reports_as_assignment_of_output(
+        #[case] output: &str,
+        #[case] assignment: &str,
+    ) {
+        assert_eq!(
+            check(&output_program(assignment)),
+            check(&output_program(output))
+        );
+    }
 
     rule_ok!(
         apply_when_string_assigned_string_then_ok,

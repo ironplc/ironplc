@@ -479,8 +479,8 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
 ``--allow-enum-base-type``
    Allow the base-type suffix on an :doc:`enumeration
    </reference/language/data-types/derived/enumerated-types>` declaration
-   (e.g. ``(A, B) WORD``), naming the elementary type the members are stored
-   in. IEC 61131-3 has no such form — an enumerated specification is a list
+   (e.g. ``(A, B) WORD``), naming a base type; IronPLC stores every
+   enumeration as a ``DINT`` whatever it names. IEC 61131-3 has no such form — an enumerated specification is a list
    of member names or another enumerated type's name, and nothing may follow
    it — so the suffix is an extension. Unlike
    ``--allow-enum-explicit-values`` above it is not an Edition 3 addition;

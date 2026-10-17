@@ -1,0 +1,79 @@
+=====
+P4083
+=====
+
+.. problem-summary:: P4083
+
+This error occurs when a call negates an output that is not a ``BOOL``. An output assignment written ``NOT q => v`` stores the inverse of the
+output ``q`` in ``v``, and only a ``BOOL`` has an inverse in that sense: the
+assignment has no meaning for an ``INT``, a ``TIME`` or any other type.
+
+The compiler reports this error for an output of a function block, user-defined
+or standard (such as the ``ET`` output of a ``TON``), of a function and of a
+method.
+
+Example
+-------
+
+The following code will generate error P4083:
+
+.. playground::
+
+   FUNCTION_BLOCK Limiter
+     VAR_INPUT
+       value : INT;
+       limit : INT;
+     END_VAR
+     VAR_OUTPUT
+       clipped : INT;
+       over : BOOL;
+     END_VAR
+     over := value > limit;
+     IF over THEN
+       clipped := limit;
+     ELSE
+       clipped := value;
+     END_IF;
+   END_FUNCTION_BLOCK
+
+   PROGRAM main
+     VAR
+       lim : Limiter;
+       result : INT;
+       ok : BOOL;
+     END_VAR
+     lim(value := 120, limit := 100, NOT clipped => ok);  (* Error: clipped is an INT *)
+   END_PROGRAM
+
+``clipped`` is an ``INT``, so ``NOT clipped => ok`` has nothing to invert.
+
+To fix this error, negate only a ``BOOL`` output, and assign any other output
+without ``NOT``:
+
+.. playground::
+
+   FUNCTION_BLOCK Limiter
+     VAR_INPUT
+       value : INT;
+       limit : INT;
+     END_VAR
+     VAR_OUTPUT
+       clipped : INT;
+       over : BOOL;
+     END_VAR
+     over := value > limit;
+     IF over THEN
+       clipped := limit;
+     ELSE
+       clipped := value;
+     END_IF;
+   END_FUNCTION_BLOCK
+
+   PROGRAM main
+     VAR
+       lim : Limiter;
+       result : INT;
+       ok : BOOL;
+     END_VAR
+     lim(value := 120, limit := 100, clipped => result, NOT over => ok);
+   END_PROGRAM

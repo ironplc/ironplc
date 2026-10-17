@@ -16,8 +16,12 @@ selects the base type's implementation of an overridden method; it does
 not select a second field. CODESYS and TwinCAT reject the same code as a
 duplicate definition.
 
+The same applies to a property: a derived function block cannot declare a
+field with the name of a ``PROPERTY`` it inherits.
+
 Methods are the exception: a derived function block may declare a method
-with the name of one it inherits, which overrides it.
+with the name of one it inherits, which overrides it. So may a property with
+the name of one it inherits.
 
 Example
 -------

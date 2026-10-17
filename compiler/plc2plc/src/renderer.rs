@@ -104,6 +104,23 @@ impl<'a> LibraryRenderer<'a> {
         self.buffer.push_str(val);
     }
 
+    /// Writes the members of a structure or function block initializer in
+    /// parentheses.
+    fn write_members(&mut self, members: &[StructureElementInit]) -> Result<(), Diagnostic> {
+        self.write_ws("(");
+        visit_comma_separated!(self, members.iter(), StructureElementInit);
+        self.write_ws(")");
+        Ok(())
+    }
+
+    /// Writes the elements of an array initializer in brackets.
+    fn write_elements(&mut self, elements: &[ArrayInitialElementKind]) -> Result<(), Diagnostic> {
+        self.write_ws("[");
+        visit_comma_separated!(self, elements.iter(), ArrayInitialElementKind);
+        self.write_ws("]");
+        Ok(())
+    }
+
     fn newline(&mut self) {
         self.buffer.push('\n');
     }
@@ -275,7 +292,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         // A conversion is written as its operand, without the operand's own
         // comment: the conversion's comment names the operand's type too.
         let written = match &node.kind {
-            dsl::textual::ExprKind::ImplicitConversion(inner) => inner.as_ref(),
+            dsl::textual::ExprKind::ImplicitConversion(conversion) => &conversion.value,
             _ => node,
         };
         // Parenthesised so the comment on the operand and the comment on the
@@ -608,11 +625,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
 
         if !node.elements_init.is_empty() {
             self.write_ws(":=");
-            self.write_ws("(");
-
-            visit_comma_separated!(self, node.elements_init.iter(), StructureElementInit);
-
-            self.write_ws(")");
+            self.write_members(&node.elements_init)?;
         }
 
         Ok(())
@@ -628,11 +641,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
             None => {}
             Some(LateResolvedInitialValue::Members(elements)) => {
                 self.write_ws(":=");
-                self.write_ws("(");
-
-                visit_comma_separated!(self, elements.iter(), StructureElementInit);
-
-                self.write_ws(")");
+                self.write_members(elements)?;
             }
             Some(LateResolvedInitialValue::Value(value)) => {
                 self.write_ws(":=");
@@ -984,7 +993,14 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         &mut self,
         node: &FunctionBlockInitialValueAssignment,
     ) -> Result<Self::Value, Diagnostic> {
-        self.visit_type_name(&node.type_name)
+        self.visit_type_name(&node.type_name)?;
+
+        if !node.init.is_empty() {
+            self.write_ws(":=");
+            self.write_members(&node.init)?;
+        }
+
+        Ok(())
     }
 
     // CODESYS/TwinCAT call-style FB instance initializer:
@@ -1010,10 +1026,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
 
         if !node.initial_values.is_empty() {
             self.write_ws(":=");
-
-            self.write_ws("[");
-            visit_comma_separated!(self, node.initial_values.iter(), ArrayInitialElementKind);
-            self.write_ws("]");
+            self.write_elements(&node.initial_values)?;
         }
 
         Ok(())
@@ -1024,12 +1037,18 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         node: &ArrayInitialElementKind,
     ) -> Result<Self::Value, Diagnostic> {
         match node {
-            ArrayInitialElementKind::Structure(elements) => {
-                self.write_ws("(");
-                visit_comma_separated!(self, elements.iter(), StructureElementInit);
-                self.write_ws(")");
-                Ok(())
-            }
+            ArrayInitialElementKind::Structure(elements) => self.write_members(elements),
+            _ => node.recurse_visit(self),
+        }
+    }
+
+    fn visit_struct_initial_value_assignment_kind(
+        &mut self,
+        node: &StructInitialValueAssignmentKind,
+    ) -> Result<Self::Value, Diagnostic> {
+        match node {
+            StructInitialValueAssignmentKind::Array(elements) => self.write_elements(elements),
+            StructInitialValueAssignmentKind::Structure(members) => self.write_members(members),
             _ => node.recurse_visit(self),
         }
     }
@@ -1847,11 +1866,9 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         &mut self,
         node: &dsl::textual::CaseStatementGroup,
     ) -> Result<Self::Value, Diagnostic> {
-        for selector in node.selectors.iter() {
-            self.visit_case_selection_kind(selector)?;
-            self.write_ws(":");
-            self.newline();
-        }
+        visit_comma_separated!(self, node.selectors.iter(), CaseSelectionKind);
+        self.write_ws(":");
+        self.newline();
 
         self.indent();
 
@@ -2046,6 +2063,11 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
             self.write_ws("NOT");
         }
         self.visit_id(&node.src)?;
+        // The value the output stores is written as the output it reads,
+        // followed by its comment: `q (* REAL -> LREAL *) => lr`.
+        if let (Some(type_name), Some(value)) = (self.type_name, &node.value) {
+            self.write_ws(&type_comment::comment(value, type_name));
+        }
         self.write_ws("=>");
         self.visit_variable(&node.tgt)
     }

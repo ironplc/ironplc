@@ -104,6 +104,7 @@ use ironplc_dsl::{
     diagnostic::{Diagnostic, Label},
     scope::ScopeNode,
     textual::*,
+    type_id::TypeId,
     visitor::Visitor,
 };
 use ironplc_parser::options::CompilerOptions;
@@ -179,7 +180,7 @@ fn signed_value(is_neg: bool, magnitude: u128) -> Option<i128> {
 /// which the program did not state (see the module doc).
 fn type_as_written<'t>(types: &'t TypeEnvironment, expr: &Expr) -> Option<&'t SemanticType> {
     match (&expr.kind, &expr.expr_type) {
-        (ExprKind::ImplicitConversion(inner), _) => type_as_written(types, inner),
+        (ExprKind::ImplicitConversion(conversion), _) => type_as_written(types, &conversion.value),
         (_, Some(ExprType::Inferred(_))) => None,
         _ => types.representation_of_expr(expr),
     }
@@ -391,8 +392,9 @@ impl RuleConstantRange<'_> {
             ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Neg => {
                 self.check_expr(&unary.term, expected)
             }
-            ExprKind::Expression(inner) | ExprKind::ImplicitConversion(inner) => {
-                self.check_expr(inner, expected)
+            ExprKind::Expression(inner) => self.check_expr(inner, expected),
+            ExprKind::ImplicitConversion(conversion) => {
+                self.check_expr(&conversion.value, expected)
             }
             _ => {}
         }
@@ -419,7 +421,7 @@ impl RuleConstantRange<'_> {
                     PartialAccessSize::LWord => ByteSized::B64,
                 },
             }),
-            _ => variable_type::of(kind, self.context, &self.scope.current()),
+            _ => variable_type::of(kind, self.context, &self.scope.current()).cloned(),
         }
     }
 
@@ -494,39 +496,43 @@ impl RuleConstantRange<'_> {
     /// Checks structure element initializers against the fields of the type
     /// `type_name` names.
     fn check_named_elements(&mut self, type_name: &TypeName, elements: &[StructureElementInit]) {
-        if let Some(declared) = self.representation_of(type_name) {
-            self.check_element_inits(elements, &declared);
+        if let Some(record) = self.type_environment.id_of(type_name) {
+            self.check_element_inits(elements, record);
         }
     }
 
-    /// Checks structure element initializers against the fields of
-    /// `declared`, a structure or function block type.
-    fn check_element_inits(&mut self, elements: &[StructureElementInit], declared: &SemanticType) {
+    /// Checks structure element initializers against the fields of the
+    /// structure or function block type `record`, each of the type the
+    /// environment records for it.
+    fn check_element_inits(&mut self, elements: &[StructureElementInit], record: TypeId) {
         for element in elements {
-            if let Some(field) = variable_type::struct_field_type(declared, &element.name) {
-                self.check_struct_value(&element.init, &field);
+            if let Some(field) = self.type_environment.field_type(record, &element.name) {
+                self.check_struct_value(&element.init, field);
             }
         }
     }
 
     /// Checks the value a structure element initializer stores into a field
-    /// of type `expected`.
-    fn check_struct_value(
-        &mut self,
-        value: &StructInitialValueAssignmentKind,
-        expected: &SemanticType,
-    ) {
+    /// of the type `field`.
+    fn check_struct_value(&mut self, value: &StructInitialValueAssignmentKind, field: TypeId) {
+        let Some(expected) = self
+            .type_environment
+            .get_by_id(field)
+            .map(|attributes| attributes.representation.clone())
+        else {
+            return;
+        };
         match value {
             StructInitialValueAssignmentKind::Constant(constant) => {
-                self.check_constant(constant, expected)
+                self.check_constant(constant, &expected)
             }
             StructInitialValueAssignmentKind::Array(elements) => {
-                self.check_array_elements(elements, expected)
+                self.check_array_elements(elements, &expected)
             }
             StructInitialValueAssignmentKind::Structure(elements) => {
-                self.check_element_inits(elements, expected)
+                self.check_element_inits(elements, field)
             }
-            StructInitialValueAssignmentKind::Expression(expr) => self.check_expr(expr, expected),
+            StructInitialValueAssignmentKind::Expression(expr) => self.check_expr(expr, &expected),
             StructInitialValueAssignmentKind::EnumeratedValue(_)
             | StructInitialValueAssignmentKind::LateBound(_) => {}
         }
@@ -586,7 +592,7 @@ impl RuleConstantRange<'_> {
         let Some(signature) = self.function_environment.get(&node.name) else {
             return;
         };
-        for (param, arg) in signature.bind_inputs(&node.param_assignment) {
+        for (param, arg) in signature.inputs_of(&node.param_assignment) {
             if param.is_reference {
                 continue;
             }
@@ -598,18 +604,23 @@ impl RuleConstantRange<'_> {
 
     /// Checks each input argument of a function block call against the type
     /// of the input it binds to: a named argument by name among the
-    /// `VAR_INPUT` and `VAR_IN_OUT` variables, a positional one by position
-    /// among the `VAR_INPUT` variables.
+    /// `VAR_INPUT` and `VAR_IN_OUT` variables of an instance, inherited ones
+    /// included, a positional one by position among its `VAR_INPUT`
+    /// variables.
     fn check_fb_call_arguments(&mut self, node: &FbCall) {
-        let Some(SemanticType::FunctionBlock { fields, .. }) =
-            variable_type::declared(&node.var_name, self.context, &self.scope.current())
-        else {
+        let types = self.type_environment;
+        let Some(fields) = variable_type::declared_type_id(
+            &node.var_name,
+            self.context.symbols(),
+            &self.scope.current(),
+        )
+        .and_then(|block| types.instance_fields(block)) else {
             return;
         };
 
         let mut positional = fields
             .iter()
-            .filter(|field| field.var_type == Some(FunctionBlockVarType::Input));
+            .filter(|field| field.var_type == FunctionBlockVarType::Input);
         for param in &node.params {
             let (field, arg) = match param {
                 ParamAssignmentKind::PositionalInput(input) => (positional.next(), &input.expr),
@@ -618,15 +629,18 @@ impl RuleConstantRange<'_> {
                         field.name == input.name
                             && matches!(
                                 field.var_type,
-                                Some(FunctionBlockVarType::Input | FunctionBlockVarType::InOut)
+                                FunctionBlockVarType::Input | FunctionBlockVarType::InOut
                             )
                     }),
                     &input.expr,
                 ),
                 ParamAssignmentKind::Output(_) => continue,
             };
-            if let Some(field) = field {
-                self.check_expr(arg, &field.field_type);
+            let expected = field
+                .and_then(|field| types.get_by_id(field.field_type?))
+                .map(|attributes| attributes.representation.clone());
+            if let Some(expected) = expected {
+                self.check_expr(arg, &expected);
             }
         }
     }
@@ -813,7 +827,9 @@ impl Visitor<Infallible> for OwnTypes<'_, '_> {
         node.recurse_visit(self)?;
         match &node.kind {
             ExprKind::Const(constant) => self.rule.check_recorded_type(constant, node),
-            ExprKind::ImplicitConversion(inner) => self.rule.check_operand(inner, node),
+            ExprKind::ImplicitConversion(conversion) => {
+                self.rule.check_operand(&conversion.value, node)
+            }
             _ => {}
         }
         Ok(())

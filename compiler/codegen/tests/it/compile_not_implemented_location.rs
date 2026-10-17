@@ -3,7 +3,9 @@
 //! #1734). Each case is a program that `check` accepts and `compile` refuses;
 //! the assertion is on where the primary label lands.
 
-use crate::common::try_parse_and_compile;
+use crate::common::{compile_by_route, parse, try_parse_and_compile};
+use ironplc_codegen::Route;
+use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 
@@ -93,8 +95,43 @@ fn compile_when_not_implemented_then_primary_label_names_the_construct(
     };
     let result = try_parse_and_compile(source, &options);
 
-    assert!(result.is_err());
-    let diagnostic = result.unwrap_err();
+    assert_labels(source, result, anchor, labelled);
+}
+
+/// The route that reads the AST does not read a function's string output.
+/// The lowered route does (REQ-LOW-lowering-172), so the program is compiled
+/// by the AST route alone.
+#[test]
+fn compile_when_string_output_of_function_on_ast_route_then_primary_label_names_the_output() {
+    let source = "
+FUNCTION F : DINT
+VAR_INPUT x : DINT; END_VAR
+VAR_OUTPUT name : STRING; END_VAR
+    name := 'motor';
+    F := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    r : DINT;
+    s : STRING;
+END_VAR
+    r := F(x := 1, name => s);
+END_PROGRAM
+";
+    let options = CompilerOptions::default();
+    let (library, context) = parse(source, &options);
+    let result = compile_by_route(&library, &context, &options, Route::Ast);
+
+    assert_labels(source, result, "name => s", "name");
+}
+
+/// Fails unless `result` is a P9999 whose primary label is `labelled`, the
+/// text at the start of `anchor` in `source`.
+fn assert_labels<T>(source: &str, result: Result<T, Diagnostic>, anchor: &str, labelled: &str) {
+    let Err(diagnostic) = result else {
+        panic!("the program compiles");
+    };
     assert_eq!(diagnostic.code, "P9999");
     let start = source.find(anchor).unwrap();
     assert_eq!(diagnostic.primary.location.start, start);

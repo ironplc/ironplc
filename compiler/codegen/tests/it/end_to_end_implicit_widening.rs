@@ -92,3 +92,41 @@ END_PROGRAM
 ",
     &[("r", -3.0)],
 );
+
+e2e_i32!(
+    end_to_end_when_unsigned_assigned_to_signed_of_same_operation_width_then_keeps_value,
+    "
+PROGRAM main
+  VAR
+    us : USINT := 255;
+    ui : UINT := 65535;
+    usd : DINT;
+    uid : DINT;
+    usi : INT;
+  END_VAR
+  usd := us;
+  uid := ui;
+  usi := us;
+END_PROGRAM
+",
+    &[("usd", 255), ("uid", 65535), ("usi", 255)],
+);
+
+e2e_i32!(
+    end_to_end_when_unsigned_operand_of_signed_arithmetic_of_same_operation_width_then_keeps_value,
+    "PROGRAM main VAR u : USINT := 200; d : DINT := 5; r : DINT; n : DINT; END_VAR
+       r := u + d; n := u - d * 50;
+     END_PROGRAM",
+    &[("r", 205), ("n", -50)],
+);
+
+e2e_i32!(
+    end_to_end_when_unsigned_input_of_signed_function_of_same_operation_width_then_keeps_value,
+    "FUNCTION less_one : DINT VAR_INPUT x : DINT; END_VAR less_one := x - 1; END_FUNCTION
+     PROGRAM main
+       VAR u : USINT := 200; ui : UINT := 65535; k : USINT := 1; d : DINT := 5;
+           biggest : DINT; selected : DINT; passed : DINT; END_VAR
+       biggest := MAX(u, d); selected := MUX(k, d, ui); passed := less_one(u);
+     END_PROGRAM",
+    &[("biggest", 200), ("selected", 65535), ("passed", 199)],
+);

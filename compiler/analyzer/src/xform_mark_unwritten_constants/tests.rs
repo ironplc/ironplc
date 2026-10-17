@@ -209,8 +209,11 @@ END_FUNCTION_BLOCK";
 // Call arguments
 // -----------------------------------------------------------------
 
+/// A positional argument binds to a `VAR_INPUT` only, so this call supplies
+/// one argument too many and does not bind (P4003). With no parameter to
+/// consult, each argument may be written.
 #[test]
-fn apply_when_positional_arg_to_fb_in_out_then_unchanged() {
+fn apply_when_positional_fb_call_does_not_bind_then_args_unchanged() {
     let program = "
 FUNCTION_BLOCK FB_Bump
 VAR_INPUT
@@ -230,7 +233,7 @@ END_VAR
     inst(delta, acc);
 END_PROGRAM";
     let library = parse_and_resolve_types(program);
-    assert_eq!(CONSTANT, qualifier(&library, "delta"));
+    assert_eq!(UNSPECIFIED, qualifier(&library, "delta"));
     assert_eq!(UNSPECIFIED, qualifier(&library, "acc"));
 }
 

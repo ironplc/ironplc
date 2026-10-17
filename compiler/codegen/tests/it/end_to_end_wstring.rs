@@ -105,6 +105,25 @@ END_PROGRAM
     &[("eq", 0), ("ne", 1)],
 );
 
+// U+0100 orders after U+00FF, though its first stored (little-endian) byte
+// is the smaller.
+e2e_i32!(
+    wstring_when_code_units_differ_in_both_bytes_then_ordered_by_code_unit,
+    "
+PROGRAM main
+  VAR
+    a : WSTRING[10] := \"$0100\";
+    b : WSTRING[10] := \"$00FF\";
+    gt : BOOL;
+    lt : BOOL;
+  END_VAR
+  gt := a > b;
+  lt := a < b;
+END_PROGRAM
+",
+    &[("gt", 1), ("lt", 0)],
+);
+
 // LEN counts code units, not bytes.
 e2e_i32!(
     wstring_when_len_then_returns_code_unit_count,

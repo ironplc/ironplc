@@ -1,7 +1,8 @@
 //! Unit tests for the conversion of a value stored into a variable of a
 //! function block or a loop: an input of a function block call, an
 //! assignment to a function block field or through a dereference, an
-//! argument of a method call, and the bounds and step of a `FOR` loop.
+//! argument of a method call, and the bounds and step of a `FOR` loop; and
+//! of an output of a function block call stored into its target.
 
 use std::convert::Infallible;
 
@@ -74,6 +75,109 @@ fn stored_values(source: &str, options: &CompilerOptions) -> Vec<String> {
     };
     let Ok(()) = visitor.walk(&library);
     visitor.values
+}
+
+/// The values the output assignments of the function block calls of
+/// `source` store, in source order, each as [`describe`] shows it; `none`
+/// for an output that records no value.
+fn output_values(source: &str) -> Vec<String> {
+    output_values_with(source, &CompilerOptions::default())
+}
+
+/// As [`output_values`], analyzing `source` under `options`.
+fn output_values_with(source: &str, options: &CompilerOptions) -> Vec<String> {
+    struct OutputValues<'a> {
+        types: &'a TypeEnvironment,
+        values: Vec<String>,
+    }
+    impl Visitor<Infallible> for OutputValues<'_> {
+        type Value = ();
+
+        fn visit_output(&mut self, node: &Output) -> Result<(), Infallible> {
+            let value = node.value.as_ref();
+            let value = value.map_or("none".to_string(), |e| describe(self.types, e));
+            self.values.push(value);
+            node.recurse_visit(self)
+        }
+    }
+    let library = ironplc_parser::parse_program(source, &FileId::default(), options).unwrap();
+    let (library, context) = analyze(&[&library], options).unwrap();
+    assert!(
+        !context.has_diagnostics(),
+        "unexpected diagnostics: {:?}",
+        context.diagnostics()
+    );
+    let mut visitor = OutputValues {
+        types: context.types(),
+        values: vec![],
+    };
+    let Ok(()) = visitor.walk(&library);
+    visitor.values
+}
+
+/// A function block `FB` with outputs of several types, followed by a
+/// program declaring `VAR <vars> END_VAR` whose body is `body`.
+fn output_program(vars: &str, body: &str) -> String {
+    format!(
+        "TYPE R : LINT (0..9); END_TYPE
+        FUNCTION_BLOCK FB
+        VAR_OUTPUT q : REAL; qu : UDINT; qs : SINT; done : BOOL; qd : DINT; END_VAR
+        END_FUNCTION_BLOCK
+        PROGRAM main VAR f : FB; {vars} END_VAR {body} END_PROGRAM"
+    )
+}
+
+#[spec_test(REQ_IC_analyzer_107)]
+#[test]
+fn apply_when_function_block_output_then_converted_to_type_of_its_target() {
+    let source = output_program(
+        "lr : LREAL; lu : LINT; i : INT; d : BOOL;",
+        "f(q => lr, qu => lu, qs => i, NOT done => d);",
+    );
+    assert_eq!(
+        output_values(&source),
+        vec!["REAL->LREAL", "UDINT->LINT", "SINT", "BOOL"]
+    );
+}
+
+#[spec_test(REQ_IC_analyzer_107)]
+#[test]
+fn apply_when_standard_function_block_output_then_converted_to_type_of_its_target() {
+    let source = output_program(
+        "t : TON; c : CTU; lt : LTIME; tm : TIME; l : LINT;",
+        "t(IN := TRUE, ET => lt); t(ET => tm); c(CV => l);",
+    );
+    assert_eq!(
+        output_values(&source),
+        vec!["TIME->LTIME", "TIME", "INT->LINT"]
+    );
+}
+
+#[spec_test(REQ_IC_analyzer_107)]
+#[test]
+fn apply_when_function_block_output_target_of_other_kind_then_converted_to_its_type() {
+    let source = output_program("r : R; a : ARRAY[1..2] OF LINT;", "f(qs => a[1], qd => r);");
+    assert_eq!(output_values(&source), vec!["SINT->LINT", "DINT->LINT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_107)]
+#[test]
+fn apply_when_function_and_method_output_then_converted_to_type_of_its_target() {
+    let source = "FUNCTION_BLOCK K
+        METHOD M VAR_OUTPUT mq : UDINT; END_VAR END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION F : DINT VAR_INPUT x : DINT; END_VAR VAR_OUTPUT q : REAL; s : SINT; END_VAR
+        F := x; END_FUNCTION
+        PROGRAM main VAR k : K; r : DINT; lr : LREAL; i : INT; l : LINT; END_VAR
+        r := F(x := 1, q => lr, s => i); k.M(mq => l); END_PROGRAM";
+    let options = CompilerOptions {
+        allow_fb_inheritance: true,
+        ..CompilerOptions::default()
+    };
+    assert_eq!(
+        output_values_with(source, &options),
+        vec!["REAL->LREAL", "SINT", "UDINT->LINT"]
+    );
 }
 
 /// A function block `B` with an `LINT` input `x` and an input `r` of `R`, a
@@ -161,15 +265,37 @@ fn apply_when_method_argument_then_converted_to_declared_type_of_its_parameter()
         allow_fb_inheritance: true,
         ..CompilerOptions::default()
     };
+    // `k.Set(y := i, x := d)` is written in the method's declaration order,
+    // `x` first, before the conversions are inserted.
     assert_eq!(
         stored_values(source, &options),
         vec![
             "UDINT->LINT",
             "INT->REAL",
-            "INT->REAL",
             "DINT->LINT",
+            "INT->REAL",
             "DINT->LINT",
             "DINT->LINT"
         ]
+    );
+}
+
+#[spec_test(REQ_CB_analyzer_007)]
+#[test]
+fn apply_when_inherited_method_argument_then_converted_to_declared_type_of_its_parameter() {
+    let source = "FUNCTION_BLOCK Base
+        METHOD Set VAR_INPUT x : LINT; END_VAR END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK Derived EXTENDS Base
+        END_FUNCTION_BLOCK
+        PROGRAM main VAR k : Derived; d : DINT; END_VAR
+        k.Set(d); k.Set(x := d); END_PROGRAM";
+    let options = CompilerOptions {
+        allow_fb_inheritance: true,
+        ..CompilerOptions::default()
+    };
+    assert_eq!(
+        stored_values(source, &options),
+        vec!["DINT->LINT", "DINT->LINT"]
     );
 }

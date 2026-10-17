@@ -10,16 +10,14 @@ use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::*;
 use ironplc_problems::Problem;
 
-/// Result of processing a subrange specification
-#[derive(Debug, Clone, PartialEq)]
-pub enum TypeResolution {
-    /// Create a new subrange type with the given attributes
-    Type(TypeAttributes),
-    /// Create an alias to an existing type
-    Alias(TypeName),
-}
+use super::TypeResolution;
 
 /// Try to create the semantic type information from the subrange specification.
+///
+/// The bounds are kept in the order they are written. Whether the minimum is
+/// less than the maximum is `rule_range_limits`'s to report (P2002): it sees
+/// every subrange, including one declared in place for a variable or a
+/// structure field.
 pub fn try_from(
     node_name: &TypeName,
     spec: &SubrangeSpecificationKind,
@@ -71,29 +69,12 @@ pub fn try_from(
                 end.value.value as i128
             };
 
-            // Validate range
-            if min_value > max_value {
-                return Err(Diagnostic::problem(
-                    Problem::SubrangeMinStrictlyLessMax,
-                    Label::span(node_name.span(), "Subrange declaration"),
-                )
-                .with_secondary(Label::span(
-                    start.value.span(),
-                    format!("Minimum value: {}", min_value),
-                ))
-                .with_secondary(Label::span(
-                    end.value.span(),
-                    format!("Maximum value: {}", max_value),
-                )));
-            }
-
             // Validate range is within base type bounds
             base_type
                 .representation
                 .validate_bounds(min_value, max_value, node_name)?;
 
             Ok(TypeResolution::Type(TypeAttributes::new(
-                node_name.span(),
                 SemanticType::Subrange {
                     base_type: Box::new(base_type.representation.clone()),
                     min_value,
@@ -324,16 +305,13 @@ mod tests {
         // First create a base subrange type
         env.insert_type(
             &TypeName::from("BASE_RANGE"),
-            TypeAttributes::new(
-                SourceSpan::default(),
-                SemanticType::Subrange {
-                    base_type: Box::new(SemanticType::Int {
-                        size: ByteSized::B16,
-                    }),
-                    min_value: 1,
-                    max_value: 100,
-                },
-            ),
+            TypeAttributes::new(SemanticType::Subrange {
+                base_type: Box::new(SemanticType::Int {
+                    size: ByteSized::B16,
+                }),
+                min_value: 1,
+                max_value: 100,
+            }),
         );
 
         // Create an alias specification: BASE_RANGE
@@ -359,13 +337,13 @@ mod tests {
     }
 
     #[test]
-    fn try_from_with_invalid_range_then_p0004_error() {
+    fn try_from_when_bounds_reversed_then_creates_type_with_bounds_as_written() {
         let env = TypeEnvironmentBuilder::new()
             .with_elementary_types()
             .build()
             .unwrap();
 
-        // Create an invalid subrange specification: INT (100..1) - min > max
+        // INT (100..1): the order of the bounds is rule_range_limits's to check
         let spec = SpecificationKind::Inline(SubrangeSpecification {
             type_name: ElementaryTypeName::INT,
             subrange: Subrange {
@@ -386,10 +364,17 @@ mod tests {
             },
         });
 
-        let result = try_from(&TypeName::from("INVALID_RANGE"), &spec, &env);
-        assert!(result.is_err());
-        let error = result.unwrap_err();
-        assert_eq!(Problem::SubrangeMinStrictlyLessMax.code(), error.code);
+        let result = try_from(&TypeName::from("REVERSED_RANGE"), &spec, &env).unwrap();
+        let attrs = cast!(result, TypeResolution::Type);
+        let (min_value, max_value) = cast_struct!(
+            attrs.representation,
+            SemanticType::Subrange {
+                min_value,
+                max_value
+            }
+        );
+        assert_eq!(min_value, 100);
+        assert_eq!(max_value, 1);
     }
 
     #[test]
@@ -464,13 +449,10 @@ mod tests {
         // Add a non-numeric type
         env.insert_type(
             &TypeName::from("string"),
-            TypeAttributes::new(
-                SourceSpan::default(),
-                SemanticType::String {
-                    max_len: None,
-                    char_width: CharWidth::Narrow,
-                },
-            ),
+            TypeAttributes::new(SemanticType::String {
+                max_len: None,
+                char_width: CharWidth::Narrow,
+            }),
         );
 
         // Create a subrange specification with non-numeric base type
@@ -572,10 +554,11 @@ END_TYPE
     }
 
     #[test]
-    fn apply_when_subrange_invalid_range_then_error() {
+    fn apply_when_subrange_bounds_reversed_then_later_types_resolved() {
         let program = "
 TYPE
-INVALID_RANGE : INT (100..1) := 50;
+REVERSED_RANGE : INT (100..1) := 50;
+LATER_RANGE : INT (1..10) := 5;
 END_TYPE
         ";
         let input =
@@ -585,13 +568,10 @@ END_TYPE
             .with_elementary_types()
             .build()
             .unwrap();
-        let result = apply(input, &mut env);
-        assert!(result.is_err());
-        let error = result.unwrap_err();
-        assert_eq!(
-            Problem::SubrangeMinStrictlyLessMax.code(),
-            error.first().unwrap().code
-        );
+        let (_, diagnostics) = apply(input, &mut env).unwrap();
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        assert!(env.get(&TypeName::from("REVERSED_RANGE")).is_some());
+        assert!(env.get(&TypeName::from("LATER_RANGE")).is_some());
     }
 
     #[test]
@@ -638,7 +618,7 @@ END_TYPE
     }
 
     #[test]
-    fn apply_when_subrange_memory_size_then_inherits_base_type_size() {
+    fn apply_when_subrange_then_has_width_of_base_type() {
         let program = "
 TYPE
 SINT_RANGE : SINT (1..10) := 5;
@@ -656,15 +636,18 @@ END_TYPE
         let result = apply(input, &mut env);
         assert!(result.is_ok());
 
-        // Check memory sizes
+        // Each subrange has the width of its base type
         let sint_range = env.get(&TypeName::from("SINT_RANGE")).unwrap();
-        assert_eq!(sint_range.representation.size_in_bytes(), Some(1));
+        assert_eq!(sint_range.representation.operated_as().bit_width(), Some(8));
 
         let int_range = env.get(&TypeName::from("INT_RANGE")).unwrap();
-        assert_eq!(int_range.representation.size_in_bytes(), Some(2));
+        assert_eq!(int_range.representation.operated_as().bit_width(), Some(16));
 
         let dint_range = env.get(&TypeName::from("DINT_RANGE")).unwrap();
-        assert_eq!(dint_range.representation.size_in_bytes(), Some(4));
+        assert_eq!(
+            dint_range.representation.operated_as().bit_width(),
+            Some(32)
+        );
     }
 
     #[test]

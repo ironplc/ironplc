@@ -25,6 +25,11 @@ pub enum Trap {
         index: i32,
         total_elements: u32,
     },
+    /// An array subscript of a type wider than `DINT` held a value outside
+    /// the range of `DINT`, so it names no element.
+    SubscriptOutOfRange {
+        value: i128,
+    },
     UnexpectedEndOfBytecode,
     CallStackOverflow,
     /// The dispatch loop needed the topmost call frame -- to store the
@@ -207,6 +212,9 @@ impl fmt::Display for Trap {
                     "array index out of bounds: index {index} for array variable {var_index} with {total_elements} elements"
                 )
             }
+            Trap::SubscriptOutOfRange { value } => {
+                write!(f, "array subscript {value} is outside the range of DINT")
+            }
             Trap::UnexpectedEndOfBytecode => write!(f, "bytecode ended mid-instruction"),
             Trap::CallStackOverflow => write!(f, "call stack overflow"),
             Trap::CallStackUnderflow => write!(f, "call stack underflow"),
@@ -299,6 +307,10 @@ mod tests {
             total_elements: 5,
         },
         "array index out of bounds: index 10 for array variable 2 with 5 elements"
+    )]
+    #[case(
+        Trap::SubscriptOutOfRange { value: 4294967295 },
+        "array subscript 4294967295 is outside the range of DINT"
     )]
     #[case(Trap::UnexpectedEndOfBytecode, "bytecode ended mid-instruction")]
     #[case(Trap::CallStackOverflow, "call stack overflow")]
@@ -421,6 +433,7 @@ mod tests {
         },
         "V4006"
     )]
+    #[case(Trap::SubscriptOutOfRange { value: -2147483649 }, "V4007")]
     #[case(Trap::StackOverflow, "V9001")]
     #[case(Trap::StackUnderflow, "V9002")]
     #[case(Trap::InvalidInstruction(0xFF), "V9003")]
@@ -459,6 +472,7 @@ mod tests {
             .exit_code(),
             1
         );
+        assert_eq!(Trap::SubscriptOutOfRange { value: 0 }.exit_code(), 1);
     }
 
     #[test]

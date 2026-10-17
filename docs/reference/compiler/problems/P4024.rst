@@ -4,7 +4,9 @@ P4024
 
 .. problem-summary:: P4024
 
-This error occurs when a function call provides the same named argument more than once.
+This error occurs when a call provides the same named argument more than once.
+That covers a function or method call, and a function block call that names
+an input twice, or reads an output twice with ``=>``.
 
 Example
 -------

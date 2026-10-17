@@ -5,39 +5,24 @@ use std::collections::HashMap;
 
 use ironplc_container::CharWidth;
 use ironplc_dsl::{
-    common::{ArraySubranges, ElementaryTypeName, ReferenceTarget, SpecificationKind, TypeName},
-    core::{Located, SourceSpan},
+    common::{
+        ArrayElementType, ArraySubranges, ElementaryTypeName, ReferenceTarget, SpecificationKind,
+        TypeName,
+    },
+    core::{Id, Located},
     diagnostic::{Diagnostic, Label},
     textual::{Expr, ExprType},
 };
 use ironplc_problems::Problem;
 
-use crate::intermediates::array;
+use crate::intermediates::{array, string, TypeResolution};
 use crate::semantic_type::{ByteSized, SemanticType};
 use crate::symbol_environment::duplicate_declaration;
 use crate::type_id;
 use ironplc_dsl::type_id::TypeId;
 
-/// Context for type usage validation
-#[derive(Debug, Clone, PartialEq)]
-pub enum UsageContext {
-    /// Type used in variable declaration
-    VariableDeclaration,
-    /// Type used in function parameter
-    FunctionParameter,
-    /// Type used in function return type
-    FunctionReturn,
-    /// Type used in array element type
-    ArrayElement,
-    /// Type used in structure field
-    StructureField,
-    /// Type used in subrange base type
-    SubrangeBase,
-    /// Type used in enumeration underlying type
-    EnumerationUnderlying,
-    /// General type usage
-    General,
-}
+mod fields;
+pub use fields::BlockField;
 
 static ELEMENTARY_TYPES_LOWER_CASE: [(&str, ElementaryTypeName, SemanticType); 29] = [
     // signed_integer_type_name
@@ -270,10 +255,11 @@ pub fn elementary_type(type_name: &TypeName) -> Option<&'static SemanticType> {
 /// A type in the environment: what it is, and the name it was declared with.
 #[derive(Debug)]
 struct TypeEntry {
-    /// The name the type was first entered under, or `None` for an
-    /// anonymous type (see [`TypeEnvironment::insert_anonymous`]). It is for
-    /// people reading diagnostics and debug output -- a type's identity is
-    /// its [`TypeId`], never its name.
+    /// The name the type was first entered under, the elementary type's name
+    /// for a sized string (see [`TypeEnvironment::insert_sized_string`]), or
+    /// `None` for an anonymous type (see [`TypeEnvironment::insert_anonymous`]).
+    /// It is for people reading diagnostics and debug output -- a type's
+    /// identity is its [`TypeId`], never its name.
     name: Option<TypeName>,
     attributes: crate::type_attributes::TypeAttributes,
 }
@@ -304,6 +290,15 @@ pub struct TypeEnvironment {
     /// of, by the alias's id. The alias copies its base's representation,
     /// which says what the type is but not what its values start at.
     alias_bases: HashMap<TypeId, TypeId>,
+    /// The declared type of each field of a structure type, by the id of
+    /// the type, then the field's name. The representation of a structure
+    /// holds each field's structure but not its type, so a field of an
+    /// enumeration, a `WSTRING` or an array of `WSTRING` could not otherwise
+    /// be traced back to it. See [`fields`].
+    structures: HashMap<TypeId, HashMap<Id, TypeId>>,
+    /// The fields of each function block, and the block it `EXTENDS`, by the
+    /// block's id. A block's type lists none of its fields. See [`fields`].
+    blocks: HashMap<TypeId, fields::BlockRecord>,
     /// The repeated declarations met while populating, until the transform
     /// that populates the environment drains them with
     /// [`Self::take_duplicates`]. Recorded rather than returned so that a
@@ -323,6 +318,8 @@ impl TypeEnvironment {
             referenced: HashMap::new(),
             array_elements: HashMap::new(),
             alias_bases: HashMap::new(),
+            structures: HashMap::new(),
+            blocks: HashMap::new(),
             duplicates: Vec::new(),
         }
     }
@@ -339,7 +336,7 @@ impl TypeEnvironment {
         type_name: &TypeName,
         symbol: crate::type_attributes::TypeAttributes,
     ) {
-        let Some(existing) = self.get(type_name) else {
+        let Some(existing) = self.id_of(type_name).and_then(|id| self.entries.get(&id)) else {
             let id = self.allocate();
             self.bind(type_name, id, symbol);
             return;
@@ -350,7 +347,7 @@ impl TypeEnvironment {
                 SemanticType::FunctionBlock { .. }
             )
         };
-        let problem = if is_function_block(existing) || is_function_block(&symbol) {
+        let problem = if is_function_block(&existing.attributes) || is_function_block(&symbol) {
             Problem::PouDeclNameDuplicated
         } else {
             Problem::TypeDeclNameDuplicated
@@ -358,7 +355,11 @@ impl TypeEnvironment {
         self.duplicates.push(duplicate_declaration(
             problem,
             &type_name.name,
-            existing.span(),
+            existing
+                .name
+                .as_ref()
+                .map(|name| name.span())
+                .unwrap_or_default(),
         ));
     }
 
@@ -370,14 +371,33 @@ impl TypeEnvironment {
         &mut self,
         attributes: crate::type_attributes::TypeAttributes,
     ) -> TypeId {
+        self.insert_unbound(None, attributes)
+    }
+
+    /// Adds the sized string type `attributes`, such as the `STRING[10]` of
+    /// `s : STRING[10]`, and returns its id. Its representation records its
+    /// capacity (REQ-LOW-analyzer-053), and it has the name of the elementary
+    /// string type `elementary`, so whatever asks a type's name sees the
+    /// string type it is. The name is not entered in the environment: `id_of`
+    /// of it is still `elementary`.
+    pub(crate) fn insert_sized_string(
+        &mut self,
+        elementary: TypeId,
+        attributes: crate::type_attributes::TypeAttributes,
+    ) -> TypeId {
+        let name = self.name_of(elementary).cloned();
+        self.insert_unbound(name, attributes)
+    }
+
+    /// Adds a type under a new id, named `name`, without entering the name:
+    /// no name maps to the type.
+    fn insert_unbound(
+        &mut self,
+        name: Option<TypeName>,
+        attributes: crate::type_attributes::TypeAttributes,
+    ) -> TypeId {
         let id = self.allocate();
-        self.entries.insert(
-            id,
-            TypeEntry {
-                name: None,
-                attributes,
-            },
-        );
+        self.entries.insert(id, TypeEntry { name, attributes });
         id
     }
 
@@ -393,7 +413,6 @@ impl TypeEnvironment {
         }
         let target_type = self.get_by_id(target)?.representation.clone();
         let reference = self.insert_anonymous(crate::type_attributes::TypeAttributes::new(
-            SourceSpan::default(),
             SemanticType::Reference {
                 target_type: Box::new(target_type),
             },
@@ -510,9 +529,11 @@ impl TypeEnvironment {
     }
 
     /// Records that the array type `array` has the element type
-    /// `elements` spells: the element's own type, or the reference type to
-    /// it for `ARRAY[..] OF REF_TO T`. Nothing is recorded when the element
-    /// type is not known.
+    /// `elements` spells: the element's own type, a type of its own for a
+    /// sized string, which records its capacity as a sized string
+    /// variable's does (REQ-LOW-analyzer-053), or the reference type to the
+    /// element for `ARRAY[..] OF REF_TO T`. Nothing is recorded when the
+    /// element type is not known.
     pub(crate) fn record_array_element(&mut self, array: TypeId, elements: &ArraySubranges) {
         let Some(element) = self.id_of(&elements.type_name.to_type_name()) else {
             return;
@@ -523,7 +544,16 @@ impl TypeEnvironment {
                 None => return,
             }
         } else {
-            element
+            let sized = match &elements.type_name {
+                ArrayElementType::String(spec) | ArrayElementType::WString(spec) => {
+                    spec.length.as_ref().map(|_| string::from_spec(spec))
+                }
+                ArrayElementType::Named(_) => None,
+            };
+            match sized {
+                Some(attributes) => self.insert_sized_string(element, attributes),
+                None => element,
+            }
         };
         self.array_elements.insert(array, element);
     }
@@ -604,8 +634,8 @@ impl TypeEnvironment {
                 let array_spec = SpecificationKind::Inline(array_subranges.clone());
                 let result = array::try_from(declaring, &array_spec, self)?;
                 match result {
-                    array::TypeResolution::Type(attrs) => Ok(attrs.representation),
-                    array::TypeResolution::Alias(base_type_name) => Ok(self
+                    TypeResolution::Type(attrs) => Ok(attrs.representation),
+                    TypeResolution::Alias(base_type_name) => Ok(self
                         .get(&base_type_name)
                         .ok_or_else(|| Diagnostic::internal_error())?
                         .representation
@@ -662,30 +692,6 @@ impl TypeEnvironment {
             .map(|(name, _, _)| TypeName::from(name))
     }
 
-    /// Returns the semantic type for a named array type.
-    ///
-    /// Returns `Some` with the `SemanticType::Array` if the type is found
-    /// and is an array type, or `None` if the type is not found or is not an array.
-    pub fn resolve_array_type(&self, type_name: &TypeName) -> Option<&SemanticType> {
-        let attrs = self.get(type_name)?;
-        match &attrs.representation {
-            it @ SemanticType::Array { .. } => Some(it),
-            _ => None,
-        }
-    }
-
-    /// Returns the semantic type for a named subrange type.
-    ///
-    /// Returns `Some` with the `SemanticType::Subrange` if the type is found
-    /// and is a subrange type, or `None` if the type is not found or is not a subrange.
-    pub fn resolve_subrange_type(&self, type_name: &TypeName) -> Option<&SemanticType> {
-        let attrs = self.get(type_name)?;
-        match &attrs.representation {
-            it @ SemanticType::Subrange { .. } => Some(it),
-            _ => None,
-        }
-    }
-
     /// Returns the semantic type for a named structure type.
     ///
     /// Returns `Some` with the `SemanticType::Structure` if the type is found
@@ -696,21 +702,6 @@ impl TypeEnvironment {
             it @ SemanticType::Structure { .. } => Some(it),
             _ => None,
         }
-    }
-
-    /// Returns the semantic type for a named type that exposes members
-    /// reachable with `.` access.
-    ///
-    /// Returns `Some` with the `SemanticType::Structure` or
-    /// `SemanticType::FunctionBlock` if the type is found and has named
-    /// members, or `None` otherwise. Use [`TypeEnvironment::resolve_struct_type`]
-    /// instead when the caller needs a structure specifically.
-    pub fn resolve_member_access_type(&self, type_name: &TypeName) -> Option<&SemanticType> {
-        let attrs = self.get(type_name)?;
-        attrs
-            .representation
-            .has_members()
-            .then_some(&attrs.representation)
     }
 
     /// An iterator for all types in the environment
@@ -732,115 +723,18 @@ impl TypeEnvironment {
             .map(|(id, entry)| (*id, &entry.attributes))
     }
 
-    /// Returns an iterator over user-defined types, excluding elementary types,
-    /// function block types, and function types.
+    /// Every named type but the elementary types and the function blocks, in
+    /// no particular order. An alias of an elementary type (`MyBool : BOOL`)
+    /// and a sized string type (`MyStr : STRING[10]`) are types of their own,
+    /// with ids of their own, so they are listed.
     pub fn iter_user_defined(
         &self,
     ) -> impl Iterator<Item = (&TypeName, &crate::type_attributes::TypeAttributes)> {
-        use crate::type_category::TypeCategory;
-        self.iter().filter(|(_, attrs)| {
-            attrs.type_category != TypeCategory::Elementary
-                && !matches!(
-                    attrs.representation,
-                    SemanticType::FunctionBlock { .. } | SemanticType::Function { .. }
-                )
-        })
-    }
-
-    /// Gets the memory size of a type by name
-    ///
-    /// Returns `Ok(Some(size))` if the type exists and has a known size,
-    /// `Ok(None)` if the type exists but has unknown size (e.g., dynamic arrays),
-    /// or `Err` if the type is not declared.
-    #[allow(dead_code)]
-    pub fn get_memory_size(&self, type_name: &TypeName) -> Result<Option<u32>, Diagnostic> {
-        self.get(type_name)
-            .map(|attrs| attrs.size_bytes())
-            .ok_or_else(|| {
-                Diagnostic::problem(
-                    Problem::TypeEnvironmentUnknownType,
-                    Label::span(type_name.span(), "Type reference"),
-                )
-            })
-    }
-
-    /// Validates type usage in a specific context
-    #[allow(dead_code)]
-    pub fn validate_type_usage(
-        &self,
-        type_name: &TypeName,
-        context: &UsageContext,
-    ) -> Result<(), Diagnostic> {
-        let type_attrs = self.get(type_name).ok_or_else(|| {
-            Diagnostic::problem(
-                Problem::TypeEnvironmentUnknownType,
-                Label::span(type_name.span(), "Type reference"),
-            )
-        })?;
-
-        // Context-specific validation rules
-        match context {
-            UsageContext::SubrangeBase => {
-                // Subrange base types must be numeric
-                if !type_attrs.representation.is_numeric() {
-                    return Err(Diagnostic::problem(
-                        Problem::SubrangeBaseTypeNotNumeric,
-                        Label::span(type_name.span(), "Subrange base type"),
-                    ));
-                }
-            }
-            UsageContext::EnumerationUnderlying => {
-                // Enumeration underlying types must be integer types
-                if !type_attrs.representation.is_integer() {
-                    return Err(Diagnostic::problem(
-                        Problem::TypeEnvironmentUnknownType, // Using existing code for now
-                        Label::span(type_name.span(), "Enumeration underlying type"),
-                    ));
-                }
-            }
-            UsageContext::ArrayElement => {
-                // Array elements cannot be function blocks or functions
-                if type_attrs.representation.is_function_block()
-                    || type_attrs.representation.is_function()
-                {
-                    return Err(Diagnostic::problem(
-                        Problem::TypeEnvironmentUnknownType, // Using existing code for now
-                        Label::span(type_name.span(), "Array element type"),
-                    ));
-                }
-            }
-            UsageContext::FunctionReturn => {
-                // Function return types cannot be function blocks
-                if type_attrs.representation.is_function_block() {
-                    return Err(Diagnostic::problem(
-                        Problem::TypeEnvironmentUnknownType, // Using existing code for now
-                        Label::span(type_name.span(), "Function return type"),
-                    ));
-                }
-            }
-            // Other contexts have no specific restrictions for now
-            UsageContext::VariableDeclaration
-            | UsageContext::FunctionParameter
-            | UsageContext::StructureField
-            | UsageContext::General => {}
-        }
-
-        Ok(())
-    }
-
-    /// Gets all types organized by category
-    #[allow(dead_code)]
-    pub fn get_all_types_by_category(
-        &self,
-    ) -> std::collections::HashMap<crate::type_category::TypeCategory, Vec<&TypeName>> {
-        let mut result = std::collections::HashMap::new();
-        for (name, attrs) in self.iter() {
-            result
-                .entry(attrs.type_category.clone())
-                .or_insert_with(Vec::new)
-                .push(name);
-        }
-        result
+        self.names
+            .iter()
+            .filter(|(_, id)| type_id::elementary_debug_tag(**id).is_none())
+            .filter_map(|(name, id)| Some((name, self.get_by_id(*id)?)))
+            .filter(|(_, attrs)| !attrs.representation.is_function_block())
     }
 }
 
@@ -891,15 +785,17 @@ impl TypeEnvironmentBuilder {
                 env.insert_elementary(
                     &TypeName::from(name),
                     elementary,
-                    crate::type_attributes::TypeAttributes::elementary(representation.clone()),
+                    crate::type_attributes::TypeAttributes::new(representation.clone()),
                 );
             }
         }
         if self.has_stdlib_function_blocks {
-            for (name, type_attrs) in
+            for (name, block) in
                 crate::intermediates::stdlib_function_block::get_all_stdlib_function_blocks()
             {
-                env.insert_type(&TypeName::from(name), type_attrs);
+                let name = TypeName::from(name);
+                env.insert_type(&name, block.attributes);
+                env.record_standard_block(&name, &block.fields);
             }
         }
         Ok(env)
@@ -920,8 +816,8 @@ mod tests {
     use super::*;
     use crate::{
         semantic_type::{ArrayDimension, ByteSized, SemanticType},
+        standard_function_block::StandardFunctionBlock,
         type_attributes::TypeAttributes,
-        type_category::TypeCategory,
     };
     use ironplc_dsl::common::{
         ArrayElementType, ArraySubranges, Integer, SignedInteger, SignedIntegerRef, Subrange,
@@ -931,20 +827,22 @@ mod tests {
     #[test]
     fn insert_type_when_type_already_exists_then_p2007_and_first_kept() {
         let mut env = TypeEnvironment::new();
-        let first = SourceSpan::range(0, 4);
+        let first = TypeName::from_id(&Id::from("TYPE").with_position(SourceSpan::range(0, 4)));
+        let second = TypeName::from_id(&Id::from("TYPE").with_position(SourceSpan::range(10, 14)));
+        env.insert_type(&first, TypeAttributes::new(SemanticType::Bool));
         env.insert_type(
-            &TypeName::from("TYPE"),
-            TypeAttributes::new(first.clone(), SemanticType::Bool),
-        );
-        env.insert_type(
-            &TypeName::from("TYPE"),
-            TypeAttributes::new(SourceSpan::range(10, 14), SemanticType::Bool),
+            &second,
+            TypeAttributes::new(SemanticType::Int {
+                size: ByteSized::B16,
+            }),
         );
 
         let duplicates = env.take_duplicates();
         assert_eq!(duplicates.len(), 1);
         assert_eq!(duplicates[0].code, Problem::TypeDeclNameDuplicated.code());
-        assert_eq!(env.get(&TypeName::from("TYPE")).unwrap().span(), first);
+        assert_eq!(duplicates[0].primary.location.start, 10);
+        assert_eq!(duplicates[0].secondary[0].location.start, 0);
+        assert_eq!(env.get(&first).unwrap().representation, SemanticType::Bool);
         assert!(env.take_duplicates().is_empty());
     }
 
@@ -952,13 +850,9 @@ mod tests {
     fn insert_type_when_function_block_repeated_then_p4013() {
         let mut env = TypeEnvironment::new();
         let block = || {
-            TypeAttributes::new(
-                SourceSpan::default(),
-                SemanticType::FunctionBlock {
-                    name: "FB".to_string(),
-                    fields: vec![],
-                },
-            )
+            TypeAttributes::new(SemanticType::FunctionBlock {
+                name: "FB".to_string(),
+            })
         };
         env.insert_type(&TypeName::from("FB"), block());
         env.insert_type(&TypeName::from("FB"), block());
@@ -973,17 +867,13 @@ mod tests {
         let mut env = TypeEnvironment::new();
         env.insert_type(
             &TypeName::from("Shared"),
-            TypeAttributes::new(SourceSpan::default(), SemanticType::Bool),
+            TypeAttributes::new(SemanticType::Bool),
         );
         env.insert_type(
             &TypeName::from("Shared"),
-            TypeAttributes::new(
-                SourceSpan::default(),
-                SemanticType::FunctionBlock {
-                    name: "Shared".to_string(),
-                    fields: vec![],
-                },
-            ),
+            TypeAttributes::new(SemanticType::FunctionBlock {
+                name: "Shared".to_string(),
+            }),
         );
 
         assert_eq!(
@@ -997,7 +887,7 @@ mod tests {
         let mut env = TypeEnvironment::new();
         env.insert_type(
             &TypeName::from("TYPE"),
-            TypeAttributes::new(SourceSpan::default(), SemanticType::Bool),
+            TypeAttributes::new(SemanticType::Bool),
         );
         assert!(env
             .insert_alias(&TypeName::from("TYPE_ALIAS"), &TypeName::from("TYPE"))
@@ -1044,9 +934,6 @@ mod tests {
 
         // Test non-primitive types
         assert!(!SemanticType::Enumeration {
-            underlying_type: Box::new(SemanticType::Int {
-                size: ByteSized::B8
-            }),
             members: crate::enumeration_members::EnumerationMembers::default(),
         }
         .is_primitive());
@@ -1082,21 +969,6 @@ mod tests {
         }
         .is_numeric());
 
-        // Test integer types
-        assert!(SemanticType::Int {
-            size: ByteSized::B16
-        }
-        .is_integer());
-        assert!(SemanticType::UInt {
-            size: ByteSized::B32
-        }
-        .is_integer());
-        assert!(!SemanticType::Real {
-            size: ByteSized::B64
-        }
-        .is_integer());
-        assert!(!SemanticType::Bool.is_integer());
-
         // Test subrange types
         let subrange = SemanticType::Subrange {
             base_type: Box::new(SemanticType::Int {
@@ -1111,20 +983,9 @@ mod tests {
         // Test function block types
         let fb_type = SemanticType::FunctionBlock {
             name: "MyFB".to_string(),
-            fields: vec![],
         };
         assert!(fb_type.is_function_block());
         assert!(!fb_type.is_primitive());
-
-        // Test function types
-        let func_type = SemanticType::Function {
-            return_type: Some(Box::new(SemanticType::Int {
-                size: ByteSized::B16,
-            })),
-            parameters: vec![],
-        };
-        assert!(func_type.is_function());
-        assert!(!func_type.is_primitive());
     }
 
     #[test]
@@ -1162,273 +1023,23 @@ mod tests {
         // Add an enumeration type
         env.insert_type(
             &TypeName::from("MY_ENUM"),
-            TypeAttributes::new(
-                SourceSpan::default(),
-                SemanticType::Enumeration {
-                    underlying_type: Box::new(SemanticType::Int {
-                        size: ByteSized::B8,
-                    }),
-                    members: crate::enumeration_members::EnumerationMembers::default(),
-                },
-            ),
+            TypeAttributes::new(SemanticType::Enumeration {
+                members: crate::enumeration_members::EnumerationMembers::default(),
+            }),
         );
 
         // Add a non-enumeration type
         env.insert_type(
             &TypeName::from("MY_INT"),
-            TypeAttributes::new(
-                SourceSpan::default(),
-                SemanticType::Int {
-                    size: ByteSized::B16,
-                },
-            ),
+            TypeAttributes::new(SemanticType::Int {
+                size: ByteSized::B16,
+            }),
         );
 
         // Test the helper method
         assert!(env.is_enumeration(&TypeName::from("MY_ENUM")));
         assert!(!env.is_enumeration(&TypeName::from("MY_INT")));
         assert!(!env.is_enumeration(&TypeName::from("NONEXISTENT")));
-    }
-
-    #[test]
-    fn type_environment_get_memory_size() {
-        let mut env = TypeEnvironment::new();
-        env.insert_type(
-            &TypeName::from("MY_INT"),
-            TypeAttributes::new(
-                SourceSpan::default(),
-                SemanticType::Int {
-                    size: ByteSized::B32,
-                },
-            ),
-        );
-
-        // Test successful memory size retrieval
-        assert_eq!(
-            env.get_memory_size(&TypeName::from("MY_INT")).unwrap(),
-            Some(4)
-        );
-
-        // Test error for non-existent type
-        assert!(env.get_memory_size(&TypeName::from("NONEXISTENT")).is_err());
-    }
-
-    #[test]
-    fn type_environment_get_all_types_by_category() {
-        let mut env = TypeEnvironment::new();
-
-        // Add types of different categories
-        env.insert_type(
-            &TypeName::from("MY_BOOL"),
-            TypeAttributes::new(SourceSpan::default(), SemanticType::Bool),
-        );
-
-        env.insert_type(
-            &TypeName::from("MY_ENUM"),
-            TypeAttributes::new(
-                SourceSpan::default(),
-                SemanticType::Enumeration {
-                    underlying_type: Box::new(SemanticType::Int {
-                        size: ByteSized::B8,
-                    }),
-                    members: crate::enumeration_members::EnumerationMembers::default(),
-                },
-            ),
-        );
-
-        env.insert_type(
-            &TypeName::from("MY_SUBRANGE"),
-            TypeAttributes::new(
-                SourceSpan::default(),
-                SemanticType::Subrange {
-                    base_type: Box::new(SemanticType::Int {
-                        size: ByteSized::B16,
-                    }),
-                    min_value: 1,
-                    max_value: 100,
-                },
-            ),
-        );
-
-        let categories = env.get_all_types_by_category();
-
-        // Check that types are correctly categorized
-        assert!(categories
-            .get(&TypeCategory::Elementary)
-            .unwrap()
-            .contains(&&TypeName::from("MY_BOOL")));
-        assert!(categories
-            .get(&TypeCategory::UserDefined)
-            .unwrap()
-            .contains(&&TypeName::from("MY_ENUM")));
-        assert!(categories
-            .get(&TypeCategory::Derived)
-            .unwrap()
-            .contains(&&TypeName::from("MY_SUBRANGE")));
-    }
-
-    #[test]
-    fn validate_type_usage_when_type_exists_and_context_valid_then_ok() {
-        let mut env = TypeEnvironment::new();
-        env.insert_type(
-            &TypeName::from("MY_INT"),
-            TypeAttributes::new(
-                SourceSpan::default(),
-                SemanticType::Int {
-                    size: ByteSized::B32,
-                },
-            ),
-        );
-
-        // Test valid usage contexts
-        assert!(env
-            .validate_type_usage(
-                &TypeName::from("MY_INT"),
-                &UsageContext::VariableDeclaration
-            )
-            .is_ok());
-        assert!(env
-            .validate_type_usage(&TypeName::from("MY_INT"), &UsageContext::SubrangeBase)
-            .is_ok());
-        assert!(env
-            .validate_type_usage(
-                &TypeName::from("MY_INT"),
-                &UsageContext::EnumerationUnderlying
-            )
-            .is_ok());
-    }
-
-    #[test]
-    fn validate_type_usage_when_type_not_found_then_error() {
-        let env = TypeEnvironment::new();
-
-        assert!(env
-            .validate_type_usage(&TypeName::from("NONEXISTENT"), &UsageContext::General)
-            .is_err());
-    }
-
-    #[test]
-    fn validate_type_usage_when_non_numeric_subrange_base_then_error() {
-        let mut env = TypeEnvironment::new();
-        env.insert_type(
-            &TypeName::from("MY_BOOL"),
-            TypeAttributes::new(SourceSpan::default(), SemanticType::Bool),
-        );
-
-        // Boolean is not numeric, should fail for subrange base
-        assert!(env
-            .validate_type_usage(&TypeName::from("MY_BOOL"), &UsageContext::SubrangeBase)
-            .is_err());
-    }
-
-    #[test]
-    fn validate_type_usage_when_non_integer_enumeration_underlying_then_error() {
-        let mut env = TypeEnvironment::new();
-        env.insert_type(
-            &TypeName::from("MY_REAL"),
-            TypeAttributes::new(
-                SourceSpan::default(),
-                SemanticType::Real {
-                    size: ByteSized::B32,
-                },
-            ),
-        );
-
-        // Real is numeric but not integer, should fail for enumeration underlying
-        assert!(env
-            .validate_type_usage(
-                &TypeName::from("MY_REAL"),
-                &UsageContext::EnumerationUnderlying
-            )
-            .is_err());
-    }
-
-    #[test]
-    fn validate_type_usage_when_function_block_array_element_then_error() {
-        let mut env = TypeEnvironment::new();
-        env.insert_type(
-            &TypeName::from("MY_FB"),
-            TypeAttributes::new(
-                SourceSpan::default(),
-                SemanticType::FunctionBlock {
-                    name: "MyFB".to_string(),
-                    fields: vec![],
-                },
-            ),
-        );
-
-        // Function blocks cannot be array elements
-        assert!(env
-            .validate_type_usage(&TypeName::from("MY_FB"), &UsageContext::ArrayElement)
-            .is_err());
-    }
-
-    #[test]
-    fn validate_type_usage_when_function_block_return_type_then_error() {
-        let mut env = TypeEnvironment::new();
-        env.insert_type(
-            &TypeName::from("MY_FB"),
-            TypeAttributes::new(
-                SourceSpan::default(),
-                SemanticType::FunctionBlock {
-                    name: "MyFB".to_string(),
-                    fields: vec![],
-                },
-            ),
-        );
-
-        // Function blocks cannot be return types
-        assert!(env
-            .validate_type_usage(&TypeName::from("MY_FB"), &UsageContext::FunctionReturn)
-            .is_err());
-    }
-
-    #[test]
-    fn resolve_array_type_when_array_then_returns_type() {
-        let mut env = TypeEnvironment::new();
-        env.insert_type(
-            &TypeName::from("MY_ARRAY"),
-            TypeAttributes::new(
-                SourceSpan::default(),
-                SemanticType::Array {
-                    element_type: Box::new(SemanticType::Int {
-                        size: ByteSized::B16,
-                    }),
-                    dimensions: vec![ArrayDimension {
-                        lower: 1,
-                        upper: 10,
-                    }],
-                },
-            ),
-        );
-
-        let result = env.resolve_array_type(&TypeName::from("MY_ARRAY"));
-        assert!(result.is_some());
-        assert!(matches!(result.unwrap(), SemanticType::Array { .. }));
-    }
-
-    #[test]
-    fn resolve_array_type_when_not_array_then_returns_none() {
-        let mut env = TypeEnvironment::new();
-        env.insert_type(
-            &TypeName::from("MY_INT"),
-            TypeAttributes::new(
-                SourceSpan::default(),
-                SemanticType::Int {
-                    size: ByteSized::B16,
-                },
-            ),
-        );
-
-        assert!(env.resolve_array_type(&TypeName::from("MY_INT")).is_none());
-    }
-
-    #[test]
-    fn resolve_array_type_when_not_found_then_returns_none() {
-        let env = TypeEnvironment::new();
-        assert!(env
-            .resolve_array_type(&TypeName::from("NONEXISTENT"))
-            .is_none());
     }
 
     #[test]
@@ -1454,9 +1065,25 @@ mod tests {
         // Check that a stdlib FB has the correct type
         let ton = env.get(&TypeName::from("ton")).unwrap();
         assert!(ton.representation.is_function_block());
+        assert_eq!(ton.standard_block, Some(StandardFunctionBlock::Ton));
+    }
 
-        // Check that the span is marked as builtin
-        assert!(ton.span.is_builtin());
+    #[test]
+    fn type_environment_builder_with_stdlib_function_blocks_then_field_types_recorded() {
+        let env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .with_stdlib_function_blocks()
+            .build()
+            .unwrap();
+        let field = |block: &str, field: &str| {
+            env.field_type(env.id_of(&TypeName::from(block))?, &Id::from(field))
+        };
+        let id = |name: &str| env.id_of(&TypeName::from(name));
+        assert_eq!(field("ton", "PT"), id("time"));
+        assert_eq!(field("ton", "Q"), id("bool"));
+        assert_eq!(field("ctu", "CV"), id("int"));
+        assert_eq!(field("ctu_lint", "PV"), id("lint"));
+        assert_eq!(field("ctu", "MISSING"), None);
     }
 
     #[test]
@@ -1465,7 +1092,7 @@ mod tests {
         let struct_type = SemanticType::Structure { fields: vec![] };
         env.insert_type(
             &TypeName::from("MY_STRUCT"),
-            TypeAttributes::new(SourceSpan::default(), struct_type.clone()),
+            TypeAttributes::new(struct_type.clone()),
         );
 
         let result = env.resolve_struct_type(&TypeName::from("MY_STRUCT"));
@@ -1478,66 +1105,22 @@ mod tests {
         let mut env = TypeEnvironment::new();
         env.insert_type(
             &TypeName::from("MY_INT"),
-            TypeAttributes::new(SourceSpan::default(), SemanticType::Bool),
+            TypeAttributes::new(SemanticType::Bool),
+        );
+        env.insert_type(
+            &TypeName::from("MY_FB"),
+            TypeAttributes::new(SemanticType::FunctionBlock {
+                name: "MyFB".to_string(),
+            }),
         );
 
         assert!(env.resolve_struct_type(&TypeName::from("MY_INT")).is_none());
+        assert!(env.resolve_struct_type(&TypeName::from("MY_FB")).is_none());
         assert!(env
             .resolve_struct_type(&TypeName::from("NOT_FOUND"))
             .is_none());
     }
 
-    #[test]
-    fn resolve_member_access_type_when_function_block_then_returns_type() {
-        // Unlike resolve_struct_type, member access must also see function
-        // block instances so `timer.Q` resolves.
-        let mut env = TypeEnvironment::new();
-        let fb_type = SemanticType::FunctionBlock {
-            name: "MyFB".to_string(),
-            fields: vec![],
-        };
-        env.insert_type(
-            &TypeName::from("MY_FB"),
-            TypeAttributes::new(SourceSpan::default(), fb_type.clone()),
-        );
-
-        assert!(env.resolve_struct_type(&TypeName::from("MY_FB")).is_none());
-        assert_eq!(
-            env.resolve_member_access_type(&TypeName::from("MY_FB")),
-            Some(&fb_type)
-        );
-    }
-
-    #[test]
-    fn resolve_member_access_type_when_structure_then_returns_type() {
-        let mut env = TypeEnvironment::new();
-        let struct_type = SemanticType::Structure { fields: vec![] };
-        env.insert_type(
-            &TypeName::from("MY_STRUCT"),
-            TypeAttributes::new(SourceSpan::default(), struct_type.clone()),
-        );
-
-        assert_eq!(
-            env.resolve_member_access_type(&TypeName::from("MY_STRUCT")),
-            Some(&struct_type)
-        );
-    }
-
-    #[test]
-    fn resolve_member_access_type_when_no_members_then_returns_none() {
-        let mut env = TypeEnvironment::new();
-        env.insert_type(
-            &TypeName::from("MY_BOOL"),
-            TypeAttributes::new(SourceSpan::default(), SemanticType::Bool),
-        );
-
-        assert!(env
-            .resolve_member_access_type(&TypeName::from("MY_BOOL"))
-            .is_none());
-        assert!(env
-            .resolve_member_access_type(&TypeName::from("NOT_FOUND"))
-            .is_none());
-    }
     fn subranges(element: &str) -> ArraySubranges {
         ArraySubranges {
             ranges: vec![Subrange {
@@ -1586,15 +1169,12 @@ mod tests {
         let mut env = TypeEnvironment::new();
         env.insert_type(
             &TypeName::from("ARR4"),
-            TypeAttributes::new(
-                SourceSpan::default(),
-                SemanticType::Array {
-                    element_type: Box::new(SemanticType::Int {
-                        size: ByteSized::B16,
-                    }),
-                    dimensions: vec![ArrayDimension { lower: 0, upper: 3 }],
-                },
-            ),
+            TypeAttributes::new(SemanticType::Array {
+                element_type: Box::new(SemanticType::Int {
+                    size: ByteSized::B16,
+                }),
+                dimensions: vec![ArrayDimension { lower: 0, upper: 3 }],
+            }),
         );
 
         let result = env.resolve_reference_target(

@@ -97,8 +97,7 @@ fn operand_name_of(types: &TypeEnvironment, id: TypeId) -> Option<TypeName> {
         SemanticType::Enumeration { .. }
         | SemanticType::Structure { .. }
         | SemanticType::Array { .. }
-        | SemanticType::FunctionBlock { .. }
-        | SemanticType::Function { .. } => types.name_of(id).cloned(),
+        | SemanticType::FunctionBlock { .. } => types.name_of(id).cloned(),
     }
 }
 
@@ -182,8 +181,7 @@ pub(crate) fn of(types: &TypeEnvironment, expr: &Expr) -> Option<ValueType> {
         | SemanticType::TimeOfDay { .. }
         | SemanticType::DateAndTime { .. }
         | SemanticType::String { .. }
-        | SemanticType::Reference { .. }
-        | SemanticType::Function { .. } => by_name(),
+        | SemanticType::Reference { .. } => by_name(),
     }
 }
 
@@ -261,16 +259,21 @@ pub(crate) fn describe(types: &TypeEnvironment, id: TypeId) -> String {
     }
 }
 
-/// The type `id` identifies, as Structured Text writes it: an elementary
-/// type in upper case (`DINT`), any other named type by its declared name,
-/// and an anonymous type by its shape, as [`describe`] gives it.
+/// The type `id` identifies, as Structured Text writes it: a type named by
+/// an elementary type in upper case (`DINT`, and `STRING` for a
+/// `STRING[10]`), any other named type by its declared name, and an
+/// anonymous type by its shape, as [`describe`] gives it.
 ///
 /// [`describe`] names an elementary type as the environment registered it
 /// (`dint`), which is how diagnostics show it. This is for output read as
 /// source, such as the annotated rendering of `ironplcc echo --types`.
 pub fn spelling(types: &TypeEnvironment, id: TypeId) -> String {
     let described = describe(types, id);
-    if elementary_debug_tag(id).is_some() {
+    let named_by_elementary = types
+        .name_of(id)
+        .and_then(|name| types.id_of(name))
+        .is_some_and(|named| elementary_debug_tag(named).is_some());
+    if named_by_elementary {
         return described.to_uppercase();
     }
     described
@@ -321,7 +324,6 @@ fn describe_representation(types: &TypeEnvironment, representation: &SemanticTyp
                 describe_representation(types, base_type)
             )
         }
-        SemanticType::Function { .. } => "a function".to_string(),
         // Every elementary representation is named above; these only reach
         // here in a representation the elementary table does not list.
         SemanticType::Bool
@@ -343,11 +345,10 @@ mod tests {
     use crate::type_attributes::TypeAttributes;
     use crate::type_environment::TypeEnvironmentBuilder;
     use ironplc_container::CharWidth;
-    use ironplc_dsl::core::SourceSpan;
     use spec_test_macro::spec_test;
 
     fn anonymous(types: &mut TypeEnvironment, representation: SemanticType) -> TypeId {
-        types.insert_anonymous(TypeAttributes::new(SourceSpan::default(), representation))
+        types.insert_anonymous(TypeAttributes::new(representation))
     }
 
     fn environment() -> TypeEnvironment {
@@ -407,9 +408,6 @@ mod tests {
         let id = anonymous(
             &mut types,
             SemanticType::Enumeration {
-                underlying_type: Box::new(SemanticType::Int {
-                    size: ByteSized::B8,
-                }),
                 members: crate::enumeration_members::EnumerationMembers::default(),
             },
         );
@@ -424,15 +422,9 @@ mod tests {
         let color = TypeName::from("Color");
         types.insert_type(
             &color,
-            TypeAttributes::new(
-                SourceSpan::default(),
-                SemanticType::Enumeration {
-                    underlying_type: Box::new(SemanticType::Int {
-                        size: ByteSized::B8,
-                    }),
-                    members: crate::enumeration_members::EnumerationMembers::default(),
-                },
-            ),
+            TypeAttributes::new(SemanticType::Enumeration {
+                members: crate::enumeration_members::EnumerationMembers::default(),
+            }),
         );
         let named = types.id_of(&color).unwrap();
         let array = anonymous(
@@ -448,6 +440,21 @@ mod tests {
         assert_eq!(spelling(&types, dint), "DINT");
         assert_eq!(spelling(&types, named), "Color");
         assert_eq!(spelling(&types, array), "ARRAY[1..2] OF DINT");
+    }
+
+    #[test]
+    fn spelling_when_sized_string_then_upper_case_elementary() {
+        let mut types = environment();
+        let string = types.id_of(&TypeName::from("STRING")).unwrap();
+        let sized = types.insert_sized_string(
+            string,
+            TypeAttributes::new(SemanticType::String {
+                max_len: Some(20),
+                char_width: CharWidth::Narrow,
+            }),
+        );
+
+        assert_eq!(spelling(&types, sized), "STRING");
     }
 
     #[test]

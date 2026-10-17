@@ -4,8 +4,14 @@
 //! variable's declared type, and a way to walk from a reference such as
 //! `s.field[i]` to the type of the element it names. The declared type comes
 //! from the symbol environment, looked up from the scope the rule is in; the
-//! walk lives here so that rules share one answer rather than each carrying
-//! its own copy.
+//! walk lives here so that every reader shares one answer rather than each
+//! carrying its own copy.
+//!
+//! The walk goes by [`TypeId`] ([`type_id`]): a variable's declared type, then
+//! [`TypeEnvironment::field_type`] for a field, [`TypeEnvironment::element_type`]
+//! for a subscript and [`TypeEnvironment::referenced_type`] for a dereference.
+//! It never reads the fields a structure's or function block's representation
+//! lists, so a field has one type, the one its declaration records.
 //!
 //! ```ignore
 //! // In the visitor: track the scope the traversal is in.
@@ -15,10 +21,12 @@
 //! let element = variable_type::of(&kind, context, &self.scope.current());
 //! ```
 
-use ironplc_dsl::{common::*, core::Id, textual::*};
+use ironplc_dsl::{common::*, core::Id, textual::*, type_id::TypeId};
 
 use crate::{
-    semantic_context::SemanticContext, semantic_type::SemanticType, symbol_environment::ScopeKind,
+    semantic_context::SemanticContext,
+    semantic_type::SemanticType,
+    symbol_environment::{ScopeKind, SymbolEnvironment},
     type_environment::TypeEnvironment,
 };
 
@@ -58,50 +66,72 @@ pub(crate) fn resolve_initializer(
     }
 }
 
-/// Resolves the [`SemanticType`] of the variable a reference names,
-/// walking through struct field accesses and array subscripts to the element
-/// it selects.
+/// The id of the type of the value the reference `kind` names from `scope`:
+/// the declared type of a variable, the declared type of a field, the element
+/// type of a subscript, the type a dereference refers to, and for a bit or
+/// partial access the `BOOL` or bit string it selects. `None` when a step of
+/// the walk has no type, such as a field the record does not have, or for
+/// `THIS^` and `SUPER^`, whose members are not typed yet (issue #1406).
+pub(crate) fn type_id(
+    kind: &SymbolicVariableKind,
+    symbols: &SymbolEnvironment,
+    types: &TypeEnvironment,
+    scope: &ScopeKind,
+) -> Option<TypeId> {
+    match kind {
+        SymbolicVariableKind::Named(named) => declared_type_id(&named.name, symbols, scope),
+        SymbolicVariableKind::Structured(structured) => {
+            let record = type_id(&structured.record, symbols, types, scope)?;
+            types.field_type(record, &structured.field)
+        }
+        SymbolicVariableKind::Array(array) => {
+            let array = type_id(&array.subscripted_variable, symbols, types, scope)?;
+            types.element_type(array)
+        }
+        // `p^` is the variable `p` references, so it has the referenced
+        // type, not `REF_TO`.
+        SymbolicVariableKind::Deref(deref) => {
+            types.referenced_type(type_id(&deref.variable, symbols, types, scope)?)
+        }
+        SymbolicVariableKind::BitAccess(_) => types.id_of(&TypeName::from("BOOL")),
+        SymbolicVariableKind::PartialAccess(partial) => {
+            types.id_of(&TypeName::from(match partial.size {
+                PartialAccessSize::Byte => "BYTE",
+                PartialAccessSize::Word => "WORD",
+                PartialAccessSize::DWord => "DWORD",
+                PartialAccessSize::LWord => "LWORD",
+            }))
+        }
+        SymbolicVariableKind::SelfRef(_) => None,
+    }
+}
+
+/// Resolves the [`SemanticType`] of the variable a reference names: the
+/// representation of the type [`type_id`] walks to.
 ///
 /// A bit or partial access answers with the type of the variable it accesses,
 /// **not** with what the selection denotes: `x.3` answers `x`'s type rather
 /// than `BOOL`, and `w.B1` answers `w`'s type rather than a byte. That is the
 /// question an index check asks -- the variable's width is what bounds the
 /// index -- and it is the wrong question for a caller asking what type a
-/// value read from or written to the reference has.
-pub(crate) fn of(
+/// value read from or written to the reference has, which [`type_id`]
+/// answers.
+pub(crate) fn of<'a>(
     kind: &SymbolicVariableKind,
-    context: &SemanticContext,
+    context: &'a SemanticContext,
     scope: &ScopeKind,
-) -> Option<SemanticType> {
-    match kind {
-        SymbolicVariableKind::Named(named) => declared(&named.name, context, scope).cloned(),
-        SymbolicVariableKind::Structured(structured) => {
-            let record_type = of(&structured.record, context, scope)?;
-            struct_field_type(&record_type, &structured.field)
-        }
-        SymbolicVariableKind::Array(array) => {
-            let array_type = of(&array.subscripted_variable, context, scope)?;
-            match array_type {
-                SemanticType::Array { element_type, .. } => Some(*element_type),
-                _ => None,
-            }
-        }
-        // A selection answers with the variable it selects from; see the
-        // note on this function.
-        SymbolicVariableKind::BitAccess(bit_access) => of(&bit_access.variable, context, scope),
-        SymbolicVariableKind::PartialAccess(partial) => of(&partial.variable, context, scope),
-        SymbolicVariableKind::SelfRef(_) => {
-            // Typing a member of THIS^/SUPER^ needs function-block member
-            // resolution, which does not exist yet. See issue #1406.
-            None
-        }
-        // `p^` is the variable `p` references, so it has the referenced
-        // type, not `REF_TO`.
-        SymbolicVariableKind::Deref(deref) => match of(&deref.variable, context, scope)? {
-            SemanticType::Reference { target_type } => Some(*target_type),
-            _ => None,
-        },
-    }
+) -> Option<&'a SemanticType> {
+    // A selection answers with the variable it selects from; see the note
+    // on this function. Nothing selects from a selection, so it is only
+    // ever the outermost step of a reference.
+    let accessed = match kind {
+        SymbolicVariableKind::BitAccess(bit_access) => &bit_access.variable,
+        SymbolicVariableKind::PartialAccess(partial) => &partial.variable,
+        _ => kind,
+    };
+    let types = context.types();
+    let id = type_id(accessed, context.symbols(), types, scope)?;
+    Some(&types.get_by_id(id)?.representation)
 }
 
 /// The declared type of the variable `name` names from `scope`: a variable,
@@ -111,22 +141,152 @@ pub(crate) fn declared<'a>(
     context: &'a SemanticContext,
     scope: &ScopeKind,
 ) -> Option<&'a SemanticType> {
-    let type_id = context.symbols().find(name, scope)?.type_id?;
+    let type_id = declared_type_id(name, context.symbols(), scope)?;
     Some(&context.types().get_by_id(type_id)?.representation)
 }
 
-/// Finds the type of a field within a structure or function block type.
-pub(crate) fn struct_field_type(
-    parent_type: &SemanticType,
-    field_name: &Id,
-) -> Option<SemanticType> {
-    let fields = match parent_type {
-        SemanticType::Structure { fields } => fields,
-        SemanticType::FunctionBlock { fields, .. } => fields,
-        _ => return None,
-    };
-    fields
-        .iter()
-        .find(|f| f.name == *field_name)
-        .map(|f| f.field_type.clone())
+/// The id of the declared type of the variable `name` names from `scope`.
+pub(crate) fn declared_type_id(
+    name: &Id,
+    symbols: &SymbolEnvironment,
+    scope: &ScopeKind,
+) -> Option<TypeId> {
+    symbols.resolve_variable(name, scope).declared()?.type_id
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::semantic_type::ByteSized;
+    use crate::symbol_environment::ScopePath;
+    use crate::test_helpers::{edition3_options, parse_and_resolve_types_with_options};
+    use ironplc_container::CharWidth;
+    use ironplc_dsl::visitor::Visitor;
+    use spec_test_macro::spec_test;
+    use std::convert::Infallible;
+
+    /// A program whose `main` has an instance `f` of a block with a
+    /// structure output, a sized string output and an array variable, an
+    /// instance `d` of a block that inherits an `INT` input, and an `LINT`.
+    /// Each assignment's target is a reference the tests ask about.
+    const PROGRAM: &str = "
+TYPE Point : STRUCT x : LINT; END_STRUCT; END_TYPE
+FUNCTION_BLOCK Block
+  VAR_OUTPUT p : Point; s : STRING[8]; END_VAR
+  VAR a : ARRAY[1..3] OF INT; END_VAR
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK Base
+  VAR_INPUT count : INT; END_VAR
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK Derived EXTENDS Base
+END_FUNCTION_BLOCK
+PROGRAM main
+  VAR f : Block; d : Derived; n : LINT; END_VAR
+  f.p := 0;
+  f.s := 0;
+  f.a := 0;
+  f.a[2] := 0;
+  f.p.x := 0;
+  d.count := 0;
+  n.3 := 0;
+  f.missing := 0;
+END_PROGRAM";
+
+    /// The target of each assignment in `library`, in order.
+    fn targets(library: &Library) -> Vec<SymbolicVariableKind> {
+        struct Targets(Vec<SymbolicVariableKind>);
+        impl Visitor<Infallible> for Targets {
+            type Value = ();
+            fn visit_assignment(&mut self, node: &Assignment) -> Result<(), Infallible> {
+                if let Variable::Symbolic(kind) = &node.target {
+                    self.0.push(kind.clone());
+                }
+                Ok(())
+            }
+        }
+        let mut targets = Targets(Vec::new());
+        let _ = targets.walk(library);
+        targets.0
+    }
+
+    /// The representation `of` gives each assignment target of [`PROGRAM`],
+    /// asked from the scope of `main`.
+    fn representations() -> Vec<Option<SemanticType>> {
+        let (library, context) = parse_and_resolve_types_with_options(PROGRAM, &edition3_options());
+        let main = ScopeKind::Named(ScopePath::new(vec![Id::from("main")]));
+        targets(&library)
+            .iter()
+            .map(|kind| of(kind, &context, &main).cloned())
+            .collect()
+    }
+
+    #[spec_test(REQ_ETR_analyzer_004)]
+    #[test]
+    fn of_when_field_of_function_block_then_declared_type_of_field() {
+        let (_, context) = parse_and_resolve_types_with_options(PROGRAM, &edition3_options());
+        let point = context
+            .types()
+            .get(&TypeName::from("Point"))
+            .map(|attributes| attributes.representation.clone());
+        let types = representations();
+
+        assert_eq!(types[0], point);
+        assert_eq!(
+            types[1],
+            Some(SemanticType::String {
+                max_len: Some(8),
+                char_width: CharWidth::Narrow,
+            })
+        );
+        assert!(types[2].as_ref().is_some_and(SemanticType::is_array));
+        assert_eq!(
+            types[3],
+            Some(SemanticType::Int {
+                size: ByteSized::B16
+            })
+        );
+        assert_eq!(
+            types[4],
+            Some(SemanticType::Int {
+                size: ByteSized::B64
+            })
+        );
+    }
+
+    #[test]
+    fn of_when_inherited_field_then_type_the_base_block_declares() {
+        assert_eq!(
+            representations()[5],
+            Some(SemanticType::Int {
+                size: ByteSized::B16
+            })
+        );
+    }
+
+    #[test]
+    fn of_when_bit_access_then_type_of_variable_accessed() {
+        assert_eq!(
+            representations()[6],
+            Some(SemanticType::Int {
+                size: ByteSized::B64
+            })
+        );
+    }
+
+    #[test]
+    fn of_when_field_record_does_not_have_then_none() {
+        assert_eq!(representations()[7], None);
+    }
+
+    #[test]
+    fn type_id_when_bit_access_then_bool() {
+        let (library, context) = parse_and_resolve_types_with_options(PROGRAM, &edition3_options());
+        let main = ScopeKind::Named(ScopePath::new(vec![Id::from("main")]));
+        let bit_access = &targets(&library)[6];
+
+        assert_eq!(
+            type_id(bit_access, context.symbols(), context.types(), &main),
+            context.types().id_of(&TypeName::from("BOOL"))
+        );
+    }
 }

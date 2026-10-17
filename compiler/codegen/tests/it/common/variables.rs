@@ -45,6 +45,16 @@ impl<'a> Variables<'a> {
         })
     }
 
+    /// The name of the variable at `index` of the variable table, for a
+    /// message about it; `None` when the debug section names none there.
+    pub(super) fn name_at(&self, index: usize) -> Option<&'a str> {
+        self.debug
+            .var_names
+            .iter()
+            .find(|entry| usize::from(entry.var_index.raw()) == index)
+            .map(|entry| entry.name.as_str())
+    }
+
     /// The value `entry`'s variable holds in `slot`, with its string content,
     /// if any, in `data_region`.
     pub(super) fn decode(&self, entry: &VarNameEntry, slot: Slot, data_region: &[u8]) -> Value {

@@ -181,9 +181,9 @@ program that analyzes cleanly before marking analyzes cleanly after it.
 It runs last because it needs bare identifiers already resolved to
 variables (`xform_resolve_late_bound_expr_kind`), `ADR` already rewritten
 to `ExprKind::Ref` (`xform_resolve_adr`), user functions already in the
-function environment and named arguments already positional
+function environment and every call's arguments already in normal form
 (`xform_resolve_symbol_and_function_environment`,
-`xform_named_to_positional_args`). It runs before the semantic rules so
+`xform_bind_call_arguments`). It runs before the semantic rules so
 that the rules see the same library code generation will, and so that
 REQ-CVI-analyzer-041 is checked by the rules themselves rather than
 assumed. The transform is infallible; there is no fallback to revert to.

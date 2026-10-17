@@ -5,8 +5,10 @@
 //! records that, for the operator `a + b` and for the function form
 //! `ADD(a, b, ...)`:
 //!
-//! * an operand whose operation width differs from the result's is wrapped in
-//!   an [`ExprKind::ImplicitConversion`] to the result type;
+//! * an operand whose operation type differs from the result's is wrapped in
+//!   an [`ExprKind::ImplicitConversion`] to the result type: its width, or the
+//!   signedness of an integer, so the `USINT` of `us + d` on a `DINT` is
+//!   converted although both are operated on in 32 bits;
 //! * an untyped literal operand is given the result type;
 //! * a function form of three or more inputs is written as the calls it folds
 //!   to, `ADD(ADD(a, b), c)`, because each step computes at its own result
@@ -25,19 +27,20 @@
 use ironplc_dsl::common::TypeName;
 use ironplc_dsl::core::Id;
 use ironplc_dsl::textual::{
-    BinaryExpr, Expr, ExprKind, ExprType, Function, Operator, ParamAssignmentKind, PositionalInput,
+    BinaryExpr, Expr, ExprKind, ExprType, Function, NamedInput, Operator, ParamAssignmentKind,
+    PositionalInput,
 };
 use ironplc_dsl::type_id::TypeId;
 
 use super::ImplicitConversions;
 use crate::intermediates::arithmetic_overload::{
-    resolve_arithmetic_overload, typed_overload, Overload,
+    resolve_arithmetic_overload, typed_overload, Overload, TypedOverload,
 };
-use crate::intermediates::numeric_operation::{numeric_operation_width, OperationWidth};
+use crate::intermediates::numeric_operation::{numeric_operation_type, OperationType};
 use crate::intermediates::operator_function_form::{operator_function_form, FormOf};
 
-/// The type an arithmetic step computes at, and the width it is operated on.
-type Step = (TypeId, OperationWidth);
+/// The type an arithmetic step computes at, and its operation type.
+type Step = (TypeId, OperationType);
 
 impl ImplicitConversions<'_> {
     /// Records the conversions of the operands of the operator expression
@@ -68,7 +71,7 @@ impl ImplicitConversions<'_> {
         let Some(op) = arithmetic_operator(func) else {
             return;
         };
-        let Some(inputs) = positional_inputs(func) else {
+        let Some(inputs) = all_inputs(func) else {
             return;
         };
         if let Some(steps) = self.numeric_steps(&op, &inputs, expr.expr_type.as_ref()) {
@@ -109,8 +112,9 @@ impl ImplicitConversions<'_> {
         let mut inputs = std::mem::take(&mut func.param_assignment)
             .into_iter()
             .filter_map(|input| match input {
-                ParamAssignmentKind::PositionalInput(input) => Some(input.expr),
-                ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
+                ParamAssignmentKind::PositionalInput(PositionalInput { expr })
+                | ParamAssignmentKind::NamedInput(NamedInput { expr, .. }) => Some(expr),
+                ParamAssignmentKind::Output(_) => None,
             });
         let Some(mut accumulated) = inputs.next() else {
             return;
@@ -119,9 +123,11 @@ impl ImplicitConversions<'_> {
         for (index, (input, step_type)) in inputs.zip(types).enumerate() {
             let mut input = input;
             record(&mut accumulated, &mut input, index);
+            // Each step is a call in normal form, as the binding pass writes
+            // one: an arithmetic form's inputs are `IN1` and `IN2`.
             let call = Function {
                 name: name.clone(),
-                param_assignment: vec![positional(accumulated), positional(input)],
+                param_assignment: vec![named("IN1", accumulated), named("IN2", input)],
             };
             let step_result = if index == last {
                 result.clone()
@@ -137,9 +143,9 @@ impl ImplicitConversions<'_> {
         *expr = accumulated;
     }
 
-    /// The type and width of each step of the fold of `inputs`, or `None`
-    /// unless there are two or more inputs and every step is the numeric
-    /// overload with a result this pass can place.
+    /// The type and operation type of each step of the fold of `inputs`, or
+    /// `None` unless there are two or more inputs and every step is the
+    /// numeric overload with a result this pass can place.
     ///
     /// The last step computes at the type of the call itself, which must be
     /// the overload's result. Each earlier step computes at its overload's
@@ -182,7 +188,7 @@ impl ImplicitConversions<'_> {
                 (own == *step_result).then_some(step)?
             } else {
                 let id = self.conversions.id_of(step_result)?;
-                (id, numeric_operation_width(step_result)?)
+                (id, numeric_operation_type(step_result)?)
             };
             steps.push(step);
         }
@@ -201,10 +207,7 @@ impl ImplicitConversions<'_> {
         rest.iter()
             .map(|input| {
                 let right = self.conversions.operand_name(input)?;
-                let Overload::Typed { name, result } = typed_overload(op, &accumulated, &right)?
-                else {
-                    return None;
-                };
+                let TypedOverload { name, result } = typed_overload(op, &accumulated, &right)?;
                 accumulated = result.clone();
                 Some((Id::from(name), result))
             })
@@ -212,13 +215,13 @@ impl ImplicitConversions<'_> {
     }
 
     /// The type an operation of result type `result` computes at, and its
-    /// width, when it is an elementary numeric type.
+    /// operation type, when it is an elementary numeric type.
     fn step_of(&self, result: Option<&ExprType>) -> Option<Step> {
         let (ExprType::Concrete(id) | ExprType::Inferred(id)) = result? else {
             return None;
         };
         let name = self.conversions.name_of(*id)?;
-        Some((*id, numeric_operation_width(&name)?))
+        Some((*id, numeric_operation_type(&name)?))
     }
 
     /// Returns `true` when the operands of `op` have a typed overload on the
@@ -230,24 +233,22 @@ impl ImplicitConversions<'_> {
         ) else {
             return false;
         };
-        matches!(
-            typed_overload(op, &left, &right),
-            Some(Overload::Typed { .. })
-        )
+        typed_overload(op, &left, &right).is_some()
     }
 
     /// Makes `operand` an operand of the step: an untyped literal takes the
-    /// step's type, and a numeric operand of another width is converted to
-    /// it. An operand of the same width is operated on as it is.
-    fn record_operand(&self, operand: &mut Expr, (target, width): Step) {
+    /// step's type, and a numeric operand of another operation type is
+    /// converted to it. An operand of the same operation type is operated on
+    /// as it is.
+    fn record_operand(&self, operand: &mut Expr, (target, at): Step) {
         let differs = match operand.expr_type {
             Some(ExprType::Literal(_)) => true,
             Some(ExprType::Concrete(_) | ExprType::Inferred(_)) => self
                 .conversions
                 .operand_name(operand)
                 .as_ref()
-                .and_then(numeric_operation_width)
-                .is_some_and(|own| own != width),
+                .and_then(numeric_operation_type)
+                .is_some_and(|own| own != at),
             Some(ExprType::Null) | None => false,
         };
         if differs {
@@ -264,19 +265,19 @@ pub(super) fn arithmetic_operator(func: &Function) -> Option<Operator> {
     }
 }
 
-/// The inputs of `func` when every argument is a positional input; the
-/// named-argument pass made every input positional, and any other shape is
-/// one a rule reported.
-fn positional_inputs(func: &Function) -> Option<Vec<&Expr>> {
+/// The inputs of `func` when every argument is an input, in the order of the
+/// function's parameters for a call the binding pass wrote in normal form;
+/// any other shape is one a rule reported.
+fn all_inputs(func: &Function) -> Option<Vec<&Expr>> {
     func.param_assignment
         .iter()
-        .map(|input| match input {
-            ParamAssignmentKind::PositionalInput(input) => Some(&input.expr),
-            ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
-        })
+        .map(ParamAssignmentKind::input_expr)
         .collect()
 }
 
-fn positional(expr: Expr) -> ParamAssignmentKind {
-    ParamAssignmentKind::PositionalInput(PositionalInput { expr })
+/// The named input `name := expr`, named at the span of `expr`.
+fn named(name: &str, expr: Expr) -> ParamAssignmentKind {
+    let mut name = Id::from(name);
+    name.span = expr.span.clone();
+    ParamAssignmentKind::NamedInput(NamedInput { name, expr })
 }

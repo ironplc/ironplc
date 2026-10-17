@@ -4,12 +4,13 @@
 //! `MIN`, `MAX`, `LIMIT`, `SEL`, `MUX`, `EXPT` and `ATAN2` compute at their
 //! result type, which the resolver gave the call: the type every input of the
 //! function's type widens to, or `EXPT`'s first input's
-//! ([`Intrinsic::inputs_of_one_type`]). This module records, on each input of
+//! ([`BuiltinFunction::inputs_of_one_type`]). This module records, on each input of
 //! that type:
 //!
 //! * an [`ExprKind::ImplicitConversion`] to the result type when its operation
-//!   width differs from the result's: `MAX(i, l)` on an `INT` and an `LINT`
-//!   compares `LINT(i)` with `l`;
+//!   type differs from the result's: `MAX(i, l)` on an `INT` and an `LINT`
+//!   compares `LINT(i)` with `l`, and `MAX(us, d)` on a `USINT` and a `DINT`
+//!   compares `DINT(us)` with `d`;
 //! * the result type on an untyped literal: the `5` of `MAX(d, 5)` is a
 //!   `DINT`.
 //!
@@ -17,19 +18,19 @@
 //! too, the type both operands widen to, and their operands are recorded the
 //! same way: `w OR lw` on a `WORD` and an `LWORD` is `LWORD(w) OR lw`.
 //!
-//! `MUX`'s selector `K` is converted to `DINT` when its width differs, and
-//! `SEL`'s `G` stays a `BOOL`. A call whose inputs are all untyped literals
-//! has a literal's category until the literal pass gives it its context's
-//! type, which records its inputs then. The conversion of the result to the
-//! type of its context is recorded where that context is.
+//! `MUX`'s selector `K` is converted to `DINT` when its operation type
+//! differs, and `SEL`'s `G` stays a `BOOL`. A call whose inputs are all
+//! untyped literals has a literal's category until the literal pass gives it
+//! its context's type, which records its inputs then. The conversion of the
+//! result to the type of its context is recorded where that context is.
 
 use ironplc_dsl::common::{ElementaryTypeName, TypeName};
-use ironplc_dsl::textual::{Expr, ExprKind, ExprType, Function, ParamAssignmentKind};
+use ironplc_dsl::textual::{Expr, ExprKind, ExprType, Function};
 use ironplc_dsl::type_id::TypeId;
 
 use super::ImplicitConversions;
-use crate::intermediates::numeric_operation::{operation_width_of, OperationWidth};
-use crate::intrinsic::{is_bitwise, Intrinsic};
+use crate::builtin_function::{is_bitwise, BuiltinFunction};
+use crate::intermediates::numeric_operation::{operation_type_of, OperationType};
 
 impl ImplicitConversions<'_> {
     /// Records the conversions of the inputs of `expr` when it is a call to a
@@ -55,40 +56,33 @@ impl ImplicitConversions<'_> {
         if !is_bitwise(&compare.op) {
             return;
         }
-        let Some(width) = self.operation_width(result) else {
+        let Some(at) = self.operation_type(result) else {
             return;
         };
-        self.record_one_type_input(&mut compare.left, (result, width));
-        self.record_one_type_input(&mut compare.right, (result, width));
+        self.record_one_type_input(&mut compare.left, (result, at));
+        self.record_one_type_input(&mut compare.right, (result, at));
     }
 
     /// Records the conversions of the inputs of `func`, when it is a call to
     /// a function of several inputs of one type, to `result`, the type the
     /// call computes at.
     pub(super) fn record_one_type_call(&self, func: &mut Function, result: TypeId) {
-        let Some(intrinsic) = self.intrinsic_of(func) else {
+        let Some(builtin) = self.builtin_function_of(func) else {
             return;
         };
-        let Some(shape) = intrinsic.inputs_of_one_type() else {
+        let Some(shape) = builtin.inputs_of_one_type() else {
             return;
         };
-        let Some(width) = self.operation_width(result) else {
+        let Some(at) = self.operation_type(result) else {
             return;
         };
         let dint = self.dint_step();
-        // The named-argument pass made every input positional; any other
-        // shape is one a rule reported.
-        let inputs = func
-            .param_assignment
-            .iter_mut()
-            .filter_map(|input| match input {
-                ParamAssignmentKind::PositionalInput(input) => Some(&mut input.expr),
-                ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
-            });
+        // The binding pass wrote the inputs in the order of the parameters.
+        let inputs = func.inputs_mut();
         for (index, input) in inputs.enumerate() {
             if index >= shape.first {
-                self.record_one_type_input(input, (result, width));
-            } else if intrinsic == Intrinsic::Mux {
+                self.record_one_type_input(input, (result, at));
+            } else if builtin == BuiltinFunction::Mux {
                 // `K` is an index the multiplexer reads as a `DINT`.
                 if let Some(dint) = dint {
                     self.record_one_type_input(input, dint);
@@ -97,15 +91,15 @@ impl ImplicitConversions<'_> {
         }
     }
 
-    /// Makes `input` a value of the type `target`, of operation width
-    /// `width`: an untyped literal takes the type, and an input of another
-    /// width is converted to it. An input of the same width is computed with
-    /// as it is.
-    fn record_one_type_input(&self, input: &mut Expr, (target, width): (TypeId, OperationWidth)) {
+    /// Makes `input` a value of the type `target`, of operation type `at`:
+    /// an untyped literal takes the type, and an input of another operation
+    /// type is converted to it. An input of the same operation type is
+    /// computed with as it is.
+    fn record_one_type_input(&self, input: &mut Expr, (target, at): (TypeId, OperationType)) {
         let differs = match &input.expr_type {
             Some(ExprType::Literal(_)) => true,
             Some(ExprType::Concrete(own) | ExprType::Inferred(own)) => {
-                self.operation_width(*own).is_some_and(|own| own != width)
+                self.operation_type(*own).is_some_and(|own| own != at)
             }
             Some(ExprType::Null) | None => false,
         };
@@ -114,16 +108,17 @@ impl ImplicitConversions<'_> {
         }
     }
 
-    /// The width a value of the type `id` is operated on at, when it is one
+    /// The type a value of the type `id` is operated on at, when it is one
     /// value: an elementary type, a subrange by its base type, or an
     /// enumeration.
-    fn operation_width(&self, id: TypeId) -> Option<OperationWidth> {
-        operation_width_of(&self.context.types().get_by_id(id)?.representation)
+    fn operation_type(&self, id: TypeId) -> Option<OperationType> {
+        operation_type_of(&self.context.types().get_by_id(id)?.representation)
     }
 
-    /// `DINT`, the type `MUX` reads its selector as, and its width.
-    fn dint_step(&self) -> Option<(TypeId, OperationWidth)> {
+    /// `DINT`, the type `MUX` reads its selector as, and its operation type.
+    fn dint_step(&self) -> Option<(TypeId, OperationType)> {
         let dint: TypeName = ElementaryTypeName::DINT.into();
-        Some((self.context.types().id_of(&dint)?, OperationWidth::W32))
+        let id = self.context.types().id_of(&dint)?;
+        Some((id, self.operation_type(id)?))
     }
 }

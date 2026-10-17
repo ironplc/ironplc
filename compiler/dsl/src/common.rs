@@ -1526,10 +1526,9 @@ pub struct EnumerationDeclaration {
 pub struct EnumeratedSpecificationInit {
     pub spec: EnumeratedSpecificationKind,
     pub default: Option<EnumeratedValue>,
-    /// Present for the CODESYS/TwinCAT base-type suffix (`(A, B) BYTE;`)
-    /// -- overrides the automatic count/value-based sizing in
-    /// `enumeration.rs`'s `try_from_values`. `None` uses the existing
-    /// automatic sizing.
+    /// Present for the CODESYS/TwinCAT base-type suffix (`(A, B) BYTE;`).
+    /// It is accepted behind `--allow-enum-base-type` and has no other
+    /// effect: every enumeration is stored as a `DINT`.
     #[recurse(ignore)]
     pub underlying_type: Option<ElementaryTypeName>,
 }

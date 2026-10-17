@@ -297,13 +297,14 @@ fn build_graph(library: &Library, context: Option<&SemanticContext>) -> PouGraph
 
 /// Registers the standard library function blocks and functions as POUs.
 ///
-/// A standard library declaration is the one the compiler builds itself, and
-/// it is the only kind carrying a builtin span: everything reaching the
-/// environments from a file — user source and activated compatibility
-/// libraries alike — carries that file's span.
+/// A standard library declaration is the one the compiler builds itself: the
+/// type environment records which standard block each such block type is, and
+/// each function signature it builds carries a builtin span. Everything
+/// reaching the environments from a file — user source and activated
+/// compatibility libraries alike — has neither.
 fn register_stdlib_pous(graph: &mut PouGraph, context: &SemanticContext) {
     for (name, attributes) in context.types().iter() {
-        if attributes.span.is_builtin() && attributes.representation.is_function_block() {
+        if attributes.standard_block.is_some() {
             // The type environment case-normalizes its keys, so the spelling
             // stored for a standard library function block is lowercase and
             // says nothing about how the POU is named. IEC 61131-3 names every

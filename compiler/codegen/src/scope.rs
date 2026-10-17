@@ -119,7 +119,7 @@ fn keep_globals<V: Clone>(
         .collect()
 }
 
-impl CompileContext {
+impl CompileContext<'_> {
     /// Installs `scope` as the active variable mappings and returns the ones
     /// it replaces.
     ///
@@ -236,7 +236,7 @@ mod tests {
             type_id: 0,
             data_offset: tag_of(name),
             field_indices: HashMap::new(),
-            field_op_types: HashMap::new(),
+            field_types: HashMap::new(),
         }
     }
 

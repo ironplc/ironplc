@@ -19,6 +19,12 @@ reference refers to, so it is checked against that variable's type. Assigning a
 ``DINT`` through a ``REF_TO SINT`` is this error, as assigning it to the ``SINT``
 itself is.
 
+An output assignment of a function block call (``fb(Q => target)``) stores the
+output in its target after the call, so it is checked as ``target := fb.Q`` is.
+Storing an ``LINT`` output in an ``INT`` variable is this error. Storing a
+``STRING`` in a ``WSTRING``, or a ``WSTRING`` in a ``STRING``, is
+:doc:`P4034` instead, however the value is named.
+
 For the full set of allowed implicit conversions, see
 :doc:`/explanation/type-conversions`.
 

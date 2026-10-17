@@ -1616,6 +1616,7 @@ parser! {
       let (start, qualifiers, name, return_type) = header;
       MethodDeclaration {
         qualifiers,
+        accessor: None,
         name,
         return_type,
         implicit_variables: vec![],
@@ -2297,9 +2298,10 @@ parser! {
     rule param_assignment() -> ParamAssignmentKind = not:(tok(TokenType::Not) {})? _ src:variable_name() _ tok(TokenType::RightArrow) _ tgt:variable() {
       ParamAssignmentKind::Output (
         Output{
-        not: false,
+        not: not.is_some(),
         src,
         tgt,
+        value: None,
       })
     } / name:(n:variable_name() _ tok(TokenType::Assignment) { n })? _ expr:expression() {
       match name {

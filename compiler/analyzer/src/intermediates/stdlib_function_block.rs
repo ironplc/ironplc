@@ -10,9 +10,10 @@
 //! These function blocks are automatically available in the type environment
 //! and do not need to be declared by the user.
 
-use ironplc_dsl::core::{Id, SourceSpan};
+use ironplc_dsl::core::Id;
 
-use crate::semantic_type::{ByteSized, FunctionBlockVarType, SemanticStructField, SemanticType};
+use crate::semantic_type::{ByteSized, FunctionBlockVarType, SemanticType};
+use crate::standard_function_block::{CounterWidth, StandardFunctionBlock};
 use crate::type_attributes::TypeAttributes;
 
 // Type constants for common types used in stdlib function blocks
@@ -27,76 +28,65 @@ fn time_type() -> SemanticType {
 }
 
 /// Integer type variants for counter function blocks.
-/// Each variant specifies the type name suffix and the SemanticType for PV/CV fields.
+/// Each variant specifies the type name suffix, the width it counts in and
+/// the SemanticType for PV/CV fields.
 #[allow(clippy::type_complexity)]
-const COUNTER_INT_VARIANTS: &[(&str, fn() -> SemanticType)] = &[
-    ("", || SemanticType::Int {
+const COUNTER_INT_VARIANTS: &[(&str, CounterWidth, fn() -> SemanticType)] = &[
+    ("", CounterWidth::Int, || SemanticType::Int {
         size: ByteSized::B16,
     }), // INT (default)
-    ("_DINT", || SemanticType::Int {
+    ("_DINT", CounterWidth::Dint, || SemanticType::Int {
         size: ByteSized::B32,
     }), // DINT
-    ("_LINT", || SemanticType::Int {
+    ("_LINT", CounterWidth::Lint, || SemanticType::Int {
         size: ByteSized::B64,
     }), // LINT
-    ("_UDINT", || SemanticType::UInt {
+    ("_UDINT", CounterWidth::Udint, || SemanticType::UInt {
         size: ByteSized::B32,
     }), // UDINT
-    ("_ULINT", || SemanticType::UInt {
+    ("_ULINT", CounterWidth::Ulint, || SemanticType::UInt {
         size: ByteSized::B64,
     }), // ULINT
 ];
 
-/// Builds an SemanticStructField with proper offset calculation.
-fn build_field(
-    name: &str,
-    field_type: SemanticType,
-    var_type: FunctionBlockVarType,
-    current_offset: &mut u32,
-) -> SemanticStructField {
-    // Calculate alignment
-    let alignment = field_type.alignment_bytes() as u32;
-    let aligned_offset = if alignment == 0 {
-        *current_offset
-    } else {
-        current_offset.div_ceil(alignment) * alignment
-    };
-
-    // Calculate size
-    let size = field_type.size_in_bytes().unwrap_or(0);
-
-    let field = SemanticStructField {
-        name: Id::from(name),
-        field_type,
-        offset: aligned_offset,
-        var_type: Some(var_type),
-        has_default: false, // Function block fields don't have defaults in the const sense
-    };
-
-    *current_offset = aligned_offset + size;
-    field
+/// A standard function block: its type, and its fields, which the type
+/// environment records by the block's id rather than in its type (see
+/// `TypeEnvironment::block_fields`).
+pub struct StandardBlock {
+    pub attributes: TypeAttributes,
+    /// The block's inputs, outputs and internal variables, in order.
+    pub fields: Vec<StandardField>,
 }
 
-/// Builds TypeAttributes for a standard library function block.
+/// A field of a standard function block, every one of which has an
+/// elementary type.
+pub struct StandardField {
+    pub name: Id,
+    pub field_type: SemanticType,
+    pub var_type: FunctionBlockVarType,
+}
+
+/// Builds the standard library function block `block`.
 fn build_function_block(
+    block: StandardFunctionBlock,
     name: &str,
     field_defs: &[(&str, SemanticType, FunctionBlockVarType)],
-) -> TypeAttributes {
-    let mut current_offset = 0u32;
-    let fields: Vec<SemanticStructField> = field_defs
+) -> StandardBlock {
+    let fields = field_defs
         .iter()
-        .map(|(name, field_type, var_type)| {
-            build_field(name, field_type.clone(), *var_type, &mut current_offset)
+        .map(|(name, field_type, var_type)| StandardField {
+            name: Id::from(name),
+            field_type: field_type.clone(),
+            var_type: *var_type,
         })
         .collect();
-
-    TypeAttributes::new(
-        SourceSpan::builtin(),
-        SemanticType::FunctionBlock {
+    StandardBlock {
+        attributes: TypeAttributes::new(SemanticType::FunctionBlock {
             name: name.to_string(),
-            fields,
-        },
-    )
+        })
+        .with_standard_block(block),
+        fields,
+    }
 }
 
 // =============================================================================
@@ -107,9 +97,10 @@ fn build_function_block(
 ///
 /// The SR function block is a bistable element where Set dominates.
 /// Q1 := S1 OR (NOT R AND Q1)
-fn build_sr() -> TypeAttributes {
+fn build_sr() -> StandardBlock {
     use FunctionBlockVarType::*;
     build_function_block(
+        StandardFunctionBlock::Sr,
         "SR",
         &[
             ("S1", bool_type(), Input),  // Set input (dominant)
@@ -123,9 +114,10 @@ fn build_sr() -> TypeAttributes {
 ///
 /// The RS function block is a bistable element where Reset dominates.
 /// Q1 := NOT R1 AND (S OR Q1)
-fn build_rs() -> TypeAttributes {
+fn build_rs() -> StandardBlock {
     use FunctionBlockVarType::*;
     build_function_block(
+        StandardFunctionBlock::Rs,
         "RS",
         &[
             ("S", bool_type(), Input),   // Set input
@@ -142,9 +134,10 @@ fn build_rs() -> TypeAttributes {
 /// Creates the R_TRIG (Rising Edge Trigger) function block.
 ///
 /// Produces a single pulse when the input changes from FALSE to TRUE.
-fn build_r_trig() -> TypeAttributes {
+fn build_r_trig() -> StandardBlock {
     use FunctionBlockVarType::*;
     build_function_block(
+        StandardFunctionBlock::RTrig,
         "R_TRIG",
         &[
             ("CLK", bool_type(), Input),  // Clock input
@@ -157,9 +150,10 @@ fn build_r_trig() -> TypeAttributes {
 /// Creates the F_TRIG (Falling Edge Trigger) function block.
 ///
 /// Produces a single pulse when the input changes from TRUE to FALSE.
-fn build_f_trig() -> TypeAttributes {
+fn build_f_trig() -> StandardBlock {
     use FunctionBlockVarType::*;
     build_function_block(
+        StandardFunctionBlock::FTrig,
         "F_TRIG",
         &[
             ("CLK", bool_type(), Input),  // Clock input
@@ -177,9 +171,10 @@ fn build_f_trig() -> TypeAttributes {
 ///
 /// Counts up on rising edge of CU input until CV >= PV.
 /// The `suffix` is appended to "CTU" (e.g., "_DINT" for CTU_DINT).
-fn build_ctu_variant(suffix: &str, int_type: SemanticType) -> TypeAttributes {
+fn build_ctu_variant(suffix: &str, width: CounterWidth, int_type: SemanticType) -> StandardBlock {
     use FunctionBlockVarType::*;
     build_function_block(
+        StandardFunctionBlock::Ctu(width),
         &format!("CTU{}", suffix),
         &[
             ("CU", bool_type(), Input),      // Count up input (R_EDGE)
@@ -195,9 +190,10 @@ fn build_ctu_variant(suffix: &str, int_type: SemanticType) -> TypeAttributes {
 ///
 /// Counts down on rising edge of CD input until CV <= 0.
 /// The `suffix` is appended to "CTD" (e.g., "_DINT" for CTD_DINT).
-fn build_ctd_variant(suffix: &str, int_type: SemanticType) -> TypeAttributes {
+fn build_ctd_variant(suffix: &str, width: CounterWidth, int_type: SemanticType) -> StandardBlock {
     use FunctionBlockVarType::*;
     build_function_block(
+        StandardFunctionBlock::Ctd(width),
         &format!("CTD{}", suffix),
         &[
             ("CD", bool_type(), Input),      // Count down input (R_EDGE)
@@ -213,9 +209,10 @@ fn build_ctd_variant(suffix: &str, int_type: SemanticType) -> TypeAttributes {
 ///
 /// Counts up on CU rising edge, down on CD rising edge.
 /// The `suffix` is appended to "CTUD" (e.g., "_DINT" for CTUD_DINT).
-fn build_ctud_variant(suffix: &str, int_type: SemanticType) -> TypeAttributes {
+fn build_ctud_variant(suffix: &str, width: CounterWidth, int_type: SemanticType) -> StandardBlock {
     use FunctionBlockVarType::*;
     build_function_block(
+        StandardFunctionBlock::Ctud(width),
         &format!("CTUD{}", suffix),
         &[
             ("CU", bool_type(), Input),      // Count up input (R_EDGE)
@@ -231,21 +228,21 @@ fn build_ctud_variant(suffix: &str, int_type: SemanticType) -> TypeAttributes {
 }
 
 /// Generates all counter function block variants (CTU, CTD, CTUD with all integer types).
-fn get_all_counter_variants() -> Vec<(&'static str, TypeAttributes)> {
+fn get_all_counter_variants() -> Vec<(&'static str, StandardBlock)> {
     let mut counters = Vec::new();
-    for (suffix, int_type_fn) in COUNTER_INT_VARIANTS {
+    for (suffix, width, int_type_fn) in COUNTER_INT_VARIANTS {
         let int_type = int_type_fn();
         counters.push((
             leak_lowercase(&format!("ctu{}", suffix)),
-            build_ctu_variant(suffix, int_type.clone()),
+            build_ctu_variant(suffix, *width, int_type.clone()),
         ));
         counters.push((
             leak_lowercase(&format!("ctd{}", suffix)),
-            build_ctd_variant(suffix, int_type.clone()),
+            build_ctd_variant(suffix, *width, int_type.clone()),
         ));
         counters.push((
             leak_lowercase(&format!("ctud{}", suffix)),
-            build_ctud_variant(suffix, int_type),
+            build_ctud_variant(suffix, *width, int_type),
         ));
     }
     counters
@@ -265,9 +262,10 @@ fn leak_lowercase(s: &str) -> &'static str {
 ///
 /// Q is TRUE after IN has been TRUE for duration PT.
 /// ET shows elapsed time while timing.
-fn build_ton() -> TypeAttributes {
+fn build_ton() -> StandardBlock {
     use FunctionBlockVarType::*;
     build_function_block(
+        StandardFunctionBlock::Ton,
         "TON",
         &[
             ("IN", bool_type(), Input),  // Timer input
@@ -282,9 +280,10 @@ fn build_ton() -> TypeAttributes {
 ///
 /// Q goes FALSE after IN has been FALSE for duration PT.
 /// ET shows elapsed time while timing.
-fn build_tof() -> TypeAttributes {
+fn build_tof() -> StandardBlock {
     use FunctionBlockVarType::*;
     build_function_block(
+        StandardFunctionBlock::Tof,
         "TOF",
         &[
             ("IN", bool_type(), Input),  // Timer input
@@ -298,9 +297,10 @@ fn build_tof() -> TypeAttributes {
 /// Creates the TP (Pulse Timer) function block.
 ///
 /// Generates a pulse of duration PT when triggered by rising edge of IN.
-fn build_tp() -> TypeAttributes {
+fn build_tp() -> StandardBlock {
     use FunctionBlockVarType::*;
     build_function_block(
+        StandardFunctionBlock::Tp,
         "TP",
         &[
             ("IN", bool_type(), Input),  // Timer input
@@ -317,9 +317,9 @@ fn build_tp() -> TypeAttributes {
 
 /// Returns all standard library function block definitions.
 ///
-/// Each tuple contains (lowercase_name, TypeAttributes).
+/// Each tuple contains (lowercase_name, StandardBlock).
 /// The lowercase name is used for case-insensitive lookup in the type environment.
-pub fn get_all_stdlib_function_blocks() -> Vec<(&'static str, TypeAttributes)> {
+pub fn get_all_stdlib_function_blocks() -> Vec<(&'static str, StandardBlock)> {
     let mut fbs = vec![
         // Bistable
         ("sr", build_sr()),
@@ -384,6 +384,7 @@ pub fn is_stdlib_function_block(name: &Id) -> bool {
 mod tests {
     use super::*;
     use ironplc_test::cast_struct;
+    use spec_test_macro::spec_test;
 
     #[test]
     fn get_all_stdlib_function_blocks_returns_expected_count() {
@@ -395,65 +396,69 @@ mod tests {
     #[test]
     fn build_ton_when_called_then_has_correct_inputs_and_outputs() {
         let ton = build_ton();
-        let (name, fields) = cast_struct!(
-            &ton.representation,
-            SemanticType::FunctionBlock { name, fields }
+        let name = cast_struct!(
+            &ton.attributes.representation,
+            SemanticType::FunctionBlock { name }
         );
+        let fields = &ton.fields;
         assert_eq!(name, "TON");
         assert_eq!(fields.len(), 4);
 
         // Check inputs
         assert_eq!(fields[0].name.original(), "IN");
-        assert_eq!(fields[0].var_type, Some(FunctionBlockVarType::Input));
+        assert_eq!(fields[0].var_type, FunctionBlockVarType::Input);
 
         assert_eq!(fields[1].name.original(), "PT");
-        assert_eq!(fields[1].var_type, Some(FunctionBlockVarType::Input));
+        assert_eq!(fields[1].var_type, FunctionBlockVarType::Input);
 
         // Check outputs
         assert_eq!(fields[2].name.original(), "Q");
-        assert_eq!(fields[2].var_type, Some(FunctionBlockVarType::Output));
+        assert_eq!(fields[2].var_type, FunctionBlockVarType::Output);
 
         assert_eq!(fields[3].name.original(), "ET");
-        assert_eq!(fields[3].var_type, Some(FunctionBlockVarType::Output));
+        assert_eq!(fields[3].var_type, FunctionBlockVarType::Output);
     }
 
     #[test]
     fn build_tof_when_called_then_has_correct_inputs_and_outputs() {
         let tof = build_tof();
-        let (name, fields) = cast_struct!(
-            &tof.representation,
-            SemanticType::FunctionBlock { name, fields }
+        let name = cast_struct!(
+            &tof.attributes.representation,
+            SemanticType::FunctionBlock { name }
         );
+        let fields = &tof.fields;
         assert_eq!(name, "TOF");
         assert_eq!(fields.len(), 4);
 
         // Check inputs
         assert_eq!(fields[0].name.original(), "IN");
-        assert_eq!(fields[0].var_type, Some(FunctionBlockVarType::Input));
+        assert_eq!(fields[0].var_type, FunctionBlockVarType::Input);
 
         assert_eq!(fields[1].name.original(), "PT");
-        assert_eq!(fields[1].var_type, Some(FunctionBlockVarType::Input));
+        assert_eq!(fields[1].var_type, FunctionBlockVarType::Input);
 
         // Check outputs
         assert_eq!(fields[2].name.original(), "Q");
-        assert_eq!(fields[2].var_type, Some(FunctionBlockVarType::Output));
+        assert_eq!(fields[2].var_type, FunctionBlockVarType::Output);
 
         assert_eq!(fields[3].name.original(), "ET");
-        assert_eq!(fields[3].var_type, Some(FunctionBlockVarType::Output));
+        assert_eq!(fields[3].var_type, FunctionBlockVarType::Output);
     }
 
     #[test]
     fn build_ctu_variant_when_called_then_has_correct_fields() {
         let ctu = build_ctu_variant(
             "",
+            CounterWidth::Int,
             SemanticType::Int {
                 size: ByteSized::B16,
             },
         );
-        let (name, fields) = cast_struct!(
-            &ctu.representation,
-            SemanticType::FunctionBlock { name, fields }
+        let name = cast_struct!(
+            &ctu.attributes.representation,
+            SemanticType::FunctionBlock { name }
         );
+        let fields = &ctu.fields;
         assert_eq!(name, "CTU");
         assert_eq!(fields.len(), 5);
 
@@ -471,14 +476,16 @@ mod tests {
     fn build_ctu_variant_when_dint_then_has_correct_name_and_type() {
         let ctu_dint = build_ctu_variant(
             "_DINT",
+            CounterWidth::Dint,
             SemanticType::Int {
                 size: ByteSized::B32,
             },
         );
-        let (name, fields) = cast_struct!(
-            &ctu_dint.representation,
-            SemanticType::FunctionBlock { name, fields }
+        let name = cast_struct!(
+            &ctu_dint.attributes.representation,
+            SemanticType::FunctionBlock { name }
         );
+        let fields = &ctu_dint.fields;
         assert_eq!(name, "CTU_DINT");
 
         // Check PV field has DINT type
@@ -503,13 +510,10 @@ mod tests {
     #[test]
     fn build_r_trig_when_called_then_has_internal_memory() {
         let r_trig = build_r_trig();
-        let fields = cast_struct!(
-            &r_trig.representation,
-            SemanticType::FunctionBlock { fields }
-        );
+        let fields = &r_trig.fields;
         // Check that M is internal
         let m_field = fields.iter().find(|f| f.name.original() == "M").unwrap();
-        assert_eq!(m_field.var_type, Some(FunctionBlockVarType::Internal));
+        assert_eq!(m_field.var_type, FunctionBlockVarType::Internal);
     }
 
     #[test]
@@ -524,10 +528,32 @@ mod tests {
         assert!(!is_stdlib_function_block(&Id::from("my_custom_fb")));
     }
 
+    #[spec_test(REQ_CB_analyzer_001)]
+    fn get_all_stdlib_function_blocks_when_built_then_each_records_its_identity() {
+        let identities: Vec<(&str, Option<StandardFunctionBlock>)> =
+            get_all_stdlib_function_blocks()
+                .into_iter()
+                .map(|(name, block)| (name, block.attributes.standard_block))
+                .collect();
+        assert!(identities.iter().all(|(_, block)| block.is_some()));
+        assert!(identities.contains(&("ton", Some(StandardFunctionBlock::Ton))));
+        assert!(identities.contains(&("r_trig", Some(StandardFunctionBlock::RTrig))));
+        assert!(identities.contains(&("ctu", Some(StandardFunctionBlock::Ctu(CounterWidth::Int)))));
+        assert!(identities.contains(&(
+            "ctud_ulint",
+            Some(StandardFunctionBlock::Ctud(CounterWidth::Ulint))
+        )));
+    }
+
     #[test]
-    fn stdlib_function_blocks_have_builtin_span() {
-        for (_, fb) in get_all_stdlib_function_blocks() {
-            assert!(fb.span.is_builtin(), "Expected builtin span for stdlib FB");
-        }
+    fn get_all_stdlib_function_blocks_when_built_then_identities_are_distinct() {
+        let mut identities: Vec<StandardFunctionBlock> = get_all_stdlib_function_blocks()
+            .into_iter()
+            .filter_map(|(_, block)| block.attributes.standard_block)
+            .collect();
+        let count = identities.len();
+        identities.sort_by_key(|block| format!("{block:?}"));
+        identities.dedup();
+        assert_eq!(count, identities.len());
     }
 }

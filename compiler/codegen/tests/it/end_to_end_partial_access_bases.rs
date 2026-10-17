@@ -1,7 +1,8 @@
 //! End-to-end tests for bit access and partial access on each shape of base:
 //! a variable, an array element, a structure field, an element of an array in
-//! a structure, and a field of a structure in an array. Each access is read
-//! and written on each base, at 32 and at 64 bits.
+//! a structure, a field of a structure in an array, and a field of a function
+//! block instance. Each access is read and written on each base, at 32 and at
+//! 64 bits.
 
 use crate::common::Snapshot;
 use ironplc_parser::options::CompilerOptions;
@@ -20,6 +21,7 @@ TYPE HOLDER : STRUCT
     ds : ARRAY[0..1] OF DWORD;
     ls : ARRAY[0..1] OF LWORD;
 END_STRUCT; END_TYPE
+FUNCTION_BLOCK BLOCK VAR_INPUT d : DWORD; l : LWORD; END_VAR END_FUNCTION_BLOCK
 PROGRAM main
   VAR
     i : DINT := 1;
@@ -29,6 +31,7 @@ PROGRAM main
     ls : ARRAY[0..1] OF LWORD;
     s : HOLDER;
     es : ARRAY[0..1] OF ELEMENT;
+    b : BLOCK;
     r_bit : BOOL;
     r_byte : BYTE;
     r_word : WORD;
@@ -50,7 +53,7 @@ END_PROGRAM
 #[spec_test(REQ_PAB_codegen_132)]
 #[rstest]
 fn partial_access_when_write_32_bit_base_then_only_selected_bits_change(
-    #[values("d", "ds[i]", "s.d", "s.ds[i]", "es[i].d")] base: &str,
+    #[values("d", "ds[i]", "s.d", "s.ds[i]", "es[i].d", "b.d")] base: &str,
     #[values(
         (".0", "TRUE", 0x1234_5679),
         (".3", "FALSE", 0x1234_5670),
@@ -72,7 +75,7 @@ fn partial_access_when_write_32_bit_base_then_only_selected_bits_change(
 #[spec_test(REQ_PAB_codegen_132)]
 #[rstest]
 fn partial_access_when_write_64_bit_base_then_only_selected_bits_change(
-    #[values("l", "ls[i]", "s.l", "s.ls[i]", "es[i].l")] base: &str,
+    #[values("l", "ls[i]", "s.l", "s.ls[i]", "es[i].l", "b.l")] base: &str,
     #[values(
         (".0", "FALSE", 0x0123_4567_89AB_CDEE),
         (".40", "FALSE", 0x0123_4467_89AB_CDEF),
@@ -95,7 +98,7 @@ fn partial_access_when_write_64_bit_base_then_only_selected_bits_change(
 #[spec_test(REQ_PAB_codegen_132)]
 #[rstest]
 fn partial_access_when_read_32_bit_base_then_selected_bits(
-    #[values("d", "ds[i]", "s.d", "s.ds[i]", "es[i].d")] base: &str,
+    #[values("d", "ds[i]", "s.d", "s.ds[i]", "es[i].d", "b.d")] base: &str,
     #[values(
         (".3", "r_bit", 1),
         (".0", "r_bit", 0),
@@ -117,7 +120,7 @@ fn partial_access_when_read_32_bit_base_then_selected_bits(
 #[spec_test(REQ_PAB_codegen_132)]
 #[rstest]
 fn partial_access_when_read_64_bit_base_then_selected_bits(
-    #[values("l", "ls[i]", "s.l", "s.ls[i]", "es[i].l")] base: &str,
+    #[values("l", "ls[i]", "s.l", "s.ls[i]", "es[i].l", "b.l")] base: &str,
     #[values(
         (".0", "r_bit", 1),
         (".41", "r_bit", 0),
@@ -221,10 +224,13 @@ END_PROGRAM
 }
 
 /// A base that is not a single-slot place is reported as not implemented
-/// rather than compiled to write somewhere else.
+/// rather than compiled to write somewhere else, by both routes. So are bits
+/// of the whole of what a reference refers to, read or written.
 #[rstest]
 #[case::bits_of_bits("d : DWORD;", "d.%B1.3 := TRUE;")]
 #[case::through_reference("x : BYTE; p : REF_TO BYTE;", "p := REF(x); p^.3 := TRUE;")]
+#[case::part_through_reference("x : WORD; p : REF_TO WORD;", "p := REF(x); p^.%B1 := 1;")]
+#[case::read_through_reference("x : BYTE; p : REF_TO BYTE; r : BOOL;", "p := REF(x); r := p^.3;")]
 fn partial_access_when_base_is_not_a_place_then_not_implemented(
     #[case] decls: &str,
     #[case] body: &str,

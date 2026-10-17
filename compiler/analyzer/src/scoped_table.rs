@@ -72,11 +72,6 @@ impl<'a, K: Key, V: 'a + Value> Scope<'a, K, V> {
     fn find(&self, name: &K) -> Option<&V> {
         self.table.get(name)
     }
-
-    #[allow(dead_code)]
-    fn remove(&mut self, name: &K) -> Option<V> {
-        self.table.remove(name)
-    }
 }
 
 impl<'a, K: Key, V: 'a + Value> fmt::Debug for Scope<'a, K, V> {
@@ -135,19 +130,6 @@ impl<'a, K: Key, V: 'a + Value> ScopedTable<'a, K, V> {
     pub fn find(&self, name: &K) -> Option<&V> {
         self.stack.iter().find_map(|scope| scope.find(name))
     }
-
-    /// Removes the name from the inner-most scope if
-    /// the name is in the scope.
-    ///
-    /// Returns the value or `None` if value is not in
-    /// the inner-most scope.
-    #[allow(dead_code)]
-    pub fn remove(&mut self, name: &K) -> Option<V> {
-        match self.stack.front_mut() {
-            None => None,
-            Some(scope) => scope.remove(name),
-        }
-    }
 }
 
 impl<'a, K: Key, V: 'a + Value> Drop for ScopedTable<'a, K, V> {
@@ -183,22 +165,6 @@ mod tests {
 
     impl Key for String {}
     impl Value for i32 {}
-
-    #[test]
-    fn remove_when_key_exists_then_returns_value() {
-        let mut table: ScopedTable<String, i32> = ScopedTable::new();
-        table.try_add(&"x".to_string(), 42);
-        let removed = table.remove(&"x".to_string());
-        assert_eq!(removed, Some(42));
-        assert!(table.find(&"x".to_string()).is_none());
-    }
-
-    #[test]
-    fn remove_when_key_missing_then_returns_none() {
-        let mut table: ScopedTable<String, i32> = ScopedTable::new();
-        let removed = table.remove(&"missing".to_string());
-        assert_eq!(removed, None);
-    }
 
     #[test]
     fn debug_when_scoped_table_then_formats_without_error() {

@@ -17,8 +17,8 @@ use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{Expr, ParamAssignmentKind};
 use ironplc_problems::Problem;
 
+use crate::builtin_function::BuiltinFunction;
 use crate::intermediates::stdlib_function::get_all_stdlib_functions;
-use crate::intrinsic::Intrinsic;
 use crate::semantic_type::SemanticFunctionParameter;
 use crate::symbol_environment::duplicate_declaration;
 
@@ -45,7 +45,7 @@ pub struct FunctionSignature {
     pub max_inputs: Option<usize>,
     /// The operation a standard function stands for, which code generation
     /// compiles a call to it as. `None` for a user-defined function.
-    pub intrinsic: Option<Intrinsic>,
+    pub builtin_function: Option<BuiltinFunction>,
 }
 
 impl FunctionSignature {
@@ -63,15 +63,15 @@ impl FunctionSignature {
             span,
             is_extensible: false,
             max_inputs: None,
-            intrinsic: None,
+            builtin_function: None,
         }
     }
 
     /// Creates a stdlib function signature with a builtin span, standing for
-    /// the operation `intrinsic`.
+    /// the operation `builtin_function`.
     pub fn stdlib(
         name: &str,
-        intrinsic: Intrinsic,
+        builtin_function: BuiltinFunction,
         return_type: TypeName,
         parameters: Vec<SemanticFunctionParameter>,
     ) -> Self {
@@ -82,7 +82,7 @@ impl FunctionSignature {
             span: SourceSpan::builtin(),
             is_extensible: false,
             max_inputs: None,
-            intrinsic: Some(intrinsic),
+            builtin_function: Some(builtin_function),
         }
     }
 
@@ -95,7 +95,7 @@ impl FunctionSignature {
     /// it unbounded.
     pub fn stdlib_extensible(
         name: &str,
-        intrinsic: Intrinsic,
+        builtin_function: BuiltinFunction,
         return_type: TypeName,
         parameters: Vec<SemanticFunctionParameter>,
         max_inputs: Option<usize>,
@@ -107,7 +107,7 @@ impl FunctionSignature {
             span: SourceSpan::builtin(),
             is_extensible: true,
             max_inputs,
-            intrinsic: Some(intrinsic),
+            builtin_function: Some(builtin_function),
         }
     }
 
@@ -125,34 +125,63 @@ impl FunctionSignature {
             .count()
     }
 
-    /// Pairs each positional input argument of a call with the parameter it
-    /// binds to, in argument order, continuing past the declared parameters
-    /// for an extensible function (see [`Self::input_parameters`]).
-    ///
-    /// Only positional inputs bind: by the time a call is checked,
-    /// `xform_named_to_positional_args` has rewritten its named inputs, and
-    /// an output assignment binds no input. A call that pass could not rewrite
-    /// keeps its named inputs and has already been diagnosed, so binding none
-    /// of them is right. Arguments beyond the parameter list are dropped; the
-    /// arity check reports them.
-    pub fn bind_inputs<'a>(
+    /// Pairs each input argument of a call with the parameter it is passed
+    /// to, in argument order, leaving out an argument that is passed to no
+    /// parameter (see [`Self::parameters_of`]).
+    pub fn inputs_of<'a>(
         &'a self,
         params: &'a [ParamAssignmentKind],
     ) -> impl Iterator<Item = (SemanticFunctionParameter, &'a Expr)> + 'a {
-        let positional = params.iter().filter_map(|param| match param {
-            ParamAssignmentKind::PositionalInput(input) => Some(&input.expr),
-            ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
-        });
-        self.input_parameters().zip(positional)
+        self.parameters_of(params)
+            .filter_map(|(param, parameter)| Some((parameter?, param.input_expr()?)))
+    }
+
+    /// Pairs each input argument of a call with the parameter it is passed
+    /// to, if any, in argument order.
+    ///
+    /// The binding pass writes a call whose arguments bind in normal form, so
+    /// each input names its parameter, and an extensible function's further
+    /// inputs name theirs by counting on (see [`Self::input_parameters`]). A
+    /// positional input is left only in a call that does not bind, which is
+    /// reported; it is paired with the parameter at its position. One past
+    /// the parameter list, or a name that is no parameter, is paired with
+    /// nothing. An output assignment passes nothing in and is left out.
+    pub fn parameters_of<'a>(
+        &'a self,
+        params: &'a [ParamAssignmentKind],
+    ) -> impl Iterator<Item = (&'a ParamAssignmentKind, Option<SemanticFunctionParameter>)> + 'a
+    {
+        let count = params
+            .iter()
+            .filter(|param| param.input_expr().is_some())
+            .count()
+            .max(self.input_parameter_count());
+        let parameters: Vec<SemanticFunctionParameter> =
+            self.input_parameters().take(count).collect();
+        let mut position = 0;
+        params.iter().filter_map(move |param| match param {
+            ParamAssignmentKind::PositionalInput(_) => {
+                let parameter = parameters.get(position).cloned();
+                position += 1;
+                Some((param, parameter))
+            }
+            ParamAssignmentKind::NamedInput(input) => {
+                let parameter = parameters
+                    .iter()
+                    .find(|parameter| parameter.name == input.name)
+                    .cloned();
+                Some((param, parameter))
+            }
+            ParamAssignmentKind::Output(_) => None,
+        })
     }
 
     /// Returns the input parameters in argument order, continuing past the
     /// declared ones for an extensible signature.
     ///
     /// An input parameter is one a call passes an argument to: a `VAR_INPUT`
-    /// or a `VAR_IN_OUT`, in declaration order. This is the same list
-    /// `xform_named_to_positional_args` orders named arguments by, so a
-    /// positional argument binds to the parameter the caller wrote it for.
+    /// or a `VAR_IN_OUT`, in declaration order, the parameters a positional
+    /// argument binds to in that order.
     ///
     /// IEC 61131-3 names the inputs of an extensible function `IN1`, `IN2`,
     /// ..., `INn`, so the parameters beyond the declared list are the last
@@ -241,18 +270,6 @@ impl FunctionEnvironment {
     pub fn iter_user_defined(&self) -> impl Iterator<Item = (&String, &FunctionSignature)> {
         self.table.iter().filter(|(_, sig)| !sig.is_stdlib())
     }
-
-    /// Returns the number of functions in the environment.
-    #[allow(dead_code)]
-    pub fn len(&self) -> usize {
-        self.table.len()
-    }
-
-    /// Returns true if the environment is empty.
-    #[allow(dead_code)]
-    pub fn is_empty(&self) -> bool {
-        self.table.is_empty()
-    }
 }
 
 impl Default for FunctionEnvironment {
@@ -315,14 +332,14 @@ mod tests {
     fn create_test_signature(name: &str, return_type_name: &str) -> FunctionSignature {
         FunctionSignature::stdlib(
             name,
-            Intrinsic::Move,
+            BuiltinFunction::Move,
             TypeName::from(return_type_name),
             vec![],
         )
     }
 
-    fn int_to_real() -> Intrinsic {
-        Intrinsic::Conversion {
+    fn int_to_real() -> BuiltinFunction {
+        BuiltinFunction::Conversion {
             source: ElementaryTypeName::INT,
             target: ElementaryTypeName::REAL,
         }
@@ -331,8 +348,8 @@ mod tests {
     #[test]
     fn function_environment_new_when_created_then_empty() {
         let env = FunctionEnvironment::new();
-        assert!(env.is_empty());
-        assert_eq!(env.len(), 0);
+        assert!(env.iter().next().is_none());
+        assert_eq!(env.iter().count(), 0);
     }
 
     #[test]
@@ -342,8 +359,8 @@ mod tests {
 
         assert!(env.insert(sig).is_ok());
 
-        assert!(!env.is_empty());
-        assert_eq!(env.len(), 1);
+        assert!(env.iter().next().is_some());
+        assert_eq!(env.iter().count(), 1);
         assert!(env.contains(&Id::from("INT_TO_REAL")));
     }
 
@@ -357,7 +374,7 @@ mod tests {
         assert!(env.insert(sig2).is_err());
 
         // Should still only have one entry
-        assert_eq!(env.len(), 1);
+        assert_eq!(env.iter().count(), 1);
     }
 
     #[test]
@@ -387,21 +404,21 @@ mod tests {
     }
 
     #[test]
-    fn function_signature_stdlib_when_created_then_names_its_intrinsic() {
+    fn function_signature_stdlib_when_created_then_names_its_builtin_function() {
         let sig =
             FunctionSignature::stdlib("INT_TO_REAL", int_to_real(), TypeName::from("REAL"), vec![]);
-        assert_eq!(sig.intrinsic, Some(int_to_real()));
+        assert_eq!(sig.builtin_function, Some(int_to_real()));
     }
 
     #[test]
-    fn function_signature_new_when_user_defined_then_no_intrinsic() {
+    fn function_signature_new_when_user_defined_then_no_builtin_function() {
         let sig = FunctionSignature::new(
             Id::from("MY_FUNC"),
             Some(FunctionReturnType::Named(TypeName::from("BOOL"))),
             vec![],
             SourceSpan::default(),
         );
-        assert_eq!(sig.intrinsic, None);
+        assert_eq!(sig.builtin_function, None);
     }
 
     #[test]
@@ -502,7 +519,7 @@ mod tests {
     fn function_signature_input_parameters_when_not_extensible_then_declared_inputs_only() {
         let sig = FunctionSignature::stdlib(
             "SUB",
-            Intrinsic::Operator(FormOf::Arithmetic(Operator::Sub)),
+            BuiltinFunction::Operator(FormOf::Arithmetic(Operator::Sub)),
             TypeName::from("ANY_NUM"),
             vec![input("IN1", "ANY_NUM"), input("IN2", "ANY_NUM")],
         );
@@ -513,7 +530,7 @@ mod tests {
     fn function_signature_input_parameters_when_unbounded_then_numbering_continues() {
         let sig = FunctionSignature::stdlib_extensible(
             "ADD",
-            Intrinsic::Operator(FormOf::Arithmetic(Operator::Add)),
+            BuiltinFunction::Operator(FormOf::Arithmetic(Operator::Add)),
             TypeName::from("ANY_NUM"),
             vec![input("IN1", "ANY_NUM"), input("IN2", "ANY_NUM")],
             None,
@@ -532,7 +549,7 @@ mod tests {
     fn function_signature_input_parameters_when_bounded_then_stops_at_max_inputs() {
         let sig = FunctionSignature::stdlib_extensible(
             "MUX",
-            Intrinsic::Mux,
+            BuiltinFunction::Mux,
             TypeName::from("ANY_NUM"),
             vec![
                 input("K", "ANY_INT"),
@@ -551,7 +568,7 @@ mod tests {
     fn function_signature_input_parameters_when_extensible_without_inputs_then_empty() {
         let sig = FunctionSignature::stdlib_extensible(
             "F",
-            Intrinsic::Move,
+            BuiltinFunction::Move,
             TypeName::from("INT"),
             vec![],
             None,
@@ -562,7 +579,7 @@ mod tests {
     #[test]
     fn function_environment_builder_when_default_then_empty() {
         let env = FunctionEnvironmentBuilder::new().build();
-        assert!(env.is_empty());
+        assert!(env.iter().next().is_none());
     }
 
     #[test]
@@ -571,7 +588,7 @@ mod tests {
             .with_stdlib_functions()
             .build();
         // Exact count is tested in stdlib_function::tests; here just verify integration.
-        assert!(!env.is_empty());
+        assert!(env.iter().next().is_some());
         // Should be able to find conversion functions
         assert!(env.contains(&Id::from("INT_TO_REAL")));
         assert!(env.contains(&Id::from("REAL_TO_INT")));

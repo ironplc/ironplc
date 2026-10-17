@@ -2,7 +2,7 @@
 //!
 //! `TRUNC`, `BCD_TO_INT` and `SIZEOF` return `ANY_INT`, and nothing about
 //! their inputs says which integer
-//! ([`Intrinsic::result_is_integer_of_context`]). The resolver gives such a
+//! ([`BuiltinFunction::result_is_integer_of_context`]). The resolver gives such a
 //! call an untyped integer literal's category, and it takes the type of its
 //! context as a literal does (ADR-0028). Unlike a literal it stays an
 //! integer: in a context that is not an integer type, such as a `REAL`, it
@@ -45,8 +45,8 @@ impl ImplicitConversions<'_> {
         ) && matches!(
             &operand.kind,
             ExprKind::Function(func) if self
-                .intrinsic_of(func)
-                .is_some_and(|intrinsic| intrinsic.result_is_integer_of_context())
+                .builtin_function_of(func)
+                .is_some_and(|builtin| builtin.result_is_integer_of_context())
         ) && !self.is_integer_type(target)
     }
 

@@ -7,38 +7,47 @@
 //! subrange. The target of a dereference is the variable the reference
 //! refers to. The bounds and step of a `FOR` loop are converted to the type
 //! of its control variable the same way, and an array subscript to `DINT`,
-//! the type a subscript is compiled at.
+//! the type a subscript is compiled at. The conversion of a subscript whose
+//! type holds values a `DINT` does not is checked
+//! ([`ConversionKind::Checked`]): it traps on such a value rather than
+//! wrapping it to the position of another element.
 //!
 //! It records a conversion where the value has a type of its own, which a
 //! literal does not. A value converts to its context when it is a variable, an
 //! operation that computes at its own result type, or a parenthesized one of
-//! those, and its operation width differs from the target's. An operation
-//! computes at its own type when it is arithmetic, a negation or `NOT`, an
-//! `AND`, `OR` or `XOR`, or a standard function on one value or of several
-//! inputs of one type ([`Intrinsic::computes_at_own_type`]). A call to a
+//! those, and its operation type differs from the target's: its width, or the
+//! signedness of an integer, so a `USINT` stored in a `DINT` is converted
+//! although both are operated on in 32 bits. An operation computes at its own
+//! type when it is arithmetic, a negation or `NOT`, an `AND`, `OR` or `XOR`,
+//! or a standard function on one value or of several inputs of one type
+//! ([`BuiltinFunction::computes_at_own_type`]). A call to a
 //! user-defined function or a method, a standard function whose signature
-//! fixes its result type ([`Intrinsic::result_has_fixed_type`]), and a
+//! fixes its result type ([`BuiltinFunction::result_has_fixed_type`]), and a
 //! dereference, have the type the function returns or the referenced
 //! variable has, and convert to their context too. Any other value -- a
 //! literal, a call to `TRUNC` -- is
 //! compiled at the target's width rather than converted to it, so there is
 //! no conversion to record.
 //!
+//! An output assignment of a call (`f(q => v)`) stores the value the binding
+//! pass recorded on it, the output the call leaves, and converts it as an
+//! assigned value is converted.
+//!
 //! A directly represented target is not recorded yet.
 
 use ironplc_dsl::textual::{
-    ArrayVariable, Assignment, Expr, ExprKind, For, Function, ParamAssignmentKind,
+    ArrayVariable, Assignment, ConversionKind, Expr, ExprKind, For, Function, ParamAssignmentKind,
     PartialAccessSize, SymbolicVariableKind, Variable,
 };
 use ironplc_dsl::type_id::TypeId;
 
 use super::arithmetic::arithmetic_operator;
 use super::ImplicitConversions;
+use crate::builtin_function::{is_bitwise, BuiltinFunction};
 use crate::intermediates::conversion_target::concrete;
 use crate::intermediates::numeric_operation::{
-    numeric_operation_width, operation_width_of, OperationWidth,
+    numeric_operation_width, operation_type_of, OperationType, OperationWidth,
 };
-use crate::intrinsic::{is_bitwise, Intrinsic};
 use crate::semantic_type::{ByteSized, SemanticType};
 use crate::variable_type;
 
@@ -52,6 +61,25 @@ impl ImplicitConversions<'_> {
         }
         if let Some(target) = self.assigned_at(&node.target, node.deref) {
             self.record_conversion_to(&mut node.value, target);
+        }
+    }
+
+    /// Records the conversion of the value each output assignment of
+    /// `params`, the arguments of a call, stores to the type of its target,
+    /// as an assigned value's.
+    pub(super) fn record_call_outputs(&self, params: &mut [ParamAssignmentKind]) {
+        for param in params {
+            let ParamAssignmentKind::Output(output) = param else {
+                continue;
+            };
+            // The binding pass records the value of an output of a call
+            // whose arguments bind; the rules reject any other call.
+            let Some(value) = &mut output.value else {
+                continue;
+            };
+            if let Some(target) = self.assigned_at(&output.tgt, false) {
+                self.record_conversion_to(value, target);
+            }
         }
     }
 
@@ -70,18 +98,18 @@ impl ImplicitConversions<'_> {
 
     /// Records the conversion of `value` to `target`, the type its context
     /// stores it at, where the code generator converts it: `value` converts
-    /// to its context and its operation width differs from the target's.
+    /// to its context and its operation type differs from the target's.
     pub(super) fn record_conversion_to(&self, value: &mut Expr, target: TypeId) {
-        let Some(width) = self.stored_width(target) else {
+        let Some(at) = self.stored_type(target) else {
             return;
         };
-        let own = concrete(value).and_then(|own| self.stored_width(own));
-        if self.converts_to_its_context(value) && own.is_some_and(|own| own != width) {
+        let own = concrete(value).and_then(|own| self.stored_type(own));
+        if self.converts_to_its_context(value) && own.is_some_and(|own| own != at) {
             self.convert(value, target);
         }
     }
 
-    /// The operation width of a value of type `id` when it is a number, a bit
+    /// The operation type of a value of type `id` when it is a number, a bit
     /// string or a time or date, the types a value is converted between when
     /// stored, and of a subrange's base type.
     ///
@@ -89,7 +117,7 @@ impl ImplicitConversions<'_> {
     /// and a `DATE` widens the unsigned seconds of the `DATE`. The code
     /// generator used to read the `DATE` at the target's 64 bits, which
     /// sign-extended a date after 2038.
-    fn stored_width(&self, id: TypeId) -> Option<OperationWidth> {
+    fn stored_type(&self, id: TypeId) -> Option<OperationType> {
         let representation = self
             .context
             .types()
@@ -104,7 +132,7 @@ impl ImplicitConversions<'_> {
             | SemanticType::Time { .. }
             | SemanticType::Date { .. }
             | SemanticType::TimeOfDay { .. }
-            | SemanticType::DateAndTime { .. } => operation_width_of(representation),
+            | SemanticType::DateAndTime { .. } => operation_type_of(representation),
             // A `BOOL` or an enumeration is one width, a reference is stored as
             // the reference it is, and anything else is not a single value.
             SemanticType::Bool
@@ -114,21 +142,56 @@ impl ImplicitConversions<'_> {
             | SemanticType::String { .. }
             | SemanticType::Structure { .. }
             | SemanticType::Array { .. }
-            | SemanticType::FunctionBlock { .. }
-            | SemanticType::Function { .. } => None,
+            | SemanticType::FunctionBlock { .. } => None,
         }
     }
 
     /// Records the conversion of each subscript of `array` to `DINT`, the
-    /// type a subscript is compiled at. A 64-bit subscript is narrowed to it,
-    /// as the code generator narrowed it before the conversion was recorded;
-    /// whether a subscript should index at 64 bits is a separate decision.
+    /// type a subscript is compiled at. An unsigned subscript is converted to
+    /// it whatever its width, and a 64-bit subscript is narrowed to it: no
+    /// backend indexes at 64 bits. The conversion of a subscript whose type
+    /// holds values a `DINT` does not, such as a `UDINT` or an `LINT`, is
+    /// checked (REQ-LOW-analyzer-162), so that a subscript of 4294967297
+    /// selects no element rather than the element at 1.
     pub(super) fn record_subscript_conversions(&self, array: &mut ArrayVariable) {
         let Some(dint) = self.dint() else {
             return;
         };
         for subscript in &mut array.subscripts {
             self.record_conversion_to(subscript, dint);
+            if let ExprKind::ImplicitConversion(conversion) = &mut subscript.kind {
+                if !self.holds_only_dint_values(&conversion.value) {
+                    conversion.kind = ConversionKind::Checked;
+                }
+            }
+        }
+    }
+
+    /// Whether every value of the type of `expr` is a value of a `DINT`. A
+    /// subrange holds what its base type does, so that the check does not
+    /// depend on a bound no operation enforces.
+    fn holds_only_dint_values(&self, expr: &Expr) -> bool {
+        let Some(representation) = concrete(expr)
+            .and_then(|id| self.context.types().get_by_id(id))
+            .map(|attributes| attributes.representation.operated_as())
+        else {
+            return false;
+        };
+        match representation {
+            SemanticType::Int { size } | SemanticType::Time { size } => size.bits() <= 32,
+            SemanticType::UInt { size }
+            | SemanticType::Bytes { size }
+            | SemanticType::Date { size }
+            | SemanticType::TimeOfDay { size }
+            | SemanticType::DateAndTime { size } => size.bits() < 32,
+            SemanticType::Bool | SemanticType::Enumeration { .. } => true,
+            SemanticType::Real { .. }
+            | SemanticType::Reference { .. }
+            | SemanticType::Subrange { .. }
+            | SemanticType::String { .. }
+            | SemanticType::Structure { .. }
+            | SemanticType::Array { .. }
+            | SemanticType::FunctionBlock { .. } => false,
         }
     }
 
@@ -164,11 +227,11 @@ impl ImplicitConversions<'_> {
         };
         let types = self.context.types();
         let id = types.id_of(&types.elementary_type_name_for(representation.operated_as())?)?;
-        Some((id, self.stored_width(id)?))
+        Some((id, self.stored_type(id)?.width))
     }
 
     pub(super) fn type_of(&self, kind: &SymbolicVariableKind) -> Option<SemanticType> {
-        variable_type::of(kind, self.context, &self.scope.current())
+        variable_type::of(kind, self.context, &self.scope.current()).cloned()
     }
 
     /// The operation width of the numeric type of `expr`.
@@ -192,8 +255,8 @@ impl ImplicitConversions<'_> {
             // operation, a negation or `NOT` computes at its own.
             ExprKind::Variable(_) | ExprKind::BinaryOp(_) | ExprKind::UnaryOp(_) => true,
             // A recorded conversion compiles to the type it records, then to
-            // its context's.
-            ExprKind::ImplicitConversion(_) => true,
+            // its context's, and a call's output is read at its declared type.
+            ExprKind::ImplicitConversion(_) | ExprKind::CallOutput(_) => true,
             ExprKind::Expression(inner) => self.converts_to_its_context(inner),
             // A user-defined function returns its declared type, and so does a
             // standard function whose signature fixes its result type (a type
@@ -201,12 +264,12 @@ impl ImplicitConversions<'_> {
             // arithmetic operator, an operation on one value and a function of
             // several inputs of one type compute at their own type, and any
             // other standard function at its context's.
-            ExprKind::Function(func) => match self.intrinsic_of(func) {
+            ExprKind::Function(func) => match self.builtin_function_of(func) {
                 None => true,
-                Some(intrinsic) => {
+                Some(builtin) => {
                     self.is_numeric_pair(func, expr)
-                        || intrinsic.computes_at_own_type()
-                        || intrinsic.result_has_fixed_type()
+                        || builtin.computes_at_own_type()
+                        || builtin.result_has_fixed_type()
                 }
             },
             // A method returns its declared type, and a dereference reads the
@@ -225,8 +288,12 @@ impl ImplicitConversions<'_> {
 
     /// The operation the standard function `func` calls, or `None` for a
     /// user-defined function.
-    pub(super) fn intrinsic_of(&self, func: &Function) -> Option<Intrinsic> {
-        self.context.functions().get(&func.name)?.intrinsic.clone()
+    pub(super) fn builtin_function_of(&self, func: &Function) -> Option<BuiltinFunction> {
+        self.context
+            .functions()
+            .get(&func.name)?
+            .builtin_function
+            .clone()
     }
 
     /// Returns `true` when `func`, the call `expr`, is the function form of
@@ -239,11 +306,10 @@ impl ImplicitConversions<'_> {
         let Some(natural) = self.width_of(expr) else {
             return false;
         };
-        let at_natural = |input: &ParamAssignmentKind| match input {
-            ParamAssignmentKind::PositionalInput(input) => {
-                self.width_of(&input.expr) == Some(natural)
-            }
-            ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => false,
+        let at_natural = |input: &ParamAssignmentKind| {
+            input
+                .input_expr()
+                .is_some_and(|input| self.width_of(input) == Some(natural))
         };
         matches!(func.param_assignment.as_slice(), [left, right] if at_natural(left) && at_natural(right))
     }

@@ -26,31 +26,34 @@
 
 use ironplc_dsl::common::{ElementaryTypeName, TypeName};
 use ironplc_dsl::core::Id;
-use ironplc_dsl::textual::{Expr, ExprType, Function, Operator, ParamAssignmentKind};
+use ironplc_dsl::textual::{Expr, ExprType, Function, Operator};
 use ironplc_dsl::type_id::TypeId;
 
 use super::ImplicitConversions;
-use crate::intermediates::arithmetic_overload::{typed_overload, Overload};
+use crate::builtin_function::BuiltinFunction;
+use crate::intermediates::arithmetic_overload::typed_overload;
 use crate::intermediates::conversion_target::concrete;
 use crate::intermediates::numeric_operation::{
     literal_default_type, operation_width_of, OperationWidth,
 };
-use crate::intrinsic::Intrinsic;
 
 impl ImplicitConversions<'_> {
     /// Records the conversions of the inputs of `func` when it is a call to a
     /// typed time or date function, such as `ADD_LTIME(lt, t)`.
     pub(super) fn record_time_function_inputs(&self, func: &mut Function) {
-        if !matches!(self.intrinsic_of(func), Some(Intrinsic::Time { .. })) {
+        if !matches!(
+            self.builtin_function_of(func),
+            Some(BuiltinFunction::Time { .. })
+        ) {
             return;
         }
         let name = func.name.clone();
-        // The named-argument pass made every input positional; any other
+        // A call of two inputs, as the binding pass writes one; any other
         // shape is one a rule reported.
-        if let [ParamAssignmentKind::PositionalInput(in1), ParamAssignmentKind::PositionalInput(in2)] =
-            func.param_assignment.as_mut_slice()
-        {
-            self.record_time_inputs(&name, &mut in1.expr, &mut in2.expr);
+        if let [in1, in2] = func.param_assignment.as_mut_slice() {
+            if let (Some(in1), Some(in2)) = (in1.input_expr_mut(), in2.input_expr_mut()) {
+                self.record_time_inputs(&name, in1, in2);
+            }
         }
     }
 
@@ -60,10 +63,7 @@ impl ImplicitConversions<'_> {
     pub(super) fn typed_overload_of(&self, op: &Operator, left: &Expr, right: &Expr) -> Option<Id> {
         let left = self.conversions.operand_name(left)?;
         let right = self.conversions.operand_name(right)?;
-        match typed_overload(op, &left, &right)? {
-            Overload::Typed { name, .. } => Some(Id::from(name)),
-            Overload::Unchecked { .. } | Overload::Numeric { .. } => None,
-        }
+        typed_overload(op, &left, &right).map(|typed| Id::from(typed.name))
     }
 
     /// Records the conversion of `in1` and `in2`, the inputs of the typed
@@ -72,7 +72,7 @@ impl ImplicitConversions<'_> {
         let Some(signature) = self.context.functions().get(name) else {
             return;
         };
-        let Some(Intrinsic::Time { long, .. }) = signature.intrinsic else {
+        let Some(BuiltinFunction::Time { long, .. }) = signature.builtin_function else {
             return;
         };
         let params: Vec<TypeName> = signature

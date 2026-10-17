@@ -439,10 +439,55 @@ pub struct UnaryExpr {
     pub term: Expr,
 }
 
+/// A conversion the language makes without the program spelling it: the
+/// value of `value`, which keeps its own type, converted to the type of the
+/// enclosing [`Expr`].
+#[derive(Debug, Clone, PartialEq, Recurse)]
+pub struct ImplicitConversion {
+    /// The expression converted.
+    pub value: Expr,
+    /// What the conversion does with a value its type does not hold.
+    #[recurse(ignore)]
+    pub kind: ConversionKind,
+}
+
+/// What an [`ImplicitConversion`] does with a value outside the range of the
+/// type it converts to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConversionKind {
+    /// Converts as the language converts a value of one type to another, so
+    /// an integer narrowed to a type that does not hold it wraps.
+    Ordinary,
+    /// Converts as an ordinary conversion does a value the type holds, and
+    /// traps on any other. The analyzer records one for an array subscript
+    /// whose type holds values outside the range of `DINT`, so that such a
+    /// subscript selects no element rather than another one.
+    Checked,
+}
+
 #[derive(Debug, Clone, PartialEq, Recurse)]
 pub struct Function {
     pub name: Id,
     pub param_assignment: Vec<ParamAssignmentKind>,
+}
+
+impl Function {
+    /// The expression of each input argument, positional or named, in the
+    /// order the call lists them. After analysis, a call whose arguments bind
+    /// lists one named input for each input it supplies, in the order the
+    /// function declares them.
+    pub fn inputs(&self) -> impl Iterator<Item = &Expr> {
+        self.param_assignment
+            .iter()
+            .filter_map(ParamAssignmentKind::input_expr)
+    }
+
+    /// The expression of each input argument, as [`Function::inputs`].
+    pub fn inputs_mut(&mut self) -> impl Iterator<Item = &mut Expr> {
+        self.param_assignment
+            .iter_mut()
+            .filter_map(ParamAssignmentKind::input_expr_mut)
+    }
 }
 
 impl fmt::Display for Function {
@@ -574,12 +619,15 @@ impl Expr {
         Expr::new(ExprKind::UnaryOp(Box::new(UnaryExpr { op, term })))
     }
 
-    /// Creates the implicit conversion of `inner` to the type `target`,
-    /// written where `inner` was written.
+    /// Creates the ordinary implicit conversion of `inner` to the type
+    /// `target`, written where `inner` was written.
     pub fn implicit_conversion(inner: Expr, target: TypeId) -> Expr {
         let span = inner.span.clone();
         Expr {
-            kind: ExprKind::ImplicitConversion(Box::new(inner)),
+            kind: ExprKind::ImplicitConversion(Box::new(ImplicitConversion {
+                value: inner,
+                kind: ConversionKind::Ordinary,
+            })),
             expr_type: Some(ExprType::Concrete(target)),
             span,
         }
@@ -615,7 +663,8 @@ impl Located for ExprKind {
             ExprKind::LateBound(late) => late.value.span(),
             ExprKind::Ref(var) => var.span(),
             ExprKind::Deref(expr) => expr.span(),
-            ExprKind::ImplicitConversion(inner) => inner.span(),
+            ExprKind::ImplicitConversion(conversion) => conversion.value.span(),
+            ExprKind::CallOutput(output) => output.span(),
             ExprKind::Null(span) => span.clone(),
         }
     }
@@ -636,14 +685,20 @@ pub enum ExprKind {
     LateBound(LateBound),
     Ref(Box<Variable>),
     Deref(Box<Expr>),
-    /// A conversion the language makes without the program spelling it: the
-    /// value of the inner expression, which keeps its own type, converted to
-    /// the type of the enclosing [`Expr`].
+    /// A conversion the language makes without the program spelling it.
     ///
     /// The parser never produces one: the analyzer inserts it after the
     /// semantic rules, to record for the backends and the language server a
     /// conversion the language makes. See ADR-0056.
-    ImplicitConversion(Box<Expr>),
+    ImplicitConversion(Box<ImplicitConversion>),
+    /// The value the enclosing call left in its output of this name, read
+    /// after the call returns: the value an output assignment (`q => v`)
+    /// stores in its target.
+    ///
+    /// The parser never produces one: the analyzer writes it as the value of
+    /// an output assignment ([`Output::value`]), and nowhere else. A backend
+    /// reads it from wherever the call it compiles leaves that output.
+    CallOutput(Id),
     Null(SourceSpan),
 }
 
@@ -718,7 +773,9 @@ impl fmt::Display for ExprKind {
             ExprKind::Ref(var) => write!(f, "REF({var})"),
             ExprKind::Deref(expr) => write!(f, "{expr}^"),
             // Not source syntax: it is written as the expression it converts.
-            ExprKind::ImplicitConversion(inner) => write!(f, "{inner}"),
+            ExprKind::ImplicitConversion(conversion) => write!(f, "{}", conversion.value),
+            // Not source syntax: it is written as the output it reads.
+            ExprKind::CallOutput(output) => write!(f, "{output}"),
             ExprKind::Null(_) => write!(f, "NULL"),
         }
     }
@@ -754,6 +811,27 @@ pub struct Output {
     pub not: bool,
     pub src: Id,
     pub tgt: Variable,
+    /// The value the call stores in `tgt`. The analyzer writes it for each
+    /// output of a function block call whose arguments bind, as
+    /// [`Output::read`] reads it, and records its conversion to the type of
+    /// `tgt` on it, as on the value of an assignment. The parser leaves it
+    /// `None`: it is not source syntax, and the output is written as
+    /// `src => tgt`.
+    pub value: Option<Expr>,
+}
+
+impl Output {
+    /// The value this output has after the call: the
+    /// [`ExprKind::CallOutput`] named `src`, inverted for a negated output
+    /// (`NOT q => v`), written where `src` is.
+    pub fn read(&self) -> Expr {
+        let read = Expr::new(ExprKind::CallOutput(self.src.clone()));
+        if self.not {
+            Expr::unary(UnaryOp::Not, read).with_span(self.src.span())
+        } else {
+            read
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Recurse)]
@@ -770,6 +848,16 @@ impl ParamAssignmentKind {
         match self {
             ParamAssignmentKind::PositionalInput(input) => Some(&input.expr),
             ParamAssignmentKind::NamedInput(input) => Some(&input.expr),
+            ParamAssignmentKind::Output(_) => None,
+        }
+    }
+
+    /// The expression this argument passes to the callee, as
+    /// [`ParamAssignmentKind::input_expr`].
+    pub fn input_expr_mut(&mut self) -> Option<&mut Expr> {
+        match self {
+            ParamAssignmentKind::PositionalInput(input) => Some(&mut input.expr),
+            ParamAssignmentKind::NamedInput(input) => Some(&mut input.expr),
             ParamAssignmentKind::Output(_) => None,
         }
     }
@@ -1292,6 +1380,7 @@ mod tests {
             not: false,
             src: Id::from("out1"),
             tgt: Variable::named("result"),
+            value: None,
         });
         assert_eq!(format!("{pa}"), "out1 => result");
     }
@@ -1302,8 +1391,51 @@ mod tests {
             not: true,
             src: Id::from("out1"),
             tgt: Variable::named("result"),
+            value: None,
         });
         assert_eq!(format!("{pa}"), "NOT out1 => result");
+    }
+
+    fn output(not: bool) -> Output {
+        Output {
+            not,
+            src: Id::from("q").with_position(SourceSpan::range(10, 11)),
+            tgt: Variable::named("result"),
+            value: None,
+        }
+    }
+
+    #[test]
+    fn read_when_output_then_call_output_where_output_written() {
+        let read = output(false).read();
+        assert_eq!(read.kind, ExprKind::CallOutput(Id::from("q")));
+        assert_eq!(read.span, SourceSpan::range(10, 11));
+    }
+
+    #[test]
+    fn read_when_negated_output_then_not_of_call_output() {
+        let read = output(true).read();
+        let ExprKind::UnaryOp(unary) = &read.kind else {
+            panic!("expected a NOT, got {read:?}");
+        };
+        assert_eq!(unary.op, UnaryOp::Not);
+        assert_eq!(unary.term.kind, ExprKind::CallOutput(Id::from("q")));
+        assert_eq!(read.span, SourceSpan::range(10, 11));
+    }
+
+    #[test]
+    fn display_when_call_output_then_output_name() {
+        assert_eq!(format!("{}", output(false).read()), "q");
+    }
+
+    #[test]
+    fn display_when_param_assignment_output_with_value_then_arrow() {
+        let mut out = output(false);
+        out.value = Some(out.read());
+        assert_eq!(
+            format!("{}", ParamAssignmentKind::Output(out)),
+            "q => result"
+        );
     }
 
     #[test]

@@ -14,21 +14,20 @@ use ironplc_dsl::textual::*;
 use ironplc_dsl::type_id::TypeId;
 use std::collections::HashMap;
 
+use crate::builtin_function::{BuiltinFunction, InputsOfOneType, OneTypeResult};
 use crate::callee_resolution::FunctionBlocks;
-use crate::enumerated_value_type::{self, Context, EnumeratedValueType, OwnedContext};
+use crate::enumerated_value_type::{self, EnumeratedValueType};
 use crate::function_environment::FunctionEnvironment;
 use crate::intermediates::arithmetic_overload::{
     resolve_arithmetic_fold, resolve_arithmetic_overload, Overload,
 };
 use crate::intermediates::common_operand::common_operand_of;
-use crate::intermediates::inherited_fields::collect_inherited_fields;
 use crate::intermediates::numeric_operation::literal_default_type;
 use crate::intermediates::operator_function_form::{operator_function_form, FormOf};
-use crate::intrinsic::{InputsOfOneType, Intrinsic, OneTypeResult};
-use crate::semantic_type::SemanticType;
 use crate::symbol_environment::{ScopeTracker, SymbolEnvironment};
 use crate::type_environment::TypeEnvironment;
 use crate::value_type::operand_type_name;
+use crate::variable_type;
 use ironplc_parser::options::CompilerOptions;
 
 /// Returns the library with every expression's type, and the unqualified
@@ -40,21 +39,18 @@ pub fn apply(
     function_environment: &FunctionEnvironment,
     options: &CompilerOptions,
 ) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>> {
-    let inherited_fields = collect_inherited_fields(&lib);
-    let method_return_types = collect_method_return_types(&lib);
-    let function_block_inputs =
-        enumerated_value_type::function_block_inputs(&lib, &inherited_fields);
+    let methods = collect_method_types(&lib);
     let named_enumerations = enumerated_value_type::named_enumerations(type_environment);
     let mut resolver = ExprTypeResolver {
         symbols,
         scope: ScopeTracker::default(),
-        method_return_types,
+        methods,
         type_environment,
         function_environment,
         options: *options,
         named_enumerations,
-        function_block_inputs,
         ambiguous: Vec::new(),
+        calls: Vec::new(),
     };
 
     let library = resolver.fold_library(lib).map_err(|e| vec![e])?;
@@ -66,14 +62,20 @@ pub fn apply(
     Ok((library, diagnostics))
 }
 
-/// The return type of every method callable on every function block, by
-/// function block type and method name: the block's own methods, then those
-/// it inherits through `EXTENDS` (ADR-0041 Phase 1 static dispatch). `None`
-/// for a method without a return type.
+/// The types of a method a call reads: its return type, `None` for a method
+/// without one, and the type each output is declared with.
+struct MethodTypes {
+    return_type: Option<TypeName>,
+    outputs: HashMap<Id, TypeId>,
+}
+
+/// The types of every method callable on every function block, by function
+/// block type and method name: the block's own methods, then those it
+/// inherits through `EXTENDS` (ADR-0041 Phase 1 static dispatch).
 ///
 /// Built before the fold, which consumes the library, so the resolver can
 /// type a method call without holding a reference into it.
-fn collect_method_return_types(lib: &Library) -> HashMap<TypeName, HashMap<Id, Option<TypeName>>> {
+fn collect_method_types(lib: &Library) -> HashMap<TypeName, HashMap<Id, MethodTypes>> {
     let function_blocks = FunctionBlocks::from_library(lib);
     let method_names: Vec<&Id> = lib
         .elements
@@ -90,13 +92,24 @@ fn collect_method_return_types(lib: &Library) -> HashMap<TypeName, HashMap<Id, O
         let LibraryElementKind::FunctionBlockDeclaration(fb) = element else {
             continue;
         };
-        let callable: HashMap<Id, Option<TypeName>> = method_names
+        let callable: HashMap<Id, MethodTypes> = method_names
             .iter()
             .filter_map(|name| {
                 let (_, method) = function_blocks.resolve_method(&fb.name, name)?;
+                let outputs = method
+                    .variables
+                    .iter()
+                    .filter(|decl| decl.var_type == VariableType::Output)
+                    .filter_map(|decl| {
+                        Some((decl.identifier.symbolic_id()?.clone(), decl.type_id?))
+                    })
+                    .collect();
                 Some((
                     method.name.clone(),
-                    method.return_type.as_ref().map(|rt| rt.to_type_name()),
+                    MethodTypes {
+                        return_type: method.return_type.as_ref().map(|rt| rt.to_type_name()),
+                        outputs,
+                    },
                 ))
             })
             .collect();
@@ -121,15 +134,13 @@ fn is_generic_type(tn: &TypeName) -> bool {
     GENERIC_TYPES.iter().any(|name| TypeName::from(name) == *tn)
 }
 
-/// The inputs of `f` when every argument is a positional input, as the
-/// named-argument pass leaves a call it accepted.
-fn positional_inputs(f: &Function) -> Option<Vec<&Expr>> {
+/// The inputs of `f` when every argument is an input, in the order the call
+/// lists them: the order of the parameters, for a call the binding pass wrote
+/// in normal form.
+fn all_inputs(f: &Function) -> Option<Vec<&Expr>> {
     f.param_assignment
         .iter()
-        .map(|p| match p {
-            ParamAssignmentKind::PositionalInput(input) => Some(&input.expr),
-            ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
-        })
+        .map(ParamAssignmentKind::input_expr)
         .collect()
 }
 
@@ -147,32 +158,12 @@ fn prefer_concrete(left: &Option<ExprType>, right: &Option<ExprType>) -> Option<
     }
 }
 
-/// Maps an [`SemanticType`] to its canonical elementary [`TypeName`].
-///
-/// Delegates to [`TypeEnvironment::elementary_type_name_for`] for the simple
-/// cases. That helper does a strict equality lookup against the elementary
-/// types table, which only contains `String { max_len: None }`. A struct
-/// field declared `STRING[n]` resolves to `String { max_len: Some(n) }` and
-/// would otherwise return `None`, so we handle strings explicitly.
-fn semantic_type_to_elementary_type_name(
-    env: &TypeEnvironment,
-    it: &SemanticType,
-) -> Option<TypeName> {
-    if let Some(tn) = env.elementary_type_name_for(it.operated_as()) {
-        return Some(tn);
-    }
-    match it {
-        SemanticType::String { .. } => Some(TypeName::from("STRING")),
-        _ => None,
-    }
-}
-
 struct ExprTypeResolver<'a> {
     /// The variables in scope, by the scope the traversal is in.
     symbols: &'a SymbolEnvironment,
     scope: ScopeTracker,
-    /// See [`collect_method_return_types`].
-    method_return_types: HashMap<TypeName, HashMap<Id, Option<TypeName>>>,
+    /// See [`collect_method_types`].
+    methods: HashMap<TypeName, HashMap<Id, MethodTypes>>,
     type_environment: &'a mut TypeEnvironment,
     function_environment: &'a FunctionEnvironment,
     /// The compiler options, which decide whether a bit-string operand of
@@ -180,11 +171,29 @@ struct ExprTypeResolver<'a> {
     options: CompilerOptions,
     /// See [`enumerated_value_type::named_enumerations`].
     named_enumerations: Vec<TypeId>,
-    /// See [`enumerated_value_type::function_block_inputs`].
-    function_block_inputs: HashMap<TypeName, HashMap<Id, TypeId>>,
     /// The unqualified enumerated values left ambiguous so far. A value
     /// leaves the list when the place it is used in gives it a type.
     ambiguous: Vec<EnumeratedValue>,
+    /// The calls the fold is inside, innermost last: an
+    /// [`ExprKind::CallOutput`] reads an output of the innermost.
+    calls: Vec<CallFrame>,
+}
+
+/// A call whose arguments the fold is inside, for the type of the outputs a
+/// [`ExprKind::CallOutput`] reads from it.
+enum CallFrame {
+    /// A call of the function block instance of this name: its output `q`
+    /// has the type `instance.q` has.
+    Instance(Id),
+    /// A call of the function of this name: an output has the type its
+    /// signature declares.
+    Function(Id),
+    /// A call of a method on a receiver: an output has the type the method
+    /// declares it with. A receiver other than an instance has none.
+    Method {
+        receiver: MethodReceiver,
+        method: Id,
+    },
 }
 
 impl ExprTypeResolver<'_> {
@@ -250,21 +259,21 @@ impl ExprTypeResolver<'_> {
                 if !is_generic_type(&return_type) {
                     return self.expr_type_named(return_type);
                 }
-                match &sig.intrinsic {
+                match &sig.builtin_function {
                     // An integer of whichever type its context stores it
                     // at, which the literal pass gives it (ADR-0028).
-                    Some(intrinsic) if intrinsic.result_is_integer_of_context() => {
+                    Some(builtin) if builtin.result_is_integer_of_context() => {
                         return Some(ExprType::Literal(GenericTypeName::AnyInt));
                     }
-                    Some(Intrinsic::IntToBcd) => return self.bcd_result(f),
+                    Some(BuiltinFunction::IntToBcd) => return self.bcd_result(f),
                     _ => {}
                 }
                 if let Some(shape) = sig
-                    .intrinsic
+                    .builtin_function
                     .as_ref()
-                    .and_then(Intrinsic::inputs_of_one_type)
+                    .and_then(BuiltinFunction::inputs_of_one_type)
                 {
-                    if let Some(inputs) = positional_inputs(f) {
+                    if let Some(inputs) = all_inputs(f) {
                         return self.inputs_of_one_type_result(&inputs, shape);
                     }
                 }
@@ -272,29 +281,14 @@ impl ExprTypeResolver<'_> {
                 // whose parameter declaration type matches the generic return type.
                 // This correctly skips selector parameters whose type differs from
                 // the return type (e.g., BOOL for SEL, ANY_INT for MUX).
-                let mut positional_index = 0usize;
-                f.param_assignment.iter().find_map(|p| match p {
-                    ParamAssignmentKind::PositionalInput(pos) => {
-                        let idx = positional_index;
-                        positional_index += 1;
-                        match sig.parameters.get(idx) {
-                            Some(param) if param.param_type == return_type => {
-                                pos.expr.expr_type.clone()
-                            }
-                            _ => None,
+                sig.inputs_of(&f.param_assignment)
+                    .find_map(|(param, expr)| {
+                        if param.param_type == return_type {
+                            expr.expr_type.clone()
+                        } else {
+                            None
                         }
-                    }
-                    ParamAssignmentKind::NamedInput(named) => {
-                        let param = sig.parameters.iter().find(|p| p.name == named.name);
-                        match param {
-                            Some(param) if param.param_type == return_type => {
-                                named.expr.expr_type.clone()
-                            }
-                            _ => None,
-                        }
-                    }
-                    ParamAssignmentKind::Output(_) => None,
-                })
+                    })
             }
             // The method's return type. A call on `THIS^`/`SUPER^`, or to a
             // method without a return type, has no type here; the method
@@ -303,13 +297,9 @@ impl ExprTypeResolver<'_> {
                 let MethodReceiver::Instance(instance) = &call.receiver else {
                     return None;
                 };
-                let fb_type = self
-                    .type_environment
-                    .name_of(self.declared_type_id(instance)?)?;
                 let return_type = self
-                    .method_return_types
-                    .get(fb_type)?
-                    .get(&call.method)?
+                    .method_types(instance, &call.method)?
+                    .return_type
                     .clone()?;
                 self.expr_type_named(return_type)
             }
@@ -339,7 +329,58 @@ impl ExprTypeResolver<'_> {
             // converts, so it is recorded on the node, which `fold_expr`
             // keeps.
             ExprKind::ImplicitConversion(_) => None,
+            ExprKind::CallOutput(output) => self.call_output_type(output).map(ExprType::Concrete),
         }
+    }
+
+    /// The type of the output `output` of the innermost call the fold is
+    /// inside: for a function block, the type the read of that output of the
+    /// instance has; for a function or method, the type it declares the
+    /// output with.
+    fn call_output_type(&mut self, output: &Id) -> Option<TypeId> {
+        match self.calls.last()? {
+            CallFrame::Instance(instance) => {
+                self.symbolic_type_id(&SymbolicVariableKind::Structured(StructuredVariable {
+                    record: Box::new(SymbolicVariableKind::Named(NamedVariable {
+                        name: instance.clone(),
+                    })),
+                    field: output.clone(),
+                }))
+            }
+            CallFrame::Function(function) => {
+                let parameter = self
+                    .function_environment
+                    .get(function)?
+                    .parameters
+                    .iter()
+                    .find(|parameter| parameter.is_output && parameter.name == *output)?;
+                let declared = self.type_environment.id_of(&parameter.param_type)?;
+                // A `REF_TO` parameter records the type it references.
+                if parameter.is_reference {
+                    self.type_environment.reference_to(declared)
+                } else {
+                    Some(declared)
+                }
+            }
+            CallFrame::Method {
+                receiver: MethodReceiver::Instance(instance),
+                method,
+            } => self
+                .method_types(instance, method)?
+                .outputs
+                .get(output)
+                .copied(),
+            CallFrame::Method { .. } => None,
+        }
+    }
+
+    /// The types of the method `method` called on the function block
+    /// instance `instance`: the one its block declares or inherits.
+    fn method_types(&self, instance: &Id, method: &Id) -> Option<&MethodTypes> {
+        let block = self
+            .type_environment
+            .name_of(self.declared_type_id(instance)?)?;
+        self.methods.get(block)?.get(method)
     }
 
     /// The type of the unqualified enumerated value `ev` used where a value
@@ -348,7 +389,7 @@ impl ExprTypeResolver<'_> {
     fn unqualified_enumerated_value_type(
         &mut self,
         ev: &EnumeratedValue,
-        context: Option<Context>,
+        context: Option<TypeId>,
     ) -> Option<ExprType> {
         // The anonymous enumerations of the variables in scope, each
         // declared in place (`e : (A, B)`).
@@ -382,7 +423,7 @@ impl ExprTypeResolver<'_> {
 
     /// Gives `expr` the type `context` expects when `expr` is an
     /// unqualified enumerated value that `context`, an enumeration, declares.
-    fn type_from_context(&mut self, expr: &mut Expr, context: Option<Context>) {
+    fn type_from_context(&mut self, expr: &mut Expr, context: Option<TypeId>) {
         if context.is_none() {
             return;
         }
@@ -399,40 +440,21 @@ impl ExprTypeResolver<'_> {
         }
     }
 
-    /// What a value compared with or assigned to `variable` is expected to
-    /// be: its type, or for a structure field of enumeration type, which has
-    /// no type id here, its members.
-    fn variable_context(&self, variable: &Variable) -> Option<Context<'_>> {
-        if let Some(id) = self.variable_type_id(variable) {
-            return Some(Context::Type(id));
-        }
-        let Variable::Symbolic(SymbolicVariableKind::Structured(sv)) = variable else {
-            return None;
-        };
-        let parent = self.resolve_parent_struct_type(sv.record.as_ref())?;
-        let field = parent
-            .member_fields()?
-            .iter()
-            .find(|f| f.name == sv.field)?;
-        field.field_type.enumeration_members().map(Context::Members)
-    }
-
-    /// What a value compared with `expr` is expected to be.
-    fn expr_context(&self, expr: &Expr) -> Option<Context<'_>> {
+    /// The type a value compared with `expr` is expected to have.
+    fn expr_context(&self, expr: &Expr) -> Option<TypeId> {
         match (&expr.expr_type, &expr.kind) {
-            (Some(ExprType::Concrete(id)), _) => Some(Context::Type(*id)),
-            (None, ExprKind::Variable(variable)) => self.variable_context(variable),
+            (Some(ExprType::Concrete(id)), _) => Some(*id),
+            (None, ExprKind::Variable(variable)) => self.variable_type_id(variable),
             _ => None,
         }
     }
 
     /// The type a value the input `input` of the function block instance
-    /// `instance` receives is expected to have.
+    /// `instance` receives is expected to have: the declared type of the
+    /// field, own or inherited.
     fn function_block_input_type(&self, instance: &Id, input: &Id) -> Option<TypeId> {
-        let fb_type = self
-            .type_environment
-            .name_of(self.declared_type_id(instance)?)?;
-        self.function_block_inputs.get(fb_type)?.get(input).copied()
+        self.type_environment
+            .field_type(self.declared_type_id(instance)?, input)
     }
 
     /// The type `type_name` names: a literal of the category a generic name
@@ -456,9 +478,9 @@ impl ExprTypeResolver<'_> {
     /// applies to its inputs folded from the left: `SUB(d1, d2)` on `DATE`
     /// is `TIME`, and `ADD(i, d)` on `INT` and `DINT` is `DINT`.
     ///
-    /// Returns `None` for any other function, for a call with a named input
-    /// left (one the named-argument pass diagnosed), or when no overload is
-    /// judged or applies; the caller then types the call from its signature.
+    /// Returns `None` for any other function, for a call with an output
+    /// assignment, or when no overload is judged or applies; the caller then
+    /// types the call from its signature.
     fn resolve_overloaded_call(&self, f: &Function) -> Option<TypeName> {
         let form = operator_function_form(&f.name.to_string())?;
         let FormOf::Arithmetic(op) = &form.operator else {
@@ -467,14 +489,10 @@ impl ExprTypeResolver<'_> {
         if form.typed_overloads().is_empty() {
             return None;
         }
-        let names: Vec<Option<TypeName>> = f
-            .param_assignment
-            .iter()
-            .map(|p| match p {
-                ParamAssignmentKind::PositionalInput(input) => Some(self.operand_name(&input.expr)),
-                ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
-            })
-            .collect::<Option<_>>()?;
+        let names: Vec<Option<TypeName>> = all_inputs(f)?
+            .into_iter()
+            .map(|input| self.operand_name(input))
+            .collect();
         let inputs: Vec<Option<&TypeName>> = names.iter().map(Option::as_ref).collect();
         match resolve_arithmetic_fold(op, &inputs, &self.options) {
             Ok(Overload::Numeric { result } | Overload::Typed { result, .. }) => Some(result),
@@ -487,7 +505,7 @@ impl ExprTypeResolver<'_> {
     /// a `WORD`, and an untyped literal input is a `DINT` (ADR-0028), so
     /// `INT_TO_BCD(42)` is a `DWORD`.
     fn bcd_result(&self, f: &Function) -> Option<ExprType> {
-        let input = *positional_inputs(f)?.first()?;
+        let input = *all_inputs(f)?.first()?;
         let name = match &input.expr_type {
             Some(ExprType::Literal(generic)) => literal_default_type(generic)?.into(),
             _ => self.operand_name(input)?,
@@ -504,7 +522,7 @@ impl ExprTypeResolver<'_> {
 
     /// The type of a call to a function of several inputs of one type, whose
     /// inputs are `inputs`: the type every input of that type widens to, or
-    /// for `EXPT` its first input's (see [`Intrinsic::inputs_of_one_type`]).
+    /// for `EXPT` its first input's (see [`BuiltinFunction::inputs_of_one_type`]).
     /// `MAX(i, l)` on an `INT` and an `LINT` is an `LINT`.
     ///
     /// When no input's type accepts every other one -- a `DINT` and a `UDINT`
@@ -543,7 +561,7 @@ impl ExprTypeResolver<'_> {
     /// The id of the type the variable `name` names from the current scope
     /// was declared with.
     fn declared_type_id(&self, name: &Id) -> Option<TypeId> {
-        self.symbols.find(name, &self.scope.current())?.type_id
+        variable_type::declared_type_id(name, self.symbols, &self.scope.current())
     }
 
     /// The id of the type of the value `var` names.
@@ -597,124 +615,15 @@ impl ExprTypeResolver<'_> {
         }
     }
 
-    /// Resolves the type of a member access expression (e.g., `setup.FLAG` or
-    /// `timer.Q`).
-    ///
-    /// Walks the member chain to find the root variable, looks up its type
-    /// definition, then finds the leaf member's type.
-    fn resolve_structured_variable_type(&self, sv: &StructuredVariable) -> Option<TypeName> {
-        self.type_environment
-            .elementary_type_name_for(self.field_type(sv)?.operated_as())
-    }
-
-    /// The type of the member `sv` accesses, as its representation: a field's
-    /// type is known by its representation only.
-    fn field_type<'b>(&'b self, sv: &StructuredVariable) -> Option<&'b SemanticType> {
-        let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
-        parent_type
-            .member_fields()?
-            .iter()
-            .find(|f| f.name == sv.field)
-            .map(|f| &f.field_type)
-    }
-
-    /// Resolves a `SymbolicVariableKind` to the `SemanticType` whose
-    /// members it exposes.
-    ///
-    /// For `Structured`, recursively resolves the parent and finds the nested
-    /// member type, and for an element of an array that is a field
-    /// (`h.items[1]`), the array's element type. For anything else -- a
-    /// variable, an element of an array variable, a dereferenced reference --
-    /// takes the type its id names, when that is a structure or function
-    /// block.
-    fn resolve_parent_struct_type<'b>(
-        &'b self,
-        kind: &SymbolicVariableKind,
-    ) -> Option<&'b SemanticType> {
-        let representation = match kind {
-            SymbolicVariableKind::Structured(sv) => self.field_type(sv)?,
-            SymbolicVariableKind::Array(array) => match array.subscripted_variable.as_ref() {
-                SymbolicVariableKind::Structured(sv) => self.field_element_type(sv)?,
-                _ => self.representation_of(kind)?,
-            },
-            _ => self.representation_of(kind)?,
-        };
-        representation.has_members().then_some(representation)
-    }
-
-    /// The type the id of the symbolic variable `kind` names, as its
-    /// representation.
-    fn representation_of(&self, kind: &SymbolicVariableKind) -> Option<&SemanticType> {
-        let id = self.symbolic_type_id(kind)?;
-        Some(&self.type_environment.get_by_id(id)?.representation)
-    }
-
-    /// The element type of the array the member access `sv` names
-    /// (`DATA.DIRS`), as its representation.
-    fn field_element_type<'b>(&'b self, sv: &StructuredVariable) -> Option<&'b SemanticType> {
-        match self.field_type(sv)? {
-            SemanticType::Array { element_type, .. } => Some(element_type),
-            _ => None,
-        }
-    }
-
-    /// Resolves the element type of an array that lives inside a struct field.
-    ///
-    /// For an expression like `DATA.DIRS[i, j]`, `sv` is the `DATA.DIRS`
-    /// struct field access. Walks the struct chain to find `DIRS`'s
-    /// `SemanticType::Array`, then returns the element type's
-    /// canonical `TypeName`.
-    fn resolve_struct_field_array_element_type(&self, sv: &StructuredVariable) -> Option<TypeName> {
-        semantic_type_to_elementary_type_name(self.type_environment, self.field_element_type(sv)?)
-    }
-
-    /// The id of the type of the value the symbolic variable `kind` names:
-    /// the declared type of a variable, the element type of a subscript,
-    /// the referenced type of a dereference and the field type of a member
-    /// access.
+    /// The id of the type of the value the symbolic variable `kind` names
+    /// (see [`variable_type::type_id`]).
     fn symbolic_type_id(&self, kind: &SymbolicVariableKind) -> Option<TypeId> {
-        match kind {
-            SymbolicVariableKind::Named(nv) => self.declared_type_id(&nv.name),
-            SymbolicVariableKind::Array(arr_var) => {
-                // Array subscript on a struct field (e.g. `DATA.DIRS[i, j]`).
-                // A field's type is known by its representation only, so
-                // the element type is resolved through the struct chain.
-                if let SymbolicVariableKind::Structured(sv) = arr_var.subscripted_variable.as_ref()
-                {
-                    return self
-                        .type_environment
-                        .id_of(&self.resolve_struct_field_array_element_type(sv)?);
-                }
-                let array = self.symbolic_type_id(&arr_var.subscripted_variable)?;
-                self.type_environment.element_type(array)
-            }
-            SymbolicVariableKind::Structured(sv) => self
-                .type_environment
-                .id_of(&self.resolve_structured_variable_type(sv)?),
-            SymbolicVariableKind::BitAccess(_) => {
-                self.type_environment.id_of(&TypeName::from("BOOL"))
-            }
-            SymbolicVariableKind::PartialAccess(pa) => {
-                let type_name = match pa.size {
-                    PartialAccessSize::Byte => "BYTE",
-                    PartialAccessSize::Word => "WORD",
-                    PartialAccessSize::DWord => "DWORD",
-                    PartialAccessSize::LWord => "LWORD",
-                };
-                self.type_environment.id_of(&TypeName::from(type_name))
-            }
-            SymbolicVariableKind::Deref(deref_var) => {
-                let reference = self.symbolic_type_id(&deref_var.variable)?;
-                self.type_environment.referenced_type(reference)
-            }
-            SymbolicVariableKind::SelfRef(_) => {
-                // THIS^/SUPER^ has no resolvable type until function-block
-                // member resolution exists. Unreachable in practice:
-                // `fold_self_ref_variable` rejects the construct before any
-                // type resolution runs. See issue #1406.
-                None
-            }
-        }
+        variable_type::type_id(
+            kind,
+            self.symbols,
+            self.type_environment,
+            &self.scope.current(),
+        )
     }
 }
 
@@ -760,10 +669,10 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
                     | CompareOp::AndThen
                     | CompareOp::OrElse
             ) {
-                let left = self.expr_context(&compare.left).map(OwnedContext::from);
-                let right = self.expr_context(&compare.right).map(OwnedContext::from);
-                self.type_from_context(&mut compare.right, left.as_ref().map(OwnedContext::get));
-                self.type_from_context(&mut compare.left, right.as_ref().map(OwnedContext::get));
+                let left = self.expr_context(&compare.left);
+                let right = self.expr_context(&compare.right);
+                self.type_from_context(&mut compare.right, left);
+                self.type_from_context(&mut compare.left, right);
             }
         }
 
@@ -777,19 +686,37 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
     fn fold_assignment(&mut self, node: Assignment) -> Result<Assignment, Diagnostic> {
         let mut node = node.recurse_fold(self)?;
         // An unqualified enumerated value assigned has the target's type.
-        let target = self.variable_context(&node.target).map(OwnedContext::from);
-        self.type_from_context(&mut node.value, target.as_ref().map(OwnedContext::get));
+        let target = self.variable_type_id(&node.target);
+        self.type_from_context(&mut node.value, target);
         Ok(node)
     }
 
+    fn fold_function(&mut self, node: Function) -> Result<Function, Diagnostic> {
+        self.calls.push(CallFrame::Function(node.name.clone()));
+        let folded = node.recurse_fold(self);
+        self.calls.pop();
+        folded
+    }
+
+    fn fold_method_call(&mut self, node: MethodCall) -> Result<MethodCall, Diagnostic> {
+        self.calls.push(CallFrame::Method {
+            receiver: node.receiver.clone(),
+            method: node.method.clone(),
+        });
+        let folded = node.recurse_fold(self);
+        self.calls.pop();
+        folded
+    }
+
     fn fold_fb_call(&mut self, node: FbCall) -> Result<FbCall, Diagnostic> {
-        let mut node = node.recurse_fold(self)?;
+        self.calls.push(CallFrame::Instance(node.var_name.clone()));
+        let folded = node.recurse_fold(self);
+        self.calls.pop();
+        let mut node = folded?;
         // An unqualified enumerated value passed to an input has its type.
         for param in &mut node.params {
             if let ParamAssignmentKind::NamedInput(input) = param {
-                let input_type = self
-                    .function_block_input_type(&node.var_name, &input.name)
-                    .map(Context::Type);
+                let input_type = self.function_block_input_type(&node.var_name, &input.name);
                 self.type_from_context(&mut input.expr, input_type);
             }
         }

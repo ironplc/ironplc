@@ -15,6 +15,7 @@ Before making changes, read the relevant steering files in `specs/steering/`:
 - **[IEC 61131-3 Compliance](specs/steering/iec-61131-3-compliance.md)** - Standards compliance and validation rules (especially relevant for `**/analyzer/**` files)
 - **[PLCopen XML Module](specs/steering/plcopen-xml-module.md)** - Architecture and patterns for the PLCopen XML parsing module (especially relevant for `compiler/sources/src/xml/` files)
 - **[Syntax Support Guide](specs/steering/syntax-support-guide.md)** - Checklist and patterns for adding new syntax support, including `--allow-x` flags, plc2plc round-trip tests, and end-to-end execution tests (especially relevant for `**/parser/**`, `**/codegen/**`, `**/plc2plc/**` files)
+- **[Backend Guide](specs/steering/backend-guide.md)** - Checklist and rules for adding a backend that consumes the lowered program: crate boundaries, layout, meaning of operations, testing against the bytecode backend, and what every backend does when the IR changes (especially relevant for `**/ir/**`, `**/codegen/**` files)
 - **[Compatibility Library Authoring](specs/steering/compatibility-library-authoring.md)** - Licensing risk tiers, allowed/forbidden inputs, and the clean-room-with-AI workflow for authoring bundled compatibility libraries (especially relevant for `compiler/sources/resources/libs/` files)
 - **[Coming-from Guide Authoring](specs/steering/coming-from-guide-authoring.md)** - Standard page set, slugs, URL-stability policy, and content rules for the "Coming from X" how-to sections of the docs website (especially relevant for `docs/how-to-guides/**` files)
 
@@ -57,5 +58,5 @@ See [specs/steering/common-tasks.md](specs/steering/common-tasks.md) for complet
 2. **BDD-style test names**: `function_when_condition_then_result`
 3. **Module size limit**: Max 1000 lines per module
 4. **No duplicated content** - Including in documentation; share via `docs/includes/` and `.. include::` ([Avoid Duplication](specs/steering/development-standards.md#avoid-duplication))
-5. **Problem codes**: Must be documented in `docs/compiler/problems/P####.rst`
+5. **Problem codes**: Must be documented in `docs/reference/compiler/problems/P####.rst`
 6. **Version numbers**: Automatically managed - do not edit manually

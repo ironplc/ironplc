@@ -23,7 +23,7 @@ use ironplc_dsl::type_id::TypeId;
 use super::scalar;
 use super::value::{Field, Value};
 use crate::intermediates::string;
-use crate::semantic_type::SemanticType;
+use crate::semantic_type::{FunctionBlockVarType, SemanticType};
 use crate::type_environment::TypeEnvironment;
 
 /// The type of a place: what it is, and the id of the type when it has
@@ -376,8 +376,8 @@ impl<'a> Resolver<'a> {
             SemanticType::Reference { .. } => Some(Value::Reference(ReferenceInitialValue::Null(
                 SourceSpan::synthesized(),
             ))),
-            SemanticType::Structure { fields } | SemanticType::FunctionBlock { fields, .. } => {
-                let names: Vec<Id> = fields.iter().map(|field| field.name.clone()).collect();
+            SemanticType::Structure { .. } | SemanticType::FunctionBlock { .. } => {
+                let names = self.field_names(place)?;
                 let mut values = Vec::with_capacity(names.len());
                 for name in names {
                     let field = self.field_place(place, &name)?;
@@ -389,7 +389,6 @@ impl<'a> Resolver<'a> {
                 Some(Value::Structure(values))
             }
             SemanticType::Array { .. } => self.array(place, &[]),
-            SemanticType::Function { .. } => None,
             scalar => scalar::implicit_default(scalar),
         }
     }
@@ -508,13 +507,13 @@ impl<'a> Resolver<'a> {
             ExprKind::Expression(inner) => self.expression(inner, place),
             // The conversion is to the field's type, which the value is
             // converted to below anyway.
-            ExprKind::ImplicitConversion(inner)
+            ExprKind::ImplicitConversion(conversion)
                 if matches!(
-                    inner.kind,
+                    conversion.value.kind,
                     ExprKind::Const(_) | ExprKind::EnumeratedValue(_)
                 ) =>
             {
-                self.expression(inner, place)
+                self.expression(&conversion.value, place)
             }
             ExprKind::Null(span)
                 if matches!(place.representation, SemanticType::Reference { .. }) =>
@@ -641,28 +640,49 @@ impl<'a> Resolver<'a> {
         scalar::from_enumerated_value(value, &place.representation)
     }
 
+    /// The names of the fields of the structure or function block `place`
+    /// that hold a value, in order: the fields a structure's type lists, and
+    /// those the type environment records for a block, which its type does
+    /// not list, but for a `VAR_IN_OUT`, which names another variable.
+    fn field_names(&self, place: &Place) -> Option<Vec<Id>> {
+        let names = match place.representation.structure_fields() {
+            Some(fields) => fields.iter().map(|field| field.name.clone()).collect(),
+            None => self
+                .types
+                .block_fields(place.id?)?
+                .iter()
+                .filter(|field| field.var_type != FunctionBlockVarType::InOut)
+                .map(|field| field.name.clone())
+                .collect(),
+        };
+        Some(names)
+    }
+
     /// The place of the field `name` of the structure or function block
-    /// `place`. The field's type id comes from the declaration of the field
-    /// when one is known, so that its own declared default applies.
+    /// `place`. A block's field has the type the environment records for
+    /// it. A structure field's type id comes from the declaration of the
+    /// field when one is known, so that its own declared default applies.
     fn field_place(&self, place: &Place, name: &Id) -> Option<Place> {
+        if place.representation.is_function_block() {
+            let field = self.types.block_field(place.id?, name)?;
+            return self.place_of(field.field_type?);
+        }
         let representation = place
             .representation
-            .member_fields()?
+            .structure_fields()?
             .iter()
             .find(|field| field.name == *name)?
             .field_type
             .clone();
-        let declared = place.id.and_then(|id| self.field_declaration(id, name));
-        Some(match declared {
-            Some(FieldDeclaration::Structure(init)) => {
-                let (id, element) = self.declared_ids(init);
-                self.typed_place(representation, id, element)
-            }
-            Some(FieldDeclaration::Block(variable)) => {
-                self.typed_place(representation, variable.type_id, None)
-            }
-            None => Place::of(representation),
-        })
+        Some(
+            match place.id.and_then(|id| self.field_declaration(id, name)) {
+                Some(init) => {
+                    let (id, element) = self.declared_ids(init);
+                    self.typed_place(representation, id, element)
+                }
+                None => Place::of(representation),
+            },
+        )
     }
 
     /// The place of a value of `representation`, whose type is `id` and,
@@ -691,9 +711,9 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    /// The declaration of the field `name` of the structure or function
-    /// block type `id`, following aliases to the type they name.
-    fn field_declaration(&self, id: TypeId, name: &Id) -> Option<FieldDeclaration<'a>> {
+    /// The initializer the declaration of the field `name` of the structure
+    /// type `id` states, following aliases to the type they name.
+    fn field_declaration(&self, id: TypeId, name: &Id) -> Option<&'a InitialValueAssignmentKind> {
         let mut id = id;
         // An alias chain is as long as the declarations that make it, and
         // a cycle is a rule's to report; the bound only keeps one finite.
@@ -705,12 +725,7 @@ impl<'a> Resolver<'a> {
                     .elements
                     .iter()
                     .find(|element| element.name == *name)
-                    .map(|element| FieldDeclaration::Structure(&element.init));
-            }
-            if let Some(variables) = self.declarations.blocks.get(&id) {
-                return instance_variables(variables)
-                    .find(|variable| variable.identifier.symbolic_id() == Some(name))
-                    .map(FieldDeclaration::Block);
+                    .map(|element| &element.init);
             }
             id = self.alias_target(id)?;
         }
@@ -779,14 +794,6 @@ impl Place {
             element: None,
         }
     }
-}
-
-/// A field as its type declares it.
-enum FieldDeclaration<'d> {
-    /// A field of a structure, with the initializer its declaration states.
-    Structure(&'d InitialValueAssignmentKind),
-    /// An input, output or internal variable of a function block.
-    Block(&'d VarDecl),
 }
 
 /// The variables of a function block that an instance holds: its inputs,
