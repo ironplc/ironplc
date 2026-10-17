@@ -1,13 +1,16 @@
 //! Tests of references made, compared and followed in the lowered program,
-//! with every statement required to lower: `REF(x)`, `r REF= x`, `NULL` and
-//! the bits of an element a reference reaches.
+//! with every statement required to lower: `REF(x)`, `r REF= x`, `NULL`,
+//! `REF(x)^` and the bits of an element a reference reaches.
 
 use rstest::rstest;
 
 use ironplc_codegen::Route;
+use ironplc_parser::options::CompilerOptions;
 
-use crate::common::bc;
-use crate::compile_route_lowered::{assert_same_code, body_by_route, run_lowered};
+use crate::common::{bc, compile_by_route, compile_to_run, parse, Snapshot};
+use crate::compile_route_lowered::{
+    assert_same_code, body_by_route, options, run_lowered, run_lowered_agreeing,
+};
 
 /// A reference made by `REF(x)` or `REF=` reaches its variable, read and
 /// written through it, and compares equal to another to the same variable
@@ -134,4 +137,40 @@ fn compile_when_bit_written_to_element_through_reference_then_subscript_evaluate
     };
     assert_eq!(loads(body_by_route(source, Route::RequireLowered)), 1);
     assert_eq!(loads(body_by_route(source, Route::Ast)), 2);
+}
+
+/// What `REF(x)` refers to is `x` itself, read in an assignment, in a
+/// condition and through a function's `VAR_IN_OUT`, as the route that reads
+/// the AST reads it through the reference.
+#[test]
+fn run_when_ref_dereferenced_then_value_of_place() {
+    let snapshot = run_lowered_agreeing(
+        "FUNCTION TWICE : DINT VAR_IN_OUT v : DINT; END_VAR TWICE := REF(v)^ * 2; END_FUNCTION
+         PROGRAM main VAR x : DINT := 7; k : DINT; j : DINT; t : DINT; END_VAR
+           k := REF(x)^ + 1;
+           IF REF(x)^ > 0 THEN j := 1; END_IF;
+           t := TWICE(x);
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<i32>("k"), 8);
+    assert_eq!(snapshot.read_as::<i32>("j"), 1);
+    assert_eq!(snapshot.read_as::<i32>("t"), 14);
+}
+
+/// `ADR(x)^`, which the analyzer makes `REF(x)^`, is `x` too.
+#[test]
+fn run_when_adr_dereferenced_then_value_of_place() {
+    let options = CompilerOptions {
+        allow_pointer_to: true,
+        allow_adr: true,
+        ..options()
+    };
+    let (library, context) = parse(
+        "PROGRAM main VAR a : DINT := 7; k : DINT; END_VAR k := ADR(a)^; END_PROGRAM",
+        &options,
+    );
+    compile_to_run(&library, &context, &options).unwrap();
+    let container = compile_by_route(&library, &context, &options, Route::RequireLowered)
+        .expect("every statement lowers");
+    assert_eq!(Snapshot::run_compiled(container).read_as::<i32>("k"), 7);
 }
