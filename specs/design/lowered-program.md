@@ -1276,7 +1276,11 @@ route ([issue 1753](https://github.com/ironplc/ironplc/issues/1753)). A `Copy`
 to a structure or array field shares the source's region rather than meeting
 REQ-LOW-codegen-165, but neither route compiles a read of what such a field
 holds, in the block's body, a method or a caller, so no program observes the
-difference.
+difference. Likewise, a `Copy` of an instance to a field of a function block
+type, `g(inner := f)` or `g.inner := f`, stores the instance's slot in the
+field's, as the route that reads the AST does, and neither route calls the
+instance such a field holds or reads its fields
+([issue 1553](https://github.com/ironplc/ironplc/issues/1553)).
 
 The order of the inputs among themselves is the order of the call's normal
 form: the order the block declares them, whatever order the call writes them
@@ -1939,8 +1943,8 @@ destination holds the value the same element or field of its source held
 before it, and the source is unchanged. The destination has storage of its
 own: a later store to it leaves the source as it is. A `Copy` of a place to
 itself changes nothing. The bytecode backend does not meet this yet for a
-structure or array field of a function block instance, which no program
-reads (see [Statements](#37-statements)).
+structure, array or function block field of a function block instance,
+which no program reads (see [Statements](#37-statements)).
 
 **REQ-LOW-codegen-089** An `Intrinsic` means what the IEC 61131-3 standard
 function means, with these choices where the standard leaves room: the count
