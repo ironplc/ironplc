@@ -180,3 +180,61 @@ fn run_when_string_and_aggregate_inputs_passed_then_routes_agree() {
     assert_eq!(snapshot.read_as::<i32>("first"), 2);
     assert_eq!(snapshot.read_as::<i32>("second"), 3);
 }
+
+/// A block with inputs of a user-defined block's type and of a standard
+/// block's, whose body reads neither: neither route calls the instance such
+/// a field holds, or reads its fields (issue 1553).
+const INSTANCES: &str = "
+    FUNCTION_BLOCK INNER
+      VAR_INPUT v : DINT; END_VAR
+      VAR_OUTPUT q : DINT; END_VAR
+      q := v;
+    END_FUNCTION_BLOCK
+    FUNCTION_BLOCK OUTER
+      VAR_INPUT inner : INNER; timer : TON; d : DINT; END_VAR
+      VAR_OUTPUT r : DINT; END_VAR
+      r := d + 1;
+    END_FUNCTION_BLOCK";
+
+/// An instance stored in a field of another instance, as a call's input or
+/// written outside a call, compiles to the same instructions and constants
+/// by both routes: the field's slot takes the instance's slot, or the slot
+/// of the field it is stored from.
+#[rstest]
+#[case::instance_input("g(inner := f, d := 1);")]
+#[case::standard_instance_input("g(timer := t);")]
+#[case::instance_input_from_field("g(inner := h.inner);")]
+#[case::instance_written("g.inner := f;")]
+#[case::standard_instance_written("g.timer := t;")]
+#[case::instance_field_to_field("g.inner := h.inner;")]
+fn compile_when_instance_stored_in_field_lowered_then_same_code_as_ast(#[case] statement: &str) {
+    let source = format!(
+        "{INSTANCES}
+         PROGRAM main
+           VAR f : INNER; g : OUTER; h : OUTER; t : TON; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    assert_same_code(&source);
+}
+
+/// An instance passed to a block's input and written to it leaves every
+/// variable as the route that reads the AST leaves it: the instance keeps
+/// its own fields and calls, and the block's scalar input and output pass as
+/// they do for a block with only scalar fields.
+#[test]
+fn run_when_instance_stored_in_field_then_routes_agree() {
+    let snapshot = run_lowered_agreeing(&format!(
+        "{INSTANCES}
+         PROGRAM main
+           VAR f : INNER; g : OUTER; t : TON; r : DINT; q : DINT; END_VAR
+           f(v := 3);
+           g(inner := f, timer := t, d := 4, r => r);
+           g.inner := f;
+           f(v := 5);
+           q := f.q;
+         END_PROGRAM"
+    ));
+    assert_eq!(snapshot.read_as::<i32>("r"), 5);
+    assert_eq!(snapshot.read_as::<i32>("q"), 5);
+}
