@@ -22,6 +22,12 @@ END_FUNCTION
 FUNCTION ONE : DINT
   ONE := 1;
 END_FUNCTION
+FUNCTION BACK : STRING[2]
+  VAR_INPUT x : DINT; END_VAR
+  VAR_OUTPUT n : DINT; END_VAR
+  n := x;
+  BACK := 'ab';
+END_FUNCTION
 FUNCTION_BLOCK Named
   VAR_OUTPUT last : DINT; END_VAR
   METHOD Keep
@@ -50,12 +56,12 @@ fn main(body: &str) -> Vec<String> {
 }
 
 /// REQ-LOW-lowering-079, REQ-LOW-lowering-179: a call of a function whose
-/// result is a string is a `Call` statement, moved before the statement it
-/// is in, that passes a reference to a new temporary of the result's type
-/// for the result parameter; the call's value is a read of the temporary.
-/// The function's body reaches its result through the result parameter.
+/// result is a string is a string in-place call that passes a reference to
+/// a new temporary of the result's type for the result parameter, and is
+/// the string the function writes there. The function's body reaches its
+/// result through the result parameter.
 #[test]
-fn lower_statement_when_string_result_assigned_then_call_moved_before_assignment() {
+fn lower_statement_when_string_result_assigned_then_in_place_call_assigned() {
     let outcome = lower_bodies(
         &format!(
             "{FUNCTIONS}
@@ -68,8 +74,7 @@ fn lower_statement_when_string_result_assigned_then_call_moved_before_assignment
     assert_eq!(
         outcome.statements,
         [
-            "call pou1 (ref v3) (read string[20] v0^.f0)\n\
-             assign-str v0^.f0 (read string[20] v3)",
+            "assign-str v0^.f0 (call-in-place pou1 string[20] (ref v3) (read string[20] v0^.f0))",
             "assign-str v2^ (call concat_string string[40] (read string[20] v1) \
              (read string[20] v1))",
             "assign-str v4^ (call left_string string[3] (literal string[3] \"xxx\") \
@@ -81,11 +86,10 @@ fn lower_statement_when_string_result_assigned_then_call_moved_before_assignment
 }
 
 /// REQ-LOW-lowering-179: a call whose value is an operand of a string
-/// operation, or an argument of another call, is moved as one whose value
-/// is assigned whole; an argument's call is moved first, and two calls in
-/// one statement are moved in the order they run.
+/// operation, or an argument of another call, is in place where the
+/// operation or the call uses it.
 #[test]
-fn lower_statement_when_string_result_is_operand_then_calls_moved_in_order() {
+fn lower_statement_when_string_result_is_operand_then_in_place_where_used() {
     assert_eq!(
         main(
             "n := LEN(XS(2));
@@ -94,28 +98,24 @@ fn lower_statement_when_string_result_is_operand_then_calls_moved_in_order() {
              n := 1 + LEN(XS(k));"
         ),
         [
-            "call pou2 (ref v3) (const i32s 2)\n\
-             assign v0^.f1 (call len_string i32s (read string[3] v3))",
-            "call pou3 (ref v7) (literal string[1] \"x\")\n\
-             call pou3 (ref v6) (read string[20] v7)\n\
-             assign-str v0^.f0 (read string[20] v6)",
-            "call pou2 (ref v8) (const i32s 1)\n\
-             call pou2 (ref v9) (read i32s v0^.f2)\n\
-             assign-str v0^.f0 (call concat_string string[6] (read string[3] v8) \
-             (read string[3] v9))",
-            "call pou2 (ref v10) (read i32s v0^.f2)\n\
-             assign v0^.f1 (add i32s (const i32s 1) (call len_string i32s \
-             (read string[3] v10)))",
+            "assign v0^.f1 (call len_string i32s (call-in-place pou2 string[3] (ref v3) \
+             (const i32s 2)))",
+            "assign-str v0^.f0 (call-in-place pou3 string[20] (ref v6) \
+             (call-in-place pou3 string[20] (ref v7) (literal string[1] \"x\")))",
+            "assign-str v0^.f0 (call concat_string string[6] \
+             (call-in-place pou2 string[3] (ref v8) (const i32s 1)) \
+             (call-in-place pou2 string[3] (ref v9) (read i32s v0^.f2)))",
+            "assign v0^.f1 (add i32s (const i32s 1) (call len_string i32s \
+             (call-in-place pou2 string[3] (ref v10) (read i32s v0^.f2))))",
         ]
     );
 }
 
 /// REQ-LOW-lowering-179: a call in the condition of an `IF`, in the `from`
-/// of a `FOR`, or in a statement of a branch, is moved before the statement
-/// it is in; and one in the argument of a method call statement before the
-/// statement.
+/// of a `FOR`, in a statement of a branch, or in the argument of a method
+/// call statement is in place there.
 #[test]
-fn lower_statement_when_string_result_in_condition_or_branch_then_moved_before_its_statement() {
+fn lower_statement_when_string_result_in_condition_or_branch_then_in_place_there() {
     assert_eq!(
         main(
             "IF XS(n) = 'xx' THEN s := XS(1); END_IF;
@@ -123,30 +123,25 @@ fn lower_statement_when_string_result_in_condition_or_branch_then_moved_before_i
              f.Keep(v := XS(2));"
         ),
         [
-            "call pou2 (ref v3) (read i32s v0^.f1)\n\
-             if (eq (call compare_string i32s (read string[3] v3) (literal string[2] \"xx\")) \
-             (const i32s 0))\n\
-             \x20 call pou2 (ref v4) (const i32s 1)\n\
-             \x20 assign-str v0^.f0 (read string[3] v4)\n\
+            "if (eq (call compare_string i32s (call-in-place pou2 string[3] (ref v3) \
+             (read i32s v0^.f1)) (literal string[2] \"xx\")) (const i32s 0))\n\
+             \x20 assign-str v0^.f0 (call-in-place pou2 string[3] (ref v4) (const i32s 1))\n\
              end",
-            "call pou2 (ref v5) (const i32s 3)\n\
-             for loop0 v0^.f1 from (call len_string i32s (read string[3] v5)) \
-             to (const i32s 5) by 1\n\
+            "for loop0 v0^.f1 from (call len_string i32s (call-in-place pou2 string[3] (ref v5) \
+             (const i32s 3))) to (const i32s 5) by 1\n\
              \x20 assign v0^.f2 (add i32s (read i32s v0^.f2) (const i32s 1))\n\
              end",
-            "call pou2 (ref v8) (const i32s 2)\n\
-             call pou3 (ref v0^.f4) (read string[3] v8)",
+            "call pou3 (ref v0^.f4) (call-in-place pou2 string[3] (ref v8) (const i32s 2))",
         ]
     );
 }
 
-/// REQ-LOW-lowering-180: a statement whose calls cannot run before it
-/// without changing what it does is not lowered: where something the
-/// statement evaluates first could see the call, a read, a call or an
-/// operation, and where the call may run another number of times than once,
-/// or not at all.
+/// REQ-LOW-lowering-180: a call is in place wherever the source has it: after
+/// a read, a call or an operation the statement evaluates first, in an
+/// `ELSIF`, `WHILE` or `REPEAT` condition, the `TO` of a `FOR`, a `CASE`
+/// selector, a bit write and the right of `AND_THEN` or `OR_ELSE`.
 #[test]
-fn lower_statement_when_moving_call_would_change_order_then_unsupported() {
+fn lower_statement_when_string_result_anywhere_then_in_place_where_the_source_has_it() {
     assert_eq!(
         main(
             "n := k + LEN(XS(1));
@@ -161,7 +156,75 @@ fn lower_statement_when_moving_call_would_change_order_then_unsupported() {
              b := n > 0 AND_THEN XS(n) = 'x';
              b := n > 0 OR_ELSE XS(n) = 'x';"
         ),
-        vec!["unsupported"; 11]
+        [
+            "assign v0^.f1 (add i32s (read i32s v0^.f2) (call len_string i32s \
+             (call-in-place pou2 string[3] (ref v3) (const i32s 1))))",
+            "assign v0^.f1 (add i32s (call pou3 i32s) (call len_string i32s \
+             (call-in-place pou2 string[3] (ref v5) (const i32s 1))))",
+            "assign v0^.f1 (add i32s (call len_string i32s (call-in-place pou2 string[3] (ref v6) \
+             (const i32s 1))) (call len_string i32s (call-in-place pou2 string[3] (ref v7) \
+             (const i32s 2))))",
+            "if (gt (read i32s v0^.f1) (const i32s 0))\n\
+             \x20 assign v0^.f2 (const i32s 1)\n\
+             else\n\
+             \x20 if (eq (call compare_string i32s (call-in-place pou2 string[3] (ref v8) \
+             (read i32s v0^.f1)) (literal string[1] \"x\")) (const i32s 0))\n\
+             \x20   assign v0^.f2 (const i32s 2)\n\
+             \x20 end\n\
+             end",
+            "loop loop0\n\
+             \x20 if (eq (call compare_string i32s (call-in-place pou2 string[3] (ref v9) \
+             (read i32s v0^.f1)) (literal string[1] \"x\")) (const i32s 0))\n\
+             \x20 else\n\
+             \x20   exit loop0\n\
+             \x20 end\n\
+             \x20 assign v0^.f1 (add i32s (read i32s v0^.f1) (const i32s 1))\n\
+             end",
+            "loop loop1\n\
+             \x20 assign v0^.f1 (add i32s (read i32s v0^.f1) (const i32s 1))\n\
+             continuing\n\
+             \x20 if (eq (call compare_string i32s (call-in-place pou2 string[3] (ref v10) \
+             (read i32s v0^.f1)) (literal string[2] \"xx\")) (const i32s 0))\n\
+             \x20   exit loop1\n\
+             \x20 end\n\
+             end",
+            "for loop2 v0^.f1 from (const i32s 1) to (call len_string i32s \
+             (call-in-place pou2 string[3] (ref v11) (const i32s 3))) by 1\n\
+             \x20 assign v0^.f2 (add i32s (read i32s v0^.f2) (const i32s 1))\n\
+             end",
+            "case (call len_string i32s (call-in-place pou2 string[3] (ref v12) \
+             (read i32s v0^.f1)))\n\
+             of 1\n\
+             \x20 assign v0^.f2 (const i32s 1)\n\
+             end",
+            "assign-bits v0^.f2 0 1 (eq (call compare_string i32s (call-in-place pou2 string[3] \
+             (ref v13) (read i32s v0^.f1)) (literal string[1] \"x\")) (const i32s 0))",
+            "assign v0^.f3 (and_then (gt (read i32s v0^.f1) (const i32s 0)) \
+             (eq (call compare_string i32s (call-in-place pou2 string[3] (ref v14) \
+             (read i32s v0^.f1)) (literal string[1] \"x\")) (const i32s 0)))",
+            "assign v0^.f3 (or_else (gt (read i32s v0^.f1) (const i32s 0)) \
+             (eq (call compare_string i32s (call-in-place pou2 string[3] (ref v15) \
+             (read i32s v0^.f1)) (literal string[1] \"x\")) (const i32s 0)))",
+        ]
+    );
+}
+
+/// REQ-LOW-lowering-092, REQ-LOW-lowering-179: a call of a function with
+/// outputs whose result is a string is in place with the stores of its
+/// outputs.
+#[test]
+fn lower_statement_when_string_result_with_outputs_then_in_place_with_stores() {
+    assert_eq!(
+        main(
+            "s := BACK(x := 1, n => k);
+             n := LEN(BACK(x := 2, n => k));"
+        ),
+        [
+            "assign-str v0^.f0 (call-in-place pou2 string[2] (ref v4) (const i32s 1) (ref v5) \
+             {assign v0^.f2 (read i32s v5)})",
+            "assign v0^.f1 (call len_string i32s (call-in-place pou2 string[2] (ref v6) \
+             (const i32s 2) (ref v7) {assign v0^.f2 (read i32s v7)}))",
+        ]
     );
 }
 

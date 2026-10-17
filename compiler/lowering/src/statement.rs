@@ -14,31 +14,17 @@ impl Lowering<'_> {
     /// Lowers the statement `stmt` of the body of `frame` to the statements
     /// it runs, in order, or `None` when lowering does not support it, or
     /// something inside it, yet. A function block call lowers to the stores
-    /// of its inputs, the call and the stores of its outputs, and an
-    /// assignment of a call of a function with outputs to the call, the
-    /// stores of its outputs and the assignment (`hoist.rs`); every other
-    /// statement lowers to one statement. The calls with a string result in
-    /// it come first (`string_result.rs`).
+    /// of its inputs, the call and the stores of its outputs, and a method
+    /// call statement to the call and the stores of its outputs; every
+    /// other statement lowers to one statement.
     pub(crate) fn statement(
-        &mut self,
-        frame: &BodyFrame,
-        stmt: &AstStmtKind,
-    ) -> Result<Option<Vec<Stmt>>, Diagnostic> {
-        self.with_moved_calls(stmt.span(), |lowering| {
-            lowering.statement_parts(frame, stmt)
-        })
-    }
-
-    /// Lowers `stmt`, as [`Self::statement`] does, without the calls moved
-    /// out of it.
-    fn statement_parts(
         &mut self,
         frame: &BodyFrame,
         stmt: &AstStmtKind,
     ) -> Result<Option<Vec<Stmt>>, Diagnostic> {
         let one = |stmt: Result<Option<Stmt>, Diagnostic>| Ok(stmt?.map(|stmt| vec![stmt]));
         match stmt {
-            AstStmtKind::Assignment(assignment) => self.assignment_statement(frame, assignment),
+            AstStmtKind::Assignment(assignment) => one(self.assignment(frame, assignment)),
             AstStmtKind::If(stmt) => one(self.if_statement(frame, stmt)),
             AstStmtKind::Case(stmt) => one(self.case_statement(frame, stmt)),
             AstStmtKind::For(stmt) => one(self.for_statement(frame, stmt)),

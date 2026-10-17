@@ -1003,9 +1003,8 @@ pub enum StrExprKind {
 A user function's string result is returned through a result parameter, to
 a temporary its caller passes (see
 [Callees, arguments and intrinsics](#38-callees-arguments-and-intrinsics)).
-A call of the function is a `Call` statement, after which an expression reads
-the temporary, or an in-place call, which is the string the function wrote
-to the temporary (see [In-place calls](#in-place-calls)).
+A call of the function is a string in-place call, the string the function
+wrote to the temporary (see [In-place calls](#in-place-calls)).
 
 **REQ-LOW-lowering-052** The callee of a string `Call` expression is an
 `Intrinsic`.
@@ -1166,6 +1165,14 @@ storage width of its place's type.
 they were. The value is a `BOOL` for one bit, a 32-bit integer for up to 32
 bits, and a 64-bit integer for more.
 
+An `AssignBits` reads the value at its place before it evaluates its value,
+as the route that reads the AST does, so a write the value makes to the
+place is lost: `w.3 := F(x := 1, n => w) > 0` replaces bit 3 of the value `w`
+had before the call, and the output `F` stores in `w` is overwritten.
+
+**REQ-LOW-codegen-185** An `AssignBits` reads the value at its place before it
+evaluates its value, and stores that value with its bits replaced.
+
 The arms of a `Case` are tried in order and the first arm with a matching
 label runs, as `compile_case` does today.
 
@@ -1325,10 +1332,12 @@ method's instance parameter and before the declared parameters. Every access
 to the result goes through a `Deref`, as for a `VAR_IN_OUT`
 (REQ-LOW-lowering-033). At each call, the argument for it is a `Ref` to a
 compiler-provided temporary of the result's type: scratch space the caller
-owns. The call is a `Call` statement, and an `AssignStr` or `Copy` from the
-temporary then puts the result where it goes. A scalar result stays the value
-of a `Call` expression. Today a user function may return a structure
-(`UserFunctionInfo::return_struct_desc_index`, `compile_aggregate.rs`).
+owns. A call of a function whose result is a string is a string in-place
+call, the string the function wrote to the temporary
+([In-place calls](#in-place-calls)). A scalar result stays the value of a
+`Call` expression, or of a scalar in-place call. Today a user function may
+also return a structure (`UserFunctionInfo::return_struct_desc_index`,
+`compile_aggregate.rs`), which is not lowered yet.
 
 The temporary is what keeps this safe. Passing the destination itself would
 let the callee write `s` while it still reads `s`, as `s := f(s)` does, and a
@@ -1349,71 +1358,15 @@ string in-place call, never a `Call` expression or a scalar in-place call.
 
 A call of a function whose result is a string is usually part of an
 expression: `n := LEN(f(s))`, `s := CONCAT(f(a), f(b))`, `s := f(f('x'))`.
-Its `Call` statement runs before the statement the expression is in, and the
-expression reads the temporary where the call's value is used. So
-`n := LEN(f(s))` lowers to a `Call` of `f` passing a reference to a
-temporary `t`, then `n := LEN(t)`. The calls of one statement run in the
-order the source runs them, so a call in another call's argument runs first.
-A statement inside another, such as one in an `IF`'s branch, has calls of its
-own, which run before it. Each `Call` has the span of the statement it runs
-before (REQ-LOW-lowering-063).
+It is an in-place call where the expression uses the call's value, so
+`n := LEN(f(s))` lowers to `LEN` of the in-place call of `f` passing a
+reference to a temporary `t`: the call writes `t`, and `LEN` reads the string
+from it ([In-place calls](#in-place-calls)).
 
-**REQ-LOW-lowering-179** A call of a function whose result is a string, in a
-statement, lowers to a `Call` statement placed before the statement, with the
-statement's other such calls in the order they run, and to a read of the
-temporary it passes for the result where the call's value is used.
-
-Running a call before its statement means what running it where the source
-does means only when nothing evaluated in between can tell them apart. A
-function can write a global, a variable passed to its `VAR_IN_OUT`, or what a
-reference refers to. An operation can trap before the call runs, and the
-writes made before a trap stay (REQ-LOW-codegen-038). So a read of a
-variable, a call or an operation evaluated before the call keeps the
-statement from being lowered. So does a call that runs another number of
-times than once, or may not run:
-
-- in an `ELSIF` condition, which runs only when the conditions before it are
-  false;
-- in a `WHILE` or `REPEAT` condition, or the `TO` of a `FOR`, which runs on
-  every iteration;
-- in the selector of a `CASE`, which the route that reads the AST evaluates
-  once for each label it tests;
-- in a bit or partial write, which reads its place before its value;
-- on the right of `AND_THEN` or `OR_ELSE`, which may not run.
-
-`n := 1 + LEN(f(s))` and `s := CONCAT(f(a), f(b))` are lowered.
-`n := k + LEN(f(s))`, `s := CONCAT(t, f(s))` and
-`n := LEN(f(a)) + LEN(f(b))` are not yet, nor is a call of a function with
-outputs whose result is a string.
-
-**REQ-LOW-lowering-180** A statement whose calls of functions with a string
-result run before it is lowered only when, in the order the statement is
-evaluated, nothing is evaluated before each such call but its own arguments,
-the calls run before it, constants, string literals, references to places
-and reads of the temporaries of the calls run before it; and no such call is
-in an `ELSIF`, `WHILE` or `REPEAT` condition, the `TO` of a `FOR`, the
-selector of a `CASE`, a bit or partial write, or the right operand of
-`AND_THEN` or `OR_ELSE`.
-
-While both routes exist, the bytecode backend emits a call of a function
-whose result is a string where its temporary is read
-(`lowered/string_result.rs`). That is where the route that reads the AST
-compiles the call (`compile_user_call.rs`):
-
-1. the arguments;
-2. `STR_INIT` of the function's result, in the callee's data region;
-3. `CALL`, which leaves the result in a temporary buffer
-   ([ADR-0052](../adrs/0052-temp-string-buffers-released-on-consume.md)).
-
-The temporary has no storage of its own. Its read is the call, and the
-operation reading it consumes the buffer, as on the route that reads the AST:
-an `AssignStr` stores it, a string function's operand is copied into a
-temporary slot, and a call's argument into its parameter. A call so compiles
-to the same instructions by either route, with the same temporary buffers and
-slots. Emitting it where its temporary is read, rather than where its `Call`
-statement stands, means the same by REQ-LOW-lowering-180. Inside the
-function's body, the result parameter reaches the string the backend keeps
-the result in (`UserFunctionInfo::return_string_info`).
+**REQ-LOW-lowering-179** A call of a function whose result is a string lowers
+to a string in-place call where the source evaluates the call, passing a
+`Ref` to a new temporary for the result parameter, with the stores of its
+outputs, if any.
 
 A function or method may also declare `VAR_OUTPUT`, which a call assigns to a
 place with `=>`. An output is passed the same way as a result: the argument is
@@ -1437,92 +1390,40 @@ after the call instead, which the flat variable table makes safe
 
 **REQ-LOW-lowering-092** An argument for a function's or method's
 `VAR_OUTPUT` parameter is a `Ref` to a compiler-provided temporary of the
-parameter's type, and the call is followed by an assignment from that
-temporary to the output's target.
+parameter's type, and once the call returns an assignment moves the output
+from that temporary to its target: a store of the in-place call, or a
+statement after a `Call` statement.
 
-The value of a call with outputs has to wait while the outputs are stored,
-and a temporary is where it waits. So a call of a function or method with
-outputs in the value of an assignment is lowered ahead of the assignment, as
-its *part*:
+The value of a call with outputs has to wait while its outputs are stored.
+A call of a function or method with outputs in an expression is an in-place
+call: the call, then the store of each output in its target, of the value
+the analyzer recorded for it, the call output a read of the output's
+temporary. The expression goes on with the call's value where the source has
+the call. `r := F(a, q => x)` assigns `r` the in-place call of `F`, whose store
+moves `q` to `x`, converted as the analyzer recorded; `r := F(a, q => x) +
+F(b, q => y)` adds two in-place calls. A call in the arguments of another is
+in place in that argument, so it runs first. That is the order the route
+that reads the AST runs them in, so a variable that is both an output's
+target and `r` ends with the result.
 
-1. the assignment of the call to a temporary of the result's type;
-2. the assignment of each output to its target, of the value the analyzer
-   recorded for it, the call output read from the output's temporary.
+**REQ-LOW-lowering-172** A call of a function or method with outputs, in an
+expression, lowers to a scalar in-place call: the call, passing a `Ref` to a
+temporary for each output, then the store of each output the call assigns,
+from its temporary to its target.
 
-The assignment lowers to the part of each call, in the order its value
-evaluates them, then itself, its value reading each call's result from the
-result's temporary, all with the assignment's span. `r := F(a, q => x)` is
-one part, then the assignment to `r` of the result's temporary, converted as
-the analyzer recorded. `r := F(a, q => x) + F(b, q => y)` is two parts, then
-`r := t1 + t2`. A call in the arguments of another has its part first. That
-is the order the route that reads the AST runs them in, so a variable that is
-both an output's target and `r` ends with the result.
+**REQ-LOW-lowering-174** An in-place call stands in its expression where the
+source has the call, so the operands the source evaluates before the call
+are evaluated before the call and its stores, and those after it after them
+(REQ-LOW-codegen-120).
 
-**REQ-LOW-lowering-172** An assignment whose value has calls of functions or
-methods with outputs lowers to the part of each call, in the order the value
-evaluates them, then the assignment, whose value reads each call's result
-from its temporary, all with the assignment's span. A part is the assignment
-of the call to a temporary of the result's type, then the assignments of the
-call's outputs from their temporaries.
-
-Running the parts first keeps the order the source runs things in only when
-nothing else in the value runs before a call. So lowering checks a property
-of the statements it built (`ironplc_ir::lowered::reads_results_in_order`).
-The *leading reads* of an expression are the reads of result temporaries it
-evaluates before any other node finishes:
-
-- a read of a result temporary is its own leading read;
-- an operation of one operand has its operand's;
-- an operation of several, and a call, has its first operand's, going on into
-  the next while the one before is itself such a read;
-- a short circuit has its left operand's, since its right one runs only on a
-  condition;
-- a constant, `Null`, a `RefTo`, a read of any other place, and a `Ref` or
-  string argument end the run, so that the rule does not depend on how a
-  backend passes a place, a method's instance or a string.
-
-**REQ-LOW-lowering-174** An assignment with calls with outputs in its value
-is lowered only when it is an `Assign` of a scalar value, each call's result
-is read once, among the leading reads of a later part's call or of the
-assignment's value, and the results each of those reads are the most recent
-not yet read, in the order they were made. Any other such assignment stays
-on the route that reads the AST.
-
-So `r := a + F(x := 1, n => a)`, which reads `a` before the call that writes
-it, stays on the route that reads the AST, as do `r := 1 + F(..)`,
-`r := F(..) * 2 + F(..)`, a call that is the right operand of `AND_THEN` or
-`OR_ELSE`, and a call read inside a subscript. So does a bit assignment such
-as `x.3 := F(x := 1, n => x) > 0`, whose place the route that reads the AST
-reads before its value, and a call with outputs in a condition, a selector, a
-bound, a target's subscript or a function block call's inputs, which are not
-the value of an assignment. A call whose function has an in-out, or a
-result, that is a string stays on that route too. An input may be a string,
-passed as any input is, and so may an output, assigned by an `AssignStr` from
-its temporary. A call of a function without outputs whose result is a string
-is lowered by REQ-LOW-lowering-179.
-
-While both routes exist, the bytecode backend emits the parts and the
-assignment as the route that reads the AST emits the assignment
-(`compile_user_call.rs`, `compile_method.rs`): each call, which leaves its
-result on the stack, then the store of each of its outputs, read from the
-function's own output variable, then the rest of the assignment's value and
-its store. A read of a result's temporary takes the value its call left on
-the stack, which REQ-LOW-lowering-174 makes the next value the expression
-would have pushed. No temporary has storage: the result stays on the stack
-while the outputs are stored, and the backend's layout keeps each output in
-the function's variable until the function is called again (ADR-0046), so the
-call passes no reference for it. Inside the function's body, an output is
-that variable. The layout records where in the data region each `STRING` or
-`WSTRING` output is (`UserFunctionInfo::string_outputs`). The route that
-reads the AST does not read a string output, and reports one as P9999.
-Inside a function's body the VM reaches no variable of another function, so
-a function that reads the outputs of a function it calls traps
-(`InvalidVariableIndex`) on either route.
-
-**REQ-LOW-codegen-175** While both routes exist, the bytecode backend emits
-an assignment with calls with outputs in its value as the route that reads
-the AST emits it, each call's result on the stack until the value reads it,
-and gives no result or output temporary storage of its own.
+So `r := a + F(x := 1, n => a)` reads `a`, then calls `F` and stores its
+output in `a`, then adds: `r` is the old `a` plus the result. A call with
+outputs in a condition, a selector, a bound, a subscript or a function block
+call's input is in place there too. A call whose function has an in-out that
+is a string stays on the route that reads the AST. An input may be a string,
+passed as any input is, and so may an output, stored by an `AssignStr` from
+its temporary. The route that reads the AST does not read a string output,
+and reports one as P9999.
 
 #### In-place calls
 
@@ -1568,8 +1469,57 @@ result through a result parameter, passes a `Ref` to the whole of a
 temporary for it, names that temporary, and has the shape of the
 temporary's type.
 
-While both routes exist, the bytecode backend leaves a statement that holds
-an in-place call to the route that reads the AST.
+Lowering builds one for every call with outputs (REQ-LOW-lowering-172) and
+every call of a function whose result is a string (REQ-LOW-lowering-179),
+where the source evaluates the call. So the rules of the expression that
+holds it decide when it runs, and how many times:
+
+**REQ-LOW-lowering-180** An in-place call runs where, and as often as, the
+source evaluates the call: in an `ELSIF` condition, only when the conditions
+before it are false; in a `WHILE` or `REPEAT` condition, or the `TO` of a
+`FOR`, on every iteration (REQ-LOW-lowering-066); in the selector of a
+`CASE`, once (REQ-LOW-codegen-124); on the right of `AND_THEN` or `OR_ELSE`,
+only when the left operand does not decide the result; and in the value of
+an `AssignBits`, after the statement reads its place (REQ-LOW-codegen-185).
+
+The route that reads the AST evaluates a `CASE` selector once for each label
+it tests, so a call with a side effect in a selector runs once on the
+lowered route and again for each label on that route. That is the
+correction REQ-LOW-codegen-124 names.
+
+While both routes exist, the bytecode backend emits an in-place call where
+its expression is evaluated, as the route that reads the AST emits the call
+(`compile_user_call.rs`, `compile_method.rs`):
+
+1. a method's instance, with `FB_LOAD_INSTANCE`;
+2. the inputs, a string copied into its parameter;
+3. `STR_INIT` of a string result, in the callee's data region;
+4. `CALL` or `METHOD_CALL`, which leaves the result on the stack: a value, or
+   a string in a temporary buffer
+   ([ADR-0052](../adrs/0052-temp-string-buffers-released-on-consume.md));
+5. each store, the output read from the callee's own variable;
+6. for a method, the instance beneath the result dropped.
+
+No temporary has storage. The result stays on the stack while the outputs
+are stored, and the backend's layout keeps each output in the callee's
+variable until the callee is called again (ADR-0046), so the call passes no
+reference for it. The operation that uses a string result consumes its
+buffer, as on the route that reads the AST: an `AssignStr` stores it, a
+string function's operand is copied into a temporary slot, and a call's
+argument into its parameter. Inside a function's body, the result parameter
+reaches the string the backend keeps the result in
+(`UserFunctionInfo::return_string_info`), and an output is the function's
+own variable. The layout records where in the data region each `STRING` or
+`WSTRING` output is (`UserFunctionInfo::string_outputs`). Inside a function's
+body the VM reaches no variable of another function, so a function that
+reads the outputs of a function it calls traps (`InvalidVariableIndex`) on
+either route.
+
+**REQ-LOW-codegen-175** While both routes exist, the bytecode backend emits
+an in-place call where its expression is evaluated, as the route that reads
+the AST emits the call: its inputs, `STR_INIT` of a string result, `CALL` or
+`METHOD_CALL`, then each store, with the result on the stack throughout. It
+gives no result or output temporary storage of its own.
 
 A method is called like a function whose first parameter is its instance, and
 the first argument of the call is a `Ref` to the receiver. `inst.m(a)` passes
@@ -1597,8 +1547,8 @@ A call whose result is used is a `Call` expression. One whose result is not
 used is a `Call` statement, which discards the result, if the method has
 one. A method without a result is called only by a statement. A call with
 outputs is lowered as a function's is (REQ-LOW-lowering-092,
-REQ-LOW-lowering-172): a `Call` statement is followed by the assignments of
-its outputs.
+REQ-LOW-lowering-172): in an expression it is an in-place call, and a `Call`
+statement is followed by the stores of its outputs.
 
 **REQ-LOW-ir-173** A `Call` statement passes its callee one argument for
 each parameter, as a `Call` expression does, and discards the callee's
@@ -1615,10 +1565,7 @@ Not lowered yet, so each stays on the route that reads the AST:
 - a call of a method with an in-out or a result that is a string, or with an
   input, an in-out or a result that is an aggregate (REQ-LOW-lowering-079).
   The route that reads the AST reports a method whose result is a string as
-  P9999;
-- a call with outputs anywhere but a statement or the value of an
-  assignment, or where REQ-LOW-lowering-174 does not hold, as for a
-  function.
+  P9999.
 
 While both routes exist, the bytecode backend emits a method's call as the
 route that reads the AST emits it (`compile_method.rs`): the receiver's

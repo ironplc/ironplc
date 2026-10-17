@@ -24,7 +24,7 @@ use ironplc_dsl::textual::StmtKind as AstStmtKind;
 use ironplc_ir::lowered::{
     Arg, Callee, Const, Expr, ExprKind, Field, NarrowWidth, Nullability, Place as LoweredPlace,
     PouId, Projection, ScalarType, Signedness as LoweredSignedness, Stmt, StmtKind, TypeId,
-    TypeKind, VarId,
+    TypeKind,
 };
 use ironplc_lowering::{Lowering, StatementLowering};
 
@@ -43,11 +43,9 @@ mod place;
 mod policy;
 mod stmt;
 mod string;
-mod string_result;
 
 use call_args::passes;
 pub(crate) use policy::parse_policy;
-pub(crate) use string_result::StringResults;
 
 /// Which route codegen compiles a statement by.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -131,19 +129,10 @@ fn compile_by_route(
         StatementLowering::Lowered(lowered) => Some(lowered),
         StatementLowering::Unsupported => None,
     };
-    // The calls with a string result moved out of the statement, which are
-    // emitted where their results are read (`string_result.rs`).
-    ctx.string_results = match &lowered {
-        Some(lowered) => StringResults::of(&route.lowering, ctx, lowered),
-        None => StringResults::default(),
-    };
-    let compiled = match lowered {
+    match lowered {
         Some(lowered) if can_emit_all(&route.lowering, ctx, &lowered) => {
             crate::compile_stmt::record_statement_position(emitter, ctx, stmt);
             stmt::emit_stmts(emitter, ctx, &route.lowering, &lowered)?;
-            if !ctx.string_results.is_empty() {
-                return Err(string_result::not_emitted(&statement_span(stmt)));
-            }
             route.counts.lowered += 1;
             Ok(true)
         }
@@ -155,9 +144,7 @@ fn compile_by_route(
             route.counts.from_ast += 1;
             Ok(false)
         }
-    };
-    ctx.string_results = StringResults::default();
-    compiled
+    }
 }
 
 /// Where `stmt` is, for a diagnostic about it.
@@ -177,8 +164,8 @@ fn statement_span(stmt: &AstStmtKind) -> ironplc_dsl::core::SourceSpan {
 }
 
 /// Whether this backend emits every statement of `stmts`, as `stmt.rs` emits
-/// them: the parts of an assignment of a call of a function with outputs
-/// together (`fn_call.rs`), and any other statement on its own.
+/// them: a method's call statement and the stores of its outputs together
+/// (`fn_call.rs`), and any other statement on its own.
 fn can_emit_all(lowering: &Lowering<'_>, ctx: &CompileContext, stmts: &[Stmt]) -> bool {
     let mut rest = stmts;
     while let [first, ..] = rest {
@@ -246,37 +233,21 @@ fn can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, stmt: &Stmt) -> bool 
         StmtKind::FbCall { instance, block } => {
             fb_call::reaches_block(lowering, ctx, instance, *block)
         }
-        // A call with a string result is emitted where its result is read
-        // (`string_result.rs`); any other call statement with the
-        // assignments of its outputs (`can_emit_all`).
-        StmtKind::Call { .. } => {
-            string_result::is_moved(ctx, stmt) && string_result::call_can_emit(lowering, ctx, stmt)
-        }
+        // A call statement is emitted with the stores of its outputs
+        // (`can_emit_all`).
+        StmtKind::Call { .. } => false,
         StmtKind::Exit(_) | StmtKind::Continue(_) | StmtKind::Return => true,
     }
 }
 
+/// Whether this backend emits `expr`.
 fn expr_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, expr: &Expr) -> bool {
-    expr_can_emit_reading(lowering, ctx, expr, &[])
-}
-
-/// Whether this backend emits `expr`, in which a read of the whole of one of
-/// `results` takes the value a call left on the stack (`fn_call.rs`).
-fn expr_can_emit_reading(
-    lowering: &Lowering<'_>,
-    ctx: &CompileContext,
-    expr: &Expr,
-    results: &[VarId],
-) -> bool {
     if op_type(expr.ty()).is_none() {
         return false;
     }
     match expr.kind() {
         ExprKind::Const(_) | ExprKind::Null => true,
-        ExprKind::Read(place) => {
-            (place.path().is_empty() && results.contains(&place.root()))
-                || reads(lowering, ctx, place, expr.ty())
-        }
+        ExprKind::Read(place) => reads(lowering, ctx, place, expr.ty()),
         // A reference to a variable, or to what a `VAR_IN_OUT` parameter
         // refers to, as the AST route makes one.
         ExprKind::RefTo(place) => place::variable_name(lowering, ctx, place).is_some(),
@@ -284,27 +255,25 @@ fn expr_can_emit_reading(
         | ExprKind::Convert(value)
         | ExprKind::ConvertChecked(value)
         | ExprKind::Unary { value, .. } => {
-            operation_can_emit(expr) && expr_can_emit_reading(lowering, ctx, value, results)
+            operation_can_emit(expr) && expr_can_emit(lowering, ctx, value)
         }
         ExprKind::Binary { lhs, rhs, .. }
         | ExprKind::Compare { lhs, rhs, .. }
         | ExprKind::ShortCircuit { lhs, rhs, .. } => {
-            expr_can_emit_reading(lowering, ctx, lhs, results)
-                && expr_can_emit_reading(lowering, ctx, rhs, results)
+            expr_can_emit(lowering, ctx, lhs) && expr_can_emit(lowering, ctx, rhs)
         }
         ExprKind::Call {
             callee: Callee::User(pou),
             args,
         } => match user_function(lowering, ctx, *pou) {
             Some(function) => {
-                passes(&function.params, args.iter())
-                    && args_can_emit_reading(lowering, ctx, args, results)
+                passes(&function.params, args.iter()) && args_can_emit(lowering, ctx, args)
             }
             // A method's value: its receiver, then an argument for each input.
             None => method::method_site(lowering, ctx, *pou, args).is_some_and(|site| {
                 site.has_return_value
                     && site.takes(args[1..].iter())
-                    && args_can_emit_reading(lowering, ctx, &args[1..], results)
+                    && args_can_emit(lowering, ctx, &args[1..])
             }),
         },
         ExprKind::Call {
@@ -312,9 +281,9 @@ fn expr_can_emit_reading(
             args,
         } => {
             expr::instruction_of(*intrinsic, args.len()).is_some()
-                && args_can_emit_reading(lowering, ctx, args, results)
+                && args_can_emit(lowering, ctx, args)
         }
-        ExprKind::InPlaceCall(_) => false,
+        ExprKind::InPlaceCall(call) => fn_call::in_place_can_emit(lowering, ctx, call),
     }
 }
 
@@ -344,24 +313,14 @@ fn operation_can_emit(expr: &Expr) -> bool {
     }
 }
 
+/// Whether this backend passes each of `args`.
 fn args_can_emit<'s>(
     lowering: &Lowering<'_>,
     ctx: &CompileContext,
     args: impl IntoIterator<Item = &'s Arg>,
 ) -> bool {
-    args_can_emit_reading(lowering, ctx, args, &[])
-}
-
-/// Whether this backend passes each of `args`, in which a read of the whole
-/// of one of `results` takes the value a call left on the stack.
-fn args_can_emit_reading<'s>(
-    lowering: &Lowering<'_>,
-    ctx: &CompileContext,
-    args: impl IntoIterator<Item = &'s Arg>,
-    results: &[VarId],
-) -> bool {
     args.into_iter().all(|arg| match arg {
-        Arg::Value(value) => expr_can_emit_reading(lowering, ctx, value, results),
+        Arg::Value(value) => expr_can_emit(lowering, ctx, value),
         Arg::Str(value) => string::str_can_emit(lowering, ctx, value),
         Arg::Ref(place) => place::variable_name(lowering, ctx, place)
             .is_some_and(|name| passes_by_reference(ctx, &name)),
