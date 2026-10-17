@@ -360,7 +360,8 @@ declare_builtins! {
     /// Stack: pop data_offset (i32), push parsed f32 (0.0 on failure).
     CONV_STR_TO_F32 = 0x03A1, args 1;
 
-    /// Three-way lexicographic string comparison.
+    /// Three-way string comparison by code unit: the first code unit that
+    /// differs decides, and a string that is a prefix of the other is less.
     /// Pops right_data_offset (i32) then left_data_offset (i32).
     /// Pushes -1 (left < right), 0 (equal), or +1 (left > right) as i32.
     CMP_STR = 0x03A2, args 2;
@@ -391,6 +392,28 @@ declare_builtins! {
     /// Floating-point modulo with the sign of the dividend on f32: the f32
     /// variant of [`MOD_F64`] (`x % 0.0` is NaN, not a trap).
     MOD_F32 = 0x03A6, args 2;
+
+    /// EXPT for 32-bit unsigned integers: pops exponent (b) and base (a),
+    /// pushes a ** b, wrapped to 32 bits. The exponent is unsigned, so it is
+    /// never negative and never traps.
+    EXPT_U32 = 0x03A7, args 2;
+
+    /// EXPT for 64-bit unsigned integers: as [`EXPT_U32`], at 64 bits.
+    EXPT_U64 = 0x03A8, args 2;
+
+    // --- Array subscript checks ---
+
+    /// Checks a signed 64-bit array subscript: pops it and pushes it as a
+    /// signed 32-bit integer, or traps (V4007) when it is outside that
+    /// range, so that it names no element rather than the one its low bits
+    /// would.
+    CHECK_SUBSCRIPT_I64 = 0x03A9, args 1;
+
+    /// As [`CHECK_SUBSCRIPT_I64`], for an unsigned 64-bit subscript.
+    CHECK_SUBSCRIPT_U64 = 0x03AA, args 1;
+
+    /// As [`CHECK_SUBSCRIPT_I64`], for an unsigned 32-bit subscript.
+    CHECK_SUBSCRIPT_U32 = 0x03AB, args 1;
 
     // =========================================================================
     // STRING_TO_<numeric> under behavior policies (ADR-0049)
@@ -733,24 +756,14 @@ pub fn mux_info(func_id: u16) -> Option<u16> {
     None
 }
 
-/// Returns the number of arguments a built-in function pops from the stack.
+/// Returns the number of arguments `func_id` pops from the stack, or `None`
+/// when it is not a known built-in function ID.
 ///
-/// This is the single source of truth for argument counts, used by both
-/// the codegen emitter (for stack depth tracking) and can be validated
-/// against the VM dispatch implementation.
-///
-/// Panics if `func_id` is not a known built-in function ID. Callers
-/// that must not panic on malformed input use [`arg_count_opt`].
-pub fn arg_count(func_id: u16) -> u16 {
-    arg_count_opt(func_id)
-        .unwrap_or_else(|| panic!("unknown builtin function ID: 0x{:04X}", func_id))
-}
-
-/// Returns the number of arguments `func_id` pops, or `None` when it is
-/// not a known built-in function ID.
-///
-/// The non-panicking form of [`arg_count`], used by the bytecode
-/// verifier, which must report a malformed operand rather than abort.
+/// This is the single source of truth for argument counts, used by the
+/// codegen emitter (for stack depth tracking) and by the bytecode verifier,
+/// and can be validated against the VM dispatch implementation. Both callers
+/// report `None` -- an internal error in codegen, a malformed operand in the
+/// verifier -- rather than abort.
 pub fn arg_count_opt(func_id: u16) -> Option<u16> {
     // MUX pops n IN values + 1 K selector, and its IDs are a range per type
     // rather than one value, so they are not rows in the table.

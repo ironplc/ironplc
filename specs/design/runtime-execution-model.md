@@ -304,7 +304,7 @@ All FB instance fields are initialized during the Initialization Sequence:
 
 ## String Buffer Management
 
-A string value is held in one of two places. Every declared string -- a variable, an array element, a structure field, a function parameter or return -- and every compiler-allocated scratch slot has a fixed byte offset in the unified data region (ADR-0017). The result of a string instruction goes to the temporary buffer pool, where it stays only until the instruction that consumes it copies the value into the data region. Both are allocated once at load time from header fields (`data_region_bytes`, `num_temp_bufs`, `max_temp_buf_bytes`) and never grow.
+A string value is held in one of two places. Every declared string -- a variable, an array element, a structure field, a parameter, local or output of a function or method, or a function's return -- and every compiler-allocated scratch slot has a fixed byte offset in the unified data region (ADR-0017). The result of a string instruction goes to the temporary buffer pool, where it stays only until the instruction that consumes it copies the value into the data region. Both are allocated once at load time from header fields (`data_region_bytes`, `num_temp_bufs`, `max_temp_buf_bytes`) and never grow.
 
 ### String Layout
 

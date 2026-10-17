@@ -6,12 +6,33 @@ pub const TON: u16 = 0x0010;
 pub const TOF: u16 = 0x0011;
 /// TP (pulse timer).
 pub const TP: u16 = 0x0012;
-/// CTU (count up counter).
-pub const CTU: u16 = 0x0020;
-/// CTD (count down counter).
-pub const CTD: u16 = 0x0021;
-/// CTUD (count up/down counter).
-pub const CTUD: u16 = 0x0022;
+/// CTU_DINT: CTU counting in a signed 32-bit integer. `CTU` and `CTU_INT`
+/// count with it too.
+pub const CTU_DINT: u16 = 0x0020;
+/// CTD_DINT: CTD counting in a signed 32-bit integer. `CTD` and `CTD_INT`
+/// count with it too.
+pub const CTD_DINT: u16 = 0x0021;
+/// CTUD_DINT: CTUD counting in a signed 32-bit integer. `CTUD` and
+/// `CTUD_INT` count with it too.
+pub const CTUD_DINT: u16 = 0x0022;
+/// CTU_UDINT: CTU counting in an unsigned 32-bit integer.
+pub const CTU_UDINT: u16 = 0x0023;
+/// CTD_UDINT: CTD counting in an unsigned 32-bit integer.
+pub const CTD_UDINT: u16 = 0x0024;
+/// CTUD_UDINT: CTUD counting in an unsigned 32-bit integer.
+pub const CTUD_UDINT: u16 = 0x0025;
+/// CTU_LINT: CTU counting in a signed 64-bit integer.
+pub const CTU_LINT: u16 = 0x0026;
+/// CTD_LINT: CTD counting in a signed 64-bit integer.
+pub const CTD_LINT: u16 = 0x0027;
+/// CTUD_LINT: CTUD counting in a signed 64-bit integer.
+pub const CTUD_LINT: u16 = 0x0028;
+/// CTU_ULINT: CTU counting in an unsigned 64-bit integer.
+pub const CTU_ULINT: u16 = 0x0029;
+/// CTD_ULINT: CTD counting in an unsigned 64-bit integer.
+pub const CTD_ULINT: u16 = 0x002A;
+/// CTUD_ULINT: CTUD counting in an unsigned 64-bit integer.
+pub const CTUD_ULINT: u16 = 0x002B;
 /// SR (set-reset bistable, set dominant).
 pub const SR: u16 = 0x0030;
 /// RS (reset-set bistable, reset dominant).

@@ -23,9 +23,7 @@
 //! The enumerations in scope are every named enumeration, and the anonymous
 //! enumerations of the variables in scope (`e : (IDLE, GREEN)`).
 
-use std::collections::HashMap;
-
-use ironplc_dsl::common::{EnumeratedValue, Library, LibraryElementKind, TypeName, VarDecl};
+use ironplc_dsl::common::EnumeratedValue;
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::type_id::TypeId;
@@ -33,41 +31,6 @@ use ironplc_problems::Problem;
 
 use crate::enumeration_members::EnumerationMembers;
 use crate::type_environment::TypeEnvironment;
-
-/// What the place an unqualified enumerated value is used in expects.
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum Context<'a> {
-    /// A value of the type `TypeId` identifies.
-    Type(TypeId),
-    /// A value of an enumeration with these members, whose id is not known
-    /// there: a structure field's type is recorded as a representation.
-    Members(&'a EnumerationMembers),
-}
-
-/// A [`Context`] that owns its members, so it can be held while the
-/// expression it applies to is changed.
-pub(crate) enum OwnedContext {
-    Type(TypeId),
-    Members(EnumerationMembers),
-}
-
-impl From<Context<'_>> for OwnedContext {
-    fn from(context: Context<'_>) -> Self {
-        match context {
-            Context::Type(id) => OwnedContext::Type(id),
-            Context::Members(members) => OwnedContext::Members(members.clone()),
-        }
-    }
-}
-
-impl OwnedContext {
-    pub(crate) fn get(&self) -> Context<'_> {
-        match self {
-            OwnedContext::Type(id) => Context::Type(*id),
-            OwnedContext::Members(members) => Context::Members(members),
-        }
-    }
-}
 
 /// What the type of an unqualified enumerated value resolves to.
 #[derive(Debug, PartialEq)]
@@ -83,9 +46,8 @@ pub(crate) enum EnumeratedValueType {
 
 /// The type of the unqualified enumerated value `value`.
 ///
-/// `context` is what the place of use expects, if any: the value has its
-/// type when it is an enumeration that declares `value`, or for members, the
-/// type of the first candidate with those members. Otherwise `candidates`,
+/// `context` is the type the place of use expects, if any: the value has
+/// that type when it is an enumeration that declares `value`. Otherwise `candidates`,
 /// the enumerations in scope, decide: the value has the type of the one that
 /// declares it. Candidates with the same members (an enumeration and its
 /// aliases, or two declarations that spell the same list) count as one,
@@ -93,25 +55,13 @@ pub(crate) enum EnumeratedValueType {
 pub(crate) fn resolve(
     types: &TypeEnvironment,
     value: &Id,
-    context: Option<Context>,
+    context: Option<TypeId>,
     candidates: impl IntoIterator<Item = TypeId>,
 ) -> EnumeratedValueType {
-    let candidates: Vec<TypeId> = candidates.into_iter().collect();
-    match context {
-        Some(Context::Type(context)) => {
-            if members(types, context).is_some_and(|m| m.contains(value)) {
-                return EnumeratedValueType::Resolved(context);
-            }
+    if let Some(context) = context {
+        if members(types, context).is_some_and(|m| m.contains(value)) {
+            return EnumeratedValueType::Resolved(context);
         }
-        Some(Context::Members(expected)) if expected.contains(value) => {
-            let same = candidates
-                .iter()
-                .find(|id| members(types, **id).is_some_and(|m| m.same_members(expected)));
-            if let Some(id) = same {
-                return EnumeratedValueType::Resolved(*id);
-            }
-        }
-        Some(Context::Members(_)) | None => {}
     }
 
     let mut found: Option<(TypeId, &EnumerationMembers)> = None;
@@ -145,28 +95,6 @@ pub(crate) fn named_enumerations(types: &TypeEnvironment) -> Vec<TypeId> {
         .collect();
     ids.sort();
     ids
-}
-
-/// The type of each variable of each function block, own and inherited
-/// through `EXTENDS`, by function block and variable name: the type a value
-/// passed to an input in a call (`fb(i := R)`) is expected to have.
-pub(crate) fn function_block_inputs(
-    lib: &Library,
-    inherited_fields: &HashMap<TypeName, Vec<VarDecl>>,
-) -> HashMap<TypeName, HashMap<Id, TypeId>> {
-    let typed = |decl: &VarDecl| Some((decl.identifier.symbolic_id()?.clone(), decl.type_id?));
-    lib.elements
-        .iter()
-        .filter_map(|element| match element {
-            LibraryElementKind::FunctionBlockDeclaration(fb) => Some(fb),
-            _ => None,
-        })
-        .map(|fb| {
-            let inherited = inherited_fields.get(&fb.name).into_iter().flatten();
-            let fields = inherited.chain(&fb.variables).filter_map(typed).collect();
-            (fb.name.clone(), fields)
-        })
-        .collect()
 }
 
 /// The problem an unqualified enumerated value whose type is ambiguous is.
@@ -207,7 +135,7 @@ mod tests {
         let result = resolve(
             types,
             &Id::from("GREEN"),
-            Some(Context::Type(light)),
+            Some(light),
             named_enumerations(types),
         );
 
@@ -233,7 +161,7 @@ mod tests {
         let result = resolve(
             types,
             &Id::from("RED"),
-            Some(Context::Type(dint)),
+            Some(dint),
             named_enumerations(types),
         );
 

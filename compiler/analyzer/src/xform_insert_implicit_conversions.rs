@@ -1,5 +1,10 @@
-//! Lowering pass recording, in the AST, how each operand of a comparison is
-//! converted before it is compared.
+//! The recording pass: records, in the AST, each implicit conversion and the
+//! type of each untyped literal (ADR-0056), so that no later stage decides
+//! one. It records decisions rather than lowering anything; lowering
+//! translates what it records (`specs/design/lowered-program.md`).
+//!
+//! It began with the operands of a comparison, described below, and its
+//! submodules extend it to the other contexts a value is converted in.
 //!
 //! A comparison (`=`, `<>`, `<`, `<=`, `>`, `>=` and the functions `EQ`,
 //! `NE`, `LT`, `LE`, `GT`, `GE`) compares its operands at one operand type.
@@ -39,7 +44,7 @@ use ironplc_dsl::common::Library;
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::scope::ScopeNode;
 use ironplc_dsl::textual::{
-    Assignment, Case, CompareExpr, Expr, ExprKind, FbCall, For, Function, If, ParamAssignmentKind,
+    ArrayVariable, Assignment, Case, CompareExpr, Expr, ExprKind, FbCall, For, Function, If,
     Repeat, StmtKind, While,
 };
 use ironplc_dsl::type_id::TypeId;
@@ -160,6 +165,7 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
         let mut node = node.recurse_fold(self)?;
         if let StmtKind::MethodCall(call) = &mut node {
             self.record_method_arguments(call);
+            self.record_call_outputs(&mut call.params);
             self.type_method_call_statement_literals(call);
         }
         Ok(node)
@@ -175,6 +181,7 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
     fn fold_fb_call(&mut self, node: FbCall) -> Result<FbCall, Infallible> {
         let mut node = node.recurse_fold(self)?;
         self.record_fb_call_inputs(&mut node);
+        self.record_call_outputs(&mut node.params);
         self.type_fb_call_literals(&mut node);
         Ok(node)
     }
@@ -190,7 +197,10 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
                 self.record_fold_operands(&mut node);
                 self.record_one_type_inputs(&mut node);
             }
-            ExprKind::MethodCall(call) => self.record_method_arguments(call),
+            ExprKind::MethodCall(call) => {
+                self.record_method_arguments(call);
+                self.record_call_outputs(&mut call.params);
+            }
             // A comparison's operands are recorded by `fold_compare_expr`;
             // the operands of `AND`, `OR` and `XOR` here, since they are
             // converted to the operation's own type.
@@ -206,8 +216,15 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
             | ExprKind::Ref(_)
             | ExprKind::Deref(_)
             | ExprKind::ImplicitConversion(_)
+            | ExprKind::CallOutput(_)
             | ExprKind::Null(_) => {}
         }
+        Ok(node)
+    }
+
+    fn fold_array_variable(&mut self, node: ArrayVariable) -> Result<ArrayVariable, Infallible> {
+        let mut node = node.recurse_fold(self)?;
+        self.record_subscript_conversions(&mut node);
         Ok(node)
     }
 
@@ -222,14 +239,14 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
     fn fold_function(&mut self, node: Function) -> Result<Function, Infallible> {
         let mut node = node.recurse_fold(self)?;
         self.record_argument_conversions(&mut node);
+        self.record_call_outputs(&mut node.param_assignment);
         if is_comparison_form(&node) {
-            // The comparison forms are binary, and the named-argument pass
-            // made every input positional; any other shape is one a rule
+            // The comparison forms are binary; any other shape is one a rule
             // reported.
-            if let [ParamAssignmentKind::PositionalInput(left), ParamAssignmentKind::PositionalInput(right)] =
-                node.param_assignment.as_mut_slice()
-            {
-                self.convert_operands(&mut left.expr, &mut right.expr);
+            if let [left, right] = node.param_assignment.as_mut_slice() {
+                if let (Some(left), Some(right)) = (left.input_expr_mut(), right.input_expr_mut()) {
+                    self.convert_operands(left, right);
+                }
             }
         }
         Ok(node)

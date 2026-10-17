@@ -4,13 +4,14 @@
 //! and typed opcode emission helpers. Separated from compile.rs to
 //! keep module sizes within the 1000-line guideline.
 
-use ironplc_analyzer::SemanticType;
+use ironplc_analyzer::{NumericFunction, SemanticType};
 use ironplc_container::{opcode, VarIndex};
 use ironplc_dsl::common::{BitStringLiteral, Boolean, ConstantKind, SignedInteger};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
-    CompareExpr, CompareOp, Expr, ExprKind, Operator, SymbolicVariableKind, UnaryOp, Variable,
+    CompareExpr, CompareOp, ConversionKind, Expr, ExprKind, Operator, SymbolicVariableKind,
+    UnaryOp, Variable,
 };
 use paste::paste;
 
@@ -18,13 +19,16 @@ use super::compile::{
     encode_string_literal, CompileContext, OpType, OpWidth, Signedness, VarTypeInfo,
     DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH,
 };
-use super::compile_arith::{compile_at_operand_type, compile_binary_arith};
+use super::compile_arith::compile_binary_arith;
+use super::compile_builtin::lookup_builtin;
 use super::compile_call::compile_function_call;
 use super::compile_comparison::compile_comparison;
 use super::compile_method::compile_method_call_expression;
 use super::compile_partial_access::{compile_partial_access_read, PartialAccess};
+use super::compile_place::Place;
 use super::compile_short_circuit::{compile_short_circuit, ShortCircuitOp};
-use super::type_info::{expr_operand_name, expr_representation, expr_type_info};
+use super::compile_string_place::StringPlace;
+use super::type_info::{expr_representation, expr_type_info};
 use crate::emit::Emitter;
 
 /// Returns the operation type of an expression's value, from its
@@ -94,77 +98,58 @@ pub(crate) fn compile_condition(
     ctx: &mut CompileContext,
     condition: &Expr,
 ) -> Result<(), Diagnostic> {
-    let own = op_type(ctx, condition)?;
-    compile_expr(emitter, ctx, condition, own)
+    op_type(ctx, condition)?;
+    compile_expr(emitter, ctx, condition)
 }
 
-/// Compiles an expression, leaving the result on the stack.
+/// Compiles an expression, leaving its value on the stack at the
+/// expression's own type.
 ///
-/// The `op_type` determines which width (i32/i64) and signedness to use
-/// for arithmetic, comparison, and load/store instructions.
+/// Every expression compiles at the type the analyzer recorded for it, and
+/// converts nothing to the type of the expression that encloses it: where a
+/// value is used at another type, the analyzer recorded the conversion as an
+/// `ImplicitConversion` (ADR-0056), or the program wrote one, such as
+/// `INT_TO_REAL`.
+///
+/// A value with no operation type -- the buffer of a string, the data offset
+/// of an aggregate, or a constant codegen builds itself, such as a standard
+/// function block's member initializer -- is loaded at the default slot
+/// type.
 pub(crate) fn compile_expr(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     expr: &Expr,
-    op_type: OpType,
 ) -> Result<(), Diagnostic> {
+    let at = op_type_from_expr(ctx, expr).unwrap_or(DEFAULT_OP_TYPE);
     match &expr.kind {
-        // The analyzer recorded the type a numeric literal is compiled at
-        // (ADR-0056). One codegen builds itself, such as a standard function
-        // block's member initializer, has none and is stored at the default
-        // slot type. Any other literal names its own type and is compiled
-        // for the storage its context gives it.
-        ExprKind::Const(
-            constant @ (ConstantKind::IntegerLiteral(_) | ConstantKind::RealLiteral(_)),
-        ) => {
-            let own = op_type_from_expr(ctx, expr).unwrap_or(DEFAULT_OP_TYPE);
-            compile_constant(emitter, ctx, constant, own)
-        }
-        ExprKind::Const(constant) => compile_constant(emitter, ctx, constant, op_type),
-        // A variable read at a different width is read at its own and
-        // converted: loading an INT's slot as a REAL would reinterpret its
-        // bits, and loading a UDINT's as a LINT would sign-extend it.
-        ExprKind::Variable(variable) => {
-            match crate::compile_arith::numeric_op_type(expr_operand_name(ctx, expr).as_ref()) {
-                Some(own) if own.0 != op_type.0 => {
-                    compile_variable_read(emitter, ctx, variable, own)?;
-                    crate::compile_arith::convert_to_context(emitter, own, op_type);
+        ExprKind::Const(constant) => compile_constant(emitter, ctx, constant, at),
+        ExprKind::Variable(variable) => compile_variable_read(emitter, ctx, variable, at),
+        ExprKind::BinaryOp(binary) => compile_binary_arith(emitter, ctx, expr, binary),
+        // A negation or `NOT` computes at its own type, its operand's, as an
+        // arithmetic operation does: `NOT` of a `DWORD` assigned to an
+        // `LWORD` inverts the 32 bits of the `DWORD`.
+        ExprKind::UnaryOp(unary) => {
+            let at = self::op_type(ctx, expr)?;
+            compile_expr(emitter, ctx, &unary.term)?;
+            match unary.op {
+                UnaryOp::Neg => {
+                    emit_neg(emitter, at);
                     Ok(())
                 }
-                _ => compile_variable_read(emitter, ctx, variable, op_type),
+                UnaryOp::Not => emit_not(emitter, ctx, at, &unary.term),
             }
         }
-        ExprKind::BinaryOp(binary) => compile_binary_arith(emitter, ctx, expr, binary, op_type),
-        ExprKind::UnaryOp(unary) => {
-            let result = expr_operand_name(ctx, expr);
-            compile_at_operand_type(
-                emitter,
-                ctx,
-                result.as_ref(),
-                op_type,
-                |emitter, ctx, at| {
-                    compile_expr(emitter, ctx, &unary.term, at)?;
-                    match unary.op {
-                        UnaryOp::Neg => {
-                            emit_neg(emitter, at);
-                            Ok(())
-                        }
-                        UnaryOp::Not => emit_not(emitter, ctx, at, &unary.term),
-                    }
-                },
-            )
-        }
-        ExprKind::LateBound(late_bound) => {
-            if let Some(ref_slot) = ctx.in_out_ref_slot(&late_bound.value) {
-                emit_load_in_out(emitter, ref_slot);
-                return Ok(());
-            }
-            let var_index = ctx.var_index(&late_bound.value)?;
-            emit_load_var(emitter, var_index, op_type);
-            Ok(())
-        }
-        ExprKind::Expression(inner) => compile_expr(emitter, ctx, inner, op_type),
-        ExprKind::Compare(compare) => compile_compare(emitter, ctx, expr, compare, op_type),
+        // The analyzer resolves every late-bound name to a variable or an
+        // enumerated value (`xform_resolve_late_bound_expr_kind`).
+        ExprKind::LateBound(late_bound) => Err(Diagnostic::internal_error_at(Label::span(
+            late_bound.value.span(),
+            format!(
+                "{} is a name the analyzer did not resolve",
+                late_bound.value
+            ),
+        ))),
+        ExprKind::Expression(inner) => compile_expr(emitter, ctx, inner),
+        ExprKind::Compare(compare) => compile_compare(emitter, ctx, expr, compare),
         ExprKind::EnumeratedValue(enum_val) => {
             // REQ-EN-codegen-030: Push the enum value's ordinal as an i32
             // constant, looked up in the type the analyzer gave the value.
@@ -174,43 +159,41 @@ pub(crate) fn compile_expr(
             emitter.emit_load_const_i32(pool_index);
             Ok(())
         }
-        ExprKind::Function(func) => compile_function_call(emitter, ctx, expr, func, op_type),
+        ExprKind::Function(func) => compile_function_call(emitter, ctx, expr, func, at),
         ExprKind::MethodCall(call) => compile_method_call_expression(emitter, ctx, call),
-        ExprKind::Ref(variable) => {
-            // REF(param) of a VAR_IN_OUT parameter is the reference its slot
-            // already holds: the caller's variable.
-            if let Some(ref_slot) = in_out_ref_slot(ctx, variable) {
-                emitter.emit_load_var_i64(ref_slot);
-                return Ok(());
-            }
-            // REF(var) → push the variable's table index as a u64 constant.
-            let var_index = resolve_variable(ctx, variable)?;
-            let pool_index = ctx.add_i64_constant(var_index.into());
-            emitter.emit_load_const_i64(pool_index);
-            Ok(())
-        }
+        // `REF(var)`: a reference to a named variable. Only a named variable
+        // has a reference yet.
+        ExprKind::Ref(variable) => match resolve_variable_name(variable) {
+            Some(name) => crate::compile_user_call::emit_reference(emitter, ctx, name),
+            None => Err(Diagnostic::todo_with_span(variable.span())),
+        },
         ExprKind::Deref(inner) => {
             // var^ → compile the reference expression (produces a var index),
             // then emit LOAD_INDIRECT to load the referenced variable's value.
-            compile_expr(emitter, ctx, inner, (OpWidth::W64, Signedness::Unsigned))?;
+            compile_expr(emitter, ctx, inner)?;
             emitter.emit_load_indirect();
             Ok(())
         }
         // The analyzer decided the conversion (ADR-0056): the inner value is
         // compiled at its own type, so it widens by its own signedness, and
-        // converted to the type the node records.
-        ExprKind::ImplicitConversion(inner) => {
-            let from = self::op_type(ctx, inner)?;
+        // converted to the type the node records. The analyzer records a
+        // checked conversion only for an array subscript.
+        ExprKind::ImplicitConversion(conversion) => {
+            let from = self::op_type(ctx, &conversion.value)?;
             let to = self::op_type(ctx, expr)?;
-            compile_expr(emitter, ctx, inner, from)?;
-            crate::compile_arith::convert(emitter, from, to);
-            crate::compile_arith::convert_to_context(emitter, to, op_type);
-            Ok(())
+            compile_expr(emitter, ctx, &conversion.value)?;
+            match conversion.kind {
+                ConversionKind::Ordinary => crate::compile_arith::convert(emitter, from, to),
+                ConversionKind::Checked => {
+                    crate::compile_subscript::emit_subscript_check(emitter, from, to, &expr.span())
+                }
+            }
+        }
+        ExprKind::CallOutput(output) => {
+            crate::compile_call_output::compile_call_output(emitter, ctx, expr, output)
         }
         ExprKind::Null(_) => {
-            // NULL → push null sentinel (u64::MAX) as a u64 constant.
-            let pool_index = ctx.add_i64_constant(u64::MAX as i64);
-            emitter.emit_load_const_i64(pool_index);
+            emit_null(emitter, ctx);
             Ok(())
         }
     }
@@ -219,15 +202,13 @@ pub(crate) fn compile_expr(
 /// Compiles `expr`, the comparison, logical, or bitwise binary expression
 /// `compare`, leaving the result on the stack.
 ///
-/// `op_type` is the type context the enclosing expression supplies. A
-/// comparison computes at the type of its operands and ignores it; `AND`,
-/// `OR` and `XOR` convert their result to it.
+/// A comparison computes at the type of its operands; `AND`, `OR` and `XOR`
+/// at their own.
 fn compile_compare(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     expr: &Expr,
     compare: &CompareExpr,
-    op_type: OpType,
 ) -> Result<(), Diagnostic> {
     // AND_THEN and OR_ELSE must not evaluate their right operand when the
     // left one already decides the answer, so they branch instead of
@@ -243,13 +224,11 @@ fn compile_compare(
     // AND, OR and XOR are boolean on BOOL operands and bitwise on a bit
     // string. They compute at their own type, the type both operands widen
     // to, to which the analyzer converted an operand of another width
-    // (ADR-0056), and their result is converted to the enclosing operation
-    // type as an arithmetic result is.
+    // (ADR-0056).
     let at = self::op_type(ctx, expr)?;
-    compile_expr(emitter, ctx, &compare.left, at)?;
-    compile_expr(emitter, ctx, &compare.right, at)?;
+    compile_expr(emitter, ctx, &compare.left)?;
+    compile_expr(emitter, ctx, &compare.right)?;
     emit_compare_op(emitter, &compare.op, at);
-    crate::compile_arith::convert_to_context(emitter, at, op_type);
     Ok(())
 }
 
@@ -557,6 +536,20 @@ pub(crate) fn compile_variable_read(
     if let Some(access) = PartialAccess::of(variable) {
         return compile_partial_access_read(emitter, ctx, &access);
     }
+    // A field of a function block instance (`timer.Q`), which lives in the
+    // instance's data region rather than in a structure.
+    if let Variable::Symbolic(SymbolicVariableKind::Structured(structured)) = variable {
+        if !matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) {
+            if let Some(place) = Place::fb_field(ctx, structured)? {
+                return place.emit_load(emitter, ctx);
+            }
+        }
+    }
+    // A STRING is copied from the data region into a temporary buffer, whose
+    // index a string assignment or a string function's argument consumes.
+    if let Some(place) = StringPlace::resolve(ctx, variable)? {
+        return place.emit_load(emitter, ctx);
+    }
     match variable {
         // The guard excludes `s.arr[i].field`, whose record is an array
         // element rather than a fixed-offset struct field. That shape falls
@@ -564,62 +557,6 @@ pub(crate) fn compile_variable_read(
         Variable::Symbolic(SymbolicVariableKind::Structured(structured))
             if !matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) =>
         {
-            // Function block instance field read (e.g. `timer.Q`). FB instances
-            // live in `ctx.fb_instances` rather than `ctx.struct_vars`, and
-            // their fields are stored in the data region addressed via
-            // FB_LOAD_PARAM.
-            if let SymbolicVariableKind::Named(named) = structured.record.as_ref() {
-                if let Some(fb_info) = ctx.fb_instances.get(&named.name) {
-                    let field_name = structured.field.to_string().to_lowercase();
-                    let field_idx =
-                        fb_info
-                            .field_indices
-                            .get(&field_name)
-                            .copied()
-                            .ok_or_else(|| {
-                                Diagnostic::not_implemented(Label::span(
-                                    structured.field.span(),
-                                    format!(
-                                        "Unknown field '{}' on function block '{}' \
-                                         (reading a PROPERTY is not supported yet)",
-                                        structured.field, named.name
-                                    ),
-                                ))
-                            })?;
-                    let var_index = fb_info.var_index;
-                    emitter.emit_fb_load_instance(var_index);
-                    emitter.emit_fb_load_param(field_idx);
-                    emitter.emit_swap();
-                    emitter.emit_pop();
-                    return Ok(());
-                }
-            }
-
-            // STRING fields are composite (multi-slot) and stored in the data
-            // region, so we intercept before resolve_struct_field_access which
-            // only supports single-slot (primitive/enum) fields.
-            let (root_name, slot_offset, field_type) = crate::compile_struct::walk_struct_chain(
-                ctx,
-                &structured.record,
-                &structured.field,
-                0,
-            )?;
-            if matches!(
-                &field_type,
-                ironplc_analyzer::semantic_type::SemanticType::String { .. }
-            ) {
-                // `walk_struct_chain` found this structure variable above.
-                let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
-                    Diagnostic::internal_error_at(Label::span(
-                        structured.span(),
-                        format!("Variable '{}' is not a structure", root_name),
-                    ))
-                })?;
-                let byte_offset = struct_info.data_offset + slot_offset.raw() * 8;
-                emitter.emit_str_load_var(byte_offset);
-                return Ok(());
-            }
-
             let (var_index, desc_index, slot_offset, _op_type, _field_type) =
                 crate::compile_struct::resolve_struct_field_access(ctx, structured)?;
             let idx_const = ctx.add_i32_constant(slot_offset.raw() as i32);
@@ -628,17 +565,6 @@ pub(crate) fn compile_variable_read(
             Ok(())
         }
         _ => {
-            // Check if this is a string variable (stored in data region).
-            // String reads emit str_load_var to produce a buf_idx on the stack,
-            // which is consumed by string assignment or string function args.
-            if let Some(var_name) = resolve_variable_name(variable) {
-                if let Some(info) = ctx.string_vars.get(var_name) {
-                    let data_offset = info.data_offset;
-                    emitter.emit_str_load_var(data_offset);
-                    return Ok(());
-                }
-            }
-
             match crate::compile_array::resolve_access(ctx, variable)? {
                 crate::compile_array::ResolvedAccess::Scalar { var_index } => {
                     emit_load_var(emitter, var_index, op_type);
@@ -649,7 +575,6 @@ pub(crate) fn compile_variable_read(
                 crate::compile_array::ResolvedAccess::ArrayElement { info, subscripts } => {
                     let arr_var_index = info.var_index;
                     let arr_desc_index = info.desc_index;
-                    let is_string_elem = info.is_string_element;
                     let dim_info: Vec<_> = info
                         .dimensions
                         .iter()
@@ -667,11 +592,7 @@ pub(crate) fn compile_variable_read(
                         &dim_info,
                         &span,
                     )?;
-                    if is_string_elem {
-                        emitter.emit_str_load_array_elem(arr_var_index, arr_desc_index);
-                    } else {
-                        emitter.emit_load_array(arr_var_index, arr_desc_index);
-                    }
+                    emitter.emit_load_array(arr_var_index, arr_desc_index);
                 }
                 crate::compile_array::ResolvedAccess::DerefArrayElement { info, subscripts } => {
                     let ref_var_index = info.var_index;
@@ -716,12 +637,12 @@ pub(crate) fn compile_variable_read(
                     emitter.emit_add_i64();
                     emitter.emit_load_array(var_index, desc_index);
                 }
-                crate::compile_array::ResolvedAccess::StructFieldStringArrayElement(element) => {
-                    element.emit_base_and_index(emitter, ctx, &variable_span(variable))?;
-                    emitter.emit_str_load_array_elem(
-                        element.scratch_var_index,
-                        element.string_desc_index,
-                    );
+                // `StringPlace::resolve` addressed every string above.
+                crate::compile_array::ResolvedAccess::StructFieldStringArrayElement(_) => {
+                    return Err(Diagnostic::internal_error_at(Label::span(
+                        variable_span(variable),
+                        "A STRING element read as a value in one slot",
+                    )));
                 }
             }
             Ok(())
@@ -729,13 +650,10 @@ pub(crate) fn compile_variable_read(
     }
 }
 
-/// Returns the slot holding the reference when `variable` names a
-/// `VAR_IN_OUT` parameter of the function being compiled.
-pub(crate) fn in_out_ref_slot(ctx: &CompileContext, variable: &Variable) -> Option<VarIndex> {
-    match variable {
-        Variable::Symbolic(SymbolicVariableKind::Named(named)) => ctx.in_out_ref_slot(&named.name),
-        _ => None,
-    }
+/// Pushes the null reference, which the VM holds as `u64::MAX`.
+pub(crate) fn emit_null(emitter: &mut Emitter, ctx: &mut CompileContext) {
+    let pool_index = ctx.add_i64_constant(u64::MAX as i64);
+    emitter.emit_load_const_i64(pool_index);
 }
 
 /// Loads the value of the variable a `VAR_IN_OUT` parameter refers to.
@@ -831,7 +749,7 @@ pub(crate) fn try_classify_cmp(ctx: &mut CompileContext, expr: &Expr) -> Option<
     None
 }
 
-fn classify_with_named(
+pub(crate) fn classify_with_named(
     ctx: &mut CompileContext,
     name: &Id,
     value: i64,
@@ -917,7 +835,6 @@ fn named_variable_name(kind: &ExprKind) -> Option<&Id> {
         ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(named))) => {
             Some(&named.name)
         }
-        ExprKind::LateBound(late) => Some(&late.value),
         _ => None,
     }
 }
@@ -1093,15 +1010,20 @@ emit_logical_op!(xor);
 /// The operator expression and the function form of the operator (`ADD`,
 /// `SUB`, ...) both come through here, so the two spellings cannot emit
 /// differently.
-pub(crate) fn emit_arithmetic_op(emitter: &mut Emitter, op: &Operator, op_type: OpType) {
+pub(crate) fn emit_arithmetic_op(
+    emitter: &mut Emitter,
+    op: &Operator,
+    op_type: OpType,
+) -> Result<(), Diagnostic> {
     match op {
         Operator::Add => emit_add(emitter, op_type),
         Operator::Sub => emit_sub(emitter, op_type),
         Operator::Mul => emit_mul(emitter, op_type),
         Operator::Div => emit_div(emitter, op_type),
         Operator::Mod => emit_mod(emitter, op_type),
-        Operator::Pow => emit_pow(emitter, op_type),
+        Operator::Pow => return emit_pow(emitter, op_type),
     }
+    Ok(())
 }
 
 /// Emits the opcode of a comparison, logical or bitwise operator for
@@ -1179,13 +1101,10 @@ pub(crate) fn emit_mod(emitter: &mut Emitter, op_type: OpType) {
     }
 }
 
-/// POW dispatch. Width-only shape, but emits `EXPT_*` builtins rather than
-/// dedicated `emit_pow_*` opcodes, so it stays hand-written.
-pub(crate) fn emit_pow(emitter: &mut Emitter, op_type: OpType) {
-    match op_type.0 {
-        OpWidth::W32 => emitter.emit_builtin(opcode::builtin::EXPT_I32),
-        OpWidth::W64 => emitter.emit_builtin(opcode::builtin::EXPT_I64),
-        OpWidth::F32 => emitter.emit_builtin(opcode::builtin::EXPT_F32),
-        OpWidth::F64 => emitter.emit_builtin(opcode::builtin::EXPT_F64),
-    }
+/// POW dispatch: `a ** b` is `EXPT(a, b)`, so it emits the builtin
+/// [`lookup_builtin`] chooses for `EXPT` at `op_type`.
+pub(crate) fn emit_pow(emitter: &mut Emitter, op_type: OpType) -> Result<(), Diagnostic> {
+    let func_id = lookup_builtin(NumericFunction::Expt, op_type.0, op_type.1)
+        .ok_or_else(Diagnostic::internal_error)?;
+    emitter.emit_builtin(func_id)
 }

@@ -77,6 +77,18 @@ pub(crate) fn decl_type_info(ctx: &CompileContext, decl: &VarDecl) -> Option<Var
     operand_type_info(ctx.types.get(&decl.type_id?)?)
 }
 
+/// The `VarTypeInfo` of the type `type_name` names, looked up by its id in
+/// `types`: how a function's or a method's declared return type operates,
+/// a subrange as its base type and an enumeration as a `DINT`. `None` when
+/// it names no type, or one this backend does not operate on arithmetically.
+pub(crate) fn named_type_info(
+    ctx: &CompileContext,
+    types: &TypeEnvironment,
+    type_name: &TypeName,
+) -> Option<VarTypeInfo> {
+    operand_type_info(ctx.types.get(&types.id_of(type_name)?)?)
+}
+
 /// What an expression's value is, from its `expr_type`, when it has a
 /// concrete type.
 pub(crate) fn expr_representation<'a>(
@@ -93,7 +105,7 @@ pub(crate) fn expr_representation<'a>(
 /// operates as a `DINT` (REQ-EN-codegen-003); a subrange operates as its base
 /// type; a reference is a 64-bit address, as a reference field is (see
 /// `compile_struct::var_type_info_for_field`).
-fn operand_type_info(representation: &SemanticType) -> Option<VarTypeInfo> {
+pub(crate) fn operand_type_info(representation: &SemanticType) -> Option<VarTypeInfo> {
     match representation {
         SemanticType::Enumeration { .. } => Some(crate::compile_enum::enum_var_type_info()),
         SemanticType::Subrange { base_type, .. } => var_type_info(base_type),
@@ -112,8 +124,7 @@ fn operand_type_info(representation: &SemanticType) -> Option<VarTypeInfo> {
         SemanticType::String { .. }
         | SemanticType::Structure { .. }
         | SemanticType::Array { .. }
-        | SemanticType::FunctionBlock { .. }
-        | SemanticType::Function { .. } => None,
+        | SemanticType::FunctionBlock { .. } => None,
     }
 }
 
@@ -155,17 +166,16 @@ pub(crate) fn elementary_type_info(elementary: &ElementaryTypeName) -> Option<Va
 /// `VarTypeInfo::storage_bits` is a *value* width -- how many bits of the
 /// operand `TRUNC` keeps, and what bounds the values the type can hold. It is
 /// not a footprint and nothing addresses bits with it. The analyzer states
-/// size as a footprint in bytes, and the two coincide for every elementary
-/// type but one, which is why deriving the first from the second is sound.
+/// that width (`SemanticType::bit_width`) for every elementary type but one.
 ///
 /// Returns `None` for types this backend does not operate on arithmetically
 /// (STRING and WSTRING, which are handled through the data region, and the
 /// composite types).
 fn var_type_info(representation: &SemanticType) -> Option<VarTypeInfo> {
     // BOOL is the exception the doc comment above refers to: it holds one bit
-    // of value in a byte of footprint, so the analyzer's byte-granular size
-    // cannot state it. The value 1 also marks BOOL for the conversion path,
-    // which tests an operand for zero rather than keeping its low bit.
+    // of value, which the analyzer's width does not state. The value 1 also
+    // marks BOOL for the conversion path, which tests an operand for zero
+    // rather than keeping its low bit.
     if matches!(representation, SemanticType::Bool) {
         return Some(VarTypeInfo {
             op_width: OpWidth::W32,
@@ -194,11 +204,10 @@ fn var_type_info(representation: &SemanticType) -> Option<VarTypeInfo> {
         | SemanticType::Array { .. }
         | SemanticType::Subrange { .. }
         | SemanticType::FunctionBlock { .. }
-        | SemanticType::Function { .. }
         | SemanticType::Reference { .. } => return None,
     };
 
-    let storage_bits = u8::try_from(representation.size_in_bytes()? * 8).ok()?;
+    let storage_bits = representation.bit_width()?;
     let op_width = match representation {
         SemanticType::Real { .. } if storage_bits <= 32 => OpWidth::F32,
         SemanticType::Real { .. } => OpWidth::F64,

@@ -102,12 +102,18 @@ impl<'a> FrameStack<'a> {
     /// frame contents survive in the embedder's backing slice across a
     /// pause, and this restores the logical length so the dispatch loop
     /// continues from the preserved top frame.
-    pub fn resume(backing: &'a mut [Frame], len: usize) -> Self {
-        debug_assert!(len <= backing.len(), "resume len exceeds frame capacity");
-        FrameStack {
+    ///
+    /// Returns [`Trap::CallStackOverflow`] when `len` exceeds the backing
+    /// slice: that many live frames are a call stack deeper than its
+    /// capacity.
+    pub fn resume(backing: &'a mut [Frame], len: usize) -> Result<Self, Trap> {
+        if len > backing.len() {
+            return Err(Trap::CallStackOverflow);
+        }
+        Ok(FrameStack {
             slots: backing,
             len,
-        }
+        })
     }
 
     /// Number of frames currently on the stack.
@@ -228,6 +234,25 @@ mod tests {
         stack.push(frame(1, 0)).unwrap();
         stack.push(frame(2, 0)).unwrap();
         assert_eq!(stack.push(frame(3, 0)), Err(Trap::CallStackOverflow));
+    }
+
+    #[test]
+    fn frame_stack_resume_when_len_within_capacity_then_frames_live() {
+        let mut buf = [frame(0, 0), frame(5, 50)];
+
+        let stack = FrameStack::resume(&mut buf, 2).unwrap();
+
+        assert_eq!(stack.len(), 2);
+        assert_eq!(stack.top().unwrap().function_id, FunctionId::new(5));
+    }
+
+    #[test]
+    fn frame_stack_resume_when_len_exceeds_capacity_then_traps_call_stack_overflow() {
+        let mut buf = [frame(0, 0); 2];
+
+        let result = FrameStack::resume(&mut buf, 3);
+
+        assert_eq!(result.err(), Some(Trap::CallStackOverflow));
     }
 
     #[test]

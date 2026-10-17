@@ -1,0 +1,51 @@
+=====
+P2044
+=====
+
+.. problem-summary:: P2044
+
+This error occurs when an enumeration member's value is outside the range of
+``DINT``, from -2147483648 to 2147483647.
+
+Every enumeration is stored and compared as a ``DINT``, whatever base type its
+declaration names, so a value outside that range has nowhere to be held. The
+compiler reports it rather than keeping the low 32 bits, which would give the
+member a different value from the one the declaration wrote, possibly the
+value of another member.
+
+The check applies to every member:
+
+- a member given an explicit value, ``HUGE := 5000000000``
+- a member that continues from the one before it, such as ``OVER`` in
+  ``(TOP := 2147483647, OVER)``
+
+Example
+-------
+
+The following code will generate error P2044:
+
+.. playground::
+   :allows: enum-explicit-values,enum-base-type
+
+   TYPE
+       E_Code : (OK := 0, OVERFLOW := 5000000000) LINT;
+   END_TYPE
+
+To fix this error, give every member a value within the range of ``DINT``:
+
+.. playground::
+   :allows: enum-explicit-values,enum-base-type
+
+   TYPE
+       E_Code : (OK := 0, OVERFLOW := 2000000000) LINT;
+   END_TYPE
+
+Where a member has to carry a value from another system that does not fit a
+``DINT``, keep that value in a ``LINT`` constant or variable beside the
+enumeration rather than in the enumeration itself.
+
+See Also
+--------
+
+- :doc:`/reference/language/data-types/derived/enumerated-types` —
+  Enumerated types

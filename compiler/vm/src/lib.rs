@@ -1,3 +1,20 @@
+// Production code must have no reachable panic path (compiler-standards.md,
+// Rust Best Practices). The lints are off under `test-support`, whose
+// helpers are meant to panic; `just lint` enforces them with a `--lib`
+// pass, which builds without that feature.
+#![cfg_attr(
+    not(feature = "test-support"),
+    deny(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::todo,
+        clippy::unimplemented,
+        clippy::panic_in_result_fn
+    )
+)]
+
 mod buffers;
 pub(crate) mod builtin;
 mod clock;
@@ -7,6 +24,7 @@ pub mod error;
 pub(crate) mod frame_stack;
 pub mod freewheeling;
 pub(crate) mod intrinsic;
+pub(crate) mod intrinsic_id;
 #[cfg(feature = "profiling")]
 mod profile;
 pub(crate) mod scheduler;
@@ -38,3 +56,10 @@ pub use vm::{
     ExecuteOutcome, FaultContext, Phase, RoundOutcome, VariableView, Vm, VmFaulted, VmReady,
     VmRunning, VmStopped,
 };
+
+/// Spec-conformance requirements generated from the design documents
+/// `vm/build.rs` lists, for the `#[spec_test(...)]` unit tests in `src/`.
+#[cfg(test)]
+mod spec_requirements {
+    include!(concat!(env!("OUT_DIR"), "/spec_requirements.rs"));
+}

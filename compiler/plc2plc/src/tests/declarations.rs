@@ -174,3 +174,17 @@ fn write_to_string_when_simple_type_declaration_with_initializer_then_keeps_colo
         "rendered:\n{rendered}"
     );
 }
+
+#[test]
+fn write_to_string_when_struct_field_subrange_has_initial_value_then_renders_value() {
+    let source = "
+TYPE
+   CUSTOM_STRUCT : STRUCT
+      LEVEL : INT (0..15) := 3;
+   END_STRUCT;
+END_TYPE
+";
+    let rendered = assert_round_trips(source, &CompilerOptions::default());
+
+    assert!(rendered.contains(":= 3 ;"), "Rendered:\n{rendered}");
+}

@@ -44,7 +44,8 @@ impl UriKey {
     ///
     /// Returns `None` for `FileId::BuiltIn`, for `FileId::File` with an
     /// empty path (which the analyzer uses as a placeholder for
-    /// whole-project diagnostics like "no source files"), and when the
+    /// whole-project diagnostics like "no source files"), for a node the
+    /// compiler synthesized, and when the
     /// path cannot be turned into a valid URI. Paths from
     /// `FileId::from_path` use OS-native separators; this normalises
     /// them and validates the result through `Uri::from_str` before
@@ -53,7 +54,7 @@ impl UriKey {
         match file_id {
             FileId::File(path) => {
                 let s = path.as_ref();
-                if s.is_empty() {
+                if s.is_empty() || file_id.is_synthesized() {
                     return None;
                 }
                 let normalised = s.replace('\\', "/");
@@ -280,14 +281,14 @@ impl LspProject {
         // alongside the per-POU registry, so we don't need to filter
         // those again here.
         for view in context.user_defined_types() {
-            if view.attributes.span().file_id != file_id {
+            if view.name.span().file_id != file_id {
                 continue;
             }
-            let range = span_to_range(contents, &view.attributes.span());
+            let range = span_to_range(contents, &view.name.span());
             #[allow(deprecated)]
             symbols.push(DocumentSymbol {
                 name: view.name.to_string(),
-                detail: Some(format!("{:?}", view.attributes.type_category)),
+                detail: Some(view.kind.as_str().to_string()),
                 kind: type_kind_to_symbol_kind(view.kind),
                 tags: None,
                 deprecated: None,
@@ -392,7 +393,6 @@ fn type_kind_to_symbol_kind(kind: TypeSymbolKind) -> SymbolKind {
         TypeSymbolKind::Structure => SymbolKind::STRUCT,
         TypeSymbolKind::Enumeration => SymbolKind::ENUM,
         TypeSymbolKind::FunctionBlock => SymbolKind::CLASS,
-        TypeSymbolKind::Function => SymbolKind::FUNCTION,
         TypeSymbolKind::Array => SymbolKind::ARRAY,
         TypeSymbolKind::Subrange => SymbolKind::TYPE_PARAMETER,
         TypeSymbolKind::String | TypeSymbolKind::Reference | TypeSymbolKind::Alias => {
@@ -1037,6 +1037,7 @@ INVALID_SYNTAX"
         assert_eq!(symbols.len(), 1);
         assert_eq!(symbols[0].name, "MyStruct");
         assert_eq!(symbols[0].kind, lsp_types::SymbolKind::STRUCT);
+        assert_eq!(symbols[0].detail.as_deref(), Some("structure"));
     }
 
     #[test]
@@ -1055,6 +1056,22 @@ INVALID_SYNTAX"
         assert_eq!(symbols.len(), 1);
         assert_eq!(symbols[0].name, "MyEnum");
         assert_eq!(symbols[0].kind, lsp_types::SymbolKind::ENUM);
+    }
+
+    #[test]
+    fn document_symbols_when_alias_of_structure_then_range_at_alias_name() {
+        let mut proj = new_empty_project();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+        let content = "TYPE\nMyStruct : STRUCT\n  field1 : INT;\nEND_STRUCT;\nEND_TYPE\nTYPE\nMyAlias : MyStruct;\nEND_TYPE";
+        proj.change_text_document(&url, content.to_owned());
+        let _ = proj.semantic(&url);
+
+        let result = proj.document_symbols(&url);
+
+        let symbols = cast!(result, lsp_types::DocumentSymbolResponse::Nested);
+        let alias = symbols.iter().find(|s| s.name == "MyAlias").unwrap();
+        assert_eq!(alias.range.start.line, 6);
+        assert_eq!(alias.range.start.character, 0);
     }
 
     #[test]

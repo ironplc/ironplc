@@ -274,6 +274,9 @@ pub trait Visitor<E> {
     // 2.4.3.2
     dispatch!(ArrayInitialValueAssignment);
 
+    // 2.4.3.2
+    dispatch!(SubrangeInitialValueAssignment);
+
     dispatch!(VariableSpecificationKind);
 
     dispatch!(StringSpecification);
@@ -420,6 +423,8 @@ pub trait Visitor<E> {
 
     // 3.3.1
     dispatch!(UnaryExpr);
+
+    dispatch!(ImplicitConversion);
 
     dispatch!(Function);
 

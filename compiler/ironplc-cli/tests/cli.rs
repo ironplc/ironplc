@@ -227,7 +227,7 @@ fn echo_when_types_and_library_then_library_declarations_not_rendered(
     cmd.assert()
         .success()
         .stdout(predicate::str::contains(
-            "s := BOOL_TO_STRING ( BOOL#TRUE (* CONSTANT BOOL *) ) (* STRING *) ;",
+            "s := BOOL_TO_STRING ( IN := BOOL#TRUE (* CONSTANT BOOL *) ) (* STRING *) ;",
         ))
         .stdout(predicate::str::contains("FUNCTION BOOL_TO_STRING").not());
 

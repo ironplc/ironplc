@@ -4,8 +4,8 @@ P2037
 
 .. problem-summary:: P2037
 
-This error occurs when the two sides of an assignment between whole arrays or
-whole structures do not have identical types.
+This error occurs when the two sides of an assignment of an array or a
+structure do not have identical types.
 
 IEC 61131-3 defines assignment over a multi-element variable as a copy of the
 values, so the compiler must know that the source and the destination have the
@@ -13,9 +13,14 @@ same shape. Unlike a numeric assignment, there is no conversion between two
 different array or structure types: the element type, the number of dimensions,
 each dimension's bounds, and any ``STRING`` length must all match.
 
-This check applies only when the assignment target is a whole array or whole
-structure. Writing a single element or field (``a[1] := b[1]``,
-``a.x := b.x``) is unaffected.
+This check applies when the assignment target is an array or a structure:
+a variable, an element of an array of arrays or of an array of structures, a
+field, or what a reference refers to. Writing an element or field of an
+elementary type (``a[1] := b[1]``, ``a.x := b.x``) is unaffected.
+
+An output assignment of a call (``fb(p => target)``) stores the output in its
+target after the call, so it is checked as ``target := fb.p`` is: a whole
+structure output stored in a structure of another type is this error.
 
 Example
 -------
@@ -82,3 +87,27 @@ their dimensions differ, because subscripting them is different:
 The same applies to element types that occupy the same storage
 (``ARRAY[1..2] OF INT`` and ``ARRAY[1..2] OF DINT``) and to ``STRING`` arrays
 whose maximum lengths differ (``STRING[8]`` and ``STRING[16]``).
+
+Elements of an array of arrays
+------------------------------
+
+An element of an array of arrays is itself an array, so assigning it, or
+assigning to it, copies a whole array and requires identical types:
+
+.. code-block::
+
+   TYPE
+       Row : ARRAY[1..3] OF DINT;
+   END_TYPE
+
+   PROGRAM Main
+       VAR
+           rows : ARRAY[1..2] OF Row;
+           row : Row;
+           wide : ARRAY[1..5] OF DINT;
+       END_VAR
+
+       rows[1] := row;   (* Correct: rows[1] is a Row *)
+       row := rows[2];   (* Correct *)
+       rows[1] := wide;  (* Error: 3 elements cannot receive 5 *)
+   END_PROGRAM

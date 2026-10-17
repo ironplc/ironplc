@@ -324,15 +324,16 @@ fn verify_function(
 
     // Phase 2: abstract interpretation. `depth_at[pc]` is the operand-stack
     // depth on entry to the instruction at `pc`, once some path has reached
-    // it. Index `len` represents falling off the end of the body.
+    // it. Index `len` represents falling off the end of the body. Each work
+    // item carries the depth recorded with it: an offset is queued only when
+    // its depth is first recorded, and that depth never changes afterwards
+    // (a disagreeing path is a merge conflict), so it is `depth_at[pc]`.
     let mut depth_at: Vec<Option<u16>> = vec![None; len + 1];
-    let mut work: VecDeque<usize> = VecDeque::new();
+    let mut work: VecDeque<(usize, u16)> = VecDeque::new();
     depth_at[0] = Some(0);
-    work.push_back(0);
+    work.push_back((0, 0));
 
-    while let Some(pc) = work.pop_front() {
-        let depth = depth_at[pc].expect("queued offsets always carry a depth");
-
+    while let Some((pc, depth)) = work.pop_front() {
         if pc == len {
             // Fell off the end of the body; the VM treats this as RET_VOID
             // (ADR-0044), so hold it to the same operand-stack contract.
@@ -424,14 +425,14 @@ fn resolve(
 fn propagate(
     function_id: FunctionId,
     depth_at: &mut [Option<u16>],
-    work: &mut VecDeque<usize>,
+    work: &mut VecDeque<(usize, u16)>,
     target: usize,
     depth: u16,
 ) -> Result<(), StackImbalance> {
     match depth_at[target] {
         None => {
             depth_at[target] = Some(depth);
-            work.push_back(target);
+            work.push_back((target, depth));
         }
         Some(existing) if existing != depth => {
             return Err(StackImbalance::MergeConflict {

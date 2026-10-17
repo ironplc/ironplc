@@ -16,10 +16,13 @@ use ironplc_dsl::sfc::ActionAssociation;
 use ironplc_dsl::textual::*;
 use ironplc_dsl::visitor::Visitor;
 
-use crate::call_assignment_check::bind_inputs;
-use crate::callee_resolution::{FunctionBlocks, InstanceTypes};
+use crate::callee_resolution::{
+    instance_type, receiver_block, CallParameters, FunctionBlocks, ParameterSection,
+};
 use crate::function_environment::FunctionEnvironment;
-use crate::symbol_environment::{ScopeKind, ScopePath, ScopeTracker, SymbolEnvironment};
+use crate::symbol_environment::{
+    Resolution, ScopeKind, ScopePath, ScopeTracker, SymbolEnvironment,
+};
 use crate::type_environment::TypeEnvironment;
 
 /// The writes of a library, and its `VAR_GLOBAL` names with whether every
@@ -36,14 +39,13 @@ pub(crate) fn collect(
     function_environment: &FunctionEnvironment,
     symbol_environment: &SymbolEnvironment,
 ) -> CollectedWrites {
-    let function_blocks = FunctionBlocks::from_library(lib);
+    let function_blocks = FunctionBlocks::from_library(lib, type_environment);
     let mut collector = WriteCollector {
         function_blocks: &function_blocks,
         type_environment,
         function_environment,
         symbol_environment,
         scope: ScopeTracker::default(),
-        instances: InstanceTypes::default(),
         written: Writes::default(),
         kind: WriteKind::Other,
         globals: HashMap::new(),
@@ -138,8 +140,6 @@ struct WriteCollector<'a> {
     symbol_environment: &'a SymbolEnvironment,
     /// The declaration the walk is inside.
     scope: ScopeTracker,
-    /// The function-block instances of the unit being walked.
-    instances: InstanceTypes,
     written: Writes,
     /// How the write being marked writes.
     kind: WriteKind,
@@ -153,11 +153,21 @@ impl WriteCollector<'_> {
         self.scope.current()
     }
 
+    /// The function block type of the instance `name` names here.
+    fn instance_type(&self, name: &Id) -> Option<TypeName> {
+        instance_type(
+            name,
+            &self.current_scope(),
+            self.symbol_environment,
+            self.type_environment,
+        )
+    }
+
     /// The scope whose declaration a bare `name` reaches from the current
     /// scope: the innermost enclosing unit that declares it, then the
     /// `EXTENDS` chain of the enclosing function block, then the globals. A
-    /// `VAR_EXTERNAL` declaration keeps its own scope; `mark` decides that
-    /// the write changes the global.
+    /// `VAR_EXTERNAL` declaration keeps its own scope; `mark` asks which
+    /// variable the write changes.
     fn declaring_scope(&self, name: &Id) -> ScopeKind {
         let symbol = self.symbol_environment.find(name, &self.current_scope());
         match symbol {
@@ -180,10 +190,13 @@ impl WriteCollector<'_> {
 
     fn mark(&mut self, name: &Id) {
         let declaration = self.declaring_scope(name);
-        // A write through a `VAR_EXTERNAL` writes its global.
-        let written = match self.symbol_environment.find(name, &declaration) {
-            Some(symbol) if symbol.is_external => ScopeKind::Global,
-            _ => declaration.clone(),
+        // The variable the write changes is the one the name resolves to:
+        // the global, for a write through a `VAR_EXTERNAL`.
+        let written = match self.symbol_environment.resolve_variable(name, &declaration) {
+            Resolution::Variable { decl, .. } | Resolution::GlobalNotVisible { decl, .. } => {
+                decl.scope
+            }
+            Resolution::NotAVariable | Resolution::Undeclared => declaration.clone(),
         };
         self.record(declaration, written, name);
     }
@@ -248,7 +261,7 @@ impl WriteCollector<'_> {
     fn mark_field(&mut self, record: &SymbolicVariableKind, field: &Id) {
         match record {
             SymbolicVariableKind::Named(named) => {
-                if let Some(fb_type) = self.instances.type_of(&named.name).cloned() {
+                if let Some(fb_type) = self.instance_type(&named.name) {
                     self.mark_member(&fb_type, field);
                 }
             }
@@ -302,11 +315,21 @@ impl WriteCollector<'_> {
     /// Marks every variable argument that a `VAR_IN_OUT` parameter of
     /// `owner` writes. An argument that binds to no parameter is taken to be
     /// written: with no declaration to consult, nothing rules a write out.
+    ///
+    /// The binding pass wrote a call whose arguments bind in normal form, so
+    /// each input names its parameter. A positional input is left only in a
+    /// call that does not bind, which is reported.
     fn mark_bound_arguments(&mut self, owner: &dyn HasVariables, params: &[ParamAssignmentKind]) {
-        for (param, declared) in bind_inputs(owner, params) {
+        let parameters = CallParameters::of_declaration(owner);
+        for param in params {
+            let declared = match param {
+                ParamAssignmentKind::NamedInput(input) => parameters.named_input(&input.name),
+                ParamAssignmentKind::PositionalInput(_) => None,
+                ParamAssignmentKind::Output(_) => continue,
+            };
             match declared {
                 None => self.marking_as(WriteKind::UnboundArgument, |c| c.mark_argument(param)),
-                Some(decl) if decl.var_type == VariableType::InOut => {
+                Some(parameter) if parameter.section == ParameterSection::InOut => {
                     self.marking_as(WriteKind::InOutArgument, |c| c.mark_argument(param))
                 }
                 Some(_) => {}
@@ -352,14 +375,9 @@ impl Visitor<Infallible> for WriteCollector<'_> {
 
     fn exit_scope(&mut self) {
         self.scope.exit();
-        // A method's instances are its block's; they go when the block does.
-        if self.scope.unit().is_none() {
-            self.instances.clear();
-        }
     }
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
-        self.instances.declare(node);
         if node.var_type == VariableType::Global {
             if let Some(name) = node.identifier.symbolic_id() {
                 let qualifies = node.qualifier == DeclarationQualifier::Unspecified
@@ -401,24 +419,12 @@ impl Visitor<Infallible> for WriteCollector<'_> {
             self.mark_all_arguments(&node.param_assignment);
             return node.recurse_visit(self);
         };
-        // Positional arguments occupy the input-compatible parameters in
-        // declaration order, which is the order
-        // `xform_named_to_positional_args` laid them out in. A named input
-        // still present was never rewritten, so it bound to nothing.
-        let mut declared = signature
-            .parameters
-            .iter()
-            .filter(|param| param.is_input_compatible());
-        for param in &node.param_assignment {
-            let written = match param {
-                ParamAssignmentKind::PositionalInput(_) => match declared.next() {
-                    Some(declared) => declared.is_inout.then_some(WriteKind::InOutArgument),
-                    // Past the declared parameters an extensible function
-                    // takes further inputs; anything else is unbound.
-                    None => (!signature.is_extensible).then_some(WriteKind::UnboundArgument),
-                },
-                ParamAssignmentKind::NamedInput(_) => Some(WriteKind::UnboundArgument),
-                ParamAssignmentKind::Output(_) => None,
+        // The binding pass wrote the call in normal form, so each input names
+        // the parameter it is passed to. One that names none is unbound.
+        for (param, declared) in signature.parameters_of(&node.param_assignment) {
+            let written = match declared {
+                Some(declared) => declared.is_inout.then_some(WriteKind::InOutArgument),
+                None => Some(WriteKind::UnboundArgument),
             };
             if let Some(kind) = written {
                 self.marking_as(kind, |c| c.mark_argument(param));
@@ -429,8 +435,7 @@ impl Visitor<Infallible> for WriteCollector<'_> {
 
     fn visit_fb_call(&mut self, node: &FbCall) -> Result<(), Infallible> {
         self.marking_as(WriteKind::Invocation, |c| c.mark(&node.var_name));
-        let fb_type = self.instances.type_of(&node.var_name).cloned();
-        match fb_type {
+        match self.instance_type(&node.var_name) {
             Some(fb_type) => match self.function_blocks.get(&fb_type) {
                 Some(fb) => self.mark_bound_arguments(fb, &node.params),
                 // A standard-library function block declares no VAR_IN_OUT,
@@ -444,16 +449,17 @@ impl Visitor<Infallible> for WriteCollector<'_> {
     }
 
     fn visit_method_call(&mut self, node: &MethodCall) -> Result<(), Infallible> {
-        let method = match &node.receiver {
-            MethodReceiver::Instance(instance) => {
-                self.marking_as(WriteKind::Invocation, |c| c.mark(instance));
-                self.instances
-                    .type_of(instance)
-                    .and_then(|fb_type| self.function_blocks.resolve_method(fb_type, &node.method))
-                    .map(|(_, method)| method)
-            }
-            MethodReceiver::SelfRef(_) => None,
-        };
+        if let MethodReceiver::Instance(instance) = &node.receiver {
+            self.marking_as(WriteKind::Invocation, |c| c.mark(instance));
+        }
+        let method = receiver_block(
+            &node.receiver,
+            &self.current_scope(),
+            self.symbol_environment,
+            self.type_environment,
+        )
+        .and_then(|block| self.function_blocks.resolve_method(&block, &node.method))
+        .map(|(_, method)| method);
         match method {
             Some(method) => self.mark_bound_arguments(method, &node.params),
             None => self.mark_all_arguments(&node.params),

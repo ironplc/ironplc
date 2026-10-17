@@ -90,7 +90,7 @@ header.
 ### Phase E — analyzer compile-time rejection (Phase 4)
 - [ ] Verify `STRING := WSTRING` / `WSTRING := STRING` (and cross-encoding
       compares/args) are rejected at compile time. If missing, add a rule with a
-      documented problem code (`docs/compiler/problems/P####.rst`) + tests.
+      documented problem code (`docs/reference/compiler/problems/P####.rst`) + tests.
 
 ### Phase F — end-to-end tests (acceptance)
 - [ ] `tests/it/end_to_end_wstring.rs`: declaration+literal (UTF-16LE bytes,

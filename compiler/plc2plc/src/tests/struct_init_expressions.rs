@@ -1,5 +1,6 @@
-//! Round-tripping of general expressions used as struct/FB-instance
-//! initializer values, e.g. `tonDelta : TON := (PT := pDevice^.Delta);`.
+//! Round-tripping of struct/FB-instance initializer values: general
+//! expressions, e.g. `tonDelta : TON := (PT := pDevice^.Delta);`, and
+//! nested arrays and structures.
 
 use super::common::*;
 
@@ -59,4 +60,21 @@ END_VAR
 END_FUNCTION_BLOCK
 ";
     assert_round_trips(source, &CompilerOptions::default());
+}
+
+/// The golden file is in the renderer's own layout, so rendering it,
+/// before or after analysis, gives it back unchanged. It holds a structure
+/// member that is an array and one that is a structure, which need brackets
+/// and parentheses, and a function block instance with a member initializer,
+/// which the analyzer resolves to a function block initializer.
+#[test]
+fn write_to_string_when_member_initializers_then_renders_source_unchanged() {
+    let options = CompilerOptions::default();
+    let source = read_resource("member_initializers.st");
+
+    assert_eq!(assert_round_trips(&source, &options), source);
+
+    let (library, rendered) = analyze_and_render_with_types(&source, &options);
+    assert_annotated_reparses_as_plain(&library, &rendered, &options);
+    assert_eq!(rendered, source);
 }

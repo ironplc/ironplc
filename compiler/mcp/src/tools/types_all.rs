@@ -124,12 +124,10 @@ fn collect_types(context: &SemanticContext) -> Vec<TypeEntry> {
 
     for (name, attrs) in context.types().iter_user_defined() {
         let entry = match &attrs.representation {
-            SemanticType::Enumeration { .. } => {
-                let values: Vec<String> = context
-                    .symbols()
-                    .get_enumeration_values_for_type(name)
-                    .into_iter()
-                    .map(|v| v.to_string())
+            SemanticType::Enumeration { members } => {
+                let values: Vec<String> = members
+                    .iter()
+                    .map(|member| member.name.to_string())
                     .collect();
                 TypeEntry {
                     name: name.to_string(),
@@ -281,7 +279,6 @@ fn render_type(ty: &SemanticType) -> String {
         }
         SemanticType::Subrange { base_type, .. } => render_type(base_type),
         SemanticType::FunctionBlock { name, .. } => name.clone(),
-        SemanticType::Function { .. } => "FUNCTION".into(),
         SemanticType::Reference { target_type } => {
             format!("REF_TO {}", render_type(target_type))
         }
@@ -359,6 +356,24 @@ mod tests {
         assert_eq!(entry.low, Some(0));
         assert_eq!(entry.high, Some(100));
         assert_eq!(entry.base_type.as_deref(), Some("INT"));
+    }
+
+    #[test]
+    fn build_response_when_alias_of_elementary_type_then_kind_alias_with_target_type() {
+        let resp = build(&with_program("TYPE Flag : BOOL; END_TYPE"));
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        let entry = resp.types.iter().find(|t| t.name == "Flag").unwrap();
+        assert_eq!(entry.kind, "alias");
+        assert_eq!(entry.target_type.as_deref(), Some("BOOL"));
+    }
+
+    #[test]
+    fn build_response_when_sized_string_type_then_kind_string_with_length() {
+        let resp = build(&with_program("TYPE Label : STRING[10]; END_TYPE"));
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        let entry = resp.types.iter().find(|t| t.name == "Label").unwrap();
+        assert_eq!(entry.kind, "string");
+        assert_eq!(entry.length, Some(10));
     }
 
     #[test]

@@ -200,13 +200,9 @@ impl RuleOperatorOperandTypeCheck<'_> {
         let names: Option<Vec<Option<TypeName>>> = function
             .param_assignment
             .iter()
-            .map(|p| match p {
-                ParamAssignmentKind::PositionalInput(input) => Some(self.operand_name(&input.expr)),
-                ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
-            })
+            .map(|p| p.input_expr().map(|input| self.operand_name(input)))
             .collect();
-        // A named input is left only on a call the named-argument pass has
-        // already diagnosed.
+        // An output assignment is reported as not implemented.
         let Some(names) = names else {
             return;
         };
@@ -284,6 +280,14 @@ impl RuleOperatorOperandTypeCheck<'_> {
 impl Visitor<Infallible> for RuleOperatorOperandTypeCheck<'_> {
     type Value = ();
 
+    /// The value an output assignment stores is the output the call leaves,
+    /// which the analyzer recorded rather than the program wrote: a negated
+    /// output that is not a `BOOL` is P4083, not an operand of `NOT` of the
+    /// wrong type. Only the target is checked.
+    fn visit_output(&mut self, node: &Output) -> Result<Self::Value, Infallible> {
+        self.visit_variable(&node.tgt)
+    }
+
     /// Checks an operator expression at the `Expr` that holds it, rather than
     /// at the operator node, so a check has the span of the whole expression
     /// as well as each operand's.
@@ -311,6 +315,42 @@ impl Visitor<Infallible> for RuleOperatorOperandTypeCheck<'_> {
 mod tests {
     use super::*;
     use crate::test_helpers::{diagnostic_codes, rule_diagnostics};
+
+    rule_ok!(
+        /// The `NOT` of a negated output is the analyzer's, not the
+        /// program's: a negated output that is not a `BOOL` is P4083.
+        apply_when_negated_output_not_bool_then_ok,
+        "
+FUNCTION_BLOCK FB
+VAR_OUTPUT q : INT; END_VAR
+END_FUNCTION_BLOCK
+PROGRAM main
+VAR
+    f : FB;
+    d : INT;
+END_VAR
+    f(NOT q => d);
+END_PROGRAM"
+    );
+
+    rule_err!(
+        /// The target of an output assignment is checked as any other
+        /// variable is: an operator in its subscript is.
+        apply_when_output_target_subscript_mismatched_then_p4049,
+        "
+FUNCTION_BLOCK FB
+VAR_OUTPUT q : INT; END_VAR
+END_FUNCTION_BLOCK
+PROGRAM main
+VAR
+    f : FB;
+    a : ARRAY[1..2] OF INT;
+    r : REAL;
+END_VAR
+    f(q => a[r MOD 2.0]);
+END_PROGRAM",
+        [Problem::OperatorOperandTypeMismatch]
+    );
 
     rule_ok!(
         apply_when_mod_of_integer_variables_then_ok,

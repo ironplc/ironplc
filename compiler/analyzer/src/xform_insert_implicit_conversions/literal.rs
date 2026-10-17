@@ -1,15 +1,14 @@
 //! Recording the type of an untyped literal from the context it is used in.
 //!
 //! An untyped literal such as `1` has a generic type (`ANY_INT`) until a
-//! context gives it one (ADR-0028). The code generator gives it one top-down:
-//! each statement passes the type it stores or tests at into its expression,
-//! and every construct on the way to the literal either passes that type on
+//! context gives it one (ADR-0028). The context is found top-down: each
+//! statement gives its expression the type it stores or tests at, and every
+//! construct on the way to the literal either passes that type on
 //! (parentheses), computes at a type of its own (an arithmetic operation, a
 //! negation, `ABS` or `MAX` of a concrete type, a comparison, a call to a
 //! user-defined function), or computes at a fixed type (a subscript, a
 //! string position, a shift count). This module records the type each
-//! literal reaches, so that a backend reads it from the literal rather than
-//! carrying it down.
+//! literal reaches, so that a backend compiles the literal at it.
 //!
 //! A literal stored in a function block field, passed to a method parameter
 //! or assigned through a dereference takes the declared type of the variable
@@ -21,17 +20,18 @@ use ironplc_dsl::common::{ConstantKind, ElementaryTypeName, GenericTypeName, Typ
 use ironplc_dsl::core::Id;
 use ironplc_dsl::textual::{
     Case, CompareExpr, CompareOp, Expr, ExprKind, ExprType, FbCall, For, Function, If, MethodCall,
-    MethodReceiver, ParamAssignmentKind, Repeat, SymbolicVariableKind, UnaryOp, Variable, While,
+    ParamAssignmentKind, Repeat, SymbolicVariableKind, UnaryOp, Variable, While,
 };
 use ironplc_dsl::type_id::TypeId;
 
 use super::declared::elementary_of;
 use super::ImplicitConversions;
+use crate::builtin_function::BuiltinFunction;
+use crate::callee_resolution::receiver_block;
 use crate::intermediates::conversion_target::{concrete, wrap};
 use crate::intermediates::numeric_operation::{literal_default_type, OperationWidth};
 use crate::intermediates::operator_function_form::FormOf;
-use crate::intrinsic::Intrinsic;
-use crate::semantic_type::{FunctionBlockVarType, SemanticType};
+use crate::semantic_type::SemanticType;
 use crate::variable_type;
 
 impl ImplicitConversions<'_> {
@@ -66,6 +66,7 @@ impl ImplicitConversions<'_> {
             | ExprKind::LateBound(_)
             | ExprKind::EnumeratedValue(_)
             | ExprKind::Ref(_)
+            | ExprKind::CallOutput(_)
             | ExprKind::Null(_) => {}
             // A negation or `NOT` computes at its own numeric type, as an
             // arithmetic operation does.
@@ -93,11 +94,13 @@ impl ImplicitConversions<'_> {
                 if let Some(own) = own {
                     self.record_one_type_call(func, own);
                 }
-                self.type_call_literals(func, own, numeric, context, numeric_pair)
+                self.type_call_literals(func, own, numeric, context, numeric_pair);
+                self.type_output_target_literals(&mut func.param_assignment);
             }
             ExprKind::MethodCall(call) => self.type_method_call_literals(call),
             ExprKind::Variable(variable) => self.type_variable_literals(variable),
-            ExprKind::Deref(inner) | ExprKind::ImplicitConversion(inner) => self.type_own(inner),
+            ExprKind::Deref(inner) => self.type_own(inner),
+            ExprKind::ImplicitConversion(conversion) => self.type_own(&mut conversion.value),
         }
     }
 
@@ -152,39 +155,36 @@ impl ImplicitConversions<'_> {
         context: Option<TypeId>,
         numeric_pair: bool,
     ) {
-        let intrinsic = self.intrinsic_of(func);
-        let one_type = intrinsic.as_ref().and_then(Intrinsic::inputs_of_one_type);
-        let typed_pair = matches!(
-            func.param_assignment.as_slice(),
-            [ParamAssignmentKind::PositionalInput(left), ParamAssignmentKind::PositionalInput(right), ..]
-                if self.is_typed_operator_pair(func, &left.expr, &right.expr)
-        );
-        let mut inputs: Vec<&mut Expr> = func
-            .param_assignment
-            .iter_mut()
-            .filter_map(|input| match input {
-                ParamAssignmentKind::PositionalInput(input) => Some(&mut input.expr),
-                ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
-            })
-            .collect();
+        let builtin = self.builtin_function_of(func);
+        let one_type = builtin
+            .as_ref()
+            .and_then(BuiltinFunction::inputs_of_one_type);
+        let typed_pair = match func.param_assignment.as_slice() {
+            [left, right, ..] => match (left.input_expr(), right.input_expr()) {
+                (Some(left), Some(right)) => self.is_typed_operator_pair(func, left, right),
+                _ => false,
+            },
+            _ => false,
+        };
+        let mut inputs: Vec<&mut Expr> = func.inputs_mut().collect();
         let dint = self.dint();
         // An operation on one value computes at its own numeric type, and any
         // other at the type of its context.
-        let operated = if intrinsic
+        let operated = if builtin
             .as_ref()
-            .is_some_and(Intrinsic::computes_at_own_type)
+            .is_some_and(BuiltinFunction::computes_at_own_type)
         {
             numeric.or(context)
         } else {
             context
         };
-        match intrinsic {
+        match builtin {
             // A user-defined function, or one the analyzer has no signature
             // for: each argument at its own type, which the argument pass
             // gave it.
             None => inputs.into_iter().for_each(|arg| self.type_own(arg)),
-            Some(intrinsic) => match intrinsic {
-                Intrinsic::Operator(FormOf::Arithmetic(_)) => {
+            Some(builtin) => match builtin {
+                BuiltinFunction::Operator(FormOf::Arithmetic(_)) => {
                     let at = if typed_pair {
                         None
                     } else if numeric_pair {
@@ -199,7 +199,7 @@ impl ImplicitConversions<'_> {
                         }
                     }
                 }
-                Intrinsic::Operator(FormOf::Compare(op)) if op.is_comparison() => {
+                BuiltinFunction::Operator(FormOf::Compare(op)) if op.is_comparison() => {
                     if let [left, right] = inputs.as_mut_slice() {
                         let at = self
                             .own_or_default(left)
@@ -209,10 +209,11 @@ impl ImplicitConversions<'_> {
                         self.type_literals(right, at);
                     }
                 }
-                Intrinsic::Operator(FormOf::Compare(_) | FormOf::Not) | Intrinsic::Move => inputs
+                BuiltinFunction::Operator(FormOf::Compare(_) | FormOf::Not)
+                | BuiltinFunction::Move => inputs
                     .into_iter()
                     .for_each(|arg| self.type_literals(arg, operated)),
-                Intrinsic::Numeric(_) | Intrinsic::Mux => match one_type {
+                BuiltinFunction::Numeric(_) | BuiltinFunction::Mux => match one_type {
                     // A function of several inputs of one type computes at
                     // its own type. A selector is a BOOL or an integer,
                     // whatever the type of the inputs it selects between.
@@ -230,37 +231,51 @@ impl ImplicitConversions<'_> {
                         .into_iter()
                         .for_each(|arg| self.type_literals(arg, operated)),
                 },
-                Intrinsic::BitShift(_) => {
+                BuiltinFunction::BitShift(_) => {
                     let wide =
                         operated.and_then(|id| self.width_of_type(id)) == Some(OperationWidth::W64);
                     let count = if wide { self.lint() } else { dint };
                     for (index, arg) in inputs.into_iter().enumerate() {
-                        self.type_literals(arg, if index == 0 { operated } else { count });
+                        if index == 0 {
+                            self.type_literals(arg, operated);
+                            continue;
+                        }
+                        self.type_literals(arg, count);
+                        // A count of another width is converted to the type
+                        // the count is compiled at, as it is narrowed or
+                        // widened to it.
+                        if let Some(count) = count {
+                            self.record_conversion_to(arg, count);
+                        }
                     }
                 }
-                // A position or a length is a `DINT`; a string is compiled in
-                // its own encoding.
-                Intrinsic::String(_) => inputs.into_iter().for_each(|arg| {
+                // A position or a length is a `DINT`, and one of another
+                // width is converted to it, as it is narrowed or widened to
+                // it; a string is compiled in its own encoding.
+                BuiltinFunction::String(_) => inputs.into_iter().for_each(|arg| {
                     if self.conversions.is_string(arg) {
                         self.type_own(arg);
                     } else {
                         self.type_literals(arg, dint);
+                        if let Some(dint) = dint {
+                            self.record_conversion_to(arg, dint);
+                        }
                     }
                 }),
-                Intrinsic::Conversion { source, .. } => {
+                BuiltinFunction::Conversion { source, .. } => {
                     let source: TypeName = source.into();
                     let at = self.context.types().id_of(&source);
                     inputs
                         .into_iter()
                         .for_each(|arg| self.type_literals(arg, at));
                 }
-                Intrinsic::Trunc
-                | Intrinsic::BcdToInt
-                | Intrinsic::IntToBcd
-                | Intrinsic::Time { .. }
-                | Intrinsic::DtToDate
-                | Intrinsic::DtToTod => inputs.into_iter().for_each(|arg| self.type_own(arg)),
-                Intrinsic::Sizeof => {}
+                BuiltinFunction::Trunc
+                | BuiltinFunction::BcdToInt
+                | BuiltinFunction::IntToBcd
+                | BuiltinFunction::Time { .. }
+                | BuiltinFunction::DtToDate
+                | BuiltinFunction::DtToTod => inputs.into_iter().for_each(|arg| self.type_own(arg)),
+                BuiltinFunction::Sizeof => {}
             },
         }
     }
@@ -281,38 +296,42 @@ impl ImplicitConversions<'_> {
                 None => self.type_own(arg),
             }
         }
+        self.type_output_target_literals(&mut call.params);
+    }
+
+    /// Types the literals of the subscripts of each output target of a call,
+    /// as those of an assignment's target are: an output assignment stores
+    /// in its target as an assignment does.
+    fn type_output_target_literals(&self, params: &mut [ParamAssignmentKind]) {
+        for param in params {
+            if let ParamAssignmentKind::Output(output) = param {
+                self.type_variable_literals(&mut output.tgt);
+            }
+        }
     }
 
     /// The input arguments of the method call `call`, each with the type its
-    /// parameter is passed as: positional arguments fill the parameters in
-    /// order, and a named one the parameter it names.
+    /// parameter is passed as.
+    ///
+    /// The binding pass has written every call that binds in normal form, so
+    /// each input names its parameter. A positional input is left only in a
+    /// call that does not bind, which the rules report, and is given no type.
     pub(super) fn method_arguments<'c>(
         &self,
         call: &'c mut MethodCall,
     ) -> Vec<(&'c mut Expr, Option<TypeId>)> {
-        let parameters = match &call.receiver {
-            MethodReceiver::Instance(instance) => {
-                variable_type::declared(instance, self.context, &self.scope.current()).and_then(
-                    |representation| match representation {
-                        SemanticType::FunctionBlock { name, .. } => self
-                            .declarations
-                            .method(&Id::from(name.as_str()), &call.method),
-                        _ => None,
-                    },
-                )
-            }
-            MethodReceiver::SelfRef(_) => None,
-        };
-        let mut position = 0;
+        let parameters = receiver_block(
+            &call.receiver,
+            &self.scope.current(),
+            self.context.symbols(),
+            self.context.types(),
+        )
+        .and_then(|block| self.declarations.method(&block, &call.method));
         let mut arguments = Vec::with_capacity(call.params.len());
         for param in &mut call.params {
             match param {
                 ParamAssignmentKind::PositionalInput(input) => {
-                    let at = parameters
-                        .and_then(|parameters| parameters.get(position))
-                        .and_then(|(_, at)| *at);
-                    position += 1;
-                    arguments.push((&mut input.expr, at));
+                    arguments.push((&mut input.expr, None))
                 }
                 ParamAssignmentKind::NamedInput(input) => {
                     let at = parameters
@@ -396,25 +415,21 @@ impl ImplicitConversions<'_> {
     }
 
     /// The declared type of the field `field` of the function block
-    /// instance `instance`, as the elementary type it is operated as. `None`
-    /// when `instance` is not a function block instance, or the field is not
-    /// a single numeric value.
+    /// instance `instance`, own or inherited, as the elementary type it is
+    /// operated as. `None` when `instance` is not a function block instance,
+    /// or the field is not a single numeric value.
     pub(super) fn function_block_field_at(&self, instance: &Id, field: &Id) -> Option<TypeId> {
-        let representation =
-            variable_type::declared(instance, self.context, &self.scope.current())?;
-        let SemanticType::FunctionBlock { name, fields } = representation else {
+        let types = self.context.types();
+        let block = variable_type::declared_type_id(
+            instance,
+            self.context.symbols(),
+            &self.scope.current(),
+        )?;
+        if !types.get_by_id(block)?.representation.is_function_block() {
             return None;
-        };
-        // The type of a user-defined block lists only the fields declared
-        // with a simple type, so its fields come from its declaration. A
-        // standard block's type lists every field.
-        match self.declarations.field(&Id::from(name.as_str()), field) {
-            Some(at) => at,
-            None => fields
-                .iter()
-                .find(|candidate| candidate.name == *field)
-                .and_then(|candidate| elementary_of(self.context.types(), &candidate.field_type)),
         }
+        let field_type = types.field_type(block, field)?;
+        elementary_of(types, &types.get_by_id(field_type)?.representation)
     }
 
     /// Types the literals of the bounds and step of `node` by its control
@@ -445,21 +460,20 @@ impl ImplicitConversions<'_> {
                 None => self.type_own(input),
             }
         }
+        self.type_output_target_literals(&mut node.params);
     }
 
     /// The inputs of the function block call `node`, each with the type of
-    /// the field it is stored in: a named input the field it names, and the
-    /// n-th positional input the n-th input the block declares, which is how
-    /// IEC 61131-3 binds a non-formal call.
+    /// the field it is stored in.
     ///
-    /// The code generator drops a positional input today (#1855), so its
-    /// conversion and the type of its literals have no effect yet.
+    /// The binding pass has written every call that binds in normal form, so
+    /// each input names its field. A positional input is left only in a call
+    /// that does not bind, which the rules report, and is given no type.
     pub(super) fn fb_call_inputs<'c>(
         &self,
         node: &'c mut FbCall,
     ) -> Vec<(&'c mut Expr, Option<TypeId>)> {
         let instance = &node.var_name;
-        let mut position = 0;
         let mut inputs = Vec::with_capacity(node.params.len());
         for param in &mut node.params {
             match param {
@@ -467,40 +481,13 @@ impl ImplicitConversions<'_> {
                     let at = self.function_block_field_at(instance, &input.name);
                     inputs.push((&mut input.expr, at));
                 }
-                ParamAssignmentKind::PositionalInput(input) => {
-                    let at = self
-                        .function_block_input(instance, position)
-                        .and_then(|name| self.function_block_field_at(instance, &name));
-                    position += 1;
-                    inputs.push((&mut input.expr, at));
-                }
-                // An output is stored into a variable by the call, not
-                // computed into the block (#2125).
+                ParamAssignmentKind::PositionalInput(input) => inputs.push((&mut input.expr, None)),
+                // An output is stored into a variable after the call, not
+                // into the block; `record_fb_call_outputs` converts it.
                 ParamAssignmentKind::Output(_) => {}
             }
         }
         inputs
-    }
-
-    /// The name of the input at `position` among the inputs of the function
-    /// block instance `instance`, in the order the block declares them.
-    fn function_block_input(&self, instance: &Id, position: usize) -> Option<Id> {
-        let representation =
-            variable_type::declared(instance, self.context, &self.scope.current())?;
-        let SemanticType::FunctionBlock { name, fields } = representation else {
-            return None;
-        };
-        // The type of a user-defined block lists only the fields declared
-        // with a simple type, so its inputs come from its declaration. A
-        // standard block's type lists every field.
-        match self.declarations.inputs(&Id::from(name.as_str())) {
-            Some(inputs) => inputs.get(position).cloned(),
-            None => fields
-                .iter()
-                .filter(|field| field.var_type == Some(FunctionBlockVarType::Input))
-                .nth(position)
-                .map(|field| field.name.clone()),
-        }
     }
 
     pub(super) fn type_if_literals(&self, node: &mut If) {
@@ -570,6 +557,7 @@ impl ImplicitConversions<'_> {
             | ExprKind::Ref(_)
             | ExprKind::Deref(_)
             | ExprKind::ImplicitConversion(_)
+            | ExprKind::CallOutput(_)
             | ExprKind::Null(_) => self.own_or_default(condition),
         }
     }

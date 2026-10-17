@@ -63,7 +63,6 @@ mod tests {
     use crate::type_attributes::TypeAttributes;
     use crate::type_environment::{TypeEnvironment, TypeEnvironmentBuilder};
     use ironplc_dsl::common::TypeName;
-    use ironplc_dsl::core::SourceSpan;
     use std::collections::HashSet;
 
     fn elementary_environment() -> TypeEnvironment {
@@ -165,10 +164,7 @@ mod tests {
         let name = TypeName::from("POINT");
         env.insert_type(
             &name,
-            TypeAttributes::new(
-                SourceSpan::default(),
-                SemanticType::Structure { fields: vec![] },
-            ),
+            TypeAttributes::new(SemanticType::Structure { fields: vec![] }),
         );
 
         let id = env.id_of(&name).unwrap();

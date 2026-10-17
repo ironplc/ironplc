@@ -235,6 +235,17 @@ mod tests {
     }
 
     #[test]
+    fn build_response_when_alias_and_string_types_then_in_aliases_and_strings() {
+        let sources = source(&with_program(
+            "TYPE Flag : BOOL; Label : STRING[10]; END_TYPE",
+        ));
+        let resp = build_response(&sources, &ed2_options());
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        assert_eq!(resp.aliases, vec!["Flag".to_string()]);
+        assert_eq!(resp.strings, vec!["Label".to_string()]);
+    }
+
+    #[test]
     fn build_response_when_multiple_files_then_all_listed() {
         let sources = vec![
             SourceInput {

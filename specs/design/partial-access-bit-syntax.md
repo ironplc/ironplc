@@ -181,8 +181,9 @@ variable keeps all 64 bits, an `LWORD` literal is not range-checked as a
 semantics as on a plain variable when the base is an array element
 (`arr[0].%B2`), a structured field (`s.value.%B2`), an element of an array in
 a structure (`s.vals[1].%B2`), a field of a structure in an array
-(`es[1].value.%B2`), an element reached through a reference (`p^[1].%B2`), or
-a `VAR_IN_OUT` parameter.
+(`es[1].value.%B2`), a field of a function block instance (`b.value.%B2`), an
+element reached through a reference (`p^[1].%B2`), or a `VAR_IN_OUT`
+parameter.
 
 ### Feature Gating
 

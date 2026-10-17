@@ -54,22 +54,20 @@ use crate::{
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
     string_similarity::find_closest_match,
-    symbol_environment::{ScopeKind, ScopeTracker, SymbolEnvironment, SymbolInfo, SymbolKind},
+    symbol_environment::{Resolution, ScopeTracker, SymbolEnvironment, SymbolKind},
 };
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
     lib: &Library,
     context: &SemanticContext,
-    options: &CompilerOptions,
+    _options: &CompilerOptions,
 ) -> SemanticResult {
     run_rule(
         SymbolScopeChecker {
             symbols: context.symbols(),
             scope: ScopeTracker::default(),
             units: Vec::new(),
-            bare_globals: options.allow_top_level_var_global,
-            enclosing_properties: Vec::new(),
             diagnostics: Vec::new(),
         },
         lib,
@@ -79,7 +77,8 @@ pub fn apply(
 /// Checks each name a body uses against the symbol environment, from the
 /// scope the body is in. The environment answers for the scope's own
 /// variables, those of the scopes enclosing it, the fields a function
-/// block inherits through `EXTENDS`, and the globals.
+/// block inherits through `EXTENDS`, and the globals, and decides whether
+/// the body reaches a global.
 struct SymbolScopeChecker<'a> {
     symbols: &'a SymbolEnvironment,
     /// Where the traversal is, to look names up in the symbol environment.
@@ -88,52 +87,18 @@ struct SymbolScopeChecker<'a> {
     /// that opened it, which is in scope within its body, and `None` for a
     /// function or method, whose own name is its result variable.
     units: Vec<Option<Id>>,
-    /// Whether a body may use a `VAR_GLOBAL` directly, without a
-    /// `VAR_EXTERNAL` naming it. The vendor dialects that declare globals
-    /// in top-level lists (`--allow-top-level-var-global`) allow it; IEC
-    /// 61131-3 reaches a global only through `VAR_EXTERNAL`.
-    bare_globals: bool,
-    /// One entry per open scope: the property names of the function block
-    /// that opened it, `None` for any other scope. A name that is not a
-    /// variable but is a property of the enclosing function block is a
-    /// property access, which is not implemented yet, rather than an
-    /// undefined variable.
-    enclosing_properties: Vec<Option<Vec<Id>>>,
     diagnostics: Vec<Diagnostic>,
 }
 
 impl SymbolScopeChecker<'_> {
-    fn is_enclosing_property(&self, name: &Id) -> bool {
-        self.enclosing_properties
-            .iter()
-            .rev()
-            .find_map(|properties| properties.as_ref())
-            .is_some_and(|properties| properties.contains(name))
-    }
-
-    /// Whether a variable `info` describes can be used by name from here.
-    ///
-    /// A `VAR_GLOBAL` is reached through a `VAR_EXTERNAL`, which is a
-    /// variable of the scope that declares it, unless the dialect lets a
-    /// body use globals directly. A global the compiler provides is always
-    /// usable.
-    fn is_usable_variable(&self, info: &SymbolInfo) -> bool {
-        let is_variable = matches!(
-            info.kind,
-            SymbolKind::Variable
-                | SymbolKind::Parameter
-                | SymbolKind::OutputParameter
-                | SymbolKind::InOutParameter
-                | SymbolKind::EdgeVariable
-                | SymbolKind::Constant
-                | SymbolKind::ResultVariable
-        );
-        if !is_variable {
-            return false;
-        }
-        let is_declared_global =
-            info.scope == ScopeKind::Global && info.variable_type == Some(VariableType::Global);
-        !is_declared_global || info.compiler_provided || self.bare_globals
+    /// Whether `name` is a property of the enclosing function block or of
+    /// a block it `EXTENDS`. A name that is not a variable but is a property
+    /// is a property access, which is not implemented yet, rather than an
+    /// undefined variable.
+    fn is_property(&self, name: &Id) -> bool {
+        self.symbols
+            .find(name, &self.scope.current())
+            .is_some_and(|info| info.kind == SymbolKind::Property)
     }
 
     /// Whether `name` is in scope where the traversal is.
@@ -141,9 +106,10 @@ impl SymbolScopeChecker<'_> {
         if self.units.iter().flatten().any(|unit| unit == name) {
             return true;
         }
-        self.symbols
-            .find(name, &self.scope.current())
-            .is_some_and(|info| self.is_usable_variable(info))
+        matches!(
+            self.symbols.resolve_variable(name, &self.scope.current()),
+            Resolution::Variable { .. }
+        )
     }
 }
 
@@ -165,12 +131,6 @@ impl Visitor<Infallible> for SymbolScopeChecker<'_> {
     /// is its result variable, which the symbol environment holds.
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
         self.scope.enter(&node);
-        self.enclosing_properties.push(match &node {
-            ScopeNode::FunctionBlock(node) => {
-                Some(node.properties.iter().map(|p| p.name.clone()).collect())
-            }
-            _ => None,
-        });
         self.units.push(match node {
             ScopeNode::FunctionBlock(node) => Some(node.name.name.clone()),
             ScopeNode::Program(node) => Some(node.name.clone()),
@@ -184,7 +144,6 @@ impl Visitor<Infallible> for SymbolScopeChecker<'_> {
 
     fn exit_scope(&mut self) {
         self.scope.exit();
-        self.enclosing_properties.pop();
         self.units.pop();
     }
 
@@ -197,7 +156,7 @@ impl Visitor<Infallible> for SymbolScopeChecker<'_> {
             return Ok(());
         }
 
-        if self.is_enclosing_property(&node.name) {
+        if self.is_property(&node.name) {
             self.diagnostics.push(
                 Diagnostic::not_implemented(Label::span(node.name.span(), "Use of a PROPERTY"))
                     .with_context_id("property", &node.name),
@@ -205,13 +164,10 @@ impl Visitor<Infallible> for SymbolScopeChecker<'_> {
             return Ok(());
         }
 
-        let visible = self.symbols.visible_variables(&self.scope.current());
+        let usable = self.symbols.usable_variables(&self.scope.current());
         let suggestion = find_closest_match(
             node.name.original(),
-            visible
-                .iter()
-                .filter(|(_, info)| self.is_usable_variable(info))
-                .map(|(name, _)| name.original().as_str()),
+            usable.iter().map(|(name, _)| name.original().as_str()),
         );
         let mut diagnostic = Diagnostic::problem(
             Problem::VariableUndefined,
@@ -758,6 +714,63 @@ END_FUNCTION_BLOCK";
 
         assert_eq!(diagnostic_codes(&errors), [NOT_IMPLEMENTED_CODE]);
         assert!(errors[0].described.contains(&"property=Speed".to_owned()));
+    }
+
+    /// A property a block inherits through `EXTENDS` is recognised like its
+    /// own.
+    #[test]
+    fn apply_when_derived_block_uses_inherited_property_then_not_implemented() {
+        let program = "
+FUNCTION_BLOCK FB_Base
+VAR
+    _speed : REAL;
+END_VAR
+PROPERTY Speed : REAL
+GET
+    Speed := _speed;
+END_GET
+END_PROPERTY
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Motor EXTENDS FB_Base
+METHOD Stop
+    Speed := 0.0;
+END_METHOD
+END_FUNCTION_BLOCK";
+
+        let errors = rule_diagnostics(apply, program, &fb_inheritance_options());
+
+        assert_eq!(diagnostic_codes(&errors), [NOT_IMPLEMENTED_CODE]);
+        assert!(errors[0].described.contains(&"property=Speed".to_owned()));
+    }
+
+    /// A property is found before a global of the same name, because the
+    /// block's scope is searched before the global scope.
+    #[test]
+    fn apply_when_property_has_name_of_global_then_property_found() {
+        let program = "
+VAR_GLOBAL
+    Speed : REAL;
+END_VAR
+FUNCTION_BLOCK FB_Motor
+METHOD Stop
+    Speed := 0.0;
+END_METHOD
+PROPERTY Speed : REAL
+GET
+    Speed := 1.0;
+END_GET
+END_PROPERTY
+END_FUNCTION_BLOCK";
+        let options = CompilerOptions {
+            allow_fb_inheritance: true,
+            allow_top_level_var_global: true,
+            ..CompilerOptions::default()
+        };
+
+        let errors = rule_diagnostics(apply, program, &options);
+
+        assert_eq!(diagnostic_codes(&errors), [NOT_IMPLEMENTED_CODE]);
     }
 
     /// Property names are visible only inside their own function block.

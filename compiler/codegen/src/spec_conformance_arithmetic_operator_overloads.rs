@@ -12,7 +12,7 @@
 //! See `specs/design/arithmetic-operator-overloads.md`.
 
 use ironplc_analyzer::{
-    typed_overload, CleanAnalysis, FunctionEnvironmentBuilder, Intrinsic, Overload,
+    typed_overload, BuiltinFunction, CleanAnalysis, FunctionEnvironmentBuilder, TypedOverload,
 };
 use ironplc_container::FunctionId;
 use ironplc_dsl::common::TypeName;
@@ -22,7 +22,7 @@ use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
 use spec_test_macro::spec_test;
 
-use crate::compile_call::intrinsics_by_name;
+use crate::compile_call::builtin_functions_by_name;
 
 /// Compiles `source` under the Edition 3 dialect, which declares the long
 /// types, and returns the bytecode of its program body.
@@ -167,7 +167,7 @@ fn codegen_spec_req_ao_009_extensible_call_folds_through_typed_routine(
 /// through the routine of the function it is registered as.
 #[test]
 fn typed_overload_when_any_pair_then_names_a_registered_time_function() {
-    let intrinsics = intrinsics_by_name(
+    let intrinsics = builtin_functions_by_name(
         &FunctionEnvironmentBuilder::new()
             .with_stdlib_functions()
             .build(),
@@ -193,11 +193,11 @@ fn typed_overload_when_any_pair_then_names_a_registered_time_function() {
         for left in types {
             for right in types {
                 let answer = typed_overload(&op, &TypeName::from(left), &TypeName::from(right));
-                if let Some(Overload::Typed { name, .. }) = answer {
+                if let Some(TypedOverload { name, .. }) = answer {
                     assert!(
                         matches!(
                             intrinsics.get(&Id::from(name)),
-                            Some(Intrinsic::Time { .. })
+                            Some(BuiltinFunction::Time { .. })
                         ),
                         "{name} is not a time function"
                     );

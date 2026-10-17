@@ -62,6 +62,7 @@ use crate::{
     rule_string_encoding_compat,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    semantic_type::SemanticType,
     symbol_environment::ScopeTracker,
     type_compat::is_checkable_type,
     value_type::{self, ValueType},
@@ -110,7 +111,8 @@ impl RuleFunctionCallTypeCheck<'_> {
         let type_id = self
             .context
             .symbols()
-            .find(id, &self.scope.current())?
+            .resolve_variable(id, &self.scope.current())
+            .declared()?
             .type_id?;
         self.context.types().name_of(type_id).cloned()
     }
@@ -133,7 +135,8 @@ impl RuleFunctionCallTypeCheck<'_> {
         let type_id = self
             .context
             .symbols()
-            .find(id, &self.scope.current())?
+            .resolve_variable(id, &self.scope.current())
+            .declared()?
             .type_id?;
         let types = self.context.types();
         let referenced = types.get_by_id(type_id)?.representation.referenced_type()?;
@@ -198,7 +201,7 @@ impl RuleFunctionCallTypeCheck<'_> {
             return false;
         }
         signature
-            .bind_inputs(&call.param_assignment)
+            .inputs_of(&call.param_assignment)
             .any(|(param, argument)| {
                 param.param_type == return_type
                     && value_type::check(
@@ -209,6 +212,32 @@ impl RuleFunctionCallTypeCheck<'_> {
                     )
                     .is_err()
             })
+    }
+
+    /// A negated output assignment, `NOT q => v`, inverts a `BOOL`; on an
+    /// output of any other type it has no meaning, so it is rejected (P4083)
+    /// rather than left for a later stage to interpret. `value` is the value
+    /// `output` stores, `NOT` of the call's output. Returns whether it
+    /// reported.
+    fn check_negated_output(&mut self, output: &Output, value: &Expr) -> bool {
+        let ExprKind::UnaryOp(negation) = &value.kind else {
+            return false;
+        };
+        if !output.not {
+            return false;
+        }
+        let representation = self.context.types().representation_of_expr(&negation.term);
+        if representation.is_none_or(|representation| *representation == SemanticType::Bool) {
+            return false;
+        }
+        self.diagnostics.push(
+            Diagnostic::problem(
+                Problem::NegatedOutputNotBool,
+                Label::span(output.src.span(), "Negated output"),
+            )
+            .with_context_id("output", &output.src),
+        );
+        true
     }
 
     /// Checks whether the value assigned in an assignment statement is
@@ -222,7 +251,10 @@ impl RuleFunctionCallTypeCheck<'_> {
     /// and the dereference of one (`deref`), which stores into the variable
     /// the reference refers to; user-defined targets (enums, structures,
     /// arrays, function blocks) are skipped to avoid false positives.
-    fn check_assignment_type(&mut self, target: &Variable, deref: bool, value: &Expr) {
+    ///
+    /// `label` names the value in the diagnostic: an assigned value, or the
+    /// output an output assignment stores.
+    fn check_assignment_type(&mut self, target: &Variable, deref: bool, value: &Expr, label: &str) {
         // Function-call right-hand sides are validated by `check_return_type`.
         if matches!(value.kind, ExprKind::Function(_)) {
             return;
@@ -272,7 +304,7 @@ impl RuleFunctionCallTypeCheck<'_> {
             self.diagnostics.push(
                 Diagnostic::problem(
                     Problem::AssignmentTypeMismatch,
-                    Label::span(value.span(), "Assignment value"),
+                    Label::span(value.span(), label),
                 )
                 .with_context("target", &nv.name.original().to_string())
                 .with_context("target_type", &target_type.to_string())
@@ -296,7 +328,20 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
 
     fn visit_assignment(&mut self, node: &Assignment) -> Result<Self::Value, Infallible> {
         self.check_return_type(&node.target, node.deref, &node.value);
-        self.check_assignment_type(&node.target, node.deref, &node.value);
+        self.check_assignment_type(&node.target, node.deref, &node.value, "Assignment value");
+        node.recurse_visit(self)
+    }
+
+    /// An output assignment stores the value the binding pass recorded for
+    /// it, the output the call leaves, so it is checked as `v := inst.q`
+    /// after the call is. A negated output that is not a `BOOL` is P4083,
+    /// and nothing else is reported for it.
+    fn visit_output(&mut self, node: &Output) -> Result<Self::Value, Infallible> {
+        if let Some(value) = &node.value {
+            if !self.check_negated_output(node, value) {
+                self.check_assignment_type(&node.tgt, false, value, "Output value");
+            }
+        }
         node.recurse_visit(self)
     }
 
@@ -304,20 +349,6 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
         let func_sig = self.context.functions.get(&node.name);
 
         if let Some(signature) = func_sig {
-            // Emit NotImplemented for output arguments on user-defined functions.
-            // Standard-library functions do not take output arguments.
-            if !signature.is_stdlib() {
-                for p in &node.param_assignment {
-                    if let ParamAssignmentKind::Output(_) = p {
-                        self.diagnostics
-                            .push(Diagnostic::not_implemented(Label::span(
-                                node.name.span(),
-                                "Function call with output argument",
-                            )));
-                    }
-                }
-            }
-
             // Check each positional argument type against the parameter type.
             // Standard-library functions are checked too: their parameters use
             // generic ANY_* categories (or concrete types for the conversion
@@ -335,7 +366,7 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
             let overloaded = operator_function_form(&node.name.to_string())
                 .is_some_and(|form| !form.typed_overloads().is_empty());
             let inputs = signature
-                .bind_inputs(&node.param_assignment)
+                .inputs_of(&node.param_assignment)
                 .filter(|_| !overloaded);
             for (param, arg_expr) in inputs {
                 if param.is_inout {
@@ -386,6 +417,9 @@ mod integer_result_tests;
 
 #[cfg(test)]
 mod label_tests;
+
+#[cfg(test)]
+mod output_tests;
 
 #[cfg(test)]
 mod ref_to_argument_tests;

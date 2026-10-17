@@ -84,7 +84,6 @@ pub enum TypeSymbolKind {
     String,
     Reference,
     FunctionBlock,
-    Function,
     Alias,
 }
 
@@ -99,7 +98,6 @@ impl TypeSymbolKind {
             TypeSymbolKind::String => "string",
             TypeSymbolKind::Reference => "reference",
             TypeSymbolKind::FunctionBlock => "function_block",
-            TypeSymbolKind::Function => "function",
             TypeSymbolKind::Alias => "alias",
         }
     }
@@ -115,7 +113,6 @@ impl From<&SemanticType> for TypeSymbolKind {
             SemanticType::String { .. } => TypeSymbolKind::String,
             SemanticType::Reference { .. } => TypeSymbolKind::Reference,
             SemanticType::FunctionBlock { .. } => TypeSymbolKind::FunctionBlock,
-            SemanticType::Function { .. } => TypeSymbolKind::Function,
             _ => TypeSymbolKind::Alias,
         }
     }
@@ -294,9 +291,6 @@ mod tests {
     #[test]
     fn type_symbol_kind_from_semantic_type_when_enumeration_then_enumeration() {
         let kind = TypeSymbolKind::from(&SemanticType::Enumeration {
-            underlying_type: Box::new(SemanticType::Int {
-                size: crate::semantic_type::ByteSized::B8,
-            }),
             members: crate::enumeration_members::EnumerationMembers::default(),
         });
         assert_eq!(kind, TypeSymbolKind::Enumeration);
@@ -306,7 +300,6 @@ mod tests {
     fn type_symbol_kind_from_semantic_type_when_function_block_then_function_block() {
         let kind = TypeSymbolKind::from(&SemanticType::FunctionBlock {
             name: "FB".to_string(),
-            fields: vec![],
         });
         assert_eq!(kind, TypeSymbolKind::FunctionBlock);
     }
@@ -401,6 +394,29 @@ mod tests {
             .find(|t| t.name.to_string().to_lowercase() == "myenum")
             .unwrap();
         assert_eq!(t.kind, TypeSymbolKind::Enumeration);
+    }
+
+    #[test]
+    fn user_defined_types_when_alias_of_elementary_or_sized_string_then_returned() {
+        let ctx = analyze_source(
+            "TYPE\nMyBool : BOOL;\nMyInt : INT := 5;\nMyStr : STRING[10];\nEND_TYPE\nPROGRAM p\nEND_PROGRAM",
+        );
+        let types = ctx.user_defined_types();
+        let kind_of = |name: &str| {
+            types
+                .iter()
+                .find(|t| t.name == &TypeName::from(name))
+                .map(|t| t.kind)
+        };
+        assert_eq!(kind_of("MyBool"), Some(TypeSymbolKind::Alias));
+        assert_eq!(kind_of("MyInt"), Some(TypeSymbolKind::Alias));
+        assert_eq!(kind_of("MyStr"), Some(TypeSymbolKind::String));
+    }
+
+    #[test]
+    fn user_defined_types_excludes_elementary_types() {
+        let ctx = analyze_source("PROGRAM p\nEND_PROGRAM");
+        assert!(ctx.user_defined_types().is_empty());
     }
 
     #[test]

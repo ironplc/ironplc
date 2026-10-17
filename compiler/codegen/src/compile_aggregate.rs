@@ -13,9 +13,9 @@
 
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{Assignment, ExprKind, SymbolicVariableKind, Variable};
+use ironplc_dsl::textual::{Expr, ExprKind, SymbolicVariableKind, Variable};
 
-use super::compile::{CompileContext, DEFAULT_OP_TYPE};
+use super::compile::CompileContext;
 use super::compile_expr::{compile_expr, resolve_variable_name};
 use crate::emit::Emitter;
 use ironplc_container::VarIndex;
@@ -27,7 +27,7 @@ struct Region {
     desc_index: u16,
 }
 
-/// Compiles `dst := src` when `dst` names a whole array or structure
+/// Compiles `target := value` when `target` names a whole array or structure
 /// variable.
 ///
 /// Returns `Ok(false)` when the target is not a whole aggregate, leaving the
@@ -49,18 +49,16 @@ struct Region {
 pub(crate) fn try_compile_whole_assignment(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    assignment: &Assignment,
+    target: &Variable,
+    value: &Expr,
 ) -> Result<bool, Diagnostic> {
     // Only a plain named variable is a whole-aggregate target. An element or
     // field access (`x[i] := ...`, `s.f := ...`) is a different operation and
     // belongs to the caller's other arms.
-    if !matches!(
-        &assignment.target,
-        Variable::Symbolic(SymbolicVariableKind::Named(_))
-    ) {
+    if !matches!(target, Variable::Symbolic(SymbolicVariableKind::Named(_))) {
         return Ok(false);
     }
-    let Some(target_name) = resolve_variable_name(&assignment.target) else {
+    let Some(target_name) = resolve_variable_name(target) else {
         return Ok(false);
     };
 
@@ -68,20 +66,22 @@ pub(crate) fn try_compile_whole_assignment(
         return Ok(false);
     };
 
-    // The analyzer rejects any aggregate assignment whose source is not a
-    // same-typed aggregate or a function result, so a source that does not
-    // resolve here means analysis and code generation disagree.
-    let src_desc_index = resolve_source_descriptor(ctx, &assignment.value).ok_or_else(|| {
-        Diagnostic::internal_error_at(Label::span(
-            assignment.value.span(),
-            "Source of a whole array or structure assignment has no data region",
+    // The analyzer accepts a source of the target's type that is a variable,
+    // an element, a field or what a reference refers to, and a function
+    // result. This route copies only from a variable it lays out as a region
+    // or from a function result, so any other source is a copy it does not
+    // implement.
+    let src_desc_index = resolve_source_descriptor(ctx, value).ok_or_else(|| {
+        Diagnostic::not_implemented(Label::span(
+            value.span(),
+            "Copy of a whole array or structure from this source",
         ))
     })?;
 
     // Leaves the source's data_offset on the stack: a bare aggregate variable
     // compiles to a LOAD_VAR of its slot, and a struct-returning call leaves
     // its return region's offset there.
-    compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
+    compile_expr(emitter, ctx, value)?;
     emitter.emit_copy_region(dst.var_index, dst.desc_index, src_desc_index);
     Ok(true)
 }
@@ -116,10 +116,7 @@ fn resolve_region(ctx: &CompileContext, name: &Id) -> Result<Option<Region>, Dia
 ///
 /// Handles the two shapes that can produce a whole aggregate: another
 /// aggregate variable, and a call to a struct-returning user function.
-fn resolve_source_descriptor(
-    ctx: &CompileContext,
-    value: &ironplc_dsl::textual::Expr,
-) -> Option<u16> {
+fn resolve_source_descriptor(ctx: &CompileContext, value: &Expr) -> Option<u16> {
     match &value.kind {
         ExprKind::Variable(variable) => {
             let name = resolve_variable_name(variable)?;

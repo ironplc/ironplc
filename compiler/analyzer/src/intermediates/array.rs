@@ -5,20 +5,13 @@
 
 use crate::semantic_type::{ArrayDimension, SemanticType};
 use crate::type_environment::{TypeAttributes, TypeEnvironment};
-use ironplc_container::CharWidth;
+
 use ironplc_dsl::common::*;
 use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::*;
 use ironplc_problems::Problem;
 
-/// Result of processing an array specification
-#[derive(Debug, Clone, PartialEq)]
-pub enum TypeResolution {
-    /// Create a new array type with the given attributes
-    Type(TypeAttributes),
-    /// Create an alias to an existing type
-    Alias(TypeName),
-}
+use super::{string, TypeResolution};
 
 /// Try to create the semantic type information from the array specification.
 pub fn try_from(
@@ -33,20 +26,9 @@ pub fn try_from(
 
             // Resolve the element type representation based on the element type kind
             let element_repr = match &array_subranges.type_name {
-                ArrayElementType::String(spec) => SemanticType::String {
-                    max_len: spec
-                        .length
-                        .as_ref()
-                        .and_then(|len| len.as_integer().map(|i| i.value)),
-                    char_width: CharWidth::Narrow,
-                },
-                ArrayElementType::WString(spec) => SemanticType::String {
-                    max_len: spec
-                        .length
-                        .as_ref()
-                        .and_then(|len| len.as_integer().map(|i| i.value)),
-                    char_width: CharWidth::Wide,
-                },
+                ArrayElementType::String(spec) | ArrayElementType::WString(spec) => {
+                    string::from_spec(spec).representation
+                }
                 ArrayElementType::Named(_) => {
                     let element_type =
                         type_environment.get(&element_type_name).ok_or_else(|| {
@@ -87,7 +69,6 @@ pub fn try_from(
             };
 
             Ok(TypeResolution::Type(TypeAttributes::new(
-                node_name.span(),
                 SemanticType::Array {
                     element_type: Box::new(resolved_element_type),
                     dimensions,
@@ -210,6 +191,7 @@ mod tests {
     use super::*;
     use crate::semantic_type::{ByteSized, SemanticType};
     use crate::type_environment::TypeEnvironmentBuilder;
+    use ironplc_container::CharWidth;
     use ironplc_dsl::common::TypeName;
     use ironplc_dsl::core::SourceSpan;
     use ironplc_test::{cast, cast_struct};
@@ -362,18 +344,15 @@ mod tests {
         // First create a base array type
         env.insert_type(
             &TypeName::from("BASE_ARRAY"),
-            TypeAttributes::new(
-                SourceSpan::default(),
-                SemanticType::Array {
-                    element_type: Box::new(SemanticType::Int {
-                        size: ByteSized::B16,
-                    }),
-                    dimensions: vec![ArrayDimension {
-                        lower: 1,
-                        upper: 10,
-                    }],
-                },
-            ),
+            TypeAttributes::new(SemanticType::Array {
+                element_type: Box::new(SemanticType::Int {
+                    size: ByteSized::B16,
+                }),
+                dimensions: vec![ArrayDimension {
+                    lower: 1,
+                    upper: 10,
+                }],
+            }),
         );
 
         let spec = SpecificationKind::Named(TypeName::from("BASE_ARRAY"));

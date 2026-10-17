@@ -81,6 +81,15 @@ END_PROGRAM
     run(4_000_000), expect("q1", 0), expect("q2", 1),
     run(8_000_000), expect("q1", 0), expect("q2", 0),
 ])]
+// After the pulse, ET stays at PT while IN is FALSE. IN rising again starts
+// a new pulse, with ET back at zero.
+#[case::new_pulse_after_in_falls_and_rises(TP_ENABLE_Q_ET, &[
+    write("enable", 1), run(0), expect("result", 1),
+    write("enable", 0), run(6_000_000), expect("result", 0), expect("elapsed", Duration::seconds(5)),
+    run(7_000_000), expect("result", 0), expect("elapsed", Duration::seconds(5)),
+    write("enable", 1), run(8_000_000), expect("result", 1), expect("elapsed", Duration::ZERO),
+    run(10_000_000), expect("result", 1), expect("elapsed", Duration::seconds(2)),
+])]
 fn end_to_end_fb_tp(#[case] source: &str, #[case] steps: &[FbStep]) {
     drive_fb(source, &CompilerOptions::default(), steps);
 }

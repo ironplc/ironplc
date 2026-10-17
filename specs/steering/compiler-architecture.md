@@ -111,16 +111,34 @@ and nothing the author wrote is dropped from it.
 own.** Resolution builds one answer to "what does this name declare, and what is
 its type", and every rule reads that answer:
 
-- `SymbolEnvironment::find(name, scope)` (`symbol_environment.rs`) resolves a
-  name from a scope: the enclosing scopes innermost first, then the function
-  blocks the outermost one `EXTENDS`, then the global scope. Its `SymbolInfo`
-  carries the variable's section, declared qualifier, address and `type_id`. A
-  function's or method's own name is its `ResultVariable`.
+- `SymbolEnvironment::resolve_variable(name, scope)` (`symbol_environment.rs`)
+  decides which variable a name refers to from a scope: the enclosing scopes
+  innermost first, then the function blocks the outermost one `EXTENDS`, then
+  the global scope. It also decides whether the body reaches a global, and
+  resolves a `VAR_EXTERNAL` to its global. Its `SymbolInfo` carries the
+  variable's section, declared qualifier, address and `type_id`. A function's
+  or method's own name is its `ResultVariable`. See
+  [Variable Binding](../design/variable-binding.md).
+- `SymbolEnvironment::find(name, scope)` looks through the same scopes and
+  returns a symbol of any kind. Use it to ask about a type, a program or a
+  function block, never to ask which variable a name is.
 - `ScopeTracker` names the scope a visitor is in. Feed it from `enter_scope`
-  and `exit_scope`, and pass `current()` to `find`.
-- `variable_type::declared` gives a name's declared `SemanticType`, and
-  `variable_type::of` walks a reference such as `s.field[i]` to the element it
-  names. `TypeEnvironment::get_by_id` answers for any `type_id`.
+  and `exit_scope`, and pass `current()` to `resolve_variable`.
+- `variable_type::type_id` walks a reference such as `s.field[i]` to the type
+  of the element it names, by type id: `TypeEnvironment::field_type` for a
+  field (own or inherited through `EXTENDS`), `element_type` for a subscript
+  and `referenced_type` for a dereference. `variable_type::of` gives the
+  representation of that type, and `variable_type::declared` a name's declared
+  `SemanticType`. `TypeEnvironment::get_by_id` answers for any `type_id`.
+  To type a reference, never take a field's type from the fields a
+  representation lists: a field's type is the one its declaration records.
+- A function block's fields, with their sections, are in the environment
+  only (`TypeEnvironment::block_fields`, `block_field`); its
+  `SemanticType::FunctionBlock` names the block and lists none. A
+  representation never changes once its type is entered, because copies of it
+  are taken into other types (an array's element, a reference's target).
+  Never add state to a representation that is filled in later; record it in
+  the environment by the type's id.
 
 A rule that copies declarations into a `HashMap` or `ScopedTable` of its own as
 it walks gets the scoping wrong in ways the environment already gets right: it
