@@ -31,6 +31,16 @@ impl TypeEnvironment {
         }
     }
 
+    /// Whether the types `a` and `b` are the same type, as
+    /// [`Self::same_type`], when both resolved. A type that did not resolve
+    /// is the same as any: the rule that reports it is not the one asking.
+    pub(super) fn same_type_if_resolved(&self, a: Option<TypeId>, b: Option<TypeId>) -> bool {
+        match (a, b) {
+            (Some(a), Some(b)) => self.same_type(a, b),
+            _ => true,
+        }
+    }
+
     /// Whether a name maps to `id`, rather than `id` being a type spelled
     /// out in place.
     fn is_named(&self, id: TypeId) -> bool {

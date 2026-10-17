@@ -1,16 +1,30 @@
 //! Semantic rule that a function block provides every member of the
-//! interfaces it `IMPLEMENTS` (OOP extension), including the members of
-//! the interfaces those extend.
+//! interfaces it implements (OOP extension).
+//!
+//! A block implements every interface it converts to
+//! ([`crate::supertypes`]): those it lists in `IMPLEMENTS`, those they
+//! extend, and those its bases implement. Each is checked once.
 //!
 //! - A method prototype needs a method of the same name on the function
-//!   block or a base in its `EXTENDS` chain, with the same return type and
-//!   the same `VAR_INPUT`/`VAR_OUTPUT`/`VAR_IN_OUT` parameters: same names,
-//!   kinds and types, in the same order. Locals are not compared.
+//!   block or a base in its `EXTENDS` chain, with the same signature: the
+//!   same return type and the same `VAR_INPUT`/`VAR_OUTPUT`/`VAR_IN_OUT`
+//!   parameters (names, kinds and types, in order) and `R_EDGE`/`F_EDGE`
+//!   inputs. Locals are not compared.
 //! - A property prototype needs a property of the same name and type with
 //!   every accessor the prototype declares. An extra accessor is allowed.
 //!
-//! A missing member is P4067, a member whose signature differs is P4068.
-//! An interface that is not declared is left to the type checks.
+//! The signatures compared are those the type environment records, and
+//! types are compared by [`TypeEnvironment::same_type`].
+//!
+//! Each problem is reported at the block that introduces it. A block that
+//! lists an interface, or an interface that extends it, must provide every
+//! member: a missing member is P4067 and a different one P4068, both at the
+//! `IMPLEMENTS` entry. A block that only inherits an interface from a base
+//! is checked for the members it declares itself, its overrides: a
+//! different one is P4068 at the member. A member it inherits unchanged was
+//! checked with the base.
+//!
+//! A name in `IMPLEMENTS` that is not a declared interface is P4070.
 //!
 //! ## Passes
 //!
@@ -40,22 +54,19 @@
 //! FUNCTION_BLOCK FB_Serial IMPLEMENTS I_Comm
 //! END_FUNCTION_BLOCK
 //! ```
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use ironplc_dsl::{
     common::*,
     core::{Id, Located},
     diagnostic::{Diagnostic, Label},
+    type_id::TypeId,
 };
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
 
-use crate::semantic_context::SemanticContext;
-use ironplc_dsl::type_id::TypeId;
-
 use crate::{
-    callee_resolution::FunctionBlocks, result::SemanticResult, semantic_type::SemanticType,
-    type_environment::TypeEnvironment,
+    result::SemanticResult, semantic_context::SemanticContext, type_environment::TypeEnvironment,
 };
 
 pub fn apply(
@@ -63,30 +74,26 @@ pub fn apply(
     context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let interfaces: HashMap<TypeName, &InterfaceDeclaration> = lib
-        .elements
-        .iter()
-        .filter_map(|element| match element {
-            LibraryElementKind::InterfaceDeclaration(itf) => {
-                Some((TypeName::from_id(&itf.name), itf))
-            }
-            _ => None,
-        })
-        .collect();
-    let checker = Conformance {
-        interfaces: &interfaces,
-        function_blocks: FunctionBlocks::from_library(lib, context.types()),
-        types: context.types(),
-    };
+    // The first declaration of a name is the one the environment records.
+    let mut interfaces: HashMap<TypeName, &InterfaceDeclaration> = HashMap::new();
+    for element in &lib.elements {
+        if let LibraryElementKind::InterfaceDeclaration(itf) = element {
+            interfaces
+                .entry(TypeName::from_id(&itf.name))
+                .or_insert(itf);
+        }
+    }
 
     let mut diagnostics = Vec::new();
     for element in &lib.elements {
         if let LibraryElementKind::FunctionBlockDeclaration(fb) = element {
-            if let Some(oop) = &fb.oop {
-                for interface in &oop.implements {
-                    checker.check(fb, interface, &mut diagnostics);
-                }
-            }
+            let mut conformance = Conformance {
+                types: context.types(),
+                interfaces: &interfaces,
+                fb,
+                diagnostics: &mut diagnostics,
+            };
+            conformance.check();
         }
     }
 
@@ -97,230 +104,223 @@ pub fn apply(
     }
 }
 
+/// The check of one function block.
 struct Conformance<'a> {
-    interfaces: &'a HashMap<TypeName, &'a InterfaceDeclaration>,
-    function_blocks: FunctionBlocks<'a>,
     types: &'a TypeEnvironment,
+    interfaces: &'a HashMap<TypeName, &'a InterfaceDeclaration>,
+    fb: &'a FunctionBlockDeclaration,
+    diagnostics: &'a mut Vec<Diagnostic>,
+}
+
+/// Where a problem with a member is reported.
+enum Introduced<'a> {
+    /// The block lists the interface, through this `IMPLEMENTS` entry.
+    Listed(&'a TypeName),
+    /// The block inherits the interface from a base.
+    Inherited,
 }
 
 impl<'a> Conformance<'a> {
-    /// Reports each member of `interface` that `fb` does not provide, or
-    /// provides with a different signature.
-    fn check(
-        &self,
-        fb: &FunctionBlockDeclaration,
-        interface: &TypeName,
-        diagnostics: &mut Vec<Diagnostic>,
-    ) {
-        for itf in self.with_extended(interface) {
-            for prototype in &itf.methods {
-                let found = self
-                    .function_blocks
-                    .resolve_method(&fb.name, &prototype.name);
-                let problem = match found {
-                    None => Some(Problem::InterfaceMemberMissing),
-                    Some((_, method)) if !self.method_matches(method, prototype) => {
-                        Some(Problem::InterfaceMemberMismatch)
-                    }
-                    Some(_) => None,
-                };
-                if let Some(problem) = problem {
-                    diagnostics.push(Self::report(
-                        problem,
-                        fb,
-                        interface,
-                        itf,
-                        &prototype.name,
-                        prototype.span(),
-                    ));
-                }
-            }
-            for prototype in &itf.properties {
-                let found = self
-                    .function_blocks
-                    .resolve_property(&fb.name, &prototype.name);
-                let problem = match found {
-                    None => Some(Problem::InterfaceMemberMissing),
-                    Some(property) if !self.property_matches(property, prototype) => {
-                        Some(Problem::InterfaceMemberMismatch)
-                    }
-                    Some(_) => None,
-                };
-                if let Some(problem) = problem {
-                    diagnostics.push(Self::report(
-                        problem,
-                        fb,
-                        interface,
-                        itf,
-                        &prototype.name,
-                        prototype.span(),
-                    ));
-                }
-            }
+    /// Reports each name in `IMPLEMENTS` that is not a declared interface,
+    /// and each member of the interfaces the block implements that it does
+    /// not provide, or provides with a different signature.
+    fn check(&mut self) {
+        let Some(block) = self.types.id_of(&self.fb.name) else {
+            return;
+        };
+        let listed = self.listed();
+        for name in self.types.supertypes().all_of(&self.fb.name) {
+            let (Some(itf), Some(itf_id)) = (self.interfaces.get(&name), self.types.id_of(&name))
+            else {
+                continue;
+            };
+            let introduced = match listed.get(&name) {
+                Some(entry) => Introduced::Listed(entry),
+                None => Introduced::Inherited,
+            };
+            self.check_methods(block, itf, itf_id, &introduced);
+            self.check_properties(block, itf, itf_id, &introduced);
         }
     }
 
-    /// `interface` and every interface it extends, directly or not, each
-    /// once. Interfaces that are not declared are left out.
-    fn with_extended(&self, interface: &TypeName) -> Vec<&'a InterfaceDeclaration> {
-        let mut seen = HashSet::new();
-        let mut pending = vec![interface.clone()];
-        let mut found = Vec::new();
-        while let Some(name) = pending.pop() {
-            if !seen.insert(name.clone()) {
+    /// The interfaces the block lists, directly or as an interface a listed
+    /// one extends, each with the first `IMPLEMENTS` entry that reaches it.
+    /// Reports each entry that is not a declared interface.
+    fn listed(&mut self) -> HashMap<TypeName, &'a TypeName> {
+        let mut listed = HashMap::new();
+        let fb = self.fb;
+        let entries = fb.oop.iter().flat_map(|oop| &oop.implements);
+        for entry in entries {
+            if !self.is_interface(entry) {
+                self.report_not_interface(entry);
                 continue;
             }
-            if let Some(itf) = self.interfaces.get(&name) {
-                pending.extend(itf.extends.iter().cloned());
-                found.push(*itf);
+            listed.entry(entry.clone()).or_insert(entry);
+            for extended in self.types.supertypes().all_of(entry) {
+                listed.entry(extended).or_insert(entry);
             }
         }
-        found
+        listed
     }
 
-    fn method_matches(&self, method: &MethodDeclaration, prototype: &MethodPrototype) -> bool {
-        let same_return = match (&method.return_type, &prototype.return_type) {
-            (None, None) => true,
-            (Some(a), Some(b)) => self.return_type_key(a) == self.return_type_key(b),
-            _ => false,
-        };
-        let parameters: Vec<&VarDecl> = method
-            .variables
-            .iter()
-            .filter(|v| {
-                matches!(
-                    v.var_type,
-                    VariableType::Input | VariableType::Output | VariableType::InOut
-                )
-            })
-            .collect();
-        same_return
-            && parameters.len() == prototype.variables.len()
-            && parameters
-                .iter()
-                .zip(&prototype.variables)
-                .all(|(a, b)| self.same_parameter(a, b))
-            && same_edge_inputs(&method.edge_variables, &prototype.edge_variables)
+    fn is_interface(&self, name: &TypeName) -> bool {
+        self.types
+            .id_of(name)
+            .and_then(|id| self.types.get_by_id(id))
+            .is_some_and(|attributes| attributes.representation.is_interface())
     }
 
-    /// Two parameters match when they have the same name, the same kind and
-    /// the same type.
-    fn same_parameter(&self, a: &VarDecl, b: &VarDecl) -> bool {
-        a.identifier.symbolic_id() == b.identifier.symbolic_id()
-            && a.var_type == b.var_type
-            && self.parameter_type_key(a) == self.parameter_type_key(b)
-    }
-
-    /// What two parameter types are compared by. A named type is compared
-    /// by its id, a string by its width and declared length, and a type
-    /// written in place (`ARRAY[1..3] OF INT`) by its shape: each such
-    /// declaration gets an id of its own, so equal shapes have different
-    /// ids.
-    fn parameter_type_key(&self, decl: &VarDecl) -> ParameterTypeKey {
-        if let InitialValueAssignmentKind::String(string) = &decl.initializer {
-            return ParameterTypeKey::Type(TypeKey::String {
-                wide: matches!(string.width, StringType::WString),
-                length: string.length.as_ref().map(LengthKey::of),
-            });
-        }
-        match decl.initializer.type_reference() {
-            TypeReference::Named(name) => {
-                ParameterTypeKey::Type(self.return_type_key(&FunctionReturnType::Named(name)))
-            }
-            TypeReference::Inline | TypeReference::Unspecified => ParameterTypeKey::Shape(
-                decl.type_id
-                    .and_then(|id| self.types.get_by_id(id))
-                    .map(|attributes| attributes.representation.clone()),
-            ),
-        }
-    }
-
-    fn property_matches(
-        &self,
-        property: &PropertyDeclaration,
-        prototype: &PropertyPrototype,
-    ) -> bool {
-        self.return_type_key(&property.property_type)
-            == self.return_type_key(&prototype.property_type)
-            && (prototype.get.is_none() || property.get.is_some())
-            && (prototype.set.is_none() || property.set.is_some())
-    }
-
-    /// What two return or property types are compared by: the type's id
-    /// when the name resolves, else the name; a string by its width and
-    /// declared length.
-    fn return_type_key(&self, return_type: &FunctionReturnType) -> TypeKey {
-        match return_type {
-            FunctionReturnType::Named(name) => match self.types.id_of(name) {
-                Some(id) => TypeKey::Id(id),
-                None => TypeKey::Name(name.clone()),
-            },
-            FunctionReturnType::String(spec) | FunctionReturnType::WString(spec) => {
-                TypeKey::String {
-                    wide: matches!(return_type, FunctionReturnType::WString(_)),
-                    length: spec.length.as_ref().map(LengthKey::of),
+    fn check_methods(
+        &mut self,
+        block: TypeId,
+        itf: &InterfaceDeclaration,
+        itf_id: TypeId,
+        introduced: &Introduced,
+    ) {
+        let types = self.types;
+        let recorded = types.interface_methods(itf_id).unwrap_or_default();
+        for prototype in &itf.methods {
+            let Some(expected) = recorded.iter().find(|m| m.name == prototype.name) else {
+                continue;
+            };
+            let found = types.method(block, &prototype.name);
+            let differs = |(_, method)| !types.same_signature(method, expected);
+            match introduced {
+                Introduced::Listed(entry) => match found {
+                    None => self.report_listed(
+                        Problem::InterfaceMemberMissing,
+                        entry,
+                        itf,
+                        &prototype.name,
+                        prototype,
+                    ),
+                    Some(found) if differs(found) => self.report_listed(
+                        Problem::InterfaceMemberMismatch,
+                        entry,
+                        itf,
+                        &prototype.name,
+                        prototype,
+                    ),
+                    Some(_) => {}
+                },
+                Introduced::Inherited => {
+                    let own = self.fb.methods.iter().find(|m| m.name == prototype.name);
+                    if let (Some(own), Some(found)) = (own, found) {
+                        if differs(found) {
+                            self.report_override(itf, &own.name, prototype);
+                        }
+                    }
                 }
             }
         }
     }
 
-    fn report(
-        problem: Problem,
-        fb: &FunctionBlockDeclaration,
-        interface: &TypeName,
-        declaring: &InterfaceDeclaration,
-        member: &Id,
-        member_span: ironplc_dsl::core::SourceSpan,
-    ) -> Diagnostic {
-        let (label, secondary) = match problem {
-            Problem::InterfaceMemberMissing => ("Interface implemented", "Member not provided"),
-            _ => ("Interface implemented", "Member declared differently"),
-        };
-        Diagnostic::problem(problem, Label::span(interface.span(), label))
-            .with_secondary(Label::span(member_span, secondary))
-            .with_context_id("function block", &fb.name.name)
-            .with_context_id("interface", &declaring.name)
-            .with_context_id("member", member)
-    }
-}
-
-/// The `R_EDGE`/`F_EDGE` inputs match when they have the same names and
-/// edges, in the same order. They are always `BOOL`.
-fn same_edge_inputs(a: &[EdgeVarDecl], b: &[EdgeVarDecl]) -> bool {
-    a.len() == b.len()
-        && a.iter()
-            .zip(b)
-            .all(|(x, y)| x.identifier == y.identifier && x.direction == y.direction)
-}
-
-#[derive(PartialEq)]
-enum ParameterTypeKey {
-    Type(TypeKey),
-    Shape(Option<SemanticType>),
-}
-
-#[derive(PartialEq)]
-enum TypeKey {
-    Id(TypeId),
-    Name(TypeName),
-    String {
-        wide: bool,
-        length: Option<LengthKey>,
-    },
-}
-
-#[derive(PartialEq)]
-enum LengthKey {
-    Literal(u128),
-    Constant(Id),
-}
-
-impl LengthKey {
-    fn of(length: &IntegerRef) -> Self {
-        match length {
-            IntegerRef::Literal(integer) => LengthKey::Literal(integer.value),
-            IntegerRef::Constant(id) => LengthKey::Constant(id.clone()),
+    fn check_properties(
+        &mut self,
+        block: TypeId,
+        itf: &InterfaceDeclaration,
+        itf_id: TypeId,
+        introduced: &Introduced,
+    ) {
+        let types = self.types;
+        let recorded = types.interface_properties(itf_id).unwrap_or_default();
+        for prototype in &itf.properties {
+            let Some(expected) = recorded.iter().find(|p| p.name == prototype.name) else {
+                continue;
+            };
+            let found = types.property(block, &prototype.name);
+            let differs = |property| !types.provides_property(property, expected);
+            match introduced {
+                Introduced::Listed(entry) => match found {
+                    None => self.report_listed(
+                        Problem::InterfaceMemberMissing,
+                        entry,
+                        itf,
+                        &prototype.name,
+                        prototype,
+                    ),
+                    Some(found) if differs(found) => self.report_listed(
+                        Problem::InterfaceMemberMismatch,
+                        entry,
+                        itf,
+                        &prototype.name,
+                        prototype,
+                    ),
+                    Some(_) => {}
+                },
+                Introduced::Inherited => {
+                    let own = self.fb.properties.iter().find(|p| p.name == prototype.name);
+                    if let (Some(own), Some(found)) = (own, found) {
+                        if differs(found) {
+                            self.report_override(itf, &own.name, prototype);
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    /// Reports a member of an interface the block lists, at the
+    /// `IMPLEMENTS` entry that reaches the interface.
+    fn report_listed(
+        &mut self,
+        problem: Problem,
+        entry: &TypeName,
+        itf: &InterfaceDeclaration,
+        member: &Id,
+        prototype: &dyn Located,
+    ) {
+        let secondary = match problem {
+            Problem::InterfaceMemberMissing => "Member not provided",
+            _ => "Member declared differently",
+        };
+        let diagnostic =
+            Diagnostic::problem(problem, Label::span(entry.span(), "Interface implemented"))
+                .with_secondary(Label::span(prototype.span(), secondary));
+        self.push(diagnostic, itf, member);
+    }
+
+    /// Reports a member the block declares itself that differs from the
+    /// member of an interface it inherits from a base.
+    fn report_override(
+        &mut self,
+        itf: &InterfaceDeclaration,
+        member: &Id,
+        prototype: &dyn Located,
+    ) {
+        let diagnostic = Diagnostic::problem(
+            Problem::InterfaceMemberMismatch,
+            Label::span(
+                member.span(),
+                "Member differs from the interface member it implements",
+            ),
+        )
+        .with_secondary(Label::span(prototype.span(), "Interface member"));
+        self.push(diagnostic, itf, member);
+    }
+
+    fn report_not_interface(&mut self, entry: &TypeName) {
+        let label = match self.types.id_of(entry) {
+            None => "Not declared",
+            Some(_) => "Not an interface",
+        };
+        self.diagnostics.push(
+            Diagnostic::problem(
+                Problem::ImplementsNotInterface,
+                Label::span(entry.span(), label),
+            )
+            .with_context_id("function block", &self.fb.name.name)
+            .with_context_type("name", entry),
+        );
+    }
+
+    fn push(&mut self, diagnostic: Diagnostic, itf: &InterfaceDeclaration, member: &Id) {
+        self.diagnostics.push(
+            diagnostic
+                .with_context_id("function block", &self.fb.name.name)
+                .with_context_id("interface", &itf.name)
+                .with_context_id("member", member),
+        );
     }
 }
 

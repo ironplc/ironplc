@@ -104,6 +104,27 @@ impl TypeEnvironment {
         )
     }
 
+    /// Whether the signatures `a` and `b` are the same: the same result
+    /// type, the same parameters (names, sections and types, in order) and
+    /// the same edge inputs. Types are compared by
+    /// [`Self::same_type_if_resolved`], and locals are not part of a
+    /// signature.
+    pub(crate) fn same_signature(&self, a: &MethodSignature, b: &MethodSignature) -> bool {
+        let same_result = match (&a.result, &b.result) {
+            (MethodResult::None, MethodResult::None) => true,
+            (MethodResult::Value(a), MethodResult::Value(b)) => self.same_type_if_resolved(*a, *b),
+            _ => false,
+        };
+        same_result
+            && a.parameters.len() == b.parameters.len()
+            && a.parameters.iter().zip(&b.parameters).all(|(a, b)| {
+                a.name == b.name
+                    && a.section == b.section
+                    && self.same_type_if_resolved(a.type_id, b.type_id)
+            })
+            && a.edge_inputs == b.edge_inputs
+    }
+
     /// The signature of the method or method prototype `name` with the
     /// return type, variables and edge inputs given.
     fn signature(

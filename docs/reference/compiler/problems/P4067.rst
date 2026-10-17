@@ -11,7 +11,8 @@ properties.
 A function block that implements an interface promises a body for every
 member the interface declares, including the members of the interfaces it
 extends. A member inherited from a base type through ``EXTENDS`` counts. An
-``ABSTRACT`` function block must provide the members too.
+``ABSTRACT`` function block must provide the members too, though a
+``METHOD ABSTRACT`` counts as providing a method.
 
 Example
 -------
@@ -44,3 +45,4 @@ See Also
 - :doc:`/reference/language/object-orientation/implements` — ``IMPLEMENTS``
 - :doc:`/reference/language/object-orientation/interface` — ``INTERFACE``
 - :doc:`P4068` — Function block member differs from the interface member it implements
+- :doc:`P4070` — IMPLEMENTS names a type that is not a declared interface

@@ -1,0 +1,41 @@
+=====
+P4070
+=====
+
+.. problem-summary:: P4070
+
+This error occurs when a function block type lists a name in
+``IMPLEMENTS`` that is not a declared interface: the name is not declared at
+all, or it names another kind of type, such as a function block or a
+structure.
+
+Only an interface can be implemented. To inherit from a function block, use
+``EXTENDS``.
+
+Example
+-------
+
+The following code will generate error P4070:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Base
+   END_FUNCTION_BLOCK
+
+   FUNCTION_BLOCK FB_Motor IMPLEMENTS FB_Base  (* Error: FB_Base is not an interface *)
+   END_FUNCTION_BLOCK
+
+To fix this error, name a declared interface, or extend the function block
+instead:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Motor EXTENDS FB_Base
+   END_FUNCTION_BLOCK
+
+See Also
+--------
+
+- :doc:`/reference/language/object-orientation/implements` — ``IMPLEMENTS``
+- :doc:`/reference/language/object-orientation/interface` — ``INTERFACE``
+- :doc:`P4067` — Function block does not provide a member of an interface it implements
