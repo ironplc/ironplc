@@ -147,3 +147,4 @@ P4081,ConfigurationAmbiguous,Source declares more than one CONFIGURATION to comp
 P4082,ExternalMatchesNoGlobal,VAR_EXTERNAL declaration matches no global variable
 P4083,NegatedOutputNotBool,Negated output assignment requires an output of type BOOL
 P4084,FieldNotFound,Field is not declared on the structure or function block or any function block in its EXTENDS chain
+P4085,ArraySubscriptCountMismatch,Number of subscripts does not match the number of array dimensions

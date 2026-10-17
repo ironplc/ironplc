@@ -66,13 +66,15 @@ pub(crate) fn try_compile_whole_assignment(
         return Ok(false);
     };
 
-    // The analyzer rejects any aggregate assignment whose source is not a
-    // same-typed aggregate or a function result, so a source that does not
-    // resolve here means analysis and code generation disagree.
+    // The analyzer accepts a source of the target's type that is a variable,
+    // an element, a field or what a reference refers to, and a function
+    // result. This route copies only from a variable it lays out as a region
+    // or from a function result, so any other source is a copy it does not
+    // implement.
     let src_desc_index = resolve_source_descriptor(ctx, value).ok_or_else(|| {
-        Diagnostic::internal_error_at(Label::span(
+        Diagnostic::not_implemented(Label::span(
             value.span(),
-            "Source of a whole array or structure assignment has no data region",
+            "Copy of a whole array or structure from this source",
         ))
     })?;
 

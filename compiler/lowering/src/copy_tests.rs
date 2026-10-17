@@ -109,3 +109,26 @@ fn lower_statement_when_instance_or_function_result_assigned_then_unsupported() 
     );
     assert_eq!(outcome.statements, ["unsupported", "unsupported"]);
 }
+
+/// REQ-LOW-lowering-061: an element of an array of arrays is an array, and
+/// is copied to, from, and to another element, as a whole.
+#[test]
+fn lower_statement_when_inner_array_of_array_of_arrays_assigned_then_copy() {
+    let outcome = lower(
+        "TYPE Row : ARRAY[1..3] OF DINT; END_TYPE
+         PROGRAM main VAR rows : ARRAY[1..2] OF Row; row : Row; END_VAR
+            rows[1] := row;
+            row := rows[2];
+            rows[1] := rows[2];
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "copy v0^.f0[(const i32s 1)] v0^.f1",
+            "copy v0^.f1 v0^.f0[(const i32s 2)]",
+            "copy v0^.f0[(const i32s 1)] v0^.f0[(const i32s 2)]",
+        ]
+    );
+}

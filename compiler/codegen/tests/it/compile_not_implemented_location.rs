@@ -126,6 +126,42 @@ END_PROGRAM
     assert_labels(source, result, "name => s", "name");
 }
 
+/// The route that reads the AST copies a whole structure only from a whole
+/// variable or a function result. Analysis accepts a source of the target's
+/// type that is an element or a field too, so the AST route reports it as
+/// not implemented, at the source.
+#[rstest]
+#[case::element_source("r := ps[2];", "ps[2];", "ps")]
+#[case::field_source("r := o.inner;", "o.inner;", "o.inner")]
+fn compile_when_copy_from_element_or_field_on_ast_route_then_primary_label_names_the_source(
+    #[case] statement: &str,
+    #[case] anchor: &str,
+    #[case] labelled: &str,
+) {
+    let source = format!(
+        "
+TYPE
+  P : STRUCT a : DINT; END_STRUCT;
+  Outer : STRUCT inner : P; END_STRUCT;
+END_TYPE
+
+PROGRAM main
+VAR
+    ps : ARRAY[1..2] OF P;
+    o : Outer;
+    r : P;
+END_VAR
+    {statement}
+END_PROGRAM
+"
+    );
+    let options = CompilerOptions::default();
+    let (library, context) = parse(&source, &options);
+    let result = compile_by_route(&library, &context, &options, Route::Ast);
+
+    assert_labels(&source, result, anchor, labelled);
+}
+
 /// Fails unless `result` is a P9999 whose primary label is `labelled`, the
 /// text at the start of `anchor` in `source`.
 fn assert_labels<T>(source: &str, result: Result<T, Diagnostic>, anchor: &str, labelled: &str) {
