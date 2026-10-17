@@ -269,8 +269,24 @@ impl ImplicitConversions<'_> {
                         .into_iter()
                         .for_each(|arg| self.type_literals(arg, at));
                 }
+                // `BCD_TO_INT` decodes the bit string it is given, at its
+                // width. A dialect may let an untyped integer literal stand
+                // for one (`--allow-int-literal-to-bit-string`), and the
+                // literal is then the bit string as wide as the `DINT` it
+                // defaults to (ADR-0028): `BCD_TO_INT(16#12)` decodes a
+                // `DWORD`.
+                BuiltinFunction::BcdToInt => inputs.into_iter().for_each(|arg| {
+                    let at = match &arg.expr_type {
+                        Some(ExprType::Literal(generic))
+                            if literal_default_type(generic) == Some(ElementaryTypeName::DINT) =>
+                        {
+                            self.dword()
+                        }
+                        Some(_) | None => self.own_or_default(arg),
+                    };
+                    self.type_literals(arg, at);
+                }),
                 BuiltinFunction::Trunc
-                | BuiltinFunction::BcdToInt
                 | BuiltinFunction::IntToBcd
                 | BuiltinFunction::Time { .. }
                 | BuiltinFunction::DtToDate
@@ -574,6 +590,11 @@ impl ImplicitConversions<'_> {
     pub(super) fn dint(&self) -> Option<TypeId> {
         let dint: TypeName = ElementaryTypeName::DINT.into();
         self.context.types().id_of(&dint)
+    }
+
+    fn dword(&self) -> Option<TypeId> {
+        let dword: TypeName = ElementaryTypeName::DWORD.into();
+        self.context.types().id_of(&dword)
     }
 
     fn lint(&self) -> Option<TypeId> {
