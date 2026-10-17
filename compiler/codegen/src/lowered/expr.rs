@@ -201,7 +201,10 @@ pub(super) fn emit_operation(emitter: &mut Emitter, expr: &Expr) -> Result<(), D
 }
 
 /// Calls the user-defined function `function` with `args`, the arguments it
-/// takes, at `span`, leaving its result on the stack.
+/// takes for its inputs and in-outs, at `span`, leaving its result on the
+/// stack: a value, or a string's buffer. As the route that reads the AST
+/// does (`compile_user_function_call`), a string result's header is
+/// initialized before `CALL`, for the function's body to write to.
 pub(super) fn emit_user_call<'s>(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -211,6 +214,9 @@ pub(super) fn emit_user_call<'s>(
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
     emit_passed(emitter, ctx, lowering, &function.params, args, span)?;
+    if let Some(result) = &function.return_string_info {
+        emitter.emit_str_init(result.data_offset, result.max_length, result.char_width);
+    }
     emitter.emit_call(
         function.function_id,
         function.num_params,

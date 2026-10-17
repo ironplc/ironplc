@@ -34,7 +34,7 @@ use ironplc_ir::lowered::{
 
 use crate::expr::Lowered;
 use crate::variables::BodyFrame;
-use crate::Lowering;
+use crate::{Body, Lowering};
 
 impl Lowering<'_> {
     /// `place := value`, where `place` is a string.
@@ -71,30 +71,39 @@ impl Lowering<'_> {
     }
 
     /// The string the call `func`, the expression `expr`, yields: a call of
-    /// a standard string function that yields a string, or a conversion to a
-    /// `STRING`. `None` for a call of any other function.
+    /// a standard string function that yields a string, a conversion to a
+    /// `STRING`, or a call of a function whose result is a string, moved
+    /// out of its statement (`string_result.rs`). `None` for a call of any
+    /// other function.
     fn string_call(
         &mut self,
         frame: &BodyFrame,
         expr: &AstExpr,
         func: &Function,
     ) -> Result<Option<StrExpr>, Diagnostic> {
-        let builtin = self
-            .analysis
-            .context()
-            .functions()
-            .get(&func.name)
-            .and_then(|signature| signature.builtin_function.clone());
+        let Some(signature) = self.analysis.context().functions().get(&func.name) else {
+            return Ok(None);
+        };
+        let Some(builtin) = signature.builtin_function.clone() else {
+            return match self.body_named(&func.name) {
+                Some(Body::Function(function)) => {
+                    self.string_result_call(frame, expr, func, function)
+                }
+                Some(Body::Program(_) | Body::FunctionBlock(_) | Body::Method { .. }) | None => {
+                    Ok(None)
+                }
+            };
+        };
         // The analyzer wrote the call in normal form: its inputs in the order
         // of the function's parameters.
         let args: Vec<&AstExpr> = func.inputs().collect();
-        if let Some(BuiltinFunction::String(function)) = builtin {
+        if let BuiltinFunction::String(function) = builtin {
             return self.string_function_string(frame, expr, function, &args);
         }
-        if let Some(BuiltinFunction::Conversion {
+        if let BuiltinFunction::Conversion {
             target: ElementaryTypeName::STRING,
             ..
-        }) = builtin
+        } = builtin
         {
             return self.number_to_string(frame, expr, &args);
         }

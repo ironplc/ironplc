@@ -23,6 +23,7 @@
 
 mod bits;
 mod call;
+mod call_order;
 mod control;
 mod expr;
 mod fb_call;
@@ -31,6 +32,7 @@ mod hoist;
 mod place;
 mod statement;
 mod string;
+mod string_result;
 mod time;
 mod types;
 mod variables;
@@ -51,6 +53,8 @@ mod hoist_tests;
 mod method_tests;
 #[cfg(test)]
 mod place_tests;
+#[cfg(test)]
+mod string_result_tests;
 #[cfg(test)]
 mod string_tests;
 #[cfg(test)]
@@ -132,6 +136,9 @@ pub struct Lowering<'a> {
     /// The block that declares each method a call can reach, as the
     /// analyzer resolves it (ADR-0041).
     method_owners: MethodOwners,
+    /// The calls with a string result moved out of the statement being
+    /// lowered (`string_result.rs`); `None` outside a statement.
+    moved: Option<string_result::MovedCalls>,
 }
 
 /// Where a call leaves its outputs for the assignments of its outputs to
@@ -161,6 +168,7 @@ impl<'a> Lowering<'a> {
             call_outputs: None,
             hoisting: None,
             method_owners: MethodOwners::of_library(analysis.library(), analysis.context().types()),
+            moved: None,
         }
     }
 

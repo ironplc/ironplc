@@ -37,14 +37,20 @@
 //! the variables its body reads and writes, so a call and the body agree on
 //! them.
 //!
+//! A function whose result is a string returns it through its result
+//! parameter, its first, to a temporary each call passes
+//! (REQ-LOW-lowering-079); a call of one is moved out of the statement it is
+//! in (`string_result.rs`).
+//!
 //! Not lowered yet: a call with outputs anywhere else, or where running it
-//! first would change the order (REQ-LOW-lowering-174), a `VAR_IN_OUT` or a
-//! result that is a string, a parameter or a result that is an aggregate
-//! (REQ-LOW-lowering-079), a call with `EN` or `ENO` (REQ-LOW-lowering-160),
-//! a call through `THIS^` or `SUPER^`, and a call of a method its receiver's
-//! block inherits from a block whose type it does not extend in the lowered
-//! program (REQ-LOW-lowering-177). The route that reads the AST passes no
-//! string to a `VAR_IN_OUT` (`compile_reference_arg`).
+//! first would change the order (REQ-LOW-lowering-174), a `VAR_IN_OUT` that
+//! is a string, a string result of a function with outputs or of a method,
+//! a parameter or a result that is an aggregate (REQ-LOW-lowering-079), a
+//! call with `EN` or `ENO` (REQ-LOW-lowering-160), a call through `THIS^` or
+//! `SUPER^`, and a call of a method its receiver's block inherits from a
+//! block whose type it does not extend in the lowered program
+//! (REQ-LOW-lowering-177). The route that reads the AST passes no string to
+//! a `VAR_IN_OUT` (`compile_reference_arg`).
 
 use ironplc_analyzer::symbol_environment::Resolution;
 use ironplc_dsl::common::{
@@ -147,12 +153,15 @@ impl<'v, 'a> UserCall<'v, 'a> {
     }
 }
 
-/// A call's arguments, and the temporary it passes for each output, by the
-/// output's name.
-struct CallArgs {
-    pou: PouId,
-    args: Vec<Arg>,
+/// A call's arguments, the temporary it passes for each output, by the
+/// output's name, and the one it passes for a string result.
+pub(crate) struct CallArgs {
+    pub(crate) pou: PouId,
+    pub(crate) args: Vec<Arg>,
     temporaries: Vec<(Id, Place)>,
+    /// The temporary the function writes its string result to
+    /// (REQ-LOW-lowering-079); `None` for any other callee.
+    pub(crate) result: Option<Place>,
 }
 
 impl<'a> Lowering<'a> {
@@ -345,6 +354,25 @@ impl<'a> Lowering<'a> {
             })
     }
 
+    /// The arguments of `call`, at `span`, when its callee declares no
+    /// outputs; `None` for a call of a function or method with outputs, which
+    /// a call in an expression is lowered as only in an assignment's value
+    /// (`hoist.rs`).
+    pub(crate) fn call_args_without_outputs(
+        &mut self,
+        frame: &BodyFrame,
+        call: UserCall<'_, 'a>,
+        span: &SourceSpan,
+    ) -> Made<CallArgs> {
+        let Some(parameters) = call.parameters() else {
+            return Ok(None);
+        };
+        if has_outputs(&parameters) {
+            return Ok(None);
+        }
+        self.call_args(frame, call, &parameters, span)
+    }
+
     /// The arguments of `call`, whose callee's parameters are `parameters`,
     /// in the body of `frame`, at `span`: for a method, a `Ref` to the
     /// receiver first.
@@ -373,6 +401,24 @@ impl<'a> Lowering<'a> {
             // The instance parameter.
             declared.next();
             args.push(Arg::Ref(receiver));
+        }
+        // A function whose result is a string writes it through its result
+        // parameter, to a new temporary of the string's type
+        // (REQ-LOW-lowering-079).
+        let returns_through = self
+            .program
+            .pous()
+            .function(pou)
+            .and_then(|signature| signature.result_parameter())
+            .is_some();
+        let mut result = None;
+        if returns_through {
+            let Some(Param::Ref(ty)) = declared.next() else {
+                return Ok(None);
+            };
+            let temporary = self.temporary(frame, format!("{}()", call.callee()), *ty, span)?;
+            args.push(Arg::Ref(temporary.clone()));
+            result = Some(temporary);
         }
         // One named input for each input and in-out, in order, then the
         // outputs the call assigns: an `EN` or an `ENO` is not lowered yet.
@@ -424,6 +470,7 @@ impl<'a> Lowering<'a> {
             pou,
             args,
             temporaries,
+            result,
         }))
     }
 
@@ -456,28 +503,57 @@ impl<'a> Lowering<'a> {
             };
             variables.push(parameter);
         }
-        // The result is the variable named after the function or method,
-        // unless that name is a parameter's.
-        let result = match result {
-            Some(name) => match self.scalar_variable(&frame, name, false)? {
+        // A function's string result is its result parameter, first among
+        // its parameters (REQ-LOW-lowering-079).
+        let result_parameter = match call {
+            UserCall::Function { function, .. } => self.result_parameter(&frame, &function.name)?,
+            UserCall::Method { .. } => None,
+        };
+        if let Some(result_parameter) = result_parameter {
+            variables.insert(0, result_parameter);
+        }
+        // Any other result is the variable named after the function or
+        // method, unless that name is a parameter's.
+        let result = match (result_parameter, result) {
+            (None, Some(name)) => match self.scalar_variable(&frame, name, false)? {
                 Some(result) if !variables.contains(&result) => Some(result),
                 Some(_) | None => return Ok(None),
             },
-            None => None,
+            (Some(_), _) | (None, None) => None,
         };
         let span = call.callee().span();
-        match (call, result) {
-            (UserCall::Function { .. }, Some(result)) => {
+        match (call, result_parameter, result) {
+            (UserCall::Function { .. }, Some(_), _) => {
+                self.program
+                    .declare_function_returning_through(frame.pou, variables, &span)?;
+            }
+            (UserCall::Function { .. }, None, Some(result)) => {
                 self.program
                     .declare_function(frame.pou, variables, result, &span)?;
             }
-            (UserCall::Method { .. }, result) => {
+            (UserCall::Method { .. }, _, result) => {
                 self.program
                     .declare_method(frame.pou, variables, result, &span)?;
             }
-            (UserCall::Function { .. }, None) => return Ok(None),
+            (UserCall::Function { .. }, None, None) => return Ok(None),
         }
         Ok(Some(frame.pou))
+    }
+
+    /// The result parameter of the function named `name`, whose body is
+    /// `frame`, when its result is a string: the variable its body reaches
+    /// the result through (REQ-LOW-lowering-079). `None` for any other
+    /// result.
+    fn result_parameter(&mut self, frame: &BodyFrame, name: &Id) -> Made<VarId> {
+        let Some(place) = self.named_place(frame, name, &name.span())? else {
+            return Ok(None);
+        };
+        let through = matches!(place.path(), [Projection::Deref]);
+        let string = matches!(
+            self.program.types().kind(place.ty()),
+            Some(TypeKind::String(_))
+        );
+        Ok((through && string).then(|| place.root()))
     }
 
     /// The variable `name` refers to in the body of `frame`, a function or
