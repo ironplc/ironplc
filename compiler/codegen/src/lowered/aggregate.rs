@@ -85,30 +85,6 @@ pub(super) fn emit_copy(
     Ok(())
 }
 
-/// Pushes the data offset of `src`, a structure or an array this backend
-/// keeps as a region: what the route that reads the AST passes for a
-/// structure or array input of a function or method, which so takes the
-/// caller's region rather than a copy of it. Neither route compiles a read
-/// of such an input in the callee's body, so no program tells the two apart.
-pub(super) fn emit_source(
-    emitter: &mut Emitter,
-    ctx: &CompileContext,
-    lowering: &Lowering<'_>,
-    src: &LoweredPlace,
-    span: &SourceSpan,
-) -> Result<(), Diagnostic> {
-    let Some(src) = region(lowering, ctx, src) else {
-        return Err(Diagnostic::internal_error_at(Label::span(
-            span.clone(),
-            "A lowered copy has no data region",
-        )));
-    };
-    // An aggregate value has no operation type, so its slot is loaded at
-    // the default slot type, as the AST route loads it.
-    emit_load_var(emitter, src.var_index, DEFAULT_OP_TYPE);
-    Ok(())
-}
-
 /// Whether this backend copies a structure or an array into `dst`: a whole
 /// variable or a field of the current instance that it keeps as a region.
 pub(super) fn reaches_region(
@@ -140,6 +116,11 @@ pub(super) fn emit_copy_from_stack(
 /// Pushes the data offset of `src`, the source of a copy into a field of an
 /// instance: the offset of its region, the offset its slot holds when it is
 /// an instance, or the one the slot of the instance's field it is holds.
+///
+/// It is also what the route that reads the AST passes for a structure or
+/// array input of a function or method, which so takes the caller's region
+/// rather than a copy of it. Neither route compiles a read of such an input
+/// in the callee's body, so no program tells the two apart.
 pub(super) fn emit_source(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
