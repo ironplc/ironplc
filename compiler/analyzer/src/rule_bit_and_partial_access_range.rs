@@ -240,21 +240,6 @@ impl Visitor<Infallible> for RuleBitAndPartialAccessRange<'_> {
         node.recurse_visit(self)
     }
 
-    fn visit_self_ref_variable(&mut self, node: &SelfRefVariable) -> Result<(), Infallible> {
-        // Report rather than skip: a bit access through THIS^/SUPER^ cannot
-        // be range-checked until member resolution exists, and staying
-        // silent here would keep this rule quietly passing such a program
-        // once the construct is otherwise supported. See issue #1406.
-        self.diagnostics.push(Diagnostic::not_implemented(Label::span(
-            node.span(),
-            format!(
-                "{} is recognized but its members are not yet resolved, so bit and partial access through it is not range-checked",
-                node.kind.spelling()
-            ),
-        )));
-        Ok(())
-    }
-
     fn visit_bit_access_variable(&mut self, node: &BitAccessVariable) -> Result<(), Infallible> {
         self.check_bit_access(node);
         node.recurse_visit(self)
@@ -285,6 +270,59 @@ mod tests {
 
     fn problems_with(program: &str, opts: &CompilerOptions) -> Vec<String> {
         rule_codes(apply, program, opts)
+    }
+
+    fn self_ref_codes(body: &str) -> Vec<String> {
+        let options = CompilerOptions {
+            allow_fb_inheritance: true,
+            allow_partial_access_syntax: true,
+            ..CompilerOptions::default()
+        };
+        let program = format!(
+            "
+TYPE Pair : STRUCT lo : BYTE; hi : WORD; END_STRUCT; END_TYPE
+
+FUNCTION_BLOCK FB_A
+VAR
+    flags : WORD;
+    count : INT;
+    words : ARRAY[1..2] OF WORD;
+    pair : Pair;
+END_VAR
+METHOD M
+{body}
+END_METHOD
+END_FUNCTION_BLOCK"
+        );
+        let (library, context) =
+            crate::test_helpers::parse_and_resolve_types_with_options(&program, &options);
+        match apply(&library, &context, &options) {
+            Ok(()) => vec![],
+            Err(errors) => errors.iter().map(|e| e.code.clone()).collect(),
+        }
+    }
+
+    #[test]
+    fn apply_when_self_ref_member_without_bit_access_then_ok() {
+        assert!(self_ref_codes("    THIS^.count := 1;").is_empty());
+    }
+
+    #[rstest]
+    #[case::bit_access("    THIS^.flags.15 := TRUE;")]
+    #[case::partial_access("    THIS^.flags.%B1 := 1;")]
+    #[case::array_element("    THIS^.words[1].15 := TRUE;")]
+    #[case::nested_struct("    THIS^.pair.hi.15 := TRUE;")]
+    fn apply_when_access_through_self_ref_in_range_then_ok(#[case] body: &str) {
+        assert!(self_ref_codes(body).is_empty());
+    }
+
+    #[rstest]
+    #[case::bit_access("    THIS^.flags.16 := TRUE;")]
+    #[case::partial_access("    THIS^.flags.%D0 := 1;")]
+    #[case::array_element("    THIS^.words[1].16 := TRUE;")]
+    #[case::nested_struct("    THIS^.pair.lo.8 := TRUE;")]
+    fn apply_when_access_through_self_ref_out_of_range_then_error(#[case] body: &str) {
+        assert_eq!(1, self_ref_codes(body).len());
     }
 
     // --- Bit access boundary tests across all bit-sized types ---

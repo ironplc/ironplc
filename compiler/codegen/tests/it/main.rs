@@ -52,6 +52,7 @@ mod compile_route_lowered_string;
 mod compile_route_lowered_string_call;
 mod compile_route_lowered_string_result;
 mod compile_route_lowered_time;
+mod compile_self_reference;
 mod compile_set_reset_bind;
 mod compile_shift;
 mod compile_struct;
