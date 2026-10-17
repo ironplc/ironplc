@@ -10,10 +10,14 @@ use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
 
 use super::call::{program_of, Arg, Intrinsic, Param};
-use super::ids::Stamp;
+use super::expr::check_user_call;
+use super::ids::{PouId, Stamp, VarId};
+use super::in_place::InPlaceCall;
 use super::invariant::broken;
 use super::place::Place;
+use super::stmt::Stmt;
 use super::types::{Encoding, StringShape, TypeKind, TypeTable};
+use super::variables::{PouTable, VariableTable};
 
 /// What a string expression is.
 #[derive(Clone, Debug)]
@@ -24,6 +28,11 @@ pub enum StrExprKind {
     Read(Place),
     /// The string a standard string function yields (REQ-LOW-lowering-052).
     Call { callee: Intrinsic, args: Vec<Arg> },
+    /// The string a call of a function whose result is a string writes to
+    /// `result`, the temporary it passes for its result parameter, run where
+    /// the expression is evaluated: the call, then the stores of its outputs
+    /// (REQ-LOW-ir-182, REQ-LOW-ir-184).
+    InPlaceCall { call: InPlaceCall, result: VarId },
 }
 
 /// A string value of the encoding and capacity of its shape.
@@ -93,6 +102,55 @@ impl StrExpr {
         Ok(Self {
             kind: StrExprKind::Call { callee, args },
             shape: StringShape { encoding, capacity },
+            span,
+            program,
+        })
+    }
+
+    /// The string the function `pou` that `pous` declares, whose result is a
+    /// string, writes to the temporary it is passed for its result, called
+    /// in place with `args`, which [`check_user_call`] describes, then
+    /// `stores`, which [`InPlaceCall`] describes. The argument for the result
+    /// parameter is a `Ref` to the whole of the temporary, and the string has
+    /// the shape of the temporary's type (REQ-LOW-ir-184).
+    pub(crate) fn call_in_place(
+        types: &TypeTable,
+        variables: &VariableTable,
+        pous: &PouTable,
+        pou: PouId,
+        args: Vec<Arg>,
+        stores: Vec<Stmt>,
+        span: SourceSpan,
+    ) -> Result<Self, Diagnostic> {
+        const CONSTRUCTOR: &str = "ProgramBuilder::str_call_in_place";
+        check_user_call(CONSTRUCTOR, types, variables, pous, pou, &args, &span)?;
+        let returns_through = pous
+            .function(pou)
+            .and_then(|signature| signature.result_parameter())
+            .is_some();
+        let result = match args.first() {
+            Some(Arg::Ref(place)) if returns_through && place.path().is_empty() => place,
+            Some(Arg::Ref(_) | Arg::Value(_) | Arg::Str(_)) | None => {
+                return Err(broken(
+                    CONSTRUCTOR,
+                    &span,
+                    format!("{pou} is not passed the whole of a temporary for a string result"),
+                ))
+            }
+        };
+        let Some(TypeKind::String(shape)) = types.kind(result.ty()) else {
+            return Err(broken(
+                CONSTRUCTOR,
+                &span,
+                format!("{} is not a string", result.ty()),
+            ));
+        };
+        let (shape, result) = (*shape, result.root());
+        let call = InPlaceCall::new(CONSTRUCTOR, pou, args, stores, &span)?;
+        let program = call.program();
+        Ok(Self {
+            kind: StrExprKind::InPlaceCall { call, result },
+            shape,
             span,
             program,
         })

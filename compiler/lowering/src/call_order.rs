@@ -112,6 +112,9 @@ impl Walk<'_> {
             ExprKind::Call { args, .. } => {
                 args.iter().all(|arg| self.arg(arg, evaluated)) && done(evaluated)
             }
+            // Lowering moves no call out of a statement that runs one in
+            // place, so the walk does not go on into it.
+            ExprKind::InPlaceCall(_) => false,
         }
     }
 
@@ -122,6 +125,7 @@ impl Walk<'_> {
             StrExprKind::Call { args, .. } => {
                 args.iter().all(|arg| self.arg(arg, evaluated)) && done(evaluated)
             }
+            StrExprKind::InPlaceCall { .. } => false,
         }
     }
 

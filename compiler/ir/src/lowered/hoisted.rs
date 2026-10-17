@@ -11,7 +11,7 @@
 //! each of those reads are the most recent not yet read, in the order they
 //! were made: as the values of a stack.
 
-use super::{Arg, Expr, ExprKind, Place, Projection, StrExpr, StrExprKind, VarId};
+use super::{Arg, Expr, ExprKind, Place, Projection, Stmt, StmtKind, StrExpr, StrExprKind, VarId};
 
 /// The leading reads of `expr` among the variables `results`: the reads of
 /// the whole of one of them that `expr` evaluates before any other node
@@ -85,17 +85,27 @@ fn lead(expr: &Expr, results: &[VarId], reads: &mut Vec<VarId>) -> bool {
             false
         }
         ExprKind::Call { args, .. } => {
-            for arg in args {
-                let Arg::Value(value) = arg else {
-                    break;
-                };
-                if !lead(value, results, reads) {
-                    break;
-                }
-            }
+            lead_args(args, results, reads);
+            false
+        }
+        ExprKind::InPlaceCall(call) => {
+            lead_args(call.args(), results, reads);
             false
         }
         ExprKind::Const(_) | ExprKind::RefTo(_) | ExprKind::Null => false,
+    }
+}
+
+/// Appends the leading reads of a call's `args` to `reads`: those of each
+/// value argument while the one before it is itself such a read.
+fn lead_args(args: &[Arg], results: &[VarId], reads: &mut Vec<VarId>) {
+    for arg in args {
+        let Arg::Value(value) = arg else {
+            break;
+        };
+        if !lead(value, results, reads) {
+            break;
+        }
     }
 }
 
@@ -113,7 +123,47 @@ fn reads(expr: &Expr, results: &[VarId]) -> usize {
         | ExprKind::Compare { lhs, rhs, .. }
         | ExprKind::ShortCircuit { lhs, rhs, .. } => reads(lhs, results) + reads(rhs, results),
         ExprKind::Call { args, .. } => args.iter().map(|arg| arg_reads(arg, results)).sum(),
+        ExprKind::InPlaceCall(call) => in_place_reads(call, results),
         ExprKind::Const(_) | ExprKind::Null => 0,
+    }
+}
+
+/// How many times an in-place call's arguments and stores read, or pass as
+/// a `Ref`, the whole of one of `results`.
+fn in_place_reads(call: &super::InPlaceCall, results: &[VarId]) -> usize {
+    let args: usize = call.args().iter().map(|arg| arg_reads(arg, results)).sum();
+    let stores: usize = call
+        .stores()
+        .iter()
+        .map(|store| store_reads(store, results))
+        .sum();
+    args + stores
+}
+
+/// How many times `store`, an assignment, reads the whole of one of
+/// `results`, in its value or on the way to its place.
+fn store_reads(store: &Stmt, results: &[VarId]) -> usize {
+    match store.kind() {
+        StmtKind::Assign { place, value } | StmtKind::AssignBits { place, value, .. } => {
+            reads(value, results) + subscript_reads(place, results)
+        }
+        StmtKind::AssignStr { place, value } => {
+            str_reads(value, results) + subscript_reads(place, results)
+        }
+        StmtKind::Copy { dst, src } => {
+            whole_reads(src, results)
+                + subscript_reads(src, results)
+                + subscript_reads(dst, results)
+        }
+        StmtKind::FbCall { .. }
+        | StmtKind::Call { .. }
+        | StmtKind::If { .. }
+        | StmtKind::Case { .. }
+        | StmtKind::For { .. }
+        | StmtKind::Loop { .. }
+        | StmtKind::Exit(_)
+        | StmtKind::Continue(_)
+        | StmtKind::Return => 0,
     }
 }
 
@@ -130,6 +180,7 @@ fn str_reads(value: &StrExpr, results: &[VarId]) -> usize {
         StrExprKind::Literal(_) => 0,
         StrExprKind::Read(place) => subscript_reads(place, results),
         StrExprKind::Call { args, .. } => args.iter().map(|arg| arg_reads(arg, results)).sum(),
+        StrExprKind::InPlaceCall { call, .. } => in_place_reads(call, results),
     }
 }
 

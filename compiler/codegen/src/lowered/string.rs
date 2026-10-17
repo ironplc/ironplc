@@ -17,7 +17,7 @@ use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_ir::lowered::{Encoding, Place as LoweredPlace, StrExpr, StrExprKind};
 use ironplc_lowering::Lowering;
 
-use super::expr::{emit_intrinsic_call, instruction_of};
+use super::expr::{emit_intrinsic_call, in_place_not_emitted, instruction_of};
 use super::place::{resolve_string, variable_name};
 use super::{args_can_emit, string_result, subscripts_can_emit};
 use crate::compile::{emit_string_literal_load, CompileContext, StringVarInfo};
@@ -49,6 +49,7 @@ pub(super) fn str_can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, value:
         StrExprKind::Call { callee, args } => {
             instruction_of(*callee, args.len()).is_some() && args_can_emit(lowering, ctx, args)
         }
+        StrExprKind::InPlaceCall { .. } => false,
     }
 }
 
@@ -126,6 +127,7 @@ fn emit_str_expr(
         StrExprKind::Call { callee, args } => {
             emit_intrinsic_call(emitter, ctx, lowering, *callee, args, value.span())?
         }
+        StrExprKind::InPlaceCall { .. } => return Err(in_place_not_emitted(value.span())),
     }
     Ok(())
 }

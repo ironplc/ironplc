@@ -314,6 +314,7 @@ fn expr_can_emit_reading(
             expr::instruction_of(*intrinsic, args.len()).is_some()
                 && args_can_emit_reading(lowering, ctx, args, results)
         }
+        ExprKind::InPlaceCall(_) => false,
     }
 }
 
@@ -337,6 +338,7 @@ fn operation_can_emit(expr: &Expr) -> bool {
         | ExprKind::Compare { .. }
         | ExprKind::ShortCircuit { .. }
         | ExprKind::Call { .. }
+        | ExprKind::InPlaceCall(_)
         | ExprKind::RefTo(_)
         | ExprKind::Null => false,
     }
@@ -513,6 +515,7 @@ pub(super) fn constant(expr: &Expr) -> Option<Const> {
         | ExprKind::Compare { .. }
         | ExprKind::ShortCircuit { .. }
         | ExprKind::Call { .. }
+        | ExprKind::InPlaceCall(_)
         | ExprKind::RefTo(_)
         | ExprKind::Null => None,
     }
@@ -532,6 +535,7 @@ pub(super) fn operand(expr: &Expr) -> Option<&Expr> {
         | ExprKind::Compare { .. }
         | ExprKind::ShortCircuit { .. }
         | ExprKind::Call { .. }
+        | ExprKind::InPlaceCall(_)
         | ExprKind::RefTo(_)
         | ExprKind::Null => None,
     }
@@ -550,6 +554,7 @@ pub(super) fn read(expr: &Expr) -> Option<&LoweredPlace> {
         | ExprKind::Compare { .. }
         | ExprKind::ShortCircuit { .. }
         | ExprKind::Call { .. }
+        | ExprKind::InPlaceCall(_)
         | ExprKind::RefTo(_)
         | ExprKind::Null => None,
     }

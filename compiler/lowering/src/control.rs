@@ -334,6 +334,7 @@ fn integer_constant(expr: &Expr) -> Option<i128> {
         | ExprKind::Compare { .. }
         | ExprKind::ShortCircuit { .. }
         | ExprKind::Call { .. }
+        | ExprKind::InPlaceCall(_)
         | ExprKind::RefTo(_)
         | ExprKind::Null => None,
     }

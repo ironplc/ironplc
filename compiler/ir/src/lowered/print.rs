@@ -2,7 +2,9 @@
 //!
 //! An expression prints as a parenthesized operator, its type and its
 //! operands: `(add i32s (read i32s v0^.f1) (const i32s 1))`; a call prints
-//! as `call`, its callee, its type and its arguments. A place prints as
+//! as `call`, its callee, its type and its arguments, and an in-place call
+//! as `call-in-place`, then the same, then each store of an output in
+//! braces. A place prints as
 //! its variable, then `^` for each dereference, `.f<n>` for each field and
 //! `[...]` for the subscripts of each element.
 //! A statement prints on one line, and one holding other statements prints
@@ -12,6 +14,7 @@ use std::fmt;
 
 use super::call::{Arg, Callee, Intrinsic};
 use super::expr::{BinaryOp, CompareOp, Const, Expr, ExprKind, ShortCircuitOp, UnaryOp};
+use super::in_place::InPlaceCall;
 use super::place::{Place, Projection};
 use super::policy::{NonNumeric, ParseFailure, ParsePolicy};
 use super::scalar::ScalarType;
@@ -70,6 +73,7 @@ impl fmt::Display for Expr {
                 write_args(f, args)?;
                 f.write_str(")")
             }
+            ExprKind::InPlaceCall(call) => write_in_place(f, call, &ty.to_string()),
         }
     }
 }
@@ -92,8 +96,22 @@ impl fmt::Display for StrExpr {
                 write_args(f, args)?;
                 f.write_str(")")
             }
+            StrExprKind::InPlaceCall { call, .. } => {
+                write_in_place(f, call, &format!("{ty}[{}]", shape.capacity))
+            }
         }
     }
+}
+
+/// An in-place call whose result is of type `ty`: its callee, `ty`, its
+/// arguments, then each store, in braces.
+fn write_in_place(f: &mut fmt::Formatter<'_>, call: &InPlaceCall, ty: &str) -> fmt::Result {
+    write!(f, "(call-in-place {} {ty}", call.pou())?;
+    write_args(f, call.args())?;
+    call.stores()
+        .iter()
+        .try_for_each(|store| write!(f, " {{{store}}}"))?;
+    f.write_str(")")
 }
 
 impl fmt::Display for Intrinsic {

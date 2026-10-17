@@ -320,6 +320,48 @@ impl ProgramBuilder {
         Expr::call_function(&self.types, &self.variables, &self.pous, pou, args, span)
     }
 
+    /// The result of calling the function or method `pou` with `args` in
+    /// place, then `stores`, the stores of its outputs; see
+    /// [`InPlaceCall`](super::InPlaceCall) for what they must be.
+    pub fn call_in_place(
+        &self,
+        pou: PouId,
+        args: Vec<Arg>,
+        stores: Vec<Stmt>,
+        span: SourceSpan,
+    ) -> Result<Expr, Diagnostic> {
+        Expr::call_in_place(
+            &self.types,
+            &self.variables,
+            &self.pous,
+            pou,
+            args,
+            stores,
+            span,
+        )
+    }
+
+    /// The string the function `pou`, whose result is a string, writes to
+    /// the temporary `args` passes for it, called in place, then `stores`,
+    /// the stores of its outputs; see [`StrExpr`] for what they must be.
+    pub fn str_call_in_place(
+        &self,
+        pou: PouId,
+        args: Vec<Arg>,
+        stores: Vec<Stmt>,
+        span: SourceSpan,
+    ) -> Result<StrExpr, Diagnostic> {
+        StrExpr::call_in_place(
+            &self.types,
+            &self.variables,
+            &self.pous,
+            pou,
+            args,
+            stores,
+            span,
+        )
+    }
+
     /// Calls the function or method `pou` with `args`, discarding its
     /// result, if any; see [`Stmt`] for what they must be.
     pub fn call_stmt(
