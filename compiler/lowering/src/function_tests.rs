@@ -298,3 +298,32 @@ fn lower_statement_when_in_out_is_loop_control_then_unsupported() {
         ["unsupported", "assign-bits v1^ 0 1 (const bool true)"]
     );
 }
+
+/// REQ-LOW-lowering-075: an argument for a function's or method's input that
+/// is a structure or an array is a `Copy` of the place its argument names,
+/// and the input is a variable of the callee of the aggregate's type.
+#[test]
+fn lower_statement_when_aggregate_input_then_copy_of_argument() {
+    let outcome = lower_bodies(
+        "TYPE P : STRUCT x : DINT; END_STRUCT; END_TYPE
+         TYPE A3 : ARRAY[1..3] OF DINT; END_TYPE
+         FUNCTION SUMP : DINT VAR_INPUT q : P; n : DINT; END_VAR SUMP := n; END_FUNCTION
+         FUNCTION SUMA : DINT VAR_INPUT q : A3; END_VAR SUMA := 8; END_FUNCTION
+         FUNCTION_BLOCK BP METHOD M : DINT VAR_INPUT q : P; END_VAR M := 5; END_METHOD
+         END_FUNCTION_BLOCK
+         PROGRAM main VAR pt : P; a3 : A3; r : DINT; f : BP; END_VAR
+            r := SUMP(q := pt, n := 2);
+            r := SUMA(q := a3);
+            r := f.M(q := pt);
+         END_PROGRAM",
+        &["main"],
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f2 (call pou2 i32s (copy v0^.f0) (const i32s 2))",
+            "assign v0^.f2 (call pou3 i32s (copy v0^.f1))",
+            "assign v0^.f2 (call pou4 i32s (ref v0^.f3) (copy v0^.f0))",
+        ]
+    );
+}

@@ -335,8 +335,8 @@ impl Lowering<'_> {
     }
 
     /// `expr` lowered as what `param` takes: a value, a string, or the place
-    /// a variable names, passed by reference. `None` when it is not
-    /// supported.
+    /// a variable names, passed by reference or, for an array or a
+    /// structure, copied. `None` when it is not supported.
     pub(crate) fn arg(
         &mut self,
         frame: &BodyFrame,
@@ -351,6 +351,12 @@ impl Lowering<'_> {
                     return Ok(None);
                 };
                 self.variable_place(frame, variable)?.map(Arg::Ref)
+            }
+            Param::Copy(_) => {
+                let AstExprKind::Variable(variable) = &expr.kind else {
+                    return Ok(None);
+                };
+                self.variable_place(frame, variable)?.map(Arg::Copy)
             }
         })
     }

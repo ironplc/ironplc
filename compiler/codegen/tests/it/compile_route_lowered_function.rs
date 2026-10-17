@@ -3,7 +3,7 @@
 
 use rstest::rstest;
 
-use crate::compile_route_lowered::{assert_same_code, run_lowered};
+use crate::compile_route_lowered::{assert_same_code, run_lowered, run_lowered_agreeing};
 
 /// Functions the tests call: one of three `DINT`s, two returning an `INT`,
 /// one that calls another, and one whose local starts from its initial value
@@ -149,4 +149,37 @@ fn compile_when_in_out_call_lowered_then_same_code_as_ast(#[case] statement: &st
          END_PROGRAM"
     );
     assert_same_code(&source);
+}
+
+/// REQ-LOW-lowering-075: a structure or array input of a function or method
+/// is passed as the route that reads the AST passes it, the offset of the
+/// argument's region, so each call compiles to the same code and leaves
+/// every variable as that route leaves it. Neither route compiles a read of
+/// such an input in the callee's body.
+#[test]
+fn run_when_aggregate_input_passed_then_same_code_as_ast() {
+    let source = "
+        TYPE P : STRUCT x : DINT; y : DINT; END_STRUCT; END_TYPE
+        TYPE A3 : ARRAY[1..3] OF DINT; END_TYPE
+        FUNCTION SUMP : DINT VAR_INPUT q : P; n : DINT; END_VAR SUMP := n; END_FUNCTION
+        FUNCTION SUMA : DINT
+          VAR_INPUT q : A3; END_VAR VAR_OUTPUT o : DINT; END_VAR
+          SUMA := 8;
+          o := 1;
+        END_FUNCTION
+        FUNCTION_BLOCK BP METHOD M : DINT VAR_INPUT q : P; END_VAR M := 5; END_METHOD
+        END_FUNCTION_BLOCK
+        PROGRAM main
+          VAR pt : P := (x := 1, y := 2); a3 : A3; f : BP; r1 : DINT; r2 : DINT; r3 : DINT;
+              k : DINT; END_VAR
+          r1 := SUMP(q := pt, n := 7);
+          r2 := SUMA(q := a3, o => k) + 1;
+          r3 := f.M(q := pt);
+        END_PROGRAM";
+    assert_same_code(source);
+    let snapshot = run_lowered_agreeing(source);
+    assert_eq!(snapshot.read_as::<i32>("r1"), 7);
+    assert_eq!(snapshot.read_as::<i32>("r2"), 9);
+    assert_eq!(snapshot.read_as::<i32>("k"), 1);
+    assert_eq!(snapshot.read_as::<i32>("r3"), 5);
 }

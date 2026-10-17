@@ -452,3 +452,39 @@ fn declare_function_returning_through_when_parameter_refers_to_structure_then_ca
         f.b.call_stmt(pou, vec![Arg::Ref(f.place(temporary))], span());
     assert_eq!(call.unwrap().to_string(), "call pou1 (ref v10)");
 }
+
+/// REQ-LOW-lowering-072, REQ-LOW-lowering-075: a function's input that is a
+/// structure takes a copy of a place of the structure's shape, a `Copy`
+/// argument. A `Ref` to the place, and a copy of a structure of another
+/// shape, are refused.
+#[test]
+fn call_when_aggregate_input_then_takes_copy_of_place_of_its_shape() {
+    let mut f = fixture();
+    let pou = f.b.push_pou(name("sum"));
+    let dint = f.ty(f.dint);
+    let mut structure = |field: &str| {
+        let kind = TypeKind::Structure {
+            fields: vec![Field::new(field, span(), None, dint)],
+        };
+        f.b.push_type(entry(kind), &span()).unwrap()
+    };
+    let (shape, other) = (structure("x"), structure("y"));
+    let Owner::Pou(main) = f.b.variables().get(f.dint).unwrap().owner() else {
+        panic!("the fixture's variables belong to main");
+    };
+    let mut var = |text: &str, owner, ty| f.b.push_variable(name(text), owner, ty).unwrap();
+    let q = var("q", Owner::Pou(pou), shape);
+    let result = var("sum", Owner::Pou(pou), dint);
+    let p = var("p", Owner::Pou(main), shape);
+    let o = var("o", Owner::Pou(main), other);
+    f.b.declare_function(pou, vec![q], result, &span()).unwrap();
+    assert_eq!(f.b.params(pou), Some(vec![Param::Copy(shape)]));
+    let call = f.b.call(pou, vec![Arg::Copy(f.place(p))], span()).unwrap();
+    assert_eq!(call.to_string(), "(call pou1 i32s (copy v10))");
+    for refused in [Arg::Ref(f.place(p)), Arg::Copy(f.place(o))] {
+        assert!(is_internal_error_naming(
+            f.b.call(pou, vec![refused], span()),
+            "ProgramBuilder::call"
+        ));
+    }
+}

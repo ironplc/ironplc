@@ -130,7 +130,7 @@ impl StrExpr {
             .is_some();
         let result = match args.first() {
             Some(Arg::Ref(place)) if returns_through && place.path().is_empty() => place,
-            Some(Arg::Ref(_) | Arg::Value(_) | Arg::Str(_)) | None => {
+            Some(Arg::Ref(_) | Arg::Value(_) | Arg::Str(_) | Arg::Copy(_)) | None => {
                 return Err(broken(
                     CONSTRUCTOR,
                     &span,
