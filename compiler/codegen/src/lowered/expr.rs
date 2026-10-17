@@ -286,6 +286,13 @@ fn emit_args<'s>(
             Arg::Value(value) => emit_expr(emitter, ctx, lowering, value)?,
             Arg::Str(value) => strings.push(str_arg_offset(emitter, ctx, lowering, value)?),
             Arg::Ref(place) => emit_ref(emitter, ctx, lowering, place, span)?,
+            // No intrinsic takes an aggregate (REQ-LOW-ir-145).
+            Arg::Copy(_) => {
+                return Err(Diagnostic::internal_error_at(Label::span(
+                    span.clone(),
+                    "An aggregate argument of an intrinsic",
+                )))
+            }
         }
     }
     Ok(strings)

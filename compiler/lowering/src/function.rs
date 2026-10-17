@@ -39,9 +39,12 @@
 //! is a structure is a call statement whose result is copied to its target
 //! (`structure_result.rs`).
 //!
+//! An input that is an array or a structure is passed by copy
+//! (REQ-LOW-lowering-075).
+//!
 //! Not lowered yet: a `VAR_IN_OUT` that is a string, a string or structure
-//! result of a method, a parameter that is an aggregate, a result that is an
-//! array (REQ-LOW-lowering-079), a call with `EN` or `ENO` (REQ-LOW-lowering-160),
+//! result of a method, an in-out or an output that is an aggregate, a result
+//! that is an array (REQ-LOW-lowering-079), a call with `EN` or `ENO` (REQ-LOW-lowering-160),
 //! a call through `THIS^` or `SUPER^`, and a call of a method its receiver's
 //! block inherits from a block whose type it does not extend in the lowered
 //! program (REQ-LOW-lowering-177). The route that reads the AST passes no
@@ -378,7 +381,9 @@ impl<'a> Lowering<'a> {
                     args.push(Arg::Ref(temporary.clone()));
                     temporaries.push(((*name).clone(), temporary));
                 }
-                (Section::Output, Param::Value(_) | Param::Str(_)) => return Ok(None),
+                (Section::Output, Param::Value(_) | Param::Str(_) | Param::Copy(_)) => {
+                    return Ok(None)
+                }
             }
         }
         if inputs.next().is_some() {
@@ -408,7 +413,7 @@ impl<'a> Lowering<'a> {
     /// The POU `call` calls, whose parameters are `parameters`, declared
     /// with its parameters and result the first time it is asked for; `None`
     /// when one of them is not a scalar, or, for an input or an output, a
-    /// string.
+    /// string, or, for an input, an array or a structure.
     fn callee_pou(&mut self, call: UserCall<'_, 'a>, parameters: &[(&Id, Section)]) -> Made<PouId> {
         let (body, result) = match call {
             UserCall::Function { function, .. } => (Body::Function(function), Some(&function.name)),
@@ -428,8 +433,17 @@ impl<'a> Lowering<'a> {
             variables.push(instance.this);
         }
         for (name, section) in parameters {
-            let string = matches!(section, Section::Input | Section::Output);
-            let Some(parameter) = self.scalar_variable(&frame, name, string)? else {
+            let parameter = match section {
+                // An array or structure input is passed by copy
+                // (REQ-LOW-lowering-075).
+                Section::Input => match self.aggregate_variable(&frame, name)? {
+                    Some(aggregate) => Some(aggregate),
+                    None => self.scalar_variable(&frame, name, true)?,
+                },
+                Section::Output => self.scalar_variable(&frame, name, true)?,
+                Section::InOut => self.scalar_variable(&frame, name, false)?,
+            };
+            let Some(parameter) = parameter else {
                 return Ok(None);
             };
             variables.push(parameter);
@@ -485,6 +499,21 @@ impl<'a> Lowering<'a> {
             Some(TypeKind::String(_) | TypeKind::Structure { .. })
         );
         Ok((through && returned).then(|| place.root()))
+    }
+
+    /// The variable `name` refers to in the body of `frame`, a function or
+    /// method, when it is the whole of an array or a structure, as an input
+    /// of one is; `None` otherwise.
+    fn aggregate_variable(&mut self, frame: &BodyFrame, name: &Id) -> Made<VarId> {
+        let Some(place) = self.named_place(frame, name, &name.span())? else {
+            return Ok(None);
+        };
+        let aggregate = place.path().is_empty()
+            && matches!(
+                self.program.types().kind(place.ty()),
+                Some(TypeKind::Array { .. } | TypeKind::Structure { .. })
+            );
+        Ok(aggregate.then(|| place.root()))
     }
 
     /// The variable `name` refers to in the body of `frame`, a function or

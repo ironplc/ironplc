@@ -1313,9 +1313,13 @@ array or structure input to a function or function block. Inside the body
 the parameter has no array or structure storage, so reading an element or a
 field of it is reported as P9999 (`compile_array.rs`, `compile_struct.rs`).
 A call still passes one scalar value for the parameter
-(`ParamPassing::Value`), which is harmless only because a body that reads
-the parameter never compiles. Lowering reports such an input as P9999 until
-it provides `Arg::Copy` for it.
+(`ParamPassing::Value`), the offset of the argument's region, which is
+harmless only because a body that reads the parameter never compiles.
+Lowering passes such an input of a function or method as an `Arg::Copy`
+(REQ-LOW-lowering-075), and while both routes exist the bytecode backend
+emits it as that route does, the offset, so a call compiles to the same code
+by either route. The callee gets a copy of its own once a body that reads the
+parameter compiles, which it does on neither route yet.
 
 A string is passed by value too. The argument for a `VAR_INPUT` of a `STRING`
 or `WSTRING` type is a `Str` of the parameter's encoding, of any capacity
@@ -1600,7 +1604,7 @@ Not lowered yet, so each stays on the route that reads the AST:
 - a call of a method the receiver's block inherits from a block its
   lowered type does not extend, as one with a field (REQ-LOW-lowering-177);
 - a call of a method with an in-out or a result that is a string, or with an
-  input, an in-out or a result that is an aggregate (REQ-LOW-lowering-079).
+  in-out or a result that is an aggregate (REQ-LOW-lowering-079).
   The route that reads the AST reports a method whose result is a string as
   P9999.
 
