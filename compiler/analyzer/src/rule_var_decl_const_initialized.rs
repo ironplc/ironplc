@@ -143,6 +143,15 @@ impl<'a> Visitor<Infallible> for RuleConstantVarsInitialized<'a> {
                     // Function blocks cannot be CONSTANT - this is handled by
                     // rule_var_decl_const_not_fb, so skip initialization checking here.
                 }
+                // An interface variable cannot be initialized, so a CONSTANT
+                // one would always refer to nothing.
+                InitialValueAssignmentKind::Interface(_) => self.diagnostics.push(
+                    Diagnostic::problem(
+                        Problem::ConstantMustHaveInitializer,
+                        Label::span(node.span(), "Variable declaration"),
+                    )
+                    .with_context("variable", &node.identifier.to_string()),
+                ),
                 // Subrange and late-resolved initializers are both resolved to
                 // a concrete kind before semantic rules run, so reaching either
                 // here is a compiler bug. Report it against this declaration
@@ -271,6 +280,25 @@ END_VAR
 
 END_FUNCTION_BLOCK",
         [Problem::ConstantMustHaveInitializer]
+    );
+
+    rule_err!(
+        apply_when_const_interface_variable_then_error,
+        "
+INTERFACE I_Comm
+END_INTERFACE
+
+FUNCTION_BLOCK LOGGER
+VAR CONSTANT
+comm : I_Comm;
+END_VAR
+
+END_FUNCTION_BLOCK",
+        [Problem::ConstantMustHaveInitializer],
+        CompilerOptions {
+            allow_fb_inheritance: true,
+            ..CompilerOptions::default()
+        }
     );
 
     rule_err!(

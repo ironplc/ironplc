@@ -164,6 +164,9 @@ impl Lowering<'_> {
                     base,
                 }
             }
+            // An interface value has no run-time representation yet
+            // (ADR-0041 Phase 2), so there is nothing to lower.
+            SemanticType::Interface { .. } => return Ok(None),
             SemanticType::Reference { .. } => {
                 let Some(target) = self.analysis.context().types().referenced_type(id) else {
                     return Ok(None);

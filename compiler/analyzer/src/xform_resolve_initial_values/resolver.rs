@@ -401,6 +401,9 @@ impl<'a> Resolver<'a> {
     ) -> Option<Value> {
         match initializer {
             InitialValueAssignmentKind::None(_) => self.default_of(place),
+            // Nothing gives an interface variable a value: it is refused
+            // before code generation (see `compile_interface`).
+            InitialValueAssignmentKind::Interface(_) => None,
             InitialValueAssignmentKind::Subrange(subrange) => match &subrange.initial_value {
                 Some(value) => self.signed_integer(value, place),
                 None => self.default_of(place),

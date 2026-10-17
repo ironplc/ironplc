@@ -2,20 +2,16 @@
 //! are parsed and represented in the AST but not yet semantically analyzed.
 //!
 //! See `ironplc_dsl::extension::LanguageExtension` and
-//! `specs/design/beckhoff-twincat-dialect.md` §1.4. Plain `EXTENDS` with no
-//! `IMPLEMENTS`/`ABSTRACT` no longer flags, since field inheritance is
-//! fully resolved.
+//! `specs/design/beckhoff-twincat-dialect.md` §1.4. `EXTENDS`, `IMPLEMENTS`
+//! and `INTERFACE` declarations no longer flag: field inheritance is
+//! resolved, and an interface is a type. Calling a method through an
+//! interface is reported by `rule_method_call_declared`.
 //!
 //! ## Fails
 //!
 //! ```ignore
-//! FUNCTION_BLOCK FB_AdvancedMotor IMPLEMENTS I_Drivable
+//! FUNCTION_BLOCK ABSTRACT FB_BaseAxis
 //! END_FUNCTION_BLOCK
-//! ```
-//!
-//! ```ignore
-//! INTERFACE I_Drivable
-//! END_INTERFACE
 //! ```
 use ironplc_dsl::{
     common::*,
@@ -76,17 +72,17 @@ impl Visitor<Infallible> for RuleUnsupportedExtension {
         node: &FunctionBlockDeclaration,
     ) -> Result<Self::Value, Infallible> {
         // Most function blocks are standard IEC 61131-3 — only flag when
-        // something genuinely unsupported is present. Plain EXTENDS (no
-        // IMPLEMENTS, not ABSTRACT) is no longer flagged: field
-        // inheritance through the EXTENDS chain is fully resolved, so
-        // there's nothing left unsupported for that shape. IMPLEMENTS
-        // (interface dispatch) remains unimplemented and still flags.
-        // ABSTRACT still flags because it is not executed: instantiation
-        // legality is enforced by `rule_abstract_not_instantiated`
-        // (P4045) for a direct variable declaration, but indirect
-        // instantiation (as an array element type) is still unchecked.
+        // something genuinely unsupported is present. EXTENDS is not
+        // flagged: field inheritance through the EXTENDS chain is fully
+        // resolved. IMPLEMENTS is not flagged either: it makes the function
+        // block convert to the interface, and a call through the interface
+        // is flagged where it is made. ABSTRACT still flags because it is
+        // not executed: instantiation legality is enforced by
+        // `rule_abstract_not_instantiated` (P4045) for a direct variable
+        // declaration, but indirect instantiation (as an array element
+        // type) is still unchecked.
         if let Some(oop) = &node.oop {
-            if !oop.implements.is_empty() || oop.qualifiers.is_abstract() {
+            if oop.qualifiers.is_abstract() {
                 self.flag(oop);
             }
         }
@@ -100,16 +96,6 @@ impl Visitor<Infallible> for RuleUnsupportedExtension {
         // A SelfRefVariable only exists when THIS^/SUPER^ was written, so
         // it is always an extension. Parsed and rendered, but neither
         // analyzed nor executed.
-        self.flag(node);
-        node.recurse_visit(self)
-    }
-
-    fn visit_interface_declaration(
-        &mut self,
-        node: &InterfaceDeclaration,
-    ) -> Result<Self::Value, Infallible> {
-        // An InterfaceDeclaration only exists when INTERFACE syntax was
-        // used, so it is always an extension.
         self.flag(node);
         node.recurse_visit(self)
     }
@@ -153,18 +139,19 @@ END_FUNCTION_BLOCK",
         fb_inheritance_options()
     );
 
-    #[test]
-    fn apply_when_implements_then_p9999() {
-        let program = "
+    rule_ok!(
+        apply_when_implements_then_ok,
+        "
+INTERFACE I_Drivable
+END_INTERFACE
+
 FUNCTION_BLOCK FB_AdvancedMotor IMPLEMENTS I_Drivable
 VAR
     bRunning : BOOL;
 END_VAR
-END_FUNCTION_BLOCK";
-
-        let errors = rule_diagnostics(apply, program, &fb_inheritance_options());
-        assert_eq!(diagnostic_codes(&errors), [NOT_IMPLEMENTED_CODE]);
-    }
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
+    );
 
     #[rstest::rstest]
     #[case::this("    THIS^.count := 1;")]
@@ -201,7 +188,7 @@ END_FUNCTION_BLOCK";
     }
 
     #[test]
-    fn apply_when_abstract_and_implements_then_only_one_p9999() {
+    fn apply_when_abstract_and_implements_then_one_p9999() {
         let program = "
 FUNCTION_BLOCK ABSTRACT FB_BaseAxis IMPLEMENTS I_BaseAxis
 VAR
@@ -210,35 +197,32 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let errors = rule_diagnostics(apply, program, &fb_inheritance_options());
-        // One diagnostic for the whole FB, not one per clause.
+        // Only ABSTRACT is still flagged.
         assert_eq!(diagnostic_codes(&errors), [NOT_IMPLEMENTED_CODE]);
     }
 
-    #[test]
-    fn apply_when_interface_declaration_then_p9999() {
-        let program = "
+    rule_ok!(
+        apply_when_interface_declaration_then_ok,
+        "
 INTERFACE I_Drivable
-END_INTERFACE";
+END_INTERFACE",
+        fb_inheritance_options()
+    );
 
-        let errors = rule_diagnostics(apply, program, &fb_inheritance_options());
-        assert_eq!(diagnostic_codes(&errors), [NOT_IMPLEMENTED_CODE]);
-    }
-
-    #[test]
-    fn apply_when_extends_and_interface_then_both_flagged() {
-        let program = "
+    rule_ok!(
+        apply_when_extends_and_implements_then_ok,
+        "
 INTERFACE I_Drivable
 END_INTERFACE
+
+FUNCTION_BLOCK FB_Motor
+END_FUNCTION_BLOCK
 
 FUNCTION_BLOCK FB_AdvancedMotor EXTENDS FB_Motor IMPLEMENTS I_Drivable
 VAR
     bRunning : BOOL;
 END_VAR
-END_FUNCTION_BLOCK";
-
-        let errors = rule_diagnostics(apply, program, &fb_inheritance_options());
-        // One for the INTERFACE declaration, one for the FB's IMPLEMENTS
-        // clause (EXTENDS alone wouldn't flag, but IMPLEMENTS still does).
-        assert_eq!(errors.len(), 2);
-    }
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
+    );
 }

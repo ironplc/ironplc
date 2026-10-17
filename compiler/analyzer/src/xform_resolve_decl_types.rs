@@ -77,6 +77,7 @@ fn declared_type_id(
         }
         InitialValueAssignmentKind::EnumeratedType(e) => return env.id_of(&e.type_name),
         InitialValueAssignmentKind::FunctionBlock(fb) => return env.id_of(&fb.type_name),
+        InitialValueAssignmentKind::Interface(itf) => return env.id_of(&itf.type_name),
         InitialValueAssignmentKind::FunctionBlockCall(fbc) => return env.id_of(&fbc.type_name),
         InitialValueAssignmentKind::Structure(s) => return env.id_of(&s.type_name),
         InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {

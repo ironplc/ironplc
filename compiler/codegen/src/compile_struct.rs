@@ -107,7 +107,8 @@ pub(crate) fn resolve_field_op_type(field_type: &SemanticType) -> Option<OpType>
         SemanticType::Structure { .. }
         | SemanticType::Array { .. }
         | SemanticType::String { .. }
-        | SemanticType::FunctionBlock { .. } => None,
+        | SemanticType::FunctionBlock { .. }
+        | SemanticType::Interface { .. } => None,
     }
 }
 

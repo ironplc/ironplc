@@ -96,6 +96,24 @@ impl<'a> RuleMethodCallDeclared<'a> {
         }
     }
 
+    /// The interface type of the variable `name`, when it is a variable of
+    /// an interface type.
+    fn interface_of(&self, name: &Id) -> Option<TypeName> {
+        let types = self.context.types();
+        let id = self
+            .context
+            .symbols()
+            .resolve_variable(name, &self.scope.current())
+            .declared()?
+            .type_id?;
+        types
+            .get_by_id(id)?
+            .representation
+            .is_interface()
+            .then(|| types.name_of(id).cloned())
+            .flatten()
+    }
+
     /// Reports why `call`'s arguments do not bind to `method`'s parameters,
     /// or else each input and `VAR_IN_OUT` the call does not supply (P4018):
     /// a method's inputs are fresh on every call, so a call supplies them
@@ -208,6 +226,19 @@ impl RuleMethodCallDeclared<'_> {
             }
         };
 
+        // A call through an interface needs dynamic dispatch: which method
+        // runs depends on the instance the variable refers to at run time.
+        if let Some(interface) = self.interface_of(instance) {
+            self.diagnostics
+                .push(Diagnostic::not_implemented(Label::span(
+                    call.span(),
+                    format!(
+                        "A method call through the interface {interface} is recognized but not yet supported by IronPLC: it needs dynamic dispatch"
+                    ),
+                )));
+            return;
+        }
+
         let fb_type = instance_type(
             instance,
             &self.scope.current(),
@@ -254,7 +285,9 @@ impl RuleMethodCallDeclared<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::fb_inheritance_options;
+    use crate::test_helpers::{
+        diagnostic_codes, fb_inheritance_options, rule_diagnostics, NOT_IMPLEMENTED_CODE,
+    };
     use spec_test_macro::spec_test;
 
     rule_ok!(
@@ -322,6 +355,27 @@ m.Start();
 END_PROGRAM",
         fb_inheritance_options()
     );
+
+    #[test]
+    fn apply_when_method_called_through_interface_then_p9999() {
+        let program = "
+INTERFACE I_Comm
+METHOD Send : BOOL
+END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK FB_Device
+VAR
+    comm : I_Comm;
+    ok : BOOL;
+END_VAR
+    ok := comm.Send();
+END_FUNCTION_BLOCK";
+
+        let errors = rule_diagnostics(apply, program, &fb_inheritance_options());
+
+        assert_eq!(diagnostic_codes(&errors), [NOT_IMPLEMENTED_CODE]);
+    }
 
     rule_err!(
         apply_when_method_not_declared_anywhere_then_error,

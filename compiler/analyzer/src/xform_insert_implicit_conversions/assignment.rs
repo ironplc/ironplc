@@ -142,7 +142,8 @@ impl ImplicitConversions<'_> {
             | SemanticType::String { .. }
             | SemanticType::Structure { .. }
             | SemanticType::Array { .. }
-            | SemanticType::FunctionBlock { .. } => None,
+            | SemanticType::FunctionBlock { .. }
+            | SemanticType::Interface { .. } => None,
         }
     }
 
@@ -191,7 +192,8 @@ impl ImplicitConversions<'_> {
             | SemanticType::String { .. }
             | SemanticType::Structure { .. }
             | SemanticType::Array { .. }
-            | SemanticType::FunctionBlock { .. } => false,
+            | SemanticType::FunctionBlock { .. }
+            | SemanticType::Interface { .. } => false,
         }
     }
 
