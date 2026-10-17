@@ -253,26 +253,14 @@ pub fn rs(instance: &mut [u8]) -> Result<(), Trap> {
 /// Each width of a counter (`CTU_UDINT`, `CTU_LINT`, ...) has its own
 /// `FB_CALL` type id and counts in its own type, so a `CTU_LINT` counts past
 /// 32 bits and a `CTU_UDINT` reads a preset above 2,147,483,647 as positive.
-/// `CTU`, `CTU_INT` and `CTU_DINT` count in a signed 32-bit integer.
+/// `CTU`, `CTU_INT` and `CTU_DINT` count in a signed 32-bit integer. The
+/// width of each type id is given by `Intrinsic::of`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CounterWidth {
     I32,
     U32,
     I64,
     U64,
-}
-
-impl CounterWidth {
-    /// The width the counter with `FB_CALL` type id `type_id` counts in.
-    pub fn of(type_id: u16) -> CounterWidth {
-        use ironplc_container::opcode::fb_type;
-        match type_id {
-            fb_type::CTU_UDINT | fb_type::CTD_UDINT | fb_type::CTUD_UDINT => CounterWidth::U32,
-            fb_type::CTU_LINT | fb_type::CTD_LINT | fb_type::CTUD_LINT => CounterWidth::I64,
-            fb_type::CTU_ULINT | fb_type::CTD_ULINT | fb_type::CTUD_ULINT => CounterWidth::U64,
-            _ => CounterWidth::I32,
-        }
-    }
 }
 
 /// A value a counter counts in, read from and written to an instance field.
@@ -529,8 +517,6 @@ pub fn f_trig(instance: &mut [u8]) -> Result<(), Trap> {
 #[cfg(test)]
 mod counter_tests {
     use super::*;
-    use ironplc_container::opcode::fb_type;
-    use rstest::rstest;
     use spec_test_macro::spec_test;
 
     /// An instance of `fields` fields, all zero but the `CV` field
@@ -539,19 +525,6 @@ mod counter_tests {
         let mut instance = vec![0u8; fields * FIELD_SIZE];
         cv.write(&mut instance, cv_field).unwrap();
         instance
-    }
-
-    #[spec_test(REQ_CW_vm_001)]
-    #[rstest]
-    #[case::int(fb_type::CTU, CounterWidth::I32)]
-    #[case::udint(fb_type::CTD_UDINT, CounterWidth::U32)]
-    #[case::lint(fb_type::CTUD_LINT, CounterWidth::I64)]
-    #[case::ulint(fb_type::CTU_ULINT, CounterWidth::U64)]
-    fn counter_width_of_when_counter_type_then_its_width(
-        #[case] type_id: u16,
-        #[case] expected: CounterWidth,
-    ) {
-        assert_eq!(CounterWidth::of(type_id), expected);
     }
 
     #[spec_test(REQ_CW_vm_002)]

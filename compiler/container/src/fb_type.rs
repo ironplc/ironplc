@@ -6,13 +6,15 @@ pub const TON: u16 = 0x0010;
 pub const TOF: u16 = 0x0011;
 /// TP (pulse timer).
 pub const TP: u16 = 0x0012;
-/// CTU (count up counter), counting in a signed 32-bit integer: `CTU`,
-/// `CTU_INT` and `CTU_DINT`.
-pub const CTU: u16 = 0x0020;
-/// CTD (count down counter), counting in a signed 32-bit integer.
-pub const CTD: u16 = 0x0021;
-/// CTUD (count up/down counter), counting in a signed 32-bit integer.
-pub const CTUD: u16 = 0x0022;
+/// CTU_DINT: CTU counting in a signed 32-bit integer. `CTU` and `CTU_INT`
+/// count with it too.
+pub const CTU_DINT: u16 = 0x0020;
+/// CTD_DINT: CTD counting in a signed 32-bit integer. `CTD` and `CTD_INT`
+/// count with it too.
+pub const CTD_DINT: u16 = 0x0021;
+/// CTUD_DINT: CTUD counting in a signed 32-bit integer. `CTUD` and
+/// `CTUD_INT` count with it too.
+pub const CTUD_DINT: u16 = 0x0022;
 /// CTU_UDINT: CTU counting in an unsigned 32-bit integer.
 pub const CTU_UDINT: u16 = 0x0023;
 /// CTD_UDINT: CTD counting in an unsigned 32-bit integer.

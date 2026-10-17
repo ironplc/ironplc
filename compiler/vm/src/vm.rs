@@ -12,6 +12,7 @@ use crate::debug_hook::{DebugHook, HookAction, NoopDebugHook};
 use crate::error::Trap;
 use crate::frame_stack::{FbCallReturn, Frame, FrameStack};
 use crate::intrinsic;
+use crate::intrinsic_id::Intrinsic;
 #[cfg(feature = "profiling")]
 use crate::profile::InstructionProfile;
 use crate::scheduler::{ProgramInstanceState, TaskScheduler, TaskState};
@@ -2506,8 +2507,8 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 // An intrinsic FB runs natively over its instance's fields;
                 // each arm names the fields it owns, so the slice it is
                 // handed is exactly that long.
-                match type_id {
-                    opcode::fb_type::TON => intrinsic::ton(
+                match Intrinsic::of(type_id) {
+                    Some(Intrinsic::Ton) => intrinsic::ton(
                         intrinsic_instance(
                             data_region,
                             instance_start,
@@ -2515,7 +2516,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                         )?,
                         uptime_us as i64,
                     )?,
-                    opcode::fb_type::TOF => intrinsic::tof(
+                    Some(Intrinsic::Tof) => intrinsic::tof(
                         intrinsic_instance(
                             data_region,
                             instance_start,
@@ -2523,7 +2524,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                         )?,
                         uptime_us as i64,
                     )?,
-                    opcode::fb_type::TP => intrinsic::tp(
+                    Some(Intrinsic::Tp) => intrinsic::tp(
                         intrinsic_instance(
                             data_region,
                             instance_start,
@@ -2531,60 +2532,51 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                         )?,
                         uptime_us as i64,
                     )?,
-                    opcode::fb_type::CTU
-                    | opcode::fb_type::CTU_UDINT
-                    | opcode::fb_type::CTU_LINT
-                    | opcode::fb_type::CTU_ULINT => intrinsic::ctu(
+                    Some(Intrinsic::Ctu(width)) => intrinsic::ctu(
                         intrinsic_instance(
                             data_region,
                             instance_start,
                             intrinsic::CTU_INSTANCE_FIELDS,
                         )?,
-                        intrinsic::CounterWidth::of(type_id),
+                        width,
                     )?,
-                    opcode::fb_type::CTD
-                    | opcode::fb_type::CTD_UDINT
-                    | opcode::fb_type::CTD_LINT
-                    | opcode::fb_type::CTD_ULINT => intrinsic::ctd(
+                    Some(Intrinsic::Ctd(width)) => intrinsic::ctd(
                         intrinsic_instance(
                             data_region,
                             instance_start,
                             intrinsic::CTD_INSTANCE_FIELDS,
                         )?,
-                        intrinsic::CounterWidth::of(type_id),
+                        width,
                     )?,
-                    opcode::fb_type::CTUD
-                    | opcode::fb_type::CTUD_UDINT
-                    | opcode::fb_type::CTUD_LINT
-                    | opcode::fb_type::CTUD_ULINT => intrinsic::ctud(
+                    Some(Intrinsic::Ctud(width)) => intrinsic::ctud(
                         intrinsic_instance(
                             data_region,
                             instance_start,
                             intrinsic::CTUD_INSTANCE_FIELDS,
                         )?,
-                        intrinsic::CounterWidth::of(type_id),
+                        width,
                     )?,
-                    opcode::fb_type::SR => intrinsic::sr(intrinsic_instance(
+                    Some(Intrinsic::Sr) => intrinsic::sr(intrinsic_instance(
                         data_region,
                         instance_start,
                         intrinsic::SR_INSTANCE_FIELDS,
                     )?)?,
-                    opcode::fb_type::RS => intrinsic::rs(intrinsic_instance(
+                    Some(Intrinsic::Rs) => intrinsic::rs(intrinsic_instance(
                         data_region,
                         instance_start,
                         intrinsic::RS_INSTANCE_FIELDS,
                     )?)?,
-                    opcode::fb_type::R_TRIG => intrinsic::r_trig(intrinsic_instance(
+                    Some(Intrinsic::RTrig) => intrinsic::r_trig(intrinsic_instance(
                         data_region,
                         instance_start,
                         intrinsic::R_TRIG_INSTANCE_FIELDS,
                     )?)?,
-                    opcode::fb_type::F_TRIG => intrinsic::f_trig(intrinsic_instance(
+                    Some(Intrinsic::FTrig) => intrinsic::f_trig(intrinsic_instance(
                         data_region,
                         instance_start,
                         intrinsic::F_TRIG_INSTANCE_FIELDS,
                     )?)?,
-                    _ => {
+                    None => {
                         // User-defined FB: look up in the container's user FB table.
                         let fb_type_id = FbTypeId::new(type_id);
                         let user_fb = container
