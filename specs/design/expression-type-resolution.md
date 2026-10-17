@@ -138,6 +138,15 @@ A variable reference is typed by one walk, by type id
 reaches. Neither reads a field's type from the fields a representation lists,
 so a field has the one type its declaration records.
 
+A subscript list subscripts one array and gives one subscript for each of its
+dimensions, so an element of an array of arrays is selected one bracket per
+array (`rows[1][2]`), and an element of a multi-dimensional array by one list
+(`m[1, 2]`). A list with too few or too many subscripts selects no element and
+has no type; `rule_array_subscript_count` reports it (P4085). An array type
+that records no dimensions has none to count against.
+
+**REQ-ETR-analyzer-008** With `Row : ARRAY[1..3] OF DINT`, `rows : ARRAY[1..2] OF Row` and `m : ARRAY[1..2, 1..3] OF DINT`, `rows[1]` is a `Row`, `rows[1][2]` and `m[1, 2]` are `DINT`, and `rows[1, 2]`, `m[1]` and `m[1][2]` have no type.
+
 **REQ-ETR-analyzer-004** A rule asking the type of a field of a function block instance gets the type the field is declared with, whatever kind of type it is: on a block with a structure output `p`, a `STRING` output `s` and an `ARRAY[1..3] OF INT` variable `a`, `f.p` is the structure, `f.s` a `STRING`, `f.a` the array, `f.a[2]` an `INT`, and `f.p.x` the type of the structure's field `x`.
 
 After the semantic rules, `xform_insert_implicit_conversions` records the

@@ -267,3 +267,69 @@ fn lower_statement_when_field_of_standard_block_then_field_of_instance() {
         ]
     );
 }
+
+/// REQ-LOW-lowering-031: an element of an array of arrays is an `Index` for
+/// each array, outermost first, whether the outer array's type is named or
+/// declared in place.
+#[test]
+fn lower_statement_when_element_of_array_of_arrays_then_index_for_each_array() {
+    let outcome = lower(
+        "TYPE Row : ARRAY[1..3] OF DINT; Rows : ARRAY[0..1] OF Row; END_TYPE
+         PROGRAM main VAR rows : ARRAY[1..2] OF Row; named : Rows; i : DINT; END_VAR
+            rows[i][2] := named[0][i];
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        ["assign v0^.f0[(read i32s v0^.f2)][(const i32s 2)] \
+          (read i32s v0^.f1[(const i32s 0)][(read i32s v0^.f2)])"]
+    );
+}
+
+/// An element of a two-dimensional array of arrays takes both subscripts of
+/// the outer array in one `Index`, then one for the inner array.
+#[test]
+fn lower_statement_when_two_dimensional_array_of_arrays_then_index_for_each_array() {
+    let outcome = lower(
+        "TYPE Row : ARRAY[1..3] OF DINT; END_TYPE
+         PROGRAM main VAR grid : ARRAY[1..2, 1..2] OF Row; END_VAR
+            grid[2, 1][3] := 8;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        ["assign v0^.f0[(const i32s 2), (const i32s 1)][(const i32s 3)] (const i32s 8)"]
+    );
+}
+
+/// Fields and elements compose through arrays of arrays: an array of arrays
+/// in a structure, a structure in an array of arrays, with a string field,
+/// and an array in an element of an array of structures.
+#[test]
+fn lower_statement_when_fields_and_arrays_of_arrays_then_projections_compose() {
+    let outcome = lower(
+        "TYPE Row : ARRAY[1..3] OF DINT;
+              S : STRUCT rows : ARRAY[1..2] OF Row; END_STRUCT;
+              N : STRUCT n : DINT; t : STRING[5]; END_STRUCT;
+              NRow : ARRAY[1..3] OF N;
+              R : STRUCT v : ARRAY[1..3] OF DINT; END_STRUCT; END_TYPE
+         PROGRAM main VAR s : S; g : ARRAY[1..2] OF NRow; recs : ARRAY[1..2] OF R; END_VAR
+            s.rows[2][3] := 1;
+            g[2][3].n := 2;
+            g[1][1].t := 'ab';
+            recs[2].v[3] := 3;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f0.f0[(const i32s 2)][(const i32s 3)] (const i32s 1)",
+            "assign v0^.f1[(const i32s 2)][(const i32s 3)].f0 (const i32s 2)",
+            "assign-str v0^.f1[(const i32s 1)][(const i32s 1)].f1 (literal string[2] \"ab\")",
+            "assign v0^.f2[(const i32s 2)].f0[(const i32s 3)] (const i32s 3)",
+        ]
+    );
+}

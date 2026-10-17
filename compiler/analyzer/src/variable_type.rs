@@ -9,7 +9,9 @@
 //!
 //! The walk goes by [`TypeId`] ([`type_id`]): a variable's declared type, then
 //! [`TypeEnvironment::field_type`] for a field, [`TypeEnvironment::element_type`]
-//! for a subscript and [`TypeEnvironment::referenced_type`] for a dereference.
+//! for a subscript list that gives one subscript for each dimension of the
+//! array it subscripts, and [`TypeEnvironment::referenced_type`] for a
+//! dereference.
 //! It never reads the fields a structure's or function block's representation
 //! lists, so a field has one type, the one its declaration records.
 //!
@@ -25,7 +27,7 @@ use ironplc_dsl::{common::*, core::Id, textual::*, type_id::TypeId};
 
 use crate::{
     semantic_context::SemanticContext,
-    semantic_type::SemanticType,
+    semantic_type::{ArrayDimension, SemanticType},
     symbol_environment::{ScopeKind, SymbolEnvironment},
     type_environment::TypeEnvironment,
 };
@@ -85,8 +87,16 @@ pub(crate) fn type_id(
             types.field_type(record, &structured.field)
         }
         SymbolicVariableKind::Array(array) => {
-            let array = type_id(&array.subscripted_variable, symbols, types, scope)?;
-            types.element_type(array)
+            let subscripted = type_id(&array.subscripted_variable, symbols, types, scope)?;
+            // A subscript list subscripts one array, with one subscript for
+            // each of its dimensions: `m[1]` on a two-dimensional array and
+            // `rows[1, 2]` on an array of arrays select no element.
+            if array_dimensions(subscripted, types)
+                .is_some_and(|dimensions| dimensions.len() != array.subscripts.len())
+            {
+                return None;
+            }
+            types.element_type(subscripted)
         }
         // `p^` is the variable `p` references, so it has the referenced
         // type, not `REF_TO`.
@@ -103,6 +113,16 @@ pub(crate) fn type_id(
             }))
         }
         SymbolicVariableKind::SelfRef(_) => None,
+    }
+}
+
+/// The dimensions of the array type `id`, or `None` when `id` is not an
+/// array type or records no dimensions, so that its subscripts cannot be
+/// counted.
+pub(crate) fn array_dimensions(id: TypeId, types: &TypeEnvironment) -> Option<&[ArrayDimension]> {
+    match &types.get_by_id(id)?.representation {
+        SemanticType::Array { dimensions, .. } if !dimensions.is_empty() => Some(dimensions),
+        _ => None,
     }
 }
 
@@ -276,6 +296,44 @@ END_PROGRAM";
     #[test]
     fn of_when_field_record_does_not_have_then_none() {
         assert_eq!(representations()[7], None);
+    }
+
+    /// REQ-ETR-analyzer-008: each subscript list subscripts one array and
+    /// gives one subscript for each of its dimensions.
+    #[spec_test(REQ_ETR_analyzer_008)]
+    #[test]
+    fn type_id_when_subscripts_then_element_only_when_one_per_dimension() {
+        let program = "
+TYPE Row : ARRAY[1..3] OF DINT; END_TYPE
+PROGRAM main
+  VAR rows : ARRAY[1..2] OF Row; m : ARRAY[1..2, 1..3] OF DINT; END_VAR
+  rows[1] := 0;
+  rows[1][2] := 0;
+  m[1, 2] := 0;
+  rows[1, 2] := 0;
+  m[1] := 0;
+  m[1][2] := 0;
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_options(program, &edition3_options());
+        let main = ScopeKind::Named(ScopePath::new(vec![Id::from("main")]));
+        let types = context.types();
+        let ids: Vec<Option<TypeId>> = targets(&library)
+            .iter()
+            .map(|kind| type_id(kind, context.symbols(), types, &main))
+            .collect();
+        let dint = types.id_of(&TypeName::from("DINT"));
+
+        assert_eq!(
+            ids,
+            [
+                types.id_of(&TypeName::from("Row")),
+                dint,
+                dint,
+                None,
+                None,
+                None
+            ]
+        );
     }
 
     #[test]
