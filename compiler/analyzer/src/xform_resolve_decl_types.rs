@@ -196,7 +196,7 @@ impl Fold<Diagnostic> for DeclTypeResolver<'_> {
             let properties = node
                 .properties
                 .iter()
-                .map(|property| property.name.clone())
+                .map(|property| self.type_environment.property_signature(property))
                 .collect();
             let methods = node
                 .methods
@@ -205,6 +205,30 @@ impl Fold<Diagnostic> for DeclTypeResolver<'_> {
                 .collect();
             self.type_environment
                 .record_block(function_block, fields, properties, methods, base);
+        }
+        Ok(node)
+    }
+
+    fn fold_interface_declaration(
+        &mut self,
+        node: InterfaceDeclaration,
+    ) -> Result<InterfaceDeclaration, Diagnostic> {
+        let node = node.recurse_fold(self)?;
+        // A repeated interface name keeps its first declaration: the
+        // environment records an interface once.
+        if let Some(interface) = self.type_environment.id_of(&TypeName::from_id(&node.name)) {
+            let methods = node
+                .methods
+                .iter()
+                .map(|method| self.type_environment.prototype_signature(method))
+                .collect();
+            let properties = node
+                .properties
+                .iter()
+                .map(|property| self.type_environment.property_prototype_signature(property))
+                .collect();
+            self.type_environment
+                .record_interface(interface, methods, properties);
         }
         Ok(node)
     }
