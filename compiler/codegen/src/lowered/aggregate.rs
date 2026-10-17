@@ -6,6 +6,16 @@
 //! descriptors. The bridge emits a `Copy` only between the places the AST
 //! route copies (`compile_aggregate.rs`): whole variables, and fields of the
 //! current instance, that this backend's layout keeps as aggregate regions.
+//!
+//! A structure or array field of another function block instance has no
+//! region in this layout. The AST route stores the region offset of the
+//! value in the field's slot, as it stores a call's input
+//! (`compile_fb_call.rs`): the source's offset, or the offset the source's
+//! slot holds when the source is such a field too. So does the bridge for a
+//! `Copy` to one (`place::instance_slot`). Neither route compiles a read of
+//! what such a field holds, in the block's body, a method or a caller, so no
+//! program tells the offset from a copy.
+//!
 //! Every other `Copy` is left to the AST route.
 
 use ironplc_container::VarIndex;
@@ -14,6 +24,7 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::Place as LoweredPlace;
 use ironplc_lowering::Lowering;
 
+use super::place::instance_slot;
 use super::storage_name;
 use crate::compile::{CompileContext, DEFAULT_OP_TYPE};
 use crate::compile_expr::emit_load_var;
@@ -33,28 +44,34 @@ pub(super) fn can_emit(
     dst: &LoweredPlace,
     src: &LoweredPlace,
 ) -> bool {
-    region(lowering, ctx, dst).is_some() && region(lowering, ctx, src).is_some()
+    let from_region = region(lowering, ctx, src).is_some();
+    if region(lowering, ctx, dst).is_some() {
+        return from_region;
+    }
+    instance_slot(lowering, ctx, dst).is_some()
+        && (from_region || instance_slot(lowering, ctx, src).is_some())
 }
 
 /// Emits the copy of `src` to `dst`: the source's data offset, then
-/// `COPY_REGION` into the destination.
+/// `COPY_REGION` into the destination, or `FB_STORE_PARAM` into the field of
+/// an instance.
 pub(super) fn emit_copy(
     emitter: &mut Emitter,
-    ctx: &CompileContext,
+    ctx: &mut CompileContext,
     lowering: &Lowering<'_>,
     dst: &LoweredPlace,
     src: &LoweredPlace,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
+    if let Some(field) = instance_slot(lowering, ctx, dst) {
+        return field.emit_assign_fitting(emitter, ctx, |emitter, ctx| {
+            emit_source(emitter, ctx, lowering, src, span)
+        });
+    }
     let (Some(dst), Some(src)) = (region(lowering, ctx, dst), region(lowering, ctx, src)) else {
-        return Err(Diagnostic::internal_error_at(Label::span(
-            span.clone(),
-            "A lowered copy has no data region",
-        )));
+        return Err(no_region(span));
     };
-    // An aggregate value has no operation type, so its slot is loaded at
-    // the default slot type, as the AST route loads it.
-    emit_load_var(emitter, src.var_index, DEFAULT_OP_TYPE);
+    emit_offset(emitter, &src);
     emitter.emit_copy_region(dst.var_index, dst.desc_index, src.desc_index);
     Ok(())
 }
@@ -81,13 +98,45 @@ pub(super) fn emit_copy_from_stack(
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
     let Some(dst) = region(lowering, ctx, dst) else {
-        return Err(Diagnostic::internal_error_at(Label::span(
-            span.clone(),
-            "A lowered copy has no data region",
-        )));
+        return Err(no_region(span));
     };
     emitter.emit_copy_region(dst.var_index, dst.desc_index, src_desc);
     Ok(())
+}
+
+/// Pushes the data offset of `src`, the source of a copy into a field of an
+/// instance: the offset of its region, or the one the slot of the
+/// instance's field it is holds.
+pub(super) fn emit_source(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    lowering: &Lowering<'_>,
+    src: &LoweredPlace,
+    span: &SourceSpan,
+) -> Result<(), Diagnostic> {
+    if let Some(region) = region(lowering, ctx, src) {
+        emit_offset(emitter, &region);
+        return Ok(());
+    }
+    instance_slot(lowering, ctx, src)
+        .ok_or_else(|| no_region(span))?
+        .emit_load(emitter, ctx)
+}
+
+/// Pushes the data offset of `region`. An aggregate value has no operation
+/// type, so its slot is loaded at the default slot type, as the AST route
+/// loads it.
+fn emit_offset(emitter: &mut Emitter, region: &Region) {
+    emit_load_var(emitter, region.var_index, DEFAULT_OP_TYPE);
+}
+
+/// The internal error for a copy `can_emit` should have left to the AST
+/// route.
+fn no_region(span: &SourceSpan) -> Diagnostic {
+    Diagnostic::internal_error_at(Label::span(
+        span.clone(),
+        "A lowered copy has no data region",
+    ))
 }
 
 /// The data region of `place`, when it is a whole variable or a field of the
