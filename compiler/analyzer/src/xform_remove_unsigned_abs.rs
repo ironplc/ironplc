@@ -6,6 +6,11 @@
 //! it with its signed absolute value would read a large unsigned value as
 //! negative.
 //!
+//! So are removed `ABS` of a subrange of an unsigned integer, and of an
+//! integer literal that is not negative and names no type. Such a literal
+//! has no type yet here, since the conversions that settle it run later,
+//! but whatever type it settles to, its absolute value is the literal.
+//!
 //! This runs after `xform_resolve_expr_types`, which gives the argument its
 //! type.
 //!
@@ -38,7 +43,9 @@ struct UnsignedAbsRemover<'a> {
 }
 
 impl UnsignedAbsRemover<'_> {
-    /// The argument of `node` when it is `ABS` of an unsigned integer.
+    /// The argument of `node` when it is `ABS` of an unsigned integer, of a
+    /// subrange of one, or of an untyped integer literal that is not
+    /// negative.
     fn unsigned_abs_argument(&self, node: &Expr) -> Option<Expr> {
         let ExprKind::Function(function) = &node.kind else {
             return None;
@@ -50,11 +57,25 @@ impl UnsignedAbsRemover<'_> {
             return None;
         };
         let input = arg.input_expr()?;
-        match self.type_environment.representation_of_expr(input)? {
-            SemanticType::UInt { .. } => Some(input.clone()),
-            _ => None,
-        }
+        let unsigned = is_untyped_non_negative_integer(input)
+            || self
+                .type_environment
+                .representation_of_expr(input)
+                .is_some_and(|ty| matches!(ty.operated_as(), SemanticType::UInt { .. }));
+        unsigned.then(|| input.clone())
     }
+}
+
+/// Whether `expr` is an integer literal that names no type and is not
+/// negative, such as `5` and unlike `-5` or `DINT#5`.
+fn is_untyped_non_negative_integer(expr: &Expr) -> bool {
+    matches!(
+        &expr.kind,
+        ExprKind::Const(ConstantKind::IntegerLiteral(IntegerLiteral {
+            value: SignedInteger { is_neg: false, .. },
+            data_type: None,
+        }))
+    )
 }
 
 impl Fold<Diagnostic> for UnsignedAbsRemover<'_> {
@@ -106,6 +127,50 @@ mod tests {
             0,
             abs_calls(
                 "PROGRAM main VAR x : ULINT; y : ULINT; END_VAR y := ABS(x) + ABS(x); END_PROGRAM"
+            )
+        );
+    }
+
+    #[test]
+    fn apply_when_abs_of_unsigned_subrange_then_call_removed() {
+        assert_eq!(
+            0,
+            abs_calls(
+                "TYPE US : UDINT(1..4000000000); END_TYPE
+                 PROGRAM main VAR x : US := 1; y : UDINT; END_VAR y := ABS(x); END_PROGRAM"
+            )
+        );
+    }
+
+    #[test]
+    fn apply_when_abs_of_signed_subrange_then_call_kept() {
+        assert_eq!(
+            1,
+            abs_calls(
+                "TYPE S : DINT(-5..5); END_TYPE
+                 PROGRAM main VAR x : S; y : DINT; END_VAR y := ABS(x); END_PROGRAM"
+            )
+        );
+    }
+
+    #[test]
+    fn apply_when_abs_of_untyped_literal_then_call_removed() {
+        assert_eq!(
+            0,
+            abs_calls(
+                "PROGRAM main VAR y : UDINT; z : DINT; END_VAR
+                 y := ABS(3000000000); z := ABS(5) + z; END_PROGRAM"
+            )
+        );
+    }
+
+    #[test]
+    fn apply_when_abs_of_negative_or_typed_literal_then_call_kept() {
+        assert_eq!(
+            2,
+            abs_calls(
+                "PROGRAM main VAR y : DINT; z : DINT; END_VAR
+                 y := ABS(-5); z := ABS(DINT#5); END_PROGRAM"
             )
         );
     }
