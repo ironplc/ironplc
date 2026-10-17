@@ -145,7 +145,7 @@ fn emit_offset(emitter: &mut Emitter, region: &Region) {
 
 /// The internal error for a copy `can_emit` should have left to the AST
 /// route.
-fn no_region(span: &SourceSpan) -> Diagnostic {
+pub(super) fn no_region(span: &SourceSpan) -> Diagnostic {
     Diagnostic::internal_error_at(Label::span(
         span.clone(),
         "A lowered copy has no data region",
@@ -169,6 +169,15 @@ fn instance(
     }
     let name = variable_name(lowering, ctx, place)?;
     ctx.fb_instances.get(&name).map(|info| info.var_index)
+}
+
+/// Whether this backend keeps a data region for `place`.
+pub(super) fn has_region(
+    lowering: &Lowering<'_>,
+    ctx: &CompileContext,
+    place: &LoweredPlace,
+) -> bool {
+    region(lowering, ctx, place).is_some()
 }
 
 /// The data region of `place`, when it is a whole variable or a field of the

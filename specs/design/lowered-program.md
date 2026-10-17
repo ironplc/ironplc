@@ -1156,6 +1156,13 @@ ones a standard block keeps for itself, such as a timer's start time. This
 corrects the route that reads the AST, which stores `g`'s slot in `f`'s and so
 makes `f` an alias of `g`: a later call of `f` changes `g`.
 
+Inside a function, function block or method body, that backend's layout
+keeps no data region for the body's own structures and arrays, and calls no
+instance the body declares. Neither route reads inside such a variable
+there, or calls such an instance. So for a `Copy` to one, the bytecode
+backend stores the source's slot in the destination's, as the route that
+reads the AST does, and no program tells that from a copy.
+
 **REQ-LOW-lowering-062** Every `Exit` and `Continue` names a `Loop` or `For`
 that encloses it.
 
@@ -1943,8 +1950,9 @@ destination holds the value the same element or field of its source held
 before it, and the source is unchanged. The destination has storage of its
 own: a later store to it leaves the source as it is. A `Copy` of a place to
 itself changes nothing. The bytecode backend does not meet this yet for a
-structure, array or function block field of a function block instance,
-which no program reads (see [Statements](#37-statements)).
+structure, array or function block field of a function block instance, or
+for a variable of a function, function block or method body of such a
+type, which no program reads inside (see [Statements](#37-statements)).
 
 **REQ-LOW-codegen-089** An `Intrinsic` means what the IEC 61131-3 standard
 function means, with these choices where the standard leaves room: the count

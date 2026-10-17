@@ -42,6 +42,7 @@ mod instance_copy;
 mod method;
 mod place;
 mod policy;
+mod slot_copy;
 mod stmt;
 mod string;
 
@@ -234,6 +235,7 @@ fn can_emit(lowering: &Lowering<'_>, ctx: &CompileContext, stmt: &Stmt) -> bool 
         StmtKind::Copy { dst, src } => {
             aggregate::can_emit(lowering, ctx, dst, src)
                 || instance_copy::instance_copy(lowering, ctx, dst, src).is_some()
+                || slot_copy::slot_copy(lowering, ctx, dst, src).is_some()
         }
         StmtKind::FbCall { instance, block } => {
             fb_call::reaches_block(lowering, ctx, instance, *block)
