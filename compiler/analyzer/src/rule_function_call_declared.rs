@@ -154,6 +154,7 @@ mod tests {
     use super::*;
     use crate::test_helpers::rule_diagnostics;
     use rstest::rstest;
+    use spec_test_macro::spec_test;
 
     rule_ok!(
         apply_when_stdlib_function_called_then_ok,
@@ -220,6 +221,29 @@ VAR
     value : INT;
 END_VAR
     result := INT_TO_REAL(value, value);
+END_FUNCTION_BLOCK",
+        [Problem::FunctionCallWrongArgCount]
+    );
+
+    rule_err!(
+        /// The binding pass writes the call in normal form, which leaves the
+        /// omitted input out, so the call has one input too few.
+        #[spec_test(REQ_CB_analyzer_052)]
+        apply_when_named_input_omitted_then_wrong_arg_count,
+        "
+FUNCTION ADD_INTS : INT
+VAR_INPUT
+    A : INT;
+    B : INT := 2;
+END_VAR
+    ADD_INTS := A + B;
+END_FUNCTION
+
+FUNCTION_BLOCK CALLER
+VAR
+    result : INT;
+END_VAR
+    result := ADD_INTS(A := 1);
 END_FUNCTION_BLOCK",
         [Problem::FunctionCallWrongArgCount]
     );

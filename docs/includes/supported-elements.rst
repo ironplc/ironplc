@@ -20,7 +20,7 @@
 - Tasks
 - Program instances
 
-**SFC Elements:**
+**SFC Elements (checked, not yet compiled):**
 
 - Steps (including initial step)
 - Transitions with ST conditions

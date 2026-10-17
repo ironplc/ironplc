@@ -268,7 +268,7 @@ impl Fold<Diagnostic> for TypeResolver<'_> {
                     // Subrange types (e.g., MY_RANGE : INT (1..100))
                     if ty.representation.is_subrange() {
                         return Ok(InitialValueAssignmentKind::Subrange(
-                            SpecificationKind::Named(name),
+                            SubrangeInitialValueAssignment::bare(SpecificationKind::Named(name)),
                         ));
                     }
                 }
@@ -327,7 +327,7 @@ impl Fold<Diagnostic> for TypeResolver<'_> {
                             }),
                         ),
                         TypeDefinitionKind::Subrange => Ok(InitialValueAssignmentKind::Subrange(
-                            SpecificationKind::Named(name),
+                            SubrangeInitialValueAssignment::bare(SpecificationKind::Named(name)),
                         )),
                         _ => Err(Diagnostic::todo_with_type(&name)),
                     },
@@ -542,7 +542,10 @@ END_FUNCTION_BLOCK
             assert_eq!(fb.variables.len(), 1);
             assert!(matches!(
                 &fb.variables[0].initializer,
-                InitialValueAssignmentKind::Subrange(SpecificationKind::Named(tn))
+                InitialValueAssignmentKind::Subrange(SubrangeInitialValueAssignment {
+                    spec: SpecificationKind::Named(tn),
+                    initial_value: None,
+                })
                 if *tn == TypeName::from("my_range")
             ));
         }

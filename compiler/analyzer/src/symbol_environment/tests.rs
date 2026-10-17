@@ -70,7 +70,7 @@ fn symbol_environment_scope_management_when_managing_scopes_then_symbols_are_in_
 }
 
 #[test]
-fn get_when_checking_symbol_existence_then_returns_correct_results() {
+fn find_when_checking_symbol_existence_then_returns_correct_results() {
     let mut env = SymbolEnvironment::new();
 
     let id1 = Id::from("GLOBAL_VAR");
@@ -80,11 +80,10 @@ fn get_when_checking_symbol_existence_then_returns_correct_results() {
     env.insert(&id1, SymbolKind::Variable, &ScopeKind::Global)
         .unwrap();
 
-    // Test get method (alias for find)
-    let symbol1 = env.get(&id1, &ScopeKind::Global).unwrap();
+    let symbol1 = env.find(&id1, &ScopeKind::Global).unwrap();
     assert_eq!(symbol1.kind, SymbolKind::Variable);
 
-    let symbol2 = env.get(&id2, &ScopeKind::Global);
+    let symbol2 = env.find(&id2, &ScopeKind::Global);
     assert!(symbol2.is_none());
 }
 
@@ -167,68 +166,6 @@ fn edge_cases_and_error_conditions_when_handling_edge_cases_then_handles_correct
     let non_existent_scope = ScopeKind::Named(Id::from("NON_EXISTENT").into());
     let found = env.find(&global_id, &non_existent_scope);
     assert!(found.is_some()); // Should find in global scope
-}
-
-#[test]
-fn get_enumeration_values_for_type_when_values_of_two_types_then_returns_matching_only() {
-    let mut env = SymbolEnvironment::new();
-    let enum_type = TypeName::from("COLOR");
-    let other_type = TypeName::from("SIZE");
-    env.insert_enumeration_value(&Id::from("RED"), &enum_type);
-    env.insert_enumeration_value(&Id::from("SMALL"), &other_type);
-    env.insert_enumeration_value(&Id::from("GREEN"), &enum_type);
-    // A variable is not an enumeration value.
-    env.insert(&Id::from("PLAIN"), SymbolKind::Variable, &ScopeKind::Global)
-        .unwrap();
-
-    let values = env.get_enumeration_values_for_type(&enum_type);
-
-    assert_eq!(values, vec![&Id::from("RED"), &Id::from("GREEN")]);
-}
-
-#[test]
-fn get_enumeration_values_for_type_when_two_types_share_value_then_each_keeps_it() {
-    let mut env = SymbolEnvironment::new();
-    let colors = TypeName::from("Colors");
-    let lights = TypeName::from("Lights");
-    env.insert_enumeration_value(&Id::from("Red"), &colors);
-    env.insert_enumeration_value(&Id::from("Green"), &colors);
-    env.insert_enumeration_value(&Id::from("Red"), &lights);
-
-    assert_eq!(
-        env.get_enumeration_values_for_type(&colors),
-        vec![&Id::from("Red"), &Id::from("Green")]
-    );
-    assert_eq!(
-        env.get_enumeration_values_for_type(&lights),
-        vec![&Id::from("Red")]
-    );
-}
-
-#[test]
-fn insert_when_global_shares_enumeration_value_name_then_both_kept() {
-    let mut env = SymbolEnvironment::new();
-    let colors = TypeName::from("Colors");
-    env.insert_enumeration_value(&Id::from("Red"), &colors);
-    global(&mut env, "Red", SymbolKind::Variable).unwrap();
-    env.insert_enumeration_alias(&TypeName::from("Paint"), &colors);
-
-    let global = env.find(&Id::from("Red"), &ScopeKind::Global).unwrap();
-    assert_eq!(global.kind, SymbolKind::Variable);
-    assert_eq!(
-        env.get_enumeration_values_for_type(&colors),
-        vec![&Id::from("Red")]
-    );
-}
-
-#[test]
-fn get_enumeration_values_for_type_when_no_matching_values_then_returns_empty() {
-    let mut env = SymbolEnvironment::new();
-    env.insert(&Id::from("PLAIN"), SymbolKind::Variable, &ScopeKind::Global)
-        .unwrap();
-
-    let values = env.get_enumeration_values_for_type(&TypeName::from("COLOR"));
-    assert!(values.is_empty());
 }
 
 #[test]
@@ -529,20 +466,6 @@ fn get_variables_in_scope_when_several_declared_then_returns_declaration_order()
 }
 
 #[test]
-fn get_enumeration_values_for_type_when_several_declared_then_returns_declaration_order() {
-    let mut env = SymbolEnvironment::new();
-    let enum_type = TypeName::from("Color");
-    let values = names("value");
-    for name in &values {
-        env.insert_enumeration_value(name, &enum_type);
-    }
-
-    let actual = env.get_enumeration_values_for_type(&enum_type);
-    let expected: Vec<&Id> = values.iter().collect();
-    assert_eq!(actual, expected);
-}
-
-#[test]
 fn insert_when_symbol_redefined_then_keeps_first_declared_position() {
     let mut env = SymbolEnvironment::new();
     let first = Id::from("first");
@@ -669,6 +592,7 @@ fn function_block_decl(name: &str) -> ironplc_dsl::common::FunctionBlockDeclarat
 fn method_decl(name: &str) -> ironplc_dsl::common::MethodDeclaration {
     ironplc_dsl::common::MethodDeclaration {
         qualifiers: Default::default(),
+        accessor: None,
         name: Id::from(name),
         return_type: None,
         implicit_variables: vec![],
@@ -676,6 +600,7 @@ fn method_decl(name: &str) -> ironplc_dsl::common::MethodDeclaration {
         edge_variables: vec![],
         body: vec![],
         span: ironplc_dsl::core::SourceSpan::default(),
+        result: Default::default(),
     }
 }
 
@@ -692,18 +617,16 @@ fn scope_tracker_when_method_entered_then_path_through_block() {
         tracker.current(),
         ScopeKind::Named(ScopePath::new(vec![Id::from("FB_Axis"), Id::from("Start")]))
     );
-    assert_eq!(tracker.unit(), Some(&Id::from("FB_Axis")));
 }
 
 #[test]
-fn scope_tracker_when_exited_then_unit_none() {
+fn scope_tracker_when_exited_then_global() {
     let block = function_block_decl("FB_Axis");
     let mut tracker = ScopeTracker::default();
 
     tracker.enter(&ScopeNode::FunctionBlock(&block));
     tracker.exit();
 
-    assert_eq!(tracker.unit(), None);
     assert_eq!(tracker.current(), ScopeKind::Global);
 }
 
@@ -720,7 +643,7 @@ fn scope_of_when_method_not_entered_then_scope_it_would_open() {
     assert_eq!(scope, tracker.current());
 }
 
-fn function_block(env: &mut SymbolEnvironment, name: &str, extends: Option<&str>) {
+pub(super) fn function_block(env: &mut SymbolEnvironment, name: &str, extends: Option<&str>) {
     let info = SymbolInfo::new(
         SymbolKind::FunctionBlock,
         ScopeKind::Global,
@@ -838,4 +761,42 @@ fn self_type_when_program_or_global_then_none() {
         self_types(&env, &ScopeKind::Named(Id::from("main").into()))
     );
     assert_eq!((None, None), self_types(&env, &ScopeKind::Global));
+}
+
+#[test]
+fn scope_tracker_when_property_accessors_entered_then_get_and_set_scopes_differ() {
+    use ironplc_dsl::common::{FunctionReturnType, PropertyDeclaration};
+    let name = Id::from("Position");
+    let property_type = FunctionReturnType::Named(TypeName::from("INT"));
+    let get = PropertyDeclaration::get_accessor(
+        &name,
+        &property_type,
+        vec![],
+        vec![],
+        vec![],
+        ironplc_dsl::core::SourceSpan::default(),
+    );
+    let set = PropertyDeclaration::set_accessor(
+        &name,
+        &property_type,
+        vec![],
+        vec![],
+        vec![],
+        ironplc_dsl::core::SourceSpan::default(),
+    );
+    let block = function_block_decl("FB_Axis");
+    let mut tracker = ScopeTracker::default();
+    tracker.enter(&ScopeNode::FunctionBlock(&block));
+
+    let get_scope = tracker.scope_of(&ScopeNode::Method(&get));
+    let set_scope = tracker.scope_of(&ScopeNode::Method(&set));
+
+    assert_ne!(get_scope, set_scope);
+    assert_eq!(
+        ScopeKind::Named(ScopePath::new(vec![
+            Id::from("FB_Axis"),
+            Id::from("Position.GET")
+        ])),
+        get_scope
+    );
 }

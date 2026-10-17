@@ -9,7 +9,7 @@ binaries := "ironplcc ironplcvm ironplcmcp ironplcvmd"
 
 alias ci := default
 # Coverage runs all tests with instrumentation, so separate test step is redundant
-default: compile coverage lint dupes
+default: compile coverage lint dupes lowered-count
 
 setup:
   cargo install cargo-release
@@ -44,9 +44,38 @@ format:
   cargo fmt --all
 
 # Check for linting errors.
+#
+# The second pass enforces the no-panic lints that `ironplc-vm` and
+# `ironplc-container` deny in their `lib.rs`. They are off under the
+# `test-support` feature, and each crate dev-depends on itself with that
+# feature, so `--all-targets` builds them with it on and reports nothing;
+# `--lib` builds them without it.
 lint:
   cargo clippy --all-targets
+  cargo clippy -p ironplc-vm -p ironplc-container --lib
   cargo fmt --all -- --check
+
+# The fewest top-level statements of the codegen end-to-end programs that may
+# take the lowered route. Raise it when lowering grows; it never falls.
+lowered_floor := "19610"
+
+# Count the top-level statements of the codegen end-to-end programs that take
+# the lowered route, and fail when fewer than `lowered_floor` do. The tests
+# compile every program by both routes and record the counts in the file
+# `IRONPLC_ROUTE_COUNTS` names. The property tests generate their programs, so
+# a fixed seed keeps the count the same from run to run.
+lowered-count:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  counts="$PWD/target/lowered-route-counts.txt"
+  rm -f "$counts"
+  IRONPLC_ROUTE_COUNTS="$counts" PROPTEST_RNG_SEED=0 cargo test --quiet -p ironplc-codegen --test it
+  read -r lowered from_ast < <(awk '{ l += $1; a += $2 } END { print l + 0, a + 0 }' "$counts")
+  echo "Top-level statements of the end-to-end programs: $lowered lowered, $from_ast from the AST"
+  if [ "$lowered" -lt {{lowered_floor}} ]; then
+    echo "Fewer than {{lowered_floor}} statements took the lowered route"
+    exit 1
+  fi
 
 # Check for duplicate code (AST-based).
 dupes:

@@ -19,14 +19,16 @@ IEC 61131-3 Edition 3.
      - Edition 3 (object-oriented programming)
    * - **Support**
      - On a function block, parsed and analyzed: an inherited variable
-       resolves and type-checks in the derived type, a call resolves to a
-       method declared anywhere up the ``EXTENDS`` chain, and a derived
-       type that redeclares an inherited variable reports
-       :doc:`P4044 </reference/compiler/problems/P4044>`. Code generation
-       does not yet give a derived type storage for what it inherits, so
-       compiling a derived type reports
+       resolves and type-checks in the derived type, a call to an instance
+       passes inherited inputs and outputs as it does the derived type's own,
+       a call resolves to a method declared anywhere up the ``EXTENDS``
+       chain, and a derived type that redeclares an inherited variable
+       reports :doc:`P4044 </reference/compiler/problems/P4044>`. Code
+       generation does not yet give a derived type storage for what it
+       inherits, so compiling a derived type reports
        :doc:`P9999 </reference/compiler/problems/P9999>` where it reads or
-       writes an inherited variable or calls an inherited method. On an
+       writes an inherited variable, passes one in a call, or calls a method
+       inherited from a type that declares variables. On an
        interface, parsed only. Enable with
        ``--allow-fb-inheritance``; see
        :doc:`/explanation/enabling-dialects-and-features`.

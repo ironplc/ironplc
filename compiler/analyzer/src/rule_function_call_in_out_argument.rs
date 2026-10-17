@@ -150,7 +150,8 @@ impl RuleFunctionCallInOutArgument<'_> {
     fn is_name_writable(&self, name: &Id) -> bool {
         self.context
             .symbols()
-            .find(name, &self.scope.current())
+            .resolve_variable(name, &self.scope.current())
+            .declared()
             .is_some_and(is_declared_writable)
     }
 
@@ -178,13 +179,19 @@ impl RuleFunctionCallInOutArgument<'_> {
                 // Only a function block's inputs are assignable from
                 // outside the instance; its outputs, locals and VAR_IN_OUT
                 // are not.
-                match variable_type::of(&structured.record, self.context, &self.scope.current()) {
-                    Some(SemanticType::FunctionBlock { fields, .. }) => fields
-                        .iter()
-                        .find(|field| field.name == structured.field)
-                        .is_some_and(|field| {
-                            matches!(field.var_type, Some(FunctionBlockVarType::Input))
-                        }),
+                let types = self.context.types();
+                let record = variable_type::type_id(
+                    &structured.record,
+                    self.context.symbols(),
+                    types,
+                    &self.scope.current(),
+                );
+                match record.and_then(|record| Some((record, types.get_by_id(record)?))) {
+                    Some((record, attributes)) if attributes.representation.is_function_block() => {
+                        types
+                            .block_field(record, &structured.field)
+                            .is_some_and(|field| field.var_type == FunctionBlockVarType::Input)
+                    }
                     Some(_) => true,
                     None => false,
                 }
@@ -256,7 +263,7 @@ impl Visitor<Infallible> for RuleFunctionCallInOutArgument<'_> {
 
     fn visit_function(&mut self, node: &Function) -> Result<Self::Value, Infallible> {
         if let Some(signature) = self.context.functions.get(&node.name) {
-            for (param, arg) in signature.bind_inputs(&node.param_assignment) {
+            for (param, arg) in signature.inputs_of(&node.param_assignment) {
                 if !param.is_inout {
                     continue;
                 }
@@ -441,6 +448,10 @@ END_PROGRAM"
     #[case::function_block_input(
         "FUNCTION_BLOCK Inner VAR_INPUT i : DINT; END_VAR END_FUNCTION_BLOCK
 PROGRAM main VAR fb : Inner; r : DINT; END_VAR r := INC(1, fb.i); END_PROGRAM"
+    )]
+    #[case::field_of_function_block_structure_input(
+        "FUNCTION_BLOCK Inner VAR_INPUT p : Pair; END_VAR END_FUNCTION_BLOCK
+PROGRAM main VAR fb : Inner; r : DINT; END_VAR r := INC(1, fb.p.a); END_PROGRAM"
     )]
     fn apply_when_in_out_argument_provably_writable_then_ok(#[case] caller: &str) {
         let diagnostics = apply_to_caller(caller);

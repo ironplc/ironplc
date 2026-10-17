@@ -61,3 +61,58 @@ END_FUNCTION_BLOCK
     assert!(rendered.contains("\n      53266 :\n"));
     assert!(rendered.contains("\n      10 :\n"));
 }
+
+#[test]
+fn write_to_string_when_case_label_list_then_round_trips() {
+    let source = "
+PROGRAM main
+VAR
+    n : INT;
+END_VAR
+CASE n OF
+    2, 3: n := 2;
+END_CASE;
+END_PROGRAM
+";
+    assert_round_trips(source, &CompilerOptions::default());
+}
+
+#[test]
+fn write_to_string_when_case_label_list_has_range_and_else_then_round_trips() {
+    let source = "
+PROGRAM main
+VAR
+    n : INT;
+    hit : INT;
+END_VAR
+CASE n OF
+    1, 3..5: hit := 1;
+    7..9, 11: hit := 2;
+ELSE
+    hit := 3;
+END_CASE;
+END_PROGRAM
+";
+    assert_round_trips(source, &CompilerOptions::default());
+}
+
+#[test]
+fn write_to_string_when_case_label_list_in_dialect_with_empty_arms_then_round_trips() {
+    // These dialects accept an arm with no statements, so a label list
+    // rendered as one arm per label still parses -- as a different program.
+    // Only the AST comparison catches it.
+    let source = "
+PROGRAM main
+VAR
+    n : INT;
+    hit : INT;
+END_VAR
+CASE n OF
+    2, 3: hit := 1;
+END_CASE;
+END_PROGRAM
+";
+    for dialect in [Dialect::Rusty, Dialect::Codesys, Dialect::TwinCat] {
+        assert_round_trips(source, &CompilerOptions::from_dialect(dialect));
+    }
+}

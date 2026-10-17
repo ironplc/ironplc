@@ -35,7 +35,7 @@ The design builds on:
 
 **REQ-EN-codegen-002** The ordinal is the runtime integer value stored in the variable slot. No translation table is consulted at runtime.
 
-**REQ-EN-codegen-003** At codegen level, all enumeration values are stored as DINT (signed 32-bit integer, W32). The analyzer's `SemanticType::Enumeration { underlying_type }` uses B8/B16 for semantic sizing, but the codegen always uses `VarTypeInfo { op_width: W32, signedness: Signed, storage_bits: 32 }`. This avoids unnecessary truncation opcodes since every VM slot is 64 bits wide and there is no memory savings from narrow storage.
+**REQ-EN-codegen-003** At codegen level, all enumeration values are stored as DINT (signed 32-bit integer, W32), whatever base type the declaration names: codegen uses `VarTypeInfo { op_width: W32, signedness: Signed, storage_bits: 32 }`. This avoids unnecessary truncation opcodes since every VM slot is 64 bits wide and there is no memory savings from narrow storage. The analyzer records no storage type for an enumeration.
 
 **REQ-EN-codegen-004** Enumerations support only assignment (`:=`), equality comparison (`=`, `<>`), and CASE matching. Arithmetic operators (ADD, SUB, MUL, DIV, MOD, EXPT) are not valid on enumeration types.
 
@@ -48,6 +48,10 @@ The design builds on:
 **REQ-EN-codegen-012** The `VarNameEntry` in the debug section uses `iec_type_tag::DINT` (tag 3) and the user-defined type name as `type_name` (e.g., `"COLOR"`). This follows [ADR-0019](../adrs/0019-type-encoding-in-debug-variable-names.md) — the tag drives value interpretation, the type_name identifies the enum for display.
 
 ## 3. Initialization
+
+The analyzer resolves the member each variable starts at and completes the
+declaration's initializer with it ([Initial Values](initial-values.md));
+codegen stores its ordinal.
 
 **REQ-EN-codegen-020** When a variable has an explicit initial value (`VAR x : COLOR := GREEN; END_VAR`), the codegen emits `LOAD_CONST_I32(ordinal)` + `STORE_VAR_I32`, where `ordinal` is the 0-based position of `GREEN` in the type declaration. No truncation is needed (32-bit storage per REQ-EN-codegen-003).
 
@@ -77,9 +81,9 @@ The design builds on:
 
 ## 6. Structure Field Initialization
 
-**REQ-EN-codegen-050** A `StructInitialValueAssignmentKind::EnumeratedValue` in a struct initializer compiles by emitting `LOAD_CONST_I32(ordinal)`, which is then stored into the struct field's data region slot.
+**REQ-EN-codegen-050** An enumerated value in a struct initializer is stored as its ordinal: the analyzer completes the variable's initializer with the member every enumeration field starts at (see [Initial Values](initial-values.md)), and codegen emits `LOAD_CONST_I32(ordinal)`, which is then stored into the struct field's data region slot.
 
-**REQ-EN-codegen-051** Structure fields of enumeration type already receive the correct `op_type` via `resolve_field_op_type`, which delegates `SemanticType::Enumeration` to its underlying type (`compiler/codegen/src/compile_struct.rs:99`).
+**REQ-EN-codegen-051** A structure field of enumeration type is stored and operated on as a DINT, as a variable of the type is (REQ-EN-codegen-003), so it holds every ordinal its enumeration declares.
 
 ## 7. Debug Section: Enum Definition Table (Tag 9)
 
@@ -139,6 +143,8 @@ Ordinals are decided once, in the analyzer, so every code generator uses the sam
 **REQ-EN-codegen-082** The default ordinal is the type's declared default, or its first member's ordinal. An alias has its base's members and default, unless it declares a default of its own.
 
 **REQ-EN-codegen-083** A value outside an expression is a member of the type of the place it appears in: a variable's initial value of the declared type (`VarDecl::type_id`), a CASE label of the selector's type, a structure field initializer of the field's type, and a function block member initializer of the member's declared type. A structure field without an initializer starts at its enumeration's default.
+
+**REQ-EN-codegen-084** Analysis reports an enumeration value whose ordinal is outside the range of DINT as P2044, whatever base type the declaration names, so every ordinal fits the DINT an enumeration is stored as (REQ-EN-codegen-003).
 
 ## 10. Inline Enumerations
 

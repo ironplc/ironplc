@@ -672,10 +672,7 @@ fn container_spec_req_cf_023_bodies_follow_directory() {
 #[spec_test(REQ_CF_container_024)]
 fn container_spec_req_cf_024_const_entry_header_and_value() {
     let mut pool = ConstantPool::default();
-    pool.push(ConstEntry::primitive_le(
-        ConstType::I32,
-        &0x0102_0304i32.to_le_bytes(),
-    ));
+    pool.push(ConstEntry::i32(0x0102_0304));
     pool.push(ConstEntry::string(b"hi".to_vec()));
     let mut buf = Vec::new();
     pool.write_to(&mut buf).unwrap();

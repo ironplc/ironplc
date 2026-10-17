@@ -24,6 +24,13 @@ TYPE
     Color : (Red, Green, Blue);
 END_TYPE
 
+FUNCTION_BLOCK Block
+VAR_OUTPUT
+    q : REAL;
+    done : BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+
 FUNCTION Pass : LREAL
 VAR_INPUT
     x : LREAL;
@@ -41,6 +48,7 @@ VAR
     c : Color;
     v : INT;
     r : REF_TO INT;
+    f : Block;
 END_VAR
 {body}
 END_PROGRAM"
@@ -74,6 +82,21 @@ fn write_to_string_with_types_when_implicit_conversion_then_comment_shows_from_a
     );
 }
 
+#[spec_test(REQ_ETR_plc2plc_007)]
+fn write_to_string_with_types_when_output_assigned_then_comment_after_output() {
+    let (_, rendered) =
+        analyze_and_render_with_types(&program("f(q => out, NOT done => flag);"), &edition3());
+    let call = rendered
+        .lines()
+        .find(|line| line.contains("=>"))
+        .map(str::trim)
+        .unwrap_or_else(|| panic!("no output assignment in {rendered}"));
+    assert_eq!(
+        "f ( q (* REAL -> LREAL *) => out , NOT done (* BOOL *) => flag ) ;",
+        call
+    );
+}
+
 #[spec_test(REQ_ETR_plc2plc_003)]
 fn write_to_string_with_types_when_literal_enumerated_value_or_null_then_only_they_are_constant() {
     assert_eq!(
@@ -94,8 +117,8 @@ fn write_to_string_with_types_when_converted_literal_then_constant_prefix_and_fr
     assert_eq!(
         statements("out := Pass(REAL#0.5); out := Pass(0.1);"),
         vec![
-            "out := Pass ( REAL#0.5 (* CONSTANT REAL -> LREAL *) ) (* LREAL *) ;",
-            "out := Pass ( 0.1 (* CONSTANT LREAL *) ) (* LREAL *) ;",
+            "out := Pass ( x := REAL#0.5 (* CONSTANT REAL -> LREAL *) ) (* LREAL *) ;",
+            "out := Pass ( x := 0.1 (* CONSTANT LREAL *) ) (* LREAL *) ;",
         ]
     );
 }

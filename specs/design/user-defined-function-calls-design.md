@@ -23,7 +23,7 @@ Enable compilation and execution of user-defined IEC 61131-3 functions. A user-d
 - `ANY_*` type parameters (stdlib functions only)
 - Implicit type widening/coercion
 - Recursive call detection (IEC 61131-3 forbids recursion, but we don't enforce this yet)
-- `VAR_OUTPUT` parameters on user-defined functions (`VAR_IN_OUT` was added later; see [VAR_IN_OUT parameters](var-in-out-parameters.md))
+- `VAR_OUTPUT` parameters on user-defined functions (both were added later; see [VAR_IN_OUT parameters](var-in-out-parameters.md) and [VAR_OUTPUT parameters](#var_output-parameters))
 
 ## Key Decisions
 
@@ -100,10 +100,35 @@ New problem codes: `FunctionCallArgTypeMismatch`, `FunctionCallReturnTypeMismatc
 
 1. Pop the callee's frame and resume the caller. The top of the operand stack holds the return value, which remains on the stack for the caller.
 
+### String parameters, locals and outputs
+
+A `STRING` or `WSTRING` parameter, local or output of a function or a
+method is held in a run of the data region of its own, sized to its
+declared capacity (see
+[String Buffer Management](runtime-execution-model.md#string-buffer-management)).
+Its slot is unused. A call copies a string argument into its parameter's
+run before `CALL` or `METHOD_CALL`, cut to the parameter's capacity, and
+pushes a dummy value for the slot the call pops. The callee's prologue
+initializes a local's or output's run at every call, so it starts again
+from its initial value, as a scalar local does.
+
 ### VAR_IN_OUT parameters
 
 A `VAR_IN_OUT` parameter takes an argument like a `VAR_INPUT` does and is
 passed by reference. See [VAR_IN_OUT parameters](var-in-out-parameters.md).
+
+### VAR_OUTPUT parameters
+
+A `VAR_OUTPUT` parameter occupies a slot of the function's region after the
+parameters, with the local variables, and starts again from its initial
+value on every call, as a local does. A call's output assignment
+(`q => v`) stores it in its target after `CALL` returns: the analyzer
+records the value it stores, the call's output converted to the target's
+type, and the call site reads the output from the function's slot. The
+flat variable table makes that read safe: a function does not recurse, so
+no other call of it changes the slot before the caller reads it. A method's
+outputs are stored the same way after `METHOD_CALL`. See
+[Call Binding](call-binding.md), section Outputs.
 
 ### Debug Section
 

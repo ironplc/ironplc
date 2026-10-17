@@ -4,9 +4,10 @@ use ironplc_analyzer::SemanticContext;
 use ironplc_container::Container;
 use ironplc_dsl::common::Library;
 use ironplc_parser::options::CompilerOptions;
-use ironplc_vm::VmBuffers;
+use ironplc_vm::test_support::load_and_start;
+use ironplc_vm::{FaultContext, VmBuffers};
 
-use super::run::{compile_analyzed, parse_and_try_run, run_one_scan};
+use super::run::{compile_to_run, parse_and_compile_to_run, parse_and_try_run, run_one_scan};
 use super::value::{FromValue, Value};
 use super::variables::Variables;
 
@@ -23,6 +24,18 @@ impl Snapshot {
         Snapshot { container, bufs }
     }
 
+    /// Parses, compiles and runs `source` for one scan that may trap. Returns
+    /// the variables as the scan left them, and the trap if there was one, so
+    /// a test can see what a trap leaves behind.
+    pub fn try_run(source: &str, options: &CompilerOptions) -> (Self, Option<FaultContext>) {
+        let container = parse_and_compile_to_run(source, options);
+        let mut bufs = VmBuffers::from_container(&container);
+        let fault = load_and_start(&container, &mut bufs)
+            .and_then(|mut vm| vm.run_round(0))
+            .err();
+        (Snapshot { container, bufs }, fault)
+    }
+
     /// Compiles the analyzed `library` and runs it for one scan. Use this when
     /// the program is analyzed together with another library, such as a
     /// bundled one, so source text alone is not enough.
@@ -31,7 +44,13 @@ impl Snapshot {
         context: &SemanticContext,
         options: &CompilerOptions,
     ) -> Self {
-        let container = compile_analyzed(library, context, options).unwrap();
+        let container = compile_to_run(library, context, options).unwrap();
+        let bufs = run_one_scan(&container).unwrap();
+        Snapshot { container, bufs }
+    }
+
+    /// Runs the compiled `container` for one scan.
+    pub fn run_compiled(container: Container) -> Self {
         let bufs = run_one_scan(&container).unwrap();
         Snapshot { container, bufs }
     }

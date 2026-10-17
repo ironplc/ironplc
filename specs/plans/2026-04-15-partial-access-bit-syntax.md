@@ -32,7 +32,7 @@ the `rusty` and `iec61131-3-ed3` dialect presets.
 | Add validation rule for disabled flag | `compiler/parser/src/rule_token_no_partial_access_syntax.rs` (new) |
 | Register rule in `check_tokens` | `compiler/parser/src/lib.rs` |
 | Add problem code `P4033 PartialAccessSyntaxDisabled` | `compiler/problems/resources/problem-codes.csv` |
-| Problem doc page | `docs/compiler/problems/P4033.rst` (new) |
+| Problem doc page | `docs/reference/compiler/problems/P4033.rst` (new) |
 | CLI flag | `compiler/ironplc-cli/src/main.rs` |
 | LSP extraction | `compiler/plc2x/src/lsp.rs` |
 | Playground defaults | `compiler/playground/src/lib.rs` |
@@ -56,7 +56,7 @@ the `rusty` and `iec61131-3-ed3` dialect presets.
 - [ ] Extend `symbolic_variable` parser rule with a new `Element::Bit` alternative.
 - [ ] Add `rule_token_no_partial_access_syntax` and register in `check_tokens`.
 - [ ] Add `P4033 PartialAccessSyntaxDisabled` to `problem-codes.csv` and
-  `docs/compiler/problems/P4033.rst`.
+  `docs/reference/compiler/problems/P4033.rst`.
 - [ ] Wire the CLI `--allow-partial-access-syntax` flag, LSP
   `allowPartialAccessSyntax`, and playground default.
 - [ ] Add round-trip fixtures and `write_to_string_partial_access_bit` test.

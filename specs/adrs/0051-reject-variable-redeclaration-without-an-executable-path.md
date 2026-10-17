@@ -128,3 +128,24 @@ gap is in code generation rather than in the program. The two `P4007`
 failures in the table above read `P9999` from then on. The decision is
 unaffected: inherited fields are still not laid out, and a derived type still
 may not redeclare one.
+
+**Postscript (2026-10-11).** The table's "Function local | Global variable |
+Correct" row is not true of code generation. It keeps name-keyed tables of
+its own (`compiler/codegen/src/scope.rs`), and a function body starts from a
+copy of the globals' entries. A local that hides a global of another type can
+then be compiled with what those tables hold for the global:
+
+* Global `x : INT`, and a function local `x` of a `DINT` subrange type that
+  is assigned 70000 and returned: the function returns 4464, the value cut
+  to 16 bits.
+* Global `p` of a structure type, and a function local `p : DINT`: `P9998`.
+
+A third case is not hiding, but comes from the same tables: a function block
+that reads a global array through `VAR_EXTERNAL` is `P9999`.
+
+The analyzer resolves each of these names to the right declaration
+([ADR-0066](0066-name-resolution-is-an-analyzer-function.md),
+[Variable Binding](../design/variable-binding.md)). The decision is
+unaffected: hiding is what the program means, and the back end falls short
+of it until a body is generated from the lowered program, whose variable ids
+come from the analyzer's resolution (REQ-LOW-lowering-020).

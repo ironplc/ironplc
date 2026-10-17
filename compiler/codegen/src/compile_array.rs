@@ -4,17 +4,16 @@
 //! array read/write compilation. Separated from compile.rs to
 //! keep module sizes within the 1000-line guideline.
 
-use ironplc_dsl::common::{ArrayInitialElementKind, ConstantKind};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{Expr, ExprKind, SymbolicVariableKind, UnaryOp, Variable};
+use ironplc_dsl::textual::{Expr, SymbolicVariableKind, Variable};
 use ironplc_problems::Problem;
 
 use ironplc_analyzer::semantic_type::{ArrayDimension, ByteSized, SemanticType};
 use ironplc_container::{CharWidth, ContainerBuilder, SlotIndex, VarIndex};
 
 use super::compile::{CompileContext, OpWidth, Signedness, VarTypeInfo};
-use super::compile_expr::compile_expr;
+use super::compile_subscript::Subscript;
 use crate::emit::Emitter;
 
 /// Normalized array specification, independent of AST representation.
@@ -119,7 +118,8 @@ pub(crate) enum ResolvedAccess<'ctx, 'ast> {
 /// `STR_LOAD_ARRAY_ELEM` and `STR_STORE_ARRAY_ELEM` address an element as
 /// `base + flat_index * stride`, reading `base` from a variable. The
 /// structure's variable holds the start of the whole structure rather than of
-/// the array, so the array's start is first computed into a scratch variable.
+/// the array, so the array's start is first computed into a scratch variable
+/// ([`StringPlace`](super::compile_string_place::StringPlace)).
 pub(crate) struct StructStringElement<'ast> {
     /// Struct variable table index (holds struct data_offset).
     pub var_index: VarIndex,
@@ -136,27 +136,6 @@ pub(crate) struct StructStringElement<'ast> {
     pub dimensions: Vec<DimensionInfo>,
     /// Subscript expressions.
     pub subscripts: Vec<&'ast Expr>,
-}
-
-impl StructStringElement<'_> {
-    /// Emits what `STR_LOAD_ARRAY_ELEM` and `STR_STORE_ARRAY_ELEM` need
-    /// before they run: stores `struct_data_offset + field_byte_offset` into
-    /// the scratch variable, then pushes the flat element index. The caller
-    /// follows with either opcode, passing `scratch_var_index` and
-    /// `string_desc_index`.
-    pub(crate) fn emit_base_and_index(
-        &self,
-        emitter: &mut Emitter,
-        ctx: &mut CompileContext,
-        span: &SourceSpan,
-    ) -> Result<(), Diagnostic> {
-        emitter.emit_load_var_i32(self.var_index);
-        let offset_const = ctx.add_i32_constant(self.field_byte_offset as i32);
-        emitter.emit_load_const_i32(offset_const);
-        emitter.emit_add_i32();
-        emitter.emit_store_var_i32(self.scratch_var_index);
-        emit_flat_index(emitter, ctx, &self.subscripts, &self.dimensions, span)
-    }
 }
 
 /// Resolves a variable reference into its access kind.
@@ -411,96 +390,6 @@ pub(crate) fn dimensions_from_semantic_type(dims: &[ArrayDimension]) -> Vec<Dime
         .collect()
 }
 
-/// Converts an inline array specification (from the AST) to a normalized ArraySpec.
-pub(crate) fn array_spec_from_inline(
-    subranges: &ironplc_dsl::common::ArraySubranges,
-    _span: &ironplc_dsl::core::SourceSpan,
-) -> Result<ArraySpec, Diagnostic> {
-    let dimensions: Vec<(i32, i32)> = subranges
-        .ranges
-        .iter()
-        .map(|range| {
-            let (Some(start), Some(end)) = (
-                range.start.as_signed_integer(),
-                range.end.as_signed_integer(),
-            ) else {
-                return Err(Diagnostic::internal_error());
-            };
-            Ok((
-                super::compile_stmt::signed_integer_to_i32(start)?,
-                super::compile_stmt::signed_integer_to_i32(end)?,
-            ))
-        })
-        .collect::<Result<Vec<_>, Diagnostic>>()?;
-    let (string_max_len, string_char_width) = match &subranges.type_name {
-        ironplc_dsl::common::ArrayElementType::String(spec) => {
-            let len = spec
-                .length
-                .as_ref()
-                .and_then(|l| l.as_integer().map(|i| i.value as u16))
-                .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH);
-            (Some(len), Some(CharWidth::Narrow))
-        }
-        ironplc_dsl::common::ArrayElementType::WString(spec) => {
-            let len = spec
-                .length
-                .as_ref()
-                .and_then(|l| l.as_integer().map(|i| i.value as u16))
-                .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH);
-            (Some(len), Some(CharWidth::Wide))
-        }
-        _ => (None, None),
-    };
-    Ok(ArraySpec {
-        dimensions,
-        element_type_name: Id::from(&subranges.type_name.to_type_name().to_string()),
-        ref_to: subranges.ref_to.is_some(),
-        string_max_len,
-        string_char_width,
-    })
-}
-
-/// Normalizes an array variable declaration -- inline or by named type -- into
-/// an [`ArraySpec`].
-///
-/// Element types that are structures are laid out differently and register
-/// through `compile_array_struct` instead; callers route those away first.
-pub(crate) fn array_spec_for_declaration(
-    types: &ironplc_analyzer::TypeEnvironment,
-    spec: &ironplc_dsl::common::SpecificationKind<ironplc_dsl::common::ArraySubranges>,
-    span: &SourceSpan,
-) -> Result<ArraySpec, Diagnostic> {
-    match spec {
-        ironplc_dsl::common::SpecificationKind::Inline(subranges) => {
-            array_spec_from_inline(subranges, span)
-        }
-        ironplc_dsl::common::SpecificationKind::Named(type_name) => {
-            // The caller reaches this arm only for a declaration the type
-            // environment already resolved to an array, so a miss here is a
-            // compiler invariant rather than anything the program did.
-            let array_type = types.resolve_array_type(type_name).ok_or_else(|| {
-                Diagnostic::internal_error_at(Label::span(
-                    type_name.span(),
-                    "Array type is absent from the type environment",
-                ))
-            })?;
-            let SemanticType::Array {
-                element_type,
-                dimensions,
-            } = array_type
-            else {
-                // `resolve_array_type` returns only the Array variant, so this
-                // is a compiler invariant rather than anything the program did.
-                return Err(Diagnostic::internal_error_at(Label::span(
-                    type_name.span(),
-                    "Array type resolved to a non-array representation",
-                )));
-            };
-            array_spec_from_named(element_type, dimensions, span)
-        }
-    }
-}
-
 /// Converts a named array type (from the TypeEnvironment) to a normalized ArraySpec.
 ///
 /// `span` locates the declaration being compiled; the semantic type has
@@ -510,6 +399,18 @@ pub(crate) fn array_spec_from_named(
     dimensions: &[ArrayDimension],
     span: &SourceSpan,
 ) -> Result<ArraySpec, Diagnostic> {
+    array_spec_from_type(element_type, dimensions, None, span)
+}
+
+/// Converts an array type to a normalized ArraySpec. `target_name` names
+/// the type an element refers to, for an array of references whose target
+/// has a name the representation does not keep (a structure).
+pub(crate) fn array_spec_from_type(
+    element_type: &SemanticType,
+    dimensions: &[ArrayDimension],
+    target_name: Option<Id>,
+    span: &SourceSpan,
+) -> Result<ArraySpec, Diagnostic> {
     let dims: Vec<(i32, i32)> = dimensions.iter().map(|d| (d.lower, d.upper)).collect();
     let ref_to = matches!(element_type, SemanticType::Reference { .. });
     let inner_type = if let SemanticType::Reference { target_type } = element_type {
@@ -517,7 +418,10 @@ pub(crate) fn array_spec_from_named(
     } else {
         element_type
     };
-    let element_type_name = semantic_type_to_name(inner_type, span)?;
+    let element_type_name = match (ref_to, target_name) {
+        (true, Some(name)) => name,
+        _ => semantic_type_to_name(inner_type, span)?,
+    };
     let (string_max_len, string_char_width) = match inner_type {
         SemanticType::String {
             max_len,
@@ -593,6 +497,22 @@ fn semantic_type_to_name(ty: &SemanticType, span: &SourceSpan) -> Result<Id, Dia
         SemanticType::Time {
             size: ByteSized::B64,
         } => "LTIME",
+        SemanticType::Date {
+            size: ByteSized::B64,
+        } => "LDATE",
+        SemanticType::Date { .. } => "DATE",
+        SemanticType::TimeOfDay {
+            size: ByteSized::B64,
+        } => "LTIME_OF_DAY",
+        SemanticType::TimeOfDay { .. } => "TIME_OF_DAY",
+        SemanticType::DateAndTime {
+            size: ByteSized::B64,
+        } => "LDATE_AND_TIME",
+        SemanticType::DateAndTime { .. } => "DATE_AND_TIME",
+        SemanticType::String {
+            char_width: CharWidth::Wide,
+            ..
+        } => "WSTRING",
         SemanticType::String { .. } => "STRING",
         _ => {
             return Err(Diagnostic::not_implemented(Label::span(
@@ -779,56 +699,15 @@ pub(crate) fn register_array_variable(
     Ok((type_tag, type_name_str))
 }
 
-/// Recursively walks the `ArrayInitialElementKind` tree and produces
-/// a flat `Vec<ConstantKind>` of initial values in element order.
-pub(crate) fn flatten_array_initial_values(
-    elements: &[ArrayInitialElementKind],
-) -> Result<Vec<ConstantKind>, Diagnostic> {
-    let mut result = Vec::new();
-    for elem in elements {
-        match elem {
-            ArrayInitialElementKind::Constant(value) => {
-                result.push(value.clone());
-            }
-            ArrayInitialElementKind::EnumValue(value) => {
-                return Err(Diagnostic::not_implemented(Label::span(
-                    value.span(),
-                    "Enumerated value in an array initializer",
-                )));
-            }
-            ArrayInitialElementKind::Repeated(repeated) => {
-                let count = repeated.size.value as usize;
-                match repeated.init.as_ref().as_ref() {
-                    Some(inner) => {
-                        let inner_values =
-                            flatten_array_initial_values(std::slice::from_ref(inner))?;
-                        for _ in 0..count {
-                            result.extend_from_slice(&inner_values);
-                        }
-                    }
-                    None => {
-                        let zero = ConstantKind::integer_literal("0")
-                            .map_err(|_| Diagnostic::internal_error())?;
-                        for _ in 0..count {
-                            result.push(zero.clone());
-                        }
-                    }
-                }
-            }
-        }
-    }
-    Ok(result)
-}
-
 /// Emits bytecode to compute the 0-based flat index from subscript expressions.
 ///
 /// For constant subscripts, computes the flat index at compile time.
 /// For variable subscripts, emits i64 arithmetic:
 ///   `(s_0 - l_0) * stride_0 + (s_1 - l_1) * stride_1 + ...`
-pub(crate) fn emit_flat_index(
+pub(crate) fn emit_flat_index<S: Subscript>(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    subscripts: &[&Expr],
+    subscripts: &[S],
     dimensions: &[DimensionInfo],
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
@@ -847,9 +726,8 @@ pub(crate) fn emit_flat_index(
     }
 
     // Variable case: emit runtime computation using i64 arithmetic.
-    let subscript_op_type = (OpWidth::W32, Signedness::Signed);
     for (k, (subscript, dim)) in subscripts.iter().zip(dimensions.iter()).enumerate() {
-        compile_expr(emitter, ctx, subscript, subscript_op_type)?;
+        subscript.emit(emitter, ctx)?;
         if dim.lower_bound != 0 {
             let lb_const = ctx.add_i64_constant(dim.lower_bound as i64);
             emitter.emit_load_const_i64(lb_const);
@@ -872,14 +750,14 @@ pub(crate) fn emit_flat_index(
 /// Returns `Err` if a literal subscript is out of bounds. Analysis reports such
 /// a subscript first (`rule_array_index_range`, P2027), so this is the fallback
 /// for a caller that compiles without analysis.
-fn try_constant_flat_index(
-    subscripts: &[&Expr],
+fn try_constant_flat_index<S: Subscript>(
+    subscripts: &[S],
     dimensions: &[DimensionInfo],
     span: &SourceSpan,
 ) -> Result<Option<i32>, Diagnostic> {
     let mut flat_index: i32 = 0;
     for (subscript, dim) in subscripts.iter().zip(dimensions.iter()) {
-        let value = match try_extract_integer_literal(subscript) {
+        let value = match subscript.literal() {
             Some(v) => v,
             None => return Ok(None),
         };
@@ -893,31 +771,4 @@ fn try_constant_flat_index(
         flat_index += (value - dim.lower_bound) * dim.stride as i32;
     }
     Ok(Some(flat_index))
-}
-
-/// Extracts an i32 value from an expression if it is a literal integer.
-/// Returns `None` for any non-literal expression.
-fn try_extract_integer_literal(expr: &Expr) -> Option<i32> {
-    match &expr.kind {
-        ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
-            let unsigned = i32::try_from(lit.value.value.value).ok()?;
-            if lit.value.is_neg {
-                unsigned.checked_neg()
-            } else {
-                Some(unsigned)
-            }
-        }
-        ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Neg => match &unary.term.kind {
-            ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
-                let val = i32::try_from(lit.value.value.value).ok()?;
-                if lit.value.is_neg {
-                    Some(val)
-                } else {
-                    val.checked_neg()
-                }
-            }
-            _ => None,
-        },
-        _ => None,
-    }
 }

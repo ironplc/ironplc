@@ -57,14 +57,11 @@ struct ResolveAdr {
     diagnostics: Vec<Diagnostic>,
 }
 
-/// If `func` is an `ADR(...)` call with exactly one positional input
+/// If `func` is an `ADR(...)` call with exactly one input
 /// argument, returns that argument expression.
 fn adr_operand(func: &Function) -> Option<Expr> {
-    if func.param_assignment.len() != 1 {
-        return None;
-    }
-    match &func.param_assignment[0] {
-        ParamAssignmentKind::PositionalInput(pos) => Some(pos.expr.clone()),
+    match func.param_assignment.as_slice() {
+        [arg] => arg.input_expr().cloned(),
         _ => None,
     }
 }

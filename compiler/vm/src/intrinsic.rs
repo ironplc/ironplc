@@ -5,32 +5,52 @@ use crate::error::Trap;
 /// Field byte size (all fields are 8-byte aligned slots).
 const FIELD_SIZE: usize = 8;
 
-/// Reads an i32 from an FB instance field.
-fn read_i32(instance: &[u8], field: usize) -> i32 {
+/// Reads the first `N` bytes of `field` from an FB instance.
+///
+/// Returns [`Trap::DataRegionOutOfBounds`] when `instance` is too short. The
+/// intrinsic sees only its own instance slice, so the offset in the trap is
+/// the field's byte offset within the instance. `FB_CALL` sizes that slice to
+/// the FB's field count before calling, so this trap means a field index
+/// here disagrees with that count: a VM defect, not a malformed program.
+fn read_field<const N: usize>(instance: &[u8], field: usize) -> Result<[u8; N], Trap> {
     let offset = field * FIELD_SIZE;
-    let bytes: [u8; 4] = instance[offset..offset + 4].try_into().unwrap();
-    i32::from_le_bytes(bytes)
+    instance
+        .get(offset..offset + N)
+        .and_then(|bytes| <[u8; N]>::try_from(bytes).ok())
+        .ok_or(Trap::DataRegionOutOfBounds(offset as u32))
 }
 
-/// Writes an i32 to an FB instance field.
-fn write_i32(instance: &mut [u8], field: usize, value: i32) {
+/// Writes the whole of `field` in an FB instance. Traps as [`read_field`].
+fn write_field(instance: &mut [u8], field: usize, bytes: [u8; FIELD_SIZE]) -> Result<(), Trap> {
     let offset = field * FIELD_SIZE;
-    instance[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
-    // Zero upper 4 bytes for slot consistency.
-    instance[offset + 4..offset + 8].copy_from_slice(&[0, 0, 0, 0]);
+    let slot: &mut [u8; FIELD_SIZE] = instance
+        .get_mut(offset..offset + FIELD_SIZE)
+        .and_then(|slot| slot.try_into().ok())
+        .ok_or(Trap::DataRegionOutOfBounds(offset as u32))?;
+    *slot = bytes;
+    Ok(())
+}
+
+/// Reads an i32 from an FB instance field.
+fn read_i32(instance: &[u8], field: usize) -> Result<i32, Trap> {
+    read_field::<4>(instance, field).map(i32::from_le_bytes)
+}
+
+/// Writes an i32 to an FB instance field, sign-extended as
+/// [`crate::value::Slot::from_i32`] holds it, so that `FB_LOAD_PARAM` reads
+/// the field as the slot a store of the same value would have written.
+fn write_i32(instance: &mut [u8], field: usize, value: i32) -> Result<(), Trap> {
+    write_field(instance, field, i64::from(value).to_le_bytes())
 }
 
 /// Reads an i64 from an FB instance field.
-fn read_i64(instance: &[u8], field: usize) -> i64 {
-    let offset = field * FIELD_SIZE;
-    let bytes: [u8; 8] = instance[offset..offset + 8].try_into().unwrap();
-    i64::from_le_bytes(bytes)
+fn read_i64(instance: &[u8], field: usize) -> Result<i64, Trap> {
+    read_field::<8>(instance, field).map(i64::from_le_bytes)
 }
 
 /// Writes an i64 to an FB instance field.
-fn write_i64(instance: &mut [u8], field: usize, value: i64) {
-    let offset = field * FIELD_SIZE;
-    instance[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
+fn write_i64(instance: &mut [u8], field: usize, value: i64) -> Result<(), Trap> {
+    write_field(instance, field, value.to_le_bytes())
 }
 
 /// Shared field indices for timer FBs (TON, TOF, TP).
@@ -60,32 +80,32 @@ pub const TIMER_INSTANCE_FIELDS: usize = 6;
 /// (matching cycle_time). Elapsed time is converted from microseconds to
 /// milliseconds for comparison with PT and assignment to ET.
 pub fn ton(instance: &mut [u8], cycle_time: i64) -> Result<(), Trap> {
-    let in_val = read_i32(instance, TIMER_IN) != 0;
-    let pt = read_i32(instance, TIMER_PT);
-    let running = read_i32(instance, TIMER_RUNNING) != 0;
+    let in_val = read_i32(instance, TIMER_IN)? != 0;
+    let pt = read_i32(instance, TIMER_PT)?;
+    let running = read_i32(instance, TIMER_RUNNING)? != 0;
 
     if in_val {
         if !running {
             // Rising edge: start timing
-            write_i64(instance, TIMER_START_TIME, cycle_time);
-            write_i32(instance, TIMER_RUNNING, 1);
-            write_i32(instance, TIMER_ET, 0);
-            write_i32(instance, TIMER_Q, 0);
+            write_i64(instance, TIMER_START_TIME, cycle_time)?;
+            write_i32(instance, TIMER_RUNNING, 1)?;
+            write_i32(instance, TIMER_ET, 0)?;
+            write_i32(instance, TIMER_Q, 0)?;
         } else {
             // Timing in progress
-            let start_time = read_i64(instance, TIMER_START_TIME);
+            let start_time = read_i64(instance, TIMER_START_TIME)?;
             let elapsed_ms = ((cycle_time - start_time) / 1000) as i32;
             let et = if elapsed_ms > pt { pt } else { elapsed_ms };
-            write_i32(instance, TIMER_ET, et);
+            write_i32(instance, TIMER_ET, et)?;
             if et >= pt {
-                write_i32(instance, TIMER_Q, 1);
+                write_i32(instance, TIMER_Q, 1)?;
             }
         }
     } else {
         // IN is FALSE: reset
-        write_i32(instance, TIMER_Q, 0);
-        write_i32(instance, TIMER_ET, 0);
-        write_i32(instance, TIMER_RUNNING, 0);
+        write_i32(instance, TIMER_Q, 0)?;
+        write_i32(instance, TIMER_ET, 0)?;
+        write_i32(instance, TIMER_RUNNING, 0)?;
     }
     Ok(())
 }
@@ -104,30 +124,30 @@ pub fn ton(instance: &mut [u8], cycle_time: i64) -> Result<(), Trap> {
 ///
 /// PT and ET are i32 milliseconds. The hidden start_time is i64 microseconds.
 pub fn tof(instance: &mut [u8], cycle_time: i64) -> Result<(), Trap> {
-    let in_val = read_i32(instance, TIMER_IN) != 0;
-    let pt = read_i32(instance, TIMER_PT);
-    let running = read_i32(instance, TIMER_RUNNING) != 0;
+    let in_val = read_i32(instance, TIMER_IN)? != 0;
+    let pt = read_i32(instance, TIMER_PT)?;
+    let running = read_i32(instance, TIMER_RUNNING)? != 0;
 
     if in_val {
         // IN is TRUE: Q=TRUE, ET=0, stop any timing
-        write_i32(instance, TIMER_Q, 1);
-        write_i32(instance, TIMER_ET, 0);
-        write_i32(instance, TIMER_RUNNING, 0);
+        write_i32(instance, TIMER_Q, 1)?;
+        write_i32(instance, TIMER_ET, 0)?;
+        write_i32(instance, TIMER_RUNNING, 0)?;
     } else if !running {
         // Falling edge: start timing
-        write_i64(instance, TIMER_START_TIME, cycle_time);
-        write_i32(instance, TIMER_RUNNING, 1);
-        write_i32(instance, TIMER_ET, 0);
+        write_i64(instance, TIMER_START_TIME, cycle_time)?;
+        write_i32(instance, TIMER_RUNNING, 1)?;
+        write_i32(instance, TIMER_ET, 0)?;
         // Q stays TRUE during timing
-        write_i32(instance, TIMER_Q, 1);
+        write_i32(instance, TIMER_Q, 1)?;
     } else {
         // Timing in progress (IN is FALSE)
-        let start_time = read_i64(instance, TIMER_START_TIME);
+        let start_time = read_i64(instance, TIMER_START_TIME)?;
         let elapsed_ms = ((cycle_time - start_time) / 1000) as i32;
         let et = if elapsed_ms > pt { pt } else { elapsed_ms };
-        write_i32(instance, TIMER_ET, et);
+        write_i32(instance, TIMER_ET, et)?;
         if et >= pt {
-            write_i32(instance, TIMER_Q, 0);
+            write_i32(instance, TIMER_Q, 0)?;
         }
     }
     Ok(())
@@ -146,27 +166,27 @@ pub fn tof(instance: &mut [u8], cycle_time: i64) -> Result<(), Trap> {
 ///
 /// PT and ET are i32 milliseconds. The hidden start_time is i64 microseconds.
 pub fn tp(instance: &mut [u8], cycle_time: i64) -> Result<(), Trap> {
-    let in_val = read_i32(instance, TIMER_IN) != 0;
-    let pt = read_i32(instance, TIMER_PT);
-    let running = read_i32(instance, TIMER_RUNNING) != 0;
+    let in_val = read_i32(instance, TIMER_IN)? != 0;
+    let pt = read_i32(instance, TIMER_PT)?;
+    let running = read_i32(instance, TIMER_RUNNING)? != 0;
 
     if running {
         // Pulse in progress — ignore IN changes
-        let start_time = read_i64(instance, TIMER_START_TIME);
+        let start_time = read_i64(instance, TIMER_START_TIME)?;
         let elapsed_ms = ((cycle_time - start_time) / 1000) as i32;
         let et = if elapsed_ms > pt { pt } else { elapsed_ms };
-        write_i32(instance, TIMER_ET, et);
+        write_i32(instance, TIMER_ET, et)?;
         if et >= pt {
             // Pulse complete
-            write_i32(instance, TIMER_Q, 0);
-            write_i32(instance, TIMER_RUNNING, 0);
+            write_i32(instance, TIMER_Q, 0)?;
+            write_i32(instance, TIMER_RUNNING, 0)?;
         }
     } else if in_val {
         // Rising edge: start pulse
-        write_i64(instance, TIMER_START_TIME, cycle_time);
-        write_i32(instance, TIMER_RUNNING, 1);
-        write_i32(instance, TIMER_ET, 0);
-        write_i32(instance, TIMER_Q, 1);
+        write_i64(instance, TIMER_START_TIME, cycle_time)?;
+        write_i32(instance, TIMER_RUNNING, 1)?;
+        write_i32(instance, TIMER_ET, 0)?;
+        write_i32(instance, TIMER_Q, 1)?;
     }
     // else: not running and IN is FALSE — no action, Q stays as-is
     Ok(())
@@ -190,12 +210,12 @@ pub const SR_INSTANCE_FIELDS: usize = 3;
 /// Q1 := S1 OR (NOT R AND Q1)
 /// Set (S1) dominates: if both S1 and R are TRUE, Q1 is TRUE.
 pub fn sr(instance: &mut [u8]) -> Result<(), Trap> {
-    let s1 = read_i32(instance, SR_S1) != 0;
-    let r = read_i32(instance, SR_R) != 0;
-    let q1 = read_i32(instance, SR_Q1) != 0;
+    let s1 = read_i32(instance, SR_S1)? != 0;
+    let r = read_i32(instance, SR_R)? != 0;
+    let q1 = read_i32(instance, SR_Q1)? != 0;
 
     let new_q1 = s1 || (!r && q1);
-    write_i32(instance, SR_Q1, i32::from(new_q1));
+    write_i32(instance, SR_Q1, i32::from(new_q1))?;
 
     Ok(())
 }
@@ -214,12 +234,12 @@ pub const RS_INSTANCE_FIELDS: usize = 3;
 /// Q1 := NOT R1 AND (S OR Q1)
 /// Reset (R1) dominates: if both S and R1 are TRUE, Q1 is FALSE.
 pub fn rs(instance: &mut [u8]) -> Result<(), Trap> {
-    let s = read_i32(instance, RS_S) != 0;
-    let r1 = read_i32(instance, RS_R1) != 0;
-    let q1 = read_i32(instance, RS_Q1) != 0;
+    let s = read_i32(instance, RS_S)? != 0;
+    let r1 = read_i32(instance, RS_R1)? != 0;
+    let q1 = read_i32(instance, RS_Q1)? != 0;
 
     let new_q1 = !r1 && (s || q1);
-    write_i32(instance, RS_Q1, i32::from(new_q1));
+    write_i32(instance, RS_Q1, i32::from(new_q1))?;
 
     Ok(())
 }
@@ -227,6 +247,77 @@ pub fn rs(instance: &mut [u8]) -> Result<(), Trap> {
 // =============================================================================
 // Counter Function Blocks (IEC 61131-3 Section 2.5.2.3.3)
 // =============================================================================
+
+/// The integer a counter counts in: the type of its `PV` and `CV`.
+///
+/// Each width of a counter (`CTU_UDINT`, `CTU_LINT`, ...) has its own
+/// `FB_CALL` type id and counts in its own type, so a `CTU_LINT` counts past
+/// 32 bits and a `CTU_UDINT` reads a preset above 2,147,483,647 as positive.
+/// `CTU`, `CTU_INT` and `CTU_DINT` count in a signed 32-bit integer. The
+/// width of each type id is given by `Intrinsic::of`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CounterWidth {
+    I32,
+    U32,
+    I64,
+    U64,
+}
+
+/// A value a counter counts in, read from and written to an instance field.
+///
+/// Counting saturates at the bounds of the type, as IEC 61131-3 counts only
+/// while `CV` is below the type's maximum or above its minimum.
+trait CounterValue: Copy + PartialOrd {
+    const ZERO: Self;
+    fn read(instance: &[u8], field: usize) -> Result<Self, Trap>;
+    fn write(self, instance: &mut [u8], field: usize) -> Result<(), Trap>;
+    fn up(self) -> Self;
+    fn down(self) -> Self;
+}
+
+/// Implements [`CounterValue`] for `$t`, read from its first `$bytes` bytes
+/// and written as the slot `$slot` holds it: a signed value sign-extended and
+/// an unsigned one zero-extended, as a store of the value writes the slot.
+macro_rules! counter_value {
+    ($t:ty, $bytes:literal, $slot:ty) => {
+        impl CounterValue for $t {
+            const ZERO: Self = 0;
+
+            fn read(instance: &[u8], field: usize) -> Result<Self, Trap> {
+                read_field::<$bytes>(instance, field).map(<$t>::from_le_bytes)
+            }
+
+            fn write(self, instance: &mut [u8], field: usize) -> Result<(), Trap> {
+                write_field(instance, field, <$slot>::from(self).to_le_bytes())
+            }
+
+            fn up(self) -> Self {
+                self.saturating_add(1)
+            }
+
+            fn down(self) -> Self {
+                self.saturating_sub(1)
+            }
+        }
+    };
+}
+
+counter_value!(i32, 4, i64);
+counter_value!(u32, 4, u64);
+counter_value!(i64, 8, i64);
+counter_value!(u64, 8, u64);
+
+/// Runs `count` at the type `width` names.
+macro_rules! at_width {
+    ($width:expr, $count:ident, $instance:expr) => {
+        match $width {
+            CounterWidth::I32 => $count::<i32>($instance),
+            CounterWidth::U32 => $count::<u32>($instance),
+            CounterWidth::I64 => $count::<i64>($instance),
+            CounterWidth::U64 => $count::<u64>($instance),
+        }
+    };
+}
 
 // --- CTU (Count Up) field layout ---
 const CTU_CU: usize = 0;
@@ -239,29 +330,33 @@ const CTU_PREV_CU: usize = 5; // hidden
 /// Number of fields (including hidden) for a CTU FB instance.
 pub const CTU_INSTANCE_FIELDS: usize = 6;
 
-/// Executes one scan of the CTU (count up) intrinsic.
+/// Executes one scan of the CTU (count up) intrinsic, counting in `width`.
 ///
 /// # CTU behavior (IEC 61131-3 section 2.5.2.3.3):
 /// - When R is TRUE: CV = 0 (reset takes priority)
 /// - On rising edge of CU (and R is FALSE): CV increments by 1
 /// - Q = (CV >= PV)
-pub fn ctu(instance: &mut [u8]) -> Result<(), Trap> {
-    let cu = read_i32(instance, CTU_CU) != 0;
-    let r = read_i32(instance, CTU_R) != 0;
-    let pv = read_i32(instance, CTU_PV);
-    let prev_cu = read_i32(instance, CTU_PREV_CU) != 0;
+pub fn ctu(instance: &mut [u8], width: CounterWidth) -> Result<(), Trap> {
+    at_width!(width, ctu_at, instance)
+}
 
-    let mut cv = read_i32(instance, CTU_CV);
+fn ctu_at<T: CounterValue>(instance: &mut [u8]) -> Result<(), Trap> {
+    let cu = read_i32(instance, CTU_CU)? != 0;
+    let r = read_i32(instance, CTU_R)? != 0;
+    let pv = T::read(instance, CTU_PV)?;
+    let prev_cu = read_i32(instance, CTU_PREV_CU)? != 0;
+
+    let mut cv = T::read(instance, CTU_CV)?;
 
     if r {
-        cv = 0;
+        cv = T::ZERO;
     } else if cu && !prev_cu {
-        cv = cv.saturating_add(1);
+        cv = cv.up();
     }
 
-    write_i32(instance, CTU_CV, cv);
-    write_i32(instance, CTU_Q, if cv >= pv { 1 } else { 0 });
-    write_i32(instance, CTU_PREV_CU, i32::from(cu));
+    cv.write(instance, CTU_CV)?;
+    write_i32(instance, CTU_Q, i32::from(cv >= pv))?;
+    write_i32(instance, CTU_PREV_CU, i32::from(cu))?;
 
     Ok(())
 }
@@ -277,29 +372,33 @@ const CTD_PREV_CD: usize = 5; // hidden
 /// Number of fields (including hidden) for a CTD FB instance.
 pub const CTD_INSTANCE_FIELDS: usize = 6;
 
-/// Executes one scan of the CTD (count down) intrinsic.
+/// Executes one scan of the CTD (count down) intrinsic, counting in `width`.
 ///
 /// # CTD behavior (IEC 61131-3 section 2.5.2.3.3):
 /// - When LD is TRUE: CV = PV (load takes priority)
 /// - On rising edge of CD (and LD is FALSE): CV decrements by 1
 /// - Q = (CV <= 0)
-pub fn ctd(instance: &mut [u8]) -> Result<(), Trap> {
-    let cd = read_i32(instance, CTD_CD) != 0;
-    let ld = read_i32(instance, CTD_LD) != 0;
-    let pv = read_i32(instance, CTD_PV);
-    let prev_cd = read_i32(instance, CTD_PREV_CD) != 0;
+pub fn ctd(instance: &mut [u8], width: CounterWidth) -> Result<(), Trap> {
+    at_width!(width, ctd_at, instance)
+}
 
-    let mut cv = read_i32(instance, CTD_CV);
+fn ctd_at<T: CounterValue>(instance: &mut [u8]) -> Result<(), Trap> {
+    let cd = read_i32(instance, CTD_CD)? != 0;
+    let ld = read_i32(instance, CTD_LD)? != 0;
+    let pv = T::read(instance, CTD_PV)?;
+    let prev_cd = read_i32(instance, CTD_PREV_CD)? != 0;
+
+    let mut cv = T::read(instance, CTD_CV)?;
 
     if ld {
         cv = pv;
     } else if cd && !prev_cd {
-        cv = cv.saturating_sub(1);
+        cv = cv.down();
     }
 
-    write_i32(instance, CTD_CV, cv);
-    write_i32(instance, CTD_Q, if cv <= 0 { 1 } else { 0 });
-    write_i32(instance, CTD_PREV_CD, i32::from(cd));
+    cv.write(instance, CTD_CV)?;
+    write_i32(instance, CTD_Q, i32::from(cv <= T::ZERO))?;
+    write_i32(instance, CTD_PREV_CD, i32::from(cd))?;
 
     Ok(())
 }
@@ -319,7 +418,8 @@ const CTUD_PREV_CD: usize = 9; // hidden
 /// Number of fields (including hidden) for a CTUD FB instance.
 pub const CTUD_INSTANCE_FIELDS: usize = 10;
 
-/// Executes one scan of the CTUD (count up/down) intrinsic.
+/// Executes one scan of the CTUD (count up/down) intrinsic, counting in
+/// `width`.
 ///
 /// # CTUD behavior (IEC 61131-3 section 2.5.2.3.3):
 /// - When R is TRUE: CV = 0 (reset takes priority)
@@ -327,35 +427,39 @@ pub const CTUD_INSTANCE_FIELDS: usize = 10;
 /// - On rising edge of CU: CV increments by 1
 /// - On rising edge of CD: CV decrements by 1
 /// - QU = (CV >= PV), QD = (CV <= 0)
-pub fn ctud(instance: &mut [u8]) -> Result<(), Trap> {
-    let cu = read_i32(instance, CTUD_CU) != 0;
-    let cd = read_i32(instance, CTUD_CD) != 0;
-    let r = read_i32(instance, CTUD_R) != 0;
-    let ld = read_i32(instance, CTUD_LD) != 0;
-    let pv = read_i32(instance, CTUD_PV);
-    let prev_cu = read_i32(instance, CTUD_PREV_CU) != 0;
-    let prev_cd = read_i32(instance, CTUD_PREV_CD) != 0;
+pub fn ctud(instance: &mut [u8], width: CounterWidth) -> Result<(), Trap> {
+    at_width!(width, ctud_at, instance)
+}
 
-    let mut cv = read_i32(instance, CTUD_CV);
+fn ctud_at<T: CounterValue>(instance: &mut [u8]) -> Result<(), Trap> {
+    let cu = read_i32(instance, CTUD_CU)? != 0;
+    let cd = read_i32(instance, CTUD_CD)? != 0;
+    let r = read_i32(instance, CTUD_R)? != 0;
+    let ld = read_i32(instance, CTUD_LD)? != 0;
+    let pv = T::read(instance, CTUD_PV)?;
+    let prev_cu = read_i32(instance, CTUD_PREV_CU)? != 0;
+    let prev_cd = read_i32(instance, CTUD_PREV_CD)? != 0;
+
+    let mut cv = T::read(instance, CTUD_CV)?;
 
     if r {
-        cv = 0;
+        cv = T::ZERO;
     } else if ld {
         cv = pv;
     } else {
         if cu && !prev_cu {
-            cv = cv.saturating_add(1);
+            cv = cv.up();
         }
         if cd && !prev_cd {
-            cv = cv.saturating_sub(1);
+            cv = cv.down();
         }
     }
 
-    write_i32(instance, CTUD_CV, cv);
-    write_i32(instance, CTUD_QU, if cv >= pv { 1 } else { 0 });
-    write_i32(instance, CTUD_QD, if cv <= 0 { 1 } else { 0 });
-    write_i32(instance, CTUD_PREV_CU, i32::from(cu));
-    write_i32(instance, CTUD_PREV_CD, i32::from(cd));
+    cv.write(instance, CTUD_CV)?;
+    write_i32(instance, CTUD_QU, i32::from(cv >= pv))?;
+    write_i32(instance, CTUD_QD, i32::from(cv <= T::ZERO))?;
+    write_i32(instance, CTUD_PREV_CU, i32::from(cu))?;
+    write_i32(instance, CTUD_PREV_CD, i32::from(cd))?;
 
     Ok(())
 }
@@ -374,13 +478,13 @@ pub const R_TRIG_INSTANCE_FIELDS: usize = 3;
 
 /// Rising edge detector: Q is TRUE for one scan when CLK transitions FALSE→TRUE.
 pub fn r_trig(instance: &mut [u8]) -> Result<(), Trap> {
-    let clk = read_i32(instance, R_TRIG_CLK) != 0;
-    let m = read_i32(instance, R_TRIG_M) != 0;
+    let clk = read_i32(instance, R_TRIG_CLK)? != 0;
+    let m = read_i32(instance, R_TRIG_M)? != 0;
 
     let q = clk && !m;
 
-    write_i32(instance, R_TRIG_Q, i32::from(q));
-    write_i32(instance, R_TRIG_M, i32::from(clk));
+    write_i32(instance, R_TRIG_Q, i32::from(q))?;
+    write_i32(instance, R_TRIG_M, i32::from(clk))?;
 
     Ok(())
 }
@@ -399,13 +503,203 @@ pub const F_TRIG_INSTANCE_FIELDS: usize = 3;
 
 /// Falling edge detector: Q is TRUE for one scan when CLK transitions TRUE→FALSE.
 pub fn f_trig(instance: &mut [u8]) -> Result<(), Trap> {
-    let clk = read_i32(instance, F_TRIG_CLK) != 0;
-    let m = read_i32(instance, F_TRIG_M) != 0;
+    let clk = read_i32(instance, F_TRIG_CLK)? != 0;
+    let m = read_i32(instance, F_TRIG_M)? != 0;
 
     let q = !clk && m;
 
-    write_i32(instance, F_TRIG_Q, i32::from(q));
-    write_i32(instance, F_TRIG_M, i32::from(clk));
+    write_i32(instance, F_TRIG_Q, i32::from(q))?;
+    write_i32(instance, F_TRIG_M, i32::from(clk))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod counter_tests {
+    use super::*;
+    use spec_test_macro::spec_test;
+
+    /// An instance of `fields` fields, all zero but the `CV` field
+    /// `cv_field`, which holds `cv`.
+    fn counter_at<T: CounterValue>(fields: usize, cv_field: usize, cv: T) -> Vec<u8> {
+        let mut instance = vec![0u8; fields * FIELD_SIZE];
+        cv.write(&mut instance, cv_field).unwrap();
+        instance
+    }
+
+    #[spec_test(REQ_CW_vm_002)]
+    #[test]
+    fn ctu_when_lint_cv_at_largest_dint_then_counts_past_it() {
+        let mut instance = counter_at(CTU_INSTANCE_FIELDS, CTU_CV, i64::from(i32::MAX));
+        write_i32(&mut instance, CTU_CU, 1).unwrap();
+
+        ctu(&mut instance, CounterWidth::I64).unwrap();
+
+        assert_eq!(
+            i64::read(&instance, CTU_CV).unwrap(),
+            i64::from(i32::MAX) + 1
+        );
+    }
+
+    #[spec_test(REQ_CW_vm_002)]
+    #[test]
+    fn ctu_when_udint_preset_above_largest_dint_then_q_false() {
+        let mut instance = vec![0u8; CTU_INSTANCE_FIELDS * FIELD_SIZE];
+        3_000_000_000u32.write(&mut instance, CTU_PV).unwrap();
+
+        ctu(&mut instance, CounterWidth::U32).unwrap();
+
+        assert_eq!(read_i32(&instance, CTU_Q).unwrap(), 0);
+    }
+
+    #[spec_test(REQ_CW_vm_003)]
+    #[test]
+    fn ctu_when_udint_cv_at_maximum_then_stays_there() {
+        let mut instance = counter_at(CTU_INSTANCE_FIELDS, CTU_CV, u32::MAX);
+        write_i32(&mut instance, CTU_CU, 1).unwrap();
+
+        ctu(&mut instance, CounterWidth::U32).unwrap();
+
+        assert_eq!(u32::read(&instance, CTU_CV).unwrap(), u32::MAX);
+    }
+
+    #[spec_test(REQ_CW_vm_003)]
+    #[test]
+    fn ctd_when_ulint_cv_at_zero_then_stays_zero_and_q_true() {
+        let mut instance = counter_at(CTD_INSTANCE_FIELDS, CTD_CV, 0u64);
+        write_i32(&mut instance, CTD_CD, 1).unwrap();
+
+        ctd(&mut instance, CounterWidth::U64).unwrap();
+
+        assert_eq!(u64::read(&instance, CTD_CV).unwrap(), 0);
+        assert_eq!(read_i32(&instance, CTD_Q).unwrap(), 1);
+    }
+
+    #[spec_test(REQ_CW_vm_004)]
+    #[test]
+    fn ctd_when_int_cv_counts_below_zero_then_field_holds_it_sign_extended() {
+        let mut instance = vec![0u8; CTD_INSTANCE_FIELDS * FIELD_SIZE];
+        write_i32(&mut instance, CTD_CD, 1).unwrap();
+
+        ctd(&mut instance, CounterWidth::I32).unwrap();
+
+        assert_eq!(read_i64(&instance, CTD_CV).unwrap(), -1);
+    }
+
+    #[spec_test(REQ_CW_vm_004)]
+    #[test]
+    fn ctu_when_udint_cv_at_maximum_then_field_holds_it_zero_extended() {
+        let mut instance = counter_at(CTU_INSTANCE_FIELDS, CTU_CV, u32::MAX);
+
+        ctu(&mut instance, CounterWidth::U32).unwrap();
+
+        assert_eq!(read_i64(&instance, CTU_CV).unwrap(), i64::from(u32::MAX));
+    }
+
+    #[spec_test(REQ_CW_vm_002)]
+    #[test]
+    fn ctud_when_ulint_loads_preset_above_largest_lint_then_cv_holds_it() {
+        let mut instance = vec![0u8; CTUD_INSTANCE_FIELDS * FIELD_SIZE];
+        write_i32(&mut instance, CTUD_LD, 1).unwrap();
+        u64::MAX.write(&mut instance, CTUD_PV).unwrap();
+
+        ctud(&mut instance, CounterWidth::U64).unwrap();
+
+        assert_eq!(u64::read(&instance, CTUD_CV).unwrap(), u64::MAX);
+        assert_eq!(read_i32(&instance, CTUD_QU).unwrap(), 1);
+        assert_eq!(read_i32(&instance, CTUD_QD).unwrap(), 0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn read_i32_when_field_past_instance_then_data_region_out_of_bounds() {
+        let instance = [0u8; FIELD_SIZE];
+
+        assert_eq!(read_i32(&instance, 1), Err(Trap::DataRegionOutOfBounds(8)));
+    }
+
+    #[test]
+    fn read_i64_when_field_partly_past_instance_then_data_region_out_of_bounds() {
+        let instance = [0u8; FIELD_SIZE + 4];
+
+        assert_eq!(read_i64(&instance, 1), Err(Trap::DataRegionOutOfBounds(8)));
+    }
+
+    #[test]
+    fn write_i32_when_negative_then_sign_extended_as_a_slot() {
+        let mut instance = [0u8; FIELD_SIZE];
+
+        write_i32(&mut instance, 0, -1).unwrap();
+
+        assert_eq!(instance, [0xFF; FIELD_SIZE]);
+    }
+
+    #[test]
+    fn write_i32_when_positive_then_upper_bytes_zero() {
+        let mut instance = [0xFFu8; FIELD_SIZE];
+
+        write_i32(&mut instance, 0, 1).unwrap();
+
+        assert_eq!(instance, [1, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn write_i32_when_field_partly_past_instance_then_data_region_out_of_bounds() {
+        let mut instance = [0u8; FIELD_SIZE + 4];
+
+        assert_eq!(
+            write_i32(&mut instance, 1, 7),
+            Err(Trap::DataRegionOutOfBounds(8))
+        );
+    }
+
+    #[test]
+    fn write_i64_when_field_past_instance_then_data_region_out_of_bounds() {
+        let mut instance = [0u8; FIELD_SIZE];
+
+        assert_eq!(
+            write_i64(&mut instance, 1, 7),
+            Err(Trap::DataRegionOutOfBounds(8))
+        );
+    }
+
+    #[test]
+    fn ton_when_instance_shorter_than_timer_then_data_region_out_of_bounds() {
+        let mut instance = [0u8; FIELD_SIZE];
+
+        assert_eq!(ton(&mut instance, 0), Err(Trap::DataRegionOutOfBounds(8)));
+    }
+
+    #[test]
+    fn ctu_when_instance_shorter_than_counter_then_data_region_out_of_bounds() {
+        let mut instance = [0u8; 2 * FIELD_SIZE];
+
+        assert_eq!(
+            ctu(&mut instance, CounterWidth::I64),
+            Err(Trap::DataRegionOutOfBounds(16))
+        );
+    }
+
+    #[test]
+    fn counter_value_write_when_u32_then_upper_bytes_zero() {
+        let mut instance = [0xFFu8; FIELD_SIZE];
+
+        u32::MAX.write(&mut instance, 0).unwrap();
+
+        assert_eq!(instance, [0xFF, 0xFF, 0xFF, 0xFF, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn r_trig_when_clk_rises_then_q_true() {
+        let mut instance = [0u8; R_TRIG_INSTANCE_FIELDS * FIELD_SIZE];
+        write_i32(&mut instance, R_TRIG_CLK, 1).unwrap();
+
+        r_trig(&mut instance).unwrap();
+
+        assert_eq!(read_i32(&instance, R_TRIG_Q), Ok(1));
+    }
 }

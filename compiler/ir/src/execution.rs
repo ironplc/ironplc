@@ -1,6 +1,7 @@
 //! The execution model: what runs, and when.
 //!
-//! The model says which configuration is built, the resources it holds, the
+//! The model says which configurations the library declares, the resources
+//! each holds, the
 //! tasks each resource schedules, the program instances each task runs, and the
 //! globals in scope. Every decision is already made, so a backend lowers the
 //! model and decides nothing. See `specs/design/execution-model.md`.
@@ -21,51 +22,27 @@ use std::fmt;
 
 use ironplc_dsl::core::SourceSpan;
 
-/// What resolving a library built: a model a backend can build, or why it
-/// cannot.
+/// What runs, and when, as the library declares it.
 ///
-/// A library that cannot be built into an executable is still a valid
-/// library (`check` and the editor analyze such files), so this is data, not
-/// a diagnostic.
-#[derive(Debug, Clone)]
-pub enum Execution {
-    Executable(ExecutionModel),
-    NotExecutable(NotExecutable),
-}
-
-/// Why a library cannot be built into an executable.
+/// The model describes the library; it does not say whether a backend can
+/// build it. A library with no `PROGRAM`, several configurations, several
+/// programs, or an instance of a type that is not a `PROGRAM` is a valid
+/// library, and each backend checks the model against what it can run.
 ///
-/// The names are in source order.
-#[derive(Debug, Clone)]
-pub enum NotExecutable {
-    /// The library declares no `PROGRAM`.
-    NoProgram,
-    /// The library declares more than one `CONFIGURATION`.
-    SeveralConfigurations(Vec<DebugName>),
-    /// The library declares more than one `PROGRAM`, and no configuration
-    /// binds one.
-    SeveralPrograms(Vec<DebugName>),
-    /// A program instance names a type that is not a `PROGRAM` of the library:
-    /// a function block, or a name declared nowhere.
-    UndeclaredPrograms(Vec<DebugName>),
-}
-
-/// A model a backend can build.
-///
-/// It has exactly one configuration (declared, or the implicit one), and every
-/// id it holds names one of its own entries. The fields are private so that
-/// [`ExecutionModelBuilder`] is the only way to make one.
+/// Every id the model holds names one of its own entries. The fields are
+/// private so that [`ExecutionModelBuilder`] is the only way to make one.
 #[derive(Debug, Clone)]
 pub struct ExecutionModel {
-    configuration: Configuration,
+    configurations: Vec<Configuration>,
     programs: Vec<ProgramType>,
     globals: Vec<Global>,
 }
 
 impl ExecutionModel {
-    /// The configuration that is built.
-    pub fn configuration(&self) -> &Configuration {
-        &self.configuration
+    /// The configurations, in source order: those the library declares, or
+    /// the implicit one of a library that declares none but has a `PROGRAM`.
+    pub fn configurations(&self) -> &[Configuration] {
+        &self.configurations
     }
 
     /// The program type `id` names.
@@ -104,12 +81,13 @@ impl ExecutionModel {
     }
 }
 
-/// The configuration that is built.
+/// A configuration, declared or implicit.
 #[derive(Debug, Clone)]
 pub struct Configuration {
     /// `None` for the implicit configuration of a library that declares none.
     pub name: Option<DebugName>,
-    /// The resources, in declaration order, with an implicit one last.
+    /// The resources, in declaration order, with an implicit one last when no
+    /// declared resource runs a program instance.
     pub resources: Vec<Resource>,
 }
 
@@ -165,9 +143,21 @@ pub enum Trigger {
 /// One instance of a program, owned by the task that runs it.
 #[derive(Debug, Clone)]
 pub struct ProgramInstance {
-    /// `None` for the implicit instance.
+    /// `None` for an implicit instance.
     pub name: Option<DebugName>,
-    pub program: ProgramId,
+    pub program: InstanceOf,
+}
+
+/// What a program instance instantiates.
+#[derive(Debug, Clone)]
+pub enum InstanceOf {
+    /// A `PROGRAM` declaration of the library.
+    Program(ProgramId),
+    /// A type that is not a `PROGRAM` declaration of the library: a function
+    /// block, or a name declared nowhere, as written. A configuration is often
+    /// checked without the files that declare its programs, so this is not an
+    /// error in the library; a backend has no body to compile for it.
+    Unresolved(DebugName),
 }
 
 /// A `PROGRAM` declaration that a program instance instantiates.
@@ -262,10 +252,11 @@ impl ExecutionModelBuilder {
         id
     }
 
-    /// Builds the model of `configuration`, whose ids this builder allocated.
-    pub fn build(self, configuration: Configuration) -> ExecutionModel {
+    /// Builds the model of `configurations`, whose ids this builder
+    /// allocated.
+    pub fn build(self, configurations: Vec<Configuration>) -> ExecutionModel {
         ExecutionModel {
-            configuration,
+            configurations,
             programs: self.programs,
             globals: self.globals,
         }
@@ -325,11 +316,8 @@ mod tests {
         }
     }
 
-    fn empty_configuration() -> Configuration {
-        Configuration {
-            name: None,
-            resources: vec![],
-        }
+    fn no_configurations() -> Vec<Configuration> {
+        vec![]
     }
 
     #[test]
@@ -337,7 +325,7 @@ mod tests {
         let mut builder = ExecutionModelBuilder::new();
         let first = builder.add_program(program("first"));
         let second = builder.add_program(program("second"));
-        let model = builder.build(empty_configuration());
+        let model = builder.build(no_configurations());
 
         assert_eq!(
             model.program(first).map(|p| p.name.to_string()),
@@ -354,7 +342,7 @@ mod tests {
         let mut builder = ExecutionModelBuilder::new();
         let first = builder.add_global(global("first"));
         let second = builder.add_global(global("second"));
-        let model = builder.build(empty_configuration());
+        let model = builder.build(no_configurations());
 
         assert_eq!(
             model.global(first).map(|g| g.name.to_string()),
@@ -373,7 +361,7 @@ mod tests {
         let foreign = other.add_program(program("b"));
         let mut builder = ExecutionModelBuilder::new();
         builder.add_program(program("only"));
-        let model = builder.build(empty_configuration());
+        let model = builder.build(no_configurations());
 
         assert!(model.program(foreign).is_none());
     }
@@ -383,7 +371,7 @@ mod tests {
         let mut other = ExecutionModelBuilder::new();
         other.add_global(global("a"));
         let foreign = other.add_global(global("b"));
-        let model = ExecutionModelBuilder::new().build(empty_configuration());
+        let model = ExecutionModelBuilder::new().build(no_configurations());
 
         assert!(model.global(foreign).is_none());
     }
@@ -396,7 +384,7 @@ mod tests {
             kind: GlobalKind::System(SystemGlobal::UpTime),
         });
         let declared = builder.add_global(global("counter"));
-        let model = builder.build(empty_configuration());
+        let model = builder.build(no_configurations());
 
         let globals: Vec<(GlobalId, String)> = model
             .globals()
@@ -416,7 +404,7 @@ mod tests {
         let mut builder = ExecutionModelBuilder::new();
         let first = builder.add_program(program("first"));
         let second = builder.add_program(program("second"));
-        let model = builder.build(empty_configuration());
+        let model = builder.build(no_configurations());
 
         let programs: Vec<(ProgramId, String)> = model
             .programs()
@@ -444,20 +432,46 @@ mod tests {
                     },
                     instances: vec![ProgramInstance {
                         name: Some(name("instance1")),
-                        program: main,
+                        program: InstanceOf::Program(main),
                     }],
                 }],
             }],
         };
-        let model = builder.build(configuration);
+        let model = builder.build(vec![configuration]);
 
-        let task = &model.configuration().resources[0].tasks[0];
+        let task = &model.configurations()[0].resources[0].tasks[0];
         assert_eq!(task.priority, 70000);
         assert!(matches!(
             task.schedule,
             Schedule::Cyclic { interval } if interval == time::Duration::milliseconds(10)
         ));
-        assert_eq!(task.instances[0].program, main);
+        assert!(matches!(task.instances[0].program, InstanceOf::Program(id) if id == main));
+    }
+
+    #[test]
+    fn build_when_instance_unresolved_then_model_keeps_its_type_name() {
+        let configuration = Configuration {
+            name: Some(name("config")),
+            resources: vec![Resource {
+                name: Some(name("resource1")),
+                tasks: vec![Task {
+                    name: None,
+                    priority: 0,
+                    schedule: Schedule::Freewheeling,
+                    instances: vec![ProgramInstance {
+                        name: Some(name("instance1")),
+                        program: InstanceOf::Unresolved(name("elsewhere")),
+                    }],
+                }],
+            }],
+        };
+        let model = ExecutionModelBuilder::new().build(vec![configuration]);
+
+        let instance = &model.configurations()[0].resources[0].tasks[0].instances[0];
+        assert!(matches!(
+            &instance.program,
+            InstanceOf::Unresolved(type_name) if type_name.to_string() == "elsewhere"
+        ));
     }
 
     #[test]

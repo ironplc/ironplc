@@ -1001,22 +1001,21 @@ mod tests {
     }
 
     #[test]
-    fn arg_count_when_mux_id_then_returns_n_plus_one() {
+    fn arg_count_opt_when_mux_id_then_returns_n_plus_one() {
         // MUX pops n IN values + 1 K selector.
-        assert_eq!(builtin::arg_count(builtin::MUX_I32_BASE + 3), 4);
+        assert_eq!(builtin::arg_count_opt(builtin::MUX_I32_BASE + 3), Some(4));
     }
 
     #[test]
-    #[should_panic(expected = "unknown builtin function ID")]
-    fn arg_count_when_unknown_function_id_then_panics() {
-        let _ = builtin::arg_count(0xFFFF);
+    fn arg_count_opt_when_unknown_function_id_then_none() {
+        assert_eq!(builtin::arg_count_opt(0xFFFF), None);
     }
 
     #[test]
-    fn arg_count_when_unnamed_arithmetic_builtins_then_counts_match_dispatch() {
-        assert_eq!(builtin::arg_count(builtin::TRUNC_F64), 1);
-        assert_eq!(builtin::arg_count(builtin::MOD_F64), 2);
-        assert_eq!(builtin::arg_count(builtin::TRUNC_F32), 1);
-        assert_eq!(builtin::arg_count(builtin::MOD_F32), 2);
+    fn arg_count_opt_when_unnamed_arithmetic_builtins_then_counts_match_dispatch() {
+        assert_eq!(builtin::arg_count_opt(builtin::TRUNC_F64), Some(1));
+        assert_eq!(builtin::arg_count_opt(builtin::MOD_F64), Some(2));
+        assert_eq!(builtin::arg_count_opt(builtin::TRUNC_F32), Some(1));
+        assert_eq!(builtin::arg_count_opt(builtin::MOD_F32), Some(2));
     }
 }

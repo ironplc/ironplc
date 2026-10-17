@@ -11,6 +11,8 @@ use crate::debug::PauseReason;
 use crate::debug_hook::{DebugHook, HookAction, NoopDebugHook};
 use crate::error::Trap;
 use crate::frame_stack::{FbCallReturn, Frame, FrameStack};
+use crate::intrinsic;
+use crate::intrinsic_id::Intrinsic;
 #[cfg(feature = "profiling")]
 use crate::profile::InstructionProfile;
 use crate::scheduler::{ProgramInstanceState, TaskScheduler, TaskState};
@@ -451,10 +453,11 @@ impl<'a> VmRunning<'a> {
                         task_id,
                         instance_id,
                     })?;
-                debug_assert!(
-                    matches!(outcome, ExecuteOutcome::Completed),
-                    "NoopDebugHook can never pause a scan"
-                );
+                // `NoopDebugHook` cannot pause: its pause type is uninhabited.
+                match outcome {
+                    ExecuteOutcome::Completed => {}
+                    ExecuteOutcome::Paused(never) => match never {},
+                }
             }
 
             // A clock that went backwards measures zero rather than wrapping.
@@ -523,11 +526,15 @@ impl<'a> VmRunning<'a> {
     /// fire the moment execution paused. The shared per-instance execution
     /// core lives in [`run_instance`](Self::run_instance); only the
     /// scheduling/lifecycle policy around it differs between the two drivers.
-    pub fn run_round_debug<H: DebugHook>(
+    pub fn run_round_debug<H>(
         &mut self,
         uptime_us: u64,
         hook: &mut H,
-    ) -> Result<RoundOutcome, FaultContext> {
+    ) -> Result<RoundOutcome, FaultContext>
+    where
+        H: DebugHook,
+        H::Pause: Into<PauseReason>,
+    {
         // No program instance → nothing to debug; the scan is a no-op.
         if self.program_instances.is_empty() {
             self.phase = Phase::CompletedScan;
@@ -570,6 +577,7 @@ impl<'a> VmRunning<'a> {
 
         match outcome {
             ExecuteOutcome::Paused(reason) => {
+                let reason = reason.into();
                 self.phase = Phase::PausedAt(reason);
                 Ok(RoundOutcome::Paused(reason))
             }
@@ -641,7 +649,7 @@ impl<'a> VmRunning<'a> {
         frame_count: usize,
         temp_alloc_next: u16,
         hook: &mut H,
-    ) -> Result<(ExecuteOutcome, usize, u16), Trap> {
+    ) -> Result<(ExecuteOutcome<H::Pause>, usize, u16), Trap> {
         let entry_function_id = self.program_instances[instance_index].entry_function_id;
         let var_table_offset = self.program_instances[instance_index].var_table_offset;
         let var_table_count = self.program_instances[instance_index].var_table_count;
@@ -1064,7 +1072,7 @@ fn execute(
     let mut hook = NoopDebugHook;
     // Fresh, non-resumable run: the frame stack starts empty (so the entry
     // frame is pushed) and no temp-buffer allocations carry over. The noop
-    // hook can never pause, so `Completed` is the only reachable outcome.
+    // hook's pause type is uninhabited, so `Completed` is the only outcome.
     let mut frame_count = 0usize;
     let mut temp_alloc_next = 0u16;
     match execute_with_hook(
@@ -1085,9 +1093,7 @@ fn execute(
         &mut hook,
     )? {
         ExecuteOutcome::Completed => Ok(()),
-        ExecuteOutcome::Paused(_) => {
-            unreachable!("NoopDebugHook always returns HookAction::Continue")
-        }
+        ExecuteOutcome::Paused(never) => match never {},
     }
 }
 
@@ -1097,12 +1103,15 @@ fn execute(
 /// returned). `Paused` means the debug hook requested a stop before an
 /// instruction executed; the frame stack, operand stack, and temp-buffer
 /// allocator position are all preserved so a later call can resume.
+///
+/// `P` is the hook's [`DebugHook::Pause`] type. For a hook that cannot
+/// pause it is uninhabited, and so is `Paused`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ExecuteOutcome {
+pub enum ExecuteOutcome<P = PauseReason> {
     /// The program returned normally.
     Completed,
     /// The hook paused execution before an instruction.
-    Paused(PauseReason),
+    Paused(P),
 }
 
 /// Executes the entry function until its frame stack drains (program
@@ -1138,12 +1147,12 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
     temp_alloc_next: &mut u16,
     #[cfg(feature = "profiling")] profile: &mut InstructionProfile,
     hook: &mut H,
-) -> Result<ExecuteOutcome, Trap> {
+) -> Result<ExecuteOutcome<H::Pause>, Trap> {
     let mut temp_alloc = string_ops::TempBufAllocator::new(max_temp_buf_bytes);
     // Restore the temp-buffer bump position captured at the last pause. On a
     // fresh run this is 0 (nothing allocated yet).
     temp_alloc.rewind_to(*temp_alloc_next);
-    let mut frame_stack = FrameStack::resume(frames, *frame_count);
+    let mut frame_stack = FrameStack::resume(frames, *frame_count)?;
     if frame_stack.is_empty() {
         // Fresh run: push the entry frame. When resuming a paused instance
         // the frame stack is non-empty and the entry frame (plus any deeper
@@ -1180,12 +1189,10 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
     //      revealed caller's `pc` is already correct), then clear `pc_dirty`.
     //   4. Pause: store the *un-advanced* `pc` so the paused opcode re-executes
     //      on resume, then return `Paused` without reaching the writeback.
-    while !frame_stack.is_empty() {
+    while let Some(top) = frame_stack.top() {
         // Snapshot the top frame's authoritative `pc` into the working copy.
-        let (current_function_id, scope, mut pc) = {
-            let top = frame_stack.top().expect("non-empty by loop condition");
-            (top.function_id, top.scope, top.pc)
-        };
+        // The fields are copied out so the borrow of `frame_stack` ends here.
+        let (current_function_id, scope, mut pc) = (top.function_id, top.scope, top.pc);
         let bytecode = container
             .code
             .get_function_bytecode(current_function_id)
@@ -1218,7 +1225,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 // not yet run `pc += 1`), so the paused opcode re-executes on
                 // resume. The frame stack and temp-allocator position are
                 // preserved so the caller can resume this instance later.
-                commit_pc(&mut frame_stack, pc);
+                commit_pc(&mut frame_stack, pc)?;
                 *frame_count = frame_stack.len();
                 *temp_alloc_next = temp_alloc.next();
                 return Ok(ExecuteOutcome::Paused(reason));
@@ -1599,7 +1606,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                         string_ops::verify_encoding(left_width, right_width)?;
                         let w = left_width.as_usize();
 
-                        // Lengths are code units; compare the full byte spans.
+                        // Lengths are code units; compare the full spans.
                         let left_len =
                             string_ops::str_read_cur_len(data_region, left_offset) as usize * w;
                         let left_start = left_offset + STRING_HEADER_BYTES;
@@ -1610,7 +1617,9 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                         let right_start = right_offset + STRING_HEADER_BYTES;
                         let right_data = &data_region[right_start..right_start + right_len];
 
-                        let cmp_val = match left_data.cmp(right_data) {
+                        let order =
+                            string_ops::compare_code_units(left_data, right_data, left_width);
+                        let cmp_val = match order {
                             core::cmp::Ordering::Less => -1i32,
                             core::cmp::Ordering::Equal => 0i32,
                             core::cmp::Ordering::Greater => 1i32,
@@ -1661,7 +1670,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 // `FrameStack::push` returns Trap::CallStackOverflow on
                 // capacity overflow — same trap as the old depth-counter
                 // check.
-                commit_pc(&mut frame_stack, pc);
+                commit_pc(&mut frame_stack, pc)?;
                 hook.before_call(func_id);
                 frame_stack.push(Frame {
                     function_id: func_id,
@@ -2495,86 +2504,79 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let type_id = read_u16_le(bytecode, &mut pc)?;
                 let fb_ref = stack.peek()?.as_i32() as u32;
                 let instance_start = fb_ref as usize;
-                match type_id {
-                    opcode::fb_type::TON | opcode::fb_type::TOF | opcode::fb_type::TP => {
-                        let instance_size = crate::intrinsic::TIMER_INSTANCE_FIELDS * 8;
-                        let instance_end = instance_start + instance_size;
-                        if instance_end > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(instance_start as u32));
-                        }
-                        let slice = &mut data_region[instance_start..instance_end];
-                        let time = uptime_us as i64;
-                        match type_id {
-                            opcode::fb_type::TON => crate::intrinsic::ton(slice, time)?,
-                            opcode::fb_type::TOF => crate::intrinsic::tof(slice, time)?,
-                            opcode::fb_type::TP => crate::intrinsic::tp(slice, time)?,
-                            _ => unreachable!(),
-                        }
-                    }
-                    opcode::fb_type::CTU => {
-                        let instance_size = crate::intrinsic::CTU_INSTANCE_FIELDS * 8;
-                        let instance_end = instance_start + instance_size;
-                        if instance_end > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(instance_start as u32));
-                        }
-                        let slice = &mut data_region[instance_start..instance_end];
-                        crate::intrinsic::ctu(slice)?;
-                    }
-                    opcode::fb_type::CTD => {
-                        let instance_size = crate::intrinsic::CTD_INSTANCE_FIELDS * 8;
-                        let instance_end = instance_start + instance_size;
-                        if instance_end > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(instance_start as u32));
-                        }
-                        let slice = &mut data_region[instance_start..instance_end];
-                        crate::intrinsic::ctd(slice)?;
-                    }
-                    opcode::fb_type::CTUD => {
-                        let instance_size = crate::intrinsic::CTUD_INSTANCE_FIELDS * 8;
-                        let instance_end = instance_start + instance_size;
-                        if instance_end > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(instance_start as u32));
-                        }
-                        let slice = &mut data_region[instance_start..instance_end];
-                        crate::intrinsic::ctud(slice)?;
-                    }
-                    opcode::fb_type::SR => {
-                        let instance_size = crate::intrinsic::SR_INSTANCE_FIELDS * 8;
-                        let instance_end = instance_start + instance_size;
-                        if instance_end > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(instance_start as u32));
-                        }
-                        let slice = &mut data_region[instance_start..instance_end];
-                        crate::intrinsic::sr(slice)?;
-                    }
-                    opcode::fb_type::RS => {
-                        let instance_size = crate::intrinsic::RS_INSTANCE_FIELDS * 8;
-                        let instance_end = instance_start + instance_size;
-                        if instance_end > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(instance_start as u32));
-                        }
-                        let slice = &mut data_region[instance_start..instance_end];
-                        crate::intrinsic::rs(slice)?;
-                    }
-                    opcode::fb_type::R_TRIG => {
-                        let instance_size = crate::intrinsic::R_TRIG_INSTANCE_FIELDS * 8;
-                        let instance_end = instance_start + instance_size;
-                        if instance_end > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(instance_start as u32));
-                        }
-                        let slice = &mut data_region[instance_start..instance_end];
-                        crate::intrinsic::r_trig(slice)?;
-                    }
-                    opcode::fb_type::F_TRIG => {
-                        let instance_size = crate::intrinsic::F_TRIG_INSTANCE_FIELDS * 8;
-                        let instance_end = instance_start + instance_size;
-                        if instance_end > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(instance_start as u32));
-                        }
-                        let slice = &mut data_region[instance_start..instance_end];
-                        crate::intrinsic::f_trig(slice)?;
-                    }
-                    _ => {
+                // An intrinsic FB runs natively over its instance's fields;
+                // each arm names the fields it owns, so the slice it is
+                // handed is exactly that long.
+                match Intrinsic::of(type_id) {
+                    Some(Intrinsic::Ton) => intrinsic::ton(
+                        intrinsic_instance(
+                            data_region,
+                            instance_start,
+                            intrinsic::TIMER_INSTANCE_FIELDS,
+                        )?,
+                        uptime_us as i64,
+                    )?,
+                    Some(Intrinsic::Tof) => intrinsic::tof(
+                        intrinsic_instance(
+                            data_region,
+                            instance_start,
+                            intrinsic::TIMER_INSTANCE_FIELDS,
+                        )?,
+                        uptime_us as i64,
+                    )?,
+                    Some(Intrinsic::Tp) => intrinsic::tp(
+                        intrinsic_instance(
+                            data_region,
+                            instance_start,
+                            intrinsic::TIMER_INSTANCE_FIELDS,
+                        )?,
+                        uptime_us as i64,
+                    )?,
+                    Some(Intrinsic::Ctu(width)) => intrinsic::ctu(
+                        intrinsic_instance(
+                            data_region,
+                            instance_start,
+                            intrinsic::CTU_INSTANCE_FIELDS,
+                        )?,
+                        width,
+                    )?,
+                    Some(Intrinsic::Ctd(width)) => intrinsic::ctd(
+                        intrinsic_instance(
+                            data_region,
+                            instance_start,
+                            intrinsic::CTD_INSTANCE_FIELDS,
+                        )?,
+                        width,
+                    )?,
+                    Some(Intrinsic::Ctud(width)) => intrinsic::ctud(
+                        intrinsic_instance(
+                            data_region,
+                            instance_start,
+                            intrinsic::CTUD_INSTANCE_FIELDS,
+                        )?,
+                        width,
+                    )?,
+                    Some(Intrinsic::Sr) => intrinsic::sr(intrinsic_instance(
+                        data_region,
+                        instance_start,
+                        intrinsic::SR_INSTANCE_FIELDS,
+                    )?)?,
+                    Some(Intrinsic::Rs) => intrinsic::rs(intrinsic_instance(
+                        data_region,
+                        instance_start,
+                        intrinsic::RS_INSTANCE_FIELDS,
+                    )?)?,
+                    Some(Intrinsic::RTrig) => intrinsic::r_trig(intrinsic_instance(
+                        data_region,
+                        instance_start,
+                        intrinsic::R_TRIG_INSTANCE_FIELDS,
+                    )?)?,
+                    Some(Intrinsic::FTrig) => intrinsic::f_trig(intrinsic_instance(
+                        data_region,
+                        instance_start,
+                        intrinsic::F_TRIG_INSTANCE_FIELDS,
+                    )?)?,
+                    None => {
                         // User-defined FB: look up in the container's user FB table.
                         let fb_type_id = FbTypeId::new(type_id);
                         let user_fb = container
@@ -2618,7 +2620,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                         // `fb_return` records what `handle_frame_return`
                         // needs to copy variable slots back to the data
                         // region after the FB body returns.
-                        commit_pc(&mut frame_stack, pc);
+                        commit_pc(&mut frame_stack, pc)?;
                         hook.before_call(func_id);
                         frame_stack.push(Frame {
                             function_id: func_id,
@@ -2687,7 +2689,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     instance_count: func.num_locals,
                 };
 
-                commit_pc(&mut frame_stack, pc);
+                commit_pc(&mut frame_stack, pc)?;
                 hook.before_call(function_id);
                 frame_stack.push(Frame {
                     function_id,
@@ -2948,7 +2950,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
             // the frame we snapshotted at the top of the iteration. Push/pop
             // arms cleared `pc_dirty`, so this never clobbers a newly-pushed
             // callee's `pc: 0` or a freshly-popped caller's already-correct pc.
-            commit_pc(&mut frame_stack, pc);
+            commit_pc(&mut frame_stack, pc)?;
         }
     }
 
@@ -2967,14 +2969,14 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
 /// writeback, the CALL / FB_CALL caller-save, and the pause path). Folding
 /// them here keeps all four spellings identical and greppable.
 ///
-/// Panics if the frame stack is empty; every caller holds the loop invariant
-/// that a frame is live at the commit point.
+/// Every caller holds the loop invariant that a frame is live at the commit
+/// point, but none holds a reference to it: the same iteration pushes and
+/// pops `frame_stack`. So an empty stack is reported as
+/// [`Trap::CallStackUnderflow`] rather than assumed away.
 #[inline(always)]
-fn commit_pc(frame_stack: &mut FrameStack, pc: usize) {
-    frame_stack
-        .top_mut()
-        .expect("commit_pc requires a non-empty frame stack")
-        .pc = pc;
+fn commit_pc(frame_stack: &mut FrameStack, pc: usize) -> Result<(), Trap> {
+    frame_stack.top_mut().ok_or(Trap::CallStackUnderflow)?.pc = pc;
+    Ok(())
 }
 
 /// Pops the topmost frame, rewinds the temp-buffer allocator to the
@@ -2986,6 +2988,9 @@ fn commit_pc(frame_stack: &mut FrameStack, pc: usize) {
 /// the single choke point for frame pops, so [`DebugHook::after_return`]
 /// fires here exactly once per pop — keeping a hook's depth counter in
 /// lock-step with `frame_stack.len()`.
+///
+/// Every caller holds the loop invariant that the returning frame is live;
+/// an empty stack is reported as [`Trap::CallStackUnderflow`].
 fn handle_frame_return<H: DebugHook>(
     temp_alloc: &mut string_ops::TempBufAllocator,
     frame_stack: &mut FrameStack,
@@ -2993,9 +2998,7 @@ fn handle_frame_return<H: DebugHook>(
     variables: &mut VariableTable,
     hook: &mut H,
 ) -> Result<(), Trap> {
-    let popped = frame_stack
-        .pop()
-        .expect("caller must hold the loop invariant: non-empty before return");
+    let popped = frame_stack.pop().ok_or(Trap::CallStackUnderflow)?;
     temp_alloc.rewind_to(popped.temp_alloc_mark);
 
     if let Some(fbr) = popped.fb_return {
@@ -3008,6 +3011,21 @@ fn handle_frame_return<H: DebugHook>(
     hook.after_return(returning_to);
 
     Ok(())
+}
+
+/// The instance of an intrinsic function block: the `fields` 8-byte slots
+/// starting at `instance_start` in the data region.
+///
+/// Returns [`Trap::DataRegionOutOfBounds`] at `instance_start` when the
+/// instance does not fit.
+fn intrinsic_instance(
+    data_region: &mut [u8],
+    instance_start: usize,
+    fields: usize,
+) -> Result<&mut [u8], Trap> {
+    data_region
+        .get_mut(instance_start..instance_start + fields * 8)
+        .ok_or(Trap::DataRegionOutOfBounds(instance_start as u32))
 }
 
 /// Reads a single byte from bytecode at pc, advancing pc by 1.
@@ -3100,6 +3118,36 @@ mod tests {
     };
     use crate::VmBuffers;
     use ironplc_container::ContainerBuilder;
+
+    #[test]
+    fn commit_pc_when_frame_stack_empty_then_call_stack_underflow() {
+        let mut frames: [Frame; 0] = [];
+        let mut frame_stack = FrameStack::new(&mut frames);
+
+        assert_eq!(
+            commit_pc(&mut frame_stack, 0),
+            Err(Trap::CallStackUnderflow)
+        );
+    }
+
+    #[test]
+    fn handle_frame_return_when_frame_stack_empty_then_call_stack_underflow() {
+        let mut frames: [Frame; 0] = [];
+        let mut frame_stack = FrameStack::new(&mut frames);
+        let mut temp_alloc = string_ops::TempBufAllocator::new(0);
+        let mut slots: [Slot; 0] = [];
+        let mut variables = VariableTable::new(&mut slots);
+
+        let result = handle_frame_return(
+            &mut temp_alloc,
+            &mut frame_stack,
+            &mut [],
+            &mut variables,
+            &mut NoopDebugHook,
+        );
+
+        assert_eq!(result, Err(Trap::CallStackUnderflow));
+    }
 
     #[test]
     fn vm_load_when_valid_container_then_returns_ready() {

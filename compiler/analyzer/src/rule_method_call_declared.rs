@@ -52,7 +52,8 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use crate::{
-    callee_resolution::{FunctionBlocks, InstanceTypes},
+    call_binding::bind,
+    callee_resolution::{instance_type, CallParameters, FunctionBlocks},
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
@@ -67,20 +68,16 @@ pub fn apply(
     context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let function_blocks = FunctionBlocks::from_library(lib);
+    let function_blocks = FunctionBlocks::from_library(lib, context.types());
 
     run_rule(RuleMethodCallDeclared::new(&function_blocks, context), lib)
 }
 
 struct RuleMethodCallDeclared<'a> {
     function_blocks: &'a FunctionBlocks<'a>,
-
-    /// The instances declared in the unit being walked.
-    instances: InstanceTypes,
-
     context: &'a SemanticContext,
 
-    /// Where the walk is, to find the function block `THIS^`/`SUPER^` name.
+    /// The scope the walk is in, which an instance is looked up from.
     scope: ScopeTracker,
 
     /// Whether the method call being visited is in expression position,
@@ -94,7 +91,6 @@ impl<'a> RuleMethodCallDeclared<'a> {
     fn new(function_blocks: &'a FunctionBlocks<'a>, context: &'a SemanticContext) -> Self {
         Self {
             function_blocks,
-            instances: InstanceTypes::default(),
             context,
             scope: ScopeTracker::default(),
             in_expression: false,
@@ -102,14 +98,19 @@ impl<'a> RuleMethodCallDeclared<'a> {
         }
     }
 
+    /// Reports why `call`'s arguments do not bind to `method`'s parameters,
+    /// or else each input and `VAR_IN_OUT` the call does not supply (P4018):
+    /// a method's inputs are fresh on every call, so a call supplies them
+    /// all.
     fn check_assignments(
         owner_label: &str,
         method: &MethodDeclaration,
         call: &MethodCall,
     ) -> Vec<Diagnostic> {
-        crate::call_assignment_check::check_assignments(
-            method,
-            method.span(),
+        let parameters = CallParameters::of_declaration(method);
+        let diagnostics = crate::call_assignment_check::check_assignments(
+            &parameters,
+            Some(method.span()),
             call.span(),
             &call.params,
             &crate::call_assignment_check::AssignmentCheckLabels {
@@ -118,7 +119,27 @@ impl<'a> RuleMethodCallDeclared<'a> {
                 owner_name: owner_label,
                 decl_label: "Method declaration",
             },
-        )
+        );
+        if !diagnostics.is_empty() {
+            return diagnostics;
+        }
+        let Ok(binding) = bind(&parameters, &call.params) else {
+            return diagnostics;
+        };
+        let owner = owner_label.to_string();
+        binding
+            .omitted(&parameters)
+            .into_iter()
+            .map(|parameter| {
+                Diagnostic::problem(
+                    Problem::FunctionCallWrongArgCount,
+                    Label::span(call.span(), "Method invocation"),
+                )
+                .with_context("method", &owner)
+                .with_context_id("missing input", &parameter.name)
+                .with_secondary(Label::span(method.span(), "Method declaration"))
+            })
+            .collect()
     }
 
     /// The diagnostic for a method call whose receiver is not a variable of a
@@ -149,38 +170,6 @@ impl Visitor<Infallible> for RuleMethodCallDeclared<'_> {
 
     fn exit_scope(&mut self) {
         self.scope.exit();
-    }
-
-    fn visit_function_block_declaration(
-        &mut self,
-        node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, Infallible> {
-        let res = node.recurse_visit(self);
-        self.instances.clear();
-        res
-    }
-
-    fn visit_function_declaration(
-        &mut self,
-        node: &FunctionDeclaration,
-    ) -> Result<Self::Value, Infallible> {
-        let res = node.recurse_visit(self);
-        self.instances.clear();
-        res
-    }
-
-    fn visit_program_declaration(
-        &mut self,
-        node: &ProgramDeclaration,
-    ) -> Result<Self::Value, Infallible> {
-        let res = node.recurse_visit(self);
-        self.instances.clear();
-        res
-    }
-
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
-        self.instances.declare(node);
-        Ok(())
     }
 
     fn visit_expr_kind(&mut self, node: &ExprKind) -> Result<Self::Value, Infallible> {
@@ -219,9 +208,12 @@ impl RuleMethodCallDeclared<'_> {
             }
         };
 
-        // Cloned so that the borrow of `instances` ends here: the arms below
-        // push onto `self.diagnostics`, which borrows `self` mutably.
-        let fb_type = self.instances.type_of(instance).cloned();
+        let fb_type = instance_type(
+            instance,
+            &self.scope.current(),
+            self.context.symbols(),
+            self.context.types(),
+        );
         let Some(fb_type) = fb_type else {
             self.diagnostics.push(Self::not_in_scope(call, instance));
             return;
@@ -291,6 +283,7 @@ impl RuleMethodCallDeclared<'_> {
 mod tests {
     use super::*;
     use crate::test_helpers::fb_inheritance_options;
+    use spec_test_macro::spec_test;
 
     rule_ok!(
         apply_when_method_declared_on_own_type_then_ok,
@@ -587,6 +580,97 @@ END_VAR
 v := m.Scaled(m.Nope());
 END_PROGRAM",
         [Problem::MethodNotFound],
+        fb_inheritance_options()
+    );
+
+    /// A program calling `call` on an instance of a block whose method `M`
+    /// declares an in-out between two inputs, the second with an initial
+    /// value.
+    fn method_call(call: &str) -> String {
+        format!(
+            "
+FUNCTION_BLOCK FB
+METHOD M
+VAR_INPUT a : DINT; END_VAR
+VAR_IN_OUT io : DINT; END_VAR
+VAR_INPUT b : DINT := 7; END_VAR
+END_METHOD
+END_FUNCTION_BLOCK
+PROGRAM main
+VAR inst : FB; t : DINT; END_VAR
+{call}
+END_PROGRAM"
+        )
+    }
+
+    rule_ok!(
+        apply_when_method_named_out_of_declaration_order_then_ok,
+        &method_call("inst.M(b := 2, io := t, a := 1);"),
+        fb_inheritance_options()
+    );
+
+    rule_err!(
+        /// An initial value is not a default: a method's inputs are fresh on
+        /// every call.
+        #[spec_test(REQ_CB_analyzer_051)]
+        apply_when_method_input_omitted_then_wrong_arg_count,
+        &method_call("inst.M(a := 1, io := t);"),
+        [Problem::FunctionCallWrongArgCount],
+        fb_inheritance_options()
+    );
+
+    rule_err!(
+        #[spec_test(REQ_CB_analyzer_051)]
+        apply_when_method_inputs_and_in_out_omitted_then_wrong_arg_count_for_each,
+        &method_call("inst.M();"),
+        [Problem::FunctionCallWrongArgCount; 3],
+        fb_inheritance_options()
+    );
+
+    rule_err!(
+        /// A positional argument binds to a `VAR_INPUT`, never to a
+        /// `VAR_IN_OUT`, so the in-out is omitted.
+        #[spec_test(REQ_CB_analyzer_029)]
+        apply_when_method_positional_then_in_out_omitted,
+        &method_call("inst.M(1, 2);"),
+        [Problem::FunctionCallWrongArgCount],
+        fb_inheritance_options()
+    );
+
+    rule_err!(
+        #[spec_test(REQ_CB_analyzer_024)]
+        apply_when_method_input_named_twice_then_duplicate,
+        &method_call("inst.M(a := 1, a := 3, io := t, b := 2);"),
+        [Problem::FunctionCallDuplicateNamedArg],
+        fb_inheritance_options()
+    );
+
+    rule_err!(
+        /// The call's shape is in doubt, so nothing is said about what it
+        /// omits.
+        #[spec_test(REQ_CB_analyzer_023)]
+        apply_when_method_mixed_then_only_mixed,
+        &method_call("inst.M(1, io := t);"),
+        [Problem::FunctionCallMixedArgTypes],
+        fb_inheritance_options()
+    );
+
+    rule_err!(
+        #[spec_test(REQ_CB_analyzer_051)]
+        apply_when_inherited_method_input_omitted_then_wrong_arg_count,
+        "
+FUNCTION_BLOCK FB_Base
+METHOD Scale : DINT
+VAR_INPUT v : DINT; k : DINT; END_VAR
+END_METHOD
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+END_FUNCTION_BLOCK
+PROGRAM main
+VAR d : FB_Derived; r : DINT; END_VAR
+r := d.Scale(v := 1);
+END_PROGRAM",
+        [Problem::FunctionCallWrongArgCount],
         fb_inheritance_options()
     );
 }

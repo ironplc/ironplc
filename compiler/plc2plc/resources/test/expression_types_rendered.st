@@ -64,19 +64,19 @@ END_VAR
 count := ( count (* INT *) + 1 (* CONSTANT INT *) ) (* INT *) ;
 flag := ( big (* LINT *) > total (* DINT -> LINT *) ) (* BOOL *) ;
 level := count (* INT -> REAL *) ;
-out := Scale ( total (* DINT *) , 0.5 (* CONSTANT LREAL *) ) (* LREAL *) ;
+out := Scale ( raw := total (* DINT *) , gain := 0.5 (* CONSTANT LREAL *) ) (* LREAL *) ;
 FOR i := 1 (* CONSTANT INT *) TO 4 (* CONSTANT INT *) DO
-   arr[ i (* INT *) ] := MAX ( arr[ i (* INT *) ] (* INT *) , count (* INT *) ) (* INT *) ;
+   arr[ i (* INT *) ] := MAX ( IN1 := arr[ i (* INT *) ] (* INT *) , IN2 := count (* INT *) ) (* INT *) ;
 END_FOR ;
 
 IF ( ( NOT flag (* BOOL *) ) (* BOOL *) AND ( total (* DINT *) < 10 (* CONSTANT DINT *) ) (* BOOL *) ) (* BOOL *) THEN
-   big := ( ABS ( big (* LINT *) ) (* LINT *) + total (* DINT -> LINT *) ) (* LINT *) ;
+   big := ( ABS ( IN := big (* LINT *) ) (* LINT *) + total (* DINT -> LINT *) ) (* LINT *) ;
 END_IF ;
 
 c := Green (* CONSTANT Color *) ;
 flag := ( c (* Color *) = Red (* CONSTANT Color *) ) (* BOOL *) ;
 elapsed := ( elapsed (* TIME *) + TIME#1000ms (* CONSTANT TIME *) ) (* TIME *) ;
-name := CONCAT ( name (* STRING *) , 'abc' (* CONSTANT STRING *) ) (* STRING *) ;
+name := CONCAT ( IN1 := name (* STRING *) , IN2 := 'abc' (* CONSTANT STRING *) ) (* STRING *) ;
 r := REF( count ) (* REF_TO INT *) ;
 count := ( ( r (* REF_TO INT *)^ ) (* INT *) + 1 (* CONSTANT INT *) ) (* INT *) ;
 r := NULL (* CONSTANT NULL *) ;

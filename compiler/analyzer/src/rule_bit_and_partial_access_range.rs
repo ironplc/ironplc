@@ -109,7 +109,7 @@ impl RuleBitAndPartialAccessRange<'_> {
     /// name), or the type has no bits to select, which this reports.
     fn selectable_bits(&mut self, variable: &SymbolicVariableKind) -> Option<u128> {
         let accessed_type = variable_type::of(variable, self.context, &self.scope.current())?;
-        let bits = bit_width(&accessed_type);
+        let bits = bit_width(accessed_type);
         if bits.is_none() {
             self.diagnostics.push(
                 Diagnostic::problem(
@@ -217,7 +217,7 @@ impl RuleBitAndPartialAccessRange<'_> {
 fn bit_width(accessed_type: &SemanticType) -> Option<u128> {
     match accessed_type {
         SemanticType::Bytes { size } | SemanticType::Int { size } | SemanticType::UInt { size } => {
-            Some(size.as_bytes() as u128 * 8)
+            Some(u128::from(size.bits()))
         }
         SemanticType::Subrange { base_type, .. } => bit_width(base_type),
         _ => None,

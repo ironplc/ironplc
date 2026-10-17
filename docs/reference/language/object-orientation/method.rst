@@ -26,12 +26,12 @@ introduced in IEC 61131-3 Edition 3.
    * - **IEC 61131-3**
      - Edition 3 (object-oriented programming)
    * - **Support**
-     - Parsed, analyzed, compiled and executed for a method declared on
-       the instance's own type: a declaration is checked, and a call is
-       resolved against the declared type of the instance, walking the
-       ``EXTENDS`` chain to find the method. A call that the chain
-       resolves to an inherited method is accepted by analysis but not
-       yet compiled (see :ref:`method-limitations`). Enable with
+     - Parsed, analyzed, compiled and executed: a declaration is checked,
+       and a call is resolved against the declared type of the instance,
+       walking the ``EXTENDS`` chain to find the method. A call to a method
+       inherited from a type that declares variables is accepted by
+       analysis but not yet compiled (see :ref:`method-limitations`).
+       Enable with
        ``--allow-fb-inheritance``; see
        :doc:`/explanation/enabling-dialects-and-features`.
 
@@ -60,10 +60,9 @@ Parameters are declared the same way as on a
 method itself.
 
 A method is called on an instance using the same dot notation as a
-structure member. Arguments are written positionally or by name, exactly as
-for a function block invocation. The call can be a statement, which discards
-any return value, or part of an expression, where it evaluates to the
-method's return value:
+structure member. The call can be a statement, which discards any return
+value, or part of an expression, where it evaluates to the method's return
+value:
 
 .. code-block:: bnf
 
@@ -76,6 +75,24 @@ expression reports :doc:`P4057 </reference/compiler/problems/P4057>`.
 The method to call is chosen from the *declared* type of the instance: the
 type's own methods first, then those of its ``EXTENDS`` base, and so on up
 the chain.
+
+Arguments bind as they do in a function block call (see
+:ref:`function block arguments <function-block-arguments>`), and are
+evaluated in the order the method declares its parameters, with one
+difference: a method keeps nothing between calls, so a call supplies every
+``VAR_INPUT`` and ``VAR_IN_OUT``. An omitted one is
+:doc:`P4018 </reference/compiler/problems/P4018>`, even when it declares an
+initial value. A positional argument goes to a ``VAR_INPUT``, never to a
+``VAR_IN_OUT``, which is supplied by name. Calling a method that declares a
+``VAR_IN_OUT`` is not supported yet.
+
+A method's ``VAR_OUTPUT`` is stored with ``=>`` after the method returns, as
+a function's is (see :doc:`/reference/language/pous/function`), and starts
+from its initial value on every call:
+
+.. code-block::
+
+   motor.Measure(rpm => current_rpm);
 
 Example
 -------
@@ -128,12 +145,13 @@ A method with a ``STRING`` or ``WSTRING`` return type reports
 :doc:`P9999 </reference/compiler/problems/P9999>` when compiled.
 
 A call to a method the instance's type inherits through
-:doc:`EXTENDS <extends>` passes analysis but reports
-:doc:`P9999 </reference/compiler/problems/P9999>` when compiled. Code
-generation does not yet give a derived type storage for what it inherits,
-so there is nothing for the inherited body to run against. Declare the
-method on the type being called, or call it on an instance of the type
-that declares it, until inherited storage is compiled.
+:doc:`EXTENDS <extends>` from a type that declares variables passes
+analysis but reports :doc:`P9999 </reference/compiler/problems/P9999>`
+when compiled. Code generation does not yet give a derived type storage for
+the variables it inherits, so there is nothing for the inherited body to run
+against. A method inherited from a type without variables runs. Declare the
+method on the type being called, or call it on an instance of the type that
+declares it, until inherited storage is compiled.
 
 See Also
 --------

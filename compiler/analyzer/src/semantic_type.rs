@@ -38,23 +38,13 @@ pub enum ByteSized {
 }
 
 impl ByteSized {
-    /// Converts the ByteSized variant to its corresponding bit width
-    #[allow(dead_code)]
-    pub fn into(&self) -> u8 {
+    /// The width in bits.
+    pub fn bits(&self) -> u8 {
         match self {
             ByteSized::B8 => 8,
             ByteSized::B16 => 16,
             ByteSized::B32 => 32,
             ByteSized::B64 => 64,
-        }
-    }
-
-    pub fn as_bytes(&self) -> u8 {
-        match self {
-            ByteSized::B8 => 1,
-            ByteSized::B16 => 2,
-            ByteSized::B32 => 4,
-            ByteSized::B64 => 8,
         }
     }
 }
@@ -103,10 +93,9 @@ pub enum SemanticType {
         char_width: CharWidth,
     },
 
-    /// User-defined enumeration type
+    /// User-defined enumeration type. Every enumeration is stored and
+    /// operated on as a `DINT` (REQ-EN-codegen-003).
     Enumeration {
-        /// The underlying primitive type (usually Int { size: 8 })
-        underlying_type: Box<SemanticType>,
         /// The members, their ordinals and the default. Not compared by
         /// `PartialEq` (see [`EnumerationMembers`]).
         members: EnumerationMembers,
@@ -132,19 +121,17 @@ pub enum SemanticType {
         /// Maximum value (inclusive)
         max_value: i128,
     },
-    /// Function block type
+    /// Function block type.
+    ///
+    /// It names the block and lists none of its fields: those are recorded
+    /// in the type environment (`TypeEnvironment::block_fields`), by the
+    /// block's id. A block's fields are known only once its variables'
+    /// types are, after its type is entered and copied into the types that
+    /// use it (an array of the block, a reference to it), so a field list
+    /// here would be a copy that could go stale.
     FunctionBlock {
         /// Name of the function block type
         name: String,
-        /// Ordered list of fields (variables) in the function block instance
-        fields: Vec<SemanticStructField>,
-    },
-    /// Function type with return type and parameters
-    Function {
-        /// Return type of the function, None for procedures
-        return_type: Option<Box<SemanticType>>,
-        /// List of function parameters
-        parameters: Vec<SemanticFunctionParameter>,
     },
     /// Reference type (REF_TO) pointing to a target type.
     /// References are stored as variable-table indices (u64) at runtime.
@@ -207,31 +194,23 @@ impl SemanticType {
         matches!(self, SemanticType::FunctionBlock { .. })
     }
 
-    /// Returns if the type is a function.
-    pub fn is_function(&self) -> bool {
-        matches!(self, SemanticType::Function { .. })
-    }
-
     /// Returns if the type exposes named members reachable with `.` access.
     ///
     /// Structures and function block instances both expose named fields, so
     /// both answer `true`.
     pub fn has_members(&self) -> bool {
-        self.member_fields().is_some()
+        matches!(
+            self,
+            SemanticType::Structure { .. } | SemanticType::FunctionBlock { .. }
+        )
     }
 
-    /// Returns the named fields reachable with `.` access, None if the type
-    /// has no such members.
-    ///
-    /// A function block instance exposes its variables (`timer.Q`) the same way
-    /// a structure exposes its fields (`setup.FLAG`), so both are returned
-    /// here. Use [`SemanticType::is_structure`] instead when the caller
-    /// needs a structure specifically.
-    pub fn member_fields(&self) -> Option<&Vec<SemanticStructField>> {
+    /// The fields a structure lists, `None` for any other type. A function
+    /// block's fields are in the type environment
+    /// (`TypeEnvironment::block_fields`), not in its type.
+    pub fn structure_fields(&self) -> Option<&Vec<SemanticStructField>> {
         match self {
-            SemanticType::Structure { fields } | SemanticType::FunctionBlock { fields, .. } => {
-                Some(fields)
-            }
+            SemanticType::Structure { fields } => Some(fields),
             _ => None,
         }
     }
@@ -279,226 +258,28 @@ impl SemanticType {
         }
     }
 
-    /// Returns if the type is an integer type (signed or unsigned).
-    pub fn is_integer(&self) -> bool {
-        matches!(self, SemanticType::Int { .. } | SemanticType::UInt { .. })
-    }
-
-    /// Gets the size in bytes for this type.
-    ///
-    /// Returns the exact size in bytes for fixed-size types. For types that require
-    /// complex calculations or are dynamically sized, returns `None`.
-    ///
-    /// Note: IEC 61131-3 doesn't support truly dynamically sized objects at runtime,
-    /// but some types require compile-time analysis to determine their final size.
-    pub fn size_in_bytes(&self) -> Option<u32> {
+    /// The width in bits of a type that states one: an integer, a real, a
+    /// bit string, or a time or date. `None` for any other type, including a
+    /// subrange or an enumeration, whose width is that of the type it is
+    /// based on.
+    pub fn bit_width(&self) -> Option<u8> {
         match self {
-            SemanticType::Bool => Some(1),
-            SemanticType::Int { size } | SemanticType::UInt { size } => {
-                Some(size.as_bytes() as u32)
-            }
-            SemanticType::Real { size } => Some(size.as_bytes() as u32),
-            SemanticType::Bytes { size } => Some(size.as_bytes() as u32),
-            SemanticType::Time { size } => Some(size.as_bytes() as u32),
-            SemanticType::Date { size } => Some(size.as_bytes() as u32),
-            SemanticType::TimeOfDay { size } => Some(size.as_bytes() as u32),
-            SemanticType::DateAndTime { size } => Some(size.as_bytes() as u32),
-            SemanticType::String {
-                max_len,
-                char_width,
-            } => max_len.map(|len| len as u32 * char_width.byte_width() as u32),
-            SemanticType::Subrange { base_type, .. } => base_type.size_in_bytes(),
-            SemanticType::Enumeration {
-                underlying_type, ..
-            } => underlying_type.size_in_bytes(),
-            SemanticType::Structure { fields } => {
-                if fields.is_empty() {
-                    return None;
-                }
-
-                // Calculate the end position of the last field
-                // Fields are guaranteed to be in offset order, so we just use the last one
-                let last_field = fields.last().unwrap(); // Safe: checked not empty above
-                let last_field_size = last_field.field_type.size_in_bytes()?;
-                let size_after_last_field = last_field.offset + last_field_size;
-
-                // Pad to structure alignment
-                let alignment = self.alignment_bytes() as u32;
-
-                // Calculate padding needed to align to structure boundary
-                let padding = (alignment - (size_after_last_field % alignment)) % alignment;
-                Some(size_after_last_field.saturating_add(padding))
-            }
-            SemanticType::Array { element_type, .. } => {
-                let total_elements = self.array_total_elements()?;
-                let elem_size = element_type.size_in_bytes()?;
-                (elem_size).checked_mul(total_elements)
-            }
-            SemanticType::FunctionBlock { fields, .. } => {
-                // Function blocks follow the same memory layout rules as structures
-                if fields.is_empty() {
-                    return None;
-                }
-
-                // Calculate the end position of the last field
-                // Fields are guaranteed to be in offset order, so we just use the last one
-                let last_field = fields.last().unwrap(); // Safe: checked not empty above
-                let last_field_size = last_field.field_type.size_in_bytes()?;
-                let size_after_last_field = last_field.offset + last_field_size;
-
-                // Pad to function block alignment
-                let alignment = self.alignment_bytes() as u32;
-
-                // Calculate padding needed to align to function block boundary
-                let padding = (alignment - (size_after_last_field % alignment)) % alignment;
-                Some(size_after_last_field.saturating_add(padding))
-            }
-            SemanticType::Function { .. } => {
-                // Functions don't have memory layout in the traditional sense
-                None
-            }
-            SemanticType::Reference { .. } => {
-                // References are stored as 64-bit variable-table indices
-                Some(8)
-            }
-        }
-    }
-
-    /// Gets the alignment requirement in bytes for this type.
-    ///
-    /// Returns the memory alignment requirement following typical C-style alignment rules.
-    /// For types that require complex calculations, returns a conservative default.
-    ///
-    /// # Alignment Rules
-    /// - 8-bit types (BOOL, SINT, USINT, BYTE): 1-byte alignment
-    /// - 16-bit types (INT, UINT, WORD): 2-byte alignment  
-    /// - 32-bit types (DINT, UDINT, REAL, DWORD): 4-byte alignment
-    /// - 64-bit types (LINT, ULINT, LREAL, LWORD, LTIME, LDATE, DT, LDT): 8-byte alignment
-    pub fn alignment_bytes(&self) -> u8 {
-        match self {
-            SemanticType::Bool => 1,
-            SemanticType::Int { size } | SemanticType::UInt { size } => size.as_bytes(),
-            SemanticType::Real { size } => size.as_bytes(),
-            SemanticType::Bytes { size } => size.as_bytes(),
-            SemanticType::Time { size } => size.as_bytes(),
-            SemanticType::Date { size } => size.as_bytes(),
-            SemanticType::TimeOfDay { size } => size.as_bytes(),
-            SemanticType::DateAndTime { size } => size.as_bytes(),
-            SemanticType::String { .. } => 1, // Strings are byte-aligned
-            SemanticType::Subrange { base_type, .. } => base_type.alignment_bytes(),
-            SemanticType::Enumeration {
-                underlying_type, ..
-            } => underlying_type.alignment_bytes(),
-            SemanticType::Structure { fields } => {
-                // Structure alignment is the maximum alignment of all fields
-                // Empty structures have 1-byte alignment
-                fields
-                    .iter()
-                    .map(|field| field.field_type.alignment_bytes())
-                    .max()
-                    .unwrap_or(1)
-            }
-            SemanticType::Array { element_type, .. } => element_type.alignment_bytes(),
-            SemanticType::FunctionBlock { fields, .. } => {
-                // Function block alignment is the maximum alignment of all fields
-                // Empty function blocks have 1-byte alignment
-                fields
-                    .iter()
-                    .map(|field| field.field_type.alignment_bytes())
-                    .max()
-                    .unwrap_or(1)
-            }
-            SemanticType::Function { .. } => 1, // Default alignment (functions don't have memory layout)
-            SemanticType::Reference { .. } => 8, // References are 64-bit variable-table indices
-        }
-    }
-
-    /// Returns whether this type has an explicitly specified size.
-    ///
-    /// This method determines whether the type's size is explicitly specified
-    /// in the type declaration or needs to be inferred from context or defaults.
-    /// All IEC 61131-3 types have known, fixed sizes, but some require size
-    /// inference during semantic analysis.
-    ///
-    /// # Return Values
-    /// - `true`: Type size is explicitly specified in the declaration
-    /// - `false`: Type size needs to be inferred from context or defaults
-    pub fn has_explicit_size(&self) -> bool {
-        match self {
+            SemanticType::Int { size }
+            | SemanticType::UInt { size }
+            | SemanticType::Real { size }
+            | SemanticType::Bytes { size }
+            | SemanticType::Time { size }
+            | SemanticType::Date { size }
+            | SemanticType::TimeOfDay { size }
+            | SemanticType::DateAndTime { size } => Some(size.bits()),
             SemanticType::Bool
-            | SemanticType::Int { .. }
-            | SemanticType::UInt { .. }
-            | SemanticType::Real { .. }
-            | SemanticType::Bytes { .. }
-            | SemanticType::Time { .. }
-            | SemanticType::Date { .. }
-            | SemanticType::TimeOfDay { .. }
-            | SemanticType::DateAndTime { .. } => true,
-            SemanticType::String { max_len, .. } => max_len.is_some(),
-            SemanticType::Subrange { base_type, .. } => base_type.has_explicit_size(),
-            SemanticType::Enumeration {
-                underlying_type, ..
-            } => underlying_type.has_explicit_size(),
-            SemanticType::Structure { .. } => true, // Structures always have explicit size in IEC 61131-3
-            SemanticType::Array {
-                element_type,
-                dimensions,
-            } => {
-                // Array has explicit size if it has known dimensions and elements have explicit size
-                !dimensions.is_empty() && element_type.has_explicit_size()
-            }
-            SemanticType::FunctionBlock { .. } => true, // Function block instances have explicit size
-            SemanticType::Function { .. } => true, // Functions have explicit size (no variable size)
-            SemanticType::Reference { .. } => true, // References are always 8 bytes
-        }
-    }
-
-    /// Gets the memory offset of a field within a structure type.
-    ///
-    /// This method is used to calculate the byte offset of a specific field
-    /// within a structure, taking into account field alignment and padding
-    /// requirements. It's essential for generating correct memory access code.
-    ///
-    /// # Parameters
-    /// - `field_name`: The Id of the field to find (case-insensitive comparison)
-    ///
-    /// # Returns
-    /// - `Some(offset)`: The byte offset of the field from the start of the structure
-    /// - `None`: If the field is not found or this is not a structure type
-    ///
-    /// # Examples
-    /// ```ignore
-    /// // For a structure with fields: x: INT (offset 0), y: DINT (offset 4)
-    /// let fields = vec![
-    ///     SemanticStructField {
-    ///         name: Id::from("x"),
-    ///         field_type: SemanticType::Bool,
-    ///         offset: 0,
-    ///     }
-    /// ];
-    /// let struct_type = SemanticType::Structure { fields };
-    /// let field_id = Id::from("x");
-    /// assert_eq!(struct_type.get_field_offset(&field_id), Some(0));
-    /// let unknown_id = Id::from("unknown");
-    /// assert_eq!(struct_type.get_field_offset(&unknown_id), None);
-    /// ```
-    ///
-    /// # Note
-    /// Uses case-insensitive comparison following IEC 61131-3 identifier rules.
-    /// Currently returns the pre-calculated offset stored in the field definition.
-    /// Future enhancements may include dynamic offset calculation with proper
-    /// alignment and padding rules.
-    #[allow(dead_code)]
-    pub fn get_field_offset(&self, field_name: &ironplc_dsl::core::Id) -> Option<u32> {
-        match self {
-            SemanticType::Structure { fields } => {
-                // Find the field by name using case-insensitive Id comparison
-                fields
-                    .iter()
-                    .find(|field| field.name == *field_name)
-                    .map(|field| field.offset)
-            }
-            _ => None, // Not a structure type
+            | SemanticType::String { .. }
+            | SemanticType::Enumeration { .. }
+            | SemanticType::Structure { .. }
+            | SemanticType::Array { .. }
+            | SemanticType::Subrange { .. }
+            | SemanticType::FunctionBlock { .. }
+            | SemanticType::Reference { .. } => None,
         }
     }
 
@@ -544,33 +325,20 @@ impl SemanticType {
         use ironplc_dsl::diagnostic::{Diagnostic, Label};
         use ironplc_problems::Problem;
 
-        let (type_min, type_max) = match self {
-            SemanticType::Int { size } => match size {
-                ByteSized::B8 => (i8::MIN as i128, i8::MAX as i128),
-                ByteSized::B16 => (i16::MIN as i128, i16::MAX as i128),
-                ByteSized::B32 => (i32::MIN as i128, i32::MAX as i128),
-                ByteSized::B64 => (i64::MIN as i128, i64::MAX as i128),
-            },
-            SemanticType::UInt { size } => match size {
-                ByteSized::B8 => (0, u8::MAX as i128),
-                ByteSized::B16 => (0, u16::MAX as i128),
-                ByteSized::B32 => (0, u32::MAX as i128),
-                ByteSized::B64 => (0, u64::MAX as i128),
-            },
-            SemanticType::Subrange {
-                min_value: base_min,
-                max_value: base_max,
-                ..
-            } => {
-                // For nested subranges, use the parent subrange bounds
-                (*base_min, *base_max)
-            }
-            _ => {
-                return Err(Diagnostic::problem(
-                    Problem::SubrangeBaseTypeNotNumeric,
-                    Label::span(type_name.span(), "Subrange base type"),
-                ));
-            }
+        // A nested subrange is bounded by its parent's bounds. A bit string
+        // has a range of values too, but is not numeric, so it is no
+        // subrange's base.
+        let range = match self {
+            SemanticType::Int { .. }
+            | SemanticType::UInt { .. }
+            | SemanticType::Subrange { .. } => crate::value_range::of(self),
+            _ => None,
+        };
+        let Some((type_min, type_max)) = range else {
+            return Err(Diagnostic::problem(
+                Problem::SubrangeBaseTypeNotNumeric,
+                Label::span(type_name.span(), "Subrange base type"),
+            ));
         };
 
         if min_value < type_min || max_value > type_max {
@@ -696,24 +464,18 @@ impl SemanticType {
             }
 
             // Not yet supported in data region
-            SemanticType::FunctionBlock { .. } | SemanticType::Function { .. } => {
-                Err(SlotCountError::UnsupportedFieldType)
-            }
+            SemanticType::FunctionBlock { .. } => Err(SlotCountError::UnsupportedFieldType),
         }
     }
 }
 
-/// Represents a field within a structure or function block semantic type.
+/// Represents a field within a structure semantic type.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SemanticStructField {
     /// Name of the field
     pub name: Id,
     /// Type of the field
     pub field_type: SemanticType,
-    /// Memory offset of the field from the start of the structure (in bytes)
-    pub offset: u32,
-    /// Variable type for function block fields (None for structure fields)
-    pub var_type: Option<FunctionBlockVarType>,
     /// Whether this field has a default value in the type declaration.
     /// Used for const initialization validation - a const variable of structure type
     /// is fully initialized if all fields without defaults are explicitly initialized.
@@ -759,372 +521,65 @@ mod tests {
     use ironplc_dsl::core::Id;
 
     #[test]
-    fn semantic_type_size_in_bytes_returns_bytes() {
-        // Test sized types
-        assert_eq!(SemanticType::Bool.size_in_bytes(), Some(1));
+    fn bit_width_when_type_states_width_then_returns_bits() {
         assert_eq!(
             SemanticType::Int {
                 size: ByteSized::B16
             }
-            .size_in_bytes(),
-            Some(2)
+            .bit_width(),
+            Some(16)
         );
         assert_eq!(
             SemanticType::UInt {
-                size: ByteSized::B32
+                size: ByteSized::B8
             }
-            .size_in_bytes(),
-            Some(4)
+            .bit_width(),
+            Some(8)
         );
         assert_eq!(
             SemanticType::Real {
                 size: ByteSized::B64
             }
-            .size_in_bytes(),
-            Some(8)
+            .bit_width(),
+            Some(64)
         );
         assert_eq!(
             SemanticType::Bytes {
-                size: ByteSized::B8
-            }
-            .size_in_bytes(),
-            Some(1)
-        );
-
-        // Test time and date types
-        assert_eq!(
-            SemanticType::Time {
                 size: ByteSized::B32
             }
-            .size_in_bytes(),
-            Some(4)
-        );
-        assert_eq!(
-            SemanticType::Time {
-                size: ByteSized::B64
-            }
-            .size_in_bytes(),
-            Some(8)
-        );
-        assert_eq!(
-            SemanticType::Date {
-                size: ByteSized::B32
-            }
-            .size_in_bytes(),
-            Some(4)
-        );
-        assert_eq!(
-            SemanticType::TimeOfDay {
-                size: ByteSized::B32
-            }
-            .size_in_bytes(),
-            Some(4)
+            .bit_width(),
+            Some(32)
         );
         assert_eq!(
             SemanticType::DateAndTime {
                 size: ByteSized::B64
             }
-            .size_in_bytes(),
-            Some(8)
+            .bit_width(),
+            Some(64)
         );
+    }
 
-        // Test string types
+    #[test]
+    fn bit_width_when_type_states_no_width_then_returns_none() {
+        assert_eq!(SemanticType::Bool.bit_width(), None);
         assert_eq!(
-            SemanticType::String {
-                max_len: Some(10),
-                char_width: CharWidth::Narrow,
+            SemanticType::Subrange {
+                base_type: Box::new(SemanticType::Int {
+                    size: ByteSized::B16,
+                }),
+                min_value: 1,
+                max_value: 100,
             }
-            .size_in_bytes(),
-            Some(10)
-        );
-        assert_eq!(
-            SemanticType::String {
-                max_len: None,
-                char_width: CharWidth::Narrow,
-            }
-            .size_in_bytes(),
+            .bit_width(),
             None
         );
-        // WSTRING payload is two bytes per code unit.
         assert_eq!(
-            SemanticType::String {
-                max_len: Some(10),
-                char_width: CharWidth::Wide,
+            SemanticType::Reference {
+                target_type: Box::new(SemanticType::Bool),
             }
-            .size_in_bytes(),
-            Some(20)
+            .bit_width(),
+            None
         );
-
-        // Test subrange inherits base type size
-        let subrange = SemanticType::Subrange {
-            base_type: Box::new(SemanticType::Int {
-                size: ByteSized::B16,
-            }),
-            min_value: 1,
-            max_value: 100,
-        };
-        assert_eq!(subrange.size_in_bytes(), Some(2));
-
-        // Test enumeration inherits underlying type size
-        let enumeration = SemanticType::Enumeration {
-            underlying_type: Box::new(SemanticType::Int {
-                size: ByteSized::B8,
-            }),
-            members: crate::enumeration_members::EnumerationMembers::default(),
-        };
-        assert_eq!(enumeration.size_in_bytes(), Some(1));
-
-        // Test fixed-size array
-        let array = SemanticType::Array {
-            element_type: Box::new(SemanticType::Int {
-                size: ByteSized::B32,
-            }),
-            dimensions: vec![ArrayDimension { lower: 1, upper: 5 }],
-        };
-        assert_eq!(array.size_in_bytes(), Some(20)); // 4 bytes * 5 elements
-
-        // Test dynamic array (empty dimensions)
-        let dynamic_array = SemanticType::Array {
-            element_type: Box::new(SemanticType::Int {
-                size: ByteSized::B32,
-            }),
-            dimensions: vec![],
-        };
-        assert_eq!(dynamic_array.size_in_bytes(), None);
-
-        // Test reference types (always 8 bytes)
-        let ref_type = SemanticType::Reference {
-            target_type: Box::new(SemanticType::Int {
-                size: ByteSized::B16,
-            }),
-        };
-        assert_eq!(ref_type.size_in_bytes(), Some(8));
-    }
-
-    #[test]
-    fn semantic_type_alignment_bytes_returns_alignment() {
-        // Test primitive types
-        assert_eq!(SemanticType::Bool.alignment_bytes(), 1);
-        assert_eq!(
-            SemanticType::Int {
-                size: ByteSized::B16
-            }
-            .alignment_bytes(),
-            2
-        );
-        assert_eq!(
-            SemanticType::UInt {
-                size: ByteSized::B32
-            }
-            .alignment_bytes(),
-            4
-        );
-        assert_eq!(
-            SemanticType::Real {
-                size: ByteSized::B64
-            }
-            .alignment_bytes(),
-            8
-        );
-
-        // Test time and date types
-        assert_eq!(
-            SemanticType::Time {
-                size: ByteSized::B32
-            }
-            .alignment_bytes(),
-            4
-        );
-        assert_eq!(
-            SemanticType::Time {
-                size: ByteSized::B64
-            }
-            .alignment_bytes(),
-            8
-        );
-        assert_eq!(
-            SemanticType::Date {
-                size: ByteSized::B32
-            }
-            .alignment_bytes(),
-            4
-        );
-        assert_eq!(
-            SemanticType::DateAndTime {
-                size: ByteSized::B64
-            }
-            .alignment_bytes(),
-            8
-        );
-
-        // Test string types (byte-aligned)
-        assert_eq!(
-            SemanticType::String {
-                max_len: Some(10),
-                char_width: CharWidth::Narrow,
-            }
-            .alignment_bytes(),
-            1
-        );
-
-        // Test derived types inherit alignment
-        let subrange = SemanticType::Subrange {
-            base_type: Box::new(SemanticType::Int {
-                size: ByteSized::B32,
-            }),
-            min_value: 1,
-            max_value: 100,
-        };
-        assert_eq!(subrange.alignment_bytes(), 4);
-
-        // Test array inherits element alignment
-        let array = SemanticType::Array {
-            element_type: Box::new(SemanticType::Real {
-                size: ByteSized::B64,
-            }),
-            dimensions: vec![ArrayDimension { lower: 1, upper: 3 }],
-        };
-        assert_eq!(array.alignment_bytes(), 8);
-
-        // Test reference type alignment (always 8 bytes)
-        let ref_type = SemanticType::Reference {
-            target_type: Box::new(SemanticType::Bool),
-        };
-        assert_eq!(ref_type.alignment_bytes(), 8);
-    }
-
-    #[test]
-    fn semantic_type_has_explicit_size_returns_correct_value() {
-        // Test types with explicit size
-        assert!(SemanticType::Bool.has_explicit_size());
-        assert!(SemanticType::Int {
-            size: ByteSized::B16
-        }
-        .has_explicit_size());
-        assert!(SemanticType::Time {
-            size: ByteSized::B32
-        }
-        .has_explicit_size());
-        assert!(SemanticType::Date {
-            size: ByteSized::B32
-        }
-        .has_explicit_size());
-
-        // Test string types
-        assert!(SemanticType::String {
-            max_len: Some(10),
-            char_width: CharWidth::Narrow,
-        }
-        .has_explicit_size());
-        assert!(!SemanticType::String {
-            max_len: None,
-            char_width: CharWidth::Narrow,
-        }
-        .has_explicit_size());
-
-        // Test derived types
-        let subrange = SemanticType::Subrange {
-            base_type: Box::new(SemanticType::Int {
-                size: ByteSized::B16,
-            }),
-            min_value: 1,
-            max_value: 100,
-        };
-        assert!(subrange.has_explicit_size());
-
-        // Test arrays
-        let fixed_array = SemanticType::Array {
-            element_type: Box::new(SemanticType::Bool),
-            dimensions: vec![ArrayDimension { lower: 0, upper: 9 }],
-        };
-        assert!(fixed_array.has_explicit_size());
-
-        let dynamic_array = SemanticType::Array {
-            element_type: Box::new(SemanticType::Bool),
-            dimensions: vec![],
-        };
-        assert!(!dynamic_array.has_explicit_size());
-    }
-
-    #[test]
-    fn get_field_offset_with_structure_then_returns_correct_offset() {
-        use super::SemanticStructField;
-        use ironplc_dsl::core::Id;
-
-        let fields = vec![
-            SemanticStructField {
-                name: Id::from("field1"),
-                field_type: SemanticType::Int {
-                    size: ByteSized::B16,
-                },
-                offset: 0,
-                var_type: None,
-                has_default: false,
-            },
-            SemanticStructField {
-                name: Id::from("field2"),
-                field_type: SemanticType::Int {
-                    size: ByteSized::B32,
-                },
-                offset: 4,
-                var_type: None,
-                has_default: false,
-            },
-        ];
-
-        let struct_type = SemanticType::Structure { fields };
-
-        let field1_id = Id::from("field1");
-        let field2_id = Id::from("field2");
-        let nonexistent_id = Id::from("nonexistent");
-
-        assert_eq!(struct_type.get_field_offset(&field1_id), Some(0));
-        assert_eq!(struct_type.get_field_offset(&field2_id), Some(4));
-        assert_eq!(struct_type.get_field_offset(&nonexistent_id), None);
-    }
-
-    #[test]
-    fn get_field_offset_with_case_insensitive_field_name_then_returns_correct_offset() {
-        use super::SemanticStructField;
-        use ironplc_dsl::core::Id;
-
-        let fields = vec![SemanticStructField {
-            name: Id::from("MyField"),
-            field_type: SemanticType::Int {
-                size: ByteSized::B16,
-            },
-            offset: 2,
-            var_type: None,
-            has_default: false,
-        }];
-
-        let struct_type = SemanticType::Structure { fields };
-
-        // Test case-insensitive matching following IEC 61131-3 identifier rules
-        let lowercase_id = Id::from("myfield");
-        let uppercase_id = Id::from("MYFIELD");
-        let mixed_case_id = Id::from("MyField");
-
-        assert_eq!(struct_type.get_field_offset(&lowercase_id), Some(2));
-        assert_eq!(struct_type.get_field_offset(&uppercase_id), Some(2));
-        assert_eq!(struct_type.get_field_offset(&mixed_case_id), Some(2));
-    }
-
-    #[test]
-    fn get_field_offset_with_non_structure_then_returns_none() {
-        use ironplc_dsl::core::Id;
-
-        let int_type = SemanticType::Int {
-            size: ByteSized::B16,
-        };
-        let field_id = Id::from("any_field");
-        assert_eq!(int_type.get_field_offset(&field_id), None);
-
-        let array_type = SemanticType::Array {
-            element_type: Box::new(SemanticType::Bool),
-            dimensions: vec![ArrayDimension { lower: 0, upper: 9 }],
-        };
-        assert_eq!(array_type.get_field_offset(&field_id), None);
     }
 
     #[test]
@@ -1286,336 +741,13 @@ mod tests {
     }
 
     #[test]
-    fn structure_alignment_bytes_with_empty_structure_then_returns_one() {
-        let struct_type = SemanticType::Structure { fields: vec![] };
-        assert_eq!(struct_type.alignment_bytes(), 1);
-    }
-
-    #[test]
-    fn structure_alignment_bytes_with_single_field_then_returns_field_alignment() {
-        use super::SemanticStructField;
-        use ironplc_dsl::core::Id;
-
-        let fields = vec![SemanticStructField {
-            name: Id::from("field1"),
-            field_type: SemanticType::Int {
-                size: ByteSized::B32,
-            },
-            offset: 0,
-            var_type: None,
-            has_default: false,
-        }];
-
-        let struct_type = SemanticType::Structure { fields };
-        assert_eq!(struct_type.alignment_bytes(), 4);
-    }
-
-    #[test]
-    fn structure_alignment_bytes_with_multiple_fields_then_returns_max_alignment() {
-        use super::SemanticStructField;
-        use ironplc_dsl::core::Id;
-
-        let fields = vec![
-            SemanticStructField {
-                name: Id::from("field1"),
-                field_type: SemanticType::Int {
-                    size: ByteSized::B8,
-                },
-                offset: 0,
-                var_type: None,
-                has_default: false,
-            },
-            SemanticStructField {
-                name: Id::from("field2"),
-                field_type: SemanticType::Real {
-                    size: ByteSized::B64,
-                },
-                offset: 8,
-                var_type: None,
-                has_default: false,
-            },
-            SemanticStructField {
-                name: Id::from("field3"),
-                field_type: SemanticType::Int {
-                    size: ByteSized::B16,
-                },
-                offset: 16,
-                var_type: None,
-                has_default: false,
-            },
-        ];
-
-        let struct_type = SemanticType::Structure { fields };
-        // Maximum alignment should be 8 (from the Real field)
-        assert_eq!(struct_type.alignment_bytes(), 8);
-    }
-
-    #[test]
-    fn structure_alignment_bytes_with_nested_structure_then_returns_max_nested_alignment() {
-        use super::SemanticStructField;
-        use ironplc_dsl::core::Id;
-
-        // Create inner structure with B64 alignment
-        let inner_struct = SemanticType::Structure {
-            fields: vec![SemanticStructField {
-                name: Id::from("inner_field"),
-                field_type: SemanticType::Real {
-                    size: ByteSized::B64,
-                },
-                offset: 0,
-                var_type: None,
-                has_default: false,
-            }],
-        };
-
-        // Create outer structure containing the inner structure
-        let outer_struct = SemanticType::Structure {
-            fields: vec![
-                SemanticStructField {
-                    name: Id::from("field1"),
-                    field_type: SemanticType::Int {
-                        size: ByteSized::B16,
-                    },
-                    offset: 0,
-                    var_type: None,
-                    has_default: false,
-                },
-                SemanticStructField {
-                    name: Id::from("nested"),
-                    field_type: inner_struct,
-                    offset: 8,
-                    var_type: None,
-                    has_default: false,
-                },
-            ],
-        };
-
-        // Alignment should be 8 (from the nested Real field)
-        assert_eq!(outer_struct.alignment_bytes(), 8);
-    }
-
-    #[test]
-    fn structure_size_in_bytes_with_empty_structure_then_returns_none() {
-        let struct_type = SemanticType::Structure { fields: vec![] };
-        assert_eq!(struct_type.size_in_bytes(), None);
-    }
-
-    #[test]
-    fn structure_size_in_bytes_with_single_field_then_returns_field_size() {
-        use super::SemanticStructField;
-        use ironplc_dsl::core::Id;
-
-        let fields = vec![SemanticStructField {
-            name: Id::from("field1"),
-            field_type: SemanticType::Int {
-                size: ByteSized::B32,
-            },
-            offset: 0,
-            var_type: None,
-            has_default: false,
-        }];
-
-        let struct_type = SemanticType::Structure { fields };
-        // Size should be 4 bytes (one DINT field)
-        assert_eq!(struct_type.size_in_bytes(), Some(4));
-    }
-
-    #[test]
-    fn structure_size_in_bytes_with_aligned_fields_then_returns_total_size() {
-        use super::SemanticStructField;
-        use ironplc_dsl::core::Id;
-
-        // Structure with two 4-byte aligned fields
-        let fields = vec![
-            SemanticStructField {
-                name: Id::from("field1"),
-                field_type: SemanticType::Int {
-                    size: ByteSized::B32,
-                },
-                offset: 0,
-                var_type: None,
-                has_default: false,
-            },
-            SemanticStructField {
-                name: Id::from("field2"),
-                field_type: SemanticType::Int {
-                    size: ByteSized::B32,
-                },
-                offset: 4,
-                var_type: None,
-                has_default: false,
-            },
-        ];
-
-        let struct_type = SemanticType::Structure { fields };
-        // Size should be 8 bytes (two DINT fields)
-        assert_eq!(struct_type.size_in_bytes(), Some(8));
-    }
-
-    #[test]
-    fn structure_size_in_bytes_with_padding_then_returns_padded_size() {
-        use super::SemanticStructField;
-        use ironplc_dsl::core::Id;
-
-        // Structure: SINT (1 byte at offset 0), DINT (4 bytes at offset 4)
-        // Total size should be 8 bytes (padded to 4-byte alignment)
-        let fields = vec![
-            SemanticStructField {
-                name: Id::from("field1"),
-                field_type: SemanticType::Int {
-                    size: ByteSized::B8,
-                },
-                offset: 0,
-                var_type: None,
-                has_default: false,
-            },
-            SemanticStructField {
-                name: Id::from("field2"),
-                field_type: SemanticType::Int {
-                    size: ByteSized::B32,
-                },
-                offset: 4,
-                var_type: None,
-                has_default: false,
-            },
-        ];
-
-        let struct_type = SemanticType::Structure { fields };
-        // Size should be 8 bytes (1 byte + 3 padding + 4 bytes)
-        assert_eq!(struct_type.size_in_bytes(), Some(8));
-    }
-
-    #[test]
-    fn structure_size_in_bytes_with_trailing_padding_then_returns_aligned_size() {
-        use super::SemanticStructField;
-        use ironplc_dsl::core::Id;
-
-        // Structure: LREAL (8 bytes at offset 0), SINT (1 byte at offset 8)
-        // Total size should be 16 bytes (padded to 8-byte alignment)
-        let fields = vec![
-            SemanticStructField {
-                name: Id::from("field1"),
-                field_type: SemanticType::Real {
-                    size: ByteSized::B64,
-                },
-                offset: 0,
-                var_type: None,
-                has_default: false,
-            },
-            SemanticStructField {
-                name: Id::from("field2"),
-                field_type: SemanticType::Int {
-                    size: ByteSized::B8,
-                },
-                offset: 8,
-                var_type: None,
-                has_default: false,
-            },
-        ];
-
-        let struct_type = SemanticType::Structure { fields };
-        // Size should be 16 bytes (8 bytes + 1 byte + 7 padding)
-        assert_eq!(struct_type.size_in_bytes(), Some(16));
-    }
-
-    #[test]
-    fn structure_size_in_bytes_with_nested_structure_then_returns_correct_size() {
-        use super::SemanticStructField;
-        use ironplc_dsl::core::Id;
-
-        // Create inner structure (two INT fields = 4 bytes total)
-        let inner_struct = SemanticType::Structure {
-            fields: vec![
-                SemanticStructField {
-                    name: Id::from("x"),
-                    field_type: SemanticType::Int {
-                        size: ByteSized::B16,
-                    },
-                    offset: 0,
-                    var_type: None,
-                    has_default: false,
-                },
-                SemanticStructField {
-                    name: Id::from("y"),
-                    field_type: SemanticType::Int {
-                        size: ByteSized::B16,
-                    },
-                    offset: 2,
-                    var_type: None,
-                    has_default: false,
-                },
-            ],
-        };
-
-        // Create outer structure
-        let outer_struct = SemanticType::Structure {
-            fields: vec![
-                SemanticStructField {
-                    name: Id::from("point"),
-                    field_type: inner_struct,
-                    offset: 0,
-                    var_type: None,
-                    has_default: false,
-                },
-                SemanticStructField {
-                    name: Id::from("id"),
-                    field_type: SemanticType::Int {
-                        size: ByteSized::B32,
-                    },
-                    offset: 4,
-                    var_type: None,
-                    has_default: false,
-                },
-            ],
-        };
-
-        // Size should be 8 bytes (4 bytes for inner struct + 4 bytes for id)
-        assert_eq!(outer_struct.size_in_bytes(), Some(8));
-    }
-
-    #[test]
-    fn structure_size_in_bytes_with_unknown_field_size_then_returns_none() {
-        use super::SemanticStructField;
-        use ironplc_dsl::core::Id;
-
-        // Structure containing a field with unknown size (dynamic array)
-        let fields = vec![
-            SemanticStructField {
-                name: Id::from("field1"),
-                field_type: SemanticType::Int {
-                    size: ByteSized::B32,
-                },
-                offset: 0,
-                var_type: None,
-                has_default: false,
-            },
-            SemanticStructField {
-                name: Id::from("dynamic_array"),
-                field_type: SemanticType::Array {
-                    element_type: Box::new(SemanticType::Bool),
-                    dimensions: vec![], // Dynamic size
-                },
-                offset: 4,
-                var_type: None,
-                has_default: false,
-            },
-        ];
-
-        let struct_type = SemanticType::Structure { fields };
-        // Should return None because one field has unknown size
-        assert_eq!(struct_type.size_in_bytes(), None);
-    }
-
-    #[test]
-    fn member_fields_when_structure_then_returns_fields() {
+    fn structure_fields_when_structure_then_returns_fields() {
         use super::SemanticStructField;
         use ironplc_dsl::core::Id;
 
         let fields = vec![SemanticStructField {
             name: Id::from("field1"),
             field_type: SemanticType::Bool,
-            offset: 0,
-            var_type: None,
             has_default: false,
         }];
         let struct_type = SemanticType::Structure {
@@ -1623,346 +755,30 @@ mod tests {
         };
 
         assert!(struct_type.has_members());
-        assert_eq!(struct_type.member_fields(), Some(&fields));
+        assert_eq!(struct_type.structure_fields(), Some(&fields));
     }
 
     #[test]
-    fn member_fields_when_function_block_then_returns_fields() {
-        use super::{FunctionBlockVarType, SemanticStructField};
-        use ironplc_dsl::core::Id;
-
-        let fields = vec![SemanticStructField {
-            name: Id::from("Q"),
-            field_type: SemanticType::Bool,
-            offset: 0,
-            var_type: Some(FunctionBlockVarType::Output),
-            has_default: false,
-        }];
+    fn structure_fields_when_function_block_then_none_but_has_members() {
         let fb_type = SemanticType::FunctionBlock {
             name: "MyFB".to_string(),
-            fields: fields.clone(),
         };
 
         assert!(fb_type.has_members());
-        assert_eq!(fb_type.member_fields(), Some(&fields));
+        assert_eq!(fb_type.structure_fields(), None);
     }
 
     #[test]
-    fn member_fields_when_not_composite_then_returns_none() {
+    fn structure_fields_when_not_composite_then_returns_none() {
         assert!(!SemanticType::Bool.has_members());
-        assert_eq!(SemanticType::Bool.member_fields(), None);
+        assert_eq!(SemanticType::Bool.structure_fields(), None);
 
         let array_type = SemanticType::Array {
             element_type: Box::new(SemanticType::Bool),
             dimensions: vec![],
         };
         assert!(!array_type.has_members());
-        assert_eq!(array_type.member_fields(), None);
-    }
-
-    #[test]
-    fn function_block_alignment_bytes_with_empty_function_block_then_returns_one() {
-        let fb_type = SemanticType::FunctionBlock {
-            name: "EmptyFB".to_string(),
-            fields: vec![],
-        };
-        assert_eq!(fb_type.alignment_bytes(), 1);
-    }
-
-    #[test]
-    fn function_block_alignment_bytes_with_single_field_then_returns_field_alignment() {
-        use super::SemanticStructField;
-        use ironplc_dsl::core::Id;
-
-        let fields = vec![SemanticStructField {
-            name: Id::from("field1"),
-            field_type: SemanticType::Int {
-                size: ByteSized::B32,
-            },
-            offset: 0,
-            var_type: None,
-            has_default: false,
-        }];
-
-        let fb_type = SemanticType::FunctionBlock {
-            name: "TestFB".to_string(),
-            fields,
-        };
-        assert_eq!(fb_type.alignment_bytes(), 4);
-    }
-
-    #[test]
-    fn function_block_alignment_bytes_with_multiple_fields_then_returns_max_alignment() {
-        use super::SemanticStructField;
-        use ironplc_dsl::core::Id;
-
-        let fields = vec![
-            SemanticStructField {
-                name: Id::from("field1"),
-                field_type: SemanticType::Int {
-                    size: ByteSized::B8,
-                },
-                offset: 0,
-                var_type: None,
-                has_default: false,
-            },
-            SemanticStructField {
-                name: Id::from("field2"),
-                field_type: SemanticType::Real {
-                    size: ByteSized::B64,
-                },
-                offset: 8,
-                var_type: None,
-                has_default: false,
-            },
-            SemanticStructField {
-                name: Id::from("field3"),
-                field_type: SemanticType::Int {
-                    size: ByteSized::B16,
-                },
-                offset: 16,
-                var_type: None,
-                has_default: false,
-            },
-        ];
-
-        let fb_type = SemanticType::FunctionBlock {
-            name: "TestFB".to_string(),
-            fields,
-        };
-        // Maximum alignment should be 8 (from the Real field)
-        assert_eq!(fb_type.alignment_bytes(), 8);
-    }
-
-    #[test]
-    fn function_block_size_in_bytes_with_empty_function_block_then_returns_none() {
-        let fb_type = SemanticType::FunctionBlock {
-            name: "EmptyFB".to_string(),
-            fields: vec![],
-        };
-        assert_eq!(fb_type.size_in_bytes(), None);
-    }
-
-    #[test]
-    fn function_block_size_in_bytes_with_single_field_then_returns_field_size() {
-        use super::SemanticStructField;
-        use ironplc_dsl::core::Id;
-
-        let fields = vec![SemanticStructField {
-            name: Id::from("counter"),
-            field_type: SemanticType::Int {
-                size: ByteSized::B32,
-            },
-            offset: 0,
-            var_type: None,
-            has_default: false,
-        }];
-
-        let fb_type = SemanticType::FunctionBlock {
-            name: "CounterFB".to_string(),
-            fields,
-        };
-        // Size should be 4 bytes (one DINT field)
-        assert_eq!(fb_type.size_in_bytes(), Some(4));
-    }
-
-    #[test]
-    fn function_block_size_in_bytes_with_aligned_fields_then_returns_total_size() {
-        use super::SemanticStructField;
-        use ironplc_dsl::core::Id;
-
-        // Function block with two 4-byte aligned fields
-        let fields = vec![
-            SemanticStructField {
-                name: Id::from("input"),
-                field_type: SemanticType::Int {
-                    size: ByteSized::B32,
-                },
-                offset: 0,
-                var_type: None,
-                has_default: false,
-            },
-            SemanticStructField {
-                name: Id::from("output"),
-                field_type: SemanticType::Int {
-                    size: ByteSized::B32,
-                },
-                offset: 4,
-                var_type: None,
-                has_default: false,
-            },
-        ];
-
-        let fb_type = SemanticType::FunctionBlock {
-            name: "ProcessFB".to_string(),
-            fields,
-        };
-        // Size should be 8 bytes (two DINT fields)
-        assert_eq!(fb_type.size_in_bytes(), Some(8));
-    }
-
-    #[test]
-    fn function_block_size_in_bytes_with_padding_then_returns_padded_size() {
-        use super::SemanticStructField;
-        use ironplc_dsl::core::Id;
-
-        // Function block: SINT (1 byte at offset 0), DINT (4 bytes at offset 4)
-        // Total size should be 8 bytes (padded to 4-byte alignment)
-        let fields = vec![
-            SemanticStructField {
-                name: Id::from("flag"),
-                field_type: SemanticType::Int {
-                    size: ByteSized::B8,
-                },
-                offset: 0,
-                var_type: None,
-                has_default: false,
-            },
-            SemanticStructField {
-                name: Id::from("value"),
-                field_type: SemanticType::Int {
-                    size: ByteSized::B32,
-                },
-                offset: 4,
-                var_type: None,
-                has_default: false,
-            },
-        ];
-
-        let fb_type = SemanticType::FunctionBlock {
-            name: "TestFB".to_string(),
-            fields,
-        };
-        // Size should be 8 bytes (1 byte + 3 padding + 4 bytes)
-        assert_eq!(fb_type.size_in_bytes(), Some(8));
-    }
-
-    #[test]
-    fn function_block_size_in_bytes_with_trailing_padding_then_returns_aligned_size() {
-        use super::SemanticStructField;
-        use ironplc_dsl::core::Id;
-
-        // Function block: LREAL (8 bytes at offset 0), SINT (1 byte at offset 8)
-        // Total size should be 16 bytes (padded to 8-byte alignment)
-        let fields = vec![
-            SemanticStructField {
-                name: Id::from("timestamp"),
-                field_type: SemanticType::Real {
-                    size: ByteSized::B64,
-                },
-                offset: 0,
-                var_type: None,
-                has_default: false,
-            },
-            SemanticStructField {
-                name: Id::from("status"),
-                field_type: SemanticType::Int {
-                    size: ByteSized::B8,
-                },
-                offset: 8,
-                var_type: None,
-                has_default: false,
-            },
-        ];
-
-        let fb_type = SemanticType::FunctionBlock {
-            name: "TimerFB".to_string(),
-            fields,
-        };
-        // Size should be 16 bytes (8 bytes + 1 byte + 7 padding)
-        assert_eq!(fb_type.size_in_bytes(), Some(16));
-    }
-
-    #[test]
-    fn function_block_size_in_bytes_with_nested_structure_then_returns_correct_size() {
-        use super::SemanticStructField;
-        use ironplc_dsl::core::Id;
-
-        // Create inner structure (two INT fields = 4 bytes total)
-        let inner_struct = SemanticType::Structure {
-            fields: vec![
-                SemanticStructField {
-                    name: Id::from("x"),
-                    field_type: SemanticType::Int {
-                        size: ByteSized::B16,
-                    },
-                    offset: 0,
-                    var_type: None,
-                    has_default: false,
-                },
-                SemanticStructField {
-                    name: Id::from("y"),
-                    field_type: SemanticType::Int {
-                        size: ByteSized::B16,
-                    },
-                    offset: 2,
-                    var_type: None,
-                    has_default: false,
-                },
-            ],
-        };
-
-        // Create function block containing the structure
-        let fb_type = SemanticType::FunctionBlock {
-            name: "PositionFB".to_string(),
-            fields: vec![
-                SemanticStructField {
-                    name: Id::from("position"),
-                    field_type: inner_struct,
-                    offset: 0,
-                    var_type: None,
-                    has_default: false,
-                },
-                SemanticStructField {
-                    name: Id::from("id"),
-                    field_type: SemanticType::Int {
-                        size: ByteSized::B32,
-                    },
-                    offset: 4,
-                    var_type: None,
-                    has_default: false,
-                },
-            ],
-        };
-
-        // Size should be 8 bytes (4 bytes for inner struct + 4 bytes for id)
-        assert_eq!(fb_type.size_in_bytes(), Some(8));
-    }
-
-    #[test]
-    fn function_block_size_in_bytes_with_unknown_field_size_then_returns_none() {
-        use super::SemanticStructField;
-        use ironplc_dsl::core::Id;
-
-        // Function block containing a field with unknown size (dynamic array)
-        let fields = vec![
-            SemanticStructField {
-                name: Id::from("counter"),
-                field_type: SemanticType::Int {
-                    size: ByteSized::B32,
-                },
-                offset: 0,
-                var_type: None,
-                has_default: false,
-            },
-            SemanticStructField {
-                name: Id::from("buffer"),
-                field_type: SemanticType::Array {
-                    element_type: Box::new(SemanticType::Bool),
-                    dimensions: vec![], // Dynamic size
-                },
-                offset: 4,
-                var_type: None,
-                has_default: false,
-            },
-        ];
-
-        let fb_type = SemanticType::FunctionBlock {
-            name: "BufferFB".to_string(),
-            fields,
-        };
-        // Should return None because one field has unknown size
-        assert_eq!(fb_type.size_in_bytes(), None);
+        assert_eq!(array_type.structure_fields(), None);
     }
 
     #[test]
@@ -2026,9 +842,6 @@ mod tests {
         );
         assert_eq!(
             SemanticType::Enumeration {
-                underlying_type: Box::new(SemanticType::Int {
-                    size: ByteSized::B8
-                }),
                 members: crate::enumeration_members::EnumerationMembers::default(),
             }
             .slot_count(),
@@ -2056,15 +869,11 @@ mod tests {
                     field_type: SemanticType::Int {
                         size: ByteSized::B16,
                     },
-                    offset: 0,
-                    var_type: None,
                     has_default: false,
                 },
                 SemanticStructField {
                     name: Id::from("b"),
                     field_type: SemanticType::Bool,
-                    offset: 2,
-                    var_type: None,
                     has_default: false,
                 },
             ],
@@ -2081,8 +890,6 @@ mod tests {
                     field_type: SemanticType::Int {
                         size: ByteSized::B32,
                     },
-                    offset: 0,
-                    var_type: None,
                     has_default: false,
                 },
                 SemanticStructField {
@@ -2090,8 +897,6 @@ mod tests {
                     field_type: SemanticType::Int {
                         size: ByteSized::B32,
                     },
-                    offset: 4,
-                    var_type: None,
                     has_default: false,
                 },
             ],
@@ -2101,15 +906,11 @@ mod tests {
                 SemanticStructField {
                     name: Id::from("inner"),
                     field_type: inner,
-                    offset: 0,
-                    var_type: None,
                     has_default: false,
                 },
                 SemanticStructField {
                     name: Id::from("z"),
                     field_type: SemanticType::Bool,
-                    offset: 8,
-                    var_type: None,
                     has_default: false,
                 },
             ],
@@ -2141,8 +942,6 @@ mod tests {
                     field_type: SemanticType::Int {
                         size: ByteSized::B32,
                     },
-                    offset: 0,
-                    var_type: None,
                     has_default: false,
                 },
                 SemanticStructField {
@@ -2150,8 +949,6 @@ mod tests {
                     field_type: SemanticType::Int {
                         size: ByteSized::B32,
                     },
-                    offset: 4,
-                    var_type: None,
                     has_default: false,
                 },
             ],
@@ -2241,16 +1038,16 @@ mod tests {
     }
 
     #[test]
-    fn slot_count_when_string_matches_size_in_bytes_payload() {
-        // The two sizing methods must agree about the payload: slot_count is
-        // size_in_bytes plus the header, rounded up to whole slots.
+    fn slot_count_when_string_then_holds_header_and_payload() {
+        // A string takes its header and `max_len` code units of `char_width`
+        // bytes each, rounded up to whole slots.
         for char_width in [CharWidth::Narrow, CharWidth::Wide] {
             for max_len in [0u128, 1, 4, 80, 254, 255, 4096] {
                 let s = SemanticType::String {
                     max_len: Some(max_len),
                     char_width,
                 };
-                let payload = s.size_in_bytes().unwrap();
+                let payload = max_len as u32 * char_width.byte_width() as u32;
                 let expected = (payload + STRING_HEADER_BYTES as u32).div_ceil(8);
                 assert_eq!(
                     s.slot_count(),
@@ -2283,8 +1080,6 @@ mod tests {
                 fields: vec![SemanticStructField {
                     name: Id::from(&format!("f{}", i)),
                     field_type: t,
-                    offset: 0,
-                    var_type: None,
                     has_default: false,
                 }],
             };
