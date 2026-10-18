@@ -1,5 +1,6 @@
-//! Tests for negation, `-x`: a time of day, a date or a date and time has no
-//! negative, in any dialect (P4049); a number and a duration do.
+//! Tests for negation, `-x`: a `BOOL`, a time of day, a date or a date and
+//! time has no negative, in any dialect (P4049); a number, a duration and a
+//! bit string do.
 
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use ironplc_problems::Problem;
@@ -46,17 +47,46 @@ fn apply_when_time_of_day_or_date_negated_then_p4049(#[case] declared_type: &str
     assert_eq!(codes_for(&negating(declared_type), &ed3()), p4049());
 }
 
-#[test]
-fn apply_when_time_of_day_negated_in_every_dialect_then_p4049() {
+#[rstest]
+#[case::time_of_day("TOD")]
+#[case::bool("BOOL")]
+fn apply_when_negated_in_every_dialect_then_p4049(#[case] declared_type: &str) {
     for dialect in Dialect::ALL {
         let options = CompilerOptions::from_dialect(*dialect);
         assert_eq!(
-            codes_for(&negating("TOD"), &options),
+            codes_for(&negating(declared_type), &options),
             p4049(),
             "{dialect:?}"
         );
     }
 }
+
+rule_err!(
+    /// An alias of `BOOL` is a truth value as `BOOL` is.
+    apply_when_bool_alias_negated_then_p4049,
+    "
+TYPE Flag : BOOL; END_TYPE
+PROGRAM main
+VAR
+    x : Flag;
+END_VAR
+    x := -x;
+END_PROGRAM",
+    [Problem::OperatorOperandTypeMismatch]
+);
+
+rule_err_at!(
+    apply_when_bool_literal_negated_then_p4049_at_operand,
+    "
+PROGRAM main
+VAR
+    b : BOOL;
+END_VAR
+    b := -TRUE;
+END_PROGRAM",
+    Problem::OperatorOperandTypeMismatch,
+    "TRUE"
+);
 
 #[rstest]
 #[case::dint("DINT")]
@@ -65,7 +95,10 @@ fn apply_when_time_of_day_negated_in_every_dialect_then_p4049() {
 #[case::lreal("LREAL")]
 #[case::time("TIME")]
 #[case::ltime("LTIME")]
-fn apply_when_number_or_duration_negated_then_ok(#[case] declared_type: &str) {
+#[case::byte("BYTE")]
+#[case::word("WORD")]
+#[case::lword("LWORD")]
+fn apply_when_number_duration_or_bit_string_negated_then_ok(#[case] declared_type: &str) {
     assert!(codes_for(&negating(declared_type), &ed3()).is_empty());
 }
 
