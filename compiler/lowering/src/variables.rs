@@ -25,12 +25,16 @@
 use ironplc_analyzer::symbol_environment::{
     DeclRef, Resolution, ScopeKind, ScopePath, SymbolInfo, SymbolKind,
 };
-use ironplc_dsl::common::{TypeName, VarDecl, VariableType};
+use ironplc_dsl::common::{
+    AddressAssignment, DeclarationQualifier, LocationPrefix, SizePrefix, TypeName, VarDecl,
+    VariableIdentifier, VariableType,
+};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_ir::execution::DebugName;
 use ironplc_ir::lowered::{
-    Field, Nullability, Owner, Place, PouId, Section, TypeEntry, TypeId, TypeKind, VarId,
+    AddressArea, AddressSize, Declared, DirectAddress, Field, Nullability, Owner, Place, PouId,
+    Retention, Section, TypeEntry, TypeId, TypeKind, VarId,
 };
 
 use crate::{Body, Lowering};
@@ -202,12 +206,19 @@ impl<'a> Lowering<'a> {
             let Some(ty) = self.lowered_type(type_id)? else {
                 return Ok(None);
             };
-            fields.push(Field::new(
+            let location = match &decl.identifier {
+                VariableIdentifier::Symbol(_) => None,
+                VariableIdentifier::Direct(direct) => {
+                    Some(direct_address(&direct.address_assignment))
+                }
+            };
+            let field = Field::new(
                 &field_name.to_string(),
                 field_name.span(),
                 Some(section),
                 ty,
-            ));
+            );
+            fields.push(field.declared(location, retention(&decl.qualifier)));
         }
         Ok(Some(fields))
     }
@@ -230,9 +241,10 @@ impl<'a> Lowering<'a> {
             .map(|field| Id::from(&field.name.to_string()))
             .collect();
         let this_type = self.non_null_reference(instance_type, &name.span())?;
-        let this = self.program.push_variable(
+        let this = self.program.push_declared_variable(
             DebugName::new("THIS", name.span()),
             Owner::Pou(pou),
+            Declared::in_section(Section::Instance),
             this_type,
         )?;
         Ok(Instance {
@@ -261,6 +273,15 @@ impl<'a> Lowering<'a> {
         // A global variable, or one a PLCopen program declares global in its
         // interface, which is no field of the program's instance.
         if decl.scope == ScopeKind::Global || info.variable_type == Some(VariableType::Global) {
+            // A `VAR_EXTERNAL` resolves to its global, whose declaration, not
+            // the external's, says whether it is retained or located.
+            let info = if decl.scope == ScopeKind::Global {
+                symbols
+                    .global_variable(&decl.name)
+                    .map_or(info, |(_, global)| global)
+            } else {
+                info
+            };
             return self.declared_variable(decl, info, Owner::Global, false, span);
         }
         if let Some(instance) = frame
@@ -375,7 +396,7 @@ impl<'a> Lowering<'a> {
         let id = match self.declared.get(&decl) {
             Some(id) => *id,
             None => {
-                let Some(type_id) = info.type_id else {
+                let (Some(type_id), Some(declared)) = (info.type_id, declared(info, owner)) else {
                     return Ok(None);
                 };
                 let Some(mut ty) = self.lowered_type(type_id)? else {
@@ -385,7 +406,9 @@ impl<'a> Lowering<'a> {
                     ty = self.non_null_reference(ty, &info.span)?;
                 }
                 let name = DebugName::new(decl.name.to_string(), info.span.clone());
-                let id = self.program.push_variable(name, owner, ty)?;
+                let id = self
+                    .program
+                    .push_declared_variable(name, owner, declared, ty)?;
                 self.declared.insert(decl, id);
                 id
             }
@@ -409,5 +432,65 @@ impl<'a> Lowering<'a> {
             },
             span,
         )
+    }
+}
+
+/// What the declaration `info` describes says of its variable, which `owner`
+/// owns: its section, its direct address and its retention
+/// (REQ-LOW-lowering-023, REQ-LOW-lowering-024). A variable the program
+/// owns is a global, a compiler-provided one included, which records no
+/// section. A function's or method's result is an output, as the debug
+/// section shows it. `None` for a declaration that is no variable lowering
+/// expresses yet, a `VAR_ACCESS`.
+fn declared(info: &SymbolInfo, owner: Owner) -> Option<Declared> {
+    let section = if owner == Owner::Global {
+        Section::Global
+    } else if matches!(info.kind, SymbolKind::ResultVariable) {
+        Section::Output
+    } else {
+        match &info.variable_type {
+            Some(VariableType::Global | VariableType::External) => Section::Global,
+            Some(VariableType::Input) => Section::Input,
+            Some(VariableType::Output) => Section::Output,
+            Some(VariableType::InOut) => Section::InOut,
+            Some(VariableType::Var) => Section::Local,
+            Some(VariableType::VarTemp) => Section::Temporary,
+            Some(VariableType::Access) | None => return None,
+        }
+    };
+    Some(Declared {
+        section,
+        location: info.address.as_ref().map(direct_address),
+        retention: info.qualifier.as_ref().map_or(Retention::None, retention),
+    })
+}
+
+/// The retention a declaration with `qualifier` states.
+pub(crate) fn retention(qualifier: &DeclarationQualifier) -> Retention {
+    match qualifier {
+        DeclarationQualifier::Retain => Retention::Retain,
+        DeclarationQualifier::NonRetain => Retention::NonRetain,
+        DeclarationQualifier::Persistent => Retention::Persistent,
+        DeclarationQualifier::Unspecified | DeclarationQualifier::Constant => Retention::None,
+    }
+}
+
+/// The lowered form of the direct address `address`.
+pub(crate) fn direct_address(address: &AddressAssignment) -> DirectAddress {
+    DirectAddress {
+        area: match address.location {
+            LocationPrefix::I => AddressArea::Input,
+            LocationPrefix::Q => AddressArea::Output,
+            LocationPrefix::M => AddressArea::Memory,
+        },
+        size: match address.size {
+            SizePrefix::Nil | SizePrefix::X => AddressSize::Bit,
+            SizePrefix::B => AddressSize::Byte,
+            SizePrefix::W => AddressSize::Word,
+            SizePrefix::D => AddressSize::DoubleWord,
+            SizePrefix::L => AddressSize::LongWord,
+            SizePrefix::Unspecified => AddressSize::Unspecified,
+        },
+        path: address.address.clone(),
     }
 }

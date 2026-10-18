@@ -17,6 +17,7 @@ use crate::{Body, Lowering, StatementLowering};
 pub(crate) struct Outcome {
     pub(crate) statements: Vec<String>,
     pub(crate) variables: Vec<Variable>,
+    /// The types lowering allocated, which the variables' types are in.
     pub(crate) types: TypeTable,
 }
 

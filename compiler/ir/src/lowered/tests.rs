@@ -787,6 +787,8 @@ mod control;
 
 mod copies;
 
+mod declarations;
+
 mod fb_calls;
 
 mod in_place;

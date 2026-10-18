@@ -139,10 +139,16 @@ fn block_field(decl: &VarDecl) -> Option<BlockField> {
         | VariableType::Global
         | VariableType::Access => return None,
     };
+    let address = match &decl.identifier {
+        VariableIdentifier::Symbol(_) => None,
+        VariableIdentifier::Direct(direct) => Some(direct.address_assignment.clone()),
+    };
     Some(BlockField {
         name: decl.identifier.symbolic_id()?.clone(),
         var_type,
         field_type: decl.type_id,
+        qualifier: decl.qualifier.clone(),
+        address,
     })
 }
 

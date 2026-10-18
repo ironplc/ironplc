@@ -550,6 +550,8 @@ pub struct Field {
     pub name: Id,
     pub section: Option<Section>,      // Internal for a synthesized field
     pub ty: TypeId,
+    pub location: Option<DirectAddress>, // a program's `x AT %IX0.1`
+    pub retention: Retention,
     pub span: SourceSpan,
 }
 ```
@@ -645,11 +647,16 @@ and ignored. A native backend that drives real I/O, or keeps retained variables
 in non-volatile memory, needs both, so the lowered program carries them rather
 than dropping them a stage earlier.
 
-**REQ-LOW-lowering-023** A variable declared with a direct address carries
-that address.
+A program's and a function block's variables are fields of its instance (see
+[Program, POUs and variables](#32-program-pous-and-variables)), so a field
+carries its location and retention as a variable does. A program's located
+variable, and a block's `RETAIN` variable, are fields.
 
-**REQ-LOW-lowering-024** A variable carries the retention qualifier of its
-declaration (`RETAIN`, `NON_RETAIN` or `PERSISTENT`), or none if its
+**REQ-LOW-lowering-023** A variable or field declared with a direct address
+carries that address.
+
+**REQ-LOW-lowering-024** A variable or field carries the retention qualifier
+of its declaration (`RETAIN`, `NON_RETAIN` or `PERSISTENT`), or none if its
 declaration has none.
 
 Initial values are statements because that is how the bytecode VM applies
@@ -1649,6 +1656,14 @@ an instance it cannot reach, such as one declared inside a function block,
 stays on it. A method's outputs, strings included, are read from the
 method's own variables, as a function's are, and a method's body is asked
 for its statements as any other body is.
+
+`METHOD_CALL` names how many of the block's fields it copies in and out by a
+byte. The route that reads the AST truncates the count of a block with more
+fields, so the method runs on the wrong ones.
+
+**REQ-LOW-codegen-191** The bytecode backend reports a call of a method of a
+block with more than 255 fields as P9997, a limit of its format, and does not
+leave the call to the route that reads the AST.
 
 A call of a method the receiver's block inherits is a call of the method of
 the block that declares it, as the analyzer resolves it (ADR-0041), with a

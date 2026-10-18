@@ -89,7 +89,7 @@ pub fn build_symbol_map(context: &SemanticContext, container: &Container) -> Var
                 var_index: entry.var_index,
                 iec_type_tag: entry.iec_type_tag,
                 var_section: entry.var_section,
-                address: info.address.clone(),
+                address: info.address_text(),
                 program: Some(program.clone()),
                 canonical_name: format!("{}.{}", program, bare),
             });
@@ -107,7 +107,7 @@ pub fn build_symbol_map(context: &SemanticContext, container: &Container) -> Var
             var_index: entry.var_index,
             iec_type_tag: entry.iec_type_tag,
             var_section: entry.var_section,
-            address: info.address.clone(),
+            address: info.address_text(),
             program: None,
             canonical_name: bare.to_string(),
         });

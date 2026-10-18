@@ -42,10 +42,11 @@ pub use scalar::{ScalarType, Signedness};
 pub use stmt::{store_narrowing, CaseArm, CaseLabel, Stmt, StmtKind};
 pub use str_expr::{StrExpr, StrExprKind};
 pub use types::{
-    Encoding, EnumerationValue, Field, IntWidth, NarrowWidth, Nullability, Section, StringShape,
-    TemporalKind, TypeEntry, TypeKind, TypeTable, WideWidth,
+    AddressArea, AddressSize, DirectAddress, Encoding, EnumerationValue, Field, IntWidth,
+    NarrowWidth, Nullability, Retention, Section, StringShape, TemporalKind, TypeEntry, TypeKind,
+    TypeTable, WideWidth,
 };
-pub use variables::{FunctionSignature, Owner, PouTable, Variable, VariableTable};
+pub use variables::{Declared, FunctionSignature, Owner, PouTable, Variable, VariableTable};
 
 #[cfg(test)]
 mod tests;

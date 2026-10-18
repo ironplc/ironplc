@@ -16,6 +16,7 @@ use ironplc_ir::lowered::{
     TypeEntry, TypeId, TypeKind, WideWidth,
 };
 
+use crate::variables::{direct_address, retention};
 use crate::Lowering;
 
 /// A lowered type, `None` when lowering cannot express it yet, or a P9998
@@ -260,12 +261,14 @@ impl Lowering<'_> {
             let Some(ty) = self.lowered_type(field_type)? else {
                 return Ok(None);
             };
-            fields.push(Field::new(
+            let declared = Field::new(
                 &field.name.to_string(),
                 field.name.span(),
                 Some(section(&field.var_type)),
                 ty,
-            ));
+            );
+            let location = field.address.as_ref().map(direct_address);
+            fields.push(declared.declared(location, retention(&field.qualifier)));
         }
         Ok(Some(fields))
     }

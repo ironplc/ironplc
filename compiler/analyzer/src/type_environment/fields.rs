@@ -22,7 +22,7 @@
 //! declarations. Everything that follows `EXTENDS` after the environment is
 //! built follows the base recorded here.
 
-use ironplc_dsl::common::TypeName;
+use ironplc_dsl::common::{AddressAssignment, DeclarationQualifier, TypeName};
 use ironplc_dsl::core::Id;
 use ironplc_dsl::type_id::TypeId;
 
@@ -44,6 +44,11 @@ pub struct BlockField {
     /// not resolve, which a rule reports. The variable is a field all the
     /// same, so that a call still names it.
     pub field_type: Option<TypeId>,
+    /// The qualifier the variable is declared with, such as `RETAIN`;
+    /// `Unspecified` for a field of a standard block.
+    pub qualifier: DeclarationQualifier,
+    /// The direct address the variable is declared at (`AT %I*`), if any.
+    pub address: Option<AddressAssignment>,
 }
 
 /// What the environment records about a function block.
@@ -145,6 +150,8 @@ impl TypeEnvironment {
                     name: field.name.clone(),
                     var_type: field.var_type,
                     field_type: Some(self.id_of(&elementary)?),
+                    qualifier: DeclarationQualifier::Unspecified,
+                    address: None,
                 })
             })
             .collect();
@@ -371,6 +378,8 @@ mod tests {
             name: Id::from(name),
             var_type,
             field_type: env.id_of(&TypeName::from("INT")),
+            qualifier: DeclarationQualifier::Unspecified,
+            address: None,
         }
     }
 
