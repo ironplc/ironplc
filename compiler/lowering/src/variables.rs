@@ -85,7 +85,8 @@ impl<'a> Lowering<'a> {
         }
         let scope = ScopeKind::Named(ScopePath::new(path));
         let instance = match body {
-            Body::Program(program) if !program.access_variables.is_empty() => None,
+            // A program's `VAR_ACCESS` paths name other variables, and no
+            // statement names one, so they are no fields of its instance.
             Body::Program(program) => self
                 .program_instance(pou, &program.name, &program.variables)?
                 .map(Some),
@@ -172,23 +173,30 @@ impl<'a> Lowering<'a> {
     }
 
     /// The fields of the instance of a program that declares `variables`:
-    /// one for each variable, other than a `VAR_TEMP` or a `VAR_EXTERNAL`,
-    /// in the order they are declared, as a function block's are (see
-    /// `block_fields` in `types.rs`). `None` when lowering cannot express the
-    /// type of one of them yet.
+    /// one for each variable, in the order they are declared, as a function
+    /// block's are (see `block_fields` in `types.rs`), other than a
+    /// `VAR_TEMP`, a `VAR_EXTERNAL`, a global variable or an access path,
+    /// which a PLCopen program declares in its interface and statements
+    /// reach in global scope, and a located variable with no name, which no
+    /// statement names (REQ-LOW-lowering-170). `None` when lowering cannot
+    /// express the type of one of them yet.
     fn instance_fields(&mut self, variables: &[VarDecl]) -> Made<Vec<Field>> {
         let mut fields = Vec::new();
         for decl in variables {
             let section = match decl.var_type {
-                VariableType::VarTemp | VariableType::External => continue,
+                VariableType::VarTemp
+                | VariableType::External
+                | VariableType::Global
+                | VariableType::Access => continue,
                 VariableType::Var => Section::Local,
                 VariableType::Input => Section::Input,
                 VariableType::Output => Section::Output,
                 VariableType::InOut => Section::InOut,
-                VariableType::Global | VariableType::Access => return Ok(None),
             };
-            let (Some(field_name), Some(type_id)) = (decl.identifier.symbolic_id(), decl.type_id)
-            else {
+            let Some(field_name) = decl.identifier.symbolic_id() else {
+                continue;
+            };
+            let Some(type_id) = decl.type_id else {
                 return Ok(None);
             };
             let Some(ty) = self.lowered_type(type_id)? else {
@@ -250,7 +258,9 @@ impl<'a> Lowering<'a> {
             | Resolution::NotAVariable
             | Resolution::Undeclared => return Ok(None),
         };
-        if decl.scope == ScopeKind::Global {
+        // A global variable, or one a PLCopen program declares global in its
+        // interface, which is no field of the program's instance.
+        if decl.scope == ScopeKind::Global || info.variable_type == Some(VariableType::Global) {
             return self.declared_variable(decl, info, Owner::Global, false, span);
         }
         if let Some(instance) = frame
