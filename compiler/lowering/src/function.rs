@@ -490,13 +490,16 @@ impl<'a> Lowering<'a> {
         }
         // A method's array or structure result is a variable of its body
         // that no call reads (REQ-LOW-lowering-187).
-        let result = match (call, result) {
-            (UserCall::Method { .. }, Some(name))
+        let result = match (body, result) {
+            (Body::Method { .. }, Some(name))
                 if self.aggregate_variable(&frame, name)?.is_some() =>
             {
                 None
             }
-            (UserCall::Function { .. } | UserCall::Method { .. }, result) => result,
+            (
+                Body::Function(_) | Body::Method { .. } | Body::Program(_) | Body::FunctionBlock(_),
+                result,
+            ) => result,
         };
         // Any other result is the variable named after the function or
         // method, unless that name is a parameter's.
