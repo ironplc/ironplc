@@ -41,6 +41,7 @@ mod compile_not_implemented_location;
 mod compile_program_count;
 mod compile_reproducible;
 mod compile_route;
+mod compile_route_agreement;
 mod compile_route_lowered;
 mod compile_route_lowered_aggregate;
 mod compile_route_lowered_fb_call;

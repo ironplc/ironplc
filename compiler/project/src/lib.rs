@@ -2,6 +2,8 @@
 #![allow(clippy::result_large_err)]
 
 pub mod compile;
+#[cfg(test)]
+mod container_diff;
 pub mod disassemble;
 pub mod project;
 pub mod tokenizer;
