@@ -16,7 +16,7 @@
 //!
 //! `METHOD_CALL` names how many fields it copies by a byte, so a call of a
 //! method of a block with more fields is P9997, a limit of the bytecode
-//! format (REQ-LOW-codegen-186).
+//! format (REQ-LOW-codegen-191).
 
 use std::collections::HashMap;
 

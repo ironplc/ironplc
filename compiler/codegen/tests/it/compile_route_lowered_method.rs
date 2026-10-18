@@ -260,7 +260,7 @@ fn wide_block(fields: usize) -> String {
     )
 }
 
-/// REQ-LOW-codegen-186: a method of a block of 255 fields, as many as
+/// REQ-LOW-codegen-191: a method of a block of 255 fields, as many as
 /// `METHOD_CALL` counts, runs on every one of them.
 #[test]
 fn run_when_method_of_block_with_255_fields_called_then_reads_last_field() {
@@ -269,7 +269,7 @@ fn run_when_method_of_block_with_255_fields_called_then_reads_last_field() {
     assert_eq!(snapshot.read_as::<i32>("o"), 7);
 }
 
-/// REQ-LOW-codegen-186: a call of a method of a block of 256 fields is
+/// REQ-LOW-codegen-191: a call of a method of a block of 256 fields is
 /// P9997 on the lowered route, whether or not every statement must take it,
 /// rather than a call that copies the wrong fields.
 #[rstest]
