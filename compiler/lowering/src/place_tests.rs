@@ -3,7 +3,7 @@
 //! Each test that checks a requirement of `specs/design/lowered-program.md`
 //! names it.
 
-use crate::test_support::lower;
+use crate::test_support::{lower, lower_bodies};
 
 /// REQ-LOW-lowering-031: an element of an array is an `Index` with one
 /// subscript per dimension, in order, each a `DINT`.
@@ -145,6 +145,26 @@ fn lower_statement_when_dereference_then_deref() {
             "assign v0^.f2^ (add i32s (read i32s v0^.f2^) (const i32s 1))",
             "assign v0^.f3^ (truncate 16 (add i32s (read i32s v0^.f3^) (const i32s 1)))",
             "assign v0^.f0 (read i32s v0^.f2^)",
+        ]
+    );
+}
+
+/// What `REF(x)` refers to is `x` itself, read as `x` is, as is what a
+/// `VAR_IN_OUT`'s `REF` refers to.
+#[test]
+fn lower_statement_when_dereference_of_ref_then_read_of_place() {
+    let outcome = lower_bodies(
+        "FUNCTION F : DINT VAR_IN_OUT io : DINT; END_VAR F := REF(io)^; END_FUNCTION
+         PROGRAM main VAR x : DINT; k : DINT; END_VAR
+            k := REF(x)^ + 1;
+         END_PROGRAM",
+        &["main", "F"],
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f1 (add i32s (read i32s v0^.f0) (const i32s 1))",
+            "assign v1 (read i32s v2^)",
         ]
     );
 }
