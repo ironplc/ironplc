@@ -124,9 +124,9 @@ design-front-matter:
   fi
   echo "Design document front matter: all well-formed. Check passed."
 
-# Fail if anything cites specs/plans/. A plan lives in a PR that is never
-# merged, so a reference to one dangles. Rationale
-# that something needs to point at belongs in specs/adrs/ or specs/design/.
+# Fail if anything cites specs/plans/. A plan never reaches main, so a
+# reference to one dangles. Rationale that something needs to point at
+# belongs in specs/adrs/ or specs/design/.
 #
 # The process documents below describe the rule, so they are allowed to name the
 # directory. Everything else -- code, tests, workflows, this justfile, design

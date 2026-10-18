@@ -109,7 +109,7 @@ Design validation to be configurable rather than fixed:
 - Support different compliance profiles
 - Allow enabling/disabling specific validation rules
 - Provide clear configuration interfaces
-- Maintain backward compatibility
+- Leave compatibility with earlier releases to a person (see [Decisions a Person Makes](development-standards.md#decisions-a-person-makes))
 
 ## Implementation Guidelines
 

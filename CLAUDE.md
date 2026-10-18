@@ -7,7 +7,7 @@ This file provides entry points for Claude Code when working on the IronPLC proj
 Before making changes, read the relevant steering files in `specs/steering/`:
 
 - **[Glossary](specs/steering/glossary.md)** - Authoritative definitions of core vocabulary (dialect, vendor, extension, edition); resolve terminology questions here before coining a new term
-- **[Development Standards](specs/steering/development-standards.md)** - Cross-component process and conventions that apply to all work: specs directory structure, planning, prefactoring, and duplication rules
+- **[Development Standards](specs/steering/development-standards.md)** - Cross-component process and conventions that apply to all work: specs directory structure, decisions a person makes, prefactoring, and duplication rules
 - **[Compiler Standards](specs/steering/compiler-standards.md)** - Rust coding standards: module structure, testing, error handling, performance, `unsafe`/clippy rules (especially relevant for `compiler/**` files)
 - **[Documentation Standards](specs/steering/doc-standards.md)** - Documentation website standards: quadrants, writing style, RST roles, playground directives (especially relevant for `docs/**` files)
 - **[Extension Standards](specs/steering/extension-standards.md)** - VS Code extension coding standards: README sync, testing gates, `E####` error codes (especially relevant for `integrations/vscode/**` files)
@@ -54,7 +54,7 @@ See [specs/steering/common-tasks.md](specs/steering/common-tasks.md) for complet
 - `playground/` - Interactive playground (browser-based editor/runner, built from `compiler/playground/` WASM crate)
 
 ### Critical Rules
-1. **Follow the [Development Process](specs/steering/development-standards.md#development-process)** - Never push to `main`; never cite a plan from code, docs or workflows (`cd specs && just` enforces this)
+1. **Follow the [Development Process](specs/steering/development-standards.md#development-process)** - Never push to `main`; ask a person to make the [decisions that need one](specs/steering/development-standards.md#decisions-a-person-makes) rather than assuming an answer; never cite a plan from code, docs or workflows (`cd specs && just` enforces this)
 2. **BDD-style test names**: `function_when_condition_then_result`
 3. **Module size limit**: Max 1000 lines per module
 4. **No duplicated content** - Including in documentation; share via `docs/includes/` and `.. include::` ([Avoid Duplication](specs/steering/development-standards.md#avoid-duplication))

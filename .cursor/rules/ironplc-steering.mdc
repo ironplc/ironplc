@@ -12,7 +12,7 @@ alwaysApply: true
 ## Read when relevant
 
 - `specs/steering/glossary.md` — authoritative vocabulary (dialect, vendor, extension, edition); check before coining a term
-- `specs/steering/development-standards.md` — development process (plan, prefactor and core change PRs), specs structure, duplication rules
+- `specs/steering/development-standards.md` — development process (prefactor and core change PRs, decisions a person makes), specs structure, duplication rules
 - `specs/steering/compiler-architecture.md` — compiler layout and semantic patterns
 - `specs/steering/iec-61131-3-compliance.md` — analyzer / standard compliance
 - `specs/steering/plcopen-xml-module.md` — `compiler/sources/src/xml/`
@@ -25,3 +25,4 @@ alwaysApply: true
 ## Non-negotiables
 
 - Follow the development process in `specs/steering/development-standards.md` (section "Development Process") for every change; read it before non-trivial work.
+- Ask a person to make the decisions listed under "Decisions a Person Makes" rather than assuming an answer.

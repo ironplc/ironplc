@@ -7,7 +7,7 @@ This file is the IronPLC entry point for Cursor. Detailed guidance lives in **`s
 Before making changes, read the relevant steering files in `specs/steering/`:
 
 - **[Glossary](specs/steering/glossary.md)** - Authoritative definitions of core vocabulary (dialect, vendor, extension, edition); resolve terminology questions here before coining a new term
-- **[Development Standards](specs/steering/development-standards.md)** - Development process (plan, prefactor and core change PRs), specs directory structure, prefactoring, and duplication rules
+- **[Development Standards](specs/steering/development-standards.md)** - Development process (prefactor and core change PRs, decisions a person makes), specs directory structure, prefactoring, and duplication rules
 - **[Compiler Architecture](specs/steering/compiler-architecture.md)** - Patterns for implementing language features, module organization, and semantic analysis
 - **[IEC 61131-3 Compliance](specs/steering/iec-61131-3-compliance.md)** - Standards compliance and validation rules (especially relevant for `**/analyzer/**` files)
 - **[PLCopen XML Module](specs/steering/plcopen-xml-module.md)** - Architecture and patterns for the PLCopen XML parsing module (especially relevant for `compiler/sources/src/xml/` files)
@@ -48,7 +48,7 @@ See [specs/steering/common-tasks.md](specs/steering/common-tasks.md) for complet
 
 ### Critical Rules
 
-1. **Follow the [Development Process](specs/steering/development-standards.md#development-process)** - Never push to `main`; never cite a plan from code, docs or workflows (`cd specs && just` enforces this)
+1. **Follow the [Development Process](specs/steering/development-standards.md#development-process)** - Never push to `main`; ask a person to make the [decisions that need one](specs/steering/development-standards.md#decisions-a-person-makes) rather than assuming an answer; never cite a plan from code, docs or workflows (`cd specs && just` enforces this)
 2. **BDD-style test names**: `function_when_condition_then_result`
 3. **Module size limit**: Max 1000 lines per module
 4. **No duplicated content** - Including in documentation; share via `docs/includes/` and `.. include::` ([Avoid Duplication](specs/steering/development-standards.md#avoid-duplication))
