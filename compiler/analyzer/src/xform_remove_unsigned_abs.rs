@@ -1,24 +1,36 @@
-//! Transform that removes `ABS` applied to an unsigned integer.
+//! Transform that removes `ABS` applied to an unsigned integer or to an
+//! integer literal.
 //!
 //! IEC 61131-3 declares `ABS` on `ANY_NUM`, and the absolute value of an
 //! unsigned value is the value itself. Removing the call here, before code
 //! generation, means no back end has to know that: a back end that lowered
 //! it with its signed absolute value would read a large unsigned value as
-//! negative.
+//! negative. So is removed `ABS` of a subrange of an unsigned integer.
+//!
+//! The absolute value of an integer literal is known here, so the call is
+//! replaced by that constant: `ABS(-5)` is `5` and `ABS(DINT#-5)` is
+//! `DINT#5`. An untyped literal has no type yet, since the conversions that
+//! settle it run later, but whatever type it settles to, its absolute value
+//! is the literal without its sign. A constant that its type cannot hold,
+//! such as the `SINT#128` of `ABS(SINT#-128)`, is reported by
+//! `rule_constant_range`, as `127 + 1` stored in a `SINT` is.
 //!
 //! This runs after `xform_resolve_expr_types`, which gives the argument its
-//! type.
+//! type, and after `xform_fold_constant_expressions`, which folds `-5` into a
+//! literal.
 //!
 //! ## Before
 //!
 //! ```ignore
 //! y := ABS(x);   (* x : UDINT *)
+//! z := ABS(-5);
 //! ```
 //!
 //! ## After
 //!
 //! ```ignore
 //! y := x;
+//! z := 5;
 //! ```
 use ironplc_dsl::common::*;
 use ironplc_dsl::diagnostic::Diagnostic;
@@ -38,8 +50,9 @@ struct UnsignedAbsRemover<'a> {
 }
 
 impl UnsignedAbsRemover<'_> {
-    /// The argument of `node` when it is `ABS` of an unsigned integer.
-    fn unsigned_abs_argument(&self, node: &Expr) -> Option<Expr> {
+    /// What `node` is without its call when it is `ABS` of an integer
+    /// literal, of an unsigned integer or of a subrange of one.
+    fn without_abs(&self, node: &Expr) -> Option<Expr> {
         let ExprKind::Function(function) = &node.kind else {
             return None;
         };
@@ -50,23 +63,44 @@ impl UnsignedAbsRemover<'_> {
             return None;
         };
         let input = arg.input_expr()?;
-        match self.type_environment.representation_of_expr(input)? {
-            SemanticType::UInt { .. } => Some(input.clone()),
-            _ => None,
+        if let ExprKind::Const(ConstantKind::IntegerLiteral(literal)) = &input.kind {
+            return Some(absolute_literal(literal, input, node));
         }
+        let unsigned = self
+            .type_environment
+            .representation_of_expr(input)
+            .is_some_and(|ty| matches!(ty.operated_as(), SemanticType::UInt { .. }));
+        unsigned.then(|| input.clone())
+    }
+}
+
+/// The absolute value of `literal`, the argument `input` of the `ABS` call
+/// `call`: the literal without its sign, of the type `input` has.
+///
+/// The constant stands where the call stood, so it takes the call's span: a
+/// diagnostic that `ABS(SINT#-128)` is not a `SINT` points at the call.
+fn absolute_literal(literal: &IntegerLiteral, input: &Expr, call: &Expr) -> Expr {
+    let mut literal = literal.clone();
+    literal.value.is_neg = false;
+    literal.value.value.span = call.span.clone();
+    Expr {
+        kind: ExprKind::Const(ConstantKind::IntegerLiteral(literal)),
+        expr_type: input.expr_type.clone(),
+        span: call.span.clone(),
     }
 }
 
 impl Fold<Diagnostic> for UnsignedAbsRemover<'_> {
     fn fold_expr(&mut self, node: Expr) -> Result<Expr, Diagnostic> {
         let node = Expr::recurse_fold(node, self)?;
-        Ok(self.unsigned_abs_argument(&node).unwrap_or(node))
+        Ok(self.without_abs(&node).unwrap_or(node))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::test_helpers::parse_and_resolve_types;
+    use ironplc_dsl::common::ConstantKind;
     use ironplc_dsl::textual::*;
     use ironplc_dsl::visitor::Visitor;
     use std::convert::Infallible;
@@ -92,6 +126,29 @@ mod tests {
         calls.0
     }
 
+    /// The value of every assignment in a library after analysis, as written,
+    /// with the type an integer literal names.
+    #[derive(Default)]
+    struct AssignedValues(Vec<String>);
+
+    impl Visitor<Infallible> for AssignedValues {
+        type Value = ();
+        fn visit_assignment(&mut self, node: &Assignment) -> Result<(), Infallible> {
+            self.0.push(match &node.value.kind {
+                ExprKind::Const(ConstantKind::IntegerLiteral(literal)) => literal.to_string(),
+                other => other.to_string(),
+            });
+            node.recurse_visit(self)
+        }
+    }
+
+    fn assigned_values(source: &str) -> Vec<String> {
+        let library = parse_and_resolve_types(source);
+        let mut values = AssignedValues::default();
+        let Ok(()) = values.walk(&library);
+        values.0
+    }
+
     #[test]
     fn apply_when_abs_of_udint_then_call_removed() {
         assert_eq!(
@@ -107,6 +164,59 @@ mod tests {
             abs_calls(
                 "PROGRAM main VAR x : ULINT; y : ULINT; END_VAR y := ABS(x) + ABS(x); END_PROGRAM"
             )
+        );
+    }
+
+    #[test]
+    fn apply_when_abs_of_unsigned_subrange_then_call_removed() {
+        assert_eq!(
+            0,
+            abs_calls(
+                "TYPE US : UDINT(1..4000000000); END_TYPE
+                 PROGRAM main VAR x : US := 1; y : UDINT; END_VAR y := ABS(x); END_PROGRAM"
+            )
+        );
+    }
+
+    #[test]
+    fn apply_when_abs_of_signed_subrange_then_call_kept() {
+        assert_eq!(
+            1,
+            abs_calls(
+                "TYPE S : DINT(-5..5); END_TYPE
+                 PROGRAM main VAR x : S; y : DINT; END_VAR y := ABS(x); END_PROGRAM"
+            )
+        );
+    }
+
+    #[test]
+    fn apply_when_abs_of_untyped_literal_then_call_removed() {
+        assert_eq!(
+            0,
+            abs_calls(
+                "PROGRAM main VAR y : UDINT; z : DINT; END_VAR
+                 y := ABS(3000000000); z := ABS(5) + z; END_PROGRAM"
+            )
+        );
+    }
+
+    #[test]
+    fn apply_when_abs_of_negative_or_typed_literal_then_absolute_value() {
+        assert_eq!(
+            vec!["5", "DINT#5", "DINT#5", "3000000000"],
+            assigned_values(
+                "PROGRAM main VAR y : DINT; z : DINT; w : DINT; u : UDINT; END_VAR
+                 y := ABS(-5); z := ABS(DINT#-5); w := ABS(DINT#5);
+                 u := ABS(-3000000000); END_PROGRAM"
+            )
+        );
+    }
+
+    #[test]
+    fn apply_when_abs_of_abs_of_literal_then_absolute_value() {
+        assert_eq!(
+            vec!["5"],
+            assigned_values("PROGRAM main VAR y : DINT; END_VAR y := ABS(ABS(-5)); END_PROGRAM")
         );
     }
 
