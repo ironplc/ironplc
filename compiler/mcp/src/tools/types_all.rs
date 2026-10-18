@@ -124,7 +124,7 @@ fn collect_types(context: &SemanticContext) -> Vec<TypeEntry> {
 
     for (name, attrs) in context.types().iter_user_defined() {
         let entry = match &attrs.representation {
-            SemanticType::Enumeration { members } => {
+            SemanticType::Enumeration { members, .. } => {
                 let values: Vec<String> = members
                     .iter()
                     .map(|member| member.name.to_string())

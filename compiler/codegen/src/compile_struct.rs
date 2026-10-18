@@ -727,6 +727,7 @@ mod tests {
         types.extend([
             SemanticType::Enumeration {
                 members: EnumerationMembers::default(),
+                underlying_type: None,
             },
             SemanticType::Subrange {
                 base_type: Box::new(SemanticType::UInt {

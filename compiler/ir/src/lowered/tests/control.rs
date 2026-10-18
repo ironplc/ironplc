@@ -230,9 +230,19 @@ fn enumeration_ordinal_when_explicit_values_then_ordinal_at_position() {
         name: name(text),
         ordinal,
     };
+    let underlying = b
+        .push_type(
+            entry(TypeKind::Integer {
+                width: IntWidth::B16,
+                signed: true,
+            }),
+            &span(),
+        )
+        .unwrap();
     let ty = b
         .push_type(
             entry(TypeKind::Enumeration {
+                underlying,
                 values: vec![value("RED", 0), value("GREEN", 5), value("BLUE", 6)],
             }),
             &span(),

@@ -622,6 +622,18 @@ does a `CASE` label naming one. Every enumeration operates as a `DINT`, and
 analysis reports an ordinal outside its range (P2044, REQ-EN-codegen-084), so
 each ordinal fits one; lowering reports one that does not as P9998.
 
+An enumeration's entry also names its underlying type: the integer or bit
+string type its declaration names for its values (`(A, B) WORD`, behind
+`--allow-enum-base-type`), or `INT` when it names none, as in CODESYS and
+TwinCAT. It is part of the language rather than a layout, and it changes
+neither how a backend stores an enumeration nor how it operates on one.
+
+**REQ-LOW-ir-192** An enumeration's entry names its underlying type, an
+integer or bit string type in the table.
+
+**REQ-LOW-lowering-190** An enumeration's underlying type is the type its
+declaration names, or `INT` when it names none.
+
 **REQ-LOW-lowering-027** The type table holds no size, offset or slot count,
 and refers to the type of every field, element, enumeration, subrange and
 reference target by its `TypeId`.
