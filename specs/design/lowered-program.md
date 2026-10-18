@@ -633,8 +633,9 @@ each ordinal fits one; lowering reports one that does not as P9998.
 An enumeration's entry also names its underlying type: the integer or bit
 string type its declaration names for its values (`(A, B) WORD`, behind
 `--allow-enum-base-type`), or `INT` when it names none, as in CODESYS and
-TwinCAT. It is part of the language rather than a layout, and it changes
-neither how a backend stores an enumeration nor how it operates on one.
+TwinCAT. It is part of the language rather than a layout: it gives `SIZEOF`
+its size (REQ-LOW-lowering-103), and changes neither how a backend stores an
+enumeration nor how it operates on one.
 
 **REQ-LOW-ir-192** An enumeration's entry names its underlying type, an
 integer or bit string type in the table.
@@ -2245,9 +2246,11 @@ the place.
 names its place once.
 
 **REQ-LOW-lowering-103** `SIZEOF` lowers to a `Const` computed from the
-language's storage widths, never from a backend's layout. For a type whose size
-only a layout gives, such as a structure, a string or an enumeration, it is
-P9999.
+language's storage widths, never from a backend's layout, with the sizes
+CODESYS, TwinCAT and RuSTy give: a `BOOL` takes a byte, a `STRING[n]` `n + 1`
+bytes and a `WSTRING[n]` `2 * (n + 1)`, an enumeration its underlying type's
+size (REQ-LOW-lowering-190), and an array its element's size for each element.
+For a type whose size only a layout gives, such as a structure, it is P9999.
 
 **REQ-LOW-lowering-165** A desugaring evaluates each argument of the call it
 stands for once: `DT_TO_DATE(x)` is `(x / 86400) * 86400` rather than

@@ -372,3 +372,56 @@ END_PROGRAM
 ",
     &[("s", 40)],
 );
+
+/// REQ-LOW-lowering-103: with every statement lowered, `SIZEOF` of a string
+/// is its capacity and terminator, and of an enumeration its underlying
+/// type's size, as CODESYS, TwinCAT and RuSTy give them. (The route that
+/// reads the AST gives 0 for an array of strings and 4 for every
+/// enumeration.)
+#[test]
+fn run_when_sizeof_string_or_enumeration_lowered_then_language_size() {
+    let options = CompilerOptions {
+        allow_enum_base_type: true,
+        ..sizeof_options()
+    };
+    let source = "
+TYPE
+  COLOR : (RED, GREEN);
+  SMALL : (A, B) BYTE;
+END_TYPE
+
+PROGRAM main
+  VAR
+    s : STRING[10];
+    w : WSTRING[10];
+    names : ARRAY[1..3] OF STRING[4];
+    c : COLOR;
+    b : SMALL;
+    r_string : DINT;
+    r_wstring : DINT;
+    r_names : DINT;
+    r_color : DINT;
+    r_small : DINT;
+  END_VAR
+  r_string := SIZEOF(s);
+  r_wstring := SIZEOF(w);
+  r_names := SIZEOF(names);
+  r_color := SIZEOF(c);
+  r_small := SIZEOF(b);
+END_PROGRAM
+";
+    let (library, context) = crate::common::parse(source, &options);
+    let container = crate::common::compile_by_route(
+        &library,
+        &context,
+        &options,
+        ironplc_codegen::Route::RequireLowered,
+    )
+    .expect("every statement lowers");
+    let snapshot = crate::common::Snapshot::run_compiled(container);
+    assert_eq!(snapshot.read_as::<i32>("r_string"), 11);
+    assert_eq!(snapshot.read_as::<i32>("r_wstring"), 22);
+    assert_eq!(snapshot.read_as::<i32>("r_names"), 15);
+    assert_eq!(snapshot.read_as::<i32>("r_color"), 2);
+    assert_eq!(snapshot.read_as::<i32>("r_small"), 1);
+}

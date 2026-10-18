@@ -101,8 +101,8 @@ pub enum SemanticType {
         members: EnumerationMembers,
         /// The integer or bit string type the declaration names for its
         /// values (`(A, B) WORD`, behind `--allow-enum-base-type`), if it
-        /// names one. It changes neither how the enumeration is stored nor
-        /// how it is operated on.
+        /// names one. It gives `SIZEOF` its size, and changes neither how
+        /// the enumeration is stored nor how it is operated on.
         underlying_type: Option<Box<SemanticType>>,
     },
     /// Structure type containing named fields
