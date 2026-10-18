@@ -16,6 +16,7 @@ use ironplc_ir::lowered::{
     TypeEntry, TypeId, TypeKind, WideWidth,
 };
 
+use crate::variables::{direct_address, retention};
 use crate::Lowering;
 
 /// A lowered type, `None` when lowering cannot express it yet, or a P9998
@@ -99,7 +100,23 @@ impl Lowering<'_> {
                     capacity,
                 })
             }
-            SemanticType::Enumeration { members, .. } => TypeKind::Enumeration {
+            SemanticType::Enumeration {
+                members,
+                underlying_type,
+            } => TypeKind::Enumeration {
+                // The type the declaration names, and `INT` when it names
+                // none, as in CODESYS and TwinCAT (REQ-LOW-lowering-190).
+                underlying: {
+                    let int = SemanticType::Int {
+                        size: ByteSized::B16,
+                    };
+                    let Some(underlying) =
+                        self.elementary(underlying_type.as_deref().unwrap_or(&int))?
+                    else {
+                        return Ok(None);
+                    };
+                    underlying
+                },
                 values: members
                     .iter()
                     .map(|member| {
@@ -244,12 +261,14 @@ impl Lowering<'_> {
             let Some(ty) = self.lowered_type(field_type)? else {
                 return Ok(None);
             };
-            fields.push(Field::new(
+            let declared = Field::new(
                 &field.name.to_string(),
                 field.name.span(),
                 Some(section(&field.var_type)),
                 ty,
-            ));
+            );
+            let location = field.address.as_ref().map(direct_address);
+            fields.push(declared.declared(location, retention(&field.qualifier)));
         }
         Ok(Some(fields))
     }

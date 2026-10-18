@@ -1,7 +1,7 @@
 //! Semantic rule that checks the operands of an operator against the types
 //! the operator is defined for.
 //!
-//! Two families are checked:
+//! Three families are checked:
 //!
 //! - The arithmetic operators `+`, `-`, `*`, `/` and `MOD`, and the calls
 //!   `ADD`, `SUB`, `MUL` and `DIV`. IEC 61131-3 defines each as a numeric
@@ -22,6 +22,8 @@
 //!   diagnostic. Issue #1567 fixed the functional spelling of the same
 //!   family by declaring it `ANY_BIT`; this holds the operator spelling to
 //!   that row.
+//! - Negation, `-x`, of a time of day, a date or a date and time. See
+//!   [`RuleOperatorOperandTypeCheck::check_negation`].
 //!
 //! An operand whose resolved type the predicate cannot judge (a subrange,
 //! an enumeration, a structure) is skipped rather than reported, as the
@@ -52,6 +54,15 @@
 //!     d := d AND 3;      (* P4049: AND is not defined for DINT *)
 //! END_PROGRAM
 //! ```
+//!
+//! ```ignore
+//! PROGRAM main
+//! VAR
+//!     t : TOD;
+//! END_VAR
+//!     t := -t;           (* P4049: a time of day has no negative *)
+//! END_PROGRAM
+//! ```
 
 use ironplc_dsl::{
     common::*,
@@ -73,6 +84,7 @@ use crate::intermediates::operator_function_form::{
 use crate::result::SemanticResult;
 use crate::rule_support::{run_rule, DiagnosticVisitor};
 use crate::semantic_context::SemanticContext;
+use crate::semantic_type::SemanticType;
 use crate::type_compat::{are_types_compatible, is_checkable_type};
 use crate::type_environment::TypeEnvironment;
 use crate::value_type::operand_type_name;
@@ -135,8 +147,8 @@ fn checked_compare_form(op: &CompareOp) -> Option<&'static OperatorFunctionForm>
 fn checked_unary_form(op: &UnaryOp) -> Option<&'static OperatorFunctionForm> {
     match op {
         UnaryOp::Not => form_of_operator(&FormOf::Not),
-        // Negation is `ANY_NUM`; holding it to that is a separate decision,
-        // outside the arithmetic overloads (it has no function form).
+        // Negation has no function form to hold it to; `check_negation`
+        // checks it.
         UnaryOp::Neg => None,
     }
 }
@@ -254,6 +266,59 @@ impl RuleOperatorOperandTypeCheck<'_> {
         }
     }
 
+    /// Reports P4049 when `operand`, negated, is a time of day, a date or a
+    /// date and time, in any dialect.
+    ///
+    /// IEC 61131-3 defines negation over `ANY_NUM` (Table 24), and IronPLC
+    /// negates a duration too, as the signed integer it is stored as
+    /// (ADR-0025). A time of day, a date and a date and time count from an
+    /// epoch, so no value of theirs is the negative of another, and no
+    /// dialect is known to negate one. Holding negation to `ANY_NUM` and
+    /// `ANY_DURATION` for the other types is a separate decision: a `BOOL` or
+    /// a bit string is not checked here.
+    fn check_negation(&mut self, operand: &Expr) {
+        let Some(ExprType::Concrete(id) | ExprType::Inferred(id)) = &operand.expr_type else {
+            return;
+        };
+        let Some(attributes) = self.types.get_by_id(*id) else {
+            return;
+        };
+        let from_epoch = match attributes.representation {
+            SemanticType::Date { .. }
+            | SemanticType::TimeOfDay { .. }
+            | SemanticType::DateAndTime { .. } => true,
+            SemanticType::Bool
+            | SemanticType::Int { .. }
+            | SemanticType::UInt { .. }
+            | SemanticType::Real { .. }
+            | SemanticType::Bytes { .. }
+            | SemanticType::Time { .. }
+            | SemanticType::String { .. }
+            | SemanticType::Reference { .. }
+            | SemanticType::Subrange { .. }
+            | SemanticType::Enumeration { .. }
+            | SemanticType::Structure { .. }
+            | SemanticType::Array { .. }
+            | SemanticType::FunctionBlock { .. }
+            | SemanticType::Interface { .. } => false,
+        };
+        if !from_epoch {
+            return;
+        }
+        let Some(actual) = self.operand_name(operand) else {
+            return;
+        };
+        self.diagnostics.push(
+            Diagnostic::problem(
+                Problem::OperatorOperandTypeMismatch,
+                Label::span(operand.span(), "Operand"),
+            )
+            .with_context("operator", &"-".to_string())
+            .with_context("expected", &"ANY_NUM or ANY_DURATION".to_string())
+            .with_context("actual", &actual.to_string()),
+        );
+    }
+
     /// Reports P4049 when `operand`'s resolved type is one the predicate can
     /// judge and it is not acceptable where `expected` is required.
     fn check_operand(&mut self, form: &OperatorFunctionForm, expected: &TypeName, operand: &Expr) {
@@ -300,16 +365,18 @@ impl Visitor<Infallible> for RuleOperatorOperandTypeCheck<'_> {
                     self.check_operands(form, &[&compare.left, &compare.right]);
                 }
             }
-            ExprKind::UnaryOp(unary) => {
-                if let Some(form) = checked_unary_form(&unary.op) {
-                    self.check_operands(form, &[&unary.term]);
-                }
-            }
+            ExprKind::UnaryOp(unary) => match checked_unary_form(&unary.op) {
+                Some(form) => self.check_operands(form, &[&unary.term]),
+                None => self.check_negation(&unary.term),
+            },
             _ => {}
         }
         node.recurse_visit(self)
     }
 }
+
+#[cfg(test)]
+mod negation_tests;
 
 #[cfg(test)]
 mod tests {

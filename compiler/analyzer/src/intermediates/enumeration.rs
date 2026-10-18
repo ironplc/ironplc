@@ -1,6 +1,6 @@
 use crate::enumeration_members::EnumerationMembers;
 use crate::semantic_type::SemanticType;
-use crate::type_environment::TypeAttributes;
+use crate::type_environment::{elementary_type, TypeAttributes};
 use ironplc_dsl::common::*;
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::*;
@@ -40,12 +40,14 @@ pub fn resolve_ordinal_values(values: &[EnumeratedValue]) -> Vec<i64> {
 const MAX_MEMBERS: usize = 65_536;
 
 /// The type records its members, their ordinals and `default`, the
-/// declared default value (see [`EnumerationMembers`]). Every enumeration is
-/// stored as a `DINT` (REQ-EN-codegen-003), whatever base type its
-/// declaration names, so the type records none.
+/// declared default value (see [`EnumerationMembers`]), and
+/// `underlying_type`, the type the declaration names for its values, if any.
+/// Every enumeration is stored as a `DINT` (REQ-EN-codegen-003), whatever
+/// type its declaration names.
 pub fn try_from_values(
     enumerated_values: &dyn HasEnumeratedValues,
     default: Option<&Id>,
+    underlying_type: Option<&ElementaryTypeName>,
 ) -> Result<TypeAttributes, Diagnostic> {
     // We could support more than 65k members, but I cannot imagine a reasonable
     // program with that many states. We can change this if we can find such
@@ -60,7 +62,13 @@ pub fn try_from_values(
 
     check_ordinals_fit_dint(enumerated_values.values())?;
     let members = EnumerationMembers::from_values(enumerated_values.values(), default);
-    Ok(TypeAttributes::new(SemanticType::Enumeration { members }))
+    let underlying_type = underlying_type
+        .and_then(|name| elementary_type(&name.clone().into()))
+        .map(|underlying| Box::new(underlying.clone()));
+    Ok(TypeAttributes::new(SemanticType::Enumeration {
+        members,
+        underlying_type,
+    }))
 }
 
 /// Fails with P2044 at the first value whose ordinal is outside the range of
@@ -457,6 +465,34 @@ END_TYPE
         let expected = pairs(&[("LOW", 0), ("MEDIUM", 1), ("HIGH", 2)]);
         assert_eq!(members_of(types, level2), (expected.clone(), 1));
         assert_eq!(members_of(types, level3), (expected, 2));
+    }
+
+    #[test]
+    fn resolve_types_when_base_type_named_then_type_records_it() {
+        let (_library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
+            "TYPE
+                SMALL : (A, B) WORD;
+                PLAIN : (C, D);
+                RENAMED : SMALL;
+            END_TYPE",
+            &CompilerOptions::default(),
+        );
+        let types = context.types();
+        let underlying = |name: &str| {
+            let id = types.id_of(&TypeName::from(name)).unwrap();
+            let crate::semantic_type::SemanticType::Enumeration {
+                underlying_type, ..
+            } = &types.get_by_id(id).unwrap().representation
+            else {
+                panic!("not an enumeration");
+            };
+            underlying_type.as_deref().cloned()
+        };
+        let word = crate::type_environment::elementary_type(&TypeName::from("WORD")).cloned();
+
+        assert_eq!(underlying("SMALL"), word);
+        assert_eq!(underlying("PLAIN"), None);
+        assert_eq!(underlying("RENAMED"), word);
     }
 
     #[test]

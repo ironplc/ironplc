@@ -17,19 +17,21 @@ use super::loops::{build_for, build_loop, expand_for, ForParts, LoopScope};
 use super::place::Place;
 use super::stmt::{store_narrowing, Stmt};
 use super::str_expr::StrExpr;
-use super::types::{NarrowWidth, Nullability, TypeEntry, TypeKind, TypeTable};
-use super::variables::{by_value, FunctionSignature, Owner, PouTable, VariableTable};
+use super::types::{NarrowWidth, Nullability, Section, TypeEntry, TypeKind, TypeTable};
+use super::variables::{by_value, Declared, FunctionSignature, Owner, PouTable, VariableTable};
 use crate::execution::DebugName;
 
 /// Builds one lowered program.
 #[derive(Clone, Debug)]
 pub struct ProgramBuilder {
-    stamp: Stamp,
+    pub(super) stamp: Stamp,
     /// How many loops the builder has opened.
     loops: u32,
-    types: TypeTable,
-    variables: VariableTable,
-    pous: PouTable,
+    pub(super) types: TypeTable,
+    pub(super) variables: VariableTable,
+    pub(super) pous: PouTable,
+    /// The statements of `init`, in order (see [`super::Program`]).
+    pub(super) init: Vec<Stmt>,
 }
 
 impl Default for ProgramBuilder {
@@ -48,6 +50,7 @@ impl ProgramBuilder {
             types: TypeTable::new(stamp),
             variables: VariableTable::new(stamp),
             pous: PouTable::new(stamp),
+            init: Vec::new(),
         }
     }
 
@@ -101,12 +104,27 @@ impl ProgramBuilder {
         self.types.push(entry, span)
     }
 
-    /// Adds a variable named `name`, owned by `owner`, of type `ty`. The owner
-    /// is a POU of this program and the type a type of it.
+    /// Adds a temporary named `name`, owned by `owner`, of type `ty`: a
+    /// variable lowering makes, which no declaration declares. The owner is a
+    /// POU of this program and the type a type of it.
     pub fn push_variable(
         &mut self,
         name: DebugName,
         owner: Owner,
+        ty: TypeId,
+    ) -> Result<VarId, Diagnostic> {
+        let declared = Declared::in_section(Section::Temporary);
+        self.push_declared_variable(name, owner, declared, ty)
+    }
+
+    /// Adds a variable named `name`, owned by `owner`, declared as
+    /// `declared` says, of type `ty`. The owner is a POU of this program and
+    /// the type a type of it.
+    pub fn push_declared_variable(
+        &mut self,
+        name: DebugName,
+        owner: Owner,
+        declared: Declared,
         ty: TypeId,
     ) -> Result<VarId, Diagnostic> {
         if let Owner::Pou(pou) = owner {
@@ -118,7 +136,7 @@ impl ProgramBuilder {
                 ));
             }
         }
-        self.variables.push(&self.types, name, owner, ty)
+        self.variables.push(&self.types, name, owner, declared, ty)
     }
 
     /// The whole of the variable `root`, at its type.

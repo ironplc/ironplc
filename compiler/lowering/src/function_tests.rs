@@ -280,6 +280,24 @@ fn lower_statement_when_function_has_string_in_out_then_unsupported() {
     assert_eq!(outcome.statements, ["unsupported"]);
 }
 
+/// REQ-LOW-lowering-067: what a function's `VAR_OUTPUT` parameter refers to
+/// is a `FOR` loop's control variable.
+#[test]
+fn lower_statement_when_output_is_loop_control_then_for() {
+    let outcome = lower(
+        "FUNCTION COUNT : DINT VAR_OUTPUT n : DINT; END_VAR
+           FOR n := 1 TO 3 DO
+             COUNT := COUNT + n;
+           END_FOR;
+         END_FUNCTION",
+        "COUNT",
+    );
+    assert_eq!(
+        outcome.statements,
+        ["for loop0 v0^ from (const i32s 1) to (const i32s 3) by 1\n  assign v1 (add i32s (read i32s v1) (read i32s v0^))\nend"]
+    );
+}
+
 /// What a `VAR_IN_OUT` refers to is not a `FOR` loop's control variable yet,
 /// but has bits written as any other place does.
 #[test]
@@ -296,5 +314,34 @@ fn lower_statement_when_in_out_is_loop_control_then_unsupported() {
     assert_eq!(
         outcome.statements,
         ["unsupported", "assign-bits v1^ 0 1 (const bool true)"]
+    );
+}
+
+/// REQ-LOW-lowering-075: an argument for a function's or method's input that
+/// is a structure or an array is a `Copy` of the place its argument names,
+/// and the input is a variable of the callee of the aggregate's type.
+#[test]
+fn lower_statement_when_aggregate_input_then_copy_of_argument() {
+    let outcome = lower_bodies(
+        "TYPE P : STRUCT x : DINT; END_STRUCT; END_TYPE
+         TYPE A3 : ARRAY[1..3] OF DINT; END_TYPE
+         FUNCTION SUMP : DINT VAR_INPUT q : P; n : DINT; END_VAR SUMP := n; END_FUNCTION
+         FUNCTION SUMA : DINT VAR_INPUT q : A3; END_VAR SUMA := 8; END_FUNCTION
+         FUNCTION_BLOCK BP METHOD M : DINT VAR_INPUT q : P; END_VAR M := 5; END_METHOD
+         END_FUNCTION_BLOCK
+         PROGRAM main VAR pt : P; a3 : A3; r : DINT; f : BP; END_VAR
+            r := SUMP(q := pt, n := 2);
+            r := SUMA(q := a3);
+            r := f.M(q := pt);
+         END_PROGRAM",
+        &["main"],
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f2 (call pou2 i32s (copy v0^.f0) (const i32s 2))",
+            "assign v0^.f2 (call pou3 i32s (copy v0^.f1))",
+            "assign v0^.f2 (call pou4 i32s (ref v0^.f3) (copy v0^.f0))",
+        ]
     );
 }

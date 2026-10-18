@@ -73,7 +73,7 @@ Example
 ``FB_AdvancedMotor`` is the derived type and ``FB_Motor`` is its base type.
 A function block type extends at most one base type, and the base type must
 be a declared function block type. A name that is not declared, or that names
-another kind of type, reports :doc:`P4086 </reference/compiler/problems/P4086>`.
+another kind of type, reports :doc:`P4088 </reference/compiler/problems/P4088>`.
 
 What a derived type inherits
 ----------------------------

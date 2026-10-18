@@ -77,6 +77,32 @@ lowered-count:
     exit 1
   fi
 
+# Write every container the codegen end-to-end programs compile to, by both
+# routes, into the directory `dir`, one file per compilation named by its
+# test. A fixed seed keeps the property tests' programs the same from run to
+# run, so two versions of the compiler can be compared with `container-diff`.
+container-dump dir:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  cd "{{invocation_directory()}}"
+  mkdir -p "{{dir}}"
+  dump="$(cd "{{dir}}" && pwd)"
+  cd "{{justfile_directory()}}"
+  IRONPLC_CONTAINER_DUMP="$dump" PROPTEST_RNG_SEED=0 cargo test --quiet -p ironplc-codegen --test it
+  echo "Wrote $(ls "$dump" | wc -l) containers to $dump"
+
+# Compare two directories `container-dump` wrote, and fail unless every
+# container is identical, printing where each one that differs differs.
+container-diff before after:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  cd "{{invocation_directory()}}"
+  before="$(cd "{{before}}" && pwd)"
+  after="$(cd "{{after}}" && pwd)"
+  cd "{{justfile_directory()}}"
+  IRONPLC_CONTAINER_DIFF_BEFORE="$before" IRONPLC_CONTAINER_DIFF_AFTER="$after" \
+    cargo test --quiet -p ironplc-project --lib container_diff_when_two_dumps -- --ignored --nocapture
+
 # Check for duplicate code (AST-based).
 dupes:
   cargo dupes check --max-exact-percent 10 --max-near-percent 5 --exclude-tests --min-lines 10

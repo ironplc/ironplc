@@ -3,7 +3,7 @@
 //! Each test that checks a requirement of `specs/design/lowered-program.md`
 //! names it.
 
-use crate::test_support::lower;
+use crate::test_support::{lower, lower_bodies};
 
 /// REQ-LOW-lowering-031: an element of an array is an `Index` with one
 /// subscript per dimension, in order, each a `DINT`.
@@ -149,6 +149,26 @@ fn lower_statement_when_dereference_then_deref() {
     );
 }
 
+/// What `REF(x)` refers to is `x` itself, read as `x` is, as is what a
+/// `VAR_IN_OUT`'s `REF` refers to.
+#[test]
+fn lower_statement_when_dereference_of_ref_then_read_of_place() {
+    let outcome = lower_bodies(
+        "FUNCTION F : DINT VAR_IN_OUT io : DINT; END_VAR F := REF(io)^; END_FUNCTION
+         PROGRAM main VAR x : DINT; k : DINT; END_VAR
+            k := REF(x)^ + 1;
+         END_PROGRAM",
+        &["main", "F"],
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f1 (add i32s (read i32s v0^.f0) (const i32s 1))",
+            "assign v1 (read i32s v2^)",
+        ]
+    );
+}
+
 /// An element of an array a reference refers to is a `Deref`, then an
 /// `Index`.
 #[test]
@@ -230,19 +250,6 @@ fn lower_statement_when_bits_of_bits_written_then_unsupported() {
         "main",
     );
     assert_eq!(outcome.statements, ["unsupported"]);
-}
-
-/// A `BOOL` subscript, which analysis accepts, is not lowered.
-#[test]
-fn lower_statement_when_bool_subscript_then_unsupported() {
-    let outcome = lower(
-        "PROGRAM main VAR a : ARRAY[0..1] OF DINT; b : BOOL; x : DINT; END_VAR
-            a[b] := 1;
-            x := a[b];
-         END_PROGRAM",
-        "main",
-    );
-    assert_eq!(outcome.statements, ["unsupported", "unsupported"]);
 }
 
 /// A field of an instance of a standard function block is a field of the

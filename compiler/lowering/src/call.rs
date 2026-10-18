@@ -18,8 +18,8 @@ use ironplc_dsl::textual::{
     CompareOp, Expr as AstExpr, ExprKind as AstExprKind, Function, Operator,
 };
 use ironplc_ir::lowered::{
-    Arg, BinaryOp, CompareOp as LoweredCompareOp, Expr, Intrinsic, Param, ScalarType, Signedness,
-    TypeId, TypeKind, TypeTable,
+    Arg, BinaryOp, CompareOp as LoweredCompareOp, Encoding, Expr, Intrinsic, Param, ScalarType,
+    Signedness, StringShape, TypeId, TypeKind, TypeTable,
 };
 
 use crate::expr::Lowered;
@@ -335,8 +335,8 @@ impl Lowering<'_> {
     }
 
     /// `expr` lowered as what `param` takes: a value, a string, or the place
-    /// a variable names, passed by reference. `None` when it is not
-    /// supported.
+    /// a variable names, passed by reference or, for an array or a
+    /// structure, copied. `None` when it is not supported.
     pub(crate) fn arg(
         &mut self,
         frame: &BodyFrame,
@@ -351,6 +351,12 @@ impl Lowering<'_> {
                     return Ok(None);
                 };
                 self.variable_place(frame, variable)?.map(Arg::Ref)
+            }
+            Param::Copy(_) => {
+                let AstExprKind::Variable(variable) = &expr.kind else {
+                    return Ok(None);
+                };
+                self.variable_place(frame, variable)?.map(Arg::Copy)
             }
         })
     }
@@ -509,8 +515,9 @@ fn compare_op(op: &CompareOp) -> Option<LoweredCompareOp> {
 /// The shift or rotate `shift` of a bit string operated at `operated` and
 /// `width` bits wide.
 fn shift_intrinsic(shift: BitShift, operated: ScalarType, width: u8) -> Option<Intrinsic> {
-    // A bit string operates as an unsigned integer. A shift of a `BOOL`, or
-    // of an integer the analyzer let through, is not lowered.
+    // A bit string operates as an unsigned integer. The analyzer rejects a
+    // shift of a `BOOL` (P4087); one of an integer it let through is not
+    // lowered.
     let wide = match operated {
         ScalarType::I32(Signedness::Unsigned) => false,
         ScalarType::I64(Signedness::Unsigned) => true,
@@ -563,9 +570,11 @@ fn at_width(width: u8, [bits_8, bits_16, bits_32, bits_64]: [Intrinsic; 4]) -> O
 }
 
 /// The size in bytes of a value of `ty`, from the language's storage widths
-/// (REQ-LOW-lowering-103): a `BOOL` takes a byte, and an array its element's
-/// size for each element. `None` for a type whose size is a target's layout,
-/// such as a structure, a string or an enumeration.
+/// (REQ-LOW-lowering-103): a `BOOL` takes a byte, a string one code unit
+/// more than its capacity, as CODESYS, TwinCAT and RuSTy store its
+/// terminator, an enumeration its underlying type's size, and an array its
+/// element's size for each element. `None` for a type whose size is a
+/// target's layout, such as a structure.
 fn byte_size(types: &TypeTable, ty: TypeId) -> Option<i128> {
     match types.kind(ty)? {
         TypeKind::Bool => Some(1),
@@ -584,9 +593,15 @@ fn byte_size(types: &TypeTable, ty: TypeId) -> Option<i128> {
             .try_fold(byte_size(types, *element)?, |size, (lower, upper)| {
                 size.checked_mul(i128::from(*upper) - i128::from(*lower) + 1)
             }),
-        TypeKind::Enumeration { .. }
-        | TypeKind::String(_)
-        | TypeKind::Structure { .. }
+        TypeKind::Enumeration { underlying, .. } => byte_size(types, *underlying),
+        TypeKind::String(StringShape { encoding, capacity }) => {
+            let code_unit = match encoding {
+                Encoding::Narrow => 1,
+                Encoding::Wide => 2,
+            };
+            Some(code_unit * (i128::from(*capacity) + 1))
+        }
+        TypeKind::Structure { .. }
         | TypeKind::FunctionBlock { .. }
         | TypeKind::Program { .. }
         | TypeKind::Reference { .. } => None,

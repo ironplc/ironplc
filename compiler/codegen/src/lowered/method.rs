@@ -13,6 +13,10 @@
 //! finds the method in its layout by the names of its block and itself. A
 //! method a block inherits is the method of the block that declares it, as
 //! the AST route finds it through `MethodOwners`.
+//!
+//! `METHOD_CALL` names how many fields it copies by a byte. The layout
+//! reports a block with more fields than that as P9997 (REQ-LOW-codegen-191),
+//! so every block a call reaches fits.
 
 use std::collections::HashMap;
 

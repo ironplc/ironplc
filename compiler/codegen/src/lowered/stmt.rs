@@ -17,7 +17,8 @@ use ironplc_ir::lowered::{
 use ironplc_lowering::Lowering;
 
 use super::expr::{emit_constant, emit_expr, emit_truncate};
-use super::{constant, op_type, read, storage_name};
+use super::place::variable_name;
+use super::{constant, op_type, read};
 use crate::compile::{CompileContext, OpType};
 use crate::compile_expr::{
     classify_with_named, emit_add, emit_classified_cmp_br, emit_eq, emit_ge, emit_le, ClassifiedCmp,
@@ -287,7 +288,9 @@ impl Emission<'_, '_> {
     }
 
     /// `place <cmp> value` as one `CMP_BR_*`, when `place` is a signed integer
-    /// variable.
+    /// variable, as the AST route finds it by its name: a variable, a field
+    /// of the current instance, or what a function's or method's parameter
+    /// refers to.
     fn classify_place(
         &self,
         ctx: &mut CompileContext,
@@ -297,7 +300,7 @@ impl Emission<'_, '_> {
         cmp: u8,
     ) -> Option<ClassifiedCmp> {
         let value = i64::try_from(value.integer_value(ty)?).ok()?;
-        let name = storage_name(self.lowering, place)?;
+        let name = variable_name(self.lowering, ctx, place)?;
         classify_with_named(ctx, &name, value, cmp)
     }
 

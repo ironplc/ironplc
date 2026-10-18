@@ -7,16 +7,18 @@ use ironplc_dsl::core::FileId;
 use ironplc_dsl::textual::StmtKind;
 use ironplc_parser::options::CompilerOptions;
 
-use ironplc_ir::lowered::{NonNumeric, ParseFailure, ParsePolicy, Variable};
+use ironplc_ir::lowered::{NonNumeric, ParseFailure, ParsePolicy, TypeTable, Variable};
 
 use crate::{Body, Lowering, StatementLowering};
 
 /// What lowering made of each top-level statement of one body: the text of
 /// the statements it lowered to, one per line, or `unsupported`, and the
-/// variables lowering allocated.
+/// variables and types lowering allocated.
 pub(crate) struct Outcome {
     pub(crate) statements: Vec<String>,
     pub(crate) variables: Vec<Variable>,
+    /// The types lowering allocated, which the variables' types are in.
+    pub(crate) types: TypeTable,
 }
 
 /// Lowers each top-level statement of the program, function block or
@@ -28,17 +30,20 @@ pub(crate) fn lower(source: &str, pou: &str) -> Outcome {
 /// Lowers the top-level statements of each POU of `pous`, in order, with one
 /// [`Lowering`], so that their variables share one table. A method is named
 /// `Block.Method`. The source may use `AND_THEN`, `OR_ELSE`, `CONTINUE`,
-/// explicit enumeration values, `REF_TO`, partial access (`x.%B1`),
-/// `SIZEOF` and methods.
+/// explicit enumeration values and base types, `REF_TO`, partial access
+/// (`x.%B1`), `SIZEOF`, methods and an integer literal where a bit string is
+/// expected.
 pub(crate) fn lower_bodies(source: &str, pous: &[&str]) -> Outcome {
     let options = CompilerOptions {
         allow_short_circuit_operators: true,
         allow_continue: true,
         allow_enum_explicit_values: true,
+        allow_enum_base_type: true,
         allow_ref_to: true,
         allow_partial_access_syntax: true,
         allow_sizeof: true,
         allow_fb_inheritance: true,
+        allow_int_literal_to_bit_string: true,
         ..CompilerOptions::default()
     };
     let library = ironplc_parser::parse_program(source, &FileId::from_string("test.st"), &options)
@@ -74,6 +79,7 @@ pub(crate) fn lower_bodies(source: &str, pous: &[&str]) -> Outcome {
     Outcome {
         statements,
         variables,
+        types: lowering.types().clone(),
     }
 }
 

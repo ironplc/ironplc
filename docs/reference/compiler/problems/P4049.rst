@@ -94,6 +94,39 @@ To fix this error, use a number for the factor:
        total := interval * repeats;   (* T#6s *)
    END_PROGRAM
 
+Negating a time of day or a date
+--------------------------------
+
+The following code will generate error P4049:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       opened : TIME_OF_DAY := TOD#08:00:00;
+       closed : TIME_OF_DAY;
+   END_VAR
+       closed := -opened;
+   END_PROGRAM
+
+The unary ``-`` negates a number or a duration (``TIME``, ``LTIME``). A time of
+day, a date and a date and time are points in time, not amounts, so they have
+no negative. The same applies to ``DATE``, ``DATE_AND_TIME`` and their long
+forms.
+
+To fix this error, negate the duration you mean, such as the time since
+midnight:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       opened : TIME_OF_DAY := TOD#08:00:00;
+       before : TIME;
+   END_VAR
+       before := -(opened - TOD#00:00:00);   (* T#-8h *)
+   END_PROGRAM
+
 Remainder of a real number
 --------------------------
 

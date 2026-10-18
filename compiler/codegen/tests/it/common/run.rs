@@ -2,14 +2,15 @@
 
 use ironplc_analyzer::{CleanAnalysis, SemanticContext};
 use ironplc_codegen::{compile_with_route_counts, Route, RouteCounts};
-use ironplc_container::Container;
+use ironplc_container::debug_section::iec_type_tag;
+use ironplc_container::{Container, VarIndex};
 use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_parser::parse_program;
 use ironplc_vm::test_support::{load_and_start, TestVm};
-use ironplc_vm::{FaultContext, VmBuffers};
+use ironplc_vm::{FaultContext, Slot, VmBuffers};
 
 use super::session::Session;
 use super::value::Value;
@@ -130,7 +131,38 @@ fn compile_counting(
         route,
         ..ironplc_codegen::CodegenOptions::from(options)
     };
-    compile_with_route_counts(analysis, &codegen_options, &ironplc_codegen::EmptyLookup)
+    let compiled =
+        compile_with_route_counts(analysis, &codegen_options, &ironplc_codegen::EmptyLookup);
+    if let Ok((container, _)) = &compiled {
+        dump_container(container, route);
+    }
+    compiled
+}
+
+/// Writes `container` into the directory the `IRONPLC_CONTAINER_DUMP`
+/// environment variable names, when it names one. The `container-dump`
+/// recipe of `compiler/justfile` sets it, so that the containers of two
+/// versions of the compiler can be compared byte for byte (`container-diff`).
+///
+/// The file is named by the test, which the test thread is named after, the
+/// number of containers the thread compiled before it, and the route, so
+/// the same compilation has the same name in every run.
+fn dump_container(container: &Container, route: Route) {
+    thread_local!(static COMPILED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) });
+    let Some(dir) = std::env::var_os("IRONPLC_CONTAINER_DUMP") else {
+        return;
+    };
+    let sequence = COMPILED.with(|compiled| compiled.replace(compiled.get() + 1));
+    let test = std::thread::current()
+        .name()
+        .unwrap_or("main")
+        .replace("::", ".");
+    let path = std::path::Path::new(&dir).join(format!("{test}.{sequence}.{route:?}.iplc"));
+    let mut bytes = Vec::new();
+    container
+        .write_to(&mut bytes)
+        .expect("a compiled container can be written");
+    std::fs::write(&path, bytes).expect("cannot write the container dump");
 }
 
 /// Appends `counts` as one line, `<lowered> <from AST>`, to the file the
@@ -152,29 +184,127 @@ fn record_route_counts(counts: RouteCounts) {
         .expect("cannot record the route counts");
 }
 
-/// Fails the test unless one scan of `ast` and one of `lowered` leave every
-/// variable, and the data region, with the same value, or both trap.
-fn assert_routes_agree(ast: &Container, lowered: &Container) {
-    match (run_one_scan(ast), run_one_scan(lowered)) {
-        (Ok(ast_bufs), Ok(lowered_bufs)) => {
-            let variables = super::variables::Variables::of(ast);
-            for (index, (a, l)) in ast_bufs.vars.iter().zip(&lowered_bufs.vars).enumerate() {
-                assert_eq!(
-                    a,
-                    l,
-                    "the AST and lowered routes leave variable {} with different values",
-                    variables.name_at(index).unwrap_or("(unnamed)")
-                );
+/// Fails the test unless `init` alone, and then one scan, leave every
+/// variable and the data region of `ast` and of `lowered` with the same
+/// values, or both trap, in `init` or in the scan.
+pub fn assert_routes_agree(ast: &Container, lowered: &Container) {
+    match (run_init_then_one_scan(ast), run_init_then_one_scan(lowered)) {
+        (Ok((ast_init, ast_scan)), Ok((lowered_init, lowered_scan))) => {
+            assert_states_agree("init", ast, lowered, &ast_init, &lowered_init);
+            match (ast_scan, lowered_scan) {
+                (Ok(ast_scan), Ok(lowered_scan)) => {
+                    assert_states_agree("one scan", ast, lowered, &ast_scan, &lowered_scan)
+                }
+                (Err(_), Err(_)) => {}
+                (Ok(_), Err(fault)) => panic!("only the lowered route traps in a scan: {fault:?}"),
+                (Err(fault), Ok(_)) => panic!("only the AST route traps in a scan: {fault:?}"),
             }
-            assert_eq!(
-                ast_bufs.data_region, lowered_bufs.data_region,
-                "the AST and lowered routes leave the data region with different values"
-            );
         }
         (Err(_), Err(_)) => {}
-        (Ok(_), Err(fault)) => panic!("only the lowered route traps: {fault:?}"),
-        (Err(fault), Ok(_)) => panic!("only the AST route traps: {fault:?}"),
+        (Ok(_), Err(fault)) => panic!("only the lowered route traps in init: {fault:?}"),
+        (Err(fault), Ok(_)) => panic!("only the AST route traps in init: {fault:?}"),
     }
+}
+
+/// What a run left in the variable table and the data region.
+struct State {
+    vars: Vec<Slot>,
+    data_region: Vec<u8>,
+}
+
+impl State {
+    fn of(vm: &TestVm<'_>) -> Self {
+        let vars = (0..vm.num_variables())
+            .map(|index| {
+                vm.read_variable_raw(VarIndex::new(index))
+                    .map(Slot::from_u64)
+                    .expect("every slot below the variable count is readable")
+            })
+            .collect();
+        State {
+            vars,
+            data_region: vm.data_region().to_vec(),
+        }
+    }
+}
+
+/// Loads `container`, which runs `init`, then runs one scan. Returns what
+/// `init` left and what the scan left, or the trap `init` stopped at.
+fn run_init_then_one_scan(
+    container: &Container,
+) -> Result<(State, Result<State, FaultContext>), FaultContext> {
+    let mut bufs = VmBuffers::from_container(container);
+    let mut vm = load_and_start(container, &mut bufs)?;
+    assert_stack_balanced(&vm, "after init");
+    let after_init = State::of(&vm);
+    let after_scan = vm.run_round(0).map(|()| {
+        assert_stack_balanced(&vm, "after scan round");
+        State::of(&vm)
+    });
+    Ok((after_init, after_scan))
+}
+
+/// Fails the test unless the two routes left every variable with the same
+/// value after `when` (REQ-LOW-codegen-131).
+///
+/// A variable is matched by its owning function and its name, not by its
+/// slot. A string the debug section lays out is compared by its content, and
+/// any other variable by its slot's bits, so a `NaN` equals itself; a
+/// function's string has no layout entry, and its content is in the data
+/// region. A slot the debug section names no variable for, such as a scratch
+/// slot, is compared by its index, as the data region is compared whole: both
+/// hold while the two routes share one layout.
+fn assert_states_agree(
+    when: &str,
+    ast: &Container,
+    lowered: &Container,
+    ast_state: &State,
+    lowered_state: &State,
+) {
+    let ast_vars = super::variables::Variables::of(ast);
+    let lowered_vars = super::variables::Variables::of(lowered);
+    let pairs = ast_vars
+        .pair_with(&lowered_vars)
+        .unwrap_or_else(|name| panic!("after {when}, only one route names the variable {name}"));
+    for (ast_entry, lowered_entry) in pairs {
+        let ast_slot = ast_state.vars[usize::from(ast_entry.var_index.raw())];
+        let lowered_slot = lowered_state.vars[usize::from(lowered_entry.var_index.raw())];
+        let is_string = matches!(
+            ast_entry.iec_type_tag,
+            iec_type_tag::STRING | iec_type_tag::WSTRING
+        );
+        let laid_out =
+            ast_vars.has_string_layout(ast_entry) && lowered_vars.has_string_layout(lowered_entry);
+        let agree = match is_string && laid_out {
+            true => {
+                ast_vars.decode(ast_entry, ast_slot, &ast_state.data_region)
+                    == lowered_vars.decode(lowered_entry, lowered_slot, &lowered_state.data_region)
+            }
+            false => ast_slot == lowered_slot,
+        };
+        assert!(
+            agree,
+            "after {when}, the AST and lowered routes leave variable {} with different values",
+            ast_entry.name
+        );
+    }
+    assert_eq!(
+        ast_state.vars.len(),
+        lowered_state.vars.len(),
+        "the AST and lowered routes have variable tables of different sizes"
+    );
+    for (index, (a, l)) in ast_state.vars.iter().zip(&lowered_state.vars).enumerate() {
+        if ast_vars.name_at(index).is_none() {
+            assert_eq!(
+                a, l,
+                "after {when}, the AST and lowered routes leave unnamed slot {index} with different values"
+            );
+        }
+    }
+    assert_eq!(
+        ast_state.data_region, lowered_state.data_region,
+        "after {when}, the AST and lowered routes leave the data region with different values"
+    );
 }
 
 /// Parses, analyzes, compiles, and runs one scan cycle, returning `Err` on VM trap.

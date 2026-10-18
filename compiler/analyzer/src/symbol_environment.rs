@@ -1,5 +1,8 @@
 use indexmap::IndexMap;
-use ironplc_dsl::common::{Accessor, DeclarationQualifier, TypeName, VariableType};
+use ironplc_dsl::common::{
+    Accessor, AddressAssignment, DeclarationQualifier, LocationPrefix, SizePrefix, TypeName,
+    VariableType,
+};
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::scope::ScopeNode;
@@ -172,8 +175,9 @@ pub struct SymbolInfo {
     /// etc.). Recorded before the compiler infers constants, so a variable
     /// that is never written but not declared `CONSTANT` is not constant here.
     pub qualifier: Option<DeclarationQualifier>,
-    /// Formatted hardware address (e.g. "%IX0.0") for direct variables
-    pub address: Option<String>,
+    /// The direct address of a located variable (`AT %IX0.0`); see
+    /// [`Self::address_text`] for how it is written.
+    pub address: Option<AddressAssignment>,
     /// Source location information
     pub span: ironplc_dsl::core::SourceSpan,
     /// Declared by the compiler rather than by source, such as the implicit
@@ -186,6 +190,27 @@ pub struct SymbolInfo {
     /// For a function block, the function block it `EXTENDS`, whose
     /// fields its own scope sees as well.
     pub extends: Option<TypeName>,
+}
+
+/// `addr` as IEC 61131-3 writes it, such as `%IX0.0`. A bit address written
+/// without its size (`%I0.0`) and an unspecified one (`%I*`) are written
+/// without a size letter.
+fn address_text(addr: &AddressAssignment) -> String {
+    let loc = match addr.location {
+        LocationPrefix::I => "I",
+        LocationPrefix::Q => "Q",
+        LocationPrefix::M => "M",
+    };
+    let size = match addr.size {
+        SizePrefix::X => "X",
+        SizePrefix::B => "B",
+        SizePrefix::W => "W",
+        SizePrefix::D => "D",
+        SizePrefix::L => "L",
+        SizePrefix::Nil | SizePrefix::Unspecified => "",
+    };
+    let parts: Vec<String> = addr.address.iter().map(|a| a.to_string()).collect();
+    format!("%{loc}{size}{}", parts.join("."))
 }
 
 impl SymbolInfo {
@@ -239,9 +264,14 @@ impl SymbolInfo {
         self
     }
 
-    pub fn with_address(mut self, addr: String) -> Self {
+    pub fn with_address(mut self, addr: AddressAssignment) -> Self {
         self.address = Some(addr);
         self
+    }
+
+    /// The direct address as IEC 61131-3 writes it, such as `%IX0.0`.
+    pub fn address_text(&self) -> Option<String> {
+        self.address.as_ref().map(address_text)
     }
 
     pub fn with_qualifier(mut self, qualifier: DeclarationQualifier) -> Self {
@@ -493,7 +523,7 @@ impl SymbolEnvironment {
         variable_type: VariableType,
         qualifier: DeclarationQualifier,
         type_id: Option<TypeId>,
-        address: Option<String>,
+        address: Option<AddressAssignment>,
     ) -> Result<(), Diagnostic> {
         let kind = match variable_type {
             VariableType::Input => SymbolKind::Parameter,

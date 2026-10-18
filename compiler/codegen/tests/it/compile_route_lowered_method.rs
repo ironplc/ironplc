@@ -236,3 +236,51 @@ fn compile_when_method_inherited_from_base_without_fields_then_same_code_as_ast(
          END_PROGRAM"
     ));
 }
+
+/// A block of `fields` `DINT` fields, the last of them 7, whose method
+/// `Last` reads the last, and a program that stores the method's result in
+/// `r`, both as a statement and through a call with an output.
+fn wide_block(fields: usize) -> String {
+    let last = fields - 1;
+    let others: String = (0..last).map(|i| format!("f{i} : DINT; ")).collect();
+    format!(
+        "FUNCTION_BLOCK Wide
+           VAR {others}f{last} : DINT := 7; END_VAR
+           METHOD Last : DINT
+             VAR_OUTPUT copy : DINT; END_VAR
+             copy := f{last};
+             Last := f{last};
+           END_METHOD
+         END_FUNCTION_BLOCK
+         PROGRAM main
+           VAR w : Wide; r : DINT; o : DINT; END_VAR
+           r := w.Last();
+           w.Last(copy => o);
+         END_PROGRAM"
+    )
+}
+
+/// REQ-LOW-codegen-191: a method of a block of 255 fields, as many as
+/// `METHOD_CALL` counts, runs on every one of them.
+#[test]
+fn run_when_method_of_block_with_255_fields_called_then_reads_last_field() {
+    let snapshot = run_lowered(&wide_block(255));
+    assert_eq!(snapshot.read_as::<i32>("r"), 7);
+    assert_eq!(snapshot.read_as::<i32>("o"), 7);
+}
+
+/// REQ-LOW-codegen-191: a block of 256 fields is P9997 on every route,
+/// rather than a method call that copies the wrong fields.
+#[rstest]
+#[case::ast(Route::Ast)]
+#[case::required(Route::RequireLowered)]
+#[case::preferred(Route::PreferLowered)]
+fn compile_when_method_of_block_with_256_fields_called_then_p9997(#[case] route: Route) {
+    let options = options();
+    let (library, context) = parse(&wide_block(256), &options);
+    let compiled = compile_by_route(&library, &context, &options, route);
+    assert_eq!(
+        compiled.err().map(|diagnostic| diagnostic.code),
+        Some("P9997".to_string())
+    );
+}

@@ -196,21 +196,3 @@ fn lower_statement_when_duration_negated_then_negation_of_its_count() {
         ]
     );
 }
-
-/// A time of day, a date and a date and time count from an epoch, so they
-/// are not negated: each stays unsupported.
-#[test]
-fn lower_statement_when_time_of_day_or_date_negated_then_unsupported() {
-    let outcome = lower(
-        "PROGRAM main VAR c : TOD; d : DATE; s : DT; END_VAR
-            c := -c;
-            d := -d;
-            s := -s;
-         END_PROGRAM",
-        "main",
-    );
-    assert_eq!(
-        outcome.statements,
-        ["unsupported", "unsupported", "unsupported"]
-    );
-}

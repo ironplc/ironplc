@@ -85,7 +85,7 @@ fn declared_type_id(
         }) => return env.id_of(type_name),
         InitialValueAssignmentKind::SimpleExpr(se) => return env.id_of(&se.type_name),
         InitialValueAssignmentKind::EnumeratedValues(values) => {
-            enumeration::try_from_values(values, None).ok()?
+            enumeration::try_from_values(values, None, None).ok()?
         }
         InitialValueAssignmentKind::Subrange(subrange) => {
             match subrange::try_from(name, &subrange.spec, env).ok()? {
@@ -139,10 +139,16 @@ fn block_field(decl: &VarDecl) -> Option<BlockField> {
         | VariableType::Global
         | VariableType::Access => return None,
     };
+    let address = match &decl.identifier {
+        VariableIdentifier::Symbol(_) => None,
+        VariableIdentifier::Direct(direct) => Some(direct.address_assignment.clone()),
+    };
     Some(BlockField {
         name: decl.identifier.symbolic_id()?.clone(),
         var_type,
         field_type: decl.type_id,
+        qualifier: decl.qualifier.clone(),
+        address,
     })
 }
 

@@ -7,7 +7,7 @@
 //! environment did not record is reported here, at the base name:
 //!
 //! - a name that is not declared, or that names another kind of type, such
-//!   as a structure or an interface, is P4086;
+//!   as a structure or an interface, is P4088;
 //! - a standard function block, such as `TON`, is not implemented (P9999):
 //!   nothing inherits a standard block's fields or methods, so accepting it
 //!   would let a program pass analysis and lose its base.

@@ -10,7 +10,8 @@ use ironplc_dsl::diagnostic::Diagnostic;
 use super::call::Param;
 use super::ids::{PouId, Stamp, TypeId, VarId};
 use super::invariant::broken;
-use super::types::{Nullability, TypeKind, TypeTable};
+use super::stmt::Stmt;
+use super::types::{DirectAddress, Nullability, Retention, Section, TypeKind, TypeTable};
 use crate::execution::DebugName;
 
 /// What a variable belongs to.
@@ -20,12 +21,35 @@ pub enum Owner {
     Pou(PouId),
 }
 
+/// What a variable's declaration says of it besides its name, owner and
+/// type: the section that declares it, its direct address and its
+/// retention.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Declared {
+    pub section: Section,
+    pub location: Option<DirectAddress>,
+    pub retention: Retention,
+}
+
+impl Declared {
+    /// A variable of `section` with no direct address and no retention, such
+    /// as a temporary lowering makes or the instance parameter of a body.
+    pub fn in_section(section: Section) -> Self {
+        Self {
+            section,
+            location: None,
+            retention: Retention::None,
+        }
+    }
+}
+
 /// A variable of the lowered program that is not a field: a global, a
 /// parameter, a local, a `VAR_TEMP`, or the instance parameter of a body.
 #[derive(Clone, Debug)]
 pub struct Variable {
     name: DebugName,
     owner: Owner,
+    declared: Declared,
     ty: TypeId,
 }
 
@@ -38,6 +62,19 @@ impl Variable {
 
     pub fn owner(&self) -> Owner {
         self.owner
+    }
+
+    pub fn section(&self) -> Section {
+        self.declared.section
+    }
+
+    /// The direct address its declaration gives it, if any.
+    pub fn location(&self) -> Option<&DirectAddress> {
+        self.declared.location.as_ref()
+    }
+
+    pub fn retention(&self) -> Retention {
+        self.declared.retention
     }
 
     pub fn ty(&self) -> TypeId {
@@ -62,13 +99,15 @@ impl VariableTable {
         }
     }
 
-    /// Adds a variable named `name`, owned by `owner`, of the type `ty`,
-    /// which must be in `types` (REQ-LOW-lowering-026).
+    /// Adds a variable named `name`, owned by `owner`, declared as
+    /// `declared` says, of the type `ty`, which must be in `types`
+    /// (REQ-LOW-lowering-026).
     pub(crate) fn push(
         &mut self,
         types: &TypeTable,
         name: DebugName,
         owner: Owner,
+        declared: Declared,
         ty: TypeId,
     ) -> Result<VarId, Diagnostic> {
         if types.get(ty).is_none() {
@@ -79,7 +118,12 @@ impl VariableTable {
             ));
         }
         let id = VarId::new(self.stamp, self.variables.len() as u32);
-        self.variables.push(Variable { name, owner, ty });
+        self.variables.push(Variable {
+            name,
+            owner,
+            declared,
+            ty,
+        });
         Ok(id)
     }
 
@@ -167,10 +211,10 @@ impl FunctionSignature {
     }
 
     /// What each parameter takes, in order: a value at its operation type, a
-    /// string of its encoding, or, for a `VAR_IN_OUT` or a `VAR_OUTPUT`, a
-    /// non-null reference, the place its argument passes
-    /// (REQ-LOW-lowering-033, REQ-LOW-lowering-072, REQ-LOW-lowering-092).
-    /// `None` when one is none of these.
+    /// string of its encoding, a copy of an array or a structure, or, for a
+    /// `VAR_IN_OUT` or a `VAR_OUTPUT`, a non-null reference, the place its
+    /// argument passes (REQ-LOW-lowering-033, REQ-LOW-lowering-072,
+    /// REQ-LOW-lowering-092). `None` when one is none of these.
     pub(crate) fn params(
         &self,
         types: &TypeTable,
@@ -190,22 +234,60 @@ impl FunctionSignature {
 }
 
 /// What a parameter of type `ty` takes by value: a value at its operation
-/// type, or a string of its encoding. `None` for an aggregate, which a
-/// parameter does not take yet.
+/// type, a string of its encoding, or a copy of an array or a structure.
+/// `None` for a function block instance, which a parameter does not take
+/// yet.
 pub(crate) fn by_value(types: &TypeTable, ty: TypeId) -> Option<Param> {
-    if let Some(TypeKind::String(shape)) = types.kind(ty) {
-        return Some(Param::Str(shape.encoding));
+    match types.kind(ty)? {
+        TypeKind::String(shape) => Some(Param::Str(shape.encoding)),
+        TypeKind::Array { .. } | TypeKind::Structure { .. } => Some(Param::Copy(ty)),
+        TypeKind::Bool
+        | TypeKind::Integer { .. }
+        | TypeKind::BitString { .. }
+        | TypeKind::Real { .. }
+        | TypeKind::Temporal { .. }
+        | TypeKind::Enumeration { .. }
+        | TypeKind::Subrange { .. }
+        | TypeKind::FunctionBlock { .. }
+        | TypeKind::Program { .. }
+        | TypeKind::Reference { .. } => types.operation_type(ty).map(Param::Value),
     }
-    types.operation_type(ty).map(Param::Value)
+}
+
+/// What a POU is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PouKind {
+    Program,
+    Function,
+    FunctionBlock,
+    /// A method of the function block whose body
+    /// [`PouTable::method_of`] gives.
+    Method,
+}
+
+/// What a POU's declaration gives it besides its name and signature: what
+/// it is, the instance parameter its body works on, and its locals.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PouParts {
+    pub kind: PouKind,
+    /// The instance parameter of a program, function block or method body;
+    /// `None` for a function, which has none.
+    pub instance: Option<VarId>,
+    /// The locals of a function or method, and the `VAR_TEMP` of any body,
+    /// in declaration order. Its parameters and result are its signature's.
+    pub locals: Vec<VarId>,
 }
 
 /// One POU: its name, its signature when it is a function or method a call
-/// reaches, and, for a method, the body of the function block it belongs to.
+/// reaches, for a method the body of the function block it belongs to, and,
+/// once the whole program is lowered, its parts and its body.
 #[derive(Clone, Debug)]
 struct PouEntry {
     name: DebugName,
     function: Option<FunctionSignature>,
     method_of: Option<PouId>,
+    parts: Option<PouParts>,
+    body: Option<Vec<Stmt>>,
 }
 
 /// Every POU of a lowered program, by [`PouId`]. A
@@ -233,8 +315,66 @@ impl PouTable {
             name,
             function: None,
             method_of,
+            parts: None,
+            body: None,
         });
         id
+    }
+
+    /// Every POU, with its id, in the order they were added.
+    pub fn ids(&self) -> impl Iterator<Item = PouId> + '_ {
+        (0..self.pous.len()).map(|index| PouId::new(self.stamp, index as u32))
+    }
+
+    /// The parts of the POU `id`, or `None` if they are not declared.
+    pub fn parts(&self, id: PouId) -> Option<&PouParts> {
+        self.entry(id).and_then(|entry| entry.parts.as_ref())
+    }
+
+    /// The body of the POU `id`, or `None` if it is not set.
+    pub fn body(&self, id: PouId) -> Option<&[Stmt]> {
+        self.entry(id).and_then(|entry| entry.body.as_deref())
+    }
+
+    /// Declares the parts of the POU `id`, or a P9998 at `span` if this
+    /// table did not allocate `id` or declares its parts already. The
+    /// [`ProgramBuilder`](super::ProgramBuilder) checks the parts first.
+    pub(crate) fn declare_parts(
+        &mut self,
+        id: PouId,
+        parts: PouParts,
+        span: &SourceSpan,
+    ) -> Result<(), Diagnostic> {
+        let entry = self.entry_mut("ProgramBuilder::declare_parts", id, span)?;
+        if entry.parts.is_some() {
+            return Err(broken(
+                "ProgramBuilder::declare_parts",
+                span,
+                format!("the parts of {id} are declared already"),
+            ));
+        }
+        entry.parts = Some(parts);
+        Ok(())
+    }
+
+    /// Sets the body of the POU `id`, or a P9998 at `span` if this table did
+    /// not allocate `id` or its body is set already.
+    pub(crate) fn set_body(
+        &mut self,
+        id: PouId,
+        body: Vec<Stmt>,
+        span: &SourceSpan,
+    ) -> Result<(), Diagnostic> {
+        let entry = self.entry_mut("ProgramBuilder::set_body", id, span)?;
+        if entry.body.is_some() {
+            return Err(broken(
+                "ProgramBuilder::set_body",
+                span,
+                format!("the body of {id} is set already"),
+            ));
+        }
+        entry.body = Some(body);
+        Ok(())
     }
 
     /// The name of the POU `id`, or `None` if this table did not allocate
@@ -264,17 +404,7 @@ impl PouTable {
         span: &SourceSpan,
     ) -> Result<(), Diagnostic> {
         const CONSTRUCTOR: &str = "ProgramBuilder::declare_function";
-        let entry = match id.stamp() == self.stamp {
-            true => self.pous.get_mut(id.index() as usize),
-            false => None,
-        };
-        let Some(entry) = entry else {
-            return Err(broken(
-                CONSTRUCTOR,
-                span,
-                format!("{id} is not a POU of this program"),
-            ));
-        };
+        let entry = self.entry_mut(CONSTRUCTOR, id, span)?;
         if entry.function.is_some() {
             return Err(broken(
                 CONSTRUCTOR,
@@ -284,6 +414,27 @@ impl PouTable {
         }
         entry.function = Some(signature);
         Ok(())
+    }
+
+    /// The entry of `id`, or a P9998 at `span`, naming `constructor`, if this
+    /// table did not allocate `id`.
+    fn entry_mut(
+        &mut self,
+        constructor: &str,
+        id: PouId,
+        span: &SourceSpan,
+    ) -> Result<&mut PouEntry, Diagnostic> {
+        let entry = match id.stamp() == self.stamp {
+            true => self.pous.get_mut(id.index() as usize),
+            false => None,
+        };
+        entry.ok_or_else(|| {
+            broken(
+                constructor,
+                span,
+                format!("{id} is not a POU of this program"),
+            )
+        })
     }
 
     fn entry(&self, id: PouId) -> Option<&PouEntry> {

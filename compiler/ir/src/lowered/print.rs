@@ -155,6 +155,7 @@ fn write_args(f: &mut fmt::Formatter<'_>, args: &[Arg]) -> fmt::Result {
         Arg::Value(value) => write!(f, " {value}"),
         Arg::Str(value) => write!(f, " {value}"),
         Arg::Ref(place) => write!(f, " (ref {place})"),
+        Arg::Copy(place) => write!(f, " (copy {place})"),
     })
 }
 
@@ -164,7 +165,7 @@ impl fmt::Display for Stmt {
     }
 }
 
-fn write_stmt(f: &mut fmt::Formatter<'_>, stmt: &Stmt, depth: usize) -> fmt::Result {
+pub(super) fn write_stmt(f: &mut fmt::Formatter<'_>, stmt: &Stmt, depth: usize) -> fmt::Result {
     let indent = "  ".repeat(depth);
     let block = |f: &mut fmt::Formatter<'_>, stmts: &[Stmt]| -> fmt::Result {
         stmts.iter().try_for_each(|stmt| {

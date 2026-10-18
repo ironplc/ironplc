@@ -959,6 +959,7 @@ mod tests {
         // Test non-primitive types
         assert!(!SemanticType::Enumeration {
             members: crate::enumeration_members::EnumerationMembers::default(),
+            underlying_type: None,
         }
         .is_primitive());
         assert!(!SemanticType::Structure { fields: vec![] }.is_primitive());
@@ -1049,6 +1050,7 @@ mod tests {
             &TypeName::from("MY_ENUM"),
             TypeAttributes::new(SemanticType::Enumeration {
                 members: crate::enumeration_members::EnumerationMembers::default(),
+                underlying_type: None,
             }),
         );
 

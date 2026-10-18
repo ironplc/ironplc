@@ -43,6 +43,8 @@ mod control_tests;
 #[cfg(test)]
 mod copy_tests;
 #[cfg(test)]
+mod declaration_tests;
+#[cfg(test)]
 mod fb_call_tests;
 #[cfg(test)]
 mod function_tests;
@@ -64,6 +66,8 @@ mod test_support;
 mod tests;
 #[cfg(test)]
 mod time_tests;
+#[cfg(test)]
+mod types_tests;
 
 use std::collections::HashMap;
 

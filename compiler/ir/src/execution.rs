@@ -71,6 +71,16 @@ impl ExecutionModel {
             .map(|(index, program)| (ProgramId(index), program))
     }
 
+    /// Every program instance, in order: each configuration's, by resource,
+    /// then by task, as [`Self::configurations`] holds them.
+    pub fn instances(&self) -> impl Iterator<Item = &ProgramInstance> {
+        self.configurations
+            .iter()
+            .flat_map(|configuration| &configuration.resources)
+            .flat_map(|resource| &resource.tasks)
+            .flat_map(|task| &task.instances)
+    }
+
     /// The globals in scope, in variable-table order: the order they were
     /// added.
     pub fn globals(&self) -> impl Iterator<Item = (GlobalId, &Global)> {

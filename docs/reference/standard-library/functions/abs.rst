@@ -61,6 +61,11 @@ is *IN* itself. For signed integer types, the result of ``ABS`` applied to
 the most negative value is undefined because the positive value cannot be
 represented.
 
+When *IN* is an integer literal, the result is computed when compiling:
+``ABS(-42)`` is the constant ``42``. ``ABS(SINT#-128)`` is ``128``, which is
+not a ``SINT``, so it is reported as
+:doc:`P2026 </reference/compiler/problems/P2026>`.
+
 Example
 -------
 
