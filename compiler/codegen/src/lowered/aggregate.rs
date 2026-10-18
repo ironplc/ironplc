@@ -94,6 +94,19 @@ pub(super) fn reaches_region(
     region(lowering, ctx, dst).is_some()
 }
 
+/// Whether this backend passes `src` as the structure, array or function
+/// block input of a function or method: a place it keeps as a region, or an
+/// instance it calls by name, whose slot holds the data offset of its fields.
+pub(super) fn reaches_argument(
+    lowering: &PartialProgram,
+    ctx: &CompileContext,
+    src: &LoweredPlace,
+) -> bool {
+    region(lowering, ctx, src).is_some()
+        || instance(lowering, ctx, src).is_some()
+        || instance_slot(lowering, ctx, src).is_some()
+}
+
 /// Emits the copy into `dst` of the structure or array whose region's offset
 /// is on the stack, sized by the descriptor `src_desc`: `COPY_REGION`, as
 /// the route that reads the AST copies a function's structure result.

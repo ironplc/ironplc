@@ -337,7 +337,7 @@ fn args_can_emit<'s>(
         Arg::Str(value) => string::str_can_emit(lowering, ctx, value),
         Arg::Ref(place) => place::variable_name(lowering, ctx, place)
             .is_some_and(|name| passes_by_reference(ctx, &name)),
-        Arg::Copy(place) => aggregate::reaches_region(lowering, ctx, place),
+        Arg::Copy(place) => aggregate::reaches_argument(lowering, ctx, place),
     })
 }
 

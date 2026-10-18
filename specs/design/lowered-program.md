@@ -1425,6 +1425,16 @@ emits it as that route does, the offset, so a call compiles to the same code
 by either route. The callee gets a copy of its own once a body that reads the
 parameter compiles, which it does on neither route yet.
 
+So too a method's input of a function block type, `b.Go(i := f)`, which a
+function cannot declare (P4054). The argument is an `Arg::Copy` of the
+instance, and the bytecode backend passes the instance's slot, which holds the
+data offset of its fields, as that route does. Neither route calls such an
+input in the method's body or reads its fields
+([issue 1553](https://github.com/ironplc/ironplc/issues/1553)). An argument
+that is a field of another function block instance, `b.Go(i := g.inner)` or
+`SUMP(q := g.p)`, is passed as the value that field's slot holds, as that
+route passes it.
+
 A string is passed by value too. The argument for a `VAR_INPUT` of a `STRING`
 or `WSTRING` type is a `Str` of the parameter's encoding, of any capacity
 (REQ-LOW-lowering-072). The callee's parameter is a variable of the
