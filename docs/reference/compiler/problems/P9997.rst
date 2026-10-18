@@ -75,6 +75,8 @@ Limits that produce this error
 * a data region larger than 2 GiB
 * an array whose element count, slot count, or byte size overflows the
   compiler's internal arithmetic
+* a function block with more than 255 fields, counting its inputs, outputs
+  and internal variables together
 
 If your program needs more than one of these limits allows, please describe
 what you are building in a `GitHub issue`_ — the limits are design choices, and

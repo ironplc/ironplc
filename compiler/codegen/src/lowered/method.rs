@@ -14,15 +14,15 @@
 //! method a block inherits is the method of the block that declares it, as
 //! the AST route finds it through `MethodOwners`.
 //!
-//! `METHOD_CALL` names how many fields it copies by a byte, so a call of a
-//! method of a block with more fields is P9997, a limit of the bytecode
-//! format (REQ-LOW-codegen-191).
+//! `METHOD_CALL` names how many fields it copies by a byte. The layout
+//! reports a block with more fields than that as P9997 (REQ-LOW-codegen-191),
+//! so every block a call reaches fits.
 
 use std::collections::HashMap;
 
 use ironplc_container::{FunctionId, VarIndex};
 use ironplc_dsl::core::{Id, SourceSpan};
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_ir::lowered::{Arg, PouId};
 use ironplc_lowering::Lowering;
 
@@ -39,7 +39,7 @@ pub(super) struct MethodSite {
     function_id: FunctionId,
     /// Where the method's block's fields start, and how many there are.
     field_var_off: VarIndex,
-    num_fields: usize,
+    num_fields: u8,
     /// Where the method's own parameters start, and how many it has.
     param_var_off: VarIndex,
     num_params: u16,
@@ -100,7 +100,7 @@ pub(super) fn method_site(
         instance: instance.var_index,
         function_id: method.function_id,
         field_var_off: VarIndex::new(block.var_offset),
-        num_fields: block.num_fields,
+        num_fields: u8::try_from(block.num_fields).ok()?,
         param_var_off: VarIndex::new(method.param_var_off),
         num_params: method.num_params,
         has_return_value: method.has_return_value,
@@ -117,8 +117,7 @@ pub(super) fn method_site(
 
 /// Emits the call `site` with `inputs`, at `span`: the instance, each
 /// input, then `METHOD_CALL`, which leaves the instance on the stack beneath
-/// the result, if any. P9997 when the method's block has more fields than
-/// `METHOD_CALL` counts.
+/// the result, if any.
 pub(super) fn emit_method_call<'s>(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -127,23 +126,13 @@ pub(super) fn emit_method_call<'s>(
     inputs: impl IntoIterator<Item = &'s Arg>,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
-    let num_fields = u8::try_from(site.num_fields).map_err(|_| {
-        Diagnostic::not_supported(Label::span(
-            span.clone(),
-            format!(
-                "A call of a method of a function block with more than {} fields",
-                u8::MAX
-            ),
-        ))
-        .with_context("fields", &site.num_fields.to_string())
-    })?;
     emitter.emit_fb_load_instance(site.instance);
     emit_passed(emitter, ctx, lowering, &site.params, inputs, span)?;
     ctx.record_call_edge(site.function_id);
     emitter.emit_method_call(
         site.function_id,
         site.field_var_off,
-        num_fields,
+        site.num_fields,
         site.param_var_off,
         site.num_params,
         site.has_return_value,

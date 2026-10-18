@@ -269,10 +269,10 @@ fn run_when_method_of_block_with_255_fields_called_then_reads_last_field() {
     assert_eq!(snapshot.read_as::<i32>("o"), 7);
 }
 
-/// REQ-LOW-codegen-191: a call of a method of a block of 256 fields is
-/// P9997 on the lowered route, whether or not every statement must take it,
-/// rather than a call that copies the wrong fields.
+/// REQ-LOW-codegen-191: a block of 256 fields is P9997 on every route,
+/// rather than a method call that copies the wrong fields.
 #[rstest]
+#[case::ast(Route::Ast)]
 #[case::required(Route::RequireLowered)]
 #[case::preferred(Route::PreferLowered)]
 fn compile_when_method_of_block_with_256_fields_called_then_p9997(#[case] route: Route) {

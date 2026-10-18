@@ -120,6 +120,11 @@ pub(crate) const DEFAULT_VAR_TYPE_INFO: VarTypeInfo = VarTypeInfo {
 /// may occupy. Keeps flat-index arithmetic within i32 range.
 pub(crate) const MAX_DATA_REGION_SLOTS: u32 = 32768;
 
+/// Maximum number of fields a user-defined function block may have: its
+/// inputs, outputs and internal variables. `FB_CALL` and `METHOD_CALL` count
+/// them, and `FB_LOAD_PARAM` and `FB_STORE_PARAM` name one, by a byte.
+pub(crate) const MAX_USER_FB_FIELDS: usize = u8::MAX as usize;
+
 /// A constant in the pool: integer, float, or string.
 ///
 /// `Str` holds Latin-1 bytes (narrow STRING); `WStr` holds UTF-16LE bytes
@@ -562,9 +567,20 @@ fn compile_program_with_functions(
                 field_decls_tmp.push(decl);
             }
         }
+        // `FB_CALL` and `METHOD_CALL` count a block's fields, and
+        // `FB_LOAD_PARAM` and `FB_STORE_PARAM` name one, by a byte, so a
+        // block with more fields is a limit of the format (P9997).
+        if field_decls_tmp.len() > MAX_USER_FB_FIELDS {
+            return Err(Diagnostic::not_supported(Label::span(
+                fb_decl.name.name.span(),
+                format!("Function block with more than {MAX_USER_FB_FIELDS} fields"),
+            ))
+            .with_context("fields", &field_decls_tmp.len().to_string()));
+        }
         for (i, decl) in field_decls_tmp.iter().enumerate() {
             if let Some(id) = decl.identifier.symbolic_id() {
                 let name = id.to_string().to_lowercase();
+                // At most `MAX_USER_FB_FIELDS` fields, so the index fits.
                 field_indices.insert(name.clone(), i as u8);
                 // A field is operated and stored at its declared type,
                 // whatever kind of declaration declares it: a subrange at its
@@ -855,6 +871,8 @@ fn compile_program_with_functions(
             type_id: FbTypeId::new(fb_info.type_id),
             function_id: fb_info.function_id,
             var_offset: fb_info.var_offset,
+            // At most `MAX_USER_FB_FIELDS`, checked when the block's
+            // fields were laid out.
             num_fields: fb_info.num_fields as u8,
         });
     }
