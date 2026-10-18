@@ -25,6 +25,12 @@
 //! - Negation, `-x`, of a time of day, a date or a date and time. See
 //!   [`RuleOperatorOperandTypeCheck::check_negation`].
 //!
+//! The operands of `AND`, `OR` and `XOR`, in the operator and the function
+//! form, and of the short-circuit `AND_THEN` and `OR_ELSE`, must also have a
+//! type every operand widens to: a narrower bit string widens to a wider one,
+//! but a `BOOL` widens to none. See
+//! [`RuleOperatorOperandTypeCheck::check_bitwise_operands`].
+//!
 //! An operand whose resolved type the predicate cannot judge (a subrange,
 //! an enumeration, a structure) is skipped rather than reported, as the
 //! assignment check skips such targets: `p MOD 2` on a subrange of `INT`
@@ -362,7 +368,10 @@ impl Visitor<Infallible> for RuleOperatorOperandTypeCheck<'_> {
     fn visit_expr(&mut self, node: &Expr) -> Result<Self::Value, Infallible> {
         match &node.kind {
             ExprKind::BinaryOp(binary) => self.check_arithmetic_operator(node, binary),
-            ExprKind::Function(function) => self.check_arithmetic_call(function),
+            ExprKind::Function(function) => {
+                self.check_arithmetic_call(function);
+                self.check_bitwise_call(function);
+            }
             ExprKind::Compare(compare) => {
                 if let Some(form) = checked_compare_form(&compare.op) {
                     self.check_operands(
@@ -370,6 +379,9 @@ impl Visitor<Infallible> for RuleOperatorOperandTypeCheck<'_> {
                         compare.op.as_str(),
                         &[&compare.left, &compare.right],
                     );
+                }
+                if bitwise::is_bitwise(&compare.op) {
+                    self.check_bitwise_operands(node, &compare.op, &compare.left, &compare.right);
                 }
             }
             ExprKind::UnaryOp(unary) => match checked_unary_form(&unary.op) {
@@ -381,6 +393,11 @@ impl Visitor<Infallible> for RuleOperatorOperandTypeCheck<'_> {
         node.recurse_visit(self)
     }
 }
+
+mod bitwise;
+
+#[cfg(test)]
+mod bitwise_operand_tests;
 
 #[cfg(test)]
 mod negation_tests;
