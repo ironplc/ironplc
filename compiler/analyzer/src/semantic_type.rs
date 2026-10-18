@@ -133,6 +133,14 @@ pub enum SemanticType {
         /// Name of the function block type
         name: String,
     },
+    /// Interface type (OOP extension). A value of this type refers to a
+    /// function block instance that implements the interface. Its runtime
+    /// representation is not decided yet (ADR-0041 Phase 2), so it has no
+    /// size and cannot be laid out.
+    Interface {
+        /// Name of the interface type
+        name: String,
+    },
     /// Reference type (REF_TO) pointing to a target type.
     /// References are stored as variable-table indices (u64) at runtime.
     Reference {
@@ -187,6 +195,11 @@ impl SemanticType {
             SemanticType::Subrange { base_type, .. } => base_type,
             other => other,
         }
+    }
+
+    /// Returns if the type is an interface.
+    pub fn is_interface(&self) -> bool {
+        matches!(self, SemanticType::Interface { .. })
     }
 
     /// Returns if the type is a function block.
@@ -279,6 +292,7 @@ impl SemanticType {
             | SemanticType::Array { .. }
             | SemanticType::Subrange { .. }
             | SemanticType::FunctionBlock { .. }
+            | SemanticType::Interface { .. }
             | SemanticType::Reference { .. } => None,
         }
     }
@@ -464,7 +478,9 @@ impl SemanticType {
             }
 
             // Not yet supported in data region
-            SemanticType::FunctionBlock { .. } => Err(SlotCountError::UnsupportedFieldType),
+            SemanticType::FunctionBlock { .. } | SemanticType::Interface { .. } => {
+                Err(SlotCountError::UnsupportedFieldType)
+            }
         }
     }
 }

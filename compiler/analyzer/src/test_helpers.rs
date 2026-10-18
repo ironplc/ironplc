@@ -171,6 +171,31 @@ pub fn codes(problems: &[ironplc_problems::Problem]) -> Vec<&str> {
     problems.iter().map(|problem| problem.code()).collect()
 }
 
+/// Every symbolic declaration's recorded type id, by variable name.
+#[cfg(test)]
+pub fn declared_ids(
+    library: &Library,
+) -> std::collections::HashMap<String, Option<ironplc_dsl::type_id::TypeId>> {
+    use ironplc_dsl::type_id::TypeId;
+    use ironplc_dsl::visitor::Visitor;
+    use std::collections::HashMap;
+    use std::convert::Infallible;
+
+    struct Collect(HashMap<String, Option<TypeId>>);
+    impl Visitor<Infallible> for Collect {
+        type Value = ();
+        fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
+            if let Some(id) = node.identifier.symbolic_id() {
+                self.0.insert(id.to_string(), node.type_id);
+            }
+            Ok(())
+        }
+    }
+    let mut collect = Collect(HashMap::new());
+    let _ = collect.walk(library);
+    collect.0
+}
+
 /// Default options with function block inheritance (`EXTENDS`, methods,
 /// properties) enabled.
 #[cfg(test)]

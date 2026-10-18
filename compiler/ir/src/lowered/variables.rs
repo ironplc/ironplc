@@ -167,10 +167,10 @@ impl FunctionSignature {
     }
 
     /// What each parameter takes, in order: a value at its operation type, a
-    /// string of its encoding, or, for a `VAR_IN_OUT` or a `VAR_OUTPUT`, a
-    /// non-null reference, the place its argument passes
-    /// (REQ-LOW-lowering-033, REQ-LOW-lowering-072, REQ-LOW-lowering-092).
-    /// `None` when one is none of these.
+    /// string of its encoding, a copy of an array or a structure, or, for a
+    /// `VAR_IN_OUT` or a `VAR_OUTPUT`, a non-null reference, the place its
+    /// argument passes (REQ-LOW-lowering-033, REQ-LOW-lowering-072,
+    /// REQ-LOW-lowering-092). `None` when one is none of these.
     pub(crate) fn params(
         &self,
         types: &TypeTable,
@@ -190,13 +190,24 @@ impl FunctionSignature {
 }
 
 /// What a parameter of type `ty` takes by value: a value at its operation
-/// type, or a string of its encoding. `None` for an aggregate, which a
-/// parameter does not take yet.
+/// type, a string of its encoding, or a copy of an array or a structure.
+/// `None` for a function block instance, which a parameter does not take
+/// yet.
 pub(crate) fn by_value(types: &TypeTable, ty: TypeId) -> Option<Param> {
-    if let Some(TypeKind::String(shape)) = types.kind(ty) {
-        return Some(Param::Str(shape.encoding));
+    match types.kind(ty)? {
+        TypeKind::String(shape) => Some(Param::Str(shape.encoding)),
+        TypeKind::Array { .. } | TypeKind::Structure { .. } => Some(Param::Copy(ty)),
+        TypeKind::Bool
+        | TypeKind::Integer { .. }
+        | TypeKind::BitString { .. }
+        | TypeKind::Real { .. }
+        | TypeKind::Temporal { .. }
+        | TypeKind::Enumeration { .. }
+        | TypeKind::Subrange { .. }
+        | TypeKind::FunctionBlock { .. }
+        | TypeKind::Program { .. }
+        | TypeKind::Reference { .. } => types.operation_type(ty).map(Param::Value),
     }
-    types.operation_type(ty).map(Param::Value)
 }
 
 /// One POU: its name, its signature when it is a function or method a call

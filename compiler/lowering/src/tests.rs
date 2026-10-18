@@ -307,12 +307,7 @@ fn lower_statement_when_var_external_then_global_variable() {
 #[test]
 fn lower_statement_when_not_supported_yet_then_unsupported() {
     let outcome = lower(
-        "TYPE P : STRUCT x : DINT; END_STRUCT; END_TYPE
-         FUNCTION MakeP : P
-           MakeP.x := 1;
-         END_FUNCTION
-         PROGRAM main VAR a : DINT; r : REAL; p : P; END_VAR
-            p := MakeP();
+        "PROGRAM main VAR a : DINT; r : REAL; END_VAR
             FOR a := 1 TO 3 BY a DO r := r; END_FOR;
          END_PROGRAM",
         "main",

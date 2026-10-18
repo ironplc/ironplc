@@ -155,6 +155,7 @@ fn write_args(f: &mut fmt::Formatter<'_>, args: &[Arg]) -> fmt::Result {
         Arg::Value(value) => write!(f, " {value}"),
         Arg::Str(value) => write!(f, " {value}"),
         Arg::Ref(place) => write!(f, " (ref {place})"),
+        Arg::Copy(place) => write!(f, " (copy {place})"),
     })
 }
 

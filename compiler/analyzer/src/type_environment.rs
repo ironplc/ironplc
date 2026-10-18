@@ -22,7 +22,10 @@ use crate::type_id;
 use ironplc_dsl::type_id::TypeId;
 
 mod fields;
+mod interfaces;
 mod methods;
+mod properties;
+mod same_type;
 pub use fields::BlockField;
 pub(crate) use methods::MethodSignature;
 
@@ -301,12 +304,18 @@ pub struct TypeEnvironment {
     /// The fields of each function block, and the block it `EXTENDS`, by the
     /// block's id. A block's type lists none of its fields. See [`fields`].
     blocks: HashMap<TypeId, fields::BlockRecord>,
+    /// The signatures of the members each interface declares, by the
+    /// interface's id. An interface's type lists none of its members. See
+    /// [`interfaces`].
+    interfaces: HashMap<TypeId, interfaces::InterfaceRecord>,
     /// The repeated declarations met while populating, until the transform
     /// that populates the environment drains them with
     /// [`Self::take_duplicates`]. Recorded rather than returned so that a
     /// repeat does not abort the fold that met it: the first declaration is
     /// kept and every other declaration still resolves.
     duplicates: Vec<Diagnostic>,
+    /// Which interfaces each function block and interface converts to.
+    supertypes: crate::supertypes::Supertypes,
 }
 
 impl TypeEnvironment {
@@ -322,8 +331,21 @@ impl TypeEnvironment {
             alias_bases: HashMap::new(),
             structures: HashMap::new(),
             blocks: HashMap::new(),
+            interfaces: HashMap::new(),
             duplicates: Vec::new(),
+            supertypes: crate::supertypes::Supertypes::default(),
         }
+    }
+
+    /// Which interfaces each function block and interface converts to.
+    pub(crate) fn supertypes(&self) -> &crate::supertypes::Supertypes {
+        &self.supertypes
+    }
+
+    /// Records the direct supertypes of a function block or an interface,
+    /// see [`crate::supertypes`].
+    pub(crate) fn insert_supertypes(&mut self, name: &TypeName, supertypes: Vec<TypeName>) {
+        self.supertypes.insert(name, supertypes);
     }
 
     /// Adds the type into the environment.

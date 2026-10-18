@@ -217,3 +217,29 @@ fn lower_statement_when_block_has_string_output_then_assigned_as_string() {
         .join("\n")]
     );
 }
+
+/// REQ-LOW-lowering-069: an input of a function block type is stored as an
+/// instance assigned to the field is, by a `Copy` of the whole instance
+/// (REQ-LOW-lowering-061), whether the call binds it or a statement assigns
+/// it.
+#[test]
+fn lower_statement_when_instance_input_then_copied_to_field() {
+    let outcome = lower(
+        &format!(
+            "{BLOCK}
+             FUNCTION_BLOCK OUTER VAR_INPUT inner : FB; t : TON; END_VAR END_FUNCTION_BLOCK
+             PROGRAM main VAR f : FB; g : OUTER; u : TON; END_VAR
+               g(inner := f, t := u);
+               g.inner := f;
+             END_PROGRAM"
+        ),
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "copy v0^.f1.f0 v0^.f0\ncopy v0^.f1.f1 v0^.f2\nfb-call v0^.f1 pou3",
+            "copy v0^.f1.f0 v0^.f0",
+        ]
+    );
+}

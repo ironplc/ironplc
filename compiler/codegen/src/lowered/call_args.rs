@@ -6,14 +6,16 @@
 //! layout records for each parameter as a [`ParamPassing`]: a value on the
 //! stack, a place by reference, or a string copied into the parameter's run
 //! of the data region, followed by the dummy value `CALL` or `METHOD_CALL`
-//! pops for its slot. A function and a method pass their arguments alike,
-//! so both check and push them here.
+//! pops for its slot. A structure or an array is passed as a value: the
+//! offset of its region (`aggregate.rs`). A function and a method pass their
+//! arguments alike, so both check and push them here.
 
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::Arg;
 use ironplc_lowering::Lowering;
 
+use super::aggregate::emit_source;
 use super::expr::{emit_expr, emit_ref};
 use super::string::str_arg_offset;
 use crate::compile::{CompileContext, ParamPassing};
@@ -21,8 +23,8 @@ use crate::compile_user_call::copy_string_arg;
 use crate::emit::Emitter;
 
 /// Whether `args` are one for each of `params`, each passed as its
-/// parameter takes it: a value by value, a place by reference, and a string
-/// by copy.
+/// parameter takes it: a value or an aggregate by value, a place by
+/// reference, and a string by copy.
 pub(super) fn passes<'s>(
     params: &[ParamPassing],
     args: impl ExactSizeIterator<Item = &'s Arg>,
@@ -51,12 +53,11 @@ pub(super) fn emit_passed<'s>(
             return Err(not_passed(span));
         };
         match param {
-            ParamPassing::Value => {
-                let Arg::Value(value) = arg else {
-                    return Err(not_passed(span));
-                };
-                emit_expr(emitter, ctx, lowering, value)?;
-            }
+            ParamPassing::Value => match arg {
+                Arg::Value(value) => emit_expr(emitter, ctx, lowering, value)?,
+                Arg::Copy(place) => emit_source(emitter, ctx, lowering, place, span)?,
+                Arg::Str(_) | Arg::Ref(_) => return Err(not_passed(span)),
+            },
             ParamPassing::Reference => {
                 let Arg::Ref(place) = arg else {
                     return Err(not_passed(span));
@@ -86,7 +87,7 @@ pub(super) fn emit_passed<'s>(
 fn passes_as(param: &ParamPassing, arg: &Arg) -> bool {
     matches!(
         (param, arg),
-        (ParamPassing::Value, Arg::Value(_))
+        (ParamPassing::Value, Arg::Value(_) | Arg::Copy(_))
             | (ParamPassing::Reference, Arg::Ref(_))
             | (ParamPassing::String(_), Arg::Str(_))
     )

@@ -6,10 +6,13 @@
 //! `ExprKind::LateBound`. This pass decides, once, after the symbol
 //! environment exists, with one rule:
 //!
-//! 1. If the symbol environment finds a variable, parameter or result
-//!    variable of that name from the current scope (searching outward, then
-//!    the `EXTENDS` chain, then the globals), it is a variable. A variable in
-//!    scope hides an enumerated value of the same name.
+//! 1. If the symbol environment resolves the name to a variable the current
+//!    scope may use ([`SymbolEnvironment::resolve_variable`]: searching
+//!    outward, then the `EXTENDS` chain, then the globals), it is a variable.
+//!    A variable in scope hides an enumerated value of the same name. A
+//!    global the scope does not reach, because no `VAR_EXTERNAL` declares it
+//!    and the dialect does not let a body use globals directly, hides
+//!    nothing.
 //! 2. Otherwise, if the name is a known enumeration value, it is an
 //!    `EnumeratedValue` with no type name. The expression type pass gives it
 //!    its type from the context it is used in.
@@ -27,7 +30,7 @@ use ironplc_dsl::{
 };
 use std::collections::HashSet;
 
-use crate::symbol_environment::{ScopeTracker, SymbolEnvironment, SymbolKind};
+use crate::symbol_environment::{Resolution, ScopeTracker, SymbolEnvironment};
 
 pub fn apply(
     lib: Library,
@@ -103,21 +106,12 @@ struct LateBoundResolver<'a> {
 }
 
 impl LateBoundResolver<'_> {
-    /// Whether `name` names a variable from the current scope.
+    /// Whether `name` names a variable the current scope may use.
     fn is_variable_in_scope(&self, name: &Id) -> bool {
-        self.symbols
-            .find(name, &self.scope.current())
-            .is_some_and(|symbol| {
-                matches!(
-                    symbol.kind,
-                    SymbolKind::Variable
-                        | SymbolKind::Parameter
-                        | SymbolKind::OutputParameter
-                        | SymbolKind::InOutParameter
-                        | SymbolKind::EdgeVariable
-                        | SymbolKind::ResultVariable
-                )
-            })
+        matches!(
+            self.symbols.resolve_variable(name, &self.scope.current()),
+            Resolution::Variable { .. }
+        )
     }
 
     /// Resolves a late-bound identifier as either an enum value or variable.
@@ -207,7 +201,7 @@ mod tests {
     use ironplc_parser::options::CompilerOptions;
     use rstest::rstest;
 
-    use crate::test_helpers::parse_and_resolve_types_with_options;
+    use crate::test_helpers::{configuration_with_globals, parse_and_resolve_types_with_options};
 
     /// What a bare identifier became.
     #[derive(Debug, PartialEq)]
@@ -239,6 +233,11 @@ mod tests {
     /// What the value of each assignment and each structure initializer
     /// element of `program` became, in source order.
     fn became(program: &str) -> Vec<Became> {
+        became_with(program, &options())
+    }
+
+    /// As [`became`], resolving `program` under `options`.
+    fn became_with(program: &str, options: &CompilerOptions) -> Vec<Became> {
         struct Collect(Vec<Became>);
         impl Visitor<Infallible> for Collect {
             type Value = ();
@@ -270,7 +269,7 @@ mod tests {
                 Ok(())
             }
         }
-        let (library, _) = parse_and_resolve_types_with_options(program, &options());
+        let (library, _) = parse_and_resolve_types_with_options(program, options);
         let mut collect = Collect(vec![]);
         let _ = collect.walk(&library);
         collect.0
@@ -325,6 +324,28 @@ mod tests {
         // The enumeration is declared in front of every program.
         let program = format!("TYPE E_State : (Idle, Error); END_TYPE\n{program}");
         assert_eq!(vec![Became::Variable], became(&program));
+    }
+
+    /// Without top-level globals a body reaches a global only through a
+    /// `VAR_EXTERNAL`, so a global it does not reach hides no enumerated
+    /// value.
+    #[rstest]
+    #[case::not_reached("", Became::EnumeratedValue)]
+    #[case::reached_through_external("VAR_EXTERNAL Error : BOOL; END_VAR", Became::Variable)]
+    fn apply_when_strict_global_has_the_name_then_variable_only_through_external(
+        #[case] external: &str,
+        #[case] expected: Became,
+    ) {
+        let program = format!(
+            "TYPE E_State : (Idle, Error); END_TYPE
+             {}
+             PROGRAM main {external} VAR b : BOOL; END_VAR b := Error; END_PROGRAM",
+            configuration_with_globals("Error : BOOL;")
+        );
+        assert_eq!(
+            vec![expected],
+            became_with(&program, &CompilerOptions::default())
+        );
     }
 
     /// The target being an enumeration does not make the name an enumerated

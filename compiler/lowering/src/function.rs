@@ -18,39 +18,37 @@
 //! it has one, is a scalar. A call whose result is not used is a `Call`
 //! statement, followed by the assignments of its outputs.
 //!
-//! A call of a function or method with outputs is lowered as a value only
-//! in the value of an assignment, ahead of which it is lowered as its part
-//! (`hoist.rs`, REQ-LOW-lowering-172):
-//!
-//! 1. the call, stored in a temporary of the result's type;
-//! 2. the assignment of each output to its target, of the value the
-//!    analyzer recorded for it: the call output `q`, a read of the temporary
-//!    passed for `q`.
-//!
-//! The call's value is a read of the result's temporary. So an output
-//! reaches its target, converted, once the call returns, and before the
-//! assignment does. A temporary belongs to the body the call is in, and each
-//! call has its own.
+//! A call of a function or method with outputs in an expression is an
+//! in-place call (REQ-LOW-lowering-172): the call, then the store of each
+//! output in its target, of the value the analyzer recorded for it, the call
+//! output `q` a read of the temporary passed for `q`. The expression runs it
+//! where the source evaluates the call (REQ-LOW-lowering-174), so an output
+//! reaches its target, converted, once the call returns and before anything
+//! the source evaluates after the call. A temporary belongs to the body the
+//! call is in, and each call has its own.
 //!
 //! The function's or method's POU is declared with its parameters and
 //! result the first time a call reaches it. Its parameters and result are
 //! the variables its body reads and writes, so a call and the body agree on
 //! them.
 //!
-//! A function whose result is a string returns it through its result
-//! parameter, its first, to a temporary each call passes
-//! (REQ-LOW-lowering-079); a call of one is moved out of the statement it is
-//! in (`string_result.rs`).
+//! A function whose result is a string or a structure returns it through
+//! its result parameter, its first, to a temporary each call passes
+//! (REQ-LOW-lowering-079). A call of one whose result is a string is a
+//! string in-place call (`string_result.rs`), and a call of one whose result
+//! is a structure is a call statement whose result is copied to its target
+//! (`structure_result.rs`).
 //!
-//! Not lowered yet: a call with outputs anywhere else, or where running it
-//! first would change the order (REQ-LOW-lowering-174), a `VAR_IN_OUT` that
-//! is a string, a string result of a function with outputs or of a method,
-//! a parameter or a result that is an aggregate (REQ-LOW-lowering-079), a
-//! call with `EN` or `ENO` (REQ-LOW-lowering-160), a call through `THIS^` or
-//! `SUPER^`, and a call of a method its receiver's block inherits from a
-//! block whose type it does not extend in the lowered program
-//! (REQ-LOW-lowering-177). The route that reads the AST passes no string to
-//! a `VAR_IN_OUT` (`compile_reference_arg`).
+//! An input that is an array or a structure is passed by copy
+//! (REQ-LOW-lowering-075).
+//!
+//! Not lowered yet: a `VAR_IN_OUT` that is a string, a string or structure
+//! result of a method, an in-out or an output that is an aggregate, a result
+//! that is an array (REQ-LOW-lowering-079), a call with `EN` or `ENO` (REQ-LOW-lowering-160),
+//! a call through `THIS^` or `SUPER^`, and a call of a method its receiver's
+//! block inherits from a block whose type it does not extend in the lowered
+//! program (REQ-LOW-lowering-177). The route that reads the AST passes no
+//! string to a `VAR_IN_OUT` (`compile_reference_arg`).
 
 use ironplc_analyzer::symbol_environment::Resolution;
 use ironplc_dsl::common::{
@@ -118,23 +116,6 @@ impl<'v, 'a> UserCall<'v, 'a> {
         }
     }
 
-    /// Where the call names its callee.
-    fn name_span(self) -> SourceSpan {
-        match self {
-            UserCall::Function { call, .. } => call.name.span(),
-            UserCall::Method { call, .. } => call.method.span(),
-        }
-    }
-
-    /// The address of the call, which tells one call in the source from
-    /// another.
-    pub(crate) fn address(self) -> usize {
-        match self {
-            UserCall::Function { call, .. } => std::ptr::from_ref(call) as usize,
-            UserCall::Method { call, .. } => std::ptr::from_ref(call) as usize,
-        }
-    }
-
     /// The name and section of each parameter, in the order the callee
     /// declares them; `None` when one is not a `VAR_INPUT`, a `VAR_IN_OUT`
     /// or a `VAR_OUTPUT`.
@@ -154,12 +135,12 @@ impl<'v, 'a> UserCall<'v, 'a> {
 }
 
 /// A call's arguments, the temporary it passes for each output, by the
-/// output's name, and the one it passes for a string result.
+/// output's name, and the one it passes for a string or structure result.
 pub(crate) struct CallArgs {
     pub(crate) pou: PouId,
     pub(crate) args: Vec<Arg>,
     temporaries: Vec<(Id, Place)>,
-    /// The temporary the function writes its string result to
+    /// The temporary the function writes its string or structure result to
     /// (REQ-LOW-lowering-079); `None` for any other callee.
     pub(crate) result: Option<Place>,
 }
@@ -197,25 +178,57 @@ impl<'a> Lowering<'a> {
         }
     }
 
-    /// The call `call`, the expression `expr`, a value.
+    /// The call `call`, the expression `expr`, a value: a `Call`, or an
+    /// in-place call of a callee with outputs.
     fn user_call(&mut self, frame: &BodyFrame, expr: &AstExpr, call: UserCall<'_, 'a>) -> Lowered {
-        let Some(parameters) = call.parameters() else {
-            return Ok(None);
-        };
-        if has_outputs(&parameters) {
-            return self.hoisted_call(frame, expr, call, &parameters);
-        }
-        let Some(args) = self.call_args(frame, call, &parameters, &expr.span())? else {
+        let span = expr.span();
+        let Some((args, stores)) = self.call_with_stores(frame, call, &span)? else {
             return Ok(None);
         };
         if self.result_type(args.pou).is_none() {
             // The analyzer rejects a value of a method without a result
-            // (P4057).
+            // (P4057), a function whose result is a string is a string, and
+            // one whose result is a structure is only assigned whole.
             return Ok(None);
         }
-        self.program
-            .call(args.pou, args.args, expr.span())
-            .map(Some)
+        match stores {
+            Some(stores) => self
+                .program
+                .call_in_place(args.pou, args.args, stores, span)
+                .map(Some),
+            None => self.program.call(args.pou, args.args, span).map(Some),
+        }
+    }
+
+    /// The arguments of `call`, at `span`, and, when its callee has
+    /// outputs, the store of each output the call assigns, from the
+    /// temporary passed for it (REQ-LOW-lowering-092).
+    pub(crate) fn call_with_stores(
+        &mut self,
+        frame: &BodyFrame,
+        call: UserCall<'_, 'a>,
+        span: &SourceSpan,
+    ) -> Made<(CallArgs, Option<Vec<Stmt>>)> {
+        let Some(parameters) = call.parameters() else {
+            return Ok(None);
+        };
+        let Some(mut args) = self.call_args(frame, call, &parameters, span)? else {
+            return Ok(None);
+        };
+        if !has_outputs(&parameters) {
+            return Ok(Some((args, None)));
+        }
+        let temporaries = std::mem::take(&mut args.temporaries);
+        let Some(stores) = self.outputs(
+            frame,
+            CallOutputs::Temporaries(temporaries),
+            call.params(),
+            span,
+        )?
+        else {
+            return Ok(None);
+        };
+        Ok(Some((args, Some(stores))))
     }
 
     /// The method call statement `call`: a `Call` statement, whose result,
@@ -231,72 +244,12 @@ impl<'a> Lowering<'a> {
         let Some(user_call) = self.method_call(frame, call) else {
             return Ok(None);
         };
-        let Some(parameters) = user_call.parameters() else {
+        let Some((args, stores)) = self.call_with_stores(frame, user_call, &span)? else {
             return Ok(None);
         };
-        let Some(args) = self.call_args(frame, user_call, &parameters, &span)? else {
-            return Ok(None);
-        };
-        let mut stmts = vec![self.program.call_stmt(args.pou, args.args, span.clone())?];
-        let Some(outputs) = self.outputs(
-            frame,
-            CallOutputs::Temporaries(args.temporaries),
-            &call.params,
-            &span,
-        )?
-        else {
-            return Ok(None);
-        };
-        stmts.extend(outputs);
+        let mut stmts = vec![self.program.call_stmt(args.pou, args.args, span)?];
+        stmts.extend(stores.unwrap_or_default());
         Ok(Some(stmts))
-    }
-
-    /// The call `call`, the expression `expr`, of a function or method with
-    /// outputs, whose parameters are `parameters`, in the value of the
-    /// assignment being lowered (`hoist.rs`): a read of the temporary its
-    /// part stores its result in. The part is the call stored in that
-    /// temporary, then the assignments of the call's outputs from their
-    /// temporaries (REQ-LOW-lowering-092, REQ-LOW-lowering-172). `None`
-    /// outside an assignment.
-    fn hoisted_call(
-        &mut self,
-        frame: &BodyFrame,
-        expr: &AstExpr,
-        call: UserCall<'_, 'a>,
-        parameters: &[(&Id, Section)],
-    ) -> Lowered {
-        let Some(hoisting) = &self.hoisting else {
-            return Ok(None);
-        };
-        if let Some(result) = hoisting.result(call.address()) {
-            return self.read(result.clone(), expr.span());
-        }
-        let span = hoisting.span().clone();
-        let Some(args) = self.call_args(frame, call, parameters, &span)? else {
-            return Ok(None);
-        };
-        let Some(result_type) = self.result_type(args.pou) else {
-            return Ok(None);
-        };
-        let value = self.program.call(args.pou, args.args, call.name_span())?;
-        let label = format!("{}()", call.callee());
-        let result = self.temporary(frame, label, result_type, &span)?;
-        let mut part = vec![self.assign_value(result.clone(), value, span.clone())?];
-        let Some(outputs) = self.outputs(
-            frame,
-            CallOutputs::Temporaries(args.temporaries),
-            call.params(),
-            &span,
-        )?
-        else {
-            return Ok(None);
-        };
-        part.extend(outputs);
-        let Some(hoisting) = self.hoisting.as_mut() else {
-            return Ok(None);
-        };
-        hoisting.push(call.address(), part, result.clone());
-        self.read(result, expr.span())
     }
 
     /// The method `call` calls in the body of `frame`: the one the block of
@@ -354,25 +307,6 @@ impl<'a> Lowering<'a> {
             })
     }
 
-    /// The arguments of `call`, at `span`, when its callee declares no
-    /// outputs; `None` for a call of a function or method with outputs, which
-    /// a call in an expression is lowered as only in an assignment's value
-    /// (`hoist.rs`).
-    pub(crate) fn call_args_without_outputs(
-        &mut self,
-        frame: &BodyFrame,
-        call: UserCall<'_, 'a>,
-        span: &SourceSpan,
-    ) -> Made<CallArgs> {
-        let Some(parameters) = call.parameters() else {
-            return Ok(None);
-        };
-        if has_outputs(&parameters) {
-            return Ok(None);
-        }
-        self.call_args(frame, call, &parameters, span)
-    }
-
     /// The arguments of `call`, whose callee's parameters are `parameters`,
     /// in the body of `frame`, at `span`: for a method, a `Ref` to the
     /// receiver first.
@@ -402,9 +336,9 @@ impl<'a> Lowering<'a> {
             declared.next();
             args.push(Arg::Ref(receiver));
         }
-        // A function whose result is a string writes it through its result
-        // parameter, to a new temporary of the string's type
-        // (REQ-LOW-lowering-079).
+        // A function whose result is a string or a structure writes it
+        // through its result parameter, to a new temporary of the result's
+        // type (REQ-LOW-lowering-079).
         let returns_through = self
             .program
             .pous()
@@ -447,7 +381,9 @@ impl<'a> Lowering<'a> {
                     args.push(Arg::Ref(temporary.clone()));
                     temporaries.push(((*name).clone(), temporary));
                 }
-                (Section::Output, Param::Value(_) | Param::Str(_)) => return Ok(None),
+                (Section::Output, Param::Value(_) | Param::Str(_) | Param::Copy(_)) => {
+                    return Ok(None)
+                }
             }
         }
         if inputs.next().is_some() {
@@ -477,7 +413,7 @@ impl<'a> Lowering<'a> {
     /// The POU `call` calls, whose parameters are `parameters`, declared
     /// with its parameters and result the first time it is asked for; `None`
     /// when one of them is not a scalar, or, for an input or an output, a
-    /// string.
+    /// string, or, for an input, an array or a structure.
     fn callee_pou(&mut self, call: UserCall<'_, 'a>, parameters: &[(&Id, Section)]) -> Made<PouId> {
         let (body, result) = match call {
             UserCall::Function { function, .. } => (Body::Function(function), Some(&function.name)),
@@ -497,14 +433,23 @@ impl<'a> Lowering<'a> {
             variables.push(instance.this);
         }
         for (name, section) in parameters {
-            let string = matches!(section, Section::Input | Section::Output);
-            let Some(parameter) = self.scalar_variable(&frame, name, string)? else {
+            let parameter = match section {
+                // An array or structure input is passed by copy
+                // (REQ-LOW-lowering-075).
+                Section::Input => match self.aggregate_variable(&frame, name)? {
+                    Some(aggregate) => Some(aggregate),
+                    None => self.scalar_variable(&frame, name, true)?,
+                },
+                Section::Output => self.scalar_variable(&frame, name, true)?,
+                Section::InOut => self.scalar_variable(&frame, name, false)?,
+            };
+            let Some(parameter) = parameter else {
                 return Ok(None);
             };
             variables.push(parameter);
         }
-        // A function's string result is its result parameter, first among
-        // its parameters (REQ-LOW-lowering-079).
+        // A function's string or structure result is its result parameter,
+        // first among its parameters (REQ-LOW-lowering-079).
         let result_parameter = match call {
             UserCall::Function { function, .. } => self.result_parameter(&frame, &function.name)?,
             UserCall::Method { .. } => None,
@@ -541,19 +486,34 @@ impl<'a> Lowering<'a> {
     }
 
     /// The result parameter of the function named `name`, whose body is
-    /// `frame`, when its result is a string: the variable its body reaches
-    /// the result through (REQ-LOW-lowering-079). `None` for any other
-    /// result.
+    /// `frame`, when its result is a string or a structure: the variable its
+    /// body reaches the result through (REQ-LOW-lowering-079). `None` for
+    /// any other result.
     fn result_parameter(&mut self, frame: &BodyFrame, name: &Id) -> Made<VarId> {
         let Some(place) = self.named_place(frame, name, &name.span())? else {
             return Ok(None);
         };
         let through = matches!(place.path(), [Projection::Deref]);
-        let string = matches!(
+        let returned = matches!(
             self.program.types().kind(place.ty()),
-            Some(TypeKind::String(_))
+            Some(TypeKind::String(_) | TypeKind::Structure { .. })
         );
-        Ok((through && string).then(|| place.root()))
+        Ok((through && returned).then(|| place.root()))
+    }
+
+    /// The variable `name` refers to in the body of `frame`, a function or
+    /// method, when it is the whole of an array or a structure, as an input
+    /// of one is; `None` otherwise.
+    fn aggregate_variable(&mut self, frame: &BodyFrame, name: &Id) -> Made<VarId> {
+        let Some(place) = self.named_place(frame, name, &name.span())? else {
+            return Ok(None);
+        };
+        let aggregate = place.path().is_empty()
+            && matches!(
+                self.program.types().kind(place.ty()),
+                Some(TypeKind::Array { .. } | TypeKind::Structure { .. })
+            );
+        Ok(aggregate.then(|| place.root()))
     }
 
     /// The variable `name` refers to in the body of `frame`, a function or

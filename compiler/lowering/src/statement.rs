@@ -14,31 +14,24 @@ impl Lowering<'_> {
     /// Lowers the statement `stmt` of the body of `frame` to the statements
     /// it runs, in order, or `None` when lowering does not support it, or
     /// something inside it, yet. A function block call lowers to the stores
-    /// of its inputs, the call and the stores of its outputs, and an
-    /// assignment of a call of a function with outputs to the call, the
-    /// stores of its outputs and the assignment (`hoist.rs`); every other
-    /// statement lowers to one statement. The calls with a string result in
-    /// it come first (`string_result.rs`).
+    /// of its inputs, the call and the stores of its outputs, a method call
+    /// statement to the call and the stores of its outputs, and the
+    /// assignment of a call of a function whose result is a structure to the
+    /// call, the stores of its outputs and the copy of its result; every
+    /// other statement lowers to one statement.
     pub(crate) fn statement(
-        &mut self,
-        frame: &BodyFrame,
-        stmt: &AstStmtKind,
-    ) -> Result<Option<Vec<Stmt>>, Diagnostic> {
-        self.with_moved_calls(stmt.span(), |lowering| {
-            lowering.statement_parts(frame, stmt)
-        })
-    }
-
-    /// Lowers `stmt`, as [`Self::statement`] does, without the calls moved
-    /// out of it.
-    fn statement_parts(
         &mut self,
         frame: &BodyFrame,
         stmt: &AstStmtKind,
     ) -> Result<Option<Vec<Stmt>>, Diagnostic> {
         let one = |stmt: Result<Option<Stmt>, Diagnostic>| Ok(stmt?.map(|stmt| vec![stmt]));
         match stmt {
-            AstStmtKind::Assignment(assignment) => self.assignment_statement(frame, assignment),
+            AstStmtKind::Assignment(assignment) => {
+                match self.structure_result_assignment(frame, assignment)? {
+                    Some(statements) => Ok(Some(statements)),
+                    None => one(self.assignment(frame, assignment)),
+                }
+            }
             AstStmtKind::If(stmt) => one(self.if_statement(frame, stmt)),
             AstStmtKind::Case(stmt) => one(self.case_statement(frame, stmt)),
             AstStmtKind::For(stmt) => one(self.for_statement(frame, stmt)),
@@ -112,9 +105,11 @@ impl Lowering<'_> {
     ) -> Result<Option<Stmt>, Diagnostic> {
         match self.program.types().kind(place.ty()) {
             Some(TypeKind::String(_)) => return self.string_assignment(frame, place, value, span),
-            Some(TypeKind::Array { .. } | TypeKind::Structure { .. }) => {
-                return self.aggregate_assignment(frame, place, value, span)
-            }
+            Some(
+                TypeKind::Array { .. }
+                | TypeKind::Structure { .. }
+                | TypeKind::FunctionBlock { .. },
+            ) => return self.aggregate_assignment(frame, place, value, span),
             Some(
                 TypeKind::Bool
                 | TypeKind::Integer { .. }
@@ -123,15 +118,13 @@ impl Lowering<'_> {
                 | TypeKind::Temporal { .. }
                 | TypeKind::Enumeration { .. }
                 | TypeKind::Subrange { .. }
-                | TypeKind::FunctionBlock { .. }
                 | TypeKind::Program { .. }
                 | TypeKind::Reference { .. },
             )
             | None => {}
         }
         let Some(operated) = self.program.types().operation_type(place.ty()) else {
-            // A function block or program instance, which is not copied
-            // yet.
+            // A program instance, which is not assigned.
             return Ok(None);
         };
         let Some(value) = self.expr(frame, value)? else {
@@ -164,9 +157,10 @@ impl Lowering<'_> {
         self.program.assign(place, value, span)
     }
 
-    /// Copies the whole of the variable `value` to `place`, an array or a
-    /// structure (REQ-LOW-lowering-061). Any other source, such as a call of
-    /// a function that returns a structure, is not lowered yet.
+    /// Copies the whole of the variable `value` to `place`, an array, a
+    /// structure or a function block instance (REQ-LOW-lowering-061). Any
+    /// other source is not lowered here; the assignment of a call of a
+    /// function that returns a structure is `structure_result.rs`'s.
     fn aggregate_assignment(
         &mut self,
         frame: &BodyFrame,

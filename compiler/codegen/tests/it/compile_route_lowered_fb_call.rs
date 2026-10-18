@@ -8,8 +8,10 @@ use ironplc_parser::options::CompilerOptions;
 
 use rstest::rstest;
 
-use crate::common::{compile_by_route, parse, run_compiled_scans, Duration};
-use crate::compile_route_lowered::{assert_same_code, options, run_lowered_agreeing};
+use crate::common::{
+    compile_by_route, parse, parse_and_compile_to_run, run_compiled_scans, Duration, Snapshot,
+};
+use crate::compile_route_lowered::{assert_same_code, options, run_lowered, run_lowered_agreeing};
 
 /// A block whose outputs are its inputs' sum, whether the sum is positive,
 /// a `REAL`, a `UDINT` and a count of its calls.
@@ -399,4 +401,104 @@ fn compile_when_standard_instance_external_then_same_code_as_ast() {
            END_RESOURCE
          END_CONFIGURATION",
     );
+}
+
+/// REQ-LOW-codegen-165: an instance assigned from another of its block gets
+/// a copy of every field, in storage of its own, so a later call of either
+/// leaves the other as it was, and an instance assigned to itself is
+/// unchanged. This corrects the route that reads the AST, which stores the
+/// source's slot in the destination's and so makes `f` an alias of `g`:
+/// there `f(v := 9)` calls `g`, and `r` is 9 and `g` counts two calls.
+#[test]
+fn run_when_instance_assigned_then_copy_of_its_fields() {
+    let snapshot = run_lowered(
+        "FUNCTION_BLOCK FBV
+           VAR_INPUT v : DINT; END_VAR
+           VAR_OUTPUT q : DINT; calls : DINT; END_VAR
+           q := v;
+           calls := calls + 1;
+         END_FUNCTION_BLOCK
+         PROGRAM main
+           VAR f : FBV; g : FBV; r : DINT; rf : DINT; gc : DINT; fc : DINT; END_VAR
+           g(v := 3);
+           f := g;
+           f := f;
+           f(v := 9);
+           r := g.q;
+           rf := f.q;
+           gc := g.calls;
+           fc := f.calls;
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<i32>("r"), 3);
+    assert_eq!(snapshot.read_as::<i32>("rf"), 9);
+    assert_eq!(snapshot.read_as::<i32>("gc"), 1);
+    assert_eq!(snapshot.read_as::<i32>("fc"), 2);
+}
+
+/// REQ-LOW-codegen-165: a standard block's instance assigned from another
+/// gets the fields the VM's block keeps for itself as well as its inputs and
+/// outputs. `t := u` while `u` times copies the time `u` started at, so `t`
+/// has run as long as `u`; resetting `t` afterwards leaves `u` timing. On the
+/// route that reads the AST, `t` is `u`, so resetting `t` resets `u`, and
+/// `u` restarts at the last scan.
+#[test]
+fn run_when_timer_assigned_while_timing_then_copy_keeps_its_start() {
+    let source = "PROGRAM main
+           VAR u : TON; t : TON; scan : DINT; ue : TIME; te : TIME; END_VAR
+           scan := scan + 1;
+           u(IN := TRUE, PT := T#5S, ET => ue);
+           IF scan = 2 THEN t := u; END_IF;
+           IF scan >= 2 THEN t(IN := scan = 2, PT := T#5S, ET => te); END_IF;
+         END_PROGRAM";
+    let options = options();
+    let (library, context) = parse(source, &options);
+    let container = compile_by_route(&library, &context, &options, Route::RequireLowered)
+        .expect("every statement lowers");
+    let observed = run_compiled_scans(&container, |session| {
+        [0, 2, 4, 6].map(|seconds| {
+            session.scan(seconds * 1_000_000).unwrap();
+            (
+                session.read_as::<Duration>("ue"),
+                session.read_as::<Duration>("te"),
+            )
+        })
+    });
+    assert_eq!(
+        observed,
+        [
+            (Duration::ZERO, Duration::ZERO),
+            (Duration::seconds(2), Duration::seconds(2)),
+            (Duration::seconds(4), Duration::ZERO),
+            (Duration::seconds(5), Duration::ZERO),
+        ]
+    );
+}
+
+/// A function's body sees the program's instances by name. Its own
+/// structures named as two instances of one block are copied as structures,
+/// not taken for the instances, which keep their fields: both routes leave
+/// `r` as `a` was called.
+#[test]
+fn run_when_function_copies_structures_named_as_instances_then_instances_kept() {
+    let container = parse_and_compile_to_run(
+        "TYPE S : STRUCT n : DINT; END_STRUCT; END_TYPE
+         FUNCTION_BLOCK FBV
+           VAR_INPUT v : DINT; END_VAR
+         END_FUNCTION_BLOCK
+         FUNCTION F : DINT
+           VAR a : S; b : S; END_VAR
+           a := b;
+           F := 1;
+         END_FUNCTION
+         PROGRAM main
+           VAR a : FBV; b : FBV; k : DINT; r : DINT; END_VAR
+           a(v := 1);
+           b(v := 2);
+           k := F();
+           r := a.v;
+         END_PROGRAM",
+        &options(),
+    );
+    assert_eq!(Snapshot::run_compiled(container).read_as::<i32>("r"), 1);
 }

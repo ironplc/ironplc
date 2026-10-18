@@ -77,6 +77,7 @@ fn declared_type_id(
         }
         InitialValueAssignmentKind::EnumeratedType(e) => return env.id_of(&e.type_name),
         InitialValueAssignmentKind::FunctionBlock(fb) => return env.id_of(&fb.type_name),
+        InitialValueAssignmentKind::Interface(itf) => return env.id_of(&itf.type_name),
         InitialValueAssignmentKind::FunctionBlockCall(fbc) => return env.id_of(&fbc.type_name),
         InitialValueAssignmentKind::Structure(s) => return env.id_of(&s.type_name),
         InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
@@ -195,7 +196,7 @@ impl Fold<Diagnostic> for DeclTypeResolver<'_> {
             let properties = node
                 .properties
                 .iter()
-                .map(|property| property.name.clone())
+                .map(|property| self.type_environment.property_signature(property))
                 .collect();
             let methods = node
                 .methods
@@ -207,6 +208,30 @@ impl Fold<Diagnostic> for DeclTypeResolver<'_> {
         }
         Ok(node)
     }
+
+    fn fold_interface_declaration(
+        &mut self,
+        node: InterfaceDeclaration,
+    ) -> Result<InterfaceDeclaration, Diagnostic> {
+        let node = node.recurse_fold(self)?;
+        // A repeated interface name keeps its first declaration: the
+        // environment records an interface once.
+        if let Some(interface) = self.type_environment.id_of(&TypeName::from_id(&node.name)) {
+            let methods = node
+                .methods
+                .iter()
+                .map(|method| self.type_environment.prototype_signature(method))
+                .collect();
+            let properties = node
+                .properties
+                .iter()
+                .map(|property| self.type_environment.property_prototype_signature(property))
+                .collect();
+            self.type_environment
+                .record_interface(interface, methods, properties);
+        }
+        Ok(node)
+    }
 }
 
 #[cfg(test)]
@@ -214,30 +239,10 @@ mod tests {
     use super::*;
     use crate::semantic_context::SemanticContext;
     use crate::semantic_type::SemanticType;
-    use crate::test_helpers::parse_and_resolve_types_with_options;
-    use ironplc_dsl::visitor::Visitor;
+    use crate::test_helpers::{declared_ids, parse_and_resolve_types_with_options};
     use ironplc_parser::options::{CompilerOptions, Dialect};
     use rstest::rstest;
     use spec_test_macro::spec_test;
-    use std::collections::HashMap;
-    use std::convert::Infallible;
-
-    /// Every symbolic declaration's recorded type id, by variable name.
-    fn declared_ids(library: &Library) -> HashMap<String, Option<TypeId>> {
-        struct Collect(HashMap<String, Option<TypeId>>);
-        impl Visitor<Infallible> for Collect {
-            type Value = ();
-            fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
-                if let Some(id) = node.identifier.symbolic_id() {
-                    self.0.insert(id.to_string(), node.type_id);
-                }
-                Ok(())
-            }
-        }
-        let mut collect = Collect(HashMap::new());
-        let _ = collect.walk(library);
-        collect.0
-    }
 
     /// Resolves `program` under edition 3, which has `REF_TO`.
     fn resolve(program: &str) -> (Library, SemanticContext) {

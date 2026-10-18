@@ -17,7 +17,8 @@ use ironplc_ir::lowered::{
 use ironplc_lowering::Lowering;
 
 use super::expr::{emit_constant, emit_expr, emit_truncate};
-use super::{constant, op_type, read, storage_name};
+use super::place::variable_name;
+use super::{constant, op_type, read};
 use crate::compile::{CompileContext, OpType};
 use crate::compile_expr::{
     classify_with_named, emit_add, emit_classified_cmp_br, emit_eq, emit_ge, emit_le, ClassifiedCmp,
@@ -62,8 +63,8 @@ impl Emission<'_, '_> {
 
     /// Emits `stmts` in order, at each one's source position when `record`.
     /// The stores of a function block call's inputs and the call are emitted
-    /// together, as the AST route emits a call (`fb_call.rs`), and so are the
-    /// parts of an assignment of a call of a function with outputs
+    /// together, as the AST route emits a call (`fb_call.rs`), and so are a
+    /// call statement, the stores of its outputs and the copy of its result
     /// (`fn_call.rs`).
     fn sequence(
         &mut self,
@@ -73,13 +74,7 @@ impl Emission<'_, '_> {
         record: bool,
     ) -> Result<(), Diagnostic> {
         let mut rest = stmts;
-        while let [first, rest_after_first @ ..] = rest {
-            // A call with a string result is emitted where its result is
-            // read (`string_result.rs`).
-            if super::string_result::is_moved(ctx, first) {
-                rest = rest_after_first;
-                continue;
-            }
+        while let [first, ..] = rest {
             if record {
                 record_position(emitter, ctx, first.span());
             }
@@ -87,7 +82,13 @@ impl Emission<'_, '_> {
                 super::fb_call::emit_call_site(emitter, ctx, self.lowering, &call, first.span())?;
                 call.len()
             } else if let Some(call) = super::fn_call::output_call(self.lowering, ctx, rest) {
-                super::fn_call::emit_output_call(emitter, ctx, self.lowering, &call, first.span())?;
+                super::fn_call::emit_call_statement(
+                    emitter,
+                    ctx,
+                    self.lowering,
+                    &call,
+                    first.span(),
+                )?;
                 call.len()
             } else {
                 self.stmt(emitter, ctx, first)?;
@@ -140,7 +141,15 @@ impl Emission<'_, '_> {
             // A call is emitted with the stores of its inputs (`sequence`);
             // one on its own has none.
             StmtKind::Copy { dst, src } => {
-                super::aggregate::emit_copy(emitter, ctx, self.lowering, dst, src, span)
+                match super::instance_copy::instance_copy(self.lowering, ctx, dst, src) {
+                    Some(copy) => {
+                        super::instance_copy::emit_instance_copy(emitter, &copy);
+                        Ok(())
+                    }
+                    None => {
+                        super::aggregate::emit_copy(emitter, ctx, self.lowering, dst, src, span)
+                    }
+                }
             }
             StmtKind::FbCall { instance, .. } => {
                 let call = super::fb_call::bare_call(self.lowering, ctx, instance)
@@ -279,7 +288,9 @@ impl Emission<'_, '_> {
     }
 
     /// `place <cmp> value` as one `CMP_BR_*`, when `place` is a signed integer
-    /// variable.
+    /// variable, as the AST route finds it by its name: a variable, a field
+    /// of the current instance, or what a function's or method's parameter
+    /// refers to.
     fn classify_place(
         &self,
         ctx: &mut CompileContext,
@@ -289,7 +300,7 @@ impl Emission<'_, '_> {
         cmp: u8,
     ) -> Option<ClassifiedCmp> {
         let value = i64::try_from(value.integer_value(ty)?).ok()?;
-        let name = storage_name(self.lowering, place)?;
+        let name = variable_name(self.lowering, ctx, place)?;
         classify_with_named(ctx, &name, value, cmp)
     }
 

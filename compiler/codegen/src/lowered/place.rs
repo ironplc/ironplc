@@ -172,6 +172,31 @@ pub(super) fn reads_standard_block_field(
     })
 }
 
+/// The slot of an instance that this backend reaches by name, other than the
+/// current instance, that holds the field `place` is (`f.si`), whatever the
+/// field's type. `None` for any other place.
+///
+/// This backend's layout keeps no data region for a string, structure or
+/// array field of such an instance: its slot holds what the route that reads
+/// the AST stores there, the index of a temporary buffer for a string
+/// (issue 1753) and the region offset of the value stored for a structure or
+/// an array.
+pub(super) fn instance_slot<'l, 'a>(
+    lowering: &'l Lowering<'a>,
+    ctx: &CompileContext,
+    place: &'l LoweredPlace,
+) -> Option<Place<LoweredSubscript<'l, 'a>>> {
+    let SymbolicVariableKind::Structured(field) = reference(lowering, ctx, place, &mut Vec::new())?
+    else {
+        return None;
+    };
+    // An instance's field has no subscripts.
+    Place::fb_field(ctx, &field)
+        .ok()??
+        .try_map_subscripts(|_| Err(()))
+        .ok()
+}
+
 /// Where codegen's layout stores the string `place`: a string variable, an
 /// element of a string array or a string field of a structure, as the AST
 /// route finds it.

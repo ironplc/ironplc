@@ -17,25 +17,26 @@ use crate::{
     ironplc_dsl::common::Library,
     result::SemanticResult,
     rule_abstract_not_instantiated, rule_array_index_range, rule_array_initializer_length,
-    rule_array_subscript_count, rule_assignment_aggregate_type_compat,
+    rule_array_subscript_count, rule_array_subscript_type, rule_assignment_aggregate_type_compat,
     rule_bit_and_partial_access_range, rule_case_bit_string_label, rule_case_selector_type,
     rule_condition_type, rule_constant_not_written, rule_constant_range,
     rule_decl_struct_element_unique_names, rule_enum_base_type_allowed,
     rule_enum_explicit_value_allowed, rule_enumeration_values_unique,
     rule_extends_field_duplicated, rule_function_block_call_unsupported,
     rule_function_block_invocation, rule_function_call_declared,
-    rule_function_call_in_out_argument, rule_function_call_type_check,
-    rule_loop_control_inside_loop, rule_member_qualifier_allowed, rule_member_qualifier_invalid,
-    rule_method_call_declared, rule_mixed_located_var_declarations, rule_no_top_level_var_global,
-    rule_operator_operand_type_check, rule_pou_hierarchy, rule_program_task_definition_exists,
-    rule_program_var_hides_global, rule_range_limits, rule_real_literal_range, rule_ref_to,
-    rule_return_type_declared, rule_self_reference_context, rule_stdlib_type_redefinition,
-    rule_string_encoding_compat, rule_string_length_range, rule_string_literal_char_range,
-    rule_struct_initializer_expression_allowed, rule_task_configuration, rule_task_names_unique,
-    rule_temporal_literal_range, rule_unsupported_extension, rule_use_declared_enumerated_value,
-    rule_use_declared_field, rule_use_declared_symbolic_var, rule_var_decl_const_initialized,
-    rule_var_decl_const_not_fb, rule_var_decl_global_const_requires_external_const,
-    rule_var_decl_initializer_type_compat, rule_var_external_matches_global,
+    rule_function_call_in_out_argument, rule_function_call_type_check, rule_interface_conformance,
+    rule_interface_conversion, rule_loop_control_inside_loop, rule_member_qualifier_allowed,
+    rule_member_qualifier_invalid, rule_method_call_declared, rule_mixed_located_var_declarations,
+    rule_no_top_level_var_global, rule_operator_operand_type_check, rule_pou_hierarchy,
+    rule_program_task_definition_exists, rule_program_var_hides_global, rule_range_limits,
+    rule_real_literal_range, rule_ref_to, rule_return_type_declared, rule_self_reference_context,
+    rule_stdlib_type_redefinition, rule_string_encoding_compat, rule_string_length_range,
+    rule_string_literal_char_range, rule_struct_initializer_expression_allowed,
+    rule_task_configuration, rule_task_names_unique, rule_temporal_literal_range,
+    rule_unsupported_extension, rule_use_declared_enumerated_value, rule_use_declared_field,
+    rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
+    rule_var_decl_global_const_requires_external_const, rule_var_decl_initializer_type_compat,
+    rule_var_external_matches_global,
     semantic_context::SemanticContext,
     symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
     system_globals::SYSTEM_UPTIME_GLOBALS,
@@ -275,10 +276,10 @@ pub fn resolve_types(
 
     // Decide what each bare identifier in an expression is: a variable, or an
     // enumerated value. It needs the symbol environment: a name is a variable
-    // when the environment finds one from the current scope, however it is
-    // declared (a method's variable, a global, an inherited field, the
-    // implicit input of a property accessor). Runs before the passes that
-    // need bare names to already be variables.
+    // when the environment resolves it to one the current scope may use,
+    // however it is declared (a method's variable, a global, an inherited
+    // field, the implicit input of a property accessor). Runs before the
+    // passes that need bare names to already be variables.
     library = run_best_effort(library, &mut diagnostics, |lib| {
         xform_resolve_late_bound_expr_kind::apply(lib, &symbol_environment)
     });
@@ -406,6 +407,8 @@ pub(crate) fn semantic(
         rule_function_call_declared::apply,
         rule_function_call_in_out_argument::apply,
         rule_function_call_type_check::apply,
+        rule_interface_conformance::apply,
+        rule_interface_conversion::apply,
         rule_member_qualifier_allowed::apply,
         rule_member_qualifier_invalid::apply,
         rule_method_call_declared::apply,
@@ -437,6 +440,7 @@ pub(crate) fn semantic(
         rule_bit_and_partial_access_range::apply,
         rule_array_index_range::apply,
         rule_array_subscript_count::apply,
+        rule_array_subscript_type::apply,
         rule_case_bit_string_label::apply,
         rule_case_selector_type::apply,
         rule_condition_type::apply,
