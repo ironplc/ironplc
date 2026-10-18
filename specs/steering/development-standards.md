@@ -106,7 +106,7 @@ Unlike an ADR, a design document is a *description* rather than a decision, so i
 
 Work breakdowns that describe **how** to implement: phased task lists, specific code changes, file modifications, and verification steps. A plan document answers "what steps do I follow to build this?" Plans reference the design they implement.
 
-**A plan is optional.** Write one when you want the approach reviewed before the code is written; the [Development Process](#development-process) does not require it. A plan lives in its own PR, which is never merged: no other PR contains the plan file, so no plan reaches `main`. Close the plan PR unmerged once the work it describes has landed; the plan stays viewable there.
+**A plan is optional, and never reaches `main`.** Write one when it helps to agree the approach before writing the code; the [Development Process](#development-process) does not require it. No PR that merges contains a plan file.
 
 Plans are the one document type in `specs/` that is not durable. Anything worth keeping — a decision, a constraint, a piece of rationale — must land somewhere durable in a prefactor or core change pull request: `specs/adrs/`, `specs/design/`, or a code doc comment where the reasoning is local to the code (see [Choosing the Right Location](#choosing-the-right-location)).
 
@@ -123,7 +123,7 @@ Guidance for AI assistants working with the codebase (conventions, patterns, wor
 | Why did we choose approach X over Y? | `specs/adrs/` |
 | What should the container format look like? | `specs/design/` |
 | Why is *this function* written this way? | a doc comment on it |
-| What are the steps to implement the container format? | `specs/plans/` (optional plan PR, never merged) |
+| What are the steps to implement the container format? | `specs/plans/` (optional, never merged) |
 | How should AI assistants name tests? | `specs/steering/` |
 
 **A decision may live in a code comment.** Rationale whose reader is the next
@@ -205,8 +205,6 @@ Never commit or push directly to `main`. Before opening any PR, run `cd compiler
 **Session limited to one branch?** Deliver the next PR in the sequence, stop, and say what comes next.
 
 **Mechanical changes** — typo fixes, formatting, dependency bumps, single-line bug fixes, or documentation-only edits — go in a single PR.
-
-**Want the approach reviewed before you write the code?** Open a [plan PR](#specsplans--implementation-plans). It is optional, and listing the open decisions in it is one way to put them to a person.
 
 ### Decisions a Person Makes
 
