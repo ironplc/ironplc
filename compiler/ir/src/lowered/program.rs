@@ -80,6 +80,36 @@ impl ProgramBuilder {
     /// Adds the type `entry`; see [`TypeTable::push`] for what it must be. The
     /// body of a function block or program type is a POU of this program.
     pub fn push_type(&mut self, entry: TypeEntry, span: &SourceSpan) -> Result<TypeId, Diagnostic> {
+        self.check_body(&entry, "ProgramBuilder::push_type", span)?;
+        self.types.push(entry, span)
+    }
+
+    /// Declares a type that [`ProgramBuilder::define_type`] gives its entry
+    /// later; see [`TypeTable::declare`].
+    pub fn declare_type(&mut self) -> TypeId {
+        self.types.declare()
+    }
+
+    /// Gives the type `id` declares its entry, which is one
+    /// [`ProgramBuilder::push_type`] would add; see [`TypeTable::define`].
+    pub fn define_type(
+        &mut self,
+        id: TypeId,
+        entry: TypeEntry,
+        span: &SourceSpan,
+    ) -> Result<(), Diagnostic> {
+        self.check_body(&entry, "ProgramBuilder::define_type", span)?;
+        self.types.define(id, entry, span)
+    }
+
+    /// Why `entry` cannot be added, if it is a function block or program type
+    /// whose body is not a POU of this program.
+    fn check_body(
+        &self,
+        entry: &TypeEntry,
+        constructor: &str,
+        span: &SourceSpan,
+    ) -> Result<(), Diagnostic> {
         let body = match &entry.kind {
             TypeKind::FunctionBlock { body, .. } | TypeKind::Program { body, .. } => Some(*body),
             TypeKind::Bool
@@ -96,12 +126,12 @@ impl ProgramBuilder {
         };
         if let Some(body) = body.filter(|body| self.pous.name(*body).is_none()) {
             return Err(broken(
-                "ProgramBuilder::push_type",
+                constructor,
                 span,
                 format!("the body {body} is not a POU of this program"),
             ));
         }
-        self.types.push(entry, span)
+        Ok(())
     }
 
     /// Adds a temporary named `name`, owned by `owner`, of type `ty`: a
