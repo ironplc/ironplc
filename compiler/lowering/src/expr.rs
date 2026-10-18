@@ -159,23 +159,9 @@ impl Lowering<'_> {
                 Expr::integer(ordinal.into(), ty, span).map(Some)
             }
             AstExprKind::Deref(reference) => {
-                // `REF(x)^`, and `ADR(x)^`, which the analyzer rewrote to
-                // `REF(x)` (`xform_resolve_adr`), is `x` itself.
-                if let AstExprKind::Ref(variable) = &reference.kind {
-                    let Some(place) = self.variable_place(frame, variable)? else {
-                        return Ok(None);
-                    };
-                    return self.read(place, span);
-                }
-                // A reference that is not in a variable, such as one a
-                // function returns, is not a place to follow.
-                let AstExprKind::Variable(variable) = &reference.kind else {
+                let Some(place) = self.dereferenced_place(frame, reference, &span)? else {
                     return Ok(None);
                 };
-                let Some(reference) = self.variable_place(frame, variable)? else {
-                    return Ok(None);
-                };
-                let place = self.program.deref(reference, &span)?;
                 self.read(place, span)
             }
             AstExprKind::Function(func) => self.function_call(frame, expr, func),
@@ -215,6 +201,30 @@ impl Lowering<'_> {
             Variable::Symbolic(symbolic) => self.symbolic_place(frame, symbolic),
             Variable::Direct(_) => Ok(None),
         }
+    }
+
+    /// The place `reference^` names, or `None` when lowering does not reach
+    /// it yet. `REF(x)^`, and `ADR(x)^`, which the analyzer rewrote to
+    /// `REF(x)^` (`xform_resolve_adr`), is `x` itself, and `p^` what the
+    /// reference variable `p` refers to.
+    pub(crate) fn dereferenced_place(
+        &mut self,
+        frame: &BodyFrame,
+        reference: &AstExpr,
+        span: &SourceSpan,
+    ) -> Result<Option<Place>, Diagnostic> {
+        if let AstExprKind::Ref(variable) = &reference.kind {
+            return self.variable_place(frame, variable);
+        }
+        // A reference that is not in a variable, such as one a function
+        // returns, is not a place to follow.
+        let AstExprKind::Variable(variable) = &reference.kind else {
+            return Ok(None);
+        };
+        let Some(reference) = self.variable_place(frame, variable)? else {
+            return Ok(None);
+        };
+        self.program.deref(reference, span).map(Some)
     }
 
     /// The value at `place`, when its type is operated on as one value.
