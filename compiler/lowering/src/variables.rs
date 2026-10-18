@@ -309,6 +309,21 @@ impl<'a> Lowering<'a> {
         self.declared_variable(decl, info, owner, false, span)
     }
 
+    /// Whether `name`, in the body of `frame`, names a `VAR_IN_OUT`.
+    pub(crate) fn is_in_out(&self, frame: &BodyFrame, name: &Id) -> bool {
+        match self
+            .analysis
+            .context()
+            .symbols()
+            .resolve_variable(name, &frame.scope)
+        {
+            Resolution::Variable { info, .. } => info.variable_type == Some(VariableType::InOut),
+            Resolution::GlobalNotVisible { .. }
+            | Resolution::NotAVariable
+            | Resolution::Undeclared => false,
+        }
+    }
+
     /// Whether `info` is the result of the function whose body `frame` is,
     /// and the result is a string or a structure, which the function returns
     /// through its result parameter (REQ-LOW-lowering-079). A method's

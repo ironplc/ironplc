@@ -1205,8 +1205,10 @@ repeats: it evaluates `to`; it leaves the loop when `control` is greater than
 assignment.
 
 **REQ-LOW-lowering-067** The `step` of a `For` is a nonzero constant of the
-operation type of `control`, and `control` is a variable or a field of the
-current instance. A `FOR` whose step is not a nonzero constant is reported as
+operation type of `control`, and `control` is a variable, a field of the
+current instance, or what a reference variable refers to, as a function's or
+method's `VAR_OUTPUT` parameter does. A `FOR` whose step is not a nonzero
+constant, and one whose control variable is a `VAR_IN_OUT`, is reported as
 P9999, as it is today.
 
 `to` is evaluated on every iteration, and the control variable wraps, so a
