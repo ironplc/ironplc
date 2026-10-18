@@ -15,7 +15,8 @@
 //! 4. one variable for each program instance, of section `Instance`.
 //!
 //! Then it lowers `init` (`init.rs`), the stores of each global's and each
-//! instance field's starting value.
+//! instance field's starting value, and, at the head of each function's
+//! and method's body, its prologue.
 //!
 //! A statement that reaches a variable then finds the one already declared.
 //! Then it lowers each top-level statement of each body, as
@@ -36,7 +37,7 @@ use ironplc_ir::lowered::{
     ProgramBuilder, Section, Stmt, TypeTable, VarId, VariableTable,
 };
 
-use crate::init::Init;
+use crate::init::{Stores, Values};
 use crate::variables::BodyFrame;
 use crate::{Body, Lowering, StatementLowering};
 
@@ -51,7 +52,7 @@ pub struct PartialProgram {
     bodies: Vec<LoweredBody>,
     /// Where a declaration is that lowering cannot express yet.
     incomplete: Vec<SourceSpan>,
-    init: Init,
+    init: Stores,
 }
 
 /// One body of the program and what its statements lowered to.
@@ -63,6 +64,8 @@ struct LoweredBody {
     span: SourceSpan,
     /// The body's instance parameter; `None` for a function's.
     instance: Option<VarId>,
+    /// The statements at the head of the body, before its own.
+    prologue: Stores,
     statements: Statements,
 }
 
@@ -93,10 +96,19 @@ impl PartialProgram {
     /// every program instance the value it starts with; `None` when one of
     /// those values does not lower yet.
     pub fn init(&self) -> Option<&[Stmt]> {
-        self.init
-            .unsupported
-            .is_empty()
-            .then_some(self.init.statements.as_slice())
+        self.init.complete()
+    }
+
+    /// The statements at the head of the body of `pou`, which give each
+    /// variable of a function or method that starts again on every call its
+    /// value; `None` when one of those values does not lower yet, or the
+    /// body does not.
+    pub fn prologue(&self, pou: PouId) -> Option<&[Stmt]> {
+        let body = self.bodies.iter().find(|body| body.pou == pou)?;
+        match body.statements {
+            Statements::Lowered(_) => body.prologue.complete(),
+            Statements::Sfc | Statements::Undeclared => None,
+        }
     }
 
     /// Whether every declaration of every reachable POU, and every global,
@@ -130,6 +142,11 @@ impl PartialProgram {
             .incomplete
             .iter()
             .chain(&self.init.unsupported)
+            .chain(
+                self.bodies
+                    .iter()
+                    .flat_map(|body| &body.prologue.unsupported),
+            )
             .map(|span| Diagnostic::todo_with_span(span.clone()))
             .collect();
         for body in &self.bodies {
@@ -175,7 +192,7 @@ impl PartialProgram {
                 Statements::Lowered(statements) => statements,
                 Statements::Sfc | Statements::Undeclared => Vec::new(),
             };
-            let mut lowered = Vec::new();
+            let mut lowered = body.prologue.statements;
             for (_, statement) in statements {
                 match statement {
                     StatementLowering::Lowered(statements) => lowered.extend(statements),
@@ -279,10 +296,11 @@ impl<'a> Lowering<'a> {
             )?;
             bindings.bind_instance(position, var);
         }
-        let init = self.lower_init(&execution, &bindings)?;
+        let values = Values::of(self.analysis.context().types());
+        let init = self.lower_init(&execution, &bindings, &values)?;
         let mut lowered = Vec::with_capacity(bodies.len());
         for (body, frame) in bodies.into_iter().zip(frames) {
-            lowered.push(self.lower_body(body, frame)?);
+            lowered.push(self.lower_body(body, frame, &values)?);
         }
         Ok(PartialProgram {
             builder: std::mem::replace(&mut self.program, ProgramBuilder::new()),
@@ -379,6 +397,7 @@ impl<'a> Lowering<'a> {
         &mut self,
         body: Body<'a>,
         frame: Option<BodyFrame>,
+        values: &Values,
     ) -> Result<LoweredBody, Diagnostic> {
         let span = body_name(body).span();
         let kind = match body {
@@ -393,6 +412,7 @@ impl<'a> Lowering<'a> {
             kind,
             span: span.clone(),
             instance: None,
+            prologue: Stores::default(),
             statements,
         };
         let Some(frame) = frame else {
@@ -401,6 +421,7 @@ impl<'a> Lowering<'a> {
         let Some(source) = statements_of(body) else {
             return Ok(unsupported(Statements::Sfc));
         };
+        let prologue = self.lower_prologue(body, &frame, values)?;
         let mut statements = Vec::with_capacity(source.len());
         for stmt in source {
             let lowered = match self.statement(&frame, stmt)? {
@@ -414,6 +435,7 @@ impl<'a> Lowering<'a> {
             kind,
             span,
             instance: frame.instance.map(|instance| instance.this),
+            prologue,
             statements: Statements::Lowered(statements),
         })
     }

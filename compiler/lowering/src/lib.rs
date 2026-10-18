@@ -67,6 +67,8 @@ mod place_tests;
 #[cfg(test)]
 mod program_tests;
 #[cfg(test)]
+mod prologue_tests;
+#[cfg(test)]
 mod string_result_tests;
 #[cfg(test)]
 mod string_tests;
