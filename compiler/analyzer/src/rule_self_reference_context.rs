@@ -3,6 +3,10 @@
 //! methods, its property accessors), and `SUPER^` only in a function block
 //! that `EXTENDS` another.
 //!
+//! A block whose `EXTENDS` names no function block has no base, but its
+//! `SUPER^` is not reported here: `rule_extends_base_declared` reports the
+//! base itself, which is the one cause of both.
+//!
 //! ## Passes
 //!
 //! ```ignore
@@ -26,6 +30,7 @@
 //! END_PROGRAM
 //! ```
 use ironplc_dsl::{
+    common::FunctionBlockDeclaration,
     core::Located,
     diagnostic::{Diagnostic, Label},
     scope::ScopeNode,
@@ -52,6 +57,7 @@ pub fn apply(
         RuleSelfReferenceContext {
             symbols: context.symbols(),
             scope: ScopeTracker::default(),
+            in_extending_block: false,
             diagnostics: Vec::new(),
         },
         lib,
@@ -61,6 +67,9 @@ pub fn apply(
 struct RuleSelfReferenceContext<'a> {
     symbols: &'a SymbolEnvironment,
     scope: ScopeTracker,
+    /// Whether the walk is inside a function block whose source writes an
+    /// `EXTENDS` clause, declared or not.
+    in_extending_block: bool,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -82,12 +91,27 @@ impl Visitor<Infallible> for RuleSelfReferenceContext<'_> {
         self.scope.exit();
     }
 
+    fn visit_function_block_declaration(
+        &mut self,
+        node: &FunctionBlockDeclaration,
+    ) -> Result<(), Infallible> {
+        self.in_extending_block = node.oop.as_ref().is_some_and(|oop| oop.base.is_some());
+        let result = node.recurse_visit(self);
+        self.in_extending_block = false;
+        result
+    }
+
     fn visit_self_ref_variable(&mut self, node: &SelfRefVariable) -> Result<(), Infallible> {
         let scope = self.scope.current();
         if self.symbols.self_type(&scope, node.kind).is_none() {
             // `SUPER^` in a function block that extends nothing differs from
             // a self reference outside any function block.
             let in_block = self.symbols.self_type(&scope, SelfRefKind::This).is_some();
+            // A block that writes an `EXTENDS` whose base is not a declared
+            // function block is reported at the base (P4088).
+            if node.kind == SelfRefKind::Super && in_block && self.in_extending_block {
+                return Ok(());
+            }
             let reason = if node.kind == SelfRefKind::Super && in_block {
                 "SUPER^ needs a function block that EXTENDS another".to_string()
             } else {
@@ -154,6 +178,15 @@ END_FUNCTION_BLOCK
     )]
     fn apply_when_self_reference_has_target_then_ok(#[case] source: &str) {
         assert!(codes(&format!("{BASE}\n{source}")).is_empty());
+    }
+
+    /// The base is reported for itself (P4088), not again at each `SUPER^`.
+    #[test]
+    fn apply_when_super_in_block_whose_base_is_undeclared_then_ok() {
+        assert!(codes(
+            "FUNCTION_BLOCK FB_A EXTENDS FB_Missing\nMETHOD N\n    SUPER^.M();\nEND_METHOD\nEND_FUNCTION_BLOCK"
+        )
+        .is_empty());
     }
 
     #[rstest]

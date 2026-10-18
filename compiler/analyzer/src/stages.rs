@@ -21,7 +21,7 @@ use crate::{
     rule_bit_and_partial_access_range, rule_bit_shift_input_type, rule_case_bit_string_label,
     rule_case_selector_type, rule_condition_type, rule_constant_not_written, rule_constant_range,
     rule_decl_struct_element_unique_names, rule_enum_base_type_allowed,
-    rule_enum_explicit_value_allowed, rule_enumeration_values_unique,
+    rule_enum_explicit_value_allowed, rule_enumeration_values_unique, rule_extends_base_declared,
     rule_extends_field_duplicated, rule_function_block_call_unsupported,
     rule_function_block_invocation, rule_function_call_declared,
     rule_function_call_in_out_argument, rule_function_call_type_check, rule_interface_conformance,
@@ -401,6 +401,7 @@ pub(crate) fn semantic(
         rule_enum_explicit_value_allowed::apply,
         rule_enumeration_values_unique::apply,
         rule_loop_control_inside_loop::apply,
+        rule_extends_base_declared::apply,
         rule_extends_field_duplicated::apply,
         rule_function_block_call_unsupported::apply,
         rule_function_block_invocation::apply,
@@ -1053,14 +1054,13 @@ END_FUNCTION_BLOCK"
         ))
     }
 
-    /// XAE: `No definition found for base class 'FB_Missing'`. Gap: the
-    /// missing base is not reported for itself. `SUPER^.x` finds no member
-    /// and passes, and a call is reported as an undeclared method of the
-    /// missing block.
+    /// XAE: `No definition found for base class 'FB_Missing'`. The missing
+    /// base is reported for itself (P4088), once, whatever the body does
+    /// with `SUPER^`.
     #[rstest::rstest]
-    #[case::member("    SUPER^.x := 1;", &[])]
-    #[case::call("    SUPER^.Go();", &["P4046"])]
-    fn analyze_when_super_of_undeclared_base_then_pinned(
+    #[case::member("    SUPER^.x := 1;", &["P4088"])]
+    #[case::call("    SUPER^.Go();", &["P4088"])]
+    fn analyze_when_super_of_undeclared_base_then_base_reported_once(
         #[case] body: &str,
         #[case] expected: &[&str],
     ) {

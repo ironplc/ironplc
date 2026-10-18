@@ -1,0 +1,43 @@
+=====
+P4088
+=====
+
+.. problem-summary:: P4088
+
+This error occurs when a function block type names a base in ``EXTENDS``
+that is not a declared function block: the name is not declared at all, or it
+names another kind of type, such as a structure or an interface.
+
+Only a function block can be extended. To provide the methods an interface
+declares, use ``IMPLEMENTS``.
+
+Extending a standard function block, such as ``TON``, is not supported yet and
+is reported as P9999.
+
+Example
+-------
+
+The following code will generate error P4088:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Motor EXTENDS FB_Drive  (* Error: FB_Drive is not declared *)
+   END_FUNCTION_BLOCK
+
+To fix this error, declare the base function block, or name one that is
+declared:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Drive
+   END_FUNCTION_BLOCK
+
+   FUNCTION_BLOCK FB_Motor EXTENDS FB_Drive
+   END_FUNCTION_BLOCK
+
+See Also
+--------
+
+- :doc:`/reference/language/object-orientation/extends` — ``EXTENDS``
+- :doc:`/reference/language/object-orientation/implements` — ``IMPLEMENTS``
+- :doc:`P4070` — ``IMPLEMENTS`` names a type that is not a declared interface
