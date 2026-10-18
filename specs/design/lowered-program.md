@@ -626,10 +626,10 @@ string type its declaration names for its values (`(A, B) WORD`, behind
 TwinCAT. It is part of the language rather than a layout, and it changes
 neither how a backend stores an enumeration nor how it operates on one.
 
-**REQ-LOW-ir-185** An enumeration's entry names its underlying type, an
+**REQ-LOW-ir-192** An enumeration's entry names its underlying type, an
 integer or bit string type in the table.
 
-**REQ-LOW-lowering-188** An enumeration's underlying type is the type its
+**REQ-LOW-lowering-190** An enumeration's underlying type is the type its
 declaration names, or `INT` when it names none.
 
 **REQ-LOW-lowering-027** The type table holds no size, offset or slot count,

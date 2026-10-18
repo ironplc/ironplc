@@ -612,7 +612,7 @@ fn type_table_when_subrange_outside_base_then_internal_error() {
     assert!(subrange(lreal, 0, 1).is_err());
 }
 
-/// REQ-LOW-ir-185: an enumeration's underlying type is an integer or a bit
+/// REQ-LOW-ir-192: an enumeration's underlying type is an integer or a bit
 /// string type in the table.
 #[test]
 fn type_table_when_enumeration_underlying_not_integer_then_internal_error() {

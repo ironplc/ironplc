@@ -7,7 +7,7 @@ use ironplc_ir::lowered::{IntWidth, TypeKind};
 
 use crate::test_support::lower;
 
-/// REQ-LOW-lowering-188: an enumeration's underlying type is the integer
+/// REQ-LOW-lowering-190: an enumeration's underlying type is the integer
 /// or bit string type its declaration names, and `INT` when it names none.
 #[test]
 fn lower_statement_when_enumeration_then_underlying_type_declared_or_int() {

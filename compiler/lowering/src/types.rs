@@ -104,7 +104,7 @@ impl Lowering<'_> {
                 underlying_type,
             } => TypeKind::Enumeration {
                 // The type the declaration names, and `INT` when it names
-                // none, as in CODESYS and TwinCAT (REQ-LOW-lowering-188).
+                // none, as in CODESYS and TwinCAT (REQ-LOW-lowering-190).
                 underlying: {
                     let int = SemanticType::Int {
                         size: ByteSized::B16,
