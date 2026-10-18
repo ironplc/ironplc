@@ -349,6 +349,8 @@ fn opcode_constants_when_array_family_then_pinned_bytes() {
     // COPY_REGION is STORE_ARRAY at type tag 1 -- the same op class, one
     // granularity coarser -- rather than an op class of its own.
     assert_eq!(opcode::COPY_REGION, 0xAD);
+    // COPY_REGION_DEREF is its tag 2: the destination through a reference.
+    assert_eq!(opcode::COPY_REGION_DEREF, 0xAE);
 }
 
 #[test]
@@ -1039,6 +1041,7 @@ fn opcode_pins_when_compared_to_assigned_set_then_complete() {
         opcode::CMP_BR_I32,
         opcode::CMP_BR_I64,
         opcode::COPY_REGION,
+        opcode::COPY_REGION_DEREF,
         opcode::FIND_STR,
         opcode::REPLACE_STR,
         opcode::INSERT_STR,

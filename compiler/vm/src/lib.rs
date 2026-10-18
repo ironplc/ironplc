@@ -27,6 +27,7 @@ pub(crate) mod intrinsic;
 pub(crate) mod intrinsic_id;
 #[cfg(feature = "profiling")]
 mod profile;
+pub(crate) mod region;
 pub(crate) mod scheduler;
 pub(crate) mod stack;
 pub(crate) mod str_to_num;

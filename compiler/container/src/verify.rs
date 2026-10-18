@@ -532,8 +532,9 @@ fn effect_of(
         FB_STORE_PARAM => Effect::new(1, 0),
 
         // COPY_REGION consumes the source data offset. The destination and
-        // both sizes are immediates, so nothing else is taken from the stack.
-        COPY_REGION => Effect::new(1, 0),
+        // both sizes are immediates, so nothing else is taken from the stack;
+        // COPY_REGION_DEREF names the reference to the destination instead.
+        COPY_REGION | COPY_REGION_DEREF => Effect::new(1, 0),
 
         // --- Pop two, push nothing ---
         STORE_INDIRECT

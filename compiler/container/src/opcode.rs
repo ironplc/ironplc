@@ -164,7 +164,8 @@ pub const OP_CLASS_FB_CALL: u8 = 0x29;
 pub const OP_CLASS_LOAD_ARRAY: u8 = 0x2A;
 /// Op class: store into an array's storage. Type tag selects the granularity:
 /// 0 = STORE_ARRAY (one element at a runtime index), 1 = COPY_REGION (the
-/// whole region). Tags 2..3 are free.
+/// whole region), 2 = COPY_REGION_DEREF (the whole region a reference refers
+/// to). Tag 3 is free.
 pub const OP_CLASS_STORE_ARRAY: u8 = 0x2B;
 /// Op class: load array element via reference.
 pub const OP_CLASS_LOAD_ARRAY_DEREF: u8 = 0x2C;
@@ -601,6 +602,21 @@ declare_instruction_set! {
     /// spending one on a single instruction would have consumed the last free
     /// slot.
     COPY_REGION = (OP_CLASS_STORE_ARRAY, 1) => [VarIndex, ArrayDescIndex, ArrayDescIndex]
+        note "size from descriptors; source offset from stack";
+
+    /// Copy a whole array or structure into the one a reference refers to.
+    /// Operand 1: u16 reference variable index. The slot holds a data-region
+    ///            reference to the destination's first byte, or a variable
+    ///            reference to the destination's variable, whose slot holds
+    ///            that byte's data offset (`crate::reference`).
+    /// Operand 2: u16 destination array descriptor index (little-endian).
+    /// Operand 3: u16 source array descriptor index (little-endian).
+    /// Pops 1 (source data-region byte offset). Net stack: -1.
+    ///
+    /// A type-tag variant of `COPY_REGION`: the same copy, sized the same
+    /// way, with the destination taken through a reference, as
+    /// `STORE_ARRAY_DEREF` takes it for `STORE_ARRAY`.
+    COPY_REGION_DEREF = (OP_CLASS_STORE_ARRAY, 2) => [RefIndex, ArrayDescIndex, ArrayDescIndex]
         note "size from descriptors; source offset from stack";
 
     // --- Truncation opcodes ---
