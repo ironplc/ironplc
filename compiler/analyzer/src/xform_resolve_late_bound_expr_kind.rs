@@ -168,14 +168,14 @@ impl Fold<Diagnostic> for LateBoundResolver<'_> {
     }
 
     fn fold_assignment(&mut self, node: Assignment) -> Result<Assignment, Diagnostic> {
-        // A bare THIS^/SUPER^ is not a value IronPLC supports as a target.
-        // Report it, so the construct is not silently accepted.
-        // See issue #1406.
+        // A bare THIS^/SUPER^ is the target: it has no type of its own and is
+        // not a value IronPLC supports. Report it, so the construct is not
+        // silently accepted. A member (THIS^.x) is a structured variable.
         if let Variable::Symbolic(SymbolicVariableKind::SelfRef(self_ref)) = &node.target {
             return Err(Diagnostic::not_implemented(Label::span(
                 self_ref.span(),
                 format!(
-                    "{} is recognized but its members are not yet resolved by IronPLC",
+                    "{} used as a value on its own is recognized but not yet supported by IronPLC",
                     self_ref.kind.spelling()
                 ),
             )));

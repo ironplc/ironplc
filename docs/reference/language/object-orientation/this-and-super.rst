@@ -24,7 +24,9 @@ type cannot redeclare a variable it inherits
    * - **IEC 61131-3**
      - Edition 3 (object-oriented programming)
    * - **Support**
-     - Parsed only — not yet analyzed or executed
+     - Analyzed when followed by a member or a method call
+       (``THIS^.speed``, ``SUPER^.Stop()``); not yet compiled, and not
+       yet supported as a value on its own
        (:doc:`P9999 </reference/compiler/problems/P9999>`). Enable with
        ``--allow-fb-inheritance``; see
        :doc:`/explanation/enabling-dialects-and-features`.
@@ -73,6 +75,11 @@ writing ``Stop()`` there would call itself.
 for example a method parameter named after a variable of the function block.
 ``THIS^.speed`` then names the function block's variable, and ``speed`` alone
 names the parameter.
+
+``THIS^`` is only valid inside a function block: its body, its methods and
+its property accessors. ``SUPER^`` also needs a function block that
+:doc:`extends <extends>` another. Anywhere else, either is
+:doc:`P4074 </reference/compiler/problems/P4074>`.
 
 See Also
 --------
