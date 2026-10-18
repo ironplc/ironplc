@@ -488,3 +488,46 @@ fn call_when_aggregate_input_then_takes_copy_of_place_of_its_shape() {
         ));
     }
 }
+
+/// REQ-LOW-lowering-072: a `VAR_IN_OUT` parameter takes a `Ref` to a place
+/// of a type of the shape it refers to, as an alias of that type is. A place
+/// of another shape is refused.
+#[test]
+fn call_when_in_out_argument_has_type_of_same_shape_then_takes_ref() {
+    let mut f = fixture();
+    let pou = f.b.push_pou(name("inc"));
+    let dint = f.ty(f.dint);
+    let alias =
+        f.b.push_type(
+            entry(TypeKind::Integer {
+                width: IntWidth::B32,
+                signed: true,
+            }),
+            &span(),
+        )
+        .unwrap();
+    let in_out =
+        f.b.push_type(
+            entry(TypeKind::Reference {
+                target: dint,
+                nullability: Nullability::NonNull,
+            }),
+            &span(),
+        )
+        .unwrap();
+    let Owner::Pou(main) = f.b.variables().get(f.dint).unwrap().owner() else {
+        panic!("the fixture's variables belong to main");
+    };
+    let mut var = |text: &str, owner, ty| f.b.push_variable(name(text), owner, ty).unwrap();
+    let v = var("v", Owner::Pou(pou), in_out);
+    let result = var("inc", Owner::Pou(pou), dint);
+    let a = var("a", Owner::Pou(main), alias);
+    f.b.declare_function(pou, vec![v], result, &span()).unwrap();
+    assert_ne!(alias, dint);
+    let call = f.b.call(pou, vec![Arg::Ref(f.place(a))], span()).unwrap();
+    assert_eq!(call.to_string(), format!("(call pou1 i32s (ref {a}))"));
+    assert!(is_internal_error_naming(
+        f.b.call(pou, vec![Arg::Ref(f.place(f.int))], span()),
+        "ProgramBuilder::call"
+    ));
+}

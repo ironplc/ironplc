@@ -104,11 +104,14 @@ impl Param {
     /// takes `param`, of a program whose types are `types`: the same; a
     /// place of a function block type that extends the one `param` takes,
     /// which a reference to reaches as its base (REQ-LOW-ir-173,
-    /// REQ-LOW-ir-176); or an aggregate of the shape `param` takes, as a
-    /// `Copy` copies one (REQ-LOW-lowering-061).
+    /// REQ-LOW-ir-176); a place of the shape `param` refers to, as an alias
+    /// of its type has (REQ-LOW-lowering-072); or an aggregate of the shape
+    /// `param` takes, as a `Copy` copies one (REQ-LOW-lowering-061).
     pub fn passes_for(self, param: Param, types: &TypeTable) -> bool {
         match (self, param) {
-            (Param::Ref(passed), Param::Ref(taken)) => types.extends(passed, taken),
+            (Param::Ref(passed), Param::Ref(taken)) => {
+                types.extends(passed, taken) || types.same_shape(passed, taken)
+            }
             (Param::Copy(passed), Param::Copy(taken)) => types.same_shape(passed, taken),
             (Param::Value(_) | Param::Str(_) | Param::Ref(_) | Param::Copy(_), _) => self == param,
         }

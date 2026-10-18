@@ -227,3 +227,43 @@ fn run_when_method_aggregate_result_discarded_then_routes_agree() {
     ));
     assert_eq!(snapshot.read_as::<i32>("r"), 6);
 }
+
+/// Functions with a `VAR_IN_OUT` of a `DINT` and of a type declared as
+/// `DINT`.
+const IN_OUT_ALIASES: &str = "
+    TYPE MyInt : DINT; END_TYPE
+    FUNCTION F : DINT VAR_IN_OUT x : DINT; END_VAR x := x + 1; F := x; END_FUNCTION
+    FUNCTION G : DINT VAR_IN_OUT x : MyInt; END_VAR x := x * 2; G := x; END_FUNCTION";
+
+/// REQ-LOW-lowering-072: a variable of a type declared as `DINT` passed for
+/// a `VAR_IN_OUT` of a `DINT`, and the reverse, compile to the same code as
+/// by the route that reads the AST.
+#[rstest]
+#[case::argument_of_alias_type("r := F(x := a);")]
+#[case::parameter_of_alias_type("r := G(x := d);")]
+fn compile_when_in_out_argument_type_is_alias_then_same_code_as_ast(#[case] statement: &str) {
+    let source = format!(
+        "{IN_OUT_ALIASES}
+         PROGRAM main VAR a : MyInt := 4; d : DINT := 5; r : DINT; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    assert_same_code(&source);
+}
+
+/// REQ-LOW-lowering-072: the callee writes the caller's variable through a
+/// `VAR_IN_OUT` whose type is an alias of the variable's, or the reverse.
+#[test]
+fn run_when_in_out_argument_type_is_alias_then_callee_writes_it() {
+    let snapshot = run_lowered_agreeing(&format!(
+        "{IN_OUT_ALIASES}
+         PROGRAM main VAR a : MyInt := 4; d : DINT := 5; r1 : DINT; r2 : DINT; END_VAR
+           r1 := F(x := a);
+           r2 := G(x := d);
+         END_PROGRAM"
+    ));
+    assert_eq!(snapshot.read_as::<i32>("a"), 5);
+    assert_eq!(snapshot.read_as::<i32>("r1"), 5);
+    assert_eq!(snapshot.read_as::<i32>("d"), 10);
+    assert_eq!(snapshot.read_as::<i32>("r2"), 10);
+}

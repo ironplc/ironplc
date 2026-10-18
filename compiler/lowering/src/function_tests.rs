@@ -345,3 +345,27 @@ fn lower_statement_when_aggregate_input_then_copy_of_argument() {
         ]
     );
 }
+
+/// REQ-LOW-lowering-072: a `VAR_IN_OUT` of a `DINT` takes a `Ref` to a
+/// variable of a type declared as `DINT`, and one of that type takes a `Ref`
+/// to a `DINT`.
+#[test]
+fn lower_statement_when_in_out_argument_type_is_alias_then_ref() {
+    let outcome = lower_bodies(
+        "TYPE MyInt : DINT; END_TYPE
+         FUNCTION F : DINT VAR_IN_OUT x : DINT; END_VAR x := x + 1; F := x; END_FUNCTION
+         FUNCTION G : DINT VAR_IN_OUT x : MyInt; END_VAR x := x + 1; G := x; END_FUNCTION
+         PROGRAM main VAR a : MyInt := 4; d : DINT; r : DINT; END_VAR
+           r := F(x := a);
+           r := G(x := d);
+         END_PROGRAM",
+        &["main"],
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f2 (call pou1 i32s (ref v0^.f0))",
+            "assign v0^.f2 (call pou2 i32s (ref v0^.f1))",
+        ]
+    );
+}
