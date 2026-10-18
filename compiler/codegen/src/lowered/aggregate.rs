@@ -116,6 +116,11 @@ pub(super) fn emit_copy_from_stack(
 /// Pushes the data offset of `src`, the source of a copy into a field of an
 /// instance: the offset of its region, the offset its slot holds when it is
 /// an instance, or the one the slot of the instance's field it is holds.
+///
+/// It is also what the route that reads the AST passes for a structure or
+/// array input of a function or method, which so takes the caller's region
+/// rather than a copy of it. Neither route compiles a read of such an input
+/// in the callee's body, so no program tells the two apart.
 pub(super) fn emit_source(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
