@@ -2,6 +2,7 @@
 //! or the whole of it.
 
 use ironplc_analyzer::stages::analyze;
+use ironplc_analyzer::xform_resolve_initial_values;
 use ironplc_analyzer::CleanAnalysis;
 use ironplc_dsl::common::{FunctionBlockBodyKind, Library, LibraryElementKind};
 use ironplc_dsl::core::FileId;
@@ -32,8 +33,8 @@ pub(crate) fn lower(source: &str, pou: &str) -> Outcome {
 /// [`Lowering`], so that their variables share one table. A method is named
 /// `Block.Method`. The source may use `AND_THEN`, `OR_ELSE`, `CONTINUE`,
 /// explicit enumeration values and base types, `REF_TO`, partial access
-/// (`x.%B1`), `SIZEOF`, methods and an integer literal where a bit string is
-/// expected.
+/// (`x.%B1`), `SIZEOF`, methods, an integer literal where a bit string is
+/// expected and an expression in a member initializer.
 pub(crate) fn lower_bodies(source: &str, pous: &[&str]) -> Outcome {
     let options = options();
     let library = ironplc_parser::parse_program(source, &FileId::from_string("test.st"), &options)
@@ -69,13 +70,17 @@ pub(crate) fn lower_bodies(source: &str, pous: &[&str]) -> Outcome {
     }
 }
 
-/// Lowers the whole of `source`, with the options [`lower_bodies`] uses.
+/// Lowers the whole of `source`, with the options [`lower_bodies`] uses,
+/// from its library with every initializer completed.
 pub(crate) fn lower_whole(source: &str) -> PartialProgram {
     let options = options();
     let library = ironplc_parser::parse_program(source, &FileId::from_string("test.st"), &options)
         .expect("the source parses");
     let (library, context) = analyze(&[&library], &options).expect("the source analyzes");
-    let analysis = CleanAnalysis::new(&library, &context).expect("analysis reports nothing");
+    // Codegen hands lowering an analysis of a copy whose initializers are
+    // completed (specs/design/initial-values.md), as `init` reads them.
+    let completed = xform_resolve_initial_values::apply(library, &context);
+    let analysis = CleanAnalysis::new(&completed, &context).expect("analysis reports nothing");
     Lowering::new(&analysis, parse_policy())
         .lower_program()
         .unwrap_or_else(|diagnostics| panic!("lowering reported {diagnostics:?}"))
@@ -93,6 +98,7 @@ fn options() -> CompilerOptions {
         allow_sizeof: true,
         allow_fb_inheritance: true,
         allow_int_literal_to_bit_string: true,
+        allow_struct_initializer_expressions: true,
         ..CompilerOptions::default()
     }
 }

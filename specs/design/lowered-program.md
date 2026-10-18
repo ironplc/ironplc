@@ -692,6 +692,16 @@ initializer (`t : MyFb := (x := 7)`) needs no further mechanism. The locals of
 a function or method, and the `VAR_TEMP` of any body, are re-initialized by
 statements at the head of the body.
 
+**REQ-LOW-lowering-194** `init` stores the completed initializer of every
+declared global, in the execution model's order, and then of every field of
+every program instance, in declaration order, through the place that holds
+it: a scalar with `Assign`, a string with `AssignStr`, and an array, a
+structure or a function block instance element by element and field by field.
+
+`init` stores every value, one that leaves its storage cleared included.
+Whether a store can be left out because the backend's storage starts cleared
+is the backend's to say.
+
 **REQ-LOW-lowering-025** The lowered program contains only POUs reachable from
 a program instance, matching what `SemanticContext::reachable` gives codegen
 today.

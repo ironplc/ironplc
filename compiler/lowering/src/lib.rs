@@ -32,6 +32,7 @@ mod control;
 mod expr;
 mod fb_call;
 mod function;
+mod init;
 pub mod initial_value;
 mod place;
 mod program;
@@ -57,6 +58,8 @@ mod fb_call_tests;
 mod function_tests;
 #[cfg(test)]
 mod in_place_tests;
+#[cfg(test)]
+mod init_tests;
 #[cfg(test)]
 mod method_tests;
 #[cfg(test)]
