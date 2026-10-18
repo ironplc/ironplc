@@ -27,16 +27,16 @@ use crate::{
     rule_function_call_in_out_argument, rule_function_call_type_check, rule_interface_conformance,
     rule_interface_conversion, rule_loop_control_inside_loop, rule_member_qualifier_allowed,
     rule_member_qualifier_invalid, rule_method_call_declared, rule_mixed_located_var_declarations,
-    rule_no_top_level_var_global, rule_operator_operand_type_check, rule_pou_hierarchy,
-    rule_program_task_definition_exists, rule_program_var_hides_global, rule_range_limits,
-    rule_real_literal_range, rule_ref_to, rule_return_type_declared, rule_self_reference_context,
-    rule_stdlib_type_redefinition, rule_string_encoding_compat, rule_string_length_range,
-    rule_string_literal_char_range, rule_struct_initializer_expression_allowed,
-    rule_task_configuration, rule_task_names_unique, rule_temporal_literal_range,
-    rule_unsupported_extension, rule_use_declared_enumerated_value, rule_use_declared_field,
-    rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
-    rule_var_decl_global_const_requires_external_const, rule_var_decl_initializer_type_compat,
-    rule_var_external_matches_global,
+    rule_no_top_level_var_global, rule_operator_operand_type_check, rule_override_signature,
+    rule_pou_hierarchy, rule_program_task_definition_exists, rule_program_var_hides_global,
+    rule_range_limits, rule_real_literal_range, rule_ref_to, rule_return_type_declared,
+    rule_self_reference_context, rule_stdlib_type_redefinition, rule_string_encoding_compat,
+    rule_string_length_range, rule_string_literal_char_range,
+    rule_struct_initializer_expression_allowed, rule_task_configuration, rule_task_names_unique,
+    rule_temporal_literal_range, rule_unsupported_extension, rule_use_declared_enumerated_value,
+    rule_use_declared_field, rule_use_declared_symbolic_var, rule_var_decl_const_initialized,
+    rule_var_decl_const_not_fb, rule_var_decl_global_const_requires_external_const,
+    rule_var_decl_initializer_type_compat, rule_var_external_matches_global,
     semantic_context::SemanticContext,
     symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
     system_globals::SYSTEM_UPTIME_GLOBALS,
@@ -417,6 +417,7 @@ pub(crate) fn semantic(
         rule_program_var_hides_global::apply,
         rule_no_top_level_var_global::apply,
         rule_operator_operand_type_check::apply,
+        rule_override_signature::apply,
         rule_task_configuration::apply,
         rule_task_names_unique::apply,
         rule_self_reference_context::apply,
@@ -820,13 +821,12 @@ END_FUNCTION_BLOCK"
     }
 
     /// `body`, written in a method of `FB_Leaf`, which `EXTENDS` `FB_Mid`,
-    /// which `EXTENDS` `FB_Root`. `FB_Mid` overrides `Describe`.
-    ///
-    /// XAE confirms the nearest override is used (`SUPER^.Describe()` is
-    /// BOOL, from `FB_Mid`). XAE also rejects `FB_Mid` itself, because its
-    /// `Describe` returns BOOL where the base returns INT (`Interface of
-    /// overridden method 'DESCRIBE' ... doesn't match declaration`). Gap: the
-    /// analysis does not compare an override's signature with its base.
+    /// which `EXTENDS` `FB_Root`. `FB_Mid` overrides `Describe`, with the
+    /// signature of the method it overrides: XAE rejects an override whose
+    /// return type differs (`Interface of overridden method 'DESCRIBE' ...
+    /// doesn't match declaration`), and so does the analysis (P4089). So
+    /// which override `SUPER^` reaches cannot change the type of a call; the
+    /// type environment's tests pin that the nearest one is found.
     fn leaf_codes(body: &str) -> Vec<String> {
         analysis_codes(&format!(
             "
@@ -854,8 +854,8 @@ END_METHOD
 END_FUNCTION_BLOCK
 
 FUNCTION_BLOCK FB_Mid EXTENDS FB_Root
-METHOD Describe : BOOL
-    Describe := TRUE;
+METHOD Describe : INT
+    Describe := 2;
 END_METHOD
 END_FUNCTION_BLOCK
 
@@ -886,7 +886,7 @@ END_FUNCTION_BLOCK"
     #[case::inherited_method_return_matches("    flag := THIS^.Stop();")]
     #[case::grandparent_field("    n := SUPER^.x;")]
     #[case::grandparent_method("    THIS^.Start();")]
-    #[case::nearest_override_through_super("    flag := SUPER^.Describe();")]
+    #[case::nearest_override_through_super("    n := SUPER^.Describe();")]
     #[case::nested_struct_member("    n := THIS^.s.f;")]
     #[case::nested_instance_output("    n := THIS^.inner.out;")]
     #[case::input_output_and_in_out("    THIS^.out_val := THIS^.in_val + THIS^.io_val;")]
@@ -897,7 +897,7 @@ END_FUNCTION_BLOCK"
 
     #[rstest::rstest]
     #[case::inherited_method_return("    n := THIS^.Stop();", "P4035")]
-    #[case::nearest_override_through_super("    n := SUPER^.Describe();", "P4035")]
+    #[case::nearest_override_through_super("    flag := SUPER^.Describe();", "P4035")]
     #[case::nested_struct_member("    flag := THIS^.s.f;", "P4035")]
     #[case::nested_instance_output("    flag := THIS^.inner.out;", "P4035")]
     #[case::array_element("    flag := THIS^.words[1];", "P4035")]

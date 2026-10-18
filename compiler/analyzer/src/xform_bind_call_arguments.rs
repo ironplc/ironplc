@@ -249,7 +249,9 @@ mod tests {
     }
 
     /// A block whose method `M` declares an in-out between two inputs, and
-    /// whose derived block inherits `M` and overrides `Get`.
+    /// whose derived block inherits `M` and overrides `Get`. The override
+    /// declares its inputs in another order, which analysis rejects (P4089);
+    /// the tests pin this pass alone.
     const METHODS: &str = "
 FUNCTION_BLOCK Base
 METHOD M
@@ -315,6 +317,8 @@ END_PROGRAM"
         );
     }
 
+    /// The override reorders its inputs, which analysis rejects (P4089); the
+    /// test pins this pass alone.
     #[spec_test(REQ_CB_analyzer_030)]
     fn apply_when_this_and_super_then_declaration_order_of_method_they_reach() {
         let program = "

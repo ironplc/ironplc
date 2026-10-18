@@ -27,7 +27,7 @@ mod methods;
 mod properties;
 mod same_type;
 pub use fields::BlockField;
-pub(crate) use methods::MethodSignature;
+pub(crate) use methods::{MethodParameter, MethodResult, MethodSignature};
 
 static ELEMENTARY_TYPES_LOWER_CASE: [(&str, ElementaryTypeName, SemanticType); 29] = [
     // signed_integer_type_name
