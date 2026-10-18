@@ -17,15 +17,65 @@ use super::invariant::broken;
 use super::scalar::{ScalarType, Signedness};
 use crate::execution::DebugName;
 
-/// The section a field of a function block or program is declared in.
-/// A field lowering synthesizes is `Internal`.
+/// The section a variable or a field is declared in.
+///
+/// A field of a function block or program is an `Input`, `Output`, `InOut`
+/// or `Local`, or `Internal` when lowering synthesizes it. A variable is one
+/// of those but `Internal`, or a `Global`, a `Temporary` (a `VAR_TEMP`, or a
+/// temporary lowering makes), or an `Instance`: the instance parameter of a
+/// body, or the instance of a program.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Section {
+    Global,
     Input,
     Output,
     InOut,
     Local,
+    Temporary,
+    Instance,
     Internal,
+}
+
+/// Where a variable's or a field's value comes from, as its declaration
+/// states it: `x AT %IX0.1 : BOOL` (REQ-LOW-lowering-023).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DirectAddress {
+    pub area: AddressArea,
+    pub size: AddressSize,
+    /// The numbers of the address, `[0, 1]` for `%IX0.1`.
+    pub path: Vec<u32>,
+}
+
+/// The area a direct address is in: `%I`, `%Q` or `%M`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AddressArea {
+    Input,
+    Output,
+    Memory,
+}
+
+/// The size a direct address names: a bit (`%IX0.1` or `%I0.1`), a byte, a
+/// word, a double word or a long word, or `Unspecified` (`%I*`), which the
+/// configuration assigns.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AddressSize {
+    Bit,
+    Byte,
+    Word,
+    DoubleWord,
+    LongWord,
+    Unspecified,
+}
+
+/// Whether a variable or a field keeps its value through a warm restart, as
+/// its declaration states (REQ-LOW-lowering-024).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Retention {
+    /// The declaration states none.
+    None,
+    Retain,
+    NonRetain,
+    Persistent,
 }
 
 /// Whether a reference can hold `NULL`.
@@ -140,6 +190,11 @@ pub struct Field {
     /// of a structure.
     pub section: Option<Section>,
     pub ty: TypeId,
+    /// The direct address the field's declaration gives it, if any: a
+    /// program's located variable is a field of its instance.
+    pub location: Option<DirectAddress>,
+    /// The retention the field's declaration states.
+    pub retention: Retention,
 }
 
 /// One value of an enumeration.
@@ -701,12 +756,23 @@ fn wide_integer(width: WideWidth, signedness: Signedness) -> ScalarType {
 }
 
 impl Field {
-    /// A field named `name`, declared at `span`.
+    /// A field named `name`, declared at `span`, with no direct address and
+    /// no retention.
     pub fn new(name: &str, span: SourceSpan, section: Option<Section>, ty: TypeId) -> Self {
         Self {
             name: DebugName::new(name, span),
             section,
             ty,
+            location: None,
+            retention: Retention::None,
         }
+    }
+
+    /// This field, at the direct address `location`, with the retention
+    /// `retention`, as its declaration states them.
+    pub fn declared(mut self, location: Option<DirectAddress>, retention: Retention) -> Self {
+        self.location = location;
+        self.retention = retention;
+        self
     }
 }

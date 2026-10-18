@@ -7,7 +7,7 @@ use ironplc_dsl::core::FileId;
 use ironplc_dsl::textual::StmtKind;
 use ironplc_parser::options::CompilerOptions;
 
-use ironplc_ir::lowered::{NonNumeric, ParseFailure, ParsePolicy, Variable};
+use ironplc_ir::lowered::{NonNumeric, ParseFailure, ParsePolicy, TypeTable, Variable};
 
 use crate::{Body, Lowering, StatementLowering};
 
@@ -17,6 +17,8 @@ use crate::{Body, Lowering, StatementLowering};
 pub(crate) struct Outcome {
     pub(crate) statements: Vec<String>,
     pub(crate) variables: Vec<Variable>,
+    /// The types lowering allocated, which the variables' types are in.
+    pub(crate) types: TypeTable,
 }
 
 /// Lowers each top-level statement of the program, function block or
@@ -74,6 +76,7 @@ pub(crate) fn lower_bodies(source: &str, pous: &[&str]) -> Outcome {
     Outcome {
         statements,
         variables,
+        types: lowering.types().clone(),
     }
 }
 

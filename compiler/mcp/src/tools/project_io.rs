@@ -6,7 +6,7 @@
 
 use ironplc_analyzer::symbol_environment::{ScopeKind, SymbolInfo, SymbolKind};
 use ironplc_analyzer::SemanticContext;
-use ironplc_dsl::common::VariableType;
+use ironplc_dsl::common::{LocationPrefix, VariableType};
 use ironplc_dsl::core::FileId;
 use ironplc_project::project::{MemoryBackedProject, Project};
 use serde::Serialize;
@@ -141,19 +141,19 @@ fn classify(
     inputs: &mut Vec<IoEntry>,
     outputs: &mut Vec<IoEntry>,
 ) {
-    let addr = info.address.as_deref();
+    let location = info.address.as_ref().map(|addr| &addr.location);
 
     // REQ-TOL-mcp-211: marker memory (`%M*`) is neither, whatever else the
     // declaration would qualify it for.
-    if addr.is_some_and(|a| a.starts_with("%M")) {
+    if location == Some(&LocationPrefix::M) {
         return;
     }
 
     let direction = direction_of(info);
     let is_program_scope = scope == IoScope::Program;
-    let is_non_addressed_global = scope == IoScope::Global && addr.is_none();
-    let is_hw_input = addr.is_some_and(|a| a.starts_with("%I"));
-    let is_hw_output = addr.is_some_and(|a| a.starts_with("%Q"));
+    let is_non_addressed_global = scope == IoScope::Global && location.is_none();
+    let is_hw_input = location == Some(&LocationPrefix::I);
+    let is_hw_output = location == Some(&LocationPrefix::Q);
 
     // REQ-TOL-mcp-213: a constant, or a global the VM updates itself, cannot
     // be driven however it is declared.
@@ -186,7 +186,7 @@ fn entry(context: &SemanticContext, name: &str, info: &SymbolInfo) -> IoEntry {
             .variable_type_name(info)
             .map(|t| t.to_string())
             .unwrap_or_default(),
-        address: info.address.clone(),
+        address: info.address_text(),
     }
 }
 
@@ -214,6 +214,7 @@ mod tests {
     use crate::tools::test_support::{
         ed2_options, source, unnamed_source, SEMANTIC_ERROR_PROGRAM, VALID_PROGRAM,
     };
+    use ironplc_dsl::common::AddressAssignment;
     use spec_test_macro::spec_test;
 
     fn build(src: &str) -> ProjectIoResponse {
@@ -256,12 +257,12 @@ mod tests {
             ironplc_dsl::core::SourceSpan::default(),
         )
         .with_variable_type(VariableType::Global)
-        .with_address(address.to_string());
+        .with_address(AddressAssignment::try_from(address).expect("a direct address"));
         let (mut inputs, mut outputs) = (vec![], vec![]);
         let entry = IoEntry {
             name: "g".to_string(),
             type_name: String::new(),
-            address: info.address.clone(),
+            address: info.address_text(),
         };
         classify(entry, &info, IoScope::Global, &mut inputs, &mut outputs);
         (inputs, outputs)
