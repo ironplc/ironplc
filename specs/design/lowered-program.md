@@ -608,6 +608,17 @@ of the `EXTENDS` chain down, so every block then records its base.
 base's fields, of the same names, sections and types, and the type table
 refuses one that does not.
 
+A type's parts are in the table before it is, with one exception: a function
+block can refer to itself through a reference field, the usual linked list
+(`next : REF_TO Node` in `Node`). Such a type is declared before it is
+defined: the table gives it its id first, a reference to it can then be
+added, and the type is defined with its fields at that id.
+
+**REQ-LOW-ir-194** Only a reference refers to a type that is declared and not
+defined; every other part of a type is a type the table defines. A declared
+type is defined once, with an entry the table would add. One that is never
+defined has no entry, so nothing finds its kind or fields.
+
 The type table describes types as the language defines them. The width of an
 `INT` is part of the language; where a field sits in memory, how many slots a
 value takes and how wide a reference is are each backend's layout. Today's

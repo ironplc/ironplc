@@ -789,6 +789,8 @@ mod copies;
 
 mod declarations;
 
+mod declared_types;
+
 mod fb_calls;
 
 mod in_place;
