@@ -71,17 +71,11 @@ impl Lowering<'_> {
 
     /// A subscript, a `DINT` (REQ-LOW-lowering-161). The analyzer converts a
     /// subscript of another type to `DINT`, by a checked conversion for a
-    /// type that holds values a `DINT` does not (REQ-LOW-analyzer-162). A
-    /// `BOOL` subscript, which analysis does not reject yet, is not lowered.
-    /// A numeric subscript of another type the analyzer did not convert is a
-    /// defect, which building the `Index` reports (REQ-LOW-lowering-094).
+    /// type that holds values a `DINT` does not (REQ-LOW-analyzer-162), and
+    /// rejects a `BOOL` one (P4086). A subscript of another type the analyzer
+    /// did not convert is a defect, which building the `Index` reports
+    /// (REQ-LOW-lowering-094).
     fn subscript(&mut self, frame: &BodyFrame, subscript: &AstExpr) -> Made<Expr> {
-        let Some(value) = self.expr(frame, subscript)? else {
-            return Ok(None);
-        };
-        if !value.ty().is_numeric() {
-            return Ok(None);
-        }
-        Ok(Some(value))
+        self.expr(frame, subscript)
     }
 }

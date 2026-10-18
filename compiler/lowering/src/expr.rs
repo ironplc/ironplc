@@ -159,6 +159,14 @@ impl Lowering<'_> {
                 Expr::integer(ordinal.into(), ty, span).map(Some)
             }
             AstExprKind::Deref(reference) => {
+                // `REF(x)^`, and `ADR(x)^`, which the analyzer rewrote to
+                // `REF(x)` (`xform_resolve_adr`), is `x` itself.
+                if let AstExprKind::Ref(variable) = &reference.kind {
+                    let Some(place) = self.variable_place(frame, variable)? else {
+                        return Ok(None);
+                    };
+                    return self.read(place, span);
+                }
                 // A reference that is not in a variable, such as one a
                 // function returns, is not a place to follow.
                 let AstExprKind::Variable(variable) = &reference.kind else {

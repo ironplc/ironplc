@@ -280,6 +280,24 @@ fn lower_statement_when_function_has_string_in_out_then_unsupported() {
     assert_eq!(outcome.statements, ["unsupported"]);
 }
 
+/// REQ-LOW-lowering-067: what a function's `VAR_OUTPUT` parameter refers to
+/// is a `FOR` loop's control variable.
+#[test]
+fn lower_statement_when_output_is_loop_control_then_for() {
+    let outcome = lower(
+        "FUNCTION COUNT : DINT VAR_OUTPUT n : DINT; END_VAR
+           FOR n := 1 TO 3 DO
+             COUNT := COUNT + n;
+           END_FOR;
+         END_FUNCTION",
+        "COUNT",
+    );
+    assert_eq!(
+        outcome.statements,
+        ["for loop0 v0^ from (const i32s 1) to (const i32s 3) by 1\n  assign v1 (add i32s (read i32s v1) (read i32s v0^))\nend"]
+    );
+}
+
 /// What a `VAR_IN_OUT` refers to is not a `FOR` loop's control variable yet,
 /// but has bits written as any other place does.
 #[test]

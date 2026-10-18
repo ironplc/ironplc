@@ -31,7 +31,7 @@ pub(crate) fn lower(source: &str, pou: &str) -> Outcome {
 /// [`Lowering`], so that their variables share one table. A method is named
 /// `Block.Method`. The source may use `AND_THEN`, `OR_ELSE`, `CONTINUE`,
 /// explicit enumeration values, `REF_TO`, partial access (`x.%B1`),
-/// `SIZEOF` and methods.
+/// `SIZEOF`, methods and an integer literal where a bit string is expected.
 pub(crate) fn lower_bodies(source: &str, pous: &[&str]) -> Outcome {
     let options = CompilerOptions {
         allow_short_circuit_operators: true,
@@ -41,6 +41,7 @@ pub(crate) fn lower_bodies(source: &str, pous: &[&str]) -> Outcome {
         allow_partial_access_syntax: true,
         allow_sizeof: true,
         allow_fb_inheritance: true,
+        allow_int_literal_to_bit_string: true,
         ..CompilerOptions::default()
     };
     let library = ironplc_parser::parse_program(source, &FileId::from_string("test.st"), &options)

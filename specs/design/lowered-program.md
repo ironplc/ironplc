@@ -581,7 +581,11 @@ lowered.
 
 **REQ-LOW-lowering-170** The type of a program, or of a function block the
 library declares, has one field for each variable it declares other than a
-`VAR_TEMP` or a `VAR_EXTERNAL`, in the order it declares them.
+`VAR_TEMP` or a `VAR_EXTERNAL`, in the order it declares them. A program's
+access paths (`VAR_ACCESS`) and its located variables with no name, which no
+statement names, are no fields, nor are the global variables a PLCopen XML
+program declares in its interface (`<globalVars>`), which are global
+variables.
 
 A function block type may record its *base*, the function block type it
 extends. It then begins with the base's fields, of the same names, sections
@@ -1212,8 +1216,10 @@ repeats: it evaluates `to`; it leaves the loop when `control` is greater than
 assignment.
 
 **REQ-LOW-lowering-067** The `step` of a `For` is a nonzero constant of the
-operation type of `control`, and `control` is a variable or a field of the
-current instance. A `FOR` whose step is not a nonzero constant is reported as
+operation type of `control`, and `control` is a variable, a field of the
+current instance, or what a reference variable refers to, as a function's or
+method's `VAR_OUTPUT` parameter does. A `FOR` whose step is not a nonzero
+constant, and one whose control variable is a `VAR_IN_OUT`, is reported as
 P9999, as it is today.
 
 `to` is evaluated on every iteration, and the control variable wraps, so a
@@ -2175,6 +2181,7 @@ implements it.
 | Bit read `x.3`, partial read `x.%B1` | Shift and mask of a `Read` |
 | Bit and partial write | `AssignBits` |
 | `p^ := v` | `Assign` to a place ending in `Deref` |
+| `REF(x)^`, and `ADR(x)^`, which the analyzer makes `REF(x)^` | A `Read` of `x` |
 | `S=`, `R=` | `If` on the value around an `Assign` of `TRUE` or `FALSE` |
 | `REF=` | `Assign` of a `RefTo` (already the analyzer's view) |
 | Function block call with inputs and outputs | Assignments to the instance's fields, `FbCall`, assignments from them (REQ-LOW-lowering-069) |

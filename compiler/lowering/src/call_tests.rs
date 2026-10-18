@@ -398,7 +398,8 @@ fn lower_statement_when_trunc_then_convert_to_integer_of_context() {
 
 /// REQ-LOW-lowering-147: `BCD_TO_INT` is the intrinsic for the width of its
 /// bit string, converted to the integer of its context, and `INT_TO_BCD` the
-/// intrinsic for the width and signedness of its integer.
+/// intrinsic for the width and signedness of its integer. An integer literal
+/// given to `BCD_TO_INT` is a `DWORD` (REQ-IC-analyzer-118).
 #[test]
 fn lower_statement_when_bcd_conversion_then_intrinsic_at_its_width() {
     let outcome = lower(
@@ -408,6 +409,7 @@ fn lower_statement_when_bcd_conversion_then_intrinsic_at_its_width() {
             di := BCD_TO_INT(b);
             l := BCD_TO_INT(lw);
             di := BCD_TO_INT(lw);
+            di := BCD_TO_INT(16#12);
             w := INT_TO_BCD(i);
             b := INT_TO_BCD(us);
             lw := INT_TO_BCD(l);
@@ -422,6 +424,7 @@ fn lower_statement_when_bcd_conversion_then_intrinsic_at_its_width() {
             "assign v0^.f6 (call bcd_to_int_u8 i32s (read i32u v0^.f1))",
             "assign v0^.f7 (call bcd_to_int_u64 i64s (read i64u v0^.f2))",
             "assign v0^.f6 (convert i32s (call bcd_to_int_u64 i64s (read i64u v0^.f2)))",
+            "assign v0^.f6 (call bcd_to_int_u32 i32s (const i32u 18))",
             "assign v0^.f0 (truncate 16 (call int_to_bcd_i16 i32u (read i32s v0^.f3)))",
             "assign v0^.f1 (truncate 8 (call int_to_bcd_u8 i32u (read i32u v0^.f4)))",
             "assign v0^.f2 (call int_to_bcd_i64 i64u (read i64s v0^.f7))",

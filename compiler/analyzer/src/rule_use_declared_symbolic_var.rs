@@ -186,7 +186,7 @@ impl Visitor<Infallible> for SymbolScopeChecker<'_> {
 mod tests {
     use crate::test_helpers::fb_inheritance_options;
     use crate::test_helpers::NOT_IMPLEMENTED_CODE;
-    use crate::test_helpers::{diagnostic_codes, rule_diagnostics};
+    use crate::test_helpers::{configuration_with_globals, diagnostic_codes, rule_diagnostics};
 
     use super::*;
 
@@ -855,6 +855,24 @@ VAR
 END_VAR
   x := g;
 END_PROGRAM"
+        )
+    );
+
+    // The name is the enumerated value: a global the program does not reach
+    // does not hide it.
+    rule_ok!(
+        apply_when_unreached_global_has_name_of_enumerated_value_then_ok,
+        &format!(
+            "
+TYPE E_State : (IDLE, RUNNING); END_TYPE
+{}
+PROGRAM main
+VAR
+  state : E_State;
+END_VAR
+  state := RUNNING;
+END_PROGRAM",
+            configuration_with_globals("RUNNING : BOOL;")
         )
     );
 
