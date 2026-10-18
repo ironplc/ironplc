@@ -10,6 +10,7 @@ use ironplc_dsl::diagnostic::Diagnostic;
 use super::call::Param;
 use super::ids::{PouId, Stamp, TypeId, VarId};
 use super::invariant::broken;
+use super::stmt::Stmt;
 use super::types::{DirectAddress, Nullability, Retention, Section, TypeKind, TypeTable};
 use crate::execution::DebugName;
 
@@ -253,13 +254,40 @@ pub(crate) fn by_value(types: &TypeTable, ty: TypeId) -> Option<Param> {
     }
 }
 
+/// What a POU is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PouKind {
+    Program,
+    Function,
+    FunctionBlock,
+    /// A method of the function block whose body
+    /// [`PouTable::method_of`] gives.
+    Method,
+}
+
+/// What a POU's declaration gives it besides its name and signature: what
+/// it is, the instance parameter its body works on, and its locals.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PouParts {
+    pub kind: PouKind,
+    /// The instance parameter of a program, function block or method body;
+    /// `None` for a function, which has none.
+    pub instance: Option<VarId>,
+    /// The locals of a function or method, and the `VAR_TEMP` of any body,
+    /// in declaration order. Its parameters and result are its signature's.
+    pub locals: Vec<VarId>,
+}
+
 /// One POU: its name, its signature when it is a function or method a call
-/// reaches, and, for a method, the body of the function block it belongs to.
+/// reaches, for a method the body of the function block it belongs to, and,
+/// once the whole program is lowered, its parts and its body.
 #[derive(Clone, Debug)]
 struct PouEntry {
     name: DebugName,
     function: Option<FunctionSignature>,
     method_of: Option<PouId>,
+    parts: Option<PouParts>,
+    body: Option<Vec<Stmt>>,
 }
 
 /// Every POU of a lowered program, by [`PouId`]. A
@@ -287,8 +315,66 @@ impl PouTable {
             name,
             function: None,
             method_of,
+            parts: None,
+            body: None,
         });
         id
+    }
+
+    /// Every POU, with its id, in the order they were added.
+    pub fn ids(&self) -> impl Iterator<Item = PouId> + '_ {
+        (0..self.pous.len()).map(|index| PouId::new(self.stamp, index as u32))
+    }
+
+    /// The parts of the POU `id`, or `None` if they are not declared.
+    pub fn parts(&self, id: PouId) -> Option<&PouParts> {
+        self.entry(id).and_then(|entry| entry.parts.as_ref())
+    }
+
+    /// The body of the POU `id`, or `None` if it is not set.
+    pub fn body(&self, id: PouId) -> Option<&[Stmt]> {
+        self.entry(id).and_then(|entry| entry.body.as_deref())
+    }
+
+    /// Declares the parts of the POU `id`, or a P9998 at `span` if this
+    /// table did not allocate `id` or declares its parts already. The
+    /// [`ProgramBuilder`](super::ProgramBuilder) checks the parts first.
+    pub(crate) fn declare_parts(
+        &mut self,
+        id: PouId,
+        parts: PouParts,
+        span: &SourceSpan,
+    ) -> Result<(), Diagnostic> {
+        let entry = self.entry_mut("ProgramBuilder::declare_parts", id, span)?;
+        if entry.parts.is_some() {
+            return Err(broken(
+                "ProgramBuilder::declare_parts",
+                span,
+                format!("the parts of {id} are declared already"),
+            ));
+        }
+        entry.parts = Some(parts);
+        Ok(())
+    }
+
+    /// Sets the body of the POU `id`, or a P9998 at `span` if this table did
+    /// not allocate `id` or its body is set already.
+    pub(crate) fn set_body(
+        &mut self,
+        id: PouId,
+        body: Vec<Stmt>,
+        span: &SourceSpan,
+    ) -> Result<(), Diagnostic> {
+        let entry = self.entry_mut("ProgramBuilder::set_body", id, span)?;
+        if entry.body.is_some() {
+            return Err(broken(
+                "ProgramBuilder::set_body",
+                span,
+                format!("the body of {id} is set already"),
+            ));
+        }
+        entry.body = Some(body);
+        Ok(())
     }
 
     /// The name of the POU `id`, or `None` if this table did not allocate
@@ -318,17 +404,7 @@ impl PouTable {
         span: &SourceSpan,
     ) -> Result<(), Diagnostic> {
         const CONSTRUCTOR: &str = "ProgramBuilder::declare_function";
-        let entry = match id.stamp() == self.stamp {
-            true => self.pous.get_mut(id.index() as usize),
-            false => None,
-        };
-        let Some(entry) = entry else {
-            return Err(broken(
-                CONSTRUCTOR,
-                span,
-                format!("{id} is not a POU of this program"),
-            ));
-        };
+        let entry = self.entry_mut(CONSTRUCTOR, id, span)?;
         if entry.function.is_some() {
             return Err(broken(
                 CONSTRUCTOR,
@@ -338,6 +414,27 @@ impl PouTable {
         }
         entry.function = Some(signature);
         Ok(())
+    }
+
+    /// The entry of `id`, or a P9998 at `span`, naming `constructor`, if this
+    /// table did not allocate `id`.
+    fn entry_mut(
+        &mut self,
+        constructor: &str,
+        id: PouId,
+        span: &SourceSpan,
+    ) -> Result<&mut PouEntry, Diagnostic> {
+        let entry = match id.stamp() == self.stamp {
+            true => self.pous.get_mut(id.index() as usize),
+            false => None,
+        };
+        entry.ok_or_else(|| {
+            broken(
+                constructor,
+                span,
+                format!("{id} is not a POU of this program"),
+            )
+        })
     }
 
     fn entry(&self, id: PouId) -> Option<&PouEntry> {

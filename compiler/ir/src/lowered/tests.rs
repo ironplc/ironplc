@@ -798,3 +798,5 @@ mod methods;
 mod places;
 
 mod strings;
+
+mod whole_program;
