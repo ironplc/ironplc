@@ -282,6 +282,8 @@ An input of a function block call is stored in a field of the block, and an argu
 
 **REQ-IC-analyzer-047** An argument of a method call is converted to the declared type of its parameter, whether it is positional or named, and in a call statement or a call expression: in `k.Set(u)` on an `LINT` parameter and a `UDINT` the `UDINT` is converted to `LINT`.
 
+**REQ-IC-analyzer-123** An input of a function block call or an argument of a method call that its field or parameter does not accept reports P4026, as a function's argument does: it is held to the relation an assigned value is, so a value that widens to the declared type passes (ADR-0029, ADR-0031) and a narrowing one or one of another kind does not. In `b(x := i)`, `b(x := u)`, `b(x := l)` and `b(x := s)` on a `DINT` field and an `INT`, a `UDINT`, an `LINT` and a `STRING`, the `INT` passes and the others report P4026, and so do `k.Set(l)` and `k.Set(s)` on a `DINT` parameter.
+
 Codegen drops a positional input of a function block call ([#1855](https://github.com/ironplc/ironplc/issues/1855)), so its recorded conversion has no effect until codegen binds it. Codegen stores the inputs of a standard function block in 32 bits whatever their declared type ([#2054](https://github.com/ironplc/ironplc/issues/2054)).
 
 ### Literals
