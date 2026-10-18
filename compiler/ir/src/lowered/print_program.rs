@@ -65,8 +65,8 @@ fn write_type(f: &mut fmt::Formatter<'_>, entry: &TypeEntry) -> fmt::Result {
             };
             write!(f, " {kind}{}", width.bits())
         }
-        TypeKind::Enumeration { values } => {
-            f.write_str(" enum")?;
+        TypeKind::Enumeration { values, underlying } => {
+            write!(f, " enum {underlying}")?;
             for value in values {
                 write!(f, " {}={}", value.name, value.ordinal)?;
             }
