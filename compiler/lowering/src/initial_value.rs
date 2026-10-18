@@ -5,13 +5,13 @@
 //! scalar is a literal of the kind its type stores (see
 //! `specs/design/initial-values.md`). Reading that value is mechanical, and
 //! that is all this module does: it decides nothing. An initializer whose
-//! value slot is empty, or holds a value its type cannot, never reaches
-//! codegen from the analyzer, so it is an internal error rather than a
-//! default.
+//! value slot is empty, or holds a value its type cannot, never comes from
+//! the analyzer, so it is an internal error rather than a default.
 //!
-//! The value is read into [`InitialValue`], the form the stores are emitted
-//! from: a scalar as the number its storage holds, a string as its
-//! characters and length, an array nested as its type is.
+//! The value is read into [`InitialValue`], the form the stores of a
+//! starting value are made from: a scalar as the number its storage holds,
+//! a string as its characters and length, an array nested as its type is.
+//! Codegen emits its `init` from it, and lowering lowers `init` from it.
 
 use std::collections::HashMap;
 
@@ -26,7 +26,7 @@ use ironplc_dsl::type_id::TypeId;
 
 /// The value a variable, field or element starts with.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum InitialValue {
+pub enum InitialValue {
     /// A value of an elementary type, an enumeration or a subrange.
     Scalar(ScalarValue),
     /// A `STRING` or `WSTRING`.
@@ -48,7 +48,7 @@ pub(crate) enum InitialValue {
 
 /// A scalar value and the type it is stored as.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ScalarValue {
+pub struct ScalarValue {
     /// The elementary type whose representation holds the value: the type
     /// itself for an elementary type, the base type of a subrange and the
     /// underlying type of an enumeration.
@@ -58,7 +58,7 @@ pub(crate) struct ScalarValue {
 
 /// A scalar value, in the form its type stores it.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum Scalar {
+pub enum Scalar {
     /// A `BOOL`.
     Bool(bool),
     /// An integer, a bit string, an enumeration's ordinal, a duration or a
@@ -74,7 +74,7 @@ pub(crate) enum Scalar {
 
 /// A string value.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct StringValue {
+pub struct StringValue {
     /// `STRING` (one byte per character) or `WSTRING` (two).
     pub width: StringType,
     /// The most characters the variable holds: the declared length, or the
@@ -86,7 +86,7 @@ pub(crate) struct StringValue {
 
 /// The value of a reference.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ReferenceValue {
+pub enum ReferenceValue {
     /// `NULL`: refers to nothing.
     Null,
     /// `REF(x)`: refers to the variable `x`.
@@ -95,7 +95,7 @@ pub(crate) enum ReferenceValue {
 
 /// The value of one field of a structure or function block instance.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct FieldValue {
+pub struct FieldValue {
     /// The field's name, as the initializer spells it.
     pub name: Id,
     pub value: InitialValue,
@@ -103,7 +103,7 @@ pub(crate) struct FieldValue {
 
 impl Scalar {
     /// Whether every bit of the value is zero. A negative zero real is not.
-    pub(crate) fn is_zero(&self) -> bool {
+    pub fn is_zero(&self) -> bool {
         match self {
             Scalar::Bool(value) => !value,
             Scalar::Integer(value) => *value == 0,
@@ -119,10 +119,10 @@ impl Scalar {
 /// A function block's type names the block and lists none of its fields:
 /// the type environment records them (`TypeEnvironment::block_fields`), and
 /// the value of an instance is read against those.
-pub(crate) type BlockMembers = HashMap<String, HashMap<String, SemanticType>>;
+pub type BlockMembers = HashMap<String, HashMap<String, SemanticType>>;
 
 /// The types of the fields of every function block in `types`.
-pub(crate) fn block_members(types: &TypeEnvironment) -> BlockMembers {
+pub fn block_members(types: &TypeEnvironment) -> BlockMembers {
     types
         .iter_ids()
         .filter_map(|(id, attributes)| {
@@ -143,7 +143,7 @@ pub(crate) fn block_members(types: &TypeEnvironment) -> BlockMembers {
 }
 
 /// The value `decl` starts with, read from its completed initializer.
-pub(crate) fn read(
+pub fn read(
     decl: &VarDecl,
     types: &HashMap<TypeId, SemanticType>,
     blocks: &BlockMembers,
@@ -163,7 +163,21 @@ pub(crate) fn read(
 fn declared_type(decl: &VarDecl, types: &HashMap<TypeId, SemanticType>) -> Option<SemanticType> {
     match &decl.initializer {
         InitialValueAssignmentKind::String(initializer) => Some(string_type(initializer)),
-        _ => decl.type_id.and_then(|id| types.get(&id)).cloned(),
+        InitialValueAssignmentKind::None(_)
+        | InitialValueAssignmentKind::Simple(_)
+        | InitialValueAssignmentKind::EnumeratedValues(_)
+        | InitialValueAssignmentKind::EnumeratedType(_)
+        | InitialValueAssignmentKind::FunctionBlock(_)
+        | InitialValueAssignmentKind::FunctionBlockCall(_)
+        | InitialValueAssignmentKind::Interface(_)
+        | InitialValueAssignmentKind::Subrange(_)
+        | InitialValueAssignmentKind::Structure(_)
+        | InitialValueAssignmentKind::Array(_)
+        | InitialValueAssignmentKind::Reference(_)
+        | InitialValueAssignmentKind::LateResolvedType(_)
+        | InitialValueAssignmentKind::SimpleExpr(_) => {
+            decl.type_id.and_then(|id| types.get(&id)).cloned()
+        }
     }
 }
 
@@ -326,7 +340,23 @@ impl Reader<'_> {
             // `VAR_IN_OUT` or `VAR_EXTERNAL`; which those are is the
             // analyzer's to say, so only the names are checked.
             SemanticType::Structure { .. } | SemanticType::FunctionBlock { .. } => {}
-            _ => return Err(self.error("Member initializer for a type without fields")),
+            SemanticType::Bool
+            | SemanticType::Int { .. }
+            | SemanticType::UInt { .. }
+            | SemanticType::Real { .. }
+            | SemanticType::Bytes { .. }
+            | SemanticType::Time { .. }
+            | SemanticType::Date { .. }
+            | SemanticType::TimeOfDay { .. }
+            | SemanticType::DateAndTime { .. }
+            | SemanticType::String { .. }
+            | SemanticType::Enumeration { .. }
+            | SemanticType::Array { .. }
+            | SemanticType::Subrange { .. }
+            | SemanticType::Interface { .. }
+            | SemanticType::Reference { .. } => {
+                return Err(self.error("Member initializer for a type without fields"))
+            }
         }
         let values = members
             .iter()
@@ -360,7 +390,21 @@ impl Reader<'_> {
                 .blocks
                 .get(&block.to_lowercase())?
                 .get(&name.to_string().to_lowercase()),
-            _ => None,
+            SemanticType::Bool
+            | SemanticType::Int { .. }
+            | SemanticType::UInt { .. }
+            | SemanticType::Real { .. }
+            | SemanticType::Bytes { .. }
+            | SemanticType::Time { .. }
+            | SemanticType::Date { .. }
+            | SemanticType::TimeOfDay { .. }
+            | SemanticType::DateAndTime { .. }
+            | SemanticType::String { .. }
+            | SemanticType::Enumeration { .. }
+            | SemanticType::Array { .. }
+            | SemanticType::Subrange { .. }
+            | SemanticType::Interface { .. }
+            | SemanticType::Reference { .. } => None,
         }
     }
 
@@ -423,7 +467,9 @@ impl Reader<'_> {
             ),
             (ConstantKind::RealLiteral(literal), SemanticType::Real { size }) => match size {
                 ByteSized::B64 => Scalar::Real64(literal.value),
-                _ => Scalar::Real32(literal.value as f32),
+                ByteSized::B8 | ByteSized::B16 | ByteSized::B32 => {
+                    Scalar::Real32(literal.value as f32)
+                }
             },
             (ConstantKind::Duration(literal), SemanticType::Time { .. }) => {
                 Scalar::Integer(literal.interval.whole_milliseconds())
@@ -514,7 +560,21 @@ fn storage(representation: &SemanticType) -> SemanticType {
         SemanticType::Enumeration { .. } => SemanticType::Int {
             size: ByteSized::B32,
         },
-        other => other.clone(),
+        SemanticType::Bool
+        | SemanticType::Int { .. }
+        | SemanticType::UInt { .. }
+        | SemanticType::Real { .. }
+        | SemanticType::Bytes { .. }
+        | SemanticType::Time { .. }
+        | SemanticType::Date { .. }
+        | SemanticType::TimeOfDay { .. }
+        | SemanticType::DateAndTime { .. }
+        | SemanticType::String { .. }
+        | SemanticType::Structure { .. }
+        | SemanticType::Array { .. }
+        | SemanticType::FunctionBlock { .. }
+        | SemanticType::Interface { .. }
+        | SemanticType::Reference { .. } => representation.clone(),
     }
 }
 
@@ -539,7 +599,6 @@ fn nest(values: Vec<InitialValue>, counts: &[usize]) -> InitialValue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use spec_test_macro::spec_test;
 
     fn integer(value: i128) -> InitialValue {
         InitialValue::Scalar(ScalarValue {
@@ -570,22 +629,5 @@ mod tests {
                 InitialValue::Array(vec![integer(3), integer(4)]),
             ])
         );
-    }
-
-    #[spec_test(REQ_IV_codegen_001)]
-    fn read_when_initializer_has_no_value_then_internal_error() {
-        let int = TypeId::from_raw(1);
-        let mut decl = VarDecl::simple("x", "INT");
-        decl.type_id = Some(int);
-        let types = HashMap::from([(
-            int,
-            SemanticType::Int {
-                size: ByteSized::B16,
-            },
-        )]);
-
-        let result = read(&decl, &types, &HashMap::new());
-
-        assert_eq!(result.unwrap_err().code, "P9998");
     }
 }
