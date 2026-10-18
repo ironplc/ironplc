@@ -4,9 +4,12 @@
 //! An aggregate variable's slot holds the byte offset of its data region,
 //! and `COPY_REGION` moves the bytes from the region whose offset is on the
 //! stack to the region of the destination, sizing both from their array
-//! descriptors. The bridge emits a `Copy` only between the places the AST
-//! route copies (`compile_aggregate.rs`): whole variables, and fields of the
+//! descriptors. The bridge emits a `Copy` between the places the AST route
+//! copies (`compile_aggregate.rs`): whole variables, and fields of the
 //! current instance, that this backend's layout keeps as aggregate regions.
+//! It also copies a whole array of structures, which the AST route does not:
+//! it stores the source's slot, so the target becomes an alias of the source
+//! (REQ-LOW-codegen-165).
 //!
 //! A structure or array field of another function block instance has no
 //! region in this layout. The AST route stores the region offset of the
@@ -185,12 +188,22 @@ pub(super) fn has_region(
 }
 
 /// The data region of `place`, when it is a whole variable or a field of the
-/// current instance that this backend keeps as a structure or an array. A
-/// `REF_TO ARRAY` parameter's slot holds a variable index, not a region, so
-/// it has none.
+/// current instance that this backend keeps as a structure, an array, or an
+/// array of structures. A `REF_TO ARRAY` parameter's slot holds a variable
+/// index, not a region, so it has none.
 fn region(lowering: &PartialProgram, ctx: &CompileContext, place: &LoweredPlace) -> Option<Region> {
     let name = storage_name(lowering, place)?;
     if let Some(info) = ctx.struct_var(&name) {
+        return Some(Region {
+            var_index: info.var_index,
+            desc_index: info.desc_index,
+        });
+    }
+    // An array of structures: its descriptor covers the whole array, string
+    // fields included, so `COPY_REGION` copies it by value, where the route
+    // that reads the AST stores the source's slot and so makes the target
+    // an alias of the source.
+    if let Some(info) = ctx.struct_array_var(&name) {
         return Some(Region {
             var_index: info.var_index,
             desc_index: info.desc_index,
