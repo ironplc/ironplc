@@ -5,7 +5,9 @@
 use std::collections::HashSet;
 
 use ironplc_container::opcode;
-use ironplc_container::{CharWidth, FunctionId, SourceColumn, SourceFileId, SourceLine, VarIndex};
+use ironplc_container::{
+    CharWidth, FbTypeId, FunctionId, SourceColumn, SourceFileId, SourceLine, VarIndex,
+};
 use ironplc_dsl::diagnostic::Diagnostic;
 
 use crate::optimize::OffsetMap;
@@ -896,7 +898,7 @@ impl Emitter {
 
     /// Emits FB_CALL with a type_id.
     /// Net stack effect: 0 (fb_ref stays on stack).
-    pub fn emit_fb_call(&mut self, type_id: u16) {
+    pub fn emit_fb_call(&mut self, type_id: FbTypeId) {
         self.emit_opcode(opcode::FB_CALL);
         self.bytecode.extend_from_slice(&type_id.to_le_bytes());
     }

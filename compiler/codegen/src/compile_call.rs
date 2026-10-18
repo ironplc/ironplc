@@ -10,7 +10,7 @@ use ironplc_analyzer::{
     BuiltinFunction, CounterWidth, FormOf, FunctionEnvironment, StandardFunctionBlock,
     StringFunction, TypeEnvironment,
 };
-use ironplc_container::opcode;
+use ironplc_container::{opcode, FbTypeId};
 use ironplc_dsl::common::{ElementaryTypeName, TypeName};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -622,10 +622,10 @@ pub(crate) fn emit_conversion_opcode(
 /// so a user-defined block named like one never reaches this table.
 pub(crate) fn standard_fb_layout(
     block: StandardFunctionBlock,
-) -> (u16, usize, HashMap<String, u8>) {
+) -> (FbTypeId, usize, HashMap<String, u8>) {
     use CounterWidth::*;
     use StandardFunctionBlock::*;
-    match block {
+    let (type_id, fields, field_map) = match block {
         Ton => (opcode::fb_type::TON, 6, timer_fb_fields()),
         Tof => (opcode::fb_type::TOF, 6, timer_fb_fields()),
         Tp => (opcode::fb_type::TP, 6, timer_fb_fields()),
@@ -647,7 +647,8 @@ pub(crate) fn standard_fb_layout(
         Rs => (opcode::fb_type::RS, 3, rs_fb_fields()),
         RTrig => (opcode::fb_type::R_TRIG, 3, edge_trig_fb_fields()),
         FTrig => (opcode::fb_type::F_TRIG, 3, edge_trig_fb_fields()),
-    }
+    };
+    (FbTypeId::new(type_id), fields, field_map)
 }
 
 /// The standard function block each type of `types` is, by the type's

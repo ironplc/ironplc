@@ -15,7 +15,7 @@
 //! structures may share their names, so a `Copy` is taken for one of
 //! instances only when its places are function block instances.
 
-use ironplc_container::VarIndex;
+use ironplc_container::{FbTypeId, VarIndex};
 use ironplc_dsl::core::Id;
 use ironplc_ir::lowered::{Place as LoweredPlace, TypeKind};
 use ironplc_lowering::Lowering;
@@ -82,7 +82,7 @@ pub(super) fn emit_instance_copy(emitter: &mut Emitter, copy: &InstanceCopy) {
 
 /// How many fields an instance of the block `type_id` dispatches to has: a
 /// user-defined block's, or the VM's standard block's.
-fn field_count(ctx: &CompileContext, type_id: u16) -> Option<usize> {
+fn field_count(ctx: &CompileContext, type_id: FbTypeId) -> Option<usize> {
     if let Some(user_fb) = ctx
         .user_fb_types
         .values()
