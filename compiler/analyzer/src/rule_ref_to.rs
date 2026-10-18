@@ -401,6 +401,18 @@ impl RuleRefTo<'_> {
         }
     }
 
+    /// P2036: A reference to `referenced_type_name` when that type is itself
+    /// a reference, in a type declaration (`TYPE RR : REF_TO RP; END_TYPE`)
+    /// or a variable's (`rr : REF_TO RP;`), labelled at `span`.
+    fn check_nested_reference(&mut self, referenced_type_name: &TypeName, span: SourceSpan) {
+        if self.is_reference_type(referenced_type_name) {
+            self.diagnostics.push(Diagnostic::problem(
+                Problem::NestedRefToNotSupported,
+                Label::span(span, "Nested REF_TO is not supported"),
+            ));
+        }
+    }
+
     /// Returns true when `var` is a named variable whose declared type is
     /// known.
     fn declared_type_known(&self, var: &Variable) -> bool {
@@ -469,14 +481,18 @@ impl Visitor<Infallible> for RuleRefTo<'_> {
         &mut self,
         node: &ReferenceDeclaration,
     ) -> Result<(), Infallible> {
-        // P2036: Check for nested REF_TO (only applicable for named targets)
         if let ReferenceTarget::Named(referenced_type_name) = &node.target {
-            if self.is_reference_type(referenced_type_name) {
-                self.diagnostics.push(Diagnostic::problem(
-                    Problem::NestedRefToNotSupported,
-                    Label::span(node.type_name.span(), "Nested REF_TO is not supported"),
-                ));
-            }
+            self.check_nested_reference(referenced_type_name, node.type_name.span());
+        }
+        node.recurse_visit(self)
+    }
+
+    fn visit_reference_initializer(
+        &mut self,
+        node: &ReferenceInitializer,
+    ) -> Result<(), Infallible> {
+        if let ReferenceTarget::Named(referenced_type_name) = &node.target {
+            self.check_nested_reference(referenced_type_name, referenced_type_name.span());
         }
         node.recurse_visit(self)
     }
