@@ -18,10 +18,11 @@
 //! program tells the offset from a copy.
 //!
 //! A `Copy` of a whole instance to another is `instance_copy.rs`'s, into a
-//! field that holds one too. An instance it does not copy, of a block of more
-//! than 256 fields, is stored in such a field as the AST route stores it: the
-//! field's slot takes the instance's slot, which holds the data offset of its
-//! fields. Every other `Copy` is left to the AST route.
+//! field that holds one too. An instance it does not copy, one it does not
+//! reach or of a block the layout keeps no instance of, is stored in such a
+//! field as the AST route stores it: the field's slot takes the instance's
+//! slot, which holds the data offset of its fields. Every other `Copy` is
+//! left to the AST route.
 
 use ironplc_container::VarIndex;
 use ironplc_dsl::core::SourceSpan;

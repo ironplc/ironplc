@@ -583,19 +583,15 @@ fn compile_program_with_functions(
             if let Some(id) = decl.identifier.symbolic_id() {
                 let name = id.to_string().to_lowercase();
                 // At most `MAX_USER_FB_FIELDS` fields, so the index fits.
-                field_indices.insert(name.clone(), i as u8);
+                let index = i as FbFieldIndex;
+                field_indices.insert(name.clone(), index);
                 // A field is operated and stored at its declared type,
                 // whatever kind of declaration declares it: a subrange at its
                 // base type.
                 let field_type =
                     crate::type_info::decl_type_info(&ctx, decl).unwrap_or(DEFAULT_VAR_TYPE_INFO);
                 field_types.insert(name.clone(), field_type);
-                // A field past the 256th has no index of its own to store the
-                // held instance's offset in.
-                if let (Some(block), Ok(index)) = (
-                    crate::held_instances::held_block(types, decl),
-                    FbFieldIndex::try_from(i),
-                ) {
+                if let Some(block) = crate::held_instances::held_block(types, decl) {
                     held_fields.push(HeldField { name, index, block });
                 }
             }

@@ -142,14 +142,13 @@ fn reached(
 
 /// Appends to `steps` the steps that copy each field of an instance of the
 /// block whose type ID is `block`. `None` when the layout keeps no instance
-/// of it, or one of more than 256 fields, as `FB_LOAD_PARAM` and
-/// `FB_STORE_PARAM` name a field by a byte.
+/// of it. A block has at most `MAX_USER_FB_FIELDS` fields
+/// (REQ-LOW-codegen-191), so each field's index fits the byte that
+/// `FB_LOAD_PARAM` and `FB_STORE_PARAM` name it by.
 fn plan(ctx: &CompileContext, block: FbTypeId, steps: &mut Vec<Step>) -> Option<()> {
     let instances = layout_of_type(ctx, block)?;
-    if instances.fields > 256 {
-        return None;
-    }
-    for field in (0..instances.fields).filter_map(|field| FbFieldIndex::try_from(field).ok()) {
+    for field in 0..instances.fields {
+        let field = FbFieldIndex::try_from(field).ok()?;
         match instances.held.iter().find(|held| held.index == field) {
             Some(held) => {
                 steps.push(Step::Enter(field));
