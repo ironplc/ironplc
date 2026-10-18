@@ -231,8 +231,9 @@ pub enum TypeKind {
     /// bytecode backend does today (REQ-EN-codegen-003).
     Enumeration {
         /// The integer or bit string type its values are declared in
-        /// (REQ-LOW-ir-192), which changes neither how a backend stores nor
-        /// how it operates on the enumeration.
+        /// (REQ-LOW-ir-192), which gives `SIZEOF` its size and changes
+        /// neither how a backend stores nor how it operates on the
+        /// enumeration.
         underlying: TypeId,
         values: Vec<EnumerationValue>,
     },
