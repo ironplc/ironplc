@@ -1,4 +1,5 @@
-//! Analyzes source and lowers the top-level statements of one of its bodies.
+//! Analyzes source and lowers the top-level statements of one of its bodies,
+//! or the whole of it.
 
 use ironplc_analyzer::stages::analyze;
 use ironplc_analyzer::CleanAnalysis;
@@ -9,7 +10,7 @@ use ironplc_parser::options::CompilerOptions;
 
 use ironplc_ir::lowered::{NonNumeric, ParseFailure, ParsePolicy, TypeTable, Variable};
 
-use crate::{Body, Lowering, StatementLowering};
+use crate::{Body, Lowering, PartialProgram, StatementLowering};
 
 /// What lowering made of each top-level statement of one body: the text of
 /// the statements it lowered to, one per line, or `unsupported`, and the
@@ -34,27 +35,12 @@ pub(crate) fn lower(source: &str, pou: &str) -> Outcome {
 /// (`x.%B1`), `SIZEOF`, methods and an integer literal where a bit string is
 /// expected.
 pub(crate) fn lower_bodies(source: &str, pous: &[&str]) -> Outcome {
-    let options = CompilerOptions {
-        allow_short_circuit_operators: true,
-        allow_continue: true,
-        allow_enum_explicit_values: true,
-        allow_enum_base_type: true,
-        allow_ref_to: true,
-        allow_partial_access_syntax: true,
-        allow_sizeof: true,
-        allow_fb_inheritance: true,
-        allow_int_literal_to_bit_string: true,
-        ..CompilerOptions::default()
-    };
+    let options = options();
     let library = ironplc_parser::parse_program(source, &FileId::from_string("test.st"), &options)
         .expect("the source parses");
     let (library, context) = analyze(&[&library], &options).expect("the source analyzes");
     let analysis = CleanAnalysis::new(&library, &context).expect("analysis reports nothing");
-    let parse = ParsePolicy {
-        non_numeric: NonNumeric::Reject,
-        failure: ParseFailure::Trap,
-    };
-    let mut lowering = Lowering::new(&analysis, parse);
+    let mut lowering = Lowering::new(&analysis, parse_policy());
     let mut statements = Vec::new();
     for pou in pous {
         let (body, stmts) = body_of(&library, pou);
@@ -80,6 +66,42 @@ pub(crate) fn lower_bodies(source: &str, pous: &[&str]) -> Outcome {
         statements,
         variables,
         types: lowering.types().clone(),
+    }
+}
+
+/// Lowers the whole of `source`, with the options [`lower_bodies`] uses.
+pub(crate) fn lower_whole(source: &str) -> PartialProgram {
+    let options = options();
+    let library = ironplc_parser::parse_program(source, &FileId::from_string("test.st"), &options)
+        .expect("the source parses");
+    let (library, context) = analyze(&[&library], &options).expect("the source analyzes");
+    let analysis = CleanAnalysis::new(&library, &context).expect("analysis reports nothing");
+    Lowering::new(&analysis, parse_policy())
+        .lower_program()
+        .unwrap_or_else(|diagnostics| panic!("lowering reported {diagnostics:?}"))
+}
+
+/// The options the source of a test is parsed and analyzed with.
+fn options() -> CompilerOptions {
+    CompilerOptions {
+        allow_short_circuit_operators: true,
+        allow_continue: true,
+        allow_enum_explicit_values: true,
+        allow_enum_base_type: true,
+        allow_ref_to: true,
+        allow_partial_access_syntax: true,
+        allow_sizeof: true,
+        allow_fb_inheritance: true,
+        allow_int_literal_to_bit_string: true,
+        ..CompilerOptions::default()
+    }
+}
+
+/// How a test's `STRING_TO_*` conversions read their string.
+fn parse_policy() -> ParsePolicy {
+    ParsePolicy {
+        non_numeric: NonNumeric::Reject,
+        failure: ParseFailure::Trap,
     }
 }
 

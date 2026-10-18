@@ -14,6 +14,11 @@
 //! it. A statement it does not support yet is [`StatementLowering::Unsupported`]:
 //! that is not a defect, and codegen compiles the statement from the AST.
 //!
+//! [`Lowering::lower_program`] lowers the whole library in one walk: every
+//! declaration of every reachable POU and every global first, then each
+//! top-level statement of each body. A [`PartialProgram`] records what did
+//! not lower, and is the whole lowered program once everything did.
+//!
 //! Lowering takes a [`CleanAnalysis`] and has no entry point that takes a
 //! library without one (REQ-LOW-lowering-011).
 
@@ -28,6 +33,7 @@ mod expr;
 mod fb_call;
 mod function;
 mod place;
+mod program;
 mod statement;
 mod string;
 mod string_result;
@@ -55,6 +61,8 @@ mod method_tests;
 #[cfg(test)]
 mod place_tests;
 #[cfg(test)]
+mod program_tests;
+#[cfg(test)]
 mod string_result_tests;
 #[cfg(test)]
 mod string_tests;
@@ -80,6 +88,8 @@ use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::oop::MethodDeclaration;
 use ironplc_dsl::textual::StmtKind;
+pub use program::PartialProgram;
+
 use ironplc_ir::lowered::{
     LoopScope, ParsePolicy, Place, PouId, PouTable, ProgramBuilder, Stmt, TypeTable, VarId,
     VariableTable,

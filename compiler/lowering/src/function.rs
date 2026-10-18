@@ -116,21 +116,36 @@ impl<'v, 'a> UserCall<'v, 'a> {
         }
     }
 
+    /// The body of the function or method the call calls.
+    fn body(self) -> Body<'a> {
+        match self {
+            UserCall::Function { function, .. } => Body::Function(function),
+            UserCall::Method { block, method, .. } => Body::Method { block, method },
+        }
+    }
+
     /// The name and section of each parameter, in the order the callee
     /// declares them; `None` when one is not a `VAR_INPUT`, a `VAR_IN_OUT`
     /// or a `VAR_OUTPUT`.
     fn parameters(self) -> Option<Vec<(&'a Id, Section)>> {
-        match self {
-            UserCall::Function { function, .. } if function.edge_variables.is_empty() => {
-                parameters(&function.variables)
-            }
-            UserCall::Method { method, .. }
-                if method.edge_variables.is_empty() && method.implicit_variables.is_empty() =>
-            {
-                parameters(&method.variables)
-            }
-            UserCall::Function { .. } | UserCall::Method { .. } => None,
+        body_parameters(self.body())
+    }
+}
+
+/// The name and section of each parameter of the function or method `body`,
+/// in the order it declares them; `None` when one is not a `VAR_INPUT`, a
+/// `VAR_IN_OUT` or a `VAR_OUTPUT`, and for any other body.
+fn body_parameters(body: Body<'_>) -> Option<Vec<(&Id, Section)>> {
+    match body {
+        Body::Function(function) if function.edge_variables.is_empty() => {
+            parameters(&function.variables)
         }
+        Body::Method { method, .. }
+            if method.edge_variables.is_empty() && method.implicit_variables.is_empty() =>
+        {
+            parameters(&method.variables)
+        }
+        Body::Function(_) | Body::Method { .. } | Body::Program(_) | Body::FunctionBlock(_) => None,
     }
 }
 
@@ -317,7 +332,8 @@ impl<'a> Lowering<'a> {
         parameters: &[(&Id, Section)],
         span: &SourceSpan,
     ) -> Made<CallArgs> {
-        let Some(pou) = self.callee_pou(call, parameters)? else {
+        let callee = call.callee().span();
+        let Some(pou) = self.callee_pou(call.body(), parameters, &callee)? else {
             return Ok(None);
         };
         let Some(params) = self.program.params(pou) else {
@@ -410,17 +426,32 @@ impl<'a> Lowering<'a> {
         }))
     }
 
-    /// The POU `call` calls, whose parameters are `parameters`, declared
-    /// with its parameters and result the first time it is asked for; `None`
-    /// when one of them is not a scalar, or, for an input or an output, a
-    /// string, or, for an input, an array or a structure.
-    fn callee_pou(&mut self, call: UserCall<'_, 'a>, parameters: &[(&Id, Section)]) -> Made<PouId> {
-        let (body, result) = match call {
-            UserCall::Function { function, .. } => (Body::Function(function), Some(&function.name)),
-            UserCall::Method { block, method, .. } => (
-                Body::Method { block, method },
-                method.return_type.as_ref().map(|_| &method.name),
-            ),
+    /// The POU of the function or method `body`, declared with its
+    /// parameters and result the first time a call reaches it or the whole
+    /// program is lowered; `None` for any other body, or when its
+    /// parameters are not ones lowering expresses yet.
+    pub(crate) fn signature_pou(&mut self, body: Body<'a>, span: &SourceSpan) -> Made<PouId> {
+        let Some(parameters) = body_parameters(body) else {
+            return Ok(None);
+        };
+        self.callee_pou(body, &parameters, span)
+    }
+
+    /// The POU of the function or method `body`, whose parameters are
+    /// `parameters`, declared with its parameters and result, at `span`,
+    /// the first time it is asked for; `None` when one of them is not a
+    /// scalar, or, for an input or an output, a string, or, for an input,
+    /// an array or a structure.
+    fn callee_pou(
+        &mut self,
+        body: Body<'a>,
+        parameters: &[(&Id, Section)],
+        span: &SourceSpan,
+    ) -> Made<PouId> {
+        let result = match body {
+            Body::Function(function) => Some(&function.name),
+            Body::Method { method, .. } => method.return_type.as_ref().map(|_| &method.name),
+            Body::Program(_) | Body::FunctionBlock(_) => return Ok(None),
         };
         let Some(frame) = self.frame(body)? else {
             return Ok(None);
@@ -450,9 +481,9 @@ impl<'a> Lowering<'a> {
         }
         // A function's string or structure result is its result parameter,
         // first among its parameters (REQ-LOW-lowering-079).
-        let result_parameter = match call {
-            UserCall::Function { function, .. } => self.result_parameter(&frame, &function.name)?,
-            UserCall::Method { .. } => None,
+        let result_parameter = match body {
+            Body::Function(function) => self.result_parameter(&frame, &function.name)?,
+            Body::Method { .. } | Body::Program(_) | Body::FunctionBlock(_) => None,
         };
         if let Some(result_parameter) = result_parameter {
             variables.insert(0, result_parameter);
@@ -466,21 +497,22 @@ impl<'a> Lowering<'a> {
             },
             (Some(_), _) | (None, None) => None,
         };
-        let span = call.callee().span();
-        match (call, result_parameter, result) {
-            (UserCall::Function { .. }, Some(_), _) => {
+        match (body, result_parameter, result) {
+            (Body::Function(_), Some(_), _) => {
                 self.program
-                    .declare_function_returning_through(frame.pou, variables, &span)?;
+                    .declare_function_returning_through(frame.pou, variables, span)?;
             }
-            (UserCall::Function { .. }, None, Some(result)) => {
+            (Body::Function(_), None, Some(result)) => {
                 self.program
-                    .declare_function(frame.pou, variables, result, &span)?;
+                    .declare_function(frame.pou, variables, result, span)?;
             }
-            (UserCall::Method { .. }, _, result) => {
+            (Body::Method { .. }, _, result) => {
                 self.program
-                    .declare_method(frame.pou, variables, result, &span)?;
+                    .declare_method(frame.pou, variables, result, span)?;
             }
-            (UserCall::Function { .. }, None, None) => return Ok(None),
+            (Body::Function(_), None, None) | (Body::Program(_) | Body::FunctionBlock(_), _, _) => {
+                return Ok(None)
+            }
         }
         Ok(Some(frame.pou))
     }

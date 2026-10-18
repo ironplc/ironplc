@@ -704,6 +704,14 @@ nothing. A library with a `PROGRAM` but no `CONFIGURATION` has instances: the
 execution model gives it an implicit configuration whose instances make its
 programs reachable.
 
+**REQ-LOW-lowering-193** Every declaration of every reachable POU, and every
+global of the execution model, has its variable or field in the lowered
+program, whether or not a statement names it, in declaration order within its
+POU.
+
+Lowering declares them all before it lowers any statement, so a statement
+that names one reaches the variable already declared.
+
 **REQ-LOW-lowering-026** Every variable's `ty` is present in the type table.
 
 A function's result is a variable, as in the source, where the result is

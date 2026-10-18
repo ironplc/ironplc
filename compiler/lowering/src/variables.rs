@@ -55,7 +55,7 @@ pub(crate) struct BodyFrame {
 pub(crate) struct Instance {
     pub(crate) this: VarId,
     /// The type of the instance `this` refers to.
-    instance_type: TypeId,
+    pub(crate) instance_type: TypeId,
     /// The name of each field of the instance's type, by position.
     field_names: Vec<Id>,
     /// The scope that declares the fields: the body's own for a program or
@@ -273,16 +273,7 @@ impl<'a> Lowering<'a> {
         // A global variable, or one a PLCopen program declares global in its
         // interface, which is no field of the program's instance.
         if decl.scope == ScopeKind::Global || info.variable_type == Some(VariableType::Global) {
-            // A `VAR_EXTERNAL` resolves to its global, whose declaration, not
-            // the external's, says whether it is retained or located.
-            let info = if decl.scope == ScopeKind::Global {
-                symbols
-                    .global_variable(&decl.name)
-                    .map_or(info, |(_, global)| global)
-            } else {
-                info
-            };
-            return self.declared_variable(decl, info, Owner::Global, false, span);
+            return self.global_variable(decl, info, span);
         }
         if let Some(instance) = frame
             .instance
@@ -338,6 +329,40 @@ impl<'a> Lowering<'a> {
             return self.program.deref(parameter, span).map(Some);
         }
         self.declared_variable(decl, info, owner, false, span)
+    }
+
+    /// The variable of the global `name`, declared in global scope; `None`
+    /// when it is not one lowering can express yet. A `VAR_GLOBAL` a body
+    /// reaches only through a `VAR_EXTERNAL` is the same variable.
+    pub(crate) fn global_place(&mut self, name: &Id, span: &SourceSpan) -> Made<Place> {
+        let symbols = self.analysis.context().symbols();
+        match symbols.resolve_variable(name, &ScopeKind::Global) {
+            Resolution::Variable { decl, info } | Resolution::GlobalNotVisible { decl, info } => {
+                self.global_variable(decl, info, span)
+            }
+            Resolution::NotAVariable | Resolution::Undeclared => Ok(None),
+        }
+    }
+
+    /// The variable of the global `decl` declares, which `info` describes.
+    fn global_variable(
+        &mut self,
+        decl: DeclRef,
+        info: &SymbolInfo,
+        span: &SourceSpan,
+    ) -> Made<Place> {
+        // A `VAR_EXTERNAL` resolves to its global, whose declaration, not
+        // the external's, says whether it is retained or located.
+        let info = if decl.scope == ScopeKind::Global {
+            self.analysis
+                .context()
+                .symbols()
+                .global_variable(&decl.name)
+                .map_or(info, |(_, global)| global)
+        } else {
+            info
+        };
+        self.declared_variable(decl, info, Owner::Global, false, span)
     }
 
     /// Whether `name`, in the body of `frame`, names a `VAR_IN_OUT`.
