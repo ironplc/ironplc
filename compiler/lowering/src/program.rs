@@ -14,6 +14,9 @@
 //!    (REQ-LOW-lowering-193);
 //! 4. one variable for each program instance, of section `Instance`.
 //!
+//! Then it lowers `init` (`init.rs`), the stores of each global's and each
+//! instance field's starting value.
+//!
 //! A statement that reaches a variable then finds the one already declared.
 //! Then it lowers each top-level statement of each body, as
 //! [`Lowering::lower_statement`] does.
@@ -30,9 +33,10 @@ use ironplc_dsl::textual::StmtKind;
 use ironplc_ir::execution::{DebugName, ExecutionModel, InstanceOf};
 use ironplc_ir::lowered::{
     Declared, ExecutionBindings, Owner, PouId, PouKind, PouParts, PouTable, Program,
-    ProgramBuilder, Section, TypeTable, VarId, VariableTable,
+    ProgramBuilder, Section, Stmt, TypeTable, VarId, VariableTable,
 };
 
+use crate::init::Init;
 use crate::variables::BodyFrame;
 use crate::{Body, Lowering, StatementLowering};
 
@@ -47,6 +51,7 @@ pub struct PartialProgram {
     bodies: Vec<LoweredBody>,
     /// Where a declaration is that lowering cannot express yet.
     incomplete: Vec<SourceSpan>,
+    init: Init,
 }
 
 /// One body of the program and what its statements lowered to.
@@ -84,6 +89,16 @@ impl PartialProgram {
         }
     }
 
+    /// The statements of `init`, which give every global and every field of
+    /// every program instance the value it starts with; `None` when one of
+    /// those values does not lower yet.
+    pub fn init(&self) -> Option<&[Stmt]> {
+        self.init
+            .unsupported
+            .is_empty()
+            .then_some(self.init.statements.as_slice())
+    }
+
     /// Whether every declaration of every reachable POU, and every global,
     /// lowered.
     pub fn declarations_complete(&self) -> bool {
@@ -105,14 +120,16 @@ impl PartialProgram {
         self.builder.pous()
     }
 
-    /// The whole program; otherwise one P9999 at each declaration, body and
-    /// statement lowering does not express yet, and at each POU that has no
-    /// body in the library, a standard function block's, so that every one
-    /// is reported (REQ-LOW-lowering-110, 111, 112).
+    /// The whole program; otherwise one P9999 at each declaration, body,
+    /// statement and starting value lowering does not express yet, and at
+    /// each POU that has no body in the library, a standard function
+    /// block's, so that every one is reported (REQ-LOW-lowering-110, 111,
+    /// 112).
     pub fn into_program(self) -> Result<Program, Vec<Diagnostic>> {
         let mut unsupported: Vec<Diagnostic> = self
             .incomplete
             .iter()
+            .chain(&self.init.unsupported)
             .map(|span| Diagnostic::todo_with_span(span.clone()))
             .collect();
         for body in &self.bodies {
@@ -142,6 +159,9 @@ impl PartialProgram {
             return Err(unsupported);
         }
         let mut builder = self.builder;
+        for stmt in self.init.statements {
+            builder.push_init(stmt);
+        }
         for body in self.bodies {
             let parts = PouParts {
                 kind: body.kind,
@@ -259,6 +279,7 @@ impl<'a> Lowering<'a> {
             )?;
             bindings.bind_instance(position, var);
         }
+        let init = self.lower_init(&execution, &bindings)?;
         let mut lowered = Vec::with_capacity(bodies.len());
         for (body, frame) in bodies.into_iter().zip(frames) {
             lowered.push(self.lower_body(body, frame)?);
@@ -269,6 +290,7 @@ impl<'a> Lowering<'a> {
             bindings,
             bodies: lowered,
             incomplete,
+            init,
         })
     }
 
@@ -310,7 +332,7 @@ impl<'a> Lowering<'a> {
     }
 
     /// The POU of `body`.
-    fn body_pou(&mut self, body: Body<'a>) -> PouId {
+    pub(crate) fn body_pou(&mut self, body: Body<'a>) -> PouId {
         match body {
             Body::Program(program) => self.pou(&program.name.to_string(), &program.name.span()),
             Body::FunctionBlock(block) => {

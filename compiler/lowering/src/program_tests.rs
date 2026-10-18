@@ -122,6 +122,10 @@ pou3 program main instance v8
   assign v0 (add i32s (read i32s v0) (const i32s 1))
 end
 init
+  assign v0 (const i32s 0)
+  assign v9.f0.f0 (const i32s 0)
+  assign v9.f0.f1 (const i32s 0)
+  assign v9.f1 (const i32s 0)
 end
 program main pou3
 global g v0
