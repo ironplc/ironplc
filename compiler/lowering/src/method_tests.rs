@@ -217,3 +217,32 @@ fn lower_statement_when_method_inherited_through_block_with_fields_then_unsuppor
     );
     assert_eq!(outcome.statements, ["unsupported"]);
 }
+
+/// REQ-LOW-lowering-187: a method whose result is a structure or an array
+/// is declared without a result, so a call of it, which only a statement
+/// can make, is a `Call` statement, followed by the stores of its outputs.
+#[test]
+fn lower_statement_when_method_result_is_aggregate_then_call_statement() {
+    let outcome = lower(
+        "TYPE P : STRUCT x : DINT; END_STRUCT; END_TYPE
+         TYPE A3 : ARRAY[1..3] OF DINT; END_TYPE
+         FUNCTION_BLOCK BP VAR n : DINT; END_VAR
+           METHOD MKP : P VAR_INPUT v : DINT; END_VAR n := n + v; END_METHOD
+           METHOD MKA : A3 VAR_INPUT v : DINT; END_VAR VAR_OUTPUT k : DINT; END_VAR
+             k := n;
+           END_METHOD
+         END_FUNCTION_BLOCK
+         PROGRAM main VAR b : BP; r : DINT; END_VAR
+           b.MKP(v := 3);
+           b.MKA(v := 2, k => r);
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "call pou2 (ref v0^.f0) (const i32s 3)",
+            "call pou3 (ref v0^.f0) (const i32s 2) (ref v8)\nassign v0^.f1 (read i32s v8)",
+        ]
+    );
+}
