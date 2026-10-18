@@ -145,7 +145,7 @@ impl CompileContext<'_> {
 #[cfg(test)]
 mod tests {
     use ironplc_analyzer::SemanticType;
-    use ironplc_container::{CharWidth, SlotIndex};
+    use ironplc_container::{CharWidth, FbTypeId, SlotIndex};
     use rstest::rstest;
 
     use super::*;
@@ -233,7 +233,7 @@ mod tests {
     fn fb_info(name: &str) -> FbInstanceInfo {
         FbInstanceInfo {
             var_index: VarIndex::new(0),
-            type_id: 0,
+            type_id: FbTypeId::default(),
             data_offset: tag_of(name),
             field_indices: HashMap::new(),
             field_types: HashMap::new(),

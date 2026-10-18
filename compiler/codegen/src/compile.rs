@@ -592,7 +592,7 @@ fn compile_program_with_functions(
         }
 
         let type_id = ctx.next_user_fb_type_id;
-        ctx.next_user_fb_type_id += 1;
+        ctx.next_user_fb_type_id = FbTypeId::new(type_id.raw() + 1);
         ctx.user_fb_types.insert(
             fb_name,
             UserFbTypeInfo {
@@ -865,10 +865,10 @@ fn compile_program_with_functions(
     // iterates in an order that differs between runs, and the same source
     // must compile to the same bytes.
     let mut user_fb_types: Vec<&UserFbTypeInfo> = ctx.user_fb_types.values().collect();
-    user_fb_types.sort_by_key(|fb_info| fb_info.type_id);
+    user_fb_types.sort_by_key(|fb_info| fb_info.type_id.raw());
     for fb_info in user_fb_types {
         builder = builder.add_user_fb_type(UserFbDescriptor {
-            type_id: FbTypeId::new(fb_info.type_id),
+            type_id: fb_info.type_id,
             function_id: fb_info.function_id,
             var_offset: fb_info.var_offset,
             // At most `MAX_USER_FB_FIELDS`, checked when the block's
@@ -1083,7 +1083,7 @@ pub(crate) struct FbInstanceInfo {
     /// Variable table index holding the data region offset.
     pub(crate) var_index: VarIndex,
     /// Type ID for FB_CALL dispatch.
-    pub(crate) type_id: u16,
+    pub(crate) type_id: FbTypeId,
     /// Data region byte offset where this instance's fields start.
     pub(crate) data_offset: u32,
     /// Maps field name (lowercase) to field index.
@@ -1097,7 +1097,7 @@ pub(crate) struct FbInstanceInfo {
 /// Metadata for a compiled user-defined function block type.
 pub(crate) struct UserFbTypeInfo {
     /// Unique type ID for FB_CALL dispatch (starts at 0x1000).
-    pub(crate) type_id: u16,
+    pub(crate) type_id: FbTypeId,
     /// Number of data-region fields in each instance.
     pub(crate) num_fields: usize,
     /// Maps field name (lowercase) to field index (ordinal position).
@@ -1246,7 +1246,7 @@ pub(crate) struct CompileContext<'a> {
     /// Maps standard FB type name (uppercase) to the block it is.
     pub(crate) standard_blocks: HashMap<String, StandardFunctionBlock>,
     /// Next available type ID for user-defined function blocks.
-    next_user_fb_type_id: u16,
+    next_user_fb_type_id: FbTypeId,
     /// When compiling a function body that returns a value, describes how an
     /// early `RETURN` statement should produce the return value before the
     /// `RET` opcode. `None` for programs and FBs (RETURN emits `RET_VOID`).
@@ -1317,7 +1317,7 @@ impl CompileContext<'_> {
             user_functions: HashMap::new(),
             user_fb_types: HashMap::new(),
             standard_blocks: HashMap::new(),
-            next_user_fb_type_id: 0x1000,
+            next_user_fb_type_id: FbTypeId::new(0x1000),
             types: HashMap::new(),
             block_members: HashMap::new(),
             operand_names: HashMap::new(),
