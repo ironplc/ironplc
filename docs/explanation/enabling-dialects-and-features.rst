@@ -382,7 +382,9 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    also the bit-string operators, and skipping an operand has no meaning
    for a bit-string result, so ``AND_THEN``/``OR_ELSE`` on bit-string
    operands evaluate both operands and produce the same value ``AND``
-   and ``OR`` produce.
+   and ``OR`` produce. Like ``AND`` and ``OR``, they accept only ``BOOL``
+   and bit-string operands: an integer operand is :doc:`P4049
+   </reference/compiler/problems/P4049>`.
 
 ``--allow-mixed-located-var-declarations``
    Allow an ``AT``-located variable (complete address like ``AT %IX0.0``,

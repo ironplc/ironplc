@@ -187,16 +187,19 @@ impl BuiltinFunction {
     }
 }
 
-/// Returns `true` for `AND`, `OR` and `XOR`, whose result has the type of
-/// their operands -- a `BOOL` of `BOOL`s, a bit string of bit strings -- and
-/// `false` for `AND_THEN` and `OR_ELSE`, which take only `BOOL`s, and for the
-/// comparisons, whose result is a `BOOL` whatever they compare.
+/// Returns `true` for `AND`, `OR` and `XOR`, and for their short-circuit
+/// forms `AND_THEN` and `OR_ELSE`, whose result has the type of their
+/// operands -- a `BOOL` of `BOOL`s, a bit string of bit strings -- and
+/// `false` for the comparisons, whose result is a `BOOL` whatever they
+/// compare.
 pub(crate) fn is_bitwise(op: &CompareOp) -> bool {
     match op {
-        CompareOp::And | CompareOp::Or | CompareOp::Xor => true,
-        CompareOp::AndThen
-        | CompareOp::OrElse
-        | CompareOp::Eq
+        CompareOp::And
+        | CompareOp::Or
+        | CompareOp::Xor
+        | CompareOp::AndThen
+        | CompareOp::OrElse => true,
+        CompareOp::Eq
         | CompareOp::Ne
         | CompareOp::Lt
         | CompareOp::Gt
