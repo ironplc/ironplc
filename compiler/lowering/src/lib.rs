@@ -139,6 +139,9 @@ pub struct Lowering<'a> {
     /// The lowered type of each analyzer type, or `None` for one lowering
     /// cannot express yet.
     type_ids: HashMap<ironplc_dsl::type_id::TypeId, Option<ironplc_ir::lowered::TypeId>>,
+    /// The analyzer types being lowered, each with the lowered type declared
+    /// for it if a reference reached it again (`types::reference_target`).
+    types_in_progress: HashMap<ironplc_dsl::type_id::TypeId, Option<ironplc_ir::lowered::TypeId>>,
     /// The variable of each declaration that is not a field.
     declared: HashMap<DeclRef, VarId>,
     pou_ids: HashMap<String, PouId>,
@@ -174,6 +177,7 @@ impl<'a> Lowering<'a> {
             parse,
             program: ProgramBuilder::new(),
             type_ids: HashMap::new(),
+            types_in_progress: HashMap::new(),
             declared: HashMap::new(),
             pou_ids: HashMap::new(),
             bodies: HashMap::new(),

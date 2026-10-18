@@ -622,6 +622,11 @@ block can refer to itself through a reference field, the usual linked list
 defined: the table gives it its id first, a reference to it can then be
 added, and the type is defined with its fields at that id.
 
+**REQ-LOW-lowering-195** Lowering declares a function block type when a
+reference reaches it again while its fields are being lowered, directly or
+through other types, and defines it at that id once they are. A type that
+reaches itself in any other way is not lowered yet.
+
 **REQ-LOW-ir-194** Only a reference refers to a type that is declared and not
 defined; every other part of a type is a type the table defines. A declared
 type is defined once, with an entry the table would add. One that is never

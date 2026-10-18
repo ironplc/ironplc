@@ -502,3 +502,58 @@ fn run_when_function_copies_structures_named_as_instances_then_instances_kept() 
     );
     assert_eq!(Snapshot::run_compiled(container).read_as::<i32>("r"), 1);
 }
+
+/// A block that refers to itself through a reference field, the usual
+/// linked list, and two blocks that refer to each other.
+const LINKED: &str = "
+    FUNCTION_BLOCK Node
+      VAR_INPUT next : REF_TO Node; v : DINT; END_VAR
+      VAR_OUTPUT o : DINT; linked : BOOL; END_VAR
+      o := v * 2;
+      linked := next <> NULL;
+    END_FUNCTION_BLOCK
+    FUNCTION_BLOCK Ping VAR_INPUT peer : REF_TO Pong; END_VAR END_FUNCTION_BLOCK
+    FUNCTION_BLOCK Pong VAR_INPUT peer : REF_TO Ping; END_VAR END_FUNCTION_BLOCK";
+
+/// REQ-LOW-lowering-195: a block that refers to itself through a reference
+/// field runs, as do calls passing it a reference to another instance, and
+/// both routes leave every variable the same.
+#[test]
+fn run_when_block_refers_to_itself_through_reference_then_values() {
+    let snapshot = run_lowered_agreeing(&format!(
+        "{LINKED}
+         PROGRAM main
+           VAR a : Node; b : Node; pi : Ping; po : Pong;
+               k : DINT; j : DINT; la : BOOL; lb : BOOL; END_VAR
+           b(v := 3);
+           a(next := REF(b), v := 1);
+           pi(peer := REF(po));
+           k := b.o;
+           j := a.o;
+           la := a.linked;
+           lb := b.linked;
+         END_PROGRAM"
+    ));
+    assert_eq!(snapshot.read_as::<i32>("k"), 6);
+    assert_eq!(snapshot.read_as::<i32>("j"), 2);
+    assert_eq!(snapshot.read_as::<i32>("la"), 1);
+    assert_eq!(snapshot.read_as::<i32>("lb"), 0);
+}
+
+/// A call of a block that refers to itself compiles to the same
+/// instructions and constants by both routes.
+#[rstest]
+#[case::call("b(v := 3);")]
+#[case::call_with_reference("a(next := REF(b), v := 1);")]
+#[case::output("k := b.o;")]
+#[case::mutual("pi(peer := REF(po));")]
+fn compile_when_block_refers_to_itself_through_reference_then_same_code_as_ast(
+    #[case] statement: &str,
+) {
+    assert_same_code(&format!(
+        "{LINKED}
+         PROGRAM main VAR a : Node; b : Node; pi : Ping; po : Pong; k : DINT; END_VAR
+           {statement}
+         END_PROGRAM"
+    ));
+}

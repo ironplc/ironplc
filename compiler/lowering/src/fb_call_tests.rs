@@ -1,6 +1,6 @@
 //! Tests of lowering calls of function blocks (REQ-LOW-lowering-069).
 
-use crate::test_support::lower;
+use crate::test_support::{lower, lower_bodies};
 
 /// A block with two inputs and outputs of several types.
 const BLOCK: &str = "
@@ -240,6 +240,38 @@ fn lower_statement_when_instance_input_then_copied_to_field() {
         [
             "copy v0^.f1.f0 v0^.f0\ncopy v0^.f1.f1 v0^.f2\nfb-call v0^.f1 pou3",
             "copy v0^.f1.f0 v0^.f0",
+        ]
+    );
+}
+
+/// REQ-LOW-lowering-195: a function block that refers to itself through a
+/// reference field, and one that refers to another that refers back to it,
+/// lower: the program's call statements and the blocks' bodies.
+#[test]
+fn lower_statement_when_block_refers_to_itself_through_reference_then_lowered() {
+    let outcome = lower_bodies(
+        "FUNCTION_BLOCK Node VAR_INPUT next : REF_TO Node; v : DINT; END_VAR
+           VAR_OUTPUT o : DINT; END_VAR
+           o := v * 2;
+         END_FUNCTION_BLOCK
+         FUNCTION_BLOCK Ping VAR_INPUT peer : REF_TO Pong; END_VAR END_FUNCTION_BLOCK
+         FUNCTION_BLOCK Pong VAR_INPUT peer : REF_TO Ping; END_VAR END_FUNCTION_BLOCK
+         PROGRAM main VAR a : Node; b : Node; k : DINT; pi : Ping; po : Pong; END_VAR
+           b(v := 3);
+           a(next := REF(b), v := 1);
+           k := b.o;
+           pi(peer := REF(po));
+         END_PROGRAM",
+        &["main", "Node"],
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f1.f1 (const i32s 3)\nfb-call v0^.f1 pou1",
+            "assign v0^.f0.f0 (ref_to v0^.f1)\nassign v0^.f0.f1 (const i32s 1)\nfb-call v0^.f0 pou1",
+            "assign v0^.f2 (read i32s v0^.f1.f2)",
+            "assign v0^.f3.f0 (ref_to v0^.f4)\nfb-call v0^.f3 pou3",
+            "assign v1^.f2 (mul i32s (read i32s v1^.f1) (const i32s 2))",
         ]
     );
 }
