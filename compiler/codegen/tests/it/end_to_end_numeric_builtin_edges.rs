@@ -76,6 +76,29 @@ END_PROGRAM
     assert_eq!(snapshot.read_as::<u32>("sum"), 6);
 }
 
+/// The absolute value of a literal is computed when compiling, so `ABS` of
+/// a negative or a typed literal is a constant, and that of -3,000,000,000
+/// settles to the `UDINT` 3,000,000,000.
+#[test]
+fn end_to_end_when_abs_of_negative_or_typed_literal_then_absolute_value() {
+    let source = "
+PROGRAM main
+  VAR
+    big : UDINT;
+    negative : DINT;
+    typed : DINT;
+  END_VAR
+  big := ABS(-3000000000);
+  negative := ABS(-5);
+  typed := ABS(DINT#-5);
+END_PROGRAM
+";
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<u32>("big"), 3_000_000_000);
+    assert_eq!(snapshot.read_as::<i32>("negative"), 5);
+    assert_eq!(snapshot.read_as::<i32>("typed"), 5);
+}
+
 // LIMIT is MIN(MAX(IN, MN), MX), so with MN above MX the result is MX.
 e2e_i32!(
     end_to_end_when_limit_dint_min_above_max_then_max,
