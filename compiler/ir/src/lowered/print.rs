@@ -165,7 +165,7 @@ impl fmt::Display for Stmt {
     }
 }
 
-fn write_stmt(f: &mut fmt::Formatter<'_>, stmt: &Stmt, depth: usize) -> fmt::Result {
+pub(super) fn write_stmt(f: &mut fmt::Formatter<'_>, stmt: &Stmt, depth: usize) -> fmt::Result {
     let indent = "  ".repeat(depth);
     let block = |f: &mut fmt::Formatter<'_>, stmts: &[Stmt]| -> fmt::Result {
         stmts.iter().try_for_each(|stmt| {

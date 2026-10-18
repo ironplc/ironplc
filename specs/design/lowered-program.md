@@ -504,6 +504,7 @@ pub struct Program {
     pub pous: Vec<Pou>,                // indexed by PouId
     pub init: Vec<Stmt>,               // initial values of every global and instance, run once
     pub execution: ExecutionModel,     // resources, tasks and program instances (execution-model.md)
+    pub bindings: ExecutionBindings,   // what each id of the model is in this program
 }
 
 pub struct Variable {
@@ -558,9 +559,16 @@ pub struct Field {
 
 What runs and when is the execution model that `ironplc-ir` already holds
 ([The Resolved Execution Model](execution-model.md)). The lowered program
-holds it rather than repeating it, and its `ProgramId` and `GlobalId` become,
-or are replaced by, the `PouId` of the program's body and the `VarId` of the
-global.
+holds it unchanged rather than repeating it, and binds each of its entries to
+the program's own: each `ProgramId` to the `PouId` of the program's body,
+each `GlobalId` to the `VarId` of the global, and each program instance to
+the `VarId` of the global that holds it. A backend reads what runs from the
+model and where it lives from the bindings.
+
+**REQ-LOW-ir-029** A lowered program is finished only when every POU has its
+parts and its body, every function and method its signature, every global of
+the execution model is bound to a global variable, and every instance of a
+program type is bound to a global variable of that program's type.
 
 A program, like a function block, has an instance: the global that a program
 configuration declares holds it, and the program's variables are the fields of
