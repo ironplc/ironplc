@@ -508,7 +508,7 @@ fn compile_program_with_functions(
     let mut ctx = CompileContext::new();
     ctx.lowered_route = lowered_route;
     ctx.types = crate::type_info::type_representations(types);
-    ctx.block_members = crate::initial_value::block_members(types);
+    ctx.block_members = ironplc_lowering::initial_value::block_members(types);
     ctx.operand_names = crate::type_info::operand_names(types);
     ctx.standard_blocks = crate::compile_call::standard_blocks_by_name(types);
     ctx.builtin_functions = crate::compile_call::builtin_functions_by_name(functions);
@@ -1202,8 +1202,8 @@ pub(crate) struct CompileContext<'a> {
     /// See [`crate::type_info::expr_type_info`].
     pub(crate) types: HashMap<ironplc_dsl::type_id::TypeId, SemanticType>,
     /// What an instance's value is read against: see
-    /// [`crate::initial_value::block_members`].
-    pub(crate) block_members: crate::initial_value::BlockMembers,
+    /// [`ironplc_lowering::initial_value::block_members`].
+    pub(crate) block_members: ironplc_lowering::initial_value::BlockMembers,
     /// The name the arithmetic overloads know a value of each type by.
     /// See [`crate::type_info::expr_operand_name`].
     pub(crate) operand_names: HashMap<ironplc_dsl::type_id::TypeId, ironplc_dsl::common::TypeName>,

@@ -3,7 +3,7 @@
 //! The analyzer completes every declaration's initializer with the value it
 //! starts with, already defaulted, expanded and converted to the type it is
 //! stored as (see `specs/design/initial-values.md`), and
-//! [`crate::initial_value`] reads it. Codegen decides only where a value is
+//! [`ironplc_lowering::initial_value`] reads it. Codegen decides only where a value is
 //! stored and which stores to emit; it decides no value.
 //!
 //! Which stores to emit is a storage decision. The variable table and the
@@ -11,10 +11,12 @@
 //! starts, need not be stored a value that leaves its storage cleared. A
 //! variable set again on every call must be stored whatever its value.
 
-use crate::initial_value::{InitialValue, ReferenceValue, Scalar, ScalarValue, StringValue};
 use ironplc_dsl::common::VarDecl;
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_lowering::initial_value::{
+    InitialValue, ReferenceValue, Scalar, ScalarValue, StringValue,
+};
 
 use super::compile::{emit_string_literal_load, CompileContext, OpType, OpWidth};
 use super::compile_expr::resolve_variable;
@@ -25,7 +27,7 @@ use crate::emit::Emitter;
 /// completed. A declaration whose initializer reaches codegen without a
 /// complete value is a compiler defect, reported as an internal error.
 pub(crate) fn required(decl: &VarDecl, ctx: &CompileContext) -> Result<InitialValue, Diagnostic> {
-    crate::initial_value::read(decl, &ctx.types, &ctx.block_members)
+    ironplc_lowering::initial_value::read(decl, &ctx.types, &ctx.block_members)
 }
 
 /// Whether storing `value` would leave its storage as it starts: cleared.
@@ -124,9 +126,10 @@ pub(crate) fn char_width(value: &StringValue) -> ironplc_container::CharWidth {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::initial_value::FieldValue;
     use ironplc_analyzer::semantic_type::ByteSized;
     use ironplc_analyzer::SemanticType;
+    use ironplc_lowering::initial_value::FieldValue;
+    use spec_test_macro::spec_test;
 
     fn integer(value: i128) -> InitialValue {
         InitialValue::Scalar(ScalarValue {
@@ -158,5 +161,23 @@ mod tests {
             integer(0),
             integer(2)
         ])));
+    }
+
+    #[spec_test(REQ_IV_codegen_001)]
+    fn read_when_initializer_has_no_value_then_internal_error() {
+        let int = ironplc_dsl::type_id::TypeId::from_raw(1);
+        let mut decl = VarDecl::simple("x", "INT");
+        decl.type_id = Some(int);
+        let types = std::collections::HashMap::from([(
+            int,
+            SemanticType::Int {
+                size: ByteSized::B16,
+            },
+        )]);
+
+        let result =
+            ironplc_lowering::initial_value::read(&decl, &types, &std::collections::HashMap::new());
+
+        assert_eq!(result.unwrap_err().code, "P9998");
     }
 }

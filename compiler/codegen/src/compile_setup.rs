@@ -4,7 +4,6 @@
 //! prologue, and type name resolution. Separated from compile.rs to
 //! keep module sizes within the 1000-line guideline.
 
-use crate::initial_value::InitialValue;
 use ironplc_container::debug_section::{
     function_id, iec_type_tag, var_section, StringLayoutEntry, VarNameEntry,
 };
@@ -15,6 +14,7 @@ use ironplc_dsl::common::{
 };
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_lowering::initial_value::InitialValue;
 
 use ironplc_analyzer::semantic_type::SemanticType;
 use ironplc_analyzer::system_globals::SYSTEM_UPTIME_GLOBALS;

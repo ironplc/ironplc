@@ -32,6 +32,7 @@ mod control;
 mod expr;
 mod fb_call;
 mod function;
+pub mod initial_value;
 mod place;
 mod program;
 mod statement;

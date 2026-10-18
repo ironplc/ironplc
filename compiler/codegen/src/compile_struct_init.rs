@@ -5,9 +5,9 @@
 //! however deeply nested. Separated from `compile_struct.rs` to keep module
 //! sizes within the 1000-line guideline.
 
-use crate::initial_value::{InitialValue, StringValue};
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_lowering::initial_value::{InitialValue, StringValue};
 
 use ironplc_analyzer::semantic_type::{ArrayDimension, SemanticType};
 use ironplc_container::{SlotIndex, VarIndex};

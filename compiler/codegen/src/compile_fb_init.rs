@@ -10,9 +10,9 @@
 //! copy of the store sequence makes the two observably the same thing at
 //! runtime.
 
-use crate::initial_value::{InitialValue, ScalarValue};
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_lowering::initial_value::{InitialValue, ScalarValue};
 
 use super::compile::{CompileContext, OpType};
 use super::compile_expr::compile_expr;

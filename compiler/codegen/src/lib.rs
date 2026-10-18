@@ -67,7 +67,6 @@ mod compile_user_call;
 mod data_region;
 mod emit;
 mod execution;
-mod initial_value;
 mod lowered;
 mod optimize;
 mod scope;
