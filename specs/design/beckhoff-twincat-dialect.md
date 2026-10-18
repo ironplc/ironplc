@@ -167,6 +167,8 @@ FUNCTION_BLOCK FB_AdvancedMotor EXTENDS FB_Motor IMPLEMENTS I_Drivable, I_Loggab
 
 **Overrides.** A block overrides a method by declaring one with the name of a method it inherits. `rule_override_signature` compares each override with the nearest method it overrides, by the signatures the type environment records (`TypeEnvironment::same_signature`, as interface conformance compares them): the return type, the `VAR_INPUT`/`VAR_OUTPUT`/`VAR_IN_OUT` variables (names, sections, types, order) and the `R_EDGE`/`F_EDGE` inputs; not locals. One that differs is P4089, at the overriding method; one that differs from a member of an interface the block implements is P4068 instead, reported by interface conformance. XAE on TwinCAT 3.1.4024 rejects an override whose return type differs (`Interface of overridden method 'DESCRIBE' of base 'FB_ROOT' doesn't match declaration`). The parameter comparison follows the same message probed for interface members and the Edition 3 definition of a signature; an override with a renamed parameter has not been probed in XAE.
 
+A property overrides an inherited property of its name. The same rule compares its type with the nearest property it overrides (P4090; P4068 when it does not provide an interface property instead). Which accessors an override must keep is not checked: an override with a `GET` and no `SET` has not been probed in XAE.
+
 #### 1.5 Member Qualifiers (Access Modifiers, `FINAL`, `ABSTRACT`, `OVERRIDE`)
 
 A member qualifier is a word between `FUNCTION_BLOCK`/`METHOD`/`PROPERTY` and the name. TwinCAT writes them after the keyword, not before it, as a `.TcPOU` `<Declaration>` shows (`METHOD PRIVATE Reset`):
