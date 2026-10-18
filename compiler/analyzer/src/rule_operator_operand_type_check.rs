@@ -299,7 +299,8 @@ impl RuleOperatorOperandTypeCheck<'_> {
             | SemanticType::Enumeration { .. }
             | SemanticType::Structure { .. }
             | SemanticType::Array { .. }
-            | SemanticType::FunctionBlock { .. } => false,
+            | SemanticType::FunctionBlock { .. }
+            | SemanticType::Interface { .. } => false,
         };
         if !from_epoch {
             return;
