@@ -64,6 +64,7 @@ mod execute_mod_i32;
 mod execute_mul_i32;
 mod execute_neg_i32;
 mod execute_stack_overflow;
+mod execute_string_array_deref;
 mod execute_string_ops;
 mod execute_sub_i32;
 mod load_max_call_depth;
