@@ -1,5 +1,5 @@
-//! Semantic rule that a method which overrides an inherited method has the
-//! signature of the method it overrides (OOP extension).
+//! Semantic rule that a method or property which overrides an inherited one
+//! matches the one it overrides (OOP extension).
 //!
 //! A function block overrides a method by declaring one with the name of a
 //! method it inherits through `EXTENDS`. The two must have the same
@@ -14,9 +14,14 @@
 //! the `EXTENDS` chain, so each block whose method differs from its base's is
 //! reported once, at its own method (P4089).
 //!
-//! A method that implements a member of an interface the block implements,
-//! and differs from that member, is reported by interface conformance
-//! (P4068) and not again here. TwinCAT XAE gives both one message,
+//! A property overrides an inherited property of its name in the same way,
+//! and must have the type of the property it overrides, compared as above
+//! (P4090). Which accessors an override must keep is not checked: an
+//! override with a `GET` and no `SET` has not been probed in XAE.
+//!
+//! A method or property that implements a member of an interface the block
+//! implements, and differs from that member, is reported by interface
+//! conformance (P4068) and not again here. TwinCAT XAE gives both one message,
 //! `Interface of overridden method ... doesn't match declaration`.
 //!
 //! ## Passes
@@ -61,7 +66,9 @@ use ironplc_problems::Problem;
 use crate::{
     result::SemanticResult,
     semantic_context::SemanticContext,
-    type_environment::{MethodParameter, MethodResult, MethodSignature, TypeEnvironment},
+    type_environment::{
+        MethodParameter, MethodResult, MethodSignature, PropertySignature, TypeEnvironment,
+    },
 };
 
 pub fn apply(
@@ -125,6 +132,35 @@ pub fn apply(
                 .with_context_id("method", &method.name),
             );
         }
+        for property in &fb.properties {
+            let (Some(own), Some(overridden)) = (
+                types.property(block, &property.name),
+                types.property(base, &property.name),
+            ) else {
+                continue;
+            };
+            if same_type(types, own.property_type, overridden.property_type)
+                || differs_from_interface_property(types, &fb.name, own)
+            {
+                continue;
+            }
+            diagnostics.push(
+                Diagnostic::problem(
+                    Problem::OverridePropertyTypeMismatch,
+                    Label::span(
+                        property.name.span(),
+                        format!(
+                            "Has type {}, where the property it overrides has type {}",
+                            type_text(types, own.property_type),
+                            type_text(types, overridden.property_type)
+                        ),
+                    ),
+                )
+                .with_secondary(Label::span(overridden.name.span(), "Overridden property"))
+                .with_context_id("function block", &fb.name.name)
+                .with_context_id("property", &property.name),
+            );
+        }
     }
 
     if diagnostics.is_empty() {
@@ -149,6 +185,23 @@ fn differs_from_interface_member(
         .filter_map(|supertype| types.interface_methods(types.id_of(supertype)?))
         .flatten()
         .any(|member| member.name == method.name && !types.same_signature(method, member))
+}
+
+/// Whether `property` of the block `block` does not provide a property
+/// prototype of the same name of an interface the block implements, which
+/// interface conformance reports (P4068).
+fn differs_from_interface_property(
+    types: &TypeEnvironment,
+    block: &TypeName,
+    property: &PropertySignature,
+) -> bool {
+    types
+        .supertypes()
+        .all_of(block)
+        .iter()
+        .filter_map(|supertype| types.interface_properties(types.id_of(supertype)?))
+        .flatten()
+        .any(|member| member.name == property.name && !types.provides_property(property, member))
 }
 
 /// What the label says about how `own` differs from `overridden`, the method

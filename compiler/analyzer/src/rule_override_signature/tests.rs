@@ -228,3 +228,178 @@ END_METHOD
 END_FUNCTION_BLOCK",
     fb_inheritance_options()
 );
+
+/// `FB_Root` declares the property `P` as `base`, with a `GET` and a `SET`;
+/// `FB_Mid`, which extends it, declares `P` as `derived`, with `accessors`.
+fn overriding_property(derived: &str, accessors: &str, base: &str) -> String {
+    format!(
+        "
+FUNCTION_BLOCK FB_Mid EXTENDS FB_Root
+PROPERTY {derived}
+{accessors}
+END_PROPERTY
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Root
+PROPERTY {base}
+GET
+END_GET
+SET
+END_SET
+END_PROPERTY
+END_FUNCTION_BLOCK"
+    )
+}
+
+const GET_AND_SET: &str = "GET\nEND_GET\nSET\nEND_SET";
+
+#[rstest]
+#[case::same_type("P : INT", GET_AND_SET, "P : INT")]
+#[case::same_sized_string("P : STRING[10]", GET_AND_SET, "P : STRING[10]")]
+#[case::unresolved_type("P : Undeclared", GET_AND_SET, "P : INT")]
+// Which accessors an override keeps is not compared.
+#[case::get_only("P : INT", "GET\nEND_GET", "P : INT")]
+fn apply_when_property_override_has_same_type_then_ok(
+    #[case] derived: &str,
+    #[case] accessors: &str,
+    #[case] base: &str,
+) {
+    assert_eq!(
+        codes(&[]),
+        rule_codes(
+            apply,
+            &overriding_property(derived, accessors, base),
+            &fb_inheritance_options()
+        )
+    );
+}
+
+#[rstest]
+#[case::other_type("P : BOOL", "P : INT")]
+#[case::sized_string_capacity("P : STRING[20]", "P : STRING[10]")]
+fn apply_when_property_override_has_other_type_then_error(
+    #[case] derived: &str,
+    #[case] base: &str,
+) {
+    assert_eq!(
+        codes(&[Problem::OverridePropertyTypeMismatch]),
+        rule_codes(
+            apply,
+            &overriding_property(derived, GET_AND_SET, base),
+            &fb_inheritance_options()
+        )
+    );
+}
+
+rule_err_at!(
+    apply_when_property_type_differs_then_error_at_overriding_property,
+    "
+FUNCTION_BLOCK FB_Mid EXTENDS FB_Root
+PROPERTY Speed : BOOL
+GET
+END_GET
+END_PROPERTY
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Root
+PROPERTY Speed : INT
+GET
+END_GET
+END_PROPERTY
+END_FUNCTION_BLOCK",
+    Problem::OverridePropertyTypeMismatch,
+    "Speed",
+    fb_inheritance_options()
+);
+
+#[test]
+fn apply_when_property_type_differs_then_label_names_both_types() {
+    let diagnostics = rule_diagnostics(
+        apply,
+        &overriding_property("P : BOOL", GET_AND_SET, "P : INT"),
+        &fb_inheritance_options(),
+    );
+
+    assert_eq!(
+        diagnostic_codes(&diagnostics),
+        codes(&[Problem::OverridePropertyTypeMismatch])
+    );
+    assert_eq!(
+        "Has type BOOL, where the property it overrides has type INT",
+        diagnostics[0].primary.message
+    );
+}
+
+// `FB_Leaf` overrides `FB_Root.Speed` through `FB_Mid`, which declares no
+// `Speed` of its own.
+rule_err!(
+    apply_when_property_override_two_levels_up_differs_then_error,
+    "
+FUNCTION_BLOCK FB_Root
+PROPERTY Speed : INT
+GET
+END_GET
+END_PROPERTY
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Mid EXTENDS FB_Root
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Leaf EXTENDS FB_Mid
+PROPERTY Speed : BOOL
+GET
+END_GET
+END_PROPERTY
+END_FUNCTION_BLOCK",
+    [Problem::OverridePropertyTypeMismatch],
+    fb_inheritance_options()
+);
+
+// A property of a name the base does not declare overrides nothing.
+rule_ok!(
+    apply_when_property_not_inherited_then_ok,
+    "
+FUNCTION_BLOCK FB_Root
+PROPERTY Speed : INT
+GET
+END_GET
+END_PROPERTY
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Mid EXTENDS FB_Root
+PROPERTY Ready : BOOL
+GET
+END_GET
+END_PROPERTY
+END_FUNCTION_BLOCK",
+    fb_inheritance_options()
+);
+
+// `FB_Mid.Speed` does not provide the interface property it implements,
+// which interface conformance reports (P4068); it is not reported again
+// here.
+rule_ok!(
+    apply_when_property_override_differs_from_interface_property_then_ok,
+    "
+INTERFACE I_Speed
+PROPERTY Speed : INT
+GET
+END_GET
+END_PROPERTY
+END_INTERFACE
+
+FUNCTION_BLOCK FB_Root IMPLEMENTS I_Speed
+PROPERTY Speed : INT
+GET
+END_GET
+END_PROPERTY
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Mid EXTENDS FB_Root
+PROPERTY Speed : BOOL
+GET
+END_GET
+END_PROPERTY
+END_FUNCTION_BLOCK",
+    fb_inheritance_options()
+);
