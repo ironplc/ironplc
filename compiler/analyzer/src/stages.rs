@@ -275,10 +275,10 @@ pub fn resolve_types(
 
     // Decide what each bare identifier in an expression is: a variable, or an
     // enumerated value. It needs the symbol environment: a name is a variable
-    // when the environment finds one from the current scope, however it is
-    // declared (a method's variable, a global, an inherited field, the
-    // implicit input of a property accessor). Runs before the passes that
-    // need bare names to already be variables.
+    // when the environment resolves it to one the current scope may use,
+    // however it is declared (a method's variable, a global, an inherited
+    // field, the implicit input of a property accessor). Runs before the
+    // passes that need bare names to already be variables.
     library = run_best_effort(library, &mut diagnostics, |lib| {
         xform_resolve_late_bound_expr_kind::apply(lib, &symbol_environment)
     });
