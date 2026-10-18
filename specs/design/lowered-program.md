@@ -2097,6 +2097,14 @@ array or function block variable of a function, function block or method
 body other than a field that holds an instance, which no program reads
 inside (see [Statements](#37-statements)).
 
+**REQ-LOW-codegen-193** The bytecode backend copies a whole array or
+structure into the one a reference refers to, `p^ := z`, with
+`COPY_REGION_DEREF` through the reference `p` holds. The destination is sized
+by the descriptor of the array or structure type `p` refers to, which `p`'s
+declaration registers. The route that reads the AST stores `z`'s data offset
+in the slot of the variable `p` refers to instead, which makes that variable
+an alias of `z`.
+
 **REQ-LOW-codegen-089** An `Intrinsic` means what the IEC 61131-3 standard
 function means, with these choices where the standard leaves room: the count
 of `SHL` and `SHR` is taken modulo the operation width, `SHR` fills with

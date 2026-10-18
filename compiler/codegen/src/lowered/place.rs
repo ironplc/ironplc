@@ -169,6 +169,25 @@ pub(super) fn field_path(
     }
 }
 
+/// The name of the reference variable `place` is what it refers to, `p^`,
+/// as this backend's layout knows it. `None` for any other place, and for a
+/// reference in a `VAR_IN_OUT` parameter, whose slot holds a reference to
+/// the reference.
+pub(super) fn referenced_by(
+    lowering: &PartialProgram,
+    ctx: &CompileContext,
+    place: &LoweredPlace,
+) -> Option<Id> {
+    let SymbolicVariableKind::Deref(deref) = reference(lowering, ctx, place, &mut Vec::new())?
+    else {
+        return None;
+    };
+    let SymbolicVariableKind::Named(named) = *deref.variable else {
+        return None;
+    };
+    (!ctx.is_in_out(&named.name)).then_some(named.name)
+}
+
 /// Whether `expr` reads a field of an instance of a standard function block:
 /// an instance this backend reaches by name, of no user-defined block's type.
 ///
