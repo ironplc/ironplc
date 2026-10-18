@@ -99,7 +99,23 @@ impl Lowering<'_> {
                     capacity,
                 })
             }
-            SemanticType::Enumeration { members, .. } => TypeKind::Enumeration {
+            SemanticType::Enumeration {
+                members,
+                underlying_type,
+            } => TypeKind::Enumeration {
+                // The type the declaration names, and `INT` when it names
+                // none, as in CODESYS and TwinCAT (REQ-LOW-lowering-188).
+                underlying: {
+                    let int = SemanticType::Int {
+                        size: ByteSized::B16,
+                    };
+                    let Some(underlying) =
+                        self.elementary(underlying_type.as_deref().unwrap_or(&int))?
+                    else {
+                        return Ok(None);
+                    };
+                    underlying
+                },
                 values: members
                     .iter()
                     .map(|member| {

@@ -99,6 +99,11 @@ pub enum SemanticType {
         /// The members, their ordinals and the default. Not compared by
         /// `PartialEq` (see [`EnumerationMembers`]).
         members: EnumerationMembers,
+        /// The integer or bit string type the declaration names for its
+        /// values (`(A, B) WORD`, behind `--allow-enum-base-type`), if it
+        /// names one. It changes neither how the enumeration is stored nor
+        /// how it is operated on.
+        underlying_type: Option<Box<SemanticType>>,
     },
     /// Structure type containing named fields
     Structure {
@@ -859,6 +864,7 @@ mod tests {
         assert_eq!(
             SemanticType::Enumeration {
                 members: crate::enumeration_members::EnumerationMembers::default(),
+                underlying_type: None,
             }
             .slot_count(),
             Ok(1)
