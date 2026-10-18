@@ -31,7 +31,7 @@ impl Lowering<'_> {
             return Ok(*known);
         }
         // A type that reaches itself other than as a function block a
-        // reference refers to (`reference_target`), such as a structure
+        // reference refers to (`reference_target_type`), such as a structure
         // holding a reference to its own type, is not lowered yet, so the
         // walk ends.
         if self.types_in_progress.contains_key(&id) {
@@ -50,7 +50,7 @@ impl Lowering<'_> {
     /// own field `next : REF_TO Node` does, is declared then, and defined at
     /// that id once its fields are lowered (REQ-LOW-lowering-195,
     /// REQ-LOW-ir-194).
-    fn reference_target(&mut self, target: AnalyzerTypeId) -> LoweredType {
+    fn reference_target_type(&mut self, target: AnalyzerTypeId) -> LoweredType {
         let Some(declared) = self.types_in_progress.get(&target).copied() else {
             return self.lowered_type(target);
         };
@@ -222,7 +222,7 @@ impl Lowering<'_> {
                 let Some(target) = self.analysis.context().types().referenced_type(id) else {
                     return Ok(None);
                 };
-                let Some(target) = self.reference_target(target)? else {
+                let Some(target) = self.reference_target_type(target)? else {
                     return Ok(None);
                 };
                 TypeKind::Reference {
