@@ -338,3 +338,61 @@ fn compile_when_string_comparison_lowered_then_same_code_as_ast(#[case] statemen
     );
     assert_same_code(&source);
 }
+
+/// A string declared through a type alias of `STRING` or `WSTRING`, as a
+/// function's or method's input, local or result, is held as a string of
+/// the alias's capacity, as one spelled out is: it is copied in, starts
+/// empty or at its initial value on every call, and keeps no more than its
+/// capacity. The route that reads the AST kept such a variable as the index
+/// of a temporary buffer, which trapped when read before it was written.
+#[test]
+fn run_when_string_declared_through_alias_in_function_then_string_values() {
+    let snapshot = run_lowered(
+        "TYPE Name : STRING[20]; END_TYPE
+         TYPE Short : STRING[3]; END_TYPE
+         TYPE WName : WSTRING[10]; END_TYPE
+         FUNCTION FIN : DINT VAR_INPUT n : Name; END_VAR FIN := LEN(n); END_FUNCTION
+         FUNCTION FCOPY : DINT VAR_INPUT n : STRING[20]; END_VAR VAR l : Name; END_VAR
+           l := n;
+           FCOPY := LEN(l);
+         END_FUNCTION
+         FUNCTION FEMPTY : DINT VAR_INPUT x : DINT; END_VAR VAR l : Name; END_VAR
+           FEMPTY := LEN(l);
+         END_FUNCTION
+         FUNCTION FINIT : DINT VAR_INPUT x : DINT; END_VAR VAR l : Name := 'ab'; END_VAR
+           FINIT := LEN(l);
+         END_FUNCTION
+         FUNCTION FRES : Short VAR_INPUT x : DINT; END_VAR FRES := 'abcdef'; END_FUNCTION
+         FUNCTION FWIDE : DINT VAR_INPUT n : WName; END_VAR VAR l : WName; END_VAR
+           l := n;
+           FWIDE := LEN(l);
+         END_FUNCTION
+         FUNCTION_BLOCK B
+           METHOD M : DINT VAR_INPUT n : Name; END_VAR VAR l : Name; END_VAR
+             l := n;
+             M := LEN(l);
+           END_METHOD
+         END_FUNCTION_BLOCK
+         PROGRAM main
+           VAR s : Name := 'abcd'; ws : WName := \"abcdef\"; b : B; result : STRING[20];
+               input : DINT; copied : DINT; empty : DINT; init : DINT; result_len : DINT;
+               wide : DINT; in_method : DINT; END_VAR
+           input := FIN(n := s);
+           copied := FCOPY(n := s);
+           empty := FEMPTY(x := 1);
+           init := FINIT(x := 1);
+           result := FRES(x := 1);
+           result_len := LEN(FRES(x := 1));
+           wide := FWIDE(n := ws);
+           in_method := b.M(n := s);
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<i32>("input"), 4);
+    assert_eq!(snapshot.read_as::<i32>("copied"), 4);
+    assert_eq!(snapshot.read_as::<i32>("empty"), 0);
+    assert_eq!(snapshot.read_as::<i32>("init"), 2);
+    assert_eq!(snapshot.read("result"), "abc");
+    assert_eq!(snapshot.read_as::<i32>("result_len"), 3);
+    assert_eq!(snapshot.read_as::<i32>("wide"), 6);
+    assert_eq!(snapshot.read_as::<i32>("in_method"), 4);
+}

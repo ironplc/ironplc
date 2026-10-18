@@ -35,7 +35,7 @@ use crate::compile::{
     CompileContext, FbFieldIndex, OpType, ParamPassing, UserFbTypeInfo, UserMethodInfo,
     UserMethodParam, VarTypeInfo, DEFAULT_OP_TYPE, DEFAULT_VAR_TYPE_INFO, MAX_USER_FB_FIELDS,
 };
-use crate::compile_fn::{param_passing, push_local_var_name, register_string_variable};
+use crate::compile_fn::{param_passing, push_local_var_name, register_declared_string};
 use crate::held_instances::HeldField;
 use crate::type_info::{decl_type_info, named_type_info};
 
@@ -273,8 +273,10 @@ pub(crate) fn lay_out_block(
                         ref_init,
                     )?;
                 }
-                InitialValueAssignmentKind::String(string_init) => {
-                    register_string_variable(ctx, id, string_init)?;
+                // A field of a type alias of a string is left as it was: a
+                // block's string fields have no initialized run (issue 1753).
+                InitialValueAssignmentKind::String(_) => {
+                    register_declared_string(ctx, id, decl)?;
                 }
                 _ => {}
             }
@@ -351,9 +353,7 @@ fn lay_out_method(
                 ctx.var_types.insert(ctx.scope, id.clone(), type_info);
             }
             // A call copies a string argument into the parameter's run.
-            if let InitialValueAssignmentKind::String(string_init) = &decl.initializer {
-                register_string_variable(ctx, id, string_init)?;
-            }
+            register_declared_string(ctx, id, decl)?;
             current_index = VarIndex::new(current_index.raw() + 1);
             num_params += 1;
         }
@@ -377,9 +377,7 @@ fn lay_out_method(
             }
             // The prologue initializes a string local or output's run at
             // every call.
-            if let InitialValueAssignmentKind::String(string_init) = &decl.initializer {
-                register_string_variable(ctx, id, string_init)?;
-            }
+            register_declared_string(ctx, id, decl)?;
             current_index = VarIndex::new(current_index.raw() + 1);
         }
     }
