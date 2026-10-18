@@ -1638,6 +1638,14 @@ stays on it. A method's outputs, strings included, are read from the
 method's own variables, as a function's are, and a method's body is asked
 for its statements as any other body is.
 
+`METHOD_CALL` names how many of the block's fields it copies in and out by a
+byte. The route that reads the AST truncates the count of a block with more
+fields, so the method runs on the wrong ones.
+
+**REQ-LOW-codegen-186** The bytecode backend reports a call of a method of a
+block with more than 255 fields as P9997, a limit of its format, and does not
+leave the call to the route that reads the AST.
+
 A call of a method the receiver's block inherits is a call of the method of
 the block that declares it, as the analyzer resolves it (ADR-0041), with a
 `Ref` to the receiver first, which passes for that block's instance
