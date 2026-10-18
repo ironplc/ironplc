@@ -275,3 +275,29 @@ fn lower_statement_when_block_refers_to_itself_through_reference_then_lowered() 
         ]
     );
 }
+
+/// REQ-LOW-lowering-069: an output of a function block type is stored as an
+/// instance assigned from the field is, by a `Copy` of the whole instance
+/// (REQ-LOW-lowering-061), whether the call stores it or a statement reads
+/// it.
+#[test]
+fn lower_statement_when_instance_output_then_copied_from_field() {
+    let outcome = lower(
+        &format!(
+            "{BLOCK}
+             FUNCTION_BLOCK OUTER VAR_OUTPUT ob : FB; t : TON; END_VAR END_FUNCTION_BLOCK
+             PROGRAM main VAR f : FB; g : OUTER; u : TON; END_VAR
+               g(ob => f, t => u);
+               f := g.ob;
+             END_PROGRAM"
+        ),
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "fb-call v0^.f1 pou3\ncopy v0^.f0 v0^.f1.f0\ncopy v0^.f2 v0^.f1.f1",
+            "copy v0^.f0 v0^.f1.f0",
+        ]
+    );
+}

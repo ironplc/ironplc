@@ -157,10 +157,11 @@ impl Lowering<'_> {
         self.program.assign(place, value, span)
     }
 
-    /// Copies the whole of the variable `value` to `place`, an array, a
-    /// structure or a function block instance (REQ-LOW-lowering-061). Any
-    /// other source is not lowered here; the assignment of a call of a
-    /// function that returns a structure is `structure_result.rs`'s.
+    /// Copies the whole of the variable `value`, or of the output of a call
+    /// `value` reads (`ob => f`), to `place`, an array, a structure or a
+    /// function block instance (REQ-LOW-lowering-061). Any other source is
+    /// not lowered here; the assignment of a call of a function that returns
+    /// a structure is `structure_result.rs`'s.
     fn aggregate_assignment(
         &mut self,
         frame: &BodyFrame,
@@ -168,10 +169,14 @@ impl Lowering<'_> {
         value: &AstExpr,
         span: SourceSpan,
     ) -> Result<Option<Stmt>, Diagnostic> {
-        let AstExprKind::Variable(variable) = &value.kind else {
+        let source = if let AstExprKind::CallOutput(output) = &value.kind {
+            self.call_output_place(output)?
+        } else if let AstExprKind::Variable(variable) = &value.kind {
+            self.variable_place(frame, variable)?
+        } else {
             return Ok(None);
         };
-        let Some(source) = self.variable_place(frame, variable)? else {
+        let Some(source) = source else {
             return Ok(None);
         };
         self.program.copy(place, source, span).map(Some)

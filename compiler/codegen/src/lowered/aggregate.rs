@@ -17,13 +17,11 @@
 //! what such a field holds, in the block's body, a method or a caller, so no
 //! program tells the offset from a copy.
 //!
-//! So too for a function block instance stored in such a field, `g.inner :=
-//! f` or the input of a call, `g(inner := f)`: an instance's slot holds the
-//! data offset of its fields, and the field's slot takes it (issue 1553).
-//! Neither route calls the instance a field holds, or reads its fields.
-//!
-//! A `Copy` of a whole instance to another is `instance_copy.rs`'s. Every
-//! other `Copy` is left to the AST route.
+//! A `Copy` of a whole instance to another is `instance_copy.rs`'s, into a
+//! field that holds one too. An instance it does not copy, of a block of more
+//! than 256 fields, is stored in such a field as the AST route stores it: the
+//! field's slot takes the instance's slot, which holds the data offset of its
+//! fields. Every other `Copy` is left to the AST route.
 
 use ironplc_container::VarIndex;
 use ironplc_dsl::core::SourceSpan;

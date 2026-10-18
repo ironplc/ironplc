@@ -229,6 +229,7 @@ fn assign_storage(
                         data_offset,
                         field_indices: field_map,
                         field_types,
+                        held: Vec::new(),
                     },
                 );
             } else if let Some((num_fields, type_id, field_indices, field_types)) =
@@ -244,6 +245,7 @@ fn assign_storage(
                 // User-defined function block.
                 let instance_size = num_fields as u32 * 8;
                 let data_offset = crate::data_region::reserve(ctx, instance_size, &span)?;
+                let held = crate::held_instances::reserve(ctx, &fb_name, data_offset, &span)?;
 
                 ctx.fb_instances.insert(
                     id.clone(),
@@ -253,6 +255,7 @@ fn assign_storage(
                         data_offset,
                         field_indices,
                         field_types,
+                        held,
                     },
                 );
             }
@@ -574,10 +577,14 @@ pub(crate) fn emit_initial_values(
         } else if let Some(fb_info) = ctx.fb_instances.get(id) {
             let data_offset = fb_info.data_offset;
             let var_index = fb_info.var_index;
-            // Store the data region byte offset into the variable slot.
+            let held = fb_info.held.clone();
+            // Store the data region byte offset into the variable slot, and
+            // in each field that holds an instance, the offset of that
+            // instance's fields.
             let offset_const = ctx.add_i32_constant(data_offset as i32);
             emitter.emit_load_const_i32(offset_const);
             emitter.emit_store_var_i32(var_index);
+            crate::held_instances::emit_offsets(emitter, ctx, &held);
 
             // `timer : TON := (PT := T#100MS)` sets the instance's own
             // members. The slot offset has to be in place first, because

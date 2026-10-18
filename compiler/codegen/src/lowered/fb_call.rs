@@ -14,7 +14,8 @@
 //! `Assign`, an `AssignStr` or a `Copy`. `FB_STORE_PARAM` stores in the
 //! field's slot what the AST route stores there: the value, the index of the
 //! temporary buffer that holds the string, or the region offset of the
-//! structure or array (`place::instance_slot`).
+//! structure or array (`place::instance_slot`). An instance input is copied
+//! into the instance its field holds (`instance_copy.rs`).
 
 use ironplc_dsl::core::{Id, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -25,13 +26,14 @@ use ironplc_lowering::Lowering;
 
 use super::aggregate::emit_source;
 use super::expr::emit_expr;
+use super::instance_copy::{emit_instance_copy, instance_copy};
 use super::place::variable_name;
 use super::same_span;
 use super::string::emit_str_expr;
 use crate::compile::CompileContext;
-use crate::compile_call::standard_fb_layout;
 use crate::compile_fb_call::FbCallSite;
 use crate::emit::Emitter;
+use crate::held_instances::layout;
 
 /// The stores of a call's inputs and the call, at the head of a list of
 /// lowered statements.
@@ -48,8 +50,12 @@ enum Input<'s> {
     Value(&'s Expr),
     /// A string, by an `AssignStr`.
     Str(&'s StrExpr),
-    /// The structure or array at a place, by a `Copy`.
-    Copy(&'s LoweredPlace),
+    /// The structure, array or instance at a place, `src`, by a `Copy` to
+    /// the field, `dst`.
+    Copy {
+        dst: &'s LoweredPlace,
+        src: &'s LoweredPlace,
+    },
 }
 
 impl CallSite<'_> {
@@ -131,7 +137,14 @@ pub(super) fn emit_call_site(
                 emit_expr(emitter, ctx, lowering, value)?;
             }
             Input::Str(value) => emit_str_expr(emitter, ctx, lowering, value)?,
-            Input::Copy(src) => emit_source(emitter, ctx, lowering, src, span)?,
+            Input::Copy { dst, src } => {
+                // An instance is copied into the instance the field holds.
+                if let Some(copy) = instance_copy(lowering, ctx, dst, src) {
+                    emit_instance_copy(emitter, &copy);
+                    continue;
+                }
+                emit_source(emitter, ctx, lowering, src, span)?
+            }
         }
         site.store_input(emitter, field)?;
     }
@@ -161,15 +174,8 @@ pub(super) fn reaches_block(
     let Some(name) = lowering.pous().name(block) else {
         return false;
     };
-    let name = name.to_string().to_uppercase();
-    let type_id = match ctx.user_fb_types.get(&name) {
-        Some(user_fb) => Some(user_fb.type_id),
-        None => ctx
-            .standard_blocks
-            .get(&name)
-            .map(|standard| standard_fb_layout(*standard).0),
-    };
-    type_id == Some(fb_instance.type_id)
+    layout(ctx, &name.to_string().to_uppercase())
+        .is_some_and(|layout| layout.type_id == fb_instance.type_id)
 }
 
 /// The internal error for a call `can_emit` should have left to the AST
@@ -191,7 +197,7 @@ fn input<'s>(
     let (place, input) = match stmt.kind() {
         StmtKind::Assign { place, value } => (place, Input::Value(value)),
         StmtKind::AssignStr { place, value } => (place, Input::Str(value)),
-        StmtKind::Copy { dst, src } => (dst, Input::Copy(src)),
+        StmtKind::Copy { dst, src } => (dst, Input::Copy { dst, src }),
         StmtKind::AssignBits { .. }
         | StmtKind::Call { .. }
         | StmtKind::FbCall { .. }
