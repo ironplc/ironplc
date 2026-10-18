@@ -14,6 +14,8 @@ use crate::stages::analyze;
 use crate::type_environment::TypeEnvironment;
 use crate::value_type::operand_type_name;
 
+use call_arguments::call_arguments;
+
 /// The operands of every comparison in a library, in source order, each as
 /// the type it is compared at: `DINT->LINT` for a `DINT` converted to
 /// `LINT`, `LINT` for an operand compared as it is.
@@ -571,42 +573,6 @@ fn apply_when_subrange_target_then_converted_to_base_type() {
     assert_eq!(assigned_values(source), vec!["LINT->DINT"]);
 }
 
-/// The inputs of every call to `name` in `source`, which must be free of
-/// diagnostics, each as [`describe`] shows it.
-fn call_arguments(source: &str, name: &str) -> Vec<String> {
-    struct Arguments<'a> {
-        types: &'a TypeEnvironment,
-        name: &'a str,
-        arguments: Vec<String>,
-    }
-    impl Visitor<Infallible> for Arguments<'_> {
-        type Value = ();
-        fn visit_function(&mut self, node: &Function) -> Result<(), Infallible> {
-            if node.name.original().eq_ignore_ascii_case(self.name) {
-                let inputs = node.param_assignment.iter().filter_map(|p| p.input_expr());
-                self.arguments
-                    .extend(inputs.map(|e| describe(self.types, e)));
-            }
-            node.recurse_visit(self)
-        }
-    }
-    let options = CompilerOptions::default();
-    let library = ironplc_parser::parse_program(source, &FileId::default(), &options).unwrap();
-    let (library, context) = analyze(&[&library], &options).unwrap();
-    assert!(
-        !context.has_diagnostics(),
-        "unexpected diagnostics: {:?}",
-        context.diagnostics()
-    );
-    let mut visitor = Arguments {
-        types: context.types(),
-        name,
-        arguments: vec![],
-    };
-    let Ok(()) = visitor.walk(&library);
-    visitor.arguments
-}
-
 /// A function `f` whose one input is of type `param`, called as `f(<args>)`
 /// from a program declaring `VAR <vars> END_VAR`.
 fn call_program(param: &str, vars: &str, args: &str) -> String {
@@ -998,6 +964,7 @@ fn apply_when_untyped_literal_typed_then_type_recorded_as_inferred() {
 }
 
 mod bitwise;
+mod call_arguments;
 mod call_result;
 mod fixed_result;
 mod fixed_type;

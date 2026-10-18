@@ -134,6 +134,10 @@ The pass records, for each call, the conversion of every input of the function's
 
 **REQ-IC-analyzer-089** A call to `TRUNC`, `BCD_TO_INT` or `SIZEOF` in a context that is not an integer type takes `DINT` and is converted to the context's type, wherever the context is: in `x := TRUNC(r)` on a `REAL`, in `TRUNC(r) < r`, in `TRUNC(r) * r` and as an argument to a `REAL` parameter, the `DINT` is converted to `REAL`.
 
+`BCD_TO_INT` decodes the bit string it is given, at that bit string's width. A dialect may let an untyped integer literal stand for a bit string (`--allow-int-literal-to-bit-string`), and the literal is then the bit string as wide as `DINT`, the type it defaults to (ADR-0028). That is the width the code generator decoded such a literal at before the pass recorded it.
+
+**REQ-IC-analyzer-118** An untyped integer literal given to `BCD_TO_INT` takes `DWORD`: `BCD_TO_INT(16#12)` and `BCD_TO_INT(18)` decode the `DWORD` 16#12.
+
 **REQ-IC-analyzer-090** `INT_TO_BCD` has the type of the bit string as wide as its input, and its result is converted to a wider target: `INT_TO_BCD(i)` on an `INT` is a `WORD`, `INT_TO_BCD(l)` on an `LINT` an `LWORD`, `INT_TO_BCD(42)` a `DWORD`, and `lw := INT_TO_BCD(i)` converts the `WORD` to `LWORD`.
 
 **REQ-IC-analyzer-091** `TRUNC` assigned to a bit string, and `INT_TO_BCD` assigned to an integer or to a narrower bit string, report P4027: `w := TRUNC(r)`, `j := INT_TO_BCD(i)` and `w := INT_TO_BCD(l)` on a `WORD`, an `INT` and an `LINT`.
