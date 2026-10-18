@@ -929,6 +929,8 @@ END_FUNCTION_BLOCK",
             .map(|parameters| names(parameters.iter()))
     }
 
+    /// `FB_Derived` overrides `Get` with a parameter of another name, which
+    /// analysis rejects (P4089); the tests pin these lookups alone.
     const OVERRIDES: &str = "
 FUNCTION_BLOCK FB_Base
 METHOD Get : INT

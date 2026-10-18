@@ -156,3 +156,4 @@ P4085,ArraySubscriptCountMismatch,Number of subscripts does not match the number
 P4086,ArraySubscriptBool,Array subscript is a BOOL rather than an integer
 P4087,BitShiftInputBool,Shift or rotate input is a BOOL rather than a multi-bit bit string
 P4088,ExtendsNotFunctionBlock,EXTENDS names a type that is not a declared function block
+P4089,OverrideSignatureMismatch,Method differs from the method it overrides

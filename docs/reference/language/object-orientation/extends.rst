@@ -90,7 +90,10 @@ method, not a second variable of the same name.
 Methods work the other way round. A derived type may declare a method with
 the name of one it inherits, which **overrides** it: a call on the derived
 type runs the derived type's method, and that method reaches the one it
-overrode through :doc:`SUPER^ <this-and-super>`.
+overrode through :doc:`SUPER^ <this-and-super>`. An override has the
+signature of the method it overrides: the same return type and the same
+``VAR_INPUT``, ``VAR_OUTPUT`` and ``VAR_IN_OUT`` variables, in the same order.
+One that differs reports :doc:`P4089 </reference/compiler/problems/P4089>`.
 
 See Also
 --------
