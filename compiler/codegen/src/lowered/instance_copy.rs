@@ -21,12 +21,12 @@
 //! structures may share their names, so a `Copy` is taken for one of
 //! instances only when its places are function block instances.
 
-use ironplc_container::VarIndex;
+use ironplc_container::{FbTypeId, VarIndex};
 use ironplc_ir::lowered::{Place as LoweredPlace, TypeKind};
 use ironplc_lowering::Lowering;
 
 use super::place::field_path;
-use crate::compile::CompileContext;
+use crate::compile::{CompileContext, FbFieldIndex};
 use crate::emit::Emitter;
 use crate::held_instances::{layout, layout_of_type};
 
@@ -43,17 +43,17 @@ pub(super) struct InstanceCopy {
 /// one that field `fields[1]` of that instance holds, and so on.
 struct Reached {
     var_index: VarIndex,
-    fields: Vec<u8>,
+    fields: Vec<FbFieldIndex>,
 }
 
 /// One step of a copy, taken with the destination's instance on the stack.
 enum Step {
     /// Copies the field, one slot, from the source's instance.
-    Field(u8),
+    Field(FbFieldIndex),
     /// Pushes the instance the field holds, which the steps up to the
     /// matching `Leave` copy into from the instance the source's field
     /// holds.
-    Enter(u8),
+    Enter(FbFieldIndex),
     /// Pops the instance the last `Enter` pushed.
     Leave,
 }
@@ -117,7 +117,7 @@ fn reached(
     lowering: &Lowering<'_>,
     ctx: &CompileContext,
     place: &LoweredPlace,
-) -> Option<(Reached, u16)> {
+) -> Option<(Reached, FbTypeId)> {
     let (name, path) = field_path(lowering, ctx, place)?;
     let instance = ctx.fb_instances.get(&name)?;
     let mut block = instance.type_id;
@@ -144,12 +144,12 @@ fn reached(
 /// block whose type ID is `block`. `None` when the layout keeps no instance
 /// of it, or one of more than 256 fields, as `FB_LOAD_PARAM` and
 /// `FB_STORE_PARAM` name a field by a byte.
-fn plan(ctx: &CompileContext, block: u16, steps: &mut Vec<Step>) -> Option<()> {
+fn plan(ctx: &CompileContext, block: FbTypeId, steps: &mut Vec<Step>) -> Option<()> {
     let instances = layout_of_type(ctx, block)?;
     if instances.fields > 256 {
         return None;
     }
-    for field in (0..instances.fields).filter_map(|field| u8::try_from(field).ok()) {
+    for field in (0..instances.fields).filter_map(|field| FbFieldIndex::try_from(field).ok()) {
         match instances.held.iter().find(|held| held.index == field) {
             Some(held) => {
                 steps.push(Step::Enter(field));
@@ -164,7 +164,7 @@ fn plan(ctx: &CompileContext, block: u16, steps: &mut Vec<Step>) -> Option<()> {
 
 /// Emits the load of the instance `reached` is, then of the instance that
 /// each of its fields `entered` holds in turn.
-fn emit_load(emitter: &mut Emitter, reached: &Reached, entered: &[u8]) {
+fn emit_load(emitter: &mut Emitter, reached: &Reached, entered: &[FbFieldIndex]) {
     emitter.emit_fb_load_instance(reached.var_index);
     for field in reached.fields.iter().chain(entered) {
         emitter.emit_fb_load_param(*field);

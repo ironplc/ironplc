@@ -594,7 +594,7 @@ fn compile_program_with_functions(
                 // held instance's offset in.
                 if let (Some(block), Ok(index)) = (
                     crate::held_instances::held_block(types, decl),
-                    u8::try_from(i),
+                    FbFieldIndex::try_from(i),
                 ) {
                     held_fields.push(HeldField { name, index, block });
                 }
@@ -1098,7 +1098,7 @@ pub(crate) struct FbInstanceInfo {
     /// Data region byte offset where this instance's fields start.
     pub(crate) data_offset: u32,
     /// Maps field name (lowercase) to field index.
-    pub(crate) field_indices: HashMap<String, u8>,
+    pub(crate) field_indices: HashMap<String, FbFieldIndex>,
     /// Maps field name (lowercase) to its declared type: the operation type
     /// a value stored in the field or read from it is compiled at, and the
     /// width a store narrows it to.
@@ -1108,6 +1108,10 @@ pub(crate) struct FbInstanceInfo {
     pub(crate) held: Vec<HeldInstance>,
 }
 
+/// The index of a field of a function block instance, one slot each, which
+/// `FB_LOAD_PARAM` and `FB_STORE_PARAM` name by a byte.
+pub(crate) type FbFieldIndex = u8;
+
 /// Metadata for a compiled user-defined function block type.
 pub(crate) struct UserFbTypeInfo {
     /// Unique type ID for FB_CALL dispatch (starts at 0x1000).
@@ -1115,7 +1119,7 @@ pub(crate) struct UserFbTypeInfo {
     /// Number of data-region fields in each instance.
     pub(crate) num_fields: usize,
     /// Maps field name (lowercase) to field index (ordinal position).
-    pub(crate) field_indices: HashMap<String, u8>,
+    pub(crate) field_indices: HashMap<String, FbFieldIndex>,
     /// Function ID of the compiled FB body in the container.
     pub(crate) function_id: FunctionId,
     /// Variable table offset where the FB body's slots start.

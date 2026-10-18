@@ -15,8 +15,11 @@ use ironplc_dsl::common::VarDecl;
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
 
-use crate::compile::CompileContext;
+use ironplc_container::FbTypeId;
+
+use crate::compile::{CompileContext, FbFieldIndex};
 use crate::compile_call::standard_fb_layout;
+use crate::data_region::DataOffset;
 use crate::emit::Emitter;
 
 /// A field of a user-defined function block that holds an instance of a
@@ -26,7 +29,7 @@ pub(crate) struct HeldField {
     /// The field's name, in lowercase.
     pub(crate) name: String,
     /// The field's index.
-    pub(crate) index: u8,
+    pub(crate) index: FbFieldIndex,
     /// The name of the block, in uppercase, as `user_fb_types` and
     /// `standard_blocks` know it.
     pub(crate) block: String,
@@ -35,7 +38,7 @@ pub(crate) struct HeldField {
 /// What the layout keeps for each instance of a block.
 pub(crate) struct BlockLayout<'c> {
     /// The block's type ID, which `FB_CALL` dispatches on.
-    pub(crate) type_id: u16,
+    pub(crate) type_id: FbTypeId,
     /// How many fields each instance has, one slot each.
     pub(crate) fields: usize,
     /// The fields that hold an instance. A standard block's hold none.
@@ -47,11 +50,11 @@ pub(crate) struct BlockLayout<'c> {
 pub(crate) struct HeldInstance {
     /// The data region offset of the fields of the instance whose field
     /// holds it.
-    holder: u32,
+    holder: DataOffset,
     /// The index of the field that holds it.
-    index: u8,
+    index: FbFieldIndex,
     /// The data region offset of its own fields.
-    data_offset: u32,
+    data_offset: DataOffset,
 }
 
 /// The name of the block whose instance the variable `decl` declares, in
@@ -88,7 +91,10 @@ pub(crate) fn layout<'c>(ctx: &'c CompileContext, block: &str) -> Option<BlockLa
 }
 
 /// The layout of the instances of the block whose type ID is `type_id`.
-pub(crate) fn layout_of_type<'c>(ctx: &'c CompileContext, type_id: u16) -> Option<BlockLayout<'c>> {
+pub(crate) fn layout_of_type<'c>(
+    ctx: &'c CompileContext,
+    type_id: FbTypeId,
+) -> Option<BlockLayout<'c>> {
     if let Some(user_fb) = ctx
         .user_fb_types
         .values()
@@ -118,7 +124,7 @@ pub(crate) fn layout_of_type<'c>(ctx: &'c CompileContext, type_id: u16) -> Optio
 pub(crate) fn reserve(
     ctx: &mut CompileContext,
     block: &str,
-    data_offset: u32,
+    data_offset: DataOffset,
     span: &SourceSpan,
 ) -> Result<Vec<HeldInstance>, Diagnostic> {
     let mut instances = Vec::new();
@@ -129,7 +135,7 @@ pub(crate) fn reserve(
 fn reserve_into(
     ctx: &mut CompileContext,
     block: &str,
-    holder: u32,
+    holder: DataOffset,
     span: &SourceSpan,
     instances: &mut Vec<HeldInstance>,
 ) -> Result<(), Diagnostic> {
@@ -177,15 +183,15 @@ mod tests {
     use ironplc_dsl::core::SourceSpan;
 
     use super::{reserve, HeldField, HeldInstance};
-    use crate::compile::{CompileContext, UserFbTypeInfo};
-    use ironplc_container::FunctionId;
+    use crate::compile::{CompileContext, FbFieldIndex, UserFbTypeInfo};
+    use ironplc_container::{FbTypeId, FunctionId};
 
     fn block(
         ctx: &mut CompileContext,
         name: &str,
-        type_id: u16,
+        type_id: FbTypeId,
         fields: usize,
-        held: &[(u8, &str)],
+        held: &[(FbFieldIndex, &str)],
     ) {
         ctx.user_fb_types.insert(
             name.to_string(),
@@ -212,9 +218,21 @@ mod tests {
     #[test]
     fn reserve_when_block_holds_instances_to_depth_two_then_each_reserved_after_its_holder() {
         let mut ctx = CompileContext::new();
-        block(&mut ctx, "INNER", 0x1000, 2, &[]);
-        block(&mut ctx, "MIDDLE", 0x1001, 3, &[(1, "INNER")]);
-        block(&mut ctx, "OUTER", 0x1002, 4, &[(0, "MIDDLE"), (3, "INNER")]);
+        block(&mut ctx, "INNER", FbTypeId::new(0x1000), 2, &[]);
+        block(
+            &mut ctx,
+            "MIDDLE",
+            FbTypeId::new(0x1001),
+            3,
+            &[(1, "INNER")],
+        );
+        block(
+            &mut ctx,
+            "OUTER",
+            FbTypeId::new(0x1002),
+            4,
+            &[(0, "MIDDLE"), (3, "INNER")],
+        );
         ctx.data_region_offset = 100;
 
         let instances = reserve(&mut ctx, "OUTER", 64, &SourceSpan::default()).unwrap();
@@ -245,7 +263,13 @@ mod tests {
     #[test]
     fn reserve_when_held_block_has_no_layout_then_holds_none() {
         let mut ctx = CompileContext::new();
-        block(&mut ctx, "OUTER", 0x1000, 2, &[(0, "MISSING")]);
+        block(
+            &mut ctx,
+            "OUTER",
+            FbTypeId::new(0x1000),
+            2,
+            &[(0, "MISSING")],
+        );
 
         let instances = reserve(&mut ctx, "OUTER", 0, &SourceSpan::default()).unwrap();
 

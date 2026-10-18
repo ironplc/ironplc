@@ -13,6 +13,10 @@ use ironplc_dsl::{
 
 use crate::compile::CompileContext;
 
+/// A byte offset into the data region: where the run of a variable that does
+/// not fit in its slot starts.
+pub(crate) type DataOffset = u32;
+
 /// Reserves `total_bytes` of data region space and returns the offset of the
 /// start of the reserved run.
 ///
@@ -34,7 +38,7 @@ pub(crate) fn reserve(
     ctx: &mut CompileContext,
     total_bytes: u32,
     span: &SourceSpan,
-) -> Result<u32, Diagnostic> {
+) -> Result<DataOffset, Diagnostic> {
     let data_offset = ctx.data_region_offset;
 
     ctx.data_region_offset = ctx
