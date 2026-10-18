@@ -1527,8 +1527,9 @@ pub struct EnumeratedSpecificationInit {
     pub spec: EnumeratedSpecificationKind,
     pub default: Option<EnumeratedValue>,
     /// Present for the CODESYS/TwinCAT base-type suffix (`(A, B) BYTE;`).
-    /// It is accepted behind `--allow-enum-base-type` and has no other
-    /// effect: every enumeration is stored as a `DINT`.
+    /// It is accepted behind `--allow-enum-base-type`, and the analyzer
+    /// records it with the type; every enumeration is still stored as a
+    /// `DINT`.
     #[recurse(ignore)]
     pub underlying_type: Option<ElementaryTypeName>,
 }

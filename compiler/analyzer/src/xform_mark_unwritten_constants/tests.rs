@@ -205,6 +205,28 @@ END_FUNCTION_BLOCK";
     assert_eq!(UNSPECIFIED, qualifier(&library, "count"));
 }
 
+#[test]
+fn apply_when_self_ref_member_assigned_and_local_hides_field_then_field_unchanged() {
+    let program = "
+FUNCTION_BLOCK FB_Motor
+VAR
+    x : INT := 0;
+END_VAR
+METHOD Set
+VAR
+    x : INT := 5;
+END_VAR
+    THIS^.x := x;
+END_METHOD
+END_FUNCTION_BLOCK";
+    let (library, _) = parse_and_resolve_types_with_options(program, &oop_options());
+    // `THIS^.x` writes the block's `x`; the method's own `x` is only read.
+    assert_eq!(
+        vec![UNSPECIFIED, CONSTANT],
+        declaration_qualifiers(&library, "x")
+    );
+}
+
 // -----------------------------------------------------------------
 // Call arguments
 // -----------------------------------------------------------------

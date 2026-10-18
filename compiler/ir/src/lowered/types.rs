@@ -230,6 +230,10 @@ pub enum TypeKind {
     /// enumeration is operated at the operation type of a `DINT`, as the
     /// bytecode backend does today (REQ-EN-codegen-003).
     Enumeration {
+        /// The integer or bit string type its values are declared in
+        /// (REQ-LOW-ir-192), which changes neither how a backend stores nor
+        /// how it operates on the enumeration.
+        underlying: TypeId,
         values: Vec<EnumerationValue>,
     },
     /// The integers from `min` to `max` of the integer type `base`.
@@ -338,8 +342,16 @@ impl TypeTable {
             | TypeKind::BitString { .. }
             | TypeKind::Real { .. }
             | TypeKind::Temporal { .. }
-            | TypeKind::Enumeration { .. }
             | TypeKind::String(_) => Ok(()),
+            TypeKind::Enumeration { underlying, .. } => {
+                known(underlying)?;
+                match self.kind(*underlying) {
+                    Some(TypeKind::Integer { .. } | TypeKind::BitString { .. }) => Ok(()),
+                    _ => Err(format!(
+                        "enumeration underlying {underlying} is not an integer or bit string"
+                    )),
+                }
+            }
             TypeKind::Subrange { base, min, max } => {
                 known(base)?;
                 let Some(TypeKind::Integer { .. }) = self.kind(*base) else {
@@ -541,7 +553,7 @@ impl TypeTable {
     /// when `id` is not an enumeration or has no value there.
     pub fn enumeration_ordinal(&self, id: TypeId, position: usize) -> Option<i32> {
         match self.kind(id)? {
-            TypeKind::Enumeration { values } => values.get(position).map(|value| value.ordinal),
+            TypeKind::Enumeration { values, .. } => values.get(position).map(|value| value.ordinal),
             TypeKind::Bool
             | TypeKind::Integer { .. }
             | TypeKind::BitString { .. }

@@ -13,7 +13,7 @@ use crate::{Body, Lowering, StatementLowering};
 
 /// What lowering made of each top-level statement of one body: the text of
 /// the statements it lowered to, one per line, or `unsupported`, and the
-/// variables lowering allocated.
+/// variables and types lowering allocated.
 pub(crate) struct Outcome {
     pub(crate) statements: Vec<String>,
     pub(crate) variables: Vec<Variable>,
@@ -30,13 +30,15 @@ pub(crate) fn lower(source: &str, pou: &str) -> Outcome {
 /// Lowers the top-level statements of each POU of `pous`, in order, with one
 /// [`Lowering`], so that their variables share one table. A method is named
 /// `Block.Method`. The source may use `AND_THEN`, `OR_ELSE`, `CONTINUE`,
-/// explicit enumeration values, `REF_TO`, partial access (`x.%B1`),
-/// `SIZEOF`, methods and an integer literal where a bit string is expected.
+/// explicit enumeration values and base types, `REF_TO`, partial access
+/// (`x.%B1`), `SIZEOF`, methods and an integer literal where a bit string is
+/// expected.
 pub(crate) fn lower_bodies(source: &str, pous: &[&str]) -> Outcome {
     let options = CompilerOptions {
         allow_short_circuit_operators: true,
         allow_continue: true,
         allow_enum_explicit_values: true,
+        allow_enum_base_type: true,
         allow_ref_to: true,
         allow_partial_access_syntax: true,
         allow_sizeof: true,

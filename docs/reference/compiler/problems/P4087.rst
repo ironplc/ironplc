@@ -1,0 +1,49 @@
+=====
+P4087
+=====
+
+.. problem-summary:: P4087
+
+This error occurs when the value that ``SHL``, ``SHR``, ``ROL`` or ``ROR``
+shifts is a ``BOOL``.
+
+A shift or rotation moves the bits of a bit string of 8 or more bits:
+``BYTE``, ``WORD``, ``DWORD`` or ``LWORD``. A ``BOOL`` holds one bit, so
+shifting it either keeps it or clears it depending on how wide the
+implementation computes, and rotating it leaves it as it is. The value is
+reported whatever gives it the type ``BOOL``: a ``BOOL`` variable, a
+comparison, a bit access such as ``flags.3`` or a ``BOOL`` literal, passed by
+position or as ``IN :=``.
+
+Example
+-------
+
+The following code will generate error P4087:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       ready : BOOL;
+   END_VAR
+       ready := SHL(ready, 1);
+   END_PROGRAM
+
+The variable ``ready`` is a ``BOOL``, but ``SHL`` shifts a bit string of 8
+or more bits.
+
+To fix this error, shift the bit string the flag belongs to, and read the
+bit where the shift moved it:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       flags : BYTE;
+       ready : BOOL;
+   END_VAR
+       flags := SHL(flags, 1);  (* bit 0 moves to bit 1 *)
+       ready := flags.1;
+   END_PROGRAM
+
+See :doc:`/reference/standard-library/functions/shl` for the shift functions.

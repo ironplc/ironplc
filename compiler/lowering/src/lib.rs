@@ -66,6 +66,8 @@ mod test_support;
 mod tests;
 #[cfg(test)]
 mod time_tests;
+#[cfg(test)]
+mod types_tests;
 
 use std::collections::HashMap;
 

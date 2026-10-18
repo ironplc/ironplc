@@ -630,6 +630,18 @@ does a `CASE` label naming one. Every enumeration operates as a `DINT`, and
 analysis reports an ordinal outside its range (P2044, REQ-EN-codegen-084), so
 each ordinal fits one; lowering reports one that does not as P9998.
 
+An enumeration's entry also names its underlying type: the integer or bit
+string type its declaration names for its values (`(A, B) WORD`, behind
+`--allow-enum-base-type`), or `INT` when it names none, as in CODESYS and
+TwinCAT. It is part of the language rather than a layout, and it changes
+neither how a backend stores an enumeration nor how it operates on one.
+
+**REQ-LOW-ir-192** An enumeration's entry names its underlying type, an
+integer or bit string type in the table.
+
+**REQ-LOW-lowering-190** An enumeration's underlying type is the type its
+declaration names, or `INT` when it names none.
+
 **REQ-LOW-lowering-027** The type table holds no size, offset or slot count,
 and refers to the type of every field, element, enumeration, subrange and
 reference target by its `TypeId`.
@@ -1652,6 +1664,14 @@ an instance it cannot reach, such as one declared inside a function block,
 stays on it. A method's outputs, strings included, are read from the
 method's own variables, as a function's are, and a method's body is asked
 for its statements as any other body is.
+
+`METHOD_CALL` names how many of the block's fields it copies in and out by a
+byte. The route that reads the AST truncates the count of a block with more
+fields, so the method runs on the wrong ones.
+
+**REQ-LOW-codegen-191** The bytecode backend reports a call of a method of a
+block with more than 255 fields as P9997, a limit of its format, and does not
+leave the call to the route that reads the AST.
 
 A call of a method the receiver's block inherits is a call of the method of
 the block that declares it, as the analyzer resolves it (ADR-0041), with a

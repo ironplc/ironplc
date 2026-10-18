@@ -135,6 +135,7 @@ P4067,InterfaceMemberMissing,Function block does not provide a member of an inte
 P4068,InterfaceMemberMismatch,Function block member differs from the interface member it implements
 P4070,ImplementsNotInterface,IMPLEMENTS names a type that is not a declared interface
 P4072,ConditionTypeInvalid,Condition of IF or ELSIF or WHILE or REPEAT is not BOOL
+P4074,SelfReferenceWithoutTarget,THIS^ outside a function block or SUPER^ without a base type
 P2038,DateLiteralOutOfRange,Date literal is outside the range the date type can represent
 P2039,DurationLiteralOutOfRange,Duration literal is outside the range the duration type can represent
 P2040,RealLiteralOutOfRange,Real literal is outside the range the real type can represent
@@ -153,3 +154,4 @@ P4083,NegatedOutputNotBool,Negated output assignment requires an output of type 
 P4084,FieldNotFound,Field is not declared on the structure or function block or any function block in its EXTENDS chain
 P4085,ArraySubscriptCountMismatch,Number of subscripts does not match the number of array dimensions
 P4086,ArraySubscriptBool,Array subscript is a BOOL rather than an integer
+P4087,BitShiftInputBool,Shift or rotate input is a BOOL rather than a multi-bit bit string

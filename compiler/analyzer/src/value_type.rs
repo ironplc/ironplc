@@ -420,6 +420,7 @@ mod tests {
             &mut types,
             SemanticType::Enumeration {
                 members: crate::enumeration_members::EnumerationMembers::default(),
+                underlying_type: None,
             },
         );
 
@@ -435,6 +436,7 @@ mod tests {
             &color,
             TypeAttributes::new(SemanticType::Enumeration {
                 members: crate::enumeration_members::EnumerationMembers::default(),
+                underlying_type: None,
             }),
         );
         let named = types.id_of(&color).unwrap();
