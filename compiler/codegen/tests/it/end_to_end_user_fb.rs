@@ -216,3 +216,83 @@ END_PROGRAM
 ",
     &[("result", 14)],
 );
+
+/// A block of `fields` fields: `fields - 1` `DINT` inputs and the output
+/// `q`, one more than the last input. The program calls two instances with
+/// different last inputs and reads both outputs.
+fn wide_block_called(fields: usize) -> String {
+    let last = fields - 2;
+    let others: String = (0..last).map(|i| format!("f{i} : DINT; ")).collect();
+    format!(
+        "FUNCTION_BLOCK Wide
+           VAR_INPUT {others}f{last} : DINT; END_VAR
+           VAR_OUTPUT q : DINT; END_VAR
+           q := f{last} + 1;
+         END_FUNCTION_BLOCK
+         PROGRAM main
+           VAR w : Wide; v : Wide; r : DINT; s : DINT; END_VAR
+           w(f{last} := 7);
+           v(f{last} := 40);
+           r := w.q;
+           s := v.q;
+         END_PROGRAM"
+    )
+}
+
+/// REQ-LOW-codegen-191: a call of a block of 255 fields, as many as `FB_CALL`
+/// counts, copies every field in and out, by both routes.
+#[test]
+fn run_when_block_with_255_fields_called_then_every_field_copied() {
+    let container = crate::common::parse_and_compile_to_run(
+        &wide_block_called(255),
+        &CompilerOptions::default(),
+    );
+    let snapshot = crate::common::Snapshot::run_compiled(container);
+    assert_eq!(snapshot.read_as::<i32>("r"), 8);
+    assert_eq!(snapshot.read_as::<i32>("s"), 41);
+}
+
+/// REQ-LOW-codegen-191: a block of more than 255 fields is P9997, a limit of
+/// the bytecode format, on both routes. Before, both routes compiled it, and
+/// a call copied only the low byte of its field count: 0 fields for 256.
+#[test]
+fn compile_when_block_with_more_than_255_fields_then_p9997() {
+    for fields in [256, 300] {
+        let result = crate::common::try_parse_and_compile(
+            &wide_block_called(fields),
+            &CompilerOptions::default(),
+        );
+        assert_eq!(
+            result.err().map(|diagnostic| diagnostic.code),
+            Some("P9997".to_string()),
+            "{fields} fields"
+        );
+    }
+}
+
+/// REQ-LOW-codegen-191: a block's inputs, outputs and internal variables
+/// all count toward the limit, and an instance is enough to report it, even
+/// one the program never calls. (A block no program reaches is not compiled,
+/// so it is not reported.)
+#[test]
+fn compile_when_block_with_256_fields_of_each_kind_declared_then_p9997() {
+    let inputs: String = (0..100).map(|i| format!("a{i} : DINT; ")).collect();
+    let outputs: String = (0..100).map(|i| format!("b{i} : DINT; ")).collect();
+    let locals: String = (0..56).map(|i| format!("c{i} : DINT; ")).collect();
+    let source = format!(
+        "FUNCTION_BLOCK Wide
+           VAR_INPUT {inputs}END_VAR
+           VAR_OUTPUT {outputs}END_VAR
+           VAR {locals}END_VAR
+         END_FUNCTION_BLOCK
+         PROGRAM main
+           VAR w : Wide; r : DINT; END_VAR
+           r := 1;
+         END_PROGRAM"
+    );
+    let result = crate::common::try_parse_and_compile(&source, &CompilerOptions::default());
+    assert_eq!(
+        result.err().map(|diagnostic| diagnostic.code),
+        Some("P9997".to_string())
+    );
+}
