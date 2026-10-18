@@ -323,10 +323,16 @@ impl Lowering<'_> {
                 };
                 self.program.read_str(place, span).map(Some)
             }
-            // A string a reference refers to and a method's string result
-            // are not lowered yet.
-            AstExprKind::Deref(_)
-            | AstExprKind::MethodCall(_)
+            // The string a reference variable refers to, and `REF(s)^`, a
+            // read of `s` (REQ-LOW-lowering-188).
+            AstExprKind::Deref(reference) => {
+                let Some(place) = self.dereferenced_place(frame, reference, &span)? else {
+                    return Ok(None);
+                };
+                self.program.read_str(place, span).map(Some)
+            }
+            // A method's string result is not lowered yet.
+            AstExprKind::MethodCall(_)
             | AstExprKind::Compare(_)
             | AstExprKind::BinaryOp(_)
             | AstExprKind::UnaryOp(_)

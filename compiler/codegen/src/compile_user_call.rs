@@ -188,8 +188,8 @@ pub(crate) fn emit_reference(
     if let Some(ref_slot) = ctx.in_out_ref_slot(name) {
         emitter.emit_load_var_i64(ref_slot);
     } else {
-        let var_index = ctx.var_index(name)?;
-        let pool_index = ctx.add_i64_constant(var_index.into());
+        let reference = crate::compile_reference::reference_to(ctx, name)?;
+        let pool_index = ctx.add_i64_constant(reference as i64);
         emitter.emit_load_const_i64(pool_index);
     }
     Ok(())
