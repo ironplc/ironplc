@@ -8,16 +8,22 @@ use ironplc_parser::options::CompilerOptions;
 use crate::common::{bc, compile_by_route, parse, Snapshot};
 
 /// Three statements lowering supports, the function's and two of the
-/// program's, and one it does not yet: a shift of a `BOOL`, which the route
-/// that reads the AST compiles.
+/// program's, and one it does not yet: an instance stored from a function
+/// block's output, which the route that reads the AST compiles.
 const SOURCE: &str = "
 FUNCTION One : DINT
   One := 1;
 END_FUNCTION
+FUNCTION_BLOCK Inner
+  VAR_INPUT v : DINT; END_VAR
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK Outer
+  VAR_OUTPUT ob : Inner; END_VAR
+END_FUNCTION_BLOCK
 PROGRAM main
-  VAR a : DINT; b : BOOL; END_VAR
+  VAR a : DINT; f : Inner; g : Outer; END_VAR
   a := a + One();
-  b := SHL(b, 1);
+  g(ob => f);
   a := a * 2;
 END_PROGRAM
 ";

@@ -153,3 +153,4 @@ P4083,NegatedOutputNotBool,Negated output assignment requires an output of type 
 P4084,FieldNotFound,Field is not declared on the structure or function block or any function block in its EXTENDS chain
 P4085,ArraySubscriptCountMismatch,Number of subscripts does not match the number of array dimensions
 P4086,ArraySubscriptBool,Array subscript is a BOOL rather than an integer
+P4087,BitShiftInputBool,Shift or rotate input is a BOOL rather than a multi-bit bit string

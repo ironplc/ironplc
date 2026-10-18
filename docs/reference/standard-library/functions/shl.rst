@@ -24,8 +24,7 @@ Signature
      END_VAR
    END_FUNCTION
 
-The return type matches the type of *IN*. ``SHL`` accepts ``BYTE``,
-``WORD``, ``DWORD``, ``LWORD`` for *IN*; *N* is ``INT``.
+.. include:: ../../../includes/bit-shift-input-types.rst
 
 .. rubric:: Inputs
 

@@ -515,8 +515,9 @@ fn compare_op(op: &CompareOp) -> Option<LoweredCompareOp> {
 /// The shift or rotate `shift` of a bit string operated at `operated` and
 /// `width` bits wide.
 fn shift_intrinsic(shift: BitShift, operated: ScalarType, width: u8) -> Option<Intrinsic> {
-    // A bit string operates as an unsigned integer. A shift of a `BOOL`, or
-    // of an integer the analyzer let through, is not lowered.
+    // A bit string operates as an unsigned integer. The analyzer rejects a
+    // shift of a `BOOL` (P4087); one of an integer it let through is not
+    // lowered.
     let wide = match operated {
         ScalarType::I32(Signedness::Unsigned) => false,
         ScalarType::I64(Signedness::Unsigned) => true,
