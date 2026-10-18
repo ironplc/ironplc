@@ -1,0 +1,51 @@
+=====
+P4092
+=====
+
+.. problem-summary:: P4092
+
+This error occurs when a function, a method or a property accessor declares
+an ``R_EDGE`` or ``F_EDGE`` input.
+
+An edge input is ``TRUE`` for the one call at which its value changes from
+``FALSE`` to ``TRUE`` (``R_EDGE``) or from ``TRUE`` to ``FALSE``
+(``F_EDGE``). Detecting the change means comparing the value with the one the
+input had at the previous call, so the input needs memory that lasts from one
+call to the next. A function block instance keeps its variables between calls;
+a function, a method and a property accessor do not, so an edge input of theirs
+has no previous value to compare with. Every dialect reports it.
+
+Example
+-------
+
+The following code will generate error P4092:
+
+.. code-block::
+
+   FUNCTION Pressed : BOOL
+   VAR_INPUT
+       button : BOOL R_EDGE;
+   END_VAR
+       Pressed := button;
+   END_FUNCTION
+
+The function ``Pressed`` declares the edge input ``button``, but a function
+does not remember the value ``button`` had at the previous call.
+
+To fix this error, detect the edge in a function block, whose instance keeps
+the previous value:
+
+.. code-block::
+
+   FUNCTION_BLOCK Pressed
+   VAR_INPUT
+       button : BOOL R_EDGE;
+   END_VAR
+   VAR_OUTPUT
+       pressed : BOOL;
+   END_VAR
+       pressed := button;
+   END_FUNCTION_BLOCK
+
+The standard function blocks ``R_TRIG`` and ``F_TRIG`` detect an edge too,
+and an instance of either can be called from any function block or program.
