@@ -3,6 +3,7 @@ use ironplc_analyzer::extractors::{
     TypeSymbolView, VariableDirection, VariableSymbol,
 };
 use ironplc_analyzer::SemanticContext;
+use ironplc_dsl::common::LocationPrefix;
 use ironplc_dsl::core::FileId;
 use ironplc_project::project::{MemoryBackedProject, Project};
 use schemars::JsonSchema;
@@ -230,7 +231,7 @@ fn map_variable(context: &SemanticContext, var: &VariableSymbol<'_>) -> Variable
         .info
         .address
         .as_ref()
-        .is_some_and(|a| a.starts_with("%I"));
+        .is_some_and(|addr| addr.location == LocationPrefix::I);
     VariableInfo {
         name: var.name.to_string(),
         type_name: context
@@ -238,7 +239,7 @@ fn map_variable(context: &SemanticContext, var: &VariableSymbol<'_>) -> Variable
             .map(|t| t.to_string())
             .unwrap_or_default(),
         direction: direction.as_str().to_string(),
-        address: var.info.address.clone(),
+        address: var.info.address_text(),
         external,
     }
 }

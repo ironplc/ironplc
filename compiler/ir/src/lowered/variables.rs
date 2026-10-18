@@ -10,7 +10,7 @@ use ironplc_dsl::diagnostic::Diagnostic;
 use super::call::Param;
 use super::ids::{PouId, Stamp, TypeId, VarId};
 use super::invariant::broken;
-use super::types::{Nullability, TypeKind, TypeTable};
+use super::types::{DirectAddress, Nullability, Retention, Section, TypeKind, TypeTable};
 use crate::execution::DebugName;
 
 /// What a variable belongs to.
@@ -20,12 +20,35 @@ pub enum Owner {
     Pou(PouId),
 }
 
+/// What a variable's declaration says of it besides its name, owner and
+/// type: the section that declares it, its direct address and its
+/// retention.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Declared {
+    pub section: Section,
+    pub location: Option<DirectAddress>,
+    pub retention: Retention,
+}
+
+impl Declared {
+    /// A variable of `section` with no direct address and no retention, such
+    /// as a temporary lowering makes or the instance parameter of a body.
+    pub fn in_section(section: Section) -> Self {
+        Self {
+            section,
+            location: None,
+            retention: Retention::None,
+        }
+    }
+}
+
 /// A variable of the lowered program that is not a field: a global, a
 /// parameter, a local, a `VAR_TEMP`, or the instance parameter of a body.
 #[derive(Clone, Debug)]
 pub struct Variable {
     name: DebugName,
     owner: Owner,
+    declared: Declared,
     ty: TypeId,
 }
 
@@ -38,6 +61,19 @@ impl Variable {
 
     pub fn owner(&self) -> Owner {
         self.owner
+    }
+
+    pub fn section(&self) -> Section {
+        self.declared.section
+    }
+
+    /// The direct address its declaration gives it, if any.
+    pub fn location(&self) -> Option<&DirectAddress> {
+        self.declared.location.as_ref()
+    }
+
+    pub fn retention(&self) -> Retention {
+        self.declared.retention
     }
 
     pub fn ty(&self) -> TypeId {
@@ -62,13 +98,15 @@ impl VariableTable {
         }
     }
 
-    /// Adds a variable named `name`, owned by `owner`, of the type `ty`,
-    /// which must be in `types` (REQ-LOW-lowering-026).
+    /// Adds a variable named `name`, owned by `owner`, declared as
+    /// `declared` says, of the type `ty`, which must be in `types`
+    /// (REQ-LOW-lowering-026).
     pub(crate) fn push(
         &mut self,
         types: &TypeTable,
         name: DebugName,
         owner: Owner,
+        declared: Declared,
         ty: TypeId,
     ) -> Result<VarId, Diagnostic> {
         if types.get(ty).is_none() {
@@ -79,7 +117,12 @@ impl VariableTable {
             ));
         }
         let id = VarId::new(self.stamp, self.variables.len() as u32);
-        self.variables.push(Variable { name, owner, ty });
+        self.variables.push(Variable {
+            name,
+            owner,
+            declared,
+            ty,
+        });
         Ok(id)
     }
 
