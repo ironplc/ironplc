@@ -24,12 +24,14 @@ use crate::execution::DebugName;
 /// Builds one lowered program.
 #[derive(Clone, Debug)]
 pub struct ProgramBuilder {
-    stamp: Stamp,
+    pub(super) stamp: Stamp,
     /// How many loops the builder has opened.
     loops: u32,
-    types: TypeTable,
-    variables: VariableTable,
-    pous: PouTable,
+    pub(super) types: TypeTable,
+    pub(super) variables: VariableTable,
+    pub(super) pous: PouTable,
+    /// The statements of `init`, in order (see [`super::Program`]).
+    pub(super) init: Vec<Stmt>,
 }
 
 impl Default for ProgramBuilder {
@@ -48,6 +50,7 @@ impl ProgramBuilder {
             types: TypeTable::new(stamp),
             variables: VariableTable::new(stamp),
             pous: PouTable::new(stamp),
+            init: Vec::new(),
         }
     }
 
