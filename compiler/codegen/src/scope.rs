@@ -21,7 +21,7 @@ use crate::compile_struct::StructVarInfo;
 /// These are the same collections, with the same key and value types, as the
 /// fields of the same names on [`CompileContext`]; [`CompileContext::swap_scope`]
 /// moves a whole `Scope` in and out of them.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct Scope {
     /// Maps variable identifiers to their variable table indices.
     pub(crate) variables: HashMap<Id, VarIndex>,

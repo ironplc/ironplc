@@ -52,7 +52,7 @@ use ironplc_container::{
 pub(crate) use ironplc_container::{string_region_size, DEFAULT_STRING_MAX_LENGTH};
 use ironplc_dsl::common::{
     FunctionBlockDeclaration, FunctionDeclaration, LibraryElementKind, ProgramDeclaration,
-    StringType, VarDecl, VariableType,
+    StringType, VarDecl,
 };
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -67,6 +67,8 @@ use crate::emit::Emitter;
 use crate::held_instances::{HeldField, HeldInstance};
 
 use super::compile_fn::{compile_user_function, compile_user_function_block};
+use super::compile_method::compile_user_method;
+use super::layout::BlockLayout;
 use ironplc_ir::execution::SystemGlobal;
 
 use super::compile_setup::emit_initial_values;
@@ -539,132 +541,12 @@ fn compile_program_with_functions(
     crate::layout::lay_out_globals(&mut ctx, &mut builder, system_globals, global_vars, types)?;
     let num_globals = ctx.variables.len() as u16;
 
-    // Pre-scan user-defined FB declarations to register type metadata
-    // (field indices, field op types, type IDs) before the program's
-    // variables are laid out, so that its user-defined FB instances resolve.
-    // The actual FB body compilation happens after program-local variables are
-    // assigned, once var_offsets are known.
-    let mut compiled_fb_bodies: Vec<CompiledFunction> = Vec::new();
-
-    for (next_function_id, fb_decl) in (2_u16..).zip(fb_decls.iter()) {
-        let fb_name = fb_decl.name.name.to_string().to_uppercase();
-        let mut field_indices: HashMap<String, u8> = HashMap::new();
-        let mut field_types: HashMap<String, VarTypeInfo> = HashMap::new();
-        let mut held_fields = Vec::new();
-        let mut field_decls_tmp: Vec<&VarDecl> = Vec::new();
-
-        for decl in &fb_decl.variables {
-            if decl.var_type == VariableType::Input {
-                field_decls_tmp.push(decl);
-            }
-        }
-        for decl in &fb_decl.variables {
-            if decl.var_type == VariableType::Output {
-                field_decls_tmp.push(decl);
-            }
-        }
-        for decl in &fb_decl.variables {
-            if decl.var_type == VariableType::Var {
-                field_decls_tmp.push(decl);
-            }
-        }
-        // `FB_CALL` and `METHOD_CALL` count a block's fields, and
-        // `FB_LOAD_PARAM` and `FB_STORE_PARAM` name one, by a byte, so a
-        // block with more fields is a limit of the format (P9997).
-        if field_decls_tmp.len() > MAX_USER_FB_FIELDS {
-            return Err(Diagnostic::not_supported(Label::span(
-                fb_decl.name.name.span(),
-                format!("Function block with more than {MAX_USER_FB_FIELDS} fields"),
-            ))
-            .with_context("fields", &field_decls_tmp.len().to_string()));
-        }
-        for (i, decl) in field_decls_tmp.iter().enumerate() {
-            if let Some(id) = decl.identifier.symbolic_id() {
-                let name = id.to_string().to_lowercase();
-                // At most `MAX_USER_FB_FIELDS` fields, so the index fits.
-                let index = i as FbFieldIndex;
-                field_indices.insert(name.clone(), index);
-                // A field is operated and stored at its declared type,
-                // whatever kind of declaration declares it: a subrange at its
-                // base type.
-                let field_type =
-                    crate::type_info::decl_type_info(&ctx, decl).unwrap_or(DEFAULT_VAR_TYPE_INFO);
-                field_types.insert(name.clone(), field_type);
-                if let Some(block) = crate::held_instances::held_block(types, decl) {
-                    held_fields.push(HeldField { name, index, block });
-                }
-            }
-        }
-
-        let type_id = ctx.next_user_fb_type_id;
-        ctx.next_user_fb_type_id = FbTypeId::new(type_id.raw() + 1);
-        ctx.user_fb_types.insert(
-            fb_name,
-            UserFbTypeInfo {
-                type_id,
-                num_fields: field_decls_tmp.len(),
-                field_indices,
-                function_id: FunctionId::new(next_function_id),
-                var_offset: 0, // updated after program vars are assigned
-                field_types,
-                held_fields,
-                methods: HashMap::new(),
-            },
-        );
-    }
-
-    // Pre-scan METHOD declarations (OOP extension, ADR-0041 Phase 1) to
-    // register their function IDs, parameter shapes, and return-value
-    // presence -- all knowable from the AST alone, same reasoning as the
-    // FB pre-scan above. Method function IDs continue the sequence after
-    // every FB body and every user FUNCTION, so they must be registered
-    // only after both counts are known; `param_var_off`/`max_stack_depth`
-    // stay `0` until the method is actually compiled (mirrors
-    // `UserFbTypeInfo::var_offset`).
-    let mut next_method_function_id = 2_u16 + fb_decls.len() as u16 + func_decls.len() as u16;
-    for fb_decl in fb_decls.iter() {
-        let fb_name = fb_decl.name.name.to_string().to_uppercase();
-        for method in &fb_decl.methods {
-            let method_name = method.name.to_string().to_lowercase();
-            let mut params: Vec<UserMethodParam> = Vec::new();
-            for decl in &method.variables {
-                if !decl.var_type.is_input_compatible() {
-                    continue;
-                }
-                if let Some(id) = decl.identifier.symbolic_id() {
-                    // A string's passing is known once the method is
-                    // compiled, which gives the string its storage.
-                    let passing = match decl.var_type {
-                        VariableType::InOut => ParamPassing::Reference,
-                        _ => ParamPassing::Value,
-                    };
-                    params.push(UserMethodParam {
-                        name: id.clone(),
-                        passing,
-                    });
-                }
-            }
-
-            let function_id = FunctionId::new(next_method_function_id);
-            next_method_function_id += 1;
-
-            if let Some(fb_info) = ctx.user_fb_types.get_mut(&fb_name) {
-                fb_info.methods.insert(
-                    method_name,
-                    UserMethodInfo {
-                        function_id,
-                        param_var_off: 0, // updated once the method is compiled
-                        num_params: params.len() as u16,
-                        params,
-                        has_return_value: method.return_type.is_some(),
-                        max_stack_depth: 0, // updated once the method is compiled
-                        outputs: HashMap::new(), // set once the method is compiled
-                        string_outputs: HashMap::new(), // set once the method is compiled
-                    },
-                );
-            }
-        }
-    }
+    // Register each user-defined FB type and its methods (field indices,
+    // field op types, type IDs, method function IDs) before the program's
+    // variables are laid out, so that its user-defined FB instances
+    // resolve. The FB copy slots are laid out after the functions', once
+    // their var_offsets are known.
+    crate::layout::lay_out_block_types(&mut ctx, fb_decls, func_decls.len() as u16, types)?;
 
     // Lay out the program's variables (indices G..N), now that the
     // user-defined FB types are known.
@@ -701,53 +583,50 @@ fn compile_program_with_functions(
         var_offset = VarIndex::new(var_offset.raw() + layout.num_locals);
         function_layouts.push(layout);
     }
-    for (func_decl, layout) in func_decls.iter().zip(function_layouts) {
-        compiled_functions.push(compile_user_function(func_decl, layout, &mut ctx)?);
-    }
 
-    let mut compiled_methods: Vec<CompiledFunction> = Vec::new();
+    // Lay out each FB's copy slots and its METHODs' variables (OOP
+    // extension, ADR-0041 Phase 1), after the functions'.
+    let mut block_layouts = Vec::with_capacity(fb_decls.len());
     for fb_decl in fb_decls {
-        let fb_name = fb_decl.name.name.to_string().to_uppercase();
-        let field_var_off = var_offset.raw();
-
-        // Update the var_offset in the registered type info.
-        let fb_type = ctx.user_fb_types.get_mut(&fb_name).ok_or_else(|| {
-            Diagnostic::internal_error_at(Label::span(
-                fb_decl.name.span(),
-                "Function block was not registered before its body was compiled",
-            ))
-        })?;
-        let fb_func_id = fb_type.function_id;
-        fb_type.var_offset = field_var_off;
-
-        let (compiled, program_scope) = compile_user_function_block(
+        block_layouts.push(crate::layout::lay_out_block(
             fb_decl,
-            fb_func_id,
-            field_var_off,
+            &mut var_offset,
             &mut ctx,
             &mut builder,
             types,
             num_globals,
-        )?;
-        var_offset = VarIndex::new(var_offset.raw() + compiled.num_locals);
-        compiled_fb_bodies.push(compiled);
+        )?);
+    }
 
-        // Compile this type's methods (OOP extension, ADR-0041 Phase 1)
-        // while `ctx.variables` still holds this type's field mappings
-        // (that's the whole reason `compile_user_function_block` didn't
-        // restore them itself -- see its doc comment).
-        let methods = crate::compile_method::compile_user_fb_methods(
+    // Every body is laid out; compile the functions' bodies, then each FB's
+    // body followed by its METHODs'.
+    for (func_decl, layout) in func_decls.iter().zip(function_layouts) {
+        compiled_functions.push(compile_user_function(func_decl, layout, &mut ctx)?);
+    }
+    let mut compiled_fb_bodies: Vec<CompiledFunction> = Vec::new();
+    let mut compiled_methods: Vec<CompiledFunction> = Vec::new();
+    for (fb_decl, layout) in fb_decls.iter().zip(block_layouts) {
+        let BlockLayout {
+            function_id,
+            scope,
+            num_locals,
+            methods,
+        } = layout;
+        compiled_fb_bodies.push(compile_user_function_block(
             fb_decl,
-            &fb_name,
-            field_var_off,
-            &mut var_offset,
+            function_id,
+            scope,
+            num_locals,
             &mut ctx,
-            types,
-        )?;
-        compiled_methods.extend(methods);
-
-        // Now restore the program-level view for the next FB type.
-        ctx.swap_scope(program_scope);
+        )?);
+        for (method, layout) in fb_decl.methods.iter().zip(methods) {
+            compiled_methods.push(compile_user_method(
+                &fb_decl.name.name,
+                method,
+                layout,
+                &mut ctx,
+            )?);
+        }
     }
 
     let total_variables = var_offset;
@@ -1138,8 +1017,8 @@ pub(crate) struct UserMethodInfo {
     pub(crate) function_id: FunctionId,
     /// Variable table offset where this method's own param/local slots
     /// start (immediately after the owning type's field region, or after
-    /// a previously-compiled sibling method's own region). `0` until the
-    /// method is actually compiled.
+    /// a previously laid out sibling method's own region). `0` until the
+    /// block is laid out.
     pub(crate) param_var_off: u16,
     /// Number of VAR_INPUT/VAR_IN_OUT parameters, in declaration order.
     pub(crate) num_params: u16,
@@ -1147,16 +1026,12 @@ pub(crate) struct UserMethodInfo {
     /// a call's normal form names them in.
     pub(crate) params: Vec<UserMethodParam>,
     pub(crate) has_return_value: bool,
-    /// Max operand-stack depth used by the method body. `0` until the
-    /// method is actually compiled; used for the scan function's
-    /// worst-case stack accounting, same as `max_fb_body_stack`.
-    pub(crate) max_stack_depth: u16,
     /// The slot of each `VAR_OUTPUT`, which a call reads its outputs from
-    /// after the method returns. Empty until the method is compiled.
+    /// after the method returns. Empty until the block is laid out.
     pub(crate) outputs: HashMap<Id, VarIndex>,
     /// Where in the data region each `STRING` or `WSTRING` `VAR_OUTPUT`
     /// is, which a call the lowered route compiles reads it from after the
-    /// method returns. Empty until the method is compiled.
+    /// method returns. Empty until the block is laid out.
     pub(crate) string_outputs: HashMap<Id, StringVarInfo>,
 }
 
@@ -1250,15 +1125,16 @@ pub(crate) struct CompileContext {
     pub(crate) debug_source_files: crate::source_lookup::SourceFileRegistry,
     /// Maps user-defined function name (lowercase) to compilation metadata.
     pub(crate) user_functions: HashMap<String, UserFunctionInfo>,
-    /// The most a call of each user function adds to its caller's stack:
-    /// the deepest its body's stack goes, known once the body is compiled.
+    /// The most a call of each user function or method adds to its
+    /// caller's stack: the deepest its body's stack goes, known once the
+    /// body is compiled.
     pub(crate) function_stack_depths: HashMap<FunctionId, u16>,
     /// Maps user-defined FB type name (uppercase) to compilation metadata.
     pub(crate) user_fb_types: HashMap<String, UserFbTypeInfo>,
     /// Maps standard FB type name (uppercase) to the block it is.
     pub(crate) standard_blocks: HashMap<String, StandardFunctionBlock>,
     /// Next available type ID for user-defined function blocks.
-    next_user_fb_type_id: FbTypeId,
+    pub(crate) next_user_fb_type_id: FbTypeId,
     /// When compiling a function body that returns a value, describes how an
     /// early `RETURN` statement should produce the return value before the
     /// `RET` opcode. `None` for programs and FBs (RETURN emits `RET_VOID`).
@@ -1457,10 +1333,11 @@ impl CompileContext {
         self.user_functions.get(name)
     }
 
-    /// The most a call at `span` of the user function `function_id` adds to
-    /// its caller's stack. A function's body is compiled before the body of
-    /// any POU that calls it, since the library lists a function before its
-    /// callers.
+    /// The most a call at `span` of the user function or method
+    /// `function_id` adds to its caller's stack. A function's body is
+    /// compiled before the body of any POU that calls it, since the library
+    /// lists a function before its callers, and a method is called only from
+    /// the program's body, which is compiled last.
     pub(crate) fn function_stack_depth(
         &self,
         function_id: FunctionId,

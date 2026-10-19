@@ -5,7 +5,7 @@
 //! Separated from compile.rs to keep module sizes within the 1000-line guideline.
 
 use ironplc_container::debug_section::{iec_type_tag, VarNameEntry};
-use ironplc_container::{ContainerBuilder, FunctionId, VarIndex};
+use ironplc_container::{FunctionId, VarIndex};
 use ironplc_dsl::common::{
     FunctionBlockDeclaration, FunctionDeclaration, InitialValueAssignmentKind, StringInitializer,
     VarDecl, VariableType,
@@ -25,7 +25,7 @@ use super::compile_setup::emit_function_local_prologue;
 use super::compile_stmt::{compile_body, compile_statements, resolve_string_max_length};
 use super::layout::{debug_type_for_decl, map_var_section, FunctionLayout};
 use super::scope::Scope;
-use super::type_info::{decl_type_info, resolve_type_name};
+use super::type_info::resolve_type_name;
 use crate::emit::Emitter;
 
 /// Reserves the run of the data region the string variable `id`, which
@@ -233,80 +233,19 @@ pub(crate) fn compile_user_function(
     })
 }
 
-/// Compiles a single user-defined function block body.
-///
-/// Saves and restores the context's variable mappings so that FB-local
-/// variables don't interfere with the program's namespace.
-///
-/// All FB fields (VAR_INPUT, VAR_OUTPUT, VAR) are mapped to contiguous
-/// variable table slots starting at `var_offset`, in declaration order.
-/// The VM's copy-in/copy-out logic mirrors this ordering.
+/// Compiles the body of the user function block `fb_decl`, whose id is
+/// `function_id` and whose `num_locals` copy slots the layout gave it,
+/// against the block's own variable mappings, `scope`; the program's are
+/// put back once the body is compiled.
 pub(crate) fn compile_user_function_block(
     fb_decl: &FunctionBlockDeclaration,
     function_id: FunctionId,
-    var_offset: u16,
+    scope: Scope,
+    num_locals: u16,
     ctx: &mut CompileContext,
-    builder: &mut ContainerBuilder,
-    types: &TypeEnvironment,
-    num_globals: u16,
-) -> Result<(CompiledFunction, Scope), Diagnostic> {
+) -> Result<CompiledFunction, Diagnostic> {
     let fb_name = fb_decl.name.name.to_string().to_uppercase();
-
-    // Collect fields in a stable order: inputs first, then outputs, then locals.
-    // This matches the data-region layout used by the VM's copy-in/copy-out.
-    let mut field_decls: Vec<&VarDecl> = Vec::new();
-    for decl in &fb_decl.variables {
-        if decl.var_type == VariableType::Input {
-            field_decls.push(decl);
-        }
-    }
-    for decl in &fb_decl.variables {
-        if decl.var_type == VariableType::Output {
-            field_decls.push(decl);
-        }
-    }
-    for decl in &fb_decl.variables {
-        if decl.var_type == VariableType::Var {
-            field_decls.push(decl);
-        }
-    }
-
-    // Swap the program's variable mappings for the FB type's own.
-    let program_scope = ctx.swap_scope(Scope::default());
-    ctx.swap_scope(Scope::for_fb_body(&program_scope, num_globals));
-
-    // Assign variable slots for all FB fields, in the same order as field_decls.
-    let mut current_index = VarIndex::new(var_offset);
-    for decl in &field_decls {
-        if let Some(id) = decl.identifier.symbolic_id() {
-            ctx.variables.insert(id.clone(), current_index);
-            push_local_var_name(ctx, current_index, function_id, decl, id, types);
-            // A field operates at its declared type, as a function's local
-            // does.
-            if let Some(type_info) = decl_type_info(ctx, decl) {
-                ctx.var_types.insert(id.clone(), type_info);
-            }
-            match &decl.initializer {
-                InitialValueAssignmentKind::Reference(ref_init) => {
-                    crate::compile_reference::register_reference_variable(
-                        ctx,
-                        builder,
-                        types,
-                        id,
-                        current_index,
-                        ref_init,
-                    )?;
-                }
-                InitialValueAssignmentKind::String(string_init) => {
-                    register_string_variable(ctx, id, string_init)?;
-                }
-                _ => {}
-            }
-            current_index = VarIndex::new(current_index.raw() + 1);
-        }
-    }
-
-    let num_locals = current_index.raw() - var_offset;
+    let program_scope = ctx.swap_scope(scope);
 
     // Compile the FB body.
     // Mark this FB's body as the current caller so nested CALL / FB_CALL
@@ -327,25 +266,17 @@ pub(crate) fn compile_user_function_block(
 
     let finalized = finalize_function(&mut fb_emitter, ctx)?;
 
-    // Note: `ctx`'s variable mappings are intentionally NOT restored
-    // here (unlike `compile_user_function`). This type's METHODs (OOP
-    // extension, ADR-0041 Phase 1) are compiled next, right after this
-    // function returns, and need `ctx.variables` to still hold this
-    // type's field mappings for `self` access. The program-level scope is
-    // returned instead, and the caller (`compile_program_with_functions`)
-    // swaps it back in once both this body and its methods are compiled.
+    // Restore the program's variable mappings.
+    ctx.swap_scope(program_scope);
 
-    Ok((
-        CompiledFunction {
-            function_id,
-            bytecode: finalized.bytecode,
-            max_stack_depth: finalized.max_stack_depth,
-            max_temp_depth: finalized.max_temp_depth,
-            num_locals,
-            num_params: 0,
-            name: fb_name,
-            line_map: finalized.line_map,
-        },
-        program_scope,
-    ))
+    Ok(CompiledFunction {
+        function_id,
+        bytecode: finalized.bytecode,
+        max_stack_depth: finalized.max_stack_depth,
+        max_temp_depth: finalized.max_temp_depth,
+        num_locals,
+        num_params: 0,
+        name: fb_name,
+        line_map: finalized.line_map,
+    })
 }

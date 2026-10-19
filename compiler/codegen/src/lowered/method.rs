@@ -44,7 +44,6 @@ pub(super) struct MethodSite {
     param_var_off: VarIndex,
     num_params: u16,
     pub(super) has_return_value: bool,
-    max_stack_depth: u16,
     /// How a call passes each input, in order.
     params: Vec<ParamPassing>,
     /// The slot of each output.
@@ -102,7 +101,6 @@ pub(super) fn method_site(
         param_var_off: VarIndex::new(method.param_var_off),
         num_params: method.num_params,
         has_return_value: method.has_return_value,
-        max_stack_depth: method.max_stack_depth,
         params: method
             .params
             .iter()
@@ -127,6 +125,7 @@ pub(super) fn emit_method_call<'s>(
     emitter.emit_fb_load_instance(site.instance);
     emit_passed(emitter, ctx, lowering, &site.params, inputs, span)?;
     ctx.record_call_edge(site.function_id);
+    let stack_depth = ctx.function_stack_depth(site.function_id, span)?;
     emitter.emit_method_call(
         site.function_id,
         site.field_var_off,
@@ -134,7 +133,7 @@ pub(super) fn emit_method_call<'s>(
         site.param_var_off,
         site.num_params,
         site.has_return_value,
-        site.max_stack_depth,
+        stack_depth,
     );
     Ok(())
 }
