@@ -173,7 +173,7 @@ fn instance(
         return None;
     }
     let name = variable_name(lowering, ctx, place)?;
-    ctx.fb_instances.get(&name).map(|info| info.var_index)
+    ctx.fb_instance(&name).map(|info| info.var_index)
 }
 
 /// The data region of `place`, when it is a whole variable or a field of the
@@ -182,13 +182,13 @@ fn instance(
 /// it has none.
 fn region(lowering: &Lowering<'_>, ctx: &CompileContext, place: &LoweredPlace) -> Option<Region> {
     let name = storage_name(lowering, place)?;
-    if let Some(info) = ctx.struct_vars.get(&name) {
+    if let Some(info) = ctx.struct_var(&name) {
         return Some(Region {
             var_index: info.var_index,
             desc_index: info.desc_index,
         });
     }
-    let info = ctx.array_vars.get(&name).filter(|info| !info.is_ref)?;
+    let info = ctx.array_var(&name).filter(|info| !info.is_ref)?;
     Some(Region {
         var_index: info.var_index,
         desc_index: info.desc_index,

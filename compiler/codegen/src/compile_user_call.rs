@@ -170,11 +170,11 @@ fn compile_reference_arg(
 /// being compiled is one.
 pub(crate) fn passes_by_reference(ctx: &CompileContext, name: &Id) -> bool {
     ctx.var_type_info(name).is_some()
-        && !ctx.string_vars.contains_key(name)
-        && !ctx.array_vars.contains_key(name)
-        && !ctx.struct_vars.contains_key(name)
-        && !ctx.struct_array_vars.contains_key(name)
-        && !ctx.fb_instances.contains_key(name)
+        && !ctx.string_var(name).is_some()
+        && !ctx.array_var(name).is_some()
+        && !ctx.struct_var(name).is_some()
+        && !ctx.struct_array_var(name).is_some()
+        && !ctx.fb_instance(name).is_some()
 }
 
 /// Pushes a reference to the variable `name`, which

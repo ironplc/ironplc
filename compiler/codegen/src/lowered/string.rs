@@ -80,7 +80,7 @@ fn string_storage<'c>(
     ctx: &'c CompileContext,
     place: &LoweredPlace,
 ) -> Option<&'c StringVarInfo> {
-    ctx.string_vars.get(&variable_name(lowering, ctx, place)?)
+    ctx.string_var(&variable_name(lowering, ctx, place)?)
 }
 
 /// The data region offset of a slot that holds the string `value`, as the

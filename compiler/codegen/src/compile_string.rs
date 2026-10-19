@@ -143,7 +143,7 @@ pub(crate) fn resolve_string_arg(
     // bug.
     if let ExprKind::Variable(variable) = &arg.kind {
         if let Some(var_name) = resolve_variable_name(variable) {
-            if let Some(info) = ctx.string_vars.get(var_name) {
+            if let Some(info) = ctx.string_var(var_name) {
                 if info.char_width != char_width {
                     return Err(encoding_mismatch(char_width, info.char_width, func_span));
                 }

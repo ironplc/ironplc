@@ -232,7 +232,7 @@ fn assign_storage(
                     },
                 );
             } else if let Some((num_fields, type_id, field_indices, field_types)) =
-                ctx.user_fb_types.get(&fb_name).map(|user_fb| {
+                ctx.user_fb_type(&fb_name).map(|user_fb| {
                     (
                         user_fb.num_fields,
                         user_fb.type_id,
@@ -539,7 +539,7 @@ pub(crate) fn emit_initial_values(
         };
         let value = &required(decl, ctx)?;
         let span = decl.identifier.span();
-        if let Some(struct_info) = ctx.struct_vars.get(id).cloned() {
+        if let Some(struct_info) = ctx.struct_var(id).cloned() {
             crate::compile_struct_init::initialize_struct_variable(
                 emitter,
                 ctx,
@@ -548,7 +548,7 @@ pub(crate) fn emit_initial_values(
                 Writes::Once,
                 &span,
             )?;
-        } else if let Some(info) = ctx.struct_array_vars.get(id).cloned() {
+        } else if let Some(info) = ctx.struct_array_var(id).cloned() {
             crate::compile_struct_init::initialize_struct_array_variable(
                 emitter,
                 ctx,
@@ -557,11 +557,11 @@ pub(crate) fn emit_initial_values(
                 Writes::Once,
                 &span,
             )?;
-        } else if ctx.array_vars.get(id).is_some_and(|array| !array.is_ref) {
+        } else if ctx.array_var(id).is_some_and(|array| !array.is_ref) {
             // A `REF_TO ARRAY` registers array metadata too, but its slot
             // holds a reference, stored below.
             emit_array_initial_value(emitter, ctx, id, value, &span)?;
-        } else if let Some(info) = ctx.string_vars.get(id) {
+        } else if let Some(info) = ctx.string_var(id) {
             let (data_offset, max_length, char_width) =
                 (info.data_offset, info.max_length, info.char_width);
             // Initialize the string header in the data region, then store
@@ -571,7 +571,7 @@ pub(crate) fn emit_initial_values(
             if let InitialValue::String(string) = value {
                 emit_string_store(emitter, ctx, string, data_offset);
             }
-        } else if let Some(fb_info) = ctx.fb_instances.get(id) {
+        } else if let Some(fb_info) = ctx.fb_instance(id) {
             let data_offset = fb_info.data_offset;
             let var_index = fb_info.var_index;
             // Store the data region byte offset into the variable slot.
@@ -670,7 +670,7 @@ fn emit_array_initial_value(
     value: &InitialValue,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
-    let Some(array_info) = ctx.array_vars.get(id) else {
+    let Some(array_info) = ctx.array_var(id) else {
         return Err(Diagnostic::internal_error());
     };
     let data_offset = array_info.data_offset;
@@ -760,7 +760,7 @@ pub(crate) fn emit_function_local_prologue(
         let span = decl.identifier.span();
         let var_index = ctx.var_index(id)?;
 
-        if let Some(info) = ctx.string_vars.get(id) {
+        if let Some(info) = ctx.string_var(id) {
             // Reset the header, which empties the string, then store the
             // characters.
             let (data_offset, max_length, char_width) =
@@ -815,7 +815,7 @@ pub(crate) fn emit_function_local_prologue(
         ))
     })?;
     let value = &required(result, ctx)?;
-    if let Some(struct_info) = ctx.struct_vars.get(return_id).cloned() {
+    if let Some(struct_info) = ctx.struct_var(return_id).cloned() {
         // The struct was registered under `return_var_index`, so
         // `struct_info.var_index` is that slot.
         crate::compile_struct_init::initialize_struct_variable(
@@ -826,7 +826,7 @@ pub(crate) fn emit_function_local_prologue(
             Writes::EveryCall,
             &return_id.span(),
         )?;
-    } else if let Some(info) = ctx.string_vars.get(return_id) {
+    } else if let Some(info) = ctx.string_var(return_id) {
         // STRING/WSTRING result: initialize the string header in the data
         // region, which empties it.
         emitter.emit_str_init(info.data_offset, info.max_length, info.char_width);

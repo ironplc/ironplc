@@ -186,11 +186,11 @@ pub(crate) fn resolve_symbolic_access<'ctx, 'ast>(
                     SymbolicVariableKind::Named(named) => {
                         levels.reverse();
                         let all_subscripts: Vec<&Expr> = levels.into_iter().flatten().collect();
-                        let info = ctx.array_vars.get(&named.name).ok_or_else(|| {
+                        let info = ctx.array_var(&named.name).ok_or_else(|| {
                             // An element of an array of structures spans
                             // several slots, so it has no single-value load or
                             // store; only its fields are addressable.
-                            if ctx.struct_array_vars.contains_key(&named.name) {
+                            if ctx.struct_array_var(&named.name).is_some() {
                                 Diagnostic::not_implemented(Label::span(
                                     named.name.span(),
                                     format!(
@@ -220,8 +220,7 @@ pub(crate) fn resolve_symbolic_access<'ctx, 'ast>(
                                 let all_subscripts: Vec<&Expr> =
                                     levels.into_iter().flatten().collect();
                                 let info = ctx
-                                    .array_vars
-                                    .get(&named.name)
+                                    .array_var(&named.name)
                                     .ok_or_else(|| Diagnostic::todo_with_span(named.name.span()))?;
                                 return Ok(ResolvedAccess::DerefArrayElement {
                                     info,
@@ -303,7 +302,7 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
         )));
     };
 
-    let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
+    let struct_info = ctx.struct_var(&root_name).ok_or_else(|| {
         Diagnostic::not_implemented(Label::span(
             structured.span(),
             format!("Variable '{}' is not a structure", root_name),

@@ -83,7 +83,7 @@ impl<'ast> StringPlace<&'ast Expr> {
                     return Ok(None);
                 };
                 // `walk_struct_chain` found this structure variable.
-                let structure = ctx.struct_vars.get(&root).ok_or_else(|| {
+                let structure = ctx.struct_var(&root).ok_or_else(|| {
                     Diagnostic::internal_error_at(Label::span(
                         structured.span(),
                         format!("Variable '{root}' is not a structure"),
@@ -93,7 +93,7 @@ impl<'ast> StringPlace<&'ast Expr> {
                 return Ok(fixed(offset, char_width));
             }
         }
-        if let Some(info) = resolve_variable_name(variable).and_then(|n| ctx.string_vars.get(n)) {
+        if let Some(info) = resolve_variable_name(variable).and_then(|n| ctx.string_var(n)) {
             return Ok(fixed(info.data_offset, info.char_width));
         }
         let (address, char_width) = match resolve_access(ctx, variable)? {

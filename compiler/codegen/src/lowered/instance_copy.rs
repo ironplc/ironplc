@@ -51,7 +51,7 @@ pub(super) fn instance_copy(
     }
     let instance = |place| {
         let name: Id = variable_name(lowering, ctx, place)?;
-        ctx.fb_instances.get(&name)
+        ctx.fb_instance(&name)
     };
     let (dst, src) = (instance(dst)?, instance(src)?);
     if dst.type_id != src.type_id {

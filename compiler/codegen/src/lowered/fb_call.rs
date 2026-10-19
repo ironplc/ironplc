@@ -120,7 +120,7 @@ pub(super) fn emit_call_site(
                 // type of, as the AST route does, so the narrowing lowering
                 // made (REQ-LOW-lowering-046) is left to it rather than
                 // emitted twice.
-                let narrowed_by_site = ctx.fb_instances.get(&call.instance).is_some_and(|info| {
+                let narrowed_by_site = ctx.fb_instance(&call.instance).is_some_and(|info| {
                     info.field_types
                         .contains_key(&field.to_string().to_lowercase())
                 });
@@ -154,7 +154,7 @@ pub(super) fn reaches_block(
     block: PouId,
 ) -> bool {
     let Some(fb_instance) =
-        variable_name(lowering, ctx, instance).and_then(|name| ctx.fb_instances.get(&name))
+        variable_name(lowering, ctx, instance).and_then(|name| ctx.fb_instance(&name))
     else {
         return false;
     };
@@ -162,7 +162,7 @@ pub(super) fn reaches_block(
         return false;
     };
     let name = name.to_string().to_uppercase();
-    let type_id = match ctx.user_fb_types.get(&name) {
+    let type_id = match ctx.user_fb_type(&name) {
         Some(user_fb) => Some(user_fb.type_id),
         None => ctx
             .standard_blocks

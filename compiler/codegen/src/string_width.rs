@@ -116,11 +116,10 @@ fn variable_bound(ctx: &CompileContext, variable: &Variable) -> Result<Option<u1
 
     match access_root(kind) {
         SymbolicVariableKind::Named(named) => {
-            if let Some(info) = ctx.string_vars.get(&named.name) {
+            if let Some(info) = ctx.string_var(&named.name) {
                 return Ok(Some(info.max_length));
             }
-            ctx.array_vars
-                .get(&named.name)
+            ctx.array_var(&named.name)
                 .filter(|info| info.is_string_element)
                 .map(|info| Some(info.string_max_len))
                 .ok_or_else(|| {
@@ -217,8 +216,7 @@ fn function_bound(ctx: &CompileContext, func: &Function) -> Result<Option<u16>, 
         }) => Ok(None),
         Some(_) => Err(yields_no_string(func)),
         None => match ctx
-            .user_functions
-            .get(func.name.lower_case())
+            .user_function(func.name.lower_case())
             .and_then(|info| info.return_string_info.as_ref())
         {
             Some(info) => Ok(Some(info.max_length)),

@@ -359,7 +359,7 @@ pub(super) fn callee_function(
         return None;
     }
     let name = lowering.pous().name(pou)?.to_string().to_lowercase();
-    ctx.user_functions.get(&name).cloned()
+    ctx.user_function(&name).cloned()
 }
 
 /// Whether `place` has storage this backend reaches as one value of type

@@ -108,8 +108,7 @@ pub(crate) fn emit_fb_instance_member_initializers(
 /// The operation type of `field` of the instance `instance_name`, when its
 /// block records one for the field.
 fn field_op_type(ctx: &CompileContext, instance_name: &Id, field: &Id) -> Option<OpType> {
-    ctx.fb_instances
-        .get(instance_name)?
+    ctx.fb_instance(instance_name)?
         .field_types
         .get(&field.to_string().to_lowercase())
         .map(|field_type| (field_type.op_width, field_type.signedness))

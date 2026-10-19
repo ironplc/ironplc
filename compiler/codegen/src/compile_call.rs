@@ -64,7 +64,7 @@ pub(crate) fn compile_function_call(
     if let Some(builtin) = ctx.builtin_functions.get(&func.name).cloned() {
         return compile_intrinsic(emitter, ctx, call, func, at, builtin);
     }
-    let Some(func_info) = ctx.user_functions.get(func.name.lower_case()).cloned() else {
+    let Some(func_info) = ctx.user_function(func.name.lower_case()).cloned() else {
         return Err(Diagnostic::todo_with_span(func.name.span()));
     };
     super::compile_user_call::compile_user_function_call(emitter, ctx, func, &func_info)
@@ -368,7 +368,7 @@ fn compile_sizeof(
         if let ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(ref named))) =
             args[0].kind
         {
-            if let Some(array_info) = ctx.array_vars.get(&named.name) {
+            if let Some(array_info) = ctx.array_var(&named.name) {
                 // Ceiling division, as for a scalar: a BOOL element occupies 1 byte.
                 let elem_bytes = (array_info.element_var_type_info.storage_bits as u32).div_ceil(8);
                 array_info.total_elements * elem_bytes
