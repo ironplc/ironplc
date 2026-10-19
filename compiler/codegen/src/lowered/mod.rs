@@ -55,10 +55,10 @@ pub(crate) use policy::parse_policy;
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Route {
     /// Every statement from the AST.
-    #[default]
     Ast,
     /// The lowered statement, where lowering supports it, and the AST for
     /// every other.
+    #[default]
     PreferLowered,
     /// The lowered statement; a statement lowering does not support yet is a
     /// P9999.
