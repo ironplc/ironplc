@@ -400,8 +400,8 @@ fn lay_out_method(
         None => DEFAULT_OP_TYPE,
     };
 
-    // Bind the method's own name to that slot, as
-    // `compile_user_function` does at `compile_fn.rs:258`, so a body
+    // Bind the method's own name to that slot, as `lay_out_function`
+    // does for a function's result, so a body
     // that produces its result the standard way -- `GetSpeed := speed`
     // -- resolves the name to the slot the epilogue loads before `RET`.
     // Only when the method declares a return type: one without a return
