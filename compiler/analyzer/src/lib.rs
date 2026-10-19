@@ -44,6 +44,7 @@ mod rule_condition_type;
 mod rule_constant_not_written;
 mod rule_constant_range;
 mod rule_decl_struct_element_unique_names;
+mod rule_edge_input_owner;
 mod rule_enum_base_type_allowed;
 mod rule_enum_explicit_value_allowed;
 mod rule_enumeration_values_unique;
