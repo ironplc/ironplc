@@ -30,8 +30,11 @@
 //! pass recorded for it.
 //!
 //! A literal the pass converts to another type must be a value of that type
-//! too, as must a literal operand of `AND`, `OR` or `XOR`, which operates at
-//! the type of the operator although no conversion is recorded for it.
+//! too, as must a literal operand of a bitwise operator
+//! ([`CompareOp::is_bitwise`]), which operates at the type of the operator
+//! although no conversion is recorded for it.
+//!
+//! [`CompareOp::is_bitwise`]: ironplc_dsl::textual::CompareOp::is_bitwise
 //!
 //! An untyped real literal recorded as a `REAL` must be a value a `REAL` can
 //! represent. That is reported as the real literal problem
@@ -648,10 +651,11 @@ impl RuleConstantRange<'_> {
     /// Checks a comparison's literals against the type of the other side.
     ///
     /// `IF c = 200` compares at `c`'s type, so a literal that `c` can never
-    /// hold makes the comparison unsatisfiable rather than false. A logical
-    /// or bitwise operator (`AND`, `OR`, `XOR`) is not a comparison: it
-    /// computes at a type of its own, which its operands' own type checks
-    /// read.
+    /// hold makes the comparison unsatisfiable rather than false. A bitwise
+    /// operator ([`CompareOp::is_bitwise`]) is not a comparison: it computes
+    /// at a type of its own, which its operands' own type checks read.
+    ///
+    /// [`CompareOp::is_bitwise`]: ironplc_dsl::textual::CompareOp::is_bitwise
     fn check_compare(&mut self, compare: &CompareExpr) {
         if !compare.op.is_comparison() {
             return;
