@@ -218,6 +218,10 @@ A reference holds the index of the variable it refers to. The analyzer knows its
 
 **REQ-IC-analyzer-087** A reference variable assigned to a variable that is not a reference reports P2032, and so does one assigned to a reference to another type unless type punning is allowed (`--allow-ref-type-punning`): `i := ri` and `ri := rd` on a `REF_TO INT` and a `REF_TO DINT` report P2032, and `ri2 := ri` does not.
 
+**REQ-IC-analyzer-120** A value that is not a reference assigned to a reference reports P2032, in every dialect: `ri := 0`, `ri := TRUE`, `ri := i` and `ri := i + 1` on a `REF_TO INT` and an `INT` report P2032, as does `pp := 0` on a CODESYS `POINTER TO INT`, and `ri := REF(i)`, `ri := NULL`, `ri2 := ri` and `ri^ := 5` do not. Where reference arithmetic is allowed (`--allow-ref-arithmetic`), a sum or difference with a reference operand is a reference: `pp := pp + 2` does not report.
+
+**REQ-IC-analyzer-121** A reference compared with a value that is not a reference reports P4049, in every dialect: `ri = 0`, `0 <> ri`, `ri = i`, `ri < 0`, `i = NULL` and CODESYS's `pp <> 0` report P4049, and `ri = NULL`, `ri <> ri2` and `ri^ = 0` do not.
+
 ### Subranges and fields
 
 A value of a subrange type is operated at its base type: the name the type relations, the conversion pass and the code generator read for it is its base type's. It used to be known by the subrange's own name, which no relation judged, so a comparison fell back to the left operand's type and narrowed a wider right operand to the subrange, an arithmetic operation took the left operand's subrange type, and codegen computed both at the type of their context. A subrange parameter takes a value of its base type, as a subrange variable does when assigned.
