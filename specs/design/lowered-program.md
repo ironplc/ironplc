@@ -1227,6 +1227,24 @@ ones a standard block keeps for itself, such as a timer's start time. This
 corrects the route that reads the AST, which stores `g`'s slot in `f`'s and so
 makes `f` an alias of `g`: a later call of `f` changes `g`.
 
+An output of a function block type stored by a call, `g(ob => f)`, lowers to a
+`Copy` of the instance the field `ob` holds, as `f := g.ob` does.
+
+**REQ-LOW-codegen-196** The bytecode backend gives the instance that a field
+of a function block type holds storage of its own, and a `Copy` of an instance
+copies the instance each such field holds into the one the destination's field
+holds. A `Copy` from or to such a field, `f := g.ob`, `g(ob => f)`,
+`g.ob := f` or `g(inner := f)`, copies the instance it holds.
+
+The layout reserves the fields of a held instance after those of the instance
+that holds it, to any depth, and the setup block stores their offset in the
+field's slot, so the field's slot holds what an instance's slot holds. This
+also changes the route that reads the AST, which shares the layout. Before, a
+field of a function block type held no instance: its slot held 0, the offset
+of whatever was laid out first, so after `g(ob => f)` a call of `f` wrote
+another instance's fields. That route still stores the field's slot in
+`f`'s, so `f` becomes an alias of the instance `g.ob` holds.
+
 **REQ-LOW-lowering-062** Every `Exit` and `Continue` names a `Loop` or `For`
 that encloses it.
 
@@ -1349,10 +1367,9 @@ route ([issue 1753](https://github.com/ironplc/ironplc/issues/1753)). A `Copy`
 to a structure or array field shares the source's region rather than meeting
 REQ-LOW-codegen-165, but neither route compiles a read of what such a field
 holds, in the block's body, a method or a caller, so no program observes the
-difference. Likewise, a `Copy` of an instance to a field of a function block
-type, `g(inner := f)` or `g.inner := f`, stores the instance's slot in the
-field's, as the route that reads the AST does, and neither route calls the
-instance such a field holds or reads its fields
+difference. A `Copy` of an instance to a field of a function block type,
+`g(inner := f)` or `g.inner := f`, copies it into the instance the field
+holds (REQ-LOW-codegen-196), which neither route calls
 ([issue 1553](https://github.com/ironplc/ironplc/issues/1553)).
 
 The order of the inputs among themselves is the order of the call's normal
@@ -1676,6 +1693,18 @@ outputs is lowered as a function's is (REQ-LOW-lowering-092,
 REQ-LOW-lowering-172): in an expression it is an in-place call, and a `Call`
 statement is followed by the stores of its outputs.
 
+**REQ-LOW-lowering-187** A method whose result is an array or a structure is
+declared without a result, and the variable named after it is a variable of
+its body. No call reads such a result: assigning one is P2037, so a call of
+the method is a statement, which discards it.
+
+While both routes exist, the bytecode backend calls such a method as the
+route that reads the AST does: `METHOD_CALL` returns the slot of the result
+variable, and the statement drops it with the instance
+(`compile_method_call_statement`). That route compiles no write or read
+inside the result in the method's body either, so neither route lets a
+program see the result.
+
 **REQ-LOW-ir-173** A `Call` statement passes its callee one argument for
 each parameter, as a `Call` expression does, and discards the callee's
 result. A method's first parameter is a non-null reference to an instance of
@@ -1688,10 +1717,10 @@ Not lowered yet, so each stays on the route that reads the AST:
 - a call through `THIS^` or `SUPER^`, which analysis does not resolve yet;
 - a call of a method the receiver's block inherits from a block its
   lowered type does not extend, as one with a field (REQ-LOW-lowering-177);
-- a call of a method with an in-out or a result that is a string, or with an
-  in-out or a result that is an aggregate (REQ-LOW-lowering-079).
-  The route that reads the AST reports a method whose result is a string as
-  P9999.
+- a call of a method with an in-out that is a string or an aggregate, or
+  with a result that is a string (REQ-LOW-lowering-079). The route that reads
+  the AST reports a method whose result is a string as P9999. A method whose
+  result is an aggregate is lowered (REQ-LOW-lowering-187).
 
 While both routes exist, the bytecode backend emits a method's call as the
 route that reads the AST emits it (`compile_method.rs`): the receiver's
@@ -2029,8 +2058,8 @@ destination holds the value the same element or field of its source held
 before it, and the source is unchanged. The destination has storage of its
 own: a later store to it leaves the source as it is. A `Copy` of a place to
 itself changes nothing. The bytecode backend does not meet this yet for a
-structure, array or function block field of a function block instance,
-which no program reads (see [Statements](#37-statements)).
+structure or array field of a function block instance, which no program
+reads (see [Statements](#37-statements)).
 
 **REQ-LOW-codegen-089** An `Intrinsic` means what the IEC 61131-3 standard
 function means, with these choices where the standard leaves room: the count

@@ -118,6 +118,7 @@ mod tests {
                 data_offset: 0,
                 field_indices: HashMap::new(),
                 field_types: HashMap::new(),
+                held: Vec::new(),
             },
         );
         let mut emitter = Emitter::new();

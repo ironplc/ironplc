@@ -213,7 +213,9 @@ Bit-string operators
 The bit-string operators ``AND``, ``OR``, ``XOR`` and ``NOT`` are defined over
 the bit-string types (``BOOL``, ``BYTE``, ``WORD``, ``DWORD``, ``LWORD``). For
 these operators, each operand outside that set is reported separately, naming
-the expected category and the actual type.
+the expected category and the actual type. The short-circuit operators
+``AND_THEN`` and ``OR_ELSE``, which some dialects enable, are checked as
+``AND`` and ``OR`` are.
 
 The following code will generate error P4049:
 

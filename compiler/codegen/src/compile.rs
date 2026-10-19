@@ -64,6 +64,7 @@ use ironplc_analyzer::{
 };
 
 use crate::emit::Emitter;
+use crate::held_instances::{HeldField, HeldInstance};
 
 use super::compile_fn::{compile_user_function, compile_user_function_block};
 use ironplc_ir::execution::SystemGlobal;
@@ -550,6 +551,7 @@ fn compile_program_with_functions(
         let fb_name = fb_decl.name.name.to_string().to_uppercase();
         let mut field_indices: HashMap<String, u8> = HashMap::new();
         let mut field_types: HashMap<String, VarTypeInfo> = HashMap::new();
+        let mut held_fields = Vec::new();
         let mut field_decls_tmp: Vec<&VarDecl> = Vec::new();
 
         for decl in &fb_decl.variables {
@@ -581,13 +583,17 @@ fn compile_program_with_functions(
             if let Some(id) = decl.identifier.symbolic_id() {
                 let name = id.to_string().to_lowercase();
                 // At most `MAX_USER_FB_FIELDS` fields, so the index fits.
-                field_indices.insert(name.clone(), i as u8);
+                let index = i as FbFieldIndex;
+                field_indices.insert(name.clone(), index);
                 // A field is operated and stored at its declared type,
                 // whatever kind of declaration declares it: a subrange at its
                 // base type.
                 let field_type =
                     crate::type_info::decl_type_info(&ctx, decl).unwrap_or(DEFAULT_VAR_TYPE_INFO);
-                field_types.insert(name, field_type);
+                field_types.insert(name.clone(), field_type);
+                if let Some(block) = crate::held_instances::held_block(types, decl) {
+                    held_fields.push(HeldField { name, index, block });
+                }
             }
         }
 
@@ -602,6 +608,7 @@ fn compile_program_with_functions(
                 function_id: FunctionId::new(next_function_id),
                 var_offset: 0, // updated after program vars are assigned
                 field_types,
+                held_fields,
                 methods: HashMap::new(),
             },
         );
@@ -1087,12 +1094,19 @@ pub(crate) struct FbInstanceInfo {
     /// Data region byte offset where this instance's fields start.
     pub(crate) data_offset: u32,
     /// Maps field name (lowercase) to field index.
-    pub(crate) field_indices: HashMap<String, u8>,
+    pub(crate) field_indices: HashMap<String, FbFieldIndex>,
     /// Maps field name (lowercase) to its declared type: the operation type
     /// a value stored in the field or read from it is compiled at, and the
     /// width a store narrows it to.
     pub(crate) field_types: HashMap<String, VarTypeInfo>,
+    /// The instances its fields hold, and theirs, whose offsets the setup
+    /// block stores in the fields that hold them (`held_instances.rs`).
+    pub(crate) held: Vec<HeldInstance>,
 }
+
+/// The index of a field of a function block instance, one slot each, which
+/// `FB_LOAD_PARAM` and `FB_STORE_PARAM` name by a byte.
+pub(crate) type FbFieldIndex = u8;
 
 /// Metadata for a compiled user-defined function block type.
 pub(crate) struct UserFbTypeInfo {
@@ -1101,7 +1115,7 @@ pub(crate) struct UserFbTypeInfo {
     /// Number of data-region fields in each instance.
     pub(crate) num_fields: usize,
     /// Maps field name (lowercase) to field index (ordinal position).
-    pub(crate) field_indices: HashMap<String, u8>,
+    pub(crate) field_indices: HashMap<String, FbFieldIndex>,
     /// Function ID of the compiled FB body in the container.
     pub(crate) function_id: FunctionId,
     /// Variable table offset where the FB body's slots start.
@@ -1109,6 +1123,8 @@ pub(crate) struct UserFbTypeInfo {
     /// Maps field name (lowercase) to its declared type, as
     /// [`FbInstanceInfo::field_types`].
     pub(crate) field_types: HashMap<String, VarTypeInfo>,
+    /// The fields that hold an instance of a block (`held_instances.rs`).
+    pub(crate) held_fields: Vec<HeldField>,
     /// Maps method name (lowercase) to compilation metadata (OOP
     /// extension, ADR-0041 Phase 1). Populated in two steps: `function_id`,
     /// `num_params`, `param_names_in_order`, and `has_return_value` are known
