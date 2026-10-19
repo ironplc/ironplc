@@ -133,10 +133,10 @@ it.
   and `Trap`): every backend reports a trap under the code the bytecode VM
   gives it (REQ-LOW-codegen-098).
 - **The end-to-end harness** (`codegen/tests/it/common/`): `Snapshot` and
-  `Session` are concrete types today, and become a trait when a second
-  backend lands. The first new backend's design decides where the suite lives
-  and how a backend marks a test it cannot run yet
-  ([End-to-End Test Observation](../design/end-to-end-test-observation.md#no-backend-trait-yet)).
+  `Session` run a program through the `Backend` and `Running` traits, which a
+  new backend implements. The first new backend's design decides where the
+  suite lives and how a backend marks a test it cannot run yet
+  ([End-to-End Test Observation](../design/end-to-end-test-observation.md#backends)).
 
 ### The crate root
 
@@ -465,9 +465,9 @@ instructions and §3.10, the capability checks, and requirement IDs such as
 
 #### Step 2: Shared pieces
 
-Move `SourceLookup` to `ironplc-ir`; make the end-to-end harness a trait the
-bytecode backend implements, with a way to mark a test a backend cannot run
-yet; share the trap codes.
+Move `SourceLookup` to `ironplc-ir`; implement the end-to-end harness's
+`Backend` and `Running` traits, and add a way to mark a test a backend cannot
+run yet; share the trap codes.
 
 #### Step 3: The crate
 

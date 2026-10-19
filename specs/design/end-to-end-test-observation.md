@@ -79,9 +79,9 @@ that are not about layout. A second backend cannot run them at all.
 3. **One source of truth for layout.** The harness locates variables with
    the tables the debugger already uses. Test code contains no copy of the
    allocator's rules.
-4. **Backend-neutral surface, one backend behind it.** The observation API
-   says nothing about the VM. It stays a concrete type until a second
-   backend exists.
+4. **Backend-neutral surface, any backend behind it.** The observation API
+   says nothing about the VM. It reads and drives a program through a trait
+   every backend implements (see [Backends](#backends)).
 5. **Small diffs to the tests.** Existing tests keep their shape, and only
    the key in each assertion changes. The exception is a date or duration,
    whose expected count becomes a value (§3).
@@ -181,14 +181,43 @@ index to a name, so the rewrite of ~1,000 tuples is mechanical. A heterogeneous
 `Value`-keyed macro would read better but would rewrite every assertion
 twice.
 
-### No backend trait yet
+### Backends
 
-`Snapshot` and `Session` are concrete types with a surface that does not
-mention the VM. They become a trait when a second backend lands, per
-[Development Standards](../steering/development-standards.md#when-not-to-prefactor).
-The design for that backend also decides where the suite lives (it is in
-`codegen/tests` only because codegen was the only backend), and how a
-backend marks tests it cannot run yet without skipping them silently.
+`Snapshot` and `Session` read and drive a program through two traits in
+`codegen/tests/it/common/backend.rs`, so a backend runs the suite by
+implementing them:
+
+- **`Backend`** compiles an analyzed library to the backend's program, and
+  starts that program: it runs initialization and hands the test the
+  program, with the fault that stopped initialization, if one did.
+- **`Running`** is a started program: it scans, lists the names of the
+  program and global variables a test reads, reads and writes a variable by
+  name as a `Value`, and gives its declared type.
+
+Each backend says what stops its program (its `Fault`), since a fault
+taxonomy for every backend is out of scope (see [Scope](#scope)).
+
+**Every test runs on every backend.** The helpers compile a program on
+every backend. Every backend must compile it, or every backend fail to. A
+program the test runs must leave every variable the test can read with the
+same value on every backend, after initialization and after one scan, or
+every backend trap (REQ-LOW-codegen-131). The test then reads and drives the
+program of the **reference** backend, the bytecode backend.
+
+**Decided:** the traits exist before a second backend does, so that the
+suite does not change shape when that backend lands. This replaces the
+earlier decision to keep `Snapshot` and `Session` concrete until then.
+While both routes of the bytecode backend exist
+([Lowered Program](lowered-program.md#delivery-constraints)), each route is a
+backend of its own, the AST route the reference. Because they share one
+layout, the helpers also compare their storage slot by slot, which reaches
+what no test reads by name: the variables inside a structure, an array or a
+function block instance, a function's variables, and the data region.
+
+**Still open:** the design for the second backend decides where the suite
+lives (it is in `codegen/tests` only because codegen was the only backend),
+and how a backend marks a test it cannot run yet without skipping it
+silently.
 
 ## 1. The observation API
 

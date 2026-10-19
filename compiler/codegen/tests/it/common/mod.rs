@@ -1,6 +1,8 @@
 //! Shared test helpers for codegen integration tests.
 //!
 //! - [`bc`]: per-instruction bytecode builders and `assert_bytecode!`
+//! - `backend`: the backends a program runs on, and their agreement
+//! - `vm`: the bytecode backend on the VM
 //! - `run`: parse, compile and run a program, and drive function blocks
 //! - `assert`: single-scan assertion helpers and the `e2e!` / `e2e_*!` macros
 //! - `snapshot`, `session`: reading (and, across scans, writing) a program's
@@ -21,6 +23,7 @@
 pub mod bc;
 #[macro_use]
 mod assert;
+mod backend;
 mod run;
 pub mod scalar;
 mod session;
@@ -28,8 +31,10 @@ mod slot_value;
 mod snapshot;
 mod value;
 mod variables;
+mod vm;
 
 pub use assert::*;
+pub use backend::{assert_backends_agree, Reference};
 pub use ironplc_vm::VmBuffers;
 pub use run::*;
 pub use snapshot::Snapshot;
