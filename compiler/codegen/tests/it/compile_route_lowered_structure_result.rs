@@ -1,11 +1,10 @@
 //! Tests of calls of user-defined functions whose result is a structure,
 //! compiled from the lowered program (REQ-LOW-lowering-079,
 //! REQ-LOW-lowering-186), with every statement required to lower. Each
-//! program compiles to the same code as by the route that reads the AST, the
-//! functions' bodies included, and leaves every variable and the data region
-//! as that route leaves them after one scan.
+//! program compiles, the functions' bodies included, and leaves every
+//! variable with the same values on every backend after one scan.
 
-use crate::compile_route_lowered::{assert_same_code, run_lowered_agreeing};
+use crate::compile_route_lowered::{assert_compiles, run_lowered_agreeing};
 
 /// A structure; a function of an input and an output whose result is one,
 /// which returns early for a negative input; a function of no parameters
@@ -49,7 +48,7 @@ fn run_when_structure_result_assigned_then_outputs_stored_then_result_copied() {
            ox := o.x;
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
     let snapshot = run_lowered_agreeing(&source);
     assert_eq!(snapshot.read_as::<i32>("px"), 3);
     assert_eq!(snapshot.read_as::<f32>("py"), 1.5);
@@ -70,7 +69,7 @@ fn run_when_structure_result_returned_early_then_copied_as_set() {
            px := p.x;
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
     let snapshot = run_lowered_agreeing(&source);
     assert_eq!(snapshot.read_as::<i32>("px"), -1);
 }

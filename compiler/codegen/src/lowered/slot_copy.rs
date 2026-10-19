@@ -4,12 +4,11 @@
 //!
 //! The scope a function, function block or method body is compiled against
 //! registers no data region for its own structures and arrays, and calls no
-//! instance it declares (`scope.rs`). Neither route compiles a read inside
+//! instance it declares (`scope.rs`). This backend compiles no read inside
 //! such a variable there, nor a call of such an instance, so what its slot
-//! holds is never followed. The route that reads the AST stores the source's
-//! slot in the destination's for `lp := lq`, and so does the bridge for a
-//! `Copy` of one: no program tells that from a copy of the values
-//! (REQ-LOW-codegen-165).
+//! holds is never followed. For a `Copy` of one, `lp := lq`, the bridge
+//! stores the source's slot in the destination's: no program tells that from
+//! a copy of the values (REQ-LOW-codegen-165).
 //!
 //! A program's own variables are left to `aggregate.rs` and
 //! `instance_copy.rs`, which copy their values, and so is a field of a

@@ -8,21 +8,19 @@
 //! store of each output (REQ-LOW-lowering-092). A call of a function whose
 //! result is a structure, `p := MK(v, n => k)`, lowers to a `Call`
 //! statement, the store of each output, then the copy of the result to its
-//! target (REQ-LOW-lowering-186), emitted as the route that reads the AST
-//! emits it (`compile_aggregate.rs`): the call leaves the offset of the
+//! target (REQ-LOW-lowering-186): the call leaves the offset of the
 //! function's structure on the stack, the outputs are stored, and
 //! `COPY_REGION` copies the structure to the target.
 //!
-//! Each is emitted as the route that reads the AST emits the call
-//! (`compile_user_call.rs`, `compile_method.rs`), where its expression is
-//! evaluated (REQ-LOW-codegen-175): the call's inputs, `STR_INIT` of a
-//! string result, its `CALL` or `METHOD_CALL`, then the stores of its
-//! outputs, with the result on the stack throughout, or dropped after a
-//! call statement. No temporary has storage of its own. The result is the
-//! value, or the string's buffer, the call leaves on the stack. An output is
-//! the callee's own variable, which this backend's layout keeps the output
-//! in and which keeps its value until the callee is called again
-//! (ADR-0046), so a call passes no reference for it.
+//! Each is emitted where its expression is evaluated (REQ-LOW-codegen-175):
+//! the call's inputs, `STR_INIT` of a string result, its `CALL` or
+//! `METHOD_CALL`, then the stores of its outputs, with the result on the
+//! stack throughout, or dropped after a call statement. No temporary has
+//! storage of its own. The result is the value, or the string's buffer, the
+//! call leaves on the stack. An output is the callee's own variable, which
+//! this backend's layout keeps the output in and which keeps its value until
+//! the callee is called again (ADR-0046), so a call passes no reference for
+//! it.
 
 use std::collections::HashMap;
 
@@ -616,8 +614,7 @@ fn assigns_output(temporaries: &[(VarId, Output)], stmt: &Stmt) -> bool {
     }
 }
 
-/// The internal error for an output `can_emit` should have left to the AST
-/// route.
+/// The internal error for an output `can_emit` should have rejected.
 fn no_output(span: &SourceSpan) -> Diagnostic {
     Diagnostic::internal_error_at(Label::span(
         span.clone(),

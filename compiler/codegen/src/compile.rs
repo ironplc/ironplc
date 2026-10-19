@@ -215,9 +215,6 @@ pub struct CodegenOptions {
     /// The behavior policies `STRING_TO_<numeric>` calls are compiled under
     /// (ADR-0049). They select the builtin func_id the call emits.
     pub string_to_num: StringToNumPolicies,
-    /// Which route each statement is compiled by: from the AST, or from the
-    /// lowered program where lowering supports it.
-    pub route: crate::lowered::Route,
 }
 
 /// The two behavior policies of a `STRING_TO_<numeric>` conversion.
@@ -234,7 +231,6 @@ impl From<&CompilerOptions> for CodegenOptions {
                 non_numeric: options.policy_string_to_num_non_numeric,
                 failure: options.policy_string_to_num_failure,
             },
-            route: crate::lowered::Route::default(),
         }
     }
 }
@@ -257,16 +253,6 @@ pub fn compile(
     options: &CodegenOptions,
     sources: &dyn crate::source_lookup::SourceLookup,
 ) -> Result<Container, Diagnostic> {
-    compile_with_route_counts(analysis, options, sources).map(|(container, _)| container)
-}
-
-/// Compiles a library into a bytecode container, as [`compile`] does, and
-/// says how many top-level statements took each route.
-pub fn compile_with_route_counts(
-    analysis: CleanAnalysis<'_>,
-    options: &CodegenOptions,
-    sources: &dyn crate::source_lookup::SourceLookup,
-) -> Result<(Container, crate::lowered::RouteCounts), Diagnostic> {
     // Lowering completes every initializer on a copy, and reads the program
     // and globals from it; the analyzed library stays as written
     // (specs/design/initial-values.md).
@@ -313,10 +299,10 @@ pub fn compile_with_route_counts(
 
     let method_owners = MethodOwners::of_library(library, context.types());
     let parse = crate::lowered::parse_policy(&options.string_to_num);
-    let lowered_route = crate::lowered::LoweredRoute::new(options.route, || {
+    let lowering = crate::lowered::lower(|| {
         ironplc_lowering::Lowering::new(&analysis, parse).lower_program()
     })?;
-    let (mut container, counts) = compile_program_with_functions(
+    let mut container = compile_program_with_functions(
         ProgramInputs {
             program: runnable.program,
             func_decls: &func_decls,
@@ -330,7 +316,7 @@ pub fn compile_with_route_counts(
         options.string_to_num,
         *context.compiler_options(),
         sources,
-        lowered_route,
+        lowering,
     )?;
 
     if runnable.has_system_uptime {
@@ -339,7 +325,7 @@ pub fn compile_with_route_counts(
 
     crate::execution::apply_task_schedule(&mut container, runnable.schedule);
 
-    Ok((container, counts))
+    Ok(container)
 }
 
 /// Idempotently registers a POU's source file with the debug section's
@@ -496,8 +482,8 @@ fn compile_program_with_functions(
     string_to_num: StringToNumPolicies,
     compiler_options: CompilerOptions,
     sources: &dyn crate::source_lookup::SourceLookup,
-    lowered_route: Option<crate::lowered::LoweredRoute>,
-) -> Result<(Container, crate::lowered::RouteCounts), Diagnostic> {
+    lowering: ironplc_lowering::PartialProgram,
+) -> Result<Container, Diagnostic> {
     let ProgramInputs {
         program,
         func_decls,
@@ -507,7 +493,7 @@ fn compile_program_with_functions(
         method_owners,
     } = inputs;
     let mut ctx = CompileContext::new();
-    ctx.lowered_route = lowered_route;
+    ctx.lowering = Some(lowering);
     ctx.types = crate::type_info::type_representations(types);
     ctx.block_members = ironplc_lowering::initial_value::block_members(types);
     ctx.operand_names = crate::type_info::operand_names(types);
@@ -997,12 +983,7 @@ fn compile_program_with_functions(
     // `specs/design/bytecode-verifier-rules.md` for the rules it enforces.
     crate::stack_balance::verify_container(&container)?;
 
-    let counts = ctx
-        .lowered_route
-        .as_ref()
-        .map(|route| route.counts)
-        .unwrap_or_default();
-    Ok((container, counts))
+    Ok(container)
 }
 
 #[derive(Clone)]
@@ -1071,8 +1052,7 @@ pub(crate) struct UserFunctionInfo {
     /// after the function returns.
     pub(crate) outputs: HashMap<Id, VarIndex>,
     /// Where in the data region each `STRING` or `WSTRING` `VAR_OUTPUT`
-    /// is, which a call the lowered route compiles reads it from after the
-    /// function returns.
+    /// is, which a call reads it from after the function returns.
     pub(crate) string_outputs: HashMap<Id, StringVarInfo>,
 }
 
@@ -1155,8 +1135,8 @@ pub(crate) struct UserMethodInfo {
     /// after the method returns. Empty until the method is compiled.
     pub(crate) outputs: HashMap<Id, VarIndex>,
     /// Where in the data region each `STRING` or `WSTRING` `VAR_OUTPUT`
-    /// is, which a call the lowered route compiles reads it from after the
-    /// method returns. Empty until the method is compiled.
+    /// is, which a call reads it from after the method returns. Empty until
+    /// the method is compiled.
     pub(crate) string_outputs: HashMap<Id, StringVarInfo>,
 }
 
@@ -1180,9 +1160,8 @@ pub(crate) enum CurrentBody {
 
 pub(crate) struct CompileContext {
     /// The program lowering made, which each top-level statement is read
-    /// from, when the route compiles statements from the lowered program;
-    /// `None` when every statement is compiled from the AST.
-    pub(crate) lowered_route: Option<crate::lowered::LoweredRoute>,
+    /// from; `None` only while a statement is being compiled from it.
+    pub(crate) lowering: Option<ironplc_lowering::PartialProgram>,
     /// The body being compiled, whose POU the lowered statement is read
     /// from; `None` outside a body.
     pub(crate) current_body: Option<CurrentBody>,
@@ -1192,10 +1171,6 @@ pub(crate) struct CompileContext {
     pub(crate) var_types: HashMap<Id, VarTypeInfo>,
     /// Ordered list of constants added to the constant pool.
     pub(crate) constants: Vec<PoolConstant>,
-    /// Stack of the labels of the enclosing loops, for EXIT and CONTINUE
-    /// statement compilation. Each loop pushes its labels; EXIT and CONTINUE
-    /// jump to those of the top.
-    pub(crate) loop_labels: Vec<crate::compile_loop::LoopLabels>,
     /// Maps STRING variable identifiers to their data region metadata.
     pub(crate) string_vars: HashMap<Id, StringVarInfo>,
     /// Maps FB instance variable identifiers to their metadata.
@@ -1308,12 +1283,11 @@ pub(crate) enum CurrentFunctionReturn {
 impl CompileContext {
     pub(crate) fn new() -> Self {
         CompileContext {
-            lowered_route: None,
+            lowering: None,
             current_body: None,
             variables: HashMap::new(),
             var_types: HashMap::new(),
             constants: Vec::new(),
-            loop_labels: Vec::new(),
             string_vars: HashMap::new(),
             fb_instances: HashMap::new(),
             array_vars: HashMap::new(),
@@ -1343,20 +1317,6 @@ impl CompileContext {
             call_graph: HashMap::new(),
             call_outputs: None,
         }
-    }
-
-    /// Returns the exit label for the innermost enclosing loop, if any.
-    pub(crate) fn current_loop_exit(&self) -> Option<crate::emit::Label> {
-        self.loop_labels.last().map(|labels| labels.exit)
-    }
-
-    /// Returns the label where the innermost enclosing loop goes on with its
-    /// next iteration, if any, and records that it is used.
-    pub(crate) fn current_loop_next(&mut self) -> Option<crate::emit::Label> {
-        self.loop_labels.last_mut().map(|labels| {
-            labels.next_used = true;
-            labels.next
-        })
     }
 
     /// Records a static call-graph edge from the function whose body is
@@ -1485,14 +1445,6 @@ impl CompileContext {
     /// Looks up type information for a variable by identifier.
     pub(crate) fn var_type_info(&self, name: &Id) -> Option<VarTypeInfo> {
         self.var_types.get(name).copied()
-    }
-
-    /// Returns the op_type for a variable by identifier, falling back to defaults.
-    pub(crate) fn var_op_type(&self, name: &Id) -> OpType {
-        self.var_types
-            .get(name)
-            .map(|info| (info.op_width, info.signedness))
-            .unwrap_or(DEFAULT_OP_TYPE)
     }
 
     /// Allocates a scratch variable with a synthetic name and returns its index.

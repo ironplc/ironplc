@@ -3,7 +3,7 @@
 
 use rstest::rstest;
 
-use crate::compile_route_lowered::{assert_same_code, run_lowered, run_lowered_agreeing};
+use crate::compile_route_lowered::{assert_compiles, run_lowered, run_lowered_agreeing};
 
 /// Functions the tests call: one of three `DINT`s, two returning an `INT`,
 /// one that calls another, and one whose local starts from its initial value
@@ -53,17 +53,16 @@ fn run_when_user_functions_called_then_values() {
     assert_eq!(snapshot.read_as::<i32>("r6"), -25536);
 }
 
-/// A call of a user-defined function compiles to the same instructions and
-/// constants by both routes. Only the functions a program calls are
-/// compiled, so `SCALE` is left out: its `LREAL_TO_INT`, stored to an `INT`,
-/// the AST route narrows twice.
+/// A call of a user-defined function lowers and compiles. Only the functions
+/// a program calls are compiled, so `SCALE` is left out: its `LREAL_TO_INT`,
+/// stored to an `INT`, the route that read the AST narrowed twice.
 #[rstest]
 #[case::positional("d := ADD3(d, e, 1);")]
 #[case::named_out_of_order("d := ADD3(c := d, a := e, b := 1);")]
 #[case::converted_argument("d := ADD3(s, d, s);")]
 #[case::narrow_result("i := HALF(i) + HALF(s);")]
 #[case::nested("d := ADD3(ADD3(d, e, 1), TWICE(e), COUNT()) + 1;")]
-fn compile_when_user_function_call_lowered_then_same_code_as_ast(#[case] statement: &str) {
+fn compile_when_user_function_call_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
         "{FUNCTIONS}
          PROGRAM main
@@ -71,7 +70,7 @@ fn compile_when_user_function_call_lowered_then_same_code_as_ast(#[case] stateme
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }
 
 /// Functions with a `VAR_IN_OUT`: one adding to the variable a call passes,
@@ -115,7 +114,7 @@ fn run_when_in_out_passed_then_callee_writes_callers_variable() {
 
 /// Bits written to a function's `VAR_IN_OUT` are written to the caller's
 /// variable through its reference, leaving the other bits as they were. The
-/// AST route reports the write as not implemented.
+/// route that read the AST reported the write as not implemented.
 #[test]
 fn run_when_in_out_has_bits_written_then_callers_variable() {
     let snapshot = run_lowered(
@@ -132,15 +131,15 @@ fn run_when_in_out_has_bits_written_then_callers_variable() {
     assert_eq!(snapshot.read_as::<u64>("r"), 1);
 }
 
-/// A call of a function with a `VAR_IN_OUT`, and the function's body,
-/// compile to the same instructions and constants by both routes: the call
-/// passes a variable's index, or the reference a `VAR_IN_OUT` of the caller
-/// holds, and the body loads and stores through it.
+/// A call of a function with a `VAR_IN_OUT`, and the function's body, lower
+/// and compile: the call passes a variable's index, or the reference a
+/// `VAR_IN_OUT` of the caller holds, and the body loads and stores through
+/// it.
 #[rstest]
 #[case::variable("d := INC(v := d, n := e);")]
 #[case::passed_on("d := INC_TWICE(e);")]
 #[case::two_in_outs("x := SWAP(i, k);")]
-fn compile_when_in_out_call_lowered_then_same_code_as_ast(#[case] statement: &str) {
+fn compile_when_in_out_call_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
         "{IN_OUT_FUNCTIONS}
          PROGRAM main
@@ -148,16 +147,15 @@ fn compile_when_in_out_call_lowered_then_same_code_as_ast(#[case] statement: &st
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }
 
 /// REQ-LOW-lowering-075: a structure or array input of a function or method
-/// is passed as the route that reads the AST passes it, the offset of the
-/// argument's region, so each call compiles to the same code and leaves
-/// every variable as that route leaves it. Neither route compiles a read of
-/// such an input in the callee's body.
+/// is passed as the offset of the argument's region, so each call compiles
+/// and leaves every variable with the same values on every backend. This
+/// backend compiles no read of such an input in the callee's body.
 #[test]
-fn run_when_aggregate_input_passed_then_same_code_as_ast() {
+fn run_when_aggregate_input_passed_then_compiles() {
     let source = "
         TYPE P : STRUCT x : DINT; y : DINT; END_STRUCT; END_TYPE
         TYPE A3 : ARRAY[1..3] OF DINT; END_TYPE
@@ -176,7 +174,7 @@ fn run_when_aggregate_input_passed_then_same_code_as_ast() {
           r2 := SUMA(q := a3, o => k) + 1;
           r3 := f.M(q := pt);
         END_PROGRAM";
-    assert_same_code(source);
+    assert_compiles(source);
     let snapshot = run_lowered_agreeing(source);
     assert_eq!(snapshot.read_as::<i32>("r1"), 7);
     assert_eq!(snapshot.read_as::<i32>("r2"), 9);
@@ -197,25 +195,23 @@ const AGGREGATE_RESULTS: &str = "
     END_FUNCTION_BLOCK";
 
 /// REQ-LOW-lowering-187: a call of a method whose result is a structure or
-/// an array, which a statement discards, compiles to the same code as by the
-/// route that reads the AST, with an output stored after it, and the call
-/// changes the instance's fields as on that route.
+/// an array, which a statement discards, lowers and compiles, with an output
+/// stored after it.
 #[rstest]
 #[case::structure_result("b.MKP(v := 3);")]
 #[case::array_result_with_output("b.MKA(v := 2, k => r);")]
-fn compile_when_method_aggregate_result_discarded_then_same_code_as_ast(#[case] statement: &str) {
+fn compile_when_method_aggregate_result_discarded_then_compiles(#[case] statement: &str) {
     let source = format!(
         "{AGGREGATE_RESULTS}
          PROGRAM main VAR b : BP; r : DINT; END_VAR
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }
 
 /// REQ-LOW-lowering-187: calls of methods whose results are a structure and
-/// an array leave every variable as the route that reads the AST leaves
-/// them.
+/// an array leave every variable with the same values on every backend.
 #[test]
 fn run_when_method_aggregate_result_discarded_then_routes_agree() {
     let snapshot = run_lowered_agreeing(&format!(
@@ -236,19 +232,18 @@ const IN_OUT_ALIASES: &str = "
     FUNCTION G : DINT VAR_IN_OUT x : MyInt; END_VAR x := x * 2; G := x; END_FUNCTION";
 
 /// REQ-LOW-lowering-072: a variable of a type declared as `DINT` passed for
-/// a `VAR_IN_OUT` of a `DINT`, and the reverse, compile to the same code as
-/// by the route that reads the AST.
+/// a `VAR_IN_OUT` of a `DINT`, and the reverse, lower and compile.
 #[rstest]
 #[case::argument_of_alias_type("r := F(x := a);")]
 #[case::parameter_of_alias_type("r := G(x := d);")]
-fn compile_when_in_out_argument_type_is_alias_then_same_code_as_ast(#[case] statement: &str) {
+fn compile_when_in_out_argument_type_is_alias_then_compiles(#[case] statement: &str) {
     let source = format!(
         "{IN_OUT_ALIASES}
          PROGRAM main VAR a : MyInt := 4; d : DINT := 5; r : DINT; END_VAR
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }
 
 /// REQ-LOW-lowering-072: the callee writes the caller's variable through a

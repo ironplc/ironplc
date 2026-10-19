@@ -3,17 +3,15 @@
 //! source evaluates them (REQ-LOW-lowering-172, REQ-LOW-lowering-174,
 //! REQ-LOW-lowering-179, REQ-LOW-lowering-180).
 //!
-//! Each program compiles by both routes and leaves every variable with the
-//! same value after one scan, and compiles with every statement lowered, to
-//! the same code as by the route that reads the AST (REQ-LOW-codegen-175),
-//! except where a test says why the code differs.
+//! Each program compiles with every statement lowered (REQ-LOW-codegen-175)
+//! and leaves every variable with the same value on every backend after one
+//! scan.
 
-use ironplc_codegen::Route;
 use ironplc_vm::error::Trap;
 use rstest::rstest;
 
-use crate::common::{compile_by_route, parse, parse_and_compile_to_run, run_one_scan, Snapshot};
-use crate::compile_route_lowered::{assert_same_code, options, run_lowered_agreeing};
+use crate::common::{compile_analyzed, parse, parse_and_compile_to_run, run_one_scan, Snapshot};
+use crate::compile_route_lowered::{assert_compiles, options, run_lowered_agreeing};
 
 /// The functions, blocks and variables the programs share.
 ///
@@ -72,8 +70,8 @@ fn program(statements: &str) -> String {
     )
 }
 
-/// Each program lowers, compiles to the same code as by the route that
-/// reads the AST, and leaves its integers with the values given.
+/// Each program lowers, compiles, and leaves its integers with the values
+/// given.
 #[rstest]
 // A string result after a read, a call or an operation in its statement.
 #[case::string_after_read("n := k + LEN(G(s));", &[("n", 2)])]
@@ -140,7 +138,7 @@ fn run_when_call_in_place_then_same_code_and_values(
     #[case] expected: &[(&str, i64)],
 ) {
     let source = program(statements);
-    assert_same_code(&source);
+    assert_compiles(&source);
     let snapshot = run_lowered_agreeing(&source);
     let actual: Vec<(&str, i64)> = expected
         .iter()
@@ -149,9 +147,8 @@ fn run_when_call_in_place_then_same_code_and_values(
     assert_eq!(actual, expected);
 }
 
-/// A string result assigned whole or in a loop's condition lowers,
-/// compiles to the same code as by the route that reads the AST, and
-/// leaves `s` with the string given and `k` with the value given.
+/// A string result assigned whole or in a loop's condition lowers, compiles,
+/// and leaves `s` with the string given and `k` with the value given.
 #[rstest]
 #[case::string_operand_after_read("s := CONCAT(t, G(s));", "baa", 0)]
 #[case::string_in_while("WHILE LEN(G(s)) < 8 DO s := CONCAT(s, 'x'); END_WHILE;", "axxx", 0)]
@@ -167,23 +164,22 @@ fn run_when_string_result_in_place_then_same_code_and_values(
     #[case] k: i64,
 ) {
     let source = program(statements);
-    assert_same_code(&source);
+    assert_compiles(&source);
     let snapshot = run_lowered_agreeing(&source);
     assert_eq!(snapshot.read("s"), text);
     assert_eq!(snapshot.read_as::<i64>("k"), k);
 }
 
-/// A call that leaves both routes with the same values, though its code
-/// differs:
+/// A call that leaves every variable with the same values on every backend,
+/// though its code differed from the code of the route that read the AST:
 ///
-/// * in a `CASE` selector, which the lowered route evaluates once
-///   (REQ-LOW-codegen-124), where the route that reads the AST evaluates it
-///   for each label it tests. Neither function has a side effect, so the
-///   values agree;
+/// * in a `CASE` selector, which is evaluated once (REQ-LOW-codegen-124),
+///   where the route that read the AST evaluated it for each label it
+///   tested. Neither function has a side effect, so the values agreed;
 /// * in an `ELSIF` condition with no `ELSE`, after whose last branch the
-///   route that reads the AST jumps to the next instruction;
-/// * storing an output in a `WORD`, which the route that reads the AST
-///   narrows again. Here `AssignBits` reads `w` before its value, so the
+///   route that read the AST jumped to the next instruction;
+/// * storing an output in a `WORD`, which the route that read the AST
+///   narrowed again. Here `AssignBits` reads `w` before its value, so the
 ///   output the call stores in `w` is lost (REQ-LOW-codegen-185).
 #[rstest]
 #[case::string_in_selector(
@@ -213,16 +209,15 @@ fn run_when_call_in_place_then_routes_agree(
 
 /// A call with outputs in a function's body lowers. Inside a function's
 /// body the VM reaches no variable of another function, so reading the
-/// output traps on either route (`InvalidVariableIndex`), as the route that
-/// reads the AST does.
+/// output traps (`InvalidVariableIndex`), as it did on the route that read
+/// the AST.
 #[test]
 fn run_when_call_with_outputs_in_function_body_then_traps_as_ast_route() {
     let source = program("r := W(d := 3);");
     let options = options();
     parse_and_compile_to_run(&source, &options);
     let (library, context) = parse(&source, &options);
-    let container = compile_by_route(&library, &context, &options, Route::RequireLowered)
-        .expect("every statement lowers");
+    let container = compile_analyzed(&library, &context, &options).expect("every statement lowers");
     let Err(fault) = run_one_scan(&container) else {
         panic!("reading another function's output traps");
     };
@@ -230,10 +225,9 @@ fn run_when_call_with_outputs_in_function_body_then_traps_as_ast_route() {
 }
 
 /// REQ-LOW-codegen-124: a call with outputs in a `CASE` selector runs once,
-/// whatever label matches. Only the lowered route is run: the route that
-/// reads the AST evaluates the selector again for each label it tests, so
-/// it would count three calls here and run the `ELSE`. That is the
-/// correction the lowered route makes.
+/// whatever label matches. The route that read the AST evaluated the
+/// selector again for each label it tested, so it would have counted three
+/// calls here and run the `ELSE`.
 #[test]
 fn run_when_call_with_outputs_in_case_selector_then_called_once() {
     let source = "
@@ -252,8 +246,7 @@ fn run_when_call_with_outputs_in_case_selector_then_called_once() {
         END_PROGRAM";
     let options = options();
     let (library, context) = parse(source, &options);
-    let container = compile_by_route(&library, &context, &options, Route::RequireLowered)
-        .expect("every statement lowers");
+    let container = compile_analyzed(&library, &context, &options).expect("every statement lowers");
     let snapshot = Snapshot::run_compiled(container);
     assert_eq!(snapshot.read_as::<i64>("calls"), 1);
     assert_eq!(snapshot.read_as::<i64>("seen"), 1);

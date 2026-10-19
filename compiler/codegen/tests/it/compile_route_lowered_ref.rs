@@ -4,12 +4,11 @@
 
 use rstest::rstest;
 
-use ironplc_codegen::Route;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{bc, compile_by_route, compile_to_run, parse, Snapshot};
+use crate::common::{bc, compile_analyzed, compile_to_run, parse, Snapshot};
 use crate::compile_route_lowered::{
-    assert_same_code, body_by_route, options, run_lowered, run_lowered_agreeing,
+    assert_compiles, body, options, run_lowered, run_lowered_agreeing,
 };
 
 /// A reference made by `REF(x)` or `REF=` reaches its variable, read and
@@ -57,8 +56,7 @@ fn run_when_ref_of_in_out_then_refers_to_callers_variable() {
     assert_eq!(snapshot.read_as::<i64>("ok"), 1);
 }
 
-/// Making, binding, clearing and comparing a reference compile to the same
-/// instructions and constants by both routes.
+/// Making, binding, clearing and comparing a reference lower and compile.
 #[rstest]
 #[case::ref_of_variable("p := REF(x);")]
 #[case::ref_bind("p REF= x;")]
@@ -66,7 +64,7 @@ fn run_when_ref_of_in_out_then_refers_to_callers_variable() {
 #[case::null("p := NULL;")]
 #[case::compared_with_null("b := p = NULL;")]
 #[case::compared_with_reference("b := p <> q;")]
-fn compile_when_reference_lowered_then_same_code_as_ast(#[case] statement: &str) {
+fn compile_when_reference_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
         "PROGRAM main
            VAR x : DINT; a : ARRAY[1..3] OF DINT; p : REF_TO DINT; q : REF_TO DINT;
@@ -74,7 +72,7 @@ fn compile_when_reference_lowered_then_same_code_as_ast(#[case] statement: &str)
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }
 
 /// Bits and parts of an element of an array a reference refers to are
@@ -101,26 +99,23 @@ fn run_when_bits_of_element_through_reference_then_referenced_array() {
     assert_eq!(snapshot.read_as::<u64>("part"), 0x12);
 }
 
-/// A partial read of an element of an array a reference refers to compiles
-/// to the same instructions and constants by both routes.
+/// A partial read of an element of an array a reference refers to lowers
+/// and compiles.
 #[rstest]
 #[case::part_read("b := p^[1].%B2;")]
 #[case::part_read_by_variable("b := p^[i].%B2;")]
-fn compile_when_part_of_element_through_reference_read_then_same_code_as_ast(
-    #[case] statement: &str,
-) {
+fn compile_when_part_of_element_through_reference_read_then_compiles(#[case] statement: &str) {
     let source = format!(
         "PROGRAM main
            VAR p : REF_TO ARRAY[0..1] OF DWORD; b : BYTE; i : DINT; END_VAR
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }
 
 /// REQ-LOW-codegen-121: a bit write to an element of an array a reference
 /// refers to evaluates the element's subscript once, keeping the address for
-/// the store, where the AST route evaluates it for the load and again for
 /// the store.
 #[test]
 fn compile_when_bit_written_to_element_through_reference_then_subscript_evaluated_once() {
@@ -135,13 +130,11 @@ fn compile_when_bit_written_to_element_through_reference_then_subscript_evaluate
             .filter(|window| *window == load_i.as_slice())
             .count()
     };
-    assert_eq!(loads(body_by_route(source, Route::RequireLowered)), 1);
-    assert_eq!(loads(body_by_route(source, Route::Ast)), 2);
+    assert_eq!(loads(body(source)), 1);
 }
 
-/// What `REF(x)` refers to is `x` itself, read in an assignment, in a
-/// condition and through a function's `VAR_IN_OUT`, as the route that reads
-/// the AST reads it through the reference.
+/// What `REF(x)` refers to is `x` itself, read through the reference in an
+/// assignment, in a condition and through a function's `VAR_IN_OUT`.
 #[test]
 fn run_when_ref_dereferenced_then_value_of_place() {
     let snapshot = run_lowered_agreeing(
@@ -170,7 +163,6 @@ fn run_when_adr_dereferenced_then_value_of_place() {
         &options,
     );
     compile_to_run(&library, &context, &options).unwrap();
-    let container = compile_by_route(&library, &context, &options, Route::RequireLowered)
-        .expect("every statement lowers");
+    let container = compile_analyzed(&library, &context, &options).expect("every statement lowers");
     assert_eq!(Snapshot::run_compiled(container).read_as::<i32>("k"), 7);
 }

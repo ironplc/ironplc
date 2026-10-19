@@ -1,13 +1,13 @@
 //! Addressing a lowered place in the storage codegen lays out.
 //!
-//! While both routes exist, a lowered place is stored where codegen's own
-//! layout puts what the place names, and that layout is found by name,
+//! A lowered place is stored where codegen's own layout puts what the place
+//! names, and that layout is found by name,
 //! through [`Place::resolve`] on a variable reference. So a lowered place is
 //! addressed by rebuilding the variable reference it stands for, with a
 //! numbered placeholder for each subscript, resolving that, and putting the
-//! lowered subscripts in the placeholders' places. Both routes then address
-//! an element through the same code, bounds check included, and what a
-//! reference variable refers to through the same indirect load and store.
+//! lowered subscripts in the placeholders' places. An element is then
+//! addressed through the layout's own code, bounds check included, and what a
+//! reference variable refers to through its indirect load and store.
 //! What a function's `VAR_IN_OUT` parameter refers to is rebuilt as the
 //! parameter's own name, which codegen's layout reaches through the
 //! reference the parameter's slot holds, and what its `VAR_OUTPUT` parameter
@@ -77,8 +77,7 @@ pub(super) enum Load<'l> {
 
 /// Where the value a read of `place` loads is. What a reference that is not
 /// in a variable refers to is read by loading the reference and then what it
-/// refers to, as the AST route reads `e^`. A store to it is not: the AST
-/// route does not compile one.
+/// refers to. A store to it is not supported yet.
 pub(super) fn resolve_load<'l>(
     lowering: &'l PartialProgram,
     ctx: &CompileContext,
@@ -177,8 +176,7 @@ pub(super) fn field_path(
 /// type: an `_INT` counter counts its `CV` in 32 bits ("Standard function
 /// blocks" in `specs/design/lowered-program.md`). So the lowered program's
 /// proof that a read fits the type it reads (REQ-LOW-lowering-046) does not
-/// hold for one, and a store of it is narrowed, as the route that reads the
-/// AST narrows every store.
+/// hold for one, and a store of it is narrowed.
 pub(super) fn reads_standard_block_field(
     lowering: &PartialProgram,
     ctx: &CompileContext,
@@ -207,10 +205,9 @@ pub(super) fn reads_standard_block_field(
 /// field's type. `None` for any other place.
 ///
 /// This backend's layout keeps no data region for a string, structure or
-/// array field of such an instance: its slot holds what the route that reads
-/// the AST stores there, the index of a temporary buffer for a string
-/// (issue 1753) and the region offset of the value stored for a structure or
-/// an array.
+/// array field of such an instance: its slot holds the index of a temporary
+/// buffer for a string (issue 1753) and the region offset of the value stored
+/// for a structure or an array.
 pub(super) fn instance_slot<'l>(
     lowering: &'l PartialProgram,
     ctx: &CompileContext,
@@ -228,8 +225,7 @@ pub(super) fn instance_slot<'l>(
 }
 
 /// Where codegen's layout stores the string `place`: a string variable, an
-/// element of a string array or a string field of a structure, as the AST
-/// route finds it.
+/// element of a string array or a string field of a structure.
 pub(super) fn resolve_string<'l>(
     lowering: &'l PartialProgram,
     ctx: &CompileContext,
@@ -262,8 +258,7 @@ fn lowered_subscript<'l>(
     Ok(LoweredSubscript { lowering, expr })
 }
 
-/// The internal error for a place `can_emit` should have left to the AST
-/// route.
+/// The internal error for a place `can_emit` should have rejected.
 fn no_storage(span: &SourceSpan) -> Diagnostic {
     Diagnostic::internal_error_at(Label::span(span.clone(), "A lowered place has no storage"))
 }

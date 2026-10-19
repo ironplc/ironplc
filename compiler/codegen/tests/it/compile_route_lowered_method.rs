@@ -1,14 +1,13 @@
 //! Tests of calls of methods, and of methods' bodies, compiled from the
 //! lowered program (REQ-LOW-lowering-076), with every statement required to
 //! lower. A program whose methods have only scalar outputs is also checked
-//! to leave every variable as the route that reads the AST leaves it after
-//! one scan; that route does not read a string output.
+//! to leave every variable with the same values on every backend after one
+//! scan.
 
-use ironplc_codegen::Route;
 use rstest::rstest;
 
-use crate::common::{compile_by_route, parse};
-use crate::compile_route_lowered::{assert_same_code, options, run_lowered, run_lowered_agreeing};
+use crate::common::{compile_analyzed, parse};
+use crate::compile_route_lowered::{assert_compiles, options, run_lowered, run_lowered_agreeing};
 
 /// A block whose methods add to its count, read it scaled, and split it
 /// into a quotient output, whether that is positive, and a remainder.
@@ -93,11 +92,10 @@ fn run_when_method_called_in_loop_and_branch_then_each_call() {
     assert_eq!(snapshot.read_as::<i32>("total"), 100);
 }
 
-/// A call of a method of an instance declared inside a function block stays
-/// on the route that reads the AST, which cannot call one, so both routes
-/// fail alike.
+/// A call of a method of an instance declared inside a function block is not
+/// supported yet.
 #[test]
-fn compile_when_instance_declared_in_block_then_both_routes_fail() {
+fn compile_when_instance_declared_in_block_then_not_implemented() {
     let source = format!(
         "{BLOCK}
          FUNCTION_BLOCK Outer
@@ -110,19 +108,16 @@ fn compile_when_instance_declared_in_block_then_both_routes_fail() {
     );
     let options = options();
     let (library, context) = parse(&source, &options);
-    for route in [Route::Ast, Route::PreferLowered] {
-        let compiled = compile_by_route(&library, &context, &options, route);
-        assert_eq!(
-            compiled.err().map(|diagnostic| diagnostic.code),
-            Some("P9999".to_string()),
-            "{route:?}"
-        );
-    }
+    let compiled = compile_analyzed(&library, &context, &options);
+    assert_eq!(
+        compiled.err().map(|diagnostic| diagnostic.code),
+        Some("P9999".to_string())
+    );
 }
 
-/// A call of a method compiles to the same instructions and constants by
-/// both routes: the instance pushed, each input, `METHOD_CALL`, the stores
-/// of the outputs, then the result dropped or stored.
+/// A call of a method lowers and compiles: the instance pushed, each input,
+/// `METHOD_CALL`, the stores of the outputs, then the result dropped or
+/// stored.
 #[rstest]
 #[case::statement("c.Add(k := d);")]
 #[case::unused_result("c.Get(scale := 2);")]
@@ -132,8 +127,8 @@ fn compile_when_instance_declared_in_block_then_both_routes_fail() {
 #[case::outputs_of_assignment("d := c.Split(k := 3, high => d);")]
 #[case::outputs_inside_expression("d := c.Split(k := 3, high => d) + c.Split(k := 2, done => b);")]
 #[case::inside_if("IF b THEN c.Add(k := 1); END_IF;")]
-fn compile_when_method_called_then_same_code_as_ast(#[case] statement: &str) {
-    assert_same_code(&format!(
+fn compile_when_method_called_then_compiles(#[case] statement: &str) {
+    assert_compiles(&format!(
         "{BLOCK}
          PROGRAM main VAR c : Counter; d : DINT; b : BOOL; END_VAR
            {statement}
@@ -142,9 +137,7 @@ fn compile_when_method_called_then_same_code_as_ast(#[case] statement: &str) {
 }
 
 /// REQ-LOW-lowering-092: a method's string output is stored in its target
-/// as a string is, at the target's capacity. The route that reads the AST
-/// does not read a string output, so the lowered route is the only one that
-/// compiles the program.
+/// as a string is, at the target's capacity.
 #[test]
 fn run_when_method_has_string_output_then_stored() {
     let snapshot = run_lowered(
@@ -168,8 +161,7 @@ fn run_when_method_has_string_output_then_stored() {
 }
 
 /// A call of a method the receiver's block inherits from a block that
-/// declares a field stays on the route that reads the AST, which reports it
-/// as not implemented (REQ-LOW-codegen-178).
+/// declares a field is not supported yet (P9999, REQ-LOW-codegen-178).
 #[test]
 fn compile_when_inherited_method_called_then_lowered_route_leaves_it() {
     let source = format!(
@@ -181,7 +173,7 @@ fn compile_when_inherited_method_called_then_lowered_route_leaves_it() {
     );
     let options = options();
     let (library, context) = parse(&source, &options);
-    let lowered = compile_by_route(&library, &context, &options, Route::RequireLowered);
+    let lowered = compile_analyzed(&library, &context, &options);
     assert_eq!(
         lowered.err().map(|diagnostic| diagnostic.code),
         Some("P9999".to_string())
@@ -222,18 +214,15 @@ fn run_when_method_inherited_from_base_without_fields_then_base_method_runs() {
 }
 
 /// REQ-LOW-codegen-178: a call of a method a block inherits from one that
-/// declares no fields compiles to the same instructions and constants by
-/// both routes: the derived instance pushed, each input, then `METHOD_CALL`
-/// of the base's method, which copies no field.
+/// declares no fields lowers and compiles: the derived instance pushed, each
+/// input, then `METHOD_CALL` of the base's method, which copies no field.
 #[rstest]
 #[case::stored_result("r := d.Get(k := 2);")]
 #[case::unused_result("d.Get(k := 3);")]
 #[case::through_block_in_between("r := l.Get(k := 4) + 1;")]
 #[case::through_block_with_field("r := u.Get(k := 5);")]
-fn compile_when_method_inherited_from_base_without_fields_then_same_code_as_ast(
-    #[case] statement: &str,
-) {
-    assert_same_code(&format!(
+fn compile_when_method_inherited_from_base_without_fields_then_compiles(#[case] statement: &str) {
+    assert_compiles(&format!(
         "{INHERITED}
          PROGRAM main VAR d : Derived; l : Leaf; u : Under; r : DINT; END_VAR
            {statement}
@@ -273,16 +262,13 @@ fn run_when_method_of_block_with_255_fields_called_then_reads_last_field() {
     assert_eq!(snapshot.read_as::<i32>("o"), 7);
 }
 
-/// REQ-LOW-codegen-191: a block of 256 fields is P9997 on every route,
-/// rather than a method call that copies the wrong fields.
-#[rstest]
-#[case::ast(Route::Ast)]
-#[case::required(Route::RequireLowered)]
-#[case::preferred(Route::PreferLowered)]
-fn compile_when_method_of_block_with_256_fields_called_then_p9997(#[case] route: Route) {
+/// REQ-LOW-codegen-191: a block of 256 fields is P9997, rather than a method
+/// call that copies the wrong fields.
+#[test]
+fn compile_when_method_of_block_with_256_fields_called_then_p9997() {
     let options = options();
     let (library, context) = parse(&wide_block(256), &options);
-    let compiled = compile_by_route(&library, &context, &options, route);
+    let compiled = compile_analyzed(&library, &context, &options);
     assert_eq!(
         compiled.err().map(|diagnostic| diagnostic.code),
         Some("P9997".to_string())

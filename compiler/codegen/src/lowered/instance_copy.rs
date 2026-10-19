@@ -3,7 +3,7 @@
 //!
 //! An instance's slot holds the data region offset of its fields, so storing
 //! one slot in the other would make the destination an alias of the source,
-//! as the route that reads the AST does. A `Copy` gives the destination the
+//! as the route that read the AST did. A `Copy` gives the destination the
 //! source's values in storage of its own (REQ-LOW-codegen-165), so the bridge
 //! copies the instance field by field, with `FB_LOAD_PARAM` and
 //! `FB_STORE_PARAM`: every field of the block, its inputs, outputs and

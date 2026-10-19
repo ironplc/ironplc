@@ -1,67 +1,32 @@
-//! Tests of the route a statement takes: from the AST, or from the lowered
-//! program (`specs/design/lowered-program.md`, "Delivery Constraints").
+//! Tests of how a statement is compiled from the lowered program
+//! (`specs/design/lowered-program.md`, "Delivery Constraints").
 
-use ironplc_analyzer::CleanAnalysis;
-use ironplc_codegen::{compile_with_route_counts, CodegenOptions, EmptyLookup, Route, RouteCounts};
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{bc, compile_by_route, parse, Snapshot};
+use crate::common::{bc, compile_analyzed, parse, Snapshot};
 
-/// Three statements lowering supports, the function's and two of the
-/// program's, and one it does not yet: a whole array of structures copied,
-/// which the route that reads the AST compiles.
-const SOURCE: &str = "
+/// A statement lowering does not support yet, a whole array of structures
+/// copied, is a P9999.
+#[test]
+fn compile_when_statement_unsupported_then_not_implemented() {
+    let source = "
 TYPE P : STRUCT x : DINT; END_STRUCT; END_TYPE
-FUNCTION One : DINT
-  One := 1;
-END_FUNCTION
 PROGRAM main
-  VAR a : DINT; ps : ARRAY[1..2] OF P; ps2 : ARRAY[1..2] OF P; END_VAR
-  a := a + One();
+  VAR ps : ARRAY[1..2] OF P; ps2 : ARRAY[1..2] OF P; END_VAR
   ps := ps2;
-  a := a * 2;
 END_PROGRAM
 ";
-
-/// Compiles `source` with every statement taking `route`, and counts the
-/// statements each route compiled.
-fn route_counts(source: &str, route: Route) -> Result<RouteCounts, String> {
     let options = CompilerOptions::default();
     let (library, context) = parse(source, &options);
-    let analysis = CleanAnalysis::new(&library, &context).expect("analysis reported diagnostics");
-    let codegen_options = CodegenOptions {
-        route,
-        ..CodegenOptions::from(&options)
-    };
-    compile_with_route_counts(analysis, &codegen_options, &EmptyLookup)
-        .map(|(_, counts)| counts)
-        .map_err(|diagnostic| diagnostic.code)
+    let code = compile_analyzed(&library, &context, &options)
+        .err()
+        .map(|diagnostic| diagnostic.code);
+    assert_eq!(code, Some("P9999".to_string()));
 }
 
+/// Every control-flow statement lowers, and runs as the source says.
 #[test]
-fn compile_when_ast_route_then_every_statement_from_ast() {
-    let counts = route_counts(SOURCE, Route::Ast).unwrap();
-    assert_eq!((counts.lowered, counts.from_ast), (0, 0));
-}
-
-#[test]
-fn compile_when_prefer_lowered_then_unsupported_statement_from_ast() {
-    let counts = route_counts(SOURCE, Route::PreferLowered).unwrap();
-    assert_eq!((counts.lowered, counts.from_ast), (3, 1));
-}
-
-#[test]
-fn compile_when_require_lowered_and_statement_unsupported_then_not_implemented() {
-    assert_eq!(
-        route_counts(SOURCE, Route::RequireLowered),
-        Err("P9999".to_string())
-    );
-}
-
-/// Every control-flow statement takes the lowered route, and runs as the
-/// source says.
-#[test]
-fn compile_when_require_lowered_and_control_flow_then_runs() {
+fn compile_when_control_flow_then_runs() {
     let source = "
 TYPE COLOR : (RED, GREEN, BLUE); END_TYPE
 PROGRAM main
@@ -90,7 +55,7 @@ END_PROGRAM
         ..CompilerOptions::default()
     };
     let (library, context) = parse(source, &options);
-    let container = compile_by_route(&library, &context, &options, Route::RequireLowered).unwrap();
+    let container = compile_analyzed(&library, &context, &options).unwrap();
     let snapshot = Snapshot::run_compiled(container);
     let read = |name| snapshot.read_as::<i64>(name);
     assert_eq!(read("s"), 18);
@@ -117,7 +82,7 @@ END_PROGRAM
 ";
     let options = CompilerOptions::default();
     let (library, context) = parse(source, &options);
-    let container = compile_by_route(&library, &context, &options, Route::RequireLowered).unwrap();
+    let container = compile_analyzed(&library, &context, &options).unwrap();
     let bytecode = container
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))

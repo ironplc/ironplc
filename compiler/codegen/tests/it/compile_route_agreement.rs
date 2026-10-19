@@ -52,7 +52,7 @@ fn assert_backends_agree_when_strings_differ_then_names_string() {
 }
 
 #[test]
-#[should_panic(expected = "after init, only the AST route names the variable a")]
+#[should_panic(expected = "after init, only the bytecode backend names the variable a")]
 fn assert_backends_agree_when_one_names_another_variable_then_names_it() {
     let first = compile("PROGRAM main VAR a : DINT; END_VAR a := 5; END_PROGRAM");
     let second = compile("PROGRAM main VAR b : DINT; END_VAR b := 5; END_PROGRAM");

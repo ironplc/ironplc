@@ -4,12 +4,11 @@
 //! located variable with no name, and the global variables a PLCopen XML
 //! program declares in its interface.
 
-use ironplc_codegen::Route;
 use ironplc_dsl::core::FileId;
 use ironplc_sources::parsers::xml_parser;
 
-use crate::common::{compile_by_route, compile_to_run, Snapshot};
-use crate::compile_route_lowered::{assert_same_code, options, run_lowered_agreeing};
+use crate::common::{compile_analyzed, compile_to_run, Snapshot};
+use crate::compile_route_lowered::{assert_compiles, options, run_lowered_agreeing};
 
 /// A program with an access path and a located variable with no name, which
 /// no statement names, among its declarations.
@@ -22,12 +21,11 @@ const DECLARATIONS: &str = "
       k := n + 1;
     END_PROGRAM";
 
-/// The program's statements compile to the same instructions and constants
-/// by both routes, and leave its variables as the route that reads the AST
-/// leaves them.
+/// The program's statements lower and compile, and every backend leaves its
+/// variables with the same values.
 #[test]
 fn run_when_program_declares_access_path_and_unnamed_located_then_lowered() {
-    assert_same_code(DECLARATIONS);
+    assert_compiles(DECLARATIONS);
     let snapshot = run_lowered_agreeing(DECLARATIONS);
     assert_eq!(snapshot.read_as::<i32>("k"), 5);
 }
@@ -68,16 +66,14 @@ k := g + 1;</xhtml>
 </project>"#;
 
 /// A global variable a PLCopen program declares in its interface is a
-/// global, read and written as the route that reads the AST reads and
-/// writes it.
+/// global, read and written as a global.
 #[test]
 fn run_when_plcopen_program_declares_global_then_lowered() {
     let options = options();
     let library = xml_parser::parse(PLCOPEN_GLOBALS, &FileId::default(), &options).unwrap();
     let (library, context) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
     compile_to_run(&library, &context, &options).unwrap();
-    let container = compile_by_route(&library, &context, &options, Route::RequireLowered)
-        .expect("every statement lowers");
+    let container = compile_analyzed(&library, &context, &options).expect("every statement lowers");
     let snapshot = Snapshot::run_compiled(container);
     assert_eq!(snapshot.read_as::<i32>("g"), 2);
     assert_eq!(snapshot.read_as::<i32>("k"), 3);

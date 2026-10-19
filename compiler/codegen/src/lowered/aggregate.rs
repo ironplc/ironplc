@@ -4,25 +4,24 @@
 //! An aggregate variable's slot holds the byte offset of its data region,
 //! and `COPY_REGION` moves the bytes from the region whose offset is on the
 //! stack to the region of the destination, sizing both from their array
-//! descriptors. The bridge emits a `Copy` only between the places the AST
-//! route copies (`compile_aggregate.rs`): whole variables, and fields of the
-//! current instance, that this backend's layout keeps as aggregate regions.
+//! descriptors. The bridge emits a `Copy` only between whole variables, and
+//! fields of the current instance, that this backend's layout keeps as
+//! aggregate regions.
 //!
 //! A structure or array field of another function block instance has no
-//! region in this layout. The AST route stores the region offset of the
-//! value in the field's slot, as it stores a call's input
-//! (`compile_fb_call.rs`): the source's offset, or the offset the source's
-//! slot holds when the source is such a field too. So does the bridge for a
-//! `Copy` to one (`place::instance_slot`). Neither route compiles a read of
-//! what such a field holds, in the block's body, a method or a caller, so no
-//! program tells the offset from a copy.
+//! region in this layout. For a `Copy` to one (`place::instance_slot`), the
+//! bridge stores the region offset of the value in the field's slot, as it
+//! stores a call's input (`fb_call.rs`): the source's offset, or the offset
+//! the source's slot holds when the source is such a field too. This backend
+//! compiles no read of what such a field holds, in the block's body, a method
+//! or a caller, so no program tells the offset from a copy.
 //!
 //! A `Copy` of a whole instance to another is `instance_copy.rs`'s, into a
 //! field that holds one too. An instance it does not copy, one it does not
 //! reach or of a block the layout keeps no instance of, is stored in such a
-//! field as the AST route stores it: the field's slot takes the instance's
-//! slot, which holds the data offset of its fields. Every other `Copy` is
-//! left to the AST route.
+//! field by its slot: the field's slot takes the instance's slot, which holds
+//! the data offset of its fields. Every other `Copy` is not supported yet
+//! (P9999).
 
 use ironplc_container::VarIndex;
 use ironplc_dsl::core::SourceSpan;
@@ -95,8 +94,7 @@ pub(super) fn reaches_region(
 }
 
 /// Emits the copy into `dst` of the structure or array whose region's offset
-/// is on the stack, sized by the descriptor `src_desc`: `COPY_REGION`, as
-/// the route that reads the AST copies a function's structure result.
+/// is on the stack, sized by the descriptor `src_desc`: `COPY_REGION`.
 pub(super) fn emit_copy_from_stack(
     emitter: &mut Emitter,
     ctx: &CompileContext,
@@ -116,9 +114,9 @@ pub(super) fn emit_copy_from_stack(
 /// instance: the offset of its region, the offset its slot holds when it is
 /// an instance, or the one the slot of the instance's field it is holds.
 ///
-/// It is also what the route that reads the AST passes for a structure or
-/// array input of a function or method, which so takes the caller's region
-/// rather than a copy of it. Neither route compiles a read of such an input
+/// It is also what a call passes for a structure or array input of a
+/// function or method (`call_args.rs`), which so takes the caller's region
+/// rather than a copy of it. This backend compiles no read of such an input
 /// in the callee's body, so no program tells the two apart.
 pub(super) fn emit_source(
     emitter: &mut Emitter,
@@ -141,14 +139,12 @@ pub(super) fn emit_source(
 }
 
 /// Pushes the data offset of `region`. An aggregate value has no operation
-/// type, so its slot is loaded at the default slot type, as the AST route
-/// loads it.
+/// type, so its slot is loaded at the default slot type.
 fn emit_offset(emitter: &mut Emitter, region: &Region) {
     emit_load_var(emitter, region.var_index, DEFAULT_OP_TYPE);
 }
 
-/// The internal error for a copy `can_emit` should have left to the AST
-/// route.
+/// The internal error for a copy `can_emit` should have rejected.
 pub(super) fn no_region(span: &SourceSpan) -> Diagnostic {
     Diagnostic::internal_error_at(Label::span(
         span.clone(),

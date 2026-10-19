@@ -1,13 +1,11 @@
-//! Compiles a statement from the lowered program rather than from the AST
+//! Compiles each statement from the lowered program
 //! (`specs/design/lowered-program.md`, "Delivery Constraints").
 //!
-//! While both routes exist, lowering lowers the whole library once, before
-//! codegen emits anything ([`ironplc_lowering::Lowering::lower_program`]),
-//! and codegen reads what each top-level statement of a body lowered to, by
-//! the body's POU and the statement's index. When lowering supports the
-//! statement and everything inside it, the statement is emitted from the
-//! lowered program; otherwise it is compiled from the AST, as before. Both
-//! routes emit into the same body through the same emitter.
+//! Lowering lowers the whole library once, before codegen emits anything
+//! ([`ironplc_lowering::Lowering::lower_program`]), and codegen reads what
+//! each top-level statement of a body lowered to, by the body's POU and the
+//! statement's index. A statement lowering, or this backend, does not
+//! support yet is a P9999.
 //!
 //! A lowered statement finds its variables' storage in the layout codegen
 //! already builds, through the current body's scope, by the name lowering
@@ -17,7 +15,8 @@
 
 // A match over a lowered enum names every variant, so a variant added later
 // fails to compile wherever it is not handled (REQ-LOW-lowering-082). The
-// deny covers this module tree only: the AST route predates the rule.
+// deny covers this module tree only: the code that reads the AST predates
+// the rule.
 #![deny(clippy::wildcard_enum_match_arm)]
 
 use ironplc_dsl::core::{Id, Located, SourceSpan};
@@ -51,90 +50,43 @@ mod string;
 use call_args::passes;
 pub(crate) use policy::parse_policy;
 
-/// Which route codegen compiles a statement by.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub enum Route {
-    /// Every statement from the AST.
-    Ast,
-    /// The lowered statement, where lowering supports it, and the AST for
-    /// every other.
-    #[default]
-    PreferLowered,
-    /// The lowered statement; a statement lowering does not support yet is a
-    /// P9999.
-    RequireLowered,
-}
-
-/// How many top-level statements took each route in one compilation. Under
-/// [`Route::Ast`] lowering is not asked, and nothing is counted.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct RouteCounts {
-    /// Statements compiled from the lowered program.
-    pub lowered: usize,
-    /// Statements compiled from the AST.
-    pub from_ast: usize,
-}
-
-/// The program lowering made for a compilation, and how many statements
-/// took each route so far.
-pub(crate) struct LoweredRoute {
-    lowering: PartialProgram,
-    require: bool,
-    pub(crate) counts: RouteCounts,
-}
-
-impl LoweredRoute {
-    /// The lowered route for `route`, with the program `lower` lowers, or
-    /// `None` when every statement is compiled from the AST, which lowers
-    /// nothing. A P9998 lowering reports fails the compilation.
-    pub(crate) fn new(
-        route: Route,
-        lower: impl FnOnce() -> Result<PartialProgram, Vec<Diagnostic>>,
-    ) -> Result<Option<Self>, Diagnostic> {
-        let require = match route {
-            Route::Ast => return Ok(None),
-            Route::PreferLowered => false,
-            Route::RequireLowered => true,
-        };
-        let lowering = lower().map_err(|diagnostics| {
-            diagnostics
-                .into_iter()
-                .next()
-                .unwrap_or_else(Diagnostic::internal_error)
-        })?;
-        Ok(Some(Self {
-            lowering,
-            require,
-            counts: RouteCounts::default(),
-        }))
-    }
+/// Lowers the program `lower` lowers. A P9998 lowering reports fails the
+/// compilation.
+pub(crate) fn lower(
+    lower: impl FnOnce() -> Result<PartialProgram, Vec<Diagnostic>>,
+) -> Result<PartialProgram, Diagnostic> {
+    lower().map_err(|diagnostics| {
+        diagnostics
+            .into_iter()
+            .next()
+            .unwrap_or_else(Diagnostic::internal_error)
+    })
 }
 
 /// Compiles `stmt`, the top-level statement at `index` of the current body,
-/// from the lowered program, if the route asks for it and lowering supports
-/// it. Returns `false` when the statement is left to the AST.
-pub(crate) fn try_compile_statement(
+/// from the lowered program. A statement lowering, or this backend, does not
+/// support yet is a P9999.
+pub(crate) fn compile_statement(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     index: usize,
     stmt: &AstStmtKind,
-) -> Result<bool, Diagnostic> {
-    let Some(mut route) = ctx.lowered_route.take() else {
-        return Ok(false);
+) -> Result<(), Diagnostic> {
+    let Some(lowering) = ctx.lowering.take() else {
+        return Err(Diagnostic::internal_error());
     };
-    let compiled = compile_by_route(&mut route, emitter, ctx, index, stmt);
-    ctx.lowered_route = Some(route);
+    let compiled = compile_lowered(&lowering, emitter, ctx, index, stmt);
+    ctx.lowering = Some(lowering);
     compiled
 }
 
-fn compile_by_route(
-    route: &mut LoweredRoute,
+fn compile_lowered(
+    lowering: &PartialProgram,
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     index: usize,
     stmt: &AstStmtKind,
-) -> Result<bool, Diagnostic> {
-    let lowering = &route.lowering;
+) -> Result<(), Diagnostic> {
     let lowered = match current_pou(lowering, ctx).and_then(|pou| lowering.statement(pou, index)) {
         Some(StatementLowering::Lowered(lowered)) => Some(lowered),
         Some(StatementLowering::Unsupported) | None => None,
@@ -142,18 +94,12 @@ fn compile_by_route(
     match lowered {
         Some(lowered) if can_emit_all(lowering, ctx, lowered) => {
             crate::compile_stmt::record_statement_position(emitter, ctx, stmt);
-            stmt::emit_stmts(emitter, ctx, lowering, lowered)?;
-            route.counts.lowered += 1;
-            Ok(true)
+            stmt::emit_stmts(emitter, ctx, lowering, lowered)
         }
-        Some(_) | None if route.require => Err(Diagnostic::not_implemented(Label::span(
+        Some(_) | None => Err(Diagnostic::not_implemented(Label::span(
             statement_span(stmt),
             "Statement the lowered route does not support yet",
         ))),
-        Some(_) | None => {
-            route.counts.from_ast += 1;
-            Ok(false)
-        }
     }
 }
 
@@ -193,7 +139,8 @@ fn can_emit_all(lowering: &PartialProgram, ctx: &CompileContext, stmts: &[Stmt])
 
 /// Whether every place `stmt` names has storage this backend reaches as one
 /// value, at the operation type the lowered program gives it. A statement
-/// whose storage this backend does not reach yet is compiled from the AST.
+/// whose storage this backend does not reach yet is not supported yet
+/// (P9999).
 fn can_emit(lowering: &PartialProgram, ctx: &CompileContext, stmt: &Stmt) -> bool {
     let all = |stmts: &[Stmt]| can_emit_all(lowering, ctx, stmts);
     match stmt.kind() {
@@ -264,7 +211,7 @@ fn expr_can_emit(lowering: &PartialProgram, ctx: &CompileContext, expr: &Expr) -
         ExprKind::Const(_) | ExprKind::Null => true,
         ExprKind::Read(place) => reads(lowering, ctx, place, expr.ty()),
         // A reference to a variable, or to what a `VAR_IN_OUT` parameter
-        // refers to, as the AST route makes one.
+        // refers to.
         ExprKind::RefTo(place) => place::variable_name(lowering, ctx, place).is_some(),
         ExprKind::Truncate { value, .. }
         | ExprKind::Convert(value)

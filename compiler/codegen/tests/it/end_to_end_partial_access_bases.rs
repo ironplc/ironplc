@@ -224,8 +224,8 @@ END_PROGRAM
 }
 
 /// A base that is not a single-slot place is reported as not implemented
-/// rather than compiled to write somewhere else, by both routes. So are bits
-/// of the whole of what a reference refers to, read or written.
+/// rather than compiled to write somewhere else. So are bits of the whole of
+/// what a reference refers to, read or written.
 #[rstest]
 #[case::bits_of_bits("d : DWORD;", "d.%B1.3 := TRUE;")]
 #[case::through_reference("x : BYTE; p : REF_TO BYTE;", "p := REF(x); p^.3 := TRUE;")]

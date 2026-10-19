@@ -26,14 +26,11 @@ use ironplc_dsl::textual::{Expr, ParamAssignmentKind};
 use super::compile::CompileContext;
 use super::compile_assign::compile_store;
 use super::compile_expr::{emit_load_var, op_type_from_expr};
-use super::compile_place::Place;
 use crate::emit::Emitter;
 
 /// Where the call whose outputs are being stored leaves them.
 #[derive(Clone, Debug)]
 pub(crate) enum CallOutputs {
-    /// The function block instance of this name: an output is its field.
-    Instance(Id),
     /// The output variables of the function or method called: each output's
     /// slot in its region of the variable table.
     Variables(HashMap<Id, VarIndex>),
@@ -92,15 +89,6 @@ pub(crate) fn compile_call_output(
             })?;
             emit_load_var(emitter, var_index, at);
             Ok(())
-        }
-        Some(CallOutputs::Instance(instance)) => {
-            let place = Place::instance_field(ctx, &instance, output)?.ok_or_else(|| {
-                Diagnostic::internal_error_at(Label::span(
-                    output.span(),
-                    format!("Output of '{instance}', which is not a function block instance"),
-                ))
-            })?;
-            place.emit_load(emitter, ctx)
         }
         None => Err(Diagnostic::internal_error_at(Label::span(
             output.span(),

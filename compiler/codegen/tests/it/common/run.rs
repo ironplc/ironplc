@@ -1,7 +1,7 @@
 //! Parse, compile and run helpers shared by the codegen integration tests.
 
 use ironplc_analyzer::{CleanAnalysis, SemanticContext};
-use ironplc_codegen::{compile_with_route_counts, Route, RouteCounts};
+use ironplc_codegen::compile;
 use ironplc_container::Container;
 use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
@@ -83,46 +83,17 @@ pub fn parse_and_compile_to_run(source: &str, options: &CompilerOptions) -> Prog
     compile_to_run(&library, &context, options).unwrap()
 }
 
-/// Compiles an analyzed library with every statement taking `route`.
-pub fn compile_by_route(
+/// Compiles an analyzed library on the VM's bytecode backend.
+pub(super) fn compile_on_vm(
     library: &Library,
     context: &SemanticContext,
     options: &CompilerOptions,
-    route: Route,
 ) -> Result<Container, Diagnostic> {
-    compile_counting(library, context, options, route).map(|(container, _)| container)
-}
-
-/// Like [`compile_by_route`], also recording how many statements took each
-/// route ([`record_route_counts`]).
-pub(super) fn compile_recording_route_counts(
-    library: &Library,
-    context: &SemanticContext,
-    options: &CompilerOptions,
-    route: Route,
-) -> Result<Container, Diagnostic> {
-    compile_counting(library, context, options, route).map(|(container, counts)| {
-        record_route_counts(counts);
-        container
-    })
-}
-
-/// Like [`compile_by_route`], also counting the statements each route compiled.
-fn compile_counting(
-    library: &Library,
-    context: &SemanticContext,
-    options: &CompilerOptions,
-    route: Route,
-) -> Result<(Container, RouteCounts), Diagnostic> {
     let analysis = CleanAnalysis::new(library, context).expect("analysis reported diagnostics");
-    let codegen_options = ironplc_codegen::CodegenOptions {
-        route,
-        ..ironplc_codegen::CodegenOptions::from(options)
-    };
-    let compiled =
-        compile_with_route_counts(analysis, &codegen_options, &ironplc_codegen::EmptyLookup);
-    if let Ok((container, _)) = &compiled {
-        dump_container(container, route);
+    let codegen_options = ironplc_codegen::CodegenOptions::from(options);
+    let compiled = compile(analysis, &codegen_options, &ironplc_codegen::EmptyLookup);
+    if let Ok(container) = &compiled {
+        dump_container(container);
     }
     compiled
 }
@@ -132,10 +103,10 @@ fn compile_counting(
 /// recipe of `compiler/justfile` sets it, so that the containers of two
 /// versions of the compiler can be compared byte for byte (`container-diff`).
 ///
-/// The file is named by the test, which the test thread is named after, the
-/// number of containers the thread compiled before it, and the route, so
-/// the same compilation has the same name in every run.
-fn dump_container(container: &Container, route: Route) {
+/// The file is named by the test, which the test thread is named after, and
+/// the number of containers the thread compiled before it, so the same
+/// compilation has the same name in every run.
+fn dump_container(container: &Container) {
     thread_local!(static COMPILED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) });
     let Some(dir) = std::env::var_os("IRONPLC_CONTAINER_DUMP") else {
         return;
@@ -145,31 +116,12 @@ fn dump_container(container: &Container, route: Route) {
         .name()
         .unwrap_or("main")
         .replace("::", ".");
-    let path = std::path::Path::new(&dir).join(format!("{test}.{sequence}.{route:?}.iplc"));
+    let path = std::path::Path::new(&dir).join(format!("{test}.{sequence}.iplc"));
     let mut bytes = Vec::new();
     container
         .write_to(&mut bytes)
         .expect("a compiled container can be written");
     std::fs::write(&path, bytes).expect("cannot write the container dump");
-}
-
-/// Appends `counts` as one line, `<lowered> <from AST>`, to the file the
-/// `IRONPLC_ROUTE_COUNTS` environment variable names, when it names one. The
-/// `lowered-count` recipe of `compiler/justfile` sums the lines to report how
-/// many statements of these programs take the lowered route.
-fn record_route_counts(counts: RouteCounts) {
-    let Some(path) = std::env::var_os("IRONPLC_ROUTE_COUNTS") else {
-        return;
-    };
-    let line = format!("{} {}\n", counts.lowered, counts.from_ast);
-    // One `write` of a line opened for append lands whole, though tests
-    // record from many threads.
-    std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-        .and_then(|mut file| std::io::Write::write_all(&mut file, line.as_bytes()))
-        .expect("cannot record the route counts");
 }
 
 /// Parses, analyzes, compiles, and runs one scan cycle, returning `Err` on VM trap.

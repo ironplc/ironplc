@@ -5,17 +5,16 @@
 //! instance whose fields hold instances, and a copy between such fields in a
 //! block's body or method, `ob := inp`.
 //!
-//! The route that reads the AST stores the field's slot, which makes the
-//! destination an alias of the instance the field holds, so these run with
-//! `RequireLowered` only.
+//! The route that read the AST stored the field's slot, which made the
+//! destination an alias of the instance the field holds.
 
 use crate::common::Duration;
 use crate::compile_route_lowered::run_lowered;
 
 /// Blocks whose fields hold instances, of a user-defined block and of a
 /// standard one, and a block whose field holds an instance that holds them
-/// in turn. No body reads the instances its fields hold, which neither
-/// route compiles (issue 1553).
+/// in turn. No body reads the instances its fields hold, which this backend
+/// does not compile yet (issue 1553).
 const BLOCKS: &str = "
     FUNCTION_BLOCK INNER
       VAR_INPUT v : DINT; END_VAR

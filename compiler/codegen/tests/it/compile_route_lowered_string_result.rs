@@ -1,14 +1,11 @@
 //! Tests of calls of user-defined functions whose result is a string,
 //! compiled from the lowered program (REQ-LOW-lowering-079,
 //! REQ-LOW-lowering-179), with every statement required to lower. Each
-//! program compiles to the same code as by the route that reads the AST,
-//! the functions' bodies included, and leaves every variable and the data
-//! region as that route leaves them after one scan.
+//! program compiles, the functions' bodies included, and leaves every
+//! variable with the same values on every backend after one scan.
 
-use ironplc_codegen::Route;
-
-use crate::common::{compile_by_route, parse};
-use crate::compile_route_lowered::{assert_same_code, options, run_lowered_agreeing};
+use crate::common::{compile_analyzed, parse};
+use crate::compile_route_lowered::{assert_compiles, options, run_lowered_agreeing};
 
 /// Functions whose results are strings: a `STRING[20]` input doubled, the
 /// same with a `!` after it, and a `WSTRING` input as it is.
@@ -39,7 +36,7 @@ fn run_when_result_assigned_to_argument_or_nested_then_values() {
            nested := TWICE(TWICE('x'));
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
     let snapshot = run_lowered_agreeing(&source);
     assert_eq!(snapshot.read("same"), "abab");
     assert_eq!(snapshot.read("nested"), "xxxx");
@@ -68,7 +65,7 @@ fn run_when_result_is_operand_then_call_emitted_where_read() {
            IF TWICE(a) = 'aa' THEN hit := 1; END_IF;
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
     let snapshot = run_lowered_agreeing(&source);
     assert_eq!(snapshot.read("joined"), "aabb");
     assert_eq!(snapshot.read("wide"), "abcd");
@@ -77,10 +74,10 @@ fn run_when_result_is_operand_then_call_emitted_where_read() {
 }
 
 /// A call in a loop of 200 iterations hands its buffer back at every
-/// iteration, so the pool of temporary buffers is the size the route that
-/// reads the AST gives it.
+/// iteration, so the pool of temporary buffers stays the size one iteration
+/// needs.
 #[test]
-fn run_when_called_in_loop_then_buffers_released_and_pool_as_ast_route() {
+fn run_when_called_in_loop_then_buffers_released_and_pool_of_one_iteration() {
     let source = format!(
         "{FUNCTIONS}
          PROGRAM main VAR t : STRING[32]; i : INT; n : DINT; END_VAR
@@ -90,26 +87,23 @@ fn run_when_called_in_loop_then_buffers_released_and_pool_as_ast_route() {
            END_FOR;
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
     let snapshot = run_lowered_agreeing(&source);
     assert_eq!(snapshot.read("t"), "hi!");
     assert_eq!(snapshot.read_as::<i32>("n"), 800);
     let options = options();
     let (library, context) = parse(&source, &options);
-    let header = |route| {
-        let header = compile_by_route(&library, &context, &options, route)
-            .expect("the program compiles")
-            .header;
-        (header.num_temp_bufs, header.max_temp_buf_bytes)
-    };
-    assert_eq!(header(Route::RequireLowered), header(Route::Ast));
+    let header = compile_analyzed(&library, &context, &options)
+        .expect("the program compiles")
+        .header;
+    assert_eq!((header.num_temp_bufs, header.max_temp_buf_bytes), (2, 38));
 }
 
 /// REQ-LOW-lowering-180: a call in an `ELSIF` condition is in place there,
 /// so it runs only when the conditions before it are false: it decides the
-/// second statement and not the first. The code differs from the route that
-/// reads the AST only in the jump that route emits after the last branch of
-/// an `IF` with no `ELSE`.
+/// second statement and not the first. The code differed from the route
+/// that read the AST only in the jump that route emitted after the last
+/// branch of an `IF` with no `ELSE`.
 #[test]
 fn run_when_result_in_elsif_condition_then_lowered_in_place() {
     let source = format!(
@@ -139,7 +133,7 @@ fn run_when_result_is_argument_of_call_with_outputs_then_values() {
            r := SPLIT(n := LEN(TWICE(a)), twice => q);
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
     let snapshot = run_lowered_agreeing(&source);
     assert_eq!(snapshot.read_as::<i32>("r"), 4);
     assert_eq!(snapshot.read_as::<i32>("q"), 8);

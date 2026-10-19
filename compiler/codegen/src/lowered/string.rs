@@ -7,13 +7,11 @@
 //! `STR_STORE_ARRAY_ELEM` copy a buffer into a place, keeping the code units
 //! its capacity holds (REQ-LOW-codegen-056). A string function's instruction
 //! takes each string as the data region offset of a slot that holds it.
-//! While both routes exist, a string place is found where this backend's
-//! layout stores it, as the AST route finds it
+//! A string place is found where this backend's layout stores it
 //! ([`StringPlace`](crate::compile_string_place::StringPlace)). A string
-//! field of another function block instance is the exception: the AST route
+//! field of another function block instance is the exception: this backend
 //! keeps the index of a temporary buffer in the field's slot (issue 1753),
-//! with `FB_STORE_PARAM` and `FB_LOAD_PARAM`, and so does this backend
-//! (`place::instance_slot`).
+//! with `FB_STORE_PARAM` and `FB_LOAD_PARAM` (`place::instance_slot`).
 
 use ironplc_container::CharWidth;
 use ironplc_dsl::core::SourceSpan;
@@ -87,8 +85,8 @@ fn string_storage<'c>(
     ctx.string_var(&variable_name(lowering, ctx, place)?)
 }
 
-/// The data region offset of a slot that holds the string `value`, as the
-/// AST route's `resolve_string_arg` gives it: the place's own slot for the
+/// The data region offset of a slot that holds the string `value`, as
+/// `resolve_string_arg` gives it: the place's own slot for the
 /// string at a place, and otherwise a temporary slot of `value`'s encoding
 /// and capacity that `value` is computed into.
 pub(super) fn str_arg_offset(

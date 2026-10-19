@@ -343,7 +343,7 @@ or the program wrote one, such as `INT_TO_REAL`. A value with no operation
 type -- the buffer of a string, the data offset of an aggregate, or a constant
 codegen builds itself -- is loaded at the default slot type.
 
-**REQ-IC-codegen-019** Codegen chooses no conversion of its own: with the recorded conversions removed, `l := ud` on an `LINT` and a `UDINT`, `r := i` on a `REAL` and an `INT`, and `lr := r * r` on an `LREAL` and a `REAL` compile without converting the value.
+**REQ-IC-codegen-019** Codegen chooses no conversion of its own: with the recorded conversions removed, `l := ud` on an `LINT` and a `UDINT`, `r := i` on a `REAL` and an `INT`, and `lr := r * r` on an `LREAL` and a `REAL` are internal errors (P9998), since lowering assigns only a value of the destination's type, rather than compiled with a conversion.
 
 An `ImplicitConversion` compiles its operand at the operand's own type and
 converts it to the type the node records. A comparison compiles at the type of
@@ -423,20 +423,20 @@ Every other variable of a function, a method or a function block body -- a local
 
 `AND`, `OR` and `XOR` compute at the type the analyzer recorded for the operation, to which it converted an operand of another width.
 
-A typed time or date function compiles each operand at the type the analyzer recorded for it, which is the width the routine computes at. An operand of another width is an internal error (P9998), not widened as the code generator used to widen a short operand of a long form and the number a duration is scaled by. The analyzer writes a typed fold as the calls it folds to, so no step widens the previous step's result on the stack.
+A typed time or date function compiles each operand at the type the analyzer recorded for it, which is the width the routine computes at. Lowering does not lower an operand of another width, so its statement is not compiled (P9999), rather than widened as the code generator used to widen a short operand of a long form and the number a duration is scaled by. The analyzer writes a typed fold as the calls it folds to, so no step widens the previous step's result on the stack.
 
-An array subscript and a shift or rotate count compile at the type the analyzer recorded for them, which is `DINT`, or `LINT` for the count of a value operated at 64 bits. One of another width is an internal error, not narrowed or widened as the code generator used to. The code generator compiles a checked conversion of a subscript as a subscript check (`CHECK_SUBSCRIPT_I64`, `CHECK_SUBSCRIPT_U64` or `CHECK_SUBSCRIPT_U32`), which leaves a value in the range of `DINT` as it is and traps (`V4007`) on any other.
+An array subscript and a shift or rotate count compile at the type the analyzer recorded for them, which is `DINT`, or `LINT` for the count of a value operated at 64 bits. A subscript of another width is an internal error, and lowering does not lower a count of another width, so its statement is not compiled; neither is narrowed or widened as the code generator used to. The code generator compiles a checked conversion of a subscript as a subscript check (`CHECK_SUBSCRIPT_I64`, `CHECK_SUBSCRIPT_U64` or `CHECK_SUBSCRIPT_U32`), which leaves a value in the range of `DINT` as it is and traps (`V4007`) on any other.
 
 **REQ-IC-codegen-022** A subscript whose conversion the analyzer recorded as checked traps with `V4007` when its value is outside the range of `DINT`, rather than selecting the element at the position its low bits name: an `LINT` subscript of 4294967297 on `ARRAY[0..3]`, and a `UDINT` subscript of 4294967295, a `DWORD` of `16#FFFFFFFF` and a `ULINT` of 18446744073709551615 on `ARRAY[-3..100]`, each trap.
 
-**REQ-IC-codegen-015** A subscript or shift count whose conversion the analyzer did not record is an internal error: with the recorded conversions removed, `a[l]`, `a[d + l]`, `SHL(dw, l)` and `SHL(lw, d)` report P9998, and `a[d]` and `SHL(dw, d)` compile.
+**REQ-IC-codegen-015** A subscript or shift count whose conversion the analyzer did not record is not compiled: with the recorded conversions removed, `a[l]` and `a[d + l]` report P9998, `SHL(dw, l)` and `SHL(lw, d)` report P9999, and `a[d]` and `SHL(dw, d)` compile.
 
-A string function's position or length compiles at the type the analyzer recorded for it, which is `DINT`. One of another width is an internal error, not narrowed as the code generator used to.
+A string function's position or length compiles at the type the analyzer recorded for it, which is `DINT`. Lowering does not lower one of another width, so its statement is not compiled, rather than narrowed as the code generator used to.
 
-**REQ-IC-codegen-018** A string position or length whose conversion the analyzer did not record is an internal error: with the recorded conversions removed, `LEFT(st, l)`, `MID(st, d, l)`, `INSERT(st, 'ab', l)` and `REPLACE(st, 'ab', l, d)` report P9998, and `LEFT(st, d)` compiles.
+**REQ-IC-codegen-018** A string position or length whose conversion the analyzer did not record is not compiled: with the recorded conversions removed, `LEFT(st, l)`, `MID(st, d, l)`, `INSERT(st, 'ab', l)` and `REPLACE(st, 'ab', l, d)` report P9999, and `LEFT(st, d)` compiles.
 
 `INT_TO_BCD` selects its encoding by the width of its input, the bit string as wide as it (REQ-IC-analyzer-090). An input of a width with no encoding is an internal error, not encoded at the width of the call's context as the code generator used to.
 
-**REQ-IC-codegen-013** A typed time or date operation whose operand conversion the analyzer did not record is an internal error: with the recorded conversions removed, `lt + t`, `SUB_LDATE_LDATE(lda, da)`, `lt * d`, `MUL_LTIME(lt, r)` and `t * l` report P9998, and `lt + lt` compiles.
+**REQ-IC-codegen-013** A typed time or date operation whose operand conversion the analyzer did not record is not compiled: with the recorded conversions removed, `lt + t`, `SUB_LDATE_LDATE(lda, da)`, `lt * d`, `MUL_LTIME(lt, r)` and `t * l` report P9999, and `lt + lt` compiles.
 
 **REQ-IC-codegen-008** `AND`, `OR` and `XOR` keep every bit of their widest operand and widen their result by its own type: with `lw = 16#100000000` and `w = 1`, `w OR lw` and `lw OR w` give `16#100000001`, and with the `DWORD`s `d1 = 16#80000000` and `d2 = 1`, `lw := d1 OR d2` stores `16#80000001`.
