@@ -1,4 +1,4 @@
-use crate::test_helpers::{edition3_options, rule_codes};
+use crate::test_helpers::{diagnostic_codes, edition3_options, rule_codes, rule_diagnostics};
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
 
@@ -32,6 +32,81 @@ r : IntRef;
 END_VAR
 r := REF(x);
 END_PROGRAM",
+    );
+}
+
+#[test]
+fn ref_to_when_type_references_reference_type_then_p2036() {
+    assert_problem(
+        "TYPE
+IntRef : REF_TO INT;
+IntRefRef : REF_TO IntRef;
+END_TYPE
+PROGRAM Main
+END_PROGRAM",
+        Problem::NestedRefToNotSupported,
+    );
+}
+
+#[test]
+fn ref_to_when_variable_references_reference_type_then_p2036() {
+    assert_problem(
+        "TYPE IntRef : REF_TO INT; END_TYPE
+PROGRAM Main
+VAR
+rr : REF_TO IntRef;
+END_VAR
+END_PROGRAM",
+        Problem::NestedRefToNotSupported,
+    );
+}
+
+#[test]
+fn ref_to_when_function_input_references_reference_type_then_p2036() {
+    assert_problem(
+        "TYPE IntRef : REF_TO INT; END_TYPE
+FUNCTION F : INT
+VAR_INPUT
+rr : REF_TO IntRef;
+END_VAR
+F := 0;
+END_FUNCTION",
+        Problem::NestedRefToNotSupported,
+    );
+}
+
+#[test]
+fn ref_to_when_variable_references_value_type_then_ok() {
+    assert_ok(
+        "TYPE Point : STRUCT x : INT; END_STRUCT; END_TYPE
+PROGRAM Main
+VAR
+rp : REF_TO Point;
+ri : REF_TO INT;
+END_VAR
+END_PROGRAM",
+    );
+}
+
+#[test]
+fn ref_to_when_variable_references_reference_type_then_p2036_at_target() {
+    let program = "TYPE IntRef : REF_TO INT; END_TYPE
+PROGRAM Main
+VAR
+rr : REF_TO IntRef;
+END_VAR
+END_PROGRAM";
+    let diagnostics = rule_diagnostics(super::apply, program, &edition3_options());
+
+    assert_eq!(
+        diagnostic_codes(&diagnostics),
+        [Problem::NestedRefToNotSupported.code()]
+    );
+    let start = program.find("REF_TO IntRef").unwrap() + "REF_TO ".len();
+    let location = &diagnostics[0].primary.location;
+    assert_eq!(
+        (location.start, location.end),
+        (start, start + "IntRef".len())
     );
 }
 

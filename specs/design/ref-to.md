@@ -306,7 +306,7 @@ This approach works because references are type-erased at the bytecode level (al
 | No arithmetic on references | P2033 | `ref + 1` — arithmetic operators applied to reference type |
 | NULL only for reference types | P2034 | `x := NULL` where x has type INT — NULL is only assignable to reference types |
 | Only = and <> on references | P2035 | `ref < other_ref` — ordering comparison on references (only `=` and `<>` are allowed) |
-| No nested REF_TO | P2036 | `REF_TO REF_TO INT` — multi-level indirection is not supported in this implementation |
+| No nested REF_TO | P2036 | `REF_TO REF_TO INT`, or a type or variable declared `REF_TO RP` where `RP` is a reference type — multi-level indirection is not supported in this implementation |
 
 These codes are in the P2000-P3999 range (type system errors), continuing from the existing highest code P2027.
 
