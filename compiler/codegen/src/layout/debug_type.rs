@@ -78,8 +78,8 @@ fn subrange_debug_type_name(spec: &SubrangeSpecificationKind) -> String {
 /// Computes the debug `(iec_type_tag, type_name)` pair for a function- or
 /// FB-local variable declaration. This mirrors the best-effort resolution
 /// the program/global path performs (see `storage::assign_variables`) but
-/// without its side-effecting data-region allocation, so it is safe to call from
-/// the per-function slot-assignment loops in `compile_fn`. Composite or
+/// without its side-effecting data-region allocation, so it is safe to call
+/// from the per-function slot-assignment loops in `compile_fn`. Composite or
 /// unsupported initializers fall back to [`iec_type_tag::OTHER`] with a
 /// best-effort type name, matching the global behavior.
 pub(crate) fn debug_type_for_decl(decl: &VarDecl, types: &TypeEnvironment) -> (u8, String) {
