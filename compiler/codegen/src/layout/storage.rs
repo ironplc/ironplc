@@ -39,8 +39,8 @@ pub(super) fn assign_variables(
 ) -> Result<(), Diagnostic> {
     for decl in declarations {
         if let Some(id) = decl.identifier.symbolic_id() {
-            let index = VarIndex::new(ctx.variables.len() as u16);
-            ctx.variables.insert(id.clone(), index);
+            let index = VarIndex::new(ctx.slot_count());
+            ctx.variables.insert(ctx.scope, id.clone(), index);
             let (type_tag, type_name_str) = assign_storage(ctx, builder, decl, id, index, types)?;
             ctx.debug_var_names.push(VarNameEntry {
                 var_index: index,
@@ -102,7 +102,7 @@ fn assign_storage(
             // A subrange operates as its base type.
             if let Some(type_info) = crate::compile_struct::var_type_info_for_field(&representation)
             {
-                ctx.var_types.insert(id.clone(), type_info);
+                ctx.var_types.insert(ctx.scope, id.clone(), type_info);
             }
             // A named subrange is known by its name; one spelled out in
             // place by its base type.
@@ -138,6 +138,7 @@ fn assign_storage(
             }
 
             ctx.string_vars.insert(
+                ctx.scope,
                 id.clone(),
                 StringVarInfo {
                     data_offset,
@@ -175,6 +176,7 @@ fn assign_storage(
                 let data_offset = crate::data_region::reserve(ctx, instance_size, &span)?;
 
                 ctx.fb_instances.insert(
+                    ctx.scope,
                     id.clone(),
                     FbInstanceInfo {
                         var_index: index,
@@ -201,6 +203,7 @@ fn assign_storage(
                 let held = crate::held_instances::reserve(ctx, &fb_name, data_offset, &span)?;
 
                 ctx.fb_instances.insert(
+                    ctx.scope,
                     id.clone(),
                     FbInstanceInfo {
                         var_index: index,
@@ -276,7 +279,7 @@ fn assign_storage(
         SemanticType::Enumeration { .. } => {
             // Enum variables use DINT (W32/Signed/32-bit) per REQ-EN-codegen-010.
             let type_info = crate::compile_enum::enum_var_type_info();
-            ctx.var_types.insert(id.clone(), type_info);
+            ctx.var_types.insert(ctx.scope, id.clone(), type_info);
             // Debug tag is DINT per REQ-EN-codegen-012; type_name is the
             // enum's debug name (e.g. "COLOR"), REQ-EN-codegen-092.
             let name = crate::compile_enum::debug_name(types, Some(type_id));
@@ -299,7 +302,7 @@ fn assign_scalar_storage(
     type_id: TypeId,
 ) -> (u8, String) {
     if let Some(type_info) = crate::type_info::decl_type_info(ctx, decl) {
-        ctx.var_types.insert(id.clone(), type_info);
+        ctx.var_types.insert(ctx.scope, id.clone(), type_info);
     }
     let elementary = types
         .get_by_id(type_id)

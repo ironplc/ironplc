@@ -14,10 +14,10 @@
 //!    `VAR_IN_OUT`, then its `VAR`, `VAR_TEMP` and `VAR_OUTPUT`, then its
 //!    result, as a function's.
 //!
-//! A block's fields are known by name in a scope of their own, which also
-//! holds the globals a block sees (`Scope::for_fb_body`). Each method's
-//! scope is the block's with the method's own variables added. The walk
-//! keeps each scope for the body to be compiled against.
+//! A block's fields are recorded under its own scope, and each method's
+//! variables under the method's, which also sees its block's. Each body is
+//! compiled in its scope, which also sees some of the globals'
+//! ([`super::names`]).
 
 use std::collections::HashMap;
 
@@ -30,13 +30,13 @@ use ironplc_dsl::common::{
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 
+use super::names::ScopeId;
 use crate::compile::{
     CompileContext, FbFieldIndex, OpType, ParamPassing, UserFbTypeInfo, UserMethodInfo,
     UserMethodParam, VarTypeInfo, DEFAULT_OP_TYPE, DEFAULT_VAR_TYPE_INFO, MAX_USER_FB_FIELDS,
 };
 use crate::compile_fn::{param_passing, push_local_var_name, register_string_variable};
 use crate::held_instances::HeldField;
-use crate::scope::Scope;
 use crate::type_info::{decl_type_info, named_type_info};
 
 /// Where a user function block's copy slots and its methods' variables
@@ -44,8 +44,9 @@ use crate::type_info::{decl_type_info, named_type_info};
 pub(crate) struct BlockLayout {
     /// The block body's id in the container.
     pub(crate) function_id: FunctionId,
-    /// The variable mappings the block's body is compiled against.
-    pub(crate) scope: Scope,
+    /// The scope the block's copy slots are recorded under, which its body
+    /// is compiled in.
+    pub(crate) scope: ScopeId,
     /// How many copy slots the block takes, one for each field.
     pub(crate) num_locals: u16,
     /// The layout of each of the block's methods, in declaration order.
@@ -56,9 +57,9 @@ pub(crate) struct BlockLayout {
 pub(crate) struct MethodLayout {
     /// The method's id in the container.
     pub(crate) function_id: FunctionId,
-    /// The variable mappings the method's body is compiled against: its
-    /// block's, with the method's own variables.
-    pub(crate) scope: Scope,
+    /// The scope the method's variables are recorded under, which its body
+    /// is compiled in, and which sees its block's too.
+    pub(crate) scope: ScopeId,
     /// The slots the VM's frame for the method spans, from the first of
     /// its block's copy slots through the method's result.
     pub(crate) num_locals: u16,
@@ -205,15 +206,13 @@ pub(crate) fn lay_out_block_types(
 
 /// Lays out `fb_decl`'s copy slots, then each of its methods, from the slot
 /// `var_offset`, which it advances past them, and records where they are
-/// in `ctx.user_fb_types`. The block sees the `num_globals` globals, which
-/// take the slots below `num_globals`.
+/// in `ctx.user_fb_types`.
 pub(crate) fn lay_out_block(
     fb_decl: &FunctionBlockDeclaration,
     var_offset: &mut VarIndex,
     ctx: &mut CompileContext,
     builder: &mut ContainerBuilder,
     types: &TypeEnvironment,
-    num_globals: u16,
 ) -> Result<BlockLayout, Diagnostic> {
     let fb_name = fb_decl.name.name.to_string().to_uppercase();
     let field_var_off = var_offset.raw();
@@ -247,21 +246,21 @@ pub(crate) fn lay_out_block(
         }
     }
 
-    // Swap the program's variable mappings for the FB type's own; the
-    // program's are put back once the block and its methods are laid out.
-    let program_scope = ctx.swap_scope(Scope::default());
-    ctx.swap_scope(Scope::for_fb_body(&program_scope, num_globals));
+    // Record the block's fields under its own scope; the program's is
+    // current again once the block and its methods are laid out.
+    let scope = ScopeId::Block(function_id);
+    let caller = std::mem::replace(&mut ctx.scope, scope);
 
     // Assign variable slots for all FB fields, in the same order as field_decls.
     let mut current_index = VarIndex::new(field_var_off);
     for decl in &field_decls {
         if let Some(id) = decl.identifier.symbolic_id() {
-            ctx.variables.insert(id.clone(), current_index);
+            ctx.variables.insert(ctx.scope, id.clone(), current_index);
             push_local_var_name(ctx, current_index, function_id, decl, id, types);
             // A field operates at its declared type, as a function's local
             // does.
             if let Some(type_info) = decl_type_info(ctx, decl) {
-                ctx.var_types.insert(id.clone(), type_info);
+                ctx.var_types.insert(ctx.scope, id.clone(), type_info);
             }
             match &decl.initializer {
                 InitialValueAssignmentKind::Reference(ref_init) => {
@@ -287,37 +286,40 @@ pub(crate) fn lay_out_block(
 
     *var_offset = VarIndex::new(var_offset.raw() + num_locals);
 
-    // Set the block's variable mappings aside for its body. Each method
-    // starts from a copy of them, so that a name one method declares does
-    // not resolve in the next.
-    let block_scope = ctx.swap_scope(Scope::default());
+    // Each method's variables are recorded under its own scope, so that a
+    // name one method declares does not resolve in the next.
     let mut methods = Vec::with_capacity(fb_decl.methods.len());
     for method in &fb_decl.methods {
-        ctx.swap_scope(block_scope.clone());
-        let layout = lay_out_method(&fb_name, method, field_var_off, var_offset, ctx, types);
-        let scope = ctx.swap_scope(Scope::default());
-        methods.push(MethodLayout { scope, ..layout? });
+        methods.push(lay_out_method(
+            &fb_name,
+            function_id,
+            method,
+            field_var_off,
+            var_offset,
+            ctx,
+            types,
+        )?);
+        ctx.scope = scope;
     }
 
-    // Restore the program's variable mappings.
-    ctx.swap_scope(program_scope);
+    ctx.scope = caller;
 
     Ok(BlockLayout {
         function_id,
-        scope: block_scope,
+        scope,
         num_locals,
         methods,
     })
 }
 
 /// Lays out the variables of `method`, a method of the block `fb_name`
-/// whose copy slots start at `field_var_off`, from the slot `var_offset`,
-/// which it advances past them, and records where they are in the method's
-/// entry of `ctx.user_fb_types`. The method's variables are added to the
-/// block's mappings, which `ctx` holds; the layout it returns holds an
-/// empty scope, which its caller fills.
+/// whose body is `block` and whose copy slots start at `field_var_off`,
+/// from the slot `var_offset`, which it advances past them, under the
+/// method's own scope, which it leaves current. Records where they are in
+/// the method's entry of `ctx.user_fb_types`.
 fn lay_out_method(
     fb_name: &str,
+    block: FunctionId,
     method: &MethodDeclaration,
     field_var_off: u16,
     var_offset: &mut VarIndex,
@@ -327,6 +329,11 @@ fn lay_out_method(
     let method_name = method.name.to_string().to_lowercase();
     let function_id = ctx.user_fb_types[fb_name].methods[&method_name].function_id;
     let param_var_off = *var_offset;
+    let scope = ScopeId::Method {
+        block,
+        method: function_id,
+    };
+    ctx.scope = scope;
 
     let mut current_index = param_var_off;
     let mut num_params: u16 = 0;
@@ -337,11 +344,11 @@ fn lay_out_method(
             continue;
         }
         if let Some(id) = decl.identifier.symbolic_id() {
-            ctx.variables.insert(id.clone(), current_index);
+            ctx.variables.insert(ctx.scope, id.clone(), current_index);
             // A parameter operates at its declared type, whatever kind of
             // declaration declares it, as a function's does.
             if let Some(type_info) = decl_type_info(ctx, decl) {
-                ctx.var_types.insert(id.clone(), type_info);
+                ctx.var_types.insert(ctx.scope, id.clone(), type_info);
             }
             // A call copies a string argument into the parameter's run.
             if let InitialValueAssignmentKind::String(string_init) = &decl.initializer {
@@ -360,13 +367,13 @@ fn lay_out_method(
             continue;
         }
         if let Some(id) = decl.identifier.symbolic_id() {
-            ctx.variables.insert(id.clone(), current_index);
+            ctx.variables.insert(ctx.scope, id.clone(), current_index);
             if decl.var_type == VariableType::Output {
                 outputs.insert(id.clone(), current_index);
             }
             // A local operates at its declared type, as a parameter does.
             if let Some(type_info) = decl_type_info(ctx, decl) {
-                ctx.var_types.insert(id.clone(), type_info);
+                ctx.var_types.insert(ctx.scope, id.clone(), type_info);
             }
             // The prologue initializes a string local or output's run at
             // every call.
@@ -408,10 +415,12 @@ fn lay_out_method(
     // type has no result to assign, and the analyzer rejects the
     // assignment rather than letting it reach here.
     if has_return_value {
-        ctx.variables.insert(return_id.clone(), return_var_index);
+        ctx.variables
+            .insert(ctx.scope, return_id.clone(), return_var_index);
         if let Some(FunctionReturnType::Named(type_name)) = &method.return_type {
             if let Some(type_info) = named_type_info(ctx, types, type_name) {
-                ctx.var_types.insert(return_id.clone(), type_info);
+                ctx.var_types
+                    .insert(ctx.scope, return_id.clone(), type_info);
             }
         }
     }
@@ -467,7 +476,7 @@ fn lay_out_method(
 
     Ok(MethodLayout {
         function_id,
-        scope: Scope::default(),
+        scope,
         num_locals,
         num_params,
         return_var_index,

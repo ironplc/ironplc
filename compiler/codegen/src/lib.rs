@@ -71,7 +71,6 @@ mod held_instances;
 mod layout;
 mod lowered;
 mod optimize;
-mod scope;
 mod source_lookup;
 mod stack_balance;
 mod string_width;

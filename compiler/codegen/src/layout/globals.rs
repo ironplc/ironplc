@@ -12,12 +12,13 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::execution::SystemGlobal;
 
 use super::debug_type::resolve_iec_type_tag;
+use super::names::ScopeId;
 use super::storage::assign_variables;
 use crate::compile::CompileContext;
 
 /// Lays out the compiler-provided globals `system_globals`, then the
 /// declared globals `global_vars`, from the first slot of the variable
-/// table.
+/// table, under the globals' scope.
 pub(crate) fn lay_out_globals(
     ctx: &mut CompileContext,
     builder: &mut ContainerBuilder,
@@ -25,6 +26,7 @@ pub(crate) fn lay_out_globals(
     global_vars: &[VarDecl],
     types: &TypeEnvironment,
 ) -> Result<(), Diagnostic> {
+    ctx.scope = ScopeId::Global;
     assign_system_globals(ctx, system_globals, types)?;
     assign_variables(ctx, builder, global_vars, types)
 }
@@ -49,8 +51,8 @@ fn assign_system_globals(
                 ))
             })?;
         let id = Id::from(global.name);
-        let index = VarIndex::new(ctx.variables.len() as u16);
-        ctx.variables.insert(id.clone(), index);
+        let index = VarIndex::new(ctx.slot_count());
+        ctx.variables.insert(ctx.scope, id.clone(), index);
         let type_name = TypeName::from(global.type_name);
         ctx.debug_var_names.push(VarNameEntry {
             var_index: index,

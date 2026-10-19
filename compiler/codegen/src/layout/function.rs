@@ -6,9 +6,9 @@
 //! 2. then its `VAR`, `VAR_TEMP` and `VAR_OUTPUT`, in declaration order;
 //! 3. then its result.
 //!
-//! A function's variables are known by name in a scope of their own, which
-//! also holds the globals a function sees (`Scope::for_function_body`). The
-//! walk keeps that scope for the function's body to be compiled against.
+//! A function's variables are recorded under its own scope, which its body
+//! is compiled in, and which also sees some of the globals'
+//! ([`super::names`]).
 
 use std::collections::HashMap;
 
@@ -22,6 +22,7 @@ use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::Diagnostic;
 
 use super::debug_type::debug_type_for_return;
+use super::names::ScopeId;
 use crate::compile::{
     string_region_size, CompileContext, OpType, ParamPassing, StringReturnInfo, StringVarInfo,
     UserFunctionInfo, DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH, WIDE_CHAR_WIDTH,
@@ -30,7 +31,6 @@ use crate::compile_fn::{
     in_out_value_type, param_passing, push_local_var_name, register_string_variable,
 };
 use crate::compile_stmt::resolve_string_spec_max_length;
-use crate::scope::Scope;
 use crate::type_info::{decl_type_info, named_type_info};
 
 /// Where a user function's variables are, which its body is compiled
@@ -38,8 +38,9 @@ use crate::type_info::{decl_type_info, named_type_info};
 pub(crate) struct FunctionLayout {
     /// The function's id in the container.
     pub(crate) function_id: FunctionId,
-    /// The variable mappings the function's body is compiled against.
-    pub(crate) scope: Scope,
+    /// The scope the function's variables are recorded under, which its
+    /// body is compiled in.
+    pub(crate) scope: ScopeId,
     /// How many slots the function's run takes.
     pub(crate) num_locals: u16,
     /// How many of them, at its start, hold the function's parameters.
@@ -56,8 +57,7 @@ pub(crate) struct FunctionLayout {
 
 /// Lays out `func_decl`, whose id is `function_id`, from the slot
 /// `var_offset`, and records what a call of it needs in
-/// `ctx.user_functions`. The function sees the `num_globals` globals, which
-/// take the slots below `num_globals`.
+/// `ctx.user_functions`.
 pub(crate) fn lay_out_function(
     func_decl: &FunctionDeclaration,
     function_id: FunctionId,
@@ -65,12 +65,11 @@ pub(crate) fn lay_out_function(
     ctx: &mut CompileContext,
     builder: &mut ContainerBuilder,
     types: &TypeEnvironment,
-    num_globals: u16,
 ) -> Result<FunctionLayout, Diagnostic> {
-    // Swap the program's variable mappings for the function's own; the
-    // program's are put back once the function is laid out.
-    let program_scope = ctx.swap_scope(Scope::default());
-    ctx.swap_scope(Scope::for_function_body(&program_scope, num_globals));
+    // Record the function's variables under its own scope; the program's is
+    // current again once the function is laid out.
+    let scope = ScopeId::Function(function_id);
+    let caller = std::mem::replace(&mut ctx.scope, scope);
 
     // Assign variable slots for the function's parameters and locals,
     // starting at var_offset. Input parameters come first (declaration order),
@@ -85,14 +84,14 @@ pub(crate) fn lay_out_function(
             continue;
         }
         if let Some(id) = decl.identifier.symbolic_id() {
-            ctx.variables.insert(id.clone(), current_index);
+            ctx.variables.insert(ctx.scope, id.clone(), current_index);
             push_local_var_name(ctx, current_index, function_id, decl, id, types);
             if decl.var_type == VariableType::InOut {
                 // The slot holds a reference to the caller's variable; its
                 // type info is the referenced value's, for reads and writes.
                 let type_info = in_out_value_type(decl)?;
-                ctx.var_types.insert(id.clone(), type_info);
-                ctx.in_out_params.insert(id.clone());
+                ctx.var_types.insert(ctx.scope, id.clone(), type_info);
+                ctx.in_out_params.insert(ctx.scope, id.clone(), ());
                 current_index = VarIndex::new(current_index.raw() + 1);
                 num_params += 1;
                 continue;
@@ -101,7 +100,7 @@ pub(crate) fn lay_out_function(
             // declaration declares it: a subrange at its base type, an
             // enumeration as a `DINT`, a reference as its 64-bit index.
             if let Some(type_info) = decl_type_info(ctx, decl) {
-                ctx.var_types.insert(id.clone(), type_info);
+                ctx.var_types.insert(ctx.scope, id.clone(), type_info);
             }
             match &decl.initializer {
                 InitialValueAssignmentKind::String(string_init) => {
@@ -132,14 +131,14 @@ pub(crate) fn lay_out_function(
             continue;
         }
         if let Some(id) = decl.identifier.symbolic_id() {
-            ctx.variables.insert(id.clone(), current_index);
+            ctx.variables.insert(ctx.scope, id.clone(), current_index);
             if decl.var_type == VariableType::Output {
                 outputs.insert(id.clone(), current_index);
             }
             push_local_var_name(ctx, current_index, function_id, decl, id, types);
             // A local operates at its declared type, as a parameter does.
             if let Some(type_info) = decl_type_info(ctx, decl) {
-                ctx.var_types.insert(id.clone(), type_info);
+                ctx.var_types.insert(ctx.scope, id.clone(), type_info);
             }
             match &decl.initializer {
                 InitialValueAssignmentKind::String(string_init) => {
@@ -164,7 +163,8 @@ pub(crate) fn lay_out_function(
     // Assign the return variable (named same as the function).
     let return_var_index = current_index;
     let return_id = func_decl.name.clone();
-    ctx.variables.insert(return_id.clone(), return_var_index);
+    ctx.variables
+        .insert(ctx.scope, return_id.clone(), return_var_index);
 
     // Debug entry for the return value. The result has no IEC variable
     // section; it is modeled as VAR_OUTPUT so a debugger surfaces it in the
@@ -197,6 +197,7 @@ pub(crate) fn lay_out_function(
             }
 
             ctx.string_vars.insert(
+                ctx.scope,
                 return_id.clone(),
                 StringVarInfo {
                     data_offset,
@@ -225,13 +226,14 @@ pub(crate) fn lay_out_function(
                     &func_decl.name.span(),
                 )?;
             } else if let Some(type_info) = named_type_info(ctx, types, &return_type_name) {
-                ctx.var_types.insert(return_id.clone(), type_info);
+                ctx.var_types
+                    .insert(ctx.scope, return_id.clone(), type_info);
             }
             None
         }
     };
-    // Captured here because the function's scope is set aside at the end of
-    // this function, and the call site reads it from the caller's.
+    // Captured here because the call site reads it from the caller's scope,
+    // which does not see the function's variables.
     let return_struct_desc_index = ctx.struct_var(&return_id).map(|info| info.desc_index);
     current_index = VarIndex::new(current_index.raw() + 1);
 
@@ -274,9 +276,7 @@ pub(crate) fn lay_out_function(
         },
     );
 
-    // Set the function's variable mappings aside for its body, and restore
-    // the program's.
-    let scope = ctx.swap_scope(program_scope);
+    ctx.scope = caller;
 
     Ok(FunctionLayout {
         function_id,

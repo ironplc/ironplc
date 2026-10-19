@@ -65,6 +65,7 @@ use ironplc_analyzer::{
 
 use crate::emit::Emitter;
 use crate::held_instances::{HeldField, HeldInstance};
+use crate::layout::names::{self, ScopeId, Scoped};
 
 use super::compile_fn::{compile_user_function, compile_user_function_block};
 use super::compile_method::compile_user_method;
@@ -539,7 +540,6 @@ fn compile_program_with_functions(
     // Lay out the globals first (indices 0..G), the compiler-provided
     // globals before any other.
     crate::layout::lay_out_globals(&mut ctx, &mut builder, system_globals, global_vars, types)?;
-    let num_globals = ctx.variables.len() as u16;
 
     // Register each user-defined FB type and its methods (field indices,
     // field op types, type IDs, method function IDs) before the program's
@@ -551,7 +551,7 @@ fn compile_program_with_functions(
     // Lay out the program's variables (indices G..N), now that the
     // user-defined FB types are known.
     let local_vars = crate::layout::lay_out_program(&mut ctx, &mut builder, program, types)?;
-    let program_var_count = ctx.variables.len() as u16;
+    let program_var_count = ctx.slot_count();
 
     // Now compile the FB bodies with correct var_offsets.
     let mut compiled_functions = Vec::new();
@@ -578,7 +578,6 @@ fn compile_program_with_functions(
             &mut ctx,
             &mut builder,
             types,
-            num_globals,
         )?;
         var_offset = VarIndex::new(var_offset.raw() + layout.num_locals);
         function_layouts.push(layout);
@@ -594,7 +593,6 @@ fn compile_program_with_functions(
             &mut ctx,
             &mut builder,
             types,
-            num_globals,
         )?);
     }
 
@@ -1061,33 +1059,37 @@ pub(crate) struct CompileContext {
     /// The body being compiled, whose POU the lowered statement is read
     /// from; `None` outside a body.
     pub(crate) current_body: Option<CurrentBody>,
-    /// Maps variable identifiers to their variable table indices.
-    pub(crate) variables: HashMap<Id, VarIndex>,
-    /// Maps variable identifiers to their type information.
-    pub(crate) var_types: HashMap<Id, VarTypeInfo>,
+    /// The scope whose names are being laid out, or whose body is being
+    /// compiled: what the layout's entries are recorded under, and what
+    /// each lookup sees ([`crate::layout::names`]).
+    pub(crate) scope: ScopeId,
+    /// The variable-table slot of each variable.
+    pub(crate) variables: Scoped<VarIndex>,
+    /// The type each variable is operated and stored at.
+    pub(crate) var_types: Scoped<VarTypeInfo>,
     /// Ordered list of constants added to the constant pool.
     pub(crate) constants: Vec<PoolConstant>,
     /// Stack of the labels of the enclosing loops, for EXIT and CONTINUE
     /// statement compilation. Each loop pushes its labels; EXIT and CONTINUE
     /// jump to those of the top.
     pub(crate) loop_labels: Vec<crate::compile_loop::LoopLabels>,
-    /// Maps STRING variable identifiers to their data region metadata.
-    pub(crate) string_vars: HashMap<Id, StringVarInfo>,
-    /// Maps FB instance variable identifiers to their metadata.
-    pub(crate) fb_instances: HashMap<Id, FbInstanceInfo>,
-    /// Maps array variable identifiers to their metadata.
-    pub(crate) array_vars: HashMap<Id, crate::compile_array::ArrayVarInfo>,
-    /// Maps structure variable identifiers to their metadata.
-    pub(crate) struct_vars: HashMap<Id, crate::compile_struct::StructVarInfo>,
-    /// Maps top-level `ARRAY OF <struct>` variable identifiers to their metadata.
-    /// Kept apart from `array_vars`, whose elements occupy a single slot each.
-    pub(crate) struct_array_vars: HashMap<Id, crate::compile_array_struct::StructArrayVarInfo>,
-    /// Maps each reference variable whose target is a string, or an array
-    /// of strings, to how the strings it refers to are reached through it.
-    pub(crate) string_refs: HashMap<Id, crate::compile_reference::StringRefInfo>,
-    /// Maps each reference variable whose target is an array or a structure
-    /// to the descriptor that sizes that whole array or structure.
-    pub(crate) region_refs: HashMap<Id, u16>,
+    /// Where in the data region each STRING variable is.
+    pub(crate) string_vars: Scoped<StringVarInfo>,
+    /// The layout of each FB instance variable.
+    pub(crate) fb_instances: Scoped<FbInstanceInfo>,
+    /// The layout of each array variable.
+    pub(crate) array_vars: Scoped<crate::compile_array::ArrayVarInfo>,
+    /// The layout of each structure variable.
+    pub(crate) struct_vars: Scoped<crate::compile_struct::StructVarInfo>,
+    /// The layout of each top-level `ARRAY OF <struct>` variable. Kept apart
+    /// from `array_vars`, whose elements occupy a single slot each.
+    pub(crate) struct_array_vars: Scoped<crate::compile_array_struct::StructArrayVarInfo>,
+    /// How the strings each reference variable whose target is a string,
+    /// or an array of strings, refers to are reached through it.
+    pub(crate) string_refs: Scoped<crate::compile_reference::StringRefInfo>,
+    /// The descriptor that sizes the whole array or structure each
+    /// reference variable whose target is an array or a structure refers to.
+    pub(crate) region_refs: Scoped<u16>,
     /// What every type is, by the id an expression's `expr_type` carries.
     /// See [`crate::type_info::expr_type_info`].
     pub(crate) types: HashMap<ironplc_dsl::type_id::TypeId, SemanticType>,
@@ -1161,14 +1163,14 @@ pub(crate) struct CompileContext {
     ///
     /// [`record_call_edge`]: CompileContext::record_call_edge
     pub(crate) call_graph: HashMap<FunctionId, HashSet<FunctionId>>,
-    /// The `VAR_IN_OUT` parameters of the function being compiled. Each
-    /// one's slot holds a reference to the caller's variable (a
-    /// variable-table index, as `REF_TO` stores) rather than a value, so it
-    /// is reached through [`in_out_ref_slot`], never [`var_index`].
+    /// The `VAR_IN_OUT` parameters of each function. Each one's slot holds
+    /// a reference to the caller's variable (a variable-table index, as
+    /// `REF_TO` stores) rather than a value, so it is reached through
+    /// [`in_out_ref_slot`], never [`var_index`].
     ///
     /// [`in_out_ref_slot`]: CompileContext::in_out_ref_slot
     /// [`var_index`]: CompileContext::var_index
-    pub(crate) in_out_params: HashSet<Id>,
+    pub(crate) in_out_params: Scoped<()>,
     /// Where the call whose outputs are being stored leaves them, for the
     /// `CallOutput` each output stores; `None` outside a call's outputs.
     pub(crate) call_outputs: Option<crate::compile_call_output::CallOutputs>,
@@ -1192,18 +1194,19 @@ impl CompileContext {
         CompileContext {
             lowered_route: None,
             current_body: None,
-            variables: HashMap::new(),
-            var_types: HashMap::new(),
+            scope: ScopeId::Program,
+            variables: Scoped::default(),
+            var_types: Scoped::default(),
             constants: Vec::new(),
             loop_labels: Vec::new(),
-            string_vars: HashMap::new(),
-            fb_instances: HashMap::new(),
-            array_vars: HashMap::new(),
-            struct_vars: HashMap::new(),
-            struct_array_vars: HashMap::new(),
-            string_refs: HashMap::new(),
-            region_refs: HashMap::new(),
-            in_out_params: HashSet::new(),
+            string_vars: Scoped::default(),
+            fb_instances: Scoped::default(),
+            array_vars: Scoped::default(),
+            struct_vars: Scoped::default(),
+            struct_array_vars: Scoped::default(),
+            string_refs: Scoped::default(),
+            region_refs: Scoped::default(),
+            in_out_params: Scoped::default(),
             data_region_offset: 0,
             max_string_capacity: 0,
             has_wide_string: false,
@@ -1275,7 +1278,7 @@ impl CompileContext {
                 "VAR_IN_OUT parameter used where only a local or global variable is supported",
             )));
         }
-        self.variables.get(name).copied().ok_or_else(|| {
+        self.slot(name).ok_or_else(|| {
             Diagnostic::not_implemented(Label::span(
                 name.span(),
                 "Variable that code generation does not yet give storage to",
@@ -1291,46 +1294,63 @@ impl CompileContext {
         if !self.is_in_out(name) {
             return None;
         }
-        self.variables.get(name).copied()
+        self.slot(name)
+    }
+
+    /// The slot of the variable `name` that the current scope sees.
+    fn slot(&self, name: &Id) -> Option<VarIndex> {
+        self.seen(&self.variables, names::SLOTS, name).copied()
+    }
+
+    /// The entry of `map` for `name` that the current scope sees, which
+    /// `reach` says of the globals' and the program's.
+    fn seen<'m, V>(&self, map: &'m Scoped<V>, reach: names::Reach, name: &Id) -> Option<&'m V> {
+        names::lookup(map, &self.variables, reach, self.scope, name)
+    }
+
+    /// How many names have a slot that the current scope sees.
+    pub(crate) fn slot_count(&self) -> u16 {
+        names::slot_count(&self.variables, self.scope) as u16
     }
 
     /// Whether `name` has a slot in the variable table in the current scope,
     /// a `VAR_IN_OUT`'s included.
     pub(crate) fn has_slot(&self, name: &Id) -> bool {
-        self.variables.contains_key(name)
+        self.slot(name).is_some()
     }
 
     /// Whether `name` is a `VAR_IN_OUT` of the body being compiled.
     pub(crate) fn is_in_out(&self, name: &Id) -> bool {
-        self.in_out_params.contains(name)
+        self.seen(&self.in_out_params, names::IN_OUTS, name)
+            .is_some()
     }
 
     /// Where the string variable `name` is held; `None` when it is no string.
     pub(crate) fn string_var(&self, name: &Id) -> Option<&StringVarInfo> {
-        self.string_vars.get(name)
+        self.seen(&self.string_vars, names::SLOTS, name)
     }
 
     /// How the strings the reference variable `name` refers to are reached
     /// through it; `None` when it refers to no string or array of strings.
     pub(crate) fn string_ref(&self, name: &Id) -> Option<&crate::compile_reference::StringRefInfo> {
-        self.string_refs.get(name)
+        self.seen(&self.string_refs, names::SLOTS, name)
     }
 
     /// The descriptor that sizes the whole array or structure the reference
     /// variable `name` refers to; `None` when it refers to no such target.
     pub(crate) fn region_ref(&self, name: &Id) -> Option<u16> {
-        self.region_refs.get(name).copied()
+        self.seen(&self.region_refs, names::SLOTS, name).copied()
     }
 
     /// The layout of the array variable `name`; `None` when it is no array.
     pub(crate) fn array_var(&self, name: &Id) -> Option<&crate::compile_array::ArrayVarInfo> {
-        self.array_vars.get(name)
+        self.seen(&self.array_vars, names::ARRAYS, name)
     }
 
     /// The layout of the structure variable `name`; `None` when it is no
     /// structure.
     pub(crate) fn struct_var(&self, name: &Id) -> Option<&crate::compile_struct::StructVarInfo> {
-        self.struct_vars.get(name)
+        self.seen(&self.struct_vars, names::SLOTS, name)
     }
 
     /// The layout of the variable `name`, an array of structures; `None`
@@ -1339,13 +1359,13 @@ impl CompileContext {
         &self,
         name: &Id,
     ) -> Option<&crate::compile_array_struct::StructArrayVarInfo> {
-        self.struct_array_vars.get(name)
+        self.seen(&self.struct_array_vars, names::SLOTS, name)
     }
 
     /// The layout of the function block instance `name`; `None` when it is
     /// no instance.
     pub(crate) fn fb_instance(&self, name: &Id) -> Option<&FbInstanceInfo> {
-        self.fb_instances.get(name)
+        self.seen(&self.fb_instances, names::INSTANCES, name)
     }
 
     /// The user-defined function named `name`, in lower case.
@@ -1381,13 +1401,12 @@ impl CompileContext {
 
     /// Looks up type information for a variable by identifier.
     pub(crate) fn var_type_info(&self, name: &Id) -> Option<VarTypeInfo> {
-        self.var_types.get(name).copied()
+        self.seen(&self.var_types, names::SLOTS, name).copied()
     }
 
     /// Returns the op_type for a variable by identifier, falling back to defaults.
     pub(crate) fn var_op_type(&self, name: &Id) -> OpType {
-        self.var_types
-            .get(name)
+        self.seen(&self.var_types, names::SLOTS, name)
             .map(|info| (info.op_width, info.signedness))
             .unwrap_or(DEFAULT_OP_TYPE)
     }
@@ -1397,9 +1416,9 @@ impl CompileContext {
     /// The name uses a `$` prefix which is illegal in IEC 61131-3 identifiers,
     /// guaranteeing no collision with user-defined variables.
     pub(crate) fn allocate_scratch_variable(&mut self, suffix: &str) -> VarIndex {
-        let idx = VarIndex::new(self.variables.len() as u16);
+        let idx = VarIndex::new(self.slot_count());
         self.variables
-            .insert(Id::from(&format!("$scratch_{}", suffix)), idx);
+            .insert(self.scope, Id::from(&format!("$scratch_{}", suffix)), idx);
         idx
     }
 

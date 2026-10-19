@@ -80,6 +80,7 @@ pub(crate) fn register_reference_of_type(
 ) -> Result<(), Diagnostic> {
     // References are stored as 64-bit variable-table indices (unsigned).
     ctx.var_types.insert(
+        ctx.scope,
         id.clone(),
         VarTypeInfo {
             op_width: OpWidth::W64,
@@ -102,7 +103,7 @@ pub(crate) fn register_reference_of_type(
         // the reference is emitted.
         if let Ok(total_slots) = target.slot_count() {
             let desc_index = builder.add_array_descriptor(FieldType::Slot as u8, total_slots, 0);
-            ctx.region_refs.insert(id.clone(), desc_index);
+            ctx.region_refs.insert(ctx.scope, id.clone(), desc_index);
         }
     } else if let SemanticType::String {
         max_len,
@@ -153,8 +154,9 @@ fn register_ref_to_array_metadata(
     } else {
         desc_index
     };
-    ctx.region_refs.insert(id.clone(), region_desc);
+    ctx.region_refs.insert(ctx.scope, id.clone(), region_desc);
     ctx.array_vars.insert(
+        ctx.scope,
         id.clone(),
         ArrayVarInfo {
             var_index,
@@ -187,6 +189,7 @@ fn register_string_ref(
     let element_type = FieldType::string(char_width) as u8;
     let desc_index = builder.add_array_descriptor(element_type, total_elements, max_len);
     ctx.string_refs.insert(
+        ctx.scope,
         id.clone(),
         StringRefInfo {
             desc_index,

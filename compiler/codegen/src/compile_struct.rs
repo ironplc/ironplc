@@ -492,6 +492,7 @@ pub(crate) fn allocate_struct_variable(
 
     // Store metadata
     ctx.struct_vars.insert(
+        ctx.scope,
         id.clone(),
         StructVarInfo {
             var_index: index,

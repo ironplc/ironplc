@@ -27,8 +27,8 @@ use super::layout::MethodLayout;
 use crate::emit::Emitter;
 
 /// Compiles the body of `method`, a method of the block `block`, which
-/// `layout` lays out, against the method's own variable mappings; the
-/// program's are put back once the body is compiled.
+/// `layout` lays out, in the method's scope; the caller's is current again
+/// once the body is compiled.
 pub(crate) fn compile_user_method(
     block: &Id,
     method: &MethodDeclaration,
@@ -45,7 +45,7 @@ pub(crate) fn compile_user_method(
         has_return_value,
     } = layout;
     let return_id = method.name.clone();
-    let program_scope = ctx.swap_scope(scope);
+    let caller = std::mem::replace(&mut ctx.scope, scope);
 
     let mut method_emitter = Emitter::new();
 
@@ -95,8 +95,7 @@ pub(crate) fn compile_user_method(
     ctx.function_stack_depths
         .insert(function_id, finalized.max_stack_depth);
 
-    // Restore the program's variable mappings.
-    ctx.swap_scope(program_scope);
+    ctx.scope = caller;
 
     Ok(CompiledFunction {
         function_id,
