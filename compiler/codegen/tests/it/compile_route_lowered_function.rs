@@ -183,3 +183,47 @@ fn run_when_aggregate_input_passed_then_same_code_as_ast() {
     assert_eq!(snapshot.read_as::<i32>("k"), 1);
     assert_eq!(snapshot.read_as::<i32>("r3"), 5);
 }
+
+/// Blocks with methods whose results are a structure and an array, which a
+/// call can only discard.
+const AGGREGATE_RESULTS: &str = "
+    TYPE P : STRUCT x : DINT; y : DINT; END_STRUCT; END_TYPE
+    TYPE A3 : ARRAY[1..3] OF DINT; END_TYPE
+    FUNCTION_BLOCK BP VAR n : DINT; END_VAR VAR_OUTPUT o : DINT; END_VAR
+      METHOD MKP : P VAR_INPUT v : DINT; END_VAR n := n + v; END_METHOD
+      METHOD MKA : A3 VAR_INPUT v : DINT; END_VAR VAR_OUTPUT k : DINT; END_VAR
+        n := n * v; k := n;
+      END_METHOD
+    END_FUNCTION_BLOCK";
+
+/// REQ-LOW-lowering-187: a call of a method whose result is a structure or
+/// an array, which a statement discards, compiles to the same code as by the
+/// route that reads the AST, with an output stored after it, and the call
+/// changes the instance's fields as on that route.
+#[rstest]
+#[case::structure_result("b.MKP(v := 3);")]
+#[case::array_result_with_output("b.MKA(v := 2, k => r);")]
+fn compile_when_method_aggregate_result_discarded_then_same_code_as_ast(#[case] statement: &str) {
+    let source = format!(
+        "{AGGREGATE_RESULTS}
+         PROGRAM main VAR b : BP; r : DINT; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    assert_same_code(&source);
+}
+
+/// REQ-LOW-lowering-187: calls of methods whose results are a structure and
+/// an array leave every variable as the route that reads the AST leaves
+/// them.
+#[test]
+fn run_when_method_aggregate_result_discarded_then_routes_agree() {
+    let snapshot = run_lowered_agreeing(&format!(
+        "{AGGREGATE_RESULTS}
+         PROGRAM main VAR b : BP; r : DINT; END_VAR
+           b.MKP(v := 3);
+           b.MKA(v := 2, k => r);
+         END_PROGRAM"
+    ));
+    assert_eq!(snapshot.read_as::<i32>("r"), 6);
+}

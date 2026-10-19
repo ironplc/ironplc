@@ -1693,6 +1693,18 @@ outputs is lowered as a function's is (REQ-LOW-lowering-092,
 REQ-LOW-lowering-172): in an expression it is an in-place call, and a `Call`
 statement is followed by the stores of its outputs.
 
+**REQ-LOW-lowering-187** A method whose result is an array or a structure is
+declared without a result, and the variable named after it is a variable of
+its body. No call reads such a result: assigning one is P2037, so a call of
+the method is a statement, which discards it.
+
+While both routes exist, the bytecode backend calls such a method as the
+route that reads the AST does: `METHOD_CALL` returns the slot of the result
+variable, and the statement drops it with the instance
+(`compile_method_call_statement`). That route compiles no write or read
+inside the result in the method's body either, so neither route lets a
+program see the result.
+
 **REQ-LOW-ir-173** A `Call` statement passes its callee one argument for
 each parameter, as a `Call` expression does, and discards the callee's
 result. A method's first parameter is a non-null reference to an instance of
@@ -1705,10 +1717,10 @@ Not lowered yet, so each stays on the route that reads the AST:
 - a call through `THIS^` or `SUPER^`, which analysis does not resolve yet;
 - a call of a method the receiver's block inherits from a block its
   lowered type does not extend, as one with a field (REQ-LOW-lowering-177);
-- a call of a method with an in-out or a result that is a string, or with an
-  in-out or a result that is an aggregate (REQ-LOW-lowering-079).
-  The route that reads the AST reports a method whose result is a string as
-  P9999.
+- a call of a method with an in-out that is a string or an aggregate, or
+  with a result that is a string (REQ-LOW-lowering-079). The route that reads
+  the AST reports a method whose result is a string as P9999. A method whose
+  result is an aggregate is lowered (REQ-LOW-lowering-187).
 
 While both routes exist, the bytecode backend emits a method's call as the
 route that reads the AST emits it (`compile_method.rs`): the receiver's

@@ -488,6 +488,19 @@ impl<'a> Lowering<'a> {
         if let Some(result_parameter) = result_parameter {
             variables.insert(0, result_parameter);
         }
+        // A method's array or structure result is a variable of its body
+        // that no call reads (REQ-LOW-lowering-187).
+        let result = match (body, result) {
+            (Body::Method { .. }, Some(name))
+                if self.aggregate_variable(&frame, name)?.is_some() =>
+            {
+                None
+            }
+            (
+                Body::Function(_) | Body::Method { .. } | Body::Program(_) | Body::FunctionBlock(_),
+                result,
+            ) => result,
+        };
         // Any other result is the variable named after the function or
         // method, unless that name is a parameter's.
         let result = match (result_parameter, result) {
