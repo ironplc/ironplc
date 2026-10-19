@@ -2889,8 +2889,8 @@ This section constrains the order of work; it is not a work breakdown.
   - `PreferLowered`: the lowered statement where lowering supports it.
   - `RequireLowered`: a statement lowering does not support is an error.
 
-  A release uses `Ast` until the routes agree. Making `PreferLowered` the
-  default is a one-line change, and so is undoing it.
+  A release uses `PreferLowered`. Going back to `Ast` as the default is a
+  one-line change.
 
 **Checking the new route**
 
