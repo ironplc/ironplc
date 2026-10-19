@@ -55,6 +55,26 @@ lint:
   cargo clippy -p ironplc-vm -p ironplc-container --lib
   cargo fmt --all -- --check
 
+# Prove the code inside `verus!` blocks, and check its formatting (rustfmt
+# skips macro bodies, so `lint` cannot). Needs `verus`, `cargo-verus` and
+# `verusfmt` on PATH, plus the Rust toolchain the Verus release names in
+# `verus --version`.
+#
+# `assume_specification` expands to an `unsafe` block that exists only while
+# Verus runs. The workspace denies `unsafe_code`, so this run alone allows
+# it; the normal build erases the block and still denies `unsafe`.
+verify:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  verusfmt --verus-only --check $(grep -rl --include='*.rs' 'verus!' vm/src)
+  RUSTFLAGS="-A unsafe_code" cargo verus verify -p ironplc-vm
+
+# Format the code inside `verus!` blocks, which `format` (rustfmt) skips.
+format-verus:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  verusfmt --verus-only $(grep -rl --include='*.rs' 'verus!' vm/src)
+
 # The fewest top-level statements of the codegen end-to-end programs that may
 # take the lowered route. Raise it when lowering grows; it never falls.
 lowered_floor := "19610"

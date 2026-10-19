@@ -1,5 +1,9 @@
+use vstd::prelude::*;
+
 use crate::error::Trap;
 use crate::value::Slot;
+
+verus! {
 
 /// Fixed-capacity operand stack for VM execution.
 pub struct OperandStack<'a> {
@@ -8,12 +12,21 @@ pub struct OperandStack<'a> {
 }
 
 impl<'a> OperandStack<'a> {
+    /// The stack never holds more slots than its backing slice.
+    ///
+    /// Verus checks that every construction and every mutation of the
+    /// fields keeps this true, so callers need not prove it. The fields are
+    /// private, so code outside this module (which Verus does not check)
+    /// cannot break it either. A method body that relies on it says so with
+    /// `use_type_invariant`.
+    #[verifier::type_invariant]
+    spec fn inv(&self) -> bool {
+        self.len <= self.data@.len()
+    }
+
     /// Creates a new operand stack backed by the given slice.
     pub fn new(backing: &'a mut [Slot]) -> Self {
-        OperandStack {
-            data: backing,
-            len: 0,
-        }
+        OperandStack { data: backing, len: 0 }
     }
 
     /// Number of slots currently on the stack.
@@ -39,6 +52,9 @@ impl<'a> OperandStack<'a> {
 
     /// Pops a slot from the stack.
     pub fn pop(&mut self) -> Result<Slot, Trap> {
+        proof {
+            use_type_invariant(&*self);
+        }
         if self.len == 0 {
             return Err(Trap::StackUnderflow);
         }
@@ -48,6 +64,9 @@ impl<'a> OperandStack<'a> {
 
     /// Returns the top slot without removing it.
     pub fn peek(&self) -> Result<Slot, Trap> {
+        proof {
+            use_type_invariant(&*self);
+        }
         if self.len == 0 {
             return Err(Trap::StackUnderflow);
         }
@@ -56,6 +75,9 @@ impl<'a> OperandStack<'a> {
 
     /// Returns the slot at `depth` slots below the top (depth 0 = top).
     pub fn peek_at(&self, depth: usize) -> Result<Slot, Trap> {
+        proof {
+            use_type_invariant(&*self);
+        }
         if depth >= self.len {
             return Err(Trap::StackUnderflow);
         }
@@ -64,6 +86,9 @@ impl<'a> OperandStack<'a> {
 
     /// Removes `n` slots from the top of the stack.
     pub fn truncate_by(&mut self, n: usize) -> Result<(), Trap> {
+        proof {
+            use_type_invariant(&*self);
+        }
         if n > self.len {
             return Err(Trap::StackUnderflow);
         }
@@ -79,6 +104,9 @@ impl<'a> OperandStack<'a> {
 
     /// Swaps the top two values on the stack.
     pub fn swap(&mut self) -> Result<(), Trap> {
+        proof {
+            use_type_invariant(&*self);
+        }
         if self.len < 2 {
             return Err(Trap::StackUnderflow);
         }
@@ -86,6 +114,8 @@ impl<'a> OperandStack<'a> {
         Ok(())
     }
 }
+
+} // verus!
 
 #[cfg(test)]
 mod tests {

@@ -39,6 +39,12 @@ updates:
       day: "saturday"
       time: "06:00"
       timezone: "Etc/UTC"
+    ignore:
+      # `vstd` must be the version the pinned Verus release was cut with
+      # (VERUS_RELEASE in .github/workflows/partial_verus.yaml), and it pins
+      # the `verus_*` crates exactly. Bump them by hand, together.
+      - dependency-name: "vstd"
+      - dependency-name: "verus_*"
   - package-ecosystem: "pip" # See documentation for possible values
     directory: "/docs" # Location of package manifests
     schedule:
