@@ -1,6 +1,5 @@
 //! The lowered program's ids, each matched once to what this backend's
-//! layout knows it as (`specs/design/lowered-program.md`, "The layout
-//! path").
+//! layout knows it as (`specs/design/lowered-program.md`, "`CompileContext`").
 //!
 //! The layout is still built from the AST, so it knows each variable, POU
 //! and field by the scope that declares it and its name. Once it is built,
@@ -69,12 +68,17 @@ impl LoweredIds {
             }
         }
         for (var, variable) in lowering.variables().iter() {
-            let scope = match variable.owner() {
-                Owner::Global => Some(ScopeId::Global),
-                Owner::Pou(pou) => ids.scope(pou),
+            // A global the program declares in its own interface is laid out
+            // with the program's variables.
+            let scopes = match variable.owner() {
+                Owner::Global => vec![ScopeId::Global, ScopeId::Program],
+                Owner::Pou(pou) => ids.scope(pou).into_iter().collect(),
             };
             let name = Id::from(&variable.name().to_string());
-            if let Some(scope) = scope.filter(|scope| ctx.variables.declares(*scope, &name)) {
+            if let Some(scope) = scopes
+                .into_iter()
+                .find(|scope| ctx.variables.declares(*scope, &name))
+            {
                 ids.variables.insert(var, (scope, name));
             }
         }
