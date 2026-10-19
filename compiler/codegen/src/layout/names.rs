@@ -100,7 +100,8 @@ enum Seen {
 }
 
 /// The slots and what is known of each slot's variable: its type, string,
-/// structure, array of structures, or the strings a reference to strings
+/// structure, array of structures, the strings a reference to strings
+/// reaches, or the descriptor of the array or structure a reference
 /// reaches. A function or a block sees the globals'.
 pub(crate) const SLOTS: Reach = Reach {
     function: Seen::Globals,

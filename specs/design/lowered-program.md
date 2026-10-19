@@ -1331,6 +1331,10 @@ method's `VAR_OUTPUT` parameter does. A `FOR` whose step is not a nonzero
 constant, and one whose control variable is a `VAR_IN_OUT`, is reported as
 P9999, as it is today.
 
+The analyzer holds the control variable to an integer, `ANY_INT` or a subrange
+of one (P4091), so a `For` never counts with a real, a bit string, a duration,
+a `BOOL` or an enumeration.
+
 `to` is evaluated on every iteration, and the control variable wraps, so a
 `FOR` whose bound is the largest value of the control variable's type does not
 end. Both are today's behaviour, recorded rather than changed.
@@ -1453,6 +1457,16 @@ Lowering passes such an input of a function or method as an `Arg::Copy`
 emits it as that route does, the offset, so a call compiles to the same code
 by either route. The callee gets a copy of its own once a body that reads the
 parameter compiles, which it does on neither route yet.
+
+So too a method's input of a function block type, `b.Go(i := f)`, which a
+function cannot declare (P4054). The argument is an `Arg::Copy` of the
+instance, and the bytecode backend passes the instance's slot, which holds the
+data offset of its fields, as that route does. Neither route calls such an
+input in the method's body or reads its fields
+([issue 1553](https://github.com/ironplc/ironplc/issues/1553)). An argument
+that is a field of another function block instance, `b.Go(i := g.inner)` or
+`SUMP(q := g.p)`, is passed as the value that field's slot holds, as that
+route passes it.
 
 A string is passed by value too. The argument for a `VAR_INPUT` of a `STRING`
 or `WSTRING` type is a `Str` of the parameter's encoding, of any capacity
@@ -2096,6 +2110,14 @@ structure or array field of a function block instance, or for a structure,
 array or function block variable of a function, function block or method
 body other than a field that holds an instance, which no program reads
 inside (see [Statements](#37-statements)).
+
+**REQ-LOW-codegen-193** The bytecode backend copies a whole array or
+structure into the one a reference refers to, `p^ := z`, with
+`COPY_REGION_DEREF` through the reference `p` holds. The destination is sized
+by the descriptor of the array or structure type `p` refers to, which `p`'s
+declaration registers. The route that reads the AST stores `z`'s data offset
+in the slot of the variable `p` refers to instead, which makes that variable
+an alias of `z`.
 
 **REQ-LOW-codegen-089** An `Intrinsic` means what the IEC 61131-3 standard
 function means, with these choices where the standard leaves room: the count

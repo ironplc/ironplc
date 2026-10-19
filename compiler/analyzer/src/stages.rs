@@ -22,7 +22,7 @@ use crate::{
     rule_case_selector_type, rule_condition_type, rule_constant_not_written, rule_constant_range,
     rule_decl_struct_element_unique_names, rule_enum_base_type_allowed,
     rule_enum_explicit_value_allowed, rule_enumeration_values_unique, rule_extends_base_declared,
-    rule_extends_field_duplicated, rule_function_block_call_unsupported,
+    rule_extends_field_duplicated, rule_for_control_type, rule_function_block_call_unsupported,
     rule_function_block_invocation, rule_function_call_declared,
     rule_function_call_in_out_argument, rule_function_call_type_check, rule_interface_conformance,
     rule_interface_conversion, rule_loop_control_inside_loop, rule_member_qualifier_allowed,
@@ -447,6 +447,7 @@ pub(crate) fn semantic(
         rule_case_bit_string_label::apply,
         rule_case_selector_type::apply,
         rule_condition_type::apply,
+        rule_for_control_type::apply,
         rule_constant_not_written::apply,
         rule_ref_to::apply,
     ];

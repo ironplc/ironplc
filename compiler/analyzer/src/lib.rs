@@ -49,6 +49,7 @@ mod rule_enum_explicit_value_allowed;
 mod rule_enumeration_values_unique;
 mod rule_extends_base_declared;
 mod rule_extends_field_duplicated;
+mod rule_for_control_type;
 mod rule_function_block_call_unsupported;
 mod rule_function_block_invocation;
 mod rule_function_call_declared;

@@ -7,7 +7,9 @@
 //! carries array metadata so that `PT^[idx]` can be compiled with the deref
 //! array opcodes, and when the target is a string or an array of strings,
 //! the descriptor that `STR_LOAD_ARRAY_DEREF` and `STR_STORE_ARRAY_DEREF`
-//! reach the strings with ([`StringRefInfo`]). Every declaration site
+//! reach the strings with ([`StringRefInfo`]). When the target is an array
+//! or a structure, it carries the descriptor that sizes the whole of it, for
+//! `COPY_REGION_DEREF`. Every declaration site
 //! (program, function parameter, function local, function block) registers
 //! references through [`register_reference_variable`], or, given the type
 //! referenced, [`register_reference_of_type`].
@@ -94,6 +96,15 @@ pub(crate) fn register_reference_of_type(
     {
         let spec = array_spec_from_named(element_type, dimensions, &id.span())?;
         register_ref_to_array_metadata(ctx, builder, id, var_index, &spec)?;
+    } else if let SemanticType::Structure { .. } = target {
+        // A structure is laid out as a flat array of slots, as a structure
+        // variable's region is (`compile_struct::allocate_struct_variable`).
+        // One whose size is not known has no descriptor, and no copy through
+        // the reference is emitted.
+        if let Ok(total_slots) = target.slot_count() {
+            let desc_index = builder.add_array_descriptor(FieldType::Slot as u8, total_slots, 0);
+            ctx.region_refs.insert(ctx.scope, id.clone(), desc_index);
+        }
     } else if let SemanticType::String {
         max_len,
         char_width,
@@ -134,12 +145,16 @@ fn register_ref_to_array_metadata(
     let element_type_byte = var_type_info_to_type_byte(&element_vti);
     let (dimensions, total_elements) = compute_dimensions(&spec.dimensions, &span)?;
     let desc_index = builder.add_array_descriptor(element_type_byte, total_elements, 0);
-    // An array of strings, not of references to them.
-    if let (false, Some(max_len), Some(char_width)) =
+    // An array of strings, not of references to them. Its string
+    // descriptor is the one that sizes the whole array.
+    let region_desc = if let (false, Some(max_len), Some(char_width)) =
         (spec.ref_to, spec.string_max_len, spec.string_char_width)
     {
-        register_string_ref(ctx, builder, id, total_elements, max_len, char_width);
-    }
+        register_string_ref(ctx, builder, id, total_elements, max_len, char_width)
+    } else {
+        desc_index
+    };
+    ctx.region_refs.insert(ctx.scope, id.clone(), region_desc);
     ctx.array_vars.insert(
         ctx.scope,
         id.clone(),
@@ -161,7 +176,8 @@ fn register_ref_to_array_metadata(
 
 /// Records that the reference `id` refers to `total_elements` strings of
 /// `max_len` code units `char_width` wide each, with the descriptor that
-/// `STR_LOAD_ARRAY_DEREF` and `STR_STORE_ARRAY_DEREF` reach them with.
+/// `STR_LOAD_ARRAY_DEREF` and `STR_STORE_ARRAY_DEREF` reach them with, and
+/// returns that descriptor.
 fn register_string_ref(
     ctx: &mut CompileContext,
     builder: &mut ContainerBuilder,
@@ -169,7 +185,7 @@ fn register_string_ref(
     total_elements: u32,
     max_len: u16,
     char_width: CharWidth,
-) {
+) -> u16 {
     let element_type = FieldType::string(char_width) as u8;
     let desc_index = builder.add_array_descriptor(element_type, total_elements, max_len);
     ctx.string_refs.insert(
@@ -180,4 +196,5 @@ fn register_string_ref(
             char_width,
         },
     );
+    desc_index
 }

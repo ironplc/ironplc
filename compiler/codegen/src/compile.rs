@@ -1087,6 +1087,9 @@ pub(crate) struct CompileContext {
     /// How the strings each reference variable whose target is a string,
     /// or an array of strings, refers to are reached through it.
     pub(crate) string_refs: Scoped<crate::compile_reference::StringRefInfo>,
+    /// The descriptor that sizes the whole array or structure each
+    /// reference variable whose target is an array or a structure refers to.
+    pub(crate) region_refs: Scoped<u16>,
     /// What every type is, by the id an expression's `expr_type` carries.
     /// See [`crate::type_info::expr_type_info`].
     pub(crate) types: HashMap<ironplc_dsl::type_id::TypeId, SemanticType>,
@@ -1202,6 +1205,7 @@ impl CompileContext {
             struct_vars: Scoped::default(),
             struct_array_vars: Scoped::default(),
             string_refs: Scoped::default(),
+            region_refs: Scoped::default(),
             in_out_params: Scoped::default(),
             data_region_offset: 0,
             max_string_capacity: 0,
@@ -1330,6 +1334,12 @@ impl CompileContext {
     /// through it; `None` when it refers to no string or array of strings.
     pub(crate) fn string_ref(&self, name: &Id) -> Option<&crate::compile_reference::StringRefInfo> {
         self.seen(&self.string_refs, names::SLOTS, name)
+    }
+
+    /// The descriptor that sizes the whole array or structure the reference
+    /// variable `name` refers to; `None` when it refers to no such target.
+    pub(crate) fn region_ref(&self, name: &Id) -> Option<u16> {
+        self.seen(&self.region_refs, names::SLOTS, name).copied()
     }
 
     /// The layout of the array variable `name`; `None` when it is no array.
