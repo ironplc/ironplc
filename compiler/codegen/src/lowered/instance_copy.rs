@@ -23,7 +23,7 @@
 
 use ironplc_container::{FbTypeId, VarIndex};
 use ironplc_ir::lowered::{Place as LoweredPlace, TypeKind};
-use ironplc_lowering::Lowering;
+use ironplc_lowering::PartialProgram;
 
 use super::place::field_path;
 use crate::compile::{CompileContext, FbFieldIndex};
@@ -61,7 +61,7 @@ enum Step {
 /// The copy of `src` to `dst` when both are instances this backend reaches,
 /// of one block. `None` for any other `Copy`.
 pub(super) fn instance_copy(
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     ctx: &CompileContext,
     dst: &LoweredPlace,
     src: &LoweredPlace,
@@ -114,7 +114,7 @@ pub(super) fn emit_instance_copy(emitter: &mut Emitter, copy: &InstanceCopy) {
 /// The instance `place` is, when this backend reaches it, and the type ID of
 /// its block.
 fn reached(
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     ctx: &CompileContext,
     place: &LoweredPlace,
 ) -> Option<(Reached, FbTypeId)> {

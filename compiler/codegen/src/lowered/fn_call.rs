@@ -33,7 +33,7 @@ use ironplc_ir::lowered::{
     Arg, Callee, Expr, ExprKind, InPlaceCall, Place as LoweredPlace, PouId, Stmt, StmtKind,
     StrExprKind, VarId,
 };
-use ironplc_lowering::Lowering;
+use ironplc_lowering::PartialProgram;
 
 use super::aggregate::{emit_copy_from_stack, reaches_region};
 use super::call_args::passes;
@@ -106,7 +106,7 @@ impl Call<'_> {
 
     /// Whether this backend passes the call's inputs and emits the store of
     /// each of its outputs.
-    pub(super) fn can_emit(&self, lowering: &Lowering<'_>, ctx: &CompileContext) -> bool {
+    pub(super) fn can_emit(&self, lowering: &PartialProgram, ctx: &CompileContext) -> bool {
         let inputs = self.inputs.iter().copied();
         let passed = match &self.target {
             Target::Function(function) => passes(&function.params, inputs),
@@ -125,7 +125,12 @@ impl Call<'_> {
 
     /// Whether this backend emits `stmt`, the store of an output read from
     /// its temporary.
-    fn output_can_emit(&self, lowering: &Lowering<'_>, ctx: &CompileContext, stmt: &Stmt) -> bool {
+    fn output_can_emit(
+        &self,
+        lowering: &PartialProgram,
+        ctx: &CompileContext,
+        stmt: &Stmt,
+    ) -> bool {
         match stmt.kind() {
             StmtKind::Assign { place, value } => {
                 matches!(self.read_output(innermost(value)), Some(Output::Scalar(_)))
@@ -178,7 +183,7 @@ impl Call<'_> {
 /// result is a structure, followed by the copy of the result to its target.
 /// `None` when `stmts` does not start with one.
 pub(super) fn output_call<'s>(
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     ctx: &CompileContext,
     stmts: &'s [Stmt],
 ) -> Option<Call<'s>> {
@@ -228,7 +233,7 @@ fn result_copy<'s>(args: &[Arg], stmts: &'s [Stmt], span: &SourceSpan) -> Option
 /// a call of a function that returns a value or of a method with a result,
 /// each of whose stores moves one of its outputs.
 pub(super) fn in_place_can_emit(
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     ctx: &CompileContext,
     call: &InPlaceCall,
 ) -> bool {
@@ -246,7 +251,7 @@ pub(super) fn in_place_can_emit(
 /// Whether this backend emits `call`, an in-place call of a function whose
 /// result is a string, each of whose stores moves one of its outputs.
 pub(super) fn str_in_place_can_emit(
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     ctx: &CompileContext,
     call: &InPlaceCall,
 ) -> bool {
@@ -262,7 +267,7 @@ pub(super) fn str_in_place_can_emit(
 /// `call` as this backend emits it: its callee, its inputs, and its stores,
 /// which are each the store of an output.
 fn in_place<'s>(
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     ctx: &CompileContext,
     call: &'s InPlaceCall,
 ) -> Option<Call<'s>> {
@@ -284,7 +289,7 @@ fn in_place<'s>(
 pub(super) fn emit_in_place(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     call: &InPlaceCall,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
@@ -326,7 +331,7 @@ fn outputs_of<'s>(
 /// argument, its receiver, is neither, nor is a function's result
 /// parameter, whose result the call leaves on the stack.
 fn call_target<'s>(
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     ctx: &CompileContext,
     pou: PouId,
     args: &'s [Arg],
@@ -376,7 +381,7 @@ fn call_target<'s>(
 pub(super) fn emit_call_statement(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     call: &Call<'_>,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
@@ -424,7 +429,7 @@ impl Call<'_> {
         &self,
         emitter: &mut Emitter,
         ctx: &mut CompileContext,
-        lowering: &Lowering<'_>,
+        lowering: &PartialProgram,
     ) -> Result<(), Diagnostic> {
         self.outputs
             .iter()
@@ -437,7 +442,7 @@ impl Call<'_> {
 fn emit_output(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     call: &Call<'_>,
     stmt: &Stmt,
 ) -> Result<(), Diagnostic> {

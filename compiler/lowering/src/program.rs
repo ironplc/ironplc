@@ -18,9 +18,8 @@
 //! instance field's starting value, and, at the head of each function's
 //! and method's body, its prologue.
 //!
-//! A statement that reaches a variable then finds the one already declared.
-//! Then it lowers each top-level statement of each body, as
-//! [`Lowering::lower_statement`] does.
+//! Then it lowers each top-level statement of each body. A statement that
+//! reaches a variable finds the one already declared.
 //!
 //! What it makes is a [`PartialProgram`]: lowering does not express every
 //! declaration and statement yet, and codegen compiles one it does not from

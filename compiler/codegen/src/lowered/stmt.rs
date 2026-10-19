@@ -14,7 +14,7 @@ use ironplc_ir::lowered::{
     counts_down, CaseArm, CaseLabel, CompareOp, Const, Expr, ExprKind, LoopId,
     Place as LoweredPlace, Stmt, StmtKind,
 };
-use ironplc_lowering::Lowering;
+use ironplc_lowering::PartialProgram;
 
 use super::expr::{emit_constant, emit_expr, emit_truncate};
 use super::place::variable_name;
@@ -33,7 +33,7 @@ use crate::emit::{self, Emitter};
 pub(super) fn emit_stmts(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     stmts: &[Stmt],
 ) -> Result<(), Diagnostic> {
     let mut emission = Emission {
@@ -44,13 +44,13 @@ pub(super) fn emit_stmts(
 }
 
 /// What emitting a statement needs besides the compile context.
-struct Emission<'l, 'a> {
-    lowering: &'l Lowering<'a>,
+struct Emission<'l> {
+    lowering: &'l PartialProgram,
     /// The loops enclosing the statement being emitted, innermost last.
     loops: Vec<(LoopId, LoopLabels)>,
 }
 
-impl Emission<'_, '_> {
+impl Emission<'_> {
     /// Emits the statements `stmts`, each at its own source position.
     fn block(
         &mut self,

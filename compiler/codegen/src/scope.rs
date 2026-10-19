@@ -119,7 +119,7 @@ fn keep_globals<V: Clone>(
         .collect()
 }
 
-impl CompileContext<'_> {
+impl CompileContext {
     /// Installs `scope` as the active variable mappings and returns the ones
     /// it replaces.
     ///

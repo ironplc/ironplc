@@ -8,16 +8,16 @@
 //! the program: only P9999 for a construct it cannot express yet, and P9998
 //! for a compiler defect (REQ-LOW-lowering-109).
 //!
-//! While codegen still compiles most statements from the AST, lowering grows
-//! one top-level statement at a time. [`Lowering::lower_statement`] answers
-//! whether it supports a statement and every statement and expression inside
-//! it. A statement it does not support yet is [`StatementLowering::Unsupported`]:
-//! that is not a defect, and codegen compiles the statement from the AST.
-//!
 //! [`Lowering::lower_program`] lowers the whole library in one walk: every
 //! declaration of every reachable POU and every global first, then each
 //! top-level statement of each body. A [`PartialProgram`] records what did
 //! not lower, and is the whole lowered program once everything did.
+//!
+//! While codegen still compiles some statements from the AST, lowering grows
+//! one top-level statement at a time. It lowers a statement only when it
+//! supports the statement and every statement and expression inside it. A
+//! statement it does not support yet is [`StatementLowering::Unsupported`]:
+//! that is not a defect, and codegen compiles the statement from the AST.
 //!
 //! Lowering takes a [`CleanAnalysis`] and has no entry point that takes a
 //! library without one (REQ-LOW-lowering-011).
@@ -91,15 +91,10 @@ use ironplc_dsl::common::{
     FunctionBlockDeclaration, FunctionDeclaration, LibraryElementKind, ProgramDeclaration,
 };
 use ironplc_dsl::core::Id;
-use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::oop::MethodDeclaration;
-use ironplc_dsl::textual::StmtKind;
 pub use program::PartialProgram;
 
-use ironplc_ir::lowered::{
-    LoopScope, ParsePolicy, Place, PouId, PouTable, ProgramBuilder, Stmt, TypeTable, VarId,
-    VariableTable,
-};
+use ironplc_ir::lowered::{LoopScope, ParsePolicy, Place, PouId, ProgramBuilder, Stmt, VarId};
 
 /// The body a statement belongs to.
 #[derive(Clone, Copy, Debug)]
@@ -195,11 +190,12 @@ impl<'a> Lowering<'a> {
     /// Returns [`StatementLowering::Unsupported`] when lowering does not
     /// support the statement yet, and a P9998 when the analyzed library
     /// breaks an invariant lowering relies on.
-    pub fn lower_statement(
+    #[cfg(test)]
+    pub(crate) fn lower_statement(
         &mut self,
         body: Body<'a>,
-        stmt: &StmtKind,
-    ) -> Result<StatementLowering, Diagnostic> {
+        stmt: &ironplc_dsl::textual::StmtKind,
+    ) -> Result<StatementLowering, ironplc_dsl::diagnostic::Diagnostic> {
         let Some(frame) = self.frame(body)? else {
             return Ok(StatementLowering::Unsupported);
         };
@@ -207,43 +203,6 @@ impl<'a> Lowering<'a> {
             Some(lowered) => StatementLowering::Lowered(lowered),
             None => StatementLowering::Unsupported,
         })
-    }
-
-    /// Lowers `stmt`, a top-level statement of the body of the program,
-    /// function block or function named `pou` in the library the analysis
-    /// holds. A method's statement is lowered by
-    /// [`Self::lower_method_statement_of`].
-    pub fn lower_statement_of(
-        &mut self,
-        pou: &Id,
-        stmt: &StmtKind,
-    ) -> Result<StatementLowering, Diagnostic> {
-        match self.body_named(pou) {
-            Some(body) => self.lower_statement(body, stmt),
-            None => Ok(StatementLowering::Unsupported),
-        }
-    }
-
-    /// Lowers `stmt`, a top-level statement of the body of the method
-    /// `method` of the function block `block`, as [`Self::lower_statement`]
-    /// does.
-    pub fn lower_method_statement_of(
-        &mut self,
-        block: &Id,
-        method: &Id,
-        stmt: &StmtKind,
-    ) -> Result<StatementLowering, Diagnostic> {
-        let Some(Body::FunctionBlock(block)) = self.body_named(block) else {
-            return Ok(StatementLowering::Unsupported);
-        };
-        match block
-            .methods
-            .iter()
-            .find(|declared| declared.name == *method)
-        {
-            Some(method) => self.lower_statement(Body::Method { block, method }, stmt),
-            None => Ok(StatementLowering::Unsupported),
-        }
     }
 
     /// The body of the program, function block or function named `pou`.
@@ -273,17 +232,14 @@ impl<'a> Lowering<'a> {
     }
 
     /// The types the lowered statements refer to.
-    pub fn types(&self) -> &TypeTable {
+    #[cfg(test)]
+    pub(crate) fn types(&self) -> &ironplc_ir::lowered::TypeTable {
         self.program.types()
     }
 
     /// The variables the lowered statements refer to.
-    pub fn variables(&self) -> &VariableTable {
+    #[cfg(test)]
+    pub(crate) fn variables(&self) -> &ironplc_ir::lowered::VariableTable {
         self.program.variables()
-    }
-
-    /// The POUs the lowered statements refer to.
-    pub fn pous(&self) -> &PouTable {
-        self.program.pous()
     }
 }

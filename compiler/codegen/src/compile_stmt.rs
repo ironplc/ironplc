@@ -52,16 +52,16 @@ pub(crate) fn compile_body(
     }
 }
 
-/// Compiles a sequence of statements.
+/// Compiles the top-level statements of the current body.
 pub(crate) fn compile_statements(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     statements: &Statements,
 ) -> Result<(), Diagnostic> {
-    for stmt in &statements.body {
+    for (index, stmt) in statements.body.iter().enumerate() {
         // A top-level statement takes the lowered route where the route asks
         // for it and lowering supports it.
-        if !crate::lowered::try_compile_statement(emitter, ctx, stmt)? {
+        if !crate::lowered::try_compile_statement(emitter, ctx, index, stmt)? {
             compile_statement(emitter, ctx, stmt)?;
         }
     }

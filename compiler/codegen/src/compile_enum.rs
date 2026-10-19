@@ -41,10 +41,7 @@ pub(crate) fn ordinal_in(
 
 /// The members of the enumeration `id` identifies; `None` when `id` is not
 /// an enumeration.
-pub(crate) fn members_of<'c>(
-    ctx: &'c CompileContext,
-    id: Option<TypeId>,
-) -> Option<&'c EnumerationMembers> {
+pub(crate) fn members_of(ctx: &CompileContext, id: Option<TypeId>) -> Option<&EnumerationMembers> {
     ctx.types.get(&id?)?.enumeration_members()
 }
 
