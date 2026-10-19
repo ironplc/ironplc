@@ -22,7 +22,7 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::{
     Expr, ExprKind, Place as LoweredPlace, PouId, Projection, Stmt, StmtKind, StrExpr,
 };
-use ironplc_lowering::Lowering;
+use ironplc_lowering::PartialProgram;
 
 use super::aggregate::emit_source;
 use super::expr::emit_expr;
@@ -70,7 +70,7 @@ impl CallSite<'_> {
 /// `stmts` does not start with one, as when a source assignment to a field
 /// comes before a separate call.
 pub(super) fn call_site<'s>(
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     ctx: &CompileContext,
     stmts: &'s [Stmt],
 ) -> Option<CallSite<'s>> {
@@ -100,7 +100,7 @@ pub(super) fn call_site<'s>(
 
 /// The call site of `instance` with no inputs: a lone `FbCall`.
 pub(super) fn bare_call<'s>(
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     ctx: &CompileContext,
     instance: &LoweredPlace,
 ) -> Option<CallSite<'s>> {
@@ -114,7 +114,7 @@ pub(super) fn bare_call<'s>(
 pub(super) fn emit_call_site(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     call: &CallSite<'_>,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
@@ -161,7 +161,7 @@ pub(super) fn emit_call_site(
 /// runs the VM's block on the instance, as the route that reads the AST
 /// calls it.
 pub(super) fn reaches_block(
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     ctx: &CompileContext,
     instance: &LoweredPlace,
     block: PouId,
@@ -190,7 +190,7 @@ pub(super) fn no_instance(span: &SourceSpan) -> Diagnostic {
 /// The field of `instance` that `stmt` stores in, and what it stores; `None`
 /// when `stmt` stores in no field of `instance`.
 fn input<'s>(
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     instance: &LoweredPlace,
     stmt: &'s Stmt,
 ) -> Option<(Id, Input<'s>)> {

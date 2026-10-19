@@ -28,7 +28,7 @@ use ironplc_container::VarIndex;
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::{Place as LoweredPlace, TypeKind};
-use ironplc_lowering::Lowering;
+use ironplc_lowering::PartialProgram;
 
 use super::place::{instance_slot, variable_name};
 use super::storage_name;
@@ -45,7 +45,7 @@ struct Region {
 
 /// Whether this backend emits the copy of `src` to `dst`.
 pub(super) fn can_emit(
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     ctx: &CompileContext,
     dst: &LoweredPlace,
     src: &LoweredPlace,
@@ -66,7 +66,7 @@ pub(super) fn can_emit(
 pub(super) fn emit_copy(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     dst: &LoweredPlace,
     src: &LoweredPlace,
     span: &SourceSpan,
@@ -87,7 +87,7 @@ pub(super) fn emit_copy(
 /// Whether this backend copies a structure or an array into `dst`: a whole
 /// variable or a field of the current instance that it keeps as a region.
 pub(super) fn reaches_region(
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     ctx: &CompileContext,
     dst: &LoweredPlace,
 ) -> bool {
@@ -100,7 +100,7 @@ pub(super) fn reaches_region(
 pub(super) fn emit_copy_from_stack(
     emitter: &mut Emitter,
     ctx: &CompileContext,
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     dst: &LoweredPlace,
     src_desc: u16,
     span: &SourceSpan,
@@ -123,7 +123,7 @@ pub(super) fn emit_copy_from_stack(
 pub(super) fn emit_source(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     src: &LoweredPlace,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
@@ -161,7 +161,7 @@ fn no_region(span: &SourceSpan) -> Diagnostic {
 /// instances by name, and its own structures may share their names, so
 /// `place` must be an instance.
 fn instance(
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     ctx: &CompileContext,
     place: &LoweredPlace,
 ) -> Option<VarIndex> {
@@ -179,7 +179,7 @@ fn instance(
 /// current instance that this backend keeps as a structure or an array. A
 /// `REF_TO ARRAY` parameter's slot holds a variable index, not a region, so
 /// it has none.
-fn region(lowering: &Lowering<'_>, ctx: &CompileContext, place: &LoweredPlace) -> Option<Region> {
+fn region(lowering: &PartialProgram, ctx: &CompileContext, place: &LoweredPlace) -> Option<Region> {
     let name = storage_name(lowering, place)?;
     if let Some(info) = ctx.struct_var(&name) {
         return Some(Region {

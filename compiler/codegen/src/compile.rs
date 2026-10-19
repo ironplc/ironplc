@@ -314,8 +314,8 @@ pub fn compile_with_route_counts(
     let method_owners = MethodOwners::of_library(library, context.types());
     let parse = crate::lowered::parse_policy(&options.string_to_num);
     let lowered_route = crate::lowered::LoweredRoute::new(options.route, || {
-        ironplc_lowering::Lowering::new(&analysis, parse)
-    });
+        ironplc_lowering::Lowering::new(&analysis, parse).lower_program()
+    })?;
     let (mut container, counts) = compile_program_with_functions(
         ProgramInputs {
             program: runnable.program,
@@ -496,7 +496,7 @@ fn compile_program_with_functions(
     string_to_num: StringToNumPolicies,
     compiler_options: CompilerOptions,
     sources: &dyn crate::source_lookup::SourceLookup,
-    lowered_route: Option<crate::lowered::LoweredRoute<'_>>,
+    lowered_route: Option<crate::lowered::LoweredRoute>,
 ) -> Result<(Container, crate::lowered::RouteCounts), Diagnostic> {
     let ProgramInputs {
         program,
@@ -1185,13 +1185,13 @@ pub(crate) enum CurrentBody {
     Method { block: Id, method: Id },
 }
 
-pub(crate) struct CompileContext<'a> {
-    /// The lowering asked for each top-level statement, when the route
-    /// compiles statements from the lowered program; `None` when every
-    /// statement is compiled from the AST.
-    pub(crate) lowered_route: Option<crate::lowered::LoweredRoute<'a>>,
-    /// The body being compiled, which lowering finds the statement's names
-    /// in; `None` outside a body.
+pub(crate) struct CompileContext {
+    /// The program lowering made, which each top-level statement is read
+    /// from, when the route compiles statements from the lowered program;
+    /// `None` when every statement is compiled from the AST.
+    pub(crate) lowered_route: Option<crate::lowered::LoweredRoute>,
+    /// The body being compiled, whose POU the lowered statement is read
+    /// from; `None` outside a body.
     pub(crate) current_body: Option<CurrentBody>,
     /// Maps variable identifiers to their variable table indices.
     pub(crate) variables: HashMap<Id, VarIndex>,
@@ -1309,7 +1309,7 @@ pub(crate) enum CurrentFunctionReturn {
     String { data_offset: u32 },
 }
 
-impl CompileContext<'_> {
+impl CompileContext {
     pub(crate) fn new() -> Self {
         CompileContext {
             lowered_route: None,

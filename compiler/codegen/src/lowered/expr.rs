@@ -8,7 +8,7 @@ use ironplc_ir::lowered::{
     Arg, BinaryOp, Callee, CompareOp, Const, Expr, ExprKind, Intrinsic, NarrowWidth, Place,
     ShortCircuitOp, UnaryOp,
 };
-use ironplc_lowering::Lowering;
+use ironplc_lowering::PartialProgram;
 
 use super::call_args::emit_passed;
 use super::fn_call::emit_in_place;
@@ -30,7 +30,7 @@ use crate::emit::Emitter;
 pub(super) fn emit_expr(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     expr: &Expr,
 ) -> Result<(), Diagnostic> {
     let op = op_type(expr.ty()).ok_or_else(|| {
@@ -207,7 +207,7 @@ pub(super) fn emit_operation(emitter: &mut Emitter, expr: &Expr) -> Result<(), D
 pub(super) fn emit_user_call<'s>(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     function: &UserFunctionInfo,
     args: impl IntoIterator<Item = &'s Arg>,
     span: &SourceSpan,
@@ -231,7 +231,7 @@ pub(super) fn emit_user_call<'s>(
 pub(super) fn emit_intrinsic_call(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     intrinsic: Intrinsic,
     args: &[Arg],
     span: &SourceSpan,
@@ -276,7 +276,7 @@ pub(super) fn emit_intrinsic_call(
 fn emit_args<'s>(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     args: impl IntoIterator<Item = &'s Arg>,
     span: &SourceSpan,
 ) -> Result<Vec<u32>, Diagnostic> {
@@ -303,7 +303,7 @@ fn emit_args<'s>(
 pub(super) fn emit_ref(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     place: &Place,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {

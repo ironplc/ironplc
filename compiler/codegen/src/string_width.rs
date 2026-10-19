@@ -479,7 +479,7 @@ mod tests {
 
     /// A context that knows the standard functions, as one compiling an
     /// analyzed program does.
-    fn context() -> CompileContext<'static> {
+    fn context() -> CompileContext {
         let mut ctx = CompileContext::new();
         ctx.builtin_functions = builtin_functions_by_name(
             &FunctionEnvironmentBuilder::new()
@@ -491,7 +491,7 @@ mod tests {
 
     /// A context that declares one narrow string variable `s` of capacity
     /// `max_length`.
-    fn context_with_string(max_length: u16) -> CompileContext<'static> {
+    fn context_with_string(max_length: u16) -> CompileContext {
         let mut ctx = context();
         ctx.string_vars.insert(
             Id::from("s"),

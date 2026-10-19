@@ -24,7 +24,7 @@ use ironplc_container::{FunctionId, VarIndex};
 use ironplc_dsl::core::{Id, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_ir::lowered::{Arg, PouId};
-use ironplc_lowering::Lowering;
+use ironplc_lowering::PartialProgram;
 
 use super::call_args::{emit_passed, passes};
 use super::place::variable_name;
@@ -71,7 +71,7 @@ impl MethodSite {
 /// method `pou` is or of a block that extends it. `None` when `pou` is no
 /// method, or this backend does not reach the receiver or the method.
 pub(super) fn method_site(
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     ctx: &CompileContext,
     pou: PouId,
     args: &[Arg],
@@ -119,7 +119,7 @@ pub(super) fn method_site(
 pub(super) fn emit_method_call<'s>(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     site: &MethodSite,
     inputs: impl IntoIterator<Item = &'s Arg>,
     span: &SourceSpan,

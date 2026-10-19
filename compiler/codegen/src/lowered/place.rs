@@ -24,7 +24,7 @@ use ironplc_ir::lowered::{
     Const, Expr, Nullability, Owner, Place as LoweredPlace, Projection, TypeId, TypeKind,
     TypeTable, Variable as LoweredVariable,
 };
-use ironplc_lowering::Lowering;
+use ironplc_lowering::PartialProgram;
 
 use super::expr::emit_expr;
 use super::{constant, instance_field, op_type};
@@ -35,12 +35,12 @@ use crate::compile_subscript::Subscript;
 use crate::emit::Emitter;
 
 /// A subscript of a lowered place.
-pub(super) struct LoweredSubscript<'l, 'a> {
-    lowering: &'l Lowering<'a>,
+pub(super) struct LoweredSubscript<'l> {
+    lowering: &'l PartialProgram,
     expr: &'l Expr,
 }
 
-impl Subscript for LoweredSubscript<'_, '_> {
+impl Subscript for LoweredSubscript<'_> {
     fn literal(&self) -> Option<i32> {
         match constant(self.expr)? {
             Const::I32(value) => Some(value),
@@ -54,12 +54,12 @@ impl Subscript for LoweredSubscript<'_, '_> {
 }
 
 /// Where codegen's layout stores `place`, as one value in one slot.
-pub(super) fn resolve<'l, 'a>(
-    lowering: &'l Lowering<'a>,
+pub(super) fn resolve<'l>(
+    lowering: &'l PartialProgram,
     ctx: &CompileContext,
     place: &'l LoweredPlace,
     span: &SourceSpan,
-) -> Result<Place<LoweredSubscript<'l, 'a>>, Diagnostic> {
+) -> Result<Place<LoweredSubscript<'l>>, Diagnostic> {
     let mut subscripts = Vec::new();
     let reference =
         reference(lowering, ctx, place, &mut subscripts).ok_or_else(|| no_storage(span))?;
@@ -67,24 +67,24 @@ pub(super) fn resolve<'l, 'a>(
 }
 
 /// Where the value a read of `place` loads is.
-pub(super) enum Load<'l, 'a> {
+pub(super) enum Load<'l> {
     /// In this storage.
-    Stored(Place<LoweredSubscript<'l, 'a>>),
+    Stored(Place<LoweredSubscript<'l>>),
     /// In what the reference this storage holds refers to: `refs[0]^`, whose
     /// reference is not in a variable.
-    Referenced(Place<LoweredSubscript<'l, 'a>>),
+    Referenced(Place<LoweredSubscript<'l>>),
 }
 
 /// Where the value a read of `place` loads is. What a reference that is not
 /// in a variable refers to is read by loading the reference and then what it
 /// refers to, as the AST route reads `e^`. A store to it is not: the AST
 /// route does not compile one.
-pub(super) fn resolve_load<'l, 'a>(
-    lowering: &'l Lowering<'a>,
+pub(super) fn resolve_load<'l>(
+    lowering: &'l PartialProgram,
     ctx: &CompileContext,
     place: &'l LoweredPlace,
     span: &SourceSpan,
-) -> Result<Load<'l, 'a>, Diagnostic> {
+) -> Result<Load<'l>, Diagnostic> {
     let mut subscripts = Vec::new();
     let reference =
         reference(lowering, ctx, place, &mut subscripts).ok_or_else(|| no_storage(span))?;
@@ -106,14 +106,14 @@ pub(super) fn resolve_load<'l, 'a>(
 
 /// Where codegen's layout stores `place`, which `reference` stands for with
 /// `subscripts` as its placeholders.
-fn storage<'l, 'a>(
-    lowering: &'l Lowering<'a>,
+fn storage<'l>(
+    lowering: &'l PartialProgram,
     ctx: &CompileContext,
     place: &'l LoweredPlace,
     reference: SymbolicVariableKind,
     subscripts: &[&'l Expr],
     span: &SourceSpan,
-) -> Result<Place<LoweredSubscript<'l, 'a>>, Diagnostic> {
+) -> Result<Place<LoweredSubscript<'l>>, Diagnostic> {
     // The whole of what a reference variable refers to: `p^`.
     if let SymbolicVariableKind::Deref(deref) = reference {
         let target = type_info(lowering.types(), place.ty());
@@ -128,7 +128,7 @@ fn storage<'l, 'a>(
 /// layout knows it: a variable, a field of the current instance, or what a
 /// `VAR_IN_OUT` parameter refers to. `None` for any other place.
 pub(super) fn variable_name(
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     ctx: &CompileContext,
     place: &LoweredPlace,
 ) -> Option<Id> {
@@ -144,7 +144,7 @@ pub(super) fn variable_name(
 /// first: `h.og.ob` is `h` with `og` and `ob`. A whole variable is its name
 /// with no fields. `None` for any other place.
 pub(super) fn field_path(
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     ctx: &CompileContext,
     place: &LoweredPlace,
 ) -> Option<(Id, Vec<Id>)> {
@@ -180,7 +180,7 @@ pub(super) fn field_path(
 /// hold for one, and a store of it is narrowed, as the route that reads the
 /// AST narrows every store.
 pub(super) fn reads_standard_block_field(
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     ctx: &CompileContext,
     expr: &Expr,
 ) -> bool {
@@ -211,11 +211,11 @@ pub(super) fn reads_standard_block_field(
 /// the AST stores there, the index of a temporary buffer for a string
 /// (issue 1753) and the region offset of the value stored for a structure or
 /// an array.
-pub(super) fn instance_slot<'l, 'a>(
-    lowering: &'l Lowering<'a>,
+pub(super) fn instance_slot<'l>(
+    lowering: &'l PartialProgram,
     ctx: &CompileContext,
     place: &'l LoweredPlace,
-) -> Option<Place<LoweredSubscript<'l, 'a>>> {
+) -> Option<Place<LoweredSubscript<'l>>> {
     let SymbolicVariableKind::Structured(field) = reference(lowering, ctx, place, &mut Vec::new())?
     else {
         return None;
@@ -230,12 +230,12 @@ pub(super) fn instance_slot<'l, 'a>(
 /// Where codegen's layout stores the string `place`: a string variable, an
 /// element of a string array or a string field of a structure, as the AST
 /// route finds it.
-pub(super) fn resolve_string<'l, 'a>(
-    lowering: &'l Lowering<'a>,
+pub(super) fn resolve_string<'l>(
+    lowering: &'l PartialProgram,
     ctx: &CompileContext,
     place: &'l LoweredPlace,
     span: &SourceSpan,
-) -> Result<StringPlace<LoweredSubscript<'l, 'a>>, Diagnostic> {
+) -> Result<StringPlace<LoweredSubscript<'l>>, Diagnostic> {
     let mut subscripts = Vec::new();
     let reference =
         reference(lowering, ctx, place, &mut subscripts).ok_or_else(|| no_storage(span))?;
@@ -249,12 +249,12 @@ pub(super) fn resolve_string<'l, 'a>(
 
 /// The lowered subscript the literal `placeholder` stands for: the one at
 /// its position in `subscripts`.
-fn lowered_subscript<'l, 'a>(
-    lowering: &'l Lowering<'a>,
+fn lowered_subscript<'l>(
+    lowering: &'l PartialProgram,
     subscripts: &[&'l Expr],
     placeholder: &AstExpr,
     span: &SourceSpan,
-) -> Result<LoweredSubscript<'l, 'a>, Diagnostic> {
+) -> Result<LoweredSubscript<'l>, Diagnostic> {
     let expr = placeholder
         .literal()
         .and_then(|position| subscripts.get(usize::try_from(position).ok()?))
@@ -272,7 +272,7 @@ fn no_storage(span: &SourceSpan) -> Diagnostic {
 /// position `k` of `subscripts` as the literal `k`; `None` for a place this
 /// backend does not reach yet.
 fn reference<'l>(
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     ctx: &CompileContext,
     place: &'l LoweredPlace,
     subscripts: &mut Vec<&'l Expr>,
@@ -335,7 +335,7 @@ fn reference<'l>(
 /// the function returns (ADR-0046). They are the only non-null references
 /// this backend follows outside a body's instance parameter.
 fn by_reference(
-    lowering: &Lowering<'_>,
+    lowering: &PartialProgram,
     ctx: &CompileContext,
     root: &LoweredVariable,
     reference: SymbolicVariableKind,

@@ -2831,9 +2831,9 @@ This section constrains the order of work; it is not a work breakdown.
   lowering only once it is shown unreachable from a program analysis accepts
   (see [The Clean-Analysis Gate](#2-the-clean-analysis-gate)).
 - **The gate is already in place.** Codegen's entry point takes a
-  `CleanAnalysis`. While both routes exist, codegen passes it on to the entry
-  point that lowers one statement, so the lowered route meets
-  REQ-LOW-lowering-011 from its first statement, and no caller moves again.
+  `CleanAnalysis`. While both routes exist, codegen passes it on to
+  lowering's entry point, so the lowered route meets REQ-LOW-lowering-011
+  from its first statement, and no caller moves again.
 
 **Growing one statement at a time**
 
@@ -2842,20 +2842,22 @@ This section constrains the order of work; it is not a work breakdown.
   and expressions. So the lowered program cannot grow one node kind at a time
   while codegen reads the AST for the rest. It grows one top-level statement
   at a time instead:
-  1. While codegen compiles a body, it asks lowering for each top-level
-     statement, together with every statement and expression inside it.
-  2. If lowering supports all of them, codegen emits the lowered statement.
-  3. If not, lowering answers that the statement is unsupported, and codegen
+  1. Before codegen emits anything, lowering lowers the whole library in one
+     walk, and keeps what each top-level statement of each body lowered to,
+     together with every statement and expression inside it.
+  2. While codegen compiles a body, it reads each top-level statement's
+     result, by the body's POU and the statement's index. If lowering
+     supported all of it, codegen emits the lowered statement.
+  3. If not, the result says the statement is unsupported, and codegen
      compiles that statement from the AST.
 
   Both routes emit into the same body through the same emitter. A POU is not
   the unit: most POUs mix constructs, so a POU would take the new route only
   once nearly all of lowering existed.
-- **Unsupported is not a defect.** While both routes exist, lowering offers an
-  entry point that lowers one statement of a body. That entry point tells a
-  statement it does not support yet apart from a broken invariant. An
+- **Unsupported is not a defect.** While both routes exist, the walk tells a
+  statement lowering does not support yet apart from a broken invariant. An
   unsupported statement falls back and is counted. A broken invariant is a
-  P9998, as always.
+  P9998, as always, and fails the compilation wherever the walk meets it.
 - **Storage found by name at first.** A lowered variable carries its name and
   its owning POU (REQ-LOW-lowering-006). So while both routes exist, the
   bytecode backend finds a lowered variable's storage in the layout codegen
