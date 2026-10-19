@@ -46,6 +46,7 @@ pub(crate) struct DimensionInfo {
 
 /// Metadata for an array variable, stored in CompileContext.
 #[allow(dead_code)]
+#[derive(Clone)]
 pub(crate) struct ArrayVarInfo {
     pub var_index: VarIndex,
     pub desc_index: u16,
