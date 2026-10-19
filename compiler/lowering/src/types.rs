@@ -30,13 +30,47 @@ impl Lowering<'_> {
         if let Some(known) = self.type_ids.get(&id) {
             return Ok(*known);
         }
-        // A type that reaches itself, such as a structure holding a reference
-        // to its own type, is not lowered yet: mark it unsupported while its
-        // parts are lowered, so the walk ends.
-        self.type_ids.insert(id, None);
-        let lowered = self.lower_type(id)?;
+        // A type that reaches itself other than as a function block a
+        // reference refers to (`reference_target_type`), such as a structure
+        // holding a reference to its own type, is not lowered yet, so the
+        // walk ends.
+        if self.types_in_progress.contains_key(&id) {
+            return Ok(None);
+        }
+        self.types_in_progress.insert(id, None);
+        let lowered = self.lower_type(id);
+        self.types_in_progress.remove(&id);
+        let lowered = lowered?;
         self.type_ids.insert(id, lowered);
         Ok(lowered)
+    }
+
+    /// The lowered type a reference refers to, of the analyzer type `target`.
+    /// A function block being lowered that a reference reaches again, as its
+    /// own field `next : REF_TO Node` does, is declared then, and defined at
+    /// that id once its fields are lowered (REQ-LOW-lowering-195,
+    /// REQ-LOW-ir-194).
+    fn reference_target_type(&mut self, target: AnalyzerTypeId) -> LoweredType {
+        let Some(declared) = self.types_in_progress.get(&target).copied() else {
+            return self.lowered_type(target);
+        };
+        if let Some(declared) = declared {
+            return Ok(Some(declared));
+        }
+        let is_block = matches!(
+            self.analysis
+                .context()
+                .types()
+                .get_by_id(target)
+                .map(|attributes| &attributes.representation),
+            Some(SemanticType::FunctionBlock { .. })
+        );
+        if !is_block {
+            return Ok(None);
+        }
+        let declared = self.program.declare_type();
+        self.types_in_progress.insert(target, Some(declared));
+        Ok(Some(declared))
     }
 
     fn lower_type(&mut self, id: AnalyzerTypeId) -> LoweredType {
@@ -188,7 +222,7 @@ impl Lowering<'_> {
                 let Some(target) = self.analysis.context().types().referenced_type(id) else {
                     return Ok(None);
                 };
-                let Some(target) = self.lowered_type(target)? else {
+                let Some(target) = self.reference_target_type(target)? else {
                     return Ok(None);
                 };
                 TypeKind::Reference {
@@ -197,9 +231,14 @@ impl Lowering<'_> {
                 }
             }
         };
-        self.program
-            .push_type(TypeEntry { name, kind }, &span)
-            .map(Some)
+        let entry = TypeEntry { name, kind };
+        match self.types_in_progress.get(&id).copied().flatten() {
+            Some(declared) => self
+                .program
+                .define_type(declared, entry, &span)
+                .map(|()| Some(declared)),
+            None => self.program.push_type(entry, &span).map(Some),
+        }
     }
 
     fn temporal(

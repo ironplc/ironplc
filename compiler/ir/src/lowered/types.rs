@@ -286,7 +286,9 @@ pub struct TypeEntry {
 #[derive(Clone, Debug)]
 pub struct TypeTable {
     stamp: Stamp,
-    entries: Vec<TypeEntry>,
+    /// Each type's entry, by index; `None` for a type declared and not
+    /// defined (REQ-LOW-ir-194).
+    entries: Vec<Option<TypeEntry>>,
 }
 
 impl TypeTable {
@@ -299,13 +301,15 @@ impl TypeTable {
 
     /// Adds `entry` and returns the id that names it.
     ///
-    /// Every type the entry refers to is already in the table. A subrange's
-    /// base is an integer type whose range holds `min` to `max`, an array has
-    /// at least one dimension and each lower bound is at most its upper
-    /// bound, a structure's fields have no section, a function block's or
-    /// program's fields each have one, and a function block that extends
-    /// another begins with that block's fields (REQ-LOW-ir-176). An entry
-    /// that breaks one of these is a P9998 and is not added.
+    /// Every type the entry refers to is already in the table, defined, but
+    /// for a reference's target, which may be declared and not defined yet
+    /// (REQ-LOW-ir-194). A subrange's base is an integer type whose range
+    /// holds `min` to `max`, an array has at least one dimension and each
+    /// lower bound is at most its upper bound, a structure's fields have no
+    /// section, a function block's or program's fields each have one, and a
+    /// function block that extends another begins with that block's fields
+    /// (REQ-LOW-ir-176). An entry that breaks one of these is a P9998 and is
+    /// not added.
     pub(crate) fn push(
         &mut self,
         entry: TypeEntry,
@@ -314,14 +318,64 @@ impl TypeTable {
         self.check(&entry.kind)
             .map_err(|what| broken("TypeTable::push", span, what))?;
         let id = TypeId::new(self.stamp, self.entries.len() as u32);
-        self.entries.push(entry);
+        self.entries.push(Some(entry));
         Ok(id)
+    }
+
+    /// Declares a type that [`TypeTable::define`] gives its entry later, and
+    /// returns the id that names it, so that a reference can refer to it
+    /// first: a function block that refers to itself through a reference
+    /// field (REQ-LOW-ir-194). Until it is defined the type has no entry.
+    pub(crate) fn declare(&mut self) -> TypeId {
+        let id = TypeId::new(self.stamp, self.entries.len() as u32);
+        self.entries.push(None);
+        id
+    }
+
+    /// Gives the type `id` declares its entry, which is one
+    /// [`TypeTable::push`] would add. An id the table did not declare, or
+    /// one already defined, is a P9998, as is an entry `push` would refuse.
+    pub(crate) fn define(
+        &mut self,
+        id: TypeId,
+        entry: TypeEntry,
+        span: &SourceSpan,
+    ) -> Result<(), Diagnostic> {
+        if !matches!(self.slot(id), Some(None)) {
+            return Err(broken(
+                "TypeTable::define",
+                span,
+                format!("{id} is not a type declared and not defined"),
+            ));
+        }
+        self.check(&entry.kind)
+            .map_err(|what| broken("TypeTable::define", span, what))?;
+        self.entries[id.index() as usize] = Some(entry);
+        Ok(())
+    }
+
+    /// The slot of `id`: `Some(None)` for a type declared and not defined,
+    /// and `None` for an id the table does not hold.
+    fn slot(&self, id: TypeId) -> Option<&Option<TypeEntry>> {
+        if id.stamp() != self.stamp {
+            return None;
+        }
+        self.entries.get(id.index() as usize)
     }
 
     /// Why `kind` cannot be added to the table, if it cannot.
     fn check(&self, kind: &TypeKind) -> Result<(), String> {
         let known = |id: &TypeId| {
             if self.get(*id).is_some() {
+                Ok(())
+            } else {
+                Err(format!("{id} is not in the table"))
+            }
+        };
+        // A reference may refer to a type that is declared and not defined
+        // yet (REQ-LOW-ir-194); every other part of a type is defined.
+        let declared = |id: &TypeId| {
+            if self.slot(*id).is_some() {
                 Ok(())
             } else {
                 Err(format!("{id} is not in the table"))
@@ -389,7 +443,7 @@ impl TypeTable {
                 }
             }
             TypeKind::Program { fields, .. } => sections(fields, true),
-            TypeKind::Reference { target, .. } => known(target),
+            TypeKind::Reference { target, .. } => declared(target),
         }
     }
 
@@ -433,7 +487,7 @@ impl TypeTable {
 
     /// Whether the function block type `block` is `base`, or extends it
     /// directly or through the blocks it extends (REQ-LOW-ir-176). The walk
-    /// ends, since a block's base is in the table before the block is.
+    /// ends, since a block's base is defined before the block is.
     pub fn extends(&self, block: TypeId, base: TypeId) -> bool {
         let mut block = block;
         loop {
@@ -451,12 +505,9 @@ impl TypeTable {
     }
 
     /// The entry of `id`, or `None` if the table has none, as for an id
-    /// another program's table allocated.
+    /// another program's table allocated, or one declared and not defined.
     pub fn get(&self, id: TypeId) -> Option<&TypeEntry> {
-        if id.stamp() != self.stamp {
-            return None;
-        }
-        self.entries.get(id.index() as usize)
+        self.slot(id)?.as_ref()
     }
 
     /// What `id` is, or `None` if the table has no entry `id`.
@@ -464,12 +515,15 @@ impl TypeTable {
         self.get(id).map(|entry| &entry.kind)
     }
 
-    /// Every type, with its id, in the order they were added.
+    /// Every type that has an entry, with its id, in the order they were
+    /// added or declared.
     pub fn iter(&self) -> impl Iterator<Item = (TypeId, &TypeEntry)> {
         self.entries
             .iter()
             .enumerate()
-            .map(|(index, entry)| (TypeId::new(self.stamp, index as u32), entry))
+            .filter_map(|(index, entry)| {
+                Some((TypeId::new(self.stamp, index as u32), entry.as_ref()?))
+            })
     }
 
     /// The type a value of `id` is operated at; `None` for a type that is
