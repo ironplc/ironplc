@@ -44,6 +44,7 @@ mod compile_route;
 mod compile_route_agreement;
 mod compile_route_lowered;
 mod compile_route_lowered_aggregate;
+mod compile_route_lowered_aggregate_ref;
 mod compile_route_lowered_fb_call;
 mod compile_route_lowered_fb_field;
 mod compile_route_lowered_function;

@@ -1085,6 +1085,9 @@ pub(crate) struct CompileContext {
     /// Maps each reference variable whose target is a string, or an array
     /// of strings, to how the strings it refers to are reached through it.
     pub(crate) string_refs: HashMap<Id, crate::compile_reference::StringRefInfo>,
+    /// Maps each reference variable whose target is an array or a structure
+    /// to the descriptor that sizes that whole array or structure.
+    pub(crate) region_refs: HashMap<Id, u16>,
     /// What every type is, by the id an expression's `expr_type` carries.
     /// See [`crate::type_info::expr_type_info`].
     pub(crate) types: HashMap<ironplc_dsl::type_id::TypeId, SemanticType>,
@@ -1199,6 +1202,7 @@ impl CompileContext {
             struct_vars: HashMap::new(),
             struct_array_vars: HashMap::new(),
             string_refs: HashMap::new(),
+            region_refs: HashMap::new(),
             in_out_params: HashSet::new(),
             data_region_offset: 0,
             max_string_capacity: 0,
@@ -1310,6 +1314,12 @@ impl CompileContext {
     /// through it; `None` when it refers to no string or array of strings.
     pub(crate) fn string_ref(&self, name: &Id) -> Option<&crate::compile_reference::StringRefInfo> {
         self.string_refs.get(name)
+    }
+
+    /// The descriptor that sizes the whole array or structure the reference
+    /// variable `name` refers to; `None` when it refers to no such target.
+    pub(crate) fn region_ref(&self, name: &Id) -> Option<u16> {
+        self.region_refs.get(name).copied()
     }
 
     /// The layout of the array variable `name`; `None` when it is no array.

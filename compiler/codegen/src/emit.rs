@@ -559,6 +559,17 @@ impl Emitter {
         self.pop_stack(1);
     }
 
+    /// Emits COPY_REGION_DEREF with ref_var, dst_desc and src_desc operands:
+    /// COPY_REGION into the region the reference in `ref_var` refers to.
+    /// Pops 1 (source offset). Net: -1.
+    pub fn emit_copy_region_deref(&mut self, ref_var: VarIndex, dst_desc: u16, src_desc: u16) {
+        self.emit_opcode(opcode::COPY_REGION_DEREF);
+        self.bytecode.extend_from_slice(&ref_var.to_le_bytes());
+        self.bytecode.extend_from_slice(&dst_desc.to_le_bytes());
+        self.bytecode.extend_from_slice(&src_desc.to_le_bytes());
+        self.pop_stack(1);
+    }
+
     /// Emits STR_INIT_ARRAY with var_index and desc_index operands.
     /// Initializes all string headers in an array. No stack effect.
     pub fn emit_str_init_array(&mut self, var_index: VarIndex, desc_index: u16) {
