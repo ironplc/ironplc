@@ -604,13 +604,15 @@ passes for a reference to an instance of its base (REQ-LOW-ir-173), with
 nothing converted. A backend lays a block's fields out so that its base's
 come first, laid out as the base's are.
 
-Lowering records a block's base when the block's lowered fields begin with
-the base type's. While a block's lowered type has only the fields it declares
-itself, that is so only when the base's type has no fields, so a block that
-extends one with a field records no base and extends nothing in the lowered
-program. When lowering gives a block the fields it inherits, it takes them
-from the type environment's `instance_fields`, which lists them from the root
-of the `EXTENDS` chain down, so every block then records its base.
+Lowering records as a block's base the nearest block of its `EXTENDS` chain
+whose type's fields the block's lowered fields begin with. While a block's
+lowered type has only the fields it declares itself, that is the nearest block
+above it that declares no fields: a block that extends one with a field
+records the nearest block above that declares none, if one does, and extends
+only that block and the blocks above it in the lowered program. When lowering
+gives a block the fields it inherits, it takes them from the type
+environment's `instance_fields`, which lists them from the root of the
+`EXTENDS` chain down, so every block then records the block it extends.
 
 **REQ-LOW-ir-176** A function block type that records a base begins with the
 base's fields, of the same names, sections and types, and the type table

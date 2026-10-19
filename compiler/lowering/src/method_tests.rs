@@ -202,10 +202,12 @@ fn lower_statement_when_method_inherited_from_base_without_fields_then_call_of_b
 
 /// REQ-LOW-lowering-177: a block whose type does not begin with the fields
 /// of the block it extends, as one that extends a block with a field does
-/// while inherited fields are not in its type, extends no block in the
-/// lowered program, so a call of a method it inherits is not lowered.
+/// while inherited fields are not in its type, records as its base the
+/// nearest block above that declares none. So a call of a method it
+/// inherits from that block, through the block with the field, is a call
+/// of that block's method.
 #[test]
-fn lower_statement_when_method_inherited_through_block_with_fields_then_unsupported() {
+fn lower_statement_when_method_inherited_through_block_with_fields_then_call_of_base_method() {
     let outcome = lower(
         &format!(
             "{INHERITED}
@@ -215,7 +217,10 @@ fn lower_statement_when_method_inherited_through_block_with_fields_then_unsuppor
         ),
         "main",
     );
-    assert_eq!(outcome.statements, ["unsupported"]);
+    assert_eq!(
+        outcome.statements,
+        ["assign v0^.f1 (call pou4 i32s (ref v0^.f0) (const i32s 1))"]
+    );
 }
 
 /// REQ-LOW-lowering-187: a method whose result is a structure or an array

@@ -312,30 +312,31 @@ impl Lowering<'_> {
         Ok(Some(fields))
     }
 
-    /// The lowered type of the block the function block `block` extends,
-    /// when `fields`, the lowered block's, begin with that type's
-    /// (REQ-LOW-lowering-177, REQ-LOW-ir-176). A block's lowered type has
-    /// only the fields it declares itself, so that is so only when the base's
-    /// type has none; otherwise the type records no base, and a call of a
-    /// method it inherits is not lowered.
+    /// The lowered type of the nearest block of the `EXTENDS` chain above the
+    /// function block `block` whose fields `fields`, the lowered block's,
+    /// begin with (REQ-LOW-lowering-177, REQ-LOW-ir-176). A block's lowered
+    /// type has only the fields it declares itself, so that is the nearest
+    /// block above it that declares none. The blocks in between, which
+    /// declare fields, are not its base in the lowered program, and a call of
+    /// a method one of them declares is not lowered. `None` when no block
+    /// above it is one.
     fn base(&mut self, block: AnalyzerTypeId, fields: &[Field]) -> LoweredType {
-        let Some(base) = self
+        let ancestors: Vec<AnalyzerTypeId> = self
             .analysis
             .context()
             .types()
             .inheritance_chain(block)
-            .nth(1)
-        else {
-            return Ok(None);
-        };
-        let Some(base) = self.lowered_type(base)? else {
-            return Ok(None);
-        };
-        Ok(self
-            .program
-            .types()
-            .can_extend(fields, base)
-            .then_some(base))
+            .skip(1)
+            .collect();
+        for ancestor in ancestors {
+            let Some(base) = self.lowered_type(ancestor)? else {
+                continue;
+            };
+            if self.program.types().can_extend(fields, base) {
+                return Ok(Some(base));
+            }
+        }
+        Ok(None)
     }
 
     /// The lowered type of an elementary type, such as a subrange's base.
