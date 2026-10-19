@@ -174,3 +174,35 @@ fn run_when_adr_dereferenced_then_value_of_place() {
         .expect("every statement lowers");
     assert_eq!(Snapshot::run_compiled(container).read_as::<i32>("k"), 7);
 }
+
+/// A subscript of a reference to an array, a TwinCAT `REFERENCE TO` or a
+/// `REF_TO` the analyzer lets a subscript follow without `^`, writes and
+/// reads the array the reference refers to, as `p^[i]` does. This corrects
+/// the route that reads the AST, which indexes the reference's own slot as
+/// though it held the array's data: there `r[2] := 6` leaves `b` as it was
+/// and writes into the bytes of `a`, and `p[i]` reads what `p^[i]` did not
+/// write.
+#[test]
+fn run_when_reference_to_array_subscripted_then_referenced_array() {
+    let snapshot = run_lowered(
+        "PROGRAM main
+           VAR a : ARRAY[1..3] OF DINT; b : ARRAY[1..3] OF DINT; c : ARRAY[1..3] OF DINT;
+               r : REFERENCE TO ARRAY[1..3] OF DINT; p : REF_TO ARRAY[1..3] OF DINT;
+               i : DINT := 2; k : DINT; m : DINT; ja : DINT; jb : DINT; jc : DINT; END_VAR
+           r REF= b;
+           p := REF(c);
+           r[2] := 5;
+           p^[i] := 6;
+           k := r[2];
+           m := p[i];
+           ja := a[2];
+           jb := b[2];
+           jc := c[2];
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<i32>("k"), 5);
+    assert_eq!(snapshot.read_as::<i32>("m"), 6);
+    assert_eq!(snapshot.read_as::<i32>("ja"), 0);
+    assert_eq!(snapshot.read_as::<i32>("jb"), 5);
+    assert_eq!(snapshot.read_as::<i32>("jc"), 6);
+}
