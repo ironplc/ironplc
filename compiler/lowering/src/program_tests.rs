@@ -110,11 +110,14 @@ pou0 function-block Counter instance v1
   assign v1^.f1 (truncate 16 (add i32s (read i32s v1^.f1) (read i32s v1^.f0)))
 end
 pou1 method Bump of pou0 instance v2 parameters v2, v3 result v5 locals v4
+  assign v4 (const i32s 0)
+  assign v5 (const i32s 0)
   assign v4 (read i32s v3)
   assign v2^.f1 (truncate 16 (add i32s (read i32s v2^.f1) (read i32s v4)))
   assign v5 (read i32s v2^.f1)
 end
 pou2 function Twice parameters v6 result v7
+  assign v7 (const i32s 0)
   assign v7 (truncate 16 (mul i32s (read i32s v6) (const i32s 2)))
 end
 pou3 program main instance v8

@@ -718,6 +718,11 @@ structure or a function block instance element by element and field by field.
 Whether a store can be left out because the backend's storage starts cleared
 is the backend's to say.
 
+**REQ-LOW-lowering-195** The body of a function or method begins with the
+stores of the completed initializer of each of its declarations the analyzer
+flags as starting again on every call (`VarDecl::reset_on_call`: its `VAR`,
+`VAR_TEMP` and `VAR_OUTPUT`), in declaration order, and then of its result.
+
 **REQ-LOW-lowering-025** The lowered program contains only POUs reachable from
 a program instance, matching what `SemanticContext::reachable` gives codegen
 today.
