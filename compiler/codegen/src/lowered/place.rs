@@ -229,7 +229,8 @@ pub(super) fn instance_slot<'l>(
 
 /// Where codegen's layout stores the string `place`: a string variable, an
 /// element of a string array or a string field of a structure, as the AST
-/// route finds it.
+/// route finds it, or the string a reference variable refers to, `rs^` or
+/// `rsa^[i]`, reached through the reference.
 pub(super) fn resolve_string<'l>(
     lowering: &'l PartialProgram,
     ctx: &CompileContext,
@@ -240,11 +241,13 @@ pub(super) fn resolve_string<'l>(
     let reference =
         reference(lowering, ctx, place, &mut subscripts).ok_or_else(|| no_storage(span))?;
     let reference = Variable::Symbolic(reference);
-    StringPlace::resolve(ctx, &reference)?
-        .ok_or_else(|| no_storage(span))?
-        .try_map_subscripts(|placeholder| {
-            lowered_subscript(lowering, &subscripts, placeholder, span)
-        })
+    let string = match StringPlace::through_reference(ctx, &reference) {
+        Some(string) => string,
+        None => StringPlace::resolve(ctx, &reference)?.ok_or_else(|| no_storage(span))?,
+    };
+    string.try_map_subscripts(|placeholder| {
+        lowered_subscript(lowering, &subscripts, placeholder, span)
+    })
 }
 
 /// The lowered subscript the literal `placeholder` stands for: the one at

@@ -14,6 +14,7 @@ use ironplc_dsl::core::Id;
 use crate::compile::{CompileContext, FbInstanceInfo, StringVarInfo, VarTypeInfo};
 use crate::compile_array::ArrayVarInfo;
 use crate::compile_array_struct::StructArrayVarInfo;
+use crate::compile_reference::StringRefInfo;
 use crate::compile_struct::StructVarInfo;
 
 /// The variable mappings one body is compiled against.
@@ -35,6 +36,9 @@ pub(crate) struct Scope {
     pub(crate) struct_vars: HashMap<Id, StructVarInfo>,
     /// Maps top-level `ARRAY OF <struct>` variable identifiers to their metadata.
     pub(crate) struct_array_vars: HashMap<Id, StructArrayVarInfo>,
+    /// Maps the identifiers of references to a string, or to an array of
+    /// strings, to how the strings are reached through them.
+    pub(crate) string_refs: HashMap<Id, StringRefInfo>,
     /// Maps FB instance variable identifiers to their metadata.
     pub(crate) fb_instances: HashMap<Id, FbInstanceInfo>,
     /// The `VAR_IN_OUT` parameters of the function being compiled.
@@ -48,8 +52,9 @@ impl Scope {
     /// global variables, which occupy variable table indices below it.
     ///
     /// - `variables` keeps the entries whose index is below `num_globals`.
-    ///   `var_types`, `string_vars`, `struct_vars` and `struct_array_vars` keep
-    ///   the entries whose identifier is one of those variables.
+    ///   `var_types`, `string_vars`, `struct_vars`, `struct_array_vars` and
+    ///   `string_refs` keep the entries whose identifier is one of those
+    ///   variables.
     /// - `array_vars` starts empty, so a global array is not visible.
     /// - `fb_instances` is the program-level map, unfiltered.
     /// - `in_out_params` starts empty; the function's own `VAR_IN_OUT`
@@ -66,8 +71,9 @@ impl Scope {
     /// `program` is the program-level scope and `num_globals` the number of
     /// global variables, which occupy variable table indices below it.
     ///
-    /// - `variables`, `var_types`, `string_vars`, `struct_vars` and
-    ///   `struct_array_vars` keep what [`Scope::for_function_body`] keeps.
+    /// - `variables`, `var_types`, `string_vars`, `struct_vars`,
+    ///   `struct_array_vars` and `string_refs` keep what
+    ///   [`Scope::for_function_body`] keeps.
     /// - `array_vars` starts empty, so a global array is not visible.
     /// - `fb_instances` starts empty.
     /// - `in_out_params` is the program-level set, unfiltered.
@@ -78,7 +84,7 @@ impl Scope {
         }
     }
 
-    /// The five collections that carry the program's globals into a body,
+    /// The six collections that carry the program's globals into a body,
     /// filtered to the globals; every other collection is empty.
     ///
     /// A global is a variable whose index in `program.variables` is below
@@ -102,6 +108,7 @@ impl Scope {
             string_vars: keep_globals(&program.string_vars, is_global),
             struct_vars: keep_globals(&program.struct_vars, is_global),
             struct_array_vars: keep_globals(&program.struct_array_vars, is_global),
+            string_refs: keep_globals(&program.string_refs, is_global),
             ..Scope::default()
         }
     }
@@ -123,7 +130,7 @@ impl CompileContext {
     /// Installs `scope` as the active variable mappings and returns the ones
     /// it replaces.
     ///
-    /// All eight collections are replaced wholesale, so nothing of the previous
+    /// All nine collections are replaced wholesale, so nothing of the previous
     /// scope remains visible until it is swapped back in.
     pub(crate) fn swap_scope(&mut self, scope: Scope) -> Scope {
         Scope {
@@ -136,6 +143,7 @@ impl CompileContext {
                 &mut self.struct_array_vars,
                 scope.struct_array_vars,
             ),
+            string_refs: std::mem::replace(&mut self.string_refs, scope.string_refs),
             fb_instances: std::mem::replace(&mut self.fb_instances, scope.fb_instances),
             in_out_params: std::mem::replace(&mut self.in_out_params, scope.in_out_params),
         }
@@ -230,6 +238,13 @@ mod tests {
         }
     }
 
+    fn string_ref_info(name: &str) -> StringRefInfo {
+        StringRefInfo {
+            desc_index: tag_of(name) as u16,
+            char_width: CharWidth::Narrow,
+        }
+    }
+
     fn fb_info(name: &str) -> FbInstanceInfo {
         FbInstanceInfo {
             var_index: VarIndex::new(0),
@@ -279,6 +294,7 @@ mod tests {
             scope
                 .struct_array_vars
                 .insert(id(name), struct_array_info(name));
+            scope.string_refs.insert(id(name), string_ref_info(name));
             scope.fb_instances.insert(id(name), fb_info(name));
             scope.in_out_params.insert(id(name));
         }
@@ -312,6 +328,7 @@ mod tests {
         assert_eq!(names(scope.string_vars.keys()), expected(&GLOBALS));
         assert_eq!(names(scope.struct_vars.keys()), expected(&GLOBALS));
         assert_eq!(names(scope.struct_array_vars.keys()), expected(&GLOBALS));
+        assert_eq!(names(scope.string_refs.keys()), expected(&GLOBALS));
     }
 
     #[rstest]
@@ -337,6 +354,10 @@ mod tests {
         );
         assert_eq!(
             scope.struct_array_vars[&last_global].data_offset,
+            tag_of(LAST_GLOBAL)
+        );
+        assert_eq!(
+            u32::from(scope.string_refs[&last_global].desc_index),
             tag_of(LAST_GLOBAL)
         );
     }
@@ -368,6 +389,7 @@ mod tests {
         assert!(scope.string_vars.is_empty());
         assert!(scope.struct_vars.is_empty());
         assert!(scope.struct_array_vars.is_empty());
+        assert!(scope.string_refs.is_empty());
     }
 
     #[test]
@@ -426,6 +448,7 @@ mod tests {
         assert!(ctx.array_vars.is_empty());
         assert!(ctx.struct_vars.is_empty());
         assert!(ctx.struct_array_vars.is_empty());
+        assert!(ctx.string_refs.is_empty());
         assert!(ctx.fb_instances.is_empty());
         assert_eq!(previous.variables.len(), 4);
         assert_eq!(previous.var_types.len(), EVERY_ID.len());
@@ -433,6 +456,7 @@ mod tests {
         assert_eq!(previous.array_vars.len(), EVERY_ID.len());
         assert_eq!(previous.struct_vars.len(), EVERY_ID.len());
         assert_eq!(previous.struct_array_vars.len(), EVERY_ID.len());
+        assert_eq!(previous.string_refs.len(), EVERY_ID.len());
         assert_eq!(previous.fb_instances.len(), EVERY_ID.len());
         assert_eq!(previous.in_out_params.len(), EVERY_ID.len());
     }
