@@ -114,13 +114,15 @@ fn lower_statement_when_not_of_narrow_bit_string_then_truncated() {
 }
 
 /// `AND_THEN` and `OR_ELSE` short-circuit on a `BOOL`, and are the eager
-/// bitwise operators on a bit string.
+/// bitwise operators on a bit string, at the bit string both operands widen
+/// to (REQ-IC-analyzer-119).
 #[test]
 fn lower_statement_when_short_circuit_operator_then_form_follows_type() {
     let outcome = lower(
-        "PROGRAM main VAR x : BOOL; y : BOOL; w : DWORD; v : DWORD; END_VAR
+        "PROGRAM main VAR x : BOOL; y : BOOL; w : DWORD; v : DWORD; lw : LWORD; END_VAR
             x := x AND_THEN y;
             w := w OR_ELSE v;
+            lw := w AND_THEN lw;
          END_PROGRAM",
         "main",
     );
@@ -129,6 +131,7 @@ fn lower_statement_when_short_circuit_operator_then_form_follows_type() {
         [
             "assign v0^.f0 (and_then (read bool v0^.f0) (read bool v0^.f1))",
             "assign v0^.f2 (bit_or i32u (read i32u v0^.f2) (read i32u v0^.f3))",
+            "assign v0^.f4 (bit_and i64u (convert i64u (read i32u v0^.f2)) (read i64u v0^.f4))",
         ]
     );
 }

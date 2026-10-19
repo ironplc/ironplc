@@ -166,21 +166,21 @@ impl ExprTypeResolver<'_> {
             }
             ExprKind::UnaryOp(op) => op.term.expr_type.clone(),
             ExprKind::Compare(compare) => match compare.op {
-                // AND, OR and XOR have the type both operands widen to, as
-                // their function forms do: `w OR lw` on a `WORD` and an
-                // `LWORD` is an `LWORD`, and `d AND 16#FF` on a `DWORD` is a
-                // `DWORD`.
-                CompareOp::And | CompareOp::Or | CompareOp::Xor => self.inputs_of_one_type_result(
+                // AND, OR and XOR, and their short-circuit forms AND_THEN
+                // and OR_ELSE, have the type both operands widen to, as the
+                // function forms do: `w OR lw` on a `WORD` and an `LWORD` is
+                // an `LWORD`, and `d AND 16#FF` on a `DWORD` is a `DWORD`.
+                CompareOp::And
+                | CompareOp::Or
+                | CompareOp::Xor
+                | CompareOp::AndThen
+                | CompareOp::OrElse => self.inputs_of_one_type_result(
                     &[&compare.left, &compare.right],
                     InputsOfOneType {
                         first: 0,
                         result: OneTypeResult::Common,
                     },
                 ),
-                // Only `BOOL`s.
-                CompareOp::AndThen | CompareOp::OrElse => {
-                    prefer_concrete(&compare.left.expr_type, &compare.right.expr_type)
-                }
                 CompareOp::Eq
                 | CompareOp::Ne
                 | CompareOp::Lt

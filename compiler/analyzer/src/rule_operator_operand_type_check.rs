@@ -115,6 +115,11 @@ pub fn apply(
 /// the row is what makes the operator spelling agree with the functional
 /// one, which issue #1567 already fixed in the other direction.
 ///
+/// `AND_THEN` and `OR_ELSE`, a CODESYS/TwinCAT extension, are the
+/// short-circuit forms of `AND` and `OR` and are held to their rows: they
+/// short-circuit on `BOOL`s and are the eager bitwise operators on bit
+/// strings (`specs/design/beckhoff-twincat-dialect.md`).
+///
 /// The relational operators are declared `ANY_ELEMENTARY` in the table.
 /// Holding them to that is a separate decision from this rule.
 fn checked_compare_form(op: &CompareOp) -> Option<&'static OperatorFunctionForm> {
@@ -122,10 +127,8 @@ fn checked_compare_form(op: &CompareOp) -> Option<&'static OperatorFunctionForm>
         CompareOp::And | CompareOp::Or | CompareOp::Xor => {
             form_of_operator(&FormOf::Compare(op.clone()))
         }
-        // `AND_THEN` and `OR_ELSE` are a CODESYS/TwinCAT short-circuit
-        // extension rather than IEC operators, so the table has no row to
-        // hold them to.
-        CompareOp::AndThen | CompareOp::OrElse => None,
+        CompareOp::AndThen => form_of_operator(&FormOf::Compare(CompareOp::And)),
+        CompareOp::OrElse => form_of_operator(&FormOf::Compare(CompareOp::Or)),
         CompareOp::Eq
         | CompareOp::Ne
         | CompareOp::Lt
@@ -256,13 +259,13 @@ impl RuleOperatorOperandTypeCheck<'_> {
     /// operands, so arity is just the length of `operands`: two for an
     /// arithmetic or compare expression, one for `NOT`.
     ///
-    /// The row carries the operator's name as well as its operand type, so
-    /// no caller passes a label: the name and the type a diagnostic reports
-    /// come from the same row and cannot disagree.
-    fn check_operands(&mut self, form: &OperatorFunctionForm, operands: &[&Expr]) {
+    /// The type a diagnostic reports comes from the row, and the name is
+    /// `operator` as written: the row's own name, but for `AND_THEN` and
+    /// `OR_ELSE`, which are held to the rows of `AND` and `OR`.
+    fn check_operands(&mut self, form: &OperatorFunctionForm, operator: &str, operands: &[&Expr]) {
         let expected = form.operand_type();
         for operand in operands {
-            self.check_operand(form, &expected, operand);
+            self.check_operand(operator, &expected, operand);
         }
     }
 
@@ -321,7 +324,7 @@ impl RuleOperatorOperandTypeCheck<'_> {
 
     /// Reports P4049 when `operand`'s resolved type is one the predicate can
     /// judge and it is not acceptable where `expected` is required.
-    fn check_operand(&mut self, form: &OperatorFunctionForm, expected: &TypeName, operand: &Expr) {
+    fn check_operand(&mut self, operator: &str, expected: &TypeName, operand: &Expr) {
         let Some(actual) = self.operand_name(operand) else {
             return;
         };
@@ -334,7 +337,7 @@ impl RuleOperatorOperandTypeCheck<'_> {
                     Problem::OperatorOperandTypeMismatch,
                     Label::span(operand.span(), "Operand"),
                 )
-                .with_context("operator", &form.name.to_string())
+                .with_context("operator", &operator.to_string())
                 .with_context("expected", &expected.to_string())
                 .with_context("actual", &actual.to_string()),
             );
@@ -362,11 +365,15 @@ impl Visitor<Infallible> for RuleOperatorOperandTypeCheck<'_> {
             ExprKind::Function(function) => self.check_arithmetic_call(function),
             ExprKind::Compare(compare) => {
                 if let Some(form) = checked_compare_form(&compare.op) {
-                    self.check_operands(form, &[&compare.left, &compare.right]);
+                    self.check_operands(
+                        form,
+                        compare.op.as_str(),
+                        &[&compare.left, &compare.right],
+                    );
                 }
             }
             ExprKind::UnaryOp(unary) => match checked_unary_form(&unary.op) {
-                Some(form) => self.check_operands(form, &[&unary.term]),
+                Some(form) => self.check_operands(form, form.name, &[&unary.term]),
                 None => self.check_negation(&unary.term),
             },
             _ => {}
@@ -382,6 +389,7 @@ mod negation_tests;
 mod tests {
     use super::*;
     use crate::test_helpers::{diagnostic_codes, rule_diagnostics};
+    use spec_test_macro::spec_test;
 
     rule_ok!(
         /// The `NOT` of a negated output is the analyzer's, not the
@@ -893,4 +901,95 @@ END_VAR
 END_PROGRAM",
         [Problem::OperatorOperandTypeMismatch]
     );
+
+    // --- The short-circuit operators (AND_THEN, OR_ELSE) ---
+
+    fn short_circuit_diagnostics(source: &str) -> Vec<Diagnostic> {
+        let options = CompilerOptions {
+            allow_short_circuit_operators: true,
+            ..CompilerOptions::default()
+        };
+        rule_diagnostics(apply, source, &options)
+    }
+
+    /// `AND_THEN` and `OR_ELSE` are held to the rows of `AND` and `OR`, and
+    /// each operand outside `ANY_BIT` is reported under the operator as
+    /// written.
+    #[spec_test(REQ_IC_analyzer_119)]
+    #[test]
+    fn apply_when_short_circuit_of_integer_variables_then_p4049_naming_operator() {
+        let errors = short_circuit_diagnostics(
+            "
+PROGRAM main
+VAR
+    d1 : DINT;
+    d2 : DINT;
+END_VAR
+    d2 := d1 AND_THEN d2;
+    d2 := d1 OR_ELSE d2;
+END_PROGRAM",
+        );
+        assert_eq!(
+            diagnostic_codes(&errors),
+            [Problem::OperatorOperandTypeMismatch.code(); 4]
+        );
+        let operators: Vec<bool> = errors
+            .iter()
+            .map(|e| e.described.contains(&"operator=AND_THEN".to_owned()))
+            .collect();
+        assert_eq!(operators, [true, true, false, false]);
+        assert!(
+            errors[2].described.contains(&"operator=OR_ELSE".to_owned()),
+            "{:?}",
+            errors[2].described
+        );
+    }
+
+    /// A subrange operand is converted to its base type, as an operand of
+    /// `AND` is, so a subrange of an integer is reported too.
+    #[spec_test(REQ_IC_analyzer_119)]
+    #[test]
+    fn apply_when_short_circuit_of_integer_subrange_then_p4049() {
+        let errors = short_circuit_diagnostics(
+            "
+TYPE
+    Pct : INT (0..100);
+END_TYPE
+
+PROGRAM main
+VAR
+    p : Pct := 5;
+    d : INT;
+END_VAR
+    d := p AND_THEN p;
+END_PROGRAM",
+        );
+        assert_eq!(
+            diagnostic_codes(&errors),
+            [Problem::OperatorOperandTypeMismatch.code(); 2]
+        );
+    }
+
+    /// `BOOL`s, bit strings and bit strings of two widths are accepted, as
+    /// they are by `AND` and `OR`.
+    #[spec_test(REQ_IC_analyzer_119)]
+    #[test]
+    fn apply_when_short_circuit_of_bool_or_bit_strings_then_ok() {
+        let errors = short_circuit_diagnostics(
+            "
+PROGRAM main
+VAR
+    a : BOOL;
+    b : BOOL;
+    w : WORD;
+    lw : LWORD;
+END_VAR
+    a := a AND_THEN b;
+    b := a OR_ELSE b;
+    lw := w AND_THEN lw;
+    w := w OR_ELSE w;
+END_PROGRAM",
+        );
+        assert!(errors.is_empty(), "{errors:?}");
+    }
 }

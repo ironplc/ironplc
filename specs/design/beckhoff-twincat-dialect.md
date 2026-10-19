@@ -365,7 +365,7 @@ IF (ptr <> 0 AND_THEN ptr^ = 99) THEN
 END_IF;
 ```
 
-**Design:** Add `AndThen` and `OrElse` as keyword tokens, demoted to identifiers unless `--allow-short-circuit-operators` is set. These are binary operators with the same precedence as `AND` and `OR` respectively. In the AST they are `CompareOp::AndThen` and `CompareOp::OrElse` — deliberately *not* normalized to `And`/`Or`, since the evaluation-order difference is real and externally visible. Type resolution treats them like `AND`/`OR`.
+**Design:** Add `AndThen` and `OrElse` as keyword tokens, demoted to identifiers unless `--allow-short-circuit-operators` is set. These are binary operators with the same precedence as `AND` and `OR` respectively. In the AST they are `CompareOp::AndThen` and `CompareOp::OrElse` — deliberately *not* normalized to `And`/`Or`, since the evaluation-order difference is real and externally visible. Type resolution treats them like `AND`/`OR`: they have the type both operands widen to, an operand of another width is converted to it, and the operand rule holds them to the `ANY_BIT` row of `AND` and `OR`, so an integer operand is P4049 ([REQ-IC-analyzer-119](implicit-conversions.md)).
 
 **Code generation:** Each lowers to a conditional branch around the right operand, so the right operand is not evaluated when the left one already decides the answer:
 
