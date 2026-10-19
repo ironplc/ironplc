@@ -64,7 +64,7 @@ impl<V> Scoped<V> {
     }
 
     /// Whether `scope` itself records an entry for `name`.
-    fn declares(&self, scope: ScopeId, name: &Id) -> bool {
+    pub(crate) fn declares(&self, scope: ScopeId, name: &Id) -> bool {
         self.own(scope, name).is_some()
     }
 

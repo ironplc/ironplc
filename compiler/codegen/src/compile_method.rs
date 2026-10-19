@@ -10,13 +10,12 @@
 //! closely; the differences are exactly the parts of that convention.
 
 use ironplc_dsl::common::{MethodDeclaration, TypeName};
-use ironplc_dsl::core::{Id, Located};
+use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{MethodCall, MethodReceiver, ParamAssignmentKind};
 
 use super::compile::{
-    finalize_function, CompileContext, CompiledFunction, CurrentBody, CurrentFunctionReturn,
-    ParamPassing,
+    finalize_function, CompileContext, CompiledFunction, CurrentFunctionReturn, ParamPassing,
 };
 use super::compile_call_output::{store_outputs, CallOutputs};
 use super::compile_expr::{compile_expr, emit_load_var};
@@ -26,11 +25,9 @@ use super::compile_user_call::compile_string_arg;
 use super::layout::MethodLayout;
 use crate::emit::Emitter;
 
-/// Compiles the body of `method`, a method of the block `block`, which
-/// `layout` lays out, in the method's scope; the caller's is current again
-/// once the body is compiled.
+/// Compiles the body of `method`, which `layout` lays out, in the method's
+/// scope; the caller's is current again once the body is compiled.
 pub(crate) fn compile_user_method(
-    block: &Id,
     method: &MethodDeclaration,
     layout: MethodLayout,
     ctx: &mut CompileContext,
@@ -72,12 +69,7 @@ pub(crate) fn compile_user_method(
     let saved_current_fn = ctx.current_function_id.take();
     ctx.current_function_id = Some(function_id);
 
-    let saved_body = ctx.current_body.replace(CurrentBody::Method {
-        block: block.clone(),
-        method: method.name.clone(),
-    });
     compile_statements(&mut method_emitter, ctx, &body)?;
-    ctx.current_body = saved_body;
 
     ctx.current_function_id = saved_current_fn;
     ctx.current_function_return = saved_return_ctx;

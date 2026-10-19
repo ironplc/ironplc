@@ -27,7 +27,7 @@ use ironplc_ir::lowered::{
 use ironplc_lowering::PartialProgram;
 
 use super::expr::emit_expr;
-use super::{constant, instance_field, op_type};
+use super::{constant, instance_field, op_type, seen_name};
 use crate::compile::{CompileContext, OpWidth, VarTypeInfo};
 use crate::compile_place::Place;
 use crate::compile_string_place::StringPlace;
@@ -304,8 +304,19 @@ fn reference<'l>(
     let (mut reference, mut ty, path) = match instance_field(lowering, root.ty(), place.path()) {
         // A field of the current instance, which codegen copies into a slot
         // of the field's name.
-        Some((field, rest)) => (named(&field.name.to_string()), field.ty, rest),
-        None => (named(&root.name().to_string()), root.ty(), place.path()),
+        Some((instance, field, rest)) => {
+            let declared = types.fields(instance)?.get(field.index() as usize)?;
+            (
+                named(ctx.lowered_ids.field(instance, field)?),
+                declared.ty,
+                rest,
+            )
+        }
+        None => (
+            named(seen_name(ctx, place.root())?),
+            root.ty(),
+            place.path(),
+        ),
     };
     for projection in path {
         reference = match projection {
@@ -342,7 +353,7 @@ fn reference<'l>(
                     Nullability::Nullable => SymbolicVariableKind::Deref(DerefVariable {
                         variable: Box::new(reference),
                     }),
-                    Nullability::NonNull => by_reference(lowering, ctx, root, reference)?,
+                    Nullability::NonNull => by_reference(ctx, root, reference)?,
                 }
             }
         };
@@ -357,7 +368,6 @@ fn reference<'l>(
 /// the function returns (ADR-0046). They are the only non-null references
 /// this backend follows outside a body's instance parameter.
 fn by_reference(
-    lowering: &PartialProgram,
     ctx: &CompileContext,
     root: &LoweredVariable,
     reference: SymbolicVariableKind,
@@ -374,7 +384,7 @@ fn by_reference(
     let Owner::Pou(owner) = root.owner() else {
         return None;
     };
-    let compiled = super::is_current_body(lowering, ctx, owner);
+    let compiled = super::is_current_body(ctx, owner);
     (compiled && ctx.has_slot(&named.name)).then_some(reference)
 }
 
@@ -396,8 +406,6 @@ fn type_info(types: &TypeTable, ty: TypeId) -> Option<VarTypeInfo> {
     })
 }
 
-fn named(name: &str) -> SymbolicVariableKind {
-    SymbolicVariableKind::Named(NamedVariable {
-        name: Id::from(name),
-    })
+fn named(name: &Id) -> SymbolicVariableKind {
+    SymbolicVariableKind::Named(NamedVariable { name: name.clone() })
 }

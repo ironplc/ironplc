@@ -21,6 +21,7 @@ mod block;
 mod debug_type;
 mod function;
 mod globals;
+pub(crate) mod ids;
 pub(crate) mod names;
 mod program;
 mod storage;
