@@ -140,6 +140,23 @@ impl CompileContext {
             in_out_params: std::mem::replace(&mut self.in_out_params, scope.in_out_params),
         }
     }
+
+    /// The slot after the highest one the current scope names.
+    ///
+    /// The POU being laid out takes the highest slots its scope names: the
+    /// globals, and a method's block fields, are below them. So this is the
+    /// next free slot of that POU's run. It is not the number of names, which
+    /// in a function's scope counts the globals and the function's own slots
+    /// but not the program's slots between them.
+    pub(crate) fn next_free_slot(&self) -> VarIndex {
+        let next = self
+            .variables
+            .values()
+            .map(|index| index.raw() + 1)
+            .max()
+            .unwrap_or(0);
+        VarIndex::new(next)
+    }
 }
 
 #[cfg(test)]
@@ -457,5 +474,25 @@ mod tests {
             expected(&[GLOBAL, LAST_GLOBAL, FIRST_LOCAL, LOCAL])
         );
         assert_eq!(names(ctx.array_vars.keys()), expected(&EVERY_ID));
+    }
+
+    #[test]
+    fn next_free_slot_when_scope_names_no_slot_then_first_slot() {
+        let ctx = CompileContext::new();
+
+        assert_eq!(ctx.next_free_slot(), VarIndex::new(0));
+    }
+
+    #[test]
+    fn next_free_slot_when_function_scope_then_slot_after_function_slots() {
+        let mut ctx = CompileContext::new();
+        let program = program_scope();
+        ctx.swap_scope(Scope::for_function_body(&program, NUM_GLOBALS));
+        // The function's run starts after the program's slots, the highest
+        // of which is `LOCAL`'s.
+        ctx.variables.insert(id("param"), VarIndex::new(8));
+        ctx.variables.insert(id("result"), VarIndex::new(9));
+
+        assert_eq!(ctx.next_free_slot(), VarIndex::new(10));
     }
 }

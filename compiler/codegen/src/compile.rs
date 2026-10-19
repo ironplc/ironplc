@@ -1497,10 +1497,13 @@ impl CompileContext {
 
     /// Allocates a scratch variable with a synthetic name and returns its index.
     ///
+    /// The scratch variable takes the [next free slot](Self::next_free_slot)
+    /// of the POU being laid out, which counts it in its run.
+    ///
     /// The name uses a `$` prefix which is illegal in IEC 61131-3 identifiers,
     /// guaranteeing no collision with user-defined variables.
     pub(crate) fn allocate_scratch_variable(&mut self, suffix: &str) -> VarIndex {
-        let idx = VarIndex::new(self.variables.len() as u16);
+        let idx = self.next_free_slot();
         self.variables
             .insert(Id::from(&format!("$scratch_{}", suffix)), idx);
         idx
