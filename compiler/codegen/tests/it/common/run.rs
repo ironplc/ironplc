@@ -2,16 +2,16 @@
 
 use ironplc_analyzer::{CleanAnalysis, SemanticContext};
 use ironplc_codegen::{compile_with_route_counts, Route, RouteCounts};
-use ironplc_container::debug_section::iec_type_tag;
-use ironplc_container::{Container, VarIndex};
+use ironplc_container::Container;
 use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_parser::parse_program;
 use ironplc_vm::test_support::{load_and_start, TestVm};
-use ironplc_vm::{FaultContext, Slot, VmBuffers};
+use ironplc_vm::{FaultContext, VmBuffers};
 
+use super::backend::{compile_on_every_backend, run as run_program, Fault, Program, Reference};
 use super::session::Session;
 use super::value::Value;
 
@@ -52,61 +52,35 @@ pub fn try_parse_and_compile(
 }
 
 /// Compiles an analyzed library, such as user source analyzed together with a
-/// bundled library, into a Container.
+/// bundled library, into the reference backend's program.
 ///
-/// The library is compiled by both routes: every statement from the AST, and
-/// the statements lowering supports from the lowered program
-/// (`specs/design/lowered-program.md`, "Delivery Constraints"). Both must
-/// compile, or both fail; a disagreement fails the test. The container
-/// returned is the one compiled from the AST.
+/// The library is compiled on every backend ([`compile_on_every_backend`]):
+/// every backend must compile it, or every backend fail to; a disagreement
+/// fails the test.
 pub fn compile_analyzed(
     library: &Library,
     context: &SemanticContext,
     options: &CompilerOptions,
-) -> Result<Container, Diagnostic> {
-    compile_both_routes(library, context, options).map(|(ast, _)| ast)
+) -> Result<Program<Reference>, Diagnostic> {
+    compile_on_every_backend(library, context, options, false)
 }
 
-/// Like [`compile_analyzed`], for a program the test will run: one scan of
-/// each route must also leave every variable with the same value, or both
-/// trap. A test that only compiles does not run a scan, since its program
-/// may never finish one.
+/// Like [`compile_analyzed`], for a program the test will run: one scan on
+/// each backend must also leave every variable with the same value, or every
+/// backend trap. A test that only compiles does not run a scan, since its
+/// program may never finish one.
 pub fn compile_to_run(
     library: &Library,
     context: &SemanticContext,
     options: &CompilerOptions,
-) -> Result<Container, Diagnostic> {
-    let (ast, lowered) = compile_both_routes(library, context, options)?;
-    assert_routes_agree(&ast, &lowered);
-    Ok(ast)
+) -> Result<Program<Reference>, Diagnostic> {
+    compile_on_every_backend(library, context, options, true)
 }
 
 /// Parses, analyzes and compiles `source` with [`compile_to_run`].
-pub fn parse_and_compile_to_run(source: &str, options: &CompilerOptions) -> Container {
+pub fn parse_and_compile_to_run(source: &str, options: &CompilerOptions) -> Program<Reference> {
     let (library, context) = parse(source, options);
     compile_to_run(&library, &context, options).unwrap()
-}
-
-/// Compiles an analyzed library by the AST route and by the lowered route,
-/// failing the test unless both compile or both fail.
-fn compile_both_routes(
-    library: &Library,
-    context: &SemanticContext,
-    options: &CompilerOptions,
-) -> Result<(Container, Container), Diagnostic> {
-    let ast = compile_by_route(library, context, options, Route::Ast);
-    let lowered = compile_counting(library, context, options, Route::PreferLowered);
-    match (ast, lowered) {
-        (Ok(ast), Ok((lowered, counts))) => {
-            record_route_counts(counts);
-            Ok((ast, lowered))
-        }
-        (Err(diagnostic), Err(_)) => Err(diagnostic),
-        (Ok(_), Err(diagnostic)) => {
-            panic!("only the lowered route failed to compile: {diagnostic:?}")
-        }
-        (Err(diagnostic), Ok(_)) => panic!("only the AST route failed to compile: {diagnostic:?}"),
-    }
 }
 
 /// Compiles an analyzed library with every statement taking `route`.
@@ -117,6 +91,20 @@ pub fn compile_by_route(
     route: Route,
 ) -> Result<Container, Diagnostic> {
     compile_counting(library, context, options, route).map(|(container, _)| container)
+}
+
+/// Like [`compile_by_route`], also recording how many statements took each
+/// route ([`record_route_counts`]).
+pub(super) fn compile_recording_route_counts(
+    library: &Library,
+    context: &SemanticContext,
+    options: &CompilerOptions,
+    route: Route,
+) -> Result<Container, Diagnostic> {
+    compile_counting(library, context, options, route).map(|(container, counts)| {
+        record_route_counts(counts);
+        container
+    })
 }
 
 /// Like [`compile_by_route`], also counting the statements each route compiled.
@@ -182,129 +170,6 @@ fn record_route_counts(counts: RouteCounts) {
         .open(path)
         .and_then(|mut file| std::io::Write::write_all(&mut file, line.as_bytes()))
         .expect("cannot record the route counts");
-}
-
-/// Fails the test unless `init` alone, and then one scan, leave every
-/// variable and the data region of `ast` and of `lowered` with the same
-/// values, or both trap, in `init` or in the scan.
-pub fn assert_routes_agree(ast: &Container, lowered: &Container) {
-    match (run_init_then_one_scan(ast), run_init_then_one_scan(lowered)) {
-        (Ok((ast_init, ast_scan)), Ok((lowered_init, lowered_scan))) => {
-            assert_states_agree("init", ast, lowered, &ast_init, &lowered_init);
-            match (ast_scan, lowered_scan) {
-                (Ok(ast_scan), Ok(lowered_scan)) => {
-                    assert_states_agree("one scan", ast, lowered, &ast_scan, &lowered_scan)
-                }
-                (Err(_), Err(_)) => {}
-                (Ok(_), Err(fault)) => panic!("only the lowered route traps in a scan: {fault:?}"),
-                (Err(fault), Ok(_)) => panic!("only the AST route traps in a scan: {fault:?}"),
-            }
-        }
-        (Err(_), Err(_)) => {}
-        (Ok(_), Err(fault)) => panic!("only the lowered route traps in init: {fault:?}"),
-        (Err(fault), Ok(_)) => panic!("only the AST route traps in init: {fault:?}"),
-    }
-}
-
-/// What a run left in the variable table and the data region.
-struct State {
-    vars: Vec<Slot>,
-    data_region: Vec<u8>,
-}
-
-impl State {
-    fn of(vm: &TestVm<'_>) -> Self {
-        let vars = (0..vm.num_variables())
-            .map(|index| {
-                vm.read_variable_raw(VarIndex::new(index))
-                    .map(Slot::from_u64)
-                    .expect("every slot below the variable count is readable")
-            })
-            .collect();
-        State {
-            vars,
-            data_region: vm.data_region().to_vec(),
-        }
-    }
-}
-
-/// Loads `container`, which runs `init`, then runs one scan. Returns what
-/// `init` left and what the scan left, or the trap `init` stopped at.
-fn run_init_then_one_scan(
-    container: &Container,
-) -> Result<(State, Result<State, FaultContext>), FaultContext> {
-    let mut bufs = VmBuffers::from_container(container);
-    let mut vm = load_and_start(container, &mut bufs)?;
-    assert_stack_balanced(&vm, "after init");
-    let after_init = State::of(&vm);
-    let after_scan = vm.run_round(0).map(|()| {
-        assert_stack_balanced(&vm, "after scan round");
-        State::of(&vm)
-    });
-    Ok((after_init, after_scan))
-}
-
-/// Fails the test unless the two routes left every variable with the same
-/// value after `when` (REQ-LOW-codegen-131).
-///
-/// A variable is matched by its owning function and its name, not by its
-/// slot. A string the debug section lays out is compared by its content, and
-/// any other variable by its slot's bits, so a `NaN` equals itself; a
-/// function's string has no layout entry, and its content is in the data
-/// region. A slot the debug section names no variable for, such as a scratch
-/// slot, is compared by its index, as the data region is compared whole: both
-/// hold while the two routes share one layout.
-fn assert_states_agree(
-    when: &str,
-    ast: &Container,
-    lowered: &Container,
-    ast_state: &State,
-    lowered_state: &State,
-) {
-    let ast_vars = super::variables::Variables::of(ast);
-    let lowered_vars = super::variables::Variables::of(lowered);
-    let pairs = ast_vars
-        .pair_with(&lowered_vars)
-        .unwrap_or_else(|name| panic!("after {when}, only one route names the variable {name}"));
-    for (ast_entry, lowered_entry) in pairs {
-        let ast_slot = ast_state.vars[usize::from(ast_entry.var_index.raw())];
-        let lowered_slot = lowered_state.vars[usize::from(lowered_entry.var_index.raw())];
-        let is_string = matches!(
-            ast_entry.iec_type_tag,
-            iec_type_tag::STRING | iec_type_tag::WSTRING
-        );
-        let laid_out =
-            ast_vars.has_string_layout(ast_entry) && lowered_vars.has_string_layout(lowered_entry);
-        let agree = match is_string && laid_out {
-            true => {
-                ast_vars.decode(ast_entry, ast_slot, &ast_state.data_region)
-                    == lowered_vars.decode(lowered_entry, lowered_slot, &lowered_state.data_region)
-            }
-            false => ast_slot == lowered_slot,
-        };
-        assert!(
-            agree,
-            "after {when}, the AST and lowered routes leave variable {} with different values",
-            ast_entry.name
-        );
-    }
-    assert_eq!(
-        ast_state.vars.len(),
-        lowered_state.vars.len(),
-        "the AST and lowered routes have variable tables of different sizes"
-    );
-    for (index, (a, l)) in ast_state.vars.iter().zip(&lowered_state.vars).enumerate() {
-        if ast_vars.name_at(index).is_none() {
-            assert_eq!(
-                a, l,
-                "after {when}, the AST and lowered routes leave unnamed slot {index} with different values"
-            );
-        }
-    }
-    assert_eq!(
-        ast_state.data_region, lowered_state.data_region,
-        "after {when}, the AST and lowered routes leave the data region with different values"
-    );
 }
 
 /// Parses, analyzes, compiles, and runs one scan cycle, returning `Err` on VM trap.
@@ -377,22 +242,22 @@ pub fn parse_and_run_rounds(
 
 /// Parses, compiles and loads `source`, then hands `f` a [`Session`] to drive
 /// it across scans, reading and writing variables by name.
-pub fn run_scans(source: &str, options: &CompilerOptions, f: impl FnOnce(&mut Session<'_, '_>)) {
+pub fn run_scans(
+    source: &str,
+    options: &CompilerOptions,
+    f: impl FnOnce(&mut Session<'_, Fault<Reference>>),
+) {
     run_compiled_scans(&parse_and_compile_to_run(source, options), f);
 }
 
-/// Loads the compiled `container`, then hands `f` a [`Session`] to drive it
-/// across scans, as [`run_scans`] does, and returns what `f` returns.
+/// Loads the compiled `program` on the reference backend, then hands `f` a
+/// [`Session`] to drive it across scans, as [`run_scans`] does, and returns
+/// what `f` returns.
 pub fn run_compiled_scans<T>(
-    container: &Container,
-    f: impl FnOnce(&mut Session<'_, '_>) -> T,
+    program: &Program<Reference>,
+    f: impl FnOnce(&mut Session<'_, Fault<Reference>>) -> T,
 ) -> T {
-    let mut bufs = VmBuffers::from_container(container);
-    let mut vm = load_and_start(container, &mut bufs).unwrap();
-    assert_stack_balanced(&vm, "after init");
-    let observed = f(&mut Session::new(container, &mut vm));
-    assert_stack_balanced(&vm, "after scenario");
-    observed
+    run_program::<Reference, _>(program, |running| f(&mut Session::new(running))).unwrap()
 }
 
 /// A single step in a function-block (`TON`/`CTU`/`R_TRIG`/`RS`/…) driver
