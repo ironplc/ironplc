@@ -54,7 +54,7 @@ use ironplc_dsl::common::{
     FunctionBlockDeclaration, FunctionDeclaration, LibraryElementKind, ProgramDeclaration,
     StringType, VarDecl, VariableType,
 };
-use ironplc_dsl::core::{Id, Located};
+use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_parser::options::{CompilerOptions, StringToNumFailure, StringToNumNonNumeric};
 
@@ -675,9 +675,10 @@ fn compile_program_with_functions(
     let mut compiled_functions = Vec::new();
     let mut var_offset = VarIndex::new(program_var_count);
 
-    // Compile user FUNCTIONs before FUNCTION_BLOCK bodies so that FB bodies
-    // can resolve calls to user functions via `ctx.user_functions` (functions
-    // register themselves at the end of `compile_user_function`). Per
+    // Lay out every user FUNCTION, then compile their bodies, before the
+    // FUNCTION_BLOCK bodies, so that FB bodies can resolve calls to user
+    // functions via `ctx.user_functions` (each function registers itself in
+    // `lay_out_function`) and find each callee's stack depth. Per
     // IEC 61131-3 functions cannot instantiate FBs, so they don't require FB
     // bodies to have been compiled first.
     //
@@ -686,8 +687,9 @@ fn compile_program_with_functions(
     // 2..(2 + N_fb), so user functions must start at the next free
     // position so each callable POU has a unique runtime id.
     let user_fn_id_base = 2u16 + fb_decls.len() as u16;
+    let mut function_layouts = Vec::with_capacity(func_decls.len());
     for (next_function_id, func_decl) in (user_fn_id_base..).zip(func_decls.iter()) {
-        let compiled = compile_user_function(
+        let layout = crate::layout::lay_out_function(
             func_decl,
             FunctionId::new(next_function_id),
             var_offset,
@@ -696,8 +698,11 @@ fn compile_program_with_functions(
             types,
             num_globals,
         )?;
-        var_offset = VarIndex::new(var_offset.raw() + compiled.num_locals);
-        compiled_functions.push(compiled);
+        var_offset = VarIndex::new(var_offset.raw() + layout.num_locals);
+        function_layouts.push(layout);
+    }
+    for (func_decl, layout) in func_decls.iter().zip(function_layouts) {
+        compiled_functions.push(compile_user_function(func_decl, layout, &mut ctx)?);
     }
 
     let mut compiled_methods: Vec<CompiledFunction> = Vec::new();
@@ -1062,8 +1067,6 @@ pub(crate) struct UserFunctionInfo {
     /// whole variable (`s := f()`) needs it to emit `COPY_REGION`, whose
     /// source size comes from the descriptor rather than an operand.
     pub(crate) return_struct_desc_index: Option<u16>,
-    /// Maximum stack depth used by this function's body.
-    pub(crate) max_stack_depth: u16,
     /// The slot of each `VAR_OUTPUT`, which a call reads its outputs from
     /// after the function returns.
     pub(crate) outputs: HashMap<Id, VarIndex>,
@@ -1247,6 +1250,9 @@ pub(crate) struct CompileContext {
     pub(crate) debug_source_files: crate::source_lookup::SourceFileRegistry,
     /// Maps user-defined function name (lowercase) to compilation metadata.
     pub(crate) user_functions: HashMap<String, UserFunctionInfo>,
+    /// The most a call of each user function adds to its caller's stack:
+    /// the deepest its body's stack goes, known once the body is compiled.
+    pub(crate) function_stack_depths: HashMap<FunctionId, u16>,
     /// Maps user-defined FB type name (uppercase) to compilation metadata.
     pub(crate) user_fb_types: HashMap<String, UserFbTypeInfo>,
     /// Maps standard FB type name (uppercase) to the block it is.
@@ -1321,6 +1327,7 @@ impl CompileContext {
             debug_string_layouts: Vec::new(),
             debug_source_files: crate::source_lookup::SourceFileRegistry::new(),
             user_functions: HashMap::new(),
+            function_stack_depths: HashMap::new(),
             user_fb_types: HashMap::new(),
             standard_blocks: HashMap::new(),
             next_user_fb_type_id: FbTypeId::new(0x1000),
@@ -1448,6 +1455,26 @@ impl CompileContext {
     /// The user-defined function named `name`, in lower case.
     pub(crate) fn user_function(&self, name: &str) -> Option<&UserFunctionInfo> {
         self.user_functions.get(name)
+    }
+
+    /// The most a call at `span` of the user function `function_id` adds to
+    /// its caller's stack. A function's body is compiled before the body of
+    /// any POU that calls it, since the library lists a function before its
+    /// callers.
+    pub(crate) fn function_stack_depth(
+        &self,
+        function_id: FunctionId,
+        span: &SourceSpan,
+    ) -> Result<u16, Diagnostic> {
+        self.function_stack_depths
+            .get(&function_id)
+            .copied()
+            .ok_or_else(|| {
+                Diagnostic::internal_error_at(Label::span(
+                    span.clone(),
+                    "Function was called before its body was compiled",
+                ))
+            })
     }
 
     /// The user-defined function block type named `name`, in upper case.

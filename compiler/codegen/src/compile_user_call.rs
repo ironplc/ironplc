@@ -75,11 +75,12 @@ pub(crate) fn compile_user_function_call(
         emitter.emit_str_init(ret_str.data_offset, ret_str.max_length, ret_str.char_width);
     }
 
+    let stack_depth = ctx.function_stack_depth(func_info.function_id, &func.name.span())?;
     emitter.emit_call(
         func_info.function_id,
         func_info.num_params,
         func_info.var_offset,
-        func_info.max_stack_depth,
+        stack_depth,
     );
     ctx.record_call_edge(func_info.function_id);
     // A function leaves its outputs in its own output variables; storing

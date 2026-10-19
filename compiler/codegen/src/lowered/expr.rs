@@ -216,11 +216,12 @@ pub(super) fn emit_user_call<'s>(
     if let Some(result) = &function.return_string_info {
         emitter.emit_str_init(result.data_offset, result.max_length, result.char_width);
     }
+    let stack_depth = ctx.function_stack_depth(function.function_id, span)?;
     emitter.emit_call(
         function.function_id,
         function.num_params,
         function.var_offset,
-        function.max_stack_depth,
+        stack_depth,
     );
     ctx.record_call_edge(function.function_id);
     Ok(())
