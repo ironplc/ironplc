@@ -1331,6 +1331,10 @@ method's `VAR_OUTPUT` parameter does. A `FOR` whose step is not a nonzero
 constant, and one whose control variable is a `VAR_IN_OUT`, is reported as
 P9999, as it is today.
 
+The analyzer holds the control variable to an integer, `ANY_INT` or a subrange
+of one (P4091), so a `For` never counts with a real, a bit string, a duration,
+a `BOOL` or an enumeration.
+
 `to` is evaluated on every iteration, and the control variable wraps, so a
 `FOR` whose bound is the largest value of the control variable's type does not
 end. Both are today's behaviour, recorded rather than changed.
