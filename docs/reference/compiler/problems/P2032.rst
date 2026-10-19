@@ -4,7 +4,7 @@ P2032
 
 .. problem-summary:: P2032
 
-This error occurs when a reference assignment has incompatible types. The reference type and the target type must match exactly.
+This error occurs when a reference assignment has incompatible types. The reference type and the target type must match exactly, and a reference takes only ``REF()``, ``NULL`` or another reference.
 
 Example
 -------
@@ -33,4 +33,39 @@ To fix this error, ensure the reference type matches the variable type:
        END_VAR
 
        y := REF(x);  (* Correct: REF_TO INT matches INT variable *)
+   END_PROGRAM
+
+A value that is not a reference
+-------------------------------
+
+The following code will generate error P2032:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           x : INT;
+           r : REF_TO INT;
+       END_VAR
+
+       r := 0;  (* Error: 0 is a number, not a reference *)
+   END_PROGRAM
+
+A reference holds where a variable is, so a number, or a variable of another
+type, is not something it can hold. This applies to a CODESYS
+``POINTER TO`` as well: ``p := 0`` is an error, in every dialect.
+
+To fix this error, assign ``NULL`` for a reference that refers to nothing,
+or the reference to a variable:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           x : INT;
+           r : REF_TO INT;
+       END_VAR
+
+       r := NULL;    (* Correct: refers to nothing *)
+       r := REF(x);  (* Correct: refers to x *)
    END_PROGRAM

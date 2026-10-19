@@ -163,6 +163,39 @@ To fix this error, choose the bit string the ``BOOL`` stands for with
        masked := flags AND SEL(enabled, WORD#0, WORD#16#FFFF);   (* 16#00F0 *)
    END_PROGRAM
 
+Comparing a reference with a number
+-----------------------------------
+
+The following code will generate error P4049:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       count : INT;
+       target : REF_TO INT;
+       unset : BOOL;
+   END_VAR
+       unset := target = 0;
+   END_PROGRAM
+
+A reference equals ``NULL`` or another reference, never a number. This
+applies to a CODESYS ``POINTER TO`` as well: ``p <> 0`` is an error, in every
+dialect.
+
+To fix this error, compare the reference with ``NULL``:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       count : INT;
+       target : REF_TO INT;
+       unset : BOOL;
+   END_VAR
+       unset := target = NULL;
+   END_PROGRAM
+
 Remainder of a real number
 --------------------------
 
