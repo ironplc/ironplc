@@ -68,6 +68,7 @@ mod data_region;
 mod emit;
 mod execution;
 mod held_instances;
+mod layout;
 mod lowered;
 mod optimize;
 mod scope;

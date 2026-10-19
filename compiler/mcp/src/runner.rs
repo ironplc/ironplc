@@ -79,7 +79,7 @@ pub fn build_symbol_map(context: &SemanticContext, container: &Container) -> Var
                 continue;
             };
             // Today every debug entry uses GLOBAL_SCOPE (see
-            // codegen::compile_setup), so a bare-name collision across two
+            // codegen::layout), so a bare-name collision across two
             // programs is resolved at lookup time via ambiguity detection.
             // Pick the first matching entry — each program's qualified name
             // is still registered, so `Main.x` and `Other.x` are both

@@ -297,7 +297,7 @@ pub(crate) fn apply_task_schedule(container: &mut Container, schedule: TaskSched
 
 /// The declarations of the declared globals the variable table holds, in the
 /// model's order. The system globals are laid out from the model by
-/// [`crate::compile_setup::assign_system_globals`].
+/// [`crate::layout::lay_out_globals`].
 ///
 /// A declared global's type and initial value are still compiled from its
 /// declaration, which is reached by id. A resource's `VAR_GLOBAL` gets no

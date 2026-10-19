@@ -24,12 +24,11 @@ use super::compile::{
     NARROW_CHAR_WIDTH, WIDE_CHAR_WIDTH,
 };
 use super::compile_expr::emit_load_var;
-use super::compile_setup::{
-    debug_type_for_decl, debug_type_for_return, emit_function_local_prologue, map_var_section,
-};
+use super::compile_setup::emit_function_local_prologue;
 use super::compile_stmt::{
     compile_body, compile_statements, resolve_string_max_length, resolve_string_spec_max_length,
 };
+use super::layout::{debug_type_for_decl, debug_type_for_return, map_var_section};
 use super::scope::Scope;
 use super::type_info::{decl_type_info, named_type_info, resolve_type_name};
 use crate::emit::Emitter;
@@ -91,7 +90,7 @@ pub(crate) fn param_passing(ctx: &CompileContext, decl: &VarDecl) -> ParamPassin
 
 /// Records a debug [`VarNameEntry`] for a function- or FB-local variable
 /// (parameter or local) owned by `function_id`. Mirrors the program/global
-/// emission in `compile_setup::assign_variables`, but tags the entry with
+/// emission in `layout::storage::assign_variables`, but tags the entry with
 /// the owning function so a debugger can filter a frame's variables to the
 /// current stack frame (plus globals).
 fn push_local_var_name(
