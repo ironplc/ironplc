@@ -1084,6 +1084,9 @@ pub(crate) struct CompileContext {
     /// The layout of each top-level `ARRAY OF <struct>` variable. Kept apart
     /// from `array_vars`, whose elements occupy a single slot each.
     pub(crate) struct_array_vars: Scoped<crate::compile_array_struct::StructArrayVarInfo>,
+    /// How the strings each reference variable whose target is a string,
+    /// or an array of strings, refers to are reached through it.
+    pub(crate) string_refs: Scoped<crate::compile_reference::StringRefInfo>,
     /// What every type is, by the id an expression's `expr_type` carries.
     /// See [`crate::type_info::expr_type_info`].
     pub(crate) types: HashMap<ironplc_dsl::type_id::TypeId, SemanticType>,
@@ -1198,6 +1201,7 @@ impl CompileContext {
             array_vars: Scoped::default(),
             struct_vars: Scoped::default(),
             struct_array_vars: Scoped::default(),
+            string_refs: Scoped::default(),
             in_out_params: Scoped::default(),
             data_region_offset: 0,
             max_string_capacity: 0,
@@ -1320,6 +1324,12 @@ impl CompileContext {
     /// Where the string variable `name` is held; `None` when it is no string.
     pub(crate) fn string_var(&self, name: &Id) -> Option<&StringVarInfo> {
         self.seen(&self.string_vars, names::SLOTS, name)
+    }
+
+    /// How the strings the reference variable `name` refers to are reached
+    /// through it; `None` when it refers to no string or array of strings.
+    pub(crate) fn string_ref(&self, name: &Id) -> Option<&crate::compile_reference::StringRefInfo> {
+        self.seen(&self.string_refs, names::SLOTS, name)
     }
 
     /// The layout of the array variable `name`; `None` when it is no array.

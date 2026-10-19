@@ -163,3 +163,31 @@ fn lower_statement_when_comparison_of_strings_then_order_compared_with_zero() {
         ]
     );
 }
+
+/// REQ-LOW-lowering-188: the string a reference refers to, and an element
+/// of the array of strings one refers to, is read and stored through the
+/// `Deref`, and `REF(s)^` is a read of `s`.
+#[test]
+fn lower_statement_when_string_through_reference_then_place_through_deref() {
+    let outcome = lower(
+        "PROGRAM main VAR s : STRING; t : STRING; rs : REF_TO STRING;
+             rsa : REF_TO ARRAY[1..2] OF STRING; END_VAR
+            t := rs^;
+            rs^ := 'ab';
+            t := rsa^[2];
+            rsa^[2] := t;
+            t := REF(s)^;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign-str v0^.f1 (read string[254] v0^.f2^)",
+            "assign-str v0^.f2^ (literal string[2] \"ab\")",
+            "assign-str v0^.f1 (read string[254] v0^.f3^[(const i32s 2)])",
+            "assign-str v0^.f3^[(const i32s 2)] (read string[254] v0^.f1)",
+            "assign-str v0^.f1 (read string[254] v0^.f0)",
+        ]
+    );
+}

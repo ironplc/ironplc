@@ -1089,6 +1089,12 @@ lowering reports one it meets as P9998.
 **REQ-LOW-lowering-051** A string literal's characters fit its encoding
 ([ADR-0016](../adrs/0016-string-encoding.md)).
 
+**REQ-LOW-lowering-188** The string a reference refers to, `rs^`, or an
+element of an array of strings a reference refers to, `rsa^[i]`, is a `Read`
+of the place through the `Deref`, and a store to it is an `AssignStr` to that
+place, as for any value a reference refers to. `REF(s)^`, and `ADR(s)^`,
+which the analyzer makes `REF(s)^`, is a `Read` of `s`.
+
 Temporary buffers, their pool size and their release
 ([ADR-0052](../adrs/0052-temp-string-buffers-released-on-consume.md)) are how
 the bytecode backend evaluates a `StrExpr`. They do not appear in the lowered
@@ -1164,6 +1170,17 @@ of other strings in the program.
 **REQ-LOW-codegen-056** A string value that goes into a place or an
 intermediate result with a smaller capacity keeps its first code units, up to
 that capacity.
+
+**REQ-LOW-codegen-189** The bytecode backend's reference to a string is a
+data-region reference to the string's header
+([var-in-out-parameters.md](var-in-out-parameters.md#references)), whether a
+`RefTo` or a reference variable's starting value makes it. The backend reads
+and writes the string a reference refers to with `STR_LOAD_ARRAY_DEREF` and
+`STR_STORE_ARRAY_DEREF`: a string is the one element of a one-element array of
+the reference's capacity, and an element of an array of strings is reached
+with that array's descriptor. The route that reads the AST makes the same
+reference, and follows it with `LOAD_INDIRECT`, which takes only a variable
+reference, so a string read through a reference traps there (V9005).
 
 ### 3.7 Statements
 

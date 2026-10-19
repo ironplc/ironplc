@@ -13,7 +13,7 @@ than compiled with by-value semantics.
 |---|---|
 | [Writable arguments](#writable-arguments), [Argument list](#argument-list), [Rules](#rules) | Implemented for function calls: P4058, P4059, P4060. P4061 and P4062 (function blocks) are not. A function block or method call passes a `VAR_IN_OUT` by name only ([Call Binding](call-binding.md)). |
 | [Constant arguments](#constant-arguments) | Not implemented; `VAR_IN_OUT CONSTANT` is not parsed. |
-| [References](#references) | Variable references and their instance-scope check are implemented. Data-region references, `REF_ELEM` and `REF_BASE` are not. |
+| [References](#references) | Variable references and their instance-scope check are implemented. The data-region reference encoding is defined once for code generation and the VM (`ironplc_container::reference`). `REF` of a string makes a data-region reference to its header; `REF` of an array or a structure still makes a variable reference. `STR_LOAD_ARRAY_DEREF`, `STR_STORE_ARRAY_DEREF` and `COPY_REGION_DEREF` accept both forms; `LOAD_INDIRECT`, `STORE_INDIRECT`, `LOAD_ARRAY_DEREF` and `STORE_ARRAY_DEREF` accept only a variable reference. `REF_ELEM` and `REF_BASE` are not implemented. |
 | [Call site](#call-site), [Parameter slots](#parameter-slots) | Implemented for functions with an elementary parameter, when the argument is a named variable or a forwarded `VAR_IN_OUT`. |
 | [Accesses by parameter type](#accesses-by-parameter-type) | Elementary: implemented. `REF_TO`, strings, arrays, structures and instances: not implemented. |
 | [Function blocks](#function-blocks) | Not implemented: a function block's `VAR_IN_OUT` is still passed by value. |
@@ -266,6 +266,8 @@ Existing instructions change as follows:
 |---|---|
 | `LOAD_INDIRECT` / `STORE_INDIRECT` | Also accept a data-region reference: read or write the 8-byte slot at `offset`, after checking `offset + 8 ≤ data region size`. |
 | `LOAD_ARRAY_DEREF` / `STORE_ARRAY_DEREF` | Also accept a data-region reference as the array's base, instead of loading the base from the referenced variable. |
+
+The string array element instructions have deref forms of their own, `STR_LOAD_ARRAY_DEREF` and `STR_STORE_ARRAY_DEREF` ([bytecode-instruction-set.md](bytecode-instruction-set.md)), which accept either form from the start. A string a `REF_TO STRING` refers to is the one element of a one-element string array, so these also read and write it. So has the whole-region copy: `COPY_REGION_DEREF` copies into the array or structure a reference refers to, `p^ := z`, and accepts either form too.
 
 Two instructions are new:
 

@@ -648,11 +648,7 @@ pub(crate) fn register_array_variable(
 
     // 4. Register descriptor in the container and get its index
     let (element_type_byte, element_extra) = if is_string {
-        let element_field_type = if string_char_width.is_wide() {
-            ironplc_container::FieldType::WString
-        } else {
-            ironplc_container::FieldType::String
-        };
+        let element_field_type = ironplc_container::FieldType::string(string_char_width);
         (element_field_type as u8, string_max_len)
     } else {
         (var_type_info_to_type_byte(&element_vti), 0)

@@ -54,6 +54,7 @@ mod compile_route_lowered_program;
 mod compile_route_lowered_ref;
 mod compile_route_lowered_string;
 mod compile_route_lowered_string_call;
+mod compile_route_lowered_string_ref;
 mod compile_route_lowered_string_result;
 mod compile_route_lowered_structure_result;
 mod compile_route_lowered_time;

@@ -532,18 +532,24 @@ fn effect_of(
         FB_STORE_PARAM => Effect::new(1, 0),
 
         // COPY_REGION consumes the source data offset. The destination and
-        // both sizes are immediates, so nothing else is taken from the stack.
-        COPY_REGION => Effect::new(1, 0),
+        // both sizes are immediates, so nothing else is taken from the stack;
+        // COPY_REGION_DEREF names the reference to the destination instead.
+        COPY_REGION | COPY_REGION_DEREF => Effect::new(1, 0),
 
         // --- Pop two, push nothing ---
-        STORE_INDIRECT | STORE_ARRAY | STORE_ARRAY_DEREF | STR_STORE_ARRAY_ELEM => {
-            Effect::new(2, 0)
-        }
+        STORE_INDIRECT
+        | STORE_ARRAY
+        | STORE_ARRAY_DEREF
+        | STR_STORE_ARRAY_ELEM
+        | STR_STORE_ARRAY_DEREF => Effect::new(2, 0),
 
         // --- Pop one, push one (net zero) ---
         NEG_I32 | NEG_I64 | NEG_F32 | NEG_F64 | BOOL_NOT | BIT_NOT_32 | BIT_NOT_64 | TRUNC_I8
         | TRUNC_U8 | TRUNC_I16 | TRUNC_U16 | LOAD_INDIRECT | LOAD_ARRAY | LOAD_ARRAY_DEREF
         | STR_LOAD_ARRAY_ELEM | INSERT_STR | LEFT_STR | RIGHT_STR => Effect::new(1, 1),
+
+        // A string element loaded through a reference, as `STR_LOAD_ARRAY_ELEM`.
+        STR_LOAD_ARRAY_DEREF => Effect::new(1, 1),
 
         // --- Pop two, push one (net pop one) ---
         ADD_I32 | SUB_I32 | MUL_I32 | DIV_I32 | MOD_I32 | ADD_I64 | SUB_I64 | MUL_I64 | DIV_I64

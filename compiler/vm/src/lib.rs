@@ -27,10 +27,12 @@ pub(crate) mod intrinsic;
 pub(crate) mod intrinsic_id;
 #[cfg(feature = "profiling")]
 mod profile;
+pub(crate) mod region;
 pub(crate) mod scheduler;
 pub(crate) mod stack;
 pub(crate) mod str_to_num;
 pub(crate) mod str_to_real;
+pub(crate) mod string_array;
 pub(crate) mod string_ops;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;

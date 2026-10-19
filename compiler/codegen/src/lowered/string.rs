@@ -13,7 +13,9 @@
 //! field of another function block instance is the exception: the AST route
 //! keeps the index of a temporary buffer in the field's slot (issue 1753),
 //! with `FB_STORE_PARAM` and `FB_LOAD_PARAM`, and so does this backend
-//! (`place::instance_slot`).
+//! (`place::instance_slot`). The string a reference refers to, `rs^` or
+//! `rsa^[i]`, is reached through the reference, by `STR_LOAD_ARRAY_DEREF`
+//! and `STR_STORE_ARRAY_DEREF` (REQ-LOW-codegen-189).
 
 use ironplc_container::CharWidth;
 use ironplc_dsl::core::SourceSpan;

@@ -1,7 +1,7 @@
 use core::time::Duration;
 use ironplc_container::{
-    CharWidth, ConstantIndex, Container, FbTypeId, FunctionId, InstanceId, TaskId, TaskType,
-    VarIndex, STRING_HEADER_BYTES,
+    reference, ArrayDescriptor, CharWidth, ConstantIndex, Container, FbTypeId, FunctionId,
+    InstanceId, TaskId, TaskType, VarIndex, STRING_HEADER_BYTES,
 };
 
 use crate::buffers::VmBuffers;
@@ -15,9 +15,11 @@ use crate::intrinsic;
 use crate::intrinsic_id::Intrinsic;
 #[cfg(feature = "profiling")]
 use crate::profile::InstructionProfile;
+use crate::region;
 use crate::scheduler::{ProgramInstanceState, TaskScheduler, TaskState};
 use crate::stack::OperandStack;
 use crate::str_to_num;
+use crate::string_array;
 use crate::string_ops;
 use crate::value::Slot;
 use crate::variable_table::{VariableScope, VariableTable};
@@ -2332,60 +2334,40 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
             opcode::STR_LOAD_ARRAY_ELEM => {
                 let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
                 let desc_index = read_u16_le(bytecode, &mut pc)?;
-                let index_slot = stack.pop()?;
-                let index_i64 = index_slot.as_i64();
-
-                let desc = container
-                    .type_section
-                    .as_ref()
-                    .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
-                    .ok_or(Trap::InvalidVariableIndex(var_index))?;
-                let total_elements = desc.total_elements;
-                let max_str_len = desc.element_extra;
-                let stride = desc.element_stride() as usize;
-
-                if index_i64 < 0 || index_i64 >= total_elements as i64 {
-                    return Err(Trap::ArrayIndexOutOfBounds {
-                        var_index,
-                        index: index_i64 as i32,
-                        total_elements,
-                    });
-                }
-                let index = index_i64 as usize;
-
+                let index = stack.pop()?.as_i64();
+                let desc = array_descriptor(container, desc_index, var_index)?;
                 scope.check_access(var_index)?;
-                let base_offset = variables.load(var_index)?.as_i32() as u32 as usize;
-                let elem_offset = base_offset + index * stride;
-
-                if elem_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
-                }
-                let elem_width = string_ops::str_read_char_width(data_region, elem_offset)?;
-                let src_cur_len = string_ops::str_read_cur_len(data_region, elem_offset);
-                let read_units = src_cur_len.min(max_str_len) as usize;
-
-                let (buf_idx, buf_start, buf_max_len) = {
-                    let slot = temp_alloc.alloc(temp_buf.len(), elem_width)?;
-                    (slot.buf_idx as usize, slot.buf_start, slot.max_len)
-                };
-
-                let cur_len = (read_units as u16).min(buf_max_len);
-                string_ops::str_write_header(temp_buf, buf_start, buf_max_len, cur_len, elem_width);
-
-                let copy_bytes = cur_len as usize * elem_width.as_usize();
-                if elem_offset + STRING_HEADER_BYTES + copy_bytes > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
-                }
-                string_ops::copy_code_units(
-                    temp_buf,
-                    buf_start + STRING_HEADER_BYTES,
+                let base = variables.load(var_index)?.as_i32() as u32 as usize;
+                let elem_offset = string_array::element_offset(desc, var_index, base, index)?;
+                let buf_idx = string_array::load(
                     data_region,
-                    elem_offset + STRING_HEADER_BYTES,
-                    cur_len as usize,
-                    elem_width,
-                );
+                    temp_buf,
+                    &mut temp_alloc,
+                    elem_offset,
+                    desc.element_extra,
+                )?;
+                stack.push(Slot::from_i32(buf_idx))?;
+            }
 
-                stack.push(Slot::from_i32(buf_idx as i32))?;
+            // STR_LOAD_ARRAY_DEREF: STR_LOAD_ARRAY_ELEM through a reference.
+            //
+            // Operands: ref_var_index (u16), desc_index (u16)
+            // Stack effect: pops flat_index, pushes buf_idx (net 0)
+            opcode::STR_LOAD_ARRAY_DEREF => {
+                let ref_var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
+                let desc_index = read_u16_le(bytecode, &mut pc)?;
+                let index = stack.pop()?.as_i64();
+                let base = referenced_data_offset(&scope, variables, ref_var_index)?;
+                let desc = array_descriptor(container, desc_index, ref_var_index)?;
+                let elem_offset = string_array::element_offset(desc, ref_var_index, base, index)?;
+                let buf_idx = string_array::load(
+                    data_region,
+                    temp_buf,
+                    &mut temp_alloc,
+                    elem_offset,
+                    desc.element_extra,
+                )?;
+                stack.push(Slot::from_i32(buf_idx))?;
             }
 
             // STR_STORE_ARRAY_ELEM: Store a temp buffer into a string array element.
@@ -2398,69 +2380,44 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
             opcode::STR_STORE_ARRAY_ELEM => {
                 let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
                 let desc_index = read_u16_le(bytecode, &mut pc)?;
-                let index_slot = stack.pop()?;
-                let value_slot = stack.pop()?;
-                let index_i64 = index_slot.as_i64();
-                let buf_idx = value_slot.as_i32() as usize;
-
-                let desc = container
-                    .type_section
-                    .as_ref()
-                    .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
-                    .ok_or(Trap::InvalidVariableIndex(var_index))?;
-                let total_elements = desc.total_elements;
-                let max_str_len = desc.element_extra;
-                let stride = desc.element_stride() as usize;
-
-                if index_i64 < 0 || index_i64 >= total_elements as i64 {
-                    return Err(Trap::ArrayIndexOutOfBounds {
-                        var_index,
-                        index: index_i64 as i32,
-                        total_elements,
-                    });
-                }
-                let index = index_i64 as usize;
-
+                let index = stack.pop()?.as_i64();
+                let buf_idx = stack.pop()?.as_i32() as usize;
+                let desc = array_descriptor(container, desc_index, var_index)?;
                 scope.check_access(var_index)?;
-                let base_offset = variables.load(var_index)?.as_i32() as u32 as usize;
-                let elem_offset = base_offset + index * stride;
-
-                // Read source from temp buffer.
-                let buf_start = buf_idx * max_temp_buf_bytes;
-                if buf_start + STRING_HEADER_BYTES > temp_buf.len() {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                let src_width = string_ops::str_read_char_width(temp_buf, buf_start)?;
-                let src_cur_len = string_ops::str_read_cur_len(temp_buf, buf_start);
-
-                if elem_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
-                }
-                // The source's encoding must match the array element's (ADR-0034).
-                let dest_width = string_ops::str_read_char_width(data_region, elem_offset)?;
-                string_ops::verify_encoding(dest_width, src_width)?;
-
-                // Copy, truncating to max_str_len code units per IEC 61131-3.
-                let copy_units = src_cur_len.min(max_str_len) as usize;
-                let copy_bytes = copy_units * dest_width.as_usize();
-                if elem_offset + STRING_HEADER_BYTES + copy_bytes > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
-                }
-                string_ops::copy_code_units(
+                let base = variables.load(var_index)?.as_i32() as u32 as usize;
+                let elem_offset = string_array::element_offset(desc, var_index, base, index)?;
+                string_array::store(
                     data_region,
-                    elem_offset + STRING_HEADER_BYTES,
                     temp_buf,
-                    buf_start + STRING_HEADER_BYTES,
-                    copy_units,
-                    dest_width,
-                );
+                    &mut temp_alloc,
+                    max_temp_buf_bytes,
+                    buf_idx,
+                    elem_offset,
+                    desc.element_extra,
+                )?;
+            }
 
-                // Update destination cur_length (code units).
-                string_ops::str_write_cur_len(data_region, elem_offset, copy_units as u16);
-
-                // The value has been copied out, so the buffer holding it
-                // is dead: hand its slot back for the next allocation.
-                temp_alloc.release(buf_idx);
+            // STR_STORE_ARRAY_DEREF: STR_STORE_ARRAY_ELEM through a reference.
+            //
+            // Operands: ref_var_index (u16), desc_index (u16)
+            // Stack effect: pops flat_index, pops buf_idx (net -2)
+            opcode::STR_STORE_ARRAY_DEREF => {
+                let ref_var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
+                let desc_index = read_u16_le(bytecode, &mut pc)?;
+                let index = stack.pop()?.as_i64();
+                let buf_idx = stack.pop()?.as_i32() as usize;
+                let base = referenced_data_offset(&scope, variables, ref_var_index)?;
+                let desc = array_descriptor(container, desc_index, ref_var_index)?;
+                let elem_offset = string_array::element_offset(desc, ref_var_index, base, index)?;
+                string_array::store(
+                    data_region,
+                    temp_buf,
+                    &mut temp_alloc,
+                    max_temp_buf_bytes,
+                    buf_idx,
+                    elem_offset,
+                    desc.element_extra,
+                )?;
             }
 
             opcode::POP => {
@@ -2786,54 +2743,24 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let dst_desc_index = read_u16_le(bytecode, &mut pc)?;
                 let src_desc_index = read_u16_le(bytecode, &mut pc)?;
                 let src_offset_slot = stack.pop()?;
-
-                // Both sizes come from the container's array descriptors
-                // rather than from an operand, so a codegen defect cannot ask
-                // for a copy that does not match the objects involved.
-                let descriptor_bytes = |desc_index: u16| {
-                    container
-                        .type_section
-                        .as_ref()
-                        .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
-                        .and_then(|d| d.byte_size())
-                };
-                let dst_bytes = descriptor_bytes(dst_desc_index)
-                    .ok_or(Trap::InvalidVariableIndex(dst_var_index))?;
-                let src_bytes = descriptor_bytes(src_desc_index)
-                    .ok_or(Trap::InvalidVariableIndex(dst_var_index))?;
-                if dst_bytes != src_bytes {
-                    return Err(Trap::RegionSizeMismatch {
-                        dst_bytes,
-                        src_bytes,
-                    });
-                }
-                let count = dst_bytes as usize;
+                let count = region::size(container, dst_desc_index, src_desc_index, dst_var_index)?;
 
                 scope.check_access(dst_var_index)?;
 
                 let dst_offset = variables.load(dst_var_index)?.as_i32() as u32 as usize;
                 let src_offset = src_offset_slot.as_i32() as u32 as usize;
+                region::copy(data_region, dst_offset, src_offset, count)?;
+            }
+            opcode::COPY_REGION_DEREF => {
+                let ref_var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
+                let dst_desc_index = read_u16_le(bytecode, &mut pc)?;
+                let src_desc_index = read_u16_le(bytecode, &mut pc)?;
+                let src_offset_slot = stack.pop()?;
+                let count = region::size(container, dst_desc_index, src_desc_index, ref_var_index)?;
 
-                // Confine both ends to the data region. Checked arithmetic so
-                // an offset near u32::MAX cannot wrap into a valid-looking
-                // range on a 32-bit target.
-                let dst_end = dst_offset
-                    .checked_add(count)
-                    .ok_or(Trap::DataRegionOutOfBounds(dst_offset as u32))?;
-                let src_end = src_offset
-                    .checked_add(count)
-                    .ok_or(Trap::DataRegionOutOfBounds(src_offset as u32))?;
-                if dst_end > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(dst_offset as u32));
-                }
-                if src_end > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(src_offset as u32));
-                }
-
-                // copy_within is defined for overlapping ranges, so a
-                // self-assignment (`x := x`, identical offsets) is a no-op
-                // rather than corruption.
-                data_region.copy_within(src_offset..src_end, dst_offset);
+                let dst_offset = referenced_data_offset(&scope, variables, ref_var_index)?;
+                let src_offset = src_offset_slot.as_i32() as u32 as usize;
+                region::copy(data_region, dst_offset, src_offset, count)?;
             }
             opcode::LOAD_ARRAY_DEREF => {
                 let ref_var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
@@ -3029,6 +2956,45 @@ fn intrinsic_instance(
 }
 
 /// Reads a single byte from bytecode at pc, advancing pc by 1.
+/// The data offset of what the reference in `ref_var_index`'s slot refers
+/// to: the offset a data-region reference names, or the offset the slot of
+/// the variable a variable reference names holds, as `LOAD_ARRAY_DEREF`
+/// follows one. The null reference traps.
+fn referenced_data_offset(
+    scope: &VariableScope,
+    variables: &VariableTable,
+    ref_var_index: VarIndex,
+) -> Result<usize, Trap> {
+    scope.check_access(ref_var_index)?;
+    let reference = variables.load(ref_var_index)?;
+    if reference.is_null_ref() {
+        return Err(Trap::NullDereference);
+    }
+    if let Some(offset) = reference::data_region_offset(reference.as_u64()) {
+        return Ok(offset as usize);
+    }
+    // No scope check on the target: it lives in the caller's scope, as for
+    // `LOAD_ARRAY_DEREF`.
+    let target = reference
+        .as_var_index()
+        .ok_or(Trap::InvalidVariableIndex(VarIndex::new(u16::MAX)))?;
+    Ok(variables.load(target)?.as_i32() as u32 as usize)
+}
+
+/// The array descriptor `desc_index` names. A missing one traps, naming
+/// `var_index`, the variable the instruction reaches the array through.
+fn array_descriptor(
+    container: &Container,
+    desc_index: u16,
+    var_index: VarIndex,
+) -> Result<&ArrayDescriptor, Trap> {
+    container
+        .type_section
+        .as_ref()
+        .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
+        .ok_or(Trap::InvalidVariableIndex(var_index))
+}
+
 fn read_u8(bytecode: &[u8], pc: &mut usize) -> Result<u8, Trap> {
     if *pc >= bytecode.len() {
         return Err(Trap::UnexpectedEndOfBytecode);
