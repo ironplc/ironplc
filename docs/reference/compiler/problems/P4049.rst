@@ -127,6 +127,42 @@ midnight:
        before := -(opened - TOD#00:00:00);   (* T#-8h *)
    END_PROGRAM
 
+Mixing a BOOL with a bit string
+-------------------------------
+
+The following code will generate error P4049:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       enabled : BOOL := TRUE;
+       flags : WORD := 16#00F0;
+       masked : WORD;
+   END_VAR
+       masked := flags AND enabled;
+   END_PROGRAM
+
+``AND``, ``OR`` and ``XOR`` compute on operands of one bit type. A narrower
+bit string widens to a wider one, so a ``BYTE`` with a ``WORD`` computes as a
+``WORD``. A ``BOOL`` is a truth value rather than a one-bit string, and it
+widens to no bit string, in every dialect. The same holds for ``AND_THEN``
+and ``OR_ELSE``, and for the function forms ``AND``, ``OR`` and ``XOR``.
+
+To fix this error, choose the bit string the ``BOOL`` stands for with
+``SEL``:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       enabled : BOOL := TRUE;
+       flags : WORD := 16#00F0;
+       masked : WORD;
+   END_VAR
+       masked := flags AND SEL(enabled, WORD#0, WORD#16#FFFF);   (* 16#00F0 *)
+   END_PROGRAM
+
 Remainder of a real number
 --------------------------
 
