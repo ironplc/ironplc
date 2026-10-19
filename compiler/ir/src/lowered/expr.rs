@@ -427,10 +427,10 @@ impl Expr {
         Self::of_one_program("Expr::compare", &lhs, &rhs, &span)?;
         // References are compared only for equality: an order of addresses
         // means something different on every target.
-        let ordered = matches!(
-            op,
-            CompareOp::Lt | CompareOp::Le | CompareOp::Gt | CompareOp::Ge
-        );
+        let ordered = match op {
+            CompareOp::Eq | CompareOp::Ne => false,
+            CompareOp::Lt | CompareOp::Le | CompareOp::Gt | CompareOp::Ge => true,
+        };
         let comparable = match lhs.ty {
             ScalarType::Interface => false,
             ScalarType::Ref => !ordered,
