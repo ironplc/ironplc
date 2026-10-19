@@ -1863,7 +1863,10 @@ declared parameters, each where it has one.
 
 **REQ-LOW-lowering-072** Each argument's class and type match its parameter's:
 `Value` at the parameter's operation type, `Str` at its encoding, `Copy` from a
-place of its type, `Ref` to a place of its type.
+place of its type, `Ref` to a place of its type. A place of a type of the same
+shape, as an alias of the type has, is a place of its type here: a
+`VAR_IN_OUT` of a `DINT` takes a variable of a type declared as `DINT`, and
+the reverse.
 
 **REQ-LOW-lowering-075** An argument for a `VAR_INPUT` parameter of an array,
 structure or function block type is a `Copy`, and an argument for a
