@@ -234,13 +234,14 @@ impl FunctionSignature {
 }
 
 /// What a parameter of type `ty` takes by value: a value at its operation
-/// type, a string of its encoding, or a copy of an array or a structure.
-/// `None` for a function block instance, which a parameter does not take
-/// yet.
+/// type, a string of its encoding, or a copy of an array, a structure or a
+/// function block instance.
 pub(crate) fn by_value(types: &TypeTable, ty: TypeId) -> Option<Param> {
     match types.kind(ty)? {
         TypeKind::String(shape) => Some(Param::Str(shape.encoding)),
-        TypeKind::Array { .. } | TypeKind::Structure { .. } => Some(Param::Copy(ty)),
+        TypeKind::Array { .. } | TypeKind::Structure { .. } | TypeKind::FunctionBlock { .. } => {
+            Some(Param::Copy(ty))
+        }
         TypeKind::Bool
         | TypeKind::Integer { .. }
         | TypeKind::BitString { .. }
@@ -248,7 +249,6 @@ pub(crate) fn by_value(types: &TypeTable, ty: TypeId) -> Option<Param> {
         | TypeKind::Temporal { .. }
         | TypeKind::Enumeration { .. }
         | TypeKind::Subrange { .. }
-        | TypeKind::FunctionBlock { .. }
         | TypeKind::Program { .. }
         | TypeKind::Reference { .. } => types.operation_type(ty).map(Param::Value),
     }

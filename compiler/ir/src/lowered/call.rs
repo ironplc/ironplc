@@ -33,9 +33,9 @@ pub enum Arg {
     /// A place, passed by reference: the callee reads and writes the
     /// caller's place, as a `VAR_IN_OUT` does (REQ-LOW-lowering-075).
     Ref(Place),
-    /// An array or a structure at a place, passed by value: the callee's
-    /// parameter holds a copy of it, as a `VAR_INPUT` does
-    /// (REQ-LOW-lowering-075).
+    /// An array, a structure or a function block instance at a place,
+    /// passed by value: the callee's parameter holds a copy of it, as a
+    /// `VAR_INPUT` does (REQ-LOW-lowering-075).
     Copy(Place),
 }
 
@@ -95,7 +95,8 @@ pub enum Param {
     Str(Encoding),
     /// A place of this type, passed by reference.
     Ref(TypeId),
-    /// An array or a structure of this type, passed by value.
+    /// An array, a structure or a function block instance of this type,
+    /// passed by value.
     Copy(TypeId),
 }
 
