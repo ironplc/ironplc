@@ -629,6 +629,7 @@ pub(crate) fn register_struct_array_variable(
         (!element_strings.is_empty()).then(|| ctx.allocate_scratch_variable(&id.to_string()));
 
     ctx.struct_array_vars.insert(
+        ctx.scope,
         id.clone(),
         StructArrayVarInfo {
             var_index,

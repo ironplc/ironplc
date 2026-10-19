@@ -2204,7 +2204,7 @@ today.
 | Whether an interface value can hold only one concrete type | Not made; calls through an interface are not compiled | The concrete types the value can hold (REQ-LOW-analyzer-107) | A direct method call, or a `Callee::Interface` |
 | Capacity of a string declared without one | Codegen and `slot_count`, from `DEFAULT_STRING_MAX_LENGTH` | The string type's capacity (REQ-LOW-analyzer-053) | The capacity of its `StringShape` |
 | Enumeration ordinal | The analyzer, when the type enters the type environment (`EnumerationMembers`); codegen looks the ordinal up (`compile_enum.rs`) | Each member's ordinal, explicit (`GREEN := 5`) or counted on from the one before, and the type's default member, on `SemanticType::Enumeration` | `Const` |
-| Declaration a variable name refers to | The analyzer's `SymbolEnvironment::resolve_variable` ([Variable Binding](variable-binding.md)); codegen resolves names again, from tables of its own (`scope.rs`) | Not in the `Library`: the function answers from the `SemanticContext`, with a `DeclRef` that names the declaration by its scope and its name ([ADR-0066](../adrs/0066-name-resolution-is-an-analyzer-function.md)) | One `VarId` for each `DeclRef` (REQ-LOW-lowering-020, REQ-LOW-lowering-022) |
+| Declaration a variable name refers to | The analyzer's `SymbolEnvironment::resolve_variable` ([Variable Binding](variable-binding.md)); codegen resolves names again, from tables of its own (`layout/names.rs`) | Not in the `Library`: the function answers from the `SemanticContext`, with a `DeclRef` that names the declaration by its scope and its name ([ADR-0066](../adrs/0066-name-resolution-is-an-analyzer-function.md)) | One `VarId` for each `DeclRef` (REQ-LOW-lowering-020, REQ-LOW-lowering-022) |
 
 **Decisions lowering makes**
 
@@ -2880,9 +2880,10 @@ This section constrains the order of work; it is not a work breakdown.
 - **Storage found by name at first.** A lowered variable carries its name and
   its owning POU (REQ-LOW-lowering-006). So while both routes exist, the
   bytecode backend finds a lowered variable's storage in the layout codegen
-  builds today: through the current body's `Scope`, by name. A field of the
-  current instance is found the same way. While the VM copies fields, that is
-  the slot holding the copy (see [Instance fields](#instance-fields)). The
+  builds today: in the current body's scope (`layout/names.rs`), by name. A
+  field of the current instance is found the same way. While the VM copies
+  fields, that is the slot holding the copy (see
+  [Instance fields](#instance-fields)). The
   function a `Callee::User` calls is found by the name its POU carries, as
   the function the route that reads the AST compiled.
   REQ-LOW-codegen-122 and REQ-LOW-codegen-123 are met later. Once a POU's

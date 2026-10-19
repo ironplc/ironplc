@@ -23,8 +23,8 @@ use super::compile::{
 use super::compile_expr::emit_load_var;
 use super::compile_setup::emit_function_local_prologue;
 use super::compile_stmt::{compile_body, compile_statements, resolve_string_max_length};
+use super::layout::names::ScopeId;
 use super::layout::{debug_type_for_decl, map_var_section, FunctionLayout};
-use super::scope::Scope;
 use super::type_info::resolve_type_name;
 use crate::emit::Emitter;
 
@@ -49,6 +49,7 @@ pub(crate) fn register_string_variable(
     }
 
     ctx.string_vars.insert(
+        ctx.scope,
         id.clone(),
         StringVarInfo {
             data_offset,
@@ -134,8 +135,8 @@ pub(crate) fn in_out_value_type(decl: &VarDecl) -> Result<VarTypeInfo, Diagnosti
 }
 
 /// Compiles the body of the user function `func_decl`, which `layout` lays
-/// out, against the function's own variable mappings; the program's are put
-/// back once the body is compiled.
+/// out, in the function's scope; the caller's is current again once the
+/// body is compiled.
 pub(crate) fn compile_user_function(
     func_decl: &FunctionDeclaration,
     layout: FunctionLayout,
@@ -150,7 +151,7 @@ pub(crate) fn compile_user_function(
         return_op_type,
         return_string_info,
     } = layout;
-    let program_scope = ctx.swap_scope(scope);
+    let caller = std::mem::replace(&mut ctx.scope, scope);
 
     let mut func_emitter = Emitter::new();
 
@@ -218,8 +219,7 @@ pub(crate) fn compile_user_function(
     ctx.function_stack_depths
         .insert(function_id, finalized.max_stack_depth);
 
-    // Restore the program's variable mappings.
-    ctx.swap_scope(program_scope);
+    ctx.scope = caller;
 
     Ok(CompiledFunction {
         function_id,
@@ -234,18 +234,18 @@ pub(crate) fn compile_user_function(
 }
 
 /// Compiles the body of the user function block `fb_decl`, whose id is
-/// `function_id` and whose `num_locals` copy slots the layout gave it,
-/// against the block's own variable mappings, `scope`; the program's are
-/// put back once the body is compiled.
+/// `function_id` and whose `num_locals` copy slots the layout gave it, in
+/// the block's scope, `scope`; the caller's is current again once the body
+/// is compiled.
 pub(crate) fn compile_user_function_block(
     fb_decl: &FunctionBlockDeclaration,
     function_id: FunctionId,
-    scope: Scope,
+    scope: ScopeId,
     num_locals: u16,
     ctx: &mut CompileContext,
 ) -> Result<CompiledFunction, Diagnostic> {
     let fb_name = fb_decl.name.name.to_string().to_uppercase();
-    let program_scope = ctx.swap_scope(scope);
+    let caller = std::mem::replace(&mut ctx.scope, scope);
 
     // Compile the FB body.
     // Mark this FB's body as the current caller so nested CALL / FB_CALL
@@ -266,8 +266,7 @@ pub(crate) fn compile_user_function_block(
 
     let finalized = finalize_function(&mut fb_emitter, ctx)?;
 
-    // Restore the program's variable mappings.
-    ctx.swap_scope(program_scope);
+    ctx.scope = caller;
 
     Ok(CompiledFunction {
         function_id,

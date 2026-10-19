@@ -669,6 +669,7 @@ pub(crate) fn register_array_variable(
 
     // 6. Store in context
     ctx.array_vars.insert(
+        ctx.scope,
         id.clone(),
         ArrayVarInfo {
             var_index,

@@ -48,6 +48,7 @@ pub(crate) fn register_reference_of_type(
 ) -> Result<(), Diagnostic> {
     // References are stored as 64-bit variable-table indices (unsigned).
     ctx.var_types.insert(
+        ctx.scope,
         id.clone(),
         VarTypeInfo {
             op_width: OpWidth::W64,
@@ -97,6 +98,7 @@ fn register_ref_to_array_metadata(
     let (dimensions, total_elements) = compute_dimensions(&spec.dimensions, &span)?;
     let desc_index = builder.add_array_descriptor(element_type_byte, total_elements, 0);
     ctx.array_vars.insert(
+        ctx.scope,
         id.clone(),
         ArrayVarInfo {
             var_index,
