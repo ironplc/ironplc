@@ -16,24 +16,6 @@ use crate::intermediates::operator_function_form::{
 };
 use crate::type_compat::{are_types_compatible, is_checkable_type};
 
-/// Returns true if `op` computes on operands of one bit type: `AND`, `OR`,
-/// `XOR`, and the short-circuit `AND_THEN` and `OR_ELSE`.
-pub(super) fn is_bitwise(op: &CompareOp) -> bool {
-    match op {
-        CompareOp::And
-        | CompareOp::Or
-        | CompareOp::Xor
-        | CompareOp::AndThen
-        | CompareOp::OrElse => true,
-        CompareOp::Eq
-        | CompareOp::Ne
-        | CompareOp::Lt
-        | CompareOp::Gt
-        | CompareOp::LtEq
-        | CompareOp::GtEq => false,
-    }
-}
-
 impl RuleOperatorOperandTypeCheck<'_> {
     /// Reports P4049 when the operands of the logical or bitwise operator
     /// `op` have no type both widen to, labelled at the whole expression.
@@ -76,7 +58,7 @@ impl RuleOperatorOperandTypeCheck<'_> {
         let FormOf::Compare(op) = &form.operator else {
             return;
         };
-        if !is_bitwise(op) {
+        if !op.is_bitwise() {
             return;
         }
         let mut widest: Option<TypeName> = None;

@@ -283,11 +283,11 @@ impl RuleRefTo<'_> {
         if !left_ref && !right_ref {
             return;
         }
-        match expr.op {
-            CompareOp::Eq | CompareOp::Ne => {
+        match expr.op.kind() {
+            CompareOpKind::Equality => {
                 // Equality and inequality are always allowed on references
             }
-            CompareOp::Lt | CompareOp::Gt | CompareOp::LtEq | CompareOp::GtEq => {
+            CompareOpKind::Ordering => {
                 if self.allow_ref_arithmetic {
                     return;
                 }
@@ -301,11 +301,7 @@ impl RuleRefTo<'_> {
                     Label::span(span, "Ordering comparison on reference types"),
                 ));
             }
-            CompareOp::Or
-            | CompareOp::Xor
-            | CompareOp::And
-            | CompareOp::AndThen
-            | CompareOp::OrElse => {}
+            CompareOpKind::Bitwise => {}
         }
     }
 

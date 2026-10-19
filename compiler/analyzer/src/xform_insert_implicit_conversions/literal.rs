@@ -19,8 +19,8 @@
 use ironplc_dsl::common::{ConstantKind, ElementaryTypeName, GenericTypeName, TypeName};
 use ironplc_dsl::core::Id;
 use ironplc_dsl::textual::{
-    Case, CompareExpr, CompareOp, Expr, ExprKind, ExprType, FbCall, For, Function, If, MethodCall,
-    ParamAssignmentKind, Repeat, SymbolicVariableKind, UnaryOp, Variable, While,
+    Case, CompareExpr, CompareOpKind, Expr, ExprKind, ExprType, FbCall, For, Function, If,
+    MethodCall, ParamAssignmentKind, Repeat, SymbolicVariableKind, UnaryOp, Variable, While,
 };
 use ironplc_dsl::type_id::TypeId;
 
@@ -539,18 +539,9 @@ impl ImplicitConversions<'_> {
 
     fn condition_type(&self, condition: &Expr) -> Option<TypeId> {
         match &condition.kind {
-            ExprKind::Compare(compare) => match compare.op {
-                CompareOp::And
-                | CompareOp::Or
-                | CompareOp::Xor
-                | CompareOp::AndThen
-                | CompareOp::OrElse => self.condition_type(&compare.left),
-                CompareOp::Eq
-                | CompareOp::Ne
-                | CompareOp::Lt
-                | CompareOp::Gt
-                | CompareOp::LtEq
-                | CompareOp::GtEq => {
+            ExprKind::Compare(compare) => match compare.op.kind() {
+                CompareOpKind::Bitwise => self.condition_type(&compare.left),
+                CompareOpKind::Equality | CompareOpKind::Ordering => {
                     if self.conversions.is_string(&compare.left) {
                         self.dint()
                     } else {

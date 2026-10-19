@@ -13,6 +13,9 @@ use crate::fold::Fold;
 use crate::visitor::Visitor;
 use dsl_macro_derive::{Located, Recurse};
 
+mod compare_op;
+pub use compare_op::{CompareOp, CompareOpKind};
+
 /// A body of a function bock (one of the possible types).
 ///
 /// See section 3.
@@ -889,77 +892,6 @@ impl fmt::Display for ParamAssignmentKind {
                 }
             }
         }
-    }
-}
-
-/// Comparison operators.
-///
-/// See section 3.2.2, especially table 52.
-#[derive(Debug, PartialEq, Clone)]
-pub enum CompareOp {
-    Or,
-    Xor,
-    And,
-    /// CODESYS/TwinCAT short-circuit `AND` (Beckhoff/CODESYS extension).
-    /// Kept as a distinct variant from `And` (not normalized) since the
-    /// short-circuit vs. eager evaluation distinction is real and
-    /// externally-visible in TwinCAT/CODESYS itself.
-    AndThen,
-    /// CODESYS/TwinCAT short-circuit `OR`, the dual of [`CompareOp::AndThen`].
-    OrElse,
-    Eq,
-    Ne,
-    Lt,
-    Gt,
-    LtEq,
-    GtEq,
-}
-
-impl CompareOp {
-    /// The operator's source spelling.
-    ///
-    /// This is the single definition of how a `CompareOp` is written: both
-    /// [`fmt::Display`] and the `plc2plc` renderer read it, so an operator
-    /// added to this enum is spelled once.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            CompareOp::Or => "OR",
-            CompareOp::Xor => "XOR",
-            CompareOp::And => "AND",
-            CompareOp::AndThen => "AND_THEN",
-            CompareOp::OrElse => "OR_ELSE",
-            CompareOp::Eq => "=",
-            CompareOp::Ne => "<>",
-            CompareOp::Lt => "<",
-            CompareOp::Gt => ">",
-            CompareOp::LtEq => "<=",
-            CompareOp::GtEq => ">=",
-        }
-    }
-
-    /// Returns `true` for the comparisons `=`, `<>`, `<`, `<=`, `>` and
-    /// `>=`, whose result is `BOOL` whatever their operands are, and `false`
-    /// for the logical and bitwise operators that share this enum.
-    pub fn is_comparison(&self) -> bool {
-        match self {
-            CompareOp::Eq
-            | CompareOp::Ne
-            | CompareOp::Lt
-            | CompareOp::Gt
-            | CompareOp::LtEq
-            | CompareOp::GtEq => true,
-            CompareOp::And
-            | CompareOp::Or
-            | CompareOp::Xor
-            | CompareOp::AndThen
-            | CompareOp::OrElse => false,
-        }
-    }
-}
-
-impl fmt::Display for CompareOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_str())
     }
 }
 

@@ -19,14 +19,7 @@ fn bitwise_operands(target: &str, value: &str) -> Vec<Vec<String>> {
     impl Visitor<Infallible> for Operands<'_> {
         type Value = ();
         fn visit_compare_expr(&mut self, node: &CompareExpr) -> Result<(), Infallible> {
-            if matches!(
-                node.op,
-                CompareOp::And
-                    | CompareOp::Or
-                    | CompareOp::Xor
-                    | CompareOp::AndThen
-                    | CompareOp::OrElse
-            ) {
+            if node.op.is_bitwise() {
                 let operands = [&node.left, &node.right];
                 self.operands
                     .push(operands.map(|e| describe(self.types, e)).to_vec());

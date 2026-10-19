@@ -380,7 +380,7 @@ impl Visitor<Infallible> for RuleOperatorOperandTypeCheck<'_> {
                         &[&compare.left, &compare.right],
                     );
                 }
-                if bitwise::is_bitwise(&compare.op) {
+                if compare.op.is_bitwise() {
                     self.check_bitwise_operands(node, &compare.op, &compare.left, &compare.right);
                 }
             }
