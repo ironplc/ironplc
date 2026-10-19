@@ -12,7 +12,9 @@
 //! (REQ-LOW-codegen-165).
 //!
 //! A program's own variables are left to `aggregate.rs` and
-//! `instance_copy.rs`, which copy their values.
+//! `instance_copy.rs`, which copy their values, and so is a field of a
+//! block's instance that holds an instance, which has storage of its own
+//! (`held_instances.rs`).
 
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
@@ -54,6 +56,12 @@ pub(super) fn slot_copy<'l>(
         return None;
     }
     if !body_variable(lowering, dst) || aggregate::has_region(lowering, ctx, dst) {
+        return None;
+    }
+    // A field that holds an instance has storage of its own, which a caller
+    // copies from (`g(ob => f)`): another slot stored in it would make it an
+    // alias. A `Copy` to one is `instance_copy.rs`'s.
+    if super::instance_copy::holds_instance(lowering, ctx, dst) {
         return None;
     }
     let slot = |place| {
@@ -100,7 +108,7 @@ fn body_variable(lowering: &PartialProgram, place: &LoweredPlace) -> bool {
 
 /// Whether `ty` is a reference to a function block, the type of the
 /// instance parameter of a function block's body or method.
-fn is_block_reference(types: &TypeTable, ty: TypeId) -> bool {
+pub(super) fn is_block_reference(types: &TypeTable, ty: TypeId) -> bool {
     types.reference(ty).is_some_and(|(target, _)| {
         matches!(types.kind(target), Some(TypeKind::FunctionBlock { .. }))
     })

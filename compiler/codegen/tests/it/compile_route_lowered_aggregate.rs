@@ -2,12 +2,11 @@
 //! with every statement required to lower.
 
 use ironplc_codegen::Route;
-use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 
 use crate::common::{compile_by_route, parse};
 
-use crate::compile_route_lowered::{assert_same_code, run_lowered, run_lowered_agreeing};
+use crate::compile_route_lowered::{assert_same_code, options, run_lowered, run_lowered_agreeing};
 
 /// The declarations the tests copy between.
 const TYPES: &str = "
@@ -94,7 +93,9 @@ fn compile_when_copy_of_external_lowered_then_same_code_as_ast(#[case] statement
 
 /// A copy the AST route does not compile as a region copy is not emitted
 /// from the lowered program, so it is left to the AST route: an element
-/// target, and a block's output as the source.
+/// target, a block's output as the source, and a method's own instance into
+/// a field of the block that holds one, which has storage of its own
+/// (REQ-LOW-codegen-196).
 #[rstest]
 #[case::element_target(
     "PROGRAM main VAR arr : ARRAY[1..2] OF S; one : S; END_VAR arr[1] := one; END_PROGRAM"
@@ -103,8 +104,15 @@ fn compile_when_copy_of_external_lowered_then_same_code_as_ast(#[case] statement
     "FUNCTION_BLOCK B VAR_OUTPUT p : S; END_VAR p.n := 1; END_FUNCTION_BLOCK
      PROGRAM main VAR f : B; r : S; END_VAR r := f.p; END_PROGRAM"
 )]
+#[case::method_instance_into_held_field(
+    "FUNCTION_BLOCK INNER VAR_INPUT v : DINT; END_VAR END_FUNCTION_BLOCK
+     FUNCTION_BLOCK B VAR_OUTPUT ob : INNER; END_VAR
+       METHOD M : DINT VAR loc : INNER; END_VAR ob := loc; M := 1; END_METHOD
+     END_FUNCTION_BLOCK
+     PROGRAM main VAR f : B; k : DINT; END_VAR k := f.M(); END_PROGRAM"
+)]
 fn compile_when_copy_not_emitted_then_left_to_ast_route(#[case] pous: &str) {
-    let options = CompilerOptions::default();
+    let options = options();
     let (library, context) = parse(&format!("{TYPES}\n{pous}"), &options);
     let error = compile_by_route(&library, &context, &options, Route::RequireLowered).unwrap_err();
     assert_eq!(error.code, "P9999");
@@ -149,17 +157,6 @@ const INNER: &str = "
      END_FUNCTION_BLOCK
      PROGRAM main VAR f : B; k : DINT; END_VAR k := f.M(); END_PROGRAM"
 )]
-#[case::block_instances(
-    "FUNCTION_BLOCK B VAR x : INNER; y : INNER; END_VAR x := y; END_FUNCTION_BLOCK
-     PROGRAM main VAR f : B; END_VAR f(); END_PROGRAM"
-)]
-#[case::block_instance_input(
-    "FUNCTION_BLOCK B VAR_INPUT inner : INNER; END_VAR VAR x : INNER; END_VAR
-       x := inner;
-       inner := x;
-     END_FUNCTION_BLOCK
-     PROGRAM main VAR f : B; END_VAR f(); END_PROGRAM"
-)]
 #[case::method_instance_locals(
     "FUNCTION_BLOCK B
        METHOD M : DINT VAR x : INNER; y : INNER; END_VAR x := y; M := 1; END_METHOD
@@ -191,10 +188,9 @@ fn run_when_copy_in_body_then_routes_agree() {
          {INNER}
          FUNCTION FC : DINT VAR lp : S; lq : S; END_VAR lp := lq; FC := 3; END_FUNCTION
          FUNCTION_BLOCK B
-           VAR x : S; y : S; i : INNER; j : INNER; END_VAR
+           VAR x : S; y : S; END_VAR
            VAR_OUTPUT done : DINT; END_VAR
            x := y;
-           i := j;
            done := done + 1;
          END_FUNCTION_BLOCK
          PROGRAM main VAR f : B; k : DINT; d : DINT; END_VAR
