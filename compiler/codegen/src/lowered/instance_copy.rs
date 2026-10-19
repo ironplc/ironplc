@@ -16,17 +16,23 @@
 //! An instance is copied when this backend reaches it: by name, or as the
 //! instance a field of one it reaches holds, to any depth (`g.ob`,
 //! `h.og.ob`). Only an instance it reaches by name is called (`fb_call.rs`).
+//! In a function block's body or method, the instance that a field of the
+//! instance it works on holds is reached too (`ob := loc`): the call copies
+//! that instance's fields into the body's slots and back (`compile_fn.rs`),
+//! so the field's slot holds the offset of the instance it holds.
 //!
 //! A function's body sees the program's instances by name, and its own
 //! structures may share their names, so a `Copy` is taken for one of
 //! instances only when its places are function block instances.
 
 use ironplc_container::{FbTypeId, VarIndex};
-use ironplc_ir::lowered::{Place as LoweredPlace, TypeKind};
+use ironplc_dsl::core::Id;
+use ironplc_ir::lowered::{Place as LoweredPlace, Projection, TypeKind};
 use ironplc_lowering::PartialProgram;
 
 use super::place::field_path;
-use crate::compile::{CompileContext, FbFieldIndex};
+use super::slot_copy::is_block_reference;
+use crate::compile::{CompileContext, CurrentBody, FbFieldIndex};
 use crate::emit::Emitter;
 use crate::held_instances::{layout, layout_of_type};
 
@@ -119,8 +125,10 @@ fn reached(
     place: &LoweredPlace,
 ) -> Option<(Reached, FbTypeId)> {
     let (name, path) = field_path(lowering, ctx, place)?;
-    let instance = ctx.fb_instance(&name)?;
-    let mut block = instance.type_id;
+    let (var_index, mut block) = match ctx.fb_instance(&name) {
+        Some(instance) => (instance.var_index, instance.type_id),
+        None => held_by_current(lowering, ctx, place, &name)?,
+    };
     let mut fields = Vec::new();
     for field in path {
         let name = field.to_string().to_lowercase();
@@ -131,13 +139,45 @@ fn reached(
         block = layout(ctx, &held.block)?.type_id;
         fields.push(held.index);
     }
-    Some((
-        Reached {
-            var_index: instance.var_index,
-            fields,
-        },
-        block,
-    ))
+    Some((Reached { var_index, fields }, block))
+}
+
+/// Whether `place` is the whole of a field of the instance a function
+/// block's body or method works on, and the field holds an instance.
+pub(super) fn holds_instance(
+    lowering: &PartialProgram,
+    ctx: &CompileContext,
+    place: &LoweredPlace,
+) -> bool {
+    matches!(place.path(), [Projection::Deref, Projection::Field(_)])
+        && field_path(lowering, ctx, place)
+            .is_some_and(|(name, _)| held_by_current(lowering, ctx, place, &name).is_some())
+}
+
+/// The slot of the field `name` of the instance a function block's body or
+/// method works on, and the type ID of the block of the instance the field
+/// holds, when `place` is in that field and the field holds an instance.
+fn held_by_current(
+    lowering: &PartialProgram,
+    ctx: &CompileContext,
+    place: &LoweredPlace,
+    name: &Id,
+) -> Option<(VarIndex, FbTypeId)> {
+    if !matches!(place.path(), [Projection::Deref, Projection::Field(_), ..]) {
+        return None;
+    }
+    let root = lowering.variables().get(place.root())?;
+    if !is_block_reference(lowering.types(), root.ty()) {
+        return None;
+    }
+    let block = match ctx.current_body.as_ref()? {
+        CurrentBody::Pou(block) | CurrentBody::Method { block, .. } => block,
+    };
+    let held = layout(ctx, &block.to_string().to_uppercase())?
+        .held
+        .iter()
+        .find(|held| held.name == *name.lower_case())?;
+    Some((ctx.var_index(name).ok()?, layout(ctx, &held.block)?.type_id))
 }
 
 /// Appends to `steps` the steps that copy each field of an instance of the

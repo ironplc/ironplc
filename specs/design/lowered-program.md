@@ -1247,6 +1247,18 @@ of whatever was laid out first, so after `g(ob => f)` a call of `f` wrote
 another instance's fields. That route still stores the field's slot in
 `f`'s, so `f` becomes an alias of the instance `g.ob` holds.
 
+Inside a function, function block or method body, that backend's layout
+keeps no data region for the body's own structures and arrays, and calls no
+instance the body declares. Neither route reads inside such a variable
+there, or calls such an instance. So for a `Copy` to one, the bytecode
+backend stores the source's slot in the destination's, as the route that
+reads the AST does, and no program tells that from a copy. A field of the
+block that holds an instance is not such a variable: a caller copies from it
+(`g(ob => f)`). A `Copy` from one such field to another, `ob := loc`, copies
+the instance the source holds into the one the destination holds
+(REQ-LOW-codegen-196), and a `Copy` to one from anything else is left to the
+route that reads the AST.
+
 **REQ-LOW-lowering-062** Every `Exit` and `Continue` names a `Loop` or `For`
 that encloses it.
 
@@ -2063,8 +2075,10 @@ destination holds the value the same element or field of its source held
 before it, and the source is unchanged. The destination has storage of its
 own: a later store to it leaves the source as it is. A `Copy` of a place to
 itself changes nothing. The bytecode backend does not meet this yet for a
-structure or array field of a function block instance, which no program
-reads (see [Statements](#37-statements)).
+structure or array field of a function block instance, or for a structure,
+array or function block variable of a function, function block or method
+body other than a field that holds an instance, which no program reads
+inside (see [Statements](#37-statements)).
 
 **REQ-LOW-codegen-089** An `Intrinsic` means what the IEC 61131-3 standard
 function means, with these choices where the standard leaves room: the count

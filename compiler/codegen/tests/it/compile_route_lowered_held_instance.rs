@@ -1,8 +1,9 @@
 //! Tests of the instance that a field of a function block type holds,
 //! compiled from the lowered program with every statement required to lower
 //! (REQ-LOW-codegen-196): a copy from such a field, `f := g.ob` or
-//! `g(ob => f)`, to one, `g.ob := f` or `g(inner := f)`, and a copy of an
-//! instance whose fields hold instances.
+//! `g(ob => f)`, to one, `g.ob := f` or `g(inner := f)`, a copy of an
+//! instance whose fields hold instances, and a copy between such fields in a
+//! block's body or method, `ob := inp`.
 //!
 //! The route that reads the AST stores the field's slot, which makes the
 //! destination an alias of the instance the field holds, so these run with
@@ -131,4 +132,45 @@ fn run_when_instance_holding_instances_copied_then_held_instances_copied() {
     ));
     assert_eq!(snapshot.read_as::<i32>("q2"), 7);
     assert_eq!(snapshot.read_as::<i32>("q3"), 9);
+}
+
+/// A copy in a block's body or method between fields that hold instances,
+/// `ob := inp`, copies the instance `inp` holds into the one `ob` holds: a
+/// later store to `inp` from outside the block leaves what `ob` holds as it
+/// was, and no other instance changes.
+#[test]
+fn run_when_body_copies_between_held_fields_then_copy_of_held_instance() {
+    let snapshot = run_lowered(&format!(
+        "{BLOCKS}
+         FUNCTION_BLOCK RELAY
+           VAR_INPUT inp : INNER; END_VAR
+           VAR_OUTPUT ob : INNER; END_VAR
+           ob := inp;
+           METHOD Keep : DINT
+             ob := inp;
+             Keep := 1;
+           END_METHOD
+         END_FUNCTION_BLOCK
+         PROGRAM main
+           VAR first : INNER; f : INNER; k : INNER; g : RELAY; g2 : RELAY;
+               h : INNER; h2 : INNER; kept : DINT;
+               firstq : DINT; q : DINT; q2 : DINT; END_VAR
+           first(v := 100);
+           f(v := 7);
+           k(v := 1);
+           g(inp := f);
+           g.inp := k;
+           h := g.ob;
+           g2.inp := f;
+           kept := g2.Keep();
+           g2.inp := k;
+           h2 := g2.ob;
+           firstq := first.q;
+           q := h.q;
+           q2 := h2.q;
+         END_PROGRAM"
+    ));
+    assert_eq!(snapshot.read_as::<i32>("q"), 7);
+    assert_eq!(snapshot.read_as::<i32>("q2"), 7);
+    assert_eq!(snapshot.read_as::<i32>("firstq"), 100);
 }

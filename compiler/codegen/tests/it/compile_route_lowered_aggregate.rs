@@ -2,12 +2,11 @@
 //! with every statement required to lower.
 
 use ironplc_codegen::Route;
-use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 
 use crate::common::{compile_by_route, parse};
 
-use crate::compile_route_lowered::{assert_same_code, run_lowered};
+use crate::compile_route_lowered::{assert_same_code, options, run_lowered, run_lowered_agreeing};
 
 /// The declarations the tests copy between.
 const TYPES: &str = "
@@ -94,9 +93,9 @@ fn compile_when_copy_of_external_lowered_then_same_code_as_ast(#[case] statement
 
 /// A copy the AST route does not compile as a region copy is not emitted
 /// from the lowered program, so it is left to the AST route: an element
-/// target, a block's output as the source, and fields of a block's own
-/// instance, which this backend's layout keeps no region for in the block's
-/// body.
+/// target, a block's output as the source, and a method's own instance into
+/// a field of the block that holds one, which has storage of its own
+/// (REQ-LOW-codegen-196).
 #[rstest]
 #[case::element_target(
     "PROGRAM main VAR arr : ARRAY[1..2] OF S; one : S; END_VAR arr[1] := one; END_PROGRAM"
@@ -105,12 +104,15 @@ fn compile_when_copy_of_external_lowered_then_same_code_as_ast(#[case] statement
     "FUNCTION_BLOCK B VAR_OUTPUT p : S; END_VAR p.n := 1; END_FUNCTION_BLOCK
      PROGRAM main VAR f : B; r : S; END_VAR r := f.p; END_PROGRAM"
 )]
-#[case::block_fields(
-    "FUNCTION_BLOCK B VAR x : S; y : S; END_VAR x := y; END_FUNCTION_BLOCK
-     PROGRAM main VAR f : B; END_VAR f(); END_PROGRAM"
+#[case::method_instance_into_held_field(
+    "FUNCTION_BLOCK INNER VAR_INPUT v : DINT; END_VAR END_FUNCTION_BLOCK
+     FUNCTION_BLOCK B VAR_OUTPUT ob : INNER; END_VAR
+       METHOD M : DINT VAR loc : INNER; END_VAR ob := loc; M := 1; END_METHOD
+     END_FUNCTION_BLOCK
+     PROGRAM main VAR f : B; k : DINT; END_VAR k := f.M(); END_PROGRAM"
 )]
 fn compile_when_copy_not_emitted_then_left_to_ast_route(#[case] pous: &str) {
-    let options = CompilerOptions::default();
+    let options = options();
     let (library, context) = parse(&format!("{TYPES}\n{pous}"), &options);
     let error = compile_by_route(&library, &context, &options, Route::RequireLowered).unwrap_err();
     assert_eq!(error.code, "P9999");
@@ -118,4 +120,85 @@ fn compile_when_copy_not_emitted_then_left_to_ast_route(#[case] pous: &str) {
         error.primary.message,
         "Statement the lowered route does not support yet"
     );
+}
+
+/// A block whose instances the body copies hold.
+const INNER: &str = "
+    FUNCTION_BLOCK INNER
+      VAR_INPUT v : DINT; END_VAR
+      VAR_OUTPUT q : DINT; END_VAR
+      q := v;
+    END_FUNCTION_BLOCK";
+
+/// A whole structure, array or instance copied between variables of a
+/// function, function block or method body, which this backend's layout
+/// keeps no region for, or from a global, compiles to the same instructions
+/// and constants by both routes: the destination's slot takes the source's.
+/// Neither route reads inside such a variable there, or calls such an
+/// instance, so no program tells this from a copy (REQ-LOW-codegen-165).
+#[rstest]
+#[case::function_locals(
+    "FUNCTION FC : DINT VAR lp : S; lq : S; END_VAR lp := lq; FC := 1; END_FUNCTION
+     PROGRAM main VAR k : DINT; END_VAR k := FC(); END_PROGRAM"
+)]
+#[case::block_fields(
+    "FUNCTION_BLOCK B VAR x : S; y : S; END_VAR x := y; END_FUNCTION_BLOCK
+     PROGRAM main VAR f : B; END_VAR f(); END_PROGRAM"
+)]
+#[case::block_array_fields(
+    "FUNCTION_BLOCK B VAR x : ARRAY[0..2] OF DINT; y : ARRAY[0..2] OF DINT; END_VAR
+       x := y;
+     END_FUNCTION_BLOCK
+     PROGRAM main VAR f : B; END_VAR f(); END_PROGRAM"
+)]
+#[case::method_local_from_field(
+    "FUNCTION_BLOCK B VAR fp : S; END_VAR
+       METHOD M : DINT VAR lp : S; END_VAR lp := fp; M := 1; END_METHOD
+     END_FUNCTION_BLOCK
+     PROGRAM main VAR f : B; k : DINT; END_VAR k := f.M(); END_PROGRAM"
+)]
+#[case::method_instance_locals(
+    "FUNCTION_BLOCK B
+       METHOD M : DINT VAR x : INNER; y : INNER; END_VAR x := y; M := 1; END_METHOD
+     END_FUNCTION_BLOCK
+     PROGRAM main VAR f : B; k : DINT; END_VAR k := f.M(); END_PROGRAM"
+)]
+#[case::from_global(
+    "FUNCTION_BLOCK B VAR_EXTERNAL g : S; END_VAR VAR lp : S; END_VAR lp := g; END_FUNCTION_BLOCK
+     PROGRAM main VAR f : B; END_VAR f(); END_PROGRAM
+     CONFIGURATION config
+       VAR_GLOBAL g : S; END_VAR
+       RESOURCE res ON PLC
+         TASK plc_task(INTERVAL := T#100MS, PRIORITY := 1);
+         PROGRAM plc_task_instance WITH plc_task : main;
+       END_RESOURCE
+     END_CONFIGURATION"
+)]
+fn compile_when_copy_in_body_lowered_then_same_code_as_ast(#[case] pous: &str) {
+    assert_same_code(&format!("{TYPES}\n{INNER}\n{pous}"));
+}
+
+/// Copies in a function's and a block's body leave every variable as the
+/// route that reads the AST leaves it, the function's result and the block's
+/// output included.
+#[test]
+fn run_when_copy_in_body_then_routes_agree() {
+    let snapshot = run_lowered_agreeing(&format!(
+        "{TYPES}
+         {INNER}
+         FUNCTION FC : DINT VAR lp : S; lq : S; END_VAR lp := lq; FC := 3; END_FUNCTION
+         FUNCTION_BLOCK B
+           VAR x : S; y : S; END_VAR
+           VAR_OUTPUT done : DINT; END_VAR
+           x := y;
+           done := done + 1;
+         END_FUNCTION_BLOCK
+         PROGRAM main VAR f : B; k : DINT; d : DINT; END_VAR
+           k := FC();
+           f();
+           d := f.done;
+         END_PROGRAM"
+    ));
+    assert_eq!(snapshot.read_as::<i32>("k"), 3);
+    assert_eq!(snapshot.read_as::<i32>("d"), 1);
 }
