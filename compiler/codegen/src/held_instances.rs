@@ -1,7 +1,7 @@
 //! The storage of the instances that the fields of a function block hold.
 //!
 //! An instance's slot holds the data region offset of its fields, one slot
-//! each (`compile_setup.rs`). A field of a function block type holds an
+//! each (`layout/storage.rs`). A field of a function block type holds an
 //! instance too, `ob` in `VAR_OUTPUT ob : F; END_VAR`. The layout reserves
 //! the fields of that instance after those of the instance that holds it,
 //! and the setup block stores their offset in the field's slot, so the

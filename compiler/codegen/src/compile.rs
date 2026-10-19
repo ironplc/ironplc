@@ -69,7 +69,7 @@ use crate::held_instances::{HeldField, HeldInstance};
 use super::compile_fn::{compile_user_function, compile_user_function_block};
 use ironplc_ir::execution::SystemGlobal;
 
-use super::compile_setup::{assign_system_globals, assign_variables, emit_initial_values};
+use super::compile_setup::emit_initial_values;
 use super::compile_stmt::compile_body;
 
 /// The native operation width used for arithmetic and comparisons.
@@ -534,15 +534,14 @@ fn compile_program_with_functions(
         register_pou_source_file(&mut ctx, &fb.name.name.span.file_id, sources);
     }
 
-    // Assign global variable indices first (indices 0..G), the
-    // compiler-provided globals before any other.
-    assign_system_globals(&mut ctx, system_globals, types)?;
-    assign_variables(&mut ctx, &mut builder, global_vars, types)?;
+    // Lay out the globals first (indices 0..G), the compiler-provided
+    // globals before any other.
+    crate::layout::lay_out_globals(&mut ctx, &mut builder, system_globals, global_vars, types)?;
     let num_globals = ctx.variables.len() as u16;
 
     // Pre-scan user-defined FB declarations to register type metadata
-    // (field indices, field op types, type IDs) before assign_variables runs.
-    // This allows assign_variables to resolve user-defined FB instance variables.
+    // (field indices, field op types, type IDs) before the program's
+    // variables are laid out, so that its user-defined FB instances resolve.
     // The actual FB body compilation happens after program-local variables are
     // assigned, once var_offsets are known.
     let mut compiled_fb_bodies: Vec<CompiledFunction> = Vec::new();
@@ -667,18 +666,9 @@ fn compile_program_with_functions(
         }
     }
 
-    // Collect program-local variables, skipping VAR_EXTERNAL declarations
-    // since they alias the corresponding global variables.
-    let local_vars: Vec<VarDecl> = program
-        .variables
-        .iter()
-        .filter(|v| v.var_type != VariableType::External)
-        .cloned()
-        .collect();
-
-    // Assign program-local variable indices (indices G..N).
-    // This can now resolve user-defined FB instances via ctx.user_fb_types.
-    assign_variables(&mut ctx, &mut builder, &local_vars, types)?;
+    // Lay out the program's variables (indices G..N), now that the
+    // user-defined FB types are known.
+    let local_vars = crate::layout::lay_out_program(&mut ctx, &mut builder, program, types)?;
     let program_var_count = ctx.variables.len() as u16;
 
     // Now compile the FB bodies with correct var_offsets.
