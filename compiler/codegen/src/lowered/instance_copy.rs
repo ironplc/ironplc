@@ -119,7 +119,7 @@ fn reached(
     place: &LoweredPlace,
 ) -> Option<(Reached, FbTypeId)> {
     let (name, path) = field_path(lowering, ctx, place)?;
-    let instance = ctx.fb_instances.get(&name)?;
+    let instance = ctx.fb_instance(&name)?;
     let mut block = instance.type_id;
     let mut fields = Vec::new();
     for field in path {

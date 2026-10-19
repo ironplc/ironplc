@@ -37,8 +37,7 @@ impl FbCallSite {
         span: &SourceSpan,
     ) -> Result<Self, Diagnostic> {
         let info = ctx
-            .fb_instances
-            .get(instance)
+            .fb_instance(instance)
             .ok_or_else(|| Diagnostic::todo_with_span(span.clone()))?;
         emitter.emit_fb_load_instance(info.var_index);
         Ok(Self {

@@ -225,7 +225,7 @@ pub(crate) fn resolve_struct_field_access(
     let (root_name, slot_offset, field_type) =
         walk_struct_chain(ctx, &structured.record, &structured.field, 0)?;
 
-    let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
+    let struct_info = ctx.struct_var(&root_name).ok_or_else(|| {
         Diagnostic::not_implemented(Label::span(
             structured.span(),
             format!("Variable '{}' is not a structure", root_name),
@@ -270,7 +270,7 @@ pub(crate) fn walk_struct_chain(
 
     match record {
         SymbolicVariableKind::Named(named) => {
-            let struct_info = ctx.struct_vars.get(&named.name).ok_or_else(|| {
+            let struct_info = ctx.struct_var(&named.name).ok_or_else(|| {
                 Diagnostic::not_implemented(Label::span(
                     named.name.span(),
                     format!("Variable '{}' is not a structure", named.name),

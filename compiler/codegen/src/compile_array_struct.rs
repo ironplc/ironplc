@@ -198,7 +198,7 @@ fn locate_array_of_struct<'ctx, 'ast>(
                 )));
             };
 
-            let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
+            let struct_info = ctx.struct_var(&root_name).ok_or_else(|| {
                 Diagnostic::not_implemented(Label::span(
                     structured.span(),
                     format!("Variable '{}' is not a structure", root_name),
@@ -220,7 +220,7 @@ fn locate_array_of_struct<'ctx, 'ast>(
             })
         }
         ArrayOfStructBase::Variable(name) => {
-            let info = ctx.struct_array_vars.get(name).ok_or_else(|| {
+            let info = ctx.struct_array_var(name).ok_or_else(|| {
                 Diagnostic::not_implemented(Label::span(
                     name.span(),
                     format!("Variable '{}' is not an array of structures", name),

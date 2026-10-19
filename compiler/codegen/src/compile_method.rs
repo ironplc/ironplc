@@ -293,7 +293,7 @@ fn compile_user_method(
         .collect();
     let string_outputs = outputs
         .keys()
-        .filter_map(|id| Some((id.clone(), ctx.string_vars.get(id)?.clone())))
+        .filter_map(|id| Some((id.clone(), ctx.string_var(id)?.clone())))
         .collect();
 
     Ok(CompiledMethod {
@@ -356,8 +356,7 @@ fn compile_method_call(
     };
 
     let fb_info = ctx
-        .fb_instances
-        .get(instance)
+        .fb_instance(instance)
         .ok_or_else(|| Diagnostic::todo_with_span(call.span()))?;
     let type_id = fb_info.type_id;
     let var_index = fb_info.var_index;
@@ -381,7 +380,7 @@ fn compile_method_call(
                 "Method call the analyzer resolved to no method",
             ))
         })?;
-    let fb_type_info = ctx.user_fb_types.get(&declaring).ok_or_else(|| {
+    let fb_type_info = ctx.user_fb_type(&declaring).ok_or_else(|| {
         Diagnostic::internal_error_at(Label::span(
             call.span(),
             "Method of a function block that has no layout",

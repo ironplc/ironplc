@@ -195,7 +195,7 @@ pub(super) fn reads_standard_block_field(
     let SymbolicVariableKind::Named(record) = field.record.as_ref() else {
         return false;
     };
-    ctx.fb_instances.get(&record.name).is_some_and(|instance| {
+    ctx.fb_instance(&record.name).is_some_and(|instance| {
         ctx.user_fb_types
             .values()
             .all(|block| block.type_id != instance.type_id)
@@ -353,7 +353,7 @@ fn by_reference(
         return None;
     };
     let compiled = super::is_current_body(lowering, ctx, owner);
-    (compiled && ctx.variables.contains_key(&named.name)).then_some(reference)
+    (compiled && ctx.has_slot(&named.name)).then_some(reference)
 }
 
 /// What this backend knows a value of the lowered type `ty` as: the type it

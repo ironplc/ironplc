@@ -75,7 +75,7 @@ pub(crate) fn held_block(types: &TypeEnvironment, decl: &VarDecl) -> Option<Stri
 
 /// The layout of the instances of the block named `block`, in uppercase.
 pub(crate) fn layout<'c>(ctx: &'c CompileContext, block: &str) -> Option<BlockLayout<'c>> {
-    if let Some(user_fb) = ctx.user_fb_types.get(block) {
+    if let Some(user_fb) = ctx.user_fb_type(block) {
         return Some(BlockLayout {
             type_id: user_fb.type_id,
             fields: user_fb.num_fields,

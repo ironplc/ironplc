@@ -89,13 +89,13 @@ pub(crate) fn try_compile_whole_assignment(
 /// Resolves a variable name to the region it occupies, or `None` when it is
 /// not a whole aggregate.
 fn resolve_region(ctx: &CompileContext, name: &Id) -> Result<Option<Region>, Diagnostic> {
-    if let Some(info) = ctx.struct_vars.get(name) {
+    if let Some(info) = ctx.struct_var(name) {
         return Ok(Some(Region {
             var_index: info.var_index,
             desc_index: info.desc_index,
         }));
     }
-    if let Some(info) = ctx.array_vars.get(name) {
+    if let Some(info) = ctx.array_var(name) {
         // A `REF_TO ARRAY` parameter's slot holds the target's variable index
         // rather than a data-region offset, and it owns no region. Assigning
         // one is a reference copy, which the scalar path already does
@@ -126,8 +126,7 @@ fn resolve_source_descriptor(ctx: &CompileContext, value: &Expr) -> Option<u16> 
                 .map(|r| r.desc_index)
         }
         ExprKind::Function(function) => ctx
-            .user_functions
-            .get(&function.name.to_string().to_lowercase())
+            .user_function(&function.name.to_string().to_lowercase())
             .and_then(|info| info.return_struct_desc_index),
         _ => None,
     }

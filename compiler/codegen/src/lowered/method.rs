@@ -80,14 +80,12 @@ pub(super) fn method_site(
     let block = pous.method_of(pou)?;
     let block_name = pous.name(block)?.to_string().to_uppercase();
     let method_name = pous.name(pou)?.to_string().to_lowercase();
-    let block = ctx.user_fb_types.get(&block_name)?;
+    let block = ctx.user_fb_type(&block_name)?;
     let method = block.methods.get(&method_name)?;
     let Some(Arg::Ref(receiver)) = args.first() else {
         return None;
     };
-    let instance = ctx
-        .fb_instances
-        .get(&variable_name(lowering, ctx, receiver)?)?;
+    let instance = ctx.fb_instance(&variable_name(lowering, ctx, receiver)?)?;
     // The lowered call passes an instance of a block that extends the
     // method's (REQ-LOW-ir-176). This backend's layout of a derived block
     // holds none of the fields it inherits, so, as on the route that reads

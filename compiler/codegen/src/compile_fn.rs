@@ -77,7 +77,7 @@ pub(crate) fn param_passing(ctx: &CompileContext, decl: &VarDecl) -> ParamPassin
         InitialValueAssignmentKind::String(_) => decl
             .identifier
             .symbolic_id()
-            .and_then(|id| ctx.string_vars.get(id)),
+            .and_then(|id| ctx.string_var(id)),
         _ => None,
     };
     string.map_or(ParamPassing::Value, |info| {
@@ -323,7 +323,7 @@ pub(crate) fn compile_user_function(
     };
     // Captured here because `ctx.struct_vars` is restored to the caller's
     // scope at the end of this function, losing the return variable's entry.
-    let return_struct_desc_index = ctx.struct_vars.get(&return_id).map(|info| info.desc_index);
+    let return_struct_desc_index = ctx.struct_var(&return_id).map(|info| info.desc_index);
     current_index = VarIndex::new(current_index.raw() + 1);
 
     let num_locals = current_index.raw() - var_offset.raw();
@@ -413,7 +413,7 @@ pub(crate) fn compile_user_function(
 
     let string_outputs = outputs
         .keys()
-        .filter_map(|id| Some((id.clone(), ctx.string_vars.get(id)?.clone())))
+        .filter_map(|id| Some((id.clone(), ctx.string_var(id)?.clone())))
         .collect();
 
     ctx.user_functions.insert(

@@ -1388,7 +1388,7 @@ impl CompileContext<'_> {
     /// it is reported as not implemented rather than as a mistake in the
     /// program.
     pub(crate) fn var_index(&self, name: &Id) -> Result<VarIndex, Diagnostic> {
-        if self.in_out_params.contains(name) {
+        if self.is_in_out(name) {
             return Err(Diagnostic::not_implemented(Label::span(
                 name.span(),
                 "VAR_IN_OUT parameter used where only a local or global variable is supported",
@@ -1407,10 +1407,62 @@ impl CompileContext<'_> {
     /// parameter of the function being compiled, or `None` for any other
     /// variable.
     pub(crate) fn in_out_ref_slot(&self, name: &Id) -> Option<VarIndex> {
-        if !self.in_out_params.contains(name) {
+        if !self.is_in_out(name) {
             return None;
         }
         self.variables.get(name).copied()
+    }
+
+    /// Whether `name` has a slot in the variable table in the current scope,
+    /// a `VAR_IN_OUT`'s included.
+    pub(crate) fn has_slot(&self, name: &Id) -> bool {
+        self.variables.contains_key(name)
+    }
+
+    /// Whether `name` is a `VAR_IN_OUT` of the body being compiled.
+    pub(crate) fn is_in_out(&self, name: &Id) -> bool {
+        self.in_out_params.contains(name)
+    }
+
+    /// Where the string variable `name` is held; `None` when it is no string.
+    pub(crate) fn string_var(&self, name: &Id) -> Option<&StringVarInfo> {
+        self.string_vars.get(name)
+    }
+
+    /// The layout of the array variable `name`; `None` when it is no array.
+    pub(crate) fn array_var(&self, name: &Id) -> Option<&crate::compile_array::ArrayVarInfo> {
+        self.array_vars.get(name)
+    }
+
+    /// The layout of the structure variable `name`; `None` when it is no
+    /// structure.
+    pub(crate) fn struct_var(&self, name: &Id) -> Option<&crate::compile_struct::StructVarInfo> {
+        self.struct_vars.get(name)
+    }
+
+    /// The layout of the variable `name`, an array of structures; `None`
+    /// when it is no such array.
+    pub(crate) fn struct_array_var(
+        &self,
+        name: &Id,
+    ) -> Option<&crate::compile_array_struct::StructArrayVarInfo> {
+        self.struct_array_vars.get(name)
+    }
+
+    /// The layout of the function block instance `name`; `None` when it is
+    /// no instance.
+    pub(crate) fn fb_instance(&self, name: &Id) -> Option<&FbInstanceInfo> {
+        self.fb_instances.get(name)
+    }
+
+    /// The user-defined function named `name`, in lower case.
+    pub(crate) fn user_function(&self, name: &str) -> Option<&UserFunctionInfo> {
+        self.user_functions.get(name)
+    }
+
+    /// The user-defined function block type named `name`, in upper case.
+    pub(crate) fn user_fb_type(&self, name: &str) -> Option<&UserFbTypeInfo> {
+        self.user_fb_types.get(name)
     }
 
     /// Looks up type information for a variable by identifier.
