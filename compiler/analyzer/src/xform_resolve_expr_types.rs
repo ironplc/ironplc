@@ -165,28 +165,21 @@ impl ExprTypeResolver<'_> {
                 prefer_concrete(&op.left.expr_type, &op.right.expr_type)
             }
             ExprKind::UnaryOp(op) => op.term.expr_type.clone(),
-            ExprKind::Compare(compare) => match compare.op {
+            ExprKind::Compare(compare) => match compare.op.kind() {
                 // AND, OR and XOR, and their short-circuit forms AND_THEN
                 // and OR_ELSE, have the type both operands widen to, as the
                 // function forms do: `w OR lw` on a `WORD` and an `LWORD` is
                 // an `LWORD`, and `d AND 16#FF` on a `DWORD` is a `DWORD`.
-                CompareOp::And
-                | CompareOp::Or
-                | CompareOp::Xor
-                | CompareOp::AndThen
-                | CompareOp::OrElse => self.inputs_of_one_type_result(
+                CompareOpKind::Bitwise => self.inputs_of_one_type_result(
                     &[&compare.left, &compare.right],
                     InputsOfOneType {
                         first: 0,
                         result: OneTypeResult::Common,
                     },
                 ),
-                CompareOp::Eq
-                | CompareOp::Ne
-                | CompareOp::Lt
-                | CompareOp::Gt
-                | CompareOp::LtEq
-                | CompareOp::GtEq => self.expr_type_named(TypeName::from("BOOL")),
+                CompareOpKind::Equality | CompareOpKind::Ordering => {
+                    self.expr_type_named(TypeName::from("BOOL"))
+                }
             },
             ExprKind::Function(f) => {
                 if let Some(result) = self.resolve_overloaded_call(f) {
@@ -595,14 +588,7 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
         // An unqualified enumerated value compared with a value of an
         // enumeration type has that type.
         if let ExprKind::Compare(compare) = &mut expr.kind {
-            if !matches!(
-                compare.op,
-                CompareOp::And
-                    | CompareOp::Or
-                    | CompareOp::Xor
-                    | CompareOp::AndThen
-                    | CompareOp::OrElse
-            ) {
+            if compare.op.is_comparison() {
                 let left = self.expr_context(&compare.left);
                 let right = self.expr_context(&compare.right);
                 self.type_from_context(&mut compare.right, left);

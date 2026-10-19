@@ -43,7 +43,7 @@ use ironplc_dsl::type_id::TypeId;
 
 use super::arithmetic::arithmetic_operator;
 use super::ImplicitConversions;
-use crate::builtin_function::{is_bitwise, BuiltinFunction};
+use crate::builtin_function::BuiltinFunction;
 use crate::intermediates::conversion_target::concrete;
 use crate::intermediates::numeric_operation::{
     numeric_operation_width, operation_type_of, OperationType, OperationWidth,
@@ -279,7 +279,7 @@ impl ImplicitConversions<'_> {
             ExprKind::MethodCall(_) | ExprKind::Deref(_) => true,
             // `AND`, `OR` and `XOR` compute at their own type, as an
             // arithmetic operation does; a comparison is a `BOOL`.
-            ExprKind::Compare(compare) => is_bitwise(&compare.op),
+            ExprKind::Compare(compare) => compare.op.is_bitwise(),
             // A literal compiles at the type the literal pass gives it, and a
             // late-bound name is read at its context's type.
             ExprKind::Const(_) | ExprKind::LateBound(_) => false,

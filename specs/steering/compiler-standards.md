@@ -205,6 +205,18 @@ When writing compiler code:
   (e.g., `TypeName` vs `String`) or a bare integer — wrap a `u16` element count
   as `struct ElementCount(u16)` and a `u16` address as `struct Address(u16)` so
   one cannot be passed where the other is expected
+- Classify an enum's variants in one place. When several sites ask the same
+  question of an enum (is this operator a comparison? what kind of operation
+  is it?), answer it with one method on the enum that matches every variant,
+  and have each site call it. Never list the variants again at a site, in a
+  `matches!`, an or-pattern or beside a `_` arm: each list is another place
+  where an added variant is classified, and the lists drift apart
+  - `CompareOp::kind()` in `ironplc-dsl` is the model: the analyzer matches
+    on `CompareOpKind` (`Equality`, `Ordering`, `Bitwise`) or calls
+    `is_comparison()` / `is_bitwise()`, never on a list of `CompareOp`s
+  - A match that gives each variant its own result (an opcode, a spelling, a
+    row) is not a classification; it names every variant and has no `_` arm,
+    so an added variant is a compile error there
 
 ### Dependencies
 - Keep dependencies minimal and well-justified

@@ -74,7 +74,11 @@ pub(crate) fn compile_string_compare(
         CompareOp::Gt => emitter.emit_gt_i32(),
         CompareOp::LtEq => emitter.emit_le_i32(),
         CompareOp::GtEq => emitter.emit_ge_i32(),
-        _ => {
+        CompareOp::And
+        | CompareOp::Or
+        | CompareOp::Xor
+        | CompareOp::AndThen
+        | CompareOp::OrElse => {
             // Callers pass only comparison operators.
             return Err(Diagnostic::internal_error_at(Label::span(
                 span,

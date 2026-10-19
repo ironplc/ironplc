@@ -29,7 +29,7 @@ use ironplc_dsl::textual::{Expr, ExprKind, ExprType, Function};
 use ironplc_dsl::type_id::TypeId;
 
 use super::ImplicitConversions;
-use crate::builtin_function::{is_bitwise, BuiltinFunction};
+use crate::builtin_function::BuiltinFunction;
 use crate::intermediates::numeric_operation::{operation_type_of, OperationType};
 
 impl ImplicitConversions<'_> {
@@ -53,7 +53,7 @@ impl ImplicitConversions<'_> {
         let ExprKind::Compare(compare) = &mut expr.kind else {
             return;
         };
-        if !is_bitwise(&compare.op) {
+        if !compare.op.is_bitwise() {
             return;
         }
         let Some(at) = self.operation_type(result) else {
