@@ -8,22 +8,17 @@ use ironplc_parser::options::CompilerOptions;
 use crate::common::{bc, compile_by_route, parse, Snapshot};
 
 /// Three statements lowering supports, the function's and two of the
-/// program's, and one it does not yet: an instance stored from a function
-/// block's output, which the route that reads the AST compiles.
+/// program's, and one it does not yet: a whole array of structures copied,
+/// which the route that reads the AST compiles.
 const SOURCE: &str = "
+TYPE P : STRUCT x : DINT; END_STRUCT; END_TYPE
 FUNCTION One : DINT
   One := 1;
 END_FUNCTION
-FUNCTION_BLOCK Inner
-  VAR_INPUT v : DINT; END_VAR
-END_FUNCTION_BLOCK
-FUNCTION_BLOCK Outer
-  VAR_OUTPUT ob : Inner; END_VAR
-END_FUNCTION_BLOCK
 PROGRAM main
-  VAR a : DINT; f : Inner; g : Outer; END_VAR
+  VAR a : DINT; ps : ARRAY[1..2] OF P; ps2 : ARRAY[1..2] OF P; END_VAR
   a := a + One();
-  g(ob => f);
+  ps := ps2;
   a := a * 2;
 END_PROGRAM
 ";

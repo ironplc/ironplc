@@ -237,6 +237,7 @@ mod tests {
             data_offset: tag_of(name),
             field_indices: HashMap::new(),
             field_types: HashMap::new(),
+            held: Vec::new(),
         }
     }
 

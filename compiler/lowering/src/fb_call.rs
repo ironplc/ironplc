@@ -24,8 +24,11 @@
 //! block, which REQ-LOW-lowering-077 rules out once lowering generates them
 //! (ADR-0060).
 //!
+//! An output of a structure, array or function block type is copied to its
+//! target, as `p := f.o` copies it.
+//!
 //! Not lowered yet: a call that binds a `VAR_IN_OUT`, and a call with an
-//! input or output lowering does not store yet, such as a structure output.
+//! input or output lowering does not store yet.
 
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};

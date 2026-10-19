@@ -139,6 +139,36 @@ pub(super) fn variable_name(
     Some(named.name)
 }
 
+/// The name of the variable `place` is a field of, through fields only, as
+/// this backend's layout knows it, and the names of those fields, outermost
+/// first: `h.og.ob` is `h` with `og` and `ob`. A whole variable is its name
+/// with no fields. `None` for any other place.
+pub(super) fn field_path(
+    lowering: &Lowering<'_>,
+    ctx: &CompileContext,
+    place: &LoweredPlace,
+) -> Option<(Id, Vec<Id>)> {
+    let mut reference = reference(lowering, ctx, place, &mut Vec::new())?;
+    let mut fields = Vec::new();
+    loop {
+        match reference {
+            SymbolicVariableKind::Named(named) => {
+                fields.reverse();
+                return Some((named.name, fields));
+            }
+            SymbolicVariableKind::Structured(structured) => {
+                fields.push(structured.field);
+                reference = *structured.record;
+            }
+            SymbolicVariableKind::Array(_)
+            | SymbolicVariableKind::Deref(_)
+            | SymbolicVariableKind::BitAccess(_)
+            | SymbolicVariableKind::PartialAccess(_)
+            | SymbolicVariableKind::SelfRef(_) => return None,
+        }
+    }
+}
+
 /// Whether `expr` reads a field of an instance of a standard function block:
 /// an instance this backend reaches by name, of no user-defined block's type.
 ///
