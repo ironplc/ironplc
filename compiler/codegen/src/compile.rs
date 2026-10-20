@@ -221,6 +221,11 @@ pub struct CodegenOptions {
     /// Which route each statement is compiled by: from the AST, or from the
     /// lowered program where lowering supports it.
     pub route: crate::lowered::Route,
+    /// Whether the layout built from the lowered declarations is checked
+    /// equal to the one built from the AST, which the bodies are compiled
+    /// against, while both builders exist; a difference fails the
+    /// compilation. For the test suite.
+    pub check_layout: bool,
 }
 
 /// The two behavior policies of a `STRING_TO_<numeric>` conversion.
@@ -238,6 +243,7 @@ impl From<&CompilerOptions> for CodegenOptions {
                 failure: options.policy_string_to_num_failure,
             },
             route: crate::lowered::Route::default(),
+            check_layout: false,
         }
     }
 }
@@ -316,9 +322,10 @@ pub fn compile_with_route_counts(
 
     let method_owners = MethodOwners::of_library(library, context.types());
     let parse = crate::lowered::parse_policy(&options.string_to_num);
-    let lowered_route = crate::lowered::LoweredRoute::new(options.route, || {
-        ironplc_lowering::Lowering::new(&analysis, parse).lower_program()
-    })?;
+    let lowered_route =
+        crate::lowered::LoweredRoute::new(options.route, options.check_layout, || {
+            ironplc_lowering::Lowering::new(&analysis, parse).lower_program()
+        })?;
     let (mut container, counts) = compile_program_with_functions(
         ProgramInputs {
             program: runnable.program,
@@ -600,6 +607,9 @@ fn compile_program_with_functions(
     // compile the functions' bodies, then each FB's body followed by its
     // METHODs'.
     if let Some(route) = &ctx.lowered_route {
+        if route.check_layout() {
+            crate::layout::lowered::check(route.lowering(), &ctx, &program.name)?;
+        }
         ctx.lowered_ids =
             crate::layout::ids::LoweredIds::matched(route.lowering(), &ctx, &program.name);
     }

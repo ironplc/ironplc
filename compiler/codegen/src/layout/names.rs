@@ -68,6 +68,36 @@ impl<V> Scoped<V> {
         self.own(scope, name).is_some()
     }
 
+    /// Each entry one of `self` and `other` records that the other does
+    /// not record the same: the scope, the name, and each one's entry.
+    pub(crate) fn differences(&self, other: &Self) -> Vec<String>
+    where
+        V: PartialEq + std::fmt::Debug,
+    {
+        let mut differences = Vec::new();
+        let scopes = self.by_scope.keys().chain(
+            other
+                .by_scope
+                .keys()
+                .filter(|scope| !self.by_scope.contains_key(scope)),
+        );
+        for scope in scopes {
+            let names = self.names(*scope).chain(
+                other
+                    .names(*scope)
+                    .filter(|name| !self.declares(*scope, name)),
+            );
+            for name in names {
+                let (mine, theirs) = (self.own(*scope, name), other.own(*scope, name));
+                if mine != theirs {
+                    differences.push(format!("{scope:?} {name}: {mine:?} and {theirs:?}"));
+                }
+            }
+        }
+        differences.sort();
+        differences
+    }
+
     /// The names `scope` itself records an entry for.
     fn names(&self, scope: ScopeId) -> impl Iterator<Item = &Id> {
         self.by_scope
@@ -395,5 +425,24 @@ mod tests {
         // The method's two, of which `field` hides the block's, and the two
         // visible globals.
         assert_eq!(slot_count(&slots, METHOD), 4);
+    }
+    #[test]
+    fn differences_when_same_entries_then_none() {
+        assert!(slots().differences(&slots()).is_empty());
+    }
+
+    #[test]
+    fn differences_when_entry_differs_or_missing_then_names_each() {
+        let mut other = slots();
+        other.insert(ScopeId::Program, id(LOCAL), VarIndex::new(5));
+        other.insert(FUNCTION, id(ORPHAN), VarIndex::new(6));
+
+        assert_eq!(
+            slots().differences(&other),
+            [
+                "Function(FunctionId(5)) orphan: None and Some(VarIndex(6))",
+                "Program local: Some(VarIndex(4)) and Some(VarIndex(5))",
+            ]
+        );
     }
 }

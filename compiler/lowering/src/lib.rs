@@ -92,7 +92,7 @@ use ironplc_dsl::common::{
 };
 use ironplc_dsl::core::Id;
 use ironplc_dsl::oop::MethodDeclaration;
-pub use program::PartialProgram;
+pub use program::{Declaration, PartialProgram};
 
 use ironplc_ir::lowered::{LoopScope, ParsePolicy, Place, PouId, ProgramBuilder, Stmt, VarId};
 
@@ -152,6 +152,9 @@ pub struct Lowering<'a> {
     /// The block that declares each method a call can reach, as the
     /// analyzer resolves it (ADR-0041).
     method_owners: MethodOwners,
+    /// The variable of the body of each method whose result is an array or
+    /// a structure, which holds the result (REQ-LOW-lowering-187).
+    aggregate_results: HashMap<PouId, VarId>,
 }
 
 /// Where a call leaves its outputs for the assignments of its outputs to
@@ -181,6 +184,7 @@ impl<'a> Lowering<'a> {
             loops: Vec::new(),
             call_outputs: None,
             method_owners: MethodOwners::of_library(analysis.library(), analysis.context().types()),
+            aggregate_results: HashMap::new(),
         }
     }
 
