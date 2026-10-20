@@ -2624,8 +2624,8 @@ behaviour preserving.
 **REQ-LOW-codegen-198** While the bytecode backend builds its layout both
 from the AST and from the lowered declarations, the end-to-end helpers have
 it check the two equal for every program they compile, and an entry either
-records differently, such as a slot's number or the type it is operated at,
-fails the compilation.
+records differently, such as a slot's number, the type it is operated at or
+a string's run of the data region, fails the compilation.
 
 **Lowering is tested on the tree.** A decision in
 [Decisions](#4-decisions) is asserted by lowering a small program and

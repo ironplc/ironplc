@@ -25,6 +25,7 @@ pub(crate) mod ids;
 pub(crate) mod lowered;
 pub(crate) mod names;
 mod program;
+mod region;
 mod storage;
 
 pub(crate) use block::{lay_out_block, lay_out_block_types, BlockLayout, MethodLayout};

@@ -145,7 +145,7 @@ pub(crate) enum PoolConstant {
 }
 
 /// Metadata for a STRING/WSTRING variable allocated in the data region.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct StringVarInfo {
     /// Byte offset into the data region where this string starts.
     pub(crate) data_offset: u32,
