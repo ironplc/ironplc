@@ -217,8 +217,33 @@ fn is_visible_global(slots: &Scoped<VarIndex>, name: &Id) -> bool {
     slots.declares(ScopeId::Global, name) && !slots.declares(ScopeId::Program, name)
 }
 
+/// The slot after the highest one recorded under `scope` or a scope its
+/// body sees, which is where a scratch slot laid out in `scope` is numbered
+/// from.
+///
+/// The body being laid out holds the highest of those slots: the globals,
+/// and a method's block fields, are below it. So this is the next free slot
+/// of that body's run. It is not [`slot_count`], which for a function
+/// counts the globals and the function's own slots but not the program's
+/// slots between them.
+pub(crate) fn next_free_slot(slots: &Scoped<VarIndex>, scope: ScopeId) -> u16 {
+    let seen = match scope {
+        ScopeId::Global => vec![ScopeId::Global],
+        ScopeId::Program | ScopeId::Function(_) | ScopeId::Block(_) => {
+            vec![scope, ScopeId::Global]
+        }
+        ScopeId::Method { block, .. } => vec![scope, ScopeId::Block(block), ScopeId::Global],
+    };
+    seen.iter()
+        .filter_map(|scope| slots.by_scope.get(scope))
+        .flat_map(HashMap::values)
+        .map(|index| index.raw() + 1)
+        .max()
+        .unwrap_or(0)
+}
+
 /// How many names have a slot that the body of `scope` sees, which is
-/// where a scratch slot laid out in `scope` is numbered from.
+/// where the next variable of the globals or the program is numbered from.
 pub(crate) fn slot_count(slots: &Scoped<VarIndex>, scope: ScopeId) -> usize {
     let globals = || {
         slots
@@ -426,6 +451,38 @@ mod tests {
         // visible globals.
         assert_eq!(slot_count(&slots, METHOD), 4);
     }
+
+    #[test]
+    fn next_free_slot_when_no_slot_then_first_slot() {
+        assert_eq!(next_free_slot(&Scoped::default(), ScopeId::Global), 0);
+    }
+
+    #[test]
+    fn next_free_slot_when_scope_is_program_then_after_program_slots() {
+        assert_eq!(next_free_slot(&slots(), ScopeId::Program), 5);
+    }
+
+    #[test]
+    fn next_free_slot_when_scope_is_function_then_after_its_own_slots_not_name_count() {
+        let mut slots = slots();
+        slots.insert(FUNCTION, id("param"), VarIndex::new(5));
+        slots.insert(FUNCTION, id("result"), VarIndex::new(6));
+
+        // Past the function's own slots, which follow the program's;
+        // `slot_count` is 4, the program's `local` slot.
+        assert_eq!(next_free_slot(&slots, FUNCTION), 7);
+    }
+
+    #[test]
+    fn next_free_slot_when_scope_is_method_then_after_its_own_slots_not_another_methods() {
+        let mut slots = slots();
+        slots.insert(BLOCK, id("field"), VarIndex::new(5));
+        slots.insert(METHOD, id("param"), VarIndex::new(6));
+        slots.insert(OTHER_METHOD, id("param"), VarIndex::new(9));
+
+        assert_eq!(next_free_slot(&slots, METHOD), 7);
+    }
+
     #[test]
     fn differences_when_same_entries_then_none() {
         assert!(slots().differences(&slots()).is_empty());
