@@ -1320,6 +1320,12 @@ impl CompileContext {
         names::slot_count(&self.variables, self.scope) as u16
     }
 
+    /// The slot after the highest one the current scope sees: the next free
+    /// slot of the body being laid out.
+    pub(crate) fn next_free_slot(&self) -> VarIndex {
+        VarIndex::new(names::next_free_slot(&self.variables, self.scope))
+    }
+
     /// Whether `name` has a slot in the variable table in the current scope,
     /// a `VAR_IN_OUT`'s included.
     pub(crate) fn has_slot(&self, name: &Id) -> bool {
@@ -1420,10 +1426,13 @@ impl CompileContext {
 
     /// Allocates a scratch variable with a synthetic name and returns its index.
     ///
+    /// The scratch variable takes the [next free slot](Self::next_free_slot)
+    /// of the POU being laid out, which counts it in its run.
+    ///
     /// The name uses a `$` prefix which is illegal in IEC 61131-3 identifiers,
     /// guaranteeing no collision with user-defined variables.
     pub(crate) fn allocate_scratch_variable(&mut self, suffix: &str) -> VarIndex {
-        let idx = VarIndex::new(self.slot_count());
+        let idx = self.next_free_slot();
         self.variables
             .insert(self.scope, Id::from(&format!("$scratch_{}", suffix)), idx);
         idx

@@ -9,7 +9,8 @@
 //! 2. the program's fields, `VAR_TEMP` and the globals a PLCopen program
 //!    declares in its interface;
 //! 3. each user function, in library order: its `VAR_INPUT` and
-//!    `VAR_IN_OUT`, then its other variables, then its result;
+//!    `VAR_IN_OUT`, then its other variables, then its result and the
+//!    result's scratch slot, if it takes one;
 //! 4. each user function block, in library order: one copy slot for each of
 //!    its own inputs, then outputs, then locals; then each method, laid out
 //!    as a function is, with a result slot whether it returns one or not.
@@ -132,14 +133,16 @@ impl Layout {
             let name = name(lowering, result)?;
             layout.insert(scope, name.clone(), next, held_type(lowering, result));
             next = VarIndex::new(next.raw() + 1);
-            // A structure result is laid out as a global's or the program's
-            // variable is, scratch slot and all, but the scratch slot is
-            // counted from the names the function sees (`compile_struct.rs`).
-            let ty = lowering.variables().get(result)?.ty();
+            // A structure result takes its scratch slot after it, as a
+            // global's or the program's variable does, and the function's
+            // run counts it. The result is a result parameter, which refers
+            // to the caller's structure.
+            let ty = held(lowering, result)?;
             if matches!(types.kind(ty), Some(TypeKind::Structure { .. }))
                 && needs_scratch(types, ty)
             {
-                layout.insert_counted(scope, scratch(&name), None);
+                layout.insert(scope, scratch(&name), next, None);
+                next = VarIndex::new(next.raw() + 1);
             }
         }
         for (function_id, block) in pous.blocks() {
@@ -222,16 +225,21 @@ impl Layout {
 }
 
 /// The type the slot of the variable `var` of a function or method is
-/// operated at: for a `VAR_IN_OUT`, a `VAR_OUTPUT` or a result parameter,
-/// which lowering makes a reference to the caller's place, the type of
-/// what it refers to.
+/// operated at: that of what it [holds](held).
 fn held_type(lowering: &PartialProgram, var: VarId) -> Option<VarTypeInfo> {
+    slot_type(lowering.types(), held(lowering, var)?)
+}
+
+/// The type of what the variable `var` of a function or method holds: for
+/// a `VAR_IN_OUT`, a `VAR_OUTPUT` or a result parameter, which lowering
+/// makes a reference to the caller's place, the type of what it refers to.
+fn held(lowering: &PartialProgram, var: VarId) -> Option<TypeId> {
     let types = lowering.types();
     let ty = lowering.variables().get(var)?.ty();
-    match types.reference(ty) {
-        Some((target, Nullability::NonNull)) => slot_type(types, target),
-        Some((_, Nullability::Nullable)) | None => slot_type(types, ty),
-    }
+    Some(match types.reference(ty) {
+        Some((target, Nullability::NonNull)) => target,
+        Some((_, Nullability::Nullable)) | None => ty,
+    })
 }
 
 /// The variables of the globals that have storage, in the execution

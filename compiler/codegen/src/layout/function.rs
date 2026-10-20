@@ -4,7 +4,9 @@
 //! 1. its `VAR_INPUT` and `VAR_IN_OUT`, in declaration order, which a call
 //!    stores its arguments in;
 //! 2. then its `VAR`, `VAR_TEMP` and `VAR_OUTPUT`, in declaration order;
-//! 3. then its result.
+//! 3. then its result;
+//! 4. then the scratch slot of a structure result holding strings in an
+//!    array, when it has one.
 //!
 //! A function's variables are recorded under its own scope, which its body
 //! is compiled in, and which also sees some of the globals'
@@ -218,7 +220,9 @@ pub(crate) fn lay_out_function(
     // Captured here because the call site reads it from the caller's scope,
     // which does not see the function's variables.
     let return_struct_desc_index = ctx.struct_var(&return_id).map(|info| info.desc_index);
-    current_index = VarIndex::new(current_index.raw() + 1);
+    // The run ends after the result, and after the scratch slot a structure
+    // result holding strings in an array takes after it.
+    current_index = ctx.next_free_slot();
 
     let num_locals = current_index.raw() - var_offset.raw();
 
