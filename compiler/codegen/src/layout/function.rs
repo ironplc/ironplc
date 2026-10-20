@@ -24,11 +24,12 @@ use ironplc_dsl::diagnostic::Diagnostic;
 use super::debug_type::debug_type_for_return;
 use super::names::ScopeId;
 use crate::compile::{
-    string_region_size, CompileContext, OpType, ParamPassing, StringReturnInfo, StringVarInfo,
-    UserFunctionInfo, DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH, WIDE_CHAR_WIDTH,
+    CompileContext, OpType, ParamPassing, StringReturnInfo, UserFunctionInfo, DEFAULT_OP_TYPE,
+    NARROW_CHAR_WIDTH, WIDE_CHAR_WIDTH,
 };
 use crate::compile_fn::{
-    in_out_value_type, param_passing, push_local_var_name, register_string_variable,
+    aliased_string, in_out_value_type, param_passing, push_local_var_name,
+    register_declared_string, register_string,
 };
 use crate::compile_stmt::resolve_string_spec_max_length;
 use crate::type_info::{decl_type_info, named_type_info};
@@ -102,21 +103,16 @@ pub(crate) fn lay_out_function(
             if let Some(type_info) = decl_type_info(ctx, decl) {
                 ctx.var_types.insert(ctx.scope, id.clone(), type_info);
             }
-            match &decl.initializer {
-                InitialValueAssignmentKind::String(string_init) => {
-                    register_string_variable(ctx, id, string_init)?;
-                }
-                InitialValueAssignmentKind::Reference(ref_init) => {
-                    crate::compile_reference::register_reference_variable(
-                        ctx,
-                        builder,
-                        types,
-                        id,
-                        current_index,
-                        ref_init,
-                    )?;
-                }
-                _ => {}
+            register_declared_string(ctx, id, decl)?;
+            if let InitialValueAssignmentKind::Reference(ref_init) = &decl.initializer {
+                crate::compile_reference::register_reference_variable(
+                    ctx,
+                    builder,
+                    types,
+                    id,
+                    current_index,
+                    ref_init,
+                )?;
             }
             current_index = VarIndex::new(current_index.raw() + 1);
             num_params += 1;
@@ -140,21 +136,16 @@ pub(crate) fn lay_out_function(
             if let Some(type_info) = decl_type_info(ctx, decl) {
                 ctx.var_types.insert(ctx.scope, id.clone(), type_info);
             }
-            match &decl.initializer {
-                InitialValueAssignmentKind::String(string_init) => {
-                    register_string_variable(ctx, id, string_init)?;
-                }
-                InitialValueAssignmentKind::Reference(ref_init) => {
-                    crate::compile_reference::register_reference_variable(
-                        ctx,
-                        builder,
-                        types,
-                        id,
-                        current_index,
-                        ref_init,
-                    )?;
-                }
-                _ => {}
+            register_declared_string(ctx, id, decl)?;
+            if let InitialValueAssignmentKind::Reference(ref_init) = &decl.initializer {
+                crate::compile_reference::register_reference_variable(
+                    ctx,
+                    builder,
+                    types,
+                    id,
+                    current_index,
+                    ref_init,
+                )?;
             }
             current_index = VarIndex::new(current_index.raw() + 1);
         }
@@ -180,38 +171,30 @@ pub(crate) fn lay_out_function(
         type_name: return_type_name_str,
     });
 
-    // Check if this function returns a STRING/WSTRING.
-    let return_string_info = match &func_decl.return_type {
+    // Check if this function returns a STRING/WSTRING, spelled out or
+    // through a type alias of one.
+    let return_string = match &func_decl.return_type {
         FunctionReturnType::String(spec) | FunctionReturnType::WString(spec) => {
-            let max_length = resolve_string_spec_max_length(spec)?;
             let char_width = match &func_decl.return_type {
                 FunctionReturnType::WString(_) => WIDE_CHAR_WIDTH,
                 _ => NARROW_CHAR_WIDTH,
             };
-
-            let total_bytes = string_region_size(max_length, char_width);
-            let data_offset = crate::data_region::reserve(ctx, total_bytes, &spec.keyword_span)?;
-
-            if max_length > ctx.max_string_capacity {
-                ctx.max_string_capacity = max_length;
-            }
-
-            ctx.string_vars.insert(
-                ctx.scope,
-                return_id.clone(),
-                StringVarInfo {
-                    data_offset,
-                    max_length,
-                    char_width,
-                },
-            );
+            let max_length = resolve_string_spec_max_length(spec)?;
+            Some((max_length, char_width, spec.keyword_span.clone()))
+        }
+        FunctionReturnType::Named(name) => aliased_string(ctx, types.id_of(name))
+            .map(|(max_length, char_width)| (max_length, char_width, func_decl.name.span())),
+    };
+    let return_string_info = match return_string {
+        Some((max_length, char_width, span)) => {
+            let data_offset = register_string(ctx, &return_id, max_length, char_width, &span)?;
             Some(StringReturnInfo {
                 data_offset,
                 max_length,
                 char_width,
             })
         }
-        FunctionReturnType::Named(_) => {
+        None => {
             let return_type_name = func_decl.return_type.to_type_name();
             if let Some(struct_type) = types.resolve_struct_type(&return_type_name) {
                 // Return type is a struct — allocate data region space and

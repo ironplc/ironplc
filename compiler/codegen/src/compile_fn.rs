@@ -5,20 +5,21 @@
 //! Separated from compile.rs to keep module sizes within the 1000-line guideline.
 
 use ironplc_container::debug_section::{iec_type_tag, VarNameEntry};
-use ironplc_container::{FunctionId, VarIndex};
+use ironplc_container::{CharWidth, FunctionId, VarIndex};
 use ironplc_dsl::common::{
-    FunctionBlockDeclaration, FunctionDeclaration, InitialValueAssignmentKind, StringInitializer,
-    VarDecl, VariableType,
+    FunctionBlockDeclaration, FunctionDeclaration, InitialValueAssignmentKind, VarDecl,
+    VariableType,
 };
-use ironplc_dsl::core::{Id, Located};
+use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_dsl::type_id::TypeId;
 
-use ironplc_analyzer::TypeEnvironment;
+use ironplc_analyzer::{SemanticType, TypeEnvironment};
 
 use super::compile::{
     char_width_for_string_type, finalize_function, string_region_size, CompileContext,
     CompiledFunction, CurrentFunctionReturn, ParamPassing, StringParamInfo, StringVarInfo,
-    VarTypeInfo,
+    VarTypeInfo, DEFAULT_STRING_MAX_LENGTH,
 };
 use super::compile_expr::emit_load_var;
 use super::compile_setup::emit_function_local_prologue;
@@ -29,20 +30,63 @@ use super::type_info::resolve_type_name;
 use crate::emit::Emitter;
 
 /// Reserves the run of the data region the string variable `id`, which
-/// `string_init` declares, is held in, and records it in `ctx.string_vars`.
-/// Every declared string of a function, function block or method is held
-/// in a run of its own, sized to its declared capacity.
+/// `decl` declares, is held in, and records it in `ctx.string_vars`, when
+/// `decl` declares a string. Every declared string of a function, function
+/// block or method is held in a run of its own, sized to its declared
+/// capacity.
 #[track_caller]
-pub(crate) fn register_string_variable(
+pub(crate) fn register_declared_string(
     ctx: &mut CompileContext,
     id: &Id,
-    string_init: &StringInitializer,
+    decl: &VarDecl,
 ) -> Result<(), Diagnostic> {
-    let max_length = resolve_string_max_length(string_init)?;
-    let char_width = char_width_for_string_type(&string_init.width);
+    let (max_length, char_width, span) =
+        if let InitialValueAssignmentKind::String(string_init) = &decl.initializer {
+            (
+                resolve_string_max_length(string_init)?,
+                char_width_for_string_type(&string_init.width),
+                string_init.span(),
+            )
+        } else if let Some((max_length, char_width)) = aliased_string(ctx, decl.type_id) {
+            (max_length, char_width, decl.identifier.span())
+        } else {
+            return Ok(());
+        };
+    register_string(ctx, id, max_length, char_width, &span)?;
+    Ok(())
+}
 
+/// The capacity and character width of the string type `type_id` names,
+/// when it is a type alias of a string (`TYPE Name : STRING[20]; END_TYPE`),
+/// which the analyzer resolves to the string type it names. `None` for any
+/// other type.
+pub(crate) fn aliased_string(
+    ctx: &CompileContext,
+    type_id: Option<TypeId>,
+) -> Option<(u16, CharWidth)> {
+    let Some(SemanticType::String {
+        max_len,
+        char_width,
+    }) = type_id.and_then(|id| ctx.types.get(&id))
+    else {
+        return None;
+    };
+    let max_length = max_len.map_or(DEFAULT_STRING_MAX_LENGTH, |len| len as u16);
+    Some((max_length, *char_width))
+}
+
+/// Reserves a run of the data region for a string of `max_length` code
+/// units of `char_width`, records it in `ctx.string_vars` as `id`'s, and
+/// returns its offset.
+pub(crate) fn register_string(
+    ctx: &mut CompileContext,
+    id: &Id,
+    max_length: u16,
+    char_width: CharWidth,
+    span: &SourceSpan,
+) -> Result<u32, Diagnostic> {
     let total_bytes = string_region_size(max_length, char_width);
-    let data_offset = crate::data_region::reserve(ctx, total_bytes, &string_init.span())?;
+    let data_offset = crate::data_region::reserve(ctx, total_bytes, span)?;
 
     if max_length > ctx.max_string_capacity {
         ctx.max_string_capacity = max_length;
@@ -57,7 +101,7 @@ pub(crate) fn register_string_variable(
             char_width,
         },
     );
-    Ok(())
+    Ok(data_offset)
 }
 
 /// How a call site passes an argument to the input parameter `decl`
@@ -68,13 +112,12 @@ pub(crate) fn param_passing(ctx: &CompileContext, decl: &VarDecl) -> ParamPassin
     if decl.var_type == VariableType::InOut {
         return ParamPassing::Reference;
     }
-    let string = match &decl.initializer {
-        InitialValueAssignmentKind::String(_) => decl
-            .identifier
-            .symbolic_id()
-            .and_then(|id| ctx.string_var(id)),
-        _ => None,
-    };
+    let declares_string = matches!(decl.initializer, InitialValueAssignmentKind::String(_))
+        || aliased_string(ctx, decl.type_id).is_some();
+    let string = declares_string
+        .then(|| decl.identifier.symbolic_id())
+        .flatten()
+        .and_then(|id| ctx.string_var(id));
     string.map_or(ParamPassing::Value, |info| {
         ParamPassing::String(StringParamInfo {
             data_offset: info.data_offset,
