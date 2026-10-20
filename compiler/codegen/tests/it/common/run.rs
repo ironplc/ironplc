@@ -115,8 +115,11 @@ fn compile_counting(
     route: Route,
 ) -> Result<(Container, RouteCounts), Diagnostic> {
     let analysis = CleanAnalysis::new(library, context).expect("analysis reported diagnostics");
+    // The layout built from the lowered declarations is checked equal to
+    // the one from the AST for every program (REQ-LOW-codegen-198).
     let codegen_options = ironplc_codegen::CodegenOptions {
         route,
+        check_layout: true,
         ..ironplc_codegen::CodegenOptions::from(options)
     };
     let compiled =

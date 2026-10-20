@@ -745,6 +745,16 @@ POU.
 Lowering declares them all before it lowers any statement, so a statement
 that names one reaches the variable already declared.
 
+**REQ-LOW-lowering-197** The lowered program gives, for each body, what each
+of its declarations declares, in the order the body declares them: a field
+of its instance, a variable of its own, or the global a `VAR_EXTERNAL`
+names. It gives the variable that holds each function's and method's result,
+and tells a variable a declaration declares from a temporary lowering makes.
+
+A backend lays out its storage from them in the order the source declares
+it, which neither the type of an instance nor the variable table records
+across a body's fields and variables.
+
 **REQ-LOW-lowering-026** Every variable's `ty` is present in the type table.
 
 A function's result is a variable, as in the source, where the result is
@@ -2611,6 +2621,11 @@ So the tests say nothing about how the compiler is structured, and they hold
 across this change without edits. A step that needs one edited is not
 behaviour preserving.
 
+**REQ-LOW-codegen-198** While the bytecode backend builds its layout both
+from the AST and from the lowered declarations, the end-to-end helpers have
+it check the two equal for every program they compile, and a slot either
+numbers differently fails the compilation.
+
 **Lowering is tested on the tree.** A decision in
 [Decisions](#4-decisions) is asserted by lowering a small program and
 inspecting the node: a literal lowers to a `Const` of the type the analyzer
@@ -2960,6 +2975,10 @@ This section constrains the order of work; it is not a work breakdown.
   listed as known differences. So is a program that reads a function's or
   a method's string output, which only the lowered route compiles
   (REQ-LOW-lowering-172).
+- **The layouts check each other.** While both layout builders exist, the
+  one from the lowered declarations is checked equal to the one from the AST
+  for every end-to-end program (REQ-LOW-codegen-198), before the bodies are
+  compiled against it.
 - **Progress cannot fall.** CI reports how many top-level statements of the
   end-to-end programs took the lowered route. The number does not fall.
 - **The IR is readable from its first commit.** `ironplc-ir` writes a lowered
