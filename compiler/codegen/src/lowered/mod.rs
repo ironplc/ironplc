@@ -50,6 +50,7 @@ mod stmt;
 mod string;
 
 use call_args::passes;
+pub(crate) use place::type_info;
 pub(crate) use policy::parse_policy;
 
 /// Which route codegen compiles a statement by.
@@ -81,6 +82,9 @@ pub struct RouteCounts {
 pub(crate) struct LoweredRoute {
     lowering: PartialProgram,
     require: bool,
+    /// Whether the layout built from the lowered declarations is checked
+    /// equal to the one built from the AST.
+    check_layout: bool,
     pub(crate) counts: RouteCounts,
 }
 
@@ -90,11 +94,18 @@ impl LoweredRoute {
         &self.lowering
     }
 
+    /// Whether the layout built from the lowered declarations is checked
+    /// equal to the one built from the AST.
+    pub(crate) fn check_layout(&self) -> bool {
+        self.check_layout
+    }
+
     /// The lowered route for `route`, with the program `lower` lowers, or
     /// `None` when every statement is compiled from the AST, which lowers
     /// nothing. A P9998 lowering reports fails the compilation.
     pub(crate) fn new(
         route: Route,
+        check_layout: bool,
         lower: impl FnOnce() -> Result<PartialProgram, Vec<Diagnostic>>,
     ) -> Result<Option<Self>, Diagnostic> {
         let require = match route {
@@ -111,6 +122,7 @@ impl LoweredRoute {
         Ok(Some(Self {
             lowering,
             require,
+            check_layout,
             counts: RouteCounts::default(),
         }))
     }
