@@ -17,6 +17,10 @@
 //! A structure whose fields hold strings in arrays, and an array of
 //! structures with a string field, take a scratch slot after their own.
 //!
+//! Each slot that holds one value is operated at its type, the one a
+//! `VAR_IN_OUT` or `VAR_OUTPUT` of a function or method refers to for one
+//! of those; a compiler-provided global has none.
+//!
 //! Until it is complete, the layout the bodies are compiled against is
 //! still built from the AST, and this one is only checked equal to it.
 
@@ -24,25 +28,40 @@ use ironplc_container::{FunctionId, VarIndex};
 use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::execution::{GlobalKind, GlobalScope};
-use ironplc_ir::lowered::{Field, PouId, PouKind, Section, TypeId, TypeKind, TypeTable, VarId};
+use ironplc_ir::lowered::{
+    Field, Nullability, PouId, PouKind, Section, TypeId, TypeKind, TypeTable, VarId,
+};
 use ironplc_lowering::{Declaration, PartialProgram};
 
 use super::names::{self, ScopeId, Scoped};
-use crate::compile::CompileContext;
+use crate::compile::{CompileContext, VarTypeInfo};
+use crate::lowered::type_info;
 
-/// Checks the slots numbered from the declarations of `lowering` equal to
-/// those `ctx` laid out from the AST, for the program `program`; an
-/// internal error names each one that differs. A program a declaration of
-/// which did not lower keeps the AST layout, and has nothing to check.
+/// Checks the layout built from the declarations of `lowering` equal to the
+/// one `ctx` laid out from the AST, for the program `program`: each slot,
+/// and the type it is operated at. An internal error names each entry that
+/// differs. A program a declaration of which did not lower keeps the AST
+/// layout, and has nothing to check.
 pub(crate) fn check(
     lowering: &PartialProgram,
     ctx: &CompileContext,
     program: &Id,
 ) -> Result<(), Diagnostic> {
-    let Some(lowered) = slots(lowering, program) else {
+    let Some(lowered) = Layout::of(lowering, program) else {
         return Ok(());
     };
-    let differences = ctx.variables.differences(&lowered);
+    let differences: Vec<String> = ctx
+        .variables
+        .differences(&lowered.slots)
+        .into_iter()
+        .map(|difference| format!("slot {difference}"))
+        .chain(
+            ctx.var_types
+                .differences(&lowered.var_types)
+                .into_iter()
+                .map(|difference| format!("type {difference}")),
+        )
+        .collect();
     if differences.is_empty() {
         return Ok(());
     }
@@ -55,147 +74,197 @@ pub(crate) fn check(
     )))
 }
 
-/// The slot of each name the layout knows, numbered from the declarations
-/// of `lowering`, whose program the container runs is `program`; `None`
-/// when a declaration did not lower.
-fn slots(lowering: &PartialProgram, program: &Id) -> Option<Scoped<VarIndex>> {
-    if !lowering.declarations_complete() {
-        return None;
-    }
-    let pous = Pous::of(lowering, program)?;
-    let types = lowering.types();
-    let mut slots = Scoped::default();
+/// What the layout built from the lowered declarations knows of each name
+/// so far: its slot, and the type the slot is operated at.
+#[derive(Default)]
+struct Layout {
+    slots: Scoped<VarIndex>,
+    var_types: Scoped<VarTypeInfo>,
+}
 
-    let program_declarations = lowering.declarations(pous.program)?;
-    for var in globals(lowering) {
-        // A global the program declares is laid out with its variables.
-        if !program_declarations.contains(&Declaration::Variable(var)) {
-            insert_variable(&mut slots, ScopeId::Global, lowering, var)?;
+impl Layout {
+    /// The layout of the declarations of `lowering`, whose program the
+    /// container runs is `program`; `None` when a declaration did not
+    /// lower.
+    fn of(lowering: &PartialProgram, program: &Id) -> Option<Self> {
+        if !lowering.declarations_complete() {
+            return None;
         }
-    }
-    let program_type = instance_type(types, pous.program)?;
-    for declaration in program_declarations {
-        match declaration {
-            Declaration::Field(field) => {
-                let field = types.fields(program_type)?.get(field.index() as usize)?;
-                insert_named(
-                    &mut slots,
-                    ScopeId::Program,
-                    types,
-                    name_of(field),
-                    field.ty,
-                );
-            }
-            Declaration::Variable(var) => {
-                insert_variable(&mut slots, ScopeId::Program, lowering, *var)?;
-            }
-            Declaration::External(_) => {}
-        }
-    }
+        let pous = Pous::of(lowering, program)?;
+        let types = lowering.types();
+        let mut layout = Self::default();
 
-    let mut next = VarIndex::new(names::slot_count(&slots, ScopeId::Program) as u16);
-    for (function_id, function) in pous.functions() {
-        let scope = ScopeId::Function(function_id);
-        let frame = frame(lowering, function)?;
-        for var in frame.variables {
-            slots.insert(scope, name(lowering, var)?, next);
-            next = VarIndex::new(next.raw() + 1);
+        let program_declarations = lowering.declarations(pous.program)?;
+        for (var, system) in globals(lowering) {
+            if system {
+                // The runtime writes a compiler-provided global, which no
+                // body operates on through the layout's type.
+                layout.insert_counted(ScopeId::Global, name(lowering, var)?, None);
+            } else if !program_declarations.contains(&Declaration::Variable(var)) {
+                // A global the program declares is laid out with its
+                // variables.
+                layout.insert_variable(ScopeId::Global, lowering, var)?;
+            }
         }
-        let result = frame.result?;
-        let name = name(lowering, result)?;
-        slots.insert(scope, name.clone(), next);
-        next = VarIndex::new(next.raw() + 1);
-        // A structure result is laid out as a global's or the program's
-        // variable is, scratch slot and all, but the scratch slot is
-        // counted from the names the function sees (`compile_struct.rs`).
-        let ty = lowering.variables().get(result)?.ty();
-        if matches!(types.kind(ty), Some(TypeKind::Structure { .. })) && needs_scratch(types, ty) {
-            insert_counted(&mut slots, scope, scratch(&name));
+        let program_type = instance_type(types, pous.program)?;
+        for declaration in program_declarations {
+            match declaration {
+                Declaration::Field(field) => {
+                    let field = types.fields(program_type)?.get(field.index() as usize)?;
+                    layout.insert_named(ScopeId::Program, types, name_of(field), field.ty);
+                }
+                Declaration::Variable(var) => {
+                    layout.insert_variable(ScopeId::Program, lowering, *var)?;
+                }
+                Declaration::External(_) => {}
+            }
         }
-    }
-    for (function_id, block) in pous.blocks() {
-        let field_var_off = next;
-        for field in copy_slots(lowering, block)? {
-            slots.insert(ScopeId::Block(function_id), field, next);
-            next = VarIndex::new(next.raw() + 1);
-        }
-        for (method_id, method) in pous.methods(block) {
-            let scope = ScopeId::Method {
-                block: function_id,
-                method: method_id,
-            };
-            let frame = frame(lowering, method)?;
-            let mut current = next;
+
+        let mut next = VarIndex::new(names::slot_count(&layout.slots, ScopeId::Program) as u16);
+        for (function_id, function) in pous.functions() {
+            let scope = ScopeId::Function(function_id);
+            let frame = frame(lowering, function)?;
             for var in frame.variables {
-                slots.insert(scope, name(lowering, var)?, current);
+                layout.insert(scope, name(lowering, var)?, next, held_type(lowering, var));
+                next = VarIndex::new(next.raw() + 1);
+            }
+            let result = frame.result?;
+            let name = name(lowering, result)?;
+            layout.insert(scope, name.clone(), next, held_type(lowering, result));
+            next = VarIndex::new(next.raw() + 1);
+            // A structure result is laid out as a global's or the program's
+            // variable is, scratch slot and all, but the scratch slot is
+            // counted from the names the function sees (`compile_struct.rs`).
+            let ty = lowering.variables().get(result)?.ty();
+            if matches!(types.kind(ty), Some(TypeKind::Structure { .. }))
+                && needs_scratch(types, ty)
+            {
+                layout.insert_counted(scope, scratch(&name), None);
+            }
+        }
+        for (function_id, block) in pous.blocks() {
+            let field_var_off = next;
+            for field in copy_slots(lowering, block)? {
+                let held = slot_type(types, field.ty);
+                layout.insert(ScopeId::Block(function_id), name_of(field), next, held);
+                next = VarIndex::new(next.raw() + 1);
+            }
+            for (method_id, method) in pous.methods(block) {
+                let scope = ScopeId::Method {
+                    block: function_id,
+                    method: method_id,
+                };
+                let frame = frame(lowering, method)?;
+                let mut current = next;
+                for var in frame.variables {
+                    layout.insert(
+                        scope,
+                        name(lowering, var)?,
+                        current,
+                        held_type(lowering, var),
+                    );
+                    current = VarIndex::new(current.raw() + 1);
+                }
+                // A method has a result slot whether it returns a result or
+                // not.
+                if let Some(result) = frame.result {
+                    let held = held_type(lowering, result);
+                    layout.insert(scope, name(lowering, result)?, current, held);
+                }
                 current = VarIndex::new(current.raw() + 1);
+                // A method's run spans its block's copy slots too, and the
+                // next method's starts that many slots on (`block.rs`).
+                next = VarIndex::new(next.raw() + current.raw() - field_var_off.raw());
             }
-            // A method has a result slot whether it returns a result or not.
-            if let Some(result) = frame.result {
-                slots.insert(scope, name(lowering, result)?, current);
-            }
-            current = VarIndex::new(current.raw() + 1);
-            // A method's run spans its block's copy slots too, and the next
-            // method's starts that many slots on (`block.rs`).
-            next = VarIndex::new(next.raw() + current.raw() - field_var_off.raw());
+        }
+        Some(layout)
+    }
+
+    /// Records `name` in `scope` at the slot `index`, operated at `held`.
+    fn insert(&mut self, scope: ScopeId, name: Id, index: VarIndex, held: Option<VarTypeInfo>) {
+        if let Some(held) = held {
+            self.var_types.insert(scope, name.clone(), held);
+        }
+        self.slots.insert(scope, name, index);
+    }
+
+    /// Records the variable `var` in `scope`, the globals' or the
+    /// program's, as [`Layout::insert_named`] does.
+    fn insert_variable(
+        &mut self,
+        scope: ScopeId,
+        lowering: &PartialProgram,
+        var: VarId,
+    ) -> Option<()> {
+        let ty = lowering.variables().get(var)?.ty();
+        self.insert_named(scope, lowering.types(), name(lowering, var)?, ty);
+        Some(())
+    }
+
+    /// Records `name`, of the type `ty`, in `scope`, the globals' or the
+    /// program's, at the next slot the scope counts, and its scratch slot
+    /// after it if it takes one.
+    fn insert_named(&mut self, scope: ScopeId, types: &TypeTable, name: Id, ty: TypeId) {
+        let scratch_slot = needs_scratch(types, ty).then(|| scratch(&name));
+        self.insert_counted(scope, name, slot_type(types, ty));
+        if let Some(scratch_slot) = scratch_slot {
+            self.insert_counted(scope, scratch_slot, None);
         }
     }
-    Some(slots)
+
+    /// Records `name` in `scope` at the next slot the body of `scope`
+    /// counts, as the walk of the AST declarations numbers the globals, the
+    /// program's variables and the scratch slots.
+    fn insert_counted(&mut self, scope: ScopeId, name: Id, held: Option<VarTypeInfo>) {
+        let index = VarIndex::new(names::slot_count(&self.slots, scope) as u16);
+        self.insert(scope, name, index, held);
+    }
+}
+
+/// The type the slot of the variable `var` of a function or method is
+/// operated at: for a `VAR_IN_OUT`, a `VAR_OUTPUT` or a result parameter,
+/// which lowering makes a reference to the caller's place, the type of
+/// what it refers to.
+fn held_type(lowering: &PartialProgram, var: VarId) -> Option<VarTypeInfo> {
+    let types = lowering.types();
+    let ty = lowering.variables().get(var)?.ty();
+    match types.reference(ty) {
+        Some((target, Nullability::NonNull)) => slot_type(types, target),
+        Some((_, Nullability::Nullable)) | None => slot_type(types, ty),
+    }
 }
 
 /// The variables of the globals that have storage, in the execution
-/// model's order, the compiler-provided ones first. A resource's
-/// `VAR_GLOBAL` has none yet (`execution.rs`).
-fn globals(lowering: &PartialProgram) -> Vec<VarId> {
+/// model's order, the compiler-provided ones first, each with whether the
+/// compiler provides it. A resource's `VAR_GLOBAL` has none yet
+/// (`execution.rs`).
+fn globals(lowering: &PartialProgram) -> Vec<(VarId, bool)> {
     let bindings = lowering.bindings();
     lowering
         .execution()
         .globals()
-        .filter(|(_, global)| match global.kind {
-            GlobalKind::System(_)
-            | GlobalKind::Declared(GlobalScope::TopLevel | GlobalScope::Configuration) => true,
-            GlobalKind::Declared(GlobalScope::Resource) => false,
+        .filter_map(|(id, global)| {
+            let system = match global.kind {
+                GlobalKind::System(_) => true,
+                GlobalKind::Declared(GlobalScope::TopLevel | GlobalScope::Configuration) => false,
+                GlobalKind::Declared(GlobalScope::Resource) => return None,
+            };
+            Some((bindings.global(id)?, system))
         })
-        .filter_map(|(id, _)| bindings.global(id))
         .collect()
 }
 
-/// Records the variable `var` in `scope`, the globals' or the program's,
-/// as [`insert_named`] does.
-fn insert_variable(
-    slots: &mut Scoped<VarIndex>,
-    scope: ScopeId,
-    lowering: &PartialProgram,
-    var: VarId,
-) -> Option<()> {
-    let ty = lowering.variables().get(var)?.ty();
-    insert_named(slots, scope, lowering.types(), name(lowering, var)?, ty);
-    Some(())
-}
-
-/// Records `name`, of the type `ty`, in `scope`, the globals' or the
-/// program's, at the next slot the scope counts, and its scratch slot after
-/// it if it takes one.
-fn insert_named(
-    slots: &mut Scoped<VarIndex>,
-    scope: ScopeId,
-    types: &TypeTable,
-    name: Id,
-    ty: TypeId,
-) {
-    let scratch_slot = needs_scratch(types, ty).then(|| scratch(&name));
-    insert_counted(slots, scope, name);
-    if let Some(scratch_slot) = scratch_slot {
-        insert_counted(slots, scope, scratch_slot);
+/// The type a slot holding a value of the lowered type `ty` is operated
+/// at. A `BOOL` holds one bit of value, which also marks it for the
+/// conversion path (`type_info.rs`).
+fn slot_type(types: &TypeTable, ty: TypeId) -> Option<VarTypeInfo> {
+    match types.kind(ty) {
+        Some(TypeKind::Bool) => Some(VarTypeInfo {
+            storage_bits: 1,
+            ..type_info(types, ty)?
+        }),
+        _ => type_info(types, ty),
     }
-}
-
-/// Records `name` in `scope` at the next slot the body of `scope` counts,
-/// as the walk of the AST declarations numbers the globals, the program's
-/// variables and the scratch slots.
-fn insert_counted(slots: &mut Scoped<VarIndex>, scope: ScopeId, name: Id) {
-    let index = VarIndex::new(names::slot_count(slots, scope) as u16);
-    slots.insert(scope, name, index);
 }
 
 /// The name of the scratch slot of the variable `name`
@@ -371,9 +440,9 @@ fn instance_type(types: &TypeTable, pou: PouId) -> Option<TypeId> {
     })
 }
 
-/// The names of the copy slots of the function block `pou`: its own
-/// inputs, then its outputs, then its locals, each in declaration order.
-fn copy_slots(lowering: &PartialProgram, pou: PouId) -> Option<Vec<Id>> {
+/// The fields of the function block `pou` that its copy slots hold: its
+/// own inputs, then its outputs, then its locals, each in declaration order.
+fn copy_slots(lowering: &PartialProgram, pou: PouId) -> Option<Vec<&Field>> {
     let types = lowering.types();
     let fields = types.fields(instance_type(types, pou)?)?;
     let mut own = Vec::new();
@@ -383,15 +452,11 @@ fn copy_slots(lowering: &PartialProgram, pou: PouId) -> Option<Vec<Id>> {
             Declaration::Variable(_) | Declaration::External(_) => {}
         }
     }
-    let mut names = Vec::with_capacity(own.len());
+    let mut slots = Vec::with_capacity(own.len());
     for section in [Section::Input, Section::Output, Section::Local] {
-        names.extend(
-            own.iter()
-                .filter(|field| field.section == Some(section))
-                .map(|field| name_of(field)),
-        );
+        slots.extend(own.iter().filter(|field| field.section == Some(section)));
     }
-    Some(names)
+    Some(slots)
 }
 
 /// The variables of a function or method, in the order their slots run.

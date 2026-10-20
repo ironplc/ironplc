@@ -96,7 +96,7 @@ pub(crate) enum Signedness {
 }
 
 /// Type information for a variable, used to select the correct opcodes.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct VarTypeInfo {
     /// The native operation width (i32 or i64).
     pub(crate) op_width: OpWidth,

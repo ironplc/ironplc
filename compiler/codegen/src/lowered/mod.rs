@@ -50,6 +50,7 @@ mod stmt;
 mod string;
 
 use call_args::passes;
+pub(crate) use place::type_info;
 pub(crate) use policy::parse_policy;
 
 /// Which route codegen compiles a statement by.
