@@ -390,7 +390,7 @@ fn by_reference(
 
 /// What this backend knows a value of the lowered type `ty` as: the type it
 /// is operated at, and the width a store narrows it to.
-fn type_info(types: &TypeTable, ty: TypeId) -> Option<VarTypeInfo> {
+pub(crate) fn type_info(types: &TypeTable, ty: TypeId) -> Option<VarTypeInfo> {
     let (op_width, signedness) = op_type(types.operation_type(ty)?)?;
     let storage_bits = match types.narrowed_storage(ty) {
         Some(narrow) => narrow.bits(),
