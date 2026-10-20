@@ -24,16 +24,17 @@ use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::StmtKind as AstStmtKind;
 use ironplc_ir::lowered::{
-    Arg, Callee, Const, Expr, ExprKind, Field, NarrowWidth, Nullability, Place as LoweredPlace,
+    Arg, Callee, Const, Expr, ExprKind, FieldIdx, NarrowWidth, Nullability, Place as LoweredPlace,
     PouId, Projection, ScalarType, Signedness as LoweredSignedness, Stmt, StmtKind, TypeId,
-    TypeKind,
+    TypeKind, VarId,
 };
 use ironplc_lowering::{PartialProgram, StatementLowering};
 
-use crate::compile::{CompileContext, CurrentBody, OpType, OpWidth, Signedness, UserFunctionInfo};
+use crate::compile::{CompileContext, OpType, OpWidth, Signedness, UserFunctionInfo};
 use crate::compile_subscript::subscript_check;
 use crate::compile_user_call::passes_by_reference;
 use crate::emit::Emitter;
+use crate::layout::ids::LaidOut;
 
 mod aggregate;
 mod call_args;
@@ -84,6 +85,11 @@ pub(crate) struct LoweredRoute {
 }
 
 impl LoweredRoute {
+    /// The program lowering made.
+    pub(crate) fn lowering(&self) -> &PartialProgram {
+        &self.lowering
+    }
+
     /// The lowered route for `route`, with the program `lower` lowers, or
     /// `None` when every statement is compiled from the AST, which lowers
     /// nothing. A P9998 lowering reports fails the compilation.
@@ -135,7 +141,7 @@ fn compile_by_route(
     stmt: &AstStmtKind,
 ) -> Result<bool, Diagnostic> {
     let lowering = &route.lowering;
-    let lowered = match current_pou(lowering, ctx).and_then(|pou| lowering.statement(pou, index)) {
+    let lowered = match current_pou(ctx).and_then(|pou| lowering.statement(pou, index)) {
         Some(StatementLowering::Lowered(lowered)) => Some(lowered),
         Some(StatementLowering::Unsupported) | None => None,
     };
@@ -280,7 +286,7 @@ fn expr_can_emit(lowering: &PartialProgram, ctx: &CompileContext, expr: &Expr) -
         ExprKind::Call {
             callee: Callee::User(pou),
             args,
-        } => match user_function(lowering, ctx, *pou) {
+        } => match user_function(ctx, *pou) {
             Some(function) => {
                 passes(&function.params, args.iter()) && args_can_emit(lowering, ctx, args)
             }
@@ -343,33 +349,22 @@ fn args_can_emit<'s>(
     })
 }
 
-/// The function `pou` as this backend's layout knows it, by the name the
-/// lowered program keeps on the POU, when it returns a value or a string's
-/// buffer on the stack: not a structure. `None` for any other function.
-pub(super) fn user_function(
-    lowering: &PartialProgram,
-    ctx: &CompileContext,
-    pou: PouId,
-) -> Option<UserFunctionInfo> {
-    callee_function(lowering, ctx, pou)
-        .filter(|function| function.return_struct_desc_index.is_none())
+/// The function `pou` as this backend's layout knows it, when it returns a
+/// value or a string's buffer on the stack: not a structure. `None` for any
+/// other function.
+pub(super) fn user_function(ctx: &CompileContext, pou: PouId) -> Option<UserFunctionInfo> {
+    callee_function(ctx, pou).filter(|function| function.return_struct_desc_index.is_none())
 }
 
-/// The function `pou` as this backend's layout knows it, by the name the
-/// lowered program keeps on the POU, whatever its result: one whose result
-/// is a structure leaves the offset of the structure's region on the stack.
-/// `None` for a method.
-pub(super) fn callee_function(
-    lowering: &PartialProgram,
-    ctx: &CompileContext,
-    pou: PouId,
-) -> Option<UserFunctionInfo> {
-    // A method is called by `METHOD_CALL` (`method.rs`), whatever its name.
-    if lowering.pous().method_of(pou).is_some() {
-        return None;
+/// The function `pou` as this backend's layout knows it, whatever its
+/// result: one whose result is a structure leaves the offset of the
+/// structure's region on the stack. `None` for a method.
+pub(super) fn callee_function(ctx: &CompileContext, pou: PouId) -> Option<UserFunctionInfo> {
+    // A method is called by `METHOD_CALL` (`method.rs`).
+    match ctx.lowered_ids.pou(pou)? {
+        LaidOut::Function(name) => ctx.user_function(name).cloned(),
+        LaidOut::Program | LaidOut::Block(_) | LaidOut::Method { .. } => None,
     }
-    let name = lowering.pous().name(pou)?.to_string().to_lowercase();
-    ctx.user_function(&name).cloned()
 }
 
 /// Whether `place` has storage this backend reaches as one value of type
@@ -423,25 +418,41 @@ fn subscripts_can_emit(
 }
 
 /// The name this backend's layout knows a variable `place` by: the
-/// variable's name, or the name of a field of the current instance, which
-/// this backend copies into a slot of that name. `None` for any other place.
-pub(super) fn storage_name(lowering: &PartialProgram, place: &LoweredPlace) -> Option<Id> {
+/// variable's name, or the name of the slot a field of the current instance
+/// is copied into. `None` for any other place, and for a variable the
+/// current body does not see by that name.
+pub(super) fn storage_name(
+    lowering: &PartialProgram,
+    ctx: &CompileContext,
+    place: &LoweredPlace,
+) -> Option<Id> {
     let root = lowering.variables().get(place.root())?;
     if place.path().is_empty() {
-        return Some(Id::from(&root.name().to_string()));
+        return seen_name(ctx, place.root()).cloned();
     }
-    let (field, rest) = instance_field(lowering, root.ty(), place.path())?;
-    rest.is_empty().then(|| Id::from(&field.name.to_string()))
+    let (instance, field, rest) = instance_field(lowering, root.ty(), place.path())?;
+    if !rest.is_empty() {
+        return None;
+    }
+    ctx.lowered_ids.field(instance, field).cloned()
+}
+
+/// The name the layout knows the variable `var` by, when the current body
+/// sees it by that name; `None` for a variable the layout keeps no slot for,
+/// or one the current body does not see.
+pub(super) fn seen_name(ctx: &CompileContext, var: VarId) -> Option<&Id> {
+    let (scope, name) = ctx.lowered_ids.variable(var)?;
+    ctx.sees(*scope, name).then_some(name)
 }
 
 /// When `path` starts by reaching a field of the current instance through the
-/// instance parameter, of type `root`: that field, and the projections after
-/// it. `None` for any other path.
-pub(super) fn instance_field<'l, 'p>(
-    lowering: &'l PartialProgram,
+/// instance parameter, of type `root`: the instance's type, that field, and
+/// the projections after it. `None` for any other path.
+pub(super) fn instance_field<'p>(
+    lowering: &PartialProgram,
     root: TypeId,
     path: &'p [Projection],
-) -> Option<(&'l Field, &'p [Projection])> {
+) -> Option<(TypeId, FieldIdx, &'p [Projection])> {
     let [deref, field, rest @ ..] = path else {
         return None;
     };
@@ -456,37 +467,19 @@ pub(super) fn instance_field<'l, 'p>(
     if !is_instance(lowering, root) {
         return None;
     }
-    let types = lowering.types();
-    let (instance, _) = types.reference(root)?;
-    let declared = types.fields(instance)?.get(field.index() as usize)?;
-    Some((declared, rest))
+    let (instance, _) = lowering.types().reference(root)?;
+    Some((instance, *field, rest))
 }
 
-/// The POU of the body being compiled; `None` outside a body, or for a body
+/// The POU whose body is compiled in the current scope; `None` for a body
 /// lowering did not lower.
-fn current_pou(lowering: &PartialProgram, ctx: &CompileContext) -> Option<PouId> {
-    lowering
-        .pous()
-        .ids()
-        .find(|pou| is_current_body(lowering, ctx, *pou))
+pub(super) fn current_pou(ctx: &CompileContext) -> Option<PouId> {
+    ctx.lowered_ids.pou_in(ctx.scope)
 }
 
 /// Whether `pou` is the body being compiled.
-pub(super) fn is_current_body(lowering: &PartialProgram, ctx: &CompileContext, pou: PouId) -> bool {
-    let pous = lowering.pous();
-    let named = |pou: PouId, name: &Id| {
-        pous.name(pou)
-            .is_some_and(|named| Id::from(&named.to_string()) == *name)
-    };
-    match (&ctx.current_body, pous.method_of(pou)) {
-        (Some(CurrentBody::Pou(name)), None) => named(pou, name),
-        (Some(CurrentBody::Method { block, method }), Some(of)) => {
-            named(pou, method) && named(of, block)
-        }
-        (Some(CurrentBody::Pou(_)), Some(_))
-        | (Some(CurrentBody::Method { .. }), None)
-        | (None, _) => false,
-    }
+pub(super) fn is_current_body(ctx: &CompileContext, pou: PouId) -> bool {
+    ctx.lowered_ids.scope(pou) == Some(ctx.scope)
 }
 
 /// Whether two spans are the same text. `SourceSpan`'s own equality holds

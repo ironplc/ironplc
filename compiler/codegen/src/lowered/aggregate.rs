@@ -224,7 +224,7 @@ pub(super) fn has_region(
 /// array of structures. A `REF_TO ARRAY` parameter's slot holds a variable
 /// index, not a region, so it has none.
 fn region(lowering: &PartialProgram, ctx: &CompileContext, place: &LoweredPlace) -> Option<Region> {
-    let name = storage_name(lowering, place)?;
+    let name = storage_name(lowering, ctx, place)?;
     if let Some(info) = ctx.struct_var(&name) {
         return Some(Region {
             var_index: info.var_index,

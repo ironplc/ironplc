@@ -32,9 +32,10 @@ use ironplc_lowering::PartialProgram;
 
 use super::place::field_path;
 use super::slot_copy::is_block_reference;
-use crate::compile::{CompileContext, CurrentBody, FbFieldIndex};
+use crate::compile::{CompileContext, FbFieldIndex};
 use crate::emit::Emitter;
 use crate::held_instances::{layout, layout_of_type};
+use crate::layout::ids::LaidOut;
 
 /// The copy of one instance to another of its block.
 pub(super) struct InstanceCopy {
@@ -170,10 +171,11 @@ fn held_by_current(
     if !is_block_reference(lowering.types(), root.ty()) {
         return None;
     }
-    let block = match ctx.current_body.as_ref()? {
-        CurrentBody::Pou(block) | CurrentBody::Method { block, .. } => block,
+    let block = match ctx.lowered_ids.pou(super::current_pou(ctx)?)? {
+        LaidOut::Block(block) | LaidOut::Method { block, .. } => block,
+        LaidOut::Program | LaidOut::Function(_) => return None,
     };
-    let held = layout(ctx, &block.to_string().to_uppercase())?
+    let held = layout(ctx, block)?
         .held
         .iter()
         .find(|held| held.name == *name.lower_case())?;

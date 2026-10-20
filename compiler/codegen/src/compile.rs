@@ -596,8 +596,13 @@ fn compile_program_with_functions(
         )?);
     }
 
-    // Every body is laid out; compile the functions' bodies, then each FB's
-    // body followed by its METHODs'.
+    // Every body is laid out: match the lowered program's ids to it, then
+    // compile the functions' bodies, then each FB's body followed by its
+    // METHODs'.
+    if let Some(route) = &ctx.lowered_route {
+        ctx.lowered_ids =
+            crate::layout::ids::LoweredIds::matched(route.lowering(), &ctx, &program.name);
+    }
     for (func_decl, layout) in func_decls.iter().zip(function_layouts) {
         compiled_functions.push(compile_user_function(func_decl, layout, &mut ctx)?);
     }
@@ -618,12 +623,7 @@ fn compile_program_with_functions(
             &mut ctx,
         )?);
         for (method, layout) in fb_decl.methods.iter().zip(methods) {
-            compiled_methods.push(compile_user_method(
-                &fb_decl.name.name,
-                method,
-                layout,
-                &mut ctx,
-            )?);
+            compiled_methods.push(compile_user_method(method, layout, &mut ctx)?);
         }
     }
 
@@ -640,14 +640,12 @@ fn compile_program_with_functions(
     // emitted from inside the body records a call-graph edge.
     let mut scan_emitter = Emitter::new();
     ctx.current_function_id = Some(FunctionId::SCAN);
-    ctx.current_body = Some(CurrentBody::Pou(program.name.clone()));
     compile_body(
         &mut scan_emitter,
         &mut ctx,
         &program.body,
         &program.name.span(),
     )?;
-    ctx.current_body = None;
     ctx.current_function_id = None;
     scan_emitter.emit_ret_void();
 
@@ -1042,23 +1040,15 @@ pub(crate) struct UserMethodParam {
     pub(crate) passing: ParamPassing,
 }
 
-/// A body whose statements are being compiled.
-#[derive(Clone, Debug)]
-pub(crate) enum CurrentBody {
-    /// The body of the program, function block or function of this name.
-    Pou(Id),
-    /// The body of the method `method` of the function block `block`.
-    Method { block: Id, method: Id },
-}
-
 pub(crate) struct CompileContext {
     /// The program lowering made, which each top-level statement is read
     /// from, when the route compiles statements from the lowered program;
     /// `None` when every statement is compiled from the AST.
     pub(crate) lowered_route: Option<crate::lowered::LoweredRoute>,
-    /// The body being compiled, whose POU the lowered statement is read
-    /// from; `None` outside a body.
-    pub(crate) current_body: Option<CurrentBody>,
+    /// What the layout knows each id of the lowered program as, once the
+    /// layout is built; empty when every statement is compiled from the
+    /// AST.
+    pub(crate) lowered_ids: crate::layout::ids::LoweredIds,
     /// The scope whose names are being laid out, or whose body is being
     /// compiled: what the layout's entries are recorded under, and what
     /// each lookup sees ([`crate::layout::names`]).
@@ -1193,7 +1183,7 @@ impl CompileContext {
     pub(crate) fn new() -> Self {
         CompileContext {
             lowered_route: None,
-            current_body: None,
+            lowered_ids: crate::layout::ids::LoweredIds::default(),
             scope: ScopeId::Program,
             variables: Scoped::default(),
             var_types: Scoped::default(),
@@ -1306,6 +1296,13 @@ impl CompileContext {
     /// `reach` says of the globals' and the program's.
     fn seen<'m, V>(&self, map: &'m Scoped<V>, reach: names::Reach, name: &Id) -> Option<&'m V> {
         names::lookup(map, &self.variables, reach, self.scope, name)
+    }
+
+    /// Whether the current scope sees the variable `name` that `scope`
+    /// declares: whether the name reaches that variable's slot here.
+    pub(crate) fn sees(&self, scope: ScopeId, name: &Id) -> bool {
+        let declared = names::lookup(&self.variables, &self.variables, names::SLOTS, scope, name);
+        declared.is_some() && declared == self.seen(&self.variables, names::SLOTS, name)
     }
 
     /// How many names have a slot that the current scope sees.
