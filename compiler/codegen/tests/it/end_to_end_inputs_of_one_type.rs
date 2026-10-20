@@ -21,9 +21,9 @@ e2e_i64!(
     &[("l", 5_000_000_000), ("l_first", 5_000_000_000)],
 );
 
-// 3000000000 does not fit a DINT: passed to a DINT input it keeps its bits,
-// -1294967296. Compared at the DINT of its context it was the smaller of the
-// two, and 1 was selected.
+// 3000000000 does not fit a DINT: converted to one for a DINT input it keeps
+// its bits, -1294967296. Compared at the DINT of its context it was the
+// smaller of the two, and 1 was selected.
 e2e_i64_with!(
     end_to_end_when_max_of_udints_in_dint_context_then_selects_the_larger,
     fb_inheritance_options(),
@@ -34,8 +34,8 @@ e2e_i64_with!(
      PROGRAM main
      VAR u1 : UDINT := 3000000000; u2 : UDINT := 1; k : Keep;
          by_block : DINT; by_method : DINT; by_udint : UDINT; by_lint : LINT; END_VAR
-       k(x := MAX(u1, u2)); by_block := k.y;
-       by_method := k.keep(MAX(u1, u2));
+       k(x := UDINT_TO_DINT(MAX(u1, u2))); by_block := k.y;
+       by_method := k.keep(UDINT_TO_DINT(MAX(u1, u2)));
        by_udint := MAX(u1, u2);
        by_lint := MAX(u1, u2);
      END_PROGRAM",
@@ -55,7 +55,7 @@ e2e_i64!(
      PROGRAM main
      VAR lo : UDINT := 1; x : UDINT := 3000000000; hi : UDINT := 4000000000;
          k : Keep; clamped : DINT; END_VAR
-       k(x := LIMIT(lo, x, hi)); clamped := k.y;
+       k(x := UDINT_TO_DINT(LIMIT(lo, x, hi))); clamped := k.y;
      END_PROGRAM",
     &[("clamped", -1_294_967_296)],
 );
@@ -70,7 +70,7 @@ e2e_i64!(
      END_FUNCTION_BLOCK
      PROGRAM main
      VAR s1 : Big := 3000000000; s2 : Big := 1; k : Keep; by_block : DINT; by_lint : LINT; END_VAR
-       k(x := MAX(s1, s2)); by_block := k.y;
+       k(x := UDINT_TO_DINT(MAX(s1, s2))); by_block := k.y;
        by_lint := MAX(s1, s2);
      END_PROGRAM",
     &[("by_block", -1_294_967_296), ("by_lint", 3_000_000_000)],
