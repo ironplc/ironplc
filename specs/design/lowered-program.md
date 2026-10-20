@@ -1089,6 +1089,12 @@ lowering reports one it meets as P9998.
 **REQ-LOW-lowering-051** A string literal's characters fit its encoding
 ([ADR-0016](../adrs/0016-string-encoding.md)).
 
+**REQ-LOW-lowering-188** The string a reference refers to, `rs^`, or an
+element of an array of strings a reference refers to, `rsa^[i]`, is a `Read`
+of the place through the `Deref`, and a store to it is an `AssignStr` to that
+place, as for any value a reference refers to. `REF(s)^`, and `ADR(s)^`,
+which the analyzer makes `REF(s)^`, is a `Read` of `s`.
+
 Temporary buffers, their pool size and their release
 ([ADR-0052](../adrs/0052-temp-string-buffers-released-on-consume.md)) are how
 the bytecode backend evaluates a `StrExpr`. They do not appear in the lowered
@@ -1164,6 +1170,17 @@ of other strings in the program.
 **REQ-LOW-codegen-056** A string value that goes into a place or an
 intermediate result with a smaller capacity keeps its first code units, up to
 that capacity.
+
+**REQ-LOW-codegen-189** The bytecode backend's reference to a string is a
+data-region reference to the string's header
+([var-in-out-parameters.md](var-in-out-parameters.md#references)), whether a
+`RefTo` or a reference variable's starting value makes it. The backend reads
+and writes the string a reference refers to with `STR_LOAD_ARRAY_DEREF` and
+`STR_STORE_ARRAY_DEREF`: a string is the one element of a one-element array of
+the reference's capacity, and an element of an array of strings is reached
+with that array's descriptor. The route that reads the AST makes the same
+reference, and follows it with `LOAD_INDIRECT`, which takes only a variable
+reference, so a string read through a reference traps there (V9005).
 
 ### 3.7 Statements
 
@@ -1314,6 +1331,10 @@ method's `VAR_OUTPUT` parameter does. A `FOR` whose step is not a nonzero
 constant, and one whose control variable is a `VAR_IN_OUT`, is reported as
 P9999, as it is today.
 
+The analyzer holds the control variable to an integer, `ANY_INT` or a subrange
+of one (P4091), so a `For` never counts with a real, a bit string, a duration,
+a `BOOL` or an enumeration.
+
 `to` is evaluated on every iteration, and the control variable wraps, so a
 `FOR` whose bound is the largest value of the control variable's type does not
 end. Both are today's behaviour, recorded rather than changed.
@@ -1436,6 +1457,16 @@ Lowering passes such an input of a function or method as an `Arg::Copy`
 emits it as that route does, the offset, so a call compiles to the same code
 by either route. The callee gets a copy of its own once a body that reads the
 parameter compiles, which it does on neither route yet.
+
+So too a method's input of a function block type, `b.Go(i := f)`, which a
+function cannot declare (P4054). The argument is an `Arg::Copy` of the
+instance, and the bytecode backend passes the instance's slot, which holds the
+data offset of its fields, as that route does. Neither route calls such an
+input in the method's body or reads its fields
+([issue 1553](https://github.com/ironplc/ironplc/issues/1553)). An argument
+that is a field of another function block instance, `b.Go(i := g.inner)` or
+`SUMP(q := g.p)`, is passed as the value that field's slot holds, as that
+route passes it.
 
 A string is passed by value too. The argument for a `VAR_INPUT` of a `STRING`
 or `WSTRING` type is a `Str` of the parameter's encoding, of any capacity
@@ -2080,6 +2111,14 @@ array or function block variable of a function, function block or method
 body other than a field that holds an instance, which no program reads
 inside (see [Statements](#37-statements)).
 
+**REQ-LOW-codegen-193** The bytecode backend copies a whole array or
+structure into the one a reference refers to, `p^ := z`, with
+`COPY_REGION_DEREF` through the reference `p` holds. The destination is sized
+by the descriptor of the array or structure type `p` refers to, which `p`'s
+declaration registers. The route that reads the AST stores `z`'s data offset
+in the slot of the variable `p` refers to instead, which makes that variable
+an alias of `z`.
+
 **REQ-LOW-codegen-089** An `Intrinsic` means what the IEC 61131-3 standard
 function means, with these choices where the standard leaves room: the count
 of `SHL` and `SHR` is taken modulo the operation width, `SHR` fills with
@@ -2204,7 +2243,7 @@ today.
 | Whether an interface value can hold only one concrete type | Not made; calls through an interface are not compiled | The concrete types the value can hold (REQ-LOW-analyzer-107) | A direct method call, or a `Callee::Interface` |
 | Capacity of a string declared without one | Codegen and `slot_count`, from `DEFAULT_STRING_MAX_LENGTH` | The string type's capacity (REQ-LOW-analyzer-053) | The capacity of its `StringShape` |
 | Enumeration ordinal | The analyzer, when the type enters the type environment (`EnumerationMembers`); codegen looks the ordinal up (`compile_enum.rs`) | Each member's ordinal, explicit (`GREEN := 5`) or counted on from the one before, and the type's default member, on `SemanticType::Enumeration` | `Const` |
-| Declaration a variable name refers to | The analyzer's `SymbolEnvironment::resolve_variable` ([Variable Binding](variable-binding.md)); codegen resolves names again, from tables of its own (`scope.rs`) | Not in the `Library`: the function answers from the `SemanticContext`, with a `DeclRef` that names the declaration by its scope and its name ([ADR-0066](../adrs/0066-name-resolution-is-an-analyzer-function.md)) | One `VarId` for each `DeclRef` (REQ-LOW-lowering-020, REQ-LOW-lowering-022) |
+| Declaration a variable name refers to | The analyzer's `SymbolEnvironment::resolve_variable` ([Variable Binding](variable-binding.md)); codegen resolves names again, from tables of its own (`layout/names.rs`) | Not in the `Library`: the function answers from the `SemanticContext`, with a `DeclRef` that names the declaration by its scope and its name ([ADR-0066](../adrs/0066-name-resolution-is-an-analyzer-function.md)) | One `VarId` for each `DeclRef` (REQ-LOW-lowering-020, REQ-LOW-lowering-022) |
 
 **Decisions lowering makes**
 
@@ -2299,6 +2338,7 @@ implements it.
 | Bit and partial write | `AssignBits` |
 | `p^ := v` | `Assign` to a place ending in `Deref` |
 | `REF(x)^`, and `ADR(x)^`, which the analyzer makes `REF(x)^` | A `Read` of `x` |
+| A subscript of a reference to an array, `r[i]` (a TwinCAT `REFERENCE TO`, or a `REF_TO` the analyzer lets a subscript follow without `^`) | The `Index` of the `Deref`, as `r^[i]`. This corrects the route that reads the AST, which indexes the reference's own slot as though it held the array's data |
 | `S=`, `R=` | `If` on the value around an `Assign` of `TRUE` or `FALSE` |
 | `REF=` | `Assign` of a `RefTo` (already the analyzer's view) |
 | Function block call with inputs and outputs | Assignments to the instance's fields, `FbCall`, assignments from them (REQ-LOW-lowering-069) |
@@ -2880,9 +2920,10 @@ This section constrains the order of work; it is not a work breakdown.
 - **Storage found by name at first.** A lowered variable carries its name and
   its owning POU (REQ-LOW-lowering-006). So while both routes exist, the
   bytecode backend finds a lowered variable's storage in the layout codegen
-  builds today: through the current body's `Scope`, by name. A field of the
-  current instance is found the same way. While the VM copies fields, that is
-  the slot holding the copy (see [Instance fields](#instance-fields)). The
+  builds today: in the current body's scope (`layout/names.rs`), by name. A
+  field of the current instance is found the same way. While the VM copies
+  fields, that is the slot holding the copy (see
+  [Instance fields](#instance-fields)). The
   function a `Callee::User` calls is found by the name its POU carries, as
   the function the route that reads the AST compiled.
   REQ-LOW-codegen-122 and REQ-LOW-codegen-123 are met later. Once a POU's

@@ -30,6 +30,7 @@ use super::call_args::{emit_passed, passes};
 use super::place::variable_name;
 use crate::compile::{CompileContext, ParamPassing, StringVarInfo};
 use crate::emit::Emitter;
+use crate::layout::ids::LaidOut;
 
 /// A call of a method, as this backend's layout knows it: the receiver's
 /// instance, and the method.
@@ -44,7 +45,6 @@ pub(super) struct MethodSite {
     param_var_off: VarIndex,
     num_params: u16,
     pub(super) has_return_value: bool,
-    max_stack_depth: u16,
     /// How a call passes each input, in order.
     params: Vec<ParamPassing>,
     /// The slot of each output.
@@ -76,12 +76,15 @@ pub(super) fn method_site(
     pou: PouId,
     args: &[Arg],
 ) -> Option<MethodSite> {
-    let pous = lowering.pous();
-    let block = pous.method_of(pou)?;
-    let block_name = pous.name(block)?.to_string().to_uppercase();
-    let method_name = pous.name(pou)?.to_string().to_lowercase();
-    let block = ctx.user_fb_type(&block_name)?;
-    let method = block.methods.get(&method_name)?;
+    let LaidOut::Method {
+        block: block_name,
+        method: method_name,
+    } = ctx.lowered_ids.pou(pou)?
+    else {
+        return None;
+    };
+    let block = ctx.user_fb_type(block_name)?;
+    let method = block.methods.get(method_name)?;
     let Some(Arg::Ref(receiver)) = args.first() else {
         return None;
     };
@@ -102,7 +105,6 @@ pub(super) fn method_site(
         param_var_off: VarIndex::new(method.param_var_off),
         num_params: method.num_params,
         has_return_value: method.has_return_value,
-        max_stack_depth: method.max_stack_depth,
         params: method
             .params
             .iter()
@@ -127,6 +129,7 @@ pub(super) fn emit_method_call<'s>(
     emitter.emit_fb_load_instance(site.instance);
     emit_passed(emitter, ctx, lowering, &site.params, inputs, span)?;
     ctx.record_call_edge(site.function_id);
+    let stack_depth = ctx.function_stack_depth(site.function_id, span)?;
     emitter.emit_method_call(
         site.function_id,
         site.field_var_off,
@@ -134,7 +137,7 @@ pub(super) fn emit_method_call<'s>(
         site.param_var_off,
         site.num_params,
         site.has_return_value,
-        site.max_stack_depth,
+        stack_depth,
     );
     Ok(())
 }

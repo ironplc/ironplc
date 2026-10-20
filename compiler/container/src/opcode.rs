@@ -164,7 +164,8 @@ pub const OP_CLASS_FB_CALL: u8 = 0x29;
 pub const OP_CLASS_LOAD_ARRAY: u8 = 0x2A;
 /// Op class: store into an array's storage. Type tag selects the granularity:
 /// 0 = STORE_ARRAY (one element at a runtime index), 1 = COPY_REGION (the
-/// whole region). Tags 2..3 are free.
+/// whole region), 2 = COPY_REGION_DEREF (the whole region a reference refers
+/// to). Tag 3 is free.
 pub const OP_CLASS_STORE_ARRAY: u8 = 0x2B;
 /// Op class: load array element via reference.
 pub const OP_CLASS_LOAD_ARRAY_DEREF: u8 = 0x2C;
@@ -196,9 +197,13 @@ pub const OP_CLASS_MID_STR: u8 = 0x38;
 pub const OP_CLASS_CONCAT_STR: u8 = 0x39;
 /// Op class: STR_INIT_ARRAY.
 pub const OP_CLASS_STR_INIT_ARRAY: u8 = 0x3A;
-/// Op class: STR_LOAD_ARRAY_ELEM.
+/// Op class: load a string from an element of a string array. Type tag
+/// selects how the array is reached: 0 = `STR_LOAD_ARRAY_ELEM` (a variable
+/// holds its offset), 1 = `STR_LOAD_ARRAY_DEREF` (through a reference).
 pub const OP_CLASS_STR_LOAD_ARRAY_ELEM: u8 = 0x3B;
-/// Op class: STR_STORE_ARRAY_ELEM.
+/// Op class: store a string into an element of a string array. Type tag
+/// as for [`OP_CLASS_STR_LOAD_ARRAY_ELEM`]: 0 = `STR_STORE_ARRAY_ELEM`,
+/// 1 = `STR_STORE_ARRAY_DEREF`.
 pub const OP_CLASS_STR_STORE_ARRAY_ELEM: u8 = 0x3C;
 /// Op class: fused compare-and-branch. Type tag selects the type family
 /// (`T_I32`/`T_I64`; floats reserved). The comparison operator is encoded
@@ -519,6 +524,28 @@ declare_instruction_set! {
     /// Pops flat_index, then pops buf_idx. Net stack: -2.
     STR_STORE_ARRAY_ELEM = (OP_CLASS_STR_STORE_ARRAY_ELEM, 0) => [VarIndex, ArrayDescIndex];
 
+    /// Load a string from an element of a string array a reference refers
+    /// to into a temp buffer. A single string a reference refers to is the
+    /// one element of a one-element array.
+    /// Operand 1: u16 reference variable index. The slot holds a data-region
+    ///            reference to the first element's header, or a variable
+    ///            reference to the array variable, whose slot holds that
+    ///            element's data offset (`crate::reference`).
+    /// Operand 2: u16 array descriptor index.
+    /// Pops flat_index, pushes buf_idx. Net stack: 0.
+    ///
+    /// A type-tag variant of `STR_LOAD_ARRAY_ELEM`: the same element access,
+    /// with the base taken through a reference, as `LOAD_ARRAY_DEREF` takes
+    /// it for `LOAD_ARRAY`.
+    STR_LOAD_ARRAY_DEREF = (OP_CLASS_STR_LOAD_ARRAY_ELEM, 1) => [RefIndex, ArrayDescIndex];
+
+    /// Store a temp buffer into an element of a string array a reference
+    /// refers to, truncating to the descriptor's capacity.
+    /// Operand 1: u16 reference variable index, as for `STR_LOAD_ARRAY_DEREF`.
+    /// Operand 2: u16 array descriptor index.
+    /// Pops flat_index, then pops buf_idx. Net stack: -2.
+    STR_STORE_ARRAY_DEREF = (OP_CLASS_STR_STORE_ARRAY_ELEM, 1) => [RefIndex, ArrayDescIndex];
+
     // --- Array opcodes ---
 
     /// Load a value from an array element.
@@ -575,6 +602,21 @@ declare_instruction_set! {
     /// spending one on a single instruction would have consumed the last free
     /// slot.
     COPY_REGION = (OP_CLASS_STORE_ARRAY, 1) => [VarIndex, ArrayDescIndex, ArrayDescIndex]
+        note "size from descriptors; source offset from stack";
+
+    /// Copy a whole array or structure into the one a reference refers to.
+    /// Operand 1: u16 reference variable index. The slot holds a data-region
+    ///            reference to the destination's first byte, or a variable
+    ///            reference to the destination's variable, whose slot holds
+    ///            that byte's data offset (`crate::reference`).
+    /// Operand 2: u16 destination array descriptor index (little-endian).
+    /// Operand 3: u16 source array descriptor index (little-endian).
+    /// Pops 1 (source data-region byte offset). Net stack: -1.
+    ///
+    /// A type-tag variant of `COPY_REGION`: the same copy, sized the same
+    /// way, with the destination taken through a reference, as
+    /// `STORE_ARRAY_DEREF` takes it for `STORE_ARRAY`.
+    COPY_REGION_DEREF = (OP_CLASS_STORE_ARRAY, 2) => [RefIndex, ArrayDescIndex, ArrayDescIndex]
         note "size from descriptors; source offset from stack";
 
     // --- Truncation opcodes ---

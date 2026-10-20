@@ -494,6 +494,7 @@ mod tests {
     fn context_with_string(max_length: u16) -> CompileContext {
         let mut ctx = context();
         ctx.string_vars.insert(
+            ctx.scope,
             Id::from("s"),
             StringVarInfo {
                 data_offset: 0,

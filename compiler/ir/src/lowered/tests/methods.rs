@@ -276,3 +276,37 @@ fn call_when_receiver_extends_method_block_then_passes() {
         "ProgramBuilder::call"
     ));
 }
+
+/// REQ-LOW-lowering-072, REQ-LOW-lowering-075: a method's input of a
+/// function block type takes a copy of an instance of that block, a `Copy`
+/// argument. A `Ref` to the instance, and a copy of a place of another type,
+/// are refused.
+#[test]
+fn call_when_instance_input_then_takes_copy_of_instance() {
+    let mut m = method();
+    let i =
+        m.b.push_variable(name("i"), Owner::Pou(m.pou), m.counter)
+            .unwrap();
+    m.b.declare_method(m.pou, vec![m.this, i], Some(m.r), &span())
+        .unwrap();
+    assert_eq!(
+        m.b.params(m.pou),
+        Some(vec![Param::Ref(m.counter), Param::Copy(m.counter)])
+    );
+    let c = m.b.var(m.instance, &span()).unwrap();
+    let d = m.b.var(m.dint, &span()).unwrap();
+    let call =
+        m.b.call(
+            m.pou,
+            vec![Arg::Ref(c.clone()), Arg::Copy(c.clone())],
+            span(),
+        )
+        .unwrap();
+    assert_eq!(call.to_string(), "(call pou2 i32s (ref v0) (copy v0))");
+    for refused in [Arg::Ref(c.clone()), Arg::Copy(d)] {
+        assert!(is_internal_error_naming(
+            m.b.call(m.pou, vec![Arg::Ref(c.clone()), refused], span()),
+            "ProgramBuilder::call"
+        ));
+    }
+}

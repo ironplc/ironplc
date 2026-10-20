@@ -34,6 +34,7 @@ mod instruction;
 pub mod integrity;
 pub mod opcode;
 pub mod policy;
+pub mod reference;
 mod string_layout;
 mod task_type;
 

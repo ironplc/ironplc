@@ -337,7 +337,7 @@ fn call_target<'s>(
     args: &'s [Arg],
 ) -> Option<Call<'s>> {
     let signature = lowering.pous().function(pou)?;
-    let (target, receivers) = match callee_function(lowering, ctx, pou) {
+    let (target, receivers) = match callee_function(ctx, pou) {
         Some(function) => {
             let result_parameter = usize::from(signature.result_parameter().is_some());
             (Target::Function(function), result_parameter)

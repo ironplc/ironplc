@@ -527,11 +527,7 @@ fn register_array_element_strings(
         else {
             continue;
         };
-        let element_field_type = if char_width.is_wide() {
-            FieldType::WString
-        } else {
-            FieldType::String
-        };
+        let element_field_type = FieldType::string(*char_width);
         let desc_index = builder.add_strided_array_descriptor(
             element_field_type as u8,
             total_elements,
@@ -629,6 +625,7 @@ pub(crate) fn register_struct_array_variable(
         (!element_strings.is_empty()).then(|| ctx.allocate_scratch_variable(&id.to_string()));
 
     ctx.struct_array_vars.insert(
+        ctx.scope,
         id.clone(),
         StructArrayVarInfo {
             var_index,

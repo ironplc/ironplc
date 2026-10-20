@@ -196,6 +196,36 @@ To fix this error, compare the reference with ``NULL``:
        unset := target = NULL;
    END_PROGRAM
 
+Negating a BOOL
+---------------
+
+The following code will generate error P4049:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       running : BOOL := TRUE;
+       stopped : BOOL;
+   END_VAR
+       stopped := -running;
+   END_PROGRAM
+
+The unary ``-`` negates a number or a duration. A ``BOOL`` is a truth value,
+not a number, so it has no negative.
+
+To fix this error, invert the ``BOOL`` with ``NOT``:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       running : BOOL := TRUE;
+       stopped : BOOL;
+   END_VAR
+       stopped := NOT running;   (* FALSE *)
+   END_PROGRAM
+
 Remainder of a real number
 --------------------------
 

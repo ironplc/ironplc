@@ -45,6 +45,15 @@ impl FieldType {
             _ => Err(ContainerError::InvalidFieldType(v)),
         }
     }
+
+    /// The field type of a string whose code units are `char_width` wide:
+    /// `String` for a `STRING`, `WString` for a `WSTRING`.
+    pub fn string(char_width: crate::CharWidth) -> Self {
+        match char_width {
+            crate::CharWidth::Narrow => FieldType::String,
+            crate::CharWidth::Wide => FieldType::WString,
+        }
+    }
 }
 
 /// A single field entry within an FB type descriptor.
@@ -542,6 +551,22 @@ mod tests {
         assert_eq!(
             wide.element_stride(),
             crate::STRING_HEADER_BYTES as u32 + 20
+        );
+    }
+
+    #[test]
+    fn field_type_string_when_each_width_then_string_type_whose_elements_have_it() {
+        for width in [crate::CharWidth::Narrow, crate::CharWidth::Wide] {
+            let desc = ArrayDescriptor::new(FieldType::string(width) as u8, 1, 10);
+            assert_eq!(desc.element_char_width(), width);
+        }
+        assert_eq!(
+            FieldType::string(crate::CharWidth::Narrow),
+            FieldType::String
+        );
+        assert_eq!(
+            FieldType::string(crate::CharWidth::Wide),
+            FieldType::WString
         );
     }
 

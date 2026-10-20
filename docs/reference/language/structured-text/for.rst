@@ -33,7 +33,9 @@ control variable exceeds the end value (or falls below it if the step is
 negative).
 
 The control variable, start expression, end expression, and step expression
-must all be integer types.
+must all be integer types. A control variable of any other type, such as a
+``REAL`` or a ``WORD``, is an error
+(:doc:`P4091 </reference/compiler/problems/P4091>`).
 
 Example
 -------

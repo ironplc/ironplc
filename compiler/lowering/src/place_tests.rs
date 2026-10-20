@@ -169,6 +169,23 @@ fn lower_statement_when_dereference_of_ref_then_read_of_place() {
     );
 }
 
+/// A subscript of a reference to an array, which the analyzer lets follow
+/// the reference without `^`, indexes the array it refers to, as `pa^[i]`
+/// does.
+#[test]
+fn lower_statement_when_reference_to_array_subscripted_then_deref_then_index() {
+    let outcome = lower(
+        "PROGRAM main VAR pa : REF_TO ARRAY[1..3] OF DINT; i : DINT; END_VAR
+            pa[i] := pa[3];
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        ["assign v0^.f0^[(read i32s v0^.f1)] (read i32s v0^.f0^[(const i32s 3)])"]
+    );
+}
+
 /// An element of an array a reference refers to is a `Deref`, then an
 /// `Index`.
 #[test]

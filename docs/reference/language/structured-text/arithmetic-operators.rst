@@ -106,6 +106,10 @@ The unary negation operator ``-`` has higher precedence than the binary
 arithmetic operators. Exponentiation ``**`` has higher precedence than
 multiplication, division, and modulo.
 
+Negating a ``BOOL``, a time of day, a date or a date and time is an error
+(:doc:`P4049 </reference/compiler/problems/P4049>`). Use ``NOT`` to invert a
+``BOOL``.
+
 Example
 -------
 

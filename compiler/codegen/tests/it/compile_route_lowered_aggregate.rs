@@ -49,6 +49,32 @@ fn run_when_arrays_and_structures_copied_then_destination_holds_values() {
     assert_eq!(snapshot.read_as::<i32>("r6"), 13);
 }
 
+/// A whole array of structures is copied by value, string fields included:
+/// a write to the source afterwards leaves the destination as it was. This
+/// corrects the route that reads the AST, which stores the source's slot in
+/// the destination's and so makes the destination an alias of the source.
+#[test]
+fn run_when_array_of_structures_copied_then_destination_holds_values() {
+    let snapshot = run_lowered(
+        "TYPE P : STRUCT x : DINT; n : STRING[8]; END_STRUCT; END_TYPE
+         PROGRAM main
+           VAR ps : ARRAY[0..2] OF P; qs : ARRAY[0..2] OF P;
+               copied : DINT; later : DINT; name : STRING[8]; END_VAR
+           qs[1].x := 5;
+           qs[1].n := 'abc';
+           ps := qs;
+           qs[1].x := 7;
+           qs[1].n := 'zz';
+           copied := ps[1].x;
+           later := qs[1].x;
+           name := ps[1].n;
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<i32>("copied"), 5);
+    assert_eq!(snapshot.read_as::<i32>("later"), 7);
+    assert_eq!(snapshot.read("name"), "abc");
+}
+
 /// A copy compiles to the same instructions and constants by both routes.
 #[rstest]
 #[case::array("x := y;")]

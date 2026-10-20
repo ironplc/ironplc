@@ -9,233 +9,40 @@
 //! convention. Structurally this mirrors `compile_fn::compile_user_function`
 //! closely; the differences are exactly the parts of that convention.
 
-use std::collections::HashMap;
-
-use ironplc_container::{FunctionId, VarIndex};
-use ironplc_dsl::common::{
-    FunctionBlockDeclaration, FunctionReturnType, InitialValueAssignmentKind, MethodDeclaration,
-    TypeName, VariableType,
-};
-use ironplc_dsl::core::{Id, Located};
+use ironplc_dsl::common::{MethodDeclaration, TypeName};
+use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{MethodCall, MethodReceiver, ParamAssignmentKind};
 
-use ironplc_analyzer::TypeEnvironment;
-
 use super::compile::{
-    finalize_function, CompileContext, CompiledFunction, CurrentBody, CurrentFunctionReturn,
-    ParamPassing, StringVarInfo, DEFAULT_OP_TYPE,
+    finalize_function, CompileContext, CompiledFunction, CurrentFunctionReturn, ParamPassing,
 };
 use super::compile_call_output::{store_outputs, CallOutputs};
 use super::compile_expr::{compile_expr, emit_load_var};
-use super::compile_fn::{param_passing, register_string_variable};
 use super::compile_setup::emit_function_local_prologue;
 use super::compile_stmt::compile_statements;
 use super::compile_user_call::compile_string_arg;
-use super::type_info::{decl_type_info, named_type_info};
+use super::layout::MethodLayout;
 use crate::emit::Emitter;
 
-/// Compiles every `METHOD` declared on `fb_decl`, in declaration order.
-///
-/// Must run after `fb_decl`'s own body has been compiled (so `ctx.variables`
-/// still holds that type's field name -> `VarIndex` mappings, at
-/// `field_var_off`) and before the caller restores `ctx.variables` back to
-/// the program-level view. `var_offset` is threaded through and advanced
-/// past each method's own param/local region as it's allocated, exactly
-/// like `compile_user_function`'s `var_offset` in the outer driver.
-pub(crate) fn compile_user_fb_methods(
-    fb_decl: &FunctionBlockDeclaration,
-    fb_name: &str,
-    field_var_off: u16,
-    var_offset: &mut VarIndex,
-    ctx: &mut CompileContext,
-    types: &TypeEnvironment,
-) -> Result<Vec<CompiledFunction>, Diagnostic> {
-    let mut compiled = Vec::new();
-
-    for method in &fb_decl.methods {
-        let method_name = method.name.to_string().to_lowercase();
-        let function_id = ctx.user_fb_types[fb_name].methods[&method_name].function_id;
-        let param_var_off = *var_offset;
-
-        // A method's parameters, locals and result name belong to the
-        // method, not to the function block or to whichever method is
-        // compiled next. `compile_user_function` gets this by starting
-        // from an empty map (`compile_fn.rs:78`); a method cannot,
-        // because the enclosing type's field mappings have to stay
-        // visible for `self` access -- so snapshot and restore instead.
-        // Without this, a name declared by one method still resolves in
-        // the next, to a `VarIndex` that may fall outside that method's
-        // frame bounds window.
-        let saved_variables = ctx.variables.clone();
-        let saved_var_types = ctx.var_types.clone();
-        let saved_string_vars = ctx.string_vars.clone();
-
-        let compiled_method = compile_user_method(
-            &fb_decl.name.name,
-            method,
-            function_id,
-            field_var_off,
-            param_var_off,
-            ctx,
-            types,
-        );
-
-        ctx.variables = saved_variables;
-        ctx.var_types = saved_var_types;
-        ctx.string_vars = saved_string_vars;
-
-        let CompiledMethod {
-            compiled: result,
-            params,
-            outputs,
-            string_outputs,
-        } = compiled_method?;
-
-        // `result.num_locals` spans from `field_var_off` (not
-        // `param_var_off`) through this method's own locals -- see the
-        // comment in `compile_user_method`. Advancing `var_offset` by
-        // that full span means a type with N methods reserves
-        // N * num_fields more table slots than strictly necessary (each
-        // method's span re-covers the shared field region). Harmless
-        // (a few extra flat-table slots, never aliased or read), just
-        // not maximally compact; fine to tighten later if it matters.
-        *var_offset = VarIndex::new(var_offset.raw() + result.num_locals);
-
-        if let Some(info) = ctx
-            .user_fb_types
-            .get_mut(fb_name)
-            .and_then(|fb| fb.methods.get_mut(&method_name))
-        {
-            info.param_var_off = param_var_off.raw();
-            info.max_stack_depth = result.max_stack_depth;
-            info.outputs = outputs;
-            info.string_outputs = string_outputs;
-            for param in &mut info.params {
-                if let Some(passing) = params.get(&param.name) {
-                    param.passing = passing.clone();
-                }
-            }
-        }
-
-        compiled.push(result);
-    }
-
-    Ok(compiled)
-}
-
-/// Compiles a single method body. `param_var_off` is where this method's
-/// own params/locals/return slot start; `field_var_off` is the owning
-/// type's field region start (already populated in `ctx.variables` by the
-/// caller, so field references inside the body resolve normally through
-/// the existing variable-lookup machinery -- no special-casing needed
-/// here beyond not touching those entries).
-fn compile_user_method(
-    block: &Id,
+/// Compiles the body of `method`, which `layout` lays out, in the method's
+/// scope; the caller's is current again once the body is compiled.
+pub(crate) fn compile_user_method(
     method: &MethodDeclaration,
-    function_id: FunctionId,
-    field_var_off: u16,
-    param_var_off: VarIndex,
+    layout: MethodLayout,
     ctx: &mut CompileContext,
-    types: &TypeEnvironment,
-) -> Result<CompiledMethod, Diagnostic> {
-    let mut current_index = param_var_off;
-    let mut num_params: u16 = 0;
-
-    // First pass: input-compatible parameters (VAR_INPUT and VAR_IN_OUT).
-    for decl in method.all_variables() {
-        if !decl.var_type.is_input_compatible() {
-            continue;
-        }
-        if let Some(id) = decl.identifier.symbolic_id() {
-            ctx.variables.insert(id.clone(), current_index);
-            // A parameter operates at its declared type, whatever kind of
-            // declaration declares it, as a function's does.
-            if let Some(type_info) = decl_type_info(ctx, decl) {
-                ctx.var_types.insert(id.clone(), type_info);
-            }
-            // A call copies a string argument into the parameter's run.
-            if let InitialValueAssignmentKind::String(string_init) = &decl.initializer {
-                register_string_variable(ctx, id, string_init)?;
-            }
-            current_index = VarIndex::new(current_index.raw() + 1);
-            num_params += 1;
-        }
-    }
-
-    // Second pass: local variables (VAR, VAR_TEMP) and outputs (VAR_OUTPUT),
-    // which start again on every call as a local does.
-    let mut outputs = HashMap::new();
-    for decl in method.all_variables() {
-        if !decl.var_type.is_local() && decl.var_type != VariableType::Output {
-            continue;
-        }
-        if let Some(id) = decl.identifier.symbolic_id() {
-            ctx.variables.insert(id.clone(), current_index);
-            if decl.var_type == VariableType::Output {
-                outputs.insert(id.clone(), current_index);
-            }
-            // A local operates at its declared type, as a parameter does.
-            if let Some(type_info) = decl_type_info(ctx, decl) {
-                ctx.var_types.insert(id.clone(), type_info);
-            }
-            // The prologue initializes a string local or output's run at
-            // every call.
-            if let InitialValueAssignmentKind::String(string_init) = &decl.initializer {
-                register_string_variable(ctx, id, string_init)?;
-            }
-            current_index = VarIndex::new(current_index.raw() + 1);
-        }
-    }
-
-    // Always allocate a return-value slot, even for a method with no
-    // return type: `emit_function_local_prologue` clears it, so a void
-    // method gets one harmless unused slot rather than special-casing the
-    // prologue call.
-    let return_var_index = current_index;
+) -> Result<CompiledFunction, Diagnostic> {
+    let MethodLayout {
+        function_id,
+        scope,
+        num_locals,
+        num_params,
+        return_var_index,
+        return_op_type,
+        has_return_value,
+    } = layout;
     let return_id = method.name.clone();
-    let has_return_value = method.return_type.is_some();
-
-    let return_op_type = match &method.return_type {
-        Some(FunctionReturnType::Named(type_name)) => named_type_info(ctx, types, type_name)
-            .map(|info| (info.op_width, info.signedness))
-            .unwrap_or(DEFAULT_OP_TYPE),
-        Some(FunctionReturnType::String(spec)) | Some(FunctionReturnType::WString(spec)) => {
-            // STRING/WSTRING method returns aren't implemented in this
-            // slice.
-            return Err(Diagnostic::not_implemented(Label::span(
-                spec.keyword_span.clone(),
-                "STRING return type of a METHOD",
-            )));
-        }
-        None => DEFAULT_OP_TYPE,
-    };
-
-    // Bind the method's own name to that slot, as
-    // `compile_user_function` does at `compile_fn.rs:258`, so a body
-    // that produces its result the standard way -- `GetSpeed := speed`
-    // -- resolves the name to the slot the epilogue loads before `RET`.
-    // Only when the method declares a return type: one without a return
-    // type has no result to assign, and the analyzer rejects the
-    // assignment rather than letting it reach here.
-    if has_return_value {
-        ctx.variables.insert(return_id.clone(), return_var_index);
-        if let Some(FunctionReturnType::Named(type_name)) = &method.return_type {
-            if let Some(type_info) = named_type_info(ctx, types, type_name) {
-                ctx.var_types.insert(return_id.clone(), type_info);
-            }
-        }
-    }
-
-    current_index = VarIndex::new(current_index.raw() + 1);
-
-    // Reported num_locals spans from the *type's field region* (not just
-    // this method's own params/locals) through the end of this method's
-    // own locals: the VM pushes a Frame with `instance_offset:
-    // field_var_off, instance_count: <this value>`, so it must cover
-    // both the field range (for `self` access) and this method's own
-    // range in one contiguous bounds-check window.
-    let num_locals = current_index.raw() - field_var_off;
+    let caller = std::mem::replace(&mut ctx.scope, scope);
 
     let mut method_emitter = Emitter::new();
 
@@ -262,12 +69,7 @@ fn compile_user_method(
     let saved_current_fn = ctx.current_function_id.take();
     ctx.current_function_id = Some(function_id);
 
-    let saved_body = ctx.current_body.replace(CurrentBody::Method {
-        block: block.clone(),
-        method: method.name.clone(),
-    });
     compile_statements(&mut method_emitter, ctx, &body)?;
-    ctx.current_body = saved_body;
 
     ctx.current_function_id = saved_current_fn;
     ctx.current_function_return = saved_return_ctx;
@@ -281,45 +83,22 @@ fn compile_user_method(
 
     let finalized = finalize_function(&mut method_emitter, ctx)?;
 
-    let params = method
-        .all_variables()
-        .filter(|decl| decl.var_type.is_input_compatible())
-        .filter_map(|decl| {
-            Some((
-                decl.identifier.symbolic_id()?.clone(),
-                param_passing(ctx, decl),
-            ))
-        })
-        .collect();
-    let string_outputs = outputs
-        .keys()
-        .filter_map(|id| Some((id.clone(), ctx.string_var(id)?.clone())))
-        .collect();
+    // The most a call of the method adds to its caller's stack.
+    ctx.function_stack_depths
+        .insert(function_id, finalized.max_stack_depth);
 
-    Ok(CompiledMethod {
-        compiled: CompiledFunction {
-            function_id,
-            bytecode: finalized.bytecode,
-            max_stack_depth: finalized.max_stack_depth,
-            max_temp_depth: finalized.max_temp_depth,
-            num_locals,
-            num_params,
-            name: method.name.to_string(),
-            line_map: finalized.line_map,
-        },
-        params,
-        outputs,
-        string_outputs,
+    ctx.scope = caller;
+
+    Ok(CompiledFunction {
+        function_id,
+        bytecode: finalized.bytecode,
+        max_stack_depth: finalized.max_stack_depth,
+        max_temp_depth: finalized.max_temp_depth,
+        num_locals,
+        num_params,
+        name: method.name.to_string(),
+        line_map: finalized.line_map,
     })
-}
-
-/// A compiled method, how a call passes each of its input parameters, the
-/// slot of each of its outputs, and where each string output is.
-struct CompiledMethod {
-    compiled: CompiledFunction,
-    params: HashMap<Id, ParamPassing>,
-    outputs: HashMap<Id, VarIndex>,
-    string_outputs: HashMap<Id, StringVarInfo>,
 }
 
 /// Compiles a method call (`instance.MethodName(args)`, OOP extension,
@@ -405,7 +184,6 @@ fn compile_method_call(
     let param_var_off = ironplc_container::VarIndex::new(method_info.param_var_off);
     let num_params = method_info.num_params;
     let has_return_value = method_info.has_return_value;
-    let max_stack_depth = method_info.max_stack_depth;
     let outputs = method_info.outputs.clone();
 
     // The analyzer wrote the call in normal form (`call-binding.md`), and
@@ -470,6 +248,7 @@ fn compile_method_call(
     // user-defined (no intrinsic-FB branch), so this is unconditional.
     ctx.record_call_edge(function_id);
 
+    let max_stack_depth = ctx.function_stack_depth(function_id, &call.span())?;
     emitter.emit_method_call(
         function_id,
         field_var_off,

@@ -111,6 +111,7 @@ mod tests {
     fn store_input_when_instance_has_no_such_field_then_not_implemented() {
         let mut ctx = CompileContext::new();
         ctx.fb_instances.insert(
+            ctx.scope,
             Id::from("f"),
             FbInstanceInfo {
                 var_index: VarIndex::new(0),

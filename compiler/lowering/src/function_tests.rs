@@ -369,3 +369,32 @@ fn lower_statement_when_in_out_argument_type_is_alias_then_ref() {
         ]
     );
 }
+
+/// REQ-LOW-lowering-075: an argument for a method's input of a function
+/// block type, user-defined or standard, is a `Copy` of the instance its
+/// argument names, or of the field of another instance it names.
+#[test]
+fn lower_statement_when_instance_input_then_copy_of_argument() {
+    let outcome = lower_bodies(
+        "FUNCTION_BLOCK INNER VAR_INPUT v : DINT; END_VAR END_FUNCTION_BLOCK
+         FUNCTION_BLOCK OUTER VAR_INPUT inner : INNER; END_VAR END_FUNCTION_BLOCK
+         FUNCTION_BLOCK BP
+           METHOD Go : DINT VAR_INPUT i : INNER; END_VAR Go := 2; END_METHOD
+           METHOD Tm : DINT VAR_INPUT t : TON; END_VAR Tm := 3; END_METHOD
+         END_FUNCTION_BLOCK
+         PROGRAM main VAR f : INNER; g : OUTER; b : BP; t : TON; r : DINT; END_VAR
+            r := b.Go(i := f);
+            r := b.Go(i := g.inner);
+            r := b.Tm(t := t);
+         END_PROGRAM",
+        &["main"],
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f4 (call pou5 i32s (ref v0^.f2) (copy v0^.f0))",
+            "assign v0^.f4 (call pou5 i32s (ref v0^.f2) (copy v0^.f1.f0))",
+            "assign v0^.f4 (call pou6 i32s (ref v0^.f2) (copy v0^.f3))",
+        ]
+    );
+}

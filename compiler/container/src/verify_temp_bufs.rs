@@ -28,7 +28,7 @@
 //! # Model
 //!
 //! Temp buffers form a stack. An allocating instruction takes the next
-//! slot; `STR_STORE_VAR` and `STR_STORE_ARRAY_ELEM` hand a slot back once
+//! slot; `STR_STORE_VAR` and the string array stores hand a slot back once
 //! they have copied its contents into the data region (ADR-0052). So the
 //! question "does the pool overflow" is "how deep does that stack get",
 //! which is a path property, decided here by abstract interpretation over
@@ -136,10 +136,10 @@ fn temp_effect(op: Opcode) -> i8 {
     use opcode::*;
     match op {
         // Produce a value in a fresh buffer and push its index.
-        LOAD_CONST_STR | STR_LOAD_VAR | STR_LOAD_ARRAY_ELEM | CONCAT_STR | LEFT_STR | RIGHT_STR
-        | MID_STR | INSERT_STR | DELETE_STR | REPLACE_STR => 1,
+        LOAD_CONST_STR | STR_LOAD_VAR | STR_LOAD_ARRAY_ELEM | STR_LOAD_ARRAY_DEREF | CONCAT_STR
+        | LEFT_STR | RIGHT_STR | MID_STR | INSERT_STR | DELETE_STR | REPLACE_STR => 1,
         // Copy a buffer's contents out and hand the slot back.
-        STR_STORE_VAR | STR_STORE_ARRAY_ELEM => -1,
+        STR_STORE_VAR | STR_STORE_ARRAY_ELEM | STR_STORE_ARRAY_DEREF => -1,
         _ => 0,
     }
 }

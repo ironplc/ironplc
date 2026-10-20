@@ -3,10 +3,11 @@
 //! (`names[i] := s`) or a string read (`t := p.name`).
 //!
 //! [`StringPlace::resolve`] works out where the string is from the variable
-//! reference. [`StringPlace::emit_load`] and [`StringPlace::emit_store`] then
-//! emit the load into a temporary buffer and the store from one for that
-//! shape, as [`Place`](super::compile_place::Place) does for a value in one
-//! slot.
+//! reference, and [`StringPlace::through_reference`] where the string a
+//! reference variable refers to is. [`StringPlace::emit_load`] and
+//! [`StringPlace::emit_store`] then emit the load into a temporary buffer
+//! and the store from one for that shape, as
+//! [`Place`](super::compile_place::Place) does for a value in one slot.
 //!
 //! A string place's subscripts are any [`Subscript`]: the AST expressions
 //! [`StringPlace::resolve`] finds, by default.
@@ -50,6 +51,16 @@ enum StringAddress<S> {
         /// of the whole structure: that variable and the array's byte offset
         /// in it, whose sum is first stored in `var_index`.
         within: Option<(VarIndex, u32)>,
+        dimensions: Vec<DimensionInfo>,
+        subscripts: Vec<S>,
+    },
+    /// What the reference in `ref_slot` refers to: a string, the one element
+    /// of a one-element array, or an element of an array of strings, at the
+    /// flat index of `subscripts`. `STR_LOAD_ARRAY_DEREF` and
+    /// `STR_STORE_ARRAY_DEREF`, with the descriptor of that array.
+    Referenced {
+        ref_slot: VarIndex,
+        desc_index: u16,
         dimensions: Vec<DimensionInfo>,
         subscripts: Vec<S>,
     },
@@ -129,6 +140,55 @@ impl<'ast> StringPlace<&'ast Expr> {
             span,
         }))
     }
+
+    /// The string place `variable` names when it is the string a reference
+    /// variable refers to, `rs^`, or an element of the array of strings one
+    /// refers to, `rsa^[i]`. `None` for any other variable, and for a
+    /// reference in a `VAR_IN_OUT` parameter, whose slot holds a reference
+    /// to the reference.
+    pub(crate) fn through_reference(
+        ctx: &CompileContext,
+        variable: &'ast Variable,
+    ) -> Option<Self> {
+        let Variable::Symbolic(symbolic) = variable else {
+            return None;
+        };
+        let (deref, subscripts) = if let SymbolicVariableKind::Deref(deref) = symbolic {
+            (deref, Vec::new())
+        } else if let SymbolicVariableKind::Array(array) = symbolic {
+            let SymbolicVariableKind::Deref(deref) = array.subscripted_variable.as_ref() else {
+                return None;
+            };
+            (deref, array.subscripts.iter().collect())
+        } else {
+            return None;
+        };
+        let SymbolicVariableKind::Named(named) = deref.variable.as_ref() else {
+            return None;
+        };
+        let name = &named.name;
+        if ctx.is_in_out(name) {
+            return None;
+        }
+        let strings = ctx.string_ref(name)?;
+        // An element of an array of strings has its subscripts, and a string
+        // none; neither a whole array nor a subscript of a string is one.
+        let dimensions = match (ctx.array_var(name), subscripts.is_empty()) {
+            (Some(array), false) => array.dimensions.clone(),
+            (None, true) => Vec::new(),
+            (Some(_), true) | (None, false) => return None,
+        };
+        Some(StringPlace {
+            address: StringAddress::Referenced {
+                ref_slot: ctx.var_index(name).ok()?,
+                desc_index: strings.desc_index,
+                dimensions,
+                subscripts,
+            },
+            char_width: strings.char_width,
+            span: variable_span(variable),
+        })
+    }
 }
 
 impl<S> StringPlace<S> {
@@ -155,6 +215,20 @@ impl<S> StringPlace<S> {
                 var_index,
                 desc_index,
                 within,
+                dimensions,
+                subscripts: subscripts
+                    .into_iter()
+                    .map(replace)
+                    .collect::<Result<_, E>>()?,
+            },
+            StringAddress::Referenced {
+                ref_slot,
+                desc_index,
+                dimensions,
+                subscripts,
+            } => StringAddress::Referenced {
+                ref_slot,
+                desc_index,
                 dimensions,
                 subscripts: subscripts
                     .into_iter()
@@ -188,6 +262,14 @@ impl<S: Subscript> StringPlace<S> {
                 self.emit_element_index(emitter, ctx)?;
                 emitter.emit_str_load_array_elem(*var_index, *desc_index);
             }
+            StringAddress::Referenced {
+                ref_slot,
+                desc_index,
+                ..
+            } => {
+                self.emit_element_index(emitter, ctx)?;
+                emitter.emit_str_load_array_deref(*ref_slot, *desc_index);
+            }
         }
         Ok(())
     }
@@ -209,35 +291,51 @@ impl<S: Subscript> StringPlace<S> {
                 self.emit_element_index(emitter, ctx)?;
                 emitter.emit_str_store_array_elem(*var_index, *desc_index);
             }
+            StringAddress::Referenced {
+                ref_slot,
+                desc_index,
+                ..
+            } => {
+                self.emit_element_index(emitter, ctx)?;
+                emitter.emit_str_store_array_deref(*ref_slot, *desc_index);
+            }
         }
         Ok(())
     }
 
-    /// For an element, what `STR_LOAD_ARRAY_ELEM` and `STR_STORE_ARRAY_ELEM`
-    /// need before they run: the array's start, when it is within a
-    /// structure, then the flat index.
+    /// For an element, what the string array element instructions need
+    /// before they run: the array's start, when it is within a structure,
+    /// then the flat index. The flat index of a string a reference refers
+    /// to, which has no subscripts, is 0.
     fn emit_element_index(
         &self,
         emitter: &mut Emitter,
         ctx: &mut CompileContext,
     ) -> Result<(), Diagnostic> {
-        let StringAddress::Element {
-            var_index,
-            within,
-            dimensions,
-            subscripts,
-            ..
-        } = &self.address
-        else {
-            return Ok(());
+        let (dimensions, subscripts) = match &self.address {
+            StringAddress::Fixed(_) => return Ok(()),
+            StringAddress::Element {
+                var_index,
+                within,
+                dimensions,
+                subscripts,
+                ..
+            } => {
+                if let Some((structure, byte_offset)) = within {
+                    emitter.emit_load_var_i32(*structure);
+                    let offset = ctx.add_i32_constant(*byte_offset as i32);
+                    emitter.emit_load_const_i32(offset);
+                    emitter.emit_add_i32();
+                    emitter.emit_store_var_i32(*var_index);
+                }
+                (dimensions, subscripts)
+            }
+            StringAddress::Referenced {
+                dimensions,
+                subscripts,
+                ..
+            } => (dimensions, subscripts),
         };
-        if let Some((structure, byte_offset)) = within {
-            emitter.emit_load_var_i32(*structure);
-            let offset = ctx.add_i32_constant(*byte_offset as i32);
-            emitter.emit_load_const_i32(offset);
-            emitter.emit_add_i32();
-            emitter.emit_store_var_i32(*var_index);
-        }
         emit_flat_index(emitter, ctx, subscripts, dimensions, &self.span)
     }
 }
