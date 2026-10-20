@@ -608,7 +608,7 @@ fn compile_program_with_functions(
     // METHODs'.
     if let Some(route) = &ctx.lowered_route {
         if route.check_layout() {
-            crate::layout::lowered::check(route.lowering(), &ctx, &program.name)?;
+            crate::layout::lowered::check(route.lowering(), &ctx, &builder, &program.name)?;
         }
         ctx.lowered_ids =
             crate::layout::ids::LoweredIds::matched(route.lowering(), &ctx, &program.name);

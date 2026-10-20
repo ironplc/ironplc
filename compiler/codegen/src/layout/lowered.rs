@@ -23,7 +23,10 @@
 //! of those; a compiler-provided global has none.
 //!
 //! Each string has a run of the data region of its own ([`super::region`]),
-//! but a function's `VAR_IN_OUT`, which refers to its caller's.
+//! but a function's `VAR_IN_OUT`, which refers to its caller's. An array,
+//! and what a reference refers to, is reached through the container's
+//! array descriptors, which the declarations add in the walk's order
+//! ([`super::descriptors`]).
 //!
 //! Until it is complete, the layout the bodies are compiled against is
 //! still built from the AST, and this one is only checked equal to it.
@@ -31,7 +34,7 @@
 use std::collections::HashMap;
 
 use ironplc_analyzer::StandardFunctionBlock;
-use ironplc_container::{FunctionId, VarIndex};
+use ironplc_container::{ArrayDescriptor, ContainerBuilder, FunctionId, VarIndex};
 use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::execution::{GlobalKind, GlobalScope};
@@ -40,20 +43,24 @@ use ironplc_ir::lowered::{
 };
 use ironplc_lowering::{Declaration, PartialProgram};
 
+use super::descriptors::Descriptors;
 use super::names::{self, ScopeId, Scoped};
-use super::region::Region;
+use super::region::{string_at, Region};
 use crate::compile::{CompileContext, StringVarInfo, VarTypeInfo};
+use crate::compile_array::ArrayVarInfo;
 use crate::lowered::type_info;
 
 /// Checks the layout built from the declarations of `lowering` equal to the
 /// one `ctx` laid out from the AST, for the program `program`: each slot,
-/// the type it is operated at, each string's run of the data region, and
-/// where the region ends. An internal error names each entry that differs.
+/// the type it is operated at, each string's run of the data region, where
+/// the region ends, how each array is reached, and the array descriptors
+/// `builder` holds. An internal error names each entry that differs.
 /// A program a declaration of which did not lower keeps the AST layout, and
 /// has nothing to check.
 pub(crate) fn check(
     lowering: &PartialProgram,
     ctx: &CompileContext,
+    builder: &ContainerBuilder,
     program: &Id,
 ) -> Result<(), Diagnostic> {
     let Some(lowered) = Layout::of(lowering, program, &ctx.standard_blocks) else {
@@ -76,7 +83,20 @@ pub(crate) fn check(
                 .into_iter()
                 .map(|difference| format!("string {difference}")),
         )
+        .chain(
+            ctx.array_vars
+                .differences(&lowered.array_vars)
+                .into_iter()
+                .map(|difference| format!("array {difference}")),
+        )
         .collect();
+    if builder.array_descriptors() != lowered.descriptors {
+        differences.push(format!(
+            "array descriptors {:?} and {:?}",
+            builder.array_descriptors(),
+            lowered.descriptors
+        ));
+    }
     if ctx.data_region_offset != lowered.data_end {
         differences.push(format!(
             "data region ends at {}, not {}",
@@ -96,14 +116,24 @@ pub(crate) fn check(
 }
 
 /// What the layout built from the lowered declarations knows of each name
-/// so far: its slot, the type the slot is operated at, and a string's run
-/// of the data region; and where the region ends.
+/// so far: its slot, the type the slot is operated at, a string's run of
+/// the data region, and how an array is reached; where the region ends;
+/// and the array descriptors, by index.
 #[derive(Default)]
 struct Layout {
     slots: Scoped<VarIndex>,
     var_types: Scoped<VarTypeInfo>,
     string_vars: Scoped<StringVarInfo>,
+    array_vars: Scoped<ArrayVarInfo>,
     data_end: u32,
+    descriptors: Vec<ArrayDescriptor>,
+}
+
+/// What the declarations reserve as the walk visits them: the runs of the
+/// data region, and the array descriptors.
+struct Storage<'a> {
+    region: Region<'a>,
+    descriptors: Descriptors<'a>,
 }
 
 impl Layout {
@@ -121,7 +151,10 @@ impl Layout {
         }
         let pous = Pous::of(lowering, program)?;
         let types = lowering.types();
-        let mut region = Region::new(lowering, &pous.blocks, standard_blocks);
+        let mut storage = Storage {
+            region: Region::new(lowering, &pous.blocks, standard_blocks),
+            descriptors: Descriptors::new(types),
+        };
         let mut layout = Self::default();
 
         let program_declarations = lowering.declarations(pous.program)?;
@@ -133,7 +166,7 @@ impl Layout {
             } else if !program_declarations.contains(&Declaration::Variable(var)) {
                 // A global the program declares is laid out with its
                 // variables.
-                layout.insert_variable(ScopeId::Global, &mut region, var)?;
+                layout.insert_variable(ScopeId::Global, &mut storage, var)?;
             }
         }
         let program_type = instance_type(types, pous.program)?;
@@ -141,10 +174,15 @@ impl Layout {
             match declaration {
                 Declaration::Field(field) => {
                     let field = types.fields(program_type)?.get(field.index() as usize)?;
-                    layout.insert_named(ScopeId::Program, &mut region, name_of(field), field.ty)?;
+                    layout.insert_named(
+                        ScopeId::Program,
+                        &mut storage,
+                        name_of(field),
+                        field.ty,
+                    )?;
                 }
                 Declaration::Variable(var) => {
-                    layout.insert_variable(ScopeId::Program, &mut region, *var)?;
+                    layout.insert_variable(ScopeId::Program, &mut storage, *var)?;
                 }
                 Declaration::External(_) => {}
             }
@@ -156,9 +194,11 @@ impl Layout {
             let frame = frame(lowering, function)?;
             for var in frame.variables {
                 let name = name(lowering, var)?;
-                // A `VAR_IN_OUT` refers to its caller's string.
+                // A `VAR_IN_OUT` refers to its caller's variable.
                 if lowering.variables().get(var)?.section() != Section::InOut {
-                    layout.insert_string(&mut region, scope, &name, held(lowering, var)?)?;
+                    let held = held(lowering, var)?;
+                    layout.insert_string(&mut storage, scope, &name, held)?;
+                    layout.insert_reference(&mut storage, scope, &name, held, next)?;
                 }
                 layout.insert(scope, name, next, held_type(lowering, var));
                 next = VarIndex::new(next.raw() + 1);
@@ -168,9 +208,10 @@ impl Layout {
             layout.insert(scope, name.clone(), next, held_type(lowering, result));
             next = VarIndex::new(next.raw() + 1);
             let ty = held(lowering, result)?;
-            layout.insert_string(&mut region, scope, &name, ty)?;
+            layout.insert_string(&mut storage, scope, &name, ty)?;
             if matches!(types.kind(ty), Some(TypeKind::Structure { .. })) {
-                region.structure(ty)?;
+                storage.region.structure(ty)?;
+                storage.descriptors.structure(ty)?;
             }
             // A structure result takes its scratch slot after it, as a
             // global's or the program's variable does, and the function's
@@ -188,7 +229,8 @@ impl Layout {
             let scope = ScopeId::Block(function_id);
             for field in copy_slots(lowering, block)? {
                 let name = name_of(field);
-                layout.insert_string(&mut region, scope, &name, field.ty)?;
+                layout.insert_string(&mut storage, scope, &name, field.ty)?;
+                layout.insert_reference(&mut storage, scope, &name, field.ty, next)?;
                 layout.insert(scope, name, next, slot_type(types, field.ty));
                 next = VarIndex::new(next.raw() + 1);
             }
@@ -203,7 +245,7 @@ impl Layout {
                     let name = name(lowering, var)?;
                     // A call copies a string argument into the run of the
                     // parameter, a `VAR_IN_OUT`'s too.
-                    layout.insert_string(&mut region, scope, &name, held(lowering, var)?)?;
+                    layout.insert_string(&mut storage, scope, &name, held(lowering, var)?)?;
                     layout.insert(scope, name, current, held_type(lowering, var));
                     current = VarIndex::new(current.raw() + 1);
                 }
@@ -219,7 +261,8 @@ impl Layout {
                 next = VarIndex::new(next.raw() + current.raw() - field_var_off.raw());
             }
         }
-        layout.data_end = region.end();
+        layout.data_end = storage.region.end();
+        layout.descriptors = storage.descriptors.into_added();
         Some(layout)
     }
 
@@ -233,27 +276,33 @@ impl Layout {
 
     /// Records the variable `var` in `scope`, the globals' or the
     /// program's, as [`Layout::insert_named`] does.
-    fn insert_variable(&mut self, scope: ScopeId, region: &mut Region, var: VarId) -> Option<()> {
-        let lowering = region.lowering();
+    fn insert_variable(&mut self, scope: ScopeId, storage: &mut Storage, var: VarId) -> Option<()> {
+        let lowering = storage.region.lowering();
         let ty = lowering.variables().get(var)?.ty();
-        self.insert_named(scope, region, name(lowering, var)?, ty)
+        self.insert_named(scope, storage, name(lowering, var)?, ty)
     }
 
     /// Records `name`, of the type `ty`, in `scope`, the globals' or the
     /// program's, at the next slot the scope counts, and its scratch slot
-    /// after it if it takes one; and reserves its run of `region`, if it
-    /// has one.
+    /// after it if it takes one; and reserves its run of the data region
+    /// and its array descriptors, if it has any.
     fn insert_named(
         &mut self,
         scope: ScopeId,
-        region: &mut Region,
+        storage: &mut Storage,
         name: Id,
         ty: TypeId,
     ) -> Option<()> {
-        if let Some(string) = region.variable(ty)? {
-            self.string_vars.insert(scope, name.clone(), string);
+        let types = storage.region.lowering().types();
+        let index = VarIndex::new(names::slot_count(&self.slots, scope) as u16);
+        let start = storage.region.variable(ty)?;
+        if let (Some(TypeKind::String(shape)), Some(start)) = (types.kind(ty), start) {
+            self.string_vars
+                .insert(scope, name.clone(), string_at(start, *shape)?);
         }
-        let types = region.lowering().types();
+        if let Some(array) = storage.descriptors.variable(ty, index, start)? {
+            self.array_vars.insert(scope, name.clone(), array);
+        }
         let scratch_slot = needs_scratch(types, ty).then(|| scratch(&name));
         self.insert_counted(scope, name, slot_type(types, ty));
         if let Some(scratch_slot) = scratch_slot {
@@ -262,18 +311,39 @@ impl Layout {
         Some(())
     }
 
-    /// Reserves the run of `region` that `name`, of a function, a function
-    /// block or a method, holds in `scope` when its type `ty` is a string.
+    /// Reserves the run of the data region that `name`, of a function, a
+    /// function block or a method, holds in `scope` when its type `ty` is a
+    /// string.
     fn insert_string(
         &mut self,
-        region: &mut Region,
+        storage: &mut Storage,
         scope: ScopeId,
         name: &Id,
         ty: TypeId,
     ) -> Option<()> {
-        if let Some(TypeKind::String(shape)) = region.lowering().types().kind(ty) {
-            let string = region.string(*shape)?;
+        if let Some(TypeKind::String(shape)) = storage.region.lowering().types().kind(ty) {
+            let string = storage.region.string(*shape)?;
             self.string_vars.insert(scope, name.clone(), string);
+        }
+        Some(())
+    }
+
+    /// Adds the array descriptors that `name`, of a function or a function
+    /// block, whose slot is `index`, reaches its target through in `scope`
+    /// when its type `ty` is a reference.
+    fn insert_reference(
+        &mut self,
+        storage: &mut Storage,
+        scope: ScopeId,
+        name: &Id,
+        ty: TypeId,
+        index: VarIndex,
+    ) -> Option<()> {
+        let types = storage.region.lowering().types();
+        if let Some(TypeKind::Reference { target, .. }) = types.kind(ty) {
+            if let Some(array) = storage.descriptors.reference(*target, index)? {
+                self.array_vars.insert(scope, name.clone(), array);
+            }
         }
         Some(())
     }
@@ -328,7 +398,7 @@ fn globals(lowering: &PartialProgram) -> Vec<(VarId, bool)> {
 /// The type a slot holding a value of the lowered type `ty` is operated
 /// at. A `BOOL` holds one bit of value, which also marks it for the
 /// conversion path (`type_info.rs`).
-fn slot_type(types: &TypeTable, ty: TypeId) -> Option<VarTypeInfo> {
+pub(super) fn slot_type(types: &TypeTable, ty: TypeId) -> Option<VarTypeInfo> {
     match types.kind(ty) {
         Some(TypeKind::Bool) => Some(VarTypeInfo {
             storage_bits: 1,
