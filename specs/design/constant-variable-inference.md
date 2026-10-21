@@ -44,6 +44,21 @@ Two consequences follow, and both are deliberate:
   qualifier is a property of the analyzed library, not of the declaration
   in isolation, and is never written back to source.
 
+### The value a constant holds
+
+**REQ-CVI-analyzer-060** After the transform runs, the symbol environment
+records, for a variable that is `CONSTANT` (declared or inferred) and whose
+initializer is one literal, that literal as the value the variable holds for
+the whole run (`SymbolInfo::constant_value`), and
+`SymbolEnvironment::constant_value` answers it for a name reached from a
+scope, through a `VAR_EXTERNAL` to its global; a variable that may change
+and a constant whose initializer is not one literal have no value there.
+
+A rule that judges a value the program fixes before it runs reads it there,
+as the rules read every other fact about a declaration, rather than finding
+the declaration itself. `rule_for_step_nonzero` (P4093) is the first: a
+`FOR` step that names a zero constant is as wrong as one written `BY 0`.
+
 ## What counts as a write
 
 The transform is **conservative**: it may fail to mark a variable that is

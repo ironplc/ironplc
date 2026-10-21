@@ -1337,13 +1337,17 @@ assignment.
 **REQ-LOW-lowering-067** The `step` of a `For` is a nonzero constant of the
 operation type of `control`, and `control` is a variable, a field of the
 current instance, or what a reference variable refers to, as a function's or
-method's `VAR_OUTPUT` parameter does. A `FOR` whose step is not a nonzero
-constant, and one whose control variable is a `VAR_IN_OUT`, is reported as
-P9999, as it is today.
+method's `VAR_OUTPUT` parameter does. A `FOR` whose step is not a constant,
+and one whose control variable is a `VAR_IN_OUT`, is reported as P9999, as it
+is today.
 
 The analyzer holds the control variable to an integer, `ANY_INT` or a subrange
 of one (P4091), so a `For` never counts with a real, a bit string, a duration,
-a `BOOL` or an enumeration.
+a `BOOL` or an enumeration; and it holds a constant step to a nonzero value
+(P4093), so a `For` never counts by zero. The analyzer judges a step that
+names a constant by the value the symbol environment records for it
+(REQ-CVI-analyzer-060); lowering does not read that value, so such a step is
+a read of a variable to it, and is reported as P9999 like any other.
 
 `to` is evaluated on every iteration, and the control variable wraps, so a
 `FOR` whose bound is the largest value of the control variable's type does not
