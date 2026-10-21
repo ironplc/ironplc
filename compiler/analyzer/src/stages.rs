@@ -1096,13 +1096,60 @@ END_FUNCTION_BLOCK"
         assert_eq!(expected, pinned_codes(body).as_slice());
     }
 
-    /// XAE types `THIS^.Prop` (`Cannot convert type 'INT' to type 'BOOL'`)
-    /// and rejects `THIS^.other_local` (`'other_local' is no component of
-    /// ...`) and `THIS^.Other` without a call (`Cannot convert type 'OTHER'
-    /// to type 'INT'`). Gap: the analysis reports none of the three and the
-    /// access has no type, so a wrong-typed assignment is not caught.
+    /// XAE types `THIS^.Prop` (`Cannot convert type 'INT' to type 'BOOL'`),
+    /// so a wrong-typed assignment from it is P4035, and an assignment of the
+    /// property's own type is accepted.
     #[rstest::rstest]
-    #[case::property("    flag := THIS^.Prop;")]
+    #[case::property_wrong_type("    flag := THIS^.Prop;", &["P4035"])]
+    #[case::property_own_type("    n := THIS^.Prop;", &[])]
+    fn analyze_when_self_ref_names_a_property_then_typed(
+        #[case] body: &str,
+        #[case] expected: &[&str],
+    ) {
+        assert_eq!(expected, pinned_codes(body).as_slice());
+    }
+
+    /// A property the block inherits is typed through `THIS^` and `SUPER^`.
+    #[rstest::rstest]
+    #[case::this_wrong_type("flag := THIS^.Prop;", &["P4035"])]
+    #[case::super_wrong_type("flag := SUPER^.Prop;", &["P4035"])]
+    #[case::this_own_type("n := THIS^.Prop;", &[])]
+    #[case::super_own_type("n := SUPER^.Prop;", &[])]
+    fn analyze_when_self_ref_names_an_inherited_property_then_typed(
+        #[case] body: &str,
+        #[case] expected: &[&str],
+    ) {
+        let codes = analysis_codes(&format!(
+            "
+FUNCTION_BLOCK FB_Base
+VAR
+    _p : INT;
+END_VAR
+PROPERTY Prop : INT
+GET
+    Prop := _p;
+END_GET
+END_PROPERTY
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+METHOD Run
+VAR
+    n : INT;
+    flag : BOOL;
+END_VAR
+    {body}
+END_METHOD
+END_FUNCTION_BLOCK"
+        ));
+        assert_eq!(expected, codes.as_slice());
+    }
+
+    /// XAE rejects `THIS^.other_local` (`'other_local' is no component of
+    /// ...`) and `THIS^.Other` without a call (`Cannot convert type 'OTHER'
+    /// to type 'INT'`). Gap: the analysis reports neither and the access has
+    /// no type, so a wrong-typed assignment is not caught.
+    #[rstest::rstest]
     #[case::local_of_another_method("    flag := THIS^.other_local;")]
     #[case::method_name_without_call("    flag := THIS^.Other;")]
     fn analyze_when_self_ref_names_a_non_field_then_pinned_untyped_and_unreported(

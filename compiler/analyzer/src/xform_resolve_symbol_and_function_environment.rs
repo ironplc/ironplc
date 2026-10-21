@@ -359,9 +359,19 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
         // TwinCAT reports it.
         let block_scope = self.scope.scope_of(&node.as_scope_node());
         for property in &node.properties {
-            let result = self
-                .symbol_env
-                .insert(&property.name, SymbolKind::Property, &block_scope);
+            // The property's type is what `THIS^.Prop` reads and writes, so a
+            // wrong-typed assignment through it is reported.
+            let type_id = self
+                .type_env
+                .as_deref_mut()
+                .and_then(|types| types.result_type_id(&property.property_type));
+            let info = SymbolInfo::new(
+                SymbolKind::Property,
+                block_scope.clone(),
+                property.name.span(),
+            )
+            .with_type_id(type_id);
+            let result = self.symbol_env.insert_info(&property.name, info);
             self.record(result);
         }
         result
