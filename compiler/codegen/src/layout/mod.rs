@@ -16,6 +16,8 @@
 //! The function block types are registered first, before the program's
 //! variables, since an instance of one needs its fields' indices. `storage.rs` lays out one variable's storage and records its
 //! debug entry, whose type tag and name `debug_type.rs` gives.
+//! `var_table.rs` checks each slot the walk hands out against the variable
+//! table's limit.
 
 mod block;
 mod debug_type;
@@ -28,6 +30,7 @@ pub(crate) mod names;
 mod program;
 mod region;
 mod storage;
+pub(crate) mod var_table;
 
 pub(crate) use block::{lay_out_block, lay_out_block_types, BlockLayout, MethodLayout};
 pub(crate) use debug_type::{debug_type_for_decl, map_var_section};

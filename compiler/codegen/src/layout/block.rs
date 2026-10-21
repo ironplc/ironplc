@@ -31,6 +31,7 @@ use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 
 use super::names::ScopeId;
+use super::var_table;
 use crate::compile::{
     CompileContext, FbFieldIndex, OpType, ParamPassing, UserFbTypeInfo, UserMethodInfo,
     UserMethodParam, VarTypeInfo, DEFAULT_OP_TYPE, DEFAULT_VAR_TYPE_INFO, MAX_USER_FB_FIELDS,
@@ -280,7 +281,7 @@ pub(crate) fn lay_out_block(
                 }
                 _ => {}
             }
-            current_index = VarIndex::new(current_index.raw() + 1);
+            current_index = var_table::advance(current_index, 1, &decl.identifier.span())?;
         }
     }
 
@@ -354,7 +355,7 @@ fn lay_out_method(
             }
             // A call copies a string argument into the parameter's run.
             register_declared_string(ctx, id, decl)?;
-            current_index = VarIndex::new(current_index.raw() + 1);
+            current_index = var_table::advance(current_index, 1, &decl.identifier.span())?;
             num_params += 1;
         }
     }
@@ -378,7 +379,7 @@ fn lay_out_method(
             // The prologue initializes a string local or output's run at
             // every call.
             register_declared_string(ctx, id, decl)?;
-            current_index = VarIndex::new(current_index.raw() + 1);
+            current_index = var_table::advance(current_index, 1, &decl.identifier.span())?;
         }
     }
 
@@ -423,7 +424,7 @@ fn lay_out_method(
         }
     }
 
-    current_index = VarIndex::new(current_index.raw() + 1);
+    current_index = var_table::advance(current_index, 1, &method.name.span())?;
 
     // Reported num_locals spans from the *type's field region* (not just
     // this method's own params/locals) through the end of this method's
@@ -455,7 +456,7 @@ fn lay_out_method(
     // method's span re-covers the shared field region). Harmless (a few
     // extra flat-table slots, never aliased or read), just not maximally
     // compact; fine to tighten later if it matters.
-    *var_offset = VarIndex::new(var_offset.raw() + num_locals);
+    *var_offset = var_table::advance(*var_offset, num_locals, &method.name.span())?;
 
     if let Some(info) = ctx
         .user_fb_types
