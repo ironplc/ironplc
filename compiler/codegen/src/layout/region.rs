@@ -115,10 +115,11 @@ impl<'a> Region<'a> {
         string_at(data_offset, shape)
     }
 
-    /// Reserves the run of a structure of the type `ty`.
-    pub(super) fn structure(&mut self, ty: TypeId) -> Option<()> {
+    /// Reserves the run of a structure of the type `ty`, and returns where
+    /// it starts.
+    pub(super) fn structure(&mut self, ty: TypeId) -> Option<u32> {
         let bytes = slots(self.types(), ty)?.checked_mul(8)?;
-        self.reserve(bytes).map(|_| ())
+        self.reserve(bytes)
     }
 
     /// Reserves the fields of an instance of the function block type `ty`,

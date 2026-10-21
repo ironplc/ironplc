@@ -24,9 +24,11 @@
 //!
 //! Each string has a run of the data region of its own ([`super::region`]),
 //! but a function's `VAR_IN_OUT`, which refers to its caller's. An array,
-//! and what a reference refers to, is reached through the container's
-//! array descriptors, which the declarations add in the walk's order
-//! ([`super::descriptors`]).
+//! a structure, an array of structures and what a reference refers to are
+//! reached through the container's array descriptors, which the
+//! declarations add in the walk's order ([`super::descriptors`]). The
+//! check compares a structure's and an array of structures' entry without
+//! the analyzer types it holds ([`super::entries`]).
 //!
 //! Until it is complete, the layout the bodies are compiled against is
 //! still built from the AST, and this one is only checked equal to it.
@@ -44,16 +46,19 @@ use ironplc_ir::lowered::{
 use ironplc_lowering::{Declaration, PartialProgram};
 
 use super::descriptors::Descriptors;
+use super::entries::{StructArrayEntry, StructEntry};
 use super::names::{self, ScopeId, Scoped};
 use super::region::{string_at, Region};
 use crate::compile::{CompileContext, StringVarInfo, VarTypeInfo};
 use crate::compile_array::ArrayVarInfo;
+use crate::compile_reference::StringRefInfo;
 use crate::lowered::type_info;
 
 /// Checks the layout built from the declarations of `lowering` equal to the
 /// one `ctx` laid out from the AST, for the program `program`: each slot,
 /// the type it is operated at, each string's run of the data region, where
-/// the region ends, how each array is reached, and the array descriptors
+/// the region ends, how each array, structure, array of structures and
+/// what each reference refers to is reached, and the array descriptors
 /// `builder` holds. An internal error names each entry that differs.
 /// A program a declaration of which did not lower keeps the AST layout, and
 /// has nothing to check.
@@ -89,6 +94,32 @@ pub(crate) fn check(
                 .into_iter()
                 .map(|difference| format!("array {difference}")),
         )
+        .chain(
+            ctx.struct_vars
+                .map(|info| StructEntry::from(info))
+                .differences(&lowered.struct_vars)
+                .into_iter()
+                .map(|difference| format!("structure {difference}")),
+        )
+        .chain(
+            ctx.struct_array_vars
+                .map(|info| StructArrayEntry::from(info))
+                .differences(&lowered.struct_array_vars)
+                .into_iter()
+                .map(|difference| format!("array of structures {difference}")),
+        )
+        .chain(
+            ctx.string_refs
+                .differences(&lowered.string_refs)
+                .into_iter()
+                .map(|difference| format!("string reference {difference}")),
+        )
+        .chain(
+            ctx.region_refs
+                .differences(&lowered.region_refs)
+                .into_iter()
+                .map(|difference| format!("region reference {difference}")),
+        )
         .collect();
     if builder.array_descriptors() != lowered.descriptors {
         differences.push(format!(
@@ -117,14 +148,19 @@ pub(crate) fn check(
 
 /// What the layout built from the lowered declarations knows of each name
 /// so far: its slot, the type the slot is operated at, a string's run of
-/// the data region, and how an array is reached; where the region ends;
-/// and the array descriptors, by index.
+/// the data region, and how an array, a structure, an array of structures
+/// and what a reference refers to are reached; where the region ends; and
+/// the array descriptors, by index.
 #[derive(Default)]
 struct Layout {
     slots: Scoped<VarIndex>,
     var_types: Scoped<VarTypeInfo>,
     string_vars: Scoped<StringVarInfo>,
     array_vars: Scoped<ArrayVarInfo>,
+    struct_vars: Scoped<StructEntry>,
+    struct_array_vars: Scoped<StructArrayEntry>,
+    string_refs: Scoped<StringRefInfo>,
+    region_refs: Scoped<u16>,
     data_end: u32,
     descriptors: Vec<ArrayDescriptor>,
 }
@@ -205,23 +241,32 @@ impl Layout {
             }
             let result = frame.result?;
             let name = name(lowering, result)?;
+            let result_index = next;
             layout.insert(scope, name.clone(), next, held_type(lowering, result));
             next = VarIndex::new(next.raw() + 1);
             let ty = held(lowering, result)?;
             layout.insert_string(&mut storage, scope, &name, ty)?;
             if matches!(types.kind(ty), Some(TypeKind::Structure { .. })) {
-                storage.region.structure(ty)?;
-                storage.descriptors.structure(ty)?;
-            }
-            // A structure result takes its scratch slot after it, as a
-            // global's or the program's variable does, and the function's
-            // run counts it. The result is a result parameter, which refers
-            // to the caller's structure.
-            if matches!(types.kind(ty), Some(TypeKind::Structure { .. }))
-                && needs_scratch(types, ty)
-            {
-                layout.insert(scope, scratch(&name), next, None);
-                next = VarIndex::new(next.raw() + 1);
+                let data_offset = storage.region.structure(ty)?;
+                let slots = storage.descriptors.structure(ty)?;
+                // A structure result takes its scratch slot after it, as a
+                // global's or the program's variable does, and the
+                // function's run counts it. The result is a result
+                // parameter, which refers to the caller's structure.
+                let scratch_index = needs_scratch(types, ty).then_some(next);
+                if scratch_index.is_some() {
+                    layout.insert(scope, scratch(&name), next, None);
+                    next = VarIndex::new(next.raw() + 1);
+                }
+                let entry = StructEntry::lowered(
+                    types,
+                    ty,
+                    result_index,
+                    data_offset,
+                    scratch_index,
+                    slots,
+                )?;
+                layout.struct_vars.insert(scope, name, entry);
             }
         }
         for (function_id, block) in pous.blocks() {
@@ -294,21 +339,57 @@ impl Layout {
         ty: TypeId,
     ) -> Option<()> {
         let types = storage.region.lowering().types();
-        let index = VarIndex::new(names::slot_count(&self.slots, scope) as u16);
         let start = storage.region.variable(ty)?;
         if let (Some(TypeKind::String(shape)), Some(start)) = (types.kind(ty), start) {
             self.string_vars
                 .insert(scope, name.clone(), string_at(start, *shape)?);
         }
-        if let Some(array) = storage.descriptors.variable(ty, index, start)? {
+        let index = self.insert_counted(scope, name.clone(), slot_type(types, ty));
+        let reached = storage.descriptors.variable(ty, index, start)?;
+        let scratch_index =
+            needs_scratch(types, ty).then(|| self.insert_counted(scope, scratch(&name), None));
+        if let Some(slots) = reached.slots {
+            let data_offset = start?;
+            if matches!(types.kind(ty)?, TypeKind::Structure { .. }) {
+                let entry =
+                    StructEntry::lowered(types, ty, index, data_offset, scratch_index, slots)?;
+                self.struct_vars.insert(scope, name.clone(), entry);
+            } else {
+                let entry =
+                    StructArrayEntry::lowered(types, ty, index, data_offset, scratch_index, slots)?;
+                self.struct_array_vars.insert(scope, name.clone(), entry);
+            }
+        }
+        self.insert_reached(
+            scope,
+            &name,
+            reached.array,
+            reached.string_ref,
+            reached.region_ref,
+        );
+        Some(())
+    }
+
+    /// Records how `name` in `scope` is reached as an array, through the
+    /// strings it refers to and through the descriptor that sizes what it
+    /// refers to, of those it has.
+    fn insert_reached(
+        &mut self,
+        scope: ScopeId,
+        name: &Id,
+        array: Option<ArrayVarInfo>,
+        string_ref: Option<StringRefInfo>,
+        region_ref: Option<u16>,
+    ) {
+        if let Some(array) = array {
             self.array_vars.insert(scope, name.clone(), array);
         }
-        let scratch_slot = needs_scratch(types, ty).then(|| scratch(&name));
-        self.insert_counted(scope, name, slot_type(types, ty));
-        if let Some(scratch_slot) = scratch_slot {
-            self.insert_counted(scope, scratch_slot, None);
+        if let Some(string_ref) = string_ref {
+            self.string_refs.insert(scope, name.clone(), string_ref);
         }
-        Some(())
+        if let Some(region_ref) = region_ref {
+            self.region_refs.insert(scope, name.clone(), region_ref);
+        }
     }
 
     /// Reserves the run of the data region that `name`, of a function, a
@@ -341,9 +422,14 @@ impl Layout {
     ) -> Option<()> {
         let types = storage.region.lowering().types();
         if let Some(TypeKind::Reference { target, .. }) = types.kind(ty) {
-            if let Some(array) = storage.descriptors.reference(*target, index)? {
-                self.array_vars.insert(scope, name.clone(), array);
-            }
+            let reached = storage.descriptors.reference(*target, index)?;
+            self.insert_reached(
+                scope,
+                name,
+                reached.array,
+                reached.string_ref,
+                reached.region_ref,
+            );
         }
         Some(())
     }
@@ -351,9 +437,10 @@ impl Layout {
     /// Records `name` in `scope` at the next slot the body of `scope`
     /// counts, as the walk of the AST declarations numbers the globals, the
     /// program's variables and the scratch slots.
-    fn insert_counted(&mut self, scope: ScopeId, name: Id, held: Option<VarTypeInfo>) {
+    fn insert_counted(&mut self, scope: ScopeId, name: Id, held: Option<VarTypeInfo>) -> VarIndex {
         let index = VarIndex::new(names::slot_count(&self.slots, scope) as u16);
         self.insert(scope, name, index, held);
+        index
     }
 }
 
