@@ -34,7 +34,7 @@ enable.
 regex `%X\d+`, case-insensitive (both `%X0` and `%x0` are accepted).
 
 **REQ-PAB-parser-002** The `PartialAccessBit` regex does not conflict with
-`DirectAddress` (`%[IQM]([XBWDL])?(\d(\.\d)*)`) or `DirectAddressIncomplete`
+`DirectAddress` (`%[IQM]([XBWDL])?([0-9](\.[0-9])*)`) or `DirectAddressIncomplete`
 (`%[IQM]\*`). A source containing `%IX0.0` still tokenizes as a single
 `DirectAddress`, not as `PartialAccessBit`.
 

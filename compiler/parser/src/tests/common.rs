@@ -3,9 +3,9 @@ pub(crate) use dsl::common::{
     DeclarationQualifier, EnumeratedSpecificationInit, EnumerationDeclaration,
     FunctionBlockBodyKind, FunctionBlockDeclaration, FunctionDeclaration, FunctionReturnType,
     InitialValueAssignmentKind, LateResolvedInitialValue, LateResolvedInitializer, Library,
-    LibraryElementKind, ProgramDeclaration, RealLiteral, ReferenceTarget, SimpleInitializer,
-    SpecificationKind, StringType, TypeName, TypeReference, VarDecl, VariableIdentifier,
-    VariableType,
+    LibraryElementKind, LocationPrefix, ProgramDeclaration, RealLiteral, ReferenceTarget,
+    SimpleInitializer, SizePrefix, SpecificationKind, StringType, TypeName, TypeReference, VarDecl,
+    VariableIdentifier, VariableType,
 };
 pub(crate) use dsl::configuration::{
     ConfigurationDeclaration, DataSourceKind, ProgramConfiguration, ResourceDeclaration,
