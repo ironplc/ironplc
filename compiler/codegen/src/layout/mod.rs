@@ -20,6 +20,7 @@
 mod block;
 mod debug_type;
 mod descriptors;
+mod entries;
 mod function;
 mod globals;
 pub(crate) mod ids;

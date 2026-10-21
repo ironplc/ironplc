@@ -11,11 +11,12 @@
 
 use ironplc_container::{ArrayDescriptor, CharWidth, FieldType, VarIndex};
 use ironplc_dsl::core::SourceSpan;
-use ironplc_ir::lowered::{Field, TypeId, TypeKind, TypeTable};
+use ironplc_ir::lowered::{Field, StringShape, TypeId, TypeKind, TypeTable};
 
 use super::region::{elements, slots, string_shape};
 use crate::compile::{OpWidth, Signedness, VarTypeInfo};
 use crate::compile_array::{compute_dimensions, var_type_info_to_type_byte, ArrayVarInfo};
+use crate::compile_reference::StringRefInfo;
 
 /// A reference's 64-bit slot, and an element of an array of references.
 const REFERENCE_TYPE: VarTypeInfo = VarTypeInfo {
@@ -23,6 +24,37 @@ const REFERENCE_TYPE: VarTypeInfo = VarTypeInfo {
     signedness: Signedness::Unsigned,
     storage_bits: 64,
 };
+
+/// What a variable is reached through, of the descriptors it adds.
+#[derive(Default)]
+pub(super) struct Reached {
+    /// How it is reached as an array, when it is one or refers to one.
+    pub(super) array: Option<ArrayVarInfo>,
+    /// The flat array of slots it is, when it is a structure or an array of
+    /// structures.
+    pub(super) slots: Option<Slots>,
+    /// The strings it refers to, when it is a reference to a string or to
+    /// an array of strings.
+    pub(super) string_ref: Option<StringRefInfo>,
+    /// The descriptor that sizes the whole of what it refers to, when it is
+    /// a reference to an array or a structure.
+    pub(super) region_ref: Option<u16>,
+}
+
+/// A structure, or an array of structures, reached as a flat array of
+/// slots.
+pub(super) struct Slots {
+    /// The descriptor of the flat array.
+    pub(super) desc_index: u16,
+    /// Each field of a structure that is an array of strings, by its
+    /// lower-case name: its descriptor, how many strings it holds, and how
+    /// many code units each holds.
+    pub(super) string_arrays: Vec<(String, (u16, u32, u16))>,
+    /// Each string field of the elements of an array of structures it
+    /// holds, or is: the slot of the field in the first element, from the
+    /// start of the flat array, and its strided descriptor.
+    pub(super) element_strings: Vec<(u32, u16)>,
+}
 
 /// The array descriptors added so far, by index.
 pub(super) struct Descriptors<'a> {
@@ -46,25 +78,40 @@ impl<'a> Descriptors<'a> {
 
     /// Adds the descriptors of a global's or the program's variable of the
     /// type `ty`, whose slot is `var_index` and whose run of the data region
-    /// starts at `data_offset`, and returns how the variable is reached as
-    /// an array, when it is one or refers to one.
+    /// starts at `data_offset`, and returns what it is reached through.
     pub(super) fn variable(
         &mut self,
         ty: TypeId,
         var_index: VarIndex,
         data_offset: Option<u32>,
-    ) -> Option<Option<ArrayVarInfo>> {
+    ) -> Option<Reached> {
         let types = self.types;
         match types.kind(ty)? {
-            TypeKind::Structure { .. } => self.structure(ty)?,
+            TypeKind::Structure { .. } => {
+                return Some(Reached {
+                    slots: Some(self.structure(ty)?),
+                    ..Reached::default()
+                })
+            }
             TypeKind::Array { element, .. } => {
                 if matches!(types.kind(*element)?, TypeKind::Structure { .. }) {
                     let total = elements(types, ty)?.checked_mul(slots(types, *element)?)?;
-                    self.add(slot_array(total));
-                    self.element_strings(ty)?;
-                } else {
-                    return self.array(ty, var_index, data_offset?).map(Some);
+                    let desc_index = self.add(slot_array(total));
+                    let mut element_strings = Vec::new();
+                    self.element_strings(ty, 0, &mut element_strings)?;
+                    return Some(Reached {
+                        slots: Some(Slots {
+                            desc_index,
+                            string_arrays: Vec::new(),
+                            element_strings,
+                        }),
+                        ..Reached::default()
+                    });
                 }
+                return Some(Reached {
+                    array: Some(self.array(ty, var_index, data_offset?)?),
+                    ..Reached::default()
+                });
             }
             TypeKind::Reference { target, .. } => return self.reference(*target, var_index),
             TypeKind::Bool
@@ -78,38 +125,41 @@ impl<'a> Descriptors<'a> {
             | TypeKind::FunctionBlock { .. }
             | TypeKind::Program { .. } => {}
         }
-        Some(None)
+        Some(Reached::default())
     }
 
-    /// Adds the descriptors of a structure of the type `ty`.
-    pub(super) fn structure(&mut self, ty: TypeId) -> Option<()> {
+    /// Adds the descriptors of a structure of the type `ty`, and returns
+    /// what it is reached through.
+    pub(super) fn structure(&mut self, ty: TypeId) -> Option<Slots> {
         let types = self.types;
-        self.add(slot_array(slots(types, ty)?));
+        let desc_index = self.add(slot_array(slots(types, ty)?));
         let fields = types.fields(ty)?;
+        let mut string_arrays = Vec::new();
         for field in fields {
             let TypeKind::Array { element, .. } = types.kind(field.ty)? else {
                 continue;
             };
             if let TypeKind::String(shape) = types.kind(*element)? {
                 let (max_length, char_width) = string_shape(*shape)?;
-                self.add(string_array(
-                    char_width,
-                    elements(types, field.ty)?,
-                    max_length,
-                ));
+                let total = elements(types, field.ty)?;
+                let desc = self.add(string_array(char_width, total, max_length));
+                let name = field.name.to_string().to_lowercase();
+                string_arrays.push((name, (desc, total, max_length)));
             }
         }
-        self.held_element_strings(fields)
+        let mut element_strings = Vec::new();
+        self.held_element_strings(fields, 0, &mut element_strings)?;
+        Some(Slots {
+            desc_index,
+            string_arrays,
+            element_strings,
+        })
     }
 
     /// Adds the descriptors a reference to a `target` reaches it through,
-    /// for the reference whose slot is `var_index`, and returns how the
-    /// reference is reached as an array, when it refers to one.
-    pub(super) fn reference(
-        &mut self,
-        target: TypeId,
-        var_index: VarIndex,
-    ) -> Option<Option<ArrayVarInfo>> {
+    /// for the reference whose slot is `var_index`, and returns what the
+    /// reference is reached through.
+    pub(super) fn reference(&mut self, target: TypeId, var_index: VarIndex) -> Option<Reached> {
         let types = self.types;
         match types.kind(target)? {
             TypeKind::Array { element, .. } => {
@@ -132,11 +182,17 @@ impl<'a> Descriptors<'a> {
                     total,
                     0,
                 ));
-                if let TypeKind::String(shape) = types.kind(*element)? {
-                    let (max_length, char_width) = string_shape(*shape)?;
-                    self.add(string_array(char_width, total, max_length));
-                }
-                Some(Some(ArrayVarInfo {
+                // An array of strings, not of references to them, is sized
+                // by its string descriptor.
+                let string_ref = if let TypeKind::String(shape) = types.kind(*element)? {
+                    Some(self.string_ref(*shape, total)?)
+                } else {
+                    None
+                };
+                let region_ref = string_ref
+                    .as_ref()
+                    .map_or(desc_index, |string| string.desc_index);
+                let array = ArrayVarInfo {
                     var_index,
                     desc_index,
                     data_offset: 0,
@@ -147,20 +203,23 @@ impl<'a> Descriptors<'a> {
                     string_max_len: 0,
                     string_char_width: CharWidth::Narrow,
                     is_ref: true,
-                }))
+                };
+                Some(Reached {
+                    array: Some(array),
+                    string_ref,
+                    region_ref: Some(region_ref),
+                    ..Reached::default()
+                })
             }
-            TypeKind::Structure { .. } => {
+            TypeKind::Structure { .. } => Some(Reached {
                 // A structure whose size is not known has no descriptor.
-                if let Some(total) = slots(types, target) {
-                    self.add(slot_array(total));
-                }
-                Some(None)
-            }
-            TypeKind::String(shape) => {
-                let (max_length, char_width) = string_shape(*shape)?;
-                self.add(string_array(char_width, 1, max_length));
-                Some(None)
-            }
+                region_ref: slots(types, target).map(|total| self.add(slot_array(total))),
+                ..Reached::default()
+            }),
+            TypeKind::String(shape) => Some(Reached {
+                string_ref: Some(self.string_ref(*shape, 1)?),
+                ..Reached::default()
+            }),
             TypeKind::Bool
             | TypeKind::Integer { .. }
             | TypeKind::BitString { .. }
@@ -170,8 +229,18 @@ impl<'a> Descriptors<'a> {
             | TypeKind::Subrange { .. }
             | TypeKind::FunctionBlock { .. }
             | TypeKind::Program { .. }
-            | TypeKind::Reference { .. } => Some(None),
+            | TypeKind::Reference { .. } => Some(Reached::default()),
         }
+    }
+
+    /// Adds the descriptor of the `total` strings of the shape `shape` a
+    /// reference refers to, and returns how it reaches them.
+    fn string_ref(&mut self, shape: StringShape, total: u32) -> Option<StringRefInfo> {
+        let (max_length, char_width) = string_shape(shape)?;
+        Some(StringRefInfo {
+            desc_index: self.add(string_array(char_width, total, max_length)),
+            char_width,
+        })
     }
 
     /// Adds the descriptor of an array of the type `ty`, whose elements are
@@ -225,14 +294,21 @@ impl<'a> Descriptors<'a> {
     }
 
     /// Adds a strided descriptor for each string field of the elements of
-    /// each array of structures that the structure fields `fields` hold, to
-    /// any depth of structures.
-    fn held_element_strings(&mut self, fields: &[Field]) -> Option<()> {
+    /// each array of structures that the structure fields `fields`, from the
+    /// slot `base`, hold, to any depth of structures, and records each in
+    /// `out`.
+    fn held_element_strings(
+        &mut self,
+        fields: &[Field],
+        base: u32,
+        out: &mut Vec<(u32, u16)>,
+    ) -> Option<()> {
         let types = self.types;
+        let mut slot = base;
         for field in fields {
             match types.kind(field.ty)? {
-                TypeKind::Structure { fields } => self.held_element_strings(fields)?,
-                TypeKind::Array { .. } => self.element_strings(field.ty)?,
+                TypeKind::Structure { fields } => self.held_element_strings(fields, slot, out)?,
+                TypeKind::Array { .. } => self.element_strings(field.ty, slot, out)?,
                 TypeKind::Bool
                 | TypeKind::Integer { .. }
                 | TypeKind::BitString { .. }
@@ -245,14 +321,16 @@ impl<'a> Descriptors<'a> {
                 | TypeKind::Program { .. }
                 | TypeKind::Reference { .. } => {}
             }
+            slot = slot.checked_add(slots(types, field.ty)?)?;
         }
         Some(())
     }
 
     /// Adds a strided descriptor for each string field of the elements of
-    /// the array of the type `ty`, when its elements are structures. A
-    /// string held deeper in an element has none.
-    fn element_strings(&mut self, ty: TypeId) -> Option<()> {
+    /// the array of the type `ty`, from the slot `base`, when its elements
+    /// are structures, and records each in `out`. A string held deeper in an
+    /// element has none.
+    fn element_strings(&mut self, ty: TypeId, base: u32, out: &mut Vec<(u32, u16)>) -> Option<()> {
         let types = self.types;
         let TypeKind::Array { element, .. } = types.kind(ty)? else {
             return None;
@@ -262,14 +340,17 @@ impl<'a> Descriptors<'a> {
         };
         let stride = slots(types, *element)?.checked_mul(8)?;
         let total = elements(types, ty)?;
+        let mut slot = base;
         for field in fields {
             if let TypeKind::String(shape) = types.kind(field.ty)? {
                 let (max_length, char_width) = string_shape(*shape)?;
-                self.add(ArrayDescriptor {
+                let desc = self.add(ArrayDescriptor {
                     element_stride: stride,
                     ..string_array(char_width, total, max_length)
                 });
+                out.push((slot, desc));
             }
+            slot = slot.checked_add(slots(types, field.ty)?)?;
         }
         Some(())
     }
