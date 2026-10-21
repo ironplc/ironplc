@@ -90,7 +90,7 @@ An operand is converted where its operation type differs from the result's: its 
 
 **REQ-IC-analyzer-026** An operand that is itself arithmetic is converted by its result type: in `(i + j) * r` the `INT` result of `i + j` is converted to `REAL`.
 
-The conversion of an arithmetic result to the type of its context is recorded where the context is: see Assignments below. An argument's is not recorded yet.
+The conversion of an arithmetic result to the type of its context is recorded where the context is: see Assignments and Arguments below.
 
 ### Time and date operations
 

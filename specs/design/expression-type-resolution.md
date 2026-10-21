@@ -118,7 +118,7 @@ on each expression from its operands' types:
 |---|---|
 | Untyped literal (`5`, `1.5`) | `Literal(ANY_INT)`, `Literal(ANY_REAL)` |
 | Typed literal, string, time, boolean | the elementary type |
-| Variable | its declaration's `type_id`; an element or field, the element's or field's type |
+| Variable | its declaration's `type_id`; an element or field, the element's or field's type; an element of a reference to an array, the referenced array's element type |
 | Arithmetic operator | the result of the overload that applies (see [Arithmetic Operator Overloads](arithmetic-operator-overloads.md)), else the concrete operand's type |
 | Unary operator, parenthesised expression | the operand's type |
 | `AND`, `OR`, `XOR`, `AND_THEN`, `OR_ELSE` | the concrete operand's type |
@@ -133,7 +133,10 @@ on each expression from its operands' types:
 A variable reference is typed by one walk, by type id
 (`variable_type::type_id`): the variable's declared type, then
 `TypeEnvironment::field_type` for a field, `element_type` for a subscript and
-`referenced_type` for a dereference. A rule that asks the type of a reference
+`referenced_type` for a dereference. A subscript of a reference to an array
+indexes the array it refers to, as a subscript of its dereference does: a
+TwinCAT `REFERENCE TO` is always used without `^`, and a `REF_TO` a subscript
+follows without `^`. A rule that asks the type of a reference
 (`variable_type::of`) takes the representation of the type the same walk
 reaches. Neither reads a field's type from the fields a representation lists,
 so a field has the one type its declaration records.
@@ -146,6 +149,8 @@ has no type; `rule_array_subscript_count` reports it (P4085). An array type
 that records no dimensions has none to count against.
 
 **REQ-ETR-analyzer-008** With `Row : ARRAY[1..3] OF DINT`, `rows : ARRAY[1..2] OF Row` and `m : ARRAY[1..2, 1..3] OF DINT`, `rows[1]` is a `Row`, `rows[1][2]` and `m[1, 2]` are `DINT`, and `rows[1, 2]`, `m[1]` and `m[1][2]` have no type.
+
+**REQ-ETR-analyzer-009** A subscript of a reference to an array selects an element of the array it refers to, as a subscript of its dereference does: with `pa : REF_TO ARRAY[1..3] OF DINT` and `ra : REFERENCE TO ARRAY[1..3] OF DINT`, `pa[2]`, `pa^[2]` and `ra[2]` are `DINT`, and `pa[1, 2]` has no type.
 
 **REQ-ETR-analyzer-004** A rule asking the type of a field of a function block instance gets the type the field is declared with, whatever kind of type it is: on a block with a structure output `p`, a `STRING` output `s` and an `ARRAY[1..3] OF INT` variable `a`, `f.p` is the structure, `f.s` a `STRING`, `f.a` the array, `f.a[2]` an `INT`, and `f.p.x` the type of the structure's field `x`.
 
@@ -220,10 +225,10 @@ which the compiler could remove by giving the literal the type `TO`.
 
 **REQ-ETR-plc2plc-003** A literal, an enumerated value and `NULL` are annotated with `CONSTANT` before the type, and no other expression is: `1 (* CONSTANT INT *)` but `count (* INT *)`.
 
-An expression left at a generic category is one whose type codegen still
-decides, not one with a type of its own
-([#2050](https://github.com/ironplc/ironplc/issues/2050)), so it is marked as
-undecided, as an expression with no type is.
+The recording pass gives every untyped literal the type it is compiled at
+(ADR-0056), so an expression left at a generic category has no type of its
+own: it is one the analyzer did not decide, and it is marked as undecided, as
+an expression with no type is.
 
 **REQ-ETR-plc2plc-004** An expression whose type the analyzer did not decide is annotated with `?`: `(* ? *)` with no recorded type, and `(* ? ANY_INT *)` at a generic category.
 
