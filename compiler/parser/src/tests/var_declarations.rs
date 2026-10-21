@@ -127,6 +127,46 @@ END_FUNCTION_BLOCK";
 }
 
 #[test]
+fn parse_when_located_var_has_no_size_prefix_then_size_is_nil() {
+    let lib = parse_text(
+        "PROGRAM main
+VAR
+    x AT %I1 : BOOL;
+END_VAR
+END_PROGRAM",
+    );
+    let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+    let direct = cast!(&prog.variables[0].identifier, VariableIdentifier::Direct);
+    assert_eq!(direct.address_assignment.location, LocationPrefix::I);
+    assert_eq!(direct.address_assignment.size, SizePrefix::Nil);
+    assert_eq!(direct.address_assignment.address, vec![1]);
+}
+
+#[test]
+fn parse_when_source_ends_after_address_with_no_size_prefix_then_err() {
+    let source = "PROGRAM main
+VAR
+    x AT %I1";
+    let result = parse_program(source, &FileId::default(), &CompilerOptions::default());
+    assert!(result.is_err());
+}
+
+#[rstest]
+#[case::arabic_indic_digit("%IX\u{0663}")]
+#[case::fullwidth_digit_in_second_field("%IX0.\u{FF10}")]
+fn parse_when_direct_address_has_non_ascii_digit_then_p0003(#[case] address: &str) {
+    let source = format!(
+        "PROGRAM main
+VAR
+    x AT {address} : BOOL;
+END_VAR
+END_PROGRAM"
+    );
+    let result = parse_program(&source, &FileId::default(), &CompilerOptions::default());
+    assert_eq!(result.unwrap_err().code, "P0003");
+}
+
+#[test]
 fn parse_when_program_mixed_vars_with_retain_qualifier_then_ok() {
     let lib = parse_text(
         "PROGRAM main
