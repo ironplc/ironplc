@@ -18,19 +18,24 @@ use spec_test_macro::spec_test;
 /// Compiles `source` and returns the serialized bytes with the header parsed
 /// back out of them, so every assertion is about what reaches the file.
 fn compiled(source: &str) -> (Vec<u8>, FileHeader) {
-    let options = CompilerOptions::default();
-    let library = ironplc_parser::parse_program(source, &FileId::default(), &options).unwrap();
-    let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
+    try_compiled(source, &CompilerOptions::default()).unwrap()
+}
+
+/// Compiles `source` under `options` as [`compiled`] does, or gives the
+/// code of the problem the compiler reports.
+fn try_compiled(source: &str, options: &CompilerOptions) -> Result<(Vec<u8>, FileHeader), String> {
+    let library = ironplc_parser::parse_program(source, &FileId::default(), options).unwrap();
+    let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], options).unwrap();
     let container = crate::compile(
         CleanAnalysis::new(&analyzed, &ctx).unwrap(),
-        &crate::CodegenOptions::from(&options),
+        &crate::CodegenOptions::from(options),
         &crate::EmptyLookup,
     )
-    .unwrap();
+    .map_err(|diagnostic| diagnostic.code)?;
     let mut buf = Vec::new();
     container.write_to(&mut buf).unwrap();
     let header = FileHeader::read_from(&mut Cursor::new(&buf[..HEADER_SIZE])).unwrap();
-    (buf, header)
+    Ok((buf, header))
 }
 
 const ASSIGNMENT_PROGRAM: &str = "PROGRAM main
@@ -75,22 +80,6 @@ fn container_spec_req_cf_026_content_and_debug_hashes_match_written_sections() {
     assert_eq!(header.debug_hash, integrity::debug_hash(debug));
 }
 
-/// Compiles `source` under `options`, giving the header the compiler
-/// writes, or the problem it reports.
-fn try_compiled(source: &str, options: &CompilerOptions) -> Result<FileHeader, String> {
-    let library = ironplc_parser::parse_program(source, &FileId::default(), options).unwrap();
-    let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], options).unwrap();
-    let container = crate::compile(
-        CleanAnalysis::new(&analyzed, &ctx).unwrap(),
-        &crate::CodegenOptions::from(options),
-        &crate::EmptyLookup,
-    )
-    .map_err(|diagnostic| diagnostic.code)?;
-    let mut buf = Vec::new();
-    container.write_to(&mut buf).unwrap();
-    Ok(FileHeader::read_from(&mut Cursor::new(&buf[..HEADER_SIZE])).unwrap())
-}
-
 /// The most variable-table slots one generated function takes. Its prologue
 /// sets each local, so a function of many more would outgrow the bytecode a
 /// line map entry can address before the table filled.
@@ -133,7 +122,7 @@ fn program_taking(slots: usize) -> String {
 /// table compiles, and `num_variables` counts them all.
 #[spec_test(REQ_CF_codegen_035)]
 fn container_spec_req_cf_035_when_program_takes_65535_slots_then_num_variables_counts_them() {
-    let header = try_compiled(&program_taking(65_535), &CompilerOptions::default()).unwrap();
+    let (_, header) = compiled(&program_taking(65_535));
 
     assert_eq!(header.num_variables, 65_535);
 }
