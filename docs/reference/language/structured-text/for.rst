@@ -37,6 +37,17 @@ must all be integer types. A control variable of any other type, such as a
 ``REAL`` or a ``WORD``, is an error
 (:doc:`P4091 </reference/compiler/problems/P4091>`).
 
+The step must not be zero: a step of zero never moves the control variable,
+so the loop never ends, and a step written as ``0`` or as an expression that
+folds to zero is an error
+(:doc:`P4093 </reference/compiler/problems/P4093>`).
+
+IEC 61131-3 allows any integer expression as the step, but IronPLC compiles
+only a constant step: a literal, or an expression of literals such as
+``2 * 3``. A step read from a variable passes analysis but is not yet
+implemented and reports :doc:`P9999 </reference/compiler/problems/P9999>`
+when compiled.
+
 Example
 -------
 
