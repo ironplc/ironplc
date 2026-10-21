@@ -2,7 +2,7 @@
 //! which the layout built from the lowered declarations does not have: a
 //! structure's and an array of structures' (`lowered.rs`).
 
-use ironplc_container::VarIndex;
+use ironplc_container::{ArrayDescriptor, VarIndex};
 use ironplc_ir::lowered::{TypeId, TypeKind, TypeTable};
 
 use super::descriptors::Slots;
@@ -89,6 +89,51 @@ impl StructEntry {
             scratch_var_index,
             slots: slots_of.into(),
         })
+    }
+}
+
+impl StructEntry {
+    /// The capacity of each string a field of the structure holds, as the
+    /// temporary buffers are sized for: a string field's, an array of
+    /// strings field's, and a string field's of the elements of an array of
+    /// structures it holds, which `descriptors` describe.
+    pub(super) fn capacities<'a>(
+        &'a self,
+        descriptors: &'a [ArrayDescriptor],
+    ) -> impl Iterator<Item = u16> + 'a {
+        self.fields
+            .iter()
+            .filter_map(|(_, _, capacity)| *capacity)
+            .chain(self.slots.capacities(descriptors))
+    }
+}
+
+impl StructArrayEntry {
+    /// The capacity of each string field of the elements, as
+    /// [`StructEntry::capacities`] gives a structure's.
+    pub(super) fn capacities<'a>(
+        &'a self,
+        descriptors: &'a [ArrayDescriptor],
+    ) -> impl Iterator<Item = u16> + 'a {
+        self.slots.capacities(descriptors)
+    }
+}
+
+impl SlotsEntry {
+    /// The capacity of each string of an array of strings field, and of
+    /// each element string field, which `descriptors` describe.
+    fn capacities<'a>(
+        &'a self,
+        descriptors: &'a [ArrayDescriptor],
+    ) -> impl Iterator<Item = u16> + 'a {
+        self.string_arrays
+            .iter()
+            .map(|(_, (_, _, capacity))| *capacity)
+            .chain(self.element_strings.iter().filter_map(|(_, desc)| {
+                descriptors
+                    .get(usize::from(*desc))
+                    .map(|descriptor| descriptor.element_extra)
+            }))
     }
 }
 

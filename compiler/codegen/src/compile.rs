@@ -890,7 +890,7 @@ fn compile_program_with_functions(
     Ok((container, counts))
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct StringParamInfo {
     /// Byte offset in the data region where this parameter's string is stored.
     pub(crate) data_offset: u32,
@@ -902,7 +902,7 @@ pub(crate) struct StringParamInfo {
 
 /// How a call site passes an argument to one input parameter
 /// (`VAR_INPUT`/`VAR_IN_OUT`) of a user-defined function or method.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) enum ParamPassing {
     /// The argument's value is pushed onto the operand stack at its own
     /// type, which the analyzer converted to the parameter's (ADR-0056), and
@@ -922,7 +922,7 @@ pub(crate) enum ParamPassing {
 ///
 /// When a function returns STRING/WSTRING, the return value lives in the
 /// data region rather than on the operand stack.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct StringReturnInfo {
     /// Byte offset in the data region where the return string is stored.
     pub(crate) data_offset: u32,
@@ -933,7 +933,7 @@ pub(crate) struct StringReturnInfo {
 }
 
 /// Metadata for a compiled user-defined function.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct UserFunctionInfo {
     /// The function ID assigned in the container.
     pub(crate) function_id: FunctionId,
@@ -963,7 +963,7 @@ pub(crate) struct UserFunctionInfo {
 
 /// Tracks state during compilation of a single program.
 /// Metadata for a function block instance variable.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct FbInstanceInfo {
     /// Variable table index holding the data region offset.
     pub(crate) var_index: VarIndex,
@@ -986,7 +986,12 @@ pub(crate) struct FbInstanceInfo {
 /// `FB_LOAD_PARAM` and `FB_STORE_PARAM` name by a byte.
 pub(crate) type FbFieldIndex = u8;
 
+/// The type ID of the first user-defined function block; each next one, in
+/// library order, takes the next.
+pub(crate) const FIRST_USER_FB_TYPE_ID: FbTypeId = FbTypeId::new(0x1000);
+
 /// Metadata for a compiled user-defined function block type.
+#[derive(Debug, PartialEq)]
 pub(crate) struct UserFbTypeInfo {
     /// Unique type ID for FB_CALL dispatch (starts at 0x1000).
     pub(crate) type_id: FbTypeId,
@@ -1018,6 +1023,7 @@ pub(crate) struct UserFbTypeInfo {
 /// (`UserFbTypeInfo::var_offset`/`num_fields`) for `self` access, and has
 /// its own additional, non-shared param/local scratch region allocated
 /// immediately after -- see `compile_method::compile_user_method`.
+#[derive(Debug, PartialEq)]
 pub(crate) struct UserMethodInfo {
     /// Function ID of the compiled method body in the container.
     pub(crate) function_id: FunctionId,
@@ -1042,6 +1048,7 @@ pub(crate) struct UserMethodInfo {
 }
 
 /// A VAR_INPUT or VAR_IN_OUT parameter of a user-defined method.
+#[derive(Debug, PartialEq)]
 pub(crate) struct UserMethodParam {
     pub(crate) name: Id,
     /// How a call site passes the argument for it. A string parameter is
@@ -1217,7 +1224,7 @@ impl CompileContext {
             function_stack_depths: HashMap::new(),
             user_fb_types: HashMap::new(),
             standard_blocks: HashMap::new(),
-            next_user_fb_type_id: FbTypeId::new(0x1000),
+            next_user_fb_type_id: FIRST_USER_FB_TYPE_ID,
             types: HashMap::new(),
             block_members: HashMap::new(),
             operand_names: HashMap::new(),
