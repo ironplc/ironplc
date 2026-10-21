@@ -53,13 +53,20 @@ impl<'a> Region<'a> {
     }
 
     /// Reserves the run of a global's or the program's variable of the type
-    /// `ty`, and returns where it is when it is a string's; `None` when the
+    /// `ty`, and returns where it starts, when it has one; `None` when the
     /// region overflows.
-    pub(super) fn variable(&mut self, ty: TypeId) -> Option<Option<StringVarInfo>> {
+    pub(super) fn variable(&mut self, ty: TypeId) -> Option<Option<u32>> {
         let types = self.types();
-        match types.kind(ty)? {
-            TypeKind::String(shape) => return self.string(*shape).map(Some),
-            TypeKind::Structure { .. } => self.structure(ty)?,
+        let start = self.next;
+        let reserved = match types.kind(ty)? {
+            TypeKind::String(shape) => {
+                self.string(*shape)?;
+                true
+            }
+            TypeKind::Structure { .. } => {
+                self.structure(ty)?;
+                true
+            }
             TypeKind::Array { element, .. } => {
                 let elements = elements(types, ty)?;
                 let element_bytes = match types.kind(*element)? {
@@ -81,8 +88,12 @@ impl<'a> Region<'a> {
                     | TypeKind::Reference { .. } => 8,
                 };
                 self.reserve(elements.checked_mul(element_bytes)?)?;
+                true
             }
-            TypeKind::FunctionBlock { .. } => self.instance(ty)?,
+            TypeKind::FunctionBlock { .. } => {
+                self.instance(ty)?;
+                true
+            }
             TypeKind::Bool
             | TypeKind::Integer { .. }
             | TypeKind::BitString { .. }
@@ -91,9 +102,9 @@ impl<'a> Region<'a> {
             | TypeKind::Enumeration { .. }
             | TypeKind::Subrange { .. }
             | TypeKind::Program { .. }
-            | TypeKind::Reference { .. } => {}
-        }
-        Some(None)
+            | TypeKind::Reference { .. } => false,
+        };
+        Some(reserved.then_some(start))
     }
 
     /// Reserves the run of a string of the shape `shape`, and returns where
@@ -101,11 +112,7 @@ impl<'a> Region<'a> {
     pub(super) fn string(&mut self, shape: StringShape) -> Option<StringVarInfo> {
         let (max_length, char_width) = string_shape(shape)?;
         let data_offset = self.reserve(string_region_size(max_length, char_width))?;
-        Some(StringVarInfo {
-            data_offset,
-            max_length,
-            char_width,
-        })
+        string_at(data_offset, shape)
     }
 
     /// Reserves the run of a structure of the type `ty`.
@@ -166,8 +173,19 @@ impl<'a> Region<'a> {
     }
 }
 
+/// Where a string of the shape `shape` whose run starts at `data_offset`
+/// is.
+pub(super) fn string_at(data_offset: u32, shape: StringShape) -> Option<StringVarInfo> {
+    let (max_length, char_width) = string_shape(shape)?;
+    Some(StringVarInfo {
+        data_offset,
+        max_length,
+        char_width,
+    })
+}
+
 /// The capacity and width of the strings of the shape `shape`.
-fn string_shape(shape: StringShape) -> Option<(u16, CharWidth)> {
+pub(super) fn string_shape(shape: StringShape) -> Option<(u16, CharWidth)> {
     let char_width = match shape.encoding {
         Encoding::Narrow => CharWidth::Narrow,
         Encoding::Wide => CharWidth::Wide,
@@ -176,7 +194,7 @@ fn string_shape(shape: StringShape) -> Option<(u16, CharWidth)> {
 }
 
 /// How many elements an array of the type `ty` has, across its dimensions.
-fn elements(types: &TypeTable, ty: TypeId) -> Option<u32> {
+pub(super) fn elements(types: &TypeTable, ty: TypeId) -> Option<u32> {
     let TypeKind::Array { dimensions, .. } = types.kind(ty)? else {
         return None;
     };
@@ -191,7 +209,7 @@ fn elements(types: &TypeTable, ty: TypeId) -> Option<u32> {
 /// one for a scalar or a reference, the sum of its fields' for a structure,
 /// its elements' for an array, and enough for the header and the
 /// characters of a string. A function block or a program has none.
-fn slots(types: &TypeTable, ty: TypeId) -> Option<u32> {
+pub(super) fn slots(types: &TypeTable, ty: TypeId) -> Option<u32> {
     match types.kind(ty)? {
         TypeKind::Bool
         | TypeKind::Integer { .. }
