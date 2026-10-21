@@ -225,10 +225,10 @@ which the compiler could remove by giving the literal the type `TO`.
 
 **REQ-ETR-plc2plc-003** A literal, an enumerated value and `NULL` are annotated with `CONSTANT` before the type, and no other expression is: `1 (* CONSTANT INT *)` but `count (* INT *)`.
 
-An expression left at a generic category is one whose type codegen still
-decides, not one with a type of its own
-([#2050](https://github.com/ironplc/ironplc/issues/2050)), so it is marked as
-undecided, as an expression with no type is.
+The recording pass gives every untyped literal the type it is compiled at
+(ADR-0056), so an expression left at a generic category has no type of its
+own: it is one the analyzer did not decide, and it is marked as undecided, as
+an expression with no type is.
 
 **REQ-ETR-plc2plc-004** An expression whose type the analyzer did not decide is annotated with `?`: `(* ? *)` with no recorded type, and `(* ? ANY_INT *)` at a generic category.
 
