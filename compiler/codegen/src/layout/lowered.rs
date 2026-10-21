@@ -36,6 +36,7 @@
 use std::collections::HashMap;
 
 use ironplc_analyzer::StandardFunctionBlock;
+use ironplc_container::debug_section::StringLayoutEntry;
 use ironplc_container::{ArrayDescriptor, ContainerBuilder, FunctionId, VarIndex};
 use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -54,12 +55,16 @@ use crate::compile_array::ArrayVarInfo;
 use crate::compile_reference::StringRefInfo;
 use crate::lowered::type_info;
 
+#[cfg(test)]
+mod tests;
+
 /// Checks the layout built from the declarations of `lowering` equal to the
 /// one `ctx` laid out from the AST, for the program `program`: each slot,
 /// the type it is operated at, each string's run of the data region, where
 /// the region ends, how each array, structure, array of structures and
 /// what each reference refers to is reached, and the array descriptors
-/// `builder` holds. An internal error names each entry that differs.
+/// `builder` holds, and the debug string layouts. An internal error names
+/// each entry that differs.
 /// A program a declaration of which did not lower keeps the AST layout, and
 /// has nothing to check.
 pub(crate) fn check(
@@ -134,6 +139,12 @@ pub(crate) fn check(
             lowered.data_end, ctx.data_region_offset
         ));
     }
+    if ctx.debug_string_layouts != lowered.debug_string_layouts {
+        differences.push(format!(
+            "debug string layouts {:?} and {:?}",
+            ctx.debug_string_layouts, lowered.debug_string_layouts
+        ));
+    }
     if differences.is_empty() {
         return Ok(());
     }
@@ -163,6 +174,10 @@ struct Layout {
     region_refs: Scoped<u16>,
     data_end: u32,
     descriptors: Vec<ArrayDescriptor>,
+    /// The debug section's STRING_LAYOUT table, in declaration order.
+    /// As in the AST layout, only globals and program variables have an
+    /// entry: strings of a function, block or method have none yet.
+    debug_string_layouts: Vec<StringLayoutEntry>,
 }
 
 /// What the declarations reserve as the walk visits them: the runs of the
@@ -340,11 +355,19 @@ impl Layout {
     ) -> Option<()> {
         let types = storage.region.lowering().types();
         let start = storage.region.variable(ty)?;
-        if let (Some(TypeKind::String(shape)), Some(start)) = (types.kind(ty), start) {
-            self.string_vars
-                .insert(scope, name.clone(), string_at(start, *shape)?);
-        }
+        let string = match (types.kind(ty), start) {
+            (Some(TypeKind::String(shape)), Some(start)) => Some(string_at(start, *shape)?),
+            _ => None,
+        };
         let index = self.insert_counted(scope, name.clone(), slot_type(types, ty));
+        if let Some(string) = string {
+            self.debug_string_layouts.push(StringLayoutEntry {
+                var_index: index,
+                data_offset: string.data_offset,
+                max_length: string.max_length,
+            });
+            self.string_vars.insert(scope, name.clone(), string);
+        }
         let reached = storage.descriptors.variable(ty, index, start)?;
         let scratch_index =
             needs_scratch(types, ty).then(|| self.insert_counted(scope, scratch(&name), None));
