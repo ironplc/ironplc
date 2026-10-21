@@ -10,9 +10,9 @@
 //! no type that holds both, so it is reported as P4049, the code `d + r`
 //! reports. See `specs/design/comparison-operand-type.md`.
 //!
-//! An operand whose resolved type the relation cannot judge (a subrange, an
-//! enumeration, a structure, `NULL`) is skipped, as the other operand rules
-//! skip it. Two string operands are left to
+//! A subrange is judged at its base type, as it is operated at. An operand
+//! whose resolved type the relation cannot judge (an enumeration, a
+//! structure, `NULL`) is skipped, as the other operand rules skip it. Two string operands are left to
 //! `rule_string_encoding_compat` (P4034).
 //!
 //! ## Passes
@@ -78,25 +78,6 @@ pub fn apply(
     )
 }
 
-/// Returns `true` for the comparisons `=`, `<>`, `<`, `<=`, `>` and `>=`,
-/// and `false` for the logical and bitwise operators that share
-/// `CompareOp`.
-fn is_comparison(op: &CompareOp) -> bool {
-    match op {
-        CompareOp::Eq
-        | CompareOp::Ne
-        | CompareOp::Lt
-        | CompareOp::Gt
-        | CompareOp::LtEq
-        | CompareOp::GtEq => true,
-        CompareOp::And
-        | CompareOp::Or
-        | CompareOp::Xor
-        | CompareOp::AndThen
-        | CompareOp::OrElse => false,
-    }
-}
-
 /// Returns `true` for a string type, whose operand pairs the string
 /// encoding check judges.
 fn is_string_type(type_name: &TypeName) -> bool {
@@ -143,8 +124,9 @@ impl RuleComparisonOperandType<'_> {
         );
     }
 
-    /// Checks a call to `EQ`, `NE`, `LT`, `LE`, `GT` or `GE` on two
-    /// positional inputs, labelled at the function name.
+    /// Checks a call to `EQ`, `NE`, `LT`, `LE`, `GT` or `GE` on two inputs,
+    /// labelled at the function name. Resolution names positional inputs, so
+    /// either kind is read.
     fn check_call(&mut self, function: &Function) {
         let Some(form) = operator_function_form(&function.name.to_string()) else {
             return;
@@ -152,19 +134,20 @@ impl RuleComparisonOperandType<'_> {
         let FormOf::Compare(op) = &form.operator else {
             return;
         };
-        if !is_comparison(op) {
+        if !op.is_comparison() {
             return;
         }
-        let [ParamAssignmentKind::PositionalInput(left), ParamAssignmentKind::PositionalInput(right)] =
-            function.param_assignment.as_slice()
-        else {
+        let [left, right] = function.param_assignment.as_slice() else {
+            return;
+        };
+        let (Some(left), Some(right)) = (left.input_expr(), right.input_expr()) else {
             return;
         };
         self.check(
             Label::span(function.name.span(), "Function call"),
             &function.name.original().to_string(),
-            &left.expr,
-            &right.expr,
+            left,
+            right,
         );
     }
 }
@@ -182,7 +165,7 @@ impl Visitor<Infallible> for RuleComparisonOperandType<'_> {
     /// spans the whole expression.
     fn visit_expr(&mut self, node: &Expr) -> Result<Self::Value, Infallible> {
         match &node.kind {
-            ExprKind::Compare(compare) if is_comparison(&compare.op) => self.check(
+            ExprKind::Compare(compare) if compare.op.is_comparison() => self.check(
                 Label::span(node.span(), "Expression"),
                 compare.op.as_str(),
                 &compare.left,
@@ -198,7 +181,7 @@ impl Visitor<Infallible> for RuleComparisonOperandType<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::parse_and_resolve_types_with_options;
+    use crate::test_helpers::rule_diagnostics;
     use ironplc_parser::options::Dialect;
     use ironplc_problems::Problem;
     use rstest::rstest;
@@ -207,11 +190,7 @@ mod tests {
     /// Runs the rule over `program` with `options`, returning the codes and
     /// described context of each diagnostic.
     fn check_with(program: &str, options: &CompilerOptions) -> Vec<Diagnostic> {
-        let (library, context) = parse_and_resolve_types_with_options(program, options);
-        match apply(&library, &context, options) {
-            Ok(()) => vec![],
-            Err(diagnostics) => diagnostics,
-        }
+        rule_diagnostics(apply, program, options)
     }
 
     fn check(program: &str) -> Vec<Diagnostic> {
@@ -336,6 +315,23 @@ END_PROGRAM"
         assert_p4049(&check(&program(left, right, expr)));
     }
 
+    #[spec_test(REQ_CMP_analyzer_013)]
+    #[rstest]
+    #[case::bool_and_bit_string("WORD", "BOOL", "a = b")]
+    #[case::bool_and_integer_literal("BOOL", "BOOL", "a = 1")]
+    #[case::number_and_string("DINT", "STRING", "a = b")]
+    #[case::number_and_string_literal("DINT", "DINT", "a = 'abc'")]
+    fn apply_when_bool_or_string_against_number_then_p4049_in_every_dialect(
+        #[case] left: &str,
+        #[case] right: &str,
+        #[case] expr: &str,
+    ) {
+        for dialect in Dialect::ALL {
+            let options = CompilerOptions::from_dialect(*dialect);
+            assert_p4049(&check_with(&program(left, right, expr), &options));
+        }
+    }
+
     #[rstest]
     #[case::strings("STRING", "STRING")]
     #[case::string_encodings("STRING", "WSTRING")]
@@ -362,9 +358,10 @@ END_PROGRAM",
         assert_ok(&diagnostics);
     }
 
-    #[test]
-    fn apply_when_subrange_compared_then_ok() {
-        let diagnostics = check(
+    /// A program comparing a subrange of `INT` with a variable of type
+    /// `other`.
+    fn subrange_program(other: &str) -> String {
+        format!(
             "
 TYPE
     Pct : INT (0..100);
@@ -373,28 +370,26 @@ END_TYPE
 PROGRAM main
 VAR
     p : Pct;
-    u : UDINT;
+    o : {other};
     x : BOOL;
 END_VAR
-    x := p < u;
-END_PROGRAM",
-        );
-        assert_ok(&diagnostics);
+    x := p < o;
+END_PROGRAM"
+        )
+    }
+
+    #[test]
+    fn apply_when_subrange_base_widens_to_other_then_ok() {
+        assert_ok(&check(&subrange_program("LINT")));
+    }
+
+    #[test]
+    fn apply_when_subrange_base_neither_widens_then_p4049() {
+        assert_p4049(&check(&subrange_program("UDINT")));
     }
 
     #[test]
     fn apply_when_logical_operator_then_not_this_rule() {
         assert_ok(&check(&program("BOOL", "BOOL", "a AND b")));
-    }
-
-    #[test]
-    fn analyze_when_comparison_has_no_operand_type_then_pipeline_reports_p4049() {
-        use crate::stages::analyze;
-        let library = crate::test_helpers::parse_only(&program("DINT", "UDINT", "a < b"));
-        let (_lib, context) = analyze(&[&library], &CompilerOptions::default()).unwrap();
-        assert!(context
-            .diagnostics()
-            .iter()
-            .any(|d| d.code == Problem::OperatorOperandTypeMismatch.code()));
     }
 }

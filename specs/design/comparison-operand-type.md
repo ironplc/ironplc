@@ -56,11 +56,15 @@ that make a pair acceptable to an assignment or an arithmetic operator
 make it acceptable to a comparison. CODESYS goes further and accepts a
 `DINT` and a `REAL`, or a `DINT` and a `UDINT`, with an implicit conversion
 (and a warning); no dialect of this project does that for an arithmetic
-operator either, so none does it for a comparison.
+operator either, so none does it for a comparison. Reporting these pairs in
+every dialect, CODESYS and TwinCAT included, was decided on 2026-10-21: a
+narrowing is never implicit, and a widening is what ADR-0029 and ADR-0031
+allow ([#2347](https://github.com/ironplc/ironplc/issues/2347)).
 
-An operand whose resolved type the relation cannot judge (a subrange, an
-enumeration, a structure, `NULL`) is left alone, as the other operand rules
-leave it. Two string operands are left to the string encoding
+A subrange is judged at its base type, the type it is operated at
+(REQ-IC-analyzer-092). An operand whose resolved type the relation cannot
+judge (an enumeration, a structure, `NULL`) is left alone, as the other
+operand rules leave it. Two string operands are left to the string encoding
 check (P4034).
 
 **REQ-CMP-analyzer-007** The analyzer reports P4049 for a comparison of two types neither of which widens to the other, naming the operator and both types: `DINT < UDINT`, `DINT = REAL`, `TIME > DATE`, `WORD <= INT`.
@@ -75,6 +79,8 @@ check (P4034).
 
 **REQ-CMP-analyzer-012** A flag that makes one type acceptable as another (`--allow-cross-family-widening`, `--allow-cross-family-conversion`, `--allow-int-literal-to-bit-string`) makes a comparison of the two acceptable: `UDINT = DWORD`, `BYTE < INT` and `WORD <> 0` are accepted in the CODESYS dialect and reported in the default one.
 
+**REQ-CMP-analyzer-013** The analyzer reports P4049, in every dialect, for a comparison of a `BOOL` with a bit string or an integer and of a number with a string: `w = b` on a `WORD` and a `BOOL`, `b = 1`, `k = s` on a `DINT` and a `STRING`, and `k = 'abc'`.
+
 ## Codegen
 
 The analyzer records the operand type on the operands themselves (ADR-0056):
@@ -88,9 +94,9 @@ integer or a `TIME` (ADR-0021) is sign-extended, and an integer is converted
 to a real.
 
 A comparison with no operand type takes the concrete left operand's type,
-else the concrete right operand's, as codegen chose before this design. Only
-a pair the operand check leaves alone (a subrange, an enumeration) reaches
-the pass that way; a pair of types it can judge has been reported.
+else the concrete right operand's, as codegen chose before this design. A
+pair of types the operand check judges has no operand type only when neither
+widens to the other, and is reported (REQ-CMP-analyzer-007).
 
 The operator and the function form compile through the same routine, so the
 two spellings cannot diverge. The function form used to fold its inputs at the
