@@ -68,6 +68,13 @@ impl<V> Scoped<V> {
         self.own(scope, name).is_some()
     }
 
+    /// Each entry, with the scope that records it.
+    pub(crate) fn entries(&self) -> impl Iterator<Item = (ScopeId, &V)> {
+        self.by_scope
+            .iter()
+            .flat_map(|(scope, names)| names.values().map(move |value| (*scope, value)))
+    }
+
     /// The entries `f` makes of each of `self`'s, under the same scope and
     /// name.
     pub(crate) fn map<W>(&self, f: impl Fn(&V) -> W) -> Scoped<W> {
@@ -504,6 +511,26 @@ mod tests {
     #[test]
     fn differences_when_same_entries_then_none() {
         assert!(slots().differences(&slots()).is_empty());
+    }
+
+    #[test]
+    fn entries_when_recorded_then_each_with_its_scope() {
+        let mut entries: Vec<(ScopeId, u16)> = slots()
+            .entries()
+            .map(|(scope, index)| (scope, index.raw()))
+            .collect();
+        entries.sort_by_key(|(_, index)| *index);
+
+        assert_eq!(
+            entries,
+            [
+                (ScopeId::Global, 0),
+                (ScopeId::Global, 1),
+                (ScopeId::Global, 2),
+                (ScopeId::Program, 3),
+                (ScopeId::Program, 4),
+            ]
+        );
     }
 
     #[test]
