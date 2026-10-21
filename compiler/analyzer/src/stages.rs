@@ -346,7 +346,8 @@ pub fn resolve_types(
     });
 
     // Mark every variable the program never writes as CONSTANT, so the
-    // semantic rules and codegen see one notion of a constant variable.
+    // semantic rules and codegen see one notion of a constant variable, and
+    // record the value each constant holds in the symbol environment.
     // Runs last: it needs bare identifiers resolved to variables, `ADR`
     // rewritten to `Ref`, user functions in the function environment and
     // named arguments made positional. Infallible, so nothing to revert.
@@ -355,7 +356,7 @@ pub fn resolve_types(
         library,
         &type_environment,
         &function_environment,
-        &symbol_environment,
+        &mut symbol_environment,
     );
 
     // Generate and display useful symbol table information

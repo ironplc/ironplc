@@ -1344,10 +1344,10 @@ is today.
 The analyzer holds the control variable to an integer, `ANY_INT` or a subrange
 of one (P4091), so a `For` never counts with a real, a bit string, a duration,
 a `BOOL` or an enumeration; and it holds a constant step to a nonzero value
-(P4093), so a `For` never counts by zero. A step that names a constant is a
-read of a variable to both, since no stage substitutes a named constant into
-a statement: the analyzer does not judge its value, and lowering does not
-compile it.
+(P4093), so a `For` never counts by zero. The analyzer judges a step that
+names a constant by the value the symbol environment records for it
+(REQ-CVI-analyzer-060); lowering does not read that value, so such a step is
+a read of a variable to it, and is reported as P9999 like any other.
 
 `to` is evaluated on every iteration, and the control variable wraps, so a
 `FOR` whose bound is the largest value of the control variable's type does not
