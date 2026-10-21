@@ -1343,7 +1343,9 @@ P9999, as it is today.
 
 The analyzer holds the control variable to an integer, `ANY_INT` or a subrange
 of one (P4091), so a `For` never counts with a real, a bit string, a duration,
-a `BOOL` or an enumeration.
+a `BOOL` or an enumeration. It rejects an untyped real literal as the `from`,
+`to` or `step` of such a loop (P4093), so the literal a backend compiles at
+the control variable's type is never a real one.
 
 `to` is evaluated on every iteration, and the control variable wraps, so a
 `FOR` whose bound is the largest value of the control variable's type does not
@@ -2086,7 +2088,9 @@ Every subscript is a 32-bit signed integer, a `DINT`. The analyzer converts a
 subscript of another type to `DINT` (see [Implicit Conversions](implicit-conversions.md)),
 so a 64-bit subscript is narrowed, and no backend indexes at 64 bits. No
 program IronPLC targets needs an array of more than 2^31 elements, and 64-bit
-index arithmetic is slow on the 32-bit targets a PLC runtime often has.
+index arithmetic is slow on the 32-bit targets a PLC runtime often has. The
+analyzer rejects a `BOOL` subscript (P4086) and an untyped real literal
+subscript (P4093), so neither reaches a backend.
 
 **REQ-LOW-lowering-161** The subscripts of an `Index` are of type `DINT`.
 
