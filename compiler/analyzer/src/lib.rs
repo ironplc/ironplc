@@ -41,6 +41,7 @@ mod rule_bit_shift_input_type;
 mod rule_call_input_type;
 mod rule_case_bit_string_label;
 mod rule_case_selector_type;
+mod rule_comparison_operand_type;
 mod rule_condition_type;
 mod rule_constant_not_written;
 mod rule_constant_range;

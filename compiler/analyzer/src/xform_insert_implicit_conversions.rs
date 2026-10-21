@@ -100,7 +100,8 @@ impl ImplicitConversions<'_> {
     /// operand widens to, else the concrete left operand's type, else the
     /// concrete right one's. The fallback is the rule codegen applied before
     /// the analyzer chose; a pair neither of which widens to the other
-    /// (`DINT` and `UDINT`) is not checked yet (#1931).
+    /// (`DINT` and `UDINT`) reaches it, and `rule_comparison_operand_type`
+    /// reports it.
     fn operand_type(&self, left: &Expr, right: &Expr) -> Option<TypeId> {
         comparison_operand_type(
             self.conversions.operand_name(left).as_ref(),

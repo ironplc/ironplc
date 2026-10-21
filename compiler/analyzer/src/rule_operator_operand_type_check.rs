@@ -126,8 +126,8 @@ pub fn apply(
 /// short-circuit on `BOOL`s and are the eager bitwise operators on bit
 /// strings (`specs/design/beckhoff-twincat-dialect.md`).
 ///
-/// The relational operators are declared `ANY_ELEMENTARY` in the table.
-/// Holding them to that is a separate decision from this rule.
+/// The comparisons are declared `ANY_ELEMENTARY` in the table; their
+/// operand pair is checked by `rule_comparison_operand_type`.
 fn checked_compare_form(op: &CompareOp) -> Option<&'static OperatorFunctionForm> {
     match op {
         CompareOp::And | CompareOp::Or | CompareOp::Xor => {
