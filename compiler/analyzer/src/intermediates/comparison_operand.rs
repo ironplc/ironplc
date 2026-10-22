@@ -14,8 +14,8 @@ use ironplc_parser::options::CompilerOptions;
 use super::common_operand::common_operand;
 
 /// Returns the type at which a comparison of operands of types `left` and
-/// `right` compares them, or `None` when an operand has no type or neither
-/// widens to the other.
+/// `right` compares them, or `None` when an operand has no type or the pair
+/// has no type both compute at.
 pub(crate) fn comparison_operand_type(
     left: Option<&TypeName>,
     right: Option<&TypeName>,
@@ -109,6 +109,21 @@ mod tests {
         #[case] right: &str,
     ) {
         assert_eq!(operand_type(left, right), None);
+    }
+
+    #[spec_test(REQ_CMP_analyzer_007)]
+    #[rstest]
+    #[case::int_right("INT", "ANY_REAL", Some("REAL"))]
+    #[case::int_left("ANY_REAL", "INT", Some("REAL"))]
+    #[case::uint("UINT", "ANY_REAL", Some("REAL"))]
+    #[case::dint_lossy("DINT", "ANY_REAL", None)]
+    #[case::lint_lossy("ANY_REAL", "LINT", None)]
+    fn comparison_operand_type_when_real_literal_beside_integer_then_real_if_it_widens(
+        #[case] left: &str,
+        #[case] right: &str,
+        #[case] expected: Option<&str>,
+    ) {
+        assert_eq!(operand_type(left, right), expected.map(TypeName::from));
     }
 
     #[test]

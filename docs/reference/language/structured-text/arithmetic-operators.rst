@@ -56,8 +56,11 @@ defined only for integer types.
 When the two operands have different numeric types, the narrower one widens
 to the wider, and the operation is carried out at the wider type, which is
 also the result's type: ``INT + DINT`` is a ``DINT``, and ``INT + REAL`` is a
-``REAL``. Two types where neither widens to the other, such as ``DINT`` and
-``REAL``, are an error (:doc:`P4049 </reference/compiler/problems/P4049>`).
+``REAL``. A bare integer literal takes the other operand's type, and a bare
+real literal next to an integer is a ``REAL``, so ``i * 1.5`` on an ``INT``
+is a ``REAL``. Two types where neither widens to the other, such as ``DINT``
+and ``REAL`` or ``DINT`` and ``1.5``, are an error
+(:doc:`P4049 </reference/compiler/problems/P4049>`).
 See :doc:`/explanation/type-conversions`.
 
 ``+``, ``-``, ``*`` and ``/`` are also defined on the time and date types,

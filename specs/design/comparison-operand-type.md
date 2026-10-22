@@ -25,7 +25,11 @@ operand the other is acceptable as by the implicit widening of
 short-to-long widening of a temporal family from the ADR-0025 amendment). Both
 ask `intermediates::common_operand`, so a comparison and an arithmetic
 expression on the same pair agree. The analyzer exposes the answer as
-`comparison_operand_type`, a pure function of the two operand types.
+`comparison_operand_type`, a pure function of the two operand types. An
+untyped real literal beside an integer compares at `REAL`, the type the
+literal defaults to (ADR-0028), when the integer widens to it, as `i * 1.5`
+computes at `REAL`; a comparison and an arithmetic expression on the same
+pair still agree.
 
 **REQ-CMP-analyzer-001** The operand type of a comparison of two integer types, one of which widens to the other, is the wider one whichever side it is on: `DINT` and `LINT` compare as `LINT`, as do `LINT` and `DINT`.
 
@@ -38,6 +42,8 @@ expression on the same pair agree. The analyzer exposes the answer as
 **REQ-CMP-analyzer-005** The operand type of a comparison of an untyped literal and a concrete type it is acceptable as is the concrete type: `1` and `LINT` compare as `LINT`.
 
 **REQ-CMP-analyzer-006** A comparison of two types neither of which widens to the other, such as `DINT` and `UDINT`, has no operand type.
+
+**REQ-CMP-analyzer-007** The operand type of a comparison of an untyped real literal and an integer that widens losslessly to `REAL` is `REAL`, the type the literal defaults to (ADR-0028): `INT` and `1.5` compare as `REAL`, and `DINT` and `1.5` have no operand type, as `DINT` and `REAL` have none.
 
 ## Codegen
 
