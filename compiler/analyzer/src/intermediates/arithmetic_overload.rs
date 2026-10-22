@@ -91,10 +91,12 @@ pub struct FoldFailure {
 ///    [`Overload::Unchecked`].
 /// 2. The numeric overload applies when both operands are in the operator's
 ///    category and one is acceptable where the other is expected; the result
-///    is the operand the other widens to. With
-///    `--allow-bit-string-arithmetic`, a `BYTE`, `WORD`, `DWORD` or `LWORD`
-///    operand of `ADD`, `SUB`, `MUL` or `DIV` is judged as the unsigned
-///    integer of its width (ADR-0053).
+///    is the operand the other widens to. An untyped real literal beside an
+///    integer is a `REAL`, its default type (ADR-0028), so the result of
+///    `i * 1.5` on an `INT` is `REAL` and `d * 1.5` on a `DINT` has none
+///    (see `common_operand`). With `--allow-bit-string-arithmetic`, a
+///    `BYTE`, `WORD`, `DWORD` or `LWORD` operand of `ADD`, `SUB`, `MUL` or
+///    `DIV` is judged as the unsigned integer of its width (ADR-0053).
 /// 3. Otherwise [`typed_overload`] is asked.
 pub fn resolve_arithmetic_overload(
     op: &Operator,
@@ -215,12 +217,15 @@ fn numeric_overload(
     }
     // The result is the operand the other is acceptable as, as written, so a
     // bit string judged as its unsigned integer stays a bit string: `b + 1`
-    // on `BYTE` is `BYTE`.
+    // on `BYTE` is `BYTE`. A type that is neither operand's, the `REAL` an
+    // untyped real literal and an `INT` compute at, is the result as it is.
     let common = common_operand(&judged_left, &judged_right, options)?;
     let result = if common == judged_left {
         left.clone()
-    } else {
+    } else if common == judged_right {
         right.clone()
+    } else {
+        common
     };
     Some(Overload::Numeric { result })
 }

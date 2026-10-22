@@ -48,10 +48,14 @@ A ``DINT`` does not widen to ``REAL`` without loss, because ``REAL`` cannot
 hold every 32-bit integer exactly, and a ``REAL`` does not widen to ``DINT``.
 Neither operand can take the other's type, so the operator is not defined for
 the pair. The same applies to a signed and an unsigned integer of the same
-width, such as ``DINT`` and ``UDINT``.
+width, such as ``DINT`` and ``UDINT``. A bare real literal such as ``1.5`` is
+a ``REAL``, so ``count * 1.5`` is reported for the same reason, while an
+integer of 16 bits or fewer, such as ``INT``, widens to ``REAL`` and is
+accepted next to a ``REAL`` or a real literal.
 
-To fix this error, convert one operand explicitly, or use a type that holds
-both:
+To fix this error, convert one operand explicitly, type the literal as an
+``LREAL``, which a ``DINT`` widens to (``count * LREAL#1.5``), or use a type
+that holds both:
 
 .. code-block::
 
