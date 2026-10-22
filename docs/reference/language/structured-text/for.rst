@@ -38,7 +38,7 @@ must all be integer types. A control variable of any other type, such as a
 (:doc:`P4091 </reference/compiler/problems/P4091>`). A real literal such as
 ``1.5`` as the start expression, end expression or step expression of an
 integer loop is an error too
-(:doc:`P4093 </reference/compiler/problems/P4093>`).
+(:doc:`P4094 </reference/compiler/problems/P4094>`).
 
 Example
 -------

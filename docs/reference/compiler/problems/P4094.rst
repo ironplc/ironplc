@@ -1,8 +1,8 @@
 =====
-P4093
+P4094
 =====
 
-.. problem-summary:: P4093
+.. problem-summary:: P4094
 
 This error occurs when a real literal such as ``1.5`` is used where a ``FOR``
 loop or an array subscript requires an integer: as the start value, the end
@@ -26,7 +26,7 @@ control variable is not an integer are not reported; that loop is error
 Example
 -------
 
-The following code will generate error P4093:
+The following code will generate error P4094:
 
 .. code-block::
 
@@ -60,7 +60,7 @@ To fix this error, write the integer the loop starts from:
 Array subscripts
 ----------------
 
-The following code will generate error P4093:
+The following code will generate error P4094:
 
 .. code-block::
 

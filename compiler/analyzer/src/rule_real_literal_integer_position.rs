@@ -53,10 +53,10 @@
 //!     levels : ARRAY[1..3] OF DINT;
 //!     total : DINT;
 //! END_VAR
-//!     FOR i := 1.5 TO 3 DO             (* P4093: i is a DINT *)
+//!     FOR i := 1.5 TO 3 DO             (* P4094: i is a DINT *)
 //!         total := total + 1;
 //!     END_FOR;
-//!     total := levels[1.5];            (* P4093: a subscript is an integer *)
+//!     total := levels[1.5];            (* P4094: a subscript is an integer *)
 //! END_PROGRAM
 //! ```
 use ironplc_dsl::{
@@ -450,7 +450,7 @@ END_FUNCTION_BLOCK",
         );
     }
 
-    // The examples of `docs/reference/compiler/problems/P4093.rst`.
+    // The examples of `docs/reference/compiler/problems/P4094.rst`.
 
     rule_err!(
         apply_when_doc_example_for_then_p4093,

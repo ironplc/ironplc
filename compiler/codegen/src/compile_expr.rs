@@ -425,7 +425,7 @@ pub(crate) fn compile_constant(
             // The analyzer rejects a real literal where an integer is
             // required: an assignment (P4035), an operand (P4049), an
             // argument (P4026), a `CASE` selector (P4053), and a `FOR` bound
-            // or an array subscript (P4093). A real literal compiled at an
+            // or an array subscript (P4094). A real literal compiled at an
             // integer width is a shape analysis let through.
             OpWidth::W32 | OpWidth::W64 => Err(Diagnostic::internal_error_at(Label::span(
                 lit.span.clone(),
