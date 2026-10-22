@@ -20,7 +20,7 @@ use ironplc_dsl::common::{ElementaryTypeName, TypeName};
 use ironplc_dsl::textual::Operator;
 use ironplc_parser::options::CompilerOptions;
 
-use super::common_operand::{common_operand, Side};
+use super::common_operand::common_operand;
 use super::operator_function_form::{form_of_operator, FormOf, OperatorFunctionForm};
 use super::stdlib_time_function::short_overload;
 use crate::type_compat::{are_types_compatible, is_checkable_type, same_temporal_family};
@@ -216,13 +216,13 @@ fn numeric_overload(
     // The result is the operand the other is acceptable as, as written, so a
     // bit string judged as its unsigned integer stays a bit string: `b + 1`
     // on `BYTE` is `BYTE`.
-    let result = match common_operand(&judged_left, &judged_right, options)? {
-        Side::Left => left,
-        Side::Right => right,
+    let common = common_operand(&judged_left, &judged_right, options)?;
+    let result = if common == judged_left {
+        left.clone()
+    } else {
+        right.clone()
     };
-    Some(Overload::Numeric {
-        result: result.clone(),
-    })
+    Some(Overload::Numeric { result })
 }
 
 /// Returns the type `operand` is judged as by the numeric overload of `op`.

@@ -11,7 +11,7 @@
 use ironplc_dsl::common::TypeName;
 use ironplc_parser::options::CompilerOptions;
 
-use super::common_operand::{common_operand, Side};
+use super::common_operand::common_operand;
 
 /// Returns the type at which a comparison of operands of types `left` and
 /// `right` compares them, or `None` when an operand has no type or neither
@@ -21,12 +21,7 @@ pub(crate) fn comparison_operand_type(
     right: Option<&TypeName>,
     options: &CompilerOptions,
 ) -> Option<TypeName> {
-    let (left, right) = (left?, right?);
-    let common = match common_operand(left, right, options)? {
-        Side::Left => left,
-        Side::Right => right,
-    };
-    Some(common.clone())
+    common_operand(left?, right?, options)
 }
 
 #[cfg(test)]
