@@ -1,7 +1,7 @@
 use indexmap::IndexMap;
 use ironplc_dsl::common::{
-    Accessor, AddressAssignment, DeclarationQualifier, LocationPrefix, SizePrefix, TypeName,
-    VariableType,
+    Accessor, AddressAssignment, ConstantKind, DeclarationQualifier, LocationPrefix, SizePrefix,
+    TypeName, VariableType,
 };
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -190,6 +190,16 @@ pub struct SymbolInfo {
     /// For a function block, the function block it `EXTENDS`, whose
     /// fields its own scope sees as well.
     pub extends: Option<TypeName>,
+    /// The value the variable holds for the whole run, when it is known:
+    /// the literal a `CONSTANT` variable, declared or inferred, is
+    /// initialized with. `xform_mark_unwritten_constants`, the pass that
+    /// settles which variables are constant, records it (see
+    /// `specs/design/constant-variable-inference.md`), so it is `None`
+    /// until that pass has run, for a variable that may change, and for a
+    /// constant whose initializer is not one literal (an array, a
+    /// structure). A `VAR_EXTERNAL` records nothing: its global holds the
+    /// value, which [`SymbolEnvironment::constant_value`] reaches.
+    pub constant_value: Option<ConstantKind>,
 }
 
 /// `addr` as IEC 61131-3 writes it, such as `%IX0.0`. A bit address written
@@ -228,6 +238,7 @@ impl SymbolInfo {
             compiler_provided: false,
             is_abstract: false,
             extends: None,
+            constant_value: None,
         }
     }
 
@@ -643,6 +654,38 @@ impl SymbolEnvironment {
         } else {
             Resolution::GlobalNotVisible { decl, info }
         }
+    }
+
+    /// Records `value` as the value the variable `name`, declared in
+    /// `scope`, holds for the whole run (see [`SymbolInfo::constant_value`]).
+    /// Nothing is recorded when `scope` declares no such name.
+    pub fn record_constant_value(&mut self, name: &Id, scope: &ScopeKind, value: ConstantKind) {
+        let symbols = match scope {
+            ScopeKind::Global => Some(&mut self.global_symbols),
+            ScopeKind::Named(_) => self.scoped_symbols.get_mut(scope),
+        };
+        if let Some(info) = symbols.and_then(|symbols| symbols.get_mut(name)) {
+            info.constant_value = Some(value);
+        }
+    }
+
+    /// The value the variable `name` holds for the whole run, reached from
+    /// `from` as [`Self::resolve_variable`] reaches it: through a
+    /// `VAR_EXTERNAL`, the global's. `None` when the name is not a variable,
+    /// when the variable may change, and when its value is not one literal.
+    ///
+    /// A global the scope does not reach is still answered for, as
+    /// [`Resolution::declared`] answers for it: reporting it is the job of
+    /// the rule that reports an undefined variable.
+    pub fn constant_value(&self, name: &Id, from: &ScopeKind) -> Option<&ConstantKind> {
+        let decl = match self.resolve_variable(name, from) {
+            Resolution::Variable { decl, .. } | Resolution::GlobalNotVisible { decl, .. } => decl,
+            Resolution::NotAVariable | Resolution::Undeclared => return None,
+        };
+        self.symbols_in(&decl.scope)?
+            .get(&decl.name)?
+            .constant_value
+            .as_ref()
     }
 
     /// The global variable named `name`, with the name as its declaration

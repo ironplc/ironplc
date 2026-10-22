@@ -4,6 +4,7 @@ use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 
 use crate::common::assert_run_with;
+use crate::compile_route_lowered::run_lowered;
 
 e2e_i32!(
     end_to_end_when_case_matches_first_arm_then_executes_body,
@@ -249,4 +250,53 @@ END_PROGRAM
     );
 
     assert_run_with::<i32>(&source, &CompilerOptions::default(), &[("y", 1)]);
+}
+
+/// REQ-LOW-codegen-124: a selector with a side effect runs once, whichever
+/// way through the labels the `CASE` takes: the first label, a label before
+/// the last of its arm or the last, a range, a range failing at either
+/// bound, with or without an `ELSE`. `NEXT_VAL` counts its calls in
+/// `calls`, so `calls` ends one above where it started, and a selector left
+/// on the operand stack fails the test.
+///
+/// Only the lowered route is run: the route that reads the AST evaluates the
+/// selector again for each label it tests.
+#[rstest]
+#[case::first_label(4, "ELSE y := -1;", 5, 5)]
+#[case::label_before_last_of_arm(5, "ELSE y := -1;", 6, 6)]
+#[case::last_label_of_arm(6, "ELSE y := -1;", 7, 6)]
+#[case::range(8, "ELSE y := -1;", 9, 8)]
+#[case::below_range_runs_else(0, "ELSE y := -1;", 1, -1)]
+#[case::above_range_runs_else(20, "ELSE y := -1;", 21, -1)]
+#[case::no_match_without_else(20, "", 21, 0)]
+fn end_to_end_when_case_selector_has_side_effect_then_evaluated_once(
+    #[case] start: i64,
+    #[case] otherwise: &str,
+    #[case] calls: i64,
+    #[case] y: i64,
+) {
+    let snapshot = run_lowered(&format!(
+        "
+FUNCTION NEXT_VAL : DINT
+  VAR_IN_OUT c : DINT; END_VAR
+  c := c + 1;
+  NEXT_VAL := c;
+END_FUNCTION
+PROGRAM main
+  VAR
+    calls : DINT := {start};
+    y : DINT;
+  END_VAR
+  CASE NEXT_VAL(c := calls) OF
+    5: y := 5;
+    6, 7: y := 6;
+    8..10: y := 8;
+  {otherwise}
+  END_CASE;
+END_PROGRAM
+"
+    ));
+
+    assert_eq!(snapshot.read_as::<i64>("calls"), calls);
+    assert_eq!(snapshot.read_as::<i64>("y"), y);
 }
