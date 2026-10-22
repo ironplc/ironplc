@@ -19,14 +19,16 @@ IEC 61131-3 Edition 3.
      - Edition 3 (object-oriented programming)
    * - **Support**
      - On a function block, parsed and analyzed: an inherited variable
-       resolves and type-checks in the derived type, a call resolves to a
-       method declared anywhere up the ``EXTENDS`` chain, and a derived
-       type that redeclares an inherited variable reports
-       :doc:`P4044 </reference/compiler/problems/P4044>`. Code generation
-       does not yet give a derived type storage for what it inherits, so
-       compiling a derived type reports
+       resolves and type-checks in the derived type, a call to an instance
+       passes inherited inputs and outputs as it does the derived type's own,
+       a call resolves to a method declared anywhere up the ``EXTENDS``
+       chain, and a derived type that redeclares an inherited variable
+       reports :doc:`P4044 </reference/compiler/problems/P4044>`. Code
+       generation does not yet give a derived type storage for what it
+       inherits, so compiling a derived type reports
        :doc:`P9999 </reference/compiler/problems/P9999>` where it reads or
-       writes an inherited variable or calls an inherited method. On an
+       writes an inherited variable, passes one in a call, or calls a method
+       inherited from a type that declares variables. On an
        interface, parsed only. Enable with
        ``--allow-fb-inheritance``; see
        :doc:`/explanation/enabling-dialects-and-features`.
@@ -69,7 +71,9 @@ Example
    END_FUNCTION_BLOCK
 
 ``FB_AdvancedMotor`` is the derived type and ``FB_Motor`` is its base type.
-A function block type extends at most one base type.
+A function block type extends at most one base type, and the base type must
+be a declared function block type. A name that is not declared, or that names
+another kind of type, reports :doc:`P4088 </reference/compiler/problems/P4088>`.
 
 What a derived type inherits
 ----------------------------
@@ -86,7 +90,13 @@ method, not a second variable of the same name.
 Methods work the other way round. A derived type may declare a method with
 the name of one it inherits, which **overrides** it: a call on the derived
 type runs the derived type's method, and that method reaches the one it
-overrode through :doc:`SUPER^ <this-and-super>`.
+overrode through :doc:`SUPER^ <this-and-super>`. An override has the
+signature of the method it overrides: the same return type and the same
+``VAR_INPUT``, ``VAR_OUTPUT`` and ``VAR_IN_OUT`` variables, in the same order.
+One that differs reports :doc:`P4089 </reference/compiler/problems/P4089>`.
+A property overrides an inherited property of its name in the same way, and
+has the type of the property it overrides; one of another type reports
+:doc:`P4090 </reference/compiler/problems/P4090>`.
 
 See Also
 --------

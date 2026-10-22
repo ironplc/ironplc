@@ -8,7 +8,8 @@ This error occurs when an enumeration declaration carries a base-type suffix
 (e.g. ``TYPE E_Small : (A, B) WORD; END_TYPE``) without the
 ``--allow-enum-base-type`` compiler flag.
 
-The suffix names the elementary type the members are stored in. IEC 61131-3
+The suffix names a base type for the members. IronPLC accepts it and stores
+every enumeration as a ``DINT``, whatever type it names. IEC 61131-3
 has no such form: its ``enumerated_specification`` (Annex B) is a
 parenthesized list of member names or the name of another enumerated type,
 and nothing may follow it, so the suffix is an extension.

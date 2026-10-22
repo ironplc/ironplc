@@ -72,7 +72,8 @@ Global Variables
 Global variables are declared in a :code:`CONFIGURATION` block using
 :code:`VAR_GLOBAL` and accessed from programs using :code:`VAR_EXTERNAL`.
 The :code:`VAR_EXTERNAL` declaration must match the name and type of the
-global variable it references.
+global variable it references; a declaration that does not is reported as
+:doc:`P4082 </reference/compiler/problems/P4082>`.
 
 A program cannot declare a variable of its own with the same name as a
 global variable; that is reported as

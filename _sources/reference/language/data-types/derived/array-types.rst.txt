@@ -43,6 +43,35 @@ Example
 Multi-dimensional arrays use comma-separated ranges in the index
 specification.
 
+Arrays of Arrays
+----------------
+
+The element type of an array can be another array type. Each subscript list
+selects from one array. An element of an array of arrays takes one list for
+each array, and an element of a multi-dimensional array takes one list with a
+subscript for each dimension:
+
+.. code-block::
+
+   TYPE
+       Row : ARRAY [1..3] OF DINT;
+   END_TYPE
+
+   PROGRAM main
+       VAR
+           rows : ARRAY [1..2] OF Row;
+           matrix : ARRAY [1..2, 1..3] OF DINT;
+           row : Row;
+       END_VAR
+
+       rows[2][3] := 7;    (* an element of the inner array *)
+       row := rows[2];     (* a whole inner array, a Row *)
+       matrix[2, 3] := 7;  (* one list for both dimensions *)
+   END_PROGRAM
+
+``rows[2, 3]`` and ``matrix[2][3]`` give the wrong number of subscripts for
+their arrays, which is error :doc:`P4085 </reference/compiler/problems/P4085>`.
+
 Constant Bounds (Language Extension)
 ------------------------------------
 

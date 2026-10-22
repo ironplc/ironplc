@@ -4,7 +4,9 @@ P4018
 
 .. problem-summary:: P4018
 
-This error occurs when calling a function with the wrong number of arguments.
+This error occurs when calling a function with the wrong number of arguments,
+or when a method call does not supply every ``VAR_INPUT`` and ``VAR_IN_OUT``
+of the method.
 
 Example
 -------
@@ -49,3 +51,27 @@ To fix this error, provide the correct number of arguments:
        result := ADD_INTS(1, 2);  (* Now valid: 2 arguments provided *)
    END_FUNCTION_BLOCK
 
+A method call names every input of the method, because a method keeps
+nothing between calls. An initial value on an input is not a default:
+
+.. code-block::
+
+   FUNCTION_BLOCK SCALER
+   METHOD SCALE : INT
+   VAR_INPUT
+       V : INT;
+       K : INT := 2;
+   END_VAR
+       SCALE := V * K;
+   END_METHOD
+   END_FUNCTION_BLOCK
+
+   PROGRAM MAIN
+   VAR
+       s : SCALER;
+       result : INT;
+   END_VAR
+       result := s.SCALE(V := 3);  (* Error: K is not supplied *)
+   END_PROGRAM
+
+To fix this error, supply every input: ``s.SCALE(V := 3, K := 2)``.

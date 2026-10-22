@@ -1,0 +1,64 @@
+=====
+P4089
+=====
+
+.. problem-summary:: P4089
+
+This error occurs when a function block declares a method that overrides a
+method it inherits through ``EXTENDS``, and the two methods do not have the
+same signature.
+
+A method's signature is its return type and its ``VAR_INPUT``,
+``VAR_OUTPUT`` and ``VAR_IN_OUT`` variables: their names, their sections,
+their types and their order, together with its ``R_EDGE`` and ``F_EDGE``
+inputs. Local variables are not part of the signature, so an override may
+declare its own. A call on an instance of the derived block runs the
+override where it would have run the base method, so the call has to be
+valid for both.
+
+An override is compared with the method it overrides: the nearest one up the
+``EXTENDS`` chain. A method that differs from a member of an interface the
+block implements is reported as :doc:`P4068` instead.
+
+Example
+-------
+
+The following code will generate error P4089:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Motor
+   METHOD Describe : INT
+       Describe := 1;
+   END_METHOD
+   END_FUNCTION_BLOCK
+
+   FUNCTION_BLOCK FB_AdvancedMotor EXTENDS FB_Motor
+   METHOD Describe : BOOL  (* Error: FB_Motor.Describe returns INT *)
+       Describe := TRUE;
+   END_METHOD
+   END_FUNCTION_BLOCK
+
+To fix this error, give the override the signature of the method it
+overrides, or give it a name of its own if it is a different method:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Motor
+   METHOD Describe : INT
+       Describe := 1;
+   END_METHOD
+   END_FUNCTION_BLOCK
+
+   FUNCTION_BLOCK FB_AdvancedMotor EXTENDS FB_Motor
+   METHOD Describe : INT
+       Describe := 2;
+   END_METHOD
+   END_FUNCTION_BLOCK
+
+See Also
+--------
+
+- :doc:`/reference/language/object-orientation/extends` — ``EXTENDS`` and overriding methods
+- :doc:`/reference/language/object-orientation/method` — ``METHOD``
+- :doc:`P4068` — a member differs from the interface member it implements

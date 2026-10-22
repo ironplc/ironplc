@@ -94,6 +94,138 @@ To fix this error, use a number for the factor:
        total := interval * repeats;   (* T#6s *)
    END_PROGRAM
 
+Negating a time of day or a date
+--------------------------------
+
+The following code will generate error P4049:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       opened : TIME_OF_DAY := TOD#08:00:00;
+       closed : TIME_OF_DAY;
+   END_VAR
+       closed := -opened;
+   END_PROGRAM
+
+The unary ``-`` negates a number or a duration (``TIME``, ``LTIME``). A time of
+day, a date and a date and time are points in time, not amounts, so they have
+no negative. The same applies to ``DATE``, ``DATE_AND_TIME`` and their long
+forms.
+
+To fix this error, negate the duration you mean, such as the time since
+midnight:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       opened : TIME_OF_DAY := TOD#08:00:00;
+       before : TIME;
+   END_VAR
+       before := -(opened - TOD#00:00:00);   (* T#-8h *)
+   END_PROGRAM
+
+Mixing a BOOL with a bit string
+-------------------------------
+
+The following code will generate error P4049:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       enabled : BOOL := TRUE;
+       flags : WORD := 16#00F0;
+       masked : WORD;
+   END_VAR
+       masked := flags AND enabled;
+   END_PROGRAM
+
+``AND``, ``OR`` and ``XOR`` compute on operands of one bit type. A narrower
+bit string widens to a wider one, so a ``BYTE`` with a ``WORD`` computes as a
+``WORD``. A ``BOOL`` is a truth value rather than a one-bit string, and it
+widens to no bit string, in every dialect. The same holds for ``AND_THEN``
+and ``OR_ELSE``, and for the function forms ``AND``, ``OR`` and ``XOR``.
+
+To fix this error, choose the bit string the ``BOOL`` stands for with
+``SEL``:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       enabled : BOOL := TRUE;
+       flags : WORD := 16#00F0;
+       masked : WORD;
+   END_VAR
+       masked := flags AND SEL(enabled, WORD#0, WORD#16#FFFF);   (* 16#00F0 *)
+   END_PROGRAM
+
+Comparing a reference with a number
+-----------------------------------
+
+The following code will generate error P4049:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       count : INT;
+       target : REF_TO INT;
+       unset : BOOL;
+   END_VAR
+       unset := target = 0;
+   END_PROGRAM
+
+A reference equals ``NULL`` or another reference, never a number. This
+applies to a CODESYS ``POINTER TO`` as well: ``p <> 0`` is an error, in every
+dialect.
+
+To fix this error, compare the reference with ``NULL``:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       count : INT;
+       target : REF_TO INT;
+       unset : BOOL;
+   END_VAR
+       unset := target = NULL;
+   END_PROGRAM
+
+Negating a BOOL
+---------------
+
+The following code will generate error P4049:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       running : BOOL := TRUE;
+       stopped : BOOL;
+   END_VAR
+       stopped := -running;
+   END_PROGRAM
+
+The unary ``-`` negates a number or a duration. A ``BOOL`` is a truth value,
+not a number, so it has no negative.
+
+To fix this error, invert the ``BOOL`` with ``NOT``:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       running : BOOL := TRUE;
+       stopped : BOOL;
+   END_VAR
+       stopped := NOT running;   (* FALSE *)
+   END_PROGRAM
+
 Remainder of a real number
 --------------------------
 
@@ -174,13 +306,57 @@ width:
        counter := counter + 1;
    END_PROGRAM
 
+Comparisons
+-----------
+
+The comparison operators ``=``, ``<>``, ``<``, ``<=``, ``>`` and ``>=``, and
+their function forms ``EQ``, ``NE``, ``LT``, ``LE``, ``GT`` and ``GE``, are
+defined for two operands where one widens to the other, the same pairs as the
+arithmetic operators. The comparison is computed at the wider type.
+
+The following code will generate error P4049:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       offset : DINT := -1;
+       limit : UDINT := 4000000000;
+       below : BOOL;
+   END_VAR
+       below := offset < limit;
+   END_PROGRAM
+
+Neither ``DINT`` nor ``UDINT`` holds every value of the other, so there is no
+type to compare them at: comparing at ``DINT`` reads ``limit`` as a negative
+number, and comparing at ``UDINT`` reads ``offset`` as a large positive one.
+An untyped literal takes the type of the other operand when that type's
+category holds it (``limit > 3``), and is reported when it does not
+(``offset < 1.5``).
+
+To fix this error, convert one operand to a type that holds both, here
+``LINT``, which ``UDINT`` widens to:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       offset : DINT := -1;
+       limit : UDINT := 4000000000;
+       below : BOOL;
+   END_VAR
+       below := DINT_TO_LINT(offset) < limit;   (* TRUE *)
+   END_PROGRAM
+
 Bit-string operators
 --------------------
 
 The bit-string operators ``AND``, ``OR``, ``XOR`` and ``NOT`` are defined over
 the bit-string types (``BOOL``, ``BYTE``, ``WORD``, ``DWORD``, ``LWORD``). For
 these operators, each operand outside that set is reported separately, naming
-the expected category and the actual type.
+the expected category and the actual type. The short-circuit operators
+``AND_THEN`` and ``OR_ELSE``, which some dialects enable, are checked as
+``AND`` and ``OR`` are.
 
 The following code will generate error P4049:
 

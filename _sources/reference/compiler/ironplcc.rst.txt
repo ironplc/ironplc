@@ -263,12 +263,16 @@ Options
    this flag.
 
 ``--allow-constant-initializer-expressions``
-   Allow a ``VAR`` initializer to be a constant expression (e.g.
-   ``scaled : LREAL := SCALE*4.0;``) rather than only a bare literal.
+   Allow a ``VAR`` initializer to be a constant expression: the name of a
+   ``CONSTANT`` variable (e.g. ``level : UDINT := DEFAULT_LEVEL;``) or
+   arithmetic over literals and constants (e.g.
+   ``scaled : LREAL := SCALE*4.0;``), rather than only a bare literal.
    Folded to a literal at compile time; produces
    :doc:`P4037 </reference/compiler/problems/P4037>` when used without this
-   flag, or :doc:`P4038 </reference/compiler/problems/P4038>` if the
-   expression does not fully reduce to a constant.
+   flag, :doc:`P4038 </reference/compiler/problems/P4038>` if the
+   expression does not fully reduce to a constant, or
+   :doc:`P4022 </reference/compiler/problems/P4022>` if a named constant's
+   type is not compatible with the variable's.
 
 ``--allow-bit-string-case-labels``
    Allow a hex, binary, or octal bit-string literal (e.g. ``16#D012``,
@@ -322,11 +326,10 @@ Options
 
 ``--allow-enum-base-type``
    Allow the base-type suffix on an enumeration declaration (e.g.
-   ``(A, B) WORD``), naming the elementary type the members are stored in.
-   IEC 61131-3 has no such form — nothing may follow an enumerated
-   specification — so the suffix is an extension, and not an Edition 3
-   addition as explicit member values are. Without it the compiler picks the
-   smallest type that holds every member's value. Produces
+   ``(A, B) WORD``), naming a base type; IronPLC stores every enumeration as
+   a ``DINT`` whatever it names. IEC 61131-3 has no such form — nothing may
+   follow an enumerated specification — so the suffix is an extension, and
+   not an Edition 3 addition as explicit member values are. Produces
    :doc:`P4056 </reference/compiler/problems/P4056>` when used without this
    flag.
 

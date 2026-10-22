@@ -1,0 +1,92 @@
+=====
+P4091
+=====
+
+.. problem-summary:: P4091
+
+This error occurs when the control variable of a ``FOR`` loop is not an
+integer.
+
+IEC 61131-3 counts a ``FOR`` loop with a variable of type ``ANY_INT``
+(``SINT``, ``INT``, ``DINT``, ``LINT``, ``USINT``, ``UINT``, ``UDINT``,
+``ULINT``), and converts the start value, the end value and the step to that
+type. A subrange of an integer type is accepted, since it narrows an integer
+type. Every other type is reported, in every dialect.
+
+A ``REAL`` or ``LREAL`` control variable is the usual cause. Each step adds a
+rounded value, so the number of times the loop runs depends on the rounding
+rather than on the bounds.
+
+A ``BOOL``, a bit string (``BYTE``, ``WORD``, ``DWORD``, ``LWORD``), a
+duration, a date or an enumeration is reported too: none of them is an
+integer the loop can count with.
+
+Example
+-------
+
+The following code will generate error P4091:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       level : REAL;
+       total : REAL;
+   END_VAR
+       FOR level := 0.5 TO 2.5 BY 0.5 DO
+           total := total + level;
+       END_FOR;
+   END_PROGRAM
+
+The variable ``level`` is ``REAL``, but a ``FOR`` loop counts with an integer.
+
+To fix this error, count with an integer and compute the value from it:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       i : INT;
+       level : REAL;
+       total : REAL;
+   END_VAR
+       FOR i := 1 TO 5 DO
+           level := INT_TO_REAL(i) * 0.5;
+           total := total + level;
+       END_FOR;
+   END_PROGRAM
+
+Bit strings
+-----------
+
+The following code will generate error P4091:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       mask : WORD;
+       count : INT;
+   END_VAR
+       FOR mask := 1 TO 16 DO
+           count := count + 1;
+       END_FOR;
+   END_PROGRAM
+
+To fix this error, declare the control variable as the integer type of the
+same width:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       mask : UINT;
+       count : INT;
+   END_VAR
+       FOR mask := 1 TO 16 DO
+           count := count + 1;
+       END_FOR;
+   END_PROGRAM
+
+See :doc:`/reference/language/structured-text/for` for the ``FOR``
+statement.

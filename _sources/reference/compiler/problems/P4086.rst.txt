@@ -1,0 +1,48 @@
+=====
+P4086
+=====
+
+.. problem-summary:: P4086
+
+This error occurs when a subscript of an array is a ``BOOL``.
+
+IEC 61131-3 requires each subscript of an array to be an integer. A ``BOOL``
+is not an integer: it has no numeric value until a conversion such as
+``BOOL_TO_INT`` gives it one. The subscript is reported whatever gives it the
+type ``BOOL``: a ``BOOL`` variable, a comparison, a bit access such as
+``flags.3`` or a ``BOOL`` literal.
+
+Example
+-------
+
+The following code will generate error P4086:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       levels : ARRAY[0..1] OF DINT;
+       high : BOOL;
+       level : DINT;
+   END_VAR
+       level := levels[high];
+   END_PROGRAM
+
+The variable ``high`` is a ``BOOL``, but a subscript must be an integer.
+
+To fix this error, convert the ``BOOL`` to the integer it stands for:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       levels : ARRAY[0..1] OF DINT;
+       high : BOOL;
+       level : DINT;
+   END_VAR
+       level := levels[BOOL_TO_INT(high)];
+   END_PROGRAM
+
+``BOOL_TO_INT`` gives 1 for ``TRUE`` and 0 for ``FALSE``.
+
+See :doc:`/reference/language/data-types/derived/array-types` for arrays.

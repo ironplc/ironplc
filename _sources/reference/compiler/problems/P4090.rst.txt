@@ -1,0 +1,75 @@
+=====
+P4090
+=====
+
+.. problem-summary:: P4090
+
+This error occurs when a function block declares a property that overrides a
+property it inherits through ``EXTENDS``, and the two properties do not have
+the same type.
+
+A read of the property on an instance of the derived block runs the
+override's ``GET`` where it would have run the base property's, and a write
+runs its ``SET``, so the value has to be of the same type for both.
+
+An override is compared with the property it overrides: the nearest one up
+the ``EXTENDS`` chain. A property that does not provide a property of an
+interface the block implements is reported as :doc:`P4068` instead.
+
+Example
+-------
+
+The following code will generate error P4090:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Motor
+   VAR
+       _speed : INT;
+   END_VAR
+   PROPERTY Speed : INT
+   GET
+       Speed := _speed;
+   END_GET
+   END_PROPERTY
+   END_FUNCTION_BLOCK
+
+   FUNCTION_BLOCK FB_AdvancedMotor EXTENDS FB_Motor
+   PROPERTY Speed : REAL  (* Error: FB_Motor.Speed is INT *)
+   GET
+       Speed := 1.5;
+   END_GET
+   END_PROPERTY
+   END_FUNCTION_BLOCK
+
+To fix this error, give the override the type of the property it overrides,
+or give it a name of its own if it is a different property:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Motor
+   VAR
+       _speed : INT;
+   END_VAR
+   PROPERTY Speed : INT
+   GET
+       Speed := _speed;
+   END_GET
+   END_PROPERTY
+   END_FUNCTION_BLOCK
+
+   FUNCTION_BLOCK FB_AdvancedMotor EXTENDS FB_Motor
+   PROPERTY Speed : INT
+   GET
+       Speed := 2;
+   END_GET
+   END_PROPERTY
+   END_FUNCTION_BLOCK
+
+See Also
+--------
+
+- :doc:`/reference/language/object-orientation/property` — ``PROPERTY``
+- :doc:`/reference/language/object-orientation/extends` — ``EXTENDS`` and overriding
+- :doc:`P4089` — a method differs from the method it overrides
+- :doc:`P4068` — a member differs from the interface member it implements

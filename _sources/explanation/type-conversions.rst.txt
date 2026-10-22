@@ -15,7 +15,8 @@ Implicit Type Widening
 
 A value of a narrower type can be passed wherever a wider type is expected.
 This applies to function arguments, function return values assigned to
-variables, and bare integer literals.
+variables, the outputs a call stores (``fb(Q => target)``,
+``F(X := 1, Q => target)``), and bare integer literals.
 
 The general rule is: an implicit conversion is allowed when the source type's
 full value range is exactly representable in the target type.

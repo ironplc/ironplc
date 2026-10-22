@@ -7,12 +7,12 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/compiler/problems/P2026.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="Code, P2026,, Message, Constant value overflows the target type,. This error occurs when a constant does not fit the type it is stored into. Every integer type holds a fixed range of values: Intege..." />
-<meta name="description" content="Code, P2026,, Message, Constant value overflows the target type,. This error occurs when a constant does not fit the type it is stored into. Every integer type holds a fixed range of values: Intege..." />
+<meta property="og:description" content="Code, P2026,, Message, Constant value overflows the target type,. This error occurs when a constant is not a value of the type it is used as. Every integer type and every bit string holds a fixed r..." />
+<meta name="description" content="Code, P2026,, Message, Constant value overflows the target type,. This error occurs when a constant is not a value of the type it is used as. Every integer type and every bit string holds a fixed r..." />
 <link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="P2027" href="P2027.html"><link rel="prev" title="P2025" href="P2025.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/compiler/problems/P2026.html">
 
-    <link rel="shortcut icon" href="../../../_static/favicon.ico"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+    <link rel="shortcut icon" href="../../../_static/favicon.ico"><!-- Generated with Sphinx 9.2.0 and Furo 2025.12.19 -->
         <title>P2026 - IronPLC - Open-Source IEC 61131-3 Toolchain</title>
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.248.0">
+<meta name="ironplc-version" content="0.250.0">
 </head>
   <body>
     
@@ -535,7 +535,9 @@
 <li class="toctree-l4"><a class="reference internal" href="P2039.html">P2039</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P2040.html">P2040</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P2041.html">P2041</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P2042.html">P2042</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P2043.html">P2043</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P2044.html">P2044</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4003.html">P4003</a></li>
@@ -598,9 +600,32 @@
 <li class="toctree-l4"><a class="reference internal" href="P4060.html">P4060</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4062.html">P4062</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4063.html">P4063</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4064.html">P4064</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4065.html">P4065</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4066.html">P4066</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4067.html">P4067</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4068.html">P4068</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4069.html">P4069</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4070.html">P4070</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4072.html">P4072</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4074.html">P4074</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4077.html">P4077</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4078.html">P4078</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4079.html">P4079</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4080.html">P4080</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4081.html">P4081</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4082.html">P4082</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4083.html">P4083</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4084.html">P4084</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4085.html">P4085</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4086.html">P4086</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4087.html">P4087</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4088.html">P4088</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4089.html">P4089</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4090.html">P4090</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4091.html">P4091</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4092.html">P4092</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4093.html">P4093</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6003.html">P6003</a></li>
@@ -635,6 +660,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4004.html">V4004</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4005.html">V4005</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4006.html">V4006</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4007.html">V4007</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6001.html">V6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6002.html">V6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6003.html">V6003</a></li>
@@ -663,6 +689,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9016.html">V9016</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9017.html">V9017</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9018.html">V9018</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9019.html">V9019</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9020.html">V9020</a></li>
 </ul>
 </li>
 </ul>
@@ -744,11 +772,11 @@
 <dt><strong>Message</strong></dt><dd><p>Constant value overflows the target type</p>
 </dd>
 </dl>
-<p>This error occurs when a constant does not fit the type it is stored into.</p>
-<p>Every integer type holds a fixed range of values:</p>
+<p>This error occurs when a constant is not a value of the type it is used as.</p>
+<p>Every integer type and every bit string holds a fixed range of values:</p>
 <div class="table-wrapper docutils container" id="id1">
 <table class="docutils align-default" id="id1">
-<caption><span class="caption-text">Integer type ranges</span><a class="headerlink" href="#id1" title="Link to this table">¶</a></caption>
+<caption><span class="caption-text">Integer and bit string type ranges</span><a class="headerlink" href="#id1" title="Link to this table">¶</a></caption>
 <thead>
 <tr class="row-odd"><th class="head stub"><p>Type</p></th>
 <th class="head"><p>Minimum</p></th>
@@ -772,19 +800,19 @@
 <td><p>-9223372036854775808</p></td>
 <td><p>9223372036854775807</p></td>
 </tr>
-<tr class="row-even"><th class="stub"><p><strong>USINT</strong></p></th>
+<tr class="row-even"><th class="stub"><p><strong>USINT</strong>, <strong>BYTE</strong></p></th>
 <td><p>0</p></td>
 <td><p>255</p></td>
 </tr>
-<tr class="row-odd"><th class="stub"><p><strong>UINT</strong></p></th>
+<tr class="row-odd"><th class="stub"><p><strong>UINT</strong>, <strong>WORD</strong></p></th>
 <td><p>0</p></td>
 <td><p>65535</p></td>
 </tr>
-<tr class="row-even"><th class="stub"><p><strong>UDINT</strong></p></th>
+<tr class="row-even"><th class="stub"><p><strong>UDINT</strong>, <strong>DWORD</strong></p></th>
 <td><p>0</p></td>
 <td><p>4294967295</p></td>
 </tr>
-<tr class="row-odd"><th class="stub"><p><strong>ULINT</strong></p></th>
+<tr class="row-odd"><th class="stub"><p><strong>ULINT</strong>, <strong>LWORD</strong></p></th>
 <td><p>0</p></td>
 <td><p>18446744073709551615</p></td>
 </tr>
@@ -797,9 +825,13 @@ program says the value changes, so the compiler reports it instead.</p>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
 <p>The following code will generate error P2026:</p>
+<div class="tab-set docutils">
+<input checked="True" class="tab-input" id="tab-set--0-input--1" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--1">Try it</label><div class="tab-content docutils">
+<iframe src="https://playground.ironplc.com/?embed=true&source=ironplc-docs&host=reference%2Fcompiler%2Fproblems%2FP2026&code=UFJPR1JBTSBtYWluCiAgICBWQVIKICAgICAgICBjb3VudCA6IFVTSU5UIDo9IDMwMDsgICgqIEVycm9yOiBhIFVTSU5UIGhvbGRzIDAgdG8gMjU1ICopCiAgICAgICAgdG90YWwgOiBTSU5UOwogICAgRU5EX1ZBUgoKICAgIHRvdGFsIDo9IDIwMDsgICgqIEVycm9yOiBhIFNJTlQgaG9sZHMgLTEyOCB0byAxMjcgKikKRU5EX1BST0dSQU0%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:393px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
+<input class="tab-input" id="tab-set--0-input--2" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--2">Source</label><div class="tab-content docutils">
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
     <span class="n">VAR</span>
-        <span class="n">count</span> <span class="p">:</span> <span class="n">USINT</span> <span class="o">:=</span> <span class="mi">300</span><span class="p">;</span>
+        <span class="n">count</span> <span class="p">:</span> <span class="n">USINT</span> <span class="o">:=</span> <span class="mi">300</span><span class="p">;</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">a</span> <span class="n">USINT</span> <span class="n">holds</span> <span class="mi">0</span> <span class="n">to</span> <span class="mi">255</span> <span class="o">*</span><span class="p">)</span>
         <span class="n">total</span> <span class="p">:</span> <span class="n">SINT</span><span class="p">;</span>
     <span class="n">END_VAR</span>
 
@@ -807,7 +839,13 @@ program says the value changes, so the compiler reports it instead.</p>
 <span class="n">END_PROGRAM</span>
 </pre></div>
 </div>
+</div>
+</div>
 <p>To fix this error, use a value the type can hold:</p>
+<div class="tab-set docutils">
+<input checked="True" class="tab-input" id="tab-set--1-input--1" name="tab-set--1" type="radio" /><label class="tab-label" for="tab-set--1-input--1">Try it</label><div class="tab-content docutils">
+<iframe src="https://playground.ironplc.com/?embed=true&source=ironplc-docs&host=reference%2Fcompiler%2Fproblems%2FP2026&code=UFJPR1JBTSBtYWluCiAgICBWQVIKICAgICAgICBjb3VudCA6IFVTSU5UIDo9IDIwMDsKICAgIEVORF9WQVIKRU5EX1BST0dSQU0%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:333px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
+<input class="tab-input" id="tab-set--1-input--2" name="tab-set--1" type="radio" /><label class="tab-label" for="tab-set--1-input--2">Source</label><div class="tab-content docutils">
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
     <span class="n">VAR</span>
         <span class="n">count</span> <span class="p">:</span> <span class="n">USINT</span> <span class="o">:=</span> <span class="mi">200</span><span class="p">;</span>
@@ -815,7 +853,13 @@ program says the value changes, so the compiler reports it instead.</p>
 <span class="n">END_PROGRAM</span>
 </pre></div>
 </div>
+</div>
+</div>
 <p>Or declare a type wide enough for the value you want:</p>
+<div class="tab-set docutils">
+<input checked="True" class="tab-input" id="tab-set--2-input--1" name="tab-set--2" type="radio" /><label class="tab-label" for="tab-set--2-input--1">Try it</label><div class="tab-content docutils">
+<iframe src="https://playground.ironplc.com/?embed=true&source=ironplc-docs&host=reference%2Fcompiler%2Fproblems%2FP2026&code=UFJPR1JBTSBtYWluCiAgICBWQVIKICAgICAgICBjb3VudCA6IFVJTlQgOj0gMzAwOwogICAgRU5EX1ZBUgpFTkRfUFJPR1JBTQ%3D%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:333px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
+<input class="tab-input" id="tab-set--2-input--2" name="tab-set--2" type="radio" /><label class="tab-label" for="tab-set--2-input--2">Source</label><div class="tab-content docutils">
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
     <span class="n">VAR</span>
         <span class="n">count</span> <span class="p">:</span> <span class="n">UINT</span> <span class="o">:=</span> <span class="mi">300</span><span class="p">;</span>
@@ -823,23 +867,37 @@ program says the value changes, so the compiler reports it instead.</p>
 <span class="n">END_PROGRAM</span>
 </pre></div>
 </div>
+</div>
+</div>
 </section>
 <section id="where-the-check-applies">
 <h2>Where the check applies<a class="headerlink" href="#where-the-check-applies" title="Link to this heading">¶</a></h2>
-<p>The type a value is stored or compared as bounds the constants written for
-it. That includes an operand of an operator, because the operator does not
-widen the type:</p>
+<p>A constant is checked against the type it is used as, wherever it is used.
+An untyped literal such as <code class="docutils literal notranslate"><span class="pre">300</span></code> takes its type from where it is used, so
+the same literal can be a <code class="docutils literal notranslate"><span class="pre">DINT</span></code> in one place and a <code class="docutils literal notranslate"><span class="pre">SINT</span></code> in another.</p>
+<p>An operand of an operator is used as the type the operator computes at,
+because the operator does not widen the type. The same holds for an argument
+of a standard function with a generic parameter, such as the <code class="docutils literal notranslate"><span class="pre">ANY_NUM</span></code>
+inputs of <code class="docutils literal notranslate"><span class="pre">ADD</span></code>, for the bounds and step of a <code class="code docutils literal notranslate"><span class="pre">FOR</span></code> loop, and for the
+count of a shift:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
     <span class="n">VAR</span>
         <span class="n">count</span> <span class="p">:</span> <span class="n">USINT</span><span class="p">;</span>
+        <span class="n">small</span> <span class="p">:</span> <span class="n">SINT</span><span class="p">;</span>
+        <span class="n">result</span> <span class="p">:</span> <span class="n">DINT</span><span class="p">;</span>
     <span class="n">END_VAR</span>
 
-    <span class="n">count</span> <span class="o">:=</span> <span class="mi">255</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">the</span> <span class="nb">sum</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">a</span> <span class="n">USINT</span> <span class="o">*</span><span class="p">)</span>
+    <span class="n">count</span> <span class="o">:=</span> <span class="mi">255</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>           <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">the</span> <span class="nb">sum</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">a</span> <span class="n">USINT</span> <span class="o">*</span><span class="p">)</span>
+    <span class="n">small</span> <span class="o">:=</span> <span class="n">ADD</span><span class="p">(</span><span class="n">small</span><span class="p">,</span> <span class="mi">300</span><span class="p">);</span>   <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">ADD</span> <span class="n">computes</span> <span class="n">at</span> <span class="n">SINT</span> <span class="n">here</span> <span class="o">*</span><span class="p">)</span>
+    <span class="n">FOR</span> <span class="n">small</span> <span class="o">:=</span> <span class="mi">0</span> <span class="n">TO</span> <span class="mi">300</span> <span class="n">DO</span>    <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">the</span> <span class="n">bounds</span> <span class="n">are</span> <span class="n">SINTs</span> <span class="o">*</span><span class="p">)</span>
+        <span class="n">result</span> <span class="o">:=</span> <span class="n">result</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>
+    <span class="n">END_FOR</span><span class="p">;</span>
 <span class="n">END_PROGRAM</span>
 </pre></div>
 </div>
-<p>It also includes a comparison and a <code class="code docutils literal notranslate"><span class="pre">CASE</span></code> label, where a constant the
-variable can never equal makes a branch that can never run:</p>
+<p>A comparison and a <code class="code docutils literal notranslate"><span class="pre">CASE</span></code> label are checked against the other operand
+and the selector, where a constant the variable can never equal makes a
+branch that can never run:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
     <span class="n">VAR</span>
         <span class="n">total</span> <span class="p">:</span> <span class="n">SINT</span><span class="p">;</span>
@@ -854,7 +912,8 @@ variable can never equal makes a branch that can never run:</p>
 </div>
 <p>A <code class="code docutils literal notranslate"><span class="pre">CASE</span></code> label is checked by its value whatever radix it is written in,
 and so is each bound of a subrange label. <code class="docutils literal notranslate"><span class="pre">16#FFFFFFFF</span></code> is 4294967295, not
-the -1 its bits would read as in a <code class="docutils literal notranslate"><span class="pre">DINT</span></code>:</p>
+the -1 its bits would read as in a <code class="docutils literal notranslate"><span class="pre">DINT</span></code>. A selector that is itself an
+untyped literal has the type its value defaults to, <code class="docutils literal notranslate"><span class="pre">DINT</span></code> for an integer:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
     <span class="n">VAR</span>
         <span class="n">selector</span> <span class="p">:</span> <span class="n">DINT</span><span class="p">;</span>
@@ -868,14 +927,18 @@ the -1 its bits would read as in a <code class="docutils literal notranslate"><s
     <span class="n">CASE</span> <span class="n">small</span> <span class="n">OF</span>
         <span class="mf">100..300</span><span class="p">:</span> <span class="n">result</span> <span class="o">:=</span> <span class="mi">2</span><span class="p">;</span>     <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">a</span> <span class="n">SINT</span> <span class="ow">is</span> <span class="n">never</span> <span class="mi">300</span> <span class="o">*</span><span class="p">)</span>
     <span class="n">END_CASE</span><span class="p">;</span>
+    <span class="n">CASE</span> <span class="mi">5</span> <span class="n">OF</span>
+        <span class="mi">4294967295</span><span class="p">:</span> <span class="n">result</span> <span class="o">:=</span> <span class="mi">3</span><span class="p">;</span>   <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">the</span> <span class="n">selector</span> <span class="ow">is</span> <span class="n">a</span> <span class="n">DINT</span> <span class="o">*</span><span class="p">)</span>
+    <span class="n">END_CASE</span><span class="p">;</span>
 <span class="n">END_PROGRAM</span>
 </pre></div>
 </div>
 <p>The same holds wherever a constant is stored: an element of an array
 initializer (including each repetition, as in <code class="docutils literal notranslate"><span class="pre">[2(300)]</span></code>), an element of a
 structure or function block instance initializer, the default of a structure
-field or a type declaration, and an argument passed to a function or function
-block input, which is checked against the parameter’s type:</p>
+field or a type declaration, a value written through a reference (<code class="docutils literal notranslate"><span class="pre">p^</span> <span class="pre">:=</span> <span class="pre">300</span></code>
+on a <code class="docutils literal notranslate"><span class="pre">REF_TO</span> <span class="pre">SINT</span></code>), and an argument passed to a function or function block
+input, which is checked against the parameter’s type:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">TYPE</span>
     <span class="n">Small</span> <span class="p">:</span> <span class="n">USINT</span> <span class="o">:=</span> <span class="mi">300</span><span class="p">;</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">a</span> <span class="n">USINT</span> <span class="n">holds</span> <span class="mi">0</span> <span class="n">to</span> <span class="mi">255</span> <span class="o">*</span><span class="p">)</span>
 <span class="n">END_TYPE</span>
@@ -897,8 +960,6 @@ block input, which is checked against the parameter’s type:</p>
 <span class="n">END_PROGRAM</span>
 </pre></div>
 </div>
-<p>A generic parameter of a standard function, such as the <code class="docutils literal notranslate"><span class="pre">ANY_NUM</span></code> inputs of
-<code class="docutils literal notranslate"><span class="pre">ADD</span></code>, states no range of its own, so its argument is not checked.</p>
 <p>A subrange type states its own range, and a constant outside it is reported
 the same way:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">TYPE</span>
@@ -936,28 +997,32 @@ that the destination alone decides:</p>
 <span class="n">END_PROGRAM</span>
 </pre></div>
 </div>
-<p>The two checks are independent. A literal that fits its own type but not the
-destination, such as <code class="docutils literal notranslate"><span class="pre">small</span> <span class="pre">:</span> <span class="pre">SINT</span> <span class="pre">:=</span> <span class="pre">INT#200</span></code>, is reported against the
-destination only, and one that fits neither is reported once for each.</p>
-<p>A radix form with an integer type prefix is checked by its value in the same
-way: <code class="docutils literal notranslate"><span class="pre">INT#16#FFFF</span></code> is 65535, which no <code class="docutils literal notranslate"><span class="pre">INT</span></code> can hold. A bit pattern that
-is meant to fill the word is spelled with a bit-string prefix, such as
-<code class="docutils literal notranslate"><span class="pre">WORD#16#FFFF</span></code>, which is not checked.</p>
+<p>A literal that fits its own type but not the destination, such as
+<code class="docutils literal notranslate"><span class="pre">small</span> <span class="pre">:</span> <span class="pre">SINT</span> <span class="pre">:=</span> <span class="pre">INT#200</span></code>, is reported against the destination. A constant
+is reported once, so one that fits neither is reported against its own type.</p>
+<p>A radix form with a type prefix is checked by its value in the same way:
+<code class="docutils literal notranslate"><span class="pre">INT#16#FFFF</span></code> is 65535, which no <code class="docutils literal notranslate"><span class="pre">INT</span></code> can hold.</p>
 </section>
-<section id="bit-strings-are-not-checked">
-<h2>Bit strings are not checked<a class="headerlink" href="#bit-strings-are-not-checked" title="Link to this heading">¶</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">BYTE</span></code>, <code class="docutils literal notranslate"><span class="pre">WORD</span></code>, <code class="docutils literal notranslate"><span class="pre">DWORD</span></code> and <code class="docutils literal notranslate"><span class="pre">LWORD</span></code> hold bit patterns rather than
-magnitudes, and wrapping one is a legitimate thing for a program to want. A
-value too large for a bit string keeps its low bits without a diagnostic:</p>
+<section id="bit-strings">
+<h2>Bit strings<a class="headerlink" href="#bit-strings" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">BYTE</span></code>, <code class="docutils literal notranslate"><span class="pre">WORD</span></code>, <code class="docutils literal notranslate"><span class="pre">DWORD</span></code> and <code class="docutils literal notranslate"><span class="pre">LWORD</span></code> hold the unsigned values of their
+width, and a constant of one must be one of those values. <code class="docutils literal notranslate"><span class="pre">BYTE#256</span></code> is not
+a byte, and neither is <code class="docutils literal notranslate"><span class="pre">-1</span></code>:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
     <span class="n">VAR</span>
+        <span class="n">mask</span> <span class="p">:</span> <span class="n">DWORD</span> <span class="o">:=</span> <span class="o">-</span><span class="mi">1</span><span class="p">;</span>      <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">a</span> <span class="n">DWORD</span> <span class="n">holds</span> <span class="mi">0</span> <span class="n">to</span> <span class="mi">4294967295</span> <span class="o">*</span><span class="p">)</span>
         <span class="n">pattern</span> <span class="p">:</span> <span class="n">BYTE</span><span class="p">;</span>
     <span class="n">END_VAR</span>
 
-    <span class="n">pattern</span> <span class="o">:=</span> <span class="mi">255</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Accepted</span><span class="p">:</span> <span class="n">a</span> <span class="n">BYTE</span> <span class="n">wraps</span> <span class="n">to</span> <span class="mi">0</span> <span class="o">*</span><span class="p">)</span>
+    <span class="n">pattern</span> <span class="o">:=</span> <span class="n">BYTE</span><span class="c1">#256;         (* Error: a BYTE holds 0 to 255 *)</span>
 <span class="n">END_PROGRAM</span>
 </pre></div>
 </div>
+<p>To fill every bit, write the largest value, which is easiest to read in
+hexadecimal: <code class="docutils literal notranslate"><span class="pre">DWORD#16#FFFFFFFF</span></code>.</p>
+<p>A value computed while the program runs still wraps at the width: with
+<code class="docutils literal notranslate"><span class="pre">--allow-bit-string-arithmetic</span></code>, adding 1 to a <code class="docutils literal notranslate"><span class="pre">BYTE</span></code> that holds 255 gives
+0. Only a constant is checked.</p>
 <p>How a constant was written makes no difference to the check. <code class="docutils literal notranslate"><span class="pre">16#1FF</span></code> is
 511 whichever radix it was spelled in, and a <code class="docutils literal notranslate"><span class="pre">USINT</span></code> cannot hold 511.</p>
 <div class="tip admonition">
@@ -1035,7 +1100,7 @@ with a small sample that demonstrates the problem.</p>
 <li><a class="reference internal" href="#example">Example</a></li>
 <li><a class="reference internal" href="#where-the-check-applies">Where the check applies</a></li>
 <li><a class="reference internal" href="#a-prefixed-literal-states-its-own-type">A prefixed literal states its own type</a></li>
-<li><a class="reference internal" href="#bit-strings-are-not-checked">Bit strings are not checked</a></li>
+<li><a class="reference internal" href="#bit-strings">Bit strings</a></li>
 </ul>
 </li>
 </ul>

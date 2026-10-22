@@ -130,12 +130,17 @@ is 1 and ``Type_BOOL`` is 2:
 Values are not checked for uniqueness: ``(A := 1, B := 1)`` gives two names
 for the same value and is accepted. Only the *names* must differ.
 
+Every value, written or continued from the one before, must be within the
+range of ``DINT``: from -2147483648 to 2147483647. A value outside it is
+:doc:`/reference/compiler/problems/P2044`, whatever base type the declaration
+names.
+
 Base Type (Language Extension)
 ------------------------------
 
 .. include:: ../../../../includes/requires-dialect-extension.rst
 
-A declaration can name the elementary type the members are stored in:
+A declaration can name a base type after its members:
 
 .. playground::
    :allows: enum-base-type
@@ -154,7 +159,8 @@ A declaration can name the elementary type the members are stored in:
        END_IF;
    END_PROGRAM
 
-Without it, IronPLC picks the smallest type that holds every member's value.
+IronPLC accepts the base type and stores the enumeration as a ``DINT``
+whatever type it names, as it stores every enumeration.
 
 Related Problem Codes
 ---------------------
@@ -163,6 +169,8 @@ Related Problem Codes
 - :doc:`/reference/compiler/problems/P2006` — Value not defined in the
   enumeration
 - :doc:`/reference/compiler/problems/P2043` — Enumerated value is ambiguous
+- :doc:`/reference/compiler/problems/P2044` — Enumeration value is outside
+  the range of ``DINT``
 - :doc:`/reference/compiler/problems/P4055` — Explicit enumeration member
   value requires a dialect or flag
 - :doc:`/reference/compiler/problems/P4056` — Enumeration base-type suffix
