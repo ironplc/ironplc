@@ -34,6 +34,17 @@
 //! error. So `bad : INT := 10/ZERO` reports P4037 alone there, where the
 //! enabled arm reports P4039.
 //!
+//! An initializer that is exactly one constant's name (`x : UDINT := C;`)
+//! is the smallest constant expression. Substituting the value leaves a
+//! literal, and the literal checks that follow would accept it for any type
+//! of the same family (`C : UDINT` initializing an `INT`), although the same
+//! `C` assigned in a statement is rejected. So the enabled arm first checks
+//! the constant's declared type against the variable's, with the relation an
+//! assignment uses, and reports P4022 on a mismatch; the initializer is then
+//! normalized to an uninitialized `Simple`, as for an expression that does
+//! not reduce. A longer expression has no declared type to check and is
+//! accepted on its value alone, as before.
+//!
 //! ## Before
 //!
 //! ```ignore
@@ -61,15 +72,27 @@ use ironplc_problems::Problem;
 
 use crate::constant_folding::{fold_error_to_diagnostic, try_fold_binary, try_fold_unary};
 use crate::scoped_table::{ScopedTable, Value};
+use crate::type_compat::are_types_compatible;
+use crate::type_environment::TypeEnvironment;
 
-impl Value for ConstantKind {}
+/// A `CONSTANT` declaration whose value is a literal: the literal, and the
+/// type the constant was declared with.
+#[derive(Clone, Debug)]
+struct NamedConstant {
+    type_name: TypeName,
+    value: ConstantKind,
+}
+
+impl Value for NamedConstant {}
 
 pub fn apply(
     lib: Library,
+    types: &TypeEnvironment,
     options: &CompilerOptions,
 ) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>> {
     let mut folder = InitializerFolder {
         constants: collect_constants(&lib),
+        types,
         options,
         diagnostics: Vec::new(),
     };
@@ -99,7 +122,7 @@ pub fn apply(
 /// does not yet model. Handling those "half global" vars correctly is
 /// left for a follow-up rather than treating them as unconditionally
 /// global here.
-fn collect_constants(lib: &Library) -> ScopedTable<'static, Id, ConstantKind> {
+fn collect_constants(lib: &Library) -> ScopedTable<'static, Id, NamedConstant> {
     let mut constants = ScopedTable::new();
 
     for element in &lib.elements {
@@ -119,7 +142,7 @@ fn collect_constants(lib: &Library) -> ScopedTable<'static, Id, ConstantKind> {
 /// a function-local constant with the same name as a global) is unaffected,
 /// since that lives in a different scope entirely.
 fn register_constants<'a>(
-    constants: &mut ScopedTable<Id, ConstantKind>,
+    constants: &mut ScopedTable<Id, NamedConstant>,
     decls: impl IntoIterator<Item = &'a VarDecl>,
 ) {
     for decl in decls {
@@ -137,7 +160,13 @@ fn register_constants<'a>(
 
         if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
             if let Some(value) = &simple.initial_value {
-                constants.try_add(&name, value.clone());
+                constants.try_add(
+                    &name,
+                    NamedConstant {
+                        type_name: simple.type_name.clone(),
+                        value: value.clone(),
+                    },
+                );
             }
         }
     }
@@ -148,9 +177,15 @@ fn register_constants<'a>(
 /// folding rules as `xform_fold_constant_expressions`.
 ///
 /// Cannot recurse into a cycle: `constants` only ever holds already-literal
-/// `ConstantKind` values (see `register_constants`), never an expression
-/// referencing another name, so a substituted value is always terminal --
-/// there is nothing left to look up again.
+/// values (see `register_constants`), never an expression referencing
+/// another name, so a substituted value is always terminal -- there is
+/// nothing left to look up again.
+///
+/// A substituted literal takes the span of the reference it replaces, so
+/// that a diagnostic on the value (a range check, say) points at the
+/// initializer that uses the constant rather than at the declaration that
+/// defines it, and two initializers using the same constant are reported
+/// separately.
 ///
 /// Returns `Err` if a sub-expression is a genuine constant expression
 /// (both operands known) whose operation has no defined result (division
@@ -159,7 +194,7 @@ fn register_constants<'a>(
 /// as "not a constant expression".
 fn substitute_and_fold(
     expr: Expr,
-    constants: &mut ScopedTable<Id, ConstantKind>,
+    constants: &mut ScopedTable<Id, NamedConstant>,
 ) -> Result<Expr, Diagnostic> {
     let span = expr.span();
     let kind = match expr.kind {
@@ -188,7 +223,7 @@ fn substitute_and_fold(
         }
         ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(named))) => {
             match constants.find(&named.name) {
-                Some(value) => ExprKind::Const(value.clone()),
+                Some(constant) => ExprKind::Const(constant.value.clone().with_span(span)),
                 None => ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(named))),
             }
         }
@@ -197,7 +232,7 @@ fn substitute_and_fold(
         // in the normal pipeline), but handled here too so this pass does
         // not depend on that ordering.
         ExprKind::LateBound(late_bound) => match constants.find(&late_bound.value) {
-            Some(value) => ExprKind::Const(value.clone()),
+            Some(constant) => ExprKind::Const(constant.value.clone().with_span(span)),
             None => ExprKind::LateBound(late_bound),
         },
         other => other,
@@ -211,12 +246,47 @@ fn substitute_and_fold(
 }
 
 struct InitializerFolder<'a> {
-    constants: ScopedTable<'static, Id, ConstantKind>,
+    constants: ScopedTable<'static, Id, NamedConstant>,
+    types: &'a TypeEnvironment,
     options: &'a CompilerOptions,
     diagnostics: Vec<Diagnostic>,
 }
 
 impl InitializerFolder<'_> {
+    /// The declared type of the constant that `e` names, when `e` is exactly
+    /// one name (`C`, not `C + 1`) and that name is a known constant.
+    fn named_constant_type(&self, e: &Expr) -> Option<&TypeName> {
+        let name = match &e.kind {
+            ExprKind::LateBound(late_bound) => &late_bound.value,
+            ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(named))) => {
+                &named.name
+            }
+            _ => return None,
+        };
+        self.constants
+            .find(name)
+            .map(|constant| &constant.type_name)
+    }
+
+    /// Whether a constant declared with `constant_type` may initialize a
+    /// variable declared with `variable_type`: the relation an assignment
+    /// uses, asked of the elementary types the names resolve to, so an
+    /// alias on either side compares as the type it names. A type that does
+    /// not resolve to an elementary type is not checked here: an undeclared
+    /// type is reported by the resolver, and a constant of an enumerated or
+    /// a subrange type is the business of the passes that check those.
+    fn constant_type_fits(&self, variable_type: &TypeName, constant_type: &TypeName) -> bool {
+        match (
+            self.types.resolve_elementary_type_name(variable_type),
+            self.types.resolve_elementary_type_name(constant_type),
+        ) {
+            (Some(expected), Some(actual)) => {
+                are_types_compatible(&expected, &actual, self.options)
+            }
+            _ => true,
+        }
+    }
+
     /// Normalizes a `SimpleExprInitializer` back to `Simple`, folding it if
     /// possible and emitting a diagnostic otherwise. Always returns
     /// `Simple` so that no other pass ever observes `SimpleExpr`.
@@ -245,6 +315,29 @@ impl InitializerFolder<'_> {
             return InitialValueAssignmentKind::Simple(SimpleInitializer {
                 type_name,
                 initial_value,
+            });
+        }
+
+        // A bare constant name is checked by declared type before its value
+        // replaces it (see the module documentation).
+        let mismatch = self
+            .named_constant_type(&se.initial_value)
+            .filter(|constant_type| !self.constant_type_fits(&se.type_name, constant_type))
+            .cloned();
+        if let Some(constant_type) = mismatch {
+            self.diagnostics.push(
+                Diagnostic::problem(
+                    Problem::InitializerTypeMismatch,
+                    Label::span(
+                        se.initial_value.span(),
+                        format!("Constant of type {constant_type}"),
+                    ),
+                )
+                .with_context("type", &se.type_name.to_string()),
+            );
+            return InitialValueAssignmentKind::Simple(SimpleInitializer {
+                type_name: se.type_name,
+                initial_value: None,
             });
         }
 
@@ -327,8 +420,12 @@ impl Fold<Diagnostic> for InitializerFolder<'_> {
 }
 
 #[cfg(test)]
+mod named_constant_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
+    use crate::type_environment::TypeEnvironmentBuilder;
     use ironplc_dsl::core::FileId;
     use ironplc_parser::options::{CompilerOptions, Dialect};
     use ironplc_parser::parse_program;
@@ -338,11 +435,19 @@ mod tests {
         CompilerOptions::from_dialect(Dialect::Rusty)
     }
 
+    /// The elementary types alone: these tests declare no user types.
+    fn elementary_types() -> TypeEnvironment {
+        TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap()
+    }
+
     fn parse(src: &str, options: &CompilerOptions) -> Library {
         parse_program(src, &FileId::default(), options).unwrap()
     }
 
-    fn find_var_decl<'a>(lib: &'a Library, var_name: &str) -> &'a VarDecl {
+    pub(super) fn find_var_decl<'a>(lib: &'a Library, var_name: &str) -> &'a VarDecl {
         for element in &lib.elements {
             let vars = match element {
                 LibraryElementKind::FunctionBlockDeclaration(fb) => &fb.variables,
@@ -362,7 +467,7 @@ mod tests {
 
     /// Applies the transform expecting no diagnostics; returns the library.
     fn apply_clean(lib: Library, options: &CompilerOptions) -> Library {
-        let (lib, diagnostics) = apply(lib, options).unwrap();
+        let (lib, diagnostics) = apply(lib, &elementary_types(), options).unwrap();
         assert!(
             diagnostics.is_empty(),
             "unexpected diagnostics: {diagnostics:?}"
@@ -372,7 +477,7 @@ mod tests {
 
     /// Applies the transform expecting diagnostics; returns them.
     fn apply_expect_diagnostics(lib: Library, options: &CompilerOptions) -> Vec<Diagnostic> {
-        let (_, diagnostics) = apply(lib, options).unwrap();
+        let (_, diagnostics) = apply(lib, &elementary_types(), options).unwrap();
         assert!(!diagnostics.is_empty(), "expected diagnostics");
         diagnostics
     }
@@ -511,7 +616,8 @@ mod tests {
             "PROGRAM main VAR d2r : LREAL := 4.25/180.0; END_VAR END_PROGRAM",
             &opts(),
         );
-        let (lib, diagnostics) = apply(lib, &CompilerOptions::default()).unwrap();
+        let (lib, diagnostics) =
+            apply(lib, &elementary_types(), &CompilerOptions::default()).unwrap();
         assert!(diagnostics
             .iter()
             .any(|d| d.code == Problem::ConstantInitializerExpressionNotAllowed.code()));

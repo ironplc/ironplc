@@ -969,7 +969,7 @@ parser! {
     //
     // There is still value in trying to disambiguate early because it allows us to use
     // the parser definitions.
-    rule simple_or_enumerated_or_subrange_ambiguous_struct_spec_init() -> InitialValueAssignmentKind = s:simple_specification() _ tok(TokenType::Assignment) _ e:expression() {?
+    rule simple_or_enumerated_or_subrange_ambiguous_struct_spec_init() -> InitialValueAssignmentKind = et:elementary_type_name() _ tok(TokenType::Assignment) _ e:expression() {
       // A bare literal parses as ExprKind::Const via expression() too (it's
       // one of its own alternatives), so this handles both the standard
       // literal-only case and the constant-expression extension
@@ -977,13 +977,20 @@ parser! {
       // xform_fold_initializer_expressions, which folds SimpleExpr back to
       // Simple or diagnoses it.
       //
-      // A bare identifier (no operators) is rejected here (backtracking to
-      // the enumerated_specification alternative below) because `simple
-      //_specification` also matches an enum type name, and `identifier :=
-      // identifier` is inherently ambiguous between "simple type with a
-      // constant-expression initializer referencing a variable" and "enum
-      // type with an enum value default" — the latter interpretation must
-      // still win, matching pre-existing disambiguation behavior.
+      // An elementary type name is a keyword, so its value cannot be an
+      // enumerated value: a bare identifier (`UDINT := C`) can only name a
+      // constant, and is kept as a constant expression for the fold to
+      // substitute, or to diagnose when the name is not a constant (P4038).
+      resolve_initializer_expr(et.into(), e)
+    } / s:simple_type_name() _ tok(TokenType::Assignment) _ e:expression() {?
+      // A user type name takes the same expression shapes, except that a
+      // bare identifier (no operators) is rejected here (backtracking to
+      // the enumerated_specification alternative below) because
+      // `identifier := identifier` is inherently ambiguous between "alias
+      // of a simple type initialized from a named constant" and "enum type
+      // with an enum value default". The parser does not decide: the
+      // alternative below records the value for the type resolver
+      // (ADR-0050).
       if matches!(e.kind, ExprKind::Variable(_) | ExprKind::LateBound(_)) {
         Err("ambiguous with enumerated value initializer")
       } else {
