@@ -133,6 +133,23 @@ impl TypeEnvironment {
     }
 }
 
+/// Declares `alias` as an alias of `base`, a type that must already be
+/// known: the alias has the same attributes as its base.
+fn insert_alias_of_known(
+    env: &mut TypeEnvironment,
+    alias: &TypeName,
+    base: &TypeName,
+) -> Result<(), Diagnostic> {
+    if env.get(base).is_none() {
+        return Err(Diagnostic::problem(
+            Problem::ParentTypeNotDeclared,
+            Label::span(alias.span(), "Derived type"),
+        )
+        .with_secondary(Label::span(base.span(), "Base type")));
+    }
+    env.insert_alias(alias, base)
+}
+
 impl Fold<Diagnostic> for TypeEnvironment {
     fn fold_simple_declaration(
         &mut self,
@@ -154,24 +171,13 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 )));
             }
             InitialValueAssignmentKind::Simple(simple_initializer) => {
-                match self.get(&simple_initializer.type_name) {
-                    Some(_base_type) => {
-                        // If the base type is known, then the type is valid this type
-                        // will have the same attributes as the base type.
-                        self.insert_alias(&node.type_name, &simple_initializer.type_name)?;
-                    }
-                    None => {
-                        // If the base type is not know, then this is not valid
-                        return Err(Diagnostic::problem(
-                            Problem::ParentTypeNotDeclared,
-                            Label::span(node.type_name.span(), "Derived type"),
-                        )
-                        .with_secondary(Label::span(
-                            simple_initializer.type_name.span(),
-                            "Base type",
-                        )));
-                    }
-                }
+                insert_alias_of_known(self, &node.type_name, &simple_initializer.type_name)?;
+            }
+            // A default written as a constant expression (`TYPE MyInt :
+            // UDINT := C;`) names its base type as a literal default does.
+            // The fold, which runs after this pass, settles the value.
+            InitialValueAssignmentKind::SimpleExpr(simple_expr_initializer) => {
+                insert_alias_of_known(self, &node.type_name, &simple_expr_initializer.type_name)?;
             }
             InitialValueAssignmentKind::String(string_initializer) => {
                 self.insert_type(&node.type_name, string::from(string_initializer));
@@ -262,10 +268,10 @@ impl Fold<Diagnostic> for TypeEnvironment {
             InitialValueAssignmentKind::LateResolvedType(_type_name) => {
                 return Err(Diagnostic::internal_error());
             }
-            InitialValueAssignmentKind::SimpleExpr(_) => {
-                // Constant-expression initializers are a VAR-declaration
-                // extension; they never appear in a TYPE alias's
-                // spec_and_init (that grammar path is unchanged).
+            // A string type is declared through `StringDeclaration`, so a
+            // simple declaration never holds a string initializer written
+            // as an expression.
+            InitialValueAssignmentKind::StringExpr(_) => {
                 return Err(Diagnostic::internal_error());
             }
         }

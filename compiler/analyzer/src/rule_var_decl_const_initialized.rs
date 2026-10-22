@@ -189,12 +189,13 @@ impl<'a> Visitor<Infallible> for RuleConstantVarsInitialized<'a> {
                 InitialValueAssignmentKind::LateResolvedType(_) => {
                     self.diagnostics.push(Diagnostic::internal_error());
                 }
-                InitialValueAssignmentKind::SimpleExpr(_) => {
+                InitialValueAssignmentKind::SimpleExpr(_)
+                | InitialValueAssignmentKind::StringExpr(_) => {
                     // A constant-expression initializer — normalized to
-                    // `Simple` by xform_fold_initializer_expressions before
-                    // semantic rules run, so this is only observable if that
-                    // transform failed hard and was reverted. Either way the
-                    // declaration carries an initializer, so there is
+                    // `Simple` or `String` by xform_fold_initializer_expressions
+                    // before semantic rules run, so this is only observable if
+                    // that transform failed hard and was reverted. Either way
+                    // the declaration carries an initializer, so there is
                     // nothing to diagnose here.
                 }
             },
