@@ -720,6 +720,20 @@ structure or a function block instance element by element and field by field.
 Whether a store can be left out because the backend's storage starts cleared
 is the backend's to say.
 
+`init` holds values only. A backend sets up its own storage before the
+statements of `init` run, such as a string's header or the data-region offset
+an aggregate's slot holds: that setup is layout, not part of `init`.
+
+**REQ-LOW-codegen-200** The bytecode backend's `init` function sets up the
+storage its layout gives each global and each field of the program instance,
+in declaration order (a string's header, the data-region offset the slot of
+an aggregate or an instance holds, and the offset of each instance an
+instance's fields hold), each followed by the statements of `init` that store
+into it, and stores nothing else. It leaves out a store that leaves its
+storage cleared where the `init` it builds from the AST leaves it out. While
+that `init` exists, an `init` lowering does not complete, or one with a store
+the backend does not emit yet, is built from the AST, whole.
+
 **REQ-LOW-lowering-195** The body of a function or method begins with the
 stores of the completed initializer of each of its declarations the analyzer
 flags as starting again on every call (`VarDecl::reset_on_call`: its `VAR`,

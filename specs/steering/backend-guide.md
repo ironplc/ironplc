@@ -321,9 +321,12 @@ What the host and the generated code do at run time, on every target:
 - **Watchdog**: `Loop` and `For` are the only repetition, and no call is
   recursive (REQ-LOW-lowering-059), so a backend that must bound a round checks
   a deadline at each iteration of a `Loop` or `For`.
-- **Initialization**: `init` runs once, before the first round. A function's
-  locals are re-initialized by statements already at the head of its body; the
-  backend adds nothing.
+- **Initialization**: `init` runs once, before the first round, and holds
+  values only. A backend sets up its own storage before the statements of
+  `init` run, such as a string's header or the data-region offset an
+  aggregate's slot holds; that setup is layout, not part of `init`. A
+  function's locals are re-initialized by statements already at the head of
+  its body; the backend adds nothing to the values.
 - **Location and retention**: a variable carries its direct address and its
   `RETAIN`/`PERSISTENT` qualifier. Decide in your design doc whether the
   target honors each, and say so in the user docs.
