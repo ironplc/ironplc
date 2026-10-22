@@ -7,9 +7,10 @@ use ironplc_parser::options::CompilerOptions;
 
 use crate::common::{bc, compile_by_route, parse, Snapshot};
 
-/// Three statements lowering supports, the function's and two of the
-/// program's, and one it does not yet: a function block's string declared
-/// through a type alias, which the route that reads the AST compiles.
+/// Four statements lowering supports: the function's, two of the program's,
+/// and a function block's string declared through a type alias, which the
+/// layout built from the lowered declarations gives a run of the data region
+/// (REQ-LOW-codegen-199).
 const SOURCE: &str = "
 TYPE Name : STRING[20]; END_TYPE
 FUNCTION_BLOCK B
@@ -48,17 +49,15 @@ fn compile_when_ast_route_then_every_statement_from_ast() {
 }
 
 #[test]
-fn compile_when_prefer_lowered_then_unsupported_statement_from_ast() {
+fn compile_when_prefer_lowered_and_block_string_through_alias_then_every_statement_lowered() {
     let counts = route_counts(SOURCE, Route::PreferLowered).unwrap();
-    assert_eq!((counts.lowered, counts.from_ast), (3, 1));
+    assert_eq!((counts.lowered, counts.from_ast), (4, 0));
 }
 
 #[test]
-fn compile_when_require_lowered_and_statement_unsupported_then_not_implemented() {
-    assert_eq!(
-        route_counts(SOURCE, Route::RequireLowered),
-        Err("P9999".to_string())
-    );
+fn compile_when_require_lowered_and_block_string_through_alias_then_compiles() {
+    let counts = route_counts(SOURCE, Route::RequireLowered).unwrap();
+    assert_eq!((counts.lowered, counts.from_ast), (4, 0));
 }
 
 /// Every control-flow statement takes the lowered route, and runs as the

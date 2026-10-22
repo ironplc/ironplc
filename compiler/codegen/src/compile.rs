@@ -603,13 +603,24 @@ fn compile_program_with_functions(
         )?);
     }
 
-    // Every body is laid out: match the lowered program's ids to it, then
-    // compile the functions' bodies, then each FB's body followed by its
-    // METHODs'.
+    // Every body is laid out: compile them against the layout built from
+    // the lowered declarations, when each of those lowered, and match the
+    // lowered program's ids to it; then compile the functions' bodies, then
+    // each FB's body followed by its METHODs'.
     if let Some(route) = &ctx.lowered_route {
-        if route.check_layout() {
-            crate::layout::lowered::check(route.lowering(), &ctx, &builder, &program.name)?;
+        let lowered = crate::layout::lowered::Layout::of(
+            route.lowering(),
+            &program.name,
+            &ctx.standard_blocks,
+        );
+        if let Some(lowered) = lowered {
+            if route.check_layout() {
+                crate::layout::check::check(&lowered, &ctx, &builder, &program.name)?;
+            }
+            lowered.install(&mut ctx);
         }
+    }
+    if let Some(route) = &ctx.lowered_route {
         ctx.lowered_ids =
             crate::layout::ids::LoweredIds::matched(route.lowering(), &ctx, &program.name);
     }

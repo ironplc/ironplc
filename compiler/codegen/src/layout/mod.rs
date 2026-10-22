@@ -19,6 +19,7 @@
 
 mod block;
 mod calls;
+pub(crate) mod check;
 mod debug_type;
 mod descriptors;
 mod entries;
