@@ -54,6 +54,13 @@ comparison is done at the wider type, whichever side it is on: a ``DINT``
 compared with a ``LINT`` is compared as a ``LINT``, and a ``DATE_AND_TIME``
 compared with an ``LDATE_AND_TIME`` as an ``LDATE_AND_TIME``.
 
+When neither operand type widens to the other, such as ``DINT`` and
+``UDINT`` or ``DINT`` and ``REAL``, no type holds both operands and the
+comparison is rejected with :doc:`/reference/compiler/problems/P4049`. Convert
+one operand explicitly to a type that holds both. An untyped literal takes
+the type of the other operand when that type's category holds it: ``u > 3``
+compares at the type of ``u``.
+
 Equality (``=``, ``<>``) has lower precedence than the relational operators
 (``<``, ``>``, ``<=``, ``>=``). Both groups have lower precedence than
 arithmetic operators.

@@ -44,9 +44,9 @@ The pass covers the comparisons `=`, `<>`, `<`, `<=`, `>` and `>=`, and their
 function forms `EQ` to `GE`. A comparison compares at the type one operand
 widens to, whichever side it is on (see
 [Comparison Operand Type](comparison-operand-type.md)); a pair neither of
-which widens to the other compares at the type of its concrete left operand,
-else of its concrete right one
-([#1931](https://github.com/ironplc/ironplc/issues/1931)). Every scalar operand
+which widens to the other, which the analyzer reports (REQ-CMP-analyzer-007),
+compares at the type of its concrete left operand, else of its concrete right
+one. Every scalar operand
 of another type is converted to the operand type, so a narrower operand is
 widened by its own signedness rather than the wider one truncated.
 
@@ -54,7 +54,7 @@ widened by its own signedness rather than the wider one truncated.
 
 **REQ-IC-analyzer-010** The operand type of a comparison is the type one operand widens to, whichever side it is on: in `d < l` on a `DINT` and an `LINT` the `DINT` is converted to `LINT`.
 
-**REQ-IC-analyzer-011** A comparison of two types neither of which widens to the other converts the right operand to the type of the concrete left operand: in `d < u` on a `DINT` and a `UDINT` the `UDINT` is converted to `DINT`.
+**REQ-IC-analyzer-011** A comparison of two types neither of which widens to the other, which the analyzer reports (REQ-CMP-analyzer-007), converts the right operand to the type of the concrete left operand: in `d < u` on a `DINT` and a `UDINT` the `UDINT` is converted to `DINT`.
 
 **REQ-IC-analyzer-012** Any scalar operand of another type is converted, not only a variable: the `ABS(d)` of `ABS(d) < l` and the `TIME` variable of `t < lt` are converted to `LINT` and `LTIME`.
 
@@ -90,7 +90,7 @@ An operand is converted where its operation type differs from the result's: its 
 
 **REQ-IC-analyzer-026** An operand that is itself arithmetic is converted by its result type: in `(i + j) * r` the `INT` result of `i + j` is converted to `REAL`.
 
-The conversion of an arithmetic result to the type of its context is recorded where the context is: see Assignments below. An argument's is not recorded yet.
+The conversion of an arithmetic result to the type of its context is recorded where the context is: see Assignments and Arguments below.
 
 ### Time and date operations
 
@@ -106,7 +106,7 @@ A typed time or date function (IEC 61131-3 Table 30: `ADD_TIME`, `SUB_DT_DT`, `M
 
 A function of several inputs of one type -- `MIN`, `MAX`, `LIMIT`, `SEL`, `MUX`, `EXPT` and `ATAN2` -- computes at the type of its result, as an arithmetic operation does. The result is the type every input of the function's type widens to, by the relation a comparison chooses its operand type by (see [Comparison Operand Type](comparison-operand-type.md)), so it is never narrower than an input: `MAX(i, l)` on an `INT` and an `LINT` is an `LINT`, and assigning it to an `INT` is a type mismatch. `EXPT` is typed by its base: its result has the type of `IN1`, and the exponent is converted to it. `SEL`'s selector `G` is a `BOOL` and `MUX`'s `K` an integer, whatever the type of the inputs they select between.
 
-A set of inputs none of whose types every other one widens to, such as a `DINT` and a `UDINT`, has the type of its first concrete input, as a comparison of such a pair compares at its concrete left operand's. It is not reported yet ([#1931](https://github.com/ironplc/ironplc/issues/1931), [#2127](https://github.com/ironplc/ironplc/issues/2127)).
+A set of inputs none of whose types every other one widens to, such as a `DINT` and a `UDINT`, has the type of its first concrete input, as a comparison of such a pair compares at its concrete left operand's. Unlike the comparison (REQ-CMP-analyzer-007), it is not reported yet ([#2127](https://github.com/ironplc/ironplc/issues/2127)).
 
 The pass records, for each call, the conversion of every input of the function's type to the result type, and the conversion of the result to the type of its context where that context is recorded (Assignments and Arguments below, and a comparison or arithmetic operand above).
 

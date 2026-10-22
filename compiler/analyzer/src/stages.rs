@@ -19,11 +19,12 @@ use crate::{
     rule_abstract_not_instantiated, rule_array_index_range, rule_array_initializer_length,
     rule_array_subscript_count, rule_array_subscript_type, rule_assignment_aggregate_type_compat,
     rule_bit_and_partial_access_range, rule_bit_shift_input_type, rule_call_input_type,
-    rule_case_bit_string_label, rule_case_selector_type, rule_condition_type,
-    rule_constant_not_written, rule_constant_range, rule_decl_struct_element_unique_names,
-    rule_edge_input_owner, rule_enum_base_type_allowed, rule_enum_explicit_value_allowed,
-    rule_enumeration_values_unique, rule_extends_base_declared, rule_extends_field_duplicated,
-    rule_for_control_type, rule_function_block_call_unsupported, rule_function_block_invocation,
+    rule_case_bit_string_label, rule_case_selector_type, rule_comparison_operand_type,
+    rule_condition_type, rule_constant_not_written, rule_constant_range,
+    rule_decl_struct_element_unique_names, rule_edge_input_owner, rule_enum_base_type_allowed,
+    rule_enum_explicit_value_allowed, rule_enumeration_values_unique, rule_extends_base_declared,
+    rule_extends_field_duplicated, rule_for_control_type, rule_for_step_nonzero,
+    rule_function_block_call_unsupported, rule_function_block_invocation,
     rule_function_call_declared, rule_function_call_in_out_argument, rule_function_call_type_check,
     rule_interface_conformance, rule_interface_conversion, rule_loop_control_inside_loop,
     rule_member_qualifier_allowed, rule_member_qualifier_invalid, rule_method_call_declared,
@@ -345,7 +346,8 @@ pub fn resolve_types(
     });
 
     // Mark every variable the program never writes as CONSTANT, so the
-    // semantic rules and codegen see one notion of a constant variable.
+    // semantic rules and codegen see one notion of a constant variable, and
+    // record the value each constant holds in the symbol environment.
     // Runs last: it needs bare identifiers resolved to variables, `ADR`
     // rewritten to `Ref`, user functions in the function environment and
     // named arguments made positional. Infallible, so nothing to revert.
@@ -354,7 +356,7 @@ pub fn resolve_types(
         library,
         &type_environment,
         &function_environment,
-        &symbol_environment,
+        &mut symbol_environment,
     );
 
     // Generate and display useful symbol table information
@@ -420,6 +422,7 @@ pub(crate) fn semantic(
         rule_operator_operand_type_check::apply,
         rule_override_signature::apply,
         rule_task_configuration::apply,
+        rule_comparison_operand_type::apply,
         rule_task_names_unique::apply,
         rule_self_reference_context::apply,
         rule_stdlib_type_redefinition::apply,
@@ -451,6 +454,7 @@ pub(crate) fn semantic(
         rule_case_selector_type::apply,
         rule_condition_type::apply,
         rule_for_control_type::apply,
+        rule_for_step_nonzero::apply,
         rule_constant_not_written::apply,
         rule_ref_to::apply,
     ];

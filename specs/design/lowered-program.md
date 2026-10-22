@@ -1337,13 +1337,17 @@ assignment.
 **REQ-LOW-lowering-067** The `step` of a `For` is a nonzero constant of the
 operation type of `control`, and `control` is a variable, a field of the
 current instance, or what a reference variable refers to, as a function's or
-method's `VAR_OUTPUT` parameter does. A `FOR` whose step is not a nonzero
-constant, and one whose control variable is a `VAR_IN_OUT`, is reported as
-P9999, as it is today.
+method's `VAR_OUTPUT` parameter does. A `FOR` whose step is not a constant,
+and one whose control variable is a `VAR_IN_OUT`, is reported as P9999, as it
+is today.
 
 The analyzer holds the control variable to an integer, `ANY_INT` or a subrange
 of one (P4091), so a `For` never counts with a real, a bit string, a duration,
-a `BOOL` or an enumeration.
+a `BOOL` or an enumeration; and it holds a constant step to a nonzero value
+(P4093), so a `For` never counts by zero. The analyzer judges a step that
+names a constant by the value the symbol environment records for it
+(REQ-CVI-analyzer-060); lowering does not read that value, so such a step is
+a read of a variable to it, and is reported as P9999 like any other.
 
 `to` is evaluated on every iteration, and the control variable wraps, so a
 `FOR` whose bound is the largest value of the control variable's type does not
@@ -2521,7 +2525,7 @@ Nothing is deleted before its last reader has moved to the lowered program.
 | `SemanticContext` | Keep | None. It is lowering's input. |
 | `TypeEnvironment`, `TypeId` | Keep | Lowering builds the lowered program's type table from it. |
 | `SemanticType` (formerly `IntermediateType`) | Keep | Lowering reads it and does not carry `slot_count` into the lowered program. `slot_count` moves to the bytecode backend: it sizes strings with the container's `string_region_size`, which is VM layout. The byte offsets, sizes and alignments it once computed for fields are removed: nothing read them. |
-| `xform_insert_implicit_conversions` | Keep and extend | Records every implicit conversion and the type of every untyped literal (ADR-0056). It already records most of them; [issue 2050](https://github.com/ironplc/ironplc/issues/2050) finishes the rest. It is the recording pass (see [Names](#names)). |
+| `xform_insert_implicit_conversions` | Keep | Records every implicit conversion and the type of every untyped literal (ADR-0056), in every context but a directly represented variable, which no route compiles yet. It is the recording pass (see [Names](#names)). |
 | `rule_constant_range` | Keep | It runs after the recording pass. It checks a literal against its recorded type, and reads through a conversion to check against the operand types as written (see [Decisions](#4-decisions)). |
 | `intermediates/` | Keep | Its signatures carry the `BuiltinFunction` identity. |
 | `FunctionEnvironment` | Keep | Signatures of built-in functions name their `BuiltinFunction` (REQ-LOW-analyzer-070). |
@@ -2898,11 +2902,10 @@ This section constrains the order of work; it is not a work breakdown.
   assignments, the arguments of functions, methods and function block calls,
   loop bounds, the results of calls and dereferences, conditions, subscripts,
   shift counts, string positions, the outputs a call stores and the types of
-  literals. The context it does not record yet, a directly
-  represented variable, comes next
-  ([issue 2050](https://github.com/ironplc/ironplc/issues/2050)). A statement
-  that needs a decision the analyzer does not record yet stays on the route
-  that reads the AST.
+  literals. The one context it does not record, a directly represented
+  variable, is one no route compiles yet (P9999). A statement that needs a
+  decision the analyzer does not record yet stays on the route that reads the
+  AST.
 - **P9998 only once unreachable.** An error path of codegen becomes a P9998 in
   lowering only once it is shown unreachable from a program analysis accepts
   (see [The Clean-Analysis Gate](#2-the-clean-analysis-gate)).

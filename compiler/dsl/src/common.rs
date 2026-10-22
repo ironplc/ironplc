@@ -2519,7 +2519,10 @@ impl AddressAssignment {
 
 lazy_static! {
     static ref DIRECT_ADDRESS_UNASSIGNED: Regex = Regex::new(r"%([IQM])\*").unwrap();
-    static ref DIRECT_ADDRESS: Regex = Regex::new(r"%([IQM])([XBWDL])?(\d(\.\d)*)").unwrap();
+    // Accepts what the `DirectAddress` token accepts, so `[0-9]` rather than
+    // the Unicode-aware `\d`.
+    static ref DIRECT_ADDRESS: Regex =
+        Regex::new(r"%([IQM])([XBWDL])?([0-9](\.[0-9])*)").unwrap();
 }
 
 impl TryFrom<&str> for AddressAssignment {
@@ -2538,11 +2541,13 @@ impl TryFrom<&str> for AddressAssignment {
 
         if let Some(cap) = DIRECT_ADDRESS.captures(value) {
             let location_prefix = LocationPrefix::try_from(&cap[1])?;
-            let size_prefix = SizePrefix::try_from(&cap[2])?;
-            let pos: Vec<u32> = cap[3]
+            // The size letter is optional (`%I1`); without it the size is `Nil`.
+            let size_prefix = SizePrefix::try_from(cap.get(2).map_or("", |m| m.as_str()))?;
+            let pos = cap[3]
                 .split('.')
-                .map(|v| v.parse::<u32>().unwrap())
-                .collect();
+                .map(|v| v.parse::<u32>())
+                .collect::<Result<Vec<u32>, _>>()
+                .map_err(|_| "Address field is not a number")?;
 
             return Ok(AddressAssignment {
                 location: location_prefix,
@@ -3288,6 +3293,19 @@ mod tests {
         let span = identifier.span();
         assert_eq!(span.start, 50);
         assert_eq!(span.end, 56);
+    }
+
+    #[test]
+    fn try_from_when_no_size_prefix_then_size_is_nil() {
+        let address = AddressAssignment::try_from("%I1").unwrap();
+        assert_eq!(address.location, LocationPrefix::I);
+        assert_eq!(address.size, SizePrefix::Nil);
+        assert_eq!(address.address, vec![1]);
+    }
+
+    #[test]
+    fn try_from_when_non_ascii_digit_then_err() {
+        assert!(AddressAssignment::try_from("%IX\u{0663}").is_err());
     }
 
     #[test]
