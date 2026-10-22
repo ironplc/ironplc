@@ -396,9 +396,9 @@ impl Layout {
                     layout.insert(scope, name(lowering, result)?, current, held);
                 }
                 current = VarIndex::new(current.raw() + 1);
-                // A method's run spans its block's copy slots too, and the
-                // next method's starts that many slots on (`block.rs`).
-                next = VarIndex::new(next.raw() + current.raw() - field_var_off.raw());
+                // The next method's slots follow this method's own
+                // (`block.rs`).
+                next = current;
                 let info = UserMethodInfo {
                     function_id: method_id,
                     param_var_off: param_var_off.raw(),

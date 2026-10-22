@@ -61,7 +61,8 @@ pub(crate) struct MethodLayout {
     /// is compiled in, and which sees its block's too.
     pub(crate) scope: ScopeId,
     /// The slots the VM's frame for the method spans, from the first of
-    /// its block's copy slots through the method's result.
+    /// its block's copy slots through the method's result: the copy slots,
+    /// the earlier methods' slots and the method's own.
     pub(crate) num_locals: u16,
     /// How many input parameters the method takes.
     pub(crate) num_params: u16,
@@ -448,14 +449,11 @@ fn lay_out_method(
         .filter_map(|id| Some((id.clone(), ctx.string_var(id)?.clone())))
         .collect();
 
-    // `num_locals` spans from `field_var_off` (not `param_var_off`) through
-    // this method's own locals -- see the comment above. Advancing
-    // `var_offset` by that full span means a type with N methods reserves
-    // N * num_fields more table slots than strictly necessary (each
-    // method's span re-covers the shared field region). Harmless (a few
-    // extra flat-table slots, never aliased or read), just not maximally
-    // compact; fine to tighten later if it matters.
-    *var_offset = VarIndex::new(var_offset.raw() + num_locals);
+    // The next method's slots follow this method's own. `num_locals` is
+    // not the advance: it spans the copy slots and the earlier methods'
+    // slots too, so advancing by it would reserve those again for every
+    // method, and the table would double with each method.
+    *var_offset = current_index;
 
     if let Some(info) = ctx
         .user_fb_types
