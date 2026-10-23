@@ -650,10 +650,13 @@ fn compile_program_with_functions(
 
     let total_variables = var_offset;
 
-    // Emit bytecode for variable initial values into the init emitter.
+    // Emit bytecode for variable initial values into the init emitter, from
+    // the lowered program when it can be.
     let mut init_emitter = Emitter::new();
-    emit_initial_values(&mut init_emitter, &mut ctx, global_vars, types)?;
-    emit_initial_values(&mut init_emitter, &mut ctx, &local_vars, types)?;
+    if !crate::lowered::try_emit_init(&mut init_emitter, &mut ctx, global_vars, &local_vars)? {
+        emit_initial_values(&mut init_emitter, &mut ctx, global_vars, types)?;
+        emit_initial_values(&mut init_emitter, &mut ctx, &local_vars, types)?;
+    }
     init_emitter.emit_ret_void();
 
     // Compile the program body into the scan emitter. Mark
