@@ -325,8 +325,9 @@ What the host and the generated code do at run time, on every target:
   values only. A backend sets up its own storage before the statements of
   `init` run, such as a string's header or the data-region offset an
   aggregate's slot holds; that setup is layout, not part of `init`. A
-  function's locals are re-initialized by statements already at the head of
-  its body; the backend adds nothing to the values.
+  function's locals, and every body's `VAR_TEMP`, a program's included, are
+  re-initialized by statements already at the head of its body, which also
+  hold values only; the backend adds nothing to the values.
 - **Location and retention**: a variable carries its direct address and its
   `RETAIN`/`PERSISTENT` qualifier. Decide in your design doc whether the
   target honors each, and say so in the user docs.

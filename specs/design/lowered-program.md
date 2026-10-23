@@ -739,6 +739,27 @@ stores of the completed initializer of each of its declarations the analyzer
 flags as starting again on every call (`VarDecl::reset_on_call`: its `VAR`,
 `VAR_TEMP` and `VAR_OUTPUT`), in declaration order, and then of its result.
 
+**REQ-LOW-lowering-201** The body of a program or function block begins with
+the stores of the completed initializer of each of its `VAR_TEMP`, which the
+analyzer flags as starting again on every call, in declaration order. A
+program is called once each scan.
+
+The statements at the head of a body hold values only, as `init` does. A
+backend sets up the storage it gives each variable on every call, such as a
+string's header, before them.
+
+**REQ-LOW-codegen-202** The bytecode backend's prologue of a body sets up,
+for each declaration that starts again on every call, in declaration order,
+and then for a function's or method's result, what the prologue it builds
+from the AST sets up (a string's header, and a structure result's
+data-region offset and the headers of its strings), each followed by the
+statements at the head of the body that store into it, and clears the result
+slot of a method that returns nothing. It leaves out an empty string stored
+into a whole string variable, which its header has just emptied. While that
+prologue exists, a prologue lowering does not complete, or one with a store
+the backend does not emit yet, is built from the AST, whole; a program's
+`VAR_TEMP` then takes its value once, in `init`.
+
 **REQ-LOW-lowering-025** The lowered program contains only POUs reachable from
 a program instance, matching what `SemanticContext::reachable` gives codegen
 today.
@@ -3006,7 +3027,10 @@ This section constrains the order of work; it is not a work breakdown.
   `_INT` counter past the range of `INT`, and the programs that show them are
   listed as known differences. So is a program that reads a function's or
   a method's string output, which only the lowered route compiles
-  (REQ-LOW-lowering-172).
+  (REQ-LOW-lowering-172), and one that reads a program's `VAR_TEMP` before
+  it writes it, in a scan after the first: the lowered route starts it again
+  at the head of every scan (REQ-LOW-lowering-201), where the route that
+  reads the AST gives it its value once, in `init`.
 - **The layouts check each other.** While both layout builders exist, the
   one from the lowered declarations is checked equal to the one from the AST
   for every end-to-end program (REQ-LOW-codegen-198), before the bodies are
@@ -3019,7 +3043,8 @@ This section constrains the order of work; it is not a work breakdown.
 - **Behaviour preserving.** Each stage is behaviour preserving and is
   delivered as a prefactor, apart from the two corrections named under
   [Backend Contract](#7-backend-contract), the order of a function block's
-  inputs and the width of the `_INT` counters.
+  inputs, the width of the `_INT` counters, and a program's `VAR_TEMP`,
+  which starts again at the head of every scan.
   The lowered route makes those corrections by construction.
 - **Target neutrality shown early.** A minimal WebAssembly path (one
   `PROGRAM`, integer arithmetic, assignment) is built as soon as a program of

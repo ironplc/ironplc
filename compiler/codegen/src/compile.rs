@@ -664,6 +664,11 @@ fn compile_program_with_functions(
     // emitted from inside the body records a call-graph edge.
     let mut scan_emitter = Emitter::new();
     ctx.current_function_id = Some(FunctionId::SCAN);
+    // A `VAR_TEMP` starts again at the head of every scan, from the lowered
+    // program; when that is left to the AST, `init` gives it its value, once.
+    if crate::lowered::restarts(&local_vars) {
+        crate::lowered::try_emit_prologue(&mut scan_emitter, &mut ctx, &local_vars, None)?;
+    }
     compile_body(
         &mut scan_emitter,
         &mut ctx,

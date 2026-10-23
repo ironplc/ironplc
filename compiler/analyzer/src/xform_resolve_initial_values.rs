@@ -53,8 +53,9 @@
 //! ([`FunctionDeclaration::result`]) with its initializer made the same way.
 //!
 //! The pass also records which variables start again on every call: a
-//! function's or method's `VAR`, `VAR_TEMP` and result. A program's or
-//! function block's variables are set once.
+//! function's or method's `VAR`, `VAR_TEMP` and result, and a program's or
+//! function block's `VAR_TEMP`. A program's or function block's other
+//! variables are set once.
 //!
 //! A value the pass cannot resolve -- one outside its type, an array
 //! initializer with too many values -- leaves the declaration as written; a
@@ -118,6 +119,15 @@ impl InitialValueFolder<'_> {
         for variable in variables {
             variable.reset_on_call =
                 variable.var_type.is_local() || variable.var_type == VariableType::Output;
+        }
+    }
+
+    /// Marks the variables of a program or function block that start again
+    /// on every call: its `VAR_TEMP` declarations. A program is called once
+    /// each scan.
+    fn mark_temporaries(variables: &mut [VarDecl]) {
+        for variable in variables {
+            variable.reset_on_call = variable.var_type == VariableType::VarTemp;
         }
     }
 
@@ -220,6 +230,24 @@ impl Fold<Infallible> for InitialValueFolder<'_> {
             },
             None => node,
         })
+    }
+
+    fn fold_program_declaration(
+        &mut self,
+        node: ProgramDeclaration,
+    ) -> Result<ProgramDeclaration, Infallible> {
+        let mut node = node.recurse_fold(self)?;
+        Self::mark_temporaries(&mut node.variables);
+        Ok(node)
+    }
+
+    fn fold_function_block_declaration(
+        &mut self,
+        node: FunctionBlockDeclaration,
+    ) -> Result<FunctionBlockDeclaration, Infallible> {
+        let mut node = node.recurse_fold(self)?;
+        Self::mark_temporaries(&mut node.variables);
+        Ok(node)
     }
 
     fn fold_function_declaration(

@@ -46,6 +46,7 @@ mod instance_copy;
 mod method;
 mod place;
 mod policy;
+mod prologue;
 mod slot_copy;
 mod stmt;
 mod string;
@@ -54,6 +55,7 @@ use call_args::passes;
 pub(crate) use init::try_emit_init;
 pub(crate) use place::type_info;
 pub(crate) use policy::parse_policy;
+pub(crate) use prologue::{restarts, try_emit_prologue};
 
 /// Which route codegen compiles a statement by.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -81,6 +83,14 @@ pub struct RouteCounts {
     pub init_lowered: usize,
     /// `init` functions emitted from the AST.
     pub init_from_ast: usize,
+    /// Prologues emitted from the lowered program: a function's or a
+    /// method's, and a program's or function block's that declares a
+    /// `VAR_TEMP`.
+    pub prologue_lowered: usize,
+    /// Prologues emitted from the AST: a function's or a method's from its
+    /// declarations; a program's `VAR_TEMP` takes its value once, in
+    /// `init`, and a function block's none.
+    pub prologue_from_ast: usize,
 }
 
 /// The program lowering made for a compilation, and how many statements
