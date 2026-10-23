@@ -32,15 +32,17 @@
 //! instance's fields, and what a call of each user function, function block
 //! and method needs, come from the same declarations ([`super::calls`]).
 //!
-//! Until it is complete, the layout the bodies are compiled against is
-//! still built from the AST, and this one is only checked equal to it.
+//! When every declaration lowers, the bodies are compiled against this
+//! layout ([`Layout::install`]); the walk of the AST declarations still
+//! runs, for the entries this one does not hold yet and for a program a
+//! declaration of which does not lower, and the end-to-end helpers check
+//! the two equal ([`super::check`]).
 
 use std::collections::HashMap;
 
 use ironplc_analyzer::StandardFunctionBlock;
-use ironplc_container::{ArrayDescriptor, ContainerBuilder, FunctionId, VarIndex};
+use ironplc_container::{ArrayDescriptor, FunctionId, VarIndex};
 use ironplc_dsl::core::Id;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::execution::{GlobalKind, GlobalScope};
 use ironplc_ir::lowered::{
     Field, Nullability, PouId, PouKind, Section, TypeId, TypeKind, TypeTable, VarId,
@@ -60,166 +62,32 @@ use crate::compile_array::ArrayVarInfo;
 use crate::compile_reference::StringRefInfo;
 use crate::lowered::type_info;
 
-/// Checks the layout built from the declarations of `lowering` equal to the
-/// one `ctx` laid out from the AST, for the program `program`: each slot,
-/// the type it is operated at, each string's run of the data region, where
-/// the region ends, how each array, structure, array of structures and
-/// what each reference refers to is reached, how each function block
-/// instance is, what a call of each user function, function block and
-/// method needs, what the temporary buffers are sized for, and the array
-/// descriptors `builder` holds. An internal error names each entry that differs.
-/// A program a declaration of which did not lower keeps the AST layout, and
-/// has nothing to check.
-pub(crate) fn check(
-    lowering: &PartialProgram,
-    ctx: &CompileContext,
-    builder: &ContainerBuilder,
-    program: &Id,
-) -> Result<(), Diagnostic> {
-    let Some(lowered) = Layout::of(lowering, program, &ctx.standard_blocks) else {
-        return Ok(());
-    };
-    let mut differences: Vec<String> = ctx
-        .variables
-        .differences(&lowered.slots)
-        .into_iter()
-        .map(|difference| format!("slot {difference}"))
-        .chain(
-            ctx.var_types
-                .differences(&lowered.var_types)
-                .into_iter()
-                .map(|difference| format!("type {difference}")),
-        )
-        .chain(
-            ctx.string_vars
-                .differences(&lowered.string_vars)
-                .into_iter()
-                .map(|difference| format!("string {difference}")),
-        )
-        .chain(
-            ctx.array_vars
-                .differences(&lowered.array_vars)
-                .into_iter()
-                .map(|difference| format!("array {difference}")),
-        )
-        .chain(
-            ctx.struct_vars
-                .map(|info| StructEntry::from(info))
-                .differences(&lowered.struct_vars)
-                .into_iter()
-                .map(|difference| format!("structure {difference}")),
-        )
-        .chain(
-            ctx.struct_array_vars
-                .map(|info| StructArrayEntry::from(info))
-                .differences(&lowered.struct_array_vars)
-                .into_iter()
-                .map(|difference| format!("array of structures {difference}")),
-        )
-        .chain(
-            ctx.string_refs
-                .differences(&lowered.string_refs)
-                .into_iter()
-                .map(|difference| format!("string reference {difference}")),
-        )
-        .chain(
-            ctx.region_refs
-                .differences(&lowered.region_refs)
-                .into_iter()
-                .map(|difference| format!("region reference {difference}")),
-        )
-        .chain(
-            ctx.fb_instances
-                .differences(&lowered.fb_instances)
-                .into_iter()
-                .map(|difference| format!("instance {difference}")),
-        )
-        .chain(by_name(
-            "function",
-            &ctx.user_functions,
-            &lowered.user_functions,
-        ))
-        .chain(by_name(
-            "function block",
-            &ctx.user_fb_types,
-            &lowered.user_fb_types,
-        ))
-        .collect();
-    let (max_string_capacity, has_wide_string) = lowered.temporary_buffers();
-    if (ctx.max_string_capacity, ctx.has_wide_string) != (max_string_capacity, has_wide_string) {
-        differences.push(format!(
-            "temporary buffers ({}, {}) and ({max_string_capacity}, {has_wide_string})",
-            ctx.max_string_capacity, ctx.has_wide_string
-        ));
-    }
-    if builder.array_descriptors() != lowered.descriptors {
-        differences.push(format!(
-            "array descriptors {:?} and {:?}",
-            builder.array_descriptors(),
-            lowered.descriptors
-        ));
-    }
-    if ctx.data_region_offset != lowered.data_end {
-        differences.push(format!(
-            "data region ends at {}, not {}",
-            lowered.data_end, ctx.data_region_offset
-        ));
-    }
-    if differences.is_empty() {
-        return Ok(());
-    }
-    Err(Diagnostic::internal_error_at(Label::span(
-        program.span.clone(),
-        format!(
-            "The layout built from the lowered declarations differs: {}",
-            differences.join("; ")
-        ),
-    )))
-}
-
-/// Each entry one of `mine` and `theirs` records by name that the other does
-/// not record the same, as [`Scoped::differences`] gives them, each led by
-/// `what` it is of.
-fn by_name<V: PartialEq + std::fmt::Debug>(
-    what: &str,
-    mine: &HashMap<String, V>,
-    theirs: &HashMap<String, V>,
-) -> Vec<String> {
-    let mut names: Vec<&String> = mine.keys().chain(theirs.keys()).collect();
-    names.sort();
-    names.dedup();
-    names
-        .into_iter()
-        .filter_map(|name| {
-            let (mine, theirs) = (mine.get(name), theirs.get(name));
-            (mine != theirs).then(|| format!("{what} {name}: {mine:?} and {theirs:?}"))
-        })
-        .collect()
-}
-
-/// What the layout built from the lowered declarations knows of each name
-/// so far: its slot, the type the slot is operated at, a string's run of
-/// the data region, and how an array, a structure, an array of structures
-/// and what a reference refers to are reached; where the region ends; and
-/// the array descriptors, by index.
+/// What the layout built from the lowered declarations knows of each name:
+/// its slot, the type the slot is operated at, a string's run of the data
+/// region, how an array, a structure, an array of structures, what a
+/// reference refers to and a function block instance are reached, and
+/// whether it is a function's `VAR_IN_OUT`; where the region ends; the
+/// array descriptors, by index; and what a call of each user function,
+/// function block and method needs.
 #[derive(Default)]
-struct Layout {
-    slots: Scoped<VarIndex>,
-    var_types: Scoped<VarTypeInfo>,
-    string_vars: Scoped<StringVarInfo>,
-    array_vars: Scoped<ArrayVarInfo>,
-    struct_vars: Scoped<StructEntry>,
-    struct_array_vars: Scoped<StructArrayEntry>,
-    string_refs: Scoped<StringRefInfo>,
-    region_refs: Scoped<u16>,
-    fb_instances: Scoped<FbInstanceInfo>,
-    data_end: u32,
-    descriptors: Vec<ArrayDescriptor>,
+pub(crate) struct Layout {
+    pub(super) slots: Scoped<VarIndex>,
+    pub(super) var_types: Scoped<VarTypeInfo>,
+    pub(super) string_vars: Scoped<StringVarInfo>,
+    pub(super) array_vars: Scoped<ArrayVarInfo>,
+    pub(super) struct_vars: Scoped<StructEntry>,
+    pub(super) struct_array_vars: Scoped<StructArrayEntry>,
+    pub(super) string_refs: Scoped<StringRefInfo>,
+    pub(super) region_refs: Scoped<u16>,
+    pub(super) fb_instances: Scoped<FbInstanceInfo>,
+    pub(super) in_out_params: Scoped<()>,
+    pub(super) data_end: u32,
+    pub(super) descriptors: Vec<ArrayDescriptor>,
     /// What a call of each user function needs, by its lower-case name.
-    user_functions: HashMap<String, UserFunctionInfo>,
+    pub(super) user_functions: HashMap<String, UserFunctionInfo>,
     /// What a call of each user function block and its methods needs, by
     /// the block's upper-case name.
-    user_fb_types: HashMap<String, UserFbTypeInfo>,
+    pub(super) user_fb_types: HashMap<String, UserFbTypeInfo>,
 }
 
 /// What the declarations reserve as the walk visits them: the runs of the
@@ -235,8 +103,8 @@ impl Layout {
     /// The layout of the declarations of `lowering`, whose program the
     /// container runs is `program`, and the standard function block each
     /// type is `standard_blocks`, by its upper-case name; `None` when a
-    /// declaration did not lower.
-    fn of(
+    /// declaration did not lower, and the program keeps the AST layout.
+    pub(crate) fn of(
         lowering: &PartialProgram,
         program: &Id,
         standard_blocks: &HashMap<String, StandardFunctionBlock>,
@@ -295,6 +163,7 @@ impl Layout {
                 let section = lowering.variables().get(var)?.section();
                 // A `VAR_IN_OUT` refers to its caller's variable.
                 let string = if section == Section::InOut {
+                    layout.in_out_params.insert(scope, name.clone(), ());
                     None
                 } else {
                     let held = held(lowering, var)?;
@@ -426,11 +295,33 @@ impl Layout {
         Some(layout)
     }
 
+    /// Makes this layout the one `ctx` compiles the bodies against
+    /// (REQ-LOW-codegen-199). A structure's and an array of structures'
+    /// entries, which hold analyzer types, and the debug entries stay the
+    /// AST layout's, as do the array descriptors, which the walk of the AST
+    /// declarations has already added to the container.
+    pub(crate) fn install(self, ctx: &mut CompileContext) {
+        let (max_string_capacity, has_wide_string) = self.temporary_buffers();
+        ctx.variables = self.slots;
+        ctx.var_types = self.var_types;
+        ctx.string_vars = self.string_vars;
+        ctx.array_vars = self.array_vars;
+        ctx.string_refs = self.string_refs;
+        ctx.region_refs = self.region_refs;
+        ctx.fb_instances = self.fb_instances;
+        ctx.in_out_params = self.in_out_params;
+        ctx.user_functions = self.user_functions;
+        ctx.user_fb_types = self.user_fb_types;
+        ctx.data_region_offset = self.data_end;
+        ctx.max_string_capacity = max_string_capacity;
+        ctx.has_wide_string = has_wide_string;
+    }
+
     /// What the temporary buffers are sized for: the largest capacity of a
     /// string the layout holds, and whether a string of a global or the
     /// program, or an array of strings, is wide. A wide string of a function,
     /// a function block or a method does not size them (`compile_fn.rs`).
-    fn temporary_buffers(&self) -> (u16, bool) {
+    pub(super) fn temporary_buffers(&self) -> (u16, bool) {
         let strings: Vec<_> = self.string_vars.entries().collect();
         let arrays: Vec<_> = self
             .array_vars

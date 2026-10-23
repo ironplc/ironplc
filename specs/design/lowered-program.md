@@ -2546,6 +2546,14 @@ Nothing is deleted before its last reader has moved to the lowered program.
 | `variables`, `string_vars`, `array_vars`, `struct_vars`, `struct_array_vars`, `fb_instances`, `in_out_params`, `user_functions`, `user_fb_types`, `next_user_fb_type_id` | Storage layout | Keep in the bytecode backend as its layout, keyed by id, immutable during emission. |
 | `constants`, `loop_labels`, `current_function_return`, `current_function_id`, `call_graph`, `data_region_offset`, `max_string_capacity`, `has_wide_string`, `debug_*` | Emission state | Keep in a smaller emit context. |
 
+**REQ-LOW-codegen-199** When every declaration of a program lowers, the
+bytecode backend compiles the program's bodies against the layout it builds
+from the lowered declarations. It keeps the layout it builds from the AST for
+a program a declaration of which does not lower, and, until the stages that
+replace them, for the entries the lowered layout does not hold: a
+structure's and an array of structures' analyzer types, and the debug
+entries.
+
 ### Other codegen types
 
 | Type | Disposition |
@@ -2983,7 +2991,7 @@ This section constrains the order of work; it is not a work breakdown.
 - **The layouts check each other.** While both layout builders exist, the
   one from the lowered declarations is checked equal to the one from the AST
   for every end-to-end program (REQ-LOW-codegen-198), before the bodies are
-  compiled against it.
+  compiled against it (REQ-LOW-codegen-199).
 - **Progress cannot fall.** CI reports how many top-level statements of the
   end-to-end programs took the lowered route. The number does not fall.
 - **The IR is readable from its first commit.** `ironplc-ir` writes a lowered
