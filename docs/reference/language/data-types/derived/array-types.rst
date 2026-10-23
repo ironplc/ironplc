@@ -43,6 +43,11 @@ Example
 Multi-dimensional arrays use comma-separated ranges in the index
 specification.
 
+Each subscript is an integer. A ``BOOL`` subscript is error
+:doc:`P4086 </reference/compiler/problems/P4086>`, and a real literal
+subscript such as ``values[1.5]`` is error
+:doc:`P4094 </reference/compiler/problems/P4094>`.
+
 Arrays of Arrays
 ----------------
 

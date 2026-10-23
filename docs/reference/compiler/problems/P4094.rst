@@ -1,0 +1,95 @@
+=====
+P4094
+=====
+
+.. problem-summary:: P4094
+
+This error occurs when a real literal such as ``1.5`` is used where a ``FOR``
+loop or an array subscript requires an integer: as the start value, the end
+value or the step of a ``FOR`` loop whose control variable is an integer, or
+as a subscript of an array.
+
+IEC 61131-3 counts a ``FOR`` loop with an integer control variable, and
+requires the start value, the end value and the step to be of the same
+integer type. Each subscript of an array is an integer too. A literal written
+without a type takes its type from where it is used, but a real literal is a
+real whatever it spells: ``2.0`` is a ``REAL``, not the integer ``2``, and
+neither position has a real type to give it. The literal is reported rather
+than rounded, since a loop from ``1.5`` has no first iteration the program can
+mean, and ``levels[1.5]`` names no element.
+
+The literal is judged by its type, so ``-1.5``, ``(1.5)``, ``1.0 + 0.5`` and
+``ABS(1.5)`` are each reported as ``1.5`` is. The bounds of a loop whose
+control variable is not an integer are not reported; that loop is error
+:doc:`P4091 </reference/compiler/problems/P4091>`.
+
+Example
+-------
+
+The following code will generate error P4094:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       i : DINT;
+       total : DINT;
+   END_VAR
+       FOR i := 1.5 TO 3 DO
+           total := total + i;
+       END_FOR;
+   END_PROGRAM
+
+The control variable ``i`` is a ``DINT``, so the start value must be a
+``DINT``, and ``1.5`` is a real.
+
+To fix this error, write the integer the loop starts from:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       i : DINT;
+       total : DINT;
+   END_VAR
+       FOR i := 2 TO 3 DO
+           total := total + i;
+       END_FOR;
+   END_PROGRAM
+
+Array subscripts
+----------------
+
+The following code will generate error P4094:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       levels : ARRAY[1..3] OF DINT;
+       level : DINT;
+   END_VAR
+       level := levels[1.5];
+   END_PROGRAM
+
+A subscript selects one element, so it is an integer.
+
+To fix this error, write an integer subscript. Where the position is computed
+as a real, convert it to the integer it stands for:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       levels : ARRAY[1..3] OF DINT;
+       position : REAL;
+       level : DINT;
+   END_VAR
+       level := levels[REAL_TO_DINT(position)];
+   END_PROGRAM
+
+``REAL_TO_DINT`` rounds to the nearest integer; ``TRUNC`` discards the
+fraction instead.
+
+See :doc:`/reference/language/structured-text/for` for the ``FOR`` statement
+and :doc:`/reference/language/data-types/derived/array-types` for arrays.

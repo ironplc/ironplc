@@ -35,7 +35,10 @@ negative).
 The control variable, start expression, end expression, and step expression
 must all be integer types. A control variable of any other type, such as a
 ``REAL`` or a ``WORD``, is an error
-(:doc:`P4091 </reference/compiler/problems/P4091>`).
+(:doc:`P4091 </reference/compiler/problems/P4091>`). A real literal such as
+``1.5`` as the start expression, end expression or step expression of an
+integer loop is an error too
+(:doc:`P4094 </reference/compiler/problems/P4094>`).
 
 The step must not be zero: a step of zero never moves the control variable,
 so the loop never ends. A step written as ``0``, as an expression that folds

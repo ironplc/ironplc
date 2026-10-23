@@ -1361,7 +1361,10 @@ a `BOOL` or an enumeration; and it holds a constant step to a nonzero value
 (P4093), so a `For` never counts by zero. The analyzer judges a step that
 names a constant by the value the symbol environment records for it
 (REQ-CVI-analyzer-060); lowering does not read that value, so such a step is
-a read of a variable to it, and is reported as P9999 like any other.
+a read of a variable to it, and is reported as P9999 like any other. The
+analyzer also rejects an untyped real literal as the `from`, `to` or `step`
+of such a loop (P4094), so the literal a backend compiles at the control
+variable's type is never a real one.
 
 `to` is evaluated on every iteration, and the control variable wraps, so a
 `FOR` whose bound is the largest value of the control variable's type does not
@@ -2104,7 +2107,9 @@ Every subscript is a 32-bit signed integer, a `DINT`. The analyzer converts a
 subscript of another type to `DINT` (see [Implicit Conversions](implicit-conversions.md)),
 so a 64-bit subscript is narrowed, and no backend indexes at 64 bits. No
 program IronPLC targets needs an array of more than 2^31 elements, and 64-bit
-index arithmetic is slow on the 32-bit targets a PLC runtime often has.
+index arithmetic is slow on the 32-bit targets a PLC runtime often has. The
+analyzer rejects a `BOOL` subscript (P4086) and an untyped real literal
+subscript (P4094), so neither reaches a backend.
 
 **REQ-LOW-lowering-161** The subscripts of an `Index` are of type `DINT`.
 
