@@ -12,7 +12,9 @@
 //! for a subscript list that gives one subscript for each dimension of the
 //! array it subscripts, and [`TypeEnvironment::referenced_type`] for a
 //! dereference. A subscript of a reference to an array indexes the array it
-//! refers to, as a subscript of its dereference does.
+//! refers to, as a subscript of its dereference does, and the rules that
+//! check a subscript list judge it against the same array
+//! ([`subscripted_type_id`]).
 //! It never reads the fields a structure's or function block's representation
 //! lists, so a field has one type, the one its declaration records.
 //!
@@ -93,11 +95,7 @@ pub(crate) fn type_id(
             types.field_type(record, &structured.field)
         }
         SymbolicVariableKind::Array(array) => {
-            let subscripted = type_id(&array.subscripted_variable, symbols, types, scope)?;
-            // A subscript of a reference to an array indexes the array it
-            // refers to, as `r^[i]` does: a TwinCAT `REFERENCE TO`, and a
-            // `REF_TO` a subscript follows without `^`.
-            let subscripted = types.referenced_type(subscripted).unwrap_or(subscripted);
+            let subscripted = subscripted_type_id(array, symbols, types, scope)?;
             // A subscript list subscripts one array, with one subscript for
             // each of its dimensions: `m[1]` on a two-dimensional array and
             // `rows[1, 2]` on an array of arrays select no element.
@@ -126,6 +124,22 @@ pub(crate) fn type_id(
         // value with a type of its own; its members are typed above.
         SymbolicVariableKind::SelfRef(_) => None,
     }
+}
+
+/// The id of the type the subscript list of `array` applies to: the type of
+/// the subscripted variable, or for a reference to an array the array it
+/// refers to. A subscript of a reference indexes the array it refers to, as
+/// `r^[i]` does: a TwinCAT `REFERENCE TO`, and a `REF_TO` a subscript follows
+/// without `^`. The rules that check a subscript list count and bound it
+/// against this type, so that they judge the list the walk types.
+pub(crate) fn subscripted_type_id(
+    array: &ArrayVariable,
+    symbols: &SymbolEnvironment,
+    types: &TypeEnvironment,
+    scope: &ScopeKind,
+) -> Option<TypeId> {
+    let subscripted = type_id(&array.subscripted_variable, symbols, types, scope)?;
+    Some(types.referenced_type(subscripted).unwrap_or(subscripted))
 }
 
 /// The dimensions of the array type `id`, or `None` when `id` is not an

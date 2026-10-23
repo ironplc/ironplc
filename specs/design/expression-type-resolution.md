@@ -152,6 +152,14 @@ that records no dimensions has none to count against.
 
 **REQ-ETR-analyzer-009** A subscript of a reference to an array selects an element of the array it refers to, as a subscript of its dereference does: with `pa : REF_TO ARRAY[1..3] OF DINT` and `ra : REFERENCE TO ARRAY[1..3] OF DINT`, `pa[2]`, `pa^[2]` and `ra[2]` are `DINT`, and `pa[1, 2]` has no type.
 
+The two rules that check a subscript list, `rule_array_subscript_count`
+(P4085) and `rule_array_index_range` (P2027), count and bound it against the
+array the walk reaches (`variable_type::subscripted_type_id`), so a list on a
+reference to an array is checked against the array it refers to, as the walk
+types it.
+
+**REQ-ETR-analyzer-010** A subscript list on a reference to an array is checked against the array it refers to, with and without `^`: with `p : REF_TO ARRAY[1..5] OF INT`, `p[6]` and `p^[6]` report P2027, and with `p : REF_TO ARRAY[1..2, 1..3] OF DINT`, `p[1]` and `p^[1]` report P4085.
+
 **REQ-ETR-analyzer-004** A rule asking the type of a field of a function block instance gets the type the field is declared with, whatever kind of type it is: on a block with a structure output `p`, a `STRING` output `s` and an `ARRAY[1..3] OF INT` variable `a`, `f.p` is the structure, `f.s` a `STRING`, `f.a` the array, `f.a[2]` an `INT`, and `f.p.x` the type of the structure's field `x`.
 
 After the semantic rules, `xform_insert_implicit_conversions` records the
