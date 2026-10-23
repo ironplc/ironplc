@@ -335,10 +335,7 @@ pub(crate) fn emit_function_local_prologue(
     }
 
     let Some(result) = result else {
-        // A method that returns nothing still has a result slot, which
-        // codegen allocates for it; it is cleared like a result.
-        emit_zero_const(emitter, ctx, return_op_type);
-        emit_store_var(emitter, return_var_index, return_op_type);
+        emit_clear_result_slot(emitter, ctx, return_var_index, return_op_type);
         return Ok(());
     };
     let result = result.variable().ok_or_else(|| {
@@ -372,6 +369,19 @@ pub(crate) fn emit_function_local_prologue(
     }
 
     Ok(())
+}
+
+/// Clears the result slot of a method that returns nothing, which codegen
+/// allocates for it, in the slot `var_index`, operated at `op_type`, as a
+/// result is cleared.
+pub(crate) fn emit_clear_result_slot(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    var_index: VarIndex,
+    op_type: OpType,
+) {
+    emit_zero_const(emitter, ctx, op_type);
+    emit_store_var(emitter, var_index, op_type);
 }
 
 /// Emits a LOAD_CONST instruction that pushes a zero value of the given type.

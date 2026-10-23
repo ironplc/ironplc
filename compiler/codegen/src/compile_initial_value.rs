@@ -46,8 +46,9 @@ pub(crate) fn is_cleared(value: &InitialValue) -> bool {
 /// Pushes `value` at `op_type`, the operation type of the storage it goes
 /// into.
 ///
-/// `FALSE` and every zero are pushed as the zero of the storage width, which
-/// is how storage is cleared.
+/// `FALSE` is pushed as `LOAD_FALSE`, as a statement pushes it, and every
+/// other zero as the zero of the storage width, which is how storage is
+/// cleared.
 pub(crate) fn emit_scalar(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -56,7 +57,10 @@ pub(crate) fn emit_scalar(
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
     if value.value.is_zero() {
-        emit_zero_const(emitter, ctx, op_type);
+        match (value.value, op_type.0) {
+            (Scalar::Bool(_), OpWidth::W32) => emitter.emit_load_false(),
+            _ => emit_zero_const(emitter, ctx, op_type),
+        }
         return Ok(());
     }
     match (value.value, op_type.0) {

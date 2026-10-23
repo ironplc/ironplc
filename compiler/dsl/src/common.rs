@@ -2084,7 +2084,8 @@ pub struct VarDecl {
     pub type_id: Option<TypeId>,
     /// Whether the variable starts again at its initial value every time
     /// its POU is called -- a function's or method's `VAR`, `VAR_TEMP` and
-    /// result -- rather than once, when the program starts. Set by the
+    /// result, and the `VAR_TEMP` of any body -- rather than once, when the
+    /// program starts. A program is called once each scan. Set by the
     /// analyzer and left out of `PartialEq` like `type_id`.
     #[recurse(ignore)]
     pub reset_on_call: bool,

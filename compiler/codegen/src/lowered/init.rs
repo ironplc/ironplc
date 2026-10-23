@@ -13,7 +13,9 @@
 //! subrange or a reference variable.
 //!
 //! An `init` lowering does not complete, or one with a statement this
-//! backend does not emit yet, is left to the AST, whole.
+//! backend does not emit yet, is left to the AST, whole, and so is the
+//! `init` of a program whose `VAR_TEMP` the program's prologue does not
+//! store from the lowered program (`prologue.rs`).
 
 use ironplc_dsl::common::{VarDecl, VariableType};
 use ironplc_dsl::core::{Id, Located};
@@ -69,11 +71,13 @@ fn emit(
     globals: &[VarDecl],
     program: &[VarDecl],
 ) -> Result<bool, Diagnostic> {
-    // A program's `VAR_TEMP` is not in `init`, which the AST's `init` gives
-    // its starting value, once.
+    // A program's `VAR_TEMP` is not in `init`: the program's prologue gives
+    // it its starting value, at the head of every scan, or, when that is
+    // left to the AST, the AST's `init` does, once.
     if program
         .iter()
         .any(|decl| decl.var_type == VariableType::VarTemp)
+        && !super::prologue::emits(lowering, ctx, program)
     {
         return Ok(false);
     }

@@ -157,17 +157,23 @@ fn dump_container(container: &Container, route: Route) {
 }
 
 /// Appends `counts` as one line, `<lowered> <from AST> <init lowered> <init
-/// from AST>`, to the file the `IRONPLC_ROUTE_COUNTS` environment variable
-/// names, when it names one. The `lowered-count` recipe of
-/// `compiler/justfile` sums the lines to report how many statements, and
-/// how many `init` functions, of these programs take the lowered route.
+/// from AST> <prologues lowered> <prologues from AST>`, to the file the
+/// `IRONPLC_ROUTE_COUNTS` environment variable names, when it names one. The
+/// `lowered-count` recipe of `compiler/justfile` sums the lines to report how
+/// many statements, `init` functions and prologues of these programs take
+/// the lowered route.
 fn record_route_counts(counts: RouteCounts) {
     let Some(path) = std::env::var_os("IRONPLC_ROUTE_COUNTS") else {
         return;
     };
     let line = format!(
-        "{} {} {} {}\n",
-        counts.lowered, counts.from_ast, counts.init_lowered, counts.init_from_ast
+        "{} {} {} {} {} {}\n",
+        counts.lowered,
+        counts.from_ast,
+        counts.init_lowered,
+        counts.init_from_ast,
+        counts.prologue_lowered,
+        counts.prologue_from_ast
     );
     // One `write` of a line opened for append lands whole, though tests
     // record from many threads.

@@ -1,6 +1,5 @@
-//! Tests of lowering the prologue of a function or method: the statements
-//! at the head of its body that give each variable that starts again on
-//! every call its value.
+//! Tests of lowering the prologue of a body: the statements at the head of
+//! it that give each variable that starts again on every call its value.
 
 use crate::test_support::lower_whole;
 use crate::PartialProgram;
@@ -99,7 +98,8 @@ END_PROGRAM
 }
 
 /// REQ-LOW-lowering-195: a method's locals and result start again on every
-/// call; a program's or function block's body has no prologue.
+/// call; a program's or function block's body without a `VAR_TEMP` has no
+/// prologue.
 #[test]
 fn lower_program_when_method_then_prologue_stores_locals_and_result() {
     let program = whole(
@@ -125,4 +125,30 @@ END_PROGRAM
     );
     assert!(prologue(&program, "Fb").is_empty());
     assert!(prologue(&program, "main").is_empty());
+}
+
+/// REQ-LOW-lowering-201: a function block's `VAR_TEMP` starts again on every
+/// call, in declaration order; its other variables do not.
+#[test]
+fn lower_program_when_function_block_has_var_temp_then_prologue_stores_each() {
+    let program = whole(
+        "
+FUNCTION_BLOCK Fb
+  VAR k : INT := 5; END_VAR
+  VAR_TEMP t : INT := 2; u : BOOL; END_VAR
+  VAR_OUTPUT q : INT; END_VAR
+  q := k + t;
+END_FUNCTION_BLOCK
+PROGRAM main
+  VAR b : Fb; y : INT; END_VAR
+  b();
+  y := b.q;
+END_PROGRAM
+",
+    );
+
+    assert_eq!(
+        prologue(&program, "Fb"),
+        ["assign v1 (const i32s 2)", "assign v2 (const bool false)"]
+    );
 }

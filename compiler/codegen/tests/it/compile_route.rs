@@ -76,6 +76,34 @@ END_PROGRAM
     assert_eq!((counts.init_lowered, counts.init_from_ast), (0, 1));
 }
 
+/// The function's prologue is the one prologue: the function block and the
+/// program declare no `VAR_TEMP`.
+#[test]
+fn compile_when_prefer_lowered_then_prologue_from_lowered_program() {
+    let counts = route_counts(SOURCE, Route::PreferLowered).unwrap();
+    assert_eq!((counts.prologue_lowered, counts.prologue_from_ast), (1, 0));
+}
+
+/// A structure local of a function, which this backend gives no storage of
+/// its own, is a store the lowered route does not emit in a prologue yet,
+/// so the whole prologue is the AST's.
+#[test]
+fn compile_when_prefer_lowered_and_structure_local_then_prologue_from_ast() {
+    let source = "
+TYPE P : STRUCT x : DINT; END_STRUCT; END_TYPE
+FUNCTION F : DINT
+  VAR p : P; END_VAR
+  F := 1;
+END_FUNCTION
+PROGRAM main
+  VAR a : DINT; END_VAR
+  a := F();
+END_PROGRAM
+";
+    let counts = route_counts(source, Route::PreferLowered).unwrap();
+    assert_eq!((counts.prologue_lowered, counts.prologue_from_ast), (0, 1));
+}
+
 #[test]
 fn compile_when_require_lowered_and_block_string_through_alias_then_compiles() {
     let counts = route_counts(SOURCE, Route::RequireLowered).unwrap();
