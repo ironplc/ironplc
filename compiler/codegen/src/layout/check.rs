@@ -19,9 +19,10 @@ use crate::compile::CompileContext;
 /// the region ends, how each array, structure, array of structures and
 /// what each reference refers to is reached, how each function block
 /// instance is, what a call of each user function, function block and
-/// method needs, what the temporary buffers are sized for, and the array
-/// descriptors `builder` holds; and which slots hold a `VAR_IN_OUT`. An
-/// internal error names each entry that differs.
+/// method needs, what the temporary buffers are sized for, the array
+/// descriptors `builder` holds, and the debug entries of the variables and
+/// the strings; and which slots hold a `VAR_IN_OUT`. An internal error
+/// names each entry that differs.
 pub(crate) fn check(
     lowered: &Layout,
     ctx: &CompileContext,
@@ -114,6 +115,11 @@ pub(crate) fn check(
             lowered.descriptors
         ));
     }
+    differences.extend(
+        lowered
+            .debug
+            .differences(&ctx.debug_var_names, &ctx.debug_string_layouts),
+    );
     if ctx.data_region_offset != lowered.data_end {
         differences.push(format!(
             "data region ends at {}, not {}",

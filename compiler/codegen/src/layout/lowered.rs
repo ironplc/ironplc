@@ -30,7 +30,10 @@
 //! check compares a structure's and an array of structures' entry without
 //! the analyzer types it holds ([`super::entries`]). A function block
 //! instance's fields, and what a call of each user function, function block
-//! and method needs, come from the same declarations ([`super::calls`]).
+//! and method needs, come from the same declarations ([`super::calls`]), and
+//! so do the debug entries of the variables and of the strings of the
+//! globals and the program ([`super::debug_vars`]), which the check compares
+//! and the AST layout's still provide.
 //!
 //! When every declaration lowers, the bodies are compiled against this
 //! layout ([`Layout::install`]); the walk of the AST declarations still
@@ -50,6 +53,7 @@ use ironplc_ir::lowered::{
 use ironplc_lowering::{Declaration, PartialProgram};
 
 use super::calls::{Blocks, Calling};
+use super::debug_vars::DebugVars;
 use super::descriptors::Descriptors;
 use super::entries::{StructArrayEntry, StructEntry};
 use super::names::{self, ScopeId, Scoped};
@@ -88,6 +92,8 @@ pub(crate) struct Layout {
     /// What a call of each user function block and its methods needs, by
     /// the block's upper-case name.
     pub(super) user_fb_types: HashMap<String, UserFbTypeInfo>,
+    /// The debug entries of the variables and the strings.
+    pub(super) debug: DebugVars,
 }
 
 /// What the declarations reserve as the walk visits them: the runs of the
@@ -126,7 +132,10 @@ impl Layout {
             if system {
                 // The runtime writes a compiler-provided global, which no
                 // body operates on through the layout's type.
-                layout.insert_counted(ScopeId::Global, name(lowering, var)?, None);
+                let name = name(lowering, var)?;
+                let index = layout.insert_counted(ScopeId::Global, name.clone(), None);
+                let ty = lowering.variables().get(var)?.ty();
+                layout.debug.system(types, index, &name, ty);
             } else if !program_declarations.contains(&Declaration::Variable(var)) {
                 // A global the program declares is laid out with its
                 // variables.
@@ -143,6 +152,7 @@ impl Layout {
                         &mut storage,
                         name_of(field),
                         field.ty,
+                        field.section,
                     )?;
                 }
                 Declaration::Variable(var) => {
@@ -171,12 +181,23 @@ impl Layout {
                     layout.insert_string(&mut storage, scope, &name, held)?
                 };
                 calling.add(section, &name, next, string);
+                layout.debug.local(
+                    types,
+                    next,
+                    function_id,
+                    Some(section),
+                    &name,
+                    held(lowering, var)?,
+                );
                 layout.insert(scope, name, next, held_type(lowering, var));
                 next = VarIndex::new(next.raw() + 1);
             }
             let result = frame.result?;
             let name = name(lowering, result)?;
             let result_index = next;
+            layout
+                .debug
+                .result(types, next, function_id, &name, held(lowering, result)?);
             layout.insert(scope, name.clone(), next, held_type(lowering, result));
             next = VarIndex::new(next.raw() + 1);
             let ty = held(lowering, result)?;
@@ -231,6 +252,9 @@ impl Layout {
             let scope = ScopeId::Block(function_id);
             for field in copy_slots(lowering, block)? {
                 let name = name_of(field);
+                layout
+                    .debug
+                    .local(types, next, function_id, field.section, &name, field.ty);
                 layout.insert_string(&mut storage, scope, &name, field.ty)?;
                 layout.insert_reference(&mut storage, scope, &name, field.ty, next)?;
                 layout.insert(scope, name, next, slot_type(types, field.ty));
@@ -366,8 +390,9 @@ impl Layout {
     /// program's, as [`Layout::insert_named`] does.
     fn insert_variable(&mut self, scope: ScopeId, storage: &mut Storage, var: VarId) -> Option<()> {
         let lowering = storage.region.lowering();
-        let ty = lowering.variables().get(var)?.ty();
-        self.insert_named(scope, storage, name(lowering, var)?, ty)
+        let variable = lowering.variables().get(var)?;
+        let (ty, section) = (variable.ty(), variable.section());
+        self.insert_named(scope, storage, name(lowering, var)?, ty, Some(section))
     }
 
     /// Records `name`, of the type `ty`, in `scope`, the globals' or the
@@ -380,15 +405,21 @@ impl Layout {
         storage: &mut Storage,
         name: Id,
         ty: TypeId,
+        section: Option<Section>,
     ) -> Option<()> {
         let types = storage.region.lowering().types();
         let run = storage.region.variable(ty)?;
         let start = run.as_ref().map(|run| run.start);
-        if let (Some(TypeKind::String(shape)), Some(start)) = (types.kind(ty), start) {
-            self.string_vars
-                .insert(scope, name.clone(), string_at(start, *shape)?);
+        let string = match (types.kind(ty), start) {
+            (Some(TypeKind::String(shape)), Some(start)) => Some(string_at(start, *shape)?),
+            _ => None,
+        };
+        if let Some(string) = &string {
+            self.string_vars.insert(scope, name.clone(), string.clone());
         }
         let index = self.insert_counted(scope, name.clone(), slot_type(types, ty));
+        self.debug
+            .declared(types, index, section, &name, ty, string.as_ref());
         if let (Some(TypeKind::FunctionBlock { .. }), Some(run)) = (types.kind(ty), run) {
             if let Some(instance) = storage.blocks.instance(ty, index, run)? {
                 self.fb_instances.insert(scope, name.clone(), instance);
