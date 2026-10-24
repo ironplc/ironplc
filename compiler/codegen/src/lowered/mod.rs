@@ -35,6 +35,7 @@ use crate::compile_subscript::subscript_check;
 use crate::compile_user_call::passes_by_reference;
 use crate::emit::Emitter;
 use crate::layout::ids::LaidOut;
+use crate::layout::names::ScopeId;
 
 mod aggregate;
 mod call_args;
@@ -175,7 +176,10 @@ fn compile_by_route(
     };
     match lowered {
         Some(lowered) if can_emit_all(lowering, ctx, lowered) => {
-            crate::compile_stmt::record_statement_position(emitter, ctx, stmt);
+            if let Some(span) = current_pou(ctx).and_then(|pou| lowering.statement_span(pou, index))
+            {
+                crate::compile_stmt::record_position(emitter, ctx, span);
+            }
             stmt::emit_stmts(emitter, ctx, lowering, lowered)?;
             route.counts.lowered += 1;
             Ok(true)
@@ -501,6 +505,14 @@ pub(super) fn instance_field<'p>(
 /// lowering did not lower.
 pub(super) fn current_pou(ctx: &CompileContext) -> Option<PouId> {
     ctx.lowered_ids.pou_in(ctx.scope)
+}
+
+/// The name the lowered program gives the POU whose body is compiled in
+/// `scope`, as written, when the route compiles from the lowered program.
+pub(crate) fn pou_name(ctx: &CompileContext, scope: ScopeId) -> Option<String> {
+    let route = ctx.lowered_route.as_ref()?;
+    let pou = ctx.lowered_ids.pou_in(scope)?;
+    Some(route.lowering().pous().name(pou)?.to_string())
 }
 
 /// Whether `pou` is the body being compiled.
