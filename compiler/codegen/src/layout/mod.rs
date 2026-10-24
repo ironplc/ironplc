@@ -21,6 +21,7 @@ mod block;
 mod calls;
 pub(crate) mod check;
 mod debug_type;
+mod debug_vars;
 mod descriptors;
 mod entries;
 mod function;

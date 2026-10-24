@@ -523,8 +523,7 @@ fn compile_program_with_functions(
     // registration order (program first, then functions, then FB
     // bodies) determines the `file_id` numbering, which appears in
     // the on-disk container.
-    // The lowered program names the POUs and their spans when the route
-    // compiles from it.
+    // The lowered program names the POUs and their spans.
     let pou_spans = ctx
         .lowered_route
         .as_ref()
@@ -829,8 +828,7 @@ fn compile_program_with_functions(
         .shared_globals_size(program_var_count)
         .max_call_depth(max_call_depth);
 
-    // Add debug info, named as the lowered program names each POU when the
-    // route compiles from it.
+    // Add debug info, named as the lowered program names each POU.
     let program_name = crate::lowered::pou_name(&ctx, crate::layout::names::ScopeId::Program)
         .unwrap_or_else(|| program.name.to_string());
     builder = builder

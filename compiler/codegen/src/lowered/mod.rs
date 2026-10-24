@@ -454,7 +454,7 @@ pub(super) fn current_pou(ctx: &CompileContext) -> Option<PouId> {
 }
 
 /// The name the lowered program gives the POU whose body is compiled in
-/// `scope`, as written, when the route compiles from the lowered program.
+/// `scope`, as written; `None` for a body lowering did not lower.
 pub(crate) fn pou_name(ctx: &CompileContext, scope: ScopeId) -> Option<String> {
     let route = ctx.lowered_route.as_ref()?;
     let pou = ctx.lowered_ids.pou_in(scope)?;
