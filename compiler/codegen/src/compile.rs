@@ -66,6 +66,7 @@ use ironplc_analyzer::{
 use crate::emit::Emitter;
 use crate::held_instances::{HeldField, HeldInstance};
 use crate::layout::names::{self, ScopeId, Scoped};
+use crate::layout::var_table;
 
 use super::compile_fn::{compile_user_function, compile_user_function_block};
 use super::compile_method::compile_user_method;
@@ -1309,9 +1310,18 @@ impl CompileContext {
         declared.is_some() && declared == self.seen(&self.variables, names::SLOTS, name)
     }
 
-    /// How many names have a slot that the current scope sees.
+    /// How many names have a slot that the current scope sees. Each of
+    /// them was handed out by [`var_table`], so the count fits the table.
     pub(crate) fn slot_count(&self) -> u16 {
         names::slot_count(&self.variables, self.scope) as u16
+    }
+
+    /// The next slot of the globals or the program, which the variable
+    /// declared at `span` takes: the one after every slot the current scope
+    /// sees. P9997 when the variable table has no more.
+    #[track_caller]
+    pub(crate) fn next_slot(&self, span: &SourceSpan) -> Result<VarIndex, Diagnostic> {
+        var_table::slot(names::slot_count(&self.variables, self.scope), span)
     }
 
     /// The slot after the highest one the current scope sees: the next free
@@ -1411,18 +1421,25 @@ impl CompileContext {
         self.seen(&self.var_types, names::SLOTS, name).copied()
     }
 
-    /// Allocates a scratch variable with a synthetic name and returns its index.
+    /// Allocates a scratch variable with a synthetic name for the variable
+    /// declared at `span` and returns its index; P9997 when the variable
+    /// table has no more slots.
     ///
     /// The scratch variable takes the [next free slot](Self::next_free_slot)
     /// of the POU being laid out, which counts it in its run.
     ///
     /// The name uses a `$` prefix which is illegal in IEC 61131-3 identifiers,
     /// guaranteeing no collision with user-defined variables.
-    pub(crate) fn allocate_scratch_variable(&mut self, suffix: &str) -> VarIndex {
-        let idx = self.next_free_slot();
+    #[track_caller]
+    pub(crate) fn allocate_scratch_variable(
+        &mut self,
+        suffix: &str,
+        span: &SourceSpan,
+    ) -> Result<VarIndex, Diagnostic> {
+        let idx = var_table::slot(self.next_free_slot().raw().into(), span)?;
         self.variables
             .insert(self.scope, Id::from(&format!("$scratch_{}", suffix)), idx);
-        idx
+        Ok(idx)
     }
 
     /// Returns the index of an existing constant matching `matches`, or

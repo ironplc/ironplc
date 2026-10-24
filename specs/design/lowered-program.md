@@ -1318,8 +1318,8 @@ reads the AST does, and no program tells that from a copy. A field of the
 block that holds an instance is not such a variable: a caller copies from it
 (`g(ob => f)`). A `Copy` from one such field to another, `ob := loc`, copies
 the instance the source holds into the one the destination holds
-(REQ-LOW-codegen-196), and a `Copy` to one from anything else is left to the
-route that reads the AST.
+(REQ-LOW-codegen-196), and a `Copy` to one from anything else is not
+supported yet (P9999).
 
 **REQ-LOW-lowering-062** Every `Exit` and `Continue` names a `Loop` or `For`
 that encloses it.
