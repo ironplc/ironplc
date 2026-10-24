@@ -128,7 +128,7 @@ pub fn apply(
                     ),
                 )
                 .with_secondary(Label::span(overridden.name.span(), "Overridden method"))
-                .with_context_id("function block", &fb.name.name)
+                .with_context_type("function block", &fb.name)
                 .with_context_id("method", &method.name),
             );
         }
@@ -157,7 +157,7 @@ pub fn apply(
                     ),
                 )
                 .with_secondary(Label::span(overridden.name.span(), "Overridden property"))
-                .with_context_id("function block", &fb.name.name)
+                .with_context_type("function block", &fb.name)
                 .with_context_id("property", &property.name),
             );
         }

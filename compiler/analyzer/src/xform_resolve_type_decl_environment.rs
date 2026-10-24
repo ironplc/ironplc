@@ -392,7 +392,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
         // `xform_resolve_decl_types` records them in the environment once
         // they are, never in the block's type.
         let attrs = crate::type_attributes::TypeAttributes::new(SemanticType::FunctionBlock {
-            name: node.name.name.to_string(),
+            name: node.name.to_string(),
         });
         self.insert_type(&node.name, attrs);
         if let Some(oop) = &node.oop {

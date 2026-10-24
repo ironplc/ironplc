@@ -448,9 +448,7 @@ impl<'a> Lowering<'a> {
     pub(crate) fn body_pou(&mut self, body: Body<'a>) -> PouId {
         match body {
             Body::Program(program) => self.pou(&program.name.to_string(), &program.name.span()),
-            Body::FunctionBlock(block) => {
-                self.pou(&block.name.name.to_string(), &block.name.name.span())
-            }
+            Body::FunctionBlock(block) => self.pou(&block.name.to_string(), &block.name.span()),
             Body::Function(function) => self.pou(&function.name.to_string(), &function.name.span()),
             Body::Method { block, method } => self.method_pou(&block.name.name, &method.name),
         }
