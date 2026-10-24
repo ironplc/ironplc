@@ -307,9 +307,7 @@ impl<'a> Lowering<'a> {
             .elements
             .iter()
             .find_map(|element| match element {
-                LibraryElementKind::FunctionBlockDeclaration(block)
-                    if TypeName::from(&block.name.name.to_string()) == *name =>
-                {
+                LibraryElementKind::FunctionBlockDeclaration(block) if block.name == *name => {
                     Some(block)
                 }
                 LibraryElementKind::DataTypeDeclaration(_)

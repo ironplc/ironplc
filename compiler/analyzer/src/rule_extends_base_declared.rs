@@ -95,7 +95,7 @@ pub fn apply(
         };
         diagnostics.push(
             diagnostic
-                .with_context_id("function block", &fb.name.name)
+                .with_context_type("function block", &fb.name)
                 .with_context_type("base", base),
         );
     }

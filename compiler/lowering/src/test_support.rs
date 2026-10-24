@@ -129,7 +129,7 @@ fn body_of<'a>(library: &'a Library, pou: &str) -> (Body<'a>, &'a [StmtKind]) {
                 return (Body::Program(program), statements(&program.body));
             }
             LibraryElementKind::FunctionBlockDeclaration(block)
-                if block.name.name.to_string() == pou =>
+                if block.name.to_string() == pou =>
             {
                 return (Body::FunctionBlock(block), statements(&block.body));
             }

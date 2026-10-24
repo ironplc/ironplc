@@ -309,7 +309,7 @@ impl<'a> Conformance<'a> {
                 Problem::ImplementsNotInterface,
                 Label::span(entry.span(), label),
             )
-            .with_context_id("function block", &self.fb.name.name)
+            .with_context_type("function block", &self.fb.name)
             .with_context_type("name", entry),
         );
     }
@@ -317,7 +317,7 @@ impl<'a> Conformance<'a> {
     fn push(&mut self, diagnostic: Diagnostic, itf: &InterfaceDeclaration, member: &Id) {
         self.diagnostics.push(
             diagnostic
-                .with_context_id("function block", &self.fb.name.name)
+                .with_context_type("function block", &self.fb.name)
                 .with_context_id("interface", &itf.name)
                 .with_context_id("member", member),
         );

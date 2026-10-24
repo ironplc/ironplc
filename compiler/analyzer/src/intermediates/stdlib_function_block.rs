@@ -10,6 +10,7 @@
 //! These function blocks are automatically available in the type environment
 //! and do not need to be declared by the user.
 
+use ironplc_dsl::common::TypeName;
 use ironplc_dsl::core::Id;
 
 use crate::semantic_type::{ByteSized, FunctionBlockVarType, SemanticType};
@@ -373,11 +374,11 @@ pub fn stdlib_function_block_names() -> &'static [&'static str] {
 
 /// Checks if a name is a standard library function block.
 ///
-/// Uses `Id` equality which is case-insensitive per IEC 61131-3.
-pub fn is_stdlib_function_block(name: &Id) -> bool {
+/// Uses `TypeName` equality which is case-insensitive per IEC 61131-3.
+pub fn is_stdlib_function_block(name: &TypeName) -> bool {
     stdlib_function_block_names()
         .iter()
-        .any(|stdlib_name| *name == Id::from(stdlib_name))
+        .any(|stdlib_name| *name == TypeName::from(stdlib_name))
 }
 
 #[cfg(test)]
@@ -518,14 +519,14 @@ mod tests {
 
     #[test]
     fn is_stdlib_function_block_when_ton_then_true() {
-        assert!(is_stdlib_function_block(&Id::from("ton")));
-        assert!(is_stdlib_function_block(&Id::from("TON")));
-        assert!(is_stdlib_function_block(&Id::from("Ton")));
+        assert!(is_stdlib_function_block(&TypeName::from("ton")));
+        assert!(is_stdlib_function_block(&TypeName::from("TON")));
+        assert!(is_stdlib_function_block(&TypeName::from("Ton")));
     }
 
     #[test]
     fn is_stdlib_function_block_when_unknown_then_false() {
-        assert!(!is_stdlib_function_block(&Id::from("my_custom_fb")));
+        assert!(!is_stdlib_function_block(&TypeName::from("my_custom_fb")));
     }
 
     #[spec_test(REQ_CB_analyzer_001)]
