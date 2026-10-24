@@ -173,8 +173,7 @@ fn run_when_adr_of_string_dereferenced_then_value_of_string() {
          END_PROGRAM",
         &options,
     );
-    let container = compile_analyzed(&library, &context, &options)
-        .expect("compiles");
+    let container = compile_analyzed(&library, &context, &options).expect("compiles");
     let snapshot = Snapshot::run_compiled(container);
     assert_eq!(snapshot.read("t"), "abc");
     assert_eq!(snapshot.read("u"), "abc");
@@ -189,8 +188,7 @@ fn run_when_string_read_through_null_reference_then_null_dereference() {
         "PROGRAM main VAR rs : REF_TO STRING; t : STRING; END_VAR t := rs^; END_PROGRAM",
         &options,
     );
-    let container = compile_analyzed(&library, &context, &options)
-        .expect("compiles");
+    let container = compile_analyzed(&library, &context, &options).expect("compiles");
     let Err(fault) = run_one_scan(&container) else {
         panic!("the scan does not trap");
     };

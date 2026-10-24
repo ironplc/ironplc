@@ -72,8 +72,7 @@ fn run_when_aggregate_copied_through_null_reference_then_null_dereference() {
          END_PROGRAM",
         &options,
     );
-    let container = compile_analyzed(&library, &context, &options)
-        .expect("compiles");
+    let container = compile_analyzed(&library, &context, &options).expect("compiles");
     let Err(fault) = run_one_scan(&container) else {
         panic!("the scan does not trap");
     };
