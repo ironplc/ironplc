@@ -5,9 +5,9 @@
 use ironplc_analyzer::system_globals::SYSTEM_UPTIME_GLOBALS;
 use ironplc_analyzer::TypeEnvironment;
 use ironplc_container::debug_section::{function_id, var_section, VarNameEntry};
-use ironplc_container::{ContainerBuilder, VarIndex};
+use ironplc_container::ContainerBuilder;
 use ironplc_dsl::common::{TypeName, VarDecl};
-use ironplc_dsl::core::Id;
+use ironplc_dsl::core::{Id, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::execution::SystemGlobal;
 
@@ -51,7 +51,7 @@ fn assign_system_globals(
                 ))
             })?;
         let id = Id::from(global.name);
-        let index = VarIndex::new(ctx.slot_count());
+        let index = ctx.next_slot(&SourceSpan::default())?;
         ctx.variables.insert(ctx.scope, id.clone(), index);
         let type_name = TypeName::from(global.type_name);
         ctx.debug_var_names.push(VarNameEntry {

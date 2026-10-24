@@ -454,7 +454,7 @@ pub(crate) fn allocate_struct_variable(
                     })?;
                 // Allocate scratch variable once for all STRING/WSTRING array fields.
                 if scratch_var_index.is_none() {
-                    let scratch_idx = ctx.allocate_scratch_variable(&id.to_string());
+                    let scratch_idx = ctx.allocate_scratch_variable(&id.to_string(), span)?;
                     scratch_var_index = Some(scratch_idx);
                 }
                 let element_field_type = FieldType::string(*char_width);
@@ -487,7 +487,7 @@ pub(crate) fn allocate_struct_variable(
         &mut element_strings,
     )?;
     if !element_strings.is_empty() && scratch_var_index.is_none() {
-        scratch_var_index = Some(ctx.allocate_scratch_variable(&id.to_string()));
+        scratch_var_index = Some(ctx.allocate_scratch_variable(&id.to_string(), span)?);
     }
 
     // Store metadata

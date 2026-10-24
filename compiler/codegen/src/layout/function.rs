@@ -25,6 +25,7 @@ use ironplc_dsl::diagnostic::Diagnostic;
 
 use super::debug_type::debug_type_for_return;
 use super::names::ScopeId;
+use super::var_table;
 use crate::compile::{
     CompileContext, OpType, ParamPassing, StringReturnInfo, UserFunctionInfo, DEFAULT_OP_TYPE,
     NARROW_CHAR_WIDTH, WIDE_CHAR_WIDTH,
@@ -95,7 +96,7 @@ pub(crate) fn lay_out_function(
                 let type_info = in_out_value_type(decl)?;
                 ctx.var_types.insert(ctx.scope, id.clone(), type_info);
                 ctx.in_out_params.insert(ctx.scope, id.clone(), ());
-                current_index = VarIndex::new(current_index.raw() + 1);
+                current_index = var_table::advance(current_index, 1, &decl.identifier.span())?;
                 num_params += 1;
                 continue;
             }
@@ -116,7 +117,7 @@ pub(crate) fn lay_out_function(
                     ref_init,
                 )?;
             }
-            current_index = VarIndex::new(current_index.raw() + 1);
+            current_index = var_table::advance(current_index, 1, &decl.identifier.span())?;
             num_params += 1;
         }
     }
@@ -149,12 +150,12 @@ pub(crate) fn lay_out_function(
                     ref_init,
                 )?;
             }
-            current_index = VarIndex::new(current_index.raw() + 1);
+            current_index = var_table::advance(current_index, 1, &decl.identifier.span())?;
         }
     }
 
     // Assign the return variable (named same as the function).
-    let return_var_index = current_index;
+    let return_var_index = var_table::slot(current_index.raw().into(), &func_decl.name.span())?;
     let return_id = func_decl.name.clone();
     ctx.variables
         .insert(ctx.scope, return_id.clone(), return_var_index);

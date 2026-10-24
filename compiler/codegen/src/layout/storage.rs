@@ -39,7 +39,7 @@ pub(super) fn assign_variables(
 ) -> Result<(), Diagnostic> {
     for decl in declarations {
         if let Some(id) = decl.identifier.symbolic_id() {
-            let index = VarIndex::new(ctx.slot_count());
+            let index = ctx.next_slot(&decl.identifier.span())?;
             ctx.variables.insert(ctx.scope, id.clone(), index);
             let (type_tag, type_name_str) = assign_storage(ctx, builder, decl, id, index, types)?;
             ctx.debug_var_names.push(VarNameEntry {
