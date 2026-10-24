@@ -16,7 +16,7 @@
 //!   analyzer resolves the declaration to.
 
 use ironplc_container::debug_section::{
-    function_id, iec_type_tag, var_section, StringLayoutEntry, VarNameEntry,
+    function_id, iec_type_tag, var_section, EnumDefEntry, StringLayoutEntry, VarNameEntry,
 };
 use ironplc_container::{FunctionId, VarIndex};
 use ironplc_dsl::core::Id;
@@ -25,16 +25,34 @@ use ironplc_ir::lowered::{
 };
 
 use crate::compile::StringVarInfo;
-
-/// How an anonymous enumeration's debug name begins; its id and a
-/// parenthesis end it.
-const ANONYMOUS: &str = "(ANONYMOUS ENUMERATION ";
+use crate::compile_enum::ANONYMOUS_PREFIX;
 
 /// The debug entries the layout records, in the walk's order.
 #[derive(Default)]
 pub(crate) struct DebugVars {
     pub(super) var_names: Vec<VarNameEntry>,
     pub(super) string_layouts: Vec<StringLayoutEntry>,
+}
+
+/// The `ENUM_DEF` entries: one for each enumeration type of the lowered
+/// program, its values' names in the order the type lists them, sorted by
+/// type name so one source always gives the same bytes (REQ-EN-codegen-064).
+pub(super) fn enum_definitions(types: &TypeTable) -> Vec<EnumDefEntry> {
+    let mut entries: Vec<EnumDefEntry> = types
+        .iter()
+        .filter_map(|(ty, entry)| match &entry.kind {
+            TypeKind::Enumeration { values, .. } => Some(EnumDefEntry {
+                type_name: enumeration_name(types, ty),
+                values: values
+                    .iter()
+                    .map(|value| value.name.to_string().to_uppercase())
+                    .collect(),
+            }),
+            _ => None,
+        })
+        .collect();
+    entries.sort_by(|a, b| a.type_name.cmp(&b.type_name));
+    entries
 }
 
 impl DebugVars {
@@ -358,7 +376,7 @@ fn element_name(types: &TypeTable, element: TypeId) -> String {
 pub(super) fn enumeration_name(types: &TypeTable, ty: TypeId) -> String {
     match types.get(ty).and_then(|entry| entry.name.as_ref()) {
         Some(name) => name.to_string().to_uppercase(),
-        None => format!("{ANONYMOUS}{})", ty.index()),
+        None => crate::compile_enum::anonymous_name(ty.index()),
     }
 }
 
@@ -422,8 +440,8 @@ fn elementary(kind: Option<&TypeKind>) -> Option<(u8, &'static str)> {
 
 /// `type_name` without the id an anonymous enumeration's name holds.
 fn without_id(type_name: &str) -> String {
-    match type_name.strip_prefix(ANONYMOUS) {
-        Some(_) => ANONYMOUS.to_string(),
+    match type_name.strip_prefix(ANONYMOUS_PREFIX) {
+        Some(_) => ANONYMOUS_PREFIX.to_string(),
         None => type_name.to_string(),
     }
 }
