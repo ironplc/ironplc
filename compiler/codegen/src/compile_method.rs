@@ -83,7 +83,7 @@ pub(crate) fn compile_user_method(
     ctx.function_stack_depths
         .insert(function_id, finalized.max_stack_depth);
 
-    let name = crate::lowered::pou_name(ctx, ctx.scope).unwrap_or_else(|| method.name.to_string());
+    let name = crate::lowered::pou_name(ctx, ctx.scope)?;
     ctx.scope = caller;
 
     Ok(CompiledFunction {

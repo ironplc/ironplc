@@ -35,18 +35,19 @@
 //! globals and the program, and of each enumeration type
 //! ([`super::debug_vars`]).
 //!
-//! When every declaration lowers, the bodies are compiled against this
-//! layout ([`Layout::install`]); the walk of the AST declarations still
-//! runs, for the entries this one does not hold yet and for a program a
-//! declaration of which does not lower, and the end-to-end helpers check
-//! the two equal ([`super::check`]).
+//! The bodies are compiled against this layout ([`Layout::install`]), and a
+//! declaration lowering does not express yet is not supported yet (P9999).
+//! The walk of the AST declarations still runs, for the entries this one
+//! does not hold yet, and the end-to-end helpers check the two equal
+//! ([`super::check`]).
 
 use std::collections::HashMap;
 
 use ironplc_analyzer::StandardFunctionBlock;
 use ironplc_container::debug_section::EnumDefEntry;
 use ironplc_container::{ArrayDescriptor, FunctionId, VarIndex};
-use ironplc_dsl::core::{Id, SourceSpan};
+use ironplc_dsl::core::{Id, Located, SourceSpan};
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::execution::{GlobalKind, GlobalScope};
 use ironplc_ir::lowered::{
     Field, Nullability, PouId, PouKind, Section, TypeId, TypeKind, TypeTable, VarId,
@@ -111,16 +112,31 @@ struct Storage<'a> {
 impl Layout {
     /// The layout of the declarations of `lowering`, whose program the
     /// container runs is `program`, and the standard function block each
-    /// type is `standard_blocks`, by its upper-case name; `None` when a
-    /// declaration did not lower, and the program keeps the AST layout.
+    /// type is `standard_blocks`, by its upper-case name. A declaration
+    /// lowering does not express yet is not supported yet (P9999).
     pub(crate) fn of(
         lowering: &PartialProgram,
         program: &Id,
         standard_blocks: &HashMap<String, StandardFunctionBlock>,
-    ) -> Option<Self> {
-        if !lowering.declarations_complete() {
-            return None;
+    ) -> Result<Self, Diagnostic> {
+        if let Some(span) = lowering.declarations_unsupported().first() {
+            return Err(Diagnostic::todo_with_span(span.clone()));
         }
+        Self::of_complete(lowering, program, standard_blocks).ok_or_else(|| {
+            Diagnostic::internal_error_at(Label::span(
+                program.span(),
+                "The lowered declarations give no layout",
+            ))
+        })
+    }
+
+    /// The layout of the declarations of `lowering`, every one of which
+    /// lowered; `None` when they are not the program's.
+    fn of_complete(
+        lowering: &PartialProgram,
+        program: &Id,
+        standard_blocks: &HashMap<String, StandardFunctionBlock>,
+    ) -> Option<Self> {
         let pous = Pous::of(lowering, program)?;
         let types = lowering.types();
         let mut storage = Storage {
@@ -326,8 +342,8 @@ impl Layout {
     /// Makes this layout the one `ctx` compiles the bodies against
     /// (REQ-LOW-codegen-199), and its debug entries the ones the container
     /// holds. A structure's and an array of structures' entries, which hold
-    /// analyzer types, stay the AST layout's, as do the array descriptors,
-    /// which the walk of the AST declarations has already added to the
+    /// analyzer types, are still the walk of the AST declarations', as are
+    /// the array descriptors, which that walk has already added to the
     /// container.
     pub(crate) fn install(self, ctx: &mut CompileContext) {
         let (max_string_capacity, has_wide_string) = self.temporary_buffers();
@@ -346,7 +362,7 @@ impl Layout {
         ctx.has_wide_string = has_wide_string;
         ctx.debug_var_names = self.debug.var_names;
         ctx.debug_string_layouts = self.debug.string_layouts;
-        ctx.debug_enum_defs = Some(self.enum_defs);
+        ctx.debug_enum_defs = self.enum_defs;
     }
 
     /// What the temporary buffers are sized for: the largest capacity of a
@@ -652,16 +668,25 @@ fn has_string_field(types: &TypeTable, ty: TypeId) -> bool {
 
 /// The span of the name of each POU whose source file the debug section's
 /// `SOURCE_FILE_TABLE` lists, in the order it lists them: the program the
-/// container runs, `program`, then each function, then each function block;
-/// `None` when `lowering` has no such program.
-pub(crate) fn source_spans(lowering: &PartialProgram, program: &Id) -> Option<Vec<SourceSpan>> {
-    let pous = Pous::of(lowering, program)?;
-    let table = lowering.pous();
-    std::iter::once(pous.program)
-        .chain(pous.functions.iter().copied())
-        .chain(pous.blocks.iter().copied())
-        .map(|pou| Some(table.name(pou)?.span()))
-        .collect()
+/// container runs, `program`, then each function, then each function block.
+pub(crate) fn source_spans(
+    lowering: &PartialProgram,
+    program: &Id,
+) -> Result<Vec<SourceSpan>, Diagnostic> {
+    let spans = Pous::of(lowering, program).and_then(|pous| {
+        let table = lowering.pous();
+        std::iter::once(pous.program)
+            .chain(pous.functions.iter().copied())
+            .chain(pous.blocks.iter().copied())
+            .map(|pou| Some(table.name(pou)?.span()))
+            .collect()
+    });
+    spans.ok_or_else(|| {
+        Diagnostic::internal_error_at(Label::span(
+            program.span(),
+            "The lowered program has no POU of this name",
+        ))
+    })
 }
 
 /// The reachable POUs of a lowered program and the container function id

@@ -8,7 +8,6 @@
 //! See `specs/design/enumeration-codegen.md` for the full design.
 
 use ironplc_analyzer::TypeEnvironment;
-use ironplc_container::debug_section::EnumDefEntry;
 use ironplc_dsl::type_id::TypeId;
 
 use super::compile::{OpWidth, Signedness, VarTypeInfo};
@@ -36,27 +35,6 @@ pub(crate) const ANONYMOUS_PREFIX: &str = "(ANONYMOUS ENUMERATION ";
 /// identifier, so the name is never a declared type's.
 pub(crate) fn anonymous_name(id: impl std::fmt::Display) -> String {
     format!("{ANONYMOUS_PREFIX}{id})")
-}
-
-/// The ENUM_DEF entries: one per enumeration type, its members' names in
-/// declaration order, sorted by type name so one source always gives the
-/// same bytes.
-pub(crate) fn enum_definitions(types: &TypeEnvironment) -> Vec<EnumDefEntry> {
-    let mut entries: Vec<EnumDefEntry> = types
-        .iter_ids()
-        .filter_map(|(id, attributes)| {
-            let members = attributes.representation.enumeration_members()?;
-            Some(EnumDefEntry {
-                type_name: debug_name(types, Some(id)),
-                values: members
-                    .iter()
-                    .map(|m| m.name.to_string().to_uppercase())
-                    .collect(),
-            })
-        })
-        .collect();
-    entries.sort_by(|a, b| a.type_name.cmp(&b.type_name));
-    entries
 }
 
 /// Returns the `VarTypeInfo` for an enumeration variable.

@@ -2592,14 +2592,14 @@ Nothing is deleted before its last reader has moved to the lowered program.
 | `variables`, `string_vars`, `array_vars`, `struct_vars`, `struct_array_vars`, `fb_instances`, `in_out_params`, `user_functions`, `user_fb_types`, `next_user_fb_type_id` | Storage layout | Keep in the bytecode backend as its layout, keyed by id, immutable during emission. |
 | `constants`, `loop_labels`, `current_function_return`, `current_function_id`, `call_graph`, `data_region_offset`, `max_string_capacity`, `has_wide_string`, `debug_*` | Emission state | Keep in a smaller emit context. |
 
-**REQ-LOW-codegen-199** When every declaration of a program lowers, the
-bytecode backend compiles the program's bodies against the layout it builds
-from the lowered declarations. It keeps the layout it builds from the AST for
-a program a declaration of which does not lower, and, until the stages that
-replace them, for the entries the lowered layout does not hold: a
-structure's and an array of structures' analyzer types. The debug entries of
-the variables, the strings and the enumeration types are the lowered
-layout's.
+**REQ-LOW-codegen-199** The bytecode backend compiles a program's bodies
+against the layout it builds from the lowered declarations. A declaration
+lowering does not express yet is not supported yet (P9999), at the POU that
+declares it. Until the stages that replace them, the walk of the AST
+declarations still gives the entries the lowered layout does not hold: a
+structure's and an array of structures' analyzer types, and the array
+descriptors it adds to the container. The debug entries of the variables,
+the strings and the enumeration types are the lowered layout's.
 
 ### Other codegen types
 

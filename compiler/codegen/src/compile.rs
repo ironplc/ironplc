@@ -523,16 +523,7 @@ fn compile_program_with_functions(
     // bodies) determines the `file_id` numbering, which appears in
     // the on-disk container.
     // The lowered program names the POUs and their spans.
-    let pou_spans = ctx
-        .lowered_route
-        .as_ref()
-        .and_then(|route| crate::layout::lowered::source_spans(route.lowering(), &program.name))
-        .unwrap_or_else(|| {
-            std::iter::once(program.name.span())
-                .chain(func_decls.iter().map(|f| f.name.span()))
-                .chain(fb_decls.iter().map(|fb| fb.name.name.span()))
-                .collect()
-        });
+    let pou_spans = crate::layout::lowered::source_spans(ctx.lowering()?, &program.name)?;
     for span in &pou_spans {
         register_pou_source_file(&mut ctx, span, sources);
     }
@@ -597,26 +588,16 @@ fn compile_program_with_functions(
     }
 
     // Every body is laid out: compile them against the layout built from
-    // the lowered declarations, when each of those lowered, and match the
-    // lowered program's ids to it; then compile the functions' bodies, then
-    // each FB's body followed by its METHODs'.
-    if let Some(route) = &ctx.lowered_route {
-        let lowered = crate::layout::lowered::Layout::of(
-            route.lowering(),
-            &program.name,
-            &ctx.standard_blocks,
-        );
-        if let Some(lowered) = lowered {
-            if route.check_layout() {
-                crate::layout::check::check(&lowered, &ctx, &builder, &program.name)?;
-            }
-            lowered.install(&mut ctx);
-        }
+    // the lowered declarations, and match the lowered program's ids to it;
+    // then compile the functions' bodies, then each FB's body followed by
+    // its METHODs'.
+    let lowered =
+        crate::layout::lowered::Layout::of(ctx.lowering()?, &program.name, &ctx.standard_blocks)?;
+    if ctx.route()?.check_layout() {
+        crate::layout::check::check(&lowered, &ctx, &builder, &program.name)?;
     }
-    if let Some(route) = &ctx.lowered_route {
-        ctx.lowered_ids =
-            crate::layout::ids::LoweredIds::matched(route.lowering(), &ctx, &program.name);
-    }
+    lowered.install(&mut ctx);
+    ctx.lowered_ids = crate::layout::ids::LoweredIds::matched(ctx.lowering()?, &ctx, &program.name);
     for (func_decl, layout) in func_decls.iter().zip(function_layouts) {
         compiled_functions.push(compile_user_function(func_decl, layout, &mut ctx)?);
     }
@@ -825,8 +806,7 @@ fn compile_program_with_functions(
         .max_call_depth(max_call_depth);
 
     // Add debug info, named as the lowered program names each POU.
-    let program_name = crate::lowered::pou_name(&ctx, crate::layout::names::ScopeId::Program)
-        .unwrap_or_else(|| program.name.to_string());
+    let program_name = crate::lowered::pou_name(&ctx, crate::layout::names::ScopeId::Program)?;
     builder = builder
         .add_func_name(FuncNameEntry {
             function_id: FunctionId::INIT,
@@ -862,11 +842,7 @@ fn compile_program_with_functions(
         builder = builder.add_string_layout(entry);
     }
     // By type name, for the same reason as the user FB type descriptors.
-    let enum_defs = ctx
-        .debug_enum_defs
-        .take()
-        .unwrap_or_else(|| crate::compile_enum::enum_definitions(types));
-    for entry in enum_defs {
+    for entry in std::mem::take(&mut ctx.debug_enum_defs) {
         builder = builder.add_enum_def(entry);
     }
 
@@ -1132,10 +1108,8 @@ pub(crate) struct CompileContext {
     pub(crate) debug_var_names: Vec<VarNameEntry>,
     /// Debug info: STRING variable data-region layouts collected during assign_variables.
     pub(crate) debug_string_layouts: Vec<StringLayoutEntry>,
-    /// Debug info: the ENUM_DEF entries of the lowered program, when its
-    /// layout is the one the bodies are compiled against; `None` gives the
-    /// type environment's.
-    pub(crate) debug_enum_defs: Option<Vec<ironplc_container::debug_section::EnumDefEntry>>,
+    /// Debug info: the ENUM_DEF entries of the lowered program.
+    pub(crate) debug_enum_defs: Vec<ironplc_container::debug_section::EnumDefEntry>,
     /// Debug info: registry mapping each referenced source `FileId` to its
     /// `SourceFileId` (debug section SOURCE_FILE_TABLE index) plus cached
     /// source bytes for (line, column) conversion in `compile_statement`.
@@ -1217,7 +1191,7 @@ impl CompileContext {
             has_wide_string: false,
             debug_var_names: Vec::new(),
             debug_string_layouts: Vec::new(),
-            debug_enum_defs: None,
+            debug_enum_defs: Vec::new(),
             debug_source_files: crate::source_lookup::SourceFileRegistry::new(),
             user_functions: HashMap::new(),
             function_stack_depths: HashMap::new(),
@@ -1261,6 +1235,19 @@ impl CompileContext {
     /// variable inherited through `EXTENDS` or a `RESOURCE`'s `VAR_GLOBAL`, so
     /// it is reported as not implemented rather than as a mistake in the
     /// program.
+    /// The program lowering made, which every body is compiled from.
+    pub(crate) fn route(&self) -> Result<&crate::lowered::LoweredRoute, Diagnostic> {
+        self.lowered_route
+            .as_ref()
+            .ok_or_else(Diagnostic::internal_error)
+    }
+
+    /// What lowering made of the library, which every body is compiled
+    /// from.
+    pub(crate) fn lowering(&self) -> Result<&ironplc_lowering::PartialProgram, Diagnostic> {
+        self.route().map(crate::lowered::LoweredRoute::lowering)
+    }
+
     pub(crate) fn var_index(&self, name: &Id) -> Result<VarIndex, Diagnostic> {
         if self.is_in_out(name) {
             return Err(Diagnostic::not_implemented(Label::span(
