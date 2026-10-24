@@ -7,29 +7,31 @@
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 
-use ironplc_analyzer::semantic_type::SemanticType;
-use ironplc_container::{SlotIndex, VarIndex};
+use ironplc_container::VarIndex;
+use ironplc_ir::lowered::{TypeId, TypeKind, TypeTable};
 
-use super::compile::{string_region_size, CompileContext, DEFAULT_STRING_MAX_LENGTH};
+use super::compile::{string_region_size, CompileContext};
 use super::compile_array_struct::{ElementStringField, StructArrayVarInfo};
-use super::compile_struct::{build_struct_fields, StructVarInfo};
+use super::compile_struct::StructVarInfo;
 use crate::emit::Emitter;
+use crate::layout::{elements, slots, string_shape};
 
 /// Sets up the storage the layout gives a structure variable, before `init`
 /// stores its fields' values (REQ-LOW-codegen-200): its data-region offset
 /// into its slot, the header of every STRING its fields hold, and of every
 /// element's copy of each STRING field of the arrays of structures it holds.
+/// Its fields are those of its type in `types`.
 pub(crate) fn set_up_struct_variable(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
+    types: &TypeTable,
     info: &StructVarInfo,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
     let offset_const = ctx.add_i32_constant(info.data_offset as i32);
     emitter.emit_load_const_i32(offset_const);
     emitter.emit_store_var_i32(info.var_index);
-    let field_types = struct_field_types(&info.fields);
-    string_headers(emitter, &field_types, 0, info.data_offset, span)?;
+    string_headers(emitter, types, info.ty, 0, info.data_offset, span)?;
     initialize_element_strings(
         emitter,
         ctx,
@@ -63,59 +65,60 @@ pub(crate) fn set_up_struct_array_variable(
     )
 }
 
-/// Writes the header of each STRING the structure `fields`, from slot `base`
-/// of the region at `data_offset`, holds where [`Region::value`] writes one
-/// at `Position::Field`: a STRING field, each element of an ARRAY OF STRING
-/// field, and those of a structure field, to any depth.
+/// Writes the header of each STRING a structure of the type `ty`, from slot
+/// `base` of the region at `data_offset`, holds where [`Region::value`]
+/// writes one at `Position::Field`: a STRING field, each element of an ARRAY
+/// OF STRING field, and those of a structure field, to any depth.
 fn string_headers(
     emitter: &mut Emitter,
-    fields: &[(String, SlotIndex, SemanticType)],
+    types: &TypeTable,
+    ty: TypeId,
     base: u32,
     data_offset: u32,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
-    for (_, slot_offset, field_type) in fields {
-        let slot = base + slot_offset.raw();
-        match field_type {
-            SemanticType::Structure { fields } => {
-                let (infos, _) = build_struct_fields(fields, span)?;
-                let fields: Vec<_> = infos
-                    .into_iter()
-                    .map(|f| (f.name, f.slot_offset, f.field_type))
-                    .collect();
-                string_headers(emitter, &fields, slot, data_offset, span)?;
+    let unsupported =
+        || Diagnostic::not_supported(Label::span(span.clone(), "Structure too large"));
+    let fields = types.fields(ty).ok_or_else(unsupported)?;
+    let mut slot = base;
+    for field in fields {
+        match types.kind(field.ty) {
+            Some(TypeKind::Structure { .. }) => {
+                string_headers(emitter, types, field.ty, slot, data_offset, span)?;
             }
-            SemanticType::String {
-                max_len,
-                char_width,
-            } => {
-                let max_length = max_len.unwrap_or(DEFAULT_STRING_MAX_LENGTH as u128) as u16;
+            Some(TypeKind::String(shape)) => {
+                let (max_length, char_width) = string_shape(*shape).ok_or_else(unsupported)?;
                 let at = byte_offset(data_offset, slot, span)?;
-                emitter.emit_str_init(at, max_length, *char_width);
+                emitter.emit_str_init(at, max_length, char_width);
             }
-            SemanticType::Array {
-                element_type,
-                dimensions,
-            } => {
-                let SemanticType::String {
-                    max_len,
-                    char_width,
-                } = element_type.as_ref()
-                else {
-                    continue;
-                };
-                let max_length = max_len.unwrap_or(DEFAULT_STRING_MAX_LENGTH as u128) as u16;
-                let total_elements = dimensions
-                    .iter()
-                    .fold(1u32, |acc, d| acc * (d.upper - d.lower + 1) as u32);
-                let stride = string_region_size(max_length, *char_width);
-                let at = byte_offset(data_offset, slot, span)?;
-                for index in 0..total_elements {
-                    emitter.emit_str_init(at + index * stride, max_length, *char_width);
+            Some(TypeKind::Array { element, .. }) => {
+                if let Some(TypeKind::String(shape)) = types.kind(*element) {
+                    let (max_length, char_width) = string_shape(*shape).ok_or_else(unsupported)?;
+                    let total_elements = elements(types, field.ty).ok_or_else(unsupported)?;
+                    let stride = string_region_size(max_length, char_width);
+                    let at = byte_offset(data_offset, slot, span)?;
+                    for index in 0..total_elements {
+                        emitter.emit_str_init(at + index * stride, max_length, char_width);
+                    }
                 }
             }
-            _ => {}
+            Some(
+                TypeKind::Bool
+                | TypeKind::Integer { .. }
+                | TypeKind::BitString { .. }
+                | TypeKind::Real { .. }
+                | TypeKind::Temporal { .. }
+                | TypeKind::Enumeration { .. }
+                | TypeKind::Subrange { .. }
+                | TypeKind::FunctionBlock { .. }
+                | TypeKind::Program { .. }
+                | TypeKind::Reference { .. },
+            )
+            | None => {}
         }
+        slot = slots(types, field.ty)
+            .and_then(|slots| slot.checked_add(slots))
+            .ok_or_else(unsupported)?;
     }
     Ok(())
 }
@@ -153,16 +156,6 @@ fn initialize_element_strings(
         emitter.emit_str_init_array(scratch, field.desc_index);
     }
     Ok(())
-}
-
-/// The fields of a structure variable as `(name, slot offset, type)`.
-fn struct_field_types(
-    fields: &[super::compile_struct::StructFieldInfo],
-) -> Vec<(String, SlotIndex, SemanticType)> {
-    fields
-        .iter()
-        .map(|f| (f.name.clone(), f.slot_offset, f.field_type.clone()))
-        .collect()
 }
 
 /// The byte offset in the data region of slot `slot` of the region that

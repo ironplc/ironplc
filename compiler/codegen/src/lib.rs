@@ -30,6 +30,7 @@
 //! let container = compile(analysis, &CodegenOptions::default(), &EmptyLookup).unwrap();
 //! ```
 
+mod access;
 mod call_graph;
 mod compile;
 mod compile_arith;

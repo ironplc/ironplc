@@ -110,6 +110,7 @@ fn set_up(
                 crate::compile_struct_init::set_up_struct_variable(
                     emitter,
                     ctx,
+                    lowering.types(),
                     &info,
                     &declared.span,
                 )?;
