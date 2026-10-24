@@ -2612,7 +2612,8 @@ layout's.
 | `Place` (`compile_place.rs`), `ResolvedAccess` | Keep in the bytecode backend. They are that backend's addressing: the result of asking its layout how to reach a lowered `Place`. |
 | `ParamPassing` | Dissolves into `Arg`, which adds the by-value aggregate mode `ParamPassing` lacks. |
 | `Scope` (formerly `SavedFbScope`) | Absorbed into the bytecode backend's layout. Ids do not collide across scopes, and a function block's variables are fields of its instance. While both routes exist it is how a lowered statement finds its variables' storage (see [Delivery Constraints](#delivery-constraints)). |
-| `type_info.rs`, `string_width.rs` | Move into lowering. |
+| `type_info.rs` | Move into lowering. |
+| `string_width.rs` | Deleted: the capacity of a string value is the `StringShape` of its `StrExpr`. |
 | `TimeArith`, `StringConversion`, `ShortCircuitOp` | Become desugarings, `Intrinsic` variants and an `ExprKind` respectively. |
 | `ClassifiedCmp` | Keep in the bytecode backend. The fused compare and branch is a VM optimization. |
 | `for_loop_trunc_can_be_elided`, the fused `FOR` head | Keep in the bytecode backend. They read the bounds of a `For` node. |
