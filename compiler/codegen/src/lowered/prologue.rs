@@ -35,24 +35,18 @@ pub(crate) fn restarts(variables: &[VarDecl]) -> bool {
 
 /// Emits the prologue of the current body, which declares `variables` and,
 /// for a function or a method that returns a value, the result `result`,
-/// from the lowered program, when the route compiles from it and it emits
-/// every store; returns `false`, having emitted nothing, when the prologue
-/// is left to the AST.
+/// from the lowered program, when it emits every store; returns `false`,
+/// having emitted nothing, when the prologue is left to the AST.
 pub(crate) fn try_emit_prologue(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     variables: &[VarDecl],
     result: Option<&Id>,
 ) -> Result<bool, Diagnostic> {
-    let Some(mut route) = ctx.lowered_route.take() else {
+    let Some(route) = ctx.lowered_route.take() else {
         return Ok(false);
     };
     let emitted = emit(emitter, ctx, route.lowering(), variables, result);
-    if let Ok(true) = emitted {
-        route.counts.prologue_lowered += 1;
-    } else if let Ok(false) = emitted {
-        route.counts.prologue_from_ast += 1;
-    }
     ctx.lowered_route = Some(route);
     emitted
 }

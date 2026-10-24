@@ -3,13 +3,10 @@
 //! (REQ-VB-analyzer-051, REQ-CB-analyzer-038), is reported rather than
 //! compiled to a wrong value.
 //!
-//! Neither route copies one yet. The route that reads the AST copies a whole
-//! structure only from a structure variable or a function's result, and
-//! reports any other source as not implemented (`compile_aggregate.rs`).
-//! Lowering makes the assignment a `Copy`, which the lowered route emits only
-//! between the places its layout keeps a region for, so it leaves this one
-//! to the AST route. A block whose body writes a field of the output does not
-//! compile at all (`compile_struct.rs`).
+//! This backend does not copy one yet. Lowering makes the assignment a
+//! `Copy`, which this backend emits only between the places its layout keeps
+//! a region for, so this one is not supported yet (P9999). A block whose body
+//! writes a field of the output does not compile at all (`compile_struct.rs`).
 
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;

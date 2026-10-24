@@ -251,8 +251,9 @@ reference.
 positional call with the same inputs in declaration order computes.
 
 **REQ-CB-codegen-026** A positional argument of a call to a user-defined
-function that reaches code generation is an internal error (P9998): the
-analyzer names every argument of a call it binds.
+function that reaches code generation is not compiled: the analyzer names
+every argument of a call it binds, and lowering does not lower an unnamed
+one, so its statement is reported as not implemented (P9999).
 
 ### Evaluation order
 

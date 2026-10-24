@@ -1,9 +1,7 @@
 //! Emits a lowered statement.
 //!
-//! Each statement is emitted in the shape `compile_stmt.rs` and
-//! `compile_loop.rs` give the statement it was lowered from, fused compare
-//! and branch included, so a body runs the same instructions by either
-//! route. The one difference is `Case`, whose selector is evaluated once
+//! Each statement is emitted in the shape the route that read the AST gave
+//! it, fused compare and branch included. `Case` evaluates its selector once
 //! (REQ-LOW-codegen-124): it stays on the stack while the labels are tested,
 //! and the arm that runs pops it first.
 
@@ -23,7 +21,6 @@ use crate::compile::{CompileContext, OpType};
 use crate::compile_expr::{
     classify_with_named, emit_add, emit_classified_cmp_br, emit_eq, emit_ge, emit_le, ClassifiedCmp,
 };
-use crate::compile_loop::LoopLabels;
 use crate::compile_partial_access::Bits;
 use crate::compile_stmt::{emit_return, record_position};
 use crate::emit::{self, Emitter};
@@ -41,6 +38,18 @@ pub(super) fn emit_stmts(
         loops: Vec::new(),
     };
     emission.sequence(emitter, ctx, stmts, false)
+}
+
+/// The labels of a loop that its body can jump to.
+#[derive(Clone, Copy)]
+struct LoopLabels {
+    /// Where `EXIT` goes: the first instruction after the loop.
+    exit: emit::Label,
+    /// Where `CONTINUE` goes: where the loop goes on with its next iteration.
+    next: emit::Label,
+    /// Whether a `CONTINUE` jumps to `next`. The loop binds `next` only
+    /// then, because binding a label ends the peephole window.
+    next_used: bool,
 }
 
 /// What emitting a statement needs besides the compile context.
@@ -63,9 +72,8 @@ impl Emission<'_> {
 
     /// Emits `stmts` in order, at each one's source position when `record`.
     /// The stores of a function block call's inputs and the call are emitted
-    /// together, as the AST route emits a call (`fb_call.rs`), and so are a
-    /// call statement, the stores of its outputs and the copy of its result
-    /// (`fn_call.rs`).
+    /// together (`fb_call.rs`), and so are a call statement, the stores of
+    /// its outputs and the copy of its result (`fn_call.rs`).
     fn sequence(
         &mut self,
         emitter: &mut Emitter,
@@ -277,7 +285,7 @@ impl Emission<'_> {
     }
 
     /// `cond` as one `CMP_BR_*`, when it compares a signed integer variable
-    /// with a constant, as `try_classify_cmp` finds it in the AST.
+    /// with a constant.
     fn classify(&self, ctx: &mut CompileContext, cond: &Expr) -> Option<ClassifiedCmp> {
         let ExprKind::Compare { op, lhs, rhs } = cond.kind() else {
             return None;
@@ -298,9 +306,8 @@ impl Emission<'_> {
     }
 
     /// `place <cmp> value` as one `CMP_BR_*`, when `place` is a signed integer
-    /// variable, as the AST route finds it by its name: a variable, a field
-    /// of the current instance, or what a function's or method's parameter
-    /// refers to.
+    /// variable, found by its name: a variable, a field of the current
+    /// instance, or what a function's or method's parameter refers to.
     fn classify_place(
         &self,
         ctx: &mut CompileContext,

@@ -1318,8 +1318,8 @@ reads the AST does, and no program tells that from a copy. A field of the
 block that holds an instance is not such a variable: a caller copies from it
 (`g(ob => f)`). A `Copy` from one such field to another, `ob := loc`, copies
 the instance the source holds into the one the destination holds
-(REQ-LOW-codegen-196), and a `Copy` to one from anything else is left to the
-route that reads the AST.
+(REQ-LOW-codegen-196), and a `Copy` to one from anything else is not
+supported yet (P9999).
 
 **REQ-LOW-lowering-062** Every `Exit` and `Continue` names a `Loop` or `For`
 that encloses it.
@@ -2976,16 +2976,18 @@ This section constrains the order of work; it is not a work breakdown.
   2. While codegen compiles a body, it reads each top-level statement's
      result, by the body's POU and the statement's index. If lowering
      supported all of it, codegen emits the lowered statement.
-  3. If not, the result says the statement is unsupported, and codegen
-     compiles that statement from the AST.
+  3. If not, the result says the statement is unsupported. While both
+     routes existed, codegen compiled that statement from the AST. Now that
+     the route that compiled statements from the AST is deleted, it is a
+     P9999.
 
-  Both routes emit into the same body through the same emitter. A POU is not
-  the unit: most POUs mix constructs, so a POU would take the new route only
-  once nearly all of lowering existed.
-- **Unsupported is not a defect.** While both routes exist, the walk tells a
-  statement lowering does not support yet apart from a broken invariant. An
-  unsupported statement falls back and is counted. A broken invariant is a
-  P9998, as always, and fails the compilation wherever the walk meets it.
+  Both routes emitted into the same body through the same emitter. A POU was
+  not the unit: most POUs mix constructs, so a POU would have taken the new
+  route only once nearly all of lowering existed.
+- **Unsupported is not a defect.** The walk tells a statement lowering does
+  not support yet apart from a broken invariant. An unsupported statement is
+  a P9999, labelled at the statement. A broken invariant is a P9998, as
+  always, and fails the compilation wherever the walk meets it.
 - **Storage found by name at first.** A lowered variable carries its name and
   its owning POU (REQ-LOW-lowering-006). So while both routes exist, the
   bytecode backend finds a lowered variable's storage in the layout codegen
@@ -3008,36 +3010,41 @@ This section constrains the order of work; it is not a work breakdown.
   is planned for the ways the copy differs from REQ-LOW-codegen-037 and
   REQ-LOW-codegen-038: keeping it changes nothing the refactor relies on, and
   both routes behave as today.
-- **A route switch.** An option chooses the route each statement takes:
-  - `Ast`: every statement from the AST.
-  - `PreferLowered`: the lowered statement where lowering supports it.
-  - `RequireLowered`: a statement lowering does not support is an error.
-
-  A release uses `PreferLowered`. Going back to `Ast` as the default is a
-  one-line change.
+- **A route switch, now removed.** While both routes existed, an option
+  chose the route each statement took: every statement from the AST, the
+  lowered statement where lowering supported it, or the lowered statement
+  with an unsupported one an error. Once every statement of the end-to-end
+  programs lowered, the lowered route became the only one, and the option
+  and the code that compiled statements from the AST were deleted. The code
+  that compiles expressions from the AST remains for what still reads it:
+  an initial value that is an expression, and the layout found by name.
 
 **Checking the new route**
 
-- **The routes check each other.** While both routes exist, the end-to-end
-  helpers compile each program both ways and compare the values of its
-  variables by name (REQ-LOW-codegen-131). A disagreement fails the test. The
+- **The routes check each other.** While both routes existed, the end-to-end
+  helpers compiled each program both ways and compared the values of its
+  variables by name (REQ-LOW-codegen-131). A disagreement failed the test.
+  The helpers now compare every backend the same way
+  ([End-to-End Test Observation](end-to-end-test-observation.md#backends)).
+  The
   corrections named under [Backend Contract](#7-backend-contract) and the
   width of the `_INT` counters
   ([Standard function blocks](#standard-function-blocks)) are the exception:
-  they differ only for a selector or subscript with a side effect, or an
-  `_INT` counter past the range of `INT`, and the programs that show them are
-  listed as known differences. So is a program that reads a function's or
-  a method's string output, which only the lowered route compiles
+  they differed only for a selector or subscript with a side effect, or an
+  `_INT` counter past the range of `INT`, and the programs that showed them
+  were listed as known differences. So was a program that reads a function's
+  or a method's string output, which only the lowered route compiled
   (REQ-LOW-lowering-172), and one that reads a program's `VAR_TEMP` before
   it writes it, in a scan after the first: the lowered route starts it again
-  at the head of every scan (REQ-LOW-lowering-201), where the route that
-  reads the AST gives it its value once, in `init`.
+  at the head of every scan (REQ-LOW-lowering-201), where the route that read
+  the AST gave it its value once, in `init`.
 - **The layouts check each other.** While both layout builders exist, the
   one from the lowered declarations is checked equal to the one from the AST
   for every end-to-end program (REQ-LOW-codegen-198), before the bodies are
   compiled against it (REQ-LOW-codegen-199).
-- **Progress cannot fall.** CI reports how many top-level statements of the
-  end-to-end programs took the lowered route. The number does not fall.
+- **Progress could not fall.** While both routes existed, CI reported how
+  many top-level statements of the end-to-end programs took the lowered
+  route, and the number did not fall.
 - **The IR is readable from its first commit.** `ironplc-ir` writes a lowered
   program as text from its first commit, and lowering's tests compare against
   that text.
@@ -3054,9 +3061,8 @@ This section constrains the order of work; it is not a work breakdown.
 
 **Retiring the old route**
 
-- **Delete as you go.** Once a construct compiles under `RequireLowered`
-  across the end-to-end suite, the code that compiles it from the AST is
-  deleted. New work on a construct that lowering covers goes into lowering
+- **Delete as you go.** Once a construct lowers across the end-to-end
+  suite, the code that compiles it from the AST is deleted. New work on a construct that lowering covers goes into lowering
   only.
 - **Dependencies dropped last.** `ironplc-codegen` drops its dependencies on
   `ironplc-analyzer` and `ironplc-dsl` last, when the route that reads the AST

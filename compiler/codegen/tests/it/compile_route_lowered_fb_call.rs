@@ -1,17 +1,16 @@
 //! Tests of calls of function blocks, user-defined and standard, compiled
 //! from the lowered program (REQ-LOW-lowering-069), with every statement
 //! required to lower, and one scan of each program checked to leave every
-//! variable as the route that reads the AST leaves it.
+//! variable with the same values on every backend.
 
-use ironplc_codegen::Route;
 use ironplc_parser::options::CompilerOptions;
 
 use rstest::rstest;
 
 use crate::common::{
-    compile_by_route, parse, parse_and_compile_to_run, run_compiled_scans, Duration, Snapshot,
+    compile_analyzed, parse, parse_and_compile_to_run, run_compiled_scans, Duration, Snapshot,
 };
-use crate::compile_route_lowered::{assert_same_code, options, run_lowered, run_lowered_agreeing};
+use crate::compile_route_lowered::{assert_compiles, options, run_lowered, run_lowered_agreeing};
 
 /// A block whose outputs are its inputs' sum, whether the sum is positive,
 /// a `REAL`, a `UDINT` and a count of its calls.
@@ -91,7 +90,7 @@ fn run_when_block_called_in_loop_and_if_then_runs_each_time() {
 }
 
 /// REQ-LOW-lowering-046: an input is stored in its field as `f.s := v + 100`
-/// stores it, narrowed to the field's storage, by either route (#2292).
+/// stores it, narrowed to the field's storage (#2292).
 #[test]
 fn run_when_input_outside_narrow_field_then_narrowed() {
     let snapshot = run_lowered_agreeing(
@@ -110,9 +109,9 @@ fn run_when_input_outside_narrow_field_then_narrowed() {
     assert_eq!(snapshot.read_as::<i32>("ru"), 44);
 }
 
-/// A call compiles to the same instructions and constants by both routes:
-/// the instance pushed once, each input narrowed and stored in its field,
-/// the call, then each output stored. A call inside an `IF` too.
+/// A call lowers and compiles: the instance pushed once, each input narrowed
+/// and stored in its field, the call, then each output stored. A call inside
+/// an `IF` too.
 #[rstest]
 #[case::inputs_and_outputs("f(s := 2, x := d, q => d, NOT done => b, r => lr);")]
 #[case::narrowed_input("f(s := n + 1);")]
@@ -120,8 +119,8 @@ fn run_when_input_outside_narrow_field_then_narrowed() {
 #[case::outputs_only("f(q => d, qu => lu);")]
 #[case::inside_if("IF b THEN f(x := d, q => d); END_IF;")]
 #[case::two_calls_in_a_loop("FOR d := 1 TO 3 DO f(x := d); g(x := d, q => n2); END_FOR;")]
-fn compile_when_block_called_then_same_code_as_ast(#[case] statement: &str) {
-    assert_same_code(&format!(
+fn compile_when_block_called_then_compiles(#[case] statement: &str) {
+    assert_compiles(&format!(
         "{BLOCK}
          PROGRAM main
            VAR f : FB; g : FB; d : DINT; n : SINT; n2 : DINT; b : BOOL; lr : LREAL; lu : LINT;
@@ -131,12 +130,11 @@ fn compile_when_block_called_then_same_code_as_ast(#[case] statement: &str) {
     ));
 }
 
-/// A call of an instance declared inside a function block stays on the
-/// route that reads the AST, which cannot call one (#1553), so both routes
-/// fail alike.
+/// A call of an instance declared inside a function block is not supported
+/// yet (P9999, #1553).
 #[test]
 fn compile_when_instance_declared_in_block_then_lowered_route_leaves_it() {
-    assert_routes_fail_alike(&format!(
+    assert_not_implemented(&format!(
         "{BLOCK}
          FUNCTION_BLOCK Outer
            VAR inner : FB; n : DINT; END_VAR
@@ -148,21 +146,14 @@ fn compile_when_instance_declared_in_block_then_lowered_route_leaves_it() {
     ));
 }
 
-/// Fails unless compiling `source` fails with P9999 by the route that reads
-/// the AST, and by the lowered route where lowering supports a statement.
-fn assert_routes_fail_alike(source: &str) {
+/// Fails unless compiling `source` fails with P9999.
+fn assert_not_implemented(source: &str) {
     let options = CompilerOptions::default();
     let (library, context) = parse(source, &options);
-    let code = |route| {
-        compile_by_route(&library, &context, &options, route)
-            .err()
-            .map(|diagnostic| diagnostic.code)
-    };
-    let not_implemented = Some("P9999".to_string());
-    assert_eq!(
-        [code(Route::Ast), code(Route::PreferLowered)],
-        [not_implemented.clone(), not_implemented]
-    );
+    let code = compile_analyzed(&library, &context, &options)
+        .err()
+        .map(|diagnostic| diagnostic.code);
+    assert_eq!(code, Some("P9999".to_string()));
 }
 
 /// The variables of a program that calls standard function blocks: one of
@@ -170,11 +161,11 @@ fn assert_routes_fail_alike(source: &str) {
 const STANDARD_VARS: &str = "b : BOOL; nb : BOOL; i : INT; n : INT; d : DINT; l : LINT;
     u : UDINT; ul : ULINT; et : TIME;";
 
-/// A call of a standard function block compiles to the same instructions and
-/// constants by both routes: a timer, a counter at two widths, an edge
-/// detector with a negated output, a bistable, an input narrowed to its
-/// field, a call written with positional inputs, which the analyzer writes in
-/// normal form, and calls inside an `IF` and a `FOR`. So does a read of a
+/// A call of a standard function block lowers and compiles: a timer, a
+/// counter at two widths, an edge detector with a negated output, a
+/// bistable, an input narrowed to its field, a call written with positional
+/// inputs, which the analyzer writes in normal form, and calls inside an `IF`
+/// and a `FOR`. So does a read of a
 /// counter's field, stored narrowed to its target as an output is.
 #[rstest]
 #[case::timer("t : TON;", "t(IN := b, PT := T#5S, Q => b, ET => et);")]
@@ -190,11 +181,11 @@ const STANDARD_VARS: &str = "b : BOOL; nb : BOOL; i : INT; n : INT; d : DINT; l 
     "c : CTD_DINT;",
     "FOR d := 1 TO 3 DO c(CD := b, PV := d, CV => d); END_FOR;"
 )]
-fn compile_when_standard_block_called_then_same_code_as_ast(
+fn compile_when_standard_block_called_then_compiles(
     #[case] instance: &str,
     #[case] statement: &str,
 ) {
-    assert_same_code(&format!(
+    assert_compiles(&format!(
         "PROGRAM main
            VAR {instance} {STANDARD_VARS} END_VAR
            {statement}
@@ -203,8 +194,7 @@ fn compile_when_standard_block_called_then_same_code_as_ast(
 }
 
 /// Every input and output of every timer, edge detector and bistable is a
-/// field of the VM's block, which the lowered route stores and reads as the
-/// route that reads the AST does.
+/// field of the VM's block, which this backend stores and reads.
 #[rstest]
 #[case::ton("TON", "f(IN := b, PT := et, Q => b, ET => et);")]
 #[case::tof("TOF", "f(IN := b, PT := et, Q => b, ET => et);")]
@@ -213,11 +203,11 @@ fn compile_when_standard_block_called_then_same_code_as_ast(
 #[case::f_trig("F_TRIG", "f(CLK := b, Q => b);")]
 #[case::sr("SR", "f(S1 := b, R := b, Q1 => b);")]
 #[case::rs("RS", "f(S := b, R1 := b, Q1 => b);")]
-fn compile_when_every_input_and_output_bound_then_same_code_as_ast(
+fn compile_when_every_input_and_output_bound_then_compiles(
     #[case] block: &str,
     #[case] statement: &str,
 ) {
-    assert_same_code(&format!(
+    assert_compiles(&format!(
         "PROGRAM main
            VAR f : {block}; {STANDARD_VARS} END_VAR
            {statement}
@@ -226,11 +216,10 @@ fn compile_when_every_input_and_output_bound_then_same_code_as_ast(
 }
 
 /// Every input and output of every counter, at every width, is a field of
-/// the VM's block for that width, which the lowered route stores and reads
-/// as the route that reads the AST does. `{v}` stands for a variable of the
-/// width.
+/// the VM's block for that width, which this backend stores and reads. `{v}`
+/// stands for a variable of the width.
 #[rstest]
-fn compile_when_every_counter_input_and_output_bound_then_same_code_as_ast(
+fn compile_when_every_counter_input_and_output_bound_then_compiles(
     #[values(
         ("CTU", "f(CU := b, R := b, PV := {v}, Q => b, CV => {v});"),
         ("CTD", "f(CD := b, LD := b, PV := {v}, Q => b, CV => {v});"),
@@ -244,7 +233,7 @@ fn compile_when_every_counter_input_and_output_bound_then_same_code_as_ast(
 ) {
     let (block, statement) = counter;
     let (suffix, variable) = width;
-    assert_same_code(&format!(
+    assert_compiles(&format!(
         "PROGRAM main
            VAR f : {block}{suffix}; {STANDARD_VARS} END_VAR
            {}
@@ -285,8 +274,8 @@ fn run_when_standard_blocks_called_then_outputs_of_vm_blocks() {
 }
 
 /// REQ-LOW-lowering-046: a standard block's input is narrowed to its field
-/// once, as the route that reads the AST narrows it: `PV` of a `CTU` is an
-/// `INT`, so `a + b`, 40000, is stored as -25536.
+/// once: `PV` of a `CTU` is an `INT`, so `a + b`, 40000, is stored as
+/// -25536.
 #[test]
 fn run_when_standard_block_input_outside_field_then_narrowed_once() {
     let snapshot = run_lowered_agreeing(
@@ -299,10 +288,9 @@ fn run_when_standard_block_input_outside_field_then_narrowed_once() {
     assert_eq!(snapshot.read_as::<i32>("preset"), -25536);
 }
 
-/// An `_INT` counter behaves as it does by the route that reads the AST: the
-/// VM's block counts its `CV` in 32 bits, past the range of `INT`, and a
-/// store of it in an `INT`, by an output or by a read of the field, narrows
-/// it to the target.
+/// The VM's block counts the `CV` of an `_INT` counter in 32 bits, past the
+/// range of `INT`, and a store of it in an `INT`, by an output or by a read
+/// of the field, narrows it to the target.
 #[test]
 fn run_when_int_counter_counts_past_int_then_stored_narrowed() {
     let snapshot = run_lowered_agreeing(
@@ -334,34 +322,28 @@ fn run_when_standard_block_called_positionally_then_inputs_stored() {
     assert_eq!(snapshot.read_as::<i32>("q"), 1);
 }
 
-/// A timer called from the lowered route keeps its state from one round to
-/// the next, and reads each round's time, as one called from the route that
-/// reads the AST: its output and elapsed time after each of several rounds
-/// are the same by both routes.
+/// A timer keeps its state from one round to the next, and reads each
+/// round's time: its output and elapsed time after each of several rounds.
 #[test]
-fn run_when_timer_called_over_rounds_then_same_outputs_as_ast() {
+fn run_when_timer_called_over_rounds_then_outputs_follow_time() {
     let source = "PROGRAM main
            VAR t : TON; done : BOOL; elapsed : TIME; END_VAR
            t(IN := TRUE, PT := T#5S, Q => done, ET => elapsed);
          END_PROGRAM";
     let options = options();
     let (library, context) = parse(source, &options);
-    let observe = |route| {
-        let container = compile_by_route(&library, &context, &options, route).unwrap();
-        run_compiled_scans(&container, |session| {
-            [0, 2, 4, 6].map(|seconds| {
-                session.scan(seconds * 1_000_000).unwrap();
-                (
-                    session.read_as::<i32>("done"),
-                    session.read_as::<Duration>("elapsed"),
-                )
-            })
+    let container = compile_analyzed(&library, &context, &options).unwrap();
+    let observed = run_compiled_scans(&container, |session| {
+        [0, 2, 4, 6].map(|seconds| {
+            session.scan(seconds * 1_000_000).unwrap();
+            (
+                session.read_as::<i32>("done"),
+                session.read_as::<Duration>("elapsed"),
+            )
         })
-    };
-    let lowered = observe(Route::RequireLowered);
-    assert_eq!(lowered, observe(Route::Ast));
+    });
     assert_eq!(
-        lowered,
+        observed,
         [
             (0, Duration::ZERO),
             (0, Duration::seconds(2)),
@@ -372,22 +354,21 @@ fn run_when_timer_called_over_rounds_then_same_outputs_as_ast() {
 }
 
 /// A call of a standard block's instance declared inside a function block
-/// stays on the route that reads the AST, which cannot call one (#1553), so
-/// both routes fail alike.
+/// is not supported yet (P9999, #1553).
 #[test]
-fn compile_when_standard_instance_declared_in_block_then_routes_fail_alike() {
-    assert_routes_fail_alike(
+fn compile_when_standard_instance_declared_in_block_then_not_implemented() {
+    assert_not_implemented(
         "FUNCTION_BLOCK Outer VAR t : TON; END_VAR t(IN := TRUE); END_FUNCTION_BLOCK
          PROGRAM main VAR o : Outer; END_VAR o(); END_PROGRAM",
     );
 }
 
 /// A call of a standard block's instance a program reaches through
-/// `VAR_EXTERNAL`, which the route that reads the AST calls by its name,
-/// compiles to the same instructions by both routes.
+/// `VAR_EXTERNAL`, which the route that read the AST called by its name,
+/// lowers and compiles.
 #[test]
-fn compile_when_standard_instance_external_then_same_code_as_ast() {
-    assert_same_code(
+fn compile_when_standard_instance_external_then_compiles() {
+    assert_compiles(
         "PROGRAM main
            VAR_EXTERNAL t : TON; END_VAR
            VAR q : BOOL; END_VAR
@@ -406,9 +387,9 @@ fn compile_when_standard_instance_external_then_same_code_as_ast() {
 /// REQ-LOW-codegen-165: an instance assigned from another of its block gets
 /// a copy of every field, in storage of its own, so a later call of either
 /// leaves the other as it was, and an instance assigned to itself is
-/// unchanged. This corrects the route that reads the AST, which stores the
-/// source's slot in the destination's and so makes `f` an alias of `g`:
-/// there `f(v := 9)` calls `g`, and `r` is 9 and `g` counts two calls.
+/// unchanged. This corrected the route that read the AST, which stored the
+/// source's slot in the destination's and so made `f` an alias of `g`:
+/// there `f(v := 9)` called `g`, and `r` was 9 and `g` counted two calls.
 #[test]
 fn run_when_instance_assigned_then_copy_of_its_fields() {
     let snapshot = run_lowered(
@@ -440,8 +421,8 @@ fn run_when_instance_assigned_then_copy_of_its_fields() {
 /// gets the fields the VM's block keeps for itself as well as its inputs and
 /// outputs. `t := u` while `u` times copies the time `u` started at, so `t`
 /// has run as long as `u`; resetting `t` afterwards leaves `u` timing. On the
-/// route that reads the AST, `t` is `u`, so resetting `t` resets `u`, and
-/// `u` restarts at the last scan.
+/// route that read the AST, `t` was `u`, so resetting `t` reset `u`, and `u`
+/// restarted at the last scan.
 #[test]
 fn run_when_timer_assigned_while_timing_then_copy_keeps_its_start() {
     let source = "PROGRAM main
@@ -453,8 +434,7 @@ fn run_when_timer_assigned_while_timing_then_copy_keeps_its_start() {
          END_PROGRAM";
     let options = options();
     let (library, context) = parse(source, &options);
-    let container = compile_by_route(&library, &context, &options, Route::RequireLowered)
-        .expect("every statement lowers");
+    let container = compile_analyzed(&library, &context, &options).expect("every statement lowers");
     let observed = run_compiled_scans(&container, |session| {
         [0, 2, 4, 6].map(|seconds| {
             session.scan(seconds * 1_000_000).unwrap();
@@ -477,8 +457,8 @@ fn run_when_timer_assigned_while_timing_then_copy_keeps_its_start() {
 
 /// A function's body sees the program's instances by name. Its own
 /// structures named as two instances of one block are copied as structures,
-/// not taken for the instances, which keep their fields: both routes leave
-/// `r` as `a` was called.
+/// not taken for the instances, which keep their fields: `r` is left as `a`
+/// was called.
 #[test]
 fn run_when_function_copies_structures_named_as_instances_then_instances_kept() {
     let container = parse_and_compile_to_run(
@@ -517,7 +497,7 @@ const LINKED: &str = "
 
 /// REQ-LOW-lowering-195: a block that refers to itself through a reference
 /// field runs, as do calls passing it a reference to another instance, and
-/// both routes leave every variable the same.
+/// every backend leaves every variable the same.
 #[test]
 fn run_when_block_refers_to_itself_through_reference_then_values() {
     let snapshot = run_lowered_agreeing(&format!(
@@ -540,17 +520,14 @@ fn run_when_block_refers_to_itself_through_reference_then_values() {
     assert_eq!(snapshot.read_as::<i32>("lb"), 0);
 }
 
-/// A call of a block that refers to itself compiles to the same
-/// instructions and constants by both routes.
+/// A call of a block that refers to itself lowers and compiles.
 #[rstest]
 #[case::call("b(v := 3);")]
 #[case::call_with_reference("a(next := REF(b), v := 1);")]
 #[case::output("k := b.o;")]
 #[case::mutual("pi(peer := REF(po));")]
-fn compile_when_block_refers_to_itself_through_reference_then_same_code_as_ast(
-    #[case] statement: &str,
-) {
-    assert_same_code(&format!(
+fn compile_when_block_refers_to_itself_through_reference_then_compiles(#[case] statement: &str) {
+    assert_compiles(&format!(
         "{LINKED}
          PROGRAM main VAR a : Node; b : Node; pi : Ping; po : Pong; k : DINT; END_VAR
            {statement}

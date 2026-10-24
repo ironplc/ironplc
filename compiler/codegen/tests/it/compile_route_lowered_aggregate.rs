@@ -1,12 +1,11 @@
 //! Tests of whole arrays and structures assigned from the lowered program,
 //! with every statement required to lower.
 
-use ironplc_codegen::Route;
 use rstest::rstest;
 
-use crate::common::{compile_by_route, parse};
+use crate::common::{compile_analyzed, parse};
 
-use crate::compile_route_lowered::{assert_same_code, options, run_lowered, run_lowered_agreeing};
+use crate::compile_route_lowered::{assert_compiles, options, run_lowered, run_lowered_agreeing};
 
 /// The declarations the tests copy between.
 const TYPES: &str = "
@@ -50,9 +49,7 @@ fn run_when_arrays_and_structures_copied_then_destination_holds_values() {
 }
 
 /// A whole array of structures is copied by value, string fields included:
-/// a write to the source afterwards leaves the destination as it was. This
-/// corrects the route that reads the AST, which stores the source's slot in
-/// the destination's and so makes the destination an alias of the source.
+/// a write to the source afterwards leaves the destination as it was.
 #[test]
 fn run_when_array_of_structures_copied_then_destination_holds_values() {
     let snapshot = run_lowered(
@@ -75,15 +72,15 @@ fn run_when_array_of_structures_copied_then_destination_holds_values() {
     assert_eq!(snapshot.read("name"), "abc");
 }
 
-/// A copy compiles to the same instructions and constants by both routes.
+/// A copy lowers and compiles.
 #[rstest]
 #[case::array("x := y;")]
 #[case::array_2d("m := n;")]
 #[case::string_array("s := t;")]
 #[case::structure("a := b;")]
 #[case::itself("x := x;")]
-fn compile_when_copy_lowered_then_same_code_as_ast(#[case] statement: &str) {
-    assert_same_code(&format!(
+fn compile_when_copy_lowered_then_compiles(#[case] statement: &str) {
+    assert_compiles(&format!(
         "{TYPES}
          PROGRAM main
            VAR x : ARRAY[1..3] OF DINT; y : ARRAY[1..3] OF DINT;
@@ -95,13 +92,13 @@ fn compile_when_copy_lowered_then_same_code_as_ast(#[case] statement: &str) {
     ));
 }
 
-/// A copy to and from a global reached through `VAR_EXTERNAL` compiles to
-/// the same instructions and constants by both routes.
+/// A copy to and from a global reached through `VAR_EXTERNAL` lowers and
+/// compiles.
 #[rstest]
 #[case::to_global("g := a;")]
 #[case::from_global("a := g;")]
-fn compile_when_copy_of_external_lowered_then_same_code_as_ast(#[case] statement: &str) {
-    assert_same_code(&format!(
+fn compile_when_copy_of_external_lowered_then_compiles(#[case] statement: &str) {
+    assert_compiles(&format!(
         "CONFIGURATION config
            VAR_GLOBAL g : ARRAY[1..2] OF DINT; END_VAR
            RESOURCE res ON PLC
@@ -117,11 +114,10 @@ fn compile_when_copy_of_external_lowered_then_same_code_as_ast(#[case] statement
     ));
 }
 
-/// A copy the AST route does not compile as a region copy is not emitted
-/// from the lowered program, so it is left to the AST route: an element
-/// target, a block's output as the source, and a method's own instance into
-/// a field of the block that holds one, which has storage of its own
-/// (REQ-LOW-codegen-196).
+/// A copy that is not a region copy is not emitted from the lowered program,
+/// so it is not supported yet (P9999): an element target, a block's output as
+/// the source, and a method's own instance into a field of the block that
+/// holds one, which has storage of its own (REQ-LOW-codegen-196).
 #[rstest]
 #[case::element_target(
     "PROGRAM main VAR arr : ARRAY[1..2] OF S; one : S; END_VAR arr[1] := one; END_PROGRAM"
@@ -137,10 +133,10 @@ fn compile_when_copy_of_external_lowered_then_same_code_as_ast(#[case] statement
      END_FUNCTION_BLOCK
      PROGRAM main VAR f : B; k : DINT; END_VAR k := f.M(); END_PROGRAM"
 )]
-fn compile_when_copy_not_emitted_then_left_to_ast_route(#[case] pous: &str) {
+fn compile_when_copy_not_emitted_then_not_implemented(#[case] pous: &str) {
     let options = options();
     let (library, context) = parse(&format!("{TYPES}\n{pous}"), &options);
-    let error = compile_by_route(&library, &context, &options, Route::RequireLowered).unwrap_err();
+    let error = compile_analyzed(&library, &context, &options).unwrap_err();
     assert_eq!(error.code, "P9999");
     assert_eq!(
         error.primary.message,
@@ -158,10 +154,10 @@ const INNER: &str = "
 
 /// A whole structure, array or instance copied between variables of a
 /// function, function block or method body, which this backend's layout
-/// keeps no region for, or from a global, compiles to the same instructions
-/// and constants by both routes: the destination's slot takes the source's.
-/// Neither route reads inside such a variable there, or calls such an
-/// instance, so no program tells this from a copy (REQ-LOW-codegen-165).
+/// keeps no region for, or from a global, lowers and compiles: the
+/// destination's slot takes the source's. This backend compiles no read
+/// inside such a variable there, and no call of such an instance, so no
+/// program tells this from a copy (REQ-LOW-codegen-165).
 #[rstest]
 #[case::function_locals(
     "FUNCTION FC : DINT VAR lp : S; lq : S; END_VAR lp := lq; FC := 1; END_FUNCTION
@@ -200,12 +196,12 @@ const INNER: &str = "
        END_RESOURCE
      END_CONFIGURATION"
 )]
-fn compile_when_copy_in_body_lowered_then_same_code_as_ast(#[case] pous: &str) {
-    assert_same_code(&format!("{TYPES}\n{INNER}\n{pous}"));
+fn compile_when_copy_in_body_lowered_then_compiles(#[case] pous: &str) {
+    assert_compiles(&format!("{TYPES}\n{INNER}\n{pous}"));
 }
 
-/// Copies in a function's and a block's body leave every variable as the
-/// route that reads the AST leaves it, the function's result and the block's
+/// Copies in a function's and a block's body leave every variable with the
+/// same values on every backend, the function's result and the block's
 /// output included.
 #[test]
 fn run_when_copy_in_body_then_routes_agree() {

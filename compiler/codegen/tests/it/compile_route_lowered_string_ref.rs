@@ -1,19 +1,11 @@
 //! Tests of strings read and written through a reference, `rs^`, `rsa^[i]`
-//! and a `REFERENCE TO STRING`, compiled from the lowered program, with
-//! every statement required to lower (REQ-LOW-lowering-188,
-//! REQ-LOW-codegen-189).
-//!
-//! The route that reads the AST reads such a string through `LOAD_INDIRECT`,
-//! which does not follow the reference to a string, so these run with
-//! `RequireLowered` only.
+//! and a `REFERENCE TO STRING`, compiled from the lowered program
+//! (REQ-LOW-lowering-188, REQ-LOW-codegen-189).
 
-use ironplc_codegen::Route;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_vm::error::Trap;
-use ironplc_vm::test_support::load_and_start;
-use ironplc_vm::VmBuffers;
 
-use crate::common::{compile_by_route, parse, Snapshot};
+use crate::common::{compile_analyzed, parse, run_one_scan, Snapshot};
 use crate::compile_route_lowered::{options, run_lowered};
 
 /// A string a reference refers to, read whole, by `LEN`, as an argument of
@@ -181,8 +173,7 @@ fn run_when_adr_of_string_dereferenced_then_value_of_string() {
          END_PROGRAM",
         &options,
     );
-    let container = compile_by_route(&library, &context, &options, Route::RequireLowered)
-        .expect("every statement lowers");
+    let container = compile_analyzed(&library, &context, &options).expect("compiles");
     let snapshot = Snapshot::run_compiled(container);
     assert_eq!(snapshot.read("t"), "abc");
     assert_eq!(snapshot.read("u"), "abc");
@@ -197,11 +188,9 @@ fn run_when_string_read_through_null_reference_then_null_dereference() {
         "PROGRAM main VAR rs : REF_TO STRING; t : STRING; END_VAR t := rs^; END_PROGRAM",
         &options,
     );
-    let container = compile_by_route(&library, &context, &options, Route::RequireLowered)
-        .expect("every statement lowers");
-    let mut bufs = VmBuffers::from_container(&container);
-    let fault = load_and_start(&container, &mut bufs)
-        .and_then(|mut vm| vm.run_round(0))
-        .unwrap_err();
+    let container = compile_analyzed(&library, &context, &options).expect("compiles");
+    let Err(fault) = run_one_scan(&container) else {
+        panic!("the scan does not trap");
+    };
     assert_eq!(fault.trap, Trap::NullDereference);
 }

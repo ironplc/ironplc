@@ -1,21 +1,20 @@
 //! End-to-end tests of `init` emitted from the lowered program
-//! (REQ-LOW-codegen-200): each kind of starting value, stored by the
-//! lowered route as the route that reads the AST stores it. Every program
-//! is compiled by both routes, and the variables `init` leaves, then those
-//! one scan leaves, are compared by name.
+//! (REQ-LOW-codegen-200): each kind of starting value, stored as the
+//! declaration states it. Every program is compiled on every backend, and
+//! the variables `init` leaves, then those one scan leaves, are compared by
+//! name.
 
 use ironplc_parser::options::CompilerOptions;
 
 use crate::common::Snapshot;
 
-/// Runs `source` for one scan, by both routes.
+/// Runs `source` for one scan, on every backend.
 fn run(source: &str) -> Snapshot {
     Snapshot::run(source, &CompilerOptions::default())
 }
 
-/// A zero of each kind of scalar, which the AST's `init` leaves out for an
-/// elementary type and stores for an enumeration and a subrange, starts at
-/// zero on both routes.
+/// A zero of each kind of scalar, of an elementary type, an enumeration and
+/// a subrange, starts at zero.
 #[test]
 fn end_to_end_when_zero_of_each_kind_then_starts_at_zero() {
     let snapshot = run("
@@ -87,8 +86,7 @@ fn end_to_end_when_structure_in_array_of_structures_then_starts_at_defaults() {
 }
 
 /// An instance of a block that holds an instance of another starts at its
-/// block's defaults, and the instance it holds cleared, the one value of a
-/// held instance the AST's `init` stores. The instances are
+/// block's defaults, and the instance it holds cleared. The instances are
 /// compared whole after `init`, as a body does not read a field of a held
 /// instance yet.
 #[test]

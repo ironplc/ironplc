@@ -1,12 +1,11 @@
 //! The arguments of a call of a user-defined function or method, for its
 //! inputs and in-outs.
 //!
-//! This backend passes each argument as the route that reads the AST passes
-//! it (`compile_user_call.rs`, `compile_method.rs`), which the callee's
-//! layout records for each parameter as a [`ParamPassing`]: a value on the
-//! stack, a place by reference, or a string copied into the parameter's run
-//! of the data region, followed by the dummy value `CALL` or `METHOD_CALL`
-//! pops for its slot. A structure or an array is passed as a value: the
+//! This backend passes each argument as the callee's layout records for its
+//! parameter, a [`ParamPassing`]: a value on the stack, a place by
+//! reference, or a string copied into the parameter's run of the data
+//! region, followed by the dummy value `CALL` or `METHOD_CALL` pops for its
+//! slot. A structure or an array is passed as a value: the
 //! offset of its region (`aggregate.rs`). A function and a method pass their
 //! arguments alike, so both check and push them here.
 
@@ -46,7 +45,7 @@ pub(super) fn emit_passed<'s>(
     args: impl IntoIterator<Item = &'s Arg>,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
-    // `can_emit` leaves to the AST a call whose arguments do not pass.
+    // `can_emit` rejects a call whose arguments do not pass.
     let mut args = args.into_iter();
     for param in params {
         let Some(arg) = args.next() else {
@@ -68,9 +67,9 @@ pub(super) fn emit_passed<'s>(
                 let Arg::Str(value) = arg else {
                     return Err(not_passed(span));
                 };
-                // Put in a slot as the AST route's `resolve_string_arg` puts
-                // it: a string variable is its own slot, and any other string
-                // is computed into a temporary slot of its capacity.
+                // Put in a slot as `resolve_string_arg` puts it: a string
+                // variable is its own slot, and any other string is computed
+                // into a temporary slot of its capacity.
                 copy_string_arg(emitter, ctx, param, |emitter, ctx| {
                     str_arg_offset(emitter, ctx, lowering, value)
                 })?;
@@ -93,8 +92,7 @@ fn passes_as(param: &ParamPassing, arg: &Arg) -> bool {
     )
 }
 
-/// The internal error for an argument `can_emit` should have left to the
-/// AST route.
+/// The internal error for an argument `can_emit` should have rejected.
 fn not_passed(span: &SourceSpan) -> Diagnostic {
     Diagnostic::internal_error_at(Label::span(
         span.clone(),

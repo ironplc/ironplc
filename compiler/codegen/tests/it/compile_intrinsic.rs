@@ -86,11 +86,8 @@ fn string_to(target: str_to_num::Target) -> u16 {
     "y := LTOD_TO_REAL(t);",
     vec![builtin::CONV_U64_TO_F32]
 )]
-#[case::conversion_to_bool(
-    "x : LINT; y : BOOL;",
-    "y := LINT_TO_BOOL(x);",
-    vec![builtin::CONV_I64_TO_BOOL]
-)]
+// A conversion to `BOOL` compares with zero, and calls no builtin.
+#[case::conversion_to_bool("x : LINT; y : BOOL;", "y := LINT_TO_BOOL(x);", vec![])]
 #[case::conversion_to_string(
     "x : UINT; s : STRING;",
     "s := UINT_TO_STRING(x);",

@@ -240,7 +240,7 @@ fn wide_block_called(fields: usize) -> String {
 }
 
 /// REQ-LOW-codegen-191: a call of a block of 255 fields, as many as `FB_CALL`
-/// counts, copies every field in and out, by both routes.
+/// counts, copies every field in and out.
 #[test]
 fn run_when_block_with_255_fields_called_then_every_field_copied() {
     let container = crate::common::parse_and_compile_to_run(
@@ -253,8 +253,8 @@ fn run_when_block_with_255_fields_called_then_every_field_copied() {
 }
 
 /// REQ-LOW-codegen-191: a block of more than 255 fields is P9997, a limit of
-/// the bytecode format, on both routes. Before, both routes compiled it, and
-/// a call copied only the low byte of its field count: 0 fields for 256.
+/// the bytecode format. Before, such a block compiled, and a call copied only
+/// the low byte of its field count: 0 fields for 256.
 #[test]
 fn compile_when_block_with_more_than_255_fields_then_p9997() {
     for fields in [256, 300] {

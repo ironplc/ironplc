@@ -84,24 +84,6 @@ pub(crate) fn unresolved_expr_type(expr: &Expr) -> Diagnostic {
     Diagnostic::not_implemented(Label::span(expr.span(), "Expression has no resolved type"))
 }
 
-/// Compiles the condition of an `IF`, `ELSIF`, `WHILE` or `REPEAT`, leaving
-/// its value on the stack.
-///
-/// A condition compiles at its own type, the `BOOL` the analyzer gave it, as
-/// any other expression does. A comparison in it compiles at the type of its
-/// operands, which it reads from the operands themselves (ADR-0056), so the
-/// condition has no operand type to pass down: passing one let `NOT` of a
-/// comparison of `DWORD`s negate the bits of the `BOOL` rather than the
-/// `BOOL`.
-pub(crate) fn compile_condition(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    condition: &Expr,
-) -> Result<(), Diagnostic> {
-    op_type(ctx, condition)?;
-    compile_expr(emitter, ctx, condition)
-}
-
 /// Compiles an expression, leaving its value on the stack at the
 /// expression's own type.
 ///
@@ -723,37 +705,6 @@ pub(crate) struct ClassifiedCmp {
     pub op_width: OpWidth,
 }
 
-/// Recognises the fusable shape `var <cmp> const_literal` (or
-/// `const_literal <cmp> var`, which is commuted), where the variable is a
-/// simple named scalar of a 32- or 64-bit signed integer type and the
-/// constant is an integer literal that fits the variable's width.
-///
-/// Returns `Some` with the constant pooled and the comparison operator
-/// resolved to a `cmp_op` byte. Returns `None` for any unsupported shape
-/// (float compares, unsigned compares, var-var, complex LHS/RHS, etc.) so
-/// the caller can fall back to the unfused emission.
-pub(crate) fn try_classify_cmp(ctx: &mut CompileContext, expr: &Expr) -> Option<ClassifiedCmp> {
-    let compare = match peel(expr) {
-        ExprKind::Compare(c) => c,
-        _ => return None,
-    };
-    let cmp_op_byte = compare_op_to_cmp_op(&compare.op)?;
-
-    let left_kind = peel(&compare.left);
-    let right_kind = peel(&compare.right);
-
-    // Try `var <cmp> const`.
-    if let (Some(name), Some(value)) = (named_variable_name(left_kind), constant_i64(right_kind)) {
-        return classify_with_named(ctx, name, value, cmp_op_byte);
-    }
-    // Try `const <cmp> var` — commute to `var <cmp> const`.
-    if let (Some(value), Some(name)) = (constant_i64(left_kind), named_variable_name(right_kind)) {
-        let commuted = opcode::cmp_op::commute(cmp_op_byte)?;
-        return classify_with_named(ctx, name, value, commuted);
-    }
-    None
-}
-
 pub(crate) fn classify_with_named(
     ctx: &mut CompileContext,
     name: &Id,
@@ -821,76 +772,6 @@ pub(crate) fn emit_classified_cmp_br(
         OpWidth::F32 | OpWidth::F64 => return Err(Diagnostic::internal_error()),
     }
     Ok(())
-}
-
-/// Strips parenthesised-expression wrappers from an `ExprKind`.
-fn peel(expr: &Expr) -> &ExprKind {
-    let mut current = &expr.kind;
-    while let ExprKind::Expression(inner) = current {
-        current = &inner.kind;
-    }
-    current
-}
-
-/// Returns the identifier of a simple named scalar variable reference,
-/// or `None` for any other variable shape (array element, struct field,
-/// bit access, dereference, etc.).
-fn named_variable_name(kind: &ExprKind) -> Option<&Id> {
-    match kind {
-        ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(named))) => {
-            Some(&named.name)
-        }
-        _ => None,
-    }
-}
-
-/// Returns the `i64` value of an `ExprKind` that is a compile-time integer
-/// literal (positive, negative, or unary-negated). Returns `None` for any
-/// other expression, and for a literal outside the `i64` range.
-pub(crate) fn constant_i64(kind: &ExprKind) -> Option<i64> {
-    match kind {
-        ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => signed_integer_to_i64(&lit.value),
-        ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Neg => match &unary.term.kind {
-            ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
-                signed_integer_to_i64(&lit.value).and_then(i64::checked_neg)
-            }
-            _ => None,
-        },
-        _ => None,
-    }
-}
-
-/// Maps a `CompareOp` AST node to the `opcode::cmp_op` byte used by
-/// `CMP_BR_*`. Returns `None` for non-comparison (logical/bitwise)
-/// operators, which `CMP_BR_*` does not support.
-fn compare_op_to_cmp_op(op: &CompareOp) -> Option<u8> {
-    match op {
-        CompareOp::Eq => Some(opcode::cmp_op::EQ),
-        CompareOp::Ne => Some(opcode::cmp_op::NE),
-        CompareOp::Lt => Some(opcode::cmp_op::LT_S),
-        CompareOp::LtEq => Some(opcode::cmp_op::LE_S),
-        CompareOp::Gt => Some(opcode::cmp_op::GT_S),
-        CompareOp::GtEq => Some(opcode::cmp_op::GE_S),
-        CompareOp::And
-        | CompareOp::Or
-        | CompareOp::Xor
-        | CompareOp::AndThen
-        | CompareOp::OrElse => None,
-    }
-}
-
-/// Converts a `SignedInteger` AST node to an `i64` value, or `None` when it
-/// is outside the `i64` range.
-///
-/// A caller is looking for a constant to fuse into a comparison or to bound a
-/// `FOR` loop with, and compiles the expression the ordinary way when there is
-/// none, so a literal that does not fit is not a problem to report here.
-fn signed_integer_to_i64(si: &SignedInteger) -> Option<i64> {
-    if si.is_neg {
-        i64::try_from(-(si.value.value as i128)).ok()
-    } else {
-        i64::try_from(si.value.value).ok()
-    }
 }
 
 // --- Typed opcode emission helpers ---

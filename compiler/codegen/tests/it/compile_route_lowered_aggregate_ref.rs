@@ -1,16 +1,10 @@
 //! Tests of a whole array or structure assigned to the one a reference
-//! refers to, `p^ := z`, compiled from the lowered program, with every
-//! statement required to lower (REQ-LOW-codegen-193).
-//!
-//! The route that reads the AST makes the referenced variable an alias of
-//! `z`, so these run with `RequireLowered` only.
+//! refers to, `p^ := z`, compiled from the lowered program
+//! (REQ-LOW-codegen-193).
 
-use ironplc_codegen::Route;
 use ironplc_vm::error::Trap;
-use ironplc_vm::test_support::load_and_start;
-use ironplc_vm::VmBuffers;
 
-use crate::common::{compile_by_route, parse};
+use crate::common::{compile_analyzed, parse, run_one_scan};
 use crate::compile_route_lowered::{options, run_lowered};
 
 /// A copy through a reference gives the referenced array or structure the
@@ -78,11 +72,9 @@ fn run_when_aggregate_copied_through_null_reference_then_null_dereference() {
          END_PROGRAM",
         &options,
     );
-    let container = compile_by_route(&library, &context, &options, Route::RequireLowered)
-        .expect("every statement lowers");
-    let mut bufs = VmBuffers::from_container(&container);
-    let fault = load_and_start(&container, &mut bufs)
-        .and_then(|mut vm| vm.run_round(0))
-        .unwrap_err();
+    let container = compile_analyzed(&library, &context, &options).expect("compiles");
+    let Err(fault) = run_one_scan(&container) else {
+        panic!("the scan does not trap");
+    };
     assert_eq!(fault.trap, Trap::NullDereference);
 }

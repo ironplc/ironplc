@@ -15,10 +15,10 @@ use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_parser::options::CompilerOptions;
 
 use super::value::Value;
-use super::vm::{Vm, VmFromAst};
+use super::vm::Vm;
 
 /// The backend whose program a test reads and drives.
-pub type Reference = VmFromAst;
+pub type Reference = Vm;
 
 /// What a backend compiles a library to.
 pub type Program<B> = <B as Backend>::Program;
@@ -111,18 +111,16 @@ pub fn compile_on_every_backend(
     options: &CompilerOptions,
     run: bool,
 ) -> Result<Program<Reference>, Diagnostic> {
-    let reference = Reference::compile(library, context, options);
-    let lowered = agree_with_reference::<Vm>(&reference, library, context, options, run);
-    if let (true, Ok(reference), Some(lowered)) = (run, &reference, &lowered) {
-        super::vm::assert_same_storage(reference, lowered);
-    }
-    reference
+    // Each backend other than the reference is checked against it here, with
+    // `agree_with_reference`. The bytecode backend is the only one yet.
+    let _ = run;
+    Reference::compile(library, context, options)
 }
 
 /// Compiles the library on `B`, and checks it against the reference's
-/// `reference`, as [`compile_on_every_backend`] does. Returns `B`'s program
-/// when both compiled it.
-fn agree_with_reference<B: Backend>(
+/// `reference`, as [`compile_on_every_backend`] does for each backend other
+/// than the reference. Returns `B`'s program when both compiled it.
+pub fn agree_with_reference<B: Backend>(
     reference: &Result<Program<Reference>, Diagnostic>,
     library: &Library,
     context: &SemanticContext,

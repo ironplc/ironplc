@@ -4,13 +4,12 @@
 //! arguments are evaluated in the order of its normal form. See
 //! `specs/design/call-binding.md`.
 
-use ironplc_codegen::Route;
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::textual::{ParamAssignmentKind, PositionalInput};
 use ironplc_parser::options::CompilerOptions;
 use spec_test_macro::spec_test;
 
-use crate::common::{assert_run_with, compile_by_route, parse, try_parse_and_compile};
+use crate::common::{assert_run_with, compile_analyzed, parse, try_parse_and_compile};
 
 /// Methods and `EXTENDS` are an extension.
 fn options() -> CompilerOptions {
@@ -121,10 +120,11 @@ END_PROGRAM
 ";
     let diagnostic = try_parse_and_compile(source, &options()).unwrap_err();
 
+    // The statement lowering does not support yet is labelled at its `:=`.
     assert_eq!(diagnostic.code, "P9999");
-    let start = source.find("d.Get()").unwrap();
+    let start = source.find(":= d.Get()").unwrap();
     assert_eq!(diagnostic.primary.location.start, start);
-    assert_eq!(diagnostic.primary.location.end, start + "d.Get()".len());
+    assert_eq!(diagnostic.primary.location.end, start + ":=".len());
 }
 
 /// A block of two inputs that joins them as tens and ones.
@@ -281,10 +281,10 @@ END_PROGRAM
 ";
     let diagnostic = try_parse_and_compile(source, &options()).unwrap_err();
 
+    // The statement lowering does not support yet is labelled at its span.
     assert_eq!(diagnostic.code, "P9999");
-    let start = source.find("v := counter").unwrap();
+    let start = source.find("inst.Inc(v := counter)").unwrap();
     assert_eq!(diagnostic.primary.location.start, start);
-    assert_eq!(diagnostic.primary.location.end, start + "v".len());
 }
 
 /// A function that joins its two inputs as tens and ones, and a function that
@@ -357,7 +357,7 @@ impl Fold<()> for UnnameInputs {
 }
 
 #[spec_test(REQ_CB_codegen_026)]
-fn compile_when_user_function_argument_positional_then_internal_error() {
+fn compile_when_user_function_argument_positional_then_not_implemented() {
     let source = format!(
         "{FUNCTIONS}
 PROGRAM main
@@ -369,7 +369,7 @@ END_PROGRAM"
     let (library, context) = parse(&source, &options);
     let library = UnnameInputs.fold_library(library).unwrap();
 
-    let diagnostic = compile_by_route(&library, &context, &options, Route::Ast).unwrap_err();
+    let diagnostic = compile_analyzed(&library, &context, &options).unwrap_err();
 
-    assert_eq!(diagnostic.code, "P9998");
+    assert_eq!(diagnostic.code, "P9999");
 }
