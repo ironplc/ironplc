@@ -135,6 +135,22 @@ impl PartialProgram {
         self.init.complete()
     }
 
+    /// Where each declaration is whose starting value `init` does not
+    /// express yet; empty when [`init`](Self::init) is complete.
+    pub fn init_unsupported(&self) -> &[SourceSpan] {
+        &self.init.unsupported
+    }
+
+    /// Where each declaration of the body of `pou` is whose starting value
+    /// its prologue does not express yet; empty when the prologue is
+    /// complete, or `pou` has no body.
+    pub fn prologue_unsupported(&self, pou: PouId) -> &[SourceSpan] {
+        self.bodies
+            .iter()
+            .find(|body| body.pou == pou)
+            .map_or(&[], |body| body.prologue.unsupported.as_slice())
+    }
+
     /// The statements at the head of the body of `pou`, which give each of
     /// its variables that starts again on every call its value: a
     /// function's or method's locals and result, and any body's `VAR_TEMP`;

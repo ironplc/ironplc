@@ -77,8 +77,38 @@ struct ArrayOfStructRegion<'ctx> {
     element_strings: &'ctx [ElementStringField],
 }
 
+/// The field `structured` selects from an element of an array, through any
+/// number of structure fields: `a[i].f` and `a[i].inner.f`. Gives the access
+/// to the element's field, whose record is the array element, and the fields
+/// selected after it, outermost first, ending with `structured`'s own; `None`
+/// when no array element is under the chain of fields.
+pub(crate) fn element_field_chain(
+    structured: &ironplc_dsl::textual::StructuredVariable,
+) -> Option<(&ironplc_dsl::textual::StructuredVariable, Vec<&Id>)> {
+    let mut fields = vec![&structured.field];
+    let mut current = structured;
+    loop {
+        match current.record.as_ref() {
+            SymbolicVariableKind::Array(_) => {
+                fields.reverse();
+                return Some((current, fields));
+            }
+            SymbolicVariableKind::Structured(record) => {
+                fields.push(&record.field);
+                current = record;
+            }
+            SymbolicVariableKind::Named(_)
+            | SymbolicVariableKind::Deref(_)
+            | SymbolicVariableKind::BitAccess(_)
+            | SymbolicVariableKind::PartialAccess(_)
+            | SymbolicVariableKind::SelfRef(_) => return None,
+        }
+    }
+}
+
 /// Resolves a field selected from an element of an array-of-struct, e.g. the
-/// `Trigger` in `MyBay.Devices.MeterQRScanner[i].Trigger` or in `Scanners[i].Trigger`.
+/// `Trigger` in `MyBay.Devices.MeterQRScanner[i].Trigger` or in `Scanners[i].Trigger`,
+/// or a field of a structure field of the element, `Scanners[i].Config.Rate`.
 ///
 /// The array itself is either a field of a structure or a variable in its own
 /// right; [`locate_array_of_struct`] finds it, and [`struct_array_element_field`]
@@ -92,13 +122,19 @@ pub(crate) fn resolve_struct_array_element_field<'ctx, 'ast>(
     structured: &'ast ironplc_dsl::textual::StructuredVariable,
     field_subscripts: Vec<&'ast Expr>,
 ) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
-    let array = locate_array_of_struct(ctx, structured)?;
+    let (element, fields) = element_field_chain(structured).ok_or_else(|| {
+        Diagnostic::internal_error_at(Label::span(
+            structured.span(),
+            "Structure field access is not on an array element",
+        ))
+    })?;
+    let array = locate_array_of_struct(ctx, element)?;
     struct_array_element_field(
         array.region,
         array.base_slot_offset,
         &array.element_type,
         &array.dimensions,
-        &structured.field,
+        &fields,
         array.subscripts,
         field_subscripts,
         &array.span,
@@ -114,22 +150,40 @@ pub(crate) fn struct_array_element_field_type(
     ctx: &CompileContext,
     structured: &ironplc_dsl::textual::StructuredVariable,
 ) -> Result<SemanticType, Diagnostic> {
-    let array = locate_array_of_struct(ctx, structured)?;
-    let SemanticType::Structure { fields } = &array.element_type else {
-        return Err(Diagnostic::not_implemented(Label::span(
-            structured.field.span(),
-            format!(
-                "Cannot select field '{}' -- array elements are not a structure type",
-                structured.field
-            ),
-        )));
-    };
-    let (_, field_type) = crate::compile_struct::find_field_in_type(
-        fields,
-        &structured.field,
-        &structured.field.span(),
-    )?;
+    let (element, fields) = element_field_chain(structured).ok_or_else(|| {
+        Diagnostic::internal_error_at(Label::span(
+            structured.span(),
+            "Structure field access is not on an array element",
+        ))
+    })?;
+    let array = locate_array_of_struct(ctx, element)?;
+    let (_, field_type) = element_field(&array.element_type, &fields)?;
     Ok(field_type)
+}
+
+/// The slot offset, from the start of an element of `element_type`, of the
+/// field `fields` selects, through structure fields, and its type.
+fn element_field(
+    element_type: &SemanticType,
+    fields: &[&Id],
+) -> Result<(SlotIndex, SemanticType), Diagnostic> {
+    let mut offset = 0u32;
+    let mut ty = element_type.clone();
+    for field in fields {
+        let SemanticType::Structure { fields: members } = &ty else {
+            return Err(Diagnostic::not_implemented(Label::span(
+                field.span(),
+                format!("Cannot select field '{field}' -- it is not a field of a structure"),
+            )));
+        };
+        let (field_offset, field_type) =
+            crate::compile_struct::find_field_in_type(members, field, &field.span())?;
+        offset = offset.checked_add(field_offset.raw()).ok_or_else(|| {
+            Diagnostic::not_supported(Label::span(field.span(), "Structure too large"))
+        })?;
+        ty = field_type;
+    }
+    Ok((SlotIndex::new(offset), ty))
 }
 
 /// An array of structures, located from the record of `<array>[i].field`.
@@ -282,15 +336,19 @@ fn struct_array_element_field<'ctx, 'ast>(
     base_slot_offset: u32,
     element_type: &SemanticType,
     array_dims: &[ArrayDimension],
-    field: &Id,
+    fields: &[&Id],
     element_subscripts: Vec<&'ast Expr>,
     field_subscripts: Vec<&'ast Expr>,
     array_span: &SourceSpan,
 ) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
-    let SemanticType::Structure {
-        fields: element_fields,
-    } = element_type
-    else {
+    // The field selected last, which the access reads or writes.
+    let Some(&field) = fields.last() else {
+        return Err(Diagnostic::internal_error_at(Label::span(
+            array_span.clone(),
+            "An element access selects no field",
+        )));
+    };
+    if !matches!(element_type, SemanticType::Structure { .. }) {
         return Err(Diagnostic::not_implemented(Label::span(
             field.span(),
             format!(
@@ -298,7 +356,7 @@ fn struct_array_element_field<'ctx, 'ast>(
                 field
             ),
         )));
-    };
+    }
 
     let element_slots = element_type.slot_count().map_err(|_| {
         Diagnostic::not_implemented(Label::span(
@@ -307,8 +365,7 @@ fn struct_array_element_field<'ctx, 'ast>(
         ))
     })?;
 
-    let (leaf_slot_offset, leaf_type) =
-        crate::compile_struct::find_field_in_type(element_fields, field, &field.span())?;
+    let (leaf_slot_offset, leaf_type) = element_field(element_type, fields)?;
 
     if let (true, SemanticType::String { char_width, .. }) =
         (field_subscripts.is_empty(), &leaf_type)

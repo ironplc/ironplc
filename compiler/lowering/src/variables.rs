@@ -61,6 +61,24 @@ pub(crate) struct Instance {
     /// The scope that declares the fields: the body's own for a program or
     /// function block, and its block's for a method.
     scope: ScopeKind,
+    /// The variable that holds the instance itself, when the fields are
+    /// reached through it rather than through `this`: in `init`, which runs
+    /// in no body and so has no instance parameter.
+    holder: Option<VarId>,
+}
+
+impl BodyFrame {
+    /// This frame, with the fields of its instance reached through the
+    /// variable `holder`, which holds the instance, rather than through the
+    /// body's instance parameter: the frame an initializer of a field of a
+    /// program instance is lowered in, as `init` runs in no body.
+    pub(crate) fn held_by(&self, holder: VarId) -> BodyFrame {
+        let mut frame = self.clone();
+        if let Some(instance) = frame.instance.as_mut() {
+            instance.holder = Some(holder);
+        }
+        frame
+    }
 }
 
 /// A value lowering made, `None` when it cannot express it yet, or a P9998.
@@ -252,6 +270,7 @@ impl<'a> Lowering<'a> {
             instance_type,
             field_names,
             scope,
+            holder: None,
         })
     }
 
@@ -302,8 +321,13 @@ impl<'a> Lowering<'a> {
             else {
                 return Ok(None);
             };
-            let this = self.program.var(instance.this, span)?;
-            let instance_place = self.program.deref(this, span)?;
+            let instance_place = match instance.holder {
+                Some(holder) => self.program.var(holder, span)?,
+                None => {
+                    let this = self.program.var(instance.this, span)?;
+                    self.program.deref(this, span)?
+                }
+            };
             let place = self.program.field(instance_place, field, span)?;
             return Ok(Some(place));
         }

@@ -240,7 +240,7 @@ pub(crate) fn resolve_symbolic_access<'ctx, 'ast>(
                         // element, so the subscripts collected here index the
                         // *field*, and the element index is still inside the
                         // record. The array-of-struct path combines the two.
-                        if matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) {
+                        if crate::compile_array_struct::element_field_chain(structured).is_some() {
                             return crate::compile_array_struct::resolve_struct_array_element_field(
                                 ctx,
                                 structured,
@@ -255,11 +255,11 @@ pub(crate) fn resolve_symbolic_access<'ctx, 'ast>(
                 }
             }
         }
-        // `s.arr[i].field` -- a field selected from an element of an
-        // array-of-struct. The record is an array element rather than a
-        // fixed-offset struct field, so it resolves through the array path.
+        // `s.arr[i].field` and `arr[i].inner.field` -- a field selected
+        // from an element of an array-of-struct. The element is not at a
+        // fixed offset, so it resolves through the array path.
         SymbolicVariableKind::Structured(structured)
-            if matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) =>
+            if crate::compile_array_struct::element_field_chain(structured).is_some() =>
         {
             crate::compile_array_struct::resolve_struct_array_element_field(
                 ctx,
