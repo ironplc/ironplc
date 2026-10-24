@@ -8,16 +8,14 @@ use ironplc_container::ContainerBuilder;
 use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 
-use super::entries::{StructArrayEntry, StructEntry};
 use super::lowered::Layout;
 use crate::compile::CompileContext;
 
 /// Checks `lowered`, the layout built from the lowered declarations, equal
 /// to the one `ctx` laid out from the AST, for the program `program`: each
-/// slot,
-/// the type it is operated at, each string's run of the data region, where
-/// the region ends, how each array, structure, array of structures and
-/// what each reference refers to is reached, how each function block
+/// slot, the type it is operated at, each string's run of the data region,
+/// where the region ends, how each array and what each reference refers to
+/// is reached, how each function block
 /// instance is, what a call of each user function, function block and
 /// method needs, what the temporary buffers are sized for, the array
 /// descriptors `builder` holds, and the debug entries of the variables and
@@ -51,20 +49,6 @@ pub(crate) fn check(
                 .differences(&lowered.array_vars)
                 .into_iter()
                 .map(|difference| format!("array {difference}")),
-        )
-        .chain(
-            ctx.struct_vars
-                .map(|info| StructEntry::from(info))
-                .differences(&lowered.struct_vars)
-                .into_iter()
-                .map(|difference| format!("structure {difference}")),
-        )
-        .chain(
-            ctx.struct_array_vars
-                .map(|info| StructArrayEntry::from(info))
-                .differences(&lowered.struct_array_vars)
-                .into_iter()
-                .map(|difference| format!("array of structures {difference}")),
         )
         .chain(
             ctx.string_refs
@@ -101,7 +85,7 @@ pub(crate) fn check(
             &lowered.user_fb_types,
         ))
         .collect();
-    let (max_string_capacity, has_wide_string) = lowered.temporary_buffers();
+    let (max_string_capacity, has_wide_string) = lowered.temporary_buffers(ctx.lowering()?.types());
     if (ctx.max_string_capacity, ctx.has_wide_string) != (max_string_capacity, has_wide_string) {
         differences.push(format!(
             "temporary buffers ({}, {}) and ({max_string_capacity}, {has_wide_string})",

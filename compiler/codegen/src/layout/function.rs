@@ -188,6 +188,7 @@ pub(crate) fn lay_out_function(
         FunctionReturnType::Named(name) => aliased_string(ctx, types.id_of(name))
             .map(|(max_length, char_width)| (max_length, char_width, func_decl.name.span())),
     };
+    let mut return_struct_desc_index = None;
     let return_string_info = match return_string {
         Some((max_length, char_width, span)) => {
             let data_offset = register_string(ctx, &return_id, max_length, char_width, &span)?;
@@ -200,17 +201,16 @@ pub(crate) fn lay_out_function(
         None => {
             let return_type_name = func_decl.return_type.to_type_name();
             if let Some(struct_type) = types.resolve_struct_type(&return_type_name) {
-                // Return type is a struct — allocate data region space and
-                // register the return variable so field assignments
-                // (e.g. FUNC.X := val) work inside the function body.
-                crate::compile_struct::allocate_struct_variable(
+                // Return type is a struct — reserve its data region space,
+                // whose descriptor the call site reads from the caller's
+                // scope, which does not see the function's variables.
+                return_struct_desc_index = Some(crate::compile_struct::allocate_struct_variable(
                     ctx,
                     builder,
                     struct_type,
                     &return_id,
-                    return_var_index,
                     &func_decl.name.span(),
-                )?;
+                )?);
             } else if let Some(type_info) = named_type_info(ctx, types, &return_type_name) {
                 ctx.var_types
                     .insert(ctx.scope, return_id.clone(), type_info);
@@ -218,9 +218,6 @@ pub(crate) fn lay_out_function(
             None
         }
     };
-    // Captured here because the call site reads it from the caller's scope,
-    // which does not see the function's variables.
-    let return_struct_desc_index = ctx.struct_var(&return_id).map(|info| info.desc_index);
     // The run ends after the result, and after the scratch slot a structure
     // result holding strings in an array takes after it.
     current_index = ctx.next_free_slot();

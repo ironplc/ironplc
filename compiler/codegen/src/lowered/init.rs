@@ -91,7 +91,13 @@ fn emit(
         )));
     }
     for (decl, id, stores) in ordered {
-        crate::compile_setup::set_up_storage(emitter, ctx, id, &decl.identifier.span())?;
+        crate::compile_setup::set_up_storage(
+            emitter,
+            ctx,
+            lowering.types(),
+            id,
+            &decl.identifier.span(),
+        )?;
         let Some(declared) = stores else {
             continue;
         };

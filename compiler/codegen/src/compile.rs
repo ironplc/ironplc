@@ -596,7 +596,7 @@ fn compile_program_with_functions(
     if ctx.route()?.check_layout() {
         crate::layout::check::check(&lowered, &ctx, &builder, &program.name)?;
     }
-    lowered.install(&mut ctx);
+    lowered.install(&mut ctx)?;
     ctx.lowered_ids = crate::layout::ids::LoweredIds::matched(ctx.lowering()?, &ctx, &program.name);
     for (func_decl, layout) in func_decls.iter().zip(function_layouts) {
         compiled_functions.push(compile_user_function(func_decl, layout, &mut ctx)?);

@@ -12,13 +12,14 @@
 use ironplc_container::{SlotIndex, VarIndex};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_ir::lowered::TypeTable;
 
 use super::compile::{CompileContext, OpType, VarTypeInfo, DEFAULT_OP_TYPE};
 use super::compile_array::{
     emit_flat_index, resolve_access, ArrayVarInfo, DimensionInfo, ResolvedAccess,
 };
 use super::compile_expr::{emit_load_in_out, emit_load_var, emit_store_var, emit_truncation};
-use super::compile_struct::{resolve_struct_field_access, var_type_info_for_field};
+use super::compile_struct::resolve_struct_field_access;
 use super::compile_subscript::Subscript;
 use crate::access::{Access, Field};
 use crate::emit::Emitter;
@@ -72,8 +73,12 @@ enum ElementIndex<S> {
 }
 
 impl<S: Clone> Place<S> {
-    /// Resolves the place that `base` names.
-    pub(crate) fn resolve(ctx: &CompileContext, base: &Access<S>) -> Result<Self, Diagnostic> {
+    /// Resolves the place that `base` names, of the types `types`.
+    pub(crate) fn resolve(
+        types: &TypeTable,
+        ctx: &CompileContext,
+        base: &Access<S>,
+    ) -> Result<Self, Diagnostic> {
         let span = base.span();
 
         // A field at a fixed offset in a structure. In `a[i].field` and
@@ -84,8 +89,8 @@ impl<S: Clone> Place<S> {
                 return Ok(place);
             }
             if crate::compile_array_struct::element_field_chain(structured).is_none() {
-                let (var_index, desc_index, slot, _op_type, field_type) =
-                    resolve_struct_field_access(ctx, structured)?;
+                let (var_index, desc_index, slot, type_info) =
+                    resolve_struct_field_access(types, ctx, structured)?;
                 return Ok(Place {
                     address: Address::Element {
                         var_index,
@@ -93,13 +98,13 @@ impl<S: Clone> Place<S> {
                         through_ref: false,
                         index: ElementIndex::Slot(slot),
                     },
-                    type_info: var_type_info_for_field(&field_type),
+                    type_info: Some(type_info),
                     span,
                 });
             }
         }
 
-        Self::from_access(ctx, resolve_access(ctx, base)?, base.name(), span)
+        Self::from_access(ctx, resolve_access(types, ctx, base)?, base.name(), span)
     }
 
     /// The field of a function block instance that `structured` names
@@ -181,8 +186,7 @@ impl<S: Clone> Place<S> {
                 field_slot_offset,
                 dimensions,
                 subscripts,
-                element_type,
-                ..
+                type_info,
             } => (
                 Address::Element {
                     var_index,
@@ -194,7 +198,7 @@ impl<S: Clone> Place<S> {
                         offset: Some(field_slot_offset),
                     },
                 },
-                var_type_info_for_field(&element_type),
+                Some(type_info),
             ),
             ResolvedAccess::StructFieldStringArrayElement(_) => return Err(string_place(span)),
         };

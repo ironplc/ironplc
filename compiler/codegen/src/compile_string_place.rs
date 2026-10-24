@@ -11,10 +11,10 @@
 //!
 //! A string place's subscripts are any [`Subscript`]: the access's own.
 
-use ironplc_analyzer::semantic_type::SemanticType;
 use ironplc_container::VarIndex;
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_ir::lowered::{TypeKind, TypeTable};
 
 use super::compile::CompileContext;
 use super::compile_array::{emit_flat_index, resolve_access, DimensionInfo, ResolvedAccess};
@@ -62,11 +62,13 @@ enum StringAddress<S> {
 }
 
 impl<S: Clone> StringPlace<S> {
-    /// The string place `variable` names; `None` when it names no string.
+    /// The string place `variable` names, of the types `types`; `None` when
+    /// it names no string.
     ///
     /// A field of a function block instance is not a string place; the
     /// caller addresses it first.
     pub(crate) fn resolve(
+        types: &TypeTable,
         ctx: &CompileContext,
         variable: &Access<S>,
     ) -> Result<Option<Self>, Diagnostic> {
@@ -83,8 +85,8 @@ impl<S: Clone> StringPlace<S> {
         if let Access::Field(structured) = variable {
             if crate::compile_array_struct::element_field_chain(structured).is_none() {
                 let (root, slot_offset, field_type) =
-                    walk_struct_chain(ctx, &structured.record, &structured.field, 0)?;
-                let SemanticType::String { .. } = field_type else {
+                    walk_struct_chain(types, ctx, &structured.record, &structured.field, 0)?;
+                let Some(TypeKind::String(_)) = types.kind(field_type) else {
                     return Ok(None);
                 };
                 // `walk_struct_chain` found this structure variable.
@@ -101,7 +103,7 @@ impl<S: Clone> StringPlace<S> {
         if let Some(info) = variable.name().and_then(|n| ctx.string_var(n)) {
             return Ok(fixed(info.data_offset));
         }
-        let address = match resolve_access(ctx, variable)? {
+        let address = match resolve_access(types, ctx, variable)? {
             ResolvedAccess::ArrayElement { info, subscripts } if info.is_string_element => {
                 StringAddress::Element {
                     var_index: info.var_index,

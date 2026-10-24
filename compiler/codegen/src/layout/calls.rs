@@ -11,7 +11,7 @@ use ironplc_dsl::core::Id;
 use ironplc_ir::lowered::{PouId, Section, TypeId, TypeKind};
 use ironplc_lowering::PartialProgram;
 
-use super::lowered::{copy_slots, instance_type, slot_type};
+use super::lowered::{copy_slots, instance_type};
 use super::region::Run;
 use crate::compile::{
     FbFieldIndex, FbInstanceInfo, ParamPassing, StringParamInfo, StringVarInfo, UserFbTypeInfo,
@@ -19,6 +19,7 @@ use crate::compile::{
 };
 use crate::compile_call::standard_fb_layout;
 use crate::held_instances::HeldField;
+use crate::lowered::slot_type;
 
 /// The function blocks an instance can be of.
 pub(super) struct Blocks<'a> {

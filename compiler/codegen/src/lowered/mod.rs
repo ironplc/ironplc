@@ -53,7 +53,7 @@ mod string;
 
 use call_args::passes;
 pub(crate) use init::emit_init;
-pub(crate) use place::type_info;
+pub(crate) use place::slot_type;
 pub(crate) use policy::parse_policy;
 pub(crate) use prologue::{emit_prologue, restarts};
 

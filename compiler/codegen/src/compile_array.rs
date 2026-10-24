@@ -15,6 +15,8 @@ use ironplc_container::{CharWidth, ContainerBuilder, SlotIndex, VarIndex};
 use super::compile::{CompileContext, OpWidth, Signedness, VarTypeInfo};
 use super::compile_subscript::Subscript;
 use crate::emit::Emitter;
+use crate::lowered::slot_type;
+use ironplc_ir::lowered::{TypeKind, TypeTable};
 
 /// Normalized array specification, independent of AST representation.
 /// Both inline (`ARRAY[1..3, 1..4] OF INT`) and named type paths
@@ -106,9 +108,8 @@ pub(crate) enum ResolvedAccess<'ctx, S> {
         dimensions: Vec<DimensionInfo>,
         /// Subscript expressions.
         subscripts: Vec<S>,
-        /// Element semantic type, which decides the type the element is
-        /// loaded and stored at.
-        element_type: SemanticType,
+        /// The type the element is loaded and stored at.
+        type_info: VarTypeInfo,
     },
     /// STRING array element within a struct field — see [`StructStringElement`].
     StructFieldStringArrayElement(StructStringElement<S>),
@@ -142,6 +143,7 @@ pub(crate) struct StructStringElement<S> {
 /// an element of an array, walks the chain of subscripts to collect them
 /// all and resolve the base variable's ArrayVarInfo.
 pub(crate) fn resolve_access<'ctx, S: Clone>(
+    types: &TypeTable,
     ctx: &'ctx CompileContext,
     access: &Access<S>,
 ) -> Result<ResolvedAccess<'ctx, S>, Diagnostic> {
@@ -219,12 +221,13 @@ pub(crate) fn resolve_access<'ctx, S: Clone>(
                         // record. The array-of-struct path combines the two.
                         if crate::compile_array_struct::element_field_chain(structured).is_some() {
                             return crate::compile_array_struct::resolve_struct_array_element_field(
+                                types,
                                 ctx,
                                 structured,
                                 all_subscripts,
                             );
                         }
-                        return resolve_struct_field_array(ctx, structured, all_subscripts);
+                        return resolve_struct_field_array(types, ctx, structured, all_subscripts);
                     }
                 }
             }
@@ -236,6 +239,7 @@ pub(crate) fn resolve_access<'ctx, S: Clone>(
             if crate::compile_array_struct::element_field_chain(structured).is_some() =>
         {
             crate::compile_array_struct::resolve_struct_array_element_field(
+                types,
                 ctx,
                 structured,
                 Vec::new(),
@@ -261,17 +265,23 @@ pub(crate) fn resolve_access<'ctx, S: Clone>(
 /// info, and return a `StructFieldArrayElement` that the caller uses to emit
 /// `flat_index + slot_offset` followed by the struct's LOAD_ARRAY/STORE_ARRAY.
 pub(crate) fn resolve_struct_field_array<'ctx, S>(
+    types: &TypeTable,
     ctx: &'ctx CompileContext,
     structured: &Field<S>,
     subscripts: Vec<S>,
 ) -> Result<ResolvedAccess<'ctx, S>, Diagnostic> {
-    let (root_name, slot_offset, field_type) =
-        crate::compile_struct::walk_struct_chain(ctx, &structured.record, &structured.field, 0)?;
+    let (root_name, slot_offset, field_type) = crate::compile_struct::walk_struct_chain(
+        types,
+        ctx,
+        &structured.record,
+        &structured.field,
+        0,
+    )?;
 
-    let SemanticType::Array {
-        element_type,
+    let Some(TypeKind::Array {
+        element,
         dimensions: array_dims,
-    } = &field_type
+    }) = types.kind(field_type)
     else {
         return Err(Diagnostic::not_implemented(Label::span(
             structured.field.span(),
@@ -288,7 +298,7 @@ pub(crate) fn resolve_struct_field_array<'ctx, S>(
 
     // STRING array fields use dedicated STR_LOAD/STORE_ARRAY_ELEM opcodes
     // with a scratch variable and a STRING-specific array descriptor.
-    if let SemanticType::String { .. } = element_type.as_ref() {
+    if let Some(TypeKind::String(_)) = types.kind(*element) {
         let field_name = structured.field.to_string().to_lowercase();
         let &(str_desc_index, _, _) =
             struct_info
@@ -307,7 +317,7 @@ pub(crate) fn resolve_struct_field_array<'ctx, S>(
                 "Scratch variable not allocated for struct",
             ))
         })?;
-        let dimensions = dimensions_from_semantic_type(array_dims);
+        let dimensions = dimensions_of_bounds(array_dims);
         let field_byte_offset = slot_offset.raw() * 8;
         return Ok(ResolvedAccess::StructFieldStringArrayElement(
             StructStringElement {
@@ -321,14 +331,14 @@ pub(crate) fn resolve_struct_field_array<'ctx, S>(
         ));
     }
 
-    if crate::compile_struct::resolve_field_op_type(element_type).is_none() {
-        return Err(Diagnostic::not_implemented(Label::span(
+    let type_info = slot_type(types, *element).ok_or_else(|| {
+        Diagnostic::not_implemented(Label::span(
             structured.field.span(),
             "Array element type is not a primitive (nested struct/array elements not supported)",
-        )));
-    }
+        ))
+    })?;
 
-    let dimensions = dimensions_from_semantic_type(array_dims);
+    let dimensions = dimensions_of_bounds(array_dims);
 
     Ok(ResolvedAccess::StructFieldArrayElement {
         var_index: struct_info.var_index,
@@ -336,18 +346,19 @@ pub(crate) fn resolve_struct_field_array<'ctx, S>(
         field_slot_offset: slot_offset,
         dimensions,
         subscripts,
-        element_type: element_type.as_ref().clone(),
+        type_info,
     })
 }
 
-/// Converts `ArrayDimension` bounds into `DimensionInfo` with computed strides.
+/// Converts the bounds of each dimension, `(lower, upper)`, into
+/// `DimensionInfo` with computed strides.
 ///
 /// Strides follow row-major order: the last dimension has stride 1, each
 /// preceding dimension's stride is the product of all subsequent dimension sizes.
-pub(crate) fn dimensions_from_semantic_type(dims: &[ArrayDimension]) -> Vec<DimensionInfo> {
+pub(crate) fn dimensions_of_bounds(dims: &[(i32, i32)]) -> Vec<DimensionInfo> {
     let sizes: Vec<u32> = dims
         .iter()
-        .map(|d| (d.upper as i64 - d.lower as i64 + 1).max(0) as u32)
+        .map(|&(lower, upper)| (upper as i64 - lower as i64 + 1).max(0) as u32)
         .collect();
 
     let mut strides = vec![1u32; sizes.len()];
@@ -357,8 +368,8 @@ pub(crate) fn dimensions_from_semantic_type(dims: &[ArrayDimension]) -> Vec<Dime
 
     dims.iter()
         .zip(sizes.iter().zip(strides.iter()))
-        .map(|(d, (&size, &stride))| DimensionInfo {
-            lower_bound: d.lower,
+        .map(|(&(lower, _), (&size, &stride))| DimensionInfo {
+            lower_bound: lower,
             size,
             stride,
         })

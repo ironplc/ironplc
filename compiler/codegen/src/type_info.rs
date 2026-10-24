@@ -48,8 +48,7 @@ pub(crate) fn named_type_info(
 
 /// The `VarTypeInfo` a value of a type operates with. Every enumeration
 /// operates as a `DINT` (REQ-EN-codegen-003); a subrange operates as its base
-/// type; a reference is a 64-bit address, as a reference field is (see
-/// `compile_struct::var_type_info_for_field`).
+/// type; a reference is a 64-bit address, as a reference field is.
 pub(crate) fn operand_type_info(representation: &SemanticType) -> Option<VarTypeInfo> {
     match representation {
         SemanticType::Enumeration { .. } => Some(crate::compile_enum::enum_var_type_info()),

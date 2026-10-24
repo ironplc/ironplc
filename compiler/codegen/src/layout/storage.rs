@@ -93,15 +93,13 @@ fn assign_storage(
                 builder,
                 &representation,
                 id,
-                index,
                 &span,
             )?;
             (iec_type_tag::STRUCT, declared_name())
         }
         SemanticType::Subrange { base_type, .. } => {
             // A subrange operates as its base type.
-            if let Some(type_info) = crate::compile_struct::var_type_info_for_field(&representation)
-            {
+            if let Some(type_info) = crate::type_info::operand_type_info(&representation) {
                 ctx.var_types.insert(ctx.scope, id.clone(), type_info);
             }
             // A named subrange is known by its name; one spelled out in
@@ -241,7 +239,6 @@ fn assign_storage(
                     ctx,
                     builder,
                     id,
-                    index,
                     element_type,
                     &debug_type_name,
                     dimensions,

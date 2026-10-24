@@ -26,9 +26,9 @@
 //! but a function's `VAR_IN_OUT`, which refers to its caller's. An array,
 //! a structure, an array of structures and what a reference refers to are
 //! reached through the container's array descriptors, which the
-//! declarations add in the walk's order ([`super::descriptors`]). The
-//! check compares a structure's and an array of structures' entry without
-//! the analyzer types it holds ([`super::entries`]). A function block
+//! declarations add in the walk's order ([`super::descriptors`]). A
+//! structure's and an array of structures' entry names its lowered type,
+//! whose fields an access selects ([`super::entries`]). A function block
 //! instance's fields, and what a call of each user function, function block
 //! and method needs, come from the same declarations ([`super::calls`]), and
 //! so do the debug entries of the variables and of the strings of the
@@ -37,8 +37,9 @@
 //!
 //! The bodies are compiled against this layout ([`Layout::install`]), and a
 //! declaration lowering does not express yet is not supported yet (P9999).
-//! The walk of the AST declarations still runs, for the entries this one
-//! does not hold yet, and the end-to-end helpers check the two equal
+//! The walk of the AST declarations still runs, for the array descriptors
+//! it adds to the container and for what each body is compiled with, and
+//! the end-to-end helpers check the entries both record equal
 //! ([`super::check`]).
 
 use std::collections::HashMap;
@@ -57,7 +58,7 @@ use ironplc_lowering::{Declaration, PartialProgram};
 use super::calls::{Blocks, Calling};
 use super::debug_vars::DebugVars;
 use super::descriptors::Descriptors;
-use super::entries::{StructArrayEntry, StructEntry};
+use super::entries;
 use super::names::{self, ScopeId, Scoped};
 use super::region::{string_at, Region};
 use crate::compile::{
@@ -65,8 +66,10 @@ use crate::compile::{
     UserFunctionInfo, UserMethodInfo, UserMethodParam, VarTypeInfo,
 };
 use crate::compile_array::ArrayVarInfo;
+use crate::compile_array_struct::StructArrayVarInfo;
 use crate::compile_reference::StringRefInfo;
-use crate::lowered::type_info;
+use crate::compile_struct::StructVarInfo;
+use crate::lowered::slot_type;
 
 /// What the layout built from the lowered declarations knows of each name:
 /// its slot, the type the slot is operated at, a string's run of the data
@@ -81,8 +84,8 @@ pub(crate) struct Layout {
     pub(super) var_types: Scoped<VarTypeInfo>,
     pub(super) string_vars: Scoped<StringVarInfo>,
     pub(super) array_vars: Scoped<ArrayVarInfo>,
-    pub(super) struct_vars: Scoped<StructEntry>,
-    pub(super) struct_array_vars: Scoped<StructArrayEntry>,
+    pub(super) struct_vars: Scoped<StructVarInfo>,
+    pub(super) struct_array_vars: Scoped<StructArrayVarInfo>,
     pub(super) string_refs: Scoped<StringRefInfo>,
     pub(super) region_refs: Scoped<u16>,
     pub(super) fb_instances: Scoped<FbInstanceInfo>,
@@ -235,14 +238,7 @@ impl Layout {
                     layout.insert(scope, scratch(&name), next, None);
                     next = VarIndex::new(next.raw() + 1);
                 }
-                let entry = StructEntry::lowered(
-                    types,
-                    ty,
-                    result_index,
-                    data_offset,
-                    scratch_index,
-                    slots,
-                )?;
+                let entry = entries::structure(ty, result_index, data_offset, scratch_index, slots);
                 layout.struct_vars.insert(scope, name, entry);
             }
             let info = UserFunctionInfo {
@@ -341,16 +337,17 @@ impl Layout {
 
     /// Makes this layout the one `ctx` compiles the bodies against
     /// (REQ-LOW-codegen-199), and its debug entries the ones the container
-    /// holds. A structure's and an array of structures' entries, which hold
-    /// analyzer types, are still the walk of the AST declarations', as are
-    /// the array descriptors, which that walk has already added to the
-    /// container.
-    pub(crate) fn install(self, ctx: &mut CompileContext) {
-        let (max_string_capacity, has_wide_string) = self.temporary_buffers();
+    /// holds. The array descriptors are still the walk of the AST
+    /// declarations', which has already added them to the container.
+    pub(crate) fn install(self, ctx: &mut CompileContext) -> Result<(), Diagnostic> {
+        let (max_string_capacity, has_wide_string) =
+            self.temporary_buffers(ctx.lowering()?.types());
         ctx.variables = self.slots;
         ctx.var_types = self.var_types;
         ctx.string_vars = self.string_vars;
         ctx.array_vars = self.array_vars;
+        ctx.struct_vars = self.struct_vars;
+        ctx.struct_array_vars = self.struct_array_vars;
         ctx.string_refs = self.string_refs;
         ctx.region_refs = self.region_refs;
         ctx.fb_instances = self.fb_instances;
@@ -363,35 +360,34 @@ impl Layout {
         ctx.debug_var_names = self.debug.var_names;
         ctx.debug_string_layouts = self.debug.string_layouts;
         ctx.debug_enum_defs = self.enum_defs;
+        Ok(())
     }
 
     /// What the temporary buffers are sized for: the largest capacity of a
     /// string the layout holds, and whether a string of a global or the
     /// program, or an array of strings, is wide. A wide string of a function,
     /// a function block or a method does not size them (`compile_fn.rs`).
-    pub(super) fn temporary_buffers(&self) -> (u16, bool) {
+    /// Its structures' fields are those of their types in `types`.
+    pub(super) fn temporary_buffers(&self, types: &TypeTable) -> (u16, bool) {
         let strings: Vec<_> = self.string_vars.entries().collect();
         let arrays: Vec<_> = self
             .array_vars
             .entries()
             .filter(|(_, array)| array.is_string_element)
             .collect();
-        let capacity = strings
-            .iter()
-            .map(|(_, string)| string.max_length)
-            .chain(arrays.iter().map(|(_, array)| array.string_max_len))
-            .chain(
-                self.struct_vars
-                    .entries()
-                    .flat_map(|(_, entry)| entry.capacities(&self.descriptors)),
-            )
-            .chain(
-                self.struct_array_vars
-                    .entries()
-                    .flat_map(|(_, entry)| entry.capacities(&self.descriptors)),
-            )
-            .max()
-            .unwrap_or(0);
+        let capacity =
+            strings
+                .iter()
+                .map(|(_, string)| string.max_length)
+                .chain(arrays.iter().map(|(_, array)| array.string_max_len))
+                .chain(self.struct_vars.entries().flat_map(|(_, entry)| {
+                    entries::struct_capacities(types, entry, &self.descriptors)
+                }))
+                .chain(self.struct_array_vars.entries().flat_map(|(_, entry)| {
+                    entries::struct_array_capacities(entry, &self.descriptors)
+                }))
+                .max()
+                .unwrap_or(0);
         let wide = strings
             .iter()
             .filter(|(scope, _)| matches!(scope, ScopeId::Global | ScopeId::Program))
@@ -455,12 +451,11 @@ impl Layout {
         if let Some(slots) = reached.slots {
             let data_offset = start?;
             if matches!(types.kind(ty)?, TypeKind::Structure { .. }) {
-                let entry =
-                    StructEntry::lowered(types, ty, index, data_offset, scratch_index, slots)?;
+                let entry = entries::structure(ty, index, data_offset, scratch_index, slots);
                 self.struct_vars.insert(scope, name.clone(), entry);
             } else {
                 let entry =
-                    StructArrayEntry::lowered(types, ty, index, data_offset, scratch_index, slots)?;
+                    entries::struct_array(types, ty, index, data_offset, scratch_index, slots)?;
                 self.struct_array_vars.insert(scope, name.clone(), entry);
             }
         }
@@ -585,19 +580,6 @@ fn globals(lowering: &PartialProgram) -> Vec<(VarId, bool)> {
             Some((bindings.global(id)?, system))
         })
         .collect()
-}
-
-/// The type a slot holding a value of the lowered type `ty` is operated
-/// at. A `BOOL` holds one bit of value, which also marks it for the
-/// conversion path (`type_info.rs`).
-pub(super) fn slot_type(types: &TypeTable, ty: TypeId) -> Option<VarTypeInfo> {
-    match types.kind(ty) {
-        Some(TypeKind::Bool) => Some(VarTypeInfo {
-            storage_bits: 1,
-            ..type_info(types, ty)?
-        }),
-        _ => type_info(types, ty),
-    }
 }
 
 /// The name of the scratch slot of the variable `name`

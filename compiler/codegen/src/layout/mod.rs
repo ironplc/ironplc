@@ -41,3 +41,4 @@ pub(crate) use debug_type::{debug_type_for_decl, map_var_section};
 pub(crate) use function::{lay_out_function, FunctionLayout};
 pub(crate) use globals::lay_out_globals;
 pub(crate) use program::lay_out_program;
+pub(crate) use region::{elements, slots, string_shape};
