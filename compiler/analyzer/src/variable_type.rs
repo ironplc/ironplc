@@ -11,7 +11,10 @@
 //! [`TypeEnvironment::field_type`] for a field, [`TypeEnvironment::element_type`]
 //! for a subscript list that gives one subscript for each dimension of the
 //! array it subscripts, and [`TypeEnvironment::referenced_type`] for a
-//! dereference.
+//! dereference. A subscript of a reference to an array indexes the array it
+//! refers to, as a subscript of its dereference does, and the rules that
+//! check a subscript list judge it against the same array
+//! ([`subscripted_type_id`]).
 //! It never reads the fields a structure's or function block's representation
 //! lists, so a field has one type, the one its declaration records.
 //!
@@ -92,7 +95,7 @@ pub(crate) fn type_id(
             types.field_type(record, &structured.field)
         }
         SymbolicVariableKind::Array(array) => {
-            let subscripted = type_id(&array.subscripted_variable, symbols, types, scope)?;
+            let subscripted = subscripted_type_id(array, symbols, types, scope)?;
             // A subscript list subscripts one array, with one subscript for
             // each of its dimensions: `m[1]` on a two-dimensional array and
             // `rows[1, 2]` on an array of arrays select no element.
@@ -121,6 +124,22 @@ pub(crate) fn type_id(
         // value with a type of its own; its members are typed above.
         SymbolicVariableKind::SelfRef(_) => None,
     }
+}
+
+/// The id of the type the subscript list of `array` applies to: the type of
+/// the subscripted variable, or for a reference to an array the array it
+/// refers to. A subscript of a reference indexes the array it refers to, as
+/// `r^[i]` does: a TwinCAT `REFERENCE TO`, and a `REF_TO` a subscript follows
+/// without `^`. The rules that check a subscript list count and bound it
+/// against this type, so that they judge the list the walk types.
+pub(crate) fn subscripted_type_id(
+    array: &ArrayVariable,
+    symbols: &SymbolEnvironment,
+    types: &TypeEnvironment,
+    scope: &ScopeKind,
+) -> Option<TypeId> {
+    let subscripted = type_id(&array.subscripted_variable, symbols, types, scope)?;
+    Some(types.referenced_type(subscripted).unwrap_or(subscripted))
 }
 
 /// The dimensions of the array type `id`, or `None` when `id` is not an
@@ -223,6 +242,7 @@ mod tests {
     use crate::test_helpers::{edition3_options, parse_and_resolve_types_with_options};
     use ironplc_container::CharWidth;
     use ironplc_dsl::visitor::Visitor;
+    use ironplc_parser::options::CompilerOptions;
     use spec_test_macro::spec_test;
     use std::convert::Infallible;
 
@@ -372,6 +392,50 @@ END_PROGRAM";
                 dint,
                 None,
                 None,
+                None
+            ]
+        );
+    }
+
+    /// REQ-ETR-analyzer-009: a subscript of a reference to an array selects
+    /// an element of the array it refers to, as a subscript of its
+    /// dereference does.
+    #[spec_test(REQ_ETR_analyzer_009)]
+    #[test]
+    fn type_id_when_reference_to_array_subscripted_then_element_of_referenced_array() {
+        let program = "
+TYPE Row : ARRAY[1..3] OF DINT; END_TYPE
+PROGRAM main
+  VAR pa : REF_TO ARRAY[1..3] OF DINT; ra : REFERENCE TO ARRAY[1..3] OF DINT;
+      prows : REF_TO ARRAY[1..2] OF Row; END_VAR
+  pa[2] := 0;
+  pa^[2] := 0;
+  ra[2] := 0;
+  prows[1][2] := 0;
+  prows[1] := 0;
+  pa[1, 2] := 0;
+END_PROGRAM";
+        let options = CompilerOptions {
+            allow_reference_to: true,
+            ..edition3_options()
+        };
+        let (library, context) = parse_and_resolve_types_with_options(program, &options);
+        let main = ScopeKind::Named(ScopePath::new(vec![Id::from("main")]));
+        let types = context.types();
+        let ids: Vec<Option<TypeId>> = targets(&library)
+            .iter()
+            .map(|kind| type_id(kind, context.symbols(), types, &main))
+            .collect();
+        let dint = types.id_of(&TypeName::from("DINT"));
+
+        assert_eq!(
+            ids,
+            [
+                dint,
+                dint,
+                dint,
+                dint,
+                types.id_of(&TypeName::from("Row")),
                 None
             ]
         );

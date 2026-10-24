@@ -263,12 +263,17 @@ Options
    this flag.
 
 ``--allow-constant-initializer-expressions``
-   Allow a ``VAR`` initializer to be a constant expression (e.g.
-   ``scaled : LREAL := SCALE*4.0;``) rather than only a bare literal.
+   Allow a ``VAR`` initializer or a ``TYPE`` default to be a constant
+   expression: the name of a ``CONSTANT`` variable (e.g.
+   ``level : UDINT := DEFAULT_LEVEL;``) or
+   arithmetic over literals and constants (e.g.
+   ``scaled : LREAL := SCALE*4.0;``), rather than only a bare literal.
    Folded to a literal at compile time; produces
    :doc:`P4037 </reference/compiler/problems/P4037>` when used without this
-   flag, or :doc:`P4038 </reference/compiler/problems/P4038>` if the
-   expression does not fully reduce to a constant.
+   flag, :doc:`P4038 </reference/compiler/problems/P4038>` if the
+   expression does not fully reduce to a constant, or
+   :doc:`P4022 </reference/compiler/problems/P4022>` if a named constant's
+   type is not compatible with the variable's.
 
 ``--allow-bit-string-case-labels``
    Allow a hex, binary, or octal bit-string literal (e.g. ``16#D012``,

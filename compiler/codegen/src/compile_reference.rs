@@ -30,7 +30,7 @@ use super::compile_array::{
 /// strings, as `STR_LOAD_ARRAY_DEREF` and `STR_STORE_ARRAY_DEREF` reach them
 /// through the reference: a string is the one element of a one-element
 /// array.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct StringRefInfo {
     /// The descriptor of the array of strings the reference refers to.
     pub(crate) desc_index: u16,

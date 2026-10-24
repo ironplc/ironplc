@@ -119,6 +119,8 @@ Per-file source integrity lives in the debug section's `SOURCE_FILE_TABLE` (tag 
 
 **REQ-CF-codegen-026** Every container the compiler writes carries a nonzero `content_hash` and, when it has a debug section, a nonzero `debug_hash`, each reproducible from the section bytes the compiler wrote (see [Content Hash Scope](#content-hash-scope)).
 
+**REQ-CF-codegen-035** `num_variables` counts every variable-table slot the program takes, a scratch slot and a function block's copy slots included, so the table holds at most 65,535 slots, numbered `0` to `65,534` (`0xFFFF` names no variable); the compiler reports a program that needs more as P9997 rather than writing a container.
+
 ### Resource Budget Calculation
 
 The VM uses the resource summary fields to compute the total RAM requirement before allocating:

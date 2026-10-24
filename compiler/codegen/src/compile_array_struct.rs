@@ -621,8 +621,9 @@ pub(crate) fn register_struct_array_variable(
         span,
         &mut element_strings,
     )?;
-    let scratch_var_index =
-        (!element_strings.is_empty()).then(|| ctx.allocate_scratch_variable(&id.to_string()));
+    let scratch_var_index = (!element_strings.is_empty())
+        .then(|| ctx.allocate_scratch_variable(&id.to_string(), span))
+        .transpose()?;
 
     ctx.struct_array_vars.insert(
         ctx.scope,

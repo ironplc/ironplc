@@ -44,9 +44,9 @@ The pass covers the comparisons `=`, `<>`, `<`, `<=`, `>` and `>=`, and their
 function forms `EQ` to `GE`. A comparison compares at the type one operand
 widens to, whichever side it is on (see
 [Comparison Operand Type](comparison-operand-type.md)); a pair neither of
-which widens to the other compares at the type of its concrete left operand,
-else of its concrete right one
-([#1931](https://github.com/ironplc/ironplc/issues/1931)). Every scalar operand
+which widens to the other, which the analyzer reports (REQ-CMP-analyzer-007),
+compares at the type of its concrete left operand, else of its concrete right
+one. Every scalar operand
 of another type is converted to the operand type, so a narrower operand is
 widened by its own signedness rather than the wider one truncated.
 
@@ -54,7 +54,7 @@ widened by its own signedness rather than the wider one truncated.
 
 **REQ-IC-analyzer-010** The operand type of a comparison is the type one operand widens to, whichever side it is on: in `d < l` on a `DINT` and an `LINT` the `DINT` is converted to `LINT`.
 
-**REQ-IC-analyzer-011** A comparison of two types neither of which widens to the other converts the right operand to the type of the concrete left operand: in `d < u` on a `DINT` and a `UDINT` the `UDINT` is converted to `DINT`.
+**REQ-IC-analyzer-011** A comparison of two types neither of which widens to the other, which the analyzer reports (REQ-CMP-analyzer-007), converts the right operand to the type of the concrete left operand: in `d < u` on a `DINT` and a `UDINT` the `UDINT` is converted to `DINT`.
 
 **REQ-IC-analyzer-012** Any scalar operand of another type is converted, not only a variable: the `ABS(d)` of `ABS(d) < l` and the `TIME` variable of `t < lt` are converted to `LINT` and `LTIME`.
 
@@ -90,7 +90,7 @@ An operand is converted where its operation type differs from the result's: its 
 
 **REQ-IC-analyzer-026** An operand that is itself arithmetic is converted by its result type: in `(i + j) * r` the `INT` result of `i + j` is converted to `REAL`.
 
-The conversion of an arithmetic result to the type of its context is recorded where the context is: see Assignments below. An argument's is not recorded yet.
+The conversion of an arithmetic result to the type of its context is recorded where the context is: see Assignments and Arguments below.
 
 ### Time and date operations
 
@@ -106,7 +106,7 @@ A typed time or date function (IEC 61131-3 Table 30: `ADD_TIME`, `SUB_DT_DT`, `M
 
 A function of several inputs of one type -- `MIN`, `MAX`, `LIMIT`, `SEL`, `MUX`, `EXPT` and `ATAN2` -- computes at the type of its result, as an arithmetic operation does. The result is the type every input of the function's type widens to, by the relation a comparison chooses its operand type by (see [Comparison Operand Type](comparison-operand-type.md)), so it is never narrower than an input: `MAX(i, l)` on an `INT` and an `LINT` is an `LINT`, and assigning it to an `INT` is a type mismatch. `EXPT` is typed by its base: its result has the type of `IN1`, and the exponent is converted to it. `SEL`'s selector `G` is a `BOOL` and `MUX`'s `K` an integer, whatever the type of the inputs they select between.
 
-A set of inputs none of whose types every other one widens to, such as a `DINT` and a `UDINT`, has the type of its first concrete input, as a comparison of such a pair compares at its concrete left operand's. It is not reported yet ([#1931](https://github.com/ironplc/ironplc/issues/1931), [#2127](https://github.com/ironplc/ironplc/issues/2127)).
+A set of inputs none of whose types every other one widens to, such as a `DINT` and a `UDINT`, has no type to compute at. The resolver gives such a call the type of its first concrete input, as a comparison of such a pair compares at its concrete left operand's, so the later passes see a type; `rule_function_inputs_common_type` reports the call as P4049, the code the comparison (REQ-CMP-analyzer-007) and an arithmetic operator (see [Arithmetic Operator Overloads](arithmetic-operator-overloads.md)) report for the pair.
 
 The pass records, for each call, the conversion of every input of the function's type to the result type, and the conversion of the result to the type of its context where that context is recorded (Assignments and Arguments below, and a comparison or arithmetic operand above).
 
@@ -127,6 +127,10 @@ The pass records, for each call, the conversion of every input of the function's
 **REQ-IC-analyzer-077** The result is converted to the type of a context of another operation width: in `l := MAX(d, e)` on an `LINT` and two `DINT`s the `DINT` result is converted to `LINT`.
 
 **REQ-IC-analyzer-078** A result assigned to a narrower target is a type mismatch: `i := MAX(i, l)` on an `INT` and an `LINT` reports P4027.
+
+**REQ-IC-analyzer-125** A call to `MIN`, `MAX`, `LIMIT`, `SEL`, `MUX` or `ATAN2` whose inputs of the function's type have no type every one of them widens to reports P4049, once, naming the function as the operator and the type of each of those inputs by its parameter: `MAX(d, u)` on a `DINT` and a `UDINT`, `SEL(g, d, u)`, `MUX(k, d, u, r)` with a `REAL`, `MAX(m, u)` on a subrange of `DINT` and `MAX(d, 1.5)` on a `DINT` are reported, and `LIMIT(d, u, l)` with an `LINT` and `MAX(d, 1)` are not, as every input widens to the `LINT` and the literal takes the `DINT`.
+
+**REQ-IC-analyzer-126** An input that is not of the function's type, or whose type is not known or not one its parameter accepts, takes no part in that check: the `LINT` `K` of `MUX(l, d, d)` and the `BOOL` `G` of `SEL(g, d, d)` are not judged, `MAX(d, s)` on a `STRING` and `ATAN2(d, r)` on a `DINT` are left to the argument type check (P4026), `EXPT(d, u)` is typed by its base, and `AND(g, w)` on a `BOOL` and a `WORD` is the operator rule's.
 
 `TRUNC`, `BCD_TO_INT` and `SIZEOF` return an integer, and nothing about their inputs says which. Such a call is an integer of whichever type its context stores it at, as an untyped integer literal is (ADR-0028), and the pass records that type on it. Unlike a literal it stays an integer: in a context that is not an integer type it takes `DINT`, the type an untyped integer literal defaults to, and is converted to the context's type. The code generator used to compile `TRUNC` at its context's type, so `r := TRUNC(x)` with a `REAL` target did not truncate. `INT_TO_BCD` encodes its input digit by digit in the bit string as wide as it, and computes at that type as an operation on one value does.
 
@@ -321,6 +325,10 @@ Every construct a literal can sit in either passes the type of its context on, c
 **REQ-IC-analyzer-064** A literal subscript of an array access whose subscripts are not all literals takes `DINT`.
 
 **REQ-IC-analyzer-069** A literal subscript of the target of an output assignment takes `DINT`, as one of an assignment's target does: the `2` of `f(q => a[2])`, `r := F(q => a[2])` and `k.M(mq => a[2])`.
+
+`SIZEOF` measures its argument rather than computing it, so no backend compiles the argument; the literals of its subscripts are typed all the same, so that no literal in the analyzed library is left at a generic category.
+
+**REQ-IC-analyzer-124** A literal subscript of the argument of `SIZEOF` takes `DINT`, as one of any variable does: the `2` of `d := SIZEOF(arr[2])` and the `1` and `2` of `d := SIZEOF(m[1, 2])`.
 
 **REQ-IC-analyzer-065** The literals of a `CASE` selector take the selector's type, and those of an `IF`, `WHILE` or `REPEAT` condition the type the condition is tested at.
 

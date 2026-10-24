@@ -258,6 +258,21 @@ END_CONFIGURATION"
     verbatim,
     CompilerOptions::default
 )]
+#[case::var_declaration_named_constant(
+    "PROGRAM main VAR x·:·INT·:=·C·; END_VAR x := 2; END_PROGRAM",
+    verbatim,
+    CompilerOptions::default
+)]
+#[case::string_declaration_named_constant(
+    "PROGRAM main VAR s·:·STRING·[·10·]·:=·CS·; END_VAR s := CS; END_PROGRAM",
+    verbatim,
+    CompilerOptions::default
+)]
+#[case::type_default_named_constant(
+    "TYPE A : INT·:=·C; END_TYPE",
+    verbatim,
+    CompilerOptions::default
+)]
 // `this_super.rs` also spells out THIS/space/comment before the caret, but
 // asserts the AST *shape* (that the head is a SelfRef). This row asserts
 // invariance instead. It is the one gap in the #1437 family that `self_ref`

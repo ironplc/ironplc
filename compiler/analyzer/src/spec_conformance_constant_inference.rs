@@ -11,13 +11,14 @@
 //! See `specs/design/constant-variable-inference.md`.
 
 use ironplc_dsl::common::{DeclarationQualifier, Library};
-use ironplc_dsl::core::FileId;
+use ironplc_dsl::core::{FileId, Id};
 use ironplc_parser::options::CompilerOptions;
 use ironplc_parser::parse_program;
 use rstest::rstest;
 use spec_test_macro::spec_test;
 
 use crate::stages::analyze;
+use crate::symbol_environment::{ScopeKind, ScopePath};
 use crate::test_helpers::declaration_qualifiers;
 
 /// Analyze `program` with the default options and return the library and the
@@ -798,4 +799,52 @@ END_VAR
 END_PROGRAM",
     );
     assert!(!codes.contains(&"P4064".to_string()), "codes {codes:?}");
+}
+
+/// REQ-CVI-analyzer-060: the symbol environment records the value a
+/// constant holds, declared or inferred, and a global's is reached through
+/// its `VAR_EXTERNAL`; a written variable has none.
+#[spec_test(REQ_CVI_analyzer_060)]
+fn analyzer_spec_req_cvi_060_environment_records_the_value_a_constant_holds() {
+    let program = "
+CONFIGURATION config
+    VAR_GLOBAL CONSTANT
+        limit : INT := 7;
+    END_VAR
+    RESOURCE resource1 ON PLC
+        TASK plc_task(INTERVAL := T#100ms,PRIORITY := 1);
+        PROGRAM plc_task_instance WITH plc_task : main;
+    END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM main
+VAR_EXTERNAL CONSTANT
+    limit : INT;
+END_VAR
+VAR CONSTANT
+    declared : INT := 3;
+END_VAR
+VAR
+    inferred : INT := 5;
+    written : INT := 9;
+    n : INT;
+END_VAR
+    written := written + 1;
+    n := declared + inferred + limit + written;
+END_PROGRAM";
+    let options = CompilerOptions::default();
+    let library = parse_program(program, &FileId::default(), &options).unwrap();
+    let (_, context) = analyze(&[&library], &options).unwrap();
+    let main = ScopeKind::Named(ScopePath::from(Id::from("main")));
+    let value_of = |name: &str| {
+        context
+            .symbols()
+            .constant_value(&Id::from(name), &main)
+            .map(ToString::to_string)
+    };
+
+    assert_eq!(value_of("declared").as_deref(), Some("3"));
+    assert_eq!(value_of("inferred").as_deref(), Some("5"));
+    assert_eq!(value_of("limit").as_deref(), Some("7"));
+    assert_eq!(value_of("written"), None);
 }

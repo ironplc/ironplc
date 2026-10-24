@@ -77,6 +77,10 @@ Limits that produce this error
   compiler's internal arithmetic
 * a function block with more than 255 fields, counting its inputs, outputs
   and internal variables together
+* a program that needs more than 65535 slots of the variable table, where
+  every variable of the configuration, the program and each function,
+  function block and method takes one, and the compiler takes a few of its
+  own
 
 If your program needs more than one of these limits allows, please describe
 what you are building in a `GitHub issue`_ — the limits are design choices, and

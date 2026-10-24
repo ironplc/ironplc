@@ -24,7 +24,7 @@ use crate::emit::Emitter;
 
 /// A field of a user-defined function block that holds an instance of a
 /// block.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct HeldField {
     /// The field's name, in lowercase.
     pub(crate) name: String,
@@ -55,6 +55,18 @@ pub(crate) struct HeldInstance {
     index: FbFieldIndex,
     /// The data region offset of its own fields.
     data_offset: DataOffset,
+}
+
+impl HeldInstance {
+    /// The instance whose fields are at `data_offset`, which the field
+    /// `index` of the instance whose fields are at `holder` holds.
+    pub(crate) fn new(holder: DataOffset, index: FbFieldIndex, data_offset: DataOffset) -> Self {
+        Self {
+            holder,
+            index,
+            data_offset,
+        }
+    }
 }
 
 /// The name of the block whose instance the variable `decl` declares, in

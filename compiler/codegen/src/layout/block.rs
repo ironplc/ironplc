@@ -31,6 +31,7 @@ use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 
 use super::names::ScopeId;
+use super::var_table;
 use crate::compile::{
     CompileContext, FbFieldIndex, OpType, ParamPassing, UserFbTypeInfo, UserMethodInfo,
     UserMethodParam, VarTypeInfo, DEFAULT_OP_TYPE, DEFAULT_VAR_TYPE_INFO, MAX_USER_FB_FIELDS,
@@ -61,7 +62,8 @@ pub(crate) struct MethodLayout {
     /// is compiled in, and which sees its block's too.
     pub(crate) scope: ScopeId,
     /// The slots the VM's frame for the method spans, from the first of
-    /// its block's copy slots through the method's result.
+    /// its block's copy slots through the method's result: the copy slots,
+    /// the earlier methods' slots and the method's own.
     pub(crate) num_locals: u16,
     /// How many input parameters the method takes.
     pub(crate) num_params: u16,
@@ -262,25 +264,21 @@ pub(crate) fn lay_out_block(
             if let Some(type_info) = decl_type_info(ctx, decl) {
                 ctx.var_types.insert(ctx.scope, id.clone(), type_info);
             }
-            match &decl.initializer {
-                InitialValueAssignmentKind::Reference(ref_init) => {
-                    crate::compile_reference::register_reference_variable(
-                        ctx,
-                        builder,
-                        types,
-                        id,
-                        current_index,
-                        ref_init,
-                    )?;
-                }
-                // A field of a type alias of a string is left as it was: a
-                // block's string fields have no initialized run (issue 1753).
-                InitialValueAssignmentKind::String(_) => {
-                    register_declared_string(ctx, id, decl)?;
-                }
-                _ => {}
+            if let InitialValueAssignmentKind::Reference(ref_init) = &decl.initializer {
+                crate::compile_reference::register_reference_variable(
+                    ctx,
+                    builder,
+                    types,
+                    id,
+                    current_index,
+                    ref_init,
+                )?;
             }
-            current_index = VarIndex::new(current_index.raw() + 1);
+            // A string field, one declared through a type alias of a string
+            // too, has a run of its own, which holds no string yet (issue
+            // 1753).
+            register_declared_string(ctx, id, decl)?;
+            current_index = var_table::advance(current_index, 1, &decl.identifier.span())?;
         }
     }
 
@@ -354,7 +352,7 @@ fn lay_out_method(
             }
             // A call copies a string argument into the parameter's run.
             register_declared_string(ctx, id, decl)?;
-            current_index = VarIndex::new(current_index.raw() + 1);
+            current_index = var_table::advance(current_index, 1, &decl.identifier.span())?;
             num_params += 1;
         }
     }
@@ -378,7 +376,7 @@ fn lay_out_method(
             // The prologue initializes a string local or output's run at
             // every call.
             register_declared_string(ctx, id, decl)?;
-            current_index = VarIndex::new(current_index.raw() + 1);
+            current_index = var_table::advance(current_index, 1, &decl.identifier.span())?;
         }
     }
 
@@ -423,7 +421,7 @@ fn lay_out_method(
         }
     }
 
-    current_index = VarIndex::new(current_index.raw() + 1);
+    current_index = var_table::advance(current_index, 1, &method.name.span())?;
 
     // Reported num_locals spans from the *type's field region* (not just
     // this method's own params/locals) through the end of this method's
@@ -448,14 +446,11 @@ fn lay_out_method(
         .filter_map(|id| Some((id.clone(), ctx.string_var(id)?.clone())))
         .collect();
 
-    // `num_locals` spans from `field_var_off` (not `param_var_off`) through
-    // this method's own locals -- see the comment above. Advancing
-    // `var_offset` by that full span means a type with N methods reserves
-    // N * num_fields more table slots than strictly necessary (each
-    // method's span re-covers the shared field region). Harmless (a few
-    // extra flat-table slots, never aliased or read), just not maximally
-    // compact; fine to tighten later if it matters.
-    *var_offset = VarIndex::new(var_offset.raw() + num_locals);
+    // The next method's slots follow this method's own. `num_locals` is
+    // not the advance: it spans the copy slots and the earlier methods'
+    // slots too, so advancing by it would reserve those again for every
+    // method, and the table would double with each method.
+    *var_offset = current_index;
 
     if let Some(info) = ctx
         .user_fb_types

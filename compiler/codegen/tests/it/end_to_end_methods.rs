@@ -4,8 +4,9 @@
 //! instance's own persistent field, not just some scratch copy.
 
 use ironplc_parser::options::CompilerOptions;
+use rstest::rstest;
 
-use crate::common::Snapshot;
+use crate::common::{parse_and_compile_to_run, Snapshot};
 
 fn opts_with_fb_inheritance() -> CompilerOptions {
     CompilerOptions {
@@ -253,4 +254,75 @@ END_PROGRAM
     let snapshot = Snapshot::run(source, &opts_with_fb_inheritance());
 
     assert_eq!(snapshot.read_as::<i32>("x"), 7);
+}
+
+/// A block with one `INT` field and `methods` methods, each with one local
+/// and an `INT` result, that add their number to the field and return the
+/// new total, and a program that calls each in turn and sums what they
+/// return.
+fn block_with_methods(methods: i32) -> String {
+    let declarations: String = (1..=methods)
+        .map(|i| {
+            format!(
+                "METHOD M{i} : INT
+VAR
+    total : INT;
+END_VAR
+    total := n + {i};
+    n := total;
+    M{i} := total;
+END_METHOD
+"
+            )
+        })
+        .collect();
+    let calls: String = (1..=methods)
+        .map(|i| format!("x := x + c.M{i}();\n"))
+        .collect();
+    format!(
+        "
+FUNCTION_BLOCK FB_Counter
+VAR
+    n : INT;
+END_VAR
+{declarations}END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+    c : FB_Counter;
+    x : INT;
+    y : INT;
+END_VAR
+{calls}y := c.n;
+END_PROGRAM
+"
+    )
+}
+
+/// The variable table grows by each method's own slots. A method's frame
+/// spans its block's copy slots and the earlier methods' slots too, but
+/// the next method starts where the last one ended, so a block with many
+/// methods takes a table that grows with the methods, not one that doubles
+/// with each.
+#[rstest]
+#[case::two(2)]
+#[case::twenty(20)]
+fn end_to_end_when_block_has_many_methods_then_table_grows_by_each_methods_own_slots(
+    #[case] methods: i32,
+) {
+    let source = block_with_methods(methods);
+    let program = parse_and_compile_to_run(&source, &opts_with_fb_inheritance());
+
+    // The program's three variables, the field's copy slot, and each
+    // method's local and result.
+    let slots = 3 + 1 + 2 * methods;
+    assert_eq!(i32::from(program.header.num_variables), slots);
+
+    let snapshot = Snapshot::run_compiled(program);
+    // Each method adds its number to the field and returns the new total;
+    // the program sums the totals.
+    let total = methods * (methods + 1) / 2;
+    let sum_of_totals = methods * (methods + 1) * (methods + 2) / 6;
+    assert_eq!(snapshot.read_as::<i32>("y"), total);
+    assert_eq!(snapshot.read_as::<i32>("x"), sum_of_totals);
 }

@@ -111,7 +111,7 @@ mod tests {
         assert_eq!(operand_type(left, right), None);
     }
 
-    #[spec_test(REQ_CMP_analyzer_007)]
+    #[spec_test(REQ_CMP_analyzer_014)]
     #[rstest]
     #[case::int_right("INT", "ANY_REAL", Some("REAL"))]
     #[case::int_left("ANY_REAL", "INT", Some("REAL"))]

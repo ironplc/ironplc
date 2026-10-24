@@ -66,6 +66,7 @@ use ironplc_analyzer::{
 use crate::emit::Emitter;
 use crate::held_instances::{HeldField, HeldInstance};
 use crate::layout::names::{self, ScopeId, Scoped};
+use crate::layout::var_table;
 
 use super::compile_fn::{compile_user_function, compile_user_function_block};
 use super::compile_method::compile_user_method;
@@ -264,7 +265,7 @@ impl From<&CompilerOptions> for CodegenOptions {
 pub fn compile(
     analysis: CleanAnalysis<'_>,
     options: &CodegenOptions,
-    sources: &dyn crate::source_lookup::SourceLookup,
+    sources: &dyn ironplc_ir::source::SourceLookup,
 ) -> Result<Container, Diagnostic> {
     compile_with_route_counts(analysis, options, sources).map(|(container, _)| container)
 }
@@ -274,7 +275,7 @@ pub fn compile(
 pub fn compile_with_route_counts(
     analysis: CleanAnalysis<'_>,
     options: &CodegenOptions,
-    sources: &dyn crate::source_lookup::SourceLookup,
+    sources: &dyn ironplc_ir::source::SourceLookup,
 ) -> Result<(Container, crate::lowered::RouteCounts), Diagnostic> {
     // Lowering completes every initializer on a copy, and reads the program
     // and globals from it; the analyzed library stays as written
@@ -352,14 +353,16 @@ pub fn compile_with_route_counts(
     Ok((container, counts))
 }
 
-/// Idempotently registers a POU's source file with the debug section's
-/// SOURCE_FILE_TABLE. Called from `compile_program_with_functions` for
-/// each top-level program / function / function-block declaration.
+/// Idempotently registers the source file of the POU whose name is at
+/// `span` with the debug section's SOURCE_FILE_TABLE. Called from
+/// `compile_program_with_functions` for the program and each function and
+/// function block.
 fn register_pou_source_file(
     ctx: &mut CompileContext,
-    file_id: &ironplc_dsl::core::FileId,
-    sources: &dyn crate::source_lookup::SourceLookup,
+    span: &SourceSpan,
+    sources: &dyn ironplc_ir::source::SourceLookup,
 ) {
+    let file_id = &span.file_id;
     if ctx.debug_source_files.get(file_id).is_some() {
         return;
     }
@@ -505,7 +508,7 @@ fn compile_program_with_functions(
     types: &TypeEnvironment,
     string_to_num: StringToNumPolicies,
     compiler_options: CompilerOptions,
-    sources: &dyn crate::source_lookup::SourceLookup,
+    sources: &dyn ironplc_ir::source::SourceLookup,
     lowered_route: Option<crate::lowered::LoweredRoute>,
 ) -> Result<(Container, crate::lowered::RouteCounts), Diagnostic> {
     let ProgramInputs {
@@ -536,12 +539,20 @@ fn compile_program_with_functions(
     // registration order (program first, then functions, then FB
     // bodies) determines the `file_id` numbering, which appears in
     // the on-disk container.
-    register_pou_source_file(&mut ctx, &program.name.span.file_id, sources);
-    for f in func_decls {
-        register_pou_source_file(&mut ctx, &f.name.span.file_id, sources);
-    }
-    for fb in fb_decls {
-        register_pou_source_file(&mut ctx, &fb.name.name.span.file_id, sources);
+    // The lowered program names the POUs and their spans when the route
+    // compiles from it.
+    let pou_spans = ctx
+        .lowered_route
+        .as_ref()
+        .and_then(|route| crate::layout::lowered::source_spans(route.lowering(), &program.name))
+        .unwrap_or_else(|| {
+            std::iter::once(program.name.span())
+                .chain(func_decls.iter().map(|f| f.name.span()))
+                .chain(fb_decls.iter().map(|fb| fb.name.name.span()))
+                .collect()
+        });
+    for span in &pou_spans {
+        register_pou_source_file(&mut ctx, span, sources);
     }
 
     // Lay out the globals first (indices 0..G), the compiler-provided
@@ -603,13 +614,24 @@ fn compile_program_with_functions(
         )?);
     }
 
-    // Every body is laid out: match the lowered program's ids to it, then
-    // compile the functions' bodies, then each FB's body followed by its
-    // METHODs'.
+    // Every body is laid out: compile them against the layout built from
+    // the lowered declarations, when each of those lowered, and match the
+    // lowered program's ids to it; then compile the functions' bodies, then
+    // each FB's body followed by its METHODs'.
     if let Some(route) = &ctx.lowered_route {
-        if route.check_layout() {
-            crate::layout::lowered::check(route.lowering(), &ctx, &builder, &program.name)?;
+        let lowered = crate::layout::lowered::Layout::of(
+            route.lowering(),
+            &program.name,
+            &ctx.standard_blocks,
+        );
+        if let Some(lowered) = lowered {
+            if route.check_layout() {
+                crate::layout::check::check(&lowered, &ctx, &builder, &program.name)?;
+            }
+            lowered.install(&mut ctx);
         }
+    }
+    if let Some(route) = &ctx.lowered_route {
         ctx.lowered_ids =
             crate::layout::ids::LoweredIds::matched(route.lowering(), &ctx, &program.name);
     }
@@ -639,10 +661,13 @@ fn compile_program_with_functions(
 
     let total_variables = var_offset;
 
-    // Emit bytecode for variable initial values into the init emitter.
+    // Emit bytecode for variable initial values into the init emitter, from
+    // the lowered program when it can be.
     let mut init_emitter = Emitter::new();
-    emit_initial_values(&mut init_emitter, &mut ctx, global_vars, types)?;
-    emit_initial_values(&mut init_emitter, &mut ctx, &local_vars, types)?;
+    if !crate::lowered::try_emit_init(&mut init_emitter, &mut ctx, global_vars, &local_vars)? {
+        emit_initial_values(&mut init_emitter, &mut ctx, global_vars, types)?;
+        emit_initial_values(&mut init_emitter, &mut ctx, &local_vars, types)?;
+    }
     init_emitter.emit_ret_void();
 
     // Compile the program body into the scan emitter. Mark
@@ -650,6 +675,11 @@ fn compile_program_with_functions(
     // emitted from inside the body records a call-graph edge.
     let mut scan_emitter = Emitter::new();
     ctx.current_function_id = Some(FunctionId::SCAN);
+    // A `VAR_TEMP` starts again at the head of every scan, from the lowered
+    // program; when that is left to the AST, `init` gives it its value, once.
+    if crate::lowered::restarts(&local_vars) {
+        crate::lowered::try_emit_prologue(&mut scan_emitter, &mut ctx, &local_vars, None)?;
+    }
     compile_body(
         &mut scan_emitter,
         &mut ctx,
@@ -815,8 +845,10 @@ fn compile_program_with_functions(
         .shared_globals_size(program_var_count)
         .max_call_depth(max_call_depth);
 
-    // Add debug info.
-    let program_name = program.name.to_string();
+    // Add debug info, named as the lowered program names each POU when the
+    // route compiles from it.
+    let program_name = crate::lowered::pou_name(&ctx, crate::layout::names::ScopeId::Program)
+        .unwrap_or_else(|| program.name.to_string());
     builder = builder
         .add_func_name(FuncNameEntry {
             function_id: FunctionId::INIT,
@@ -890,7 +922,7 @@ fn compile_program_with_functions(
     Ok((container, counts))
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct StringParamInfo {
     /// Byte offset in the data region where this parameter's string is stored.
     pub(crate) data_offset: u32,
@@ -902,7 +934,7 @@ pub(crate) struct StringParamInfo {
 
 /// How a call site passes an argument to one input parameter
 /// (`VAR_INPUT`/`VAR_IN_OUT`) of a user-defined function or method.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) enum ParamPassing {
     /// The argument's value is pushed onto the operand stack at its own
     /// type, which the analyzer converted to the parameter's (ADR-0056), and
@@ -922,7 +954,7 @@ pub(crate) enum ParamPassing {
 ///
 /// When a function returns STRING/WSTRING, the return value lives in the
 /// data region rather than on the operand stack.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct StringReturnInfo {
     /// Byte offset in the data region where the return string is stored.
     pub(crate) data_offset: u32,
@@ -933,7 +965,7 @@ pub(crate) struct StringReturnInfo {
 }
 
 /// Metadata for a compiled user-defined function.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct UserFunctionInfo {
     /// The function ID assigned in the container.
     pub(crate) function_id: FunctionId,
@@ -963,7 +995,7 @@ pub(crate) struct UserFunctionInfo {
 
 /// Tracks state during compilation of a single program.
 /// Metadata for a function block instance variable.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct FbInstanceInfo {
     /// Variable table index holding the data region offset.
     pub(crate) var_index: VarIndex,
@@ -986,7 +1018,12 @@ pub(crate) struct FbInstanceInfo {
 /// `FB_LOAD_PARAM` and `FB_STORE_PARAM` name by a byte.
 pub(crate) type FbFieldIndex = u8;
 
+/// The type ID of the first user-defined function block; each next one, in
+/// library order, takes the next.
+pub(crate) const FIRST_USER_FB_TYPE_ID: FbTypeId = FbTypeId::new(0x1000);
+
 /// Metadata for a compiled user-defined function block type.
+#[derive(Debug, PartialEq)]
 pub(crate) struct UserFbTypeInfo {
     /// Unique type ID for FB_CALL dispatch (starts at 0x1000).
     pub(crate) type_id: FbTypeId,
@@ -1018,6 +1055,7 @@ pub(crate) struct UserFbTypeInfo {
 /// (`UserFbTypeInfo::var_offset`/`num_fields`) for `self` access, and has
 /// its own additional, non-shared param/local scratch region allocated
 /// immediately after -- see `compile_method::compile_user_method`.
+#[derive(Debug, PartialEq)]
 pub(crate) struct UserMethodInfo {
     /// Function ID of the compiled method body in the container.
     pub(crate) function_id: FunctionId,
@@ -1042,6 +1080,7 @@ pub(crate) struct UserMethodInfo {
 }
 
 /// A VAR_INPUT or VAR_IN_OUT parameter of a user-defined method.
+#[derive(Debug, PartialEq)]
 pub(crate) struct UserMethodParam {
     pub(crate) name: Id,
     /// How a call site passes the argument for it. A string parameter is
@@ -1217,7 +1256,7 @@ impl CompileContext {
             function_stack_depths: HashMap::new(),
             user_fb_types: HashMap::new(),
             standard_blocks: HashMap::new(),
-            next_user_fb_type_id: FbTypeId::new(0x1000),
+            next_user_fb_type_id: FIRST_USER_FB_TYPE_ID,
             types: HashMap::new(),
             block_members: HashMap::new(),
             operand_names: HashMap::new(),
@@ -1315,9 +1354,18 @@ impl CompileContext {
         declared.is_some() && declared == self.seen(&self.variables, names::SLOTS, name)
     }
 
-    /// How many names have a slot that the current scope sees.
+    /// How many names have a slot that the current scope sees. Each of
+    /// them was handed out by [`var_table`], so the count fits the table.
     pub(crate) fn slot_count(&self) -> u16 {
         names::slot_count(&self.variables, self.scope) as u16
+    }
+
+    /// The next slot of the globals or the program, which the variable
+    /// declared at `span` takes: the one after every slot the current scope
+    /// sees. P9997 when the variable table has no more.
+    #[track_caller]
+    pub(crate) fn next_slot(&self, span: &SourceSpan) -> Result<VarIndex, Diagnostic> {
+        var_table::slot(names::slot_count(&self.variables, self.scope), span)
     }
 
     /// The slot after the highest one the current scope sees: the next free
@@ -1424,18 +1472,25 @@ impl CompileContext {
             .unwrap_or(DEFAULT_OP_TYPE)
     }
 
-    /// Allocates a scratch variable with a synthetic name and returns its index.
+    /// Allocates a scratch variable with a synthetic name for the variable
+    /// declared at `span` and returns its index; P9997 when the variable
+    /// table has no more slots.
     ///
     /// The scratch variable takes the [next free slot](Self::next_free_slot)
     /// of the POU being laid out, which counts it in its run.
     ///
     /// The name uses a `$` prefix which is illegal in IEC 61131-3 identifiers,
     /// guaranteeing no collision with user-defined variables.
-    pub(crate) fn allocate_scratch_variable(&mut self, suffix: &str) -> VarIndex {
-        let idx = self.next_free_slot();
+    #[track_caller]
+    pub(crate) fn allocate_scratch_variable(
+        &mut self,
+        suffix: &str,
+        span: &SourceSpan,
+    ) -> Result<VarIndex, Diagnostic> {
+        let idx = var_table::slot(self.next_free_slot().raw().into(), span)?;
         self.variables
             .insert(self.scope, Id::from(&format!("$scratch_{}", suffix)), idx);
-        idx
+        Ok(idx)
     }
 
     /// Returns the index of an existing constant matching `matches`, or

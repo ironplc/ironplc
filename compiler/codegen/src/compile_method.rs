@@ -19,7 +19,7 @@ use super::compile::{
 };
 use super::compile_call_output::{store_outputs, CallOutputs};
 use super::compile_expr::{compile_expr, emit_load_var};
-use super::compile_setup::emit_function_local_prologue;
+use super::compile_setup::{emit_clear_result_slot, emit_function_local_prologue};
 use super::compile_stmt::compile_statements;
 use super::compile_user_call::compile_string_arg;
 use super::layout::MethodLayout;
@@ -46,15 +46,28 @@ pub(crate) fn compile_user_method(
 
     let mut method_emitter = Emitter::new();
 
-    emit_function_local_prologue(
+    if crate::lowered::try_emit_prologue(
         &mut method_emitter,
         ctx,
         &method.variables,
-        has_return_value.then_some(&method.result),
-        &return_id,
-        return_var_index,
-        return_op_type,
-    )?;
+        has_return_value.then_some(&return_id),
+    )? {
+        if !has_return_value {
+            // No lowered variable holds the result slot of a method that
+            // returns nothing, so it is cleared as this backend's own setup.
+            emit_clear_result_slot(&mut method_emitter, ctx, return_var_index, return_op_type);
+        }
+    } else {
+        emit_function_local_prologue(
+            &mut method_emitter,
+            ctx,
+            &method.variables,
+            has_return_value.then_some(&method.result),
+            &return_id,
+            return_var_index,
+            return_op_type,
+        )?;
+    }
 
     let body = ironplc_dsl::textual::Statements {
         body: method.body.clone(),
@@ -87,6 +100,7 @@ pub(crate) fn compile_user_method(
     ctx.function_stack_depths
         .insert(function_id, finalized.max_stack_depth);
 
+    let name = crate::lowered::pou_name(ctx, ctx.scope).unwrap_or_else(|| method.name.to_string());
     ctx.scope = caller;
 
     Ok(CompiledFunction {
@@ -96,7 +110,7 @@ pub(crate) fn compile_user_method(
         max_temp_depth: finalized.max_temp_depth,
         num_locals,
         num_params,
-        name: method.name.to_string(),
+        name,
         line_map: finalized.line_map,
     })
 }

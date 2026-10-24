@@ -15,8 +15,18 @@ use ironplc_ir::lowered::{Encoding, PouId, StringShape, TypeId, TypeKind, TypeTa
 use ironplc_lowering::PartialProgram;
 
 use super::lowered::copy_slots;
-use crate::compile::{string_region_size, StringVarInfo};
+use crate::compile::{string_region_size, FbFieldIndex, StringVarInfo};
 use crate::compile_call::standard_fb_layout;
+use crate::held_instances::HeldInstance;
+
+/// The run of the data region a variable takes.
+pub(super) struct Run {
+    /// Where it starts.
+    pub(super) start: u32,
+    /// The instances the fields of a function block instance hold, and
+    /// theirs, in the order they are reserved.
+    pub(super) held: Vec<HeldInstance>,
+}
 
 /// The runs of the data region reserved so far.
 pub(super) struct Region<'a> {
@@ -53,11 +63,12 @@ impl<'a> Region<'a> {
     }
 
     /// Reserves the run of a global's or the program's variable of the type
-    /// `ty`, and returns where it starts, when it has one; `None` when the
-    /// region overflows.
-    pub(super) fn variable(&mut self, ty: TypeId) -> Option<Option<u32>> {
+    /// `ty`, and returns it, when it has one; `None` when the region
+    /// overflows.
+    pub(super) fn variable(&mut self, ty: TypeId) -> Option<Option<Run>> {
         let types = self.types();
         let start = self.next;
+        let mut held = Vec::new();
         let reserved = match types.kind(ty)? {
             TypeKind::String(shape) => {
                 self.string(*shape)?;
@@ -90,10 +101,7 @@ impl<'a> Region<'a> {
                 self.reserve(elements.checked_mul(element_bytes)?)?;
                 true
             }
-            TypeKind::FunctionBlock { .. } => {
-                self.instance(ty)?;
-                true
-            }
+            TypeKind::FunctionBlock { .. } => self.instance(ty, &mut held)?.is_some(),
             TypeKind::Bool
             | TypeKind::Integer { .. }
             | TypeKind::BitString { .. }
@@ -104,7 +112,7 @@ impl<'a> Region<'a> {
             | TypeKind::Program { .. }
             | TypeKind::Reference { .. } => false,
         };
-        Some(reserved.then_some(start))
+        Some(reserved.then_some(Run { start, held }))
     }
 
     /// Reserves the run of a string of the shape `shape`, and returns where
@@ -115,44 +123,52 @@ impl<'a> Region<'a> {
         string_at(data_offset, shape)
     }
 
-    /// Reserves the run of a structure of the type `ty`.
-    pub(super) fn structure(&mut self, ty: TypeId) -> Option<()> {
+    /// Reserves the run of a structure of the type `ty`, and returns where
+    /// it starts.
+    pub(super) fn structure(&mut self, ty: TypeId) -> Option<u32> {
         let bytes = slots(self.types(), ty)?.checked_mul(8)?;
-        self.reserve(bytes).map(|_| ())
+        self.reserve(bytes)
     }
 
     /// Reserves the fields of an instance of the function block type `ty`,
-    /// then those of each instance its fields hold. A block that is neither
+    /// then those of each instance its fields hold, which it records in
+    /// `held`, and returns where its fields start. A block that is neither
     /// reachable nor standard has no layout, and reserves nothing.
-    fn instance(&mut self, ty: TypeId) -> Option<()> {
+    fn instance(&mut self, ty: TypeId, held: &mut Vec<HeldInstance>) -> Option<Option<u32>> {
         let TypeKind::FunctionBlock { body, .. } = self.types().kind(ty)? else {
-            return Some(());
+            return Some(None);
         };
         let body = *body;
         if self.blocks.contains(&body) {
             let fields = copy_slots(self.lowering, body)?;
-            self.reserve(u32::try_from(fields.len()).ok()?.checked_mul(8)?)?;
-            let held: Vec<TypeId> = fields
+            let start = self.reserve(u32::try_from(fields.len()).ok()?.checked_mul(8)?)?;
+            let holders: Vec<(FbFieldIndex, TypeId)> = fields
                 .iter()
-                .filter(|field| {
+                .enumerate()
+                .filter(|(_, field)| {
                     matches!(
                         self.types().kind(field.ty),
                         Some(TypeKind::FunctionBlock { .. })
                     )
                 })
-                .map(|field| field.ty)
-                .collect();
-            for field in held {
-                self.instance(field)?;
+                .map(|(index, field)| Some((FbFieldIndex::try_from(index).ok()?, field.ty)))
+                .collect::<Option<_>>()?;
+            for (index, field) in holders {
+                let next = held.len();
+                if let Some(data_offset) = self.instance(field, held)? {
+                    // An instance precedes those its own fields hold.
+                    held.insert(next, HeldInstance::new(start, index, data_offset));
+                }
             }
-            return Some(());
+            return Some(Some(start));
         }
         let name = self.lowering.pous().name(body)?.to_string().to_uppercase();
-        if let Some(block) = self.standard_blocks.get(&name) {
-            let (_, fields, _) = standard_fb_layout(*block);
-            self.reserve(u32::try_from(fields).ok()?.checked_mul(8)?)?;
-        }
-        Some(())
+        let Some(block) = self.standard_blocks.get(&name) else {
+            return Some(None);
+        };
+        let (_, fields, _) = standard_fb_layout(*block);
+        self.reserve(u32::try_from(fields).ok()?.checked_mul(8)?)
+            .map(Some)
     }
 
     /// Reserves `bytes` and returns where they start; `None` when the

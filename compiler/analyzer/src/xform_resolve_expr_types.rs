@@ -461,8 +461,10 @@ impl ExprTypeResolver<'_> {
     ///
     /// When no input's type accepts every other one -- a `DINT` and a `UDINT`
     /// -- the call has the type of its first concrete input, else of its
-    /// first, as a comparison of such a pair compares at its concrete left
-    /// operand's (#1931).
+    /// first, so later passes see a type, as a comparison of such a pair
+    /// compares at its concrete left operand's;
+    /// `rule_function_inputs_common_type` reports the call, as the
+    /// comparison rule reports the comparison.
     fn inputs_of_one_type_result(
         &self,
         inputs: &[&Expr],

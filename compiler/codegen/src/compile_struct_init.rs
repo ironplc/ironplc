@@ -111,6 +111,111 @@ pub(crate) fn initialize_struct_array_variable(
     Ok(())
 }
 
+/// Sets up the storage the layout gives a structure variable, before `init`
+/// stores its fields' values (REQ-LOW-codegen-200): its data-region offset
+/// into its slot, the header of every STRING its fields hold, and of every
+/// element's copy of each STRING field of the arrays of structures it holds.
+pub(crate) fn set_up_struct_variable(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    info: &StructVarInfo,
+    span: &SourceSpan,
+) -> Result<(), Diagnostic> {
+    let offset_const = ctx.add_i32_constant(info.data_offset as i32);
+    emitter.emit_load_const_i32(offset_const);
+    emitter.emit_store_var_i32(info.var_index);
+    let field_types = struct_field_types(&info.fields);
+    string_headers(emitter, &field_types, 0, info.data_offset, span)?;
+    initialize_element_strings(
+        emitter,
+        ctx,
+        info.data_offset,
+        info.scratch_var_index,
+        &info.element_strings,
+        span,
+    )
+}
+
+/// Sets up the storage the layout gives a variable that is an array of
+/// structures, as [`set_up_struct_variable`] does a structure's: its
+/// data-region offset into its slot, and the header of every element's copy
+/// of each STRING field.
+pub(crate) fn set_up_struct_array_variable(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    info: &StructArrayVarInfo,
+    span: &SourceSpan,
+) -> Result<(), Diagnostic> {
+    let offset_const = ctx.add_i32_constant(info.data_offset as i32);
+    emitter.emit_load_const_i32(offset_const);
+    emitter.emit_store_var_i32(info.var_index);
+    initialize_element_strings(
+        emitter,
+        ctx,
+        info.data_offset,
+        info.scratch_var_index,
+        &info.element_strings,
+        span,
+    )
+}
+
+/// Writes the header of each STRING the structure `fields`, from slot `base`
+/// of the region at `data_offset`, holds where [`Region::value`] writes one
+/// at `Position::Field`: a STRING field, each element of an ARRAY OF STRING
+/// field, and those of a structure field, to any depth.
+fn string_headers(
+    emitter: &mut Emitter,
+    fields: &[(String, SlotIndex, SemanticType)],
+    base: u32,
+    data_offset: u32,
+    span: &SourceSpan,
+) -> Result<(), Diagnostic> {
+    for (_, slot_offset, field_type) in fields {
+        let slot = base + slot_offset.raw();
+        match field_type {
+            SemanticType::Structure { fields } => {
+                let (infos, _) = build_struct_fields(fields, span)?;
+                let fields: Vec<_> = infos
+                    .into_iter()
+                    .map(|f| (f.name, f.slot_offset, f.field_type))
+                    .collect();
+                string_headers(emitter, &fields, slot, data_offset, span)?;
+            }
+            SemanticType::String {
+                max_len,
+                char_width,
+            } => {
+                let max_length = max_len.unwrap_or(DEFAULT_STRING_MAX_LENGTH as u128) as u16;
+                let at = byte_offset(data_offset, slot, span)?;
+                emitter.emit_str_init(at, max_length, *char_width);
+            }
+            SemanticType::Array {
+                element_type,
+                dimensions,
+            } => {
+                let SemanticType::String {
+                    max_len,
+                    char_width,
+                } = element_type.as_ref()
+                else {
+                    continue;
+                };
+                let max_length = max_len.unwrap_or(DEFAULT_STRING_MAX_LENGTH as u128) as u16;
+                let total_elements = dimensions
+                    .iter()
+                    .fold(1u32, |acc, d| acc * (d.upper - d.lower + 1) as u32);
+                let stride = string_region_size(max_length, *char_width);
+                let at = byte_offset(data_offset, slot, span)?;
+                for index in 0..total_elements {
+                    emitter.emit_str_init(at + index * stride, max_length, *char_width);
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 /// Writes the header of every element's copy of each STRING field of an
 /// array of structures in a variable's data region.
 ///

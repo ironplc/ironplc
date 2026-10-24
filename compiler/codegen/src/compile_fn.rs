@@ -202,15 +202,22 @@ pub(crate) fn compile_user_function(
     // the locals the analyzer flags, and the result, start again at their
     // resolved values on every call. The flat variable table (ADR-0046)
     // retains stale values between calls otherwise.
-    emit_function_local_prologue(
+    if !crate::lowered::try_emit_prologue(
         &mut func_emitter,
         ctx,
         &func_decl.variables,
-        Some(&func_decl.result),
-        &func_decl.name,
-        return_var_index,
-        return_op_type,
-    )?;
+        Some(&func_decl.name),
+    )? {
+        emit_function_local_prologue(
+            &mut func_emitter,
+            ctx,
+            &func_decl.variables,
+            Some(&func_decl.result),
+            &func_decl.name,
+            return_var_index,
+            return_op_type,
+        )?;
+    }
 
     let body = ironplc_dsl::textual::Statements {
         body: func_decl.body.clone(),
@@ -258,6 +265,9 @@ pub(crate) fn compile_user_function(
     ctx.function_stack_depths
         .insert(function_id, finalized.max_stack_depth);
 
+    let name = crate::lowered::pou_name(ctx, ctx.scope)
+        .map(|name| name.to_lowercase())
+        .unwrap_or_else(|| func_decl.name.lower_case().to_string());
     ctx.scope = caller;
 
     Ok(CompiledFunction {
@@ -267,7 +277,7 @@ pub(crate) fn compile_user_function(
         max_temp_depth: finalized.max_temp_depth,
         num_locals,
         num_params,
-        name: func_decl.name.lower_case().to_string(),
+        name,
         line_map: finalized.line_map,
     })
 }
@@ -283,8 +293,10 @@ pub(crate) fn compile_user_function_block(
     num_locals: u16,
     ctx: &mut CompileContext,
 ) -> Result<CompiledFunction, Diagnostic> {
-    let fb_name = fb_decl.name.name.to_string().to_uppercase();
     let caller = std::mem::replace(&mut ctx.scope, scope);
+    let fb_name = crate::lowered::pou_name(ctx, scope)
+        .unwrap_or_else(|| fb_decl.name.name.to_string())
+        .to_uppercase();
 
     // Compile the FB body.
     // Mark this FB's body as the current caller so nested CALL / FB_CALL
@@ -294,6 +306,11 @@ pub(crate) fn compile_user_function_block(
     ctx.current_function_id = Some(function_id);
 
     let mut fb_emitter = Emitter::new();
+    // A `VAR_TEMP` starts again on every call, from the lowered program; the
+    // AST gives a function block's none.
+    if crate::lowered::restarts(&fb_decl.variables) {
+        crate::lowered::try_emit_prologue(&mut fb_emitter, ctx, &fb_decl.variables, None)?;
+    }
     compile_body(&mut fb_emitter, ctx, &fb_decl.body, &fb_decl.name.span())?;
     fb_emitter.emit_ret_void();
 

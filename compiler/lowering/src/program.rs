@@ -19,8 +19,8 @@
 //! out its storage from (REQ-LOW-lowering-197).
 //!
 //! Then it lowers `init` (`init.rs`), the stores of each global's and each
-//! instance field's starting value, and, at the head of each function's
-//! and method's body, its prologue.
+//! instance field's starting value, and, at the head of each body, its
+//! prologue.
 //!
 //! Then it lowers each top-level statement of each body. A statement that
 //! reaches a variable finds the one already declared.
@@ -117,6 +117,17 @@ impl PartialProgram {
         }
     }
 
+    /// Where the top-level statement at `index` of the body of `pou` is in
+    /// the source: an empty span for a statement the AST keeps no span for,
+    /// a `RETURN`'s; `None` when the body has no such statement.
+    pub fn statement_span(&self, pou: PouId, index: usize) -> Option<&SourceSpan> {
+        let body = self.bodies.iter().find(|body| body.pou == pou)?;
+        match &body.statements {
+            Statements::Lowered(statements) => statements.get(index).map(|(span, _)| span),
+            Statements::Sfc | Statements::Undeclared => None,
+        }
+    }
+
     /// The statements of `init`, which give every global and every field of
     /// every program instance the value it starts with; `None` when one of
     /// those values does not lower yet.
@@ -124,10 +135,11 @@ impl PartialProgram {
         self.init.complete()
     }
 
-    /// The statements at the head of the body of `pou`, which give each
-    /// variable of a function or method that starts again on every call its
-    /// value; `None` when one of those values does not lower yet, or the
-    /// body does not.
+    /// The statements at the head of the body of `pou`, which give each of
+    /// its variables that starts again on every call its value: a
+    /// function's or method's locals and result, and any body's `VAR_TEMP`;
+    /// `None` when one of those values does not lower yet, or the body does
+    /// not.
     pub fn prologue(&self, pou: PouId) -> Option<&[Stmt]> {
         let body = self.bodies.iter().find(|body| body.pou == pou)?;
         match body.statements {
@@ -226,9 +238,8 @@ impl PartialProgram {
                     for (span, lowered) in statements {
                         match lowered {
                             StatementLowering::Lowered(_) => {}
-                            StatementLowering::Unsupported => {
-                                unsupported.push(Diagnostic::todo_with_span(span.clone()))
-                            }
+                            StatementLowering::Unsupported => unsupported
+                                .push(Diagnostic::todo_with_span(reported(span, &body.span))),
                         }
                     }
                 }
@@ -531,7 +542,7 @@ impl<'a> Lowering<'a> {
                 Some(lowered) => StatementLowering::Lowered(lowered),
                 None => StatementLowering::Unsupported,
             };
-            statements.push((statement_span(stmt, &span), lowered));
+            statements.push((stmt.span(), lowered));
         }
         Ok(LoweredBody {
             pou,
@@ -609,13 +620,13 @@ fn statements_of<'a>(body: Body<'a>) -> Option<&'a [StmtKind]> {
     }
 }
 
-/// Where `stmt` is, or, for a statement the AST keeps no span for, the
-/// span of the POU it is in, `pou`.
-fn statement_span(stmt: &StmtKind, pou: &SourceSpan) -> SourceSpan {
-    let span = stmt.span();
-    if span == SourceSpan::default() {
+/// Where a problem with the statement at `span` is reported: there, or, for
+/// a statement the AST keeps no span for, at the POU it is in, `pou`. A
+/// `SourceSpan` equals any other, so an empty span is the one with none.
+fn reported(span: &SourceSpan, pou: &SourceSpan) -> SourceSpan {
+    if span.start == span.end {
         pou.clone()
     } else {
-        span
+        span.clone()
     }
 }

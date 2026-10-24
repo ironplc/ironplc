@@ -34,6 +34,25 @@
 //! error. So `bad : INT := 10/ZERO` reports P4037 alone there, where the
 //! enabled arm reports P4039.
 //!
+//! An initializer that is exactly one constant's name (`x : UDINT := C;`)
+//! is the smallest constant expression. Substituting the value leaves a
+//! literal, and the literal checks that follow would accept it for any type
+//! of the same family (`C : UDINT` initializing an `INT`), although the same
+//! `C` assigned in a statement is rejected. So the enabled arm first checks
+//! the constant's declared type against the variable's, with the relation an
+//! assignment uses, and reports P4022 on a mismatch; the initializer is then
+//! normalized to an uninitialized `Simple`, as for an expression that does
+//! not reduce. A longer expression has no declared type to check and is
+//! accepted on its value alone, as before.
+//!
+//! The same extension serves two more positions. A `TYPE` default
+//! (`TYPE MyInt : UDINT := C;`) is a `SimpleExpr` like a variable's and
+//! folds the same way. A string initializer (`s : STRING[20] := NAME;`) is
+//! a `StringExpr`, which keeps the length a `SimpleExpr` cannot, and is
+//! normalized to `String` with the literal its expression folds to; a value
+//! that folds to anything but a string is reported as P4022. A `CONSTANT`
+//! string is a named constant like any other.
+//!
 //! ## Before
 //!
 //! ```ignore
@@ -61,15 +80,27 @@ use ironplc_problems::Problem;
 
 use crate::constant_folding::{fold_error_to_diagnostic, try_fold_binary, try_fold_unary};
 use crate::scoped_table::{ScopedTable, Value};
+use crate::type_compat::are_types_compatible;
+use crate::type_environment::TypeEnvironment;
 
-impl Value for ConstantKind {}
+/// A `CONSTANT` declaration whose value is a literal: the literal, and the
+/// type the constant was declared with.
+#[derive(Clone, Debug)]
+struct NamedConstant {
+    type_name: TypeName,
+    value: ConstantKind,
+}
+
+impl Value for NamedConstant {}
 
 pub fn apply(
     lib: Library,
+    types: &TypeEnvironment,
     options: &CompilerOptions,
 ) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>> {
     let mut folder = InitializerFolder {
         constants: collect_constants(&lib),
+        types,
         options,
         diagnostics: Vec::new(),
     };
@@ -99,7 +130,7 @@ pub fn apply(
 /// does not yet model. Handling those "half global" vars correctly is
 /// left for a follow-up rather than treating them as unconditionally
 /// global here.
-fn collect_constants(lib: &Library) -> ScopedTable<'static, Id, ConstantKind> {
+fn collect_constants(lib: &Library) -> ScopedTable<'static, Id, NamedConstant> {
     let mut constants = ScopedTable::new();
 
     for element in &lib.elements {
@@ -119,7 +150,7 @@ fn collect_constants(lib: &Library) -> ScopedTable<'static, Id, ConstantKind> {
 /// a function-local constant with the same name as a global) is unaffected,
 /// since that lives in a different scope entirely.
 fn register_constants<'a>(
-    constants: &mut ScopedTable<Id, ConstantKind>,
+    constants: &mut ScopedTable<Id, NamedConstant>,
     decls: impl IntoIterator<Item = &'a VarDecl>,
 ) {
     for decl in decls {
@@ -135,10 +166,26 @@ fn register_constants<'a>(
             },
         };
 
-        if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
-            if let Some(value) = &simple.initial_value {
-                constants.try_add(&name, value.clone());
+        // A string constant is its literal, declared with the string type's
+        // keyword: the length takes no part in whether a constant may
+        // initialize a variable.
+        let constant = match &decl.initializer {
+            InitialValueAssignmentKind::Simple(simple) => {
+                simple.initial_value.clone().map(|value| NamedConstant {
+                    type_name: simple.type_name.clone(),
+                    value,
+                })
             }
+            InitialValueAssignmentKind::String(string) => {
+                string.initial_value.clone().map(|literal| NamedConstant {
+                    type_name: TypeName::from(string.width.keyword()),
+                    value: ConstantKind::CharacterString(literal),
+                })
+            }
+            _ => None,
+        };
+        if let Some(constant) = constant {
+            constants.try_add(&name, constant);
         }
     }
 }
@@ -148,9 +195,15 @@ fn register_constants<'a>(
 /// folding rules as `xform_fold_constant_expressions`.
 ///
 /// Cannot recurse into a cycle: `constants` only ever holds already-literal
-/// `ConstantKind` values (see `register_constants`), never an expression
-/// referencing another name, so a substituted value is always terminal --
-/// there is nothing left to look up again.
+/// values (see `register_constants`), never an expression referencing
+/// another name, so a substituted value is always terminal -- there is
+/// nothing left to look up again.
+///
+/// A substituted literal takes the span of the reference it replaces, so
+/// that a diagnostic on the value (a range check, say) points at the
+/// initializer that uses the constant rather than at the declaration that
+/// defines it, and two initializers using the same constant are reported
+/// separately.
 ///
 /// Returns `Err` if a sub-expression is a genuine constant expression
 /// (both operands known) whose operation has no defined result (division
@@ -159,7 +212,7 @@ fn register_constants<'a>(
 /// as "not a constant expression".
 fn substitute_and_fold(
     expr: Expr,
-    constants: &mut ScopedTable<Id, ConstantKind>,
+    constants: &mut ScopedTable<Id, NamedConstant>,
 ) -> Result<Expr, Diagnostic> {
     let span = expr.span();
     let kind = match expr.kind {
@@ -188,7 +241,7 @@ fn substitute_and_fold(
         }
         ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(named))) => {
             match constants.find(&named.name) {
-                Some(value) => ExprKind::Const(value.clone()),
+                Some(constant) => ExprKind::Const(constant.value.clone().with_span(span)),
                 None => ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(named))),
             }
         }
@@ -197,7 +250,7 @@ fn substitute_and_fold(
         // in the normal pipeline), but handled here too so this pass does
         // not depend on that ordering.
         ExprKind::LateBound(late_bound) => match constants.find(&late_bound.value) {
-            Some(value) => ExprKind::Const(value.clone()),
+            Some(constant) => ExprKind::Const(constant.value.clone().with_span(span)),
             None => ExprKind::LateBound(late_bound),
         },
         other => other,
@@ -211,50 +264,98 @@ fn substitute_and_fold(
 }
 
 struct InitializerFolder<'a> {
-    constants: ScopedTable<'static, Id, ConstantKind>,
+    constants: ScopedTable<'static, Id, NamedConstant>,
+    types: &'a TypeEnvironment,
     options: &'a CompilerOptions,
     diagnostics: Vec<Diagnostic>,
 }
 
 impl InitializerFolder<'_> {
-    /// Normalizes a `SimpleExprInitializer` back to `Simple`, folding it if
-    /// possible and emitting a diagnostic otherwise. Always returns
-    /// `Simple` so that no other pass ever observes `SimpleExpr`.
-    fn normalize(&mut self, se: SimpleExprInitializer) -> InitialValueAssignmentKind {
+    /// The declared type of the constant that `e` names, when `e` is exactly
+    /// one name (`C`, not `C + 1`) and that name is a known constant.
+    fn named_constant_type(&self, e: &Expr) -> Option<&TypeName> {
+        let name = match &e.kind {
+            ExprKind::LateBound(late_bound) => &late_bound.value,
+            ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(named))) => {
+                &named.name
+            }
+            _ => return None,
+        };
+        self.constants
+            .find(name)
+            .map(|constant| &constant.type_name)
+    }
+
+    /// Whether a constant declared with `constant_type` may initialize a
+    /// variable declared with `variable_type`: the relation an assignment
+    /// uses, asked of the elementary types the names resolve to, so an
+    /// alias on either side compares as the type it names. A type that does
+    /// not resolve to an elementary type is not checked here: an undeclared
+    /// type is reported by the resolver, and a constant of an enumerated or
+    /// a subrange type is the business of the passes that check those.
+    fn constant_type_fits(&self, variable_type: &TypeName, constant_type: &TypeName) -> bool {
+        match (
+            self.types.resolve_elementary_type_name(variable_type),
+            self.types.resolve_elementary_type_name(constant_type),
+        ) {
+            (Some(expected), Some(actual)) => {
+                are_types_compatible(&expected, &actual, self.options)
+            }
+            _ => true,
+        }
+    }
+
+    /// The literal that `initial_value`, written against `type_name`,
+    /// folds to, or `None` with the reason diagnosed: P4037 when the dialect
+    /// does not allow a constant expression here, P4022 when the expression
+    /// is a constant whose declared type the position does not accept,
+    /// P4038 when it does not reduce, or the fold's own error.
+    fn fold_value(&mut self, type_name: &TypeName, initial_value: Expr) -> Option<ConstantKind> {
         if !self.options.allow_constant_initializer_expressions {
             self.diagnostics.push(
                 Diagnostic::problem(
                     Problem::ConstantInitializerExpressionNotAllowed,
-                    Label::span(se.initial_value.span(), "Constant expression initializer"),
+                    Label::span(initial_value.span(), "Constant expression initializer"),
                 )
-                .with_context("type", &se.type_name.to_string()),
+                .with_context("type", &type_name.to_string()),
             );
             // Still fold when possible: the P4037 above already fails the
             // build, but keeping a foldable value prevents a misleading
             // cascade on `VAR CONSTANT` declarations, which would otherwise
             // be diagnosed as *uninitialized* when they plainly carry an
             // initializer.
-            let type_name = se.type_name;
-            let initial_value = match substitute_and_fold(se.initial_value, &mut self.constants) {
+            return match substitute_and_fold(initial_value, &mut self.constants) {
                 Ok(folded) => match folded.kind {
                     ExprKind::Const(c) => Some(c),
                     _ => None,
                 },
                 Err(_) => None,
             };
-            return InitialValueAssignmentKind::Simple(SimpleInitializer {
-                type_name,
-                initial_value,
-            });
         }
 
-        let type_name = se.type_name;
-        match substitute_and_fold(se.initial_value, &mut self.constants) {
+        // A bare constant name is checked by declared type before its value
+        // replaces it (see the module documentation).
+        let mismatch = self
+            .named_constant_type(&initial_value)
+            .filter(|constant_type| !self.constant_type_fits(type_name, constant_type))
+            .cloned();
+        if let Some(constant_type) = mismatch {
+            self.diagnostics.push(
+                Diagnostic::problem(
+                    Problem::InitializerTypeMismatch,
+                    Label::span(
+                        initial_value.span(),
+                        format!("Constant of type {constant_type}"),
+                    ),
+                )
+                .with_context("type", &type_name.to_string()),
+            );
+            return None;
+        }
+
+        match substitute_and_fold(initial_value, &mut self.constants) {
             Ok(folded) => match folded.kind {
-                ExprKind::Const(c) => InitialValueAssignmentKind::Simple(SimpleInitializer {
-                    type_name,
-                    initial_value: Some(c),
-                }),
+                ExprKind::Const(c) => Some(c),
                 _ => {
                     self.diagnostics.push(
                         Diagnostic::problem(
@@ -263,20 +364,58 @@ impl InitializerFolder<'_> {
                         )
                         .with_context("type", &type_name.to_string()),
                     );
-                    InitialValueAssignmentKind::Simple(SimpleInitializer {
-                        type_name,
-                        initial_value: None,
-                    })
+                    None
                 }
             },
             Err(diag) => {
                 self.diagnostics.push(diag);
-                InitialValueAssignmentKind::Simple(SimpleInitializer {
-                    type_name,
-                    initial_value: None,
-                })
+                None
             }
         }
+    }
+
+    /// Normalizes a `SimpleExprInitializer` back to `Simple`, folding it if
+    /// possible and emitting a diagnostic otherwise. Always returns
+    /// `Simple` so that no other pass ever observes `SimpleExpr`.
+    fn normalize(&mut self, se: SimpleExprInitializer) -> InitialValueAssignmentKind {
+        let initial_value = self.fold_value(&se.type_name, se.initial_value);
+        InitialValueAssignmentKind::Simple(SimpleInitializer {
+            type_name: se.type_name,
+            initial_value,
+        })
+    }
+
+    /// Normalizes a `StringExprInitializer` to `String`, as `normalize` does
+    /// a `SimpleExpr`. The value has to fold to a string literal: a bare
+    /// constant of another type is reported by `fold_value`, and an
+    /// expression that folds to a value of another kind is reported here.
+    fn normalize_string(&mut self, se: StringExprInitializer) -> InitialValueAssignmentKind {
+        let type_name = se.type_name();
+        let initial_value = match self.fold_value(&type_name, se.initial_value) {
+            Some(ConstantKind::CharacterString(literal)) => Some(literal),
+            Some(other) => {
+                // Without the flag, P4037 is already reported and the fold
+                // only avoids a cascade, so nothing more is said about the
+                // value.
+                if self.options.allow_constant_initializer_expressions {
+                    self.diagnostics.push(
+                        Diagnostic::problem(
+                            Problem::InitializerTypeMismatch,
+                            Label::span(other.span(), "Value is not a string"),
+                        )
+                        .with_context("type", &type_name.to_string()),
+                    );
+                }
+                None
+            }
+            None => None,
+        };
+        InitialValueAssignmentKind::String(StringInitializer {
+            length: se.length,
+            width: se.width,
+            initial_value,
+            keyword_span: se.keyword_span,
+        })
     }
 }
 
@@ -287,6 +426,7 @@ impl Fold<Diagnostic> for InitializerFolder<'_> {
     ) -> Result<InitialValueAssignmentKind, Diagnostic> {
         match node {
             InitialValueAssignmentKind::SimpleExpr(se) => Ok(self.normalize(se)),
+            InitialValueAssignmentKind::StringExpr(se) => Ok(self.normalize_string(se)),
             other => InitialValueAssignmentKind::recurse_fold(other, self),
         }
     }
@@ -327,8 +467,12 @@ impl Fold<Diagnostic> for InitializerFolder<'_> {
 }
 
 #[cfg(test)]
+mod named_constant_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
+    use crate::type_environment::TypeEnvironmentBuilder;
     use ironplc_dsl::core::FileId;
     use ironplc_parser::options::{CompilerOptions, Dialect};
     use ironplc_parser::parse_program;
@@ -338,11 +482,19 @@ mod tests {
         CompilerOptions::from_dialect(Dialect::Rusty)
     }
 
+    /// The elementary types alone: these tests declare no user types.
+    fn elementary_types() -> TypeEnvironment {
+        TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap()
+    }
+
     fn parse(src: &str, options: &CompilerOptions) -> Library {
         parse_program(src, &FileId::default(), options).unwrap()
     }
 
-    fn find_var_decl<'a>(lib: &'a Library, var_name: &str) -> &'a VarDecl {
+    pub(super) fn find_var_decl<'a>(lib: &'a Library, var_name: &str) -> &'a VarDecl {
         for element in &lib.elements {
             let vars = match element {
                 LibraryElementKind::FunctionBlockDeclaration(fb) => &fb.variables,
@@ -362,7 +514,7 @@ mod tests {
 
     /// Applies the transform expecting no diagnostics; returns the library.
     fn apply_clean(lib: Library, options: &CompilerOptions) -> Library {
-        let (lib, diagnostics) = apply(lib, options).unwrap();
+        let (lib, diagnostics) = apply(lib, &elementary_types(), options).unwrap();
         assert!(
             diagnostics.is_empty(),
             "unexpected diagnostics: {diagnostics:?}"
@@ -372,7 +524,7 @@ mod tests {
 
     /// Applies the transform expecting diagnostics; returns them.
     fn apply_expect_diagnostics(lib: Library, options: &CompilerOptions) -> Vec<Diagnostic> {
-        let (_, diagnostics) = apply(lib, options).unwrap();
+        let (_, diagnostics) = apply(lib, &elementary_types(), options).unwrap();
         assert!(!diagnostics.is_empty(), "expected diagnostics");
         diagnostics
     }
@@ -511,7 +663,8 @@ mod tests {
             "PROGRAM main VAR d2r : LREAL := 4.25/180.0; END_VAR END_PROGRAM",
             &opts(),
         );
-        let (lib, diagnostics) = apply(lib, &CompilerOptions::default()).unwrap();
+        let (lib, diagnostics) =
+            apply(lib, &elementary_types(), &CompilerOptions::default()).unwrap();
         assert!(diagnostics
             .iter()
             .any(|d| d.code == Problem::ConstantInitializerExpressionNotAllowed.code()));

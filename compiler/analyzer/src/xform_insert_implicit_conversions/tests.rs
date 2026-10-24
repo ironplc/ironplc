@@ -6,11 +6,13 @@ use ironplc_dsl::core::FileId;
 use ironplc_dsl::textual::*;
 use ironplc_dsl::visitor::Visitor;
 use ironplc_parser::options::CompilerOptions;
+use ironplc_problems::Problem;
 
 use rstest::rstest;
 use spec_test_macro::spec_test;
 
 use crate::stages::analyze;
+use crate::test_helpers;
 use crate::type_environment::TypeEnvironment;
 use crate::value_type::operand_type_name;
 
@@ -77,20 +79,28 @@ impl Visitor<Infallible> for ComparisonOperands<'_> {
 /// Analyzes `source`, which must be free of diagnostics, and returns the
 /// operands of its comparisons.
 fn comparison_operands(source: &str) -> Vec<[String; 2]> {
+    let (operands, codes) = comparison_operands_and_codes(source);
+    assert!(codes.is_empty(), "unexpected diagnostics: {codes:?}");
+    operands
+}
+
+/// Analyzes `source` and returns the operands of its comparisons, and the
+/// codes of the problems the analysis reports.
+fn comparison_operands_and_codes(source: &str) -> (Vec<[String; 2]>, Vec<String>) {
     let options = CompilerOptions::default();
     let library = ironplc_parser::parse_program(source, &FileId::default(), &options).unwrap();
     let (library, context) = analyze(&[&library], &options).unwrap();
-    assert!(
-        !context.has_diagnostics(),
-        "unexpected diagnostics: {:?}",
-        context.diagnostics()
-    );
+    let codes = context
+        .diagnostics()
+        .iter()
+        .map(|diagnostic| diagnostic.code.clone())
+        .collect();
     let mut visitor = ComparisonOperands {
         types: context.types(),
         operands: vec![],
     };
     let Ok(()) = visitor.walk(&library);
-    visitor.operands
+    (visitor.operands, codes)
 }
 
 /// The operands of every arithmetic operator expression and function form in
@@ -224,11 +234,18 @@ fn apply_when_right_operand_wider_then_left_converted() {
     assert_eq!(comparison_operands(&source), pair("DINT->LINT", "LINT"));
 }
 
+/// A pair neither of which widens to the other is reported; the pass still
+/// compares it at the concrete left operand's type.
 #[spec_test(REQ_IC_analyzer_011)]
 #[test]
-fn apply_when_neither_widens_then_right_converted_to_left() {
+fn apply_when_neither_widens_then_right_converted_to_left_and_reported() {
     let source = program("d : DINT; u : UDINT;", "d < u");
-    assert_eq!(comparison_operands(&source), pair("DINT", "UDINT->DINT"));
+    let (operands, codes) = comparison_operands_and_codes(&source);
+    assert_eq!(operands, pair("DINT", "UDINT->DINT"));
+    assert_eq!(
+        codes,
+        test_helpers::codes(&[Problem::OperatorOperandTypeMismatch])
+    );
 }
 
 /// A named subrange is compared at its base type, so it is the `INT` that
