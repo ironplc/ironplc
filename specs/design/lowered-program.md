@@ -720,10 +720,45 @@ structure or a function block instance element by element and field by field.
 Whether a store can be left out because the backend's storage starts cleared
 is the backend's to say.
 
+`init` holds values only. A backend sets up its own storage before the
+statements of `init` run, such as a string's header or the data-region offset
+an aggregate's slot holds: that setup is layout, not part of `init`.
+
+**REQ-LOW-codegen-200** The bytecode backend's `init` function sets up the
+storage its layout gives each global and each field of the program instance,
+in declaration order (a string's header, the data-region offset the slot of
+an aggregate or an instance holds, and the offset of each instance an
+instance's fields hold), each followed by the statements of `init` that store
+into it, and stores nothing else. It leaves out a store that leaves its
+storage cleared where the `init` it builds from the AST leaves it out. While
+that `init` exists, an `init` lowering does not complete, or one with a store
+the backend does not emit yet, is built from the AST, whole.
+
 **REQ-LOW-lowering-195** The body of a function or method begins with the
 stores of the completed initializer of each of its declarations the analyzer
 flags as starting again on every call (`VarDecl::reset_on_call`: its `VAR`,
 `VAR_TEMP` and `VAR_OUTPUT`), in declaration order, and then of its result.
+
+**REQ-LOW-lowering-201** The body of a program or function block begins with
+the stores of the completed initializer of each of its `VAR_TEMP`, which the
+analyzer flags as starting again on every call, in declaration order. A
+program is called once each scan.
+
+The statements at the head of a body hold values only, as `init` does. A
+backend sets up the storage it gives each variable on every call, such as a
+string's header, before them.
+
+**REQ-LOW-codegen-202** The bytecode backend's prologue of a body sets up,
+for each declaration that starts again on every call, in declaration order,
+and then for a function's or method's result, what the prologue it builds
+from the AST sets up (a string's header, and a structure result's
+data-region offset and the headers of its strings), each followed by the
+statements at the head of the body that store into it, and clears the result
+slot of a method that returns nothing. It leaves out an empty string stored
+into a whole string variable, which its header has just emptied. While that
+prologue exists, a prologue lowering does not complete, or one with a store
+the backend does not emit yet, is built from the AST, whole; a program's
+`VAR_TEMP` then takes its value once, in `init`.
 
 **REQ-LOW-lowering-025** The lowered program contains only POUs reachable from
 a program instance, matching what `SemanticContext::reachable` gives codegen
@@ -744,6 +779,16 @@ POU.
 
 Lowering declares them all before it lowers any statement, so a statement
 that names one reaches the variable already declared.
+
+**REQ-LOW-lowering-197** The lowered program gives, for each body, what each
+of its declarations declares, in the order the body declares them: a field
+of its instance, a variable of its own, or the global a `VAR_EXTERNAL`
+names. It gives the variable that holds each function's and method's result,
+and tells a variable a declaration declares from a temporary lowering makes.
+
+A backend lays out its storage from them in the order the source declares
+it, which neither the type of an instance nor the variable table records
+across a body's fields and variables.
 
 **REQ-LOW-lowering-026** Every variable's `ty` is present in the type table.
 
@@ -1089,6 +1134,12 @@ lowering reports one it meets as P9998.
 **REQ-LOW-lowering-051** A string literal's characters fit its encoding
 ([ADR-0016](../adrs/0016-string-encoding.md)).
 
+**REQ-LOW-lowering-188** The string a reference refers to, `rs^`, or an
+element of an array of strings a reference refers to, `rsa^[i]`, is a `Read`
+of the place through the `Deref`, and a store to it is an `AssignStr` to that
+place, as for any value a reference refers to. `REF(s)^`, and `ADR(s)^`,
+which the analyzer makes `REF(s)^`, is a `Read` of `s`.
+
 Temporary buffers, their pool size and their release
 ([ADR-0052](../adrs/0052-temp-string-buffers-released-on-consume.md)) are how
 the bytecode backend evaluates a `StrExpr`. They do not appear in the lowered
@@ -1164,6 +1215,17 @@ of other strings in the program.
 **REQ-LOW-codegen-056** A string value that goes into a place or an
 intermediate result with a smaller capacity keeps its first code units, up to
 that capacity.
+
+**REQ-LOW-codegen-189** The bytecode backend's reference to a string is a
+data-region reference to the string's header
+([var-in-out-parameters.md](var-in-out-parameters.md#references)), whether a
+`RefTo` or a reference variable's starting value makes it. The backend reads
+and writes the string a reference refers to with `STR_LOAD_ARRAY_DEREF` and
+`STR_STORE_ARRAY_DEREF`: a string is the one element of a one-element array of
+the reference's capacity, and an element of an array of strings is reached
+with that array's descriptor. The route that reads the AST makes the same
+reference, and follows it with `LOAD_INDIRECT`, which takes only a variable
+reference, so a string read through a reference traps there (V9005).
 
 ### 3.7 Statements
 
@@ -1310,9 +1372,20 @@ assignment.
 **REQ-LOW-lowering-067** The `step` of a `For` is a nonzero constant of the
 operation type of `control`, and `control` is a variable, a field of the
 current instance, or what a reference variable refers to, as a function's or
-method's `VAR_OUTPUT` parameter does. A `FOR` whose step is not a nonzero
-constant, and one whose control variable is a `VAR_IN_OUT`, is reported as
-P9999, as it is today.
+method's `VAR_OUTPUT` parameter does. A `FOR` whose step is not a constant,
+and one whose control variable is a `VAR_IN_OUT`, is reported as P9999, as it
+is today.
+
+The analyzer holds the control variable to an integer, `ANY_INT` or a subrange
+of one (P4091), so a `For` never counts with a real, a bit string, a duration,
+a `BOOL` or an enumeration; and it holds a constant step to a nonzero value
+(P4093), so a `For` never counts by zero. The analyzer judges a step that
+names a constant by the value the symbol environment records for it
+(REQ-CVI-analyzer-060); lowering does not read that value, so such a step is
+a read of a variable to it, and is reported as P9999 like any other. The
+analyzer also rejects an untyped real literal as the `from`, `to` or `step`
+of such a loop (P4094), so the literal a backend compiles at the control
+variable's type is never a real one.
 
 `to` is evaluated on every iteration, and the control variable wraps, so a
 `FOR` whose bound is the largest value of the control variable's type does not
@@ -1436,6 +1509,16 @@ Lowering passes such an input of a function or method as an `Arg::Copy`
 emits it as that route does, the offset, so a call compiles to the same code
 by either route. The callee gets a copy of its own once a body that reads the
 parameter compiles, which it does on neither route yet.
+
+So too a method's input of a function block type, `b.Go(i := f)`, which a
+function cannot declare (P4054). The argument is an `Arg::Copy` of the
+instance, and the bytecode backend passes the instance's slot, which holds the
+data offset of its fields, as that route does. Neither route calls such an
+input in the method's body or reads its fields
+([issue 1553](https://github.com/ironplc/ironplc/issues/1553)). An argument
+that is a field of another function block instance, `b.Go(i := g.inner)` or
+`SUMP(q := g.p)`, is passed as the value that field's slot holds, as that
+route passes it.
 
 A string is passed by value too. The argument for a `VAR_INPUT` of a `STRING`
 or `WSTRING` type is a `Str` of the parameter's encoding, of any capacity
@@ -2045,7 +2128,9 @@ Every subscript is a 32-bit signed integer, a `DINT`. The analyzer converts a
 subscript of another type to `DINT` (see [Implicit Conversions](implicit-conversions.md)),
 so a 64-bit subscript is narrowed, and no backend indexes at 64 bits. No
 program IronPLC targets needs an array of more than 2^31 elements, and 64-bit
-index arithmetic is slow on the 32-bit targets a PLC runtime often has.
+index arithmetic is slow on the 32-bit targets a PLC runtime often has. The
+analyzer rejects a `BOOL` subscript (P4086) and an untyped real literal
+subscript (P4094), so neither reaches a backend.
 
 **REQ-LOW-lowering-161** The subscripts of an `Index` are of type `DINT`.
 
@@ -2079,6 +2164,14 @@ structure or array field of a function block instance, or for a structure,
 array or function block variable of a function, function block or method
 body other than a field that holds an instance, which no program reads
 inside (see [Statements](#37-statements)).
+
+**REQ-LOW-codegen-193** The bytecode backend copies a whole array or
+structure into the one a reference refers to, `p^ := z`, with
+`COPY_REGION_DEREF` through the reference `p` holds. The destination is sized
+by the descriptor of the array or structure type `p` refers to, which `p`'s
+declaration registers. The route that reads the AST stores `z`'s data offset
+in the slot of the variable `p` refers to instead, which makes that variable
+an alias of `z`.
 
 **REQ-LOW-codegen-089** An `Intrinsic` means what the IEC 61131-3 standard
 function means, with these choices where the standard leaves room: the count
@@ -2204,7 +2297,7 @@ today.
 | Whether an interface value can hold only one concrete type | Not made; calls through an interface are not compiled | The concrete types the value can hold (REQ-LOW-analyzer-107) | A direct method call, or a `Callee::Interface` |
 | Capacity of a string declared without one | Codegen and `slot_count`, from `DEFAULT_STRING_MAX_LENGTH` | The string type's capacity (REQ-LOW-analyzer-053) | The capacity of its `StringShape` |
 | Enumeration ordinal | The analyzer, when the type enters the type environment (`EnumerationMembers`); codegen looks the ordinal up (`compile_enum.rs`) | Each member's ordinal, explicit (`GREEN := 5`) or counted on from the one before, and the type's default member, on `SemanticType::Enumeration` | `Const` |
-| Declaration a variable name refers to | The analyzer's `SymbolEnvironment::resolve_variable` ([Variable Binding](variable-binding.md)); codegen resolves names again, from tables of its own (`scope.rs`) | Not in the `Library`: the function answers from the `SemanticContext`, with a `DeclRef` that names the declaration by its scope and its name ([ADR-0066](../adrs/0066-name-resolution-is-an-analyzer-function.md)) | One `VarId` for each `DeclRef` (REQ-LOW-lowering-020, REQ-LOW-lowering-022) |
+| Declaration a variable name refers to | The analyzer's `SymbolEnvironment::resolve_variable` ([Variable Binding](variable-binding.md)); codegen resolves names again, from tables of its own (`layout/names.rs`) | Not in the `Library`: the function answers from the `SemanticContext`, with a `DeclRef` that names the declaration by its scope and its name ([ADR-0066](../adrs/0066-name-resolution-is-an-analyzer-function.md)) | One `VarId` for each `DeclRef` (REQ-LOW-lowering-020, REQ-LOW-lowering-022) |
 
 **Decisions lowering makes**
 
@@ -2299,6 +2392,7 @@ implements it.
 | Bit and partial write | `AssignBits` |
 | `p^ := v` | `Assign` to a place ending in `Deref` |
 | `REF(x)^`, and `ADR(x)^`, which the analyzer makes `REF(x)^` | A `Read` of `x` |
+| A subscript of a reference to an array, `r[i]` (a TwinCAT `REFERENCE TO`, or a `REF_TO` the analyzer lets a subscript follow without `^`) | The `Index` of the `Deref`, as `r^[i]`. This corrects the route that reads the AST, which indexes the reference's own slot as though it held the array's data |
 | `S=`, `R=` | `If` on the value around an `Assign` of `TRUE` or `FALSE` |
 | `REF=` | `Assign` of a `RefTo` (already the analyzer's view) |
 | Function block call with inputs and outputs | Assignments to the instance's fields, `FbCall`, assignments from them (REQ-LOW-lowering-069) |
@@ -2471,7 +2565,7 @@ Nothing is deleted before its last reader has moved to the lowered program.
 | `SemanticContext` | Keep | None. It is lowering's input. |
 | `TypeEnvironment`, `TypeId` | Keep | Lowering builds the lowered program's type table from it. |
 | `SemanticType` (formerly `IntermediateType`) | Keep | Lowering reads it and does not carry `slot_count` into the lowered program. `slot_count` moves to the bytecode backend: it sizes strings with the container's `string_region_size`, which is VM layout. The byte offsets, sizes and alignments it once computed for fields are removed: nothing read them. |
-| `xform_insert_implicit_conversions` | Keep and extend | Records every implicit conversion and the type of every untyped literal (ADR-0056). It already records most of them; [issue 2050](https://github.com/ironplc/ironplc/issues/2050) finishes the rest. It is the recording pass (see [Names](#names)). |
+| `xform_insert_implicit_conversions` | Keep | Records every implicit conversion and the type of every untyped literal (ADR-0056), in every context but a directly represented variable, which no route compiles yet. It is the recording pass (see [Names](#names)). |
 | `rule_constant_range` | Keep | It runs after the recording pass. It checks a literal against its recorded type, and reads through a conversion to check against the operand types as written (see [Decisions](#4-decisions)). |
 | `intermediates/` | Keep | Its signatures carry the `BuiltinFunction` identity. |
 | `FunctionEnvironment` | Keep | Signatures of built-in functions name their `BuiltinFunction` (REQ-LOW-analyzer-070). |
@@ -2491,6 +2585,14 @@ Nothing is deleted before its last reader has moved to the lowered program.
 | `var_types`, `types`, `block_members`, `operand_names`, `intrinsics`, `compiler_options`, `string_to_num` | Language decisions and their inputs | Move to lowering. No backend holds them. |
 | `variables`, `string_vars`, `array_vars`, `struct_vars`, `struct_array_vars`, `fb_instances`, `in_out_params`, `user_functions`, `user_fb_types`, `next_user_fb_type_id` | Storage layout | Keep in the bytecode backend as its layout, keyed by id, immutable during emission. |
 | `constants`, `loop_labels`, `current_function_return`, `current_function_id`, `call_graph`, `data_region_offset`, `max_string_capacity`, `has_wide_string`, `debug_*` | Emission state | Keep in a smaller emit context. |
+
+**REQ-LOW-codegen-199** When every declaration of a program lowers, the
+bytecode backend compiles the program's bodies against the layout it builds
+from the lowered declarations. It keeps the layout it builds from the AST for
+a program a declaration of which does not lower, and, until the stages that
+replace them, for the entries the lowered layout does not hold: a
+structure's and an array of structures' analyzer types, and the debug
+entries.
 
 ### Other codegen types
 
@@ -2570,6 +2672,13 @@ source name, not by its slot index.
 So the tests say nothing about how the compiler is structured, and they hold
 across this change without edits. A step that needs one edited is not
 behaviour preserving.
+
+**REQ-LOW-codegen-198** While the bytecode backend builds its layout both
+from the AST and from the lowered declarations, the end-to-end helpers have
+it check the two equal for every program they compile, and an entry either
+records differently, such as a slot's number, the type it is operated at, a
+string's run of the data region or an array descriptor, fails the
+compilation.
 
 **Lowering is tested on the tree.** A decision in
 [Decisions](#4-decisions) is asserted by lowering a small program and
@@ -2841,11 +2950,10 @@ This section constrains the order of work; it is not a work breakdown.
   assignments, the arguments of functions, methods and function block calls,
   loop bounds, the results of calls and dereferences, conditions, subscripts,
   shift counts, string positions, the outputs a call stores and the types of
-  literals. The context it does not record yet, a directly
-  represented variable, comes next
-  ([issue 2050](https://github.com/ironplc/ironplc/issues/2050)). A statement
-  that needs a decision the analyzer does not record yet stays on the route
-  that reads the AST.
+  literals. The one context it does not record, a directly represented
+  variable, is one no route compiles yet (P9999). A statement that needs a
+  decision the analyzer does not record yet stays on the route that reads the
+  AST.
 - **P9998 only once unreachable.** An error path of codegen becomes a P9998 in
   lowering only once it is shown unreachable from a program analysis accepts
   (see [The Clean-Analysis Gate](#2-the-clean-analysis-gate)).
@@ -2882,9 +2990,10 @@ This section constrains the order of work; it is not a work breakdown.
 - **Storage found by name at first.** A lowered variable carries its name and
   its owning POU (REQ-LOW-lowering-006). So while both routes exist, the
   bytecode backend finds a lowered variable's storage in the layout codegen
-  builds today: through the current body's `Scope`, by name. A field of the
-  current instance is found the same way. While the VM copies fields, that is
-  the slot holding the copy (see [Instance fields](#instance-fields)). The
+  builds today: in the current body's scope (`layout/names.rs`), by name. A
+  field of the current instance is found the same way. While the VM copies
+  fields, that is the slot holding the copy (see
+  [Instance fields](#instance-fields)). The
   function a `Callee::User` calls is found by the name its POU carries, as
   the function the route that reads the AST compiled.
   REQ-LOW-codegen-122 and REQ-LOW-codegen-123 are met later. Once a POU's
@@ -2924,7 +3033,14 @@ This section constrains the order of work; it is not a work breakdown.
   `_INT` counter past the range of `INT`, and the programs that showed them
   were listed as known differences. So was a program that reads a function's
   or a method's string output, which only the lowered route compiled
-  (REQ-LOW-lowering-172).
+  (REQ-LOW-lowering-172), and one that reads a program's `VAR_TEMP` before
+  it writes it, in a scan after the first: the lowered route starts it again
+  at the head of every scan (REQ-LOW-lowering-201), where the route that read
+  the AST gave it its value once, in `init`.
+- **The layouts check each other.** While both layout builders exist, the
+  one from the lowered declarations is checked equal to the one from the AST
+  for every end-to-end program (REQ-LOW-codegen-198), before the bodies are
+  compiled against it (REQ-LOW-codegen-199).
 - **Progress could not fall.** While both routes existed, CI reported how
   many top-level statements of the end-to-end programs took the lowered
   route, and the number did not fall.
@@ -2934,7 +3050,8 @@ This section constrains the order of work; it is not a work breakdown.
 - **Behaviour preserving.** Each stage is behaviour preserving and is
   delivered as a prefactor, apart from the two corrections named under
   [Backend Contract](#7-backend-contract), the order of a function block's
-  inputs and the width of the `_INT` counters.
+  inputs, the width of the `_INT` counters, and a program's `VAR_TEMP`,
+  which starts again at the head of every scan.
   The lowered route makes those corrections by construction.
 - **Target neutrality shown early.** A minimal WebAssembly path (one
   `PROGRAM`, integer arithmetic, assignment) is built as soon as a program of

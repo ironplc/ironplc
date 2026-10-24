@@ -1,16 +1,13 @@
-//! Statement and control flow compilation for IEC 61131-3 code generation.
-//!
-//! Contains statement dispatch, control flow (IF, CASE), and function block
-//! call compilation; the loops (FOR, WHILE, REPEAT) are in `compile_loop`.
-//! Separated from compile.rs to keep module sizes within the 1000-line
-//! guideline.
+//! A body's statements, each compiled from the lowered program
+//! ([`crate::lowered`]), the source position each records for the line map,
+//! a `RETURN`, and the capacity a string declaration states.
 
 use ironplc_dsl::common::{
     FunctionBlockBodyKind, Integer, IntegerRef, StringInitializer, StringSpecification,
 };
-use ironplc_dsl::core::{Located, SourceSpan};
+use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{Statements, StmtKind};
+use ironplc_dsl::textual::Statements;
 
 use super::compile::{CompileContext, CurrentFunctionReturn, DEFAULT_STRING_MAX_LENGTH};
 use super::compile_expr::emit_load_var;
@@ -51,26 +48,15 @@ pub(crate) fn compile_statements(
     Ok(())
 }
 
-/// Records the statement's source position on the emitter so the
-/// subsequent opcode(s) get a line-map entry pointing at this
-/// statement.
+/// Records `span` as the source position of the opcodes that follow, so
+/// they get a line-map entry pointing at the statement there.
 ///
-/// Looks up the statement's `FileId` in the SOURCE_FILE_TABLE
-/// registry built at the start of compilation. If the file isn't
-/// registered (synthetic ASTs, unknown spans) or the registry has no
-/// source bytes for it (the [`crate::EmptyLookup`] case), no entry is
-/// recorded — there's no useful (line, column) to surface, and a
-/// `file_id` without a position would only confuse a debugger.
-pub(crate) fn record_statement_position(
-    emitter: &mut crate::emit::Emitter,
-    ctx: &CompileContext,
-    stmt: &StmtKind,
-) {
-    record_position(emitter, ctx, &stmt.span());
-}
-
-/// Records `span` as the source position of the opcodes that follow, as
-/// [`record_statement_position`] does for a statement.
+/// Looks up the span's `FileId` in the SOURCE_FILE_TABLE registry built at
+/// the start of compilation. If the file isn't registered (synthetic ASTs,
+/// unknown spans) or the registry has no source bytes for it (the
+/// [`crate::EmptyLookup`] case), no entry is recorded — there's no useful
+/// (line, column) to surface, and a `file_id` without a position would only
+/// confuse a debugger.
 pub(crate) fn record_position(
     emitter: &mut crate::emit::Emitter,
     ctx: &CompileContext,

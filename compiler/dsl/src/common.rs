@@ -2084,7 +2084,8 @@ pub struct VarDecl {
     pub type_id: Option<TypeId>,
     /// Whether the variable starts again at its initial value every time
     /// its POU is called -- a function's or method's `VAR`, `VAR_TEMP` and
-    /// result -- rather than once, when the program starts. Set by the
+    /// result, and the `VAR_TEMP` of any body -- rather than once, when the
+    /// program starts. A program is called once each scan. Set by the
     /// analyzer and left out of `PartialEq` like `type_id`.
     #[recurse(ignore)]
     pub reset_on_call: bool,
@@ -2519,7 +2520,10 @@ impl AddressAssignment {
 
 lazy_static! {
     static ref DIRECT_ADDRESS_UNASSIGNED: Regex = Regex::new(r"%([IQM])\*").unwrap();
-    static ref DIRECT_ADDRESS: Regex = Regex::new(r"%([IQM])([XBWDL])?(\d(\.\d)*)").unwrap();
+    // Accepts what the `DirectAddress` token accepts, so `[0-9]` rather than
+    // the Unicode-aware `\d`.
+    static ref DIRECT_ADDRESS: Regex =
+        Regex::new(r"%([IQM])([XBWDL])?([0-9](\.[0-9])*)").unwrap();
 }
 
 impl TryFrom<&str> for AddressAssignment {
@@ -2538,11 +2542,13 @@ impl TryFrom<&str> for AddressAssignment {
 
         if let Some(cap) = DIRECT_ADDRESS.captures(value) {
             let location_prefix = LocationPrefix::try_from(&cap[1])?;
-            let size_prefix = SizePrefix::try_from(&cap[2])?;
-            let pos: Vec<u32> = cap[3]
+            // The size letter is optional (`%I1`); without it the size is `Nil`.
+            let size_prefix = SizePrefix::try_from(cap.get(2).map_or("", |m| m.as_str()))?;
+            let pos = cap[3]
                 .split('.')
-                .map(|v| v.parse::<u32>().unwrap())
-                .collect();
+                .map(|v| v.parse::<u32>())
+                .collect::<Result<Vec<u32>, _>>()
+                .map_err(|_| "Address field is not a number")?;
 
             return Ok(AddressAssignment {
                 location: location_prefix,
@@ -2622,6 +2628,12 @@ pub enum InitialValueAssignmentKind {
     /// `xform_fold_initializer_expressions` before any other pass runs;
     /// no other code should ever match on this variant.
     SimpleExpr(SimpleExprInitializer),
+    /// A string initializer written as a constant expression, not yet
+    /// folded to a literal: the same extension, for a string, which has a
+    /// length that `SimpleExpr` cannot hold. Always normalized to `String`
+    /// by `xform_fold_initializer_expressions` before any other pass runs;
+    /// no other code should ever match on this variant.
+    StringExpr(StringExprInitializer),
 }
 
 /// A declaration against a user-defined type name, before the type is known.
@@ -2704,6 +2716,9 @@ impl InitialValueAssignmentKind {
             InitialValueAssignmentKind::SimpleExpr(simple_expr_initializer) => {
                 TypeReference::Named(simple_expr_initializer.type_name.clone())
             }
+            InitialValueAssignmentKind::StringExpr(string_expr_initializer) => {
+                TypeReference::Named(string_expr_initializer.type_name())
+            }
         }
     }
 
@@ -2727,7 +2742,8 @@ impl InitialValueAssignmentKind {
             | InitialValueAssignmentKind::FunctionBlockCall(_)
             | InitialValueAssignmentKind::Interface(_)
             | InitialValueAssignmentKind::LateResolvedType(_)
-            | InitialValueAssignmentKind::SimpleExpr(_) => false,
+            | InitialValueAssignmentKind::SimpleExpr(_)
+            | InitialValueAssignmentKind::StringExpr(_) => false,
         }
     }
 
@@ -2865,6 +2881,35 @@ impl StringInitializer {
             StringType::String => TypeName::from("string"),
             StringType::WString => TypeName::from("wstring"),
         }
+    }
+}
+
+/// A string variable initializer written as a constant expression (a
+/// constant's name, `s : STRING[20] := DEFAULT_NAME;`) rather than a
+/// literal: the extension [`SimpleExprInitializer`] is, for a string, which
+/// keeps a length a `SimpleInitializer` cannot hold.
+///
+/// Parsed unconditionally; `xform_fold_initializer_expressions` folds it to
+/// a [`StringInitializer`] or emits a diagnostic, depending on
+/// `allow_constant_initializer_expressions`.
+#[derive(Clone, PartialEq, Debug, Recurse, Located)]
+pub struct StringExprInitializer {
+    /// Maximum length of the string.
+    pub length: Option<IntegerRef>,
+    /// The size of a single 'character'
+    #[recurse(ignore)]
+    pub width: StringType,
+    /// The expression the initial value is written as.
+    pub initial_value: Expr,
+
+    #[located(position)]
+    pub keyword_span: SourceSpan,
+}
+
+impl StringExprInitializer {
+    /// The string type the initializer declares, by its keyword.
+    pub fn type_name(&self) -> TypeName {
+        TypeName::from(self.width.keyword())
     }
 }
 
@@ -3288,6 +3333,19 @@ mod tests {
         let span = identifier.span();
         assert_eq!(span.start, 50);
         assert_eq!(span.end, 56);
+    }
+
+    #[test]
+    fn try_from_when_no_size_prefix_then_size_is_nil() {
+        let address = AddressAssignment::try_from("%I1").unwrap();
+        assert_eq!(address.location, LocationPrefix::I);
+        assert_eq!(address.size, SizePrefix::Nil);
+        assert_eq!(address.address, vec![1]);
+    }
+
+    #[test]
+    fn try_from_when_non_ascii_digit_then_err() {
+        assert!(AddressAssignment::try_from("%IX\u{0663}").is_err());
     }
 
     #[test]

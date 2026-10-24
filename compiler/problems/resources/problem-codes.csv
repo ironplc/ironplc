@@ -158,3 +158,7 @@ P4087,BitShiftInputBool,Shift or rotate input is a BOOL rather than a multi-bit 
 P4088,ExtendsNotFunctionBlock,EXTENDS names a type that is not a declared function block
 P4089,OverrideSignatureMismatch,Method differs from the method it overrides
 P4090,OverridePropertyTypeMismatch,Property type differs from the type of the property it overrides
+P4091,ForControlTypeInvalid,FOR control variable is not an integer
+P4092,EdgeInputNotAllowed,R_EDGE or F_EDGE input is declared by a function or method
+P4093,ForStepZero,FOR step is zero
+P4094,RealLiteralInIntegerPosition,FOR bound or step or array subscript is a real literal rather than an integer

@@ -5,15 +5,15 @@ use ironplc_parser::options::CompilerOptions;
 
 use crate::common::{bc, compile_analyzed, parse, Snapshot};
 
-/// A statement lowering does not support yet, a whole array of structures
-/// copied, is a P9999.
+/// A statement lowering does not support yet, a structure copied into an
+/// element of an array of structures, is a P9999.
 #[test]
 fn compile_when_statement_unsupported_then_not_implemented() {
     let source = "
 TYPE P : STRUCT x : DINT; END_STRUCT; END_TYPE
 PROGRAM main
-  VAR ps : ARRAY[1..2] OF P; ps2 : ARRAY[1..2] OF P; END_VAR
-  ps := ps2;
+  VAR arr : ARRAY[1..2] OF P; one : P; END_VAR
+  arr[1] := one;
 END_PROGRAM
 ";
     let options = CompilerOptions::default();

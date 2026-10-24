@@ -404,9 +404,14 @@ pub(crate) fn compile_constant(
                 emitter.emit_load_const_f64(pool_index);
                 Ok(())
             }
-            _ => Err(Diagnostic::not_implemented(Label::span(
+            // The analyzer rejects a real literal where an integer is
+            // required: an assignment (P4035), an operand (P4049), an
+            // argument (P4026), a `CASE` selector (P4053), and a `FOR` bound
+            // or an array subscript (P4094). A real literal compiled at an
+            // integer width is a shape analysis let through.
+            OpWidth::W32 | OpWidth::W64 => Err(Diagnostic::internal_error_at(Label::span(
                 lit.span.clone(),
-                "Real literal in a non-floating-point context",
+                "Real literal compiled at an integer width",
             ))),
         },
         ConstantKind::Boolean(lit) => {

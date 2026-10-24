@@ -11,8 +11,10 @@
 //! names a constant, is not.
 //!
 //! Each subscript list is checked against the dimensions of the array it
-//! subscripts: in `a[1][2]`, `2` against the element type of `a`. A list whose
-//! length differs from the number of dimensions is not this rule's to judge.
+//! subscripts: in `a[1][2]`, `2` against the element type of `a`, and in
+//! `p[6]` or `p^[6]` on a reference to an array, against the array it refers
+//! to. A list whose length differs from the number of dimensions is not this
+//! rule's to judge.
 //!
 //! See section 2.4.1.2.
 //!
@@ -58,7 +60,7 @@ use crate::{
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
-    semantic_type::{ArrayDimension, SemanticType},
+    semantic_type::ArrayDimension,
     symbol_environment::ScopeTracker,
     variable_type,
 };
@@ -92,37 +94,30 @@ impl DiagnosticVisitor for RuleArrayIndexRange<'_> {
     }
 }
 
-impl<'a> RuleArrayIndexRange<'a> {
+impl RuleArrayIndexRange<'_> {
     /// Checks each literal subscript of `node` against its dimension of the
-    /// array `node` subscripts.
+    /// array `node` subscripts, through a reference to it.
     fn check(&mut self, node: &ArrayVariable) {
-        let Some(SemanticType::Array { dimensions, .. }) =
-            self.subscripted_type(&node.subscripted_variable)
-        else {
+        let types = self.context.types();
+        let Some(subscripted) = variable_type::subscripted_type_id(
+            node,
+            self.context.symbols(),
+            types,
+            &self.scope.current(),
+        ) else {
             return;
         };
         // An array of unknown size (`ARRAY[*]`) has no dimensions to check.
-        if dimensions.is_empty() || dimensions.len() != node.subscripts.len() {
+        let Some(dimensions) = variable_type::array_dimensions(subscripted, types) else {
+            return;
+        };
+        if dimensions.len() != node.subscripts.len() {
             return;
         }
         for (subscript, dimension) in node.subscripts.iter().zip(dimensions) {
             if let ExprKind::Const(ConstantKind::IntegerLiteral(literal)) = &subscript.kind {
                 self.check_literal(literal, dimension);
             }
-        }
-    }
-
-    /// The type of the variable a subscript list applies to.
-    ///
-    /// `variable_type::of` answers a dereference with the reference's own
-    /// type, so `p^[6]` is checked against the type `p` refers to.
-    fn subscripted_type(&self, kind: &SymbolicVariableKind) -> Option<&'a SemanticType> {
-        let subscripted = variable_type::of(kind, self.context, &self.scope.current())?;
-        match (kind, subscripted) {
-            (SymbolicVariableKind::Deref(_), SemanticType::Reference { target_type }) => {
-                Some(target_type)
-            }
-            (_, subscripted) => Some(subscripted),
         }
     }
 
@@ -174,6 +169,7 @@ mod tests {
     use crate::test_helpers::{codes, rule_codes};
     use ironplc_parser::options::CompilerOptions;
     use rstest::rstest;
+    use spec_test_macro::spec_test;
 
     use super::*;
 
@@ -358,22 +354,29 @@ END_PROGRAM",
         [Problem::ArrayIndexOutOfBounds]
     );
 
-    rule_err!(
-        apply_when_array_through_reference_then_err,
-        "PROGRAM main
-VAR
-    a : ARRAY[1..5] OF INT;
-    p : REF_TO ARRAY[1..5] OF INT;
-END_VAR
-    p := REF(a);
-    p^[6] := 1;
-END_PROGRAM",
-        [Problem::ArrayIndexOutOfBounds],
-        CompilerOptions {
+    /// REQ-ETR-analyzer-010: a list on a reference to an array is checked
+    /// against the array it refers to, with and without `^`.
+    #[spec_test(REQ_ETR_analyzer_010)]
+    #[rstest]
+    #[case::dereference("p^[6]", OUT_OF_BOUNDS)]
+    #[case::reference("p[6]", OUT_OF_BOUNDS)]
+    #[case::reference_to("r[6]", OUT_OF_BOUNDS)]
+    #[case::reference_in_range("p[5]", OK)]
+    fn apply_when_array_through_reference_then_checked_against_referenced_array(
+        #[case] access: &str,
+        #[case] expected: &[Problem],
+    ) {
+        let program = reading(
+            "p : REF_TO ARRAY[1..5] OF INT; r : REFERENCE TO ARRAY[1..5] OF INT;",
+            access,
+        );
+        let options = CompilerOptions {
             allow_ref_to: true,
+            allow_reference_to: true,
             ..CompilerOptions::default()
-        }
-    );
+        };
+        assert_eq!(rule_codes(apply, &program, &options), codes(expected));
+    }
 
     rule_err!(
         apply_when_function_local_array_then_err,

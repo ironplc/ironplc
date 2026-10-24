@@ -27,7 +27,7 @@ use ironplc_ir::lowered::{
 use ironplc_lowering::PartialProgram;
 
 use super::expr::emit_expr;
-use super::{constant, instance_field, op_type};
+use super::{constant, instance_field, op_type, seen_name};
 use crate::compile::{CompileContext, OpWidth, VarTypeInfo};
 use crate::compile_place::Place;
 use crate::compile_string_place::StringPlace;
@@ -168,6 +168,25 @@ pub(super) fn field_path(
     }
 }
 
+/// The name of the reference variable `place` is what it refers to, `p^`,
+/// as this backend's layout knows it. `None` for any other place, and for a
+/// reference in a `VAR_IN_OUT` parameter, whose slot holds a reference to
+/// the reference.
+pub(super) fn referenced_by(
+    lowering: &PartialProgram,
+    ctx: &CompileContext,
+    place: &LoweredPlace,
+) -> Option<Id> {
+    let SymbolicVariableKind::Deref(deref) = reference(lowering, ctx, place, &mut Vec::new())?
+    else {
+        return None;
+    };
+    let SymbolicVariableKind::Named(named) = *deref.variable else {
+        return None;
+    };
+    (!ctx.is_in_out(&named.name)).then_some(named.name)
+}
+
 /// Whether `expr` reads a field of an instance of a standard function block:
 /// an instance this backend reaches by name, of no user-defined block's type.
 ///
@@ -225,7 +244,9 @@ pub(super) fn instance_slot<'l>(
 }
 
 /// Where codegen's layout stores the string `place`: a string variable, an
-/// element of a string array or a string field of a structure.
+/// element of a string array or a string field of a structure, or the string
+/// a reference variable refers to, `rs^` or `rsa^[i]`, reached through the
+/// reference.
 pub(super) fn resolve_string<'l>(
     lowering: &'l PartialProgram,
     ctx: &CompileContext,
@@ -236,11 +257,13 @@ pub(super) fn resolve_string<'l>(
     let reference =
         reference(lowering, ctx, place, &mut subscripts).ok_or_else(|| no_storage(span))?;
     let reference = Variable::Symbolic(reference);
-    StringPlace::resolve(ctx, &reference)?
-        .ok_or_else(|| no_storage(span))?
-        .try_map_subscripts(|placeholder| {
-            lowered_subscript(lowering, &subscripts, placeholder, span)
-        })
+    let string = match StringPlace::through_reference(ctx, &reference) {
+        Some(string) => string,
+        None => StringPlace::resolve(ctx, &reference)?.ok_or_else(|| no_storage(span))?,
+    };
+    string.try_map_subscripts(|placeholder| {
+        lowered_subscript(lowering, &subscripts, placeholder, span)
+    })
 }
 
 /// The lowered subscript the literal `placeholder` stands for: the one at
@@ -277,8 +300,19 @@ fn reference<'l>(
     let (mut reference, mut ty, path) = match instance_field(lowering, root.ty(), place.path()) {
         // A field of the current instance, which codegen copies into a slot
         // of the field's name.
-        Some((field, rest)) => (named(&field.name.to_string()), field.ty, rest),
-        None => (named(&root.name().to_string()), root.ty(), place.path()),
+        Some((instance, field, rest)) => {
+            let declared = types.fields(instance)?.get(field.index() as usize)?;
+            (
+                named(ctx.lowered_ids.field(instance, field)?),
+                declared.ty,
+                rest,
+            )
+        }
+        None => (
+            named(seen_name(ctx, place.root())?),
+            root.ty(),
+            place.path(),
+        ),
     };
     for projection in path {
         reference = match projection {
@@ -315,7 +349,7 @@ fn reference<'l>(
                     Nullability::Nullable => SymbolicVariableKind::Deref(DerefVariable {
                         variable: Box::new(reference),
                     }),
-                    Nullability::NonNull => by_reference(lowering, ctx, root, reference)?,
+                    Nullability::NonNull => by_reference(ctx, root, reference)?,
                 }
             }
         };
@@ -330,7 +364,6 @@ fn reference<'l>(
 /// the function returns (ADR-0046). They are the only non-null references
 /// this backend follows outside a body's instance parameter.
 fn by_reference(
-    lowering: &PartialProgram,
     ctx: &CompileContext,
     root: &LoweredVariable,
     reference: SymbolicVariableKind,
@@ -347,13 +380,13 @@ fn by_reference(
     let Owner::Pou(owner) = root.owner() else {
         return None;
     };
-    let compiled = super::is_current_body(lowering, ctx, owner);
+    let compiled = super::is_current_body(ctx, owner);
     (compiled && ctx.has_slot(&named.name)).then_some(reference)
 }
 
 /// What this backend knows a value of the lowered type `ty` as: the type it
 /// is operated at, and the width a store narrows it to.
-fn type_info(types: &TypeTable, ty: TypeId) -> Option<VarTypeInfo> {
+pub(crate) fn type_info(types: &TypeTable, ty: TypeId) -> Option<VarTypeInfo> {
     let (op_width, signedness) = op_type(types.operation_type(ty)?)?;
     let storage_bits = match types.narrowed_storage(ty) {
         Some(narrow) => narrow.bits(),
@@ -369,8 +402,6 @@ fn type_info(types: &TypeTable, ty: TypeId) -> Option<VarTypeInfo> {
     })
 }
 
-fn named(name: &str) -> SymbolicVariableKind {
-    SymbolicVariableKind::Named(NamedVariable {
-        name: Id::from(name),
-    })
+fn named(name: &Id) -> SymbolicVariableKind {
+    SymbolicVariableKind::Named(NamedVariable { name: name.clone() })
 }

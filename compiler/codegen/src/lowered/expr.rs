@@ -128,7 +128,7 @@ pub(super) fn emit_expr(
             callee: Callee::User(pou),
             args,
         } => {
-            if let Some(function) = user_function(lowering, ctx, *pou) {
+            if let Some(function) = user_function(ctx, *pou) {
                 emit_user_call(emitter, ctx, lowering, &function, args, expr.span())?;
             } else {
                 // `can_emit` rejects a call of a function or method this

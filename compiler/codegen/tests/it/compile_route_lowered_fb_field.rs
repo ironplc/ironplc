@@ -100,6 +100,24 @@ fn compile_when_block_field_of_any_type_lowered_then_compiles(#[case] statement:
     assert_compiles(&source);
 }
 
+/// A block's string declared through a type alias has a run of the data
+/// region, as one declared `STRING[20]` does, and an assignment to it in the
+/// block's body lowers and compiles (REQ-LOW-codegen-199).
+#[test]
+fn compile_when_block_string_through_alias_then_compiles() {
+    assert_compiles(
+        "TYPE Name : STRING[20]; END_TYPE
+         FUNCTION_BLOCK B
+           VAR s : Name; END_VAR
+           s := 'abc';
+         END_FUNCTION_BLOCK
+         PROGRAM main
+           VAR f : B; END_VAR
+           f();
+         END_PROGRAM",
+    );
+}
+
 /// A block with string, wide-string, structure and array fields, whose body
 /// reads none of them: this backend does not reach what such a field of
 /// another instance holds. The string fields of a block hold no string yet

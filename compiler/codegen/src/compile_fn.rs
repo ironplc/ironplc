@@ -5,50 +5,95 @@
 //! Separated from compile.rs to keep module sizes within the 1000-line guideline.
 
 use ironplc_container::debug_section::{iec_type_tag, VarNameEntry};
-use ironplc_container::{ContainerBuilder, FunctionId, VarIndex};
+use ironplc_container::{CharWidth, FunctionId, VarIndex};
 use ironplc_dsl::common::{
-    FunctionBlockDeclaration, FunctionDeclaration, InitialValueAssignmentKind, StringInitializer,
-    VarDecl, VariableType,
+    FunctionBlockDeclaration, FunctionDeclaration, InitialValueAssignmentKind, VarDecl,
+    VariableType,
 };
-use ironplc_dsl::core::{Id, Located};
+use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_dsl::type_id::TypeId;
 
-use ironplc_analyzer::TypeEnvironment;
+use ironplc_analyzer::{SemanticType, TypeEnvironment};
 
 use super::compile::{
     char_width_for_string_type, finalize_function, string_region_size, CompileContext,
-    CompiledFunction, CurrentBody, CurrentFunctionReturn, ParamPassing, StringParamInfo,
-    StringVarInfo, VarTypeInfo,
+    CompiledFunction, CurrentFunctionReturn, ParamPassing, StringParamInfo, StringVarInfo,
+    VarTypeInfo, DEFAULT_STRING_MAX_LENGTH,
 };
 use super::compile_expr::emit_load_var;
 use super::compile_setup::emit_function_local_prologue;
 use super::compile_stmt::{compile_body, compile_statements, resolve_string_max_length};
+use super::layout::names::ScopeId;
 use super::layout::{debug_type_for_decl, map_var_section, FunctionLayout};
-use super::scope::Scope;
-use super::type_info::{decl_type_info, resolve_type_name};
+use super::type_info::resolve_type_name;
 use crate::emit::Emitter;
 
 /// Reserves the run of the data region the string variable `id`, which
-/// `string_init` declares, is held in, and records it in `ctx.string_vars`.
-/// Every declared string of a function, function block or method is held
-/// in a run of its own, sized to its declared capacity.
+/// `decl` declares, is held in, and records it in `ctx.string_vars`, when
+/// `decl` declares a string. Every declared string of a function, function
+/// block or method is held in a run of its own, sized to its declared
+/// capacity.
 #[track_caller]
-pub(crate) fn register_string_variable(
+pub(crate) fn register_declared_string(
     ctx: &mut CompileContext,
     id: &Id,
-    string_init: &StringInitializer,
+    decl: &VarDecl,
 ) -> Result<(), Diagnostic> {
-    let max_length = resolve_string_max_length(string_init)?;
-    let char_width = char_width_for_string_type(&string_init.width);
+    let (max_length, char_width, span) =
+        if let InitialValueAssignmentKind::String(string_init) = &decl.initializer {
+            (
+                resolve_string_max_length(string_init)?,
+                char_width_for_string_type(&string_init.width),
+                string_init.span(),
+            )
+        } else if let Some((max_length, char_width)) = aliased_string(ctx, decl.type_id) {
+            (max_length, char_width, decl.identifier.span())
+        } else {
+            return Ok(());
+        };
+    register_string(ctx, id, max_length, char_width, &span)?;
+    Ok(())
+}
 
+/// The capacity and character width of the string type `type_id` names,
+/// when it is a type alias of a string (`TYPE Name : STRING[20]; END_TYPE`),
+/// which the analyzer resolves to the string type it names. `None` for any
+/// other type.
+pub(crate) fn aliased_string(
+    ctx: &CompileContext,
+    type_id: Option<TypeId>,
+) -> Option<(u16, CharWidth)> {
+    let Some(SemanticType::String {
+        max_len,
+        char_width,
+    }) = type_id.and_then(|id| ctx.types.get(&id))
+    else {
+        return None;
+    };
+    let max_length = max_len.map_or(DEFAULT_STRING_MAX_LENGTH, |len| len as u16);
+    Some((max_length, *char_width))
+}
+
+/// Reserves a run of the data region for a string of `max_length` code
+/// units of `char_width`, records it in `ctx.string_vars` as `id`'s, and
+/// returns its offset.
+pub(crate) fn register_string(
+    ctx: &mut CompileContext,
+    id: &Id,
+    max_length: u16,
+    char_width: CharWidth,
+    span: &SourceSpan,
+) -> Result<u32, Diagnostic> {
     let total_bytes = string_region_size(max_length, char_width);
-    let data_offset = crate::data_region::reserve(ctx, total_bytes, &string_init.span())?;
+    let data_offset = crate::data_region::reserve(ctx, total_bytes, span)?;
 
     if max_length > ctx.max_string_capacity {
         ctx.max_string_capacity = max_length;
     }
 
     ctx.string_vars.insert(
+        ctx.scope,
         id.clone(),
         StringVarInfo {
             data_offset,
@@ -56,7 +101,7 @@ pub(crate) fn register_string_variable(
             char_width,
         },
     );
-    Ok(())
+    Ok(data_offset)
 }
 
 /// How a call site passes an argument to the input parameter `decl`
@@ -67,13 +112,12 @@ pub(crate) fn param_passing(ctx: &CompileContext, decl: &VarDecl) -> ParamPassin
     if decl.var_type == VariableType::InOut {
         return ParamPassing::Reference;
     }
-    let string = match &decl.initializer {
-        InitialValueAssignmentKind::String(_) => decl
-            .identifier
-            .symbolic_id()
-            .and_then(|id| ctx.string_var(id)),
-        _ => None,
-    };
+    let declares_string = matches!(decl.initializer, InitialValueAssignmentKind::String(_))
+        || aliased_string(ctx, decl.type_id).is_some();
+    let string = declares_string
+        .then(|| decl.identifier.symbolic_id())
+        .flatten()
+        .and_then(|id| ctx.string_var(id));
     string.map_or(ParamPassing::Value, |info| {
         ParamPassing::String(StringParamInfo {
             data_offset: info.data_offset,
@@ -134,8 +178,8 @@ pub(crate) fn in_out_value_type(decl: &VarDecl) -> Result<VarTypeInfo, Diagnosti
 }
 
 /// Compiles the body of the user function `func_decl`, which `layout` lays
-/// out, against the function's own variable mappings; the program's are put
-/// back once the body is compiled.
+/// out, in the function's scope; the caller's is current again once the
+/// body is compiled.
 pub(crate) fn compile_user_function(
     func_decl: &FunctionDeclaration,
     layout: FunctionLayout,
@@ -150,7 +194,7 @@ pub(crate) fn compile_user_function(
         return_op_type,
         return_string_info,
     } = layout;
-    let program_scope = ctx.swap_scope(scope);
+    let caller = std::mem::replace(&mut ctx.scope, scope);
 
     let mut func_emitter = Emitter::new();
 
@@ -158,15 +202,22 @@ pub(crate) fn compile_user_function(
     // the locals the analyzer flags, and the result, start again at their
     // resolved values on every call. The flat variable table (ADR-0046)
     // retains stale values between calls otherwise.
-    emit_function_local_prologue(
+    if !crate::lowered::try_emit_prologue(
         &mut func_emitter,
         ctx,
         &func_decl.variables,
-        Some(&func_decl.result),
-        &func_decl.name,
-        return_var_index,
-        return_op_type,
-    )?;
+        Some(&func_decl.name),
+    )? {
+        emit_function_local_prologue(
+            &mut func_emitter,
+            ctx,
+            &func_decl.variables,
+            Some(&func_decl.result),
+            &func_decl.name,
+            return_var_index,
+            return_op_type,
+        )?;
+    }
 
     let body = ironplc_dsl::textual::Statements {
         body: func_decl.body.clone(),
@@ -193,11 +244,7 @@ pub(crate) fn compile_user_function(
     let saved_current_fn = ctx.current_function_id.take();
     ctx.current_function_id = Some(function_id);
 
-    let saved_body = ctx
-        .current_body
-        .replace(CurrentBody::Pou(func_decl.name.clone()));
     compile_statements(&mut func_emitter, ctx, &body)?;
-    ctx.current_body = saved_body;
 
     ctx.current_function_id = saved_current_fn;
     ctx.current_function_return = saved_return_ctx;
@@ -218,8 +265,10 @@ pub(crate) fn compile_user_function(
     ctx.function_stack_depths
         .insert(function_id, finalized.max_stack_depth);
 
-    // Restore the program's variable mappings.
-    ctx.swap_scope(program_scope);
+    let name = crate::lowered::pou_name(ctx, ctx.scope)
+        .map(|name| name.to_lowercase())
+        .unwrap_or_else(|| func_decl.name.lower_case().to_string());
+    ctx.scope = caller;
 
     Ok(CompiledFunction {
         function_id,
@@ -228,85 +277,26 @@ pub(crate) fn compile_user_function(
         max_temp_depth: finalized.max_temp_depth,
         num_locals,
         num_params,
-        name: func_decl.name.lower_case().to_string(),
+        name,
         line_map: finalized.line_map,
     })
 }
 
-/// Compiles a single user-defined function block body.
-///
-/// Saves and restores the context's variable mappings so that FB-local
-/// variables don't interfere with the program's namespace.
-///
-/// All FB fields (VAR_INPUT, VAR_OUTPUT, VAR) are mapped to contiguous
-/// variable table slots starting at `var_offset`, in declaration order.
-/// The VM's copy-in/copy-out logic mirrors this ordering.
+/// Compiles the body of the user function block `fb_decl`, whose id is
+/// `function_id` and whose `num_locals` copy slots the layout gave it, in
+/// the block's scope, `scope`; the caller's is current again once the body
+/// is compiled.
 pub(crate) fn compile_user_function_block(
     fb_decl: &FunctionBlockDeclaration,
     function_id: FunctionId,
-    var_offset: u16,
+    scope: ScopeId,
+    num_locals: u16,
     ctx: &mut CompileContext,
-    builder: &mut ContainerBuilder,
-    types: &TypeEnvironment,
-    num_globals: u16,
-) -> Result<(CompiledFunction, Scope), Diagnostic> {
-    let fb_name = fb_decl.name.name.to_string().to_uppercase();
-
-    // Collect fields in a stable order: inputs first, then outputs, then locals.
-    // This matches the data-region layout used by the VM's copy-in/copy-out.
-    let mut field_decls: Vec<&VarDecl> = Vec::new();
-    for decl in &fb_decl.variables {
-        if decl.var_type == VariableType::Input {
-            field_decls.push(decl);
-        }
-    }
-    for decl in &fb_decl.variables {
-        if decl.var_type == VariableType::Output {
-            field_decls.push(decl);
-        }
-    }
-    for decl in &fb_decl.variables {
-        if decl.var_type == VariableType::Var {
-            field_decls.push(decl);
-        }
-    }
-
-    // Swap the program's variable mappings for the FB type's own.
-    let program_scope = ctx.swap_scope(Scope::default());
-    ctx.swap_scope(Scope::for_fb_body(&program_scope, num_globals));
-
-    // Assign variable slots for all FB fields, in the same order as field_decls.
-    let mut current_index = VarIndex::new(var_offset);
-    for decl in &field_decls {
-        if let Some(id) = decl.identifier.symbolic_id() {
-            ctx.variables.insert(id.clone(), current_index);
-            push_local_var_name(ctx, current_index, function_id, decl, id, types);
-            // A field operates at its declared type, as a function's local
-            // does.
-            if let Some(type_info) = decl_type_info(ctx, decl) {
-                ctx.var_types.insert(id.clone(), type_info);
-            }
-            match &decl.initializer {
-                InitialValueAssignmentKind::Reference(ref_init) => {
-                    crate::compile_reference::register_reference_variable(
-                        ctx,
-                        builder,
-                        types,
-                        id,
-                        current_index,
-                        ref_init,
-                    )?;
-                }
-                InitialValueAssignmentKind::String(string_init) => {
-                    register_string_variable(ctx, id, string_init)?;
-                }
-                _ => {}
-            }
-            current_index = VarIndex::new(current_index.raw() + 1);
-        }
-    }
-
-    let num_locals = current_index.raw() - var_offset;
+) -> Result<CompiledFunction, Diagnostic> {
+    let caller = std::mem::replace(&mut ctx.scope, scope);
+    let fb_name = crate::lowered::pou_name(ctx, scope)
+        .unwrap_or_else(|| fb_decl.name.name.to_string())
+        .to_uppercase();
 
     // Compile the FB body.
     // Mark this FB's body as the current caller so nested CALL / FB_CALL
@@ -316,36 +306,28 @@ pub(crate) fn compile_user_function_block(
     ctx.current_function_id = Some(function_id);
 
     let mut fb_emitter = Emitter::new();
-    let saved_body = ctx
-        .current_body
-        .replace(CurrentBody::Pou(fb_decl.name.name.clone()));
+    // A `VAR_TEMP` starts again on every call, from the lowered program; the
+    // AST gives a function block's none.
+    if crate::lowered::restarts(&fb_decl.variables) {
+        crate::lowered::try_emit_prologue(&mut fb_emitter, ctx, &fb_decl.variables, None)?;
+    }
     compile_body(&mut fb_emitter, ctx, &fb_decl.body, &fb_decl.name.span())?;
-    ctx.current_body = saved_body;
     fb_emitter.emit_ret_void();
 
     ctx.current_function_id = saved_current_fn;
 
     let finalized = finalize_function(&mut fb_emitter, ctx)?;
 
-    // Note: `ctx`'s variable mappings are intentionally NOT restored
-    // here (unlike `compile_user_function`). This type's METHODs (OOP
-    // extension, ADR-0041 Phase 1) are compiled next, right after this
-    // function returns, and need `ctx.variables` to still hold this
-    // type's field mappings for `self` access. The program-level scope is
-    // returned instead, and the caller (`compile_program_with_functions`)
-    // swaps it back in once both this body and its methods are compiled.
+    ctx.scope = caller;
 
-    Ok((
-        CompiledFunction {
-            function_id,
-            bytecode: finalized.bytecode,
-            max_stack_depth: finalized.max_stack_depth,
-            max_temp_depth: finalized.max_temp_depth,
-            num_locals,
-            num_params: 0,
-            name: fb_name,
-            line_map: finalized.line_map,
-        },
-        program_scope,
-    ))
+    Ok(CompiledFunction {
+        function_id,
+        bytecode: finalized.bytecode,
+        max_stack_depth: finalized.max_stack_depth,
+        max_temp_depth: finalized.max_temp_depth,
+        num_locals,
+        num_params: 0,
+        name: fb_name,
+        line_map: finalized.line_map,
+    })
 }

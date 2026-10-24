@@ -457,11 +457,7 @@ pub(crate) fn allocate_struct_variable(
                     let scratch_idx = ctx.allocate_scratch_variable(&id.to_string());
                     scratch_var_index = Some(scratch_idx);
                 }
-                let element_field_type = if char_width.is_wide() {
-                    FieldType::WString
-                } else {
-                    FieldType::String
-                };
+                let element_field_type = FieldType::string(*char_width);
                 let str_desc_index = builder.add_array_descriptor(
                     element_field_type as u8,
                     total_elements,
@@ -496,6 +492,7 @@ pub(crate) fn allocate_struct_variable(
 
     // Store metadata
     ctx.struct_vars.insert(
+        ctx.scope,
         id.clone(),
         StructVarInfo {
             var_index: index,

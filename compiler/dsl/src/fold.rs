@@ -205,6 +205,7 @@ pub trait Fold<E> {
 
     // 2.4.3.1 and 2.4.3.2
     dispatch!(StringInitializer);
+    dispatch!(StringExprInitializer);
 
     // 2.4.3.2
     dispatch!(EnumeratedValuesInitializer);

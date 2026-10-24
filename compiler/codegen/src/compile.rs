@@ -52,7 +52,7 @@ use ironplc_container::{
 pub(crate) use ironplc_container::{string_region_size, DEFAULT_STRING_MAX_LENGTH};
 use ironplc_dsl::common::{
     FunctionBlockDeclaration, FunctionDeclaration, LibraryElementKind, ProgramDeclaration,
-    StringType, VarDecl, VariableType,
+    StringType, VarDecl,
 };
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -65,8 +65,11 @@ use ironplc_analyzer::{
 
 use crate::emit::Emitter;
 use crate::held_instances::{HeldField, HeldInstance};
+use crate::layout::names::{self, ScopeId, Scoped};
 
 use super::compile_fn::{compile_user_function, compile_user_function_block};
+use super::compile_method::compile_user_method;
+use super::layout::BlockLayout;
 use ironplc_ir::execution::SystemGlobal;
 
 use super::compile_setup::emit_initial_values;
@@ -93,7 +96,7 @@ pub(crate) enum Signedness {
 }
 
 /// Type information for a variable, used to select the correct opcodes.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct VarTypeInfo {
     /// The native operation width (i32 or i64).
     pub(crate) op_width: OpWidth,
@@ -142,7 +145,7 @@ pub(crate) enum PoolConstant {
 }
 
 /// Metadata for a STRING/WSTRING variable allocated in the data region.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct StringVarInfo {
     /// Byte offset into the data region where this string starts.
     pub(crate) data_offset: u32,
@@ -215,6 +218,11 @@ pub struct CodegenOptions {
     /// The behavior policies `STRING_TO_<numeric>` calls are compiled under
     /// (ADR-0049). They select the builtin func_id the call emits.
     pub string_to_num: StringToNumPolicies,
+    /// Whether the layout built from the lowered declarations is checked
+    /// equal to the one built from the AST, which the bodies are compiled
+    /// against, while both builders exist; a difference fails the
+    /// compilation. For the test suite.
+    pub check_layout: bool,
 }
 
 /// The two behavior policies of a `STRING_TO_<numeric>` conversion.
@@ -231,6 +239,7 @@ impl From<&CompilerOptions> for CodegenOptions {
                 non_numeric: options.policy_string_to_num_non_numeric,
                 failure: options.policy_string_to_num_failure,
             },
+            check_layout: false,
         }
     }
 }
@@ -251,7 +260,7 @@ impl From<&CompilerOptions> for CodegenOptions {
 pub fn compile(
     analysis: CleanAnalysis<'_>,
     options: &CodegenOptions,
-    sources: &dyn crate::source_lookup::SourceLookup,
+    sources: &dyn ironplc_ir::source::SourceLookup,
 ) -> Result<Container, Diagnostic> {
     // Lowering completes every initializer on a copy, and reads the program
     // and globals from it; the analyzed library stays as written
@@ -299,7 +308,7 @@ pub fn compile(
 
     let method_owners = MethodOwners::of_library(library, context.types());
     let parse = crate::lowered::parse_policy(&options.string_to_num);
-    let lowering = crate::lowered::lower(|| {
+    let lowered_route = crate::lowered::LoweredRoute::new(options.check_layout, || {
         ironplc_lowering::Lowering::new(&analysis, parse).lower_program()
     })?;
     let mut container = compile_program_with_functions(
@@ -316,7 +325,7 @@ pub fn compile(
         options.string_to_num,
         *context.compiler_options(),
         sources,
-        lowering,
+        lowered_route,
     )?;
 
     if runnable.has_system_uptime {
@@ -328,14 +337,16 @@ pub fn compile(
     Ok(container)
 }
 
-/// Idempotently registers a POU's source file with the debug section's
-/// SOURCE_FILE_TABLE. Called from `compile_program_with_functions` for
-/// each top-level program / function / function-block declaration.
+/// Idempotently registers the source file of the POU whose name is at
+/// `span` with the debug section's SOURCE_FILE_TABLE. Called from
+/// `compile_program_with_functions` for the program and each function and
+/// function block.
 fn register_pou_source_file(
     ctx: &mut CompileContext,
-    file_id: &ironplc_dsl::core::FileId,
-    sources: &dyn crate::source_lookup::SourceLookup,
+    span: &SourceSpan,
+    sources: &dyn ironplc_ir::source::SourceLookup,
 ) {
+    let file_id = &span.file_id;
     if ctx.debug_source_files.get(file_id).is_some() {
         return;
     }
@@ -481,8 +492,8 @@ fn compile_program_with_functions(
     types: &TypeEnvironment,
     string_to_num: StringToNumPolicies,
     compiler_options: CompilerOptions,
-    sources: &dyn crate::source_lookup::SourceLookup,
-    lowering: ironplc_lowering::PartialProgram,
+    sources: &dyn ironplc_ir::source::SourceLookup,
+    lowered_route: crate::lowered::LoweredRoute,
 ) -> Result<Container, Diagnostic> {
     let ProgramInputs {
         program,
@@ -493,7 +504,7 @@ fn compile_program_with_functions(
         method_owners,
     } = inputs;
     let mut ctx = CompileContext::new();
-    ctx.lowering = Some(lowering);
+    ctx.lowered_route = Some(lowered_route);
     ctx.types = crate::type_info::type_representations(types);
     ctx.block_members = ironplc_lowering::initial_value::block_members(types);
     ctx.operand_names = crate::type_info::operand_names(types);
@@ -512,150 +523,37 @@ fn compile_program_with_functions(
     // registration order (program first, then functions, then FB
     // bodies) determines the `file_id` numbering, which appears in
     // the on-disk container.
-    register_pou_source_file(&mut ctx, &program.name.span.file_id, sources);
-    for f in func_decls {
-        register_pou_source_file(&mut ctx, &f.name.span.file_id, sources);
-    }
-    for fb in fb_decls {
-        register_pou_source_file(&mut ctx, &fb.name.name.span.file_id, sources);
+    // The lowered program names the POUs and their spans when the route
+    // compiles from it.
+    let pou_spans = ctx
+        .lowered_route
+        .as_ref()
+        .and_then(|route| crate::layout::lowered::source_spans(route.lowering(), &program.name))
+        .unwrap_or_else(|| {
+            std::iter::once(program.name.span())
+                .chain(func_decls.iter().map(|f| f.name.span()))
+                .chain(fb_decls.iter().map(|fb| fb.name.name.span()))
+                .collect()
+        });
+    for span in &pou_spans {
+        register_pou_source_file(&mut ctx, span, sources);
     }
 
     // Lay out the globals first (indices 0..G), the compiler-provided
     // globals before any other.
     crate::layout::lay_out_globals(&mut ctx, &mut builder, system_globals, global_vars, types)?;
-    let num_globals = ctx.variables.len() as u16;
 
-    // Pre-scan user-defined FB declarations to register type metadata
-    // (field indices, field op types, type IDs) before the program's
-    // variables are laid out, so that its user-defined FB instances resolve.
-    // The actual FB body compilation happens after program-local variables are
-    // assigned, once var_offsets are known.
-    let mut compiled_fb_bodies: Vec<CompiledFunction> = Vec::new();
-
-    for (next_function_id, fb_decl) in (2_u16..).zip(fb_decls.iter()) {
-        let fb_name = fb_decl.name.name.to_string().to_uppercase();
-        let mut field_indices: HashMap<String, u8> = HashMap::new();
-        let mut field_types: HashMap<String, VarTypeInfo> = HashMap::new();
-        let mut held_fields = Vec::new();
-        let mut field_decls_tmp: Vec<&VarDecl> = Vec::new();
-
-        for decl in &fb_decl.variables {
-            if decl.var_type == VariableType::Input {
-                field_decls_tmp.push(decl);
-            }
-        }
-        for decl in &fb_decl.variables {
-            if decl.var_type == VariableType::Output {
-                field_decls_tmp.push(decl);
-            }
-        }
-        for decl in &fb_decl.variables {
-            if decl.var_type == VariableType::Var {
-                field_decls_tmp.push(decl);
-            }
-        }
-        // `FB_CALL` and `METHOD_CALL` count a block's fields, and
-        // `FB_LOAD_PARAM` and `FB_STORE_PARAM` name one, by a byte, so a
-        // block with more fields is a limit of the format (P9997).
-        if field_decls_tmp.len() > MAX_USER_FB_FIELDS {
-            return Err(Diagnostic::not_supported(Label::span(
-                fb_decl.name.name.span(),
-                format!("Function block with more than {MAX_USER_FB_FIELDS} fields"),
-            ))
-            .with_context("fields", &field_decls_tmp.len().to_string()));
-        }
-        for (i, decl) in field_decls_tmp.iter().enumerate() {
-            if let Some(id) = decl.identifier.symbolic_id() {
-                let name = id.to_string().to_lowercase();
-                // At most `MAX_USER_FB_FIELDS` fields, so the index fits.
-                let index = i as FbFieldIndex;
-                field_indices.insert(name.clone(), index);
-                // A field is operated and stored at its declared type,
-                // whatever kind of declaration declares it: a subrange at its
-                // base type.
-                let field_type =
-                    crate::type_info::decl_type_info(&ctx, decl).unwrap_or(DEFAULT_VAR_TYPE_INFO);
-                field_types.insert(name.clone(), field_type);
-                if let Some(block) = crate::held_instances::held_block(types, decl) {
-                    held_fields.push(HeldField { name, index, block });
-                }
-            }
-        }
-
-        let type_id = ctx.next_user_fb_type_id;
-        ctx.next_user_fb_type_id = FbTypeId::new(type_id.raw() + 1);
-        ctx.user_fb_types.insert(
-            fb_name,
-            UserFbTypeInfo {
-                type_id,
-                num_fields: field_decls_tmp.len(),
-                field_indices,
-                function_id: FunctionId::new(next_function_id),
-                var_offset: 0, // updated after program vars are assigned
-                field_types,
-                held_fields,
-                methods: HashMap::new(),
-            },
-        );
-    }
-
-    // Pre-scan METHOD declarations (OOP extension, ADR-0041 Phase 1) to
-    // register their function IDs, parameter shapes, and return-value
-    // presence -- all knowable from the AST alone, same reasoning as the
-    // FB pre-scan above. Method function IDs continue the sequence after
-    // every FB body and every user FUNCTION, so they must be registered
-    // only after both counts are known; `param_var_off`/`max_stack_depth`
-    // stay `0` until the method is actually compiled (mirrors
-    // `UserFbTypeInfo::var_offset`).
-    let mut next_method_function_id = 2_u16 + fb_decls.len() as u16 + func_decls.len() as u16;
-    for fb_decl in fb_decls.iter() {
-        let fb_name = fb_decl.name.name.to_string().to_uppercase();
-        for method in &fb_decl.methods {
-            let method_name = method.name.to_string().to_lowercase();
-            let mut params: Vec<UserMethodParam> = Vec::new();
-            for decl in &method.variables {
-                if !decl.var_type.is_input_compatible() {
-                    continue;
-                }
-                if let Some(id) = decl.identifier.symbolic_id() {
-                    // A string's passing is known once the method is
-                    // compiled, which gives the string its storage.
-                    let passing = match decl.var_type {
-                        VariableType::InOut => ParamPassing::Reference,
-                        _ => ParamPassing::Value,
-                    };
-                    params.push(UserMethodParam {
-                        name: id.clone(),
-                        passing,
-                    });
-                }
-            }
-
-            let function_id = FunctionId::new(next_method_function_id);
-            next_method_function_id += 1;
-
-            if let Some(fb_info) = ctx.user_fb_types.get_mut(&fb_name) {
-                fb_info.methods.insert(
-                    method_name,
-                    UserMethodInfo {
-                        function_id,
-                        param_var_off: 0, // updated once the method is compiled
-                        num_params: params.len() as u16,
-                        params,
-                        has_return_value: method.return_type.is_some(),
-                        max_stack_depth: 0, // updated once the method is compiled
-                        outputs: HashMap::new(), // set once the method is compiled
-                        string_outputs: HashMap::new(), // set once the method is compiled
-                    },
-                );
-            }
-        }
-    }
+    // Register each user-defined FB type and its methods (field indices,
+    // field op types, type IDs, method function IDs) before the program's
+    // variables are laid out, so that its user-defined FB instances
+    // resolve. The FB copy slots are laid out after the functions', once
+    // their var_offsets are known.
+    crate::layout::lay_out_block_types(&mut ctx, fb_decls, func_decls.len() as u16, types)?;
 
     // Lay out the program's variables (indices G..N), now that the
     // user-defined FB types are known.
     let local_vars = crate::layout::lay_out_program(&mut ctx, &mut builder, program, types)?;
-    let program_var_count = ctx.variables.len() as u16;
+    let program_var_count = ctx.slot_count();
 
     // Now compile the FB bodies with correct var_offsets.
     let mut compiled_functions = Vec::new();
@@ -682,66 +580,78 @@ fn compile_program_with_functions(
             &mut ctx,
             &mut builder,
             types,
-            num_globals,
         )?;
         var_offset = VarIndex::new(var_offset.raw() + layout.num_locals);
         function_layouts.push(layout);
     }
-    for (func_decl, layout) in func_decls.iter().zip(function_layouts) {
-        compiled_functions.push(compile_user_function(func_decl, layout, &mut ctx)?);
-    }
 
-    let mut compiled_methods: Vec<CompiledFunction> = Vec::new();
+    // Lay out each FB's copy slots and its METHODs' variables (OOP
+    // extension, ADR-0041 Phase 1), after the functions'.
+    let mut block_layouts = Vec::with_capacity(fb_decls.len());
     for fb_decl in fb_decls {
-        let fb_name = fb_decl.name.name.to_string().to_uppercase();
-        let field_var_off = var_offset.raw();
-
-        // Update the var_offset in the registered type info.
-        let fb_type = ctx.user_fb_types.get_mut(&fb_name).ok_or_else(|| {
-            Diagnostic::internal_error_at(Label::span(
-                fb_decl.name.span(),
-                "Function block was not registered before its body was compiled",
-            ))
-        })?;
-        let fb_func_id = fb_type.function_id;
-        fb_type.var_offset = field_var_off;
-
-        let (compiled, program_scope) = compile_user_function_block(
+        block_layouts.push(crate::layout::lay_out_block(
             fb_decl,
-            fb_func_id,
-            field_var_off,
+            &mut var_offset,
             &mut ctx,
             &mut builder,
             types,
-            num_globals,
-        )?;
-        var_offset = VarIndex::new(var_offset.raw() + compiled.num_locals);
-        compiled_fb_bodies.push(compiled);
+        )?);
+    }
 
-        // Compile this type's methods (OOP extension, ADR-0041 Phase 1)
-        // while `ctx.variables` still holds this type's field mappings
-        // (that's the whole reason `compile_user_function_block` didn't
-        // restore them itself -- see its doc comment).
-        let methods = crate::compile_method::compile_user_fb_methods(
+    // Every body is laid out: compile them against the layout built from
+    // the lowered declarations, when each of those lowered, and match the
+    // lowered program's ids to it; then compile the functions' bodies, then
+    // each FB's body followed by its METHODs'.
+    if let Some(route) = &ctx.lowered_route {
+        let lowered = crate::layout::lowered::Layout::of(
+            route.lowering(),
+            &program.name,
+            &ctx.standard_blocks,
+        );
+        if let Some(lowered) = lowered {
+            if route.check_layout() {
+                crate::layout::check::check(&lowered, &ctx, &builder, &program.name)?;
+            }
+            lowered.install(&mut ctx);
+        }
+    }
+    if let Some(route) = &ctx.lowered_route {
+        ctx.lowered_ids =
+            crate::layout::ids::LoweredIds::matched(route.lowering(), &ctx, &program.name);
+    }
+    for (func_decl, layout) in func_decls.iter().zip(function_layouts) {
+        compiled_functions.push(compile_user_function(func_decl, layout, &mut ctx)?);
+    }
+    let mut compiled_fb_bodies: Vec<CompiledFunction> = Vec::new();
+    let mut compiled_methods: Vec<CompiledFunction> = Vec::new();
+    for (fb_decl, layout) in fb_decls.iter().zip(block_layouts) {
+        let BlockLayout {
+            function_id,
+            scope,
+            num_locals,
+            methods,
+        } = layout;
+        compiled_fb_bodies.push(compile_user_function_block(
             fb_decl,
-            &fb_name,
-            field_var_off,
-            &mut var_offset,
+            function_id,
+            scope,
+            num_locals,
             &mut ctx,
-            types,
-        )?;
-        compiled_methods.extend(methods);
-
-        // Now restore the program-level view for the next FB type.
-        ctx.swap_scope(program_scope);
+        )?);
+        for (method, layout) in fb_decl.methods.iter().zip(methods) {
+            compiled_methods.push(compile_user_method(method, layout, &mut ctx)?);
+        }
     }
 
     let total_variables = var_offset;
 
-    // Emit bytecode for variable initial values into the init emitter.
+    // Emit bytecode for variable initial values into the init emitter, from
+    // the lowered program when it can be.
     let mut init_emitter = Emitter::new();
-    emit_initial_values(&mut init_emitter, &mut ctx, global_vars, types)?;
-    emit_initial_values(&mut init_emitter, &mut ctx, &local_vars, types)?;
+    if !crate::lowered::try_emit_init(&mut init_emitter, &mut ctx, global_vars, &local_vars)? {
+        emit_initial_values(&mut init_emitter, &mut ctx, global_vars, types)?;
+        emit_initial_values(&mut init_emitter, &mut ctx, &local_vars, types)?;
+    }
     init_emitter.emit_ret_void();
 
     // Compile the program body into the scan emitter. Mark
@@ -749,14 +659,17 @@ fn compile_program_with_functions(
     // emitted from inside the body records a call-graph edge.
     let mut scan_emitter = Emitter::new();
     ctx.current_function_id = Some(FunctionId::SCAN);
-    ctx.current_body = Some(CurrentBody::Pou(program.name.clone()));
+    // A `VAR_TEMP` starts again at the head of every scan, from the lowered
+    // program; when that is left to the AST, `init` gives it its value, once.
+    if crate::lowered::restarts(&local_vars) {
+        crate::lowered::try_emit_prologue(&mut scan_emitter, &mut ctx, &local_vars, None)?;
+    }
     compile_body(
         &mut scan_emitter,
         &mut ctx,
         &program.body,
         &program.name.span(),
     )?;
-    ctx.current_body = None;
     ctx.current_function_id = None;
     scan_emitter.emit_ret_void();
 
@@ -916,8 +829,10 @@ fn compile_program_with_functions(
         .shared_globals_size(program_var_count)
         .max_call_depth(max_call_depth);
 
-    // Add debug info.
-    let program_name = program.name.to_string();
+    // Add debug info, named as the lowered program names each POU when the
+    // route compiles from it.
+    let program_name = crate::lowered::pou_name(&ctx, crate::layout::names::ScopeId::Program)
+        .unwrap_or_else(|| program.name.to_string());
     builder = builder
         .add_func_name(FuncNameEntry {
             function_id: FunctionId::INIT,
@@ -986,7 +901,7 @@ fn compile_program_with_functions(
     Ok(container)
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct StringParamInfo {
     /// Byte offset in the data region where this parameter's string is stored.
     pub(crate) data_offset: u32,
@@ -998,7 +913,7 @@ pub(crate) struct StringParamInfo {
 
 /// How a call site passes an argument to one input parameter
 /// (`VAR_INPUT`/`VAR_IN_OUT`) of a user-defined function or method.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) enum ParamPassing {
     /// The argument's value is pushed onto the operand stack at its own
     /// type, which the analyzer converted to the parameter's (ADR-0056), and
@@ -1018,7 +933,7 @@ pub(crate) enum ParamPassing {
 ///
 /// When a function returns STRING/WSTRING, the return value lives in the
 /// data region rather than on the operand stack.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct StringReturnInfo {
     /// Byte offset in the data region where the return string is stored.
     pub(crate) data_offset: u32,
@@ -1029,7 +944,7 @@ pub(crate) struct StringReturnInfo {
 }
 
 /// Metadata for a compiled user-defined function.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct UserFunctionInfo {
     /// The function ID assigned in the container.
     pub(crate) function_id: FunctionId,
@@ -1058,7 +973,7 @@ pub(crate) struct UserFunctionInfo {
 
 /// Tracks state during compilation of a single program.
 /// Metadata for a function block instance variable.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct FbInstanceInfo {
     /// Variable table index holding the data region offset.
     pub(crate) var_index: VarIndex,
@@ -1081,7 +996,12 @@ pub(crate) struct FbInstanceInfo {
 /// `FB_LOAD_PARAM` and `FB_STORE_PARAM` name by a byte.
 pub(crate) type FbFieldIndex = u8;
 
+/// The type ID of the first user-defined function block; each next one, in
+/// library order, takes the next.
+pub(crate) const FIRST_USER_FB_TYPE_ID: FbTypeId = FbTypeId::new(0x1000);
+
 /// Metadata for a compiled user-defined function block type.
+#[derive(Debug, PartialEq)]
 pub(crate) struct UserFbTypeInfo {
     /// Unique type ID for FB_CALL dispatch (starts at 0x1000).
     pub(crate) type_id: FbTypeId,
@@ -1113,13 +1033,14 @@ pub(crate) struct UserFbTypeInfo {
 /// (`UserFbTypeInfo::var_offset`/`num_fields`) for `self` access, and has
 /// its own additional, non-shared param/local scratch region allocated
 /// immediately after -- see `compile_method::compile_user_method`.
+#[derive(Debug, PartialEq)]
 pub(crate) struct UserMethodInfo {
     /// Function ID of the compiled method body in the container.
     pub(crate) function_id: FunctionId,
     /// Variable table offset where this method's own param/local slots
     /// start (immediately after the owning type's field region, or after
-    /// a previously-compiled sibling method's own region). `0` until the
-    /// method is actually compiled.
+    /// a previously laid out sibling method's own region). `0` until the
+    /// block is laid out.
     pub(crate) param_var_off: u16,
     /// Number of VAR_INPUT/VAR_IN_OUT parameters, in declaration order.
     pub(crate) num_params: u16,
@@ -1127,20 +1048,17 @@ pub(crate) struct UserMethodInfo {
     /// a call's normal form names them in.
     pub(crate) params: Vec<UserMethodParam>,
     pub(crate) has_return_value: bool,
-    /// Max operand-stack depth used by the method body. `0` until the
-    /// method is actually compiled; used for the scan function's
-    /// worst-case stack accounting, same as `max_fb_body_stack`.
-    pub(crate) max_stack_depth: u16,
     /// The slot of each `VAR_OUTPUT`, which a call reads its outputs from
-    /// after the method returns. Empty until the method is compiled.
+    /// after the method returns. Empty until the block is laid out.
     pub(crate) outputs: HashMap<Id, VarIndex>,
     /// Where in the data region each `STRING` or `WSTRING` `VAR_OUTPUT`
     /// is, which a call reads it from after the method returns. Empty until
-    /// the method is compiled.
+    /// the block is laid out.
     pub(crate) string_outputs: HashMap<Id, StringVarInfo>,
 }
 
 /// A VAR_INPUT or VAR_IN_OUT parameter of a user-defined method.
+#[derive(Debug, PartialEq)]
 pub(crate) struct UserMethodParam {
     pub(crate) name: Id,
     /// How a call site passes the argument for it. A string parameter is
@@ -1149,39 +1067,40 @@ pub(crate) struct UserMethodParam {
     pub(crate) passing: ParamPassing,
 }
 
-/// A body whose statements are being compiled.
-#[derive(Clone, Debug)]
-pub(crate) enum CurrentBody {
-    /// The body of the program, function block or function of this name.
-    Pou(Id),
-    /// The body of the method `method` of the function block `block`.
-    Method { block: Id, method: Id },
-}
-
 pub(crate) struct CompileContext {
     /// The program lowering made, which each top-level statement is read
-    /// from; `None` only while a statement is being compiled from it.
-    pub(crate) lowering: Option<ironplc_lowering::PartialProgram>,
-    /// The body being compiled, whose POU the lowered statement is read
-    /// from; `None` outside a body.
-    pub(crate) current_body: Option<CurrentBody>,
-    /// Maps variable identifiers to their variable table indices.
-    pub(crate) variables: HashMap<Id, VarIndex>,
-    /// Maps variable identifiers to their type information.
-    pub(crate) var_types: HashMap<Id, VarTypeInfo>,
+    /// from; `None` only while it is taken to compile from it.
+    pub(crate) lowered_route: Option<crate::lowered::LoweredRoute>,
+    /// What the layout knows each id of the lowered program as, once the
+    /// layout is built.
+    pub(crate) lowered_ids: crate::layout::ids::LoweredIds,
+    /// The scope whose names are being laid out, or whose body is being
+    /// compiled: what the layout's entries are recorded under, and what
+    /// each lookup sees ([`crate::layout::names`]).
+    pub(crate) scope: ScopeId,
+    /// The variable-table slot of each variable.
+    pub(crate) variables: Scoped<VarIndex>,
+    /// The type each variable is operated and stored at.
+    pub(crate) var_types: Scoped<VarTypeInfo>,
     /// Ordered list of constants added to the constant pool.
     pub(crate) constants: Vec<PoolConstant>,
-    /// Maps STRING variable identifiers to their data region metadata.
-    pub(crate) string_vars: HashMap<Id, StringVarInfo>,
-    /// Maps FB instance variable identifiers to their metadata.
-    pub(crate) fb_instances: HashMap<Id, FbInstanceInfo>,
-    /// Maps array variable identifiers to their metadata.
-    pub(crate) array_vars: HashMap<Id, crate::compile_array::ArrayVarInfo>,
-    /// Maps structure variable identifiers to their metadata.
-    pub(crate) struct_vars: HashMap<Id, crate::compile_struct::StructVarInfo>,
-    /// Maps top-level `ARRAY OF <struct>` variable identifiers to their metadata.
-    /// Kept apart from `array_vars`, whose elements occupy a single slot each.
-    pub(crate) struct_array_vars: HashMap<Id, crate::compile_array_struct::StructArrayVarInfo>,
+    /// Where in the data region each STRING variable is.
+    pub(crate) string_vars: Scoped<StringVarInfo>,
+    /// The layout of each FB instance variable.
+    pub(crate) fb_instances: Scoped<FbInstanceInfo>,
+    /// The layout of each array variable.
+    pub(crate) array_vars: Scoped<crate::compile_array::ArrayVarInfo>,
+    /// The layout of each structure variable.
+    pub(crate) struct_vars: Scoped<crate::compile_struct::StructVarInfo>,
+    /// The layout of each top-level `ARRAY OF <struct>` variable. Kept apart
+    /// from `array_vars`, whose elements occupy a single slot each.
+    pub(crate) struct_array_vars: Scoped<crate::compile_array_struct::StructArrayVarInfo>,
+    /// How the strings each reference variable whose target is a string,
+    /// or an array of strings, refers to are reached through it.
+    pub(crate) string_refs: Scoped<crate::compile_reference::StringRefInfo>,
+    /// The descriptor that sizes the whole array or structure each
+    /// reference variable whose target is an array or a structure refers to.
+    pub(crate) region_refs: Scoped<u16>,
     /// What every type is, by the id an expression's `expr_type` carries.
     /// See [`crate::type_info::expr_type_info`].
     pub(crate) types: HashMap<ironplc_dsl::type_id::TypeId, SemanticType>,
@@ -1225,15 +1144,16 @@ pub(crate) struct CompileContext {
     pub(crate) debug_source_files: crate::source_lookup::SourceFileRegistry,
     /// Maps user-defined function name (lowercase) to compilation metadata.
     pub(crate) user_functions: HashMap<String, UserFunctionInfo>,
-    /// The most a call of each user function adds to its caller's stack:
-    /// the deepest its body's stack goes, known once the body is compiled.
+    /// The most a call of each user function or method adds to its
+    /// caller's stack: the deepest its body's stack goes, known once the
+    /// body is compiled.
     pub(crate) function_stack_depths: HashMap<FunctionId, u16>,
     /// Maps user-defined FB type name (uppercase) to compilation metadata.
     pub(crate) user_fb_types: HashMap<String, UserFbTypeInfo>,
     /// Maps standard FB type name (uppercase) to the block it is.
     pub(crate) standard_blocks: HashMap<String, StandardFunctionBlock>,
     /// Next available type ID for user-defined function blocks.
-    next_user_fb_type_id: FbTypeId,
+    pub(crate) next_user_fb_type_id: FbTypeId,
     /// When compiling a function body that returns a value, describes how an
     /// early `RETURN` statement should produce the return value before the
     /// `RET` opcode. `None` for programs and FBs (RETURN emits `RET_VOID`).
@@ -1254,14 +1174,14 @@ pub(crate) struct CompileContext {
     ///
     /// [`record_call_edge`]: CompileContext::record_call_edge
     pub(crate) call_graph: HashMap<FunctionId, HashSet<FunctionId>>,
-    /// The `VAR_IN_OUT` parameters of the function being compiled. Each
-    /// one's slot holds a reference to the caller's variable (a
-    /// variable-table index, as `REF_TO` stores) rather than a value, so it
-    /// is reached through [`in_out_ref_slot`], never [`var_index`].
+    /// The `VAR_IN_OUT` parameters of each function. Each one's slot holds
+    /// a reference to the caller's variable (a variable-table index, as
+    /// `REF_TO` stores) rather than a value, so it is reached through
+    /// [`in_out_ref_slot`], never [`var_index`].
     ///
     /// [`in_out_ref_slot`]: CompileContext::in_out_ref_slot
     /// [`var_index`]: CompileContext::var_index
-    pub(crate) in_out_params: HashSet<Id>,
+    pub(crate) in_out_params: Scoped<()>,
     /// Where the call whose outputs are being stored leaves them, for the
     /// `CallOutput` each output stores; `None` outside a call's outputs.
     pub(crate) call_outputs: Option<crate::compile_call_output::CallOutputs>,
@@ -1283,17 +1203,20 @@ pub(crate) enum CurrentFunctionReturn {
 impl CompileContext {
     pub(crate) fn new() -> Self {
         CompileContext {
-            lowering: None,
-            current_body: None,
-            variables: HashMap::new(),
-            var_types: HashMap::new(),
+            lowered_route: None,
+            lowered_ids: crate::layout::ids::LoweredIds::default(),
+            scope: ScopeId::Program,
+            variables: Scoped::default(),
+            var_types: Scoped::default(),
             constants: Vec::new(),
-            string_vars: HashMap::new(),
-            fb_instances: HashMap::new(),
-            array_vars: HashMap::new(),
-            struct_vars: HashMap::new(),
-            struct_array_vars: HashMap::new(),
-            in_out_params: HashSet::new(),
+            string_vars: Scoped::default(),
+            fb_instances: Scoped::default(),
+            array_vars: Scoped::default(),
+            struct_vars: Scoped::default(),
+            struct_array_vars: Scoped::default(),
+            string_refs: Scoped::default(),
+            region_refs: Scoped::default(),
+            in_out_params: Scoped::default(),
             data_region_offset: 0,
             max_string_capacity: 0,
             has_wide_string: false,
@@ -1304,7 +1227,7 @@ impl CompileContext {
             function_stack_depths: HashMap::new(),
             user_fb_types: HashMap::new(),
             standard_blocks: HashMap::new(),
-            next_user_fb_type_id: FbTypeId::new(0x1000),
+            next_user_fb_type_id: FIRST_USER_FB_TYPE_ID,
             types: HashMap::new(),
             block_members: HashMap::new(),
             operand_names: HashMap::new(),
@@ -1351,7 +1274,7 @@ impl CompileContext {
                 "VAR_IN_OUT parameter used where only a local or global variable is supported",
             )));
         }
-        self.variables.get(name).copied().ok_or_else(|| {
+        self.slot(name).ok_or_else(|| {
             Diagnostic::not_implemented(Label::span(
                 name.span(),
                 "Variable that code generation does not yet give storage to",
@@ -1367,34 +1290,76 @@ impl CompileContext {
         if !self.is_in_out(name) {
             return None;
         }
-        self.variables.get(name).copied()
+        self.slot(name)
+    }
+
+    /// The slot of the variable `name` that the current scope sees.
+    fn slot(&self, name: &Id) -> Option<VarIndex> {
+        self.seen(&self.variables, names::SLOTS, name).copied()
+    }
+
+    /// The entry of `map` for `name` that the current scope sees, which
+    /// `reach` says of the globals' and the program's.
+    fn seen<'m, V>(&self, map: &'m Scoped<V>, reach: names::Reach, name: &Id) -> Option<&'m V> {
+        names::lookup(map, &self.variables, reach, self.scope, name)
+    }
+
+    /// Whether the current scope sees the variable `name` that `scope`
+    /// declares: whether the name reaches that variable's slot here.
+    pub(crate) fn sees(&self, scope: ScopeId, name: &Id) -> bool {
+        let declared = names::lookup(&self.variables, &self.variables, names::SLOTS, scope, name);
+        declared.is_some() && declared == self.seen(&self.variables, names::SLOTS, name)
+    }
+
+    /// How many names have a slot that the current scope sees.
+    pub(crate) fn slot_count(&self) -> u16 {
+        names::slot_count(&self.variables, self.scope) as u16
+    }
+
+    /// The slot after the highest one the current scope sees: the next free
+    /// slot of the body being laid out.
+    pub(crate) fn next_free_slot(&self) -> VarIndex {
+        VarIndex::new(names::next_free_slot(&self.variables, self.scope))
     }
 
     /// Whether `name` has a slot in the variable table in the current scope,
     /// a `VAR_IN_OUT`'s included.
     pub(crate) fn has_slot(&self, name: &Id) -> bool {
-        self.variables.contains_key(name)
+        self.slot(name).is_some()
     }
 
     /// Whether `name` is a `VAR_IN_OUT` of the body being compiled.
     pub(crate) fn is_in_out(&self, name: &Id) -> bool {
-        self.in_out_params.contains(name)
+        self.seen(&self.in_out_params, names::IN_OUTS, name)
+            .is_some()
     }
 
     /// Where the string variable `name` is held; `None` when it is no string.
     pub(crate) fn string_var(&self, name: &Id) -> Option<&StringVarInfo> {
-        self.string_vars.get(name)
+        self.seen(&self.string_vars, names::SLOTS, name)
+    }
+
+    /// How the strings the reference variable `name` refers to are reached
+    /// through it; `None` when it refers to no string or array of strings.
+    pub(crate) fn string_ref(&self, name: &Id) -> Option<&crate::compile_reference::StringRefInfo> {
+        self.seen(&self.string_refs, names::SLOTS, name)
+    }
+
+    /// The descriptor that sizes the whole array or structure the reference
+    /// variable `name` refers to; `None` when it refers to no such target.
+    pub(crate) fn region_ref(&self, name: &Id) -> Option<u16> {
+        self.seen(&self.region_refs, names::SLOTS, name).copied()
     }
 
     /// The layout of the array variable `name`; `None` when it is no array.
     pub(crate) fn array_var(&self, name: &Id) -> Option<&crate::compile_array::ArrayVarInfo> {
-        self.array_vars.get(name)
+        self.seen(&self.array_vars, names::ARRAYS, name)
     }
 
     /// The layout of the structure variable `name`; `None` when it is no
     /// structure.
     pub(crate) fn struct_var(&self, name: &Id) -> Option<&crate::compile_struct::StructVarInfo> {
-        self.struct_vars.get(name)
+        self.seen(&self.struct_vars, names::SLOTS, name)
     }
 
     /// The layout of the variable `name`, an array of structures; `None`
@@ -1403,13 +1368,13 @@ impl CompileContext {
         &self,
         name: &Id,
     ) -> Option<&crate::compile_array_struct::StructArrayVarInfo> {
-        self.struct_array_vars.get(name)
+        self.seen(&self.struct_array_vars, names::SLOTS, name)
     }
 
     /// The layout of the function block instance `name`; `None` when it is
     /// no instance.
     pub(crate) fn fb_instance(&self, name: &Id) -> Option<&FbInstanceInfo> {
-        self.fb_instances.get(name)
+        self.seen(&self.fb_instances, names::INSTANCES, name)
     }
 
     /// The user-defined function named `name`, in lower case.
@@ -1417,10 +1382,11 @@ impl CompileContext {
         self.user_functions.get(name)
     }
 
-    /// The most a call at `span` of the user function `function_id` adds to
-    /// its caller's stack. A function's body is compiled before the body of
-    /// any POU that calls it, since the library lists a function before its
-    /// callers.
+    /// The most a call at `span` of the user function or method
+    /// `function_id` adds to its caller's stack. A function's body is
+    /// compiled before the body of any POU that calls it, since the library
+    /// lists a function before its callers, and a method is called only from
+    /// the program's body, which is compiled last.
     pub(crate) fn function_stack_depth(
         &self,
         function_id: FunctionId,
@@ -1444,17 +1410,20 @@ impl CompileContext {
 
     /// Looks up type information for a variable by identifier.
     pub(crate) fn var_type_info(&self, name: &Id) -> Option<VarTypeInfo> {
-        self.var_types.get(name).copied()
+        self.seen(&self.var_types, names::SLOTS, name).copied()
     }
 
     /// Allocates a scratch variable with a synthetic name and returns its index.
     ///
+    /// The scratch variable takes the [next free slot](Self::next_free_slot)
+    /// of the POU being laid out, which counts it in its run.
+    ///
     /// The name uses a `$` prefix which is illegal in IEC 61131-3 identifiers,
     /// guaranteeing no collision with user-defined variables.
     pub(crate) fn allocate_scratch_variable(&mut self, suffix: &str) -> VarIndex {
-        let idx = VarIndex::new(self.variables.len() as u16);
+        let idx = self.next_free_slot();
         self.variables
-            .insert(Id::from(&format!("$scratch_{}", suffix)), idx);
+            .insert(self.scope, Id::from(&format!("$scratch_{}", suffix)), idx);
         idx
     }
 

@@ -465,8 +465,8 @@ impl<'a> Lowering<'a> {
         }
         for (name, section) in parameters {
             let parameter = match section {
-                // An array or structure input is passed by copy
-                // (REQ-LOW-lowering-075).
+                // An array, structure or function block input is passed by
+                // copy (REQ-LOW-lowering-075).
                 Section::Input => match self.aggregate_variable(&frame, name)? {
                     Some(aggregate) => Some(aggregate),
                     None => self.scalar_variable(&frame, name, true)?,
@@ -491,11 +491,13 @@ impl<'a> Lowering<'a> {
         // A method's array or structure result is a variable of its body
         // that no call reads (REQ-LOW-lowering-187).
         let result = match (body, result) {
-            (Body::Method { .. }, Some(name))
-                if self.aggregate_variable(&frame, name)?.is_some() =>
-            {
-                None
-            }
+            (Body::Method { .. }, Some(name)) => match self.aggregate_variable(&frame, name)? {
+                Some(aggregate) => {
+                    self.aggregate_results.insert(frame.pou, aggregate);
+                    None
+                }
+                None => Some(name),
+            },
             (
                 Body::Function(_) | Body::Method { .. } | Body::Program(_) | Body::FunctionBlock(_),
                 result,
@@ -547,8 +549,8 @@ impl<'a> Lowering<'a> {
     }
 
     /// The variable `name` refers to in the body of `frame`, a function or
-    /// method, when it is the whole of an array or a structure, as an input
-    /// of one is; `None` otherwise.
+    /// method, when it is the whole of an array, a structure or a function
+    /// block instance, as an input of one is; `None` otherwise.
     fn aggregate_variable(&mut self, frame: &BodyFrame, name: &Id) -> Made<VarId> {
         let Some(place) = self.named_place(frame, name, &name.span())? else {
             return Ok(None);
@@ -556,7 +558,11 @@ impl<'a> Lowering<'a> {
         let aggregate = place.path().is_empty()
             && matches!(
                 self.program.types().kind(place.ty()),
-                Some(TypeKind::Array { .. } | TypeKind::Structure { .. })
+                Some(
+                    TypeKind::Array { .. }
+                        | TypeKind::Structure { .. }
+                        | TypeKind::FunctionBlock { .. }
+                )
             );
         Ok(aggregate.then(|| place.root()))
     }

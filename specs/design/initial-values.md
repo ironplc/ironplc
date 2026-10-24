@@ -207,7 +207,7 @@ and written back as the initializer; it is not kept anywhere else.
 
 ### Re-initialization
 
-**REQ-IV-analyzer-050** The `VAR`, `VAR_TEMP` and `VAR_OUTPUT` declarations of a function or method, and its result, are flagged (`reset_on_call`) to start again on every call; a program's and a function block's variables, its outputs included, and a function's inputs, are not.
+**REQ-IV-analyzer-050** The `VAR`, `VAR_TEMP` and `VAR_OUTPUT` declarations of a function or method, and its result, and the `VAR_TEMP` declarations of a program or function block, are flagged (`reset_on_call`) to start again on every call, a program's once each scan; a program's and a function block's other variables, its outputs included, and a function's inputs, are not.
 
 ## 3. Code generation
 

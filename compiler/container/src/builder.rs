@@ -312,6 +312,11 @@ impl ContainerBuilder {
         self.add_descriptor(desc)
     }
 
+    /// The array descriptors added so far, by index.
+    pub fn array_descriptors(&self) -> &[ArrayDescriptor] {
+        &self.array_descriptors
+    }
+
     fn add_descriptor(&mut self, desc: ArrayDescriptor) -> u16 {
         let key = (
             desc.element_type,
@@ -561,6 +566,22 @@ mod tests {
         let container = builder.num_variables(0).build();
         let ts = container.type_section.unwrap();
         assert_eq!(ts.array_descriptors.len(), 2);
+    }
+
+    #[test]
+    fn array_descriptors_when_added_with_duplicate_then_each_once_by_index() {
+        let mut builder = ContainerBuilder::new();
+        builder.add_array_descriptor(0, 10, 0);
+        builder.add_array_descriptor(5, 100, 0);
+        builder.add_array_descriptor(0, 10, 0);
+
+        assert_eq!(
+            builder.array_descriptors(),
+            &[
+                ArrayDescriptor::new(0, 10, 0),
+                ArrayDescriptor::new(5, 100, 0)
+            ]
+        );
     }
 
     #[test]

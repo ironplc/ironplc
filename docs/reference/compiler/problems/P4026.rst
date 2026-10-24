@@ -14,6 +14,12 @@ signed argument for an unsigned parameter.
 For the full set of allowed implicit conversions, see
 :doc:`/explanation/type-conversions`.
 
+An input of a function block call and an argument of a method call are checked in the
+same way, against the declared type of the input or parameter that receives them:
+``counter(step := u)`` with ``step : DINT`` and ``u : UDINT`` is this error, as
+``F(u)`` is for a function's ``DINT`` parameter, because a ``UDINT`` does not fit a
+``DINT``.
+
 A whole array, a structure, an enumeration or a function block instance is only ever
 its own type, and no conversion applies to it. Passing one for a parameter of any other
 type, including a generic category such as ``ANY_NUM`` or ``ANY_STRING``, is this error.

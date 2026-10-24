@@ -56,7 +56,8 @@ lint:
   cargo fmt --all -- --check
 
 # Write every container the codegen end-to-end programs compile to into the
-# directory `dir`, one file per compilation named by its test. A fixed seed keeps the property tests' programs the same from run to
+# directory `dir`, one file per compilation named by its test. A fixed seed
+# keeps the property tests' programs the same from run to
 # run, so two versions of the compiler can be compared with `container-diff`.
 container-dump dir:
   #!/usr/bin/env bash

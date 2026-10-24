@@ -22,8 +22,8 @@
 //!   diagnostic. Issue #1567 fixed the functional spelling of the same
 //!   family by declaring it `ANY_BIT`; this holds the operator spelling to
 //!   that row.
-//! - Negation, `-x`, of a time of day, a date or a date and time. See
-//!   [`RuleOperatorOperandTypeCheck::check_negation`].
+//! - Negation, `-x`, of a `BOOL`, a time of day, a date or a date and
+//!   time. See [`RuleOperatorOperandTypeCheck::check_negation`].
 //!
 //! The operands of `AND`, `OR` and `XOR`, in the operator and the function
 //! form, and of the short-circuit `AND_THEN` and `OR_ELSE`, must also have a
@@ -126,8 +126,8 @@ pub fn apply(
 /// short-circuit on `BOOL`s and are the eager bitwise operators on bit
 /// strings (`specs/design/beckhoff-twincat-dialect.md`).
 ///
-/// The relational operators are declared `ANY_ELEMENTARY` in the table.
-/// Holding them to that is a separate decision from this rule.
+/// The comparisons are declared `ANY_ELEMENTARY` in the table; their
+/// operand pair is checked by `rule_comparison_operand_type`.
 fn checked_compare_form(op: &CompareOp) -> Option<&'static OperatorFunctionForm> {
     match op {
         CompareOp::And | CompareOp::Or | CompareOp::Xor => {
@@ -275,16 +275,15 @@ impl RuleOperatorOperandTypeCheck<'_> {
         }
     }
 
-    /// Reports P4049 when `operand`, negated, is a time of day, a date or a
-    /// date and time, in any dialect.
+    /// Reports P4049 when `operand`, negated, is a `BOOL`, a time of day, a
+    /// date or a date and time, in any dialect.
     ///
     /// IEC 61131-3 defines negation over `ANY_NUM` (Table 24), and IronPLC
     /// negates a duration too, as the signed integer it is stored as
-    /// (ADR-0025). A time of day, a date and a date and time count from an
-    /// epoch, so no value of theirs is the negative of another, and no
-    /// dialect is known to negate one. Holding negation to `ANY_NUM` and
-    /// `ANY_DURATION` for the other types is a separate decision: a `BOOL` or
-    /// a bit string is not checked here.
+    /// (ADR-0025). A `BOOL` is a truth value rather than a number, and a time
+    /// of day, a date and a date and time count from an epoch, so none of
+    /// them has a negative. A bit string is not checked here: it is negated
+    /// as the integer of its width.
     fn check_negation(&mut self, operand: &Expr) {
         let Some(ExprType::Concrete(id) | ExprType::Inferred(id)) = &operand.expr_type else {
             return;
@@ -292,12 +291,12 @@ impl RuleOperatorOperandTypeCheck<'_> {
         let Some(attributes) = self.types.get_by_id(*id) else {
             return;
         };
-        let from_epoch = match attributes.representation {
-            SemanticType::Date { .. }
+        let no_negative = match attributes.representation {
+            SemanticType::Bool
+            | SemanticType::Date { .. }
             | SemanticType::TimeOfDay { .. }
             | SemanticType::DateAndTime { .. } => true,
-            SemanticType::Bool
-            | SemanticType::Int { .. }
+            SemanticType::Int { .. }
             | SemanticType::UInt { .. }
             | SemanticType::Real { .. }
             | SemanticType::Bytes { .. }
@@ -311,7 +310,7 @@ impl RuleOperatorOperandTypeCheck<'_> {
             | SemanticType::FunctionBlock { .. }
             | SemanticType::Interface { .. } => false,
         };
-        if !from_epoch {
+        if !no_negative {
             return;
         }
         let Some(actual) = self.operand_name(operand) else {

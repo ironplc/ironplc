@@ -19,7 +19,8 @@ use ironplc_lowering::initial_value::{
 };
 
 use super::compile::{emit_string_literal_load, CompileContext, OpType, OpWidth};
-use super::compile_expr::resolve_variable;
+use super::compile_expr::{resolve_variable, resolve_variable_name};
+use super::compile_reference::reference_to;
 use super::compile_setup::emit_zero_const;
 use crate::emit::Emitter;
 
@@ -45,8 +46,9 @@ pub(crate) fn is_cleared(value: &InitialValue) -> bool {
 /// Pushes `value` at `op_type`, the operation type of the storage it goes
 /// into.
 ///
-/// `FALSE` and every zero are pushed as the zero of the storage width, which
-/// is how storage is cleared.
+/// `FALSE` is pushed as `LOAD_FALSE`, as a statement pushes it, and every
+/// other zero as the zero of the storage width, which is how storage is
+/// cleared.
 pub(crate) fn emit_scalar(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -55,7 +57,10 @@ pub(crate) fn emit_scalar(
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
     if value.value.is_zero() {
-        emit_zero_const(emitter, ctx, op_type);
+        match (value.value, op_type.0) {
+            (Scalar::Bool(_), OpWidth::W32) => emitter.emit_load_false(),
+            _ => emit_zero_const(emitter, ctx, op_type),
+        }
         return Ok(());
     }
     match (value.value, op_type.0) {
@@ -86,18 +91,21 @@ pub(crate) fn emit_scalar(
     Ok(())
 }
 
-/// Pushes the 64-bit variable-table index a reference stores: the index of
-/// the variable it refers to, or all ones for `NULL`.
+/// Pushes the 64-bit value a reference stores: the reference to the
+/// variable it refers to, as `REF` makes it, or all ones for `NULL`.
 pub(crate) fn emit_reference(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     value: &ReferenceValue,
 ) -> Result<(), Diagnostic> {
-    let index: i64 = match value {
-        ReferenceValue::To(variable) => resolve_variable(ctx, variable)?.into(),
-        ReferenceValue::Null => u64::MAX as i64,
+    let reference = match value {
+        ReferenceValue::To(variable) => match resolve_variable_name(variable) {
+            Some(name) => reference_to(ctx, name)?,
+            None => resolve_variable(ctx, variable)?.raw().into(),
+        },
+        ReferenceValue::Null => u64::MAX,
     };
-    let pool_index = ctx.add_i64_constant(index);
+    let pool_index = ctx.add_i64_constant(reference as i64);
     emitter.emit_load_const_i64(pool_index);
     Ok(())
 }

@@ -262,3 +262,63 @@ fn run_when_in_out_argument_type_is_alias_then_callee_writes_it() {
     assert_eq!(snapshot.read_as::<i32>("d"), 10);
     assert_eq!(snapshot.read_as::<i32>("r2"), 10);
 }
+
+/// Blocks and a function whose inputs are an instance of a block, a standard
+/// block and a structure, none of which their bodies call or read.
+const INSTANCE_INPUTS: &str = "
+    TYPE P : STRUCT x : DINT; END_STRUCT; END_TYPE
+    FUNCTION_BLOCK INNER VAR_INPUT v : DINT; END_VAR VAR_OUTPUT q : DINT; END_VAR q := v; END_FUNCTION_BLOCK
+    FUNCTION_BLOCK OUTER VAR_INPUT inner : INNER; p : P; END_VAR END_FUNCTION_BLOCK
+    FUNCTION SUMP : DINT VAR_INPUT q : P; END_VAR SUMP := 6; END_FUNCTION
+    FUNCTION_BLOCK BP
+      METHOD Go : DINT VAR_INPUT i : INNER; d : DINT; END_VAR Go := d * 2; END_METHOD
+      METHOD Tm : DINT VAR_INPUT t : TON; END_VAR Tm := 3; END_METHOD
+    END_FUNCTION_BLOCK";
+
+/// REQ-LOW-lowering-075: a method's input of a function block type, of a
+/// user-defined or a standard block, and an input taken from a field of
+/// another instance, lower and compile: each is passed as the slot of the
+/// instance or of the field, which holds the data offset of the instance's
+/// fields or of the field's value.
+#[rstest]
+#[case::instance("r := b.Go(i := f, d := 5);")]
+#[case::standard_instance("r := b.Tm(t := t);")]
+#[case::field_of_instance("r := b.Go(i := g.inner, d := 1);")]
+#[case::structure_field_of_instance("r := SUMP(q := g.p);")]
+fn compile_when_instance_or_field_input_lowered_then_compiles(#[case] statement: &str) {
+    let source = format!(
+        "{INSTANCE_INPUTS}
+         PROGRAM main
+           VAR f : INNER; g : OUTER; b : BP; t : TON; r : DINT; END_VAR
+           {statement}
+         END_PROGRAM"
+    );
+    assert_compiles(&source);
+}
+
+/// Instances and fields of instances passed as inputs leave every variable
+/// with the same value on every backend: the instance keeps its own
+/// fields, and the methods and the function return what their scalar inputs
+/// give. This backend compiles no call or read of such an input in the
+/// callee's body (issue 1553).
+#[test]
+fn run_when_instance_or_field_input_passed_then_routes_agree() {
+    let snapshot = run_lowered_agreeing(&format!(
+        "{INSTANCE_INPUTS}
+         PROGRAM main
+           VAR f : INNER; g : OUTER; b : BP; t : TON;
+               r1 : DINT; r2 : DINT; r3 : DINT; r4 : DINT; q : DINT; END_VAR
+           f(v := 4);
+           r1 := b.Go(i := f, d := 5);
+           r2 := b.Tm(t := t);
+           r3 := b.Go(i := g.inner, d := 2);
+           r4 := SUMP(q := g.p);
+           q := f.q;
+         END_PROGRAM"
+    ));
+    assert_eq!(snapshot.read_as::<i32>("r1"), 10);
+    assert_eq!(snapshot.read_as::<i32>("r2"), 3);
+    assert_eq!(snapshot.read_as::<i32>("r3"), 4);
+    assert_eq!(snapshot.read_as::<i32>("r4"), 6);
+    assert_eq!(snapshot.read_as::<i32>("q"), 4);
+}

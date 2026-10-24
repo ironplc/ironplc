@@ -100,7 +100,8 @@ impl ImplicitConversions<'_> {
     /// operand widens to, else the concrete left operand's type, else the
     /// concrete right one's. The fallback is the rule codegen applied before
     /// the analyzer chose; a pair neither of which widens to the other
-    /// (`DINT` and `UDINT`) is not checked yet (#1931).
+    /// (`DINT` and `UDINT`) reaches it, and `rule_comparison_operand_type`
+    /// reports it.
     fn operand_type(&self, left: &Expr, right: &Expr) -> Option<TypeId> {
         comparison_operand_type(
             self.conversions.operand_name(left).as_ref(),
@@ -202,8 +203,8 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
                 self.record_call_outputs(&mut call.params);
             }
             // A comparison's operands are recorded by `fold_compare_expr`;
-            // the operands of `AND`, `OR` and `XOR` here, since they are
-            // converted to the operation's own type.
+            // the operands of a bitwise operator (`CompareOp::is_bitwise`)
+            // here, since they are converted to the operation's own type.
             ExprKind::Compare(_) => self.record_bitwise_operands(&mut node),
             // A function's arguments are recorded by `fold_function`;
             // nothing else has operands or arguments a context converts.

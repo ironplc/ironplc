@@ -286,12 +286,16 @@ impl ImplicitConversions<'_> {
                     };
                     self.type_literals(arg, at);
                 }),
+                // `SIZEOF` measures its argument rather than computing it,
+                // so no backend compiles the argument; the literals of its
+                // subscripts are typed all the same, so that none is left
+                // at a generic category.
                 BuiltinFunction::Trunc
                 | BuiltinFunction::IntToBcd
                 | BuiltinFunction::Time { .. }
                 | BuiltinFunction::DtToDate
-                | BuiltinFunction::DtToTod => inputs.into_iter().for_each(|arg| self.type_own(arg)),
-                BuiltinFunction::Sizeof => {}
+                | BuiltinFunction::DtToTod
+                | BuiltinFunction::Sizeof => inputs.into_iter().for_each(|arg| self.type_own(arg)),
             },
         }
     }

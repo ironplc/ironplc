@@ -1,0 +1,146 @@
+=====
+P4093
+=====
+
+.. problem-summary:: P4093
+
+This error occurs when the step of a ``FOR`` loop, the value after ``BY``,
+is zero.
+
+A ``FOR`` loop assigns the start value to the control variable, runs its
+statements, adds the step to the control variable, and goes on while the
+control variable has not passed the end value. A step of zero never moves
+the control variable, so the loop never reaches the end value: unless a
+statement in its body leaves the loop with ``EXIT`` or ``RETURN``, the loop
+runs forever and the scan never completes. That is a defect in the program,
+and it is known before the program runs, so the compiler reports it rather
+than compiling a loop that cannot end.
+
+The step is judged when its value is known before the program runs: a step
+written as ``0``, as a typed literal such as ``INT#0``, or as an expression
+of literals that folds to zero, such as ``1 - 1``, is reported, and so is a
+step that names a constant whose value is zero, whether the variable is
+declared ``CONSTANT`` or is never written. A step read from a variable that
+the program writes is not judged by this rule, since its value is only known
+when the program runs.
+
+Example
+-------
+
+The following code will generate error P4093:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       i : INT;
+       total : INT;
+   END_VAR
+       FOR i := 1 TO 5 BY 0 DO
+           total := total + i;
+       END_FOR;
+   END_PROGRAM
+
+The step is ``0``, so ``i`` stays at ``1`` and the loop never ends.
+
+To fix this error, step by a value that moves the control variable towards
+the end value. A step of ``1`` is the default, so the ``BY`` clause can be
+left out:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       i : INT;
+       total : INT;
+   END_VAR
+       FOR i := 1 TO 5 DO
+           total := total + i;
+       END_FOR;
+   END_PROGRAM
+
+Counting down
+-------------
+
+A loop that counts down needs a negative step. A step of zero is often what
+is left when the sign is forgotten and the step is computed instead of
+written, as in the following code, which generates error P4093:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       i : INT;
+       total : INT;
+   END_VAR
+       FOR i := 5 TO 1 BY 1 - 1 DO
+           total := total + i;
+       END_FOR;
+   END_PROGRAM
+
+The compiler folds ``1 - 1`` to ``0`` before judging the step, so the
+expression is reported where it was written.
+
+To fix this error, write the step the loop needs. A negative step counts
+down from the start value to the end value:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       i : INT;
+       total : INT;
+   END_VAR
+       FOR i := 5 TO 1 BY -1 DO
+           total := total + i;
+       END_FOR;
+   END_PROGRAM
+
+A constant step
+---------------
+
+A step that names a constant is judged by the constant's value. The
+following code generates error P4093, since ``inc`` is ``0`` for the whole
+run:
+
+.. code-block::
+
+   PROGRAM main
+   VAR CONSTANT
+       inc : INT := 0;
+   END_VAR
+   VAR
+       i : INT;
+       total : INT;
+   END_VAR
+       FOR i := 1 TO 5 BY inc DO
+           total := total + i;
+       END_FOR;
+   END_PROGRAM
+
+A variable the program never writes holds its initial value for the whole
+run too, so the same loop over ``inc : INT := 0`` declared in a plain
+``VAR`` block is reported as well. To fix this error, give the constant the
+step the loop needs:
+
+.. code-block::
+
+   PROGRAM main
+   VAR CONSTANT
+       inc : INT := 1;
+   END_VAR
+   VAR
+       i : INT;
+       total : INT;
+   END_VAR
+       FOR i := 1 TO 5 BY inc DO
+           total := total + i;
+       END_FOR;
+   END_PROGRAM
+
+See Also
+--------
+
+- :doc:`/reference/language/structured-text/for` for the ``FOR`` statement
+- :doc:`P4091 </reference/compiler/problems/P4091>` for a control variable
+  that is not an integer

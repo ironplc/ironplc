@@ -63,29 +63,19 @@ pub(crate) fn emit_initial_values(
         } else if ctx.array_var(id).is_some_and(|array| !array.is_ref) {
             // A `REF_TO ARRAY` registers array metadata too, but its slot
             // holds a reference, stored below.
+            set_up_storage(emitter, ctx, id, &span)?;
             emit_array_initial_value(emitter, ctx, id, value, &span)?;
         } else if let Some(info) = ctx.string_var(id) {
-            let (data_offset, max_length, char_width) =
-                (info.data_offset, info.max_length, info.char_width);
             // Initialize the string header in the data region, then store
             // the characters. The literal is encoded at the variable's width
             // so the store's encoding check passes (ADR-0034).
-            emitter.emit_str_init(data_offset, max_length, char_width);
+            let data_offset = info.data_offset;
+            set_up_storage(emitter, ctx, id, &span)?;
             if let InitialValue::String(string) = value {
                 emit_string_store(emitter, ctx, string, data_offset);
             }
-        } else if let Some(fb_info) = ctx.fb_instance(id) {
-            let data_offset = fb_info.data_offset;
-            let var_index = fb_info.var_index;
-            let held = fb_info.held.clone();
-            // Store the data region byte offset into the variable slot, and
-            // in each field that holds an instance, the offset of that
-            // instance's fields.
-            let offset_const = ctx.add_i32_constant(data_offset as i32);
-            emitter.emit_load_const_i32(offset_const);
-            emitter.emit_store_var_i32(var_index);
-            crate::held_instances::emit_offsets(emitter, ctx, &held);
-
+        } else if ctx.fb_instance(id).is_some() {
+            set_up_storage(emitter, ctx, id, &span)?;
             // `timer : TON := (PT := T#100MS)` sets the instance's own
             // members. The slot offset has to be in place first, because
             // each member store addresses the instance through it.
@@ -94,6 +84,52 @@ pub(crate) fn emit_initial_values(
             let always = stored_even_when_cleared(types, decl);
             emit_slot_initial_value(emitter, ctx, id, value, always, &span)?;
         }
+    }
+    Ok(())
+}
+
+/// Sets up the storage the layout gives the variable `id`, before its
+/// starting value is stored (REQ-LOW-codegen-200): the data-region offset
+/// the slot of an aggregate or an instance holds, the offset of each
+/// instance an instance's fields hold, and the header of each string it
+/// holds. A scalar's slot needs none.
+pub(crate) fn set_up_storage(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    id: &Id,
+    span: &SourceSpan,
+) -> Result<(), Diagnostic> {
+    if let Some(info) = ctx.struct_var(id).cloned() {
+        return crate::compile_struct_init::set_up_struct_variable(emitter, ctx, &info, span);
+    }
+    if let Some(info) = ctx.struct_array_var(id).cloned() {
+        return crate::compile_struct_init::set_up_struct_array_variable(emitter, ctx, &info, span);
+    }
+    if let Some(array) = ctx.array_var(id).filter(|array| !array.is_ref) {
+        let (data_offset, var_index, desc_index, is_string) = (
+            array.data_offset,
+            array.var_index,
+            array.desc_index,
+            array.is_string_element,
+        );
+        let offset_const = ctx.add_i32_constant(data_offset as i32);
+        emitter.emit_load_const_i32(offset_const);
+        emitter.emit_store_var_i32(var_index);
+        if is_string {
+            emitter.emit_str_init_array(var_index, desc_index);
+        }
+        return Ok(());
+    }
+    if let Some(info) = ctx.string_var(id) {
+        emitter.emit_str_init(info.data_offset, info.max_length, info.char_width);
+        return Ok(());
+    }
+    if let Some(info) = ctx.fb_instance(id) {
+        let (data_offset, var_index, held) = (info.data_offset, info.var_index, info.held.clone());
+        let offset_const = ctx.add_i32_constant(data_offset as i32);
+        emitter.emit_load_const_i32(offset_const);
+        emitter.emit_store_var_i32(var_index);
+        crate::held_instances::emit_offsets(emitter, ctx, &held);
     }
     Ok(())
 }
@@ -167,9 +203,9 @@ fn slot_type_info(
     })
 }
 
-/// Emits the stores that give the array variable `id` its starting value
-/// `value`: its data-region offset into its slot, the header of every STRING
-/// element, and each element whose value would not leave it cleared.
+/// Emits the stores that give the array variable `id`, whose storage is set
+/// up, its starting value `value`: each element whose value would not leave
+/// it cleared.
 fn emit_array_initial_value(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -180,7 +216,6 @@ fn emit_array_initial_value(
     let Some(array_info) = ctx.array_var(id) else {
         return Err(Diagnostic::internal_error());
     };
-    let data_offset = array_info.data_offset;
     let var_index = array_info.var_index;
     let desc_index = array_info.desc_index;
     let element_vti = array_info.element_var_type_info;
@@ -193,15 +228,6 @@ fn emit_array_initial_value(
         )));
     };
 
-    // Store data_offset into the variable slot (like FB instances).
-    let offset_const = ctx.add_i32_constant(data_offset as i32);
-    emitter.emit_load_const_i32(offset_const);
-    emitter.emit_store_var_i32(var_index);
-
-    if is_string {
-        // Initialize all string headers in the array.
-        emitter.emit_str_init_array(var_index, desc_index);
-    }
     for (i, element) in elements.iter().enumerate() {
         if is_cleared(element) {
             continue;
@@ -309,10 +335,7 @@ pub(crate) fn emit_function_local_prologue(
     }
 
     let Some(result) = result else {
-        // A method that returns nothing still has a result slot, which
-        // codegen allocates for it; it is cleared like a result.
-        emit_zero_const(emitter, ctx, return_op_type);
-        emit_store_var(emitter, return_var_index, return_op_type);
+        emit_clear_result_slot(emitter, ctx, return_var_index, return_op_type);
         return Ok(());
     };
     let result = result.variable().ok_or_else(|| {
@@ -346,6 +369,19 @@ pub(crate) fn emit_function_local_prologue(
     }
 
     Ok(())
+}
+
+/// Clears the result slot of a method that returns nothing, which codegen
+/// allocates for it, in the slot `var_index`, operated at `op_type`, as a
+/// result is cleared.
+pub(crate) fn emit_clear_result_slot(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    var_index: VarIndex,
+    op_type: OpType,
+) {
+    emit_zero_const(emitter, ctx, op_type);
+    emit_store_var(emitter, var_index, op_type);
 }
 
 /// Emits a LOAD_CONST instruction that pushes a zero value of the given type.

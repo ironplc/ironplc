@@ -14,9 +14,13 @@
 //!    (REQ-LOW-lowering-193);
 //! 4. one variable for each program instance, of section `Instance`.
 //!
+//! It keeps what each declaration of each body declares, in declaration
+//! order, and which variables the declarations made, for a backend to lay
+//! out its storage from (REQ-LOW-lowering-197).
+//!
 //! Then it lowers `init` (`init.rs`), the stores of each global's and each
-//! instance field's starting value, and, at the head of each function's
-//! and method's body, its prologue.
+//! instance field's starting value, and, at the head of each body, its
+//! prologue.
 //!
 //! Then it lowers each top-level statement of each body. A statement that
 //! reaches a variable finds the one already declared.
@@ -26,14 +30,16 @@
 //! the AST. [`PartialProgram::into_program`] gives the whole program once
 //! every one is lowered.
 
+use std::collections::{HashMap, HashSet};
+
 use ironplc_dsl::common::{FunctionBlockBodyKind, LibraryElementKind, VarDecl, VariableType};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::StmtKind;
 use ironplc_ir::execution::{DebugName, ExecutionModel, InstanceOf};
 use ironplc_ir::lowered::{
-    Declared, ExecutionBindings, Owner, PouId, PouKind, PouParts, PouTable, Program,
-    ProgramBuilder, Section, Stmt, TypeTable, VarId, VariableTable,
+    Declared, ExecutionBindings, FieldIdx, Owner, PouId, PouKind, PouParts, PouTable, Program,
+    ProgramBuilder, Projection, Section, Stmt, TypeTable, VarId, VariableTable,
 };
 
 use crate::init::{Stores, Values};
@@ -51,7 +57,25 @@ pub struct PartialProgram {
     bodies: Vec<LoweredBody>,
     /// Where a declaration is that lowering cannot express yet.
     incomplete: Vec<SourceSpan>,
+    /// The variables a declaration declares, made before any temporary.
+    declared: HashSet<VarId>,
+    /// The variable of each method whose result is an array or a structure
+    /// that holds the result.
+    aggregate_results: HashMap<PouId, VarId>,
     init: Stores,
+}
+
+/// One declaration of a body: what its name declares, in the order the body
+/// declares them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Declaration {
+    /// A field of the body's instance.
+    Field(FieldIdx),
+    /// A variable of the body's own, or a global a PLCopen program declares
+    /// in its interface.
+    Variable(VarId),
+    /// The global a `VAR_EXTERNAL` names.
+    External(VarId),
 }
 
 /// One body of the program and what its statements lowered to.
@@ -59,6 +83,8 @@ pub struct PartialProgram {
 struct LoweredBody {
     pou: PouId,
     kind: PouKind,
+    /// Its declarations, in the order it declares them.
+    declarations: Vec<Declaration>,
     /// The span of the POU's name.
     span: SourceSpan,
     /// The body's instance parameter; `None` for a function's.
@@ -91,6 +117,17 @@ impl PartialProgram {
         }
     }
 
+    /// Where the top-level statement at `index` of the body of `pou` is in
+    /// the source: an empty span for a statement the AST keeps no span for,
+    /// a `RETURN`'s; `None` when the body has no such statement.
+    pub fn statement_span(&self, pou: PouId, index: usize) -> Option<&SourceSpan> {
+        let body = self.bodies.iter().find(|body| body.pou == pou)?;
+        match &body.statements {
+            Statements::Lowered(statements) => statements.get(index).map(|(span, _)| span),
+            Statements::Sfc | Statements::Undeclared => None,
+        }
+    }
+
     /// The statements of `init`, which give every global and every field of
     /// every program instance the value it starts with; `None` when one of
     /// those values does not lower yet.
@@ -98,10 +135,11 @@ impl PartialProgram {
         self.init.complete()
     }
 
-    /// The statements at the head of the body of `pou`, which give each
-    /// variable of a function or method that starts again on every call its
-    /// value; `None` when one of those values does not lower yet, or the
-    /// body does not.
+    /// The statements at the head of the body of `pou`, which give each of
+    /// its variables that starts again on every call its value: a
+    /// function's or method's locals and result, and any body's `VAR_TEMP`;
+    /// `None` when one of those values does not lower yet, or the body does
+    /// not.
     pub fn prologue(&self, pou: PouId) -> Option<&[Stmt]> {
         let body = self.bodies.iter().find(|body| body.pou == pou)?;
         match body.statements {
@@ -114,6 +152,52 @@ impl PartialProgram {
     /// lowered.
     pub fn declarations_complete(&self) -> bool {
         self.incomplete.is_empty()
+    }
+
+    /// Whether a declaration declares `var`, or a program instance is it,
+    /// rather than lowering making it for a statement or a starting value.
+    pub fn is_declared(&self, var: VarId) -> bool {
+        self.declared.contains(&var)
+    }
+
+    /// The declarations of the body of `pou`, in the order it declares
+    /// them; `None` for a POU with no body in the library, and empty for a
+    /// body whose declarations did not lower.
+    pub fn declarations(&self, pou: PouId) -> Option<&[Declaration]> {
+        let body = self.bodies.iter().find(|body| body.pou == pou)?;
+        Some(&body.declarations)
+    }
+
+    /// The variable that holds the result of the function or method `pou`:
+    /// the one its signature returns, its result parameter, or, for a
+    /// method whose result is an array or a structure, the variable of its
+    /// body no call reads (REQ-LOW-lowering-187). `None` for a method that
+    /// returns none.
+    pub fn result(&self, pou: PouId) -> Option<VarId> {
+        let signature = self.pous().function(pou)?;
+        signature
+            .result()
+            .or(signature.result_parameter())
+            .or_else(|| self.aggregate_results.get(&pou).copied())
+    }
+
+    /// The execution model the program runs under.
+    pub fn execution(&self) -> &ExecutionModel {
+        &self.execution
+    }
+
+    /// The execution model bound to the program's POUs and variables.
+    pub fn bindings(&self) -> &ExecutionBindings {
+        &self.bindings
+    }
+
+    /// What the declaration of the body of `pou` gives it: what it is, its
+    /// instance parameter, and its locals; `None` for a POU with no body in
+    /// the library, a standard function block's. Its locals include the
+    /// temporaries lowering makes for its statements.
+    pub fn parts(&self, pou: PouId) -> Option<PouParts> {
+        let body = self.bodies.iter().find(|body| body.pou == pou)?;
+        Some(parts(&self.builder, body))
     }
 
     /// The types the program refers to.
@@ -154,9 +238,8 @@ impl PartialProgram {
                     for (span, lowered) in statements {
                         match lowered {
                             StatementLowering::Lowered(_) => {}
-                            StatementLowering::Unsupported => {
-                                unsupported.push(Diagnostic::todo_with_span(span.clone()))
-                            }
+                            StatementLowering::Unsupported => unsupported
+                                .push(Diagnostic::todo_with_span(reported(span, &body.span))),
                         }
                     }
                 }
@@ -179,11 +262,7 @@ impl PartialProgram {
             builder.push_init(stmt);
         }
         for body in self.bodies {
-            let parts = PouParts {
-                kind: body.kind,
-                instance: body.instance,
-                locals: locals(&builder, body.pou, body.instance),
-            };
+            let parts = parts(&builder, &body);
             builder
                 .declare_parts(body.pou, parts, &body.span)
                 .map_err(|diagnostic| vec![diagnostic])?;
@@ -205,6 +284,15 @@ impl PartialProgram {
         builder
             .finish(self.execution, self.bindings)
             .map_err(|diagnostic| vec![diagnostic])
+    }
+}
+
+/// The parts of the POU of `body`.
+fn parts(builder: &ProgramBuilder, body: &LoweredBody) -> PouParts {
+    PouParts {
+        kind: body.kind,
+        instance: body.instance,
+        locals: locals(builder, body.pou, body.instance),
     }
 }
 
@@ -295,6 +383,12 @@ impl<'a> Lowering<'a> {
             )?;
             bindings.bind_instance(position, var);
         }
+        let declared = self
+            .program
+            .variables()
+            .iter()
+            .map(|(var, _)| var)
+            .collect();
         let values = Values::of(self.analysis.context().types());
         let init = self.lower_init(&execution, &bindings, &values)?;
         let mut lowered = Vec::with_capacity(bodies.len());
@@ -307,6 +401,8 @@ impl<'a> Lowering<'a> {
             bindings,
             bodies: lowered,
             incomplete,
+            declared,
+            aggregate_results: std::mem::take(&mut self.aggregate_results),
             init,
         })
     }
@@ -362,23 +458,41 @@ impl<'a> Lowering<'a> {
 
     /// Declares the frame of `body`, each of its declarations that is no
     /// field of its instance, in declaration order, and, for a function or
-    /// method, its signature. `None` when one of them is not one lowering
-    /// expresses yet.
-    fn declare_body(&mut self, body: Body<'a>) -> Result<Option<BodyFrame>, Diagnostic> {
+    /// method, its signature, and gives what each declaration declares.
+    /// `None` when one of them is not one lowering expresses yet.
+    fn declare_body(
+        &mut self,
+        body: Body<'a>,
+    ) -> Result<Option<(BodyFrame, Vec<Declaration>)>, Diagnostic> {
         let Some(frame) = self.frame(body)? else {
             return Ok(None);
         };
+        let mut declared = Vec::new();
         for decl in declarations(body) {
-            if !is_own_variable(body, decl) {
-                continue;
-            }
             // A located variable with no name, which no statement names.
             let Some(name) = decl.identifier.symbolic_id() else {
                 continue;
             };
-            if self.named_place(&frame, name, &name.span())?.is_none() {
-                return Ok(None);
-            }
+            let own = is_own_variable(body, decl);
+            let place = self.named_place(&frame, name, &name.span())?;
+            let Some(place) = place else {
+                if own {
+                    return Ok(None);
+                }
+                continue;
+            };
+            let declaration = match place.path() {
+                [] if decl.var_type == VariableType::External => {
+                    Declaration::External(place.root())
+                }
+                // A `VAR_IN_OUT` or `VAR_OUTPUT` of a function or method is a
+                // reference to its argument.
+                [] | [Projection::Deref] => Declaration::Variable(place.root()),
+                [Projection::Deref, Projection::Field(field)] => Declaration::Field(*field),
+                // No declaration names a place deeper in its instance.
+                _ => continue,
+            };
+            declared.push(declaration);
         }
         match body {
             Body::Function(_) | Body::Method { .. } => {
@@ -388,14 +502,14 @@ impl<'a> Lowering<'a> {
             }
             Body::Program(_) | Body::FunctionBlock(_) => {}
         }
-        Ok(Some(frame))
+        Ok(Some((frame, declared)))
     }
 
     /// Lowers each top-level statement of `body`, whose frame is `frame`.
     fn lower_body(
         &mut self,
         body: Body<'a>,
-        frame: Option<BodyFrame>,
+        frame: Option<(BodyFrame, Vec<Declaration>)>,
         values: &Values,
     ) -> Result<LoweredBody, Diagnostic> {
         let span = body_name(body).span();
@@ -409,12 +523,13 @@ impl<'a> Lowering<'a> {
         let unsupported = |statements| LoweredBody {
             pou,
             kind,
+            declarations: Vec::new(),
             span: span.clone(),
             instance: None,
             prologue: Stores::default(),
             statements,
         };
-        let Some(frame) = frame else {
+        let Some((frame, declarations)) = frame else {
             return Ok(unsupported(Statements::Undeclared));
         };
         let Some(source) = statements_of(body) else {
@@ -427,11 +542,12 @@ impl<'a> Lowering<'a> {
                 Some(lowered) => StatementLowering::Lowered(lowered),
                 None => StatementLowering::Unsupported,
             };
-            statements.push((statement_span(stmt, &span), lowered));
+            statements.push((stmt.span(), lowered));
         }
         Ok(LoweredBody {
             pou,
             kind,
+            declarations,
             span,
             instance: frame.instance.map(|instance| instance.this),
             prologue,
@@ -504,13 +620,13 @@ fn statements_of<'a>(body: Body<'a>) -> Option<&'a [StmtKind]> {
     }
 }
 
-/// Where `stmt` is, or, for a statement the AST keeps no span for, the
-/// span of the POU it is in, `pou`.
-fn statement_span(stmt: &StmtKind, pou: &SourceSpan) -> SourceSpan {
-    let span = stmt.span();
-    if span == SourceSpan::default() {
+/// Where a problem with the statement at `span` is reported: there, or, for
+/// a statement the AST keeps no span for, at the POU it is in, `pou`. A
+/// `SourceSpan` equals any other, so an empty span is the one with none.
+fn reported(span: &SourceSpan, pou: &SourceSpan) -> SourceSpan {
+    if span.start == span.end {
         pou.clone()
     } else {
-        span
+        span.clone()
     }
 }
