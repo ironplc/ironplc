@@ -113,7 +113,9 @@ fn field_has_default(
         // parser when an explicit `:= expr` was present, so it always
         // counts as having a default (regardless of whether the fold pass
         // has run yet).
-        InitialValueAssignmentKind::SimpleExpr(_) => true,
+        InitialValueAssignmentKind::SimpleExpr(_) | InitialValueAssignmentKind::StringExpr(_) => {
+            true
+        }
     }
 }
 

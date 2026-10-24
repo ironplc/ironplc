@@ -263,8 +263,9 @@ Options
    this flag.
 
 ``--allow-constant-initializer-expressions``
-   Allow a ``VAR`` initializer to be a constant expression: the name of a
-   ``CONSTANT`` variable (e.g. ``level : UDINT := DEFAULT_LEVEL;``) or
+   Allow a ``VAR`` initializer or a ``TYPE`` default to be a constant
+   expression: the name of a ``CONSTANT`` variable (e.g.
+   ``level : UDINT := DEFAULT_LEVEL;``) or
    arithmetic over literals and constants (e.g.
    ``scaled : LREAL := SCALE*4.0;``), rather than only a bare literal.
    Folded to a literal at compile time; produces

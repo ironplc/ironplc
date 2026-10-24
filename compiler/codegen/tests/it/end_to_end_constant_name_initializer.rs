@@ -1,7 +1,8 @@
-//! End-to-end tests of a `VAR` initializer that names a constant
-//! (`retries : UDINT := MAX_RETRIES;`): the smallest constant-expression
-//! initializer, enabled by `--allow-constant-initializer-expressions` and by
-//! the dialects that include it.
+//! End-to-end tests of an initializer that names a constant: a `VAR`
+//! initializer (`retries : UDINT := MAX_RETRIES;`), a string initializer and
+//! a `TYPE` default. The smallest constant-expression initializer, enabled by
+//! `--allow-constant-initializer-expressions` and by the dialects that
+//! include it.
 
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
@@ -50,15 +51,91 @@ fn end_to_end_when_initializer_names_local_constant_then_starts_at_its_value(
 PROGRAM main
 VAR CONSTANT
     LIMIT : INT := 100;
+    NAME : STRING := 'pump';
 END_VAR
 VAR
     threshold : INT := LIMIT;
+    label : STRING[20] := NAME;
 END_VAR
 END_PROGRAM
 ";
     let snapshot = Snapshot::run(source, &options);
 
     assert_eq!(100, snapshot.read_as::<i32>("threshold"));
+    assert_eq!(snapshot.read("label"), "pump");
+}
+
+/// A variable of a type whose default names a constant starts at the
+/// constant's value.
+#[rstest]
+#[case::flag(flagged())]
+#[case::twincat(CompilerOptions::from_dialect(Dialect::TwinCat))]
+fn end_to_end_when_type_default_names_constant_then_variable_starts_at_its_value(
+    #[case] options: CompilerOptions,
+) {
+    let source = "
+VAR_GLOBAL CONSTANT
+    DEFAULT_LEVEL : UDINT := 2;
+END_VAR
+
+TYPE
+    Level : UDINT := DEFAULT_LEVEL;
+END_TYPE
+
+PROGRAM main
+VAR
+    level : Level;
+END_VAR
+END_PROGRAM
+";
+    let snapshot = Snapshot::run(source, &options);
+
+    assert_eq!(2, snapshot.read_as::<u32>("level"));
+}
+
+/// A string of either width and any length starts at the constant's text.
+#[rstest]
+#[case::flag(flagged())]
+#[case::twincat(CompilerOptions::from_dialect(Dialect::TwinCat))]
+fn end_to_end_when_string_initializer_names_global_constant_then_starts_at_its_text(
+    #[case] options: CompilerOptions,
+) {
+    let source = "
+VAR_GLOBAL CONSTANT
+    GREETING : STRING := 'hello';
+    WIDE : WSTRING := \"wide\";
+END_VAR
+
+PROGRAM main
+VAR
+    s : STRING := GREETING;
+    t : STRING[20] := GREETING;
+    w : WSTRING[8] := WIDE;
+END_VAR
+END_PROGRAM
+";
+    let snapshot = Snapshot::run(source, &options);
+
+    assert_eq!(snapshot.read("s"), "hello");
+    assert_eq!(snapshot.read("t"), "hello");
+    assert_eq!(snapshot.read("w"), "wide");
+}
+
+#[test]
+fn end_to_end_when_string_initializer_names_sized_local_constant_then_starts_at_its_text() {
+    let source = "
+PROGRAM main
+VAR CONSTANT
+    NAME : STRING[20] := 'twenty';
+END_VAR
+VAR
+    s : STRING[20] := NAME;
+END_VAR
+END_PROGRAM
+";
+    let snapshot = Snapshot::run(source, &flagged());
+
+    assert_eq!(snapshot.read("s"), "twenty");
 }
 
 /// A function block's field starts at the constant's value too: the shape

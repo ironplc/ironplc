@@ -45,6 +45,14 @@
 //! not reduce. A longer expression has no declared type to check and is
 //! accepted on its value alone, as before.
 //!
+//! The same extension serves two more positions. A `TYPE` default
+//! (`TYPE MyInt : UDINT := C;`) is a `SimpleExpr` like a variable's and
+//! folds the same way. A string initializer (`s : STRING[20] := NAME;`) is
+//! a `StringExpr`, which keeps the length a `SimpleExpr` cannot, and is
+//! normalized to `String` with the literal its expression folds to; a value
+//! that folds to anything but a string is reported as P4022. A `CONSTANT`
+//! string is a named constant like any other.
+//!
 //! ## Before
 //!
 //! ```ignore
@@ -158,16 +166,26 @@ fn register_constants<'a>(
             },
         };
 
-        if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
-            if let Some(value) = &simple.initial_value {
-                constants.try_add(
-                    &name,
-                    NamedConstant {
-                        type_name: simple.type_name.clone(),
-                        value: value.clone(),
-                    },
-                );
+        // A string constant is its literal, declared with the string type's
+        // keyword: the length takes no part in whether a constant may
+        // initialize a variable.
+        let constant = match &decl.initializer {
+            InitialValueAssignmentKind::Simple(simple) => {
+                simple.initial_value.clone().map(|value| NamedConstant {
+                    type_name: simple.type_name.clone(),
+                    value,
+                })
             }
+            InitialValueAssignmentKind::String(string) => {
+                string.initial_value.clone().map(|literal| NamedConstant {
+                    type_name: TypeName::from(string.width.keyword()),
+                    value: ConstantKind::CharacterString(literal),
+                })
+            }
+            _ => None,
+        };
+        if let Some(constant) = constant {
+            constants.try_add(&name, constant);
         }
     }
 }
@@ -287,67 +305,57 @@ impl InitializerFolder<'_> {
         }
     }
 
-    /// Normalizes a `SimpleExprInitializer` back to `Simple`, folding it if
-    /// possible and emitting a diagnostic otherwise. Always returns
-    /// `Simple` so that no other pass ever observes `SimpleExpr`.
-    fn normalize(&mut self, se: SimpleExprInitializer) -> InitialValueAssignmentKind {
+    /// The literal that `initial_value`, written against `type_name`,
+    /// folds to, or `None` with the reason diagnosed: P4037 when the dialect
+    /// does not allow a constant expression here, P4022 when the expression
+    /// is a constant whose declared type the position does not accept,
+    /// P4038 when it does not reduce, or the fold's own error.
+    fn fold_value(&mut self, type_name: &TypeName, initial_value: Expr) -> Option<ConstantKind> {
         if !self.options.allow_constant_initializer_expressions {
             self.diagnostics.push(
                 Diagnostic::problem(
                     Problem::ConstantInitializerExpressionNotAllowed,
-                    Label::span(se.initial_value.span(), "Constant expression initializer"),
+                    Label::span(initial_value.span(), "Constant expression initializer"),
                 )
-                .with_context("type", &se.type_name.to_string()),
+                .with_context("type", &type_name.to_string()),
             );
             // Still fold when possible: the P4037 above already fails the
             // build, but keeping a foldable value prevents a misleading
             // cascade on `VAR CONSTANT` declarations, which would otherwise
             // be diagnosed as *uninitialized* when they plainly carry an
             // initializer.
-            let type_name = se.type_name;
-            let initial_value = match substitute_and_fold(se.initial_value, &mut self.constants) {
+            return match substitute_and_fold(initial_value, &mut self.constants) {
                 Ok(folded) => match folded.kind {
                     ExprKind::Const(c) => Some(c),
                     _ => None,
                 },
                 Err(_) => None,
             };
-            return InitialValueAssignmentKind::Simple(SimpleInitializer {
-                type_name,
-                initial_value,
-            });
         }
 
         // A bare constant name is checked by declared type before its value
         // replaces it (see the module documentation).
         let mismatch = self
-            .named_constant_type(&se.initial_value)
-            .filter(|constant_type| !self.constant_type_fits(&se.type_name, constant_type))
+            .named_constant_type(&initial_value)
+            .filter(|constant_type| !self.constant_type_fits(type_name, constant_type))
             .cloned();
         if let Some(constant_type) = mismatch {
             self.diagnostics.push(
                 Diagnostic::problem(
                     Problem::InitializerTypeMismatch,
                     Label::span(
-                        se.initial_value.span(),
+                        initial_value.span(),
                         format!("Constant of type {constant_type}"),
                     ),
                 )
-                .with_context("type", &se.type_name.to_string()),
+                .with_context("type", &type_name.to_string()),
             );
-            return InitialValueAssignmentKind::Simple(SimpleInitializer {
-                type_name: se.type_name,
-                initial_value: None,
-            });
+            return None;
         }
 
-        let type_name = se.type_name;
-        match substitute_and_fold(se.initial_value, &mut self.constants) {
+        match substitute_and_fold(initial_value, &mut self.constants) {
             Ok(folded) => match folded.kind {
-                ExprKind::Const(c) => InitialValueAssignmentKind::Simple(SimpleInitializer {
-                    type_name,
-                    initial_value: Some(c),
-                }),
+                ExprKind::Const(c) => Some(c),
                 _ => {
                     self.diagnostics.push(
                         Diagnostic::problem(
@@ -356,20 +364,58 @@ impl InitializerFolder<'_> {
                         )
                         .with_context("type", &type_name.to_string()),
                     );
-                    InitialValueAssignmentKind::Simple(SimpleInitializer {
-                        type_name,
-                        initial_value: None,
-                    })
+                    None
                 }
             },
             Err(diag) => {
                 self.diagnostics.push(diag);
-                InitialValueAssignmentKind::Simple(SimpleInitializer {
-                    type_name,
-                    initial_value: None,
-                })
+                None
             }
         }
+    }
+
+    /// Normalizes a `SimpleExprInitializer` back to `Simple`, folding it if
+    /// possible and emitting a diagnostic otherwise. Always returns
+    /// `Simple` so that no other pass ever observes `SimpleExpr`.
+    fn normalize(&mut self, se: SimpleExprInitializer) -> InitialValueAssignmentKind {
+        let initial_value = self.fold_value(&se.type_name, se.initial_value);
+        InitialValueAssignmentKind::Simple(SimpleInitializer {
+            type_name: se.type_name,
+            initial_value,
+        })
+    }
+
+    /// Normalizes a `StringExprInitializer` to `String`, as `normalize` does
+    /// a `SimpleExpr`. The value has to fold to a string literal: a bare
+    /// constant of another type is reported by `fold_value`, and an
+    /// expression that folds to a value of another kind is reported here.
+    fn normalize_string(&mut self, se: StringExprInitializer) -> InitialValueAssignmentKind {
+        let type_name = se.type_name();
+        let initial_value = match self.fold_value(&type_name, se.initial_value) {
+            Some(ConstantKind::CharacterString(literal)) => Some(literal),
+            Some(other) => {
+                // Without the flag, P4037 is already reported and the fold
+                // only avoids a cascade, so nothing more is said about the
+                // value.
+                if self.options.allow_constant_initializer_expressions {
+                    self.diagnostics.push(
+                        Diagnostic::problem(
+                            Problem::InitializerTypeMismatch,
+                            Label::span(other.span(), "Value is not a string"),
+                        )
+                        .with_context("type", &type_name.to_string()),
+                    );
+                }
+                None
+            }
+            None => None,
+        };
+        InitialValueAssignmentKind::String(StringInitializer {
+            length: se.length,
+            width: se.width,
+            initial_value,
+            keyword_span: se.keyword_span,
+        })
     }
 }
 
@@ -380,6 +426,7 @@ impl Fold<Diagnostic> for InitializerFolder<'_> {
     ) -> Result<InitialValueAssignmentKind, Diagnostic> {
         match node {
             InitialValueAssignmentKind::SimpleExpr(se) => Ok(self.normalize(se)),
+            InitialValueAssignmentKind::StringExpr(se) => Ok(self.normalize_string(se)),
             other => InitialValueAssignmentKind::recurse_fold(other, self),
         }
     }
