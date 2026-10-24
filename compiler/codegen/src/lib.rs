@@ -77,8 +77,8 @@ mod string_width;
 mod type_info;
 
 pub use compile::{compile, compile_with_route_counts, CodegenOptions, StringToNumPolicies};
+pub use ironplc_ir::source::{EmptyLookup, SourceLookup};
 pub use lowered::{Route, RouteCounts};
-pub use source_lookup::{EmptyLookup, SourceLookup};
 
 // Spec conformance testing infrastructure (test-only)
 #[cfg(test)]

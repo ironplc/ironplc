@@ -282,9 +282,8 @@ END_PROGRAM
 }
 
 /// REQ-LOW-lowering-110, REQ-LOW-lowering-111: each statement that does not
-/// lower yet is a P9999 of its own, in every POU, and the rest of each body
-/// still lowers. The AST keeps no span for these statements, so each points
-/// at its POU.
+/// lower yet is a P9999 of its own, at the statement, in every POU, and the
+/// rest of each body still lowers.
 #[test]
 fn into_program_when_statements_in_two_pous_unsupported_then_p9999_at_each() {
     let source = "
@@ -312,12 +311,19 @@ END_PROGRAM
     ));
     assert!(program.statement(f, 2).is_none());
 
-    assert_eq!(unsupported_at(program, source), ["F", "main"]);
+    assert_eq!(
+        unsupported_at(program, source),
+        [
+            "FOR a := 1 TO 3 BY x DO r := r; END_FOR",
+            "FOR a := 1 TO 3 BY a DO r := r; END_FOR"
+        ]
+    );
 }
 
 /// REQ-LOW-lowering-112: a declaration lowering does not express yet leaves
 /// the declarations incomplete, which is reported once at its POU, not an
-/// error; a call of that POU does not lower either.
+/// error; a call of that POU does not lower either, and is reported at the
+/// statement, whose span is its assignment's `:=`.
 #[test]
 fn lower_program_when_declaration_not_lowered_then_declarations_incomplete() {
     let source = "
@@ -344,7 +350,7 @@ END_PROGRAM
     ));
     assert!(program.statement(pou(&program, "F"), 0).is_none());
 
-    assert_eq!(unsupported_at(program, source), ["F", "main"]);
+    assert_eq!(unsupported_at(program, source), ["F", ":="]);
 }
 
 /// A standard function block has no body in the library, so a program
@@ -504,4 +510,29 @@ END_PROGRAM
             Declaration::Variable(var) | Declaration::External(var) => program.is_declared(*var),
             Declaration::Field(_) => true,
         }));
+}
+
+/// Each top-level statement keeps its own span, which a backend's line map
+/// reads; a `RETURN`, which the AST keeps no span for, has an empty one.
+#[test]
+fn statement_span_when_statements_then_each_its_own() {
+    let source = "
+FUNCTION F : DINT
+  F := 1;
+  RETURN;
+END_FUNCTION
+PROGRAM main
+  VAR a : DINT; END_VAR
+  a := F();
+END_PROGRAM
+";
+    let program = whole(source);
+    let f = pou(&program, "F");
+
+    let first = program.statement_span(f, 0).unwrap();
+    assert_eq!(&source[first.start..first.end], ":=");
+    assert_eq!(first.start, source.find(":= 1").unwrap());
+    let ret = program.statement_span(f, 1).unwrap();
+    assert_eq!(ret.start, ret.end);
+    assert!(program.statement_span(f, 2).is_none());
 }

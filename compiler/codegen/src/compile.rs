@@ -264,7 +264,7 @@ impl From<&CompilerOptions> for CodegenOptions {
 pub fn compile(
     analysis: CleanAnalysis<'_>,
     options: &CodegenOptions,
-    sources: &dyn crate::source_lookup::SourceLookup,
+    sources: &dyn ironplc_ir::source::SourceLookup,
 ) -> Result<Container, Diagnostic> {
     compile_with_route_counts(analysis, options, sources).map(|(container, _)| container)
 }
@@ -274,7 +274,7 @@ pub fn compile(
 pub fn compile_with_route_counts(
     analysis: CleanAnalysis<'_>,
     options: &CodegenOptions,
-    sources: &dyn crate::source_lookup::SourceLookup,
+    sources: &dyn ironplc_ir::source::SourceLookup,
 ) -> Result<(Container, crate::lowered::RouteCounts), Diagnostic> {
     // Lowering completes every initializer on a copy, and reads the program
     // and globals from it; the analyzed library stays as written
@@ -352,14 +352,16 @@ pub fn compile_with_route_counts(
     Ok((container, counts))
 }
 
-/// Idempotently registers a POU's source file with the debug section's
-/// SOURCE_FILE_TABLE. Called from `compile_program_with_functions` for
-/// each top-level program / function / function-block declaration.
+/// Idempotently registers the source file of the POU whose name is at
+/// `span` with the debug section's SOURCE_FILE_TABLE. Called from
+/// `compile_program_with_functions` for the program and each function and
+/// function block.
 fn register_pou_source_file(
     ctx: &mut CompileContext,
-    file_id: &ironplc_dsl::core::FileId,
-    sources: &dyn crate::source_lookup::SourceLookup,
+    span: &SourceSpan,
+    sources: &dyn ironplc_ir::source::SourceLookup,
 ) {
+    let file_id = &span.file_id;
     if ctx.debug_source_files.get(file_id).is_some() {
         return;
     }
@@ -505,7 +507,7 @@ fn compile_program_with_functions(
     types: &TypeEnvironment,
     string_to_num: StringToNumPolicies,
     compiler_options: CompilerOptions,
-    sources: &dyn crate::source_lookup::SourceLookup,
+    sources: &dyn ironplc_ir::source::SourceLookup,
     lowered_route: Option<crate::lowered::LoweredRoute>,
 ) -> Result<(Container, crate::lowered::RouteCounts), Diagnostic> {
     let ProgramInputs {
@@ -536,12 +538,20 @@ fn compile_program_with_functions(
     // registration order (program first, then functions, then FB
     // bodies) determines the `file_id` numbering, which appears in
     // the on-disk container.
-    register_pou_source_file(&mut ctx, &program.name.span.file_id, sources);
-    for f in func_decls {
-        register_pou_source_file(&mut ctx, &f.name.span.file_id, sources);
-    }
-    for fb in fb_decls {
-        register_pou_source_file(&mut ctx, &fb.name.name.span.file_id, sources);
+    // The lowered program names the POUs and their spans when the route
+    // compiles from it.
+    let pou_spans = ctx
+        .lowered_route
+        .as_ref()
+        .and_then(|route| crate::layout::lowered::source_spans(route.lowering(), &program.name))
+        .unwrap_or_else(|| {
+            std::iter::once(program.name.span())
+                .chain(func_decls.iter().map(|f| f.name.span()))
+                .chain(fb_decls.iter().map(|fb| fb.name.name.span()))
+                .collect()
+        });
+    for span in &pou_spans {
+        register_pou_source_file(&mut ctx, span, sources);
     }
 
     // Lay out the globals first (indices 0..G), the compiler-provided
@@ -834,8 +844,10 @@ fn compile_program_with_functions(
         .shared_globals_size(program_var_count)
         .max_call_depth(max_call_depth);
 
-    // Add debug info.
-    let program_name = program.name.to_string();
+    // Add debug info, named as the lowered program names each POU when the
+    // route compiles from it.
+    let program_name = crate::lowered::pou_name(&ctx, crate::layout::names::ScopeId::Program)
+        .unwrap_or_else(|| program.name.to_string());
     builder = builder
         .add_func_name(FuncNameEntry {
             function_id: FunctionId::INIT,

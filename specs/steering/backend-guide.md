@@ -127,8 +127,6 @@ need one, move it to `ironplc-ir` (or to a small crate both backends can depend
 on) before the backend uses it. Never add a dependency on the crate that holds
 it.
 
-- **`SourceLookup`** (`codegen/src/source_lookup.rs`): how a backend reads the
-  source bytes its debug information hashes.
 - **The trap codes** (`V4001`–`V4006`, in `compiler/vm/resources/problem-codes.csv`
   and `Trap`): every backend reports a trap under the code the bytecode VM
   gives it (REQ-LOW-codegen-098).
@@ -263,7 +261,7 @@ For another target, write the same table in your design doc.
 Build it from the lowered program alone: the names and spans on variables,
 fields, POUs and types (REQ-LOW-lowering-006), and the span on every statement
 for the line map (REQ-LOW-lowering-063). Read source bytes through
-`SourceLookup`. A debugger shows what the backend allocated, so a variable an
+`ironplc_ir::source::SourceLookup`. A debugger shows what the backend allocated, so a variable an
 optimization removed does not appear.
 
 The end-to-end suite reads variables **by name** through the backend's debug
@@ -469,7 +467,7 @@ instructions and §3.10, the capability checks, and requirement IDs such as
 
 #### Step 2: Shared pieces
 
-Move `SourceLookup` to `ironplc-ir`; implement the end-to-end harness's
+Implement the end-to-end harness's
 `Backend` and `Running` traits, and add a way to mark a test a backend cannot
 run yet; share the trap codes.
 
