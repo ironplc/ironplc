@@ -201,6 +201,17 @@ so calling it from more than one pass needs no annotation on the tree.
    operand the other widens to: `INT + DINT` is `DINT`, `INT + REAL` is
    `REAL`, `DINT + 1` is `DINT`, `REAL + 1` is `REAL`. `DINT + REAL` has no
    result, because `DINT` does not widen losslessly to `REAL`.
+
+   An untyped real literal is acceptable only as a real type, so beside an
+   integer operand it is a `REAL`, the type it defaults to (ADR-0028), and
+   the pair resolves as the integer and a `REAL` do: `INT * 1.5` is `REAL`,
+   `UINT + 1.5` is `REAL`, and `DINT * 1.5` has no result, as `DINT * REAL`
+   has none. An untyped integer literal needs no such step, since it is
+   acceptable as every numeric type. The comparison operand type asks the
+   same relation (see [Comparison Operand Type](comparison-operand-type.md)),
+   so `i < 1.5` compares at the type `i * 1.5` computes at, and so does a
+   function of several inputs of one type: `MIN(i, 1.5)` selects at `REAL`
+   (REQ-IC-analyzer-125 in [Implicit Conversions](implicit-conversions.md)).
 3. Otherwise try the typed step, `typed_overload(op, left, right)`. It takes
    no options, because no typed row depends on a flag. Each operand is judged
    where the corresponding parameter is expected: a temporal parameter
@@ -394,7 +405,7 @@ Programs that analyze cleanly today and are reported after this design:
 | `t1 * t2` on `TIME` | clean, nonsense | P4049 | no Table 30 row |
 | `r + d` on `REAL` and `DINT` | clean, wrong value | P4049 | `DINT` does not widen losslessly to `REAL` |
 | `d + u` on `DINT` and `UDINT` | clean | P4049 | neither type widens to the other; the same for any signed and unsigned pair of which neither widens |
-| `d * 1.5` on `DINT` | clean | P4049 | a real literal is not acceptable where `DINT` is expected, nor `DINT` where a real is |
+| `d * 1.5` on `DINT` | clean | P4049 | the real literal is a `REAL` (ADR-0028), which `DINT` does not widen losslessly to; `i * 1.5` on `INT` resolves to `REAL` |
 | `2 * t` on `TIME` | clean | P4049 | `MUL_TIME` takes the `TIME` first; no row has `ANY_NUM * TIME` |
 | `t1 / t2` on `TIME` | clean | P4049 | no Table 30 row |
 | `d1 + d2` on `DATE` | clean | P4049 | no Table 30 row |
@@ -452,6 +463,8 @@ Programs that keep working: `t1 + t2`, `t + lt`, `lt + LTIME#1s`, `dt + t`,
 
 **REQ-AO-analyzer-015** With `--allow-bit-string-arithmetic`, `MOD` on a bit-string operand does not resolve, so `b MOD 2` is reported as `MOD(b, 2)` is.
 
+**REQ-AO-analyzer-016** An untyped real literal operand beside an integer operand resolves to the numeric overload with result `REAL` when the integer widens losslessly to `REAL` (`SINT`, `INT`, `USINT`, `UINT`, or a bit string judged as one of them), on either side and in the function form, and does not resolve beside an integer that does not (`DINT`, `LINT`, `UDINT`, `ULINT`).
+
 ### Type resolution
 
 **REQ-AO-analyzer-020** The resolved type of an arithmetic binary expression is the result type of its resolved overload.
@@ -506,6 +519,8 @@ Programs that keep working: `t1 + t2`, `t + lt`, `lt + LTIME#1s`, `dt + t`,
 
 **REQ-AO-codegen-012** An arithmetic expression on a subrange computes at the subrange's base type, and its result is widened by the conversion the analyzer records to its target: `l := s + s` on a subrange of `INT` adds at 32 bits and widens the sum.
 
+**REQ-AO-codegen-013** An integer operand beside an untyped real literal computes at `REAL`, with the integer converted first: `i * 1.5`, `1.5 * i` and `MUL(i, 1.5)` give 4.5 for `INT` 3, and `i / 32767.0 * 150.0 - 50.0` gives 100.0 for `INT` 32767.
+
 ## Out of scope
 
 - `**` (`EXPT`) has no row in the operator-form table and is not checked.
@@ -516,6 +531,13 @@ Programs that keep working: `t1 + t2`, `t + lt`, `lt + LTIME#1s`, `dt + t`,
 - The standard's same-type rule for the numeric overload is relaxed to the
   project's implicit widening, as it already is for function arguments. A
   strict mode is not proposed.
+- A lossy conversion of `DINT` or a wider integer to `REAL`, which TwinCAT
+  accepts with the warning "Implicit conversion from 'DINT' to 'REAL':
+  possible loss of information", is not admitted in any dialect: `d / 2.0`
+  and `d / r` on a `DINT` stay P4049 (decided on
+  [#2067](https://github.com/ironplc/ironplc/issues/2067)). If a program
+  needs it, it is a flag the TwinCAT dialect enables, matching what TwinCAT
+  computes, not a change to the lossless rule of ADR-0031.
 - A call to a typed name on operands of the other width, `ADD_TIME(lt1, lt2)`,
   is accepted by the call rule today because the predicate treats the widths
   of a family as interchangeable, and computes at the typed name's width. That
