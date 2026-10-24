@@ -59,19 +59,22 @@ lint:
 # take the lowered route. Raise it when lowering grows; it never falls.
 lowered_floor := "19610"
 
-# Count the top-level statements of the codegen end-to-end programs that take
-# the lowered route, and fail when fewer than `lowered_floor` do. The tests
-# compile every program by both routes and record the counts in the file
-# `IRONPLC_ROUTE_COUNTS` names. The property tests generate their programs, so
-# a fixed seed keeps the count the same from run to run.
+# Count the top-level statements, the `init` functions and the prologues of
+# the codegen end-to-end programs that take the lowered route, and fail when
+# fewer than `lowered_floor` statements do. The tests compile every program
+# by both routes and record the counts in the file `IRONPLC_ROUTE_COUNTS`
+# names. The property tests generate their programs, so a fixed seed keeps
+# the count the same from run to run.
 lowered-count:
   #!/usr/bin/env bash
   set -euo pipefail
   counts="$PWD/target/lowered-route-counts.txt"
   rm -f "$counts"
   IRONPLC_ROUTE_COUNTS="$counts" PROPTEST_RNG_SEED=0 cargo test --quiet -p ironplc-codegen --test it
-  read -r lowered from_ast < <(awk '{ l += $1; a += $2 } END { print l + 0, a + 0 }' "$counts")
+  read -r lowered from_ast init_lowered init_from_ast prologue_lowered prologue_from_ast < <(awk '{ l += $1; a += $2; il += $3; ia += $4; pl += $5; pa += $6 } END { print l + 0, a + 0, il + 0, ia + 0, pl + 0, pa + 0 }' "$counts")
   echo "Top-level statements of the end-to-end programs: $lowered lowered, $from_ast from the AST"
+  echo "init functions of the end-to-end programs: $init_lowered lowered, $init_from_ast from the AST"
+  echo "Prologues of the end-to-end programs: $prologue_lowered lowered, $prologue_from_ast from the AST"
   if [ "$lowered" -lt {{lowered_floor}} ]; then
     echo "Fewer than {{lowered_floor}} statements took the lowered route"
     exit 1

@@ -450,7 +450,8 @@ impl<'a> Resolver<'a> {
             // none of the others behind.
             InitialValueAssignmentKind::FunctionBlockCall(_)
             | InitialValueAssignmentKind::LateResolvedType(_)
-            | InitialValueAssignmentKind::SimpleExpr(_) => None,
+            | InitialValueAssignmentKind::SimpleExpr(_)
+            | InitialValueAssignmentKind::StringExpr(_) => None,
         }
     }
 

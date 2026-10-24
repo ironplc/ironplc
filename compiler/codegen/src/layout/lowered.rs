@@ -24,124 +24,87 @@
 //!
 //! Each string has a run of the data region of its own ([`super::region`]),
 //! but a function's `VAR_IN_OUT`, which refers to its caller's. An array,
-//! and what a reference refers to, is reached through the container's
-//! array descriptors, which the declarations add in the walk's order
-//! ([`super::descriptors`]).
+//! a structure, an array of structures and what a reference refers to are
+//! reached through the container's array descriptors, which the
+//! declarations add in the walk's order ([`super::descriptors`]). The
+//! check compares a structure's and an array of structures' entry without
+//! the analyzer types it holds ([`super::entries`]). A function block
+//! instance's fields, and what a call of each user function, function block
+//! and method needs, come from the same declarations ([`super::calls`]).
 //!
-//! Until it is complete, the layout the bodies are compiled against is
-//! still built from the AST, and this one is only checked equal to it.
+//! When every declaration lowers, the bodies are compiled against this
+//! layout ([`Layout::install`]); the walk of the AST declarations still
+//! runs, for the entries this one does not hold yet and for a program a
+//! declaration of which does not lower, and the end-to-end helpers check
+//! the two equal ([`super::check`]).
 
 use std::collections::HashMap;
 
 use ironplc_analyzer::StandardFunctionBlock;
-use ironplc_container::{ArrayDescriptor, ContainerBuilder, FunctionId, VarIndex};
+use ironplc_container::{ArrayDescriptor, FunctionId, VarIndex};
 use ironplc_dsl::core::Id;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::execution::{GlobalKind, GlobalScope};
 use ironplc_ir::lowered::{
     Field, Nullability, PouId, PouKind, Section, TypeId, TypeKind, TypeTable, VarId,
 };
 use ironplc_lowering::{Declaration, PartialProgram};
 
+use super::calls::{Blocks, Calling};
 use super::descriptors::Descriptors;
+use super::entries::{StructArrayEntry, StructEntry};
 use super::names::{self, ScopeId, Scoped};
 use super::region::{string_at, Region};
-use crate::compile::{CompileContext, StringVarInfo, VarTypeInfo};
+use crate::compile::{
+    CompileContext, FbInstanceInfo, StringReturnInfo, StringVarInfo, UserFbTypeInfo,
+    UserFunctionInfo, UserMethodInfo, UserMethodParam, VarTypeInfo,
+};
 use crate::compile_array::ArrayVarInfo;
+use crate::compile_reference::StringRefInfo;
 use crate::lowered::type_info;
 
-/// Checks the layout built from the declarations of `lowering` equal to the
-/// one `ctx` laid out from the AST, for the program `program`: each slot,
-/// the type it is operated at, each string's run of the data region, where
-/// the region ends, how each array is reached, and the array descriptors
-/// `builder` holds. An internal error names each entry that differs.
-/// A program a declaration of which did not lower keeps the AST layout, and
-/// has nothing to check.
-pub(crate) fn check(
-    lowering: &PartialProgram,
-    ctx: &CompileContext,
-    builder: &ContainerBuilder,
-    program: &Id,
-) -> Result<(), Diagnostic> {
-    let Some(lowered) = Layout::of(lowering, program, &ctx.standard_blocks) else {
-        return Ok(());
-    };
-    let mut differences: Vec<String> = ctx
-        .variables
-        .differences(&lowered.slots)
-        .into_iter()
-        .map(|difference| format!("slot {difference}"))
-        .chain(
-            ctx.var_types
-                .differences(&lowered.var_types)
-                .into_iter()
-                .map(|difference| format!("type {difference}")),
-        )
-        .chain(
-            ctx.string_vars
-                .differences(&lowered.string_vars)
-                .into_iter()
-                .map(|difference| format!("string {difference}")),
-        )
-        .chain(
-            ctx.array_vars
-                .differences(&lowered.array_vars)
-                .into_iter()
-                .map(|difference| format!("array {difference}")),
-        )
-        .collect();
-    if builder.array_descriptors() != lowered.descriptors {
-        differences.push(format!(
-            "array descriptors {:?} and {:?}",
-            builder.array_descriptors(),
-            lowered.descriptors
-        ));
-    }
-    if ctx.data_region_offset != lowered.data_end {
-        differences.push(format!(
-            "data region ends at {}, not {}",
-            lowered.data_end, ctx.data_region_offset
-        ));
-    }
-    if differences.is_empty() {
-        return Ok(());
-    }
-    Err(Diagnostic::internal_error_at(Label::span(
-        program.span.clone(),
-        format!(
-            "The layout built from the lowered declarations differs: {}",
-            differences.join("; ")
-        ),
-    )))
-}
-
-/// What the layout built from the lowered declarations knows of each name
-/// so far: its slot, the type the slot is operated at, a string's run of
-/// the data region, and how an array is reached; where the region ends;
-/// and the array descriptors, by index.
+/// What the layout built from the lowered declarations knows of each name:
+/// its slot, the type the slot is operated at, a string's run of the data
+/// region, how an array, a structure, an array of structures, what a
+/// reference refers to and a function block instance are reached, and
+/// whether it is a function's `VAR_IN_OUT`; where the region ends; the
+/// array descriptors, by index; and what a call of each user function,
+/// function block and method needs.
 #[derive(Default)]
-struct Layout {
-    slots: Scoped<VarIndex>,
-    var_types: Scoped<VarTypeInfo>,
-    string_vars: Scoped<StringVarInfo>,
-    array_vars: Scoped<ArrayVarInfo>,
-    data_end: u32,
-    descriptors: Vec<ArrayDescriptor>,
+pub(crate) struct Layout {
+    pub(super) slots: Scoped<VarIndex>,
+    pub(super) var_types: Scoped<VarTypeInfo>,
+    pub(super) string_vars: Scoped<StringVarInfo>,
+    pub(super) array_vars: Scoped<ArrayVarInfo>,
+    pub(super) struct_vars: Scoped<StructEntry>,
+    pub(super) struct_array_vars: Scoped<StructArrayEntry>,
+    pub(super) string_refs: Scoped<StringRefInfo>,
+    pub(super) region_refs: Scoped<u16>,
+    pub(super) fb_instances: Scoped<FbInstanceInfo>,
+    pub(super) in_out_params: Scoped<()>,
+    pub(super) data_end: u32,
+    pub(super) descriptors: Vec<ArrayDescriptor>,
+    /// What a call of each user function needs, by its lower-case name.
+    pub(super) user_functions: HashMap<String, UserFunctionInfo>,
+    /// What a call of each user function block and its methods needs, by
+    /// the block's upper-case name.
+    pub(super) user_fb_types: HashMap<String, UserFbTypeInfo>,
 }
 
 /// What the declarations reserve as the walk visits them: the runs of the
-/// data region, and the array descriptors.
+/// data region, and the array descriptors; and the function blocks an
+/// instance can be of.
 struct Storage<'a> {
     region: Region<'a>,
     descriptors: Descriptors<'a>,
+    blocks: Blocks<'a>,
 }
 
 impl Layout {
     /// The layout of the declarations of `lowering`, whose program the
     /// container runs is `program`, and the standard function block each
     /// type is `standard_blocks`, by its upper-case name; `None` when a
-    /// declaration did not lower.
-    fn of(
+    /// declaration did not lower, and the program keeps the AST layout.
+    pub(crate) fn of(
         lowering: &PartialProgram,
         program: &Id,
         standard_blocks: &HashMap<String, StandardFunctionBlock>,
@@ -154,6 +117,7 @@ impl Layout {
         let mut storage = Storage {
             region: Region::new(lowering, &pous.blocks, standard_blocks),
             descriptors: Descriptors::new(types),
+            blocks: Blocks::new(lowering, &pous.blocks, standard_blocks),
         };
         let mut layout = Self::default();
 
@@ -192,37 +156,75 @@ impl Layout {
         for (function_id, function) in pous.functions() {
             let scope = ScopeId::Function(function_id);
             let frame = frame(lowering, function)?;
+            let var_offset = next;
+            let mut calling = Calling::default();
             for var in frame.variables {
                 let name = name(lowering, var)?;
+                let section = lowering.variables().get(var)?.section();
                 // A `VAR_IN_OUT` refers to its caller's variable.
-                if lowering.variables().get(var)?.section() != Section::InOut {
+                let string = if section == Section::InOut {
+                    layout.in_out_params.insert(scope, name.clone(), ());
+                    None
+                } else {
                     let held = held(lowering, var)?;
-                    layout.insert_string(&mut storage, scope, &name, held)?;
                     layout.insert_reference(&mut storage, scope, &name, held, next)?;
-                }
+                    layout.insert_string(&mut storage, scope, &name, held)?
+                };
+                calling.add(section, &name, next, string);
                 layout.insert(scope, name, next, held_type(lowering, var));
                 next = VarIndex::new(next.raw() + 1);
             }
             let result = frame.result?;
             let name = name(lowering, result)?;
+            let result_index = next;
             layout.insert(scope, name.clone(), next, held_type(lowering, result));
             next = VarIndex::new(next.raw() + 1);
             let ty = held(lowering, result)?;
-            layout.insert_string(&mut storage, scope, &name, ty)?;
+            let return_string = layout.insert_string(&mut storage, scope, &name, ty)?;
+            let mut return_struct_desc_index = None;
             if matches!(types.kind(ty), Some(TypeKind::Structure { .. })) {
-                storage.region.structure(ty)?;
-                storage.descriptors.structure(ty)?;
+                let data_offset = storage.region.structure(ty)?;
+                let slots = storage.descriptors.structure(ty)?;
+                return_struct_desc_index = Some(slots.desc_index);
+                // A structure result takes its scratch slot after it, as a
+                // global's or the program's variable does, and the
+                // function's run counts it. The result is a result
+                // parameter, which refers to the caller's structure.
+                let scratch_index = needs_scratch(types, ty).then_some(next);
+                if scratch_index.is_some() {
+                    layout.insert(scope, scratch(&name), next, None);
+                    next = VarIndex::new(next.raw() + 1);
+                }
+                let entry = StructEntry::lowered(
+                    types,
+                    ty,
+                    result_index,
+                    data_offset,
+                    scratch_index,
+                    slots,
+                )?;
+                layout.struct_vars.insert(scope, name, entry);
             }
-            // A structure result takes its scratch slot after it, as a
-            // global's or the program's variable does, and the function's
-            // run counts it. The result is a result parameter, which refers
-            // to the caller's structure.
-            if matches!(types.kind(ty), Some(TypeKind::Structure { .. }))
-                && needs_scratch(types, ty)
-            {
-                layout.insert(scope, scratch(&name), next, None);
-                next = VarIndex::new(next.raw() + 1);
-            }
+            let info = UserFunctionInfo {
+                function_id,
+                var_offset,
+                num_params: u16::try_from(calling.params.len()).ok()?,
+                params: calling
+                    .params
+                    .into_iter()
+                    .map(|(_, passing)| passing)
+                    .collect(),
+                return_string_info: return_string.map(|string| StringReturnInfo {
+                    data_offset: string.data_offset,
+                    max_length: string.max_length,
+                    char_width: string.char_width,
+                }),
+                return_struct_desc_index,
+                outputs: calling.outputs,
+                string_outputs: calling.string_outputs,
+            };
+            let key = lowering.pous().name(function)?.to_string().to_lowercase();
+            layout.user_functions.insert(key, info);
         }
         for (function_id, block) in pous.blocks() {
             let field_var_off = next;
@@ -234,21 +236,28 @@ impl Layout {
                 layout.insert(scope, name, next, slot_type(types, field.ty));
                 next = VarIndex::new(next.raw() + 1);
             }
+            let mut methods = HashMap::new();
             for (method_id, method) in pous.methods(block) {
                 let scope = ScopeId::Method {
                     block: function_id,
                     method: method_id,
                 };
                 let frame = frame(lowering, method)?;
+                let param_var_off = next;
                 let mut current = next;
+                let mut calling = Calling::default();
                 for var in frame.variables {
                     let name = name(lowering, var)?;
                     // A call copies a string argument into the run of the
                     // parameter, a `VAR_IN_OUT`'s too.
-                    layout.insert_string(&mut storage, scope, &name, held(lowering, var)?)?;
+                    let string =
+                        layout.insert_string(&mut storage, scope, &name, held(lowering, var)?)?;
+                    let section = lowering.variables().get(var)?.section();
+                    calling.add(section, &name, current, string);
                     layout.insert(scope, name, current, held_type(lowering, var));
                     current = VarIndex::new(current.raw() + 1);
                 }
+                let has_return_value = frame.result.is_some();
                 // A method has a result slot whether it returns a result or
                 // not.
                 if let Some(result) = frame.result {
@@ -259,11 +268,90 @@ impl Layout {
                 // A method's run spans its block's copy slots too, and the
                 // next method's starts that many slots on (`block.rs`).
                 next = VarIndex::new(next.raw() + current.raw() - field_var_off.raw());
+                let info = UserMethodInfo {
+                    function_id: method_id,
+                    param_var_off: param_var_off.raw(),
+                    num_params: u16::try_from(calling.params.len()).ok()?,
+                    params: calling
+                        .params
+                        .into_iter()
+                        .map(|(name, passing)| UserMethodParam { name, passing })
+                        .collect(),
+                    has_return_value,
+                    outputs: calling.outputs,
+                    string_outputs: calling.string_outputs,
+                };
+                let key = lowering.pous().name(method)?.to_string().to_lowercase();
+                methods.insert(key, info);
             }
+            let info = storage
+                .blocks
+                .block_type(block, function_id, field_var_off, methods)?;
+            let key = lowering.pous().name(block)?.to_string().to_uppercase();
+            layout.user_fb_types.insert(key, info);
         }
         layout.data_end = storage.region.end();
         layout.descriptors = storage.descriptors.into_added();
         Some(layout)
+    }
+
+    /// Makes this layout the one `ctx` compiles the bodies against
+    /// (REQ-LOW-codegen-199). A structure's and an array of structures'
+    /// entries, which hold analyzer types, and the debug entries stay the
+    /// AST layout's, as do the array descriptors, which the walk of the AST
+    /// declarations has already added to the container.
+    pub(crate) fn install(self, ctx: &mut CompileContext) {
+        let (max_string_capacity, has_wide_string) = self.temporary_buffers();
+        ctx.variables = self.slots;
+        ctx.var_types = self.var_types;
+        ctx.string_vars = self.string_vars;
+        ctx.array_vars = self.array_vars;
+        ctx.string_refs = self.string_refs;
+        ctx.region_refs = self.region_refs;
+        ctx.fb_instances = self.fb_instances;
+        ctx.in_out_params = self.in_out_params;
+        ctx.user_functions = self.user_functions;
+        ctx.user_fb_types = self.user_fb_types;
+        ctx.data_region_offset = self.data_end;
+        ctx.max_string_capacity = max_string_capacity;
+        ctx.has_wide_string = has_wide_string;
+    }
+
+    /// What the temporary buffers are sized for: the largest capacity of a
+    /// string the layout holds, and whether a string of a global or the
+    /// program, or an array of strings, is wide. A wide string of a function,
+    /// a function block or a method does not size them (`compile_fn.rs`).
+    pub(super) fn temporary_buffers(&self) -> (u16, bool) {
+        let strings: Vec<_> = self.string_vars.entries().collect();
+        let arrays: Vec<_> = self
+            .array_vars
+            .entries()
+            .filter(|(_, array)| array.is_string_element)
+            .collect();
+        let capacity = strings
+            .iter()
+            .map(|(_, string)| string.max_length)
+            .chain(arrays.iter().map(|(_, array)| array.string_max_len))
+            .chain(
+                self.struct_vars
+                    .entries()
+                    .flat_map(|(_, entry)| entry.capacities(&self.descriptors)),
+            )
+            .chain(
+                self.struct_array_vars
+                    .entries()
+                    .flat_map(|(_, entry)| entry.capacities(&self.descriptors)),
+            )
+            .max()
+            .unwrap_or(0);
+        let wide = strings
+            .iter()
+            .filter(|(scope, _)| matches!(scope, ScopeId::Global | ScopeId::Program))
+            .any(|(_, string)| string.char_width.is_wide())
+            || arrays
+                .iter()
+                .any(|(_, array)| array.string_char_width.is_wide());
+        (capacity, wide)
     }
 
     /// Records `name` in `scope` at the slot `index`, operated at `held`.
@@ -294,38 +382,81 @@ impl Layout {
         ty: TypeId,
     ) -> Option<()> {
         let types = storage.region.lowering().types();
-        let index = VarIndex::new(names::slot_count(&self.slots, scope) as u16);
-        let start = storage.region.variable(ty)?;
+        let run = storage.region.variable(ty)?;
+        let start = run.as_ref().map(|run| run.start);
         if let (Some(TypeKind::String(shape)), Some(start)) = (types.kind(ty), start) {
             self.string_vars
                 .insert(scope, name.clone(), string_at(start, *shape)?);
         }
-        if let Some(array) = storage.descriptors.variable(ty, index, start)? {
+        let index = self.insert_counted(scope, name.clone(), slot_type(types, ty));
+        if let (Some(TypeKind::FunctionBlock { .. }), Some(run)) = (types.kind(ty), run) {
+            if let Some(instance) = storage.blocks.instance(ty, index, run)? {
+                self.fb_instances.insert(scope, name.clone(), instance);
+            }
+        }
+        let reached = storage.descriptors.variable(ty, index, start)?;
+        let scratch_index =
+            needs_scratch(types, ty).then(|| self.insert_counted(scope, scratch(&name), None));
+        if let Some(slots) = reached.slots {
+            let data_offset = start?;
+            if matches!(types.kind(ty)?, TypeKind::Structure { .. }) {
+                let entry =
+                    StructEntry::lowered(types, ty, index, data_offset, scratch_index, slots)?;
+                self.struct_vars.insert(scope, name.clone(), entry);
+            } else {
+                let entry =
+                    StructArrayEntry::lowered(types, ty, index, data_offset, scratch_index, slots)?;
+                self.struct_array_vars.insert(scope, name.clone(), entry);
+            }
+        }
+        self.insert_reached(
+            scope,
+            &name,
+            reached.array,
+            reached.string_ref,
+            reached.region_ref,
+        );
+        Some(())
+    }
+
+    /// Records how `name` in `scope` is reached as an array, through the
+    /// strings it refers to and through the descriptor that sizes what it
+    /// refers to, of those it has.
+    fn insert_reached(
+        &mut self,
+        scope: ScopeId,
+        name: &Id,
+        array: Option<ArrayVarInfo>,
+        string_ref: Option<StringRefInfo>,
+        region_ref: Option<u16>,
+    ) {
+        if let Some(array) = array {
             self.array_vars.insert(scope, name.clone(), array);
         }
-        let scratch_slot = needs_scratch(types, ty).then(|| scratch(&name));
-        self.insert_counted(scope, name, slot_type(types, ty));
-        if let Some(scratch_slot) = scratch_slot {
-            self.insert_counted(scope, scratch_slot, None);
+        if let Some(string_ref) = string_ref {
+            self.string_refs.insert(scope, name.clone(), string_ref);
         }
-        Some(())
+        if let Some(region_ref) = region_ref {
+            self.region_refs.insert(scope, name.clone(), region_ref);
+        }
     }
 
     /// Reserves the run of the data region that `name`, of a function, a
     /// function block or a method, holds in `scope` when its type `ty` is a
-    /// string.
+    /// string, and returns where it is.
     fn insert_string(
         &mut self,
         storage: &mut Storage,
         scope: ScopeId,
         name: &Id,
         ty: TypeId,
-    ) -> Option<()> {
-        if let Some(TypeKind::String(shape)) = storage.region.lowering().types().kind(ty) {
-            let string = storage.region.string(*shape)?;
-            self.string_vars.insert(scope, name.clone(), string);
-        }
-        Some(())
+    ) -> Option<Option<StringVarInfo>> {
+        let Some(TypeKind::String(shape)) = storage.region.lowering().types().kind(ty) else {
+            return Some(None);
+        };
+        let string = storage.region.string(*shape)?;
+        self.string_vars.insert(scope, name.clone(), string.clone());
+        Some(Some(string))
     }
 
     /// Adds the array descriptors that `name`, of a function or a function
@@ -341,9 +472,14 @@ impl Layout {
     ) -> Option<()> {
         let types = storage.region.lowering().types();
         if let Some(TypeKind::Reference { target, .. }) = types.kind(ty) {
-            if let Some(array) = storage.descriptors.reference(*target, index)? {
-                self.array_vars.insert(scope, name.clone(), array);
-            }
+            let reached = storage.descriptors.reference(*target, index)?;
+            self.insert_reached(
+                scope,
+                name,
+                reached.array,
+                reached.string_ref,
+                reached.region_ref,
+            );
         }
         Some(())
     }
@@ -351,9 +487,10 @@ impl Layout {
     /// Records `name` in `scope` at the next slot the body of `scope`
     /// counts, as the walk of the AST declarations numbers the globals, the
     /// program's variables and the scratch slots.
-    fn insert_counted(&mut self, scope: ScopeId, name: Id, held: Option<VarTypeInfo>) {
+    fn insert_counted(&mut self, scope: ScopeId, name: Id, held: Option<VarTypeInfo>) -> VarIndex {
         let index = VarIndex::new(names::slot_count(&self.slots, scope) as u16);
         self.insert(scope, name, index, held);
+        index
     }
 }
 
@@ -562,7 +699,7 @@ fn name_of(field: &Field) -> Id {
 
 /// The type of the instance the body of `pou` works on, a program or a
 /// function block.
-fn instance_type(types: &TypeTable, pou: PouId) -> Option<TypeId> {
+pub(super) fn instance_type(types: &TypeTable, pou: PouId) -> Option<TypeId> {
     types.iter().find_map(|(ty, entry)| match &entry.kind {
         TypeKind::Program { body, .. } | TypeKind::FunctionBlock { body, .. } => {
             (*body == pou).then_some(ty)

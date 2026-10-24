@@ -37,15 +37,17 @@ VAR
   recs : ARRAY[1..2] OF Rec;
   pa : REF_TO ARRAY[1..3] OF DINT;
   prows : REF_TO Rows;
+  ra : REFERENCE TO ARRAY[1..3] OF DINT;
 END_VAR
   x := {value};
 END_PROGRAM
 "
     );
-    let resolved = run_pass_with_options(
-        &program,
-        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-    );
+    let options = CompilerOptions {
+        allow_reference_to: true,
+        ..CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3)
+    };
+    let resolved = run_pass_with_options(&program, &options);
     type_name_upper(&collect_assignment_types(&resolved)[0])
 }
 
@@ -68,6 +70,10 @@ END_PROGRAM
 #[case::array_of_arrays_field_of_array_element("recs[2].t[1][3]", "DINT")]
 #[case::dereference("pa^[2]", "DINT")]
 #[case::dereference_array_of_arrays("prows^[1][2]", "DINT")]
+#[case::reference_subscripted("pa[2]", "DINT")]
+#[case::reference_to_subscripted("ra[2]", "DINT")]
+#[case::reference_subscripted_array_of_arrays("prows[1][2]", "DINT")]
+#[case::reference_subscripted_inner_array("prows[1]", "ROW")]
 fn apply_when_subscripted_variable_then_type_is_selected_element_type(
     #[case] value: &str,
     #[case] expected: &str,
@@ -83,6 +89,7 @@ fn apply_when_subscripted_variable_then_type_is_selected_element_type(
 #[case::too_many_subscripts("a[1, 2]")]
 #[case::subscripts_reach_past_inner_array("rows[1, 2]")]
 #[case::subscript_of_element("a[1][2]")]
+#[case::reference_too_many_subscripts("pa[1, 2]")]
 fn apply_when_subscripts_do_not_select_element_then_type_unresolved(#[case] value: &str) {
     assert_eq!(value_type(value), None);
 }

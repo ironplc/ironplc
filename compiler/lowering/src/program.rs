@@ -19,8 +19,8 @@
 //! out its storage from (REQ-LOW-lowering-197).
 //!
 //! Then it lowers `init` (`init.rs`), the stores of each global's and each
-//! instance field's starting value, and, at the head of each function's
-//! and method's body, its prologue.
+//! instance field's starting value, and, at the head of each body, its
+//! prologue.
 //!
 //! Then it lowers each top-level statement of each body. A statement that
 //! reaches a variable finds the one already declared.
@@ -124,10 +124,11 @@ impl PartialProgram {
         self.init.complete()
     }
 
-    /// The statements at the head of the body of `pou`, which give each
-    /// variable of a function or method that starts again on every call its
-    /// value; `None` when one of those values does not lower yet, or the
-    /// body does not.
+    /// The statements at the head of the body of `pou`, which give each of
+    /// its variables that starts again on every call its value: a
+    /// function's or method's locals and result, and any body's `VAR_TEMP`;
+    /// `None` when one of those values does not lower yet, or the body does
+    /// not.
     pub fn prologue(&self, pou: PouId) -> Option<&[Stmt]> {
         let body = self.bodies.iter().find(|body| body.pou == pou)?;
         match body.statements {

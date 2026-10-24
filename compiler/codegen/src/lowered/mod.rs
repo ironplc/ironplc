@@ -41,17 +41,21 @@ mod call_args;
 mod expr;
 mod fb_call;
 mod fn_call;
+mod init;
 mod instance_copy;
 mod method;
 mod place;
 mod policy;
+mod prologue;
 mod slot_copy;
 mod stmt;
 mod string;
 
 use call_args::passes;
+pub(crate) use init::try_emit_init;
 pub(crate) use place::type_info;
 pub(crate) use policy::parse_policy;
+pub(crate) use prologue::{restarts, try_emit_prologue};
 
 /// Which route codegen compiles a statement by.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -75,6 +79,18 @@ pub struct RouteCounts {
     pub lowered: usize,
     /// Statements compiled from the AST.
     pub from_ast: usize,
+    /// `init` functions emitted from the lowered program.
+    pub init_lowered: usize,
+    /// `init` functions emitted from the AST.
+    pub init_from_ast: usize,
+    /// Prologues emitted from the lowered program: a function's or a
+    /// method's, and a program's or function block's that declares a
+    /// `VAR_TEMP`.
+    pub prologue_lowered: usize,
+    /// Prologues emitted from the AST: a function's or a method's from its
+    /// declarations; a program's `VAR_TEMP` takes its value once, in
+    /// `init`, and a function block's none.
+    pub prologue_from_ast: usize,
 }
 
 /// The program lowering made for a compilation, and how many statements
@@ -457,30 +473,28 @@ pub(super) fn seen_name(ctx: &CompileContext, var: VarId) -> Option<&Id> {
     ctx.sees(*scope, name).then_some(name)
 }
 
-/// When `path` starts by reaching a field of the current instance through the
-/// instance parameter, of type `root`: the instance's type, that field, and
-/// the projections after it. `None` for any other path.
+/// When `path` starts by reaching a field of an instance: of the current
+/// instance through the instance parameter, of type `root`, or of a program
+/// instance through the instance itself, as `init` reaches it, running in no
+/// body. Gives the instance's type, that field, and the projections after
+/// it; `None` for any other path.
 pub(super) fn instance_field<'p>(
     lowering: &PartialProgram,
     root: TypeId,
     path: &'p [Projection],
 ) -> Option<(TypeId, FieldIdx, &'p [Projection])> {
-    let [deref, field, rest @ ..] = path else {
-        return None;
-    };
-    match deref {
-        Projection::Deref => {}
-        Projection::Field(_) | Projection::Index(_) => return None,
+    match path {
+        [Projection::Deref, Projection::Field(field), rest @ ..] if is_instance(lowering, root) => {
+            let (instance, _) = lowering.types().reference(root)?;
+            Some((instance, *field, rest))
+        }
+        [Projection::Field(field), rest @ ..]
+            if matches!(lowering.types().kind(root), Some(TypeKind::Program { .. })) =>
+        {
+            Some((root, *field, rest))
+        }
+        _ => None,
     }
-    let field = match field {
-        Projection::Field(field) => field,
-        Projection::Index(_) | Projection::Deref => return None,
-    };
-    if !is_instance(lowering, root) {
-        return None;
-    }
-    let (instance, _) = lowering.types().reference(root)?;
-    Some((instance, *field, rest))
 }
 
 /// The POU whose body is compiled in the current scope; `None` for a body

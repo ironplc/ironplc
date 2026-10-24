@@ -206,3 +206,27 @@ fn run_when_reference_to_array_subscripted_then_referenced_array() {
     assert_eq!(snapshot.read_as::<i32>("jb"), 5);
     assert_eq!(snapshot.read_as::<i32>("jc"), 6);
 }
+
+/// An element read through a reference to an array has the element's type,
+/// so the recording pass converts it to the type of a target of another
+/// type (ADR-0056), as it converts an element read through `p^[i]`: a `DINT`
+/// element stored in an `LINT` keeps its sign, and one stored in an `LREAL`
+/// is the number, not its bits.
+#[test]
+fn run_when_element_through_reference_assigned_to_wider_target_then_converted() {
+    let snapshot = run_lowered(
+        "PROGRAM main
+           VAR b : ARRAY[1..3] OF DINT := [1, -2, 3];
+               r : REFERENCE TO ARRAY[1..3] OF DINT; p : REF_TO ARRAY[1..3] OF DINT;
+               i : DINT := 3; l : LINT; lr : LREAL; ld : LREAL; END_VAR
+           r REF= b;
+           p := REF(b);
+           l := r[2];
+           lr := p[i];
+           ld := p^[1];
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<i64>("l"), -2);
+    assert_eq!(snapshot.read_as::<f64>("lr"), 3.0);
+    assert_eq!(snapshot.read_as::<f64>("ld"), 1.0);
+}

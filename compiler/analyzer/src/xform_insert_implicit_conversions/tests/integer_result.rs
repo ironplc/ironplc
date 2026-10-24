@@ -97,3 +97,20 @@ fn apply_when_bcd_to_int_of_integer_literal_then_literal_is_dword(#[case] litera
         vec!["DWORD"]
     );
 }
+
+/// REQ-IC-analyzer-124: the literals of the subscripts of `SIZEOF`'s
+/// argument are typed, although no backend compiles the argument.
+#[spec_test(REQ_IC_analyzer_124)]
+#[test]
+fn apply_when_sizeof_of_array_element_then_subscript_literals_are_dint() {
+    let source = "PROGRAM main
+        VAR arr : ARRAY[1..3] OF INT; m : ARRAY[1..2, 1..3] OF INT; d : DINT; END_VAR
+        d := SIZEOF(arr[2]);
+        d := SIZEOF(m[1, 2]);
+        END_PROGRAM";
+    let options = CompilerOptions {
+        allow_sizeof: true,
+        ..CompilerOptions::default()
+    };
+    assert_eq!(literal_types_with(source, &options), vec!["DINT"; 3]);
+}

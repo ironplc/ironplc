@@ -18,8 +18,11 @@
 //! debug entry, whose type tag and name `debug_type.rs` gives.
 
 mod block;
+mod calls;
+pub(crate) mod check;
 mod debug_type;
 mod descriptors;
+mod entries;
 mod function;
 mod globals;
 pub(crate) mod ids;

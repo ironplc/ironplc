@@ -231,7 +231,7 @@ END_PROGRAM"
         Problem::OperatorOperandTypeMismatch.code().to_string()
     }
 
-    #[spec_test(REQ_IC_analyzer_124)]
+    #[spec_test(REQ_IC_analyzer_125)]
     #[rstest]
     #[case::max_of_signed_and_unsigned("MAX(d, u)")]
     #[case::min_with_the_unsigned_first("MIN(u, d)")]
@@ -258,7 +258,7 @@ END_PROGRAM"
         }
     }
 
-    #[spec_test(REQ_IC_analyzer_124)]
+    #[spec_test(REQ_IC_analyzer_125)]
     #[rstest]
     #[case::widest_last("MAX(i, l)")]
     #[case::widest_first("MIN(l, i)")]
@@ -273,7 +273,7 @@ END_PROGRAM"
         assert!(codes_for(value, &CompilerOptions::default()).is_empty());
     }
 
-    #[spec_test(REQ_IC_analyzer_125)]
+    #[spec_test(REQ_IC_analyzer_126)]
     #[rstest]
     #[case::sel_selector_takes_no_part("SEL(g, d, d)")]
     #[case::mux_selector_takes_no_part("MUX(l, d, d)")]
@@ -294,7 +294,7 @@ END_PROGRAM"
         "MAX"
     );
 
-    #[spec_test(REQ_IC_analyzer_124)]
+    #[spec_test(REQ_IC_analyzer_125)]
     #[test]
     fn apply_when_reported_then_names_the_function_and_each_input_type() {
         let diagnostics = rule_diagnostics(

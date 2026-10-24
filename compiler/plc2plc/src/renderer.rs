@@ -95,6 +95,24 @@ impl<'a> LibraryRenderer<'a> {
         }
     }
 
+    /// Writes a string type with its length (`STRING[20]`), as a variable
+    /// or a structure element declares it.
+    fn write_string_spec(
+        &mut self,
+        width: &StringType,
+        length: Option<&IntegerRef>,
+    ) -> Result<(), Diagnostic> {
+        self.write_ws(width.keyword());
+
+        if let Some(length) = length {
+            self.write_ws("[");
+            self.visit_integer_ref(length)?;
+            self.write_ws("]");
+        }
+
+        Ok(())
+    }
+
     fn write_ws(&mut self, val: &str) {
         if self.buffer.ends_with('\n') {
             self.buffer.push_str("   ".repeat(self.indents).as_str());
@@ -954,18 +972,25 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         &mut self,
         node: &StringInitializer,
     ) -> Result<Self::Value, Diagnostic> {
-        self.write_ws(node.width.keyword());
-
-        if let Some(len) = &node.length {
-            self.write_ws("[");
-            self.visit_integer(len.as_integer().unwrap())?;
-            self.write_ws("]");
-        }
+        self.write_string_spec(&node.width, node.length.as_ref())?;
 
         if let Some(init) = &node.initial_value {
             self.write_ws(":=");
             self.write(&character_string_text(&init.width, &init.value));
         }
+
+        Ok(())
+    }
+
+    // Extension: a string initializer written as a constant expression
+    // (e.g. `STRING[20] := DEFAULT_NAME`), not yet folded to a literal.
+    fn visit_string_expr_initializer(
+        &mut self,
+        node: &StringExprInitializer,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.write_string_spec(&node.width, node.length.as_ref())?;
+        self.write_ws(":=");
+        self.visit_expr(&node.initial_value)?;
 
         Ok(())
     }

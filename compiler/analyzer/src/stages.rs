@@ -19,25 +19,26 @@ use crate::{
     rule_abstract_not_instantiated, rule_array_index_range, rule_array_initializer_length,
     rule_array_subscript_count, rule_array_subscript_type, rule_assignment_aggregate_type_compat,
     rule_bit_and_partial_access_range, rule_bit_shift_input_type, rule_call_input_type,
-    rule_case_bit_string_label, rule_case_selector_type, rule_condition_type,
-    rule_constant_not_written, rule_constant_range, rule_decl_struct_element_unique_names,
-    rule_edge_input_owner, rule_enum_base_type_allowed, rule_enum_explicit_value_allowed,
-    rule_enumeration_values_unique, rule_extends_base_declared, rule_extends_field_duplicated,
-    rule_for_control_type, rule_function_block_call_unsupported, rule_function_block_invocation,
+    rule_case_bit_string_label, rule_case_selector_type, rule_comparison_operand_type,
+    rule_condition_type, rule_constant_not_written, rule_constant_range,
+    rule_decl_struct_element_unique_names, rule_edge_input_owner, rule_enum_base_type_allowed,
+    rule_enum_explicit_value_allowed, rule_enumeration_values_unique, rule_extends_base_declared,
+    rule_extends_field_duplicated, rule_for_control_type, rule_for_step_nonzero,
+    rule_function_block_call_unsupported, rule_function_block_invocation,
     rule_function_call_declared, rule_function_call_in_out_argument, rule_function_call_type_check,
     rule_function_inputs_common_type, rule_interface_conformance, rule_interface_conversion,
     rule_loop_control_inside_loop, rule_member_qualifier_allowed, rule_member_qualifier_invalid,
     rule_method_call_declared, rule_mixed_located_var_declarations, rule_no_top_level_var_global,
     rule_operator_operand_type_check, rule_override_signature, rule_pou_hierarchy,
     rule_program_task_definition_exists, rule_program_var_hides_global, rule_range_limits,
-    rule_real_literal_range, rule_ref_to, rule_return_type_declared, rule_self_reference_context,
-    rule_stdlib_type_redefinition, rule_string_encoding_compat, rule_string_length_range,
-    rule_string_literal_char_range, rule_struct_initializer_expression_allowed,
-    rule_task_configuration, rule_task_names_unique, rule_temporal_literal_range,
-    rule_unsupported_extension, rule_use_declared_enumerated_value, rule_use_declared_field,
-    rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
-    rule_var_decl_global_const_requires_external_const, rule_var_decl_initializer_type_compat,
-    rule_var_external_matches_global,
+    rule_real_literal_integer_position, rule_real_literal_range, rule_ref_to,
+    rule_return_type_declared, rule_self_reference_context, rule_stdlib_type_redefinition,
+    rule_string_encoding_compat, rule_string_length_range, rule_string_literal_char_range,
+    rule_struct_initializer_expression_allowed, rule_task_configuration, rule_task_names_unique,
+    rule_temporal_literal_range, rule_unsupported_extension, rule_use_declared_enumerated_value,
+    rule_use_declared_field, rule_use_declared_symbolic_var, rule_var_decl_const_initialized,
+    rule_var_decl_const_not_fb, rule_var_decl_global_const_requires_external_const,
+    rule_var_decl_initializer_type_compat, rule_var_external_matches_global,
     semantic_context::SemanticContext,
     symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
     system_globals::SYSTEM_UPTIME_GLOBALS,
@@ -242,7 +243,7 @@ pub fn resolve_types(
     // transformed library must be kept even when diagnostics are present —
     // reverting would leak `SimpleExpr` nodes to later passes.
     library = run_best_effort(library, &mut diagnostics, |lib| {
-        xform_fold_initializer_expressions::apply(lib, options)
+        xform_fold_initializer_expressions::apply(lib, &type_environment, options)
     });
 
     // Rewrite integer 0/1 initializers on BOOL variables to boolean literals.
@@ -345,7 +346,8 @@ pub fn resolve_types(
     });
 
     // Mark every variable the program never writes as CONSTANT, so the
-    // semantic rules and codegen see one notion of a constant variable.
+    // semantic rules and codegen see one notion of a constant variable, and
+    // record the value each constant holds in the symbol environment.
     // Runs last: it needs bare identifiers resolved to variables, `ADR`
     // rewritten to `Ref`, user functions in the function environment and
     // named arguments made positional. Infallible, so nothing to revert.
@@ -354,7 +356,7 @@ pub fn resolve_types(
         library,
         &type_environment,
         &function_environment,
-        &symbol_environment,
+        &mut symbol_environment,
     );
 
     // Generate and display useful symbol table information
@@ -421,6 +423,7 @@ pub(crate) fn semantic(
         rule_operator_operand_type_check::apply,
         rule_override_signature::apply,
         rule_task_configuration::apply,
+        rule_comparison_operand_type::apply,
         rule_task_names_unique::apply,
         rule_self_reference_context::apply,
         rule_stdlib_type_redefinition::apply,
@@ -452,6 +455,8 @@ pub(crate) fn semantic(
         rule_case_selector_type::apply,
         rule_condition_type::apply,
         rule_for_control_type::apply,
+        rule_for_step_nonzero::apply,
+        rule_real_literal_integer_position::apply,
         rule_constant_not_written::apply,
         rule_ref_to::apply,
     ];

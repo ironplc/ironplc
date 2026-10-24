@@ -15,9 +15,15 @@
 //! extension (`--allow-bit-string-case-labels`) is unaffected: it pairs a
 //! radix-prefixed label with an integer selector.
 //!
-//! A selector whose type the analyzer did not resolve, or resolved to a
-//! generic category that is not in the type environment (a bare literal,
-//! `CASE 1 OF`, is `ANY_INT`), is skipped rather than reported.
+//! An untyped literal has no type of its own until the place it is used
+//! gives it one (ADR-0028). An untyped integer literal, `CASE 1 OF`, is
+//! `ANY_INT`, which a `CASE` selects on, and is accepted. An untyped real
+//! literal, `CASE 1.5 OF`, is `ANY_REAL`, a real whatever it spells, and is
+//! reported: a `CASE` has no real type to give it, and no integer label can
+//! be compared with it.
+//!
+//! A selector whose type the analyzer did not resolve is skipped rather
+//! than reported.
 //!
 //! ## Passes
 //!
@@ -60,10 +66,13 @@
 //!     CASE flags OF          (* P4053: WORD is a bit string *)
 //!         1: alarm := TRUE;
 //!     END_CASE;
+//!     CASE 1.5 OF            (* P4053: a real literal is a real *)
+//!         1: alarm := TRUE;
+//!     END_CASE;
 //! END_PROGRAM
 //! ```
 use ironplc_dsl::{
-    common::Library,
+    common::{GenericTypeName, Library},
     core::Located,
     diagnostic::{Diagnostic, Label},
     textual::{Case, Expr, ExprType},
@@ -123,14 +132,22 @@ impl RuleCaseSelectorType<'_> {
     /// The type of `selector`, as a diagnostic shows it, when a `CASE`
     /// cannot select on it; `None` when it can or when the type is not known.
     fn unselectable_type(&self, selector: &Expr) -> Option<String> {
-        let representation = self.type_environment.representation_of_expr(selector)?;
-        if is_selectable(representation) {
-            return None;
+        if let Some(representation) = self.type_environment.representation_of_expr(selector) {
+            if is_selectable(representation) {
+                return None;
+            }
         }
         match selector.expr_type.as_ref()? {
             ExprType::Concrete(id) | ExprType::Inferred(id) => {
                 Some(value_type::describe(self.type_environment, *id))
             }
+            // An untyped real literal is a real whatever type its context
+            // would give it, and a `CASE` has no real type to give it.
+            ExprType::Literal(GenericTypeName::AnyReal) => {
+                Some(GenericTypeName::AnyReal.as_str().to_string())
+            }
+            // An untyped integer literal is `ANY_INT`, which a `CASE`
+            // selects on; the other categories are not a literal's.
             ExprType::Literal(_) | ExprType::Null => None,
         }
     }
@@ -277,8 +294,8 @@ END_PROGRAM"
     );
 
     rule_ok!(
-        /// A bare literal resolves to `ANY_INT`, which is not in the type
-        /// environment, so the rule leaves it alone.
+        /// An untyped integer literal is `ANY_INT`, which a `CASE` selects
+        /// on.
         apply_when_selector_is_integer_literal_then_ok,
         "
 PROGRAM main
@@ -290,6 +307,38 @@ END_VAR
     END_CASE;
 END_PROGRAM"
     );
+
+    #[rstest]
+    #[case::literal("1.5")]
+    #[case::whole_valued("2.0")]
+    #[case::negative("-1.5")]
+    #[case::arithmetic_of_literals("1.0 + 0.5")]
+    fn apply_when_selector_is_real_literal_then_p4053(#[case] selector: &str) {
+        let program = format!(
+            "
+PROGRAM main
+VAR
+    y : INT;
+END_VAR
+    CASE {selector} OF
+        1: y := 1;
+    END_CASE;
+END_PROGRAM"
+        );
+        let diagnostics = diagnostics_for(&program);
+
+        assert_eq!(
+            diagnostic_codes(&diagnostics),
+            [Problem::CaseSelectorTypeInvalid.code()]
+        );
+        assert!(
+            diagnostics[0]
+                .described
+                .contains(&"actual=ANY_REAL".to_owned()),
+            "{:?}",
+            diagnostics[0].described
+        );
+    }
 
     rule_ok!(
         /// The selector is an expression, and its type is what is judged.

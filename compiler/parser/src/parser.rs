@@ -727,7 +727,11 @@ parser! {
         base_type_name,
       }
     }
-    rule simple_type_declaration__with_constant() -> SimpleDeclaration = type_name:simple_type_name() _ tok(TokenType::Colon) _ spec_and_init:simple_spec_init__with_constant() {
+    // A type default is an expression after an elementary base type (`TYPE
+    // MyInt : UDINT := C;`), as a variable initializer is. After a user type
+    // name only a literal: `MyInt : Other := Value` is an enumeration
+    // declaration to the alternative before this one.
+    rule simple_type_declaration__with_constant() -> SimpleDeclaration = type_name:simple_type_name() _ tok(TokenType::Colon) _ spec_and_init:(simple_spec_init__elementary_with_expression() / simple_spec_init__with_constant()) {
       SimpleDeclaration {
         type_name,
         spec_and_init,
@@ -759,6 +763,23 @@ parser! {
         type_name,
         initial_value: None,
       })
+    }
+    // An elementary type with a value written as an expression: the shape a
+    // variable declaration and a type default share.
+    //
+    // A bare literal parses as ExprKind::Const via expression() too (it's
+    // one of its own alternatives), so this one rule handles both the
+    // standard literal-only case and the constant-expression extension
+    // (e.g. PI/180.0) — see allow_constant_initializer_expressions and
+    // xform_fold_initializer_expressions, which folds SimpleExpr back to
+    // Simple or diagnoses it.
+    //
+    // An elementary type name is a keyword, so its value cannot be an
+    // enumerated value: a bare identifier (`UDINT := C`) can only name a
+    // constant, and is kept as a constant expression for the fold to
+    // substitute, or to diagnose when the name is not a constant (P4038).
+    rule simple_spec_init__elementary_with_expression() -> InitialValueAssignmentKind = et:elementary_type_name() _ tok(TokenType::Assignment) _ e:expression() {
+      resolve_initializer_expr(et.into(), e)
     }
     // For simple types, they are inherently unambiguous because simple types are keywords (e.g. INT)
     rule simple_spec_init__with_constant() -> InitialValueAssignmentKind = type_name:simple_specification() _ tok(TokenType::Assignment) _ constant:constant() {
@@ -927,6 +948,7 @@ parser! {
           },
         }
       }
+      / string_spec__with_expression()
       / str_init:single_byte_string_spec() { InitialValueAssignmentKind::String(str_init) }
       / str_init:double_byte_string_spec() { InitialValueAssignmentKind::String(str_init) }
       / simple_spec_init__with_constant()
@@ -969,21 +991,16 @@ parser! {
     //
     // There is still value in trying to disambiguate early because it allows us to use
     // the parser definitions.
-    rule simple_or_enumerated_or_subrange_ambiguous_struct_spec_init() -> InitialValueAssignmentKind = s:simple_specification() _ tok(TokenType::Assignment) _ e:expression() {?
-      // A bare literal parses as ExprKind::Const via expression() too (it's
-      // one of its own alternatives), so this handles both the standard
-      // literal-only case and the constant-expression extension
-      // (e.g. PI/180.0) — see allow_constant_initializer_expressions and
-      // xform_fold_initializer_expressions, which folds SimpleExpr back to
-      // Simple or diagnoses it.
-      //
-      // A bare identifier (no operators) is rejected here (backtracking to
-      // the enumerated_specification alternative below) because `simple
-      //_specification` also matches an enum type name, and `identifier :=
-      // identifier` is inherently ambiguous between "simple type with a
-      // constant-expression initializer referencing a variable" and "enum
-      // type with an enum value default" — the latter interpretation must
-      // still win, matching pre-existing disambiguation behavior.
+    rule simple_or_enumerated_or_subrange_ambiguous_struct_spec_init() -> InitialValueAssignmentKind = simple_spec_init__elementary_with_expression()
+    / s:simple_type_name() _ tok(TokenType::Assignment) _ e:expression() {?
+      // A user type name takes the same expression shapes, except that a
+      // bare identifier (no operators) is rejected here (backtracking to
+      // the enumerated_specification alternative below) because
+      // `identifier := identifier` is inherently ambiguous between "alias
+      // of a simple type initialized from a named constant" and "enum type
+      // with an enum value default". The parser does not decide: the
+      // alternative below records the value for the type resolver
+      // (ADR-0050).
       if matches!(e.kind, ExprKind::Variable(_) | ExprKind::LateBound(_)) {
         Err("ambiguous with enumerated value initializer")
       } else {
@@ -1446,7 +1463,39 @@ parser! {
     rule located_var_spec_init() -> InitialValueAssignmentKind = arr:array_spec_init() { InitialValueAssignmentKind::Array(arr) } / simple:simple_spec_init() { simple }
     rule location() -> AddressAssignment = tok(TokenType::At) _ v:direct_variable() { v }
     rule global_var_list() -> Vec<Id> = names:global_var_name() ++ (_ tok(TokenType::Comma) _) { names }
-    rule string_var_declaration() -> Vec<UntypedVarDecl> = single_byte_string_var_declaration() / double_byte_string_var_declaration()
+    rule string_var_declaration() -> Vec<UntypedVarDecl> = string_var_declaration__with_expression() / single_byte_string_var_declaration() / double_byte_string_var_declaration()
+    rule string_var_declaration__with_expression() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init:string_spec__with_expression() {
+      names.into_iter().map(|name| {
+        UntypedVarDecl {
+          location: None,
+          name,
+          initializer: init.clone(),
+        }
+      }).collect()
+    }
+    // A string initializer written as an expression, a constant's name in
+    // practice (`s : STRING[20] := DEFAULT_NAME;`), recorded as StringExpr
+    // for xform_fold_initializer_expressions to fold to a literal or to
+    // diagnose. Only a value that is not a literal is taken: a literal is
+    // the standard String shape of the alternatives after this one, and a
+    // literal of the wrong kind (`STRING := 5`) stays the syntax error it
+    // was rather than becoming a semantic error here.
+    //
+    // This comes before the literal alternatives because they succeed on a
+    // bare `STRING` without consuming the `:=` that follows, which commits
+    // the choice and leaves the `:=` to fail the declaration.
+    rule string_spec__with_expression() -> InitialValueAssignmentKind = width:(t:tok(TokenType::String) { (StringType::String, t) } / t:tok(TokenType::WString) { (StringType::WString, t) }) _ length:string_length_spec()? _ tok(TokenType::Assignment) _ e:expression() {?
+      if literal_value_of(&e).is_some() {
+        Err("a literal is a string initializer")
+      } else {
+        Ok(InitialValueAssignmentKind::StringExpr(StringExprInitializer {
+          length,
+          width: width.0,
+          initial_value: e,
+          keyword_span: width.1.span.clone(),
+        }))
+      }
+    }
     rule single_byte_string_var_declaration() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ spec:single_byte_string_spec() {
       names.into_iter().map(|name| {
         let span = name.span.clone();

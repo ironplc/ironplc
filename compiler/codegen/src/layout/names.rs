@@ -68,6 +68,31 @@ impl<V> Scoped<V> {
         self.own(scope, name).is_some()
     }
 
+    /// Each entry, with the scope that records it.
+    pub(crate) fn entries(&self) -> impl Iterator<Item = (ScopeId, &V)> {
+        self.by_scope
+            .iter()
+            .flat_map(|(scope, names)| names.values().map(move |value| (*scope, value)))
+    }
+
+    /// The entries `f` makes of each of `self`'s, under the same scope and
+    /// name.
+    pub(crate) fn map<W>(&self, f: impl Fn(&V) -> W) -> Scoped<W> {
+        Scoped {
+            by_scope: self
+                .by_scope
+                .iter()
+                .map(|(scope, names)| {
+                    let names = names
+                        .iter()
+                        .map(|(name, value)| (name.clone(), f(value)))
+                        .collect();
+                    (*scope, names)
+                })
+                .collect(),
+        }
+    }
+
     /// Each entry one of `self` and `other` records that the other does
     /// not record the same: the scope, the name, and each one's entry.
     pub(crate) fn differences(&self, other: &Self) -> Vec<String>
@@ -486,6 +511,39 @@ mod tests {
     #[test]
     fn differences_when_same_entries_then_none() {
         assert!(slots().differences(&slots()).is_empty());
+    }
+
+    #[test]
+    fn entries_when_recorded_then_each_with_its_scope() {
+        let mut entries: Vec<(ScopeId, u16)> = slots()
+            .entries()
+            .map(|(scope, index)| (scope, index.raw()))
+            .collect();
+        entries.sort_by_key(|(_, index)| *index);
+
+        assert_eq!(
+            entries,
+            [
+                (ScopeId::Global, 0),
+                (ScopeId::Global, 1),
+                (ScopeId::Global, 2),
+                (ScopeId::Program, 3),
+                (ScopeId::Program, 4),
+            ]
+        );
+    }
+
+    #[test]
+    fn map_when_entries_then_each_mapped_under_same_scope_and_name() {
+        let mapped = slots().map(|index| index.raw() + 10);
+
+        let mut expected = Scoped::default();
+        expected.insert(ScopeId::Global, id(GLOBAL), 10);
+        expected.insert(ScopeId::Global, id(LAST_GLOBAL), 11);
+        expected.insert(ScopeId::Global, id(SHADOWED), 12);
+        expected.insert(ScopeId::Program, id(SHADOWED), 13);
+        expected.insert(ScopeId::Program, id(LOCAL), 14);
+        assert!(mapped.differences(&expected).is_empty());
     }
 
     #[test]
