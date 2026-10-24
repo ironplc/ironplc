@@ -2,19 +2,18 @@
 //!
 //! A call lowers to the stores of its inputs to the instance's fields, an
 //! `FbCall`, then the stores of its outputs (REQ-LOW-lowering-069), each
-//! with the call's span. The stores of the inputs and the call are emitted as
-//! the route that reads the AST emits them (`compile_fb_call.rs`): the
-//! instance pushed once, each input stored in its field, then the call and
-//! the instance popped. So a call compiles to the same instructions by
-//! either route, and the VM copies the instance's fields in and out around
-//! the body for every statement of it, as "One field model per body"
-//! requires until issue 2120 lands. The outputs are ordinary stores.
+//! with the call's span. The stores of the inputs and the call are emitted
+//! through `FbCallSite` (`compile_fb_call.rs`): the instance pushed once,
+//! each input stored in its field, then the call and the instance popped.
+//! The VM copies the instance's fields in and out around the body for every
+//! statement of it, as "One field model per body" requires until issue 2120
+//! lands. The outputs are ordinary stores.
 //!
 //! An input is a value, a string or a structure or array, stored by an
 //! `Assign`, an `AssignStr` or a `Copy`. `FB_STORE_PARAM` stores in the
-//! field's slot what the AST route stores there: the value, the index of the
-//! temporary buffer that holds the string, or the region offset of the
-//! structure or array (`place::instance_slot`). An instance input is copied
+//! field's slot the value, the index of the temporary buffer that holds the
+//! string, or the region offset of the structure or array
+//! (`place::instance_slot`). An instance input is copied
 //! into the instance its field holds (`instance_copy.rs`).
 
 use ironplc_dsl::core::{Id, SourceSpan};
@@ -124,9 +123,9 @@ pub(super) fn emit_call_site(
         match input {
             Input::Value(value) => {
                 // `store_input` narrows a value to a field it records the
-                // type of, as the AST route does, so the narrowing lowering
-                // made (REQ-LOW-lowering-046) is left to it rather than
-                // emitted twice.
+                // type of, so the narrowing lowering made
+                // (REQ-LOW-lowering-046) is left to it rather than emitted
+                // twice.
                 let narrowed_by_site = ctx.fb_instance(&call.instance).is_some_and(|info| {
                     info.field_types
                         .contains_key(&field.to_string().to_lowercase())
@@ -159,8 +158,7 @@ pub(super) fn emit_call_site(
 ///
 /// Lowering does not generate the standard blocks yet (issue 2288), so a
 /// standard block's POU has no body in the lowered program, and `FB_CALL`
-/// runs the VM's block on the instance, as the route that reads the AST
-/// calls it.
+/// runs the VM's block on the instance.
 pub(super) fn reaches_block(
     lowering: &PartialProgram,
     ctx: &CompileContext,
@@ -178,8 +176,7 @@ pub(super) fn reaches_block(
     layout(ctx, name).is_some_and(|layout| layout.type_id == fb_instance.type_id)
 }
 
-/// The internal error for a call `can_emit` should have left to the AST
-/// route.
+/// The internal error for a call `can_emit` should have rejected.
 pub(super) fn no_instance(span: &SourceSpan) -> Diagnostic {
     Diagnostic::internal_error_at(Label::span(
         span.clone(),

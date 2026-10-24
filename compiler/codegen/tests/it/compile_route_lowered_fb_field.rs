@@ -4,7 +4,7 @@
 use rstest::rstest;
 
 use crate::common::Duration;
-use crate::compile_route_lowered::{assert_same_code, run_lowered, run_lowered_agreeing};
+use crate::compile_route_lowered::{assert_compiles, run_lowered, run_lowered_agreeing};
 
 /// A block with fields of several types, which no test calls.
 const BLOCK: &str = "
@@ -49,9 +49,9 @@ fn run_when_block_fields_read_and_written_then_values() {
     assert_eq!(snapshot.read_as::<u64>("r8"), 0);
 }
 
-/// A field of a block compiles to the same instructions and constants by
-/// both routes. A bit of a field is left out: the AST route addresses the
-/// field once to read it and again to write it, and the lowered route once
+/// A field of a block lowers and compiles. A bit of a field is left out: the
+/// route that read the AST addressed the field once to read it and again to
+/// write it, and the lowered program addresses it once
 /// (REQ-LOW-codegen-121).
 #[rstest]
 #[case::read("d := b.a;")]
@@ -62,7 +62,7 @@ fn run_when_block_fields_read_and_written_then_values() {
 #[case::read_standard_block("d := c.CV;")]
 #[case::read_standard_block_output("x := t.Q;")]
 #[case::write_standard_block("c.PV := 7;")]
-fn compile_when_block_field_lowered_then_same_code_as_ast(#[case] statement: &str) {
+fn compile_when_block_field_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
         "{BLOCK}
          PROGRAM main
@@ -70,21 +70,20 @@ fn compile_when_block_field_lowered_then_same_code_as_ast(#[case] statement: &st
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }
 
 /// A statement in the body of a block whose variables include an array,
 /// references and a string, which the block's lowered type holds in the
-/// order it declares them (REQ-LOW-lowering-170), compiles to the same
-/// instructions and constants by both routes, as does a read of the output
-/// the block declares after them.
+/// order it declares them (REQ-LOW-lowering-170), lowers and compiles, as
+/// does a read of the output the block declares after them.
 #[rstest]
 #[case::ref_of_field("own := REF(n);")]
 #[case::through_reference_field("own^ := own^ + 1;")]
 #[case::reference_copied("copy := src;")]
 #[case::element_through_reference("n := src^[1];")]
 #[case::element_through_copied_reference("copy^[0] := 99;")]
-fn compile_when_block_field_of_any_type_lowered_then_same_code_as_ast(#[case] statement: &str) {
+fn compile_when_block_field_of_any_type_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
         "FUNCTION_BLOCK H
            VAR_INPUT src : REF_TO ARRAY[0..4] OF INT; END_VAR
@@ -98,16 +97,15 @@ fn compile_when_block_field_of_any_type_lowered_then_same_code_as_ast(#[case] st
            d := h.o;
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }
 
 /// A block's string declared through a type alias has a run of the data
 /// region, as one declared `STRING[20]` does, and an assignment to it in the
-/// block's body compiles to the same code by both routes
-/// (REQ-LOW-codegen-199).
+/// block's body lowers and compiles (REQ-LOW-codegen-199).
 #[test]
-fn compile_when_block_string_through_alias_then_same_code_as_ast() {
-    assert_same_code(
+fn compile_when_block_string_through_alias_then_compiles() {
+    assert_compiles(
         "TYPE Name : STRING[20]; END_TYPE
          FUNCTION_BLOCK B
            VAR s : Name; END_VAR
@@ -121,10 +119,10 @@ fn compile_when_block_string_through_alias_then_same_code_as_ast() {
 }
 
 /// A block with string, wide-string, structure and array fields, whose body
-/// reads none of them: neither route reaches what such a field of another
-/// instance holds. The string fields of a block hold no string yet on either
-/// route (issue 1753), and a structure or array field holds the offset of
-/// the region stored in it, as the route that reads the AST stores it.
+/// reads none of them: this backend does not reach what such a field of
+/// another instance holds. The string fields of a block hold no string yet
+/// (issue 1753), and a structure or array field holds the offset of the
+/// region stored in it.
 const AGGREGATES: &str = "
     TYPE P : STRUCT x : DINT; END_STRUCT; END_TYPE
     FUNCTION_BLOCK S
@@ -139,7 +137,7 @@ const AGGREGATES: &str = "
 
 /// A string, structure or array field of another instance, as a call's
 /// input or output (REQ-LOW-lowering-069) or read or written outside a call,
-/// compiles to the same instructions and constants by both routes.
+/// lowers and compiles.
 #[rstest]
 #[case::string_input("f(s := t);")]
 #[case::wide_string_input("f(w := u);")]
@@ -166,7 +164,7 @@ const AGGREGATES: &str = "
 #[case::structure_written("f.p := v;")]
 #[case::array_written("f.a := arr;")]
 #[case::structure_field_to_field("g.p := f.p;")]
-fn compile_when_string_or_aggregate_field_lowered_then_same_code_as_ast(#[case] statement: &str) {
+fn compile_when_string_or_aggregate_field_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
         "{AGGREGATES}
          PROGRAM main
@@ -175,13 +173,13 @@ fn compile_when_string_or_aggregate_field_lowered_then_same_code_as_ast(#[case] 
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }
 
 /// Calls that pass strings, a structure and an array, and a later write to
-/// the arguments, leave every variable as the route that reads the AST
-/// leaves it, and the scalar input and output pass as they do for a block
-/// with only scalar fields.
+/// the arguments, leave every variable with the same values on every
+/// backend, and the scalar input and output pass as they do for a block with
+/// only scalar fields.
 #[test]
 fn run_when_string_and_aggregate_inputs_passed_then_routes_agree() {
     let snapshot = run_lowered_agreeing(&format!(

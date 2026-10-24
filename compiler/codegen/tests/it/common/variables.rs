@@ -4,8 +4,6 @@
 //! and [`Session`](super::Session), so a name means the same variable to
 //! every test.
 
-use std::collections::HashMap;
-
 use ironplc_container::debug_section::{iec_type_tag, DebugSection, VarNameEntry};
 use ironplc_container::{Container, VarIndex};
 use ironplc_vm::Slot;
@@ -47,49 +45,6 @@ impl<'a> Variables<'a> {
                 declared.join(", ")
             )
         })
-    }
-
-    /// The name of the variable at `index` of the variable table, for a
-    /// message about it; `None` when the debug section names none there.
-    pub(super) fn name_at(&self, index: usize) -> Option<&'a str> {
-        self.debug
-            .var_names
-            .iter()
-            .find(|entry| usize::from(entry.var_index.raw()) == index)
-            .map(|entry| entry.name.as_str())
-    }
-
-    /// Each variable this container names, beside the variable of the same
-    /// owning function and name, matched without regard to case, that
-    /// `other` names. `Err` with the name of a variable only one of them
-    /// names.
-    pub(super) fn pair_with(
-        &self,
-        other: &Variables<'a>,
-    ) -> Result<Vec<(&'a VarNameEntry, &'a VarNameEntry)>, String> {
-        let key = |entry: &VarNameEntry| (entry.function_id, entry.name.to_lowercase());
-        let mut theirs: HashMap<_, Vec<&'a VarNameEntry>> = HashMap::new();
-        for entry in other.debug.var_names.iter().rev() {
-            theirs.entry(key(entry)).or_default().push(entry);
-        }
-        let mut pairs = Vec::new();
-        for entry in &self.debug.var_names {
-            let matched = theirs.get_mut(&key(entry)).and_then(Vec::pop);
-            pairs.push((entry, matched.ok_or_else(|| entry.name.clone())?));
-        }
-        match theirs.values().flatten().next() {
-            Some(unmatched) => Err(unmatched.name.clone()),
-            None => Ok(pairs),
-        }
-    }
-
-    /// Whether the debug section says where `entry`'s string lives. It does
-    /// for a program's or a global's string, not for a function's.
-    pub(super) fn has_string_layout(&self, entry: &VarNameEntry) -> bool {
-        self.debug
-            .string_layouts
-            .iter()
-            .any(|layout| layout.var_index == entry.var_index)
     }
 
     /// The names of the program and global variables a test reads by name,

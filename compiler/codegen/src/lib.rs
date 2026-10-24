@@ -49,7 +49,6 @@ mod compile_fb_init;
 mod compile_fn;
 mod compile_initial_value;
 mod compile_interface;
-mod compile_loop;
 mod compile_method;
 mod compile_partial_access;
 mod compile_place;
@@ -76,9 +75,8 @@ mod stack_balance;
 mod string_width;
 mod type_info;
 
-pub use compile::{compile, compile_with_route_counts, CodegenOptions, StringToNumPolicies};
+pub use compile::{compile, CodegenOptions, StringToNumPolicies};
 pub use ironplc_ir::source::{EmptyLookup, SourceLookup};
-pub use lowered::{Route, RouteCounts};
 
 // Spec conformance testing infrastructure (test-only)
 #[cfg(test)]

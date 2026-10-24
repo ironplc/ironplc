@@ -376,7 +376,7 @@ END_PROGRAM
 /// REQ-LOW-lowering-103: with every statement lowered, `SIZEOF` of a string
 /// is its capacity and terminator, and of an enumeration its underlying
 /// type's size, as CODESYS, TwinCAT and RuSTy give them. (The route that
-/// reads the AST gives 0 for an array of strings and 4 for every
+/// read the AST gave 0 for an array of strings and 4 for every
 /// enumeration.)
 #[test]
 fn run_when_sizeof_string_or_enumeration_lowered_then_language_size() {
@@ -411,13 +411,8 @@ PROGRAM main
 END_PROGRAM
 ";
     let (library, context) = crate::common::parse(source, &options);
-    let container = crate::common::compile_by_route(
-        &library,
-        &context,
-        &options,
-        ironplc_codegen::Route::RequireLowered,
-    )
-    .expect("every statement lowers");
+    let container = crate::common::compile_analyzed(&library, &context, &options)
+        .expect("every statement lowers");
     let snapshot = crate::common::Snapshot::run_compiled(container);
     assert_eq!(snapshot.read_as::<i32>("r_string"), 11);
     assert_eq!(snapshot.read_as::<i32>("r_wstring"), 22);

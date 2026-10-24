@@ -1,19 +1,17 @@
 //! Tests of assignments of calls of user-defined functions with outputs
 //! compiled from the lowered program (REQ-LOW-lowering-092,
 //! REQ-LOW-lowering-172, REQ-LOW-lowering-174), with every statement
-//! required to lower. A program
-//! with only scalar outputs is also checked to leave every variable as the
-//! route that reads the AST leaves it after one scan; that route does not
-//! read a string output.
+//! required to lower. A program with only scalar outputs is also checked to
+//! leave every variable with the same values on every backend after one
+//! scan.
 
-use ironplc_codegen::Route;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_vm::error::Trap;
 
 use rstest::rstest;
 
-use crate::common::{compile_by_route, parse, run_one_scan};
-use crate::compile_route_lowered::{assert_same_code, run_lowered, run_lowered_agreeing};
+use crate::common::{compile_analyzed, parse, run_one_scan};
+use crate::compile_route_lowered::{assert_compiles, run_lowered, run_lowered_agreeing};
 
 /// A function whose outputs are its input plus one, whether that is
 /// positive, a `REAL` and a count of the calls of the output it writes
@@ -58,9 +56,9 @@ fn run_when_function_with_outputs_called_then_outputs_and_result_stored() {
     assert_eq!(snapshot.read_as::<i32>("element"), 6);
 }
 
-/// REQ-LOW-lowering-172: the outputs are stored before the result, as the
-/// AST route stores them, so a variable that is both an output's target and
-/// the assignment's ends with the result.
+/// REQ-LOW-lowering-172: the outputs are stored before the result, so a
+/// variable that is both an output's target and the assignment's ends with
+/// the result.
 #[test]
 fn run_when_output_target_is_assignment_target_then_result_last() {
     let snapshot = run_lowered_agreeing(&format!(
@@ -92,12 +90,11 @@ fn run_when_function_with_outputs_called_in_loop_and_if_then_each_call() {
     assert_eq!(snapshot.read_as::<i32>("b"), 0);
 }
 
-/// A function that calls another and reads its outputs traps on either
-/// route: inside a function's body the VM reaches no variable of another
-/// function, and this backend's layout keeps an output in the called
-/// function's own variable.
+/// A function that calls another and reads its outputs traps: inside a
+/// function's body the VM reaches no variable of another function, and this
+/// backend's layout keeps an output in the called function's own variable.
 #[test]
-fn run_when_function_reads_outputs_of_function_it_calls_then_both_routes_trap() {
+fn run_when_function_reads_outputs_of_function_it_calls_then_traps() {
     let source = format!(
         "{FUNCTION}
          FUNCTION G : DINT
@@ -111,26 +108,20 @@ fn run_when_function_reads_outputs_of_function_it_calls_then_both_routes_trap() 
     );
     let options = CompilerOptions::default();
     let (library, context) = parse(&source, &options);
-    for route in [Route::Ast, Route::RequireLowered] {
-        let container = compile_by_route(&library, &context, &options, route).unwrap();
-        let fault = run_one_scan(&container).expect_err("the scan traps");
-        assert!(
-            matches!(fault.trap, Trap::InvalidVariableIndex(_)),
-            "{route:?}"
-        );
-    }
+    let container = compile_analyzed(&library, &context, &options).unwrap();
+    let fault = run_one_scan(&container).expect_err("the scan traps");
+    assert!(matches!(fault.trap, Trap::InvalidVariableIndex(_)));
 }
 
-/// An assignment of a call of a function with outputs compiles to the same
-/// instructions and constants by both routes: the call, the store of each
-/// output and the store of the result.
+/// An assignment of a call of a function with outputs lowers and compiles:
+/// the call, the store of each output and the store of the result.
 #[rstest]
 #[case::outputs("d := F(a := 2, q => d, NOT done => b, r => lr);")]
 #[case::no_outputs_assigned("d := F(a := d);")]
 #[case::converted_result("lr := F(a := 2, twice => d);")]
 #[case::inside_if("IF b THEN d := F(a := d, q => d); END_IF;")]
-fn compile_when_function_with_outputs_called_then_same_code_as_ast(#[case] statement: &str) {
-    assert_same_code(&format!(
+fn compile_when_function_with_outputs_called_then_compiles(#[case] statement: &str) {
+    assert_compiles(&format!(
         "{FUNCTION}
          PROGRAM main VAR d : DINT; b : BOOL; lr : LREAL; END_VAR
            {statement}
@@ -172,19 +163,17 @@ fn run_when_calls_with_outputs_inside_expression_then_in_order() {
 }
 
 /// REQ-LOW-codegen-175: an assignment with calls with outputs inside its
-/// value compiles to the same instructions and constants by both routes,
-/// with no storage for a temporary: each call, the stores of its outputs,
-/// then the rest of the value and the store of the result.
+/// value lowers and compiles, with no storage for a temporary: each call,
+/// the stores of its outputs, then the rest of the value and the store of
+/// the result.
 #[rstest]
 #[case::sum("d := F(a := 1, q => d) + F(a := 2, q => k);")]
 #[case::nested("d := F(a := F(a := 1, q => k), q => d);")]
 #[case::then_constant("d := F(a := 3, q => k) + 1;")]
 #[case::negated("d := -F(a := 3, q => k);")]
 #[case::compared("b := F(a := 1, q => k) > F(a := 2, q => d);")]
-fn compile_when_calls_with_outputs_inside_expression_then_same_code_as_ast(
-    #[case] statement: &str,
-) {
-    assert_same_code(&format!(
+fn compile_when_calls_with_outputs_inside_expression_then_compiles(#[case] statement: &str) {
+    assert_compiles(&format!(
         "{FUNCTION}
          PROGRAM main VAR d : DINT; k : DINT; b : BOOL; END_VAR
            {statement}
@@ -194,9 +183,7 @@ fn compile_when_calls_with_outputs_inside_expression_then_same_code_as_ast(
 
 /// REQ-LOW-lowering-092: a string output is stored in its target as a
 /// string is, at the target's capacity, once the function returns; it
-/// starts empty at every call. The route that reads the AST does not read a
-/// string output (`compile_not_implemented_location.rs`), so the lowered
-/// route is the only one that compiles the program.
+/// starts empty at every call.
 #[test]
 fn run_when_function_has_string_outputs_then_stored() {
     let source = "
@@ -249,11 +236,11 @@ const OUTPUT_CONTROLS: &str = "
 
 /// REQ-LOW-lowering-067: what a function's or a method's `VAR_OUTPUT`
 /// parameter refers to counts a `FOR` loop, and its comparison with a
-/// constant is one compare and branch, as the route that reads the AST
-/// compiles both.
+/// constant is one compare and branch, as the route that read the AST
+/// compiled both.
 #[test]
-fn compile_when_output_counts_loop_then_same_code_as_ast() {
-    assert_same_code(OUTPUT_CONTROLS);
+fn compile_when_output_counts_loop_then_compiles() {
+    assert_compiles(OUTPUT_CONTROLS);
 }
 
 /// The loops leave each output one past its bound, which the call stores in

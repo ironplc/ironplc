@@ -30,26 +30,21 @@ use crate::emit::Emitter;
 use crate::layout::names::ScopeId;
 
 /// Emits `init`, the globals `globals` declare and then the program's
-/// variables `program` declares, from the lowered program, when the route
-/// compiles from it and it emits every store; returns `false`, having
-/// emitted nothing, when `init` is left to the AST.
+/// variables `program` declares, from the lowered program, when it emits
+/// every store; returns `false`, having emitted nothing, when `init` is left
+/// to the AST.
 pub(crate) fn try_emit_init(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     globals: &[VarDecl],
     program: &[VarDecl],
 ) -> Result<bool, Diagnostic> {
-    let Some(mut route) = ctx.lowered_route.take() else {
+    let Some(route) = ctx.lowered_route.take() else {
         return Ok(false);
     };
     let caller = std::mem::replace(&mut ctx.scope, ScopeId::Program);
     let emitted = emit(emitter, ctx, route.lowering(), globals, program);
     ctx.scope = caller;
-    if let Ok(true) = emitted {
-        route.counts.init_lowered += 1;
-    } else if let Ok(false) = emitted {
-        route.counts.init_from_ast += 1;
-    }
     ctx.lowered_route = Some(route);
     emitted
 }

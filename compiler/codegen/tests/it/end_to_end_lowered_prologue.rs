@@ -2,14 +2,11 @@
 //! program (REQ-LOW-codegen-202): a program's `VAR_TEMP` starts again at the
 //! head of every scan, as every body's does (REQ-LOW-lowering-201).
 
-use ironplc_analyzer::{CleanAnalysis, SemanticContext};
-use ironplc_codegen::{compile_with_route_counts, CodegenOptions, EmptyLookup, Route};
-use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_sources::parsers::xml_parser;
 
-use crate::common::{compile_by_route, compile_to_run, run_compiled_scans};
+use crate::common::{compile_to_run, run_compiled_scans};
 
 /// A PLCopen XML program, which may declare a `VAR_TEMP`, unlike one written
 /// in Structured Text: each scan reads an integer and a string `VAR_TEMP`,
@@ -52,21 +49,13 @@ s := CONCAT(s, 'x');</xhtml>
   </types>
 </project>"#;
 
-/// `PLCOPEN_VAR_TEMP`, analyzed.
-fn analyzed(options: &CompilerOptions) -> (Library, SemanticContext) {
-    let library = xml_parser::parse(PLCOPEN_VAR_TEMP, &FileId::default(), options).unwrap();
-    ironplc_analyzer::stages::analyze(&[&library], options).unwrap()
-}
-
-/// `count` and `length` after each of two scans of the program `route`
-/// compiles `PLCOPEN_VAR_TEMP` to.
-fn two_scans(route: Route) -> [(i64, i64); 2] {
+/// `count` and `length` after each of two scans of `PLCOPEN_VAR_TEMP`.
+fn two_scans() -> [(i64, i64); 2] {
     let options = CompilerOptions::default();
-    let (library, context) = analyzed(&options);
-    // `init`, then one scan, leave every variable the same by both routes.
-    compile_to_run(&library, &context, &options).unwrap();
-    let container = compile_by_route(&library, &context, &options, route).unwrap();
-    run_compiled_scans(&container, |session| {
+    let library = xml_parser::parse(PLCOPEN_VAR_TEMP, &FileId::default(), &options).unwrap();
+    let (library, context) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
+    let program = compile_to_run(&library, &context, &options).unwrap();
+    run_compiled_scans(&program, |session| {
         [0, 1000].map(|time_us| {
             session.scan(time_us).unwrap();
             (session.read_as("count"), session.read_as("length"))
@@ -75,34 +64,8 @@ fn two_scans(route: Route) -> [(i64, i64); 2] {
 }
 
 /// A program's `VAR_TEMP` starts again at the head of every scan, so the
-/// second scan reads what the first did. The route that reads the AST gives
-/// it its value once, in `init`, so its second scan reads what the first
-/// wrote: the correction the lowered route makes.
+/// second scan reads what the first did.
 #[test]
 fn end_to_end_when_program_var_temp_read_before_written_then_starts_again_each_scan() {
-    assert_eq!(two_scans(Route::PreferLowered), [(0, 0), (0, 0)]);
-    assert_eq!(two_scans(Route::Ast), [(0, 0), (1, 1)]);
-}
-
-/// The program's prologue stores its `VAR_TEMP`, so `init` stores none of
-/// them, and both come from the lowered program.
-#[test]
-fn compile_when_program_var_temp_then_init_and_prologue_from_lowered_program() {
-    let options = CompilerOptions::default();
-    let (library, context) = analyzed(&options);
-    let analysis = CleanAnalysis::new(&library, &context).unwrap();
-    let codegen_options = CodegenOptions {
-        route: Route::PreferLowered,
-        ..CodegenOptions::from(&options)
-    };
-    let (_, counts) = compile_with_route_counts(analysis, &codegen_options, &EmptyLookup).unwrap();
-    assert_eq!(
-        (
-            counts.init_lowered,
-            counts.init_from_ast,
-            counts.prologue_lowered,
-            counts.prologue_from_ast
-        ),
-        (1, 0, 1, 0)
-    );
+    assert_eq!(two_scans(), [(0, 0), (0, 0)]);
 }

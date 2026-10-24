@@ -219,9 +219,6 @@ pub struct CodegenOptions {
     /// The behavior policies `STRING_TO_<numeric>` calls are compiled under
     /// (ADR-0049). They select the builtin func_id the call emits.
     pub string_to_num: StringToNumPolicies,
-    /// Which route each statement is compiled by: from the AST, or from the
-    /// lowered program where lowering supports it.
-    pub route: crate::lowered::Route,
     /// Whether the layout built from the lowered declarations is checked
     /// equal to the one built from the AST, which the bodies are compiled
     /// against, while both builders exist; a difference fails the
@@ -243,7 +240,6 @@ impl From<&CompilerOptions> for CodegenOptions {
                 non_numeric: options.policy_string_to_num_non_numeric,
                 failure: options.policy_string_to_num_failure,
             },
-            route: crate::lowered::Route::default(),
             check_layout: false,
         }
     }
@@ -267,16 +263,6 @@ pub fn compile(
     options: &CodegenOptions,
     sources: &dyn ironplc_ir::source::SourceLookup,
 ) -> Result<Container, Diagnostic> {
-    compile_with_route_counts(analysis, options, sources).map(|(container, _)| container)
-}
-
-/// Compiles a library into a bytecode container, as [`compile`] does, and
-/// says how many top-level statements took each route.
-pub fn compile_with_route_counts(
-    analysis: CleanAnalysis<'_>,
-    options: &CodegenOptions,
-    sources: &dyn ironplc_ir::source::SourceLookup,
-) -> Result<(Container, crate::lowered::RouteCounts), Diagnostic> {
     // Lowering completes every initializer on a copy, and reads the program
     // and globals from it; the analyzed library stays as written
     // (specs/design/initial-values.md).
@@ -323,11 +309,10 @@ pub fn compile_with_route_counts(
 
     let method_owners = MethodOwners::of_library(library, context.types());
     let parse = crate::lowered::parse_policy(&options.string_to_num);
-    let lowered_route =
-        crate::lowered::LoweredRoute::new(options.route, options.check_layout, || {
-            ironplc_lowering::Lowering::new(&analysis, parse).lower_program()
-        })?;
-    let (mut container, counts) = compile_program_with_functions(
+    let lowered_route = crate::lowered::LoweredRoute::new(options.check_layout, || {
+        ironplc_lowering::Lowering::new(&analysis, parse).lower_program()
+    })?;
+    let mut container = compile_program_with_functions(
         ProgramInputs {
             program: runnable.program,
             func_decls: &func_decls,
@@ -350,7 +335,7 @@ pub fn compile_with_route_counts(
 
     crate::execution::apply_task_schedule(&mut container, runnable.schedule);
 
-    Ok((container, counts))
+    Ok(container)
 }
 
 /// Idempotently registers the source file of the POU whose name is at
@@ -509,8 +494,8 @@ fn compile_program_with_functions(
     string_to_num: StringToNumPolicies,
     compiler_options: CompilerOptions,
     sources: &dyn ironplc_ir::source::SourceLookup,
-    lowered_route: Option<crate::lowered::LoweredRoute>,
-) -> Result<(Container, crate::lowered::RouteCounts), Diagnostic> {
+    lowered_route: crate::lowered::LoweredRoute,
+) -> Result<Container, Diagnostic> {
     let ProgramInputs {
         program,
         func_decls,
@@ -520,7 +505,7 @@ fn compile_program_with_functions(
         method_owners,
     } = inputs;
     let mut ctx = CompileContext::new();
-    ctx.lowered_route = lowered_route;
+    ctx.lowered_route = Some(lowered_route);
     ctx.types = crate::type_info::type_representations(types);
     ctx.block_members = ironplc_lowering::initial_value::block_members(types);
     ctx.operand_names = crate::type_info::operand_names(types);
@@ -539,8 +524,7 @@ fn compile_program_with_functions(
     // registration order (program first, then functions, then FB
     // bodies) determines the `file_id` numbering, which appears in
     // the on-disk container.
-    // The lowered program names the POUs and their spans when the route
-    // compiles from it.
+    // The lowered program names the POUs and their spans.
     let pou_spans = ctx
         .lowered_route
         .as_ref()
@@ -845,8 +829,7 @@ fn compile_program_with_functions(
         .shared_globals_size(program_var_count)
         .max_call_depth(max_call_depth);
 
-    // Add debug info, named as the lowered program names each POU when the
-    // route compiles from it.
+    // Add debug info, named as the lowered program names each POU.
     let program_name = crate::lowered::pou_name(&ctx, crate::layout::names::ScopeId::Program)
         .unwrap_or_else(|| program.name.to_string());
     builder = builder
@@ -884,7 +867,11 @@ fn compile_program_with_functions(
         builder = builder.add_string_layout(entry);
     }
     // By type name, for the same reason as the user FB type descriptors.
-    for entry in crate::compile_enum::enum_definitions(types) {
+    let enum_defs = ctx
+        .debug_enum_defs
+        .take()
+        .unwrap_or_else(|| crate::compile_enum::enum_definitions(types));
+    for entry in enum_defs {
         builder = builder.add_enum_def(entry);
     }
 
@@ -914,12 +901,7 @@ fn compile_program_with_functions(
     // `specs/design/bytecode-verifier-rules.md` for the rules it enforces.
     crate::stack_balance::verify_container(&container)?;
 
-    let counts = ctx
-        .lowered_route
-        .as_ref()
-        .map(|route| route.counts)
-        .unwrap_or_default();
-    Ok((container, counts))
+    Ok(container)
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -988,8 +970,7 @@ pub(crate) struct UserFunctionInfo {
     /// after the function returns.
     pub(crate) outputs: HashMap<Id, VarIndex>,
     /// Where in the data region each `STRING` or `WSTRING` `VAR_OUTPUT`
-    /// is, which a call the lowered route compiles reads it from after the
-    /// function returns.
+    /// is, which a call reads it from after the function returns.
     pub(crate) string_outputs: HashMap<Id, StringVarInfo>,
 }
 
@@ -1074,8 +1055,8 @@ pub(crate) struct UserMethodInfo {
     /// after the method returns. Empty until the block is laid out.
     pub(crate) outputs: HashMap<Id, VarIndex>,
     /// Where in the data region each `STRING` or `WSTRING` `VAR_OUTPUT`
-    /// is, which a call the lowered route compiles reads it from after the
-    /// method returns. Empty until the block is laid out.
+    /// is, which a call reads it from after the method returns. Empty until
+    /// the block is laid out.
     pub(crate) string_outputs: HashMap<Id, StringVarInfo>,
 }
 
@@ -1091,12 +1072,10 @@ pub(crate) struct UserMethodParam {
 
 pub(crate) struct CompileContext {
     /// The program lowering made, which each top-level statement is read
-    /// from, when the route compiles statements from the lowered program;
-    /// `None` when every statement is compiled from the AST.
+    /// from; `None` only while it is taken to compile from it.
     pub(crate) lowered_route: Option<crate::lowered::LoweredRoute>,
     /// What the layout knows each id of the lowered program as, once the
-    /// layout is built; empty when every statement is compiled from the
-    /// AST.
+    /// layout is built.
     pub(crate) lowered_ids: crate::layout::ids::LoweredIds,
     /// The scope whose names are being laid out, or whose body is being
     /// compiled: what the layout's entries are recorded under, and what
@@ -1108,10 +1087,6 @@ pub(crate) struct CompileContext {
     pub(crate) var_types: Scoped<VarTypeInfo>,
     /// Ordered list of constants added to the constant pool.
     pub(crate) constants: Vec<PoolConstant>,
-    /// Stack of the labels of the enclosing loops, for EXIT and CONTINUE
-    /// statement compilation. Each loop pushes its labels; EXIT and CONTINUE
-    /// jump to those of the top.
-    pub(crate) loop_labels: Vec<crate::compile_loop::LoopLabels>,
     /// Where in the data region each STRING variable is.
     pub(crate) string_vars: Scoped<StringVarInfo>,
     /// The layout of each FB instance variable.
@@ -1166,6 +1141,10 @@ pub(crate) struct CompileContext {
     pub(crate) debug_var_names: Vec<VarNameEntry>,
     /// Debug info: STRING variable data-region layouts collected during assign_variables.
     pub(crate) debug_string_layouts: Vec<StringLayoutEntry>,
+    /// Debug info: the ENUM_DEF entries of the lowered program, when its
+    /// layout is the one the bodies are compiled against; `None` gives the
+    /// type environment's.
+    pub(crate) debug_enum_defs: Option<Vec<ironplc_container::debug_section::EnumDefEntry>>,
     /// Debug info: registry mapping each referenced source `FileId` to its
     /// `SourceFileId` (debug section SOURCE_FILE_TABLE index) plus cached
     /// source bytes for (line, column) conversion in `compile_statement`.
@@ -1237,7 +1216,6 @@ impl CompileContext {
             variables: Scoped::default(),
             var_types: Scoped::default(),
             constants: Vec::new(),
-            loop_labels: Vec::new(),
             string_vars: Scoped::default(),
             fb_instances: Scoped::default(),
             array_vars: Scoped::default(),
@@ -1251,6 +1229,7 @@ impl CompileContext {
             has_wide_string: false,
             debug_var_names: Vec::new(),
             debug_string_layouts: Vec::new(),
+            debug_enum_defs: None,
             debug_source_files: crate::source_lookup::SourceFileRegistry::new(),
             user_functions: HashMap::new(),
             function_stack_depths: HashMap::new(),
@@ -1269,20 +1248,6 @@ impl CompileContext {
             call_graph: HashMap::new(),
             call_outputs: None,
         }
-    }
-
-    /// Returns the exit label for the innermost enclosing loop, if any.
-    pub(crate) fn current_loop_exit(&self) -> Option<crate::emit::Label> {
-        self.loop_labels.last().map(|labels| labels.exit)
-    }
-
-    /// Returns the label where the innermost enclosing loop goes on with its
-    /// next iteration, if any, and records that it is used.
-    pub(crate) fn current_loop_next(&mut self) -> Option<crate::emit::Label> {
-        self.loop_labels.last_mut().map(|labels| {
-            labels.next_used = true;
-            labels.next
-        })
     }
 
     /// Records a static call-graph edge from the function whose body is
@@ -1463,13 +1428,6 @@ impl CompileContext {
     /// Looks up type information for a variable by identifier.
     pub(crate) fn var_type_info(&self, name: &Id) -> Option<VarTypeInfo> {
         self.seen(&self.var_types, names::SLOTS, name).copied()
-    }
-
-    /// Returns the op_type for a variable by identifier, falling back to defaults.
-    pub(crate) fn var_op_type(&self, name: &Id) -> OpType {
-        self.seen(&self.var_types, names::SLOTS, name)
-            .map(|info| (info.op_width, info.signedness))
-            .unwrap_or(DEFAULT_OP_TYPE)
     }
 
     /// Allocates a scratch variable with a synthetic name for the variable

@@ -257,10 +257,8 @@ END_PROGRAM
 /// the last of its arm or the last, a range, a range failing at either
 /// bound, with or without an `ELSE`. `NEXT_VAL` counts its calls in
 /// `calls`, so `calls` ends one above where it started, and a selector left
-/// on the operand stack fails the test.
-///
-/// Only the lowered route is run: the route that reads the AST evaluates the
-/// selector again for each label it tests.
+/// on the operand stack fails the test. The route that read the AST
+/// evaluated the selector again for each label it tested.
 #[rstest]
 #[case::first_label(4, "ELSE y := -1;", 5, 5)]
 #[case::label_before_last_of_arm(5, "ELSE y := -1;", 6, 6)]

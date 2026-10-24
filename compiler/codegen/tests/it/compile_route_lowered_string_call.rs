@@ -1,10 +1,9 @@
 //! Tests of calls of user-defined functions and methods with string inputs,
 //! compiled from the lowered program (REQ-LOW-lowering-072), with every
-//! statement required to lower. Each program compiles to the same code as by
-//! the route that reads the AST, and leaves every variable as that route
-//! leaves it after one scan.
+//! statement required to lower. Each program compiles, and leaves every
+//! variable with the same values on every backend after one scan.
 
-use crate::compile_route_lowered::{assert_same_code, run_lowered_agreeing};
+use crate::compile_route_lowered::{assert_compiles, run_lowered_agreeing};
 
 /// Functions of string inputs: the length of a `STRING[4]` input, which its
 /// body then overwrites; whether a `STRING[4]` and a `WSTRING[8]` input hold
@@ -46,7 +45,7 @@ fn run_when_string_argument_then_copied_and_cut_to_parameter() {
            from_long := FIRST4('abcdefghij');
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
     let snapshot = run_lowered_agreeing(&source);
     assert_eq!(snapshot.read_as::<i32>("from_literal"), 3);
     assert_eq!(snapshot.read_as::<i32>("from_variable"), 4);
@@ -68,7 +67,7 @@ fn run_when_string_and_wstring_parameters_then_each_copied_at_its_encoding() {
            differ := SAME_LEN(w := \"x\", s := 'abc');
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
     let snapshot = run_lowered_agreeing(&source);
     assert_eq!(snapshot.read_as::<i32>("same"), 1);
     assert_eq!(snapshot.read_as::<i32>("differ"), 0);
@@ -84,7 +83,7 @@ fn run_when_call_with_outputs_has_string_input_then_output_and_result_stored() {
            r := PAD('abc', n => k);
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
     let snapshot = run_lowered_agreeing(&source);
     assert_eq!(snapshot.read_as::<i32>("r"), 6);
     assert_eq!(snapshot.read_as::<i32>("k"), 3);
@@ -119,7 +118,7 @@ fn run_when_method_has_string_input_then_copied_into_its_parameter() {
           kept := f.last;
           f.Count(v := 'abcd', n => k);
         END_PROGRAM";
-    assert_same_code(source);
+    assert_compiles(source);
     let snapshot = run_lowered_agreeing(source);
     assert_eq!(snapshot.read_as::<i32>("r"), 42);
     assert_eq!(snapshot.read_as::<i32>("kept"), 2);

@@ -131,8 +131,8 @@ pub(super) fn emit_expr(
             if let Some(function) = user_function(ctx, *pou) {
                 emit_user_call(emitter, ctx, lowering, &function, args, expr.span())?;
             } else {
-                // `can_emit` leaves to the AST a call of a function or
-                // method this backend does not pass every argument of.
+                // `can_emit` rejects a call of a function or method this
+                // backend does not pass every argument of.
                 let site = method_site(lowering, ctx, *pou, args).ok_or_else(|| {
                     Diagnostic::internal_error_at(Label::span(
                         expr.span().clone(),
@@ -201,9 +201,9 @@ pub(super) fn emit_operation(emitter: &mut Emitter, expr: &Expr) -> Result<(), D
 
 /// Calls the user-defined function `function` with `args`, the arguments it
 /// takes for its inputs and in-outs, at `span`, leaving its result on the
-/// stack: a value, or a string's buffer. As the route that reads the AST
-/// does (`compile_user_function_call`), a string result's header is
-/// initialized before `CALL`, for the function's body to write to.
+/// stack: a value, or a string's buffer. As `compile_user_function_call`
+/// does, a string result's header is initialized before `CALL`, for the
+/// function's body to write to.
 pub(super) fn emit_user_call<'s>(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -237,7 +237,7 @@ pub(super) fn emit_intrinsic_call(
     args: &[Arg],
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
-    // `can_emit` leaves to the AST a call with no instruction.
+    // `can_emit` rejects a call with no instruction.
     let instruction = instruction_of(intrinsic, args.len()).ok_or_else(|| {
         Diagnostic::internal_error_at(Label::span(
             span.clone(),
@@ -272,7 +272,7 @@ pub(super) fn emit_intrinsic_call(
 
 /// Passes each of `args` of the call at `span`, in order: a value on the
 /// stack, a string as the data region offset of a slot that holds it, and a
-/// place by reference, as the AST route passes a `VAR_IN_OUT` argument.
+/// place by reference, as a `VAR_IN_OUT` argument is passed.
 /// Returns the offsets of the strings, in order.
 fn emit_args<'s>(
     emitter: &mut Emitter,
@@ -300,7 +300,7 @@ fn emit_args<'s>(
 }
 
 /// Pushes a reference to `place`, a variable or what a `VAR_IN_OUT`
-/// parameter refers to. `can_emit` leaves any other place to the AST.
+/// parameter refers to. `can_emit` rejects any other place.
 pub(super) fn emit_ref(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -501,7 +501,7 @@ pub(super) fn emit_truncate(
         (NarrowWidth::B16, Signedness::Signed) => emitter.emit_trunc_i16(),
         (NarrowWidth::B16, Signedness::Unsigned) => emitter.emit_trunc_u16(),
         // The bytecode backend keeps no value narrower than its slot at
-        // 32 bits, so `can_emit` leaves such a truncation to the AST.
+        // 32 bits, so `can_emit` rejects such a truncation.
         (NarrowWidth::B32, Signedness::Signed | Signedness::Unsigned) => {
             return Err(Diagnostic::internal_error_at(Label::span(
                 span.clone(),

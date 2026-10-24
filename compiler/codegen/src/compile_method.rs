@@ -302,18 +302,3 @@ pub(crate) fn compile_method_call_expression(
     emitter.emit_pop();
     Ok(())
 }
-
-/// Compiles a method call in statement position: the call, then discards
-/// the return value (if any) and the instance reference beneath it.
-pub(crate) fn compile_method_call_statement(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    call: &MethodCall,
-) -> Result<(), Diagnostic> {
-    let has_return_value = compile_method_call(emitter, ctx, call)?;
-    if has_return_value {
-        emitter.emit_pop();
-    }
-    emitter.emit_pop();
-    Ok(())
-}

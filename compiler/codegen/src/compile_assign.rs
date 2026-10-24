@@ -3,9 +3,8 @@
 //! Separated from `compile_stmt.rs` to keep module sizes within the
 //! 1000-line guideline.
 
-use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_dsl::textual::{Assignment, Expr, SymbolicVariableKind, Variable};
+use ironplc_dsl::textual::{Expr, SymbolicVariableKind, Variable};
 
 use super::compile::CompileContext;
 use super::compile_array::{emit_flat_index, resolve_access, ResolvedAccess};
@@ -15,39 +14,6 @@ use super::compile_place::Place;
 use super::compile_string_place::StringPlace;
 use crate::emit::Emitter;
 use crate::string_width::compile_string_value;
-use crate::type_info::expr_type_info;
-
-/// Compiles an assignment statement.
-pub(crate) fn compile_assignment(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    assignment: &Assignment,
-) -> Result<(), Diagnostic> {
-    // TwinCAT/CODESYS `S=`/`R=` set/reset binding: parsed and
-    // analyzed like any other BOOL assignment, but codegen has no
-    // lowering for "write only when true, otherwise leave
-    // unchanged" yet (unlike `ref_bind`, which reuses the ordinary
-    // `ExprKind::Ref` value and needs no special case here at all).
-    // Refuse explicitly rather than emit the unconditional store a
-    // naive fallthrough would produce. See issue #1680.
-    if assignment.set_bind || assignment.reset_bind {
-        return Err(Diagnostic::todo_with_span(assignment.span()));
-    }
-
-    // Dereference assignment: `p^ := v`. The analyzer converted the value to
-    // the referenced type (REQ-IC-analyzer-039), so it compiles at its own
-    // type, and that is the type of the place it is stored in.
-    if assignment.deref {
-        let place = Place::<&Expr>::through_reference(
-            ctx,
-            &assignment.target,
-            expr_type_info(ctx, &assignment.value),
-        )?;
-        return assign_to_place(emitter, ctx, &place, &assignment.value);
-    }
-
-    compile_store(emitter, ctx, &assignment.target, &assignment.value)
-}
 
 /// Compiles `target := value`: `value` at the type the analyzer recorded for
 /// it, stored in `target`.
