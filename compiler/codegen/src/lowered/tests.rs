@@ -29,3 +29,44 @@ fn read_when_initializer_has_no_value_then_internal_error() {
 
     assert_eq!(result.unwrap_err().code, "P9998");
 }
+
+/// A declaration lowering does not express yet, a function's string
+/// `VAR_IN_OUT`, is a P9999 at the POU that declares it: the bytecode
+/// backend lays out only the lowered declarations, so there is no layout to
+/// compile any body against.
+#[test]
+fn layout_when_declaration_not_lowered_then_not_implemented_at_its_pou() {
+    let source = "
+FUNCTION F : INT
+  VAR_IN_OUT s : STRING; END_VAR
+  F := 1;
+END_FUNCTION
+PROGRAM main
+  VAR a : INT; b : STRING; END_VAR
+  a := F(s := b);
+END_PROGRAM
+";
+    let options = ironplc_parser::options::CompilerOptions::default();
+    let library =
+        ironplc_parser::parse_program(source, &ironplc_dsl::core::FileId::default(), &options)
+            .unwrap();
+    let (library, context) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
+    let completed = ironplc_analyzer::xform_resolve_initial_values::apply(library, &context);
+    let analysis = ironplc_analyzer::CleanAnalysis::new(&completed, &context).unwrap();
+    let lowering =
+        ironplc_lowering::Lowering::new(&analysis, super::parse_policy(&Default::default()))
+            .lower_program()
+            .unwrap();
+
+    let error = crate::layout::lowered::Layout::of(
+        &lowering,
+        &ironplc_dsl::core::Id::from("main"),
+        &std::collections::HashMap::new(),
+    )
+    .err()
+    .unwrap();
+
+    let at = &error.primary.location;
+    assert_eq!(error.code, "P9999");
+    assert_eq!(&source[at.start..at.end], "F");
+}

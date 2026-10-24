@@ -170,6 +170,12 @@ impl PartialProgram {
         self.incomplete.is_empty()
     }
 
+    /// Where each declaration is that lowering does not express yet; empty
+    /// when [`declarations_complete`](Self::declarations_complete).
+    pub fn declarations_unsupported(&self) -> &[SourceSpan] {
+        &self.incomplete
+    }
+
     /// Whether a declaration declares `var`, or a program instance is it,
     /// rather than lowering making it for a statement or a starting value.
     pub fn is_declared(&self, var: VarId) -> bool {

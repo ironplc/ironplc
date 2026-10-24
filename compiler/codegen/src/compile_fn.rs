@@ -254,9 +254,7 @@ pub(crate) fn compile_user_function(
     ctx.function_stack_depths
         .insert(function_id, finalized.max_stack_depth);
 
-    let name = crate::lowered::pou_name(ctx, ctx.scope)
-        .map(|name| name.to_lowercase())
-        .unwrap_or_else(|| func_decl.name.lower_case().to_string());
+    let name = crate::lowered::pou_name(ctx, ctx.scope)?.to_lowercase();
     ctx.scope = caller;
 
     Ok(CompiledFunction {
@@ -283,9 +281,7 @@ pub(crate) fn compile_user_function_block(
     ctx: &mut CompileContext,
 ) -> Result<CompiledFunction, Diagnostic> {
     let caller = std::mem::replace(&mut ctx.scope, scope);
-    let fb_name = crate::lowered::pou_name(ctx, scope)
-        .unwrap_or_else(|| fb_decl.name.name.to_string())
-        .to_uppercase();
+    let fb_name = crate::lowered::pou_name(ctx, scope)?.to_uppercase();
 
     // Compile the FB body.
     // Mark this FB's body as the current caller so nested CALL / FB_CALL

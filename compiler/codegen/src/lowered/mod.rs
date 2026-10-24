@@ -478,11 +478,18 @@ pub(super) fn current_pou(ctx: &CompileContext) -> Option<PouId> {
 }
 
 /// The name the lowered program gives the POU whose body is compiled in
-/// `scope`, as written; `None` for a body lowering did not lower.
-pub(crate) fn pou_name(ctx: &CompileContext, scope: ScopeId) -> Option<String> {
-    let route = ctx.lowered_route.as_ref()?;
-    let pou = ctx.lowered_ids.pou_in(scope)?;
-    Some(route.lowering().pous().name(pou)?.to_string())
+/// `scope`, as written.
+pub(crate) fn pou_name(ctx: &CompileContext, scope: ScopeId) -> Result<String, Diagnostic> {
+    ctx.lowered_ids
+        .pou_in(scope)
+        .and_then(|pou| ctx.lowering().ok()?.pous().name(pou))
+        .map(ToString::to_string)
+        .ok_or_else(|| {
+            Diagnostic::internal_error_at(Label::span(
+                SourceSpan::default(),
+                "A body the lowered program does not name",
+            ))
+        })
 }
 
 /// Whether `pou` is the body being compiled.
