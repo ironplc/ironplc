@@ -266,8 +266,10 @@ impl Layout {
                 }
                 current = VarIndex::new(current.raw() + 1);
                 // A method's run spans its block's copy slots too, and the
-                // next method's starts that many slots on (`block.rs`).
-                next = VarIndex::new(next.raw() + current.raw() - field_var_off.raw());
+                // next method's starts that many slots on (`block.rs`). The
+                // run's length is taken first: `next` and `current` both lie
+                // late in a full table, so their sum alone can exceed a `u16`.
+                next = VarIndex::new(next.raw() + (current.raw() - field_var_off.raw()));
                 let info = UserMethodInfo {
                     function_id: method_id,
                     param_var_off: param_var_off.raw(),
