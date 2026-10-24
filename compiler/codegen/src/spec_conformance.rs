@@ -20,8 +20,6 @@ use ironplc_vm::test_support::load_and_start;
 use ironplc_vm::VmBuffers;
 use spec_test_macro::spec_test;
 
-use crate::compile_enum::enum_var_type_info;
-
 // ---------------------------------------------------------------------------
 // Meta-test: completeness check
 // ---------------------------------------------------------------------------
@@ -139,7 +137,34 @@ END_PROGRAM
 /// REQ-EN-codegen-003: Enums use DINT (W32, Signed, 32-bit) at codegen level.
 #[spec_test(REQ_EN_codegen_003)]
 fn enum_spec_req_en_003_var_type_info_is_dint() {
-    let info = enum_var_type_info();
+    let source = "
+TYPE COLOR : (RED, GREEN, BLUE); END_TYPE
+PROGRAM main VAR c : COLOR; END_VAR END_PROGRAM
+";
+    let options = CompilerOptions::default();
+    let library = ironplc_parser::parse_program(source, &FileId::default(), &options).unwrap();
+    let (library, context) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
+    let completed = ironplc_analyzer::xform_resolve_initial_values::apply(library, &context);
+    let analysis = CleanAnalysis::new(&completed, &context).unwrap();
+    let lowering = ironplc_lowering::Lowering::new(
+        &analysis,
+        crate::lowered::parse_policy(&Default::default()),
+    )
+    .lower_program()
+    .unwrap();
+    let types = lowering.types();
+    let (color, _) = types
+        .iter()
+        .find(|(_, entry)| {
+            matches!(
+                entry.kind,
+                ironplc_ir::lowered::TypeKind::Enumeration { .. }
+            )
+        })
+        .unwrap();
+
+    let info = crate::lowered::slot_type(types, color).unwrap();
+
     assert!(matches!(info.op_width, crate::compile::OpWidth::W32));
     assert!(matches!(
         info.signedness,

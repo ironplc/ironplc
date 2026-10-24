@@ -9,8 +9,8 @@
 //! convention. Structurally this mirrors `compile_fn::compile_user_function`
 //! closely; the differences are exactly the parts of that convention.
 
-use ironplc_dsl::common::MethodDeclaration;
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_dsl::common::{FunctionBlockDeclaration, FunctionReturnType, MethodDeclaration};
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
 
 use super::compile::{finalize_function, CompileContext, CompiledFunction, CurrentFunctionReturn};
 use super::compile_expr::emit_load_var;
@@ -18,6 +18,29 @@ use super::compile_setup::emit_clear_result_slot;
 use super::compile_stmt::compile_statements;
 use super::layout::MethodLayout;
 use crate::emit::Emitter;
+
+/// Rejects a method of one of `fb_decls` whose result is a `STRING` or a
+/// `WSTRING`, which this backend does not compile yet (P9999).
+pub(crate) fn reject_string_results(
+    fb_decls: &[&FunctionBlockDeclaration],
+) -> Result<(), Diagnostic> {
+    let string_result = fb_decls
+        .iter()
+        .flat_map(|fb_decl| &fb_decl.methods)
+        .find_map(|method| match &method.return_type {
+            Some(FunctionReturnType::String(spec) | FunctionReturnType::WString(spec)) => {
+                Some(spec.keyword_span.clone())
+            }
+            Some(FunctionReturnType::Named(_)) | None => None,
+        });
+    match string_result {
+        Some(span) => Err(Diagnostic::not_implemented(Label::span(
+            span,
+            "STRING return type of a METHOD",
+        ))),
+        None => Ok(()),
+    }
+}
 
 /// Compiles the body of `method`, which `layout` lays out, in the method's
 /// scope; the caller's is current again once the body is compiled.

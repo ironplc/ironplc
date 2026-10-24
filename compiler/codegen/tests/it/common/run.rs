@@ -90,12 +90,7 @@ pub(super) fn compile_on_vm(
     options: &CompilerOptions,
 ) -> Result<Container, Diagnostic> {
     let analysis = CleanAnalysis::new(library, context).expect("analysis reported diagnostics");
-    // The layout built from the lowered declarations is checked equal to
-    // the one from the AST for every program (REQ-LOW-codegen-198).
-    let codegen_options = ironplc_codegen::CodegenOptions {
-        check_layout: true,
-        ..ironplc_codegen::CodegenOptions::from(options)
-    };
+    let codegen_options = ironplc_codegen::CodegenOptions::from(options);
     let compiled = compile(analysis, &codegen_options, &ironplc_codegen::EmptyLookup);
     if let Ok(container) = &compiled {
         dump_container(container);

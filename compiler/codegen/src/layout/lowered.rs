@@ -1,9 +1,8 @@
 //! The layout built from the lowered declarations
 //! (`specs/design/lowered-program.md`, "`CompileContext`").
 //!
-//! It numbers the variable-table slots as the walk of the AST declarations
-//! does ([`super`]), from the execution model's globals and each body's
-//! declarations, in the order the body declares them:
+//! It numbers the variable-table slots from the execution model's globals
+//! and each body's declarations, in the order the body declares them:
 //!
 //! 1. the globals, the compiler-provided ones first, but a resource's;
 //! 2. the program's fields, `VAR_TEMP` and the globals a PLCopen program
@@ -35,18 +34,17 @@
 //! globals and the program, and of each enumeration type
 //! ([`super::debug_vars`]).
 //!
-//! The bodies are compiled against this layout ([`Layout::install`]), and a
+//! The bodies are compiled against this layout ([`Layout::install`]), which
+//! gives each body where its variables are ([`super::bodies`]), and a
 //! declaration lowering does not express yet is not supported yet (P9999).
-//! The walk of the AST declarations still runs, for the array descriptors
-//! it adds to the container and for what each body is compiled with, and
-//! the end-to-end helpers check the entries both record equal
-//! ([`super::check`]).
+//! Each declaration is checked within the limits of the bytecode format
+//! first ([`super::limits`]).
 
 use std::collections::HashMap;
 
 use ironplc_analyzer::StandardFunctionBlock;
 use ironplc_container::debug_section::EnumDefEntry;
-use ironplc_container::{ArrayDescriptor, FunctionId, VarIndex};
+use ironplc_container::{ArrayDescriptor, ContainerBuilder, FunctionId, VarIndex};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::execution::{GlobalKind, GlobalScope};
@@ -61,9 +59,11 @@ use super::descriptors::Descriptors;
 use super::entries;
 use super::names::{self, ScopeId, Scoped};
 use super::region::{string_at, Region};
+use super::var_table::Counter;
+use super::{BlockLayout, FunctionLayout, MethodLayout};
 use crate::compile::{
-    CompileContext, FbInstanceInfo, StringReturnInfo, StringVarInfo, UserFbTypeInfo,
-    UserFunctionInfo, UserMethodInfo, UserMethodParam, VarTypeInfo,
+    CompileContext, FbInstanceInfo, OpType, StringReturnInfo, StringVarInfo, UserFbTypeInfo,
+    UserFunctionInfo, UserMethodInfo, UserMethodParam, VarTypeInfo, DEFAULT_OP_TYPE,
 };
 use crate::compile_array::ArrayVarInfo;
 use crate::compile_array_struct::StructArrayVarInfo;
@@ -101,6 +101,30 @@ pub(crate) struct Layout {
     pub(super) debug: DebugVars,
     /// The debug entry of each enumeration type.
     pub(super) enum_defs: Vec<EnumDefEntry>,
+    /// Where each user function's variables are, in library order.
+    pub(super) functions: Vec<FunctionLayout>,
+    /// Where each user function block's copy slots and its methods'
+    /// variables are, in library order.
+    pub(super) blocks: Vec<BlockLayout>,
+    /// How many slots the globals and the program's variables take.
+    pub(super) program_slots: u16,
+    /// How many slots the variable table holds.
+    pub(super) slot_end: VarIndex,
+    /// Whether every slot fits the variable table.
+    counter: Counter,
+}
+
+/// What the bodies are compiled with, of a [`Layout`] once it is installed.
+pub(crate) struct Bodies {
+    /// Where each user function's variables are, in library order.
+    pub(crate) functions: Vec<FunctionLayout>,
+    /// Where each user function block's copy slots and its methods'
+    /// variables are, in library order.
+    pub(crate) blocks: Vec<BlockLayout>,
+    /// How many slots the globals and the program's variables take.
+    pub(crate) program_slots: u16,
+    /// How many slots the variable table holds.
+    pub(crate) slots: VarIndex,
 }
 
 /// What the declarations reserve as the walk visits them: the runs of the
@@ -116,7 +140,8 @@ impl Layout {
     /// The layout of the declarations of `lowering`, whose program the
     /// container runs is `program`, and the standard function block each
     /// type is `standard_blocks`, by its upper-case name. A declaration
-    /// lowering does not express yet is not supported yet (P9999).
+    /// lowering does not express yet is not supported yet (P9999), and one
+    /// that needs more slots than the variable table holds is P9997.
     pub(crate) fn of(
         lowering: &PartialProgram,
         program: &Id,
@@ -125,22 +150,27 @@ impl Layout {
         if let Some(span) = lowering.declarations_unsupported().first() {
             return Err(Diagnostic::todo_with_span(span.clone()));
         }
-        Self::of_complete(lowering, program, standard_blocks).ok_or_else(|| {
+        let no_layout = || {
             Diagnostic::internal_error_at(Label::span(
                 program.span(),
                 "The lowered declarations give no layout",
             ))
-        })
+        };
+        let pous = Pous::of(lowering, program).ok_or_else(no_layout)?;
+        super::limits::check(lowering, &pous).ok_or_else(no_layout)??;
+        let layout = Self::of_complete(lowering, &pous, standard_blocks).ok_or_else(no_layout)?;
+        layout.counter.check(&program.span())?;
+        Ok(layout)
     }
 
     /// The layout of the declarations of `lowering`, every one of which
-    /// lowered; `None` when they are not the program's.
+    /// lowered and is within the limits, of the POUs `pous`; `None` when
+    /// they are not the program's.
     fn of_complete(
         lowering: &PartialProgram,
-        program: &Id,
+        pous: &Pous,
         standard_blocks: &HashMap<String, StandardFunctionBlock>,
     ) -> Option<Self> {
-        let pous = Pous::of(lowering, program)?;
         let types = lowering.types();
         let mut storage = Storage {
             region: Region::new(lowering, &pous.blocks, standard_blocks),
@@ -184,7 +214,10 @@ impl Layout {
             }
         }
 
-        let mut next = VarIndex::new(names::slot_count(&layout.slots, ScopeId::Program) as u16);
+        // Saturated: a count past the table has marked it full.
+        let program_slots = names::slot_count(&layout.slots, ScopeId::Program);
+        let mut next = VarIndex::new(u16::try_from(program_slots).unwrap_or(u16::MAX));
+        layout.program_slots = next.raw();
         for (function_id, function) in pous.functions() {
             let scope = ScopeId::Function(function_id);
             let frame = frame(lowering, function)?;
@@ -212,7 +245,7 @@ impl Layout {
                     held(lowering, var)?,
                 );
                 layout.insert(scope, name, next, held_type(lowering, var));
-                next = VarIndex::new(next.raw() + 1);
+                next = layout.counter.after(next);
             }
             let result = frame.result?;
             let name = name(lowering, result)?;
@@ -221,7 +254,7 @@ impl Layout {
                 .debug
                 .result(types, next, function_id, &name, held(lowering, result)?);
             layout.insert(scope, name.clone(), next, held_type(lowering, result));
-            next = VarIndex::new(next.raw() + 1);
+            next = layout.counter.after(next);
             let ty = held(lowering, result)?;
             let return_string = layout.insert_string(&mut storage, scope, &name, ty)?;
             let mut return_struct_desc_index = None;
@@ -236,7 +269,7 @@ impl Layout {
                 let scratch_index = needs_scratch(types, ty).then_some(next);
                 if scratch_index.is_some() {
                     layout.insert(scope, scratch(&name), next, None);
-                    next = VarIndex::new(next.raw() + 1);
+                    next = layout.counter.after(next);
                 }
                 let entry = entries::structure(ty, result_index, data_offset, scratch_index, slots);
                 layout.struct_vars.insert(scope, name, entry);
@@ -259,6 +292,15 @@ impl Layout {
                 outputs: calling.outputs,
                 string_outputs: calling.string_outputs,
             };
+            layout.functions.push(FunctionLayout {
+                function_id,
+                scope,
+                num_locals: next.raw() - var_offset.raw(),
+                num_params: info.num_params,
+                return_var_index: result_index,
+                return_op_type: loaded_at(held_type(lowering, result)),
+                return_string_info: info.return_string_info.clone(),
+            });
             let key = lowering.pous().name(function)?.to_string().to_lowercase();
             layout.user_functions.insert(key, info);
         }
@@ -273,8 +315,14 @@ impl Layout {
                 layout.insert_string(&mut storage, scope, &name, field.ty)?;
                 layout.insert_reference(&mut storage, scope, &name, field.ty, next)?;
                 layout.insert(scope, name, next, slot_type(types, field.ty));
-                next = VarIndex::new(next.raw() + 1);
+                next = layout.counter.after(next);
             }
+            let mut body = BlockLayout {
+                function_id,
+                scope,
+                num_locals: next.raw() - field_var_off.raw(),
+                methods: Vec::new(),
+            };
             let mut methods = HashMap::new();
             for (method_id, method) in pous.methods(block) {
                 let scope = ScopeId::Method {
@@ -294,18 +342,20 @@ impl Layout {
                     let section = lowering.variables().get(var)?.section();
                     calling.add(section, &name, current, string);
                     layout.insert(scope, name, current, held_type(lowering, var));
-                    current = VarIndex::new(current.raw() + 1);
+                    current = layout.counter.after(current);
                 }
                 let has_return_value = frame.result.is_some();
                 // A method has a result slot whether it returns a result or
                 // not.
+                let return_var_index = current;
+                let mut return_op_type = DEFAULT_OP_TYPE;
                 if let Some(result) = frame.result {
                     let held = held_type(lowering, result);
+                    return_op_type = loaded_at(held);
                     layout.insert(scope, name(lowering, result)?, current, held);
                 }
-                current = VarIndex::new(current.raw() + 1);
-                // The next method's slots follow this method's own
-                // (`block.rs`).
+                current = layout.counter.after(current);
+                // The next method's slots follow this method's own.
                 next = current;
                 let info = UserMethodInfo {
                     function_id: method_id,
@@ -320,15 +370,28 @@ impl Layout {
                     outputs: calling.outputs,
                     string_outputs: calling.string_outputs,
                 };
+                body.methods.push(MethodLayout {
+                    function_id: method_id,
+                    scope,
+                    // The method's frame spans its block's copy slots, the
+                    // earlier methods' slots and its own.
+                    num_locals: current.raw() - field_var_off.raw(),
+                    num_params: info.num_params,
+                    return_var_index,
+                    return_op_type,
+                    has_return_value,
+                });
                 let key = lowering.pous().name(method)?.to_string().to_lowercase();
                 methods.insert(key, info);
             }
+            layout.blocks.push(body);
             let info = storage
                 .blocks
                 .block_type(block, function_id, field_var_off, methods)?;
             let key = lowering.pous().name(block)?.to_string().to_uppercase();
             layout.user_fb_types.insert(key, info);
         }
+        layout.slot_end = next;
         layout.data_end = storage.region.end();
         layout.descriptors = storage.descriptors.into_added();
         layout.enum_defs = super::debug_vars::enum_definitions(types);
@@ -336,10 +399,22 @@ impl Layout {
     }
 
     /// Makes this layout the one `ctx` compiles the bodies against
-    /// (REQ-LOW-codegen-199), and its debug entries the ones the container
-    /// holds. The array descriptors are still the walk of the AST
-    /// declarations', which has already added them to the container.
-    pub(crate) fn install(self, ctx: &mut CompileContext) -> Result<(), Diagnostic> {
+    /// (REQ-LOW-codegen-199), its array descriptors the ones `builder`
+    /// holds, and its debug entries the ones the container holds; and gives
+    /// what each body is compiled with.
+    pub(crate) fn install(
+        self,
+        ctx: &mut CompileContext,
+        builder: &mut ContainerBuilder,
+    ) -> Result<Bodies, Diagnostic> {
+        for descriptor in &self.descriptors {
+            builder.add_strided_array_descriptor(
+                descriptor.element_type,
+                descriptor.total_elements,
+                descriptor.element_extra,
+                descriptor.element_stride,
+            );
+        }
         let (max_string_capacity, has_wide_string) =
             self.temporary_buffers(ctx.lowering()?.types());
         ctx.variables = self.slots;
@@ -360,7 +435,12 @@ impl Layout {
         ctx.debug_var_names = self.debug.var_names;
         ctx.debug_string_layouts = self.debug.string_layouts;
         ctx.debug_enum_defs = self.enum_defs;
-        Ok(())
+        Ok(Bodies {
+            functions: self.functions,
+            blocks: self.blocks,
+            program_slots: self.program_slots,
+            slots: self.slot_end,
+        })
     }
 
     /// What the temporary buffers are sized for: the largest capacity of a
@@ -398,8 +478,10 @@ impl Layout {
         (capacity, wide)
     }
 
-    /// Records `name` in `scope` at the slot `index`, operated at `held`.
+    /// Records `name` in `scope` at the slot `index`, operated at `held`;
+    /// the table is marked full when it has no slot `index`.
     fn insert(&mut self, scope: ScopeId, name: Id, index: VarIndex, held: Option<VarTypeInfo>) {
+        let index = self.counter.slot(usize::from(index.raw()));
         if let Some(held) = held {
             self.var_types.insert(scope, name.clone(), held);
         }
@@ -535,13 +617,21 @@ impl Layout {
     }
 
     /// Records `name` in `scope` at the next slot the body of `scope`
-    /// counts, as the walk of the AST declarations numbers the globals, the
-    /// program's variables and the scratch slots.
+    /// counts, as the globals, the program's variables and their scratch
+    /// slots are numbered.
     fn insert_counted(&mut self, scope: ScopeId, name: Id, held: Option<VarTypeInfo>) -> VarIndex {
-        let index = VarIndex::new(names::slot_count(&self.slots, scope) as u16);
+        let index = self.counter.slot(names::slot_count(&self.slots, scope));
         self.insert(scope, name, index, held);
         index
     }
+}
+
+/// The type a result held at `held` is loaded at: a string or a structure
+/// result lives in the data region, and its slot holds a data offset at the
+/// default type.
+fn loaded_at(held: Option<VarTypeInfo>) -> OpType {
+    held.map(|info| (info.op_width, info.signedness))
+        .unwrap_or(DEFAULT_OP_TYPE)
 }
 
 /// The type the slot of the variable `var` of a function or method is
@@ -566,7 +656,7 @@ fn held(lowering: &PartialProgram, var: VarId) -> Option<TypeId> {
 /// model's order, the compiler-provided ones first, each with whether the
 /// compiler provides it. A resource's `VAR_GLOBAL` has none yet
 /// (`execution.rs`).
-fn globals(lowering: &PartialProgram) -> Vec<(VarId, bool)> {
+pub(super) fn globals(lowering: &PartialProgram) -> Vec<(VarId, bool)> {
     let bindings = lowering.bindings();
     lowering
         .execution()
@@ -582,8 +672,8 @@ fn globals(lowering: &PartialProgram) -> Vec<(VarId, bool)> {
         .collect()
 }
 
-/// The name of the scratch slot of the variable `name`
-/// (`CompileContext::allocate_scratch_variable`).
+/// The name of the scratch slot of the variable `name`, which no
+/// IEC 61131-3 identifier can collide with.
 fn scratch(name: &Id) -> Id {
     Id::from(&format!("$scratch_{name}"))
 }
@@ -674,12 +764,12 @@ pub(crate) fn source_spans(
 /// The reachable POUs of a lowered program and the container function id
 /// each body takes: each function block's from 2, then each function's,
 /// then each method's.
-struct Pous {
-    program: PouId,
-    functions: Vec<PouId>,
-    blocks: Vec<PouId>,
+pub(super) struct Pous {
+    pub(super) program: PouId,
+    pub(super) functions: Vec<PouId>,
+    pub(super) blocks: Vec<PouId>,
     /// Each method, with the block it belongs to, in block order.
-    methods: Vec<(PouId, PouId)>,
+    pub(super) methods: Vec<(PouId, PouId)>,
 }
 
 impl Pous {
@@ -798,16 +888,16 @@ pub(super) fn copy_slots(lowering: &PartialProgram, pou: PouId) -> Option<Vec<&F
 }
 
 /// The variables of a function or method, in the order their slots run.
-struct Frame {
+pub(super) struct Frame {
     /// Its `VAR_INPUT` and `VAR_IN_OUT`, then its `VAR_OUTPUT`, `VAR` and
     /// `VAR_TEMP`, each in declaration order.
-    variables: Vec<VarId>,
+    pub(super) variables: Vec<VarId>,
     /// Its result; `None` for a method that returns none.
-    result: Option<VarId>,
+    pub(super) result: Option<VarId>,
 }
 
 /// The variables of the function or method `pou`.
-fn frame(lowering: &PartialProgram, pou: PouId) -> Option<Frame> {
+pub(super) fn frame(lowering: &PartialProgram, pou: PouId) -> Option<Frame> {
     let variables = lowering.variables();
     let mut inputs = Vec::new();
     let mut rest = Vec::new();
