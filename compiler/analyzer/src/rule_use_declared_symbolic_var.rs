@@ -132,7 +132,7 @@ impl Visitor<Infallible> for SymbolScopeChecker<'_> {
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
         self.scope.enter(&node);
         self.units.push(match node {
-            ScopeNode::FunctionBlock(node) => Some(node.name.name.clone()),
+            ScopeNode::FunctionBlock(node) => Some(node.name.id.clone()),
             ScopeNode::Program(node) => Some(node.name.clone()),
             ScopeNode::Function(_)
             | ScopeNode::Method(_)

@@ -219,7 +219,7 @@ impl<'a> Lowering<'a> {
                 LibraryElementKind::ProgramDeclaration(program) if program.name == *pou => {
                     Some(Body::Program(program))
                 }
-                LibraryElementKind::FunctionBlockDeclaration(block) if block.name.name == *pou => {
+                LibraryElementKind::FunctionBlockDeclaration(block) if block.name.id == *pou => {
                     Some(Body::FunctionBlock(block))
                 }
                 LibraryElementKind::FunctionDeclaration(function) if function.name == *pou => {

@@ -68,7 +68,7 @@ fn declared_field_type(value: &str) -> Option<String> {
     resolved
         .types
         .name_of(id)
-        .map(|name| name.name.original().to_uppercase())
+        .map(|name| name.id.original().to_uppercase())
 }
 
 /// The value of each assignment, in order.

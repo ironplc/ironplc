@@ -37,7 +37,7 @@ pub(crate) fn numeric_operation_width(type_name: &TypeName) -> Option<OperationW
 /// and `None` for anything else: an untyped literal's category, a subrange,
 /// an enumeration, a temporal type, or `BOOL`.
 pub(crate) fn numeric_operation_type(type_name: &TypeName) -> Option<OperationType> {
-    let elementary = ElementaryTypeName::try_from(&type_name.name).ok()?;
+    let elementary = ElementaryTypeName::try_from(&type_name.id).ok()?;
     let numeric = GenericTypeName::AnyNum.is_compatible_with(&elementary)
         || matches!(
             elementary,

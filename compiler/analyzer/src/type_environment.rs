@@ -254,7 +254,7 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, ElementaryTypeName, SemanticType); 2
 pub fn elementary_type(type_name: &TypeName) -> Option<&'static SemanticType> {
     ELEMENTARY_TYPES_LOWER_CASE
         .iter()
-        .find(|(name, _, _)| type_name.name.lower_case == *name)
+        .find(|(name, _, _)| type_name.id.lower_case == *name)
         .map(|(_, _, elem_type)| elem_type)
 }
 
@@ -379,7 +379,7 @@ impl TypeEnvironment {
         };
         self.duplicates.push(duplicate_declaration(
             problem,
-            &type_name.name,
+            &type_name.id,
             existing
                 .name
                 .as_ref()

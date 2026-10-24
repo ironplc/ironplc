@@ -447,7 +447,7 @@ impl<'a> Lowering<'a> {
                     bodies.push(Body::Function(function));
                 }
                 LibraryElementKind::FunctionBlockDeclaration(block)
-                    if reachable.contains(&block.name.name) =>
+                    if reachable.contains(&block.name.id) =>
                 {
                     bodies.push(Body::FunctionBlock(block));
                     for method in &block.methods {
@@ -472,7 +472,7 @@ impl<'a> Lowering<'a> {
             Body::Program(program) => self.pou(&program.name.to_string(), &program.name.span()),
             Body::FunctionBlock(block) => self.pou(&block.name.to_string(), &block.name.span()),
             Body::Function(function) => self.pou(&function.name.to_string(), &function.name.span()),
-            Body::Method { block, method } => self.method_pou(&block.name.name, &method.name),
+            Body::Method { block, method } => self.method_pou(&block.name.id, &method.name),
         }
     }
 
@@ -580,7 +580,7 @@ impl<'a> Lowering<'a> {
 fn body_name<'a>(body: Body<'a>) -> &'a Id {
     match body {
         Body::Program(program) => &program.name,
-        Body::FunctionBlock(block) => &block.name.name,
+        Body::FunctionBlock(block) => &block.name.id,
         Body::Function(function) => &function.name,
         Body::Method { method, .. } => &method.name,
     }

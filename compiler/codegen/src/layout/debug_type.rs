@@ -86,7 +86,7 @@ pub(crate) fn debug_type_for_decl(decl: &VarDecl, types: &TypeEnvironment) -> (u
     match &decl.initializer {
         InitialValueAssignmentKind::Simple(simple) => (
             resolve_iec_type_tag(types, &simple.type_name),
-            simple.type_name.name.to_string().to_uppercase(),
+            simple.type_name.id.to_string().to_uppercase(),
         ),
         InitialValueAssignmentKind::String(string_init) => {
             if char_width_for_string_type(&string_init.width).is_wide() {
@@ -137,7 +137,7 @@ pub(crate) fn debug_type_for_return(
             let type_name = return_type.to_type_name();
             (
                 resolve_iec_type_tag(types, &type_name),
-                type_name.name.to_string().to_uppercase(),
+                type_name.id.to_string().to_uppercase(),
             )
         }
     }

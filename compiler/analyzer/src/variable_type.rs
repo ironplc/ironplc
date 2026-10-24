@@ -209,7 +209,7 @@ pub(crate) fn member_of_block<'a>(
     field: &Id,
     symbols: &'a SymbolEnvironment,
 ) -> Option<&'a SymbolInfo> {
-    let block_scope = ScopeKind::Named(ScopePath::from(block.name.clone()));
+    let block_scope = ScopeKind::Named(ScopePath::from(block.id.clone()));
     let member = symbols.find(field, &block_scope)?;
     (member.scope != ScopeKind::Global && !member.is_external).then_some(member)
 }

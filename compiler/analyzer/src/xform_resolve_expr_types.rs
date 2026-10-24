@@ -394,7 +394,7 @@ impl ExprTypeResolver<'_> {
     /// The type `type_name` names: a literal of the category a generic name
     /// names, else the named type.
     fn expr_type_named(&self, type_name: TypeName) -> Option<ExprType> {
-        if let Ok(generic) = GenericTypeName::try_from(&type_name.name) {
+        if let Ok(generic) = GenericTypeName::try_from(&type_name.id) {
             return Some(ExprType::Literal(generic));
         }
         self.type_environment
@@ -444,7 +444,7 @@ impl ExprTypeResolver<'_> {
             Some(ExprType::Literal(generic)) => literal_default_type(generic)?.into(),
             _ => self.operand_name(input)?,
         };
-        let bit_string = match ElementaryTypeName::try_from(&name.name).ok()? {
+        let bit_string = match ElementaryTypeName::try_from(&name.id).ok()? {
             ElementaryTypeName::SINT | ElementaryTypeName::USINT => ElementaryTypeName::BYTE,
             ElementaryTypeName::INT | ElementaryTypeName::UINT => ElementaryTypeName::WORD,
             ElementaryTypeName::DINT | ElementaryTypeName::UDINT => ElementaryTypeName::DWORD,

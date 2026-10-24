@@ -254,7 +254,7 @@ fn assign_storage(
                     .element_type(type_id)
                     .and_then(|element| types.referenced_type(element))
                     .and_then(|target| types.name_of(target))
-                    .map(|name| name.name.clone());
+                    .map(|name| name.id.clone());
                 let spec = crate::compile_array::array_spec_from_type(
                     element_type,
                     dimensions,
@@ -327,7 +327,7 @@ fn assign_scalar_storage(
 fn elementary_name(types: &TypeEnvironment, representation: &SemanticType) -> String {
     types
         .elementary_type_name_for(representation)
-        .map(|name| name.name.to_string().to_uppercase())
+        .map(|name| name.id.to_string().to_uppercase())
         .unwrap_or_default()
 }
 

@@ -70,7 +70,7 @@ pub(crate) fn common_operand_of(
 /// Returns true if `type_name` is a generic category, the type of an untyped
 /// literal (`ANY_INT`, `ANY_REAL`).
 fn is_generic(type_name: &TypeName) -> bool {
-    GenericTypeName::try_from(&type_name.name).is_ok()
+    GenericTypeName::try_from(&type_name.id).is_ok()
 }
 
 #[cfg(test)]

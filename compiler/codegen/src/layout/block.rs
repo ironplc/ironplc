@@ -87,7 +87,7 @@ pub(crate) fn lay_out_block_types(
     types: &TypeEnvironment,
 ) -> Result<(), Diagnostic> {
     for (next_function_id, fb_decl) in (2_u16..).zip(fb_decls.iter()) {
-        let fb_name = fb_decl.name.name.to_string().to_uppercase();
+        let fb_name = fb_decl.name.id.to_string().to_uppercase();
         let mut field_indices: HashMap<String, u8> = HashMap::new();
         let mut field_types: HashMap<String, VarTypeInfo> = HashMap::new();
         let mut held_fields = Vec::new();
@@ -113,7 +113,7 @@ pub(crate) fn lay_out_block_types(
         // block with more fields is a limit of the format (P9997).
         if field_decls_tmp.len() > MAX_USER_FB_FIELDS {
             return Err(Diagnostic::not_supported(Label::span(
-                fb_decl.name.name.span(),
+                fb_decl.name.id.span(),
                 format!("Function block with more than {MAX_USER_FB_FIELDS} fields"),
             ))
             .with_context("fields", &field_decls_tmp.len().to_string()));
@@ -161,7 +161,7 @@ pub(crate) fn lay_out_block_types(
     // the block is laid out (mirrors `UserFbTypeInfo::var_offset`).
     let mut next_method_function_id = 2_u16 + fb_decls.len() as u16 + num_functions;
     for fb_decl in fb_decls.iter() {
-        let fb_name = fb_decl.name.name.to_string().to_uppercase();
+        let fb_name = fb_decl.name.id.to_string().to_uppercase();
         for method in &fb_decl.methods {
             let method_name = method.name.to_string().to_lowercase();
             let mut params: Vec<UserMethodParam> = Vec::new();
@@ -216,7 +216,7 @@ pub(crate) fn lay_out_block(
     builder: &mut ContainerBuilder,
     types: &TypeEnvironment,
 ) -> Result<BlockLayout, Diagnostic> {
-    let fb_name = fb_decl.name.name.to_string().to_uppercase();
+    let fb_name = fb_decl.name.id.to_string().to_uppercase();
     let field_var_off = var_offset.raw();
 
     // Update the var_offset in the registered type info.

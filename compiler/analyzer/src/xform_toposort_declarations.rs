@@ -82,7 +82,7 @@ pub fn apply(lib: Library) -> Result<(Library, HashSet<Id>), Vec<Diagnostic>> {
         match element {
             LibraryElementKind::DataTypeDeclaration(decl) => {
                 types_by_name
-                    .entry(decl.type_name().name.clone())
+                    .entry(decl.type_name().id.clone())
                     .or_default()
                     .push(decl);
             }
@@ -94,7 +94,7 @@ pub fn apply(lib: Library) -> Result<(Library, HashSet<Id>), Vec<Diagnostic>> {
             }
             LibraryElementKind::FunctionBlockDeclaration(decl) => {
                 elems_by_name
-                    .entry(decl.name.name.clone())
+                    .entry(decl.name.id.clone())
                     .or_default()
                     .push(LibraryElementKind::FunctionBlockDeclaration(decl));
             }
@@ -266,8 +266,8 @@ impl RuleGraphReferenceableElements {
 /// or the element type of an inline array target.
 fn reference_target_type_name(target: &ReferenceTarget) -> Id {
     match target {
-        ReferenceTarget::Named(type_name) => type_name.name.clone(),
-        ReferenceTarget::Array(subranges) => subranges.type_name.to_type_name().name,
+        ReferenceTarget::Named(type_name) => type_name.id.clone(),
+        ReferenceTarget::Array(subranges) => subranges.type_name.to_type_name().id,
     }
 }
 
@@ -295,8 +295,8 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         &mut self,
         node: &LateBoundDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        let this = self.declarations.add_node(&node.data_type_name.name);
-        let depends_on = self.declarations.add_node(&node.base_type_name.name);
+        let this = self.declarations.add_node(&node.data_type_name.id);
+        let depends_on = self.declarations.add_node(&node.base_type_name.id);
         self.declarations.graph.add_edge(depends_on, this, ());
 
         node.recurse_visit(self)
@@ -306,10 +306,10 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         &mut self,
         node: &EnumerationDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        let this = self.declarations.add_node(&node.type_name.name);
+        let this = self.declarations.add_node(&node.type_name.id);
 
         if let SpecificationKind::Named(parent) = &node.spec_init.spec {
-            let depends_on = self.declarations.add_node(&parent.name);
+            let depends_on = self.declarations.add_node(&parent.id);
             self.declarations.graph.add_edge(depends_on, this, ());
         };
 
@@ -320,10 +320,10 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         &mut self,
         node: &SubrangeDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        let this = self.declarations.add_node(&node.type_name.name);
+        let this = self.declarations.add_node(&node.type_name.id);
 
         if let SpecificationKind::Named(parent) = &node.spec {
-            let depends_on = self.declarations.add_node(&parent.name);
+            let depends_on = self.declarations.add_node(&parent.id);
             self.declarations.graph.add_edge(depends_on, this, ());
         };
 
@@ -338,7 +338,7 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         // element type, exactly as `visit_array_declaration` does. Without
         // this edge a `REF_TO` to a type declared in the same source may be
         // resolved before its target exists and fail with a spurious P2011.
-        let this = self.declarations.add_node(&node.type_name.name);
+        let this = self.declarations.add_node(&node.type_name.id);
         let depends_on = self
             .declarations
             .add_node(&reference_target_type_name(&node.target));
@@ -351,17 +351,17 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         &mut self,
         node: &ArrayDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        let this = self.declarations.add_node(&node.type_name.name);
+        let this = self.declarations.add_node(&node.type_name.id);
 
         match &node.spec {
             SpecificationKind::Named(parent) => {
-                let depends_on = self.declarations.add_node(&parent.name);
+                let depends_on = self.declarations.add_node(&parent.id);
                 self.declarations.graph.add_edge(depends_on, this, ());
             }
             SpecificationKind::Inline(array_subranges) => {
                 let depends_on = self
                     .declarations
-                    .add_node(&array_subranges.type_name.to_type_name().name);
+                    .add_node(&array_subranges.type_name.to_type_name().id);
                 self.declarations.graph.add_edge(depends_on, this, ());
             }
         }
@@ -373,8 +373,8 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         &mut self,
         node: &StructureDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.current_from = Some(node.type_name.name.clone());
-        self.declarations.add_node(&node.type_name.name);
+        self.current_from = Some(node.type_name.id.clone());
+        self.declarations.add_node(&node.type_name.id);
         let res = node.recurse_visit(self);
         self.current_from = None;
         res
@@ -390,8 +390,8 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         // Unconditionally resetting to None would wipe the enclosing
         // program's context when visited as a nested node.
         let prev = self.current_from.take();
-        self.current_from = Some(node.type_name.name.clone());
-        self.declarations.add_node(&node.type_name.name);
+        self.current_from = Some(node.type_name.id.clone());
+        self.declarations.add_node(&node.type_name.id);
         let res = node.recurse_visit(self);
         self.current_from = prev;
         res
@@ -401,8 +401,8 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         &mut self,
         node: &SimpleDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.current_from = Some(node.type_name.name.clone());
-        self.declarations.add_node(&node.type_name.name);
+        self.current_from = Some(node.type_name.id.clone());
+        self.declarations.add_node(&node.type_name.id);
         let res = node.recurse_visit(self);
         self.current_from = None;
         res
@@ -412,8 +412,8 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         &mut self,
         node: &StringDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.current_from = Some(node.type_name.name.clone());
-        self.declarations.add_node(&node.type_name.name);
+        self.current_from = Some(node.type_name.id.clone());
+        self.declarations.add_node(&node.type_name.id);
         let res = node.recurse_visit(self);
         self.current_from = None;
         res
@@ -436,10 +436,10 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         &mut self,
         node: &FunctionBlockDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.current_from = Some(node.name.name.clone());
-        let this = self.declarations.add_node(&node.name.name);
+        self.current_from = Some(node.name.id.clone());
+        let this = self.declarations.add_node(&node.name.id);
         if let Some(parent) = node.oop.as_ref().and_then(|oop| oop.base.as_ref()) {
-            let depends_on = self.declarations.add_node(&parent.name);
+            let depends_on = self.declarations.add_node(&parent.id);
             self.declarations.graph.add_edge(depends_on, this, ());
         }
         let res = node.recurse_visit(self);
@@ -478,7 +478,7 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         // function's parameter type as an edge.
         let this = self.declarations.add_node(&node.name);
         for parent in &node.extends {
-            let depends_on = self.declarations.add_node(&parent.name);
+            let depends_on = self.declarations.add_node(&parent.id);
             self.declarations.graph.add_edge(depends_on, this, ());
         }
         Ok(())
@@ -530,7 +530,7 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         match &self.current_from {
             Some(from) => {
                 let from = self.declarations.add_node(from);
-                let to = self.declarations.add_node(&init.type_name.name);
+                let to = self.declarations.add_node(&init.type_name.id);
                 self.declarations.graph.add_edge(to, from, ());
             }
             None => {
@@ -566,7 +566,7 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                         // that references it and is then missing from the type
                         // environment, surfacing as a spurious P2021/P2004.
                         let from = self.declarations.add_node(from);
-                        let to = self.declarations.add_node(&enum_init.type_name.name);
+                        let to = self.declarations.add_node(&enum_init.type_name.id);
                         self.declarations.graph.add_edge(to, from, ());
                     }
                     InitialValueAssignmentKind::FunctionBlock(fb) => {
@@ -574,7 +574,7 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                         // arms below: the referenced type must come before the
                         // containing POU.
                         let from = self.declarations.add_node(from);
-                        let to = self.declarations.add_node(&fb.type_name.name);
+                        let to = self.declarations.add_node(&fb.type_name.id);
                         self.declarations.graph.add_edge(to, from, ());
                     }
                     InitialValueAssignmentKind::FunctionBlockCall(fbc) => {
@@ -585,21 +585,21 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                         // (a POU instantiating a later-declared FB) surfaces
                         // as a spurious P2011.
                         let from = self.declarations.add_node(from);
-                        let to = self.declarations.add_node(&fbc.type_name.name);
+                        let to = self.declarations.add_node(&fbc.type_name.id);
                         self.declarations.graph.add_edge(to, from, ());
                     }
                     InitialValueAssignmentKind::Interface(itf) => {
                         // The interface must come before the POU that
                         // declares a variable of it.
                         let from = self.declarations.add_node(from);
-                        let to = self.declarations.add_node(&itf.type_name.name);
+                        let to = self.declarations.add_node(&itf.type_name.id);
                         self.declarations.graph.add_edge(to, from, ());
                     }
                     InitialValueAssignmentKind::Subrange(_) => {}
                     InitialValueAssignmentKind::Structure(struct_init) => {
                         // Track dependency on the nested structure type
                         let from = self.declarations.add_node(from);
-                        let to = self.declarations.add_node(&struct_init.type_name.name);
+                        let to = self.declarations.add_node(&struct_init.type_name.id);
                         self.declarations.graph.add_edge(to, from, ());
                     }
                     InitialValueAssignmentKind::Array(array_init) => {
@@ -610,9 +610,9 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                         // declaration and is then missing from the type
                         // environment, surfacing as a spurious P2013.
                         let element_type_name = match &array_init.spec {
-                            SpecificationKind::Named(parent) => parent.name.clone(),
+                            SpecificationKind::Named(parent) => parent.id.clone(),
                             SpecificationKind::Inline(subranges) => {
-                                subranges.type_name.to_type_name().name
+                                subranges.type_name.to_type_name().id
                             }
                         };
                         let from = self.declarations.add_node(from);
@@ -626,7 +626,7 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                     }) => {
                         // We only care about these because these may be references to a function block
                         let from = self.declarations.add_node(from);
-                        let to = self.declarations.add_node(&lrt.name);
+                        let to = self.declarations.add_node(&lrt.id);
                         self.declarations.graph.add_edge(to, from, ());
                     }
                     InitialValueAssignmentKind::SimpleExpr(_)

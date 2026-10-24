@@ -689,19 +689,17 @@ impl fmt::Display for BitStringLiteral {
 #[derive(Clone, Debug, PartialEq, Recurse, Located)]
 pub struct TypeName {
     #[located(delegate)]
-    pub name: Id,
+    pub id: Id,
 }
 
 impl TypeName {
     /// Converts a `&str` into an `Identifier`.
     pub fn from(str: &str) -> Self {
-        Self {
-            name: Id::from(str),
-        }
+        Self { id: Id::from(str) }
     }
 
-    pub fn from_id(name: &Id) -> Self {
-        Self { name: name.clone() }
+    pub fn from_id(id: &Id) -> Self {
+        Self { id: id.clone() }
     }
 }
 
@@ -709,13 +707,13 @@ impl Eq for TypeName {}
 
 impl Hash for TypeName {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.name.hash(state);
+        self.id.hash(state);
     }
 }
 
 impl fmt::Display for TypeName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.name)
+        write!(f, "{}", self.id)
     }
 }
 

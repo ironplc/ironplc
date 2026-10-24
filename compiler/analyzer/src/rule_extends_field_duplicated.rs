@@ -71,7 +71,7 @@ pub fn apply(
             let Some(own_id) = own_field.identifier.symbolic_id() else {
                 continue;
             };
-            let Some((base_name, base)) = context.symbols().inherited_member(own_id, &fb.name.name)
+            let Some((base_name, base)) = context.symbols().inherited_member(own_id, &fb.name.id)
             else {
                 continue;
             };
