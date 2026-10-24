@@ -263,24 +263,20 @@ pub(crate) fn lay_out_block(
             if let Some(type_info) = decl_type_info(ctx, decl) {
                 ctx.var_types.insert(ctx.scope, id.clone(), type_info);
             }
-            match &decl.initializer {
-                InitialValueAssignmentKind::Reference(ref_init) => {
-                    crate::compile_reference::register_reference_variable(
-                        ctx,
-                        builder,
-                        types,
-                        id,
-                        current_index,
-                        ref_init,
-                    )?;
-                }
-                // A field of a type alias of a string is left as it was: a
-                // block's string fields have no initialized run (issue 1753).
-                InitialValueAssignmentKind::String(_) => {
-                    register_declared_string(ctx, id, decl)?;
-                }
-                _ => {}
+            if let InitialValueAssignmentKind::Reference(ref_init) = &decl.initializer {
+                crate::compile_reference::register_reference_variable(
+                    ctx,
+                    builder,
+                    types,
+                    id,
+                    current_index,
+                    ref_init,
+                )?;
             }
+            // A string field, one declared through a type alias of a string
+            // too, has a run of its own, which holds no string yet (issue
+            // 1753).
+            register_declared_string(ctx, id, decl)?;
             current_index = var_table::advance(current_index, 1, &decl.identifier.span())?;
         }
     }

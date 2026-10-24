@@ -175,7 +175,8 @@ fn declared_type(decl: &VarDecl, types: &HashMap<TypeId, SemanticType>) -> Optio
         | InitialValueAssignmentKind::Array(_)
         | InitialValueAssignmentKind::Reference(_)
         | InitialValueAssignmentKind::LateResolvedType(_)
-        | InitialValueAssignmentKind::SimpleExpr(_) => {
+        | InitialValueAssignmentKind::SimpleExpr(_)
+        | InitialValueAssignmentKind::StringExpr(_) => {
             decl.type_id.and_then(|id| types.get(&id)).cloned()
         }
     }

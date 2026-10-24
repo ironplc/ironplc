@@ -604,13 +604,24 @@ fn compile_program_with_functions(
         )?);
     }
 
-    // Every body is laid out: match the lowered program's ids to it, then
-    // compile the functions' bodies, then each FB's body followed by its
-    // METHODs'.
+    // Every body is laid out: compile them against the layout built from
+    // the lowered declarations, when each of those lowered, and match the
+    // lowered program's ids to it; then compile the functions' bodies, then
+    // each FB's body followed by its METHODs'.
     if let Some(route) = &ctx.lowered_route {
-        if route.check_layout() {
-            crate::layout::lowered::check(route.lowering(), &ctx, &builder, &program.name)?;
+        let lowered = crate::layout::lowered::Layout::of(
+            route.lowering(),
+            &program.name,
+            &ctx.standard_blocks,
+        );
+        if let Some(lowered) = lowered {
+            if route.check_layout() {
+                crate::layout::check::check(&lowered, &ctx, &builder, &program.name)?;
+            }
+            lowered.install(&mut ctx);
         }
+    }
+    if let Some(route) = &ctx.lowered_route {
         ctx.lowered_ids =
             crate::layout::ids::LoweredIds::matched(route.lowering(), &ctx, &program.name);
     }
@@ -640,10 +651,13 @@ fn compile_program_with_functions(
 
     let total_variables = var_offset;
 
-    // Emit bytecode for variable initial values into the init emitter.
+    // Emit bytecode for variable initial values into the init emitter, from
+    // the lowered program when it can be.
     let mut init_emitter = Emitter::new();
-    emit_initial_values(&mut init_emitter, &mut ctx, global_vars, types)?;
-    emit_initial_values(&mut init_emitter, &mut ctx, &local_vars, types)?;
+    if !crate::lowered::try_emit_init(&mut init_emitter, &mut ctx, global_vars, &local_vars)? {
+        emit_initial_values(&mut init_emitter, &mut ctx, global_vars, types)?;
+        emit_initial_values(&mut init_emitter, &mut ctx, &local_vars, types)?;
+    }
     init_emitter.emit_ret_void();
 
     // Compile the program body into the scan emitter. Mark
@@ -651,6 +665,11 @@ fn compile_program_with_functions(
     // emitted from inside the body records a call-graph edge.
     let mut scan_emitter = Emitter::new();
     ctx.current_function_id = Some(FunctionId::SCAN);
+    // A `VAR_TEMP` starts again at the head of every scan, from the lowered
+    // program; when that is left to the AST, `init` gives it its value, once.
+    if crate::lowered::restarts(&local_vars) {
+        crate::lowered::try_emit_prologue(&mut scan_emitter, &mut ctx, &local_vars, None)?;
+    }
     compile_body(
         &mut scan_emitter,
         &mut ctx,

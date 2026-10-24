@@ -22,6 +22,10 @@ The bit-string types ``BYTE``, ``WORD``, ``DWORD`` and ``LWORD`` are also
 rejected. A bit string is a pattern rather than a magnitude, and the standard
 does not list it as a ``CASE`` selector type.
 
+A real literal selector, ``CASE 1.5 OF``, is rejected too. A literal written
+without a type takes its type from where it is used, but a real literal is a
+real whatever it spells, and a ``CASE`` has no real type to give it.
+
 Example
 -------
 

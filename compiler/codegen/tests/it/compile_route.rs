@@ -7,9 +7,10 @@ use ironplc_parser::options::CompilerOptions;
 
 use crate::common::{bc, compile_by_route, parse, Snapshot};
 
-/// Three statements lowering supports, the function's and two of the
-/// program's, and one it does not yet: a function block's string declared
-/// through a type alias, which the route that reads the AST compiles.
+/// Four statements lowering supports: the function's, two of the program's,
+/// and a function block's string declared through a type alias, which the
+/// layout built from the lowered declarations gives a run of the data region
+/// (REQ-LOW-codegen-199).
 const SOURCE: &str = "
 TYPE Name : STRING[20]; END_TYPE
 FUNCTION_BLOCK B
@@ -48,17 +49,65 @@ fn compile_when_ast_route_then_every_statement_from_ast() {
 }
 
 #[test]
-fn compile_when_prefer_lowered_then_unsupported_statement_from_ast() {
+fn compile_when_prefer_lowered_and_block_string_through_alias_then_every_statement_lowered() {
     let counts = route_counts(SOURCE, Route::PreferLowered).unwrap();
-    assert_eq!((counts.lowered, counts.from_ast), (3, 1));
+    assert_eq!((counts.lowered, counts.from_ast), (4, 0));
 }
 
 #[test]
-fn compile_when_require_lowered_and_statement_unsupported_then_not_implemented() {
-    assert_eq!(
-        route_counts(SOURCE, Route::RequireLowered),
-        Err("P9999".to_string())
-    );
+fn compile_when_prefer_lowered_then_init_from_lowered_program() {
+    let counts = route_counts(SOURCE, Route::PreferLowered).unwrap();
+    assert_eq!((counts.init_lowered, counts.init_from_ast), (1, 0));
+}
+
+/// A field of a standard block's instance this backend keeps no index for,
+/// the third field of an `R_TRIG`, is a store the lowered route does not
+/// emit in `init` yet, so the whole `init` is the AST's.
+#[test]
+fn compile_when_prefer_lowered_and_edge_detector_then_init_from_ast() {
+    let source = "
+PROGRAM main
+  VAR r : R_TRIG; q : BOOL; END_VAR
+  r(CLK := TRUE);
+  q := r.Q;
+END_PROGRAM
+";
+    let counts = route_counts(source, Route::PreferLowered).unwrap();
+    assert_eq!((counts.init_lowered, counts.init_from_ast), (0, 1));
+}
+
+/// The function's prologue is the one prologue: the function block and the
+/// program declare no `VAR_TEMP`.
+#[test]
+fn compile_when_prefer_lowered_then_prologue_from_lowered_program() {
+    let counts = route_counts(SOURCE, Route::PreferLowered).unwrap();
+    assert_eq!((counts.prologue_lowered, counts.prologue_from_ast), (1, 0));
+}
+
+/// A structure local of a function, which this backend gives no storage of
+/// its own, is a store the lowered route does not emit in a prologue yet,
+/// so the whole prologue is the AST's.
+#[test]
+fn compile_when_prefer_lowered_and_structure_local_then_prologue_from_ast() {
+    let source = "
+TYPE P : STRUCT x : DINT; END_STRUCT; END_TYPE
+FUNCTION F : DINT
+  VAR p : P; END_VAR
+  F := 1;
+END_FUNCTION
+PROGRAM main
+  VAR a : DINT; END_VAR
+  a := F();
+END_PROGRAM
+";
+    let counts = route_counts(source, Route::PreferLowered).unwrap();
+    assert_eq!((counts.prologue_lowered, counts.prologue_from_ast), (0, 1));
+}
+
+#[test]
+fn compile_when_require_lowered_and_block_string_through_alias_then_compiles() {
+    let counts = route_counts(SOURCE, Route::RequireLowered).unwrap();
+    assert_eq!((counts.lowered, counts.from_ast), (4, 0));
 }
 
 /// Every control-flow statement takes the lowered route, and runs as the

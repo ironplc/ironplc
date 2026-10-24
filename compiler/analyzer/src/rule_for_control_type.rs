@@ -82,7 +82,11 @@ pub fn apply(
 
 /// Returns true if a `FOR` loop may count with a variable of this type:
 /// `ANY_INT` or a subrange of one.
-fn is_countable(representation: &SemanticType) -> bool {
+///
+/// `rule_real_literal_integer_position` checks the bounds and step of a loop
+/// this rule accepts, and asks the same question, so that exactly one of the
+/// two rules reports a loop that counts from a real bound with a non-integer.
+pub(crate) fn is_countable(representation: &SemanticType) -> bool {
     matches!(
         representation,
         SemanticType::Int { .. } | SemanticType::UInt { .. } | SemanticType::Subrange { .. }

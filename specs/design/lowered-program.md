@@ -720,10 +720,45 @@ structure or a function block instance element by element and field by field.
 Whether a store can be left out because the backend's storage starts cleared
 is the backend's to say.
 
+`init` holds values only. A backend sets up its own storage before the
+statements of `init` run, such as a string's header or the data-region offset
+an aggregate's slot holds: that setup is layout, not part of `init`.
+
+**REQ-LOW-codegen-200** The bytecode backend's `init` function sets up the
+storage its layout gives each global and each field of the program instance,
+in declaration order (a string's header, the data-region offset the slot of
+an aggregate or an instance holds, and the offset of each instance an
+instance's fields hold), each followed by the statements of `init` that store
+into it, and stores nothing else. It leaves out a store that leaves its
+storage cleared where the `init` it builds from the AST leaves it out. While
+that `init` exists, an `init` lowering does not complete, or one with a store
+the backend does not emit yet, is built from the AST, whole.
+
 **REQ-LOW-lowering-195** The body of a function or method begins with the
 stores of the completed initializer of each of its declarations the analyzer
 flags as starting again on every call (`VarDecl::reset_on_call`: its `VAR`,
 `VAR_TEMP` and `VAR_OUTPUT`), in declaration order, and then of its result.
+
+**REQ-LOW-lowering-201** The body of a program or function block begins with
+the stores of the completed initializer of each of its `VAR_TEMP`, which the
+analyzer flags as starting again on every call, in declaration order. A
+program is called once each scan.
+
+The statements at the head of a body hold values only, as `init` does. A
+backend sets up the storage it gives each variable on every call, such as a
+string's header, before them.
+
+**REQ-LOW-codegen-202** The bytecode backend's prologue of a body sets up,
+for each declaration that starts again on every call, in declaration order,
+and then for a function's or method's result, what the prologue it builds
+from the AST sets up (a string's header, and a structure result's
+data-region offset and the headers of its strings), each followed by the
+statements at the head of the body that store into it, and clears the result
+slot of a method that returns nothing. It leaves out an empty string stored
+into a whole string variable, which its header has just emptied. While that
+prologue exists, a prologue lowering does not complete, or one with a store
+the backend does not emit yet, is built from the AST, whole; a program's
+`VAR_TEMP` then takes its value once, in `init`.
 
 **REQ-LOW-lowering-025** The lowered program contains only POUs reachable from
 a program instance, matching what `SemanticContext::reachable` gives codegen
@@ -1347,7 +1382,10 @@ a `BOOL` or an enumeration; and it holds a constant step to a nonzero value
 (P4093), so a `For` never counts by zero. The analyzer judges a step that
 names a constant by the value the symbol environment records for it
 (REQ-CVI-analyzer-060); lowering does not read that value, so such a step is
-a read of a variable to it, and is reported as P9999 like any other.
+a read of a variable to it, and is reported as P9999 like any other. The
+analyzer also rejects an untyped real literal as the `from`, `to` or `step`
+of such a loop (P4094), so the literal a backend compiles at the control
+variable's type is never a real one.
 
 `to` is evaluated on every iteration, and the control variable wraps, so a
 `FOR` whose bound is the largest value of the control variable's type does not
@@ -2090,7 +2128,9 @@ Every subscript is a 32-bit signed integer, a `DINT`. The analyzer converts a
 subscript of another type to `DINT` (see [Implicit Conversions](implicit-conversions.md)),
 so a 64-bit subscript is narrowed, and no backend indexes at 64 bits. No
 program IronPLC targets needs an array of more than 2^31 elements, and 64-bit
-index arithmetic is slow on the 32-bit targets a PLC runtime often has.
+index arithmetic is slow on the 32-bit targets a PLC runtime often has. The
+analyzer rejects a `BOOL` subscript (P4086) and an untyped real literal
+subscript (P4094), so neither reaches a backend.
 
 **REQ-LOW-lowering-161** The subscripts of an `Index` are of type `DINT`.
 
@@ -2546,6 +2586,14 @@ Nothing is deleted before its last reader has moved to the lowered program.
 | `variables`, `string_vars`, `array_vars`, `struct_vars`, `struct_array_vars`, `fb_instances`, `in_out_params`, `user_functions`, `user_fb_types`, `next_user_fb_type_id` | Storage layout | Keep in the bytecode backend as its layout, keyed by id, immutable during emission. |
 | `constants`, `loop_labels`, `current_function_return`, `current_function_id`, `call_graph`, `data_region_offset`, `max_string_capacity`, `has_wide_string`, `debug_*` | Emission state | Keep in a smaller emit context. |
 
+**REQ-LOW-codegen-199** When every declaration of a program lowers, the
+bytecode backend compiles the program's bodies against the layout it builds
+from the lowered declarations. It keeps the layout it builds from the AST for
+a program a declaration of which does not lower, and, until the stages that
+replace them, for the entries the lowered layout does not hold: a
+structure's and an array of structures' analyzer types, and the debug
+entries.
+
 ### Other codegen types
 
 | Type | Disposition |
@@ -2979,11 +3027,14 @@ This section constrains the order of work; it is not a work breakdown.
   `_INT` counter past the range of `INT`, and the programs that show them are
   listed as known differences. So is a program that reads a function's or
   a method's string output, which only the lowered route compiles
-  (REQ-LOW-lowering-172).
+  (REQ-LOW-lowering-172), and one that reads a program's `VAR_TEMP` before
+  it writes it, in a scan after the first: the lowered route starts it again
+  at the head of every scan (REQ-LOW-lowering-201), where the route that
+  reads the AST gives it its value once, in `init`.
 - **The layouts check each other.** While both layout builders exist, the
   one from the lowered declarations is checked equal to the one from the AST
   for every end-to-end program (REQ-LOW-codegen-198), before the bodies are
-  compiled against it.
+  compiled against it (REQ-LOW-codegen-199).
 - **Progress cannot fall.** CI reports how many top-level statements of the
   end-to-end programs took the lowered route. The number does not fall.
 - **The IR is readable from its first commit.** `ironplc-ir` writes a lowered
@@ -2992,7 +3043,8 @@ This section constrains the order of work; it is not a work breakdown.
 - **Behaviour preserving.** Each stage is behaviour preserving and is
   delivered as a prefactor, apart from the two corrections named under
   [Backend Contract](#7-backend-contract), the order of a function block's
-  inputs and the width of the `_INT` counters.
+  inputs, the width of the `_INT` counters, and a program's `VAR_TEMP`,
+  which starts again at the head of every scan.
   The lowered route makes those corrections by construction.
 - **Target neutrality shown early.** A minimal WebAssembly path (one
   `PROGRAM`, integer arithmetic, assignment) is built as soon as a program of

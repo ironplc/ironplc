@@ -629,7 +629,8 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                         let to = self.declarations.add_node(&lrt.name);
                         self.declarations.graph.add_edge(to, from, ());
                     }
-                    InitialValueAssignmentKind::SimpleExpr(_) => {
+                    InitialValueAssignmentKind::SimpleExpr(_)
+                    | InitialValueAssignmentKind::StringExpr(_) => {
                         // References a variable/constant by name in
                         // expression context, not a type — no declaration
                         // ordering edge needed.

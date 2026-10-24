@@ -1,8 +1,8 @@
 //! Starting values: `init`, the statements that run once, before the first
 //! round, and give every global and every field of every program instance
-//! the value it starts with, and each function's and method's prologue,
-//! which gives each of its variables that starts again on every call its
-//! value (`specs/design/lowered-program.md`, "Initial values").
+//! the value it starts with, and each body's prologue, which gives each of
+//! its variables that starts again on every call its value
+//! (`specs/design/lowered-program.md`, "Initial values").
 //!
 //! The analyzer completes each declaration's initializer
 //! ([`crate::initial_value`]): every field and element is listed, and every
@@ -24,7 +24,9 @@
 //! A function's or method's prologue stores the value of each `VAR`,
 //! `VAR_TEMP` and `VAR_OUTPUT` the analyzer flags as starting again on every
 //! call, in declaration order, then of its result, as codegen's prologue
-//! does (REQ-LOW-lowering-195).
+//! does (REQ-LOW-lowering-195). A program's or function block's prologue
+//! stores the value of each of its `VAR_TEMP`, which the analyzer flags the
+//! same way, in declaration order (REQ-LOW-lowering-201).
 
 use std::collections::HashMap;
 
@@ -178,11 +180,10 @@ impl<'a> Lowering<'a> {
         }
     }
 
-    /// The prologue of the function or method `body`, whose frame is
-    /// `frame`: the store of the value each of its declarations that starts
-    /// again on every call starts with, in declaration order, then its
-    /// result's (REQ-LOW-lowering-195). A program's or function block's
-    /// body has none yet.
+    /// The prologue of `body`, whose frame is `frame`: the store of the
+    /// value each of its declarations that starts again on every call starts
+    /// with, in declaration order, then a function's or method's result's
+    /// (REQ-LOW-lowering-195, REQ-LOW-lowering-201).
     pub(crate) fn lower_prologue(
         &mut self,
         body: Body<'a>,
@@ -193,7 +194,8 @@ impl<'a> Lowering<'a> {
         let (variables, result) = match body {
             Body::Function(function) => (&function.variables, function.result.variable()),
             Body::Method { method, .. } => (&method.variables, method.result.variable()),
-            Body::Program(_) | Body::FunctionBlock(_) => return Ok(prologue),
+            Body::Program(program) => (&program.variables, None),
+            Body::FunctionBlock(block) => (&block.variables, None),
         };
         let reset = variables.iter().filter(|decl| decl.reset_on_call);
         for decl in reset.chain(result) {

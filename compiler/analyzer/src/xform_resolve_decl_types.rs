@@ -84,6 +84,7 @@ fn declared_type_id(
             type_name, ..
         }) => return env.id_of(type_name),
         InitialValueAssignmentKind::SimpleExpr(se) => return env.id_of(&se.type_name),
+        InitialValueAssignmentKind::StringExpr(se) => return env.id_of(&se.type_name()),
         InitialValueAssignmentKind::EnumeratedValues(values) => {
             enumeration::try_from_values(values, None, None).ok()?
         }

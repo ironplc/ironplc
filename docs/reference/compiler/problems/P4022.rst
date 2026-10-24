@@ -32,3 +32,48 @@ To fix this error, use a literal that matches the declared type:
        dummy : INT := 10;
    END_VAR
    END_PROGRAM
+
+Named Constants
+---------------
+
+An initial value that names a ``CONSTANT`` variable (an extension enabled
+by ``--allow-constant-initializer-expressions``) is checked by the
+constant's declared type, as an assignment of that constant would be,
+rather than by the literal the constant holds. The following code
+generates error P4022 because a ``UDINT`` value cannot be assigned to an
+``INT`` variable, even though ``3`` would fit:
+
+.. playground::
+   :allows: constant-initializer-expressions
+
+   PROGRAM main
+   VAR CONSTANT
+       MAX_RETRIES : UDINT := 3;
+   END_VAR
+   VAR
+       retries : INT := MAX_RETRIES;  (* Error: UDINT constant cannot initialize INT *)
+   END_VAR
+   END_PROGRAM
+
+To fix this error, declare the variable with the constant's type, or with
+a type the constant's type widens to:
+
+.. playground::
+   :allows: constant-initializer-expressions
+
+   PROGRAM main
+   VAR CONSTANT
+       MAX_RETRIES : UDINT := 3;
+   END_VAR
+   VAR
+       retries : UDINT := MAX_RETRIES;
+   END_VAR
+   END_PROGRAM
+
+See Also
+--------
+
+- :doc:`/reference/language/variables/initial-values` — initial values,
+  including named constants
+- :doc:`P4037 <P4037>` — a constant expression initializer without the
+  flag that enables it
