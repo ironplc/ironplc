@@ -2,14 +2,12 @@
 //! ([`crate::lowered`]), the source position each records for the line map,
 //! a `RETURN`, and the capacity a string declaration states.
 
-use ironplc_dsl::common::{
-    FunctionBlockBodyKind, Integer, IntegerRef, StringInitializer, StringSpecification,
-};
+use ironplc_dsl::common::FunctionBlockBodyKind;
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::Statements;
 
-use super::compile::{CompileContext, CurrentFunctionReturn, DEFAULT_STRING_MAX_LENGTH};
+use super::compile::{CompileContext, CurrentFunctionReturn};
 use super::compile_expr::emit_load_var;
 use crate::emit::Emitter;
 
@@ -103,47 +101,4 @@ pub(crate) fn emit_return(emitter: &mut Emitter, ctx: &CompileContext) {
             emitter.emit_ret_void();
         }
     }
-}
-
-/// Extracts the max length from a `StringInitializer`, returning a
-/// not-implemented diagnostic if the length is an unresolved constant reference.
-pub(crate) fn resolve_string_max_length(
-    string_init: &StringInitializer,
-) -> Result<u16, Diagnostic> {
-    match &string_init.length {
-        None => Ok(DEFAULT_STRING_MAX_LENGTH),
-        Some(IntegerRef::Literal(i)) => string_length_u16(i),
-        Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id)),
-    }
-}
-
-/// Extracts the max length from a `StringSpecification` (used for function
-/// return types), returning a not-implemented diagnostic if the length is an
-/// unresolved constant reference.
-pub(crate) fn resolve_string_spec_max_length(
-    spec: &StringSpecification,
-) -> Result<u16, Diagnostic> {
-    match &spec.length {
-        None => Ok(DEFAULT_STRING_MAX_LENGTH),
-        Some(IntegerRef::Literal(i)) => string_length_u16(i),
-        Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id)),
-    }
-}
-
-/// Converts a declared string length to the `u16` the string header holds.
-///
-/// The analyzer rejects a length above `u16::MAX` (P2041) before codegen
-/// runs, so a failure here is a compiler defect -- the rule missed a
-/// declaration site -- and is reported as one rather than wrapped to a
-/// capacity the program never wrote.
-fn string_length_u16(length: &Integer) -> Result<u16, Diagnostic> {
-    u16::try_from(length.value).map_err(|_| {
-        Diagnostic::internal_error_at(Label::span(
-            length.span.clone(),
-            format!(
-                "String length {} was not rejected by the analyzer",
-                length.value
-            ),
-        ))
-    })
 }

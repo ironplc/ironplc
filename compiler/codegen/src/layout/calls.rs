@@ -1,7 +1,6 @@
 //! How each function block instance is reached, and what a call of each user
 //! function, function block and method needs, from the lowered declarations
-//! (`lowered.rs`), as the walk of the AST declarations records them
-//! (`storage.rs`, `function.rs`, `block.rs`).
+//! (`lowered.rs`).
 
 use std::collections::HashMap;
 

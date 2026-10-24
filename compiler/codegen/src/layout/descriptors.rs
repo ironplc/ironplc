@@ -2,7 +2,7 @@
 //! (`specs/design/lowered-program.md`, "`CompileContext`").
 //!
 //! The container keeps each shape of array once, and numbers the shapes in
-//! the order the walk of the AST declarations first adds them: an array's
+//! the order the layout first adds them: an array's
 //! own; a structure's, as a flat array of slots, then one for each field
 //! that is an array of strings, then one for each string field of the
 //! elements of each array of structures it holds, strided by the element;
@@ -169,8 +169,8 @@ impl<'a> Descriptors<'a> {
                 let element_type = if matches!(types.kind(*element)?, TypeKind::Reference { .. }) {
                     REFERENCE_TYPE
                 } else {
-                    // A name the AST layout does not know as an elementary
-                    // type is operated as a 32-bit unsigned element.
+                    // An element that is not operated on as a value is a
+                    // 32-bit unsigned element.
                     crate::lowered::slot_type(types, *element).unwrap_or(VarTypeInfo {
                         op_width: OpWidth::W32,
                         signedness: Signedness::Unsigned,
@@ -387,7 +387,8 @@ fn bounds(types: &TypeTable, ty: TypeId) -> Option<Vec<(i32, i32)>> {
 }
 
 /// The span a limit of an array would be reported at: none, since an
-/// array over a limit fails the AST layout before the check.
+/// array over a limit fails the limits check before the layout is built
+/// ([`super::limits`]).
 fn no_span() -> SourceSpan {
     SourceSpan::default()
 }
