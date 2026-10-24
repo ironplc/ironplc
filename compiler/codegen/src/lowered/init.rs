@@ -1,27 +1,25 @@
 //! `init` from the lowered program (REQ-LOW-codegen-200): for each global,
-//! then each field of the program instance, in the order the AST's `init`
-//! visits their declarations, the setup of the storage this backend's
-//! layout gives it, then the statements of the lowered `init` that store
-//! its starting value.
+//! then each field of the program instance, in declaration order, the
+//! setup of the storage this backend's layout gives it, then the statements
+//! of the lowered `init` that store its starting value.
 //!
 //! The variable table and the data region start cleared, so a store that
-//! leaves its storage cleared is left out where the AST's `init` leaves it
-//! out (`compile_setup.rs`): a cleared element of an array, member of an
-//! instance or empty string anywhere, and a cleared scalar variable of an
-//! elementary type. A field of a structure, reached through structures
+//! leaves its storage cleared is left out: a cleared element of an array,
+//! member of an instance or empty string anywhere, and a cleared scalar
+//! variable of an elementary type. A store left out is not one this backend
+//! need reach. A field of a structure, reached through structures
 //! alone, is stored whatever its value, and so is an enumeration, a
 //! subrange or a reference variable.
 //!
-//! An `init` lowering does not complete, or one with a statement this
-//! backend does not emit yet, is left to the AST, whole, and so is the
-//! `init` of a program whose `VAR_TEMP` the program's prologue does not
-//! store from the lowered program (`prologue.rs`).
+//! A starting value lowering does not express yet, or a store this backend
+//! does not emit yet, is not supported yet (P9999), at the declaration or
+//! the store.
 
-use ironplc_dsl::common::{VarDecl, VariableType};
+use ironplc_dsl::common::VarDecl;
 use ironplc_dsl::core::{Id, Located};
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::{
-    Const, Expr, ExprKind, Place, Projection, Stmt, StmtKind, StrExprKind, TypeId, TypeKind,
+    Const, Expr, ExprKind, Owner, Place, Projection, Stmt, StmtKind, StrExprKind, TypeId, TypeKind,
 };
 use ironplc_lowering::PartialProgram;
 
@@ -30,18 +28,14 @@ use crate::emit::Emitter;
 use crate::layout::names::ScopeId;
 
 /// Emits `init`, the globals `globals` declare and then the program's
-/// variables `program` declares, from the lowered program, when it emits
-/// every store; returns `false`, having emitted nothing, when `init` is left
-/// to the AST.
-pub(crate) fn try_emit_init(
+/// variables `program` declares, from the lowered program.
+pub(crate) fn emit_init(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     globals: &[VarDecl],
     program: &[VarDecl],
-) -> Result<bool, Diagnostic> {
-    let Some(route) = ctx.lowered_route.take() else {
-        return Ok(false);
-    };
+) -> Result<(), Diagnostic> {
+    let route = super::taken_route(ctx)?;
     let caller = std::mem::replace(&mut ctx.scope, ScopeId::Program);
     let emitted = emit(emitter, ctx, route.lowering(), globals, program);
     ctx.scope = caller;
@@ -54,8 +48,6 @@ pub(crate) fn try_emit_init(
 struct Declared<'l> {
     scope: ScopeId,
     name: Id,
-    /// The type of what the declaration declares.
-    ty: TypeId,
     stores: Vec<&'l Stmt>,
 }
 
@@ -65,23 +57,13 @@ fn emit(
     lowering: &PartialProgram,
     globals: &[VarDecl],
     program: &[VarDecl],
-) -> Result<bool, Diagnostic> {
+) -> Result<(), Diagnostic> {
     // A program's `VAR_TEMP` is not in `init`: the program's prologue gives
-    // it its starting value, at the head of every scan, or, when that is
-    // left to the AST, the AST's `init` does, once.
-    if program
-        .iter()
-        .any(|decl| decl.var_type == VariableType::VarTemp)
-        && !super::prologue::emits(lowering, ctx, program)
-    {
-        return Ok(false);
-    }
+    // it its starting value, at the head of every scan.
     let Some(statements) = lowering.init() else {
-        return Ok(false);
+        return Err(super::unsupported_value(lowering.init_unsupported()));
     };
-    let Some(declared) = declarations(lowering, ctx, statements) else {
-        return Ok(false);
-    };
+    let declared = declarations(lowering, ctx, statements)?;
     let order = globals
         .iter()
         .map(|decl| (ScopeId::Global, decl))
@@ -96,51 +78,46 @@ fn emit(
             .find(|declared| declared.name == *id && same_scope(declared.scope, scope));
         ordered.push((decl, id, stores));
     }
-    // Every store belongs to one of the declarations the AST's `init`
-    // visits.
-    let visited = ordered
-        .iter()
-        .filter(|(_, _, stores)| stores.is_some())
-        .count();
-    if visited != declared.len() {
-        return Ok(false);
+    // Every store belongs to one of the declarations `init` visits.
+    let unvisited = declared.iter().find(|declared| {
+        !ordered
+            .iter()
+            .any(|(_, _, stores)| stores.is_some_and(|stores| std::ptr::eq(stores, *declared)))
+    });
+    if let Some(unvisited) = unvisited {
+        return Err(Diagnostic::internal_error_at(Label::span(
+            unvisited.name.span(),
+            "A store of init is into no declaration init visits",
+        )));
     }
     for (decl, id, stores) in ordered {
         crate::compile_setup::set_up_storage(emitter, ctx, id, &decl.identifier.span())?;
         let Some(declared) = stores else {
             continue;
         };
-        let kept: Vec<Stmt> = declared
-            .stores
-            .iter()
-            .filter(|stmt| kept(lowering, declared.ty, stmt))
-            .map(|stmt| (*stmt).clone())
-            .collect();
-        super::stmt::emit_stmts(emitter, ctx, lowering, &kept)?;
+        let stores: Vec<Stmt> = declared.stores.iter().map(|stmt| (*stmt).clone()).collect();
+        super::stmt::emit_stmts(emitter, ctx, lowering, &stores)?;
     }
-    Ok(true)
+    Ok(())
 }
 
-/// Whether a declaration recorded under `layout` is the one the AST's
-/// `init` visits in `visited`: a global the program declares in its own
-/// interface is laid out with the program's variables.
+/// Whether a declaration recorded under `layout` is the one `init` visits
+/// in `visited`: a global the program declares in its own interface is laid
+/// out with the program's variables.
 fn same_scope(layout: ScopeId, visited: ScopeId) -> bool {
     layout == visited || (layout == ScopeId::Program && visited == ScopeId::Global)
 }
 
-/// The statements of `init`, by the declaration each stores into, in the
-/// order they come; `None` when one is not a store this backend emits, or
-/// stores into no declaration the layout knows.
+/// The statements of `init` that are emitted ([`kept`]), by the declaration
+/// each stores into, in the order they come; P9999 at a store this backend
+/// does not emit yet. A store left out is not one this backend need reach.
 fn declarations<'l>(
     lowering: &PartialProgram,
     ctx: &CompileContext,
     statements: &'l [Stmt],
-) -> Option<Vec<Declared<'l>>> {
+) -> Result<Vec<Declared<'l>>, Diagnostic> {
     let mut declared: Vec<Declared> = Vec::new();
     for stmt in statements {
-        if !super::can_emit(lowering, ctx, stmt) {
-            return None;
-        }
         let place = match stmt.kind() {
             StmtKind::Assign { place, .. } | StmtKind::AssignStr { place, .. } => place,
             StmtKind::AssignBits { .. }
@@ -153,9 +130,25 @@ fn declarations<'l>(
             | StmtKind::Loop { .. }
             | StmtKind::Exit(_)
             | StmtKind::Continue(_)
-            | StmtKind::Return => return None,
+            | StmtKind::Return => return Err(super::unsupported_store(stmt)),
         };
-        let (scope, name, ty) = declaration(lowering, ctx, place)?;
+        let Some((scope, name, ty)) = declaration(lowering, ctx, place) else {
+            // A resource's global has no storage (REQ-EM-codegen-007), so
+            // neither does what it starts with.
+            if is_unstored_global(lowering, ctx, place) {
+                continue;
+            }
+            return Err(Diagnostic::internal_error_at(Label::span(
+                stmt.span().clone(),
+                "A store of init is into no declaration the layout knows",
+            )));
+        };
+        if !kept(lowering, ty, stmt) {
+            continue;
+        }
+        if !super::can_emit(lowering, ctx, stmt) {
+            return Err(super::unsupported_store(stmt));
+        }
         match declared
             .iter_mut()
             .find(|declared| declared.scope == scope && declared.name == name)
@@ -164,12 +157,20 @@ fn declarations<'l>(
             None => declared.push(Declared {
                 scope,
                 name,
-                ty,
                 stores: vec![stmt],
             }),
         }
     }
-    Some(declared)
+    Ok(declared)
+}
+
+/// Whether `place` is in a global the layout keeps no storage for.
+fn is_unstored_global(lowering: &PartialProgram, ctx: &CompileContext, place: &Place) -> bool {
+    lowering
+        .variables()
+        .get(place.root())
+        .is_some_and(|root| root.owner() == Owner::Global)
+        && ctx.lowered_ids.variable(place.root()).is_none()
 }
 
 /// The declaration `place` stores into: its scope and name in the layout,
@@ -194,8 +195,7 @@ fn declaration(
 }
 
 /// Whether the store `stmt`, into a declaration of the type `declared`, is
-/// emitted: one that leaves its storage cleared is not, where the AST's
-/// `init` leaves it out.
+/// emitted: one that leaves its storage cleared is not.
 fn kept(lowering: &PartialProgram, declared: TypeId, stmt: &Stmt) -> bool {
     let (place, clears) = match stmt.kind() {
         StmtKind::Assign { place, value } => (place, is_cleared(value)),

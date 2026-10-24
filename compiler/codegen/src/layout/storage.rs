@@ -159,10 +159,10 @@ fn assign_storage(
             }
         }
         SemanticType::FunctionBlock { .. } => {
-            // A member initializer (`(PT := T#100MS)`) is applied by
-            // `emit_initial_values`, which runs after the instance has its
-            // slot offset -- each member store addresses the instance
-            // through it. Nothing to do here but size it.
+            // A member initializer (`(PT := T#100MS)`) is stored by `init`,
+            // after the setup gives the instance its slot offset -- each
+            // member store addresses the instance through it. Nothing to do
+            // here but size it.
             let fb_name = declared_name();
             let standard_block = types
                 .get_by_id(type_id)

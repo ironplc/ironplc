@@ -173,11 +173,14 @@ END_PROGRAM
     );
 }
 
-/// REQ-LOW-lowering-112: a member initializer that is an expression does
-/// not lower yet, so `init` is incomplete and the declaration is a P9999.
+/// REQ-LOW-lowering-194: a member initializer that is an expression is
+/// stored as an assignment does, the program's variables it reads reached
+/// through the program instance rather than the body's instance parameter.
 #[test]
-fn lower_program_when_member_initializer_is_expression_then_init_incomplete() {
-    let source = "
+fn lower_program_when_member_initializer_is_expression_then_reads_through_instance() {
+    let program = whole(
+        "",
+        "
 FUNCTION_BLOCK Fb
   VAR_INPUT k : INT; END_VAR
   k := k;
@@ -186,17 +189,14 @@ PROGRAM main
   VAR x : INT := 2; f : Fb := (k := x + 1); END_VAR
   f();
 END_PROGRAM
-";
-    let program = whole("", source);
-    assert!(program.init().is_none());
+",
+    );
 
-    let diagnostics = program.into_program().unwrap_err();
-    let at: Vec<&str> = diagnostics
-        .iter()
-        .map(|diagnostic| {
-            let at = &diagnostic.primary.location;
-            &source[at.start..at.end]
-        })
-        .collect();
-    assert_eq!(at, ["f"]);
+    assert_eq!(
+        init(&program),
+        [
+            "assign v2.f0 (const i32s 2)",
+            "assign v2.f1.f0 (truncate 16 (add i32s (read i32s v2.f0) (const i32s 1)))",
+        ]
+    );
 }

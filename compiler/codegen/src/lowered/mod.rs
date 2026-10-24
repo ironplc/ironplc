@@ -52,10 +52,10 @@ mod stmt;
 mod string;
 
 use call_args::passes;
-pub(crate) use init::try_emit_init;
+pub(crate) use init::emit_init;
 pub(crate) use place::type_info;
 pub(crate) use policy::parse_policy;
-pub(crate) use prologue::{restarts, try_emit_prologue};
+pub(crate) use prologue::{emit_prologue, restarts};
 
 /// The program lowering made for a compilation, which every statement is
 /// compiled from.
@@ -106,12 +106,36 @@ pub(crate) fn compile_statement(
     index: usize,
     stmt: &AstStmtKind,
 ) -> Result<(), Diagnostic> {
-    let Some(route) = ctx.lowered_route.take() else {
-        return Err(Diagnostic::internal_error());
-    };
+    let route = taken_route(ctx)?;
     let compiled = compile_lowered(route.lowering(), emitter, ctx, index, stmt);
     ctx.lowered_route = Some(route);
     compiled
+}
+
+/// The lowered program, taken from `ctx` to compile from it; the caller
+/// puts it back.
+fn taken_route(ctx: &mut CompileContext) -> Result<LoweredRoute, Diagnostic> {
+    ctx.lowered_route
+        .take()
+        .ok_or_else(Diagnostic::internal_error)
+}
+
+/// The P9999 for starting values lowering does not express yet, at the
+/// first declaration whose value it does not.
+fn unsupported_value(declarations: &[SourceSpan]) -> Diagnostic {
+    match declarations.first() {
+        Some(span) => Diagnostic::todo_with_span(span.clone()),
+        None => Diagnostic::internal_error(),
+    }
+}
+
+/// The P9999 for a store of a starting value this backend does not emit
+/// yet.
+fn unsupported_store(stmt: &Stmt) -> Diagnostic {
+    Diagnostic::not_implemented(Label::span(
+        stmt.span().clone(),
+        "Starting value the lowered route does not support yet",
+    ))
 }
 
 fn compile_lowered(

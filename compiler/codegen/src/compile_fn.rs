@@ -22,7 +22,6 @@ use super::compile::{
     VarTypeInfo, DEFAULT_STRING_MAX_LENGTH,
 };
 use super::compile_expr::emit_load_var;
-use super::compile_setup::emit_function_local_prologue;
 use super::compile_stmt::{compile_body, compile_statements, resolve_string_max_length};
 use super::layout::names::ScopeId;
 use super::layout::{debug_type_for_decl, map_var_section, FunctionLayout};
@@ -202,22 +201,12 @@ pub(crate) fn compile_user_function(
     // the locals the analyzer flags, and the result, start again at their
     // resolved values on every call. The flat variable table (ADR-0046)
     // retains stale values between calls otherwise.
-    if !crate::lowered::try_emit_prologue(
+    crate::lowered::emit_prologue(
         &mut func_emitter,
         ctx,
         &func_decl.variables,
         Some(&func_decl.name),
-    )? {
-        emit_function_local_prologue(
-            &mut func_emitter,
-            ctx,
-            &func_decl.variables,
-            Some(&func_decl.result),
-            &func_decl.name,
-            return_var_index,
-            return_op_type,
-        )?;
-    }
+    )?;
 
     let body = ironplc_dsl::textual::Statements {
         body: func_decl.body.clone(),
@@ -309,7 +298,7 @@ pub(crate) fn compile_user_function_block(
     // A `VAR_TEMP` starts again on every call, from the lowered program; the
     // AST gives a function block's none.
     if crate::lowered::restarts(&fb_decl.variables) {
-        crate::lowered::try_emit_prologue(&mut fb_emitter, ctx, &fb_decl.variables, None)?;
+        crate::lowered::emit_prologue(&mut fb_emitter, ctx, &fb_decl.variables, None)?;
     }
     compile_body(&mut fb_emitter, ctx, &fb_decl.body, &fb_decl.name.span())?;
     fb_emitter.emit_ret_void();

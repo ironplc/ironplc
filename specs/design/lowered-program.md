@@ -720,6 +720,11 @@ structure or a function block instance element by element and field by field.
 Whether a store can be left out because the backend's storage starts cleared
 is the backend's to say.
 
+A member initializer that is an expression (`f : Fb := (k := x + 1)`) is
+stored as an assignment of it would be. The program's variables it names are
+reached through the program instance, as `init` runs in no body and so has
+no instance parameter.
+
 `init` holds values only. A backend sets up its own storage before the
 statements of `init` run, such as a string's header or the data-region offset
 an aggregate's slot holds: that setup is layout, not part of `init`.
@@ -730,9 +735,9 @@ in declaration order (a string's header, the data-region offset the slot of
 an aggregate or an instance holds, and the offset of each instance an
 instance's fields hold), each followed by the statements of `init` that store
 into it, and stores nothing else. It leaves out a store that leaves its
-storage cleared where the `init` it builds from the AST leaves it out. While
-that `init` exists, an `init` lowering does not complete, or one with a store
-the backend does not emit yet, is built from the AST, whole.
+storage cleared, and a store into a global its layout keeps no storage for
+(REQ-EM-codegen-007). A starting value lowering does not express yet, or a
+store the backend does not emit yet, is not supported yet (P9999).
 
 **REQ-LOW-lowering-195** The body of a function or method begins with the
 stores of the completed initializer of each of its declarations the analyzer
@@ -750,15 +755,16 @@ string's header, before them.
 
 **REQ-LOW-codegen-202** The bytecode backend's prologue of a body sets up,
 for each declaration that starts again on every call, in declaration order,
-and then for a function's or method's result, what the prologue it builds
-from the AST sets up (a string's header, and a structure result's
-data-region offset and the headers of its strings), each followed by the
-statements at the head of the body that store into it, and clears the result
-slot of a method that returns nothing. It leaves out an empty string stored
-into a whole string variable, which its header has just emptied. While that
-prologue exists, a prologue lowering does not complete, or one with a store
-the backend does not emit yet, is built from the AST, whole; a program's
-`VAR_TEMP` then takes its value once, in `init`.
+and then for a function's or method's result, the storage its layout gives it
+on every call (a string's header, and a structure result's data-region offset
+and the headers of its strings), each followed by the statements at the head
+of the body that store into it, and clears the result slot of a method that
+returns nothing. It leaves out an empty string stored into a whole string
+variable, which its header has just emptied. A structure, an array or an
+instance of the body's own that its layout keeps no storage for there
+(REQ-LOW-codegen-165) has its slot cleared in place of the stores into its
+fields or elements. A starting value lowering does not express yet, or a
+store the backend does not emit yet, is not supported yet (P9999).
 
 **REQ-LOW-lowering-025** The lowered program contains only POUs reachable from
 a program instance, matching what `SemanticContext::reachable` gives codegen

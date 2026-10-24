@@ -83,13 +83,14 @@ impl<'ast> Place<&'ast Expr> {
     ) -> Result<Self, Diagnostic> {
         let span = base.span();
 
-        // A field at a fixed offset in a structure. In `a[i].field` the record
-        // is an element of an array of structures, which resolves below.
+        // A field at a fixed offset in a structure. In `a[i].field` and
+        // `a[i].inner.field` the field is in an element of an array of
+        // structures, which resolves below.
         if let SymbolicVariableKind::Structured(structured) = base {
             if let Some(place) = Self::fb_field(ctx, structured)? {
                 return Ok(place);
             }
-            if !matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) {
+            if crate::compile_array_struct::element_field_chain(structured).is_none() {
                 let (var_index, desc_index, slot, _op_type, field_type) =
                     resolve_struct_field_access(ctx, structured)?;
                 return Ok(Place {

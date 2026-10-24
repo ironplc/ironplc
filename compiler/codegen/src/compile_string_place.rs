@@ -83,11 +83,11 @@ impl<'ast> StringPlace<&'ast Expr> {
                 span: span.clone(),
             })
         };
-        // A field at a fixed offset in a structure, not of an element of an
-        // array of structures (`s.arr[i].field`), which `resolve_access`
-        // addresses.
+        // A field at a fixed offset in a structure, not in an element of an
+        // array of structures (`s.arr[i].field`, `arr[i].inner.field`),
+        // which `resolve_access` addresses.
         if let Variable::Symbolic(SymbolicVariableKind::Structured(structured)) = variable {
-            if !matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) {
+            if crate::compile_array_struct::element_field_chain(structured).is_none() {
                 let (root, slot_offset, field_type) =
                     walk_struct_chain(ctx, &structured.record, &structured.field, 0)?;
                 let SemanticType::String { char_width, .. } = field_type else {

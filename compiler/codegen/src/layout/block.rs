@@ -381,9 +381,8 @@ fn lay_out_method(
     }
 
     // Always allocate a return-value slot, even for a method with no
-    // return type: `emit_function_local_prologue` clears it, so a void
-    // method gets one harmless unused slot rather than special-casing the
-    // prologue call.
+    // return type: the method's prologue clears it, so a void method gets
+    // one harmless unused slot rather than special-casing the prologue.
     let return_var_index = current_index;
     let return_id = method.name.clone();
     let has_return_value = method.return_type.is_some();

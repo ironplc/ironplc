@@ -73,7 +73,6 @@ use super::compile_method::compile_user_method;
 use super::layout::BlockLayout;
 use ironplc_ir::execution::SystemGlobal;
 
-use super::compile_setup::emit_initial_values;
 use super::compile_stmt::compile_body;
 
 /// The native operation width used for arithmetic and comparisons.
@@ -646,12 +645,9 @@ fn compile_program_with_functions(
     let total_variables = var_offset;
 
     // Emit bytecode for variable initial values into the init emitter, from
-    // the lowered program when it can be.
+    // the lowered program.
     let mut init_emitter = Emitter::new();
-    if !crate::lowered::try_emit_init(&mut init_emitter, &mut ctx, global_vars, &local_vars)? {
-        emit_initial_values(&mut init_emitter, &mut ctx, global_vars, types)?;
-        emit_initial_values(&mut init_emitter, &mut ctx, &local_vars, types)?;
-    }
+    crate::lowered::emit_init(&mut init_emitter, &mut ctx, global_vars, &local_vars)?;
     init_emitter.emit_ret_void();
 
     // Compile the program body into the scan emitter. Mark
@@ -660,9 +656,9 @@ fn compile_program_with_functions(
     let mut scan_emitter = Emitter::new();
     ctx.current_function_id = Some(FunctionId::SCAN);
     // A `VAR_TEMP` starts again at the head of every scan, from the lowered
-    // program; when that is left to the AST, `init` gives it its value, once.
+    // program.
     if crate::lowered::restarts(&local_vars) {
-        crate::lowered::try_emit_prologue(&mut scan_emitter, &mut ctx, &local_vars, None)?;
+        crate::lowered::emit_prologue(&mut scan_emitter, &mut ctx, &local_vars, None)?;
     }
     compile_body(
         &mut scan_emitter,

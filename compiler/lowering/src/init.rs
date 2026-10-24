@@ -314,12 +314,18 @@ impl<'a> Lowering<'a> {
                 }
             }
             // A member initializer that is an expression is lowered in the
-            // body it runs in. One in `init` would read the places its body
-            // names through the body's instance parameter, which `init`
-            // does not have; lowering does not rebase them yet.
+            // body it runs in. One of a field of a program instance, in
+            // `init`, reads the program's variables through the instance
+            // itself, as `init` has no instance parameter.
             InitialValue::Expression(expr) => {
-                let Reach::Body(frame) = reach else {
-                    return Ok(None);
+                let held;
+                let frame = match reach {
+                    Reach::Body(frame) => frame,
+                    Reach::Instance(frame, instance) => {
+                        held = frame.held_by(instance);
+                        &held
+                    }
+                    Reach::Global => return Ok(None),
                 };
                 let Some(stmt) = self.store_at(frame, place, expr, span.clone())? else {
                     return Ok(None);

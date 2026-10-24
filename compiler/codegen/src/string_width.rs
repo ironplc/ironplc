@@ -130,10 +130,11 @@ fn variable_bound(ctx: &CompileContext, variable: &Variable) -> Result<Option<u1
                 })
         }
         SymbolicVariableKind::Structured(structured) => {
-            // `a[i].s` -- the record is an array element, which the struct
-            // chain walk cannot follow; the array-of-struct path locates it.
+            // `a[i].s` and `a[i].inner.s` -- the field is in an array
+            // element, which the struct chain walk cannot follow; the
+            // array-of-struct path locates it.
             let field_type =
-                if matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) {
+                if crate::compile_array_struct::element_field_chain(structured).is_some() {
                     crate::compile_array_struct::struct_array_element_field_type(ctx, structured)
                 } else {
                     crate::compile_struct::walk_struct_chain(

@@ -20,8 +20,6 @@ use super::compile::{
     CompileContext, OpType, OpWidth, Signedness, VarTypeInfo, DEFAULT_STRING_MAX_LENGTH,
 };
 use super::compile_enum::enum_var_type_info;
-use super::compile_expr::emit_truncation;
-use crate::emit::Emitter;
 
 /// Metadata for a structure variable, stored in CompileContext.
 #[derive(Clone)]
@@ -346,13 +344,6 @@ pub(crate) fn var_type_info_for_field(field_type: &SemanticType) -> Option<VarTy
         signedness,
         storage_bits,
     })
-}
-
-/// Emits truncation instructions for narrow types when storing to a struct field.
-pub(crate) fn emit_truncation_for_field(emitter: &mut Emitter, field_type: &SemanticType) {
-    if let Some(vti) = var_type_info_for_field(field_type) {
-        emit_truncation(emitter, vti);
-    }
 }
 
 /// Allocates data region space for a variable of the structure type
