@@ -115,10 +115,11 @@ A further input of such a type makes the conversion implicit:
 ``LIMIT(lowest, count, ceiling)`` with ``ceiling : LINT`` compares at
 ``LINT``, because a ``DINT`` and a ``UDINT`` both widen to it.
 
-A real literal is reported with an integer input as it is with an integer
-operand: ``MAX(lowest, 1.5)`` is this error, while ``MAX(lowest, 1)``
-compares two ``DINT``\ s, because a bare integer literal takes the other
-input's type.
+A bare real literal is a ``REAL``, and is accepted or reported with an
+integer input as it is with an integer operand: ``MAX(lowest, 1.5)`` is this
+error, because a ``DINT`` does not widen to ``REAL``, while ``MIN(reading,
+1.5)`` with ``reading : INT`` compares two ``REAL``\ s, and ``MAX(lowest, 1)``
+two ``DINT``\ s, because a bare integer literal takes the other input's type.
 
 Time and date operands
 ----------------------

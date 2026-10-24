@@ -110,7 +110,7 @@ A set of inputs none of whose types every other one widens to, such as a `DINT` 
 
 The pass records, for each call, the conversion of every input of the function's type to the result type, and the conversion of the result to the type of its context where that context is recorded (Assignments and Arguments below, and a comparison or arithmetic operand above).
 
-**REQ-IC-analyzer-070** The result of `MIN`, `MAX`, `LIMIT`, `SEL`, `MUX` and `ATAN2` has the type every input of the function's type widens to, whichever input that is: `MAX(i, l)` and `MAX(l, i)` on an `INT` and an `LINT` are `LINT`s, and the `G` of `SEL` and the `K` of `MUX` do not take part.
+**REQ-IC-analyzer-070** The result of `MIN`, `MAX`, `LIMIT`, `SEL`, `MUX` and `ATAN2` has the type every input of the function's type widens to, whichever input that is, or the `REAL` an untyped real literal among them defaults to when every input widens to it: `MAX(i, l)` and `MAX(l, i)` on an `INT` and an `LINT` are `LINT`s, `MIN(i, 1.5)` on an `INT` is a `REAL`, and the `G` of `SEL` and the `K` of `MUX` do not take part.
 
 **REQ-IC-analyzer-071** A set of inputs none of whose types every other one widens to has the type of its first concrete input: `MAX(d, u)` on a `DINT` and a `UDINT` is a `DINT`, and `MAX(5, d)` on a `DINT` is a `DINT`.
 
@@ -128,7 +128,7 @@ The pass records, for each call, the conversion of every input of the function's
 
 **REQ-IC-analyzer-078** A result assigned to a narrower target is a type mismatch: `i := MAX(i, l)` on an `INT` and an `LINT` reports P4027.
 
-**REQ-IC-analyzer-125** A call to `MIN`, `MAX`, `LIMIT`, `SEL`, `MUX` or `ATAN2` whose inputs of the function's type have no type every one of them widens to reports P4049, once, naming the function as the operator and the type of each of those inputs by its parameter: `MAX(d, u)` on a `DINT` and a `UDINT`, `SEL(g, d, u)`, `MUX(k, d, u, r)` with a `REAL`, `MAX(m, u)` on a subrange of `DINT` and `MAX(d, 1.5)` on a `DINT` are reported, and `LIMIT(d, u, l)` with an `LINT` and `MAX(d, 1)` are not, as every input widens to the `LINT` and the literal takes the `DINT`.
+**REQ-IC-analyzer-125** A call to `MIN`, `MAX`, `LIMIT`, `SEL`, `MUX` or `ATAN2` whose inputs of the function's type have no type every one of them widens to reports P4049, once, naming the function as the operator and the type of each of those inputs by its parameter: `MAX(d, u)` on a `DINT` and a `UDINT`, `SEL(g, d, u)`, `MUX(k, d, u, r)` with a `REAL`, `MAX(m, u)` on a subrange of `DINT` and `MAX(d, 1.5)` on a `DINT` are reported, and `LIMIT(d, u, l)` with an `LINT` and `MAX(d, 1)` are not, as every input widens to the `LINT` and the literal takes the `DINT`. `MIN(i, 1.5)` on an `INT` is not reported either: the literal is a `REAL`, the type it defaults to (ADR-0028), the `INT` widens to it, and the call computes at `REAL`, as `i + 1.5` does (REQ-AO-analyzer-016).
 
 **REQ-IC-analyzer-126** An input that is not of the function's type, or whose type is not known or not one its parameter accepts, takes no part in that check: the `LINT` `K` of `MUX(l, d, d)` and the `BOOL` `G` of `SEL(g, d, d)` are not judged, `MAX(d, s)` on a `STRING` and `ATAN2(d, r)` on a `DINT` are left to the argument type check (P4026), `EXPT(d, u)` is typed by its base, and `AND(g, w)` on a `BOOL` and a `WORD` is the operator rule's.
 

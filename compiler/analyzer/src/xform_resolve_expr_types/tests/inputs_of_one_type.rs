@@ -28,6 +28,10 @@ fn call_type(value: &str) -> Option<String> {
 #[case::mux_after_its_selector("MUX(k, s, d, l)", "LINT")]
 #[case::atan2("ATAN2(r, lr)", "LREAL")]
 #[case::same_type("MAX(d, d)", "DINT")]
+// A real literal beside an INT is a REAL, the type neither input has.
+#[case::real_literal_with_narrow_integer("MIN(i, 1.5)", "REAL")]
+#[case::real_literals_around_narrow_integer("LIMIT(0.5, i, 2.5)", "REAL")]
+#[case::real_literal_and_narrow_integer_with_lreal("MAX(i, 1.5, lr)", "LREAL")]
 fn apply_when_inputs_of_one_type_then_type_every_input_widens_to(
     #[case] value: &str,
     #[case] expected: &str,
