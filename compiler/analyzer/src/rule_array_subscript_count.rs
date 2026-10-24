@@ -8,7 +8,9 @@
 //! element: the first list has too few or too many subscripts for its array.
 //!
 //! An array type that records no dimensions has none to count against, and a
-//! list on something that is not an array is not this rule's to judge.
+//! list on something that is not an array is not this rule's to judge. A list
+//! on a reference to an array, with or without `^`, is counted against the
+//! array it refers to.
 //!
 //! See section 2.4.1.2.
 //!
@@ -93,8 +95,8 @@ impl RuleArraySubscriptCount<'_> {
     /// dimensions other than the number of subscripts it gives.
     fn check(&mut self, node: &ArrayVariable) {
         let types = self.context.types();
-        let Some(subscripted) = variable_type::type_id(
-            &node.subscripted_variable,
+        let Some(subscripted) = variable_type::subscripted_type_id(
+            node,
             self.context.symbols(),
             types,
             &self.scope.current(),
@@ -157,6 +159,7 @@ mod tests {
         codes, diagnostic_codes, edition3_options, rule_codes, rule_diagnostics,
     };
     use rstest::rstest;
+    use spec_test_macro::spec_test;
 
     /// No problems: every list gives one subscript for each dimension.
     const OK: &[Problem] = &[];
@@ -165,8 +168,8 @@ mod tests {
 
     /// A program that declares an array of arrays `rows`, a two-dimensional
     /// array `m`, a one-dimensional array `a`, a structure `s` holding an
-    /// array and a reference `p` to `m`, and whose body reads `access` into
-    /// `x`.
+    /// array, a `REF_TO` `p` and a `REFERENCE TO` `ra` to a `Grid`, and
+    /// whose body reads `access` into `x`.
     fn reading(access: &str) -> String {
         format!(
             "TYPE
@@ -182,6 +185,7 @@ VAR
     a : ARRAY[1..3] OF DINT;
     s : Holder;
     p : REF_TO Grid;
+    ra : REFERENCE TO Grid;
     i : DINT;
     x : DINT;
 END_VAR
@@ -190,6 +194,18 @@ END_PROGRAM"
         )
     }
 
+    /// The options [`reading`] parses under: edition 3 for `REF_TO`, with
+    /// the TwinCAT `REFERENCE TO`.
+    fn options() -> CompilerOptions {
+        CompilerOptions {
+            allow_reference_to: true,
+            ..edition3_options()
+        }
+    }
+
+    /// REQ-ETR-analyzer-010: a list on a reference to an array is counted
+    /// against the array it refers to, with and without `^`.
+    #[spec_test(REQ_ETR_analyzer_010)]
     #[rstest]
     #[case::one_dimension("a[1]", OK)]
     #[case::two_dimensions("m[1, 2]", OK)]
@@ -197,6 +213,8 @@ END_PROGRAM"
     #[case::array_of_arrays_whole_inner_array("rows[1][i]", OK)]
     #[case::field("s.g[1, 2]", OK)]
     #[case::dereference("p^[1, 2]", OK)]
+    #[case::reference("p[1, 2]", OK)]
+    #[case::reference_to("ra[1, 2]", OK)]
     #[case::one_dimension_two_subscripts("a[1, 2]", MISMATCH)]
     #[case::two_dimensions_one_subscript("m[1]", MISMATCH)]
     #[case::two_dimensions_one_bracket_per_dimension("m[1][2]", MISMATCH)]
@@ -204,13 +222,15 @@ END_PROGRAM"
     #[case::array_of_arrays_one_list("rows[1, 2]", MISMATCH)]
     #[case::field_one_subscript("s.g[1]", MISMATCH)]
     #[case::dereference_one_subscript("p^[1]", MISMATCH)]
+    #[case::reference_one_subscript("p[1]", MISMATCH)]
+    #[case::reference_to_one_subscript("ra[1]", MISMATCH)]
     #[case::inside_subscript("a[m[1]]", MISMATCH)]
     fn apply_when_subscripts_then_counted_against_dimensions(
         #[case] access: &str,
         #[case] expected: &[Problem],
     ) {
         assert_eq!(
-            rule_codes(apply, &reading(access), &edition3_options()),
+            rule_codes(apply, &reading(access), &options()),
             codes(expected)
         );
     }
@@ -241,7 +261,7 @@ END_PROGRAM",
 
     #[test]
     fn apply_when_mismatch_then_names_variable_dimensions_and_subscripts() {
-        let diagnostics = rule_diagnostics(apply, &reading("rows[2, 3]"), &edition3_options());
+        let diagnostics = rule_diagnostics(apply, &reading("rows[2, 3]"), &options());
 
         assert_eq!(
             diagnostic_codes(&diagnostics),
