@@ -308,7 +308,11 @@ resolved: it is bound to its own registered signature as today.
 
 ### Codegen
 
-Codegen changes in two places.
+Codegen changes in two places. The code that reads the AST, where this was
+first built, is deleted: lowering now does both, a typed pair through the
+time intrinsics (`lowering/src/time.rs`) and a numeric expression at the
+width of its resolved type, and the requirements below hold of the lowered
+program the bytecode backend compiles.
 
 **Typed dispatch.** Both spellings compile in `compile_arith.rs`: the
 operator expression and the function-form fold ask the typed step. When it

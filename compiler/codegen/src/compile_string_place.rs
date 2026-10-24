@@ -192,11 +192,6 @@ impl<'ast> StringPlace<&'ast Expr> {
 }
 
 impl<S> StringPlace<S> {
-    /// The encoding of the string the place holds.
-    pub(crate) fn char_width(&self) -> CharWidth {
-        self.char_width
-    }
-
     /// The same place with each subscript replaced by what `replace` makes
     /// of it, or the first error `replace` returns.
     pub(crate) fn try_map_subscripts<T, E>(

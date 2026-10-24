@@ -88,10 +88,9 @@ fn string_storage<'c>(
     ctx.string_var(&variable_name(lowering, ctx, place)?)
 }
 
-/// The data region offset of a slot that holds the string `value`, as
-/// `resolve_string_arg` gives it: the place's own slot for the
-/// string at a place, and otherwise a temporary slot of `value`'s encoding
-/// and capacity that `value` is computed into.
+/// The data region offset of a slot that holds the string `value`: the
+/// place's own slot for the string at a place, and otherwise a temporary
+/// slot of `value`'s encoding and capacity that `value` is computed into.
 pub(super) fn str_arg_offset(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,

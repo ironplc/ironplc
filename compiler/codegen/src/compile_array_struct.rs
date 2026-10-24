@@ -141,26 +141,6 @@ pub(crate) fn resolve_struct_array_element_field<'ctx, 'ast>(
     )
 }
 
-/// Returns the declared type of a field selected from an element of an
-/// array-of-struct, the `LastCode` in `MyBay.Devices.MeterQRScanner[i].LastCode`.
-///
-/// Used where only the type matters, such as working out the encoding and
-/// capacity of a STRING field.
-pub(crate) fn struct_array_element_field_type(
-    ctx: &CompileContext,
-    structured: &ironplc_dsl::textual::StructuredVariable,
-) -> Result<SemanticType, Diagnostic> {
-    let (element, fields) = element_field_chain(structured).ok_or_else(|| {
-        Diagnostic::internal_error_at(Label::span(
-            structured.span(),
-            "Structure field access is not on an array element",
-        ))
-    })?;
-    let array = locate_array_of_struct(ctx, element)?;
-    let (_, field_type) = element_field(&array.element_type, &fields)?;
-    Ok(field_type)
-}
-
 /// The slot offset, from the start of an element of `element_type`, of the
 /// field `fields` selects, through structure fields, and its type.
 fn element_field(

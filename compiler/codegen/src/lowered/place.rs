@@ -274,8 +274,7 @@ fn lowered_subscript<'l>(
     placeholder: &AstExpr,
     span: &SourceSpan,
 ) -> Result<LoweredSubscript<'l>, Diagnostic> {
-    let expr = placeholder
-        .literal()
+    let expr = crate::compile_subscript::integer_literal(placeholder)
         .and_then(|position| subscripts.get(usize::try_from(position).ok()?))
         .ok_or_else(|| no_storage(span))?;
     Ok(LoweredSubscript { lowering, expr })
