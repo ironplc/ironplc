@@ -267,7 +267,9 @@ When neither operand widens to the other, the expression is an error
 such pair, because a 32-bit integer does not fit exactly in ``REAL``; so is
 ``DINT + UDINT``, because neither type holds every value of the other.
 Convert one operand explicitly, or widen to a type that holds both, such as
-``LREAL`` or ``LINT``.
+``LREAL`` or ``LINT``. The selection functions ``MIN``, ``MAX``, ``LIMIT``,
+``SEL`` and ``MUX`` widen their inputs the same way, and report the same error
+for inputs that widen to no one type.
 
 The result is then assigned like any other value, so assigning a ``DINT``
 result to an ``INT`` needs an explicit conversion:
