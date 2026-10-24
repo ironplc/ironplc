@@ -1,6 +1,8 @@
-//! Tests of a `VAR` initializer that is exactly one constant's name
-//! (`x : UDINT := C;`): the smallest constant expression, and the one the
-//! declared-type check applies to.
+//! Tests of an initializer that is exactly one constant's name: a `VAR`
+//! initializer (`x : UDINT := C;`), a string initializer
+//! (`s : STRING[20] := CS;`) and a `TYPE` default (`TYPE MyInt : UDINT :=
+//! C;`). The smallest constant expression, and the one the declared-type
+//! check applies to.
 //!
 //! These run the type-resolution pipeline rather than `apply` alone: the
 //! check reads the type environment (an alias on either side compares as the
@@ -197,6 +199,154 @@ fn apply_when_constant_type_compatible_with_variable_type_then_ok(
 #[test]
 fn apply_when_initializer_is_expression_over_constant_then_checked_by_value_only() {
     let source = program("C : UDINT := 1;", "x : INT := C + 0;");
+
+    assert!(analyzed_codes(&source, &opts()).is_empty());
+}
+
+/// The default of the simple type declaration named `name`.
+fn type_default(library: &Library, name: &str) -> Option<ConstantKind> {
+    library.elements.iter().find_map(|element| match element {
+        LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Simple(simple))
+            if simple.type_name == TypeName::from(name) =>
+        {
+            let init = cast!(&simple.spec_and_init, InitialValueAssignmentKind::Simple);
+            init.initial_value.clone()
+        }
+        _ => None,
+    })
+}
+
+#[test]
+fn apply_when_type_default_names_constant_then_default_is_its_value() {
+    let source = "
+VAR_GLOBAL CONSTANT
+    C : UDINT := 7;
+END_VAR
+TYPE
+    MyInt : UDINT := C;
+END_TYPE";
+    let (library, context) = parse_and_resolve_types_with_options(source, &opts());
+
+    assert!(
+        context.diagnostics().is_empty(),
+        "{:?}",
+        context.diagnostics()
+    );
+    let default = type_default(&library, "MyInt").unwrap();
+    let lit = cast!(&default, ConstantKind::IntegerLiteral);
+    assert_eq!(7, lit.value.value.value);
+}
+
+#[test]
+fn apply_when_type_default_names_constant_and_flag_disabled_then_p4037_alone() {
+    let options = CompilerOptions {
+        allow_constant_initializer_expressions: false,
+        ..opts()
+    };
+    let source = "
+VAR_GLOBAL CONSTANT
+    C : UDINT := 7;
+END_VAR
+TYPE
+    MyInt : UDINT := C;
+END_TYPE";
+
+    assert_eq!(
+        codes(&[Problem::ConstantInitializerExpressionNotAllowed]),
+        analyzed_codes(source, &options)
+    );
+}
+
+/// The folded string keeps the declaration's length and takes the
+/// constant's literal.
+#[test]
+fn apply_when_string_initializer_names_constant_then_literal_and_length_kept() {
+    let source = program("CS : STRING := 'abc';", "s : STRING[20] := CS;");
+    let (library, context) = parse_and_resolve_types_with_options(&source, &opts());
+
+    assert!(
+        context.diagnostics().is_empty(),
+        "{:?}",
+        context.diagnostics()
+    );
+    let string = cast!(
+        &find_var_decl(&library, "s").initializer,
+        InitialValueAssignmentKind::String
+    );
+    assert_eq!(
+        Some(20),
+        string
+            .length
+            .as_ref()
+            .and_then(|length| length.as_integer())
+            .map(|length| length.value)
+    );
+    let literal = string.initial_value.as_ref().unwrap();
+    assert_eq!(vec!['a', 'b', 'c'], literal.value);
+}
+
+#[test]
+fn apply_when_string_initializer_names_constant_and_flag_disabled_then_p4037_alone() {
+    let options = CompilerOptions {
+        allow_constant_initializer_expressions: false,
+        ..opts()
+    };
+    let source = program("CS : STRING := 'abc';", "s : STRING := CS;");
+
+    assert_eq!(
+        codes(&[Problem::ConstantInitializerExpressionNotAllowed]),
+        analyzed_codes(&source, &options)
+    );
+}
+
+#[test]
+fn apply_when_string_initializer_names_variable_that_is_not_constant_then_p4038() {
+    let source = "
+FUNCTION_BLOCK fb
+VAR
+    v : STRING := 'abc';
+    s : STRING := v;
+END_VAR
+END_FUNCTION_BLOCK";
+
+    assert_eq!(
+        codes(&[Problem::InitializerNotConstantExpression]),
+        analyzed_codes(source, &opts())
+    );
+}
+
+/// A string and a value of another type, or of the other string encoding,
+/// are as incompatible here as in an assignment; a longer expression that
+/// folds to anything but a string is reported the same way.
+#[rstest]
+#[case::wstring_into_string("WS : WSTRING := \"abc\";", "s : STRING := WS;")]
+#[case::string_into_wstring("CS : STRING := 'abc';", "w : WSTRING := CS;")]
+#[case::integer_into_string("C : UDINT := 1;", "s : STRING := C;")]
+#[case::string_into_integer("CS : STRING := 'abc';", "x : UDINT := CS;")]
+#[case::integer_expression_into_string("C : UDINT := 1;", "s : STRING := C + 1;")]
+fn apply_when_string_constant_type_incompatible_then_p4022_alone(
+    #[case] constant: &str,
+    #[case] variable: &str,
+) {
+    let source = program(constant, variable);
+
+    assert_eq!(
+        codes(&[Problem::InitializerTypeMismatch]),
+        analyzed_codes(&source, &opts())
+    );
+}
+
+/// The length is not part of the relation: a constant of either string
+/// type initializes a variable of that type at any length.
+#[rstest]
+#[case::unsized_into_sized("CS : STRING := 'abc';", "s : STRING[20] := CS;")]
+#[case::unsized_into_unsized("CS : STRING := 'abc';", "s : STRING := CS;")]
+#[case::wstring("WS : WSTRING := \"abc\";", "w : WSTRING[8] := WS;")]
+fn apply_when_string_constant_type_compatible_then_ok(
+    #[case] constant: &str,
+    #[case] variable: &str,
+) {
+    let source = program(constant, variable);
 
     assert!(analyzed_codes(&source, &opts()).is_empty());
 }

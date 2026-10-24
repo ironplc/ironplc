@@ -47,7 +47,9 @@ Named Constants
 The initial value may name a variable declared with the ``CONSTANT``
 qualifier, or be an expression over literals and such constants. The
 compiler replaces the name with the constant's value when it compiles the
-program, so the variable starts at that value.
+program, so the variable starts at that value. A ``STRING`` or ``WSTRING``
+variable and the default of a ``TYPE`` declaration take a constant's name
+the same way.
 
 .. code-block:: shell
 
@@ -62,9 +64,11 @@ program, so the variable starts at that value.
    PROGRAM main
        VAR CONSTANT
            LIMIT : INT := 100;
+           NAME : STRING := 'pump';
        END_VAR
        VAR
            threshold : INT := LIMIT;
+           label : STRING[20] := NAME;
        END_VAR
 
        threshold := threshold - 1;
