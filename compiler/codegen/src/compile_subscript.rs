@@ -2,15 +2,10 @@
 //!
 //! The flat index of an array element is computed from its subscripts in one
 //! way (`emit_flat_index`). [`Subscript`] is what that computation needs of
-//! one subscript of the lowered program. A place is resolved through the
-//! variable reference it stands for, with an integer literal standing in for
-//! each subscript ([`integer_literal`]) until the lowered subscripts replace
-//! them.
+//! one subscript of the lowered program.
 
-use ironplc_dsl::common::ConstantKind;
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{Expr, ExprKind, UnaryOp};
 
 use ironplc_container::opcode;
 
@@ -59,32 +54,5 @@ pub(crate) fn subscript_check(from: OpType, to: OpType) -> Option<u16> {
         (OpWidth::W64, Signedness::Unsigned) => Some(opcode::builtin::CHECK_SUBSCRIPT_U64),
         (OpWidth::W32, Signedness::Unsigned) => Some(opcode::builtin::CHECK_SUBSCRIPT_U32),
         (OpWidth::W32, Signedness::Signed) | (OpWidth::F32 | OpWidth::F64, _) => None,
-    }
-}
-
-/// Extracts an i32 value from an expression if it is a literal integer.
-/// Returns `None` for any non-literal expression.
-pub(crate) fn integer_literal(expr: &Expr) -> Option<i32> {
-    match &expr.kind {
-        ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
-            let unsigned = i32::try_from(lit.value.value.value).ok()?;
-            if lit.value.is_neg {
-                unsigned.checked_neg()
-            } else {
-                Some(unsigned)
-            }
-        }
-        ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Neg => match &unary.term.kind {
-            ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
-                let val = i32::try_from(lit.value.value.value).ok()?;
-                if lit.value.is_neg {
-                    Some(val)
-                } else {
-                    val.checked_neg()
-                }
-            }
-            _ => None,
-        },
-        _ => None,
     }
 }

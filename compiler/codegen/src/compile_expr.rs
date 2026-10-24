@@ -5,9 +5,8 @@
 //! through them (`lowered/`).
 
 use ironplc_container::{opcode, VarIndex};
-use ironplc_dsl::core::{Id, Located};
+use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_dsl::textual::{SymbolicVariableKind, Variable};
 use paste::paste;
 
 use super::compile::{CompileContext, OpType, OpWidth, Signedness, VarTypeInfo};
@@ -23,22 +22,6 @@ pub(crate) fn emit_null(emitter: &mut Emitter, ctx: &mut CompileContext) {
 pub(crate) fn emit_load_in_out(emitter: &mut Emitter, ref_slot: VarIndex) {
     emitter.emit_load_var_i64(ref_slot);
     emitter.emit_load_indirect();
-}
-
-/// Extracts the variable name `Id` from a variable reference, if it is a named symbolic variable.
-pub(crate) fn resolve_variable_name(variable: &Variable) -> Option<&Id> {
-    match variable {
-        Variable::Symbolic(SymbolicVariableKind::Named(named)) => Some(&named.name),
-        _ => None,
-    }
-}
-
-/// Extracts a SourceSpan from a Variable for diagnostic messages.
-pub(crate) fn variable_span(variable: &Variable) -> ironplc_dsl::core::SourceSpan {
-    match variable {
-        Variable::Symbolic(kind) => kind.span(),
-        Variable::Direct(addr) => addr.position.clone(),
-    }
 }
 
 /// Result of classifying a comparison expression as a fusable

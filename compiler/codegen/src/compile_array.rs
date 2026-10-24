@@ -4,9 +4,9 @@
 //! array read/write compilation. Separated from compile.rs to
 //! keep module sizes within the 1000-line guideline.
 
+use crate::access::{Access, Field};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{Expr, SymbolicVariableKind, Variable};
 use ironplc_problems::Problem;
 
 use ironplc_analyzer::semantic_type::{ArrayDimension, ByteSized, SemanticType};
@@ -76,7 +76,7 @@ pub(crate) struct ArrayVarInfo {
 /// Designed for extensibility: when struct access is implemented,
 /// add a `StructField` variant and extend `resolve_access()`.
 /// The dispatch sites gain a new match arm without changing shape.
-pub(crate) enum ResolvedAccess<'ctx, 'ast> {
+pub(crate) enum ResolvedAccess<'ctx, S> {
     /// Simple named variable — use LOAD_VAR/STORE_VAR.
     Scalar { var_index: VarIndex },
     /// `VAR_IN_OUT` parameter of the function being compiled. Its slot holds
@@ -86,12 +86,12 @@ pub(crate) enum ResolvedAccess<'ctx, 'ast> {
     /// Array element — compute flat index, use LOAD_ARRAY/STORE_ARRAY.
     ArrayElement {
         info: &'ctx ArrayVarInfo,
-        subscripts: Vec<&'ast Expr>,
+        subscripts: Vec<S>,
     },
     /// Array element through a dereferenced reference — use LOAD_ARRAY_DEREF/STORE_ARRAY_DEREF.
     DerefArrayElement {
         info: &'ctx ArrayVarInfo,
-        subscripts: Vec<&'ast Expr>,
+        subscripts: Vec<S>,
     },
     /// Array element within a struct field — compute flat index + struct field offset,
     /// then use the struct's LOAD_ARRAY/STORE_ARRAY descriptor.
@@ -105,13 +105,13 @@ pub(crate) enum ResolvedAccess<'ctx, 'ast> {
         /// Dimension info for computing the flat index from subscripts.
         dimensions: Vec<DimensionInfo>,
         /// Subscript expressions.
-        subscripts: Vec<&'ast Expr>,
+        subscripts: Vec<S>,
         /// Element semantic type, which decides the type the element is
         /// loaded and stored at.
         element_type: SemanticType,
     },
     /// STRING array element within a struct field — see [`StructStringElement`].
-    StructFieldStringArrayElement(StructStringElement<'ast>),
+    StructFieldStringArrayElement(StructStringElement<S>),
 }
 
 /// A STRING element of an array that lives inside a structure's data region.
@@ -121,7 +121,7 @@ pub(crate) enum ResolvedAccess<'ctx, 'ast> {
 /// structure's variable holds the start of the whole structure rather than of
 /// the array, so the array's start is first computed into a scratch variable
 /// ([`StringPlace`](super::compile_string_place::StringPlace)).
-pub(crate) struct StructStringElement<'ast> {
+pub(crate) struct StructStringElement<S> {
     /// Struct variable table index (holds struct data_offset).
     pub var_index: VarIndex,
     /// Scratch variable for the adjusted base offset.
@@ -130,77 +130,53 @@ pub(crate) struct StructStringElement<'ast> {
     pub string_desc_index: u16,
     /// Byte offset of the array field within the struct (slot_offset * 8).
     pub field_byte_offset: u32,
-    /// Encoding of the element, which a stored value must be produced at
-    /// (ADR-0034).
-    pub char_width: CharWidth,
     /// Dimension info for computing the flat index from subscripts.
     pub dimensions: Vec<DimensionInfo>,
     /// Subscript expressions.
-    pub subscripts: Vec<&'ast Expr>,
+    pub subscripts: Vec<S>,
 }
 
-/// Resolves a variable reference into its access kind.
+/// Resolves a place into its access kind.
 ///
-/// For named variables, returns Scalar with the variable table index.
-/// For array variables, walks the ArrayVariable chain to collect
-/// all subscripts and resolve the base variable's ArrayVarInfo.
-///
-/// Two lifetimes separate the context borrow (`'ctx` for `info`) from the
-/// AST borrow (`'ast` for `subscripts`). This allows callers to drop `info`
-/// and then use `ctx` mutably while still holding `subscripts`.
-pub(crate) fn resolve_access<'ctx, 'ast>(
+/// For a named variable, returns Scalar with the variable table index. For
+/// an element of an array, walks the chain of subscripts to collect them
+/// all and resolve the base variable's ArrayVarInfo.
+pub(crate) fn resolve_access<'ctx, S: Clone>(
     ctx: &'ctx CompileContext,
-    variable: &'ast Variable,
-) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
-    match variable {
-        Variable::Symbolic(symbolic) => resolve_symbolic_access(ctx, symbolic),
-        Variable::Direct(direct) => Err(Diagnostic::todo_with_span(direct.position.clone())),
-    }
-}
-
-/// Resolves a symbolic variable reference into its access kind, as
-/// [`resolve_access`] does for a [`Variable`].
-pub(crate) fn resolve_symbolic_access<'ctx, 'ast>(
-    ctx: &'ctx CompileContext,
-    symbolic: &'ast SymbolicVariableKind,
-) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
-    match symbolic {
-        SymbolicVariableKind::Array(array_var) => {
+    access: &Access<S>,
+) -> Result<ResolvedAccess<'ctx, S>, Diagnostic> {
+    match access {
+        Access::Index(array_var) => {
             // Walk the chain collecting subscript groups innermost-first,
-            // then reverse. For nested arrays arr[i][j], the AST is:
-            //   ArrayVariable {
-            //       subscripted_variable: Array(ArrayVariable {
-            //           subscripted_variable: Named(Id("arr")),
-            //           subscripts: [i],
-            //       }),
-            //       subscripts: [j],
-            //   }
-            // We collect: [[j], [i]], reverse to [[i], [j]], flatten to [i, j].
-            let mut levels: Vec<&[Expr]> = Vec::new();
+            // then reverse. For nested arrays arr[i][j] the chain is
+            // Index(Index(Named(arr), [i]), [j]): we collect [[j], [i]],
+            // reverse to [[i], [j]], flatten to [i, j].
+            let mut levels: Vec<&[S]> = Vec::new();
             let mut current = array_var;
             loop {
                 levels.push(&current.subscripts);
-                match current.subscripted_variable.as_ref() {
-                    SymbolicVariableKind::Array(inner) => {
+                match current.array.as_ref() {
+                    Access::Index(inner) => {
                         current = inner;
                     }
-                    SymbolicVariableKind::Named(named) => {
+                    Access::Named(name) => {
                         levels.reverse();
-                        let all_subscripts: Vec<&Expr> = levels.into_iter().flatten().collect();
-                        let info = ctx.array_var(&named.name).ok_or_else(|| {
+                        let all_subscripts: Vec<S> =
+                            levels.into_iter().flatten().cloned().collect();
+                        let info = ctx.array_var(name).ok_or_else(|| {
                             // An element of an array of structures spans
                             // several slots, so it has no single-value load or
                             // store; only its fields are addressable.
-                            if ctx.struct_array_var(&named.name).is_some() {
+                            if ctx.struct_array_var(name).is_some() {
                                 Diagnostic::not_implemented(Label::span(
-                                    named.name.span(),
+                                    name.span(),
                                     format!(
                                         "Whole-element access of '{}' -- select a field of the element instead",
-                                        named.name
+                                        name
                                     ),
                                 ))
                             } else {
-                                Diagnostic::todo_with_span(named.name.span())
+                                Diagnostic::todo_with_span(name.span())
                             }
                         })?;
                         return Ok(ResolvedAccess::ArrayElement {
@@ -208,21 +184,21 @@ pub(crate) fn resolve_symbolic_access<'ctx, 'ast>(
                             subscripts: all_subscripts,
                         });
                     }
-                    SymbolicVariableKind::Deref(deref) => {
+                    Access::Deref(deref) => {
                         // Dereference in array chain (e.g., PT^[0] where PT is REF_TO ARRAY).
                         // Walk through the deref to find the base variable name.
-                        let mut inner = deref.variable.as_ref();
-                        while let SymbolicVariableKind::Deref(d) = inner {
-                            inner = d.variable.as_ref();
+                        let mut inner = deref.as_ref();
+                        while let Access::Deref(d) = inner {
+                            inner = d.as_ref();
                         }
                         match inner {
-                            SymbolicVariableKind::Named(named) => {
+                            Access::Named(name) => {
                                 levels.reverse();
-                                let all_subscripts: Vec<&Expr> =
-                                    levels.into_iter().flatten().collect();
+                                let all_subscripts: Vec<S> =
+                                    levels.into_iter().flatten().cloned().collect();
                                 let info = ctx
-                                    .array_var(&named.name)
-                                    .ok_or_else(|| Diagnostic::todo_with_span(named.name.span()))?;
+                                    .array_var(name)
+                                    .ok_or_else(|| Diagnostic::todo_with_span(name.span()))?;
                                 return Ok(ResolvedAccess::DerefArrayElement {
                                     info,
                                     subscripts: all_subscripts,
@@ -233,9 +209,10 @@ pub(crate) fn resolve_symbolic_access<'ctx, 'ast>(
                             }
                         }
                     }
-                    SymbolicVariableKind::Structured(structured) => {
+                    Access::Field(structured) => {
                         levels.reverse();
-                        let all_subscripts: Vec<&Expr> = levels.into_iter().flatten().collect();
+                        let all_subscripts: Vec<S> =
+                            levels.into_iter().flatten().cloned().collect();
                         // `a[i].values[j]` -- the record is itself an array
                         // element, so the subscripts collected here index the
                         // *field*, and the element index is still inside the
@@ -249,16 +226,13 @@ pub(crate) fn resolve_symbolic_access<'ctx, 'ast>(
                         }
                         return resolve_struct_field_array(ctx, structured, all_subscripts);
                     }
-                    other => {
-                        return Err(Diagnostic::todo_with_span(other.span()));
-                    }
                 }
             }
         }
         // `s.arr[i].field` and `arr[i].inner.field` -- a field selected
         // from an element of an array-of-struct. The element is not at a
         // fixed offset, so it resolves through the array path.
-        SymbolicVariableKind::Structured(structured)
+        Access::Field(structured)
             if crate::compile_array_struct::element_field_chain(structured).is_some() =>
         {
             crate::compile_array_struct::resolve_struct_array_element_field(
@@ -267,14 +241,16 @@ pub(crate) fn resolve_symbolic_access<'ctx, 'ast>(
                 Vec::new(),
             )
         }
-        SymbolicVariableKind::Named(named) => {
-            if let Some(ref_slot) = ctx.in_out_ref_slot(&named.name) {
+        Access::Named(name) => {
+            if let Some(ref_slot) = ctx.in_out_ref_slot(name) {
                 return Ok(ResolvedAccess::InOut { ref_slot });
             }
-            let var_index = ctx.var_index(&named.name)?;
+            let var_index = ctx.var_index(name)?;
             Ok(ResolvedAccess::Scalar { var_index })
         }
-        other => Err(Diagnostic::todo_with_span(other.span())),
+        // A field of a structure is at a fixed offset, which `Place::resolve`
+        // addresses, and a whole referenced value has no access kind.
+        Access::Field(_) | Access::Deref(_) => Err(Diagnostic::todo_with_span(access.span())),
     }
 }
 
@@ -284,11 +260,11 @@ pub(crate) fn resolve_symbolic_access<'ctx, 'ast>(
 /// struct chain to get the field's slot offset and type, extract array dimension
 /// info, and return a `StructFieldArrayElement` that the caller uses to emit
 /// `flat_index + slot_offset` followed by the struct's LOAD_ARRAY/STORE_ARRAY.
-pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
+pub(crate) fn resolve_struct_field_array<'ctx, S>(
     ctx: &'ctx CompileContext,
-    structured: &ironplc_dsl::textual::StructuredVariable,
-    subscripts: Vec<&'ast Expr>,
-) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
+    structured: &Field<S>,
+    subscripts: Vec<S>,
+) -> Result<ResolvedAccess<'ctx, S>, Diagnostic> {
     let (root_name, slot_offset, field_type) =
         crate::compile_struct::walk_struct_chain(ctx, &structured.record, &structured.field, 0)?;
 
@@ -305,14 +281,14 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
 
     let struct_info = ctx.struct_var(&root_name).ok_or_else(|| {
         Diagnostic::not_implemented(Label::span(
-            structured.span(),
+            structured.field.span(),
             format!("Variable '{}' is not a structure", root_name),
         ))
     })?;
 
     // STRING array fields use dedicated STR_LOAD/STORE_ARRAY_ELEM opcodes
     // with a scratch variable and a STRING-specific array descriptor.
-    if let SemanticType::String { char_width, .. } = element_type.as_ref() {
+    if let SemanticType::String { .. } = element_type.as_ref() {
         let field_name = structured.field.to_string().to_lowercase();
         let &(str_desc_index, _, _) =
             struct_info
@@ -339,7 +315,6 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
                 scratch_var_index: scratch,
                 string_desc_index: str_desc_index,
                 field_byte_offset,
-                char_width: *char_width,
                 dimensions,
                 subscripts,
             },

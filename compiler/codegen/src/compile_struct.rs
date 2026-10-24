@@ -6,9 +6,9 @@
 
 use std::collections::HashMap;
 
+use crate::access::{Access, Field};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{StructuredVariable, SymbolicVariableKind};
 
 use ironplc_analyzer::semantic_type::{
     ByteSized, SemanticStructField, SemanticType, SlotCountError,
@@ -210,22 +210,22 @@ pub(crate) fn find_field_in_type(
 /// compilation.
 const MAX_STRUCT_CHAIN_DEPTH: u32 = 32;
 
-/// Resolves a `StructuredVariable` AST node to the information needed for
+/// Resolves the field `structured` names to the information needed for
 /// code emission: variable table index, array descriptor index, compile-time
 /// slot offset, op type, and field type.
 ///
-/// The returned `SemanticType` enables callers (PR 5 store path) to
-/// derive truncation information from the field's type.
-pub(crate) fn resolve_struct_field_access(
+/// The returned `SemanticType` lets a caller derive the truncation of a
+/// store from the field's type.
+pub(crate) fn resolve_struct_field_access<S>(
     ctx: &CompileContext,
-    structured: &StructuredVariable,
+    structured: &Field<S>,
 ) -> Result<(VarIndex, u16, SlotIndex, OpType, SemanticType), Diagnostic> {
     let (root_name, slot_offset, field_type) =
         walk_struct_chain(ctx, &structured.record, &structured.field, 0)?;
 
     let struct_info = ctx.struct_var(&root_name).ok_or_else(|| {
         Diagnostic::not_implemented(Label::span(
-            structured.span(),
+            structured.field.span(),
             format!("Variable '{}' is not a structure", root_name),
         ))
     })?;
@@ -246,16 +246,16 @@ pub(crate) fn resolve_struct_field_access(
     ))
 }
 
-/// Walks a `StructuredVariable` AST chain to resolve the root variable name,
-/// accumulated slot offset, and leaf field type.
+/// Walks a chain of fields, `record.field`, to resolve the root variable
+/// name, accumulated slot offset, and leaf field type.
 ///
 /// - **Base case** (`Named`): looks up the field in `ctx.struct_vars`.
-/// - **Recursive case** (`Structured`): recurses to resolve the parent, then
+/// - **Recursive case** (`Field`): recurses to resolve the parent, then
 ///   uses `find_field_in_type` to resolve the current field within the parent
 ///   type, accumulating slot offsets.
-pub(crate) fn walk_struct_chain(
+pub(crate) fn walk_struct_chain<S>(
     ctx: &CompileContext,
-    record: &SymbolicVariableKind,
+    record: &Access<S>,
     field: &Id,
     depth: u32,
 ) -> Result<(Id, SlotIndex, SemanticType), Diagnostic> {
@@ -267,11 +267,11 @@ pub(crate) fn walk_struct_chain(
     }
 
     match record {
-        SymbolicVariableKind::Named(named) => {
-            let struct_info = ctx.struct_var(&named.name).ok_or_else(|| {
+        Access::Named(name) => {
+            let struct_info = ctx.struct_var(name).ok_or_else(|| {
                 Diagnostic::not_implemented(Label::span(
-                    named.name.span(),
-                    format!("Variable '{}' is not a structure", named.name),
+                    name.span(),
+                    format!("Variable '{}' is not a structure", name),
                 ))
             })?;
             let field_name = field.to_string().to_lowercase();
@@ -283,12 +283,12 @@ pub(crate) fn walk_struct_chain(
             })?;
             let field_info = &struct_info.fields[field_idx];
             Ok((
-                named.name.clone(),
+                name.clone(),
                 field_info.slot_offset,
                 field_info.field_type.clone(),
             ))
         }
-        SymbolicVariableKind::Structured(inner) => {
+        Access::Field(inner) => {
             let (root, parent_offset, parent_type) =
                 walk_struct_chain(ctx, &inner.record, &inner.field, depth + 1)?;
 
@@ -307,11 +307,10 @@ pub(crate) fn walk_struct_chain(
                 field_type,
             ))
         }
-        // An `Array` record (`arr[i].field`, `s.items[i].field`) is resolved by
-        // `compile_array_struct` before the callers reach this walk; the
-        // remaining kinds (bit and partial access, deref, self) cannot own a
-        // field, so nothing is left to resolve here.
-        _ => Err(Diagnostic::todo_with_span(record.span())),
+        // An `Index` record (`arr[i].field`, `s.items[i].field`) is resolved
+        // by `compile_array_struct` before the callers reach this walk, and
+        // a dereference owns no field of a structure the layout reaches.
+        Access::Index(_) | Access::Deref(_) => Err(Diagnostic::todo_with_span(record.span())),
     }
 }
 

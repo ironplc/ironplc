@@ -9,12 +9,12 @@
 //! Separated from `compile_array.rs`, whose arrays hold one value per slot, to
 //! keep module sizes within the 1000-line guideline.
 
+use crate::access::{Access, Field};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{Expr, SymbolicVariableKind};
 
 use ironplc_analyzer::semantic_type::{ArrayDimension, SemanticStructField, SemanticType};
-use ironplc_container::{CharWidth, ContainerBuilder, FieldType, SlotIndex, VarIndex};
+use ironplc_container::{ContainerBuilder, FieldType, SlotIndex, VarIndex};
 
 use super::compile::CompileContext;
 use super::compile_array::{dimensions_from_semantic_type, ResolvedAccess, StructStringElement};
@@ -82,26 +82,20 @@ struct ArrayOfStructRegion<'ctx> {
 /// to the element's field, whose record is the array element, and the fields
 /// selected after it, outermost first, ending with `structured`'s own; `None`
 /// when no array element is under the chain of fields.
-pub(crate) fn element_field_chain(
-    structured: &ironplc_dsl::textual::StructuredVariable,
-) -> Option<(&ironplc_dsl::textual::StructuredVariable, Vec<&Id>)> {
+pub(crate) fn element_field_chain<S>(structured: &Field<S>) -> Option<(&Field<S>, Vec<&Id>)> {
     let mut fields = vec![&structured.field];
     let mut current = structured;
     loop {
         match current.record.as_ref() {
-            SymbolicVariableKind::Array(_) => {
+            Access::Index(_) => {
                 fields.reverse();
                 return Some((current, fields));
             }
-            SymbolicVariableKind::Structured(record) => {
+            Access::Field(record) => {
                 fields.push(&record.field);
                 current = record;
             }
-            SymbolicVariableKind::Named(_)
-            | SymbolicVariableKind::Deref(_)
-            | SymbolicVariableKind::BitAccess(_)
-            | SymbolicVariableKind::PartialAccess(_)
-            | SymbolicVariableKind::SelfRef(_) => return None,
+            Access::Named(_) | Access::Deref(_) => return None,
         }
     }
 }
@@ -117,14 +111,14 @@ pub(crate) fn element_field_chain(
 /// `field_subscripts` carries the subscripts applied to the selected field, so
 /// that `a[i].values[j]` -- an array inside the element structure -- resolves
 /// here too. It is empty for a plain `a[i].field`.
-pub(crate) fn resolve_struct_array_element_field<'ctx, 'ast>(
+pub(crate) fn resolve_struct_array_element_field<'ctx, S: Clone>(
     ctx: &'ctx CompileContext,
-    structured: &'ast ironplc_dsl::textual::StructuredVariable,
-    field_subscripts: Vec<&'ast Expr>,
-) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
+    structured: &Field<S>,
+    field_subscripts: Vec<S>,
+) -> Result<ResolvedAccess<'ctx, S>, Diagnostic> {
     let (element, fields) = element_field_chain(structured).ok_or_else(|| {
         Diagnostic::internal_error_at(Label::span(
-            structured.span(),
+            structured.field.span(),
             "Structure field access is not on an array element",
         ))
     })?;
@@ -167,7 +161,7 @@ fn element_field(
 }
 
 /// An array of structures, located from the record of `<array>[i].field`.
-struct LocatedArrayOfStruct<'ctx, 'ast> {
+struct LocatedArrayOfStruct<'ctx, S> {
     /// The variable whose data region holds the array.
     region: ArrayOfStructRegion<'ctx>,
     /// Slot offset of element 0 within the region.
@@ -177,7 +171,7 @@ struct LocatedArrayOfStruct<'ctx, 'ast> {
     /// Array bounds, in element units.
     dimensions: Vec<ArrayDimension>,
     /// The element subscripts, outermost first.
-    subscripts: Vec<&'ast Expr>,
+    subscripts: Vec<S>,
     /// Where the array is named, for diagnostics.
     span: SourceSpan,
 }
@@ -186,35 +180,35 @@ struct LocatedArrayOfStruct<'ctx, 'ast> {
 ///
 /// The array itself is either a field of a structure or a variable in its own
 /// right.
-fn locate_array_of_struct<'ctx, 'ast>(
+fn locate_array_of_struct<'ctx, S: Clone>(
     ctx: &'ctx CompileContext,
-    structured: &'ast ironplc_dsl::textual::StructuredVariable,
-) -> Result<LocatedArrayOfStruct<'ctx, 'ast>, Diagnostic> {
+    structured: &Field<S>,
+) -> Result<LocatedArrayOfStruct<'ctx, S>, Diagnostic> {
     // Every caller checks that `record` is an array subscript.
-    let SymbolicVariableKind::Array(array_var) = structured.record.as_ref() else {
+    let Access::Index(array_var) = structured.record.as_ref() else {
         return Err(Diagnostic::internal_error_at(Label::span(
-            structured.span(),
+            structured.field.span(),
             "Structure field access is not on an array element",
         )));
     };
 
     // Collect subscript groups innermost-first, then reverse -- the same
     // walk `resolve_access` performs for plain array chains.
-    let mut levels: Vec<&[Expr]> = Vec::new();
+    let mut levels: Vec<&[S]> = Vec::new();
     let mut current = array_var;
     let base = loop {
         levels.push(&current.subscripts);
-        match current.subscripted_variable.as_ref() {
-            SymbolicVariableKind::Array(inner) => current = inner,
-            SymbolicVariableKind::Structured(base) => break ArrayOfStructBase::Field(base),
-            SymbolicVariableKind::Named(named) => break ArrayOfStructBase::Variable(&named.name),
-            other => {
+        match current.array.as_ref() {
+            Access::Index(inner) => current = inner,
+            Access::Field(base) => break ArrayOfStructBase::Field(base),
+            Access::Named(name) => break ArrayOfStructBase::Variable(name),
+            other @ Access::Deref(_) => {
                 return Err(Diagnostic::todo_with_span(other.span()));
             }
         }
     };
     levels.reverse();
-    let subscripts: Vec<&Expr> = levels.into_iter().flatten().collect();
+    let subscripts: Vec<S> = levels.into_iter().flatten().cloned().collect();
 
     match base {
         ArrayOfStructBase::Field(base) => {
@@ -234,7 +228,7 @@ fn locate_array_of_struct<'ctx, 'ast>(
 
             let struct_info = ctx.struct_var(&root_name).ok_or_else(|| {
                 Diagnostic::not_implemented(Label::span(
-                    structured.span(),
+                    structured.field.span(),
                     format!("Variable '{}' is not a structure", root_name),
                 ))
             })?;
@@ -279,11 +273,11 @@ fn locate_array_of_struct<'ctx, 'ast>(
 }
 
 /// What an array-of-struct subscript chain bottoms out in.
-enum ArrayOfStructBase<'ast> {
+enum ArrayOfStructBase<'a, S> {
     /// An array field of a structure, as in `holder.items[i]`.
-    Field(&'ast ironplc_dsl::textual::StructuredVariable),
+    Field(&'a Field<S>),
     /// A variable that is itself an array of structures, as in `items[i]`.
-    Variable(&'ast Id),
+    Variable(&'a Id),
 }
 
 /// Builds the access for `<array-of-struct>[i].field`.
@@ -311,16 +305,16 @@ enum ArrayOfStructBase<'ast> {
 /// A STRING leaf is the exception: it has no single-slot load or store, so it
 /// resolves through [`string_element_field`] instead.
 #[allow(clippy::too_many_arguments)]
-fn struct_array_element_field<'ctx, 'ast>(
+fn struct_array_element_field<'ctx, S>(
     region: ArrayOfStructRegion<'ctx>,
     base_slot_offset: u32,
     element_type: &SemanticType,
     array_dims: &[ArrayDimension],
     fields: &[&Id],
-    element_subscripts: Vec<&'ast Expr>,
-    field_subscripts: Vec<&'ast Expr>,
+    element_subscripts: Vec<S>,
+    field_subscripts: Vec<S>,
     array_span: &SourceSpan,
-) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
+) -> Result<ResolvedAccess<'ctx, S>, Diagnostic> {
     // The field selected last, which the access reads or writes.
     let Some(&field) = fields.last() else {
         return Err(Diagnostic::internal_error_at(Label::span(
@@ -347,22 +341,13 @@ fn struct_array_element_field<'ctx, 'ast>(
 
     let (leaf_slot_offset, leaf_type) = element_field(element_type, fields)?;
 
-    if let (true, SemanticType::String { char_width, .. }) =
-        (field_subscripts.is_empty(), &leaf_type)
-    {
+    if let (true, SemanticType::String { .. }) = (field_subscripts.is_empty(), &leaf_type) {
         let slot_offset = base_slot_offset
             .checked_add(leaf_slot_offset.raw())
             .ok_or_else(|| {
                 Diagnostic::not_supported(Label::span(array_span.clone(), "Array too large"))
             })?;
-        return string_element_field(
-            &region,
-            slot_offset,
-            *char_width,
-            array_dims,
-            element_subscripts,
-            field,
-        );
+        return string_element_field(&region, slot_offset, array_dims, element_subscripts, field);
     }
 
     // Scale strides so the emitted flat index counts slots, not elements.
@@ -447,14 +432,13 @@ fn struct_array_element_field<'ctx, 'ast>(
 /// for it at declaration carries that stride, so the VM computes
 /// `base + flat_index * stride` itself and bounds-checks the element index.
 /// The flat index therefore counts elements: the dimensions stay unscaled.
-fn string_element_field<'ctx, 'ast>(
+fn string_element_field<'ctx, S>(
     region: &ArrayOfStructRegion<'ctx>,
     slot_offset: u32,
-    char_width: CharWidth,
     array_dims: &[ArrayDimension],
-    element_subscripts: Vec<&'ast Expr>,
+    element_subscripts: Vec<S>,
     field: &Id,
-) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
+) -> Result<ResolvedAccess<'ctx, S>, Diagnostic> {
     let entry = region
         .element_strings
         .iter()
@@ -480,7 +464,6 @@ fn string_element_field<'ctx, 'ast>(
             scratch_var_index,
             string_desc_index: entry.desc_index,
             field_byte_offset,
-            char_width,
             dimensions: dimensions_from_semantic_type(array_dims),
             subscripts: element_subscripts,
         },
