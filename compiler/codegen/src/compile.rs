@@ -507,7 +507,6 @@ fn compile_program_with_functions(
     ctx.lowered_route = Some(lowered_route);
     ctx.types = crate::type_info::type_representations(types);
     ctx.block_members = ironplc_lowering::initial_value::block_members(types);
-    ctx.operand_names = crate::type_info::operand_names(types);
     ctx.standard_blocks = crate::compile_call::standard_blocks_by_name(types);
     ctx.builtin_functions = crate::compile_call::builtin_functions_by_name(functions);
     ctx.method_owners = method_owners.clone();
@@ -1100,15 +1099,11 @@ pub(crate) struct CompileContext {
     /// The descriptor that sizes the whole array or structure each
     /// reference variable whose target is an array or a structure refers to.
     pub(crate) region_refs: Scoped<u16>,
-    /// What every type is, by the id an expression's `expr_type` carries.
-    /// See [`crate::type_info::expr_type_info`].
+    /// What every type is, by its id.
     pub(crate) types: HashMap<ironplc_dsl::type_id::TypeId, SemanticType>,
     /// What an instance's value is read against: see
     /// [`ironplc_lowering::initial_value::block_members`].
     pub(crate) block_members: ironplc_lowering::initial_value::BlockMembers,
-    /// The name the arithmetic overloads know a value of each type by.
-    /// See [`crate::type_info::expr_operand_name`].
-    pub(crate) operand_names: HashMap<ironplc_dsl::type_id::TypeId, ironplc_dsl::common::TypeName>,
     /// The operation each standard function stands for, by name, as the
     /// analyzer's function environment states it. A call of a name that is
     /// not here is a call of a user-defined function.
@@ -1185,9 +1180,6 @@ pub(crate) struct CompileContext {
     /// [`in_out_ref_slot`]: CompileContext::in_out_ref_slot
     /// [`var_index`]: CompileContext::var_index
     pub(crate) in_out_params: Scoped<()>,
-    /// Where the call whose outputs are being stored leaves them, for the
-    /// `CallOutput` each output stores; `None` outside a call's outputs.
-    pub(crate) call_outputs: Option<crate::compile_call_output::CallOutputs>,
 }
 
 /// Describes how a `RETURN` statement should yield the function's value.
@@ -1234,7 +1226,6 @@ impl CompileContext {
             next_user_fb_type_id: FIRST_USER_FB_TYPE_ID,
             types: HashMap::new(),
             block_members: HashMap::new(),
-            operand_names: HashMap::new(),
             builtin_functions: HashMap::new(),
             method_owners: MethodOwners::default(),
             string_to_num: StringToNumPolicies::default(),
@@ -1242,7 +1233,6 @@ impl CompileContext {
             current_function_return: None,
             current_function_id: None,
             call_graph: HashMap::new(),
-            call_outputs: None,
         }
     }
 

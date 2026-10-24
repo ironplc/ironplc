@@ -1,8 +1,7 @@
 //! The instructions of a function block call: the instance pushed once,
 //! each input stored in its field, the call, and the instance popped
 //! (`FB_LOAD_INSTANCE`, `FB_STORE_PARAM`, `FB_CALL`, `POP`). A call's
-//! outputs are stored after it, each in its target
-//! (`compile_call_output.rs`).
+//! outputs are stored after it, each in its target.
 
 use std::collections::HashMap;
 

@@ -1,18 +1,20 @@
-//! A subscript of an array access, whatever it is compiled from.
+//! A subscript of an array access.
 //!
 //! The flat index of an array element is computed from its subscripts in one
-//! way (`emit_flat_index`), whether they come from the AST or from the lowered
-//! program. [`Subscript`] is what that computation needs of one subscript.
+//! way (`emit_flat_index`). [`Subscript`] is what that computation needs of
+//! one subscript of the lowered program. A place is resolved through the
+//! variable reference it stands for, with an integer literal standing in for
+//! each subscript ([`integer_literal`]) until the lowered subscripts replace
+//! them.
 
 use ironplc_dsl::common::ConstantKind;
-use ironplc_dsl::core::{Located, SourceSpan};
+use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, ExprKind, UnaryOp};
 
 use ironplc_container::opcode;
 
 use super::compile::{CompileContext, OpType, OpWidth, Signedness};
-use super::compile_expr::{compile_expr, op_type};
 use crate::emit::Emitter;
 
 /// One subscript of an array access.
@@ -23,25 +25,6 @@ pub(crate) trait Subscript {
 
     /// Pushes the subscript's value, a `DINT`.
     fn emit(&self, emitter: &mut Emitter, ctx: &mut CompileContext) -> Result<(), Diagnostic>;
-}
-
-impl Subscript for &Expr {
-    fn literal(&self) -> Option<i32> {
-        integer_literal(self)
-    }
-
-    /// Compiles the subscript at its own type, which the analyzer converted
-    /// to `DINT` where its width differed.
-    fn emit(&self, emitter: &mut Emitter, ctx: &mut CompileContext) -> Result<(), Diagnostic> {
-        let own = op_type(ctx, self)?;
-        if own.0 != OpWidth::W32 {
-            return Err(Diagnostic::internal_error_at(Label::span(
-                self.span(),
-                "Array subscript of a width other than DINT's, and the analyzer recorded no conversion",
-            )));
-        }
-        compile_expr(emitter, ctx, self)
-    }
 }
 
 /// Emits the check of an array subscript of the type `from`, on the stack,
@@ -81,7 +64,7 @@ pub(crate) fn subscript_check(from: OpType, to: OpType) -> Option<u16> {
 
 /// Extracts an i32 value from an expression if it is a literal integer.
 /// Returns `None` for any non-literal expression.
-fn integer_literal(expr: &Expr) -> Option<i32> {
+pub(crate) fn integer_literal(expr: &Expr) -> Option<i32> {
     match &expr.kind {
         ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
             let unsigned = i32::try_from(lit.value.value.value).ok()?;

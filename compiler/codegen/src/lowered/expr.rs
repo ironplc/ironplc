@@ -104,8 +104,8 @@ pub(super) fn emit_expr(
             lhs,
             rhs,
         } => {
-            // As `compile_short_circuit` emits it: the right operand runs only
-            // when the left one does not decide the result.
+            // The right operand runs only when the left one does not decide
+            // the result.
             let alternative = emitter.create_label();
             let end = emitter.create_label();
             emit_expr(emitter, ctx, lowering, lhs)?;
@@ -201,9 +201,8 @@ pub(super) fn emit_operation(emitter: &mut Emitter, expr: &Expr) -> Result<(), D
 
 /// Calls the user-defined function `function` with `args`, the arguments it
 /// takes for its inputs and in-outs, at `span`, leaving its result on the
-/// stack: a value, or a string's buffer. As `compile_user_function_call`
-/// does, a string result's header is initialized before `CALL`, for the
-/// function's body to write to.
+/// stack: a value, or a string's buffer. A string result's header is
+/// initialized before `CALL`, for the function's body to write to.
 pub(super) fn emit_user_call<'s>(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,

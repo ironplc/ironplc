@@ -30,18 +30,12 @@
 //! let container = compile(analysis, &CodegenOptions::default(), &EmptyLookup).unwrap();
 //! ```
 
-mod call_args;
 mod call_graph;
 mod compile;
-mod compile_aggregate;
 mod compile_arith;
 mod compile_array;
 mod compile_array_struct;
-mod compile_assign;
-mod compile_builtin;
 mod compile_call;
-mod compile_call_output;
-mod compile_comparison;
 mod compile_enum;
 mod compile_expr;
 mod compile_fb_call;
@@ -52,14 +46,12 @@ mod compile_partial_access;
 mod compile_place;
 mod compile_reference;
 mod compile_setup;
-mod compile_short_circuit;
 mod compile_stmt;
 mod compile_string;
 mod compile_string_place;
 mod compile_struct;
 mod compile_struct_init;
 mod compile_subscript;
-mod compile_time_arith;
 mod compile_user_call;
 mod data_region;
 mod emit;
@@ -70,7 +62,6 @@ mod lowered;
 mod optimize;
 mod source_lookup;
 mod stack_balance;
-mod string_width;
 mod type_info;
 
 pub use compile::{compile, CodegenOptions, StringToNumPolicies};

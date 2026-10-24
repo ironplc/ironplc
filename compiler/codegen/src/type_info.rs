@@ -8,10 +8,8 @@
 
 use std::collections::HashMap;
 
-use ironplc_analyzer::value_type::operand_type_name;
 use ironplc_dsl::common::{ElementaryTypeName, TypeName, VarDecl};
 use ironplc_dsl::core::Id;
-use ironplc_dsl::textual::{Expr, ExprType};
 use ironplc_dsl::type_id::TypeId;
 
 use ironplc_analyzer::semantic_type::SemanticType;
@@ -27,47 +25,6 @@ pub(crate) fn type_representations(types: &TypeEnvironment) -> HashMap<TypeId, S
         .iter_ids()
         .map(|(id, attributes)| (id, attributes.representation.clone()))
         .collect()
-}
-
-/// The name the analyzer's name-based relations (the arithmetic overloads)
-/// know a value of each type by, by id: `value_type::operand_type_name`,
-/// computed once so codegen derives it the same way the analyzer does.
-pub(crate) fn operand_names(types: &TypeEnvironment) -> HashMap<TypeId, TypeName> {
-    types
-        .iter_ids()
-        .filter_map(|(id, _)| {
-            let name = operand_type_name(types, &ExprType::Concrete(id))?;
-            Some((id, name))
-        })
-        .collect()
-}
-
-/// The name the arithmetic overloads know an expression's value by, from
-/// its `expr_type` (see [`operand_names`]).
-///
-/// `None` for an untyped literal: the analyzer types every numeric literal
-/// (ADR-0056), so one that reaches here untyped is an operand it did not
-/// resolve.
-pub(crate) fn expr_operand_name(ctx: &CompileContext, expr: &Expr) -> Option<TypeName> {
-    match expr.expr_type.as_ref()? {
-        ExprType::Concrete(id) | ExprType::Inferred(id) => ctx.operand_names.get(id).cloned(),
-        ExprType::Literal(_) | ExprType::Null => None,
-    }
-}
-
-/// The `VarTypeInfo` of an expression's value, from its `expr_type`.
-///
-/// `None` when the analyzer resolved no type for the expression, or when its
-/// type is not one this backend operates on arithmetically (a string, or a
-/// composite type). An untyped literal has none: the analyzer types every
-/// numeric literal (ADR-0056), and a string literal is not operated on.
-pub(crate) fn expr_type_info(ctx: &CompileContext, expr: &Expr) -> Option<VarTypeInfo> {
-    match expr.expr_type.as_ref()? {
-        ExprType::Concrete(id) | ExprType::Inferred(id) => operand_type_info(ctx.types.get(id)?),
-        ExprType::Literal(_) => None,
-        // NULL is compared and stored as the reference it stands in for.
-        ExprType::Null => Some(reference_type_info()),
-    }
 }
 
 /// The `VarTypeInfo` of the type a declaration declares, from its
@@ -87,18 +44,6 @@ pub(crate) fn named_type_info(
     type_name: &TypeName,
 ) -> Option<VarTypeInfo> {
     operand_type_info(ctx.types.get(&types.id_of(type_name)?)?)
-}
-
-/// What an expression's value is, from its `expr_type`, when it has a
-/// concrete type.
-pub(crate) fn expr_representation<'a>(
-    ctx: &'a CompileContext,
-    expr: &Expr,
-) -> Option<&'a SemanticType> {
-    match expr.expr_type.as_ref()? {
-        ExprType::Concrete(id) | ExprType::Inferred(id) => ctx.types.get(id),
-        ExprType::Literal(_) | ExprType::Null => None,
-    }
 }
 
 /// The `VarTypeInfo` a value of a type operates with. Every enumeration

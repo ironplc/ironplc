@@ -67,9 +67,8 @@ pub(super) fn emit_passed<'s>(
                 let Arg::Str(value) = arg else {
                     return Err(not_passed(span));
                 };
-                // Put in a slot as `resolve_string_arg` puts it: a string
-                // variable is its own slot, and any other string is computed
-                // into a temporary slot of its capacity.
+                // A string variable is its own slot, and any other string is
+                // computed into a temporary slot of its capacity.
                 copy_string_arg(emitter, ctx, param, |emitter, ctx| {
                     str_arg_offset(emitter, ctx, lowering, value)
                 })?;
