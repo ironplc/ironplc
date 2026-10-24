@@ -529,6 +529,13 @@ Programs that keep working: `t1 + t2`, `t + lt`, `lt + LTIME#1s`, `dt + t`,
 - The standard's same-type rule for the numeric overload is relaxed to the
   project's implicit widening, as it already is for function arguments. A
   strict mode is not proposed.
+- A lossy conversion of `DINT` or a wider integer to `REAL`, which TwinCAT
+  accepts with the warning "Implicit conversion from 'DINT' to 'REAL':
+  possible loss of information", is not admitted in any dialect: `d / 2.0`
+  and `d / r` on a `DINT` stay P4049 (decided on
+  [#2067](https://github.com/ironplc/ironplc/issues/2067)). If a program
+  needs it, it is a flag the TwinCAT dialect enables, matching what TwinCAT
+  computes, not a change to the lossless rule of ADR-0031.
 - A call to a typed name on operands of the other width, `ADD_TIME(lt1, lt2)`,
   is accepted by the call rule today because the predicate treats the widths
   of a family as interchangeable, and computes at the typed name's width. That
