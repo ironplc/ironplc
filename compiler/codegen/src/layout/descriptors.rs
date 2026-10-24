@@ -171,7 +171,7 @@ impl<'a> Descriptors<'a> {
                 } else {
                     // A name the AST layout does not know as an elementary
                     // type is operated as a 32-bit unsigned element.
-                    super::lowered::slot_type(types, *element).unwrap_or(VarTypeInfo {
+                    crate::lowered::slot_type(types, *element).unwrap_or(VarTypeInfo {
                         op_width: OpWidth::W32,
                         signedness: Signedness::Unsigned,
                         storage_bits: 32,
@@ -272,7 +272,7 @@ impl<'a> Descriptors<'a> {
             let element_type = if matches!(types.kind(*element)?, TypeKind::Reference { .. }) {
                 REFERENCE_TYPE
             } else {
-                super::lowered::slot_type(types, *element)?
+                crate::lowered::slot_type(types, *element)?
             };
             let byte = var_type_info_to_type_byte(&element_type);
             (element_type, ArrayDescriptor::new(byte, total, 0))

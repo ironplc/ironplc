@@ -6,6 +6,7 @@
 use ironplc_container::VarIndex;
 use ironplc_dsl::core::{Id, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_ir::lowered::TypeTable;
 
 use super::compile::{CompileContext, OpType, OpWidth};
 use super::compile_expr::emit_store_var;
@@ -15,15 +16,18 @@ use crate::emit::Emitter;
 /// starting value is stored (REQ-LOW-codegen-200): the data-region offset
 /// the slot of an aggregate or an instance holds, the offset of each
 /// instance an instance's fields hold, and the header of each string it
-/// holds. A scalar's slot needs none.
+/// holds, of its type in `types`. A scalar's slot needs none.
 pub(crate) fn set_up_storage(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
+    types: &TypeTable,
     id: &Id,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
     if let Some(info) = ctx.struct_var(id).cloned() {
-        return crate::compile_struct_init::set_up_struct_variable(emitter, ctx, &info, span);
+        return crate::compile_struct_init::set_up_struct_variable(
+            emitter, ctx, types, &info, span,
+        );
     }
     if let Some(info) = ctx.struct_array_var(id).cloned() {
         return crate::compile_struct_init::set_up_struct_array_variable(emitter, ctx, &info, span);

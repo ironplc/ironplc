@@ -201,7 +201,7 @@ pub(super) fn string_at(data_offset: u32, shape: StringShape) -> Option<StringVa
 }
 
 /// The capacity and width of the strings of the shape `shape`.
-pub(super) fn string_shape(shape: StringShape) -> Option<(u16, CharWidth)> {
+pub(crate) fn string_shape(shape: StringShape) -> Option<(u16, CharWidth)> {
     let char_width = match shape.encoding {
         Encoding::Narrow => CharWidth::Narrow,
         Encoding::Wide => CharWidth::Wide,
@@ -210,7 +210,7 @@ pub(super) fn string_shape(shape: StringShape) -> Option<(u16, CharWidth)> {
 }
 
 /// How many elements an array of the type `ty` has, across its dimensions.
-pub(super) fn elements(types: &TypeTable, ty: TypeId) -> Option<u32> {
+pub(crate) fn elements(types: &TypeTable, ty: TypeId) -> Option<u32> {
     let TypeKind::Array { dimensions, .. } = types.kind(ty)? else {
         return None;
     };
@@ -225,7 +225,7 @@ pub(super) fn elements(types: &TypeTable, ty: TypeId) -> Option<u32> {
 /// one for a scalar or a reference, the sum of its fields' for a structure,
 /// its elements' for an array, and enough for the header and the
 /// characters of a string. A function block or a program has none.
-pub(super) fn slots(types: &TypeTable, ty: TypeId) -> Option<u32> {
+pub(crate) fn slots(types: &TypeTable, ty: TypeId) -> Option<u32> {
     match types.kind(ty)? {
         TypeKind::Bool
         | TypeKind::Integer { .. }

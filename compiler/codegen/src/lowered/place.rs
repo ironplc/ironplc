@@ -89,7 +89,7 @@ pub(super) fn resolve_load<'l>(
     if let Access::Named(_) = deref.as_ref() {
         return storage(lowering, ctx, place, &access).map(Load::Stored);
     }
-    Place::resolve(ctx, deref).map(Load::Referenced)
+    Place::resolve(lowering.types(), ctx, deref).map(Load::Referenced)
 }
 
 /// Where codegen's layout stores `place`, which `access` names.
@@ -104,7 +104,7 @@ fn storage<'l>(
         let target = type_info(lowering.types(), place.ty());
         return Place::through_reference(ctx, deref, target);
     }
-    Place::resolve(ctx, access)
+    Place::resolve(lowering.types(), ctx, access)
 }
 
 /// The name of the variable `place` is the whole of, as this backend's
@@ -227,7 +227,9 @@ pub(super) fn resolve_string<'l>(
     let access = access(lowering, ctx, place).ok_or_else(|| no_storage(span))?;
     match StringPlace::through_reference(ctx, &access) {
         Some(string) => Ok(string),
-        None => StringPlace::resolve(ctx, &access)?.ok_or_else(|| no_storage(span)),
+        None => {
+            StringPlace::resolve(lowering.types(), ctx, &access)?.ok_or_else(|| no_storage(span))
+        }
     }
 }
 
@@ -341,4 +343,17 @@ pub(crate) fn type_info(types: &TypeTable, ty: TypeId) -> Option<VarTypeInfo> {
         signedness,
         storage_bits,
     })
+}
+
+/// The type a slot holding a value of the lowered type `ty` is operated
+/// at. A `BOOL` holds one bit of value, which also marks it for the
+/// conversion path (`type_info.rs`).
+pub(crate) fn slot_type(types: &TypeTable, ty: TypeId) -> Option<VarTypeInfo> {
+    match types.kind(ty) {
+        Some(TypeKind::Bool) => Some(VarTypeInfo {
+            storage_bits: 1,
+            ..type_info(types, ty)?
+        }),
+        _ => type_info(types, ty),
+    }
 }
