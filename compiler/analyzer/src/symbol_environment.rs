@@ -60,7 +60,7 @@ impl ScopeTracker {
     fn name_of(node: &ScopeNode<'_>) -> Id {
         match node {
             ScopeNode::Function(node) => node.name.clone(),
-            ScopeNode::FunctionBlock(node) => node.name.name.clone(),
+            ScopeNode::FunctionBlock(node) => node.name.id.clone(),
             ScopeNode::Program(node) => node.name.clone(),
             // An accessor is named after its property, so GET and SET would
             // share a scope; the accessor keeps them apart. `.` cannot
@@ -763,12 +763,12 @@ impl SymbolEnvironment {
             .function_block(unit)
             .and_then(|info| info.extends.as_ref())
         {
-            if seen.contains(&base.name) {
+            if seen.contains(&base.id) {
                 break;
             }
-            seen.push(base.name.clone());
-            scopes.push(ScopeKind::Named(ScopePath::new(vec![base.name.clone()])));
-            unit = &base.name;
+            seen.push(base.id.clone());
+            scopes.push(ScopeKind::Named(ScopePath::new(vec![base.id.clone()])));
+            unit = &base.id;
         }
         scopes
     }

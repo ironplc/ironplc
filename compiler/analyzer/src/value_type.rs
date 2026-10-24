@@ -236,7 +236,7 @@ pub(crate) fn check(
 /// `ANY`, the category of every data type (`SIZEOF(a)`), and none for a
 /// narrower generic category such as `ANY_NUM`.
 fn composite_accepted(types: &TypeEnvironment, expected: &TypeName, id: TypeId) -> bool {
-    match GenericTypeName::try_from(&expected.name) {
+    match GenericTypeName::try_from(&expected.id) {
         Ok(GenericTypeName::Any) => return true,
         Ok(_) => return false,
         Err(_) => {}

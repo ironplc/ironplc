@@ -65,7 +65,7 @@ impl Value {
             }
             Value::Enumerated(value) => Value::Enumerated(EnumeratedValue {
                 type_name: value.type_name.map(|type_name| TypeName {
-                    name: type_name.name.with_position(SourceSpan::synthesized()),
+                    id: type_name.id.with_position(SourceSpan::synthesized()),
                 }),
                 value: value.value.with_position(SourceSpan::synthesized()),
                 explicit_value: None,

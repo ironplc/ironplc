@@ -299,7 +299,7 @@ pub fn compile(
         .iter()
         .filter_map(|e| {
             if let LibraryElementKind::FunctionBlockDeclaration(fb) = e {
-                reachable.contains(&fb.name.name).then_some(fb)
+                reachable.contains(&fb.name.id).then_some(fb)
             } else {
                 None
             }

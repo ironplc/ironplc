@@ -60,7 +60,7 @@ fn assign_system_globals(
             var_section: var_section::VAR_GLOBAL,
             iec_type_tag: resolve_iec_type_tag(types, &type_name),
             name: id.to_string(),
-            type_name: type_name.name.to_string().to_uppercase(),
+            type_name: type_name.id.to_string().to_uppercase(),
         });
     }
     Ok(())

@@ -166,7 +166,7 @@ pub(crate) fn push_local_var_name(
 /// itself a reference), and passing one by reference is not implemented.
 pub(crate) fn in_out_value_type(decl: &VarDecl) -> Result<VarTypeInfo, Diagnostic> {
     if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
-        if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
+        if let Some(type_info) = resolve_type_name(&simple.type_name.id) {
             return Ok(type_info);
         }
     }

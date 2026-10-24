@@ -136,7 +136,7 @@ fn collect_all_expr_types(resolved: &Resolved) -> Vec<Option<ironplc_dsl::common
 /// TypeEnvironment stores elementary types in lowercase, but IEC 61131-3
 /// type names are case-insensitive, so we normalize to uppercase for assertions.
 fn type_name_upper(tn: &Option<ironplc_dsl::common::TypeName>) -> Option<String> {
-    tn.as_ref().map(|t| t.name.original().to_uppercase())
+    tn.as_ref().map(|t| t.id.original().to_uppercase())
 }
 
 fn assert_type_eq(tn: &Option<ironplc_dsl::common::TypeName>, expected: &str) {

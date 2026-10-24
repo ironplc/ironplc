@@ -38,11 +38,11 @@ pub(crate) fn are_types_compatible(
     // Generic expected type (a standard-library parameter such as ANY_REAL,
     // ANY_NUM, or ANY_ELEMENTARY). The concrete or generic actual type must fall
     // within the generic category. See `is_compatible_with_generic_param`.
-    if let Ok(expected_generic) = GenericTypeName::try_from(&expected.name) {
+    if let Ok(expected_generic) = GenericTypeName::try_from(&expected.id) {
         return is_compatible_with_generic_param(&expected_generic, actual, options);
     }
-    if let Ok(generic) = GenericTypeName::try_from(&actual.name) {
-        if let Ok(elementary) = ElementaryTypeName::try_from(&expected.name) {
+    if let Ok(generic) = GenericTypeName::try_from(&actual.id) {
+        if let Ok(elementary) = ElementaryTypeName::try_from(&expected.id) {
             if generic.is_compatible_with(&elementary) {
                 return true;
             }
@@ -76,8 +76,8 @@ pub(crate) fn are_types_compatible(
     // Implicit widening: integer-to-integer, integer-to-real (lossless),
     // real-to-real (REAL → LREAL), bit-string-to-bit-string. See ADR-0029 and
     // ADR-0031.
-    if let Ok(actual_elem) = ElementaryTypeName::try_from(&actual.name) {
-        if let Ok(expected_elem) = ElementaryTypeName::try_from(&expected.name) {
+    if let Ok(actual_elem) = ElementaryTypeName::try_from(&actual.id) {
+        if let Ok(expected_elem) = ElementaryTypeName::try_from(&expected.id) {
             if actual_elem.can_widen_to(&expected_elem) {
                 return true;
             }
@@ -180,10 +180,10 @@ fn is_compatible_with_generic_param(
     actual: &TypeName,
     options: &CompilerOptions,
 ) -> bool {
-    if let Ok(actual_elem) = ElementaryTypeName::try_from(&actual.name) {
+    if let Ok(actual_elem) = ElementaryTypeName::try_from(&actual.id) {
         return expected.is_compatible_with(&actual_elem);
     }
-    if let Ok(actual_generic) = GenericTypeName::try_from(&actual.name) {
+    if let Ok(actual_generic) = GenericTypeName::try_from(&actual.id) {
         return generic_actual_satisfies(&actual_generic, expected, options);
     }
     false
@@ -229,8 +229,8 @@ fn generic_actual_satisfies(
 /// (enums, structures, function blocks, arrays, sized strings, references)
 /// return false so that a rule can skip them rather than report them.
 pub(crate) fn is_checkable_type(type_name: &TypeName) -> bool {
-    ElementaryTypeName::try_from(&type_name.name).is_ok()
-        || GenericTypeName::try_from(&type_name.name).is_ok()
+    ElementaryTypeName::try_from(&type_name.id).is_ok()
+        || GenericTypeName::try_from(&type_name.id).is_ok()
 }
 
 #[cfg(test)]

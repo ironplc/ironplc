@@ -65,7 +65,7 @@ pub(crate) fn register_reference_variable(
     var_index: VarIndex,
     ref_init: &ReferenceInitializer,
 ) -> Result<(), Diagnostic> {
-    let declaring = TypeName { name: id.clone() };
+    let declaring = TypeName { id: id.clone() };
     let target = types.resolve_reference_target(&declaring, &ref_init.target)?;
     register_reference_of_type(ctx, builder, id, var_index, &target)
 }

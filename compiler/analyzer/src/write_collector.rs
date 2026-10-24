@@ -176,7 +176,7 @@ impl WriteCollector<'_> {
                 .symbol_environment
                 .self_type(&self.current_scope(), SelfRefKind::This)
                 .and_then(|block| self.function_blocks.declaring_block(&block, name))
-                .map(|block| unit_scope(&block.name.name))
+                .map(|block| unit_scope(&block.name.id))
                 .unwrap_or(ScopeKind::Global),
         }
     }
@@ -225,7 +225,7 @@ impl WriteCollector<'_> {
     /// block is not a declaration and needs no mark.
     fn mark_member(&mut self, fb_type: &TypeName, field: &Id) {
         if let Some(block) = self.function_blocks.declaring_block(fb_type, field) {
-            self.mark_resolved(unit_scope(&block.name.name), field);
+            self.mark_resolved(unit_scope(&block.name.id), field);
         }
     }
 

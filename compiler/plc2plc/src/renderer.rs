@@ -552,7 +552,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         // "COLOR RED", found while adding explicit_value rendering below).
         match &node.type_name {
             Some(type_name) => {
-                self.write_ws(type_name.name.original().as_str());
+                self.write_ws(type_name.id.original().as_str());
                 self.write("#");
                 self.write(node.value.original().as_str());
             }
@@ -1313,7 +1313,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
                 if i > 0 {
                     self.write_ws(",");
                 }
-                self.visit_id(&base.name)?;
+                self.visit_id(&base.id)?;
             }
         }
         self.newline();

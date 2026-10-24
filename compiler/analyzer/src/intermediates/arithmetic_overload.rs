@@ -239,7 +239,7 @@ fn judged_as_numeric(op: &Operator, operand: &TypeName, options: &CompilerOption
     if !options.allow_bit_string_arithmetic || *op == Operator::Mod {
         return operand.clone();
     }
-    let unsigned = match ElementaryTypeName::try_from(&operand.name) {
+    let unsigned = match ElementaryTypeName::try_from(&operand.id) {
         Ok(ElementaryTypeName::BYTE) => "USINT",
         Ok(ElementaryTypeName::WORD) => "UINT",
         Ok(ElementaryTypeName::DWORD) => "UDINT",
@@ -260,7 +260,7 @@ impl<'a> OperandType<'a> {
     fn of(type_name: &'a TypeName) -> Self {
         OperandType {
             type_name,
-            elementary: ElementaryTypeName::try_from(&type_name.name).ok(),
+            elementary: ElementaryTypeName::try_from(&type_name.id).ok(),
         }
     }
 }
@@ -269,10 +269,7 @@ impl<'a> OperandType<'a> {
 /// parameter of type `param`: a short temporal type, or `ANY_NUM`.
 fn parameter_accepts(param: &str, operand: &OperandType<'_>) -> bool {
     let param = TypeName::from(param);
-    match (
-        ElementaryTypeName::try_from(&param.name),
-        &operand.elementary,
-    ) {
+    match (ElementaryTypeName::try_from(&param.id), &operand.elementary) {
         // A temporal parameter accepts its family at either width.
         (Ok(param), Some(actual)) => same_temporal_family(&param, actual),
         // A temporal parameter accepts nothing that is not elementary.

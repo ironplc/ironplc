@@ -90,16 +90,15 @@ impl<'a> Lowering<'a> {
     pub(crate) fn frame(&mut self, body: Body<'a>) -> Made<BodyFrame> {
         let (pou, path) = match body {
             Body::Program(program) => (self.named_pou(&program.name), vec![program.name.clone()]),
-            Body::FunctionBlock(block) => (
-                self.named_pou(&block.name.name),
-                vec![block.name.name.clone()],
-            ),
+            Body::FunctionBlock(block) => {
+                (self.named_pou(&block.name.id), vec![block.name.id.clone()])
+            }
             Body::Function(function) => {
                 (self.named_pou(&function.name), vec![function.name.clone()])
             }
             Body::Method { block, method } => (
-                self.method_pou(&block.name.name, &method.name),
-                vec![block.name.name.clone(), method.name.clone()],
+                self.method_pou(&block.name.id, &method.name),
+                vec![block.name.id.clone(), method.name.clone()],
             ),
         };
         if let Some(frame) = self.bodies.get(&pou) {
@@ -113,15 +112,14 @@ impl<'a> Lowering<'a> {
                 .program_instance(pou, &program.name, &program.variables)?
                 .map(Some),
             Body::FunctionBlock(block) => self
-                .block_instance(pou, &block.name.name, scope.clone())?
+                .block_instance(pou, &block.name.id, scope.clone())?
                 .map(Some),
             Body::Function(_) => Some(None),
             // A method works on an instance of its block, whose fields its
             // block's scope declares.
             Body::Method { block, .. } => {
-                let fields = ScopeKind::Named(ScopePath::new(vec![block.name.name.clone()]));
-                self.block_instance(pou, &block.name.name, fields)?
-                    .map(Some)
+                let fields = ScopeKind::Named(ScopePath::new(vec![block.name.id.clone()]));
+                self.block_instance(pou, &block.name.id, fields)?.map(Some)
             }
         };
         let frame = instance.map(|instance| BodyFrame {
