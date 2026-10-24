@@ -884,7 +884,11 @@ fn compile_program_with_functions(
         builder = builder.add_string_layout(entry);
     }
     // By type name, for the same reason as the user FB type descriptors.
-    for entry in crate::compile_enum::enum_definitions(types) {
+    let enum_defs = ctx
+        .debug_enum_defs
+        .take()
+        .unwrap_or_else(|| crate::compile_enum::enum_definitions(types));
+    for entry in enum_defs {
         builder = builder.add_enum_def(entry);
     }
 
@@ -1166,6 +1170,10 @@ pub(crate) struct CompileContext {
     pub(crate) debug_var_names: Vec<VarNameEntry>,
     /// Debug info: STRING variable data-region layouts collected during assign_variables.
     pub(crate) debug_string_layouts: Vec<StringLayoutEntry>,
+    /// Debug info: the ENUM_DEF entries of the lowered program, when its
+    /// layout is the one the bodies are compiled against; `None` gives the
+    /// type environment's.
+    pub(crate) debug_enum_defs: Option<Vec<ironplc_container::debug_section::EnumDefEntry>>,
     /// Debug info: registry mapping each referenced source `FileId` to its
     /// `SourceFileId` (debug section SOURCE_FILE_TABLE index) plus cached
     /// source bytes for (line, column) conversion in `compile_statement`.
@@ -1251,6 +1259,7 @@ impl CompileContext {
             has_wide_string: false,
             debug_var_names: Vec::new(),
             debug_string_layouts: Vec::new(),
+            debug_enum_defs: None,
             debug_source_files: crate::source_lookup::SourceFileRegistry::new(),
             user_functions: HashMap::new(),
             function_stack_depths: HashMap::new(),

@@ -61,16 +61,21 @@ pub(crate) fn debug_name(types: &TypeEnvironment, id: Option<TypeId>) -> String 
     match id {
         Some(id) => match types.name_of(id) {
             Some(name) => name.to_string().to_uppercase(),
-            None => anonymous_name(id),
+            None => anonymous_name(id.raw()),
         },
         None => String::new(),
     }
 }
 
-/// The debug name of the anonymous enumeration `id`. A parenthesis cannot
-/// start an identifier, so the name is never a declared type's.
-fn anonymous_name(id: TypeId) -> String {
-    format!("(ANONYMOUS ENUMERATION {})", id.raw())
+/// How the debug name of an anonymous enumeration begins; its id and a
+/// parenthesis end it.
+pub(crate) const ANONYMOUS_PREFIX: &str = "(ANONYMOUS ENUMERATION ";
+
+/// The debug name of the anonymous enumeration whose id is `id` in the type
+/// table the debug section is built from. A parenthesis cannot start an
+/// identifier, so the name is never a declared type's.
+pub(crate) fn anonymous_name(id: impl std::fmt::Display) -> String {
+    format!("{ANONYMOUS_PREFIX}{id})")
 }
 
 /// The ENUM_DEF entries: one per enumeration type, its members' names in
@@ -129,7 +134,7 @@ mod tests {
 
     #[test]
     fn anonymous_name_when_id_then_cannot_be_identifier() {
-        let name = anonymous_name(TypeId::from_raw(42));
+        let name = anonymous_name(42);
 
         assert_eq!(name, "(ANONYMOUS ENUMERATION 42)");
     }

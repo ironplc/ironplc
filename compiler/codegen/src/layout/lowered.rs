@@ -32,8 +32,8 @@
 //! instance's fields, and what a call of each user function, function block
 //! and method needs, come from the same declarations ([`super::calls`]), and
 //! so do the debug entries of the variables and of the strings of the
-//! globals and the program ([`super::debug_vars`]), which the check compares
-//! and the AST layout's still provide.
+//! globals and the program, and of each enumeration type
+//! ([`super::debug_vars`]).
 //!
 //! When every declaration lowers, the bodies are compiled against this
 //! layout ([`Layout::install`]); the walk of the AST declarations still
@@ -44,6 +44,7 @@
 use std::collections::HashMap;
 
 use ironplc_analyzer::StandardFunctionBlock;
+use ironplc_container::debug_section::EnumDefEntry;
 use ironplc_container::{ArrayDescriptor, FunctionId, VarIndex};
 use ironplc_dsl::core::{Id, SourceSpan};
 use ironplc_ir::execution::{GlobalKind, GlobalScope};
@@ -94,6 +95,8 @@ pub(crate) struct Layout {
     pub(super) user_fb_types: HashMap<String, UserFbTypeInfo>,
     /// The debug entries of the variables and the strings.
     pub(super) debug: DebugVars,
+    /// The debug entry of each enumeration type.
+    pub(super) enum_defs: Vec<EnumDefEntry>,
 }
 
 /// What the declarations reserve as the walk visits them: the runs of the
@@ -316,14 +319,16 @@ impl Layout {
         }
         layout.data_end = storage.region.end();
         layout.descriptors = storage.descriptors.into_added();
+        layout.enum_defs = super::debug_vars::enum_definitions(types);
         Some(layout)
     }
 
     /// Makes this layout the one `ctx` compiles the bodies against
-    /// (REQ-LOW-codegen-199). A structure's and an array of structures'
-    /// entries, which hold analyzer types, and the debug entries stay the
-    /// AST layout's, as do the array descriptors, which the walk of the AST
-    /// declarations has already added to the container.
+    /// (REQ-LOW-codegen-199), and its debug entries the ones the container
+    /// holds. A structure's and an array of structures' entries, which hold
+    /// analyzer types, stay the AST layout's, as do the array descriptors,
+    /// which the walk of the AST declarations has already added to the
+    /// container.
     pub(crate) fn install(self, ctx: &mut CompileContext) {
         let (max_string_capacity, has_wide_string) = self.temporary_buffers();
         ctx.variables = self.slots;
@@ -339,6 +344,9 @@ impl Layout {
         ctx.data_region_offset = self.data_end;
         ctx.max_string_capacity = max_string_capacity;
         ctx.has_wide_string = has_wide_string;
+        ctx.debug_var_names = self.debug.var_names;
+        ctx.debug_string_layouts = self.debug.string_layouts;
+        ctx.debug_enum_defs = Some(self.enum_defs);
     }
 
     /// What the temporary buffers are sized for: the largest capacity of a

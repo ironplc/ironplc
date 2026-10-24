@@ -2591,8 +2591,9 @@ bytecode backend compiles the program's bodies against the layout it builds
 from the lowered declarations. It keeps the layout it builds from the AST for
 a program a declaration of which does not lower, and, until the stages that
 replace them, for the entries the lowered layout does not hold: a
-structure's and an array of structures' analyzer types, and the debug
-entries.
+structure's and an array of structures' analyzer types. The debug entries of
+the variables, the strings and the enumeration types are the lowered
+layout's.
 
 ### Other codegen types
 
