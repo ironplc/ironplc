@@ -264,7 +264,7 @@ impl From<&CompilerOptions> for CodegenOptions {
 pub fn compile(
     analysis: CleanAnalysis<'_>,
     options: &CodegenOptions,
-    sources: &dyn crate::source_lookup::SourceLookup,
+    sources: &dyn ironplc_ir::source::SourceLookup,
 ) -> Result<Container, Diagnostic> {
     compile_with_route_counts(analysis, options, sources).map(|(container, _)| container)
 }
@@ -274,7 +274,7 @@ pub fn compile(
 pub fn compile_with_route_counts(
     analysis: CleanAnalysis<'_>,
     options: &CodegenOptions,
-    sources: &dyn crate::source_lookup::SourceLookup,
+    sources: &dyn ironplc_ir::source::SourceLookup,
 ) -> Result<(Container, crate::lowered::RouteCounts), Diagnostic> {
     // Lowering completes every initializer on a copy, and reads the program
     // and globals from it; the analyzed library stays as written
@@ -358,7 +358,7 @@ pub fn compile_with_route_counts(
 fn register_pou_source_file(
     ctx: &mut CompileContext,
     file_id: &ironplc_dsl::core::FileId,
-    sources: &dyn crate::source_lookup::SourceLookup,
+    sources: &dyn ironplc_ir::source::SourceLookup,
 ) {
     if ctx.debug_source_files.get(file_id).is_some() {
         return;
@@ -505,7 +505,7 @@ fn compile_program_with_functions(
     types: &TypeEnvironment,
     string_to_num: StringToNumPolicies,
     compiler_options: CompilerOptions,
-    sources: &dyn crate::source_lookup::SourceLookup,
+    sources: &dyn ironplc_ir::source::SourceLookup,
     lowered_route: Option<crate::lowered::LoweredRoute>,
 ) -> Result<(Container, crate::lowered::RouteCounts), Diagnostic> {
     let ProgramInputs {
