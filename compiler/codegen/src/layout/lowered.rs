@@ -42,7 +42,7 @@ use std::collections::HashMap;
 
 use ironplc_analyzer::StandardFunctionBlock;
 use ironplc_container::{ArrayDescriptor, FunctionId, VarIndex};
-use ironplc_dsl::core::Id;
+use ironplc_dsl::core::{Id, SourceSpan};
 use ironplc_ir::execution::{GlobalKind, GlobalScope};
 use ironplc_ir::lowered::{
     Field, Nullability, PouId, PouKind, Section, TypeId, TypeKind, TypeTable, VarId,
@@ -609,6 +609,20 @@ fn has_string_field(types: &TypeTable, ty: TypeId) -> bool {
             .any(|field| matches!(types.kind(field.ty), Some(TypeKind::String(_)))),
         _ => false,
     }
+}
+
+/// The span of the name of each POU whose source file the debug section's
+/// `SOURCE_FILE_TABLE` lists, in the order it lists them: the program the
+/// container runs, `program`, then each function, then each function block;
+/// `None` when `lowering` has no such program.
+pub(crate) fn source_spans(lowering: &PartialProgram, program: &Id) -> Option<Vec<SourceSpan>> {
+    let pous = Pous::of(lowering, program)?;
+    let table = lowering.pous();
+    std::iter::once(pous.program)
+        .chain(pous.functions.iter().copied())
+        .chain(pous.blocks.iter().copied())
+        .map(|pou| Some(table.name(pou)?.span()))
+        .collect()
 }
 
 /// The reachable POUs of a lowered program and the container function id
