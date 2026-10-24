@@ -209,7 +209,9 @@ so calling it from more than one pass needs no annotation on the tree.
    has none. An untyped integer literal needs no such step, since it is
    acceptable as every numeric type. The comparison operand type asks the
    same relation (see [Comparison Operand Type](comparison-operand-type.md)),
-   so `i < 1.5` compares at the type `i * 1.5` computes at.
+   so `i < 1.5` compares at the type `i * 1.5` computes at, and so does a
+   function of several inputs of one type: `MIN(i, 1.5)` selects at `REAL`
+   (REQ-IC-analyzer-125 in [Implicit Conversions](implicit-conversions.md)).
 3. Otherwise try the typed step, `typed_overload(op, left, right)`. It takes
    no options, because no typed row depends on a flag. Each operand is judged
    where the corresponding parameter is expected: a temporal parameter

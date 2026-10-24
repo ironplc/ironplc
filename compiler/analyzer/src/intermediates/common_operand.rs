@@ -8,7 +8,7 @@
 //! by the project's implicit widening (`type_compat::are_types_compatible`),
 //! so every operator that needs the answer asks the same relation.
 //! [`common_operand_of`] asks it of the several inputs of a function such as
-//! `MAX` or `LIMIT`.
+//! `MAX` or `LIMIT`, so `MIN(i, 1.5)` computes at the type `i * 1.5` does.
 
 use ironplc_dsl::common::{GenericTypeName, TypeName};
 use ironplc_parser::options::CompilerOptions;
@@ -71,22 +71,50 @@ fn real_literal_default(
     are_types_compatible(&default, concrete, options).then_some(default)
 }
 
-/// Returns the position of the first of `operands` whose type every operand
-/// computes at, by the relation [`common_operand`] answers for a pair: for
-/// `MAX(i, l)` on an `INT` and an `LINT`, the `LINT`.
+/// The type several operands compute at, as [`common_operand_of`] answers
+/// it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum CommonOperand {
+    /// The operand at this position has the type every operand computes at:
+    /// for `MAX(i, l)` on an `INT` and an `LINT`, the `LINT`.
+    Input(usize),
+    /// No operand has that type; every operand computes at this one, the
+    /// type an untyped real literal among them defaults to: `MIN(i, 1.5)` on
+    /// an `INT` computes at `REAL`.
+    Type(TypeName),
+}
+
+/// Returns the type every one of `operands` computes at, by the relation
+/// [`common_operand`] answers for a pair: the first operand whose type it is,
+/// else the `REAL` an untyped real literal among them defaults to when every
+/// operand computes at that.
 ///
-/// `None` when an operand has no type, or when no operand's type accepts
-/// every other one, as a `DINT` and a `UDINT` do not.
+/// `None` when an operand has no type, or when no type holds every operand,
+/// as none holds a `DINT` and a `UDINT`, or a `DINT` and a real literal.
 pub(crate) fn common_operand_of(
     operands: &[Option<&TypeName>],
     options: &CompilerOptions,
-) -> Option<usize> {
+) -> Option<CommonOperand> {
     let operands: Vec<&TypeName> = operands.iter().copied().collect::<Option<_>>()?;
-    operands.iter().position(|candidate| {
+    let computes_at = |candidate: &TypeName| {
         operands
             .iter()
-            .all(|other| common_operand(candidate, other, options).as_ref() == Some(*candidate))
-    })
+            .all(|other| common_operand(candidate, other, options).as_ref() == Some(candidate))
+    };
+    if let Some(position) = operands.iter().position(|candidate| computes_at(candidate)) {
+        return Some(CommonOperand::Input(position));
+    }
+    let real_literal = operands.iter().any(|operand| {
+        matches!(
+            GenericTypeName::try_from(&operand.name),
+            Ok(GenericTypeName::AnyReal)
+        )
+    });
+    if !real_literal {
+        return None;
+    }
+    let default: TypeName = literal_default_type(&GenericTypeName::AnyReal)?.into();
+    computes_at(&default).then_some(CommonOperand::Type(default))
 }
 
 /// Returns true if `type_name` is a generic category, the type of an untyped
@@ -152,28 +180,50 @@ mod tests {
         assert_eq!(common, expected.map(TypeName::from));
     }
 
-    fn common_of(operands: &[&str]) -> Option<usize> {
+    fn common_of(operands: &[&str]) -> Option<CommonOperand> {
         let names: Vec<TypeName> = operands.iter().map(|name| TypeName::from(name)).collect();
         let names: Vec<Option<&TypeName>> = names.iter().map(Some).collect();
         common_operand_of(&names, &CompilerOptions::default())
     }
 
+    fn input(position: usize) -> Option<CommonOperand> {
+        Some(CommonOperand::Input(position))
+    }
+
     #[rstest]
-    #[case::one(&["DINT"], Some(0))]
-    #[case::same_type(&["DINT", "DINT"], Some(0))]
-    #[case::last_widest(&["INT", "DINT", "LINT"], Some(2))]
-    #[case::first_widest(&["LINT", "INT", "DINT"], Some(0))]
-    #[case::literal_and_concrete(&["ANY_INT", "DINT"], Some(1))]
-    #[case::literals(&["ANY_INT", "ANY_INT"], Some(0))]
-    #[case::widest_after_a_pair_that_does_not_widen(&["DINT", "UDINT", "LINT"], Some(2))]
+    #[case::one(&["DINT"], input(0))]
+    #[case::same_type(&["DINT", "DINT"], input(0))]
+    #[case::last_widest(&["INT", "DINT", "LINT"], input(2))]
+    #[case::first_widest(&["LINT", "INT", "DINT"], input(0))]
+    #[case::literal_and_concrete(&["ANY_INT", "DINT"], input(1))]
+    #[case::literals(&["ANY_INT", "ANY_INT"], input(0))]
+    #[case::widest_after_a_pair_that_does_not_widen(&["DINT", "UDINT", "LINT"], input(2))]
+    #[case::real_literal_with_a_real(&["ANY_REAL", "REAL"], input(1))]
+    #[case::real_literal_and_integer_with_lreal(&["INT", "ANY_REAL", "LREAL"], input(2))]
     #[case::no_widening(&["DINT", "UDINT"], None)]
-    // The type an INT and a real literal compute at is neither input's.
-    #[case::real_literal_and_integer(&["INT", "ANY_REAL"], None)]
-    fn common_operand_of_when_operands_then_position_every_other_widens_to(
+    fn common_operand_of_when_operands_then_input_every_other_widens_to(
         #[case] operands: &[&str],
-        #[case] expected: Option<usize>,
+        #[case] expected: Option<CommonOperand>,
     ) {
         assert_eq!(common_of(operands), expected);
+    }
+
+    /// The type an integer and a real literal compute at is neither input's:
+    /// `REAL`, when every integer widens to it.
+    #[rstest]
+    #[case::int(&["INT", "ANY_REAL"], Some("REAL"))]
+    #[case::literal_first(&["ANY_REAL", "UINT"], Some("REAL"))]
+    #[case::literal_between(&["ANY_REAL", "SINT", "ANY_REAL"], Some("REAL"))]
+    #[case::dint(&["DINT", "ANY_REAL"], None)]
+    #[case::int_and_dint(&["INT", "ANY_REAL", "DINT"], None)]
+    fn common_operand_of_when_real_literal_among_integers_then_real_if_every_one_widens(
+        #[case] operands: &[&str],
+        #[case] expected: Option<&str>,
+    ) {
+        assert_eq!(
+            common_of(operands),
+            expected.map(|name| CommonOperand::Type(TypeName::from(name)))
+        );
     }
 
     #[test]

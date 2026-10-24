@@ -21,6 +21,16 @@ e2e_i64!(
     &[("l", 5_000_000_000), ("l_first", 5_000_000_000)],
 );
 
+// An INT beside a real literal selects at REAL, the type the literal
+// defaults to (REQ-IC-analyzer-125). At INT the literal would be 1 and MIN 1.
+e2e_f32!(
+    #[spec_test(REQ_IC_codegen_004)]
+    end_to_end_when_min_of_int_and_real_literal_then_selects_at_real,
+    "PROGRAM main VAR i : INT := 3; least : REAL; clamped : REAL; END_VAR
+     least := MIN(i, 1.5); clamped := LIMIT(0.5, i, 2.5); END_PROGRAM",
+    &[("least", 1.5), ("clamped", 2.5)],
+);
+
 // 3000000000 does not fit a DINT: converted to one for a DINT input it keeps
 // its bits, -1294967296. Compared at the DINT of its context it was the
 // smaller of the two, and 1 was selected.
