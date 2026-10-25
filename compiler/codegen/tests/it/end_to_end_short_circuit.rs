@@ -12,6 +12,7 @@ use ironplc_parser::options::{CompilerOptions, Dialect};
 use ironplc_vm::error::Trap;
 
 use crate::common::{parse_and_try_run, Snapshot};
+use crate::compile_route_lowered::run_lowered;
 
 /// Options enabling the short-circuit operators and nothing else.
 fn short_circuit_options() -> CompilerOptions {
@@ -253,4 +254,31 @@ END_PROGRAM
 
     assert_eq!(snapshot.read_as::<i32>("inside"), 1, "IN_RANGE(10)");
     assert_eq!(snapshot.read_as::<i32>("outside"), 0, "IN_RANGE(-1)");
+}
+
+/// On bit strings `AND_THEN` and `OR_ELSE` are the eager bitwise operators,
+/// at the bit string both operands widen to (REQ-IC-analyzer-119), with
+/// every statement lowered.
+#[test]
+fn end_to_end_when_short_circuit_of_bit_strings_of_two_widths_then_bitwise_at_wider() {
+    let snapshot = run_lowered(
+        "
+PROGRAM main
+  VAR
+    w : WORD := 16#0F0F;
+    lw : LWORD := 16#FFFF000000FF;
+    conj : LWORD;
+    disj : LWORD;
+    masked : WORD;
+  END_VAR
+  conj := w AND_THEN lw;
+  disj := lw OR_ELSE w;
+  masked := w AND_THEN WORD#16#00FF;
+END_PROGRAM
+",
+    );
+
+    assert_eq!(snapshot.read_as::<i64>("conj"), 0x000F);
+    assert_eq!(snapshot.read_as::<i64>("disj"), 0xFFFF_0000_0FFF);
+    assert_eq!(snapshot.read_as::<i64>("masked"), 0x000F);
 }

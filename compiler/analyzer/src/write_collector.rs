@@ -39,7 +39,7 @@ pub(crate) fn collect(
     function_environment: &FunctionEnvironment,
     symbol_environment: &SymbolEnvironment,
 ) -> CollectedWrites {
-    let function_blocks = FunctionBlocks::from_library(lib);
+    let function_blocks = FunctionBlocks::from_library(lib, type_environment);
     let mut collector = WriteCollector {
         function_blocks: &function_blocks,
         type_environment,
@@ -176,7 +176,7 @@ impl WriteCollector<'_> {
                 .symbol_environment
                 .self_type(&self.current_scope(), SelfRefKind::This)
                 .and_then(|block| self.function_blocks.declaring_block(&block, name))
-                .map(|block| unit_scope(&block.name.name))
+                .map(|block| unit_scope(&block.name.id))
                 .unwrap_or(ScopeKind::Global),
         }
     }
@@ -225,7 +225,7 @@ impl WriteCollector<'_> {
     /// block is not a declaration and needs no mark.
     fn mark_member(&mut self, fb_type: &TypeName, field: &Id) {
         if let Some(block) = self.function_blocks.declaring_block(fb_type, field) {
-            self.mark_resolved(unit_scope(&block.name.name), field);
+            self.mark_resolved(unit_scope(&block.name.id), field);
         }
     }
 
@@ -265,7 +265,17 @@ impl WriteCollector<'_> {
                     self.mark_member(&fb_type, field);
                 }
             }
-            SymbolicVariableKind::SelfRef(_) => self.mark(field),
+            // The member is looked up on the block `THIS^`/`SUPER^` names, not
+            // from the method's scope, so a parameter or local of the same
+            // name does not answer for it.
+            SymbolicVariableKind::SelfRef(self_ref) => {
+                let block = self
+                    .symbol_environment
+                    .self_type(&self.current_scope(), self_ref.kind);
+                if let Some(block) = block {
+                    self.mark_member(&block, field);
+                }
+            }
             _ => self.mark_any_scope(field),
         }
     }

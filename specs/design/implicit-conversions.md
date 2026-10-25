@@ -44,9 +44,9 @@ The pass covers the comparisons `=`, `<>`, `<`, `<=`, `>` and `>=`, and their
 function forms `EQ` to `GE`. A comparison compares at the type one operand
 widens to, whichever side it is on (see
 [Comparison Operand Type](comparison-operand-type.md)); a pair neither of
-which widens to the other compares at the type of its concrete left operand,
-else of its concrete right one
-([#1931](https://github.com/ironplc/ironplc/issues/1931)). Every scalar operand
+which widens to the other, which the analyzer reports (REQ-CMP-analyzer-007),
+compares at the type of its concrete left operand, else of its concrete right
+one. Every scalar operand
 of another type is converted to the operand type, so a narrower operand is
 widened by its own signedness rather than the wider one truncated.
 
@@ -54,7 +54,7 @@ widened by its own signedness rather than the wider one truncated.
 
 **REQ-IC-analyzer-010** The operand type of a comparison is the type one operand widens to, whichever side it is on: in `d < l` on a `DINT` and an `LINT` the `DINT` is converted to `LINT`.
 
-**REQ-IC-analyzer-011** A comparison of two types neither of which widens to the other converts the right operand to the type of the concrete left operand: in `d < u` on a `DINT` and a `UDINT` the `UDINT` is converted to `DINT`.
+**REQ-IC-analyzer-011** A comparison of two types neither of which widens to the other, which the analyzer reports (REQ-CMP-analyzer-007), converts the right operand to the type of the concrete left operand: in `d < u` on a `DINT` and a `UDINT` the `UDINT` is converted to `DINT`.
 
 **REQ-IC-analyzer-012** Any scalar operand of another type is converted, not only a variable: the `ABS(d)` of `ABS(d) < l` and the `TIME` variable of `t < lt` are converted to `LINT` and `LTIME`.
 
@@ -90,7 +90,7 @@ An operand is converted where its operation type differs from the result's: its 
 
 **REQ-IC-analyzer-026** An operand that is itself arithmetic is converted by its result type: in `(i + j) * r` the `INT` result of `i + j` is converted to `REAL`.
 
-The conversion of an arithmetic result to the type of its context is recorded where the context is: see Assignments below. An argument's is not recorded yet.
+The conversion of an arithmetic result to the type of its context is recorded where the context is: see Assignments and Arguments below.
 
 ### Time and date operations
 
@@ -106,11 +106,11 @@ A typed time or date function (IEC 61131-3 Table 30: `ADD_TIME`, `SUB_DT_DT`, `M
 
 A function of several inputs of one type -- `MIN`, `MAX`, `LIMIT`, `SEL`, `MUX`, `EXPT` and `ATAN2` -- computes at the type of its result, as an arithmetic operation does. The result is the type every input of the function's type widens to, by the relation a comparison chooses its operand type by (see [Comparison Operand Type](comparison-operand-type.md)), so it is never narrower than an input: `MAX(i, l)` on an `INT` and an `LINT` is an `LINT`, and assigning it to an `INT` is a type mismatch. `EXPT` is typed by its base: its result has the type of `IN1`, and the exponent is converted to it. `SEL`'s selector `G` is a `BOOL` and `MUX`'s `K` an integer, whatever the type of the inputs they select between.
 
-A set of inputs none of whose types every other one widens to, such as a `DINT` and a `UDINT`, has the type of its first concrete input, as a comparison of such a pair compares at its concrete left operand's. It is not reported yet ([#1931](https://github.com/ironplc/ironplc/issues/1931), [#2127](https://github.com/ironplc/ironplc/issues/2127)).
+A set of inputs none of whose types every other one widens to, such as a `DINT` and a `UDINT`, has no type to compute at. The resolver gives such a call the type of its first concrete input, as a comparison of such a pair compares at its concrete left operand's, so the later passes see a type; `rule_function_inputs_common_type` reports the call as P4049, the code the comparison (REQ-CMP-analyzer-007) and an arithmetic operator (see [Arithmetic Operator Overloads](arithmetic-operator-overloads.md)) report for the pair.
 
 The pass records, for each call, the conversion of every input of the function's type to the result type, and the conversion of the result to the type of its context where that context is recorded (Assignments and Arguments below, and a comparison or arithmetic operand above).
 
-**REQ-IC-analyzer-070** The result of `MIN`, `MAX`, `LIMIT`, `SEL`, `MUX` and `ATAN2` has the type every input of the function's type widens to, whichever input that is: `MAX(i, l)` and `MAX(l, i)` on an `INT` and an `LINT` are `LINT`s, and the `G` of `SEL` and the `K` of `MUX` do not take part.
+**REQ-IC-analyzer-070** The result of `MIN`, `MAX`, `LIMIT`, `SEL`, `MUX` and `ATAN2` has the type every input of the function's type widens to, whichever input that is, or the `REAL` an untyped real literal among them defaults to when every input widens to it: `MAX(i, l)` and `MAX(l, i)` on an `INT` and an `LINT` are `LINT`s, `MIN(i, 1.5)` on an `INT` is a `REAL`, and the `G` of `SEL` and the `K` of `MUX` do not take part.
 
 **REQ-IC-analyzer-071** A set of inputs none of whose types every other one widens to has the type of its first concrete input: `MAX(d, u)` on a `DINT` and a `UDINT` is a `DINT`, and `MAX(5, d)` on a `DINT` is a `DINT`.
 
@@ -128,11 +128,19 @@ The pass records, for each call, the conversion of every input of the function's
 
 **REQ-IC-analyzer-078** A result assigned to a narrower target is a type mismatch: `i := MAX(i, l)` on an `INT` and an `LINT` reports P4027.
 
+**REQ-IC-analyzer-125** A call to `MIN`, `MAX`, `LIMIT`, `SEL`, `MUX` or `ATAN2` whose inputs of the function's type have no type every one of them widens to reports P4049, once, naming the function as the operator and the type of each of those inputs by its parameter: `MAX(d, u)` on a `DINT` and a `UDINT`, `SEL(g, d, u)`, `MUX(k, d, u, r)` with a `REAL`, `MAX(m, u)` on a subrange of `DINT` and `MAX(d, 1.5)` on a `DINT` are reported, and `LIMIT(d, u, l)` with an `LINT` and `MAX(d, 1)` are not, as every input widens to the `LINT` and the literal takes the `DINT`. `MIN(i, 1.5)` on an `INT` is not reported either: the literal is a `REAL`, the type it defaults to (ADR-0028), the `INT` widens to it, and the call computes at `REAL`, as `i + 1.5` does (REQ-AO-analyzer-016).
+
+**REQ-IC-analyzer-126** An input that is not of the function's type, or whose type is not known or not one its parameter accepts, takes no part in that check: the `LINT` `K` of `MUX(l, d, d)` and the `BOOL` `G` of `SEL(g, d, d)` are not judged, `MAX(d, s)` on a `STRING` and `ATAN2(d, r)` on a `DINT` are left to the argument type check (P4026), `EXPT(d, u)` is typed by its base, and `AND(g, w)` on a `BOOL` and a `WORD` is the operator rule's.
+
 `TRUNC`, `BCD_TO_INT` and `SIZEOF` return an integer, and nothing about their inputs says which. Such a call is an integer of whichever type its context stores it at, as an untyped integer literal is (ADR-0028), and the pass records that type on it. Unlike a literal it stays an integer: in a context that is not an integer type it takes `DINT`, the type an untyped integer literal defaults to, and is converted to the context's type. The code generator used to compile `TRUNC` at its context's type, so `r := TRUNC(x)` with a `REAL` target did not truncate. `INT_TO_BCD` encodes its input digit by digit in the bit string as wide as it, and computes at that type as an operation on one value does.
 
 **REQ-IC-analyzer-088** A call to `TRUNC`, `BCD_TO_INT` or `SIZEOF` in an integer context takes the context's type: the `TRUNC(lr)` of `l := TRUNC(lr)` on an `LINT` is an `LINT`, and of `i := TRUNC(r)` on an `INT` an `INT`.
 
 **REQ-IC-analyzer-089** A call to `TRUNC`, `BCD_TO_INT` or `SIZEOF` in a context that is not an integer type takes `DINT` and is converted to the context's type, wherever the context is: in `x := TRUNC(r)` on a `REAL`, in `TRUNC(r) < r`, in `TRUNC(r) * r` and as an argument to a `REAL` parameter, the `DINT` is converted to `REAL`.
+
+`BCD_TO_INT` decodes the bit string it is given, at that bit string's width. A dialect may let an untyped integer literal stand for a bit string (`--allow-int-literal-to-bit-string`), and the literal is then the bit string as wide as `DINT`, the type it defaults to (ADR-0028). That is the width the code generator decoded such a literal at before the pass recorded it.
+
+**REQ-IC-analyzer-118** An untyped integer literal given to `BCD_TO_INT` takes `DWORD`: `BCD_TO_INT(16#12)` and `BCD_TO_INT(18)` decode the `DWORD` 16#12.
 
 **REQ-IC-analyzer-090** `INT_TO_BCD` has the type of the bit string as wide as its input, and its result is converted to a wider target: `INT_TO_BCD(i)` on an `INT` is a `WORD`, `INT_TO_BCD(l)` on an `LINT` an `LWORD`, `INT_TO_BCD(42)` a `DWORD`, and `lw := INT_TO_BCD(i)` converts the `WORD` to `LWORD`.
 
@@ -149,6 +157,10 @@ The pass records, for each call, the conversion of every input of the function's
 **REQ-IC-analyzer-083** The result of `AND`, `OR` or `XOR` is converted to the type of a target of another operation width: in `lw := d OR e` on an `LWORD` and two `DWORD`s the `DWORD` result is converted to `LWORD`.
 
 **REQ-IC-analyzer-084** `AND`, `OR` or `XOR` assigned to a target narrower than its widest operand is a type mismatch: `w := w OR lw` on a `WORD` and an `LWORD` reports P4035, and `w := AND(w, lw)` reports P4027.
+
+**REQ-IC-analyzer-119** `AND_THEN` and `OR_ELSE`, the short-circuit forms of `AND` and `OR` that some dialects enable, are typed and converted as `AND` and `OR` are (REQ-IC-analyzer-081 to REQ-IC-analyzer-084), and their operands are held to the same `ANY_BIT` row: `w AND_THEN lw` on a `WORD` and an `LWORD` is an `LWORD` with the `WORD` converted, and `d AND_THEN e` on two `DINT`s reports P4049 for each operand. They short-circuit on `BOOL`s only (see [the TwinCAT dialect design](beckhoff-twincat-dialect.md)).
+
+**REQ-IC-analyzer-122** `AND`, `OR` and `XOR`, in the operator and the function form, and `AND_THEN` and `OR_ELSE`, whose operands have no type every operand widens to report P4049, in every dialect. A `BOOL` widens to no bit string, so `b AND w`, `w OR b`, `XOR(w, b)`, `OR(y, lw, b)` and `b AND_THEN w` on a `BOOL`, a `BYTE`, a `WORD` and an `LWORD` report P4049, and `b AND c` on two `BOOL`s and `AND(y, w, lw)` do not.
 
 ### Assignments
 
@@ -210,6 +222,10 @@ A reference holds the index of the variable it refers to. The analyzer knows its
 
 **REQ-IC-analyzer-087** A reference variable assigned to a variable that is not a reference reports P2032, and so does one assigned to a reference to another type unless type punning is allowed (`--allow-ref-type-punning`): `i := ri` and `ri := rd` on a `REF_TO INT` and a `REF_TO DINT` report P2032, and `ri2 := ri` does not.
 
+**REQ-IC-analyzer-120** A value that is not a reference assigned to a reference reports P2032, in every dialect: `ri := 0`, `ri := TRUE`, `ri := i` and `ri := i + 1` on a `REF_TO INT` and an `INT` report P2032, as does `pp := 0` on a CODESYS `POINTER TO INT`, and `ri := REF(i)`, `ri := NULL`, `ri2 := ri` and `ri^ := 5` do not. Where reference arithmetic is allowed (`--allow-ref-arithmetic`), a sum or difference with a reference operand is a reference: `pp := pp + 2` does not report.
+
+**REQ-IC-analyzer-121** A reference compared with a value that is not a reference reports P4049, in every dialect: `ri = 0`, `0 <> ri`, `ri = i`, `ri < 0`, `i = NULL` and CODESYS's `pp <> 0` report P4049, and `ri = NULL`, `ri <> ri2` and `ri^ = 0` do not.
+
 ### Subranges and fields
 
 A value of a subrange type is operated at its base type: the name the type relations, the conversion pass and the code generator read for it is its base type's. It used to be known by the subrange's own name, which no relation judged, so a comparison fell back to the left operand's type and narrowed a wider right operand to the subrange, an arithmetic operation took the left operand's subrange type, and codegen computed both at the type of their context. A subrange parameter takes a value of its base type, as a subrange variable does when assigned.
@@ -270,6 +286,8 @@ An input of a function block call is stored in a field of the block, and an argu
 
 **REQ-IC-analyzer-047** An argument of a method call is converted to the declared type of its parameter, whether it is positional or named, and in a call statement or a call expression: in `k.Set(u)` on an `LINT` parameter and a `UDINT` the `UDINT` is converted to `LINT`.
 
+**REQ-IC-analyzer-123** An input of a function block call or an argument of a method call that its field or parameter does not accept reports P4026, as a function's argument does: it is held to the relation an assigned value is, so a value that widens to the declared type passes (ADR-0029, ADR-0031) and a narrowing one or one of another kind does not. In `b(x := i)`, `b(x := u)`, `b(x := l)` and `b(x := s)` on a `DINT` field and an `INT`, a `UDINT`, an `LINT` and a `STRING`, the `INT` passes and the others report P4026, and so do `k.Set(l)` and `k.Set(s)` on a `DINT` parameter.
+
 Codegen drops a positional input of a function block call ([#1855](https://github.com/ironplc/ironplc/issues/1855)), so its recorded conversion has no effect until codegen binds it. Codegen stores the inputs of a standard function block in 32 bits whatever their declared type ([#2054](https://github.com/ironplc/ironplc/issues/2054)).
 
 ### Literals
@@ -306,6 +324,12 @@ Every construct a literal can sit in either passes the type of its context on, c
 
 **REQ-IC-analyzer-064** A literal subscript of an array access whose subscripts are not all literals takes `DINT`.
 
+**REQ-IC-analyzer-069** A literal subscript of the target of an output assignment takes `DINT`, as one of an assignment's target does: the `2` of `f(q => a[2])`, `r := F(q => a[2])` and `k.M(mq => a[2])`.
+
+`SIZEOF` measures its argument rather than computing it, so no backend compiles the argument; the literals of its subscripts are typed all the same, so that no literal in the analyzed library is left at a generic category.
+
+**REQ-IC-analyzer-124** A literal subscript of the argument of `SIZEOF` takes `DINT`, as one of any variable does: the `2` of `d := SIZEOF(arr[2])` and the `1` and `2` of `d := SIZEOF(m[1, 2])`.
+
 **REQ-IC-analyzer-065** The literals of a `CASE` selector take the selector's type, and those of an `IF`, `WHILE` or `REPEAT` condition the type the condition is tested at.
 
 **REQ-IC-analyzer-067** An operation on one value of a numeric type passes its own type, not its context's, to its literal inputs: the count `1` of `lw := SHL(w, 1)` on an `LWORD` and a `DWORD` is a `DINT`, since the `DWORD` is shifted at 32 bits.
@@ -329,7 +353,7 @@ or the program wrote one, such as `INT_TO_REAL`. A value with no operation
 type -- the buffer of a string, the data offset of an aggregate, or a constant
 codegen builds itself -- is loaded at the default slot type.
 
-**REQ-IC-codegen-019** Codegen chooses no conversion of its own: with the recorded conversions removed, `l := ud` on an `LINT` and a `UDINT`, `r := i` on a `REAL` and an `INT`, and `lr := r * r` on an `LREAL` and a `REAL` compile without converting the value.
+**REQ-IC-codegen-019** Codegen chooses no conversion of its own: with the recorded conversions removed, `l := ud` on an `LINT` and a `UDINT`, `r := i` on a `REAL` and an `INT`, and `lr := r * r` on an `LREAL` and a `REAL` are internal errors (P9998), since lowering assigns only a value of the destination's type, rather than compiled with a conversion.
 
 An `ImplicitConversion` compiles its operand at the operand's own type and
 converts it to the type the node records. A comparison compiles at the type of
@@ -409,20 +433,20 @@ Every other variable of a function, a method or a function block body -- a local
 
 `AND`, `OR` and `XOR` compute at the type the analyzer recorded for the operation, to which it converted an operand of another width.
 
-A typed time or date function compiles each operand at the type the analyzer recorded for it, which is the width the routine computes at. An operand of another width is an internal error (P9998), not widened as the code generator used to widen a short operand of a long form and the number a duration is scaled by. The analyzer writes a typed fold as the calls it folds to, so no step widens the previous step's result on the stack.
+A typed time or date function compiles each operand at the type the analyzer recorded for it, which is the width the routine computes at. Lowering does not lower an operand of another width, so its statement is not compiled (P9999), rather than widened as the code generator used to widen a short operand of a long form and the number a duration is scaled by. The analyzer writes a typed fold as the calls it folds to, so no step widens the previous step's result on the stack.
 
-An array subscript and a shift or rotate count compile at the type the analyzer recorded for them, which is `DINT`, or `LINT` for the count of a value operated at 64 bits. One of another width is an internal error, not narrowed or widened as the code generator used to. The code generator compiles a checked conversion of a subscript as a subscript check (`CHECK_SUBSCRIPT_I64`, `CHECK_SUBSCRIPT_U64` or `CHECK_SUBSCRIPT_U32`), which leaves a value in the range of `DINT` as it is and traps (`V4007`) on any other.
+An array subscript and a shift or rotate count compile at the type the analyzer recorded for them, which is `DINT`, or `LINT` for the count of a value operated at 64 bits. A subscript of another width is an internal error, and lowering does not lower a count of another width, so its statement is not compiled; neither is narrowed or widened as the code generator used to. The code generator compiles a checked conversion of a subscript as a subscript check (`CHECK_SUBSCRIPT_I64`, `CHECK_SUBSCRIPT_U64` or `CHECK_SUBSCRIPT_U32`), which leaves a value in the range of `DINT` as it is and traps (`V4007`) on any other.
 
 **REQ-IC-codegen-022** A subscript whose conversion the analyzer recorded as checked traps with `V4007` when its value is outside the range of `DINT`, rather than selecting the element at the position its low bits name: an `LINT` subscript of 4294967297 on `ARRAY[0..3]`, and a `UDINT` subscript of 4294967295, a `DWORD` of `16#FFFFFFFF` and a `ULINT` of 18446744073709551615 on `ARRAY[-3..100]`, each trap.
 
-**REQ-IC-codegen-015** A subscript or shift count whose conversion the analyzer did not record is an internal error: with the recorded conversions removed, `a[l]`, `a[d + l]`, `SHL(dw, l)` and `SHL(lw, d)` report P9998, and `a[d]` and `SHL(dw, d)` compile.
+**REQ-IC-codegen-015** A subscript or shift count whose conversion the analyzer did not record is not compiled: with the recorded conversions removed, `a[l]` and `a[d + l]` report P9998, `SHL(dw, l)` and `SHL(lw, d)` report P9999, and `a[d]` and `SHL(dw, d)` compile.
 
-A string function's position or length compiles at the type the analyzer recorded for it, which is `DINT`. One of another width is an internal error, not narrowed as the code generator used to.
+A string function's position or length compiles at the type the analyzer recorded for it, which is `DINT`. Lowering does not lower one of another width, so its statement is not compiled, rather than narrowed as the code generator used to.
 
-**REQ-IC-codegen-018** A string position or length whose conversion the analyzer did not record is an internal error: with the recorded conversions removed, `LEFT(st, l)`, `MID(st, d, l)`, `INSERT(st, 'ab', l)` and `REPLACE(st, 'ab', l, d)` report P9998, and `LEFT(st, d)` compiles.
+**REQ-IC-codegen-018** A string position or length whose conversion the analyzer did not record is not compiled: with the recorded conversions removed, `LEFT(st, l)`, `MID(st, d, l)`, `INSERT(st, 'ab', l)` and `REPLACE(st, 'ab', l, d)` report P9999, and `LEFT(st, d)` compiles.
 
 `INT_TO_BCD` selects its encoding by the width of its input, the bit string as wide as it (REQ-IC-analyzer-090). An input of a width with no encoding is an internal error, not encoded at the width of the call's context as the code generator used to.
 
-**REQ-IC-codegen-013** A typed time or date operation whose operand conversion the analyzer did not record is an internal error: with the recorded conversions removed, `lt + t`, `SUB_LDATE_LDATE(lda, da)`, `lt * d`, `MUL_LTIME(lt, r)` and `t * l` report P9998, and `lt + lt` compiles.
+**REQ-IC-codegen-013** A typed time or date operation whose operand conversion the analyzer did not record is not compiled: with the recorded conversions removed, `lt + t`, `SUB_LDATE_LDATE(lda, da)`, `lt * d`, `MUL_LTIME(lt, r)` and `t * l` report P9999, and `lt + lt` compiles.
 
 **REQ-IC-codegen-008** `AND`, `OR` and `XOR` keep every bit of their widest operand and widen their result by its own type: with `lw = 16#100000000` and `w = 1`, `w OR lw` and `lw OR w` give `16#100000001`, and with the `DWORD`s `d1 = 16#80000000` and `d2 = 1`, `lw := d1 OR d2` stores `16#80000001`.

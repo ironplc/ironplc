@@ -122,7 +122,7 @@ Each EnumValueName (variable size):
 
 **REQ-EN-codegen-063** A reader that does not recognize Tag 9 skips it using the directory's `size` field (existing extensibility mechanism per the container format spec).
 
-**REQ-EN-codegen-064** Only enumeration types are emitted in the ENUM_DEF table, one entry each: a named enumeration or alias under its type name, and an inline enumeration under the name REQ-EN-codegen-092 gives it.
+**REQ-EN-codegen-064** Only enumeration types are emitted in the ENUM_DEF table, one entry each: a named enumeration or alias under its type name, and an inline enumeration under the name REQ-EN-codegen-092 gives it. Those are the enumeration types of the lowered program's type table, the ones the program uses.
 
 ## 8. Playground Display
 
@@ -154,7 +154,7 @@ An inline enumeration spells its values where a type name would go: `VAR e : (A,
 
 **REQ-EN-codegen-091** A variable declared with an inline enumeration is allocated as a named enumeration variable is (REQ-EN-codegen-010, REQ-EN-codegen-011), and its `VarNameEntry` carries `iec_type_tag::DINT`.
 
-**REQ-EN-codegen-092** An inline enumeration's debug type name is made from its type id when the debug section is written, as `(ANONYMOUS ENUMERATION 42)`. A parenthesis cannot start an identifier, so the name is never a declared type's. The variable's `VarNameEntry::type_name` is that name, and the ENUM_DEF table holds one entry under it per declaration.
+**REQ-EN-codegen-092** An inline enumeration's debug type name is made from its type id in the lowered program's type table, as `(ANONYMOUS ENUMERATION 42)`. A parenthesis cannot start an identifier, so the name is never a declared type's. The variable's `VarNameEntry::type_name` is that name, and the ENUM_DEF table holds one entry under it per declaration.
 
 **REQ-EN-codegen-093** An inline enumeration variable's explicit initial value is resolved as a member of the declaration's own type. Without an initial value, the variable starts at the type's default, its first member's ordinal.
 

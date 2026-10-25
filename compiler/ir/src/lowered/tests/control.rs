@@ -230,9 +230,19 @@ fn enumeration_ordinal_when_explicit_values_then_ordinal_at_position() {
         name: name(text),
         ordinal,
     };
+    let underlying = b
+        .push_type(
+            entry(TypeKind::Integer {
+                width: IntWidth::B16,
+                signed: true,
+            }),
+            &span(),
+        )
+        .unwrap();
     let ty = b
         .push_type(
             entry(TypeKind::Enumeration {
+                underlying,
                 values: vec![value("RED", 0), value("GREEN", 5), value("BLUE", 6)],
             }),
             &span(),
@@ -240,4 +250,19 @@ fn enumeration_ordinal_when_explicit_values_then_ordinal_at_position() {
         .unwrap();
     assert_eq!(b.types().enumeration_ordinal(ty, 1), Some(5));
     assert_eq!(b.types().enumeration_ordinal(ty, 3), None);
+}
+
+/// REQ-LOW-lowering-067: the control of a `For` may be what a reference
+/// variable refers to, as a function's `VAR_OUTPUT` parameter is.
+#[test]
+fn for_when_control_what_reference_refers_to_then_counts_it() {
+    let mut f = fixture();
+    let scope = f.b.open_loop();
+    let control = f.b.deref(f.place(f.reference), &span()).unwrap();
+    let parts = for_parts(control, Const::I32(1), vec![]);
+    let stmt = f.b.for_(scope, parts, span()).unwrap();
+    assert_eq!(
+        stmt.to_string(),
+        "for loop0 v7^ from (const i32s 1) to (const i32s 10) by 1\nend"
+    );
 }

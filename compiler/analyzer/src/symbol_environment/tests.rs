@@ -592,6 +592,7 @@ fn function_block_decl(name: &str) -> ironplc_dsl::common::FunctionBlockDeclarat
 fn method_decl(name: &str) -> ironplc_dsl::common::MethodDeclaration {
     ironplc_dsl::common::MethodDeclaration {
         qualifiers: Default::default(),
+        accessor: None,
         name: Id::from(name),
         return_type: None,
         implicit_variables: vec![],
@@ -760,4 +761,114 @@ fn self_type_when_program_or_global_then_none() {
         self_types(&env, &ScopeKind::Named(Id::from("main").into()))
     );
     assert_eq!((None, None), self_types(&env, &ScopeKind::Global));
+}
+
+#[test]
+fn scope_tracker_when_property_accessors_entered_then_get_and_set_scopes_differ() {
+    use ironplc_dsl::common::{FunctionReturnType, PropertyDeclaration};
+    let name = Id::from("Position");
+    let property_type = FunctionReturnType::Named(TypeName::from("INT"));
+    let get = PropertyDeclaration::get_accessor(
+        &name,
+        &property_type,
+        vec![],
+        vec![],
+        vec![],
+        ironplc_dsl::core::SourceSpan::default(),
+    );
+    let set = PropertyDeclaration::set_accessor(
+        &name,
+        &property_type,
+        vec![],
+        vec![],
+        vec![],
+        ironplc_dsl::core::SourceSpan::default(),
+    );
+    let block = function_block_decl("FB_Axis");
+    let mut tracker = ScopeTracker::default();
+    tracker.enter(&ScopeNode::FunctionBlock(&block));
+
+    let get_scope = tracker.scope_of(&ScopeNode::Method(&get));
+    let set_scope = tracker.scope_of(&ScopeNode::Method(&set));
+
+    assert_ne!(get_scope, set_scope);
+    assert_eq!(
+        ScopeKind::Named(ScopePath::new(vec![
+            Id::from("FB_Axis"),
+            Id::from("Position.GET")
+        ])),
+        get_scope
+    );
+}
+
+#[test]
+fn constant_value_when_reached_through_external_then_global_value() {
+    let mut env = SymbolEnvironment::new();
+    let unit = ScopeKind::Named(Id::from("Unit").into());
+    let k = Id::from("k");
+    env.insert_variable(
+        &k,
+        &ScopeKind::Global,
+        VariableType::Global,
+        DeclarationQualifier::Constant,
+        None,
+        None,
+    )
+    .unwrap();
+    env.insert_variable(
+        &k,
+        &unit,
+        VariableType::External,
+        DeclarationQualifier::Constant,
+        None,
+        None,
+    )
+    .unwrap();
+    env.record_constant_value(
+        &k,
+        &ScopeKind::Global,
+        ironplc_dsl::common::ConstantKind::integer_literal("4").unwrap(),
+    );
+
+    let value = env.constant_value(&k, &unit);
+
+    assert!(matches!(
+        value,
+        Some(ironplc_dsl::common::ConstantKind::IntegerLiteral(literal))
+            if literal.value.value.value == 4
+    ));
+}
+
+#[test]
+fn constant_value_when_nothing_recorded_then_none() {
+    let mut env = SymbolEnvironment::new();
+    let unit = ScopeKind::Named(Id::from("Unit").into());
+    let k = Id::from("k");
+    env.insert_variable(
+        &k,
+        &unit,
+        VariableType::Var,
+        DeclarationQualifier::Constant,
+        None,
+        None,
+    )
+    .unwrap();
+
+    assert!(env.constant_value(&k, &unit).is_none());
+    assert!(env.constant_value(&Id::from("missing"), &unit).is_none());
+}
+
+#[test]
+fn record_constant_value_when_scope_lacks_name_then_nothing_recorded() {
+    let mut env = SymbolEnvironment::new();
+    let unit = ScopeKind::Named(Id::from("Unit").into());
+    let k = Id::from("k");
+
+    env.record_constant_value(
+        &k,
+        &unit,
+        ironplc_dsl::common::ConstantKind::integer_literal("4").unwrap(),
+    );
+
+    assert!(env.constant_value(&k, &unit).is_none());
 }

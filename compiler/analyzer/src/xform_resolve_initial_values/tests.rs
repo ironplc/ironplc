@@ -57,11 +57,11 @@ fn declarations<'a>(library: &'a Library, pou: &str) -> Vec<&'a VarDecl> {
                 found.extend(&f.variables)
             }
             LibraryElementKind::FunctionBlockDeclaration(fb) => {
-                if fb.name.name == Id::from(pou) {
+                if fb.name.id == Id::from(pou) {
                     found.extend(&fb.variables);
                 }
                 for method in &fb.methods {
-                    if format!("{}.{}", fb.name.name, method.name).eq_ignore_ascii_case(pou) {
+                    if format!("{}.{}", fb.name.id, method.name).eq_ignore_ascii_case(pou) {
                         found.extend(&method.variables);
                     }
                 }
@@ -677,10 +677,11 @@ END_PROGRAM";
 // --- Re-initialization ---
 
 #[spec_test(REQ_IV_analyzer_050)]
-fn apply_when_pou_variables_then_only_function_and_method_locals_reset_on_call() {
+fn apply_when_pou_variables_then_only_function_and_method_locals_and_temporaries_reset_on_call() {
     let source = "
 FUNCTION_BLOCK fb
 VAR count : INT; END_VAR
+VAR_TEMP scratch : INT; END_VAR
 VAR_OUTPUT done : BOOL; END_VAR
 METHOD bump : INT
 VAR m : INT := 6; END_VAR
@@ -706,6 +707,7 @@ END_PROGRAM";
     assert!(decl(&library, "fb.bump", "m").reset_on_call);
     assert!(decl(&library, "f", "q").reset_on_call);
     assert!(decl(&library, "fb.bump", "mq").reset_on_call);
+    assert!(decl(&library, "fb", "scratch").reset_on_call);
     assert!(
         function(&library, "f")
             .result

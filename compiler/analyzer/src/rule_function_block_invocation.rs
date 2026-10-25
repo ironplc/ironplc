@@ -43,7 +43,7 @@ use ironplc_problems::Problem;
 use std::convert::Infallible;
 
 use crate::{
-    callee_resolution::{instance_type, BlockParameters, CallParameters, FunctionBlocks},
+    callee_resolution::{instance_type, CallParameters, FunctionBlocks},
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
@@ -56,19 +56,14 @@ pub fn apply(
     context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let function_blocks = FunctionBlocks::from_library(lib);
-    let parameters = BlockParameters::of_library(lib);
+    let function_blocks = FunctionBlocks::from_library(lib, context.types());
 
     // Walk the library to find all references to function blocks
-    run_rule(
-        RuleFunctionBlockUse::new(&function_blocks, &parameters, context),
-        lib,
-    )
+    run_rule(RuleFunctionBlockUse::new(&function_blocks, context), lib)
 }
 
 struct RuleFunctionBlockUse<'a> {
     function_blocks: &'a FunctionBlocks<'a>,
-    parameters: &'a BlockParameters,
     context: &'a SemanticContext,
 
     /// The scope the walk is in, which an instance is looked up from.
@@ -77,14 +72,9 @@ struct RuleFunctionBlockUse<'a> {
     diagnostics: Vec<Diagnostic>,
 }
 impl<'a> RuleFunctionBlockUse<'a> {
-    fn new(
-        function_blocks: &'a FunctionBlocks<'a>,
-        parameters: &'a BlockParameters,
-        context: &'a SemanticContext,
-    ) -> Self {
+    fn new(function_blocks: &'a FunctionBlocks<'a>, context: &'a SemanticContext) -> Self {
         Self {
             function_blocks,
-            parameters,
             context,
             scope: ScopeTracker::default(),
             diagnostics: Vec::new(),
@@ -153,10 +143,7 @@ impl Visitor<Infallible> for RuleFunctionBlockUse<'_> {
         };
 
         // A block the library declares, or a standard one.
-        match self
-            .parameters
-            .of(&function_block_name, self.context.types())
-        {
+        match CallParameters::of_block(&function_block_name, self.context.types()) {
             None => self.diagnostics.push(Self::not_in_scope(fb_call)),
             Some(parameters) => {
                 let diagnostics =
@@ -498,6 +485,39 @@ inst(q => x, Q => y);
 END_PROGRAM",
         Problem::FunctionCallDuplicateNamedArg,
         "Q"
+    );
+
+    /// A block that extends another, and a program that calls an instance of
+    /// it with `call`.
+    fn derived_call(call: &str) -> String {
+        format!(
+            "
+FUNCTION_BLOCK Base
+VAR_INPUT count : INT; END_VAR
+VAR_OUTPUT seen : INT; END_VAR
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK Derived EXTENDS Base
+VAR_INPUT speed : INT; END_VAR
+END_FUNCTION_BLOCK
+PROGRAM main
+VAR d : Derived; r : INT; END_VAR
+{call}
+END_PROGRAM"
+        )
+    }
+
+    rule_ok!(
+        #[spec_test(REQ_CB_analyzer_053)]
+        apply_when_derived_block_names_inherited_input_and_output_then_ok,
+        &derived_call("d(count := 3, speed := 4, seen => r);"),
+        crate::test_helpers::edition3_options()
+    );
+
+    rule_err!(
+        apply_when_derived_block_names_input_no_block_declares_then_missing_input,
+        &derived_call("d(count := 3, nope := 4);"),
+        [Problem::FunctionInvocationMissingInput],
+        crate::test_helpers::edition3_options()
     );
 
     rule_ok!(

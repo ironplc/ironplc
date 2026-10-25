@@ -1,18 +1,15 @@
-//! A subscript of an array access, whatever it is compiled from.
+//! A subscript of an array access.
 //!
 //! The flat index of an array element is computed from its subscripts in one
-//! way (`emit_flat_index`), whether they come from the AST or from the lowered
-//! program. [`Subscript`] is what that computation needs of one subscript.
+//! way (`emit_flat_index`). [`Subscript`] is what that computation needs of
+//! one subscript of the lowered program.
 
-use ironplc_dsl::common::ConstantKind;
-use ironplc_dsl::core::{Located, SourceSpan};
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{Expr, ExprKind, UnaryOp};
+use ironplc_ir::SourceSpan;
+use ironplc_ir::{Diagnostic, Label};
 
 use ironplc_container::opcode;
 
 use super::compile::{CompileContext, OpType, OpWidth, Signedness};
-use super::compile_expr::{compile_expr, op_type};
 use crate::emit::Emitter;
 
 /// One subscript of an array access.
@@ -23,25 +20,6 @@ pub(crate) trait Subscript {
 
     /// Pushes the subscript's value, a `DINT`.
     fn emit(&self, emitter: &mut Emitter, ctx: &mut CompileContext) -> Result<(), Diagnostic>;
-}
-
-impl Subscript for &Expr {
-    fn literal(&self) -> Option<i32> {
-        integer_literal(self)
-    }
-
-    /// Compiles the subscript at its own type, which the analyzer converted
-    /// to `DINT` where its width differed.
-    fn emit(&self, emitter: &mut Emitter, ctx: &mut CompileContext) -> Result<(), Diagnostic> {
-        let own = op_type(ctx, self)?;
-        if own.0 != OpWidth::W32 {
-            return Err(Diagnostic::internal_error_at(Label::span(
-                self.span(),
-                "Array subscript of a width other than DINT's, and the analyzer recorded no conversion",
-            )));
-        }
-        compile_expr(emitter, ctx, self)
-    }
 }
 
 /// Emits the check of an array subscript of the type `from`, on the stack,
@@ -76,32 +54,5 @@ pub(crate) fn subscript_check(from: OpType, to: OpType) -> Option<u16> {
         (OpWidth::W64, Signedness::Unsigned) => Some(opcode::builtin::CHECK_SUBSCRIPT_U64),
         (OpWidth::W32, Signedness::Unsigned) => Some(opcode::builtin::CHECK_SUBSCRIPT_U32),
         (OpWidth::W32, Signedness::Signed) | (OpWidth::F32 | OpWidth::F64, _) => None,
-    }
-}
-
-/// Extracts an i32 value from an expression if it is a literal integer.
-/// Returns `None` for any non-literal expression.
-fn integer_literal(expr: &Expr) -> Option<i32> {
-    match &expr.kind {
-        ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
-            let unsigned = i32::try_from(lit.value.value.value).ok()?;
-            if lit.value.is_neg {
-                unsigned.checked_neg()
-            } else {
-                Some(unsigned)
-            }
-        }
-        ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Neg => match &unary.term.kind {
-            ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
-                let val = i32::try_from(lit.value.value.value).ok()?;
-                if lit.value.is_neg {
-                    Some(val)
-                } else {
-                    val.checked_neg()
-                }
-            }
-            _ => None,
-        },
-        _ => None,
     }
 }

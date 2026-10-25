@@ -8,11 +8,20 @@
 //! the program: only P9999 for a construct it cannot express yet, and P9998
 //! for a compiler defect (REQ-LOW-lowering-109).
 //!
-//! While codegen still compiles most statements from the AST, lowering grows
-//! one top-level statement at a time. [`Lowering::lower_statement`] answers
-//! whether it supports a statement and every statement and expression inside
-//! it. A statement it does not support yet is [`StatementLowering::Unsupported`]:
-//! that is not a defect, and codegen compiles the statement from the AST.
+//! [`lower`] gives the whole lowered program a backend compiles, or a P9999
+//! at each construct lowering does not express yet. It completes every
+//! initializer on a copy of the library, then [`Lowering::lower_program`]
+//! lowers the copy in one walk: every declaration of every reachable POU and
+//! every global first, then each top-level statement of each body. A
+//! [`PartialProgram`] records what did not lower, and is the whole lowered
+//! program once everything did.
+//!
+//! Inside the walk, every function that lowers a node returns [`Lowered`]:
+//! the node, or [`Unlowered`], which says why not. A construct lowering does
+//! not express yet is [`Unlowered::NotYet`], which the walk reports as a
+//! P9999 at the statement or declaration that holds the construct and goes
+//! on with the next; a broken invariant is [`Unlowered::Broken`], a P9998,
+//! which ends the walk.
 //!
 //! Lowering takes a [`CleanAnalysis`] and has no entry point that takes a
 //! library without one (REQ-LOW-lowering-011).
@@ -24,45 +33,86 @@
 mod bits;
 mod call;
 mod control;
+mod execution_model;
 mod expr;
+mod fb_call;
 mod function;
+mod init;
+pub mod initial_value;
+mod interface;
 mod place;
+mod program;
 mod statement;
 mod string;
+mod string_result;
+mod structure_result;
 mod time;
+mod typed;
 mod types;
 mod variables;
+mod whole;
 
 #[cfg(test)]
 mod call_tests;
 #[cfg(test)]
 mod control_tests;
 #[cfg(test)]
+mod copy_tests;
+#[cfg(test)]
+mod declaration_tests;
+#[cfg(test)]
+mod fb_call_tests;
+#[cfg(test)]
 mod function_tests;
+#[cfg(test)]
+mod in_place_tests;
+#[cfg(test)]
+mod init_tests;
+#[cfg(test)]
+mod method_tests;
 #[cfg(test)]
 mod place_tests;
 #[cfg(test)]
+mod program_tests;
+#[cfg(test)]
+mod prologue_tests;
+#[cfg(test)]
+mod string_result_tests;
+#[cfg(test)]
 mod string_tests;
+#[cfg(test)]
+mod structure_result_tests;
 #[cfg(test)]
 mod test_support;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod time_tests;
+#[cfg(test)]
+mod types_tests;
+
+// Spec conformance testing infrastructure (test-only)
+#[cfg(test)]
+mod spec_requirements {
+    include!(concat!(env!("OUT_DIR"), "/spec_requirements.rs"));
+}
+#[cfg(test)]
+mod spec_conformance;
 
 use std::collections::HashMap;
 
 use ironplc_analyzer::symbol_environment::DeclRef;
-use ironplc_analyzer::CleanAnalysis;
+use ironplc_analyzer::{CleanAnalysis, MethodOwners};
 use ironplc_dsl::common::{
     FunctionBlockDeclaration, FunctionDeclaration, LibraryElementKind, ProgramDeclaration,
 };
-use ironplc_dsl::core::Id;
+use ironplc_dsl::core::{Id, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_dsl::textual::StmtKind;
-use ironplc_ir::lowered::{
-    LoopScope, ParsePolicy, PouId, PouTable, ProgramBuilder, Stmt, TypeTable, VarId, VariableTable,
-};
+use ironplc_dsl::oop::MethodDeclaration;
+pub use program::PartialProgram;
+pub use whole::{lower, parse_policy};
+
+use ironplc_ir::lowered::{LoopScope, ParsePolicy, Place, PouId, ProgramBuilder, VarId};
 
 /// The body a statement belongs to.
 #[derive(Clone, Copy, Debug)]
@@ -70,18 +120,48 @@ pub enum Body<'a> {
     Program(&'a ProgramDeclaration),
     FunctionBlock(&'a FunctionBlockDeclaration),
     Function(&'a FunctionDeclaration),
+    /// A method of the function block `block` declares.
+    Method {
+        block: &'a FunctionBlockDeclaration,
+        method: &'a MethodDeclaration,
+    },
 }
 
-/// What lowering made of one statement.
+/// Why lowering did not make a node (REQ-LOW-lowering-109).
 #[derive(Clone, Debug)]
-pub enum StatementLowering {
-    /// The statement, with everything inside it, lowered to the statements
-    /// it runs, in order.
-    Lowered(Vec<Stmt>),
-    /// The statement, or something inside it, is not one lowering supports
-    /// yet. Not a defect: the statement is compiled from the AST.
-    Unsupported,
+pub(crate) enum Unlowered {
+    /// The node, or something inside it, is a construct lowering does not
+    /// express yet. Not a defect: the walk reports it as a P9999 at the
+    /// statement or declaration that holds the construct, and goes on.
+    NotYet,
+    /// The analyzed library breaks an invariant lowering relies on: a P9998,
+    /// which ends the walk. Boxed so that the common case, a node that
+    /// lowered, carries no more than a pointer for the uncommon one.
+    Broken(Box<Diagnostic>),
 }
+
+impl From<Diagnostic> for Unlowered {
+    fn from(diagnostic: Diagnostic) -> Self {
+        Unlowered::Broken(Box::new(diagnostic))
+    }
+}
+
+impl Unlowered {
+    /// What the walk records for a node that did not lower: for a construct
+    /// lowering does not express yet, the P9999 at `span`, the statement or
+    /// declaration that holds the construct; for a broken invariant, its
+    /// P9998, as the error that ends the walk.
+    #[track_caller]
+    pub(crate) fn not_yet_at(self, span: SourceSpan) -> Result<Diagnostic, Diagnostic> {
+        match self {
+            Unlowered::NotYet => Ok(Diagnostic::todo_with_span(span)),
+            Unlowered::Broken(diagnostic) => Err(*diagnostic),
+        }
+    }
+}
+
+/// A node lowering made, or why it did not.
+pub(crate) type Lowered<T> = Result<T, Unlowered>;
 
 /// Lowers the statements of one analyzed library.
 ///
@@ -96,16 +176,39 @@ pub struct Lowering<'a> {
     /// The lowered program's tables, which every node lowering builds
     /// refers into.
     program: ProgramBuilder,
-    /// The lowered type of each analyzer type, or `None` for one lowering
-    /// cannot express yet.
-    type_ids: HashMap<ironplc_dsl::type_id::TypeId, Option<ironplc_ir::lowered::TypeId>>,
+    /// The lowered type of each analyzer type, or why it did not lower.
+    type_ids: HashMap<ironplc_dsl::type_id::TypeId, Lowered<ironplc_ir::lowered::TypeId>>,
+    /// The analyzer types being lowered, each with the lowered type declared
+    /// for it if a reference reached it again (`types::reference_target`).
+    types_in_progress: HashMap<ironplc_dsl::type_id::TypeId, Option<ironplc_ir::lowered::TypeId>>,
     /// The variable of each declaration that is not a field.
     declared: HashMap<DeclRef, VarId>,
     pou_ids: HashMap<String, PouId>,
-    /// What lowering knows of each body it has lowered a statement of.
-    bodies: HashMap<PouId, Option<variables::BodyFrame>>,
+    /// What lowering knows of each body it has lowered a statement of, or
+    /// why it could not make the body's frame.
+    bodies: HashMap<PouId, Lowered<variables::BodyFrame>>,
     /// The loops enclosing the statement being lowered, innermost last.
     loops: Vec<LoopScope>,
+    /// Where the call whose outputs are being lowered leaves them, which
+    /// its call outputs read.
+    call_outputs: Option<CallOutputs>,
+    /// The block that declares each method a call can reach, as the
+    /// analyzer resolves it (ADR-0041).
+    method_owners: MethodOwners,
+    /// The variable of the body of each method whose result is an array or
+    /// a structure, which holds the result (REQ-LOW-lowering-187).
+    aggregate_results: HashMap<PouId, VarId>,
+}
+
+/// Where a call leaves its outputs for the assignments of its outputs to
+/// read.
+#[derive(Clone, Debug)]
+enum CallOutputs {
+    /// In the fields of the function block instance it called.
+    Instance(Place),
+    /// In the temporary it passed for each output of a function or method,
+    /// by the output's name (REQ-LOW-lowering-092).
+    Temporaries(Vec<(Id, Place)>),
 }
 
 impl<'a> Lowering<'a> {
@@ -117,45 +220,27 @@ impl<'a> Lowering<'a> {
             parse,
             program: ProgramBuilder::new(),
             type_ids: HashMap::new(),
+            types_in_progress: HashMap::new(),
             declared: HashMap::new(),
             pou_ids: HashMap::new(),
             bodies: HashMap::new(),
             loops: Vec::new(),
+            call_outputs: None,
+            method_owners: MethodOwners::of_library(analysis.library(), analysis.context().types()),
+            aggregate_results: HashMap::new(),
         }
     }
 
     /// Lowers `stmt`, a top-level statement of `body`, with every statement
-    /// and expression inside it.
-    ///
-    /// Returns [`StatementLowering::Unsupported`] when lowering does not
-    /// support the statement yet, and a P9998 when the analyzed library
-    /// breaks an invariant lowering relies on.
-    pub fn lower_statement(
+    /// and expression inside it, to the statements it runs.
+    #[cfg(test)]
+    pub(crate) fn lower_statement(
         &mut self,
         body: Body<'a>,
-        stmt: &StmtKind,
-    ) -> Result<StatementLowering, Diagnostic> {
-        let Some(frame) = self.frame(body)? else {
-            return Ok(StatementLowering::Unsupported);
-        };
-        Ok(match self.statement(&frame, stmt)? {
-            Some(lowered) => StatementLowering::Lowered(lowered),
-            None => StatementLowering::Unsupported,
-        })
-    }
-
-    /// Lowers `stmt`, a top-level statement of the body of the program,
-    /// function block or function named `pou` in the library the analysis
-    /// holds. A POU of another kind, such as a method, is unsupported.
-    pub fn lower_statement_of(
-        &mut self,
-        pou: &Id,
-        stmt: &StmtKind,
-    ) -> Result<StatementLowering, Diagnostic> {
-        match self.body_named(pou) {
-            Some(body) => self.lower_statement(body, stmt),
-            None => Ok(StatementLowering::Unsupported),
-        }
+        stmt: &ironplc_dsl::textual::StmtKind,
+    ) -> Lowered<Vec<ironplc_ir::lowered::Stmt>> {
+        let frame = self.frame(body)?;
+        self.statement(&frame, stmt)
     }
 
     /// The body of the program, function block or function named `pou`.
@@ -168,7 +253,7 @@ impl<'a> Lowering<'a> {
                 LibraryElementKind::ProgramDeclaration(program) if program.name == *pou => {
                     Some(Body::Program(program))
                 }
-                LibraryElementKind::FunctionBlockDeclaration(block) if block.name.name == *pou => {
+                LibraryElementKind::FunctionBlockDeclaration(block) if block.name.id == *pou => {
                     Some(Body::FunctionBlock(block))
                 }
                 LibraryElementKind::FunctionDeclaration(function) if function.name == *pou => {
@@ -185,17 +270,14 @@ impl<'a> Lowering<'a> {
     }
 
     /// The types the lowered statements refer to.
-    pub fn types(&self) -> &TypeTable {
+    #[cfg(test)]
+    pub(crate) fn types(&self) -> &ironplc_ir::lowered::TypeTable {
         self.program.types()
     }
 
     /// The variables the lowered statements refer to.
-    pub fn variables(&self) -> &VariableTable {
+    #[cfg(test)]
+    pub(crate) fn variables(&self) -> &ironplc_ir::lowered::VariableTable {
         self.program.variables()
-    }
-
-    /// The POUs the lowered statements refer to.
-    pub fn pous(&self) -> &PouTable {
-        self.program.pous()
     }
 }

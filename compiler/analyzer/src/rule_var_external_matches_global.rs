@@ -60,7 +60,6 @@ use crate::{
     semantic_context::SemanticContext,
     symbol_environment::SymbolInfo,
     system_globals::SYSTEM_UPTIME_GLOBALS,
-    type_environment::TypeEnvironment,
 };
 use ironplc_parser::options::CompilerOptions;
 
@@ -78,32 +77,6 @@ pub fn apply(
     )
 }
 
-/// Whether an external declared with the type `external` has the type of a
-/// global declared with the type `global`.
-///
-/// A type is identified by its id, so a type and an alias of it are two
-/// types. A declaration that spells its type out in place
-/// (`ARRAY[1..3] OF INT`) declares a type of its own, so the two
-/// declarations of one global written that way have two ids; they are the
-/// same type when they spell the same shape.
-///
-/// An array is the only type a `VAR_GLOBAL` or a `VAR_EXTERNAL` can spell
-/// in place today. Comparing two shapes does not compare the members of an
-/// enumeration, so an enumeration spelled in place would need them compared
-/// here as well.
-fn is_same_type(types: &TypeEnvironment, external: TypeId, global: TypeId) -> bool {
-    if external == global {
-        return true;
-    }
-    if types.name_of(external).is_some() || types.name_of(global).is_some() {
-        return false;
-    }
-    match (types.get_by_id(external), types.get_by_id(global)) {
-        (Some(external), Some(global)) => external.representation == global.representation,
-        _ => false,
-    }
-}
-
 struct RuleVarExternalMatchesGlobal<'a> {
     context: &'a SemanticContext,
     diagnostics: Vec<Diagnostic>,
@@ -117,7 +90,9 @@ impl RuleVarExternalMatchesGlobal<'_> {
             return;
         };
         let types = self.context.types();
-        if is_same_type(types, external, declared) {
+        // An array is the only type a `VAR_GLOBAL` or a `VAR_EXTERNAL` can
+        // spell in place.
+        if types.same_type(external, declared) {
             return;
         }
         let mut diagnostic = Diagnostic::problem(
@@ -189,6 +164,7 @@ mod tests {
     use ironplc_parser::options::CompilerOptions;
     use ironplc_problems::Problem;
     use rstest::rstest;
+    use spec_test_macro::spec_test;
 
     use crate::test_helpers::{
         codes, configuration_with_globals as config, diagnostic_codes,
@@ -246,6 +222,32 @@ END_TYPE
         let reported = rule_codes(super::apply, &source, &CompilerOptions::default());
 
         assert_eq!(reported, codes(&[Problem::ExternalMatchesNoGlobal]));
+    }
+
+    /// The type of a function block holds no copy of the block's fields,
+    /// so an array of a block declared before the block -- a top-level
+    /// `VAR_GLOBAL` is placed ahead of every declaration -- is the same type
+    /// as one declared after it.
+    #[spec_test(REQ_ETR_analyzer_005)]
+    #[test]
+    fn apply_when_global_array_of_block_declared_before_block_then_ok() {
+        let source = "
+VAR_GLOBAL g : ARRAY[1..2] OF Counter; END_VAR
+FUNCTION_BLOCK Counter
+  VAR_OUTPUT count : INT := 7; label : STRING[4]; END_VAR
+END_FUNCTION_BLOCK
+PROGRAM main
+  VAR_EXTERNAL g : ARRAY[1..2] OF Counter; END_VAR
+END_PROGRAM
+";
+        let options = CompilerOptions {
+            allow_top_level_var_global: true,
+            ..CompilerOptions::default()
+        };
+
+        let reported = rule_codes(super::apply, source, &options);
+
+        assert_eq!(reported, codes(&[]));
     }
 
     rule_err_at!(

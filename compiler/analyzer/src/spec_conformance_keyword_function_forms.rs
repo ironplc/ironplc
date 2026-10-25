@@ -159,7 +159,7 @@ fn analyzer_spec_req_kf_007_mod_operator_agrees_with_its_form(
     operand_type: &str,
 ) {
     let signature = operator_function_form("MOD").unwrap().signature();
-    let category = GenericTypeName::try_from(&signature.parameters[0].param_type.name).unwrap();
+    let category = GenericTypeName::try_from(&signature.parameters[0].param_type.id).unwrap();
     let elementary = ElementaryTypeName::try_from(&Id::from(operand_type)).unwrap();
     let admitted = category.is_compatible_with(&elementary);
 
@@ -283,9 +283,9 @@ fn analyzer_spec_req_kf_005_argument_outside_category_is_p4026(
     operand_type: &str,
 ) {
     let signature = operator_function_form(function).unwrap().signature();
-    let category = GenericTypeName::try_from(&signature.parameters[0].param_type.name).unwrap();
+    let category = GenericTypeName::try_from(&signature.parameters[0].param_type.id).unwrap();
     let result_type = signature.return_type.unwrap().to_type_name();
-    let result_type = if GenericTypeName::try_from(&result_type.name).is_ok() {
+    let result_type = if GenericTypeName::try_from(&result_type.id).is_ok() {
         operand_type
     } else {
         "BOOL"

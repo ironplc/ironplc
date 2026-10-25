@@ -3,12 +3,10 @@
 //! (REQ-VB-analyzer-051, REQ-CB-analyzer-038), is reported rather than
 //! compiled to a wrong value.
 //!
-//! Neither route copies one yet. The route that reads the AST copies a whole
-//! structure only from a structure variable or a function's result, and
-//! reports any other source as an internal error (`compile_aggregate.rs`);
-//! lowering has no `Copy` statement, so it leaves the assignment to that
-//! route. A block whose body writes a field of the output does not compile
-//! at all (`compile_struct.rs`).
+//! This backend does not copy one yet. Lowering makes the assignment a
+//! `Copy`, which this backend emits only between the places its layout keeps
+//! a region for, so this one is not supported yet (P9999). A block whose body
+//! writes a field of the output does not compile at all (`compile_struct.rs`).
 
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
@@ -34,15 +32,14 @@ fn program(block_body: &str, body: &str) -> String {
 }
 
 #[rstest]
-#[case::field_read("n := x;", "f(x := 1);\n r := f.p;", "P9998")]
-#[case::output("n := x;", "f(x := 1, p => q);", "P9998")]
-#[case::output_written_by_block("p.a := x;", "f(x := 1, p => q);", "P9999")]
-fn compile_when_block_structure_output_stored_whole_then_error(
+#[case::field_read("n := x;", "f(x := 1);\n r := f.p;")]
+#[case::output("n := x;", "f(x := 1, p => q);")]
+#[case::output_written_by_block("p.a := x;", "f(x := 1, p => q);")]
+fn compile_when_block_structure_output_stored_whole_then_not_implemented(
     #[case] block_body: &str,
     #[case] body: &str,
-    #[case] code: &str,
 ) {
     let result = try_parse_and_compile(&program(block_body, body), &CompilerOptions::default());
 
-    assert_eq!(result.unwrap_err().code, code);
+    assert_eq!(result.unwrap_err().code, "P9999");
 }

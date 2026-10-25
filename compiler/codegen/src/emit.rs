@@ -5,8 +5,10 @@
 use std::collections::HashSet;
 
 use ironplc_container::opcode;
-use ironplc_container::{CharWidth, FunctionId, SourceColumn, SourceFileId, SourceLine, VarIndex};
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_container::{
+    CharWidth, FbTypeId, FunctionId, SourceColumn, SourceFileId, SourceLine, VarIndex,
+};
+use ironplc_ir::Diagnostic;
 
 use crate::optimize::OffsetMap;
 
@@ -91,7 +93,7 @@ pub struct Emitter {
     /// A buffer is allocated by the opcodes that push a `buf_idx`
     /// (`LOAD_CONST_STR`, `STR_LOAD_VAR`, the string functions that
     /// produce a result) and released by the opcodes that consume one
-    /// (`STR_STORE_VAR`, `STR_STORE_ARRAY_ELEM`), matching the VM's
+    /// (`STR_STORE_VAR` and the string array stores), matching the VM's
     /// allocator. So this is the count of buffers simultaneously live,
     /// not the number of string operations: a string operation in a loop
     /// allocates and releases one buffer per iteration and contributes 1.
@@ -557,6 +559,17 @@ impl Emitter {
         self.pop_stack(1);
     }
 
+    /// Emits COPY_REGION_DEREF with ref_var, dst_desc and src_desc operands:
+    /// COPY_REGION into the region the reference in `ref_var` refers to.
+    /// Pops 1 (source offset). Net: -1.
+    pub fn emit_copy_region_deref(&mut self, ref_var: VarIndex, dst_desc: u16, src_desc: u16) {
+        self.emit_opcode(opcode::COPY_REGION_DEREF);
+        self.bytecode.extend_from_slice(&ref_var.to_le_bytes());
+        self.bytecode.extend_from_slice(&dst_desc.to_le_bytes());
+        self.bytecode.extend_from_slice(&src_desc.to_le_bytes());
+        self.pop_stack(1);
+    }
+
     /// Emits STR_INIT_ARRAY with var_index and desc_index operands.
     /// Initializes all string headers in an array. No stack effect.
     pub fn emit_str_init_array(&mut self, var_index: VarIndex, desc_index: u16) {
@@ -581,6 +594,29 @@ impl Emitter {
     pub fn emit_str_store_array_elem(&mut self, var_index: VarIndex, desc_index: u16) {
         self.emit_opcode(opcode::STR_STORE_ARRAY_ELEM);
         self.bytecode.extend_from_slice(&var_index.to_le_bytes());
+        self.bytecode.extend_from_slice(&desc_index.to_le_bytes());
+        self.pop_stack(2);
+        self.release_temp_buf();
+    }
+
+    /// Emits STR_LOAD_ARRAY_DEREF with ref_var_index and desc_index operands.
+    /// Pops flat_index, pushes buf_idx. Net: 0.
+    pub fn emit_str_load_array_deref(&mut self, ref_var_index: VarIndex, desc_index: u16) {
+        self.emit_opcode(opcode::STR_LOAD_ARRAY_DEREF);
+        self.bytecode
+            .extend_from_slice(&ref_var_index.to_le_bytes());
+        self.bytecode.extend_from_slice(&desc_index.to_le_bytes());
+        self.pop_stack(1);
+        self.push_stack(1);
+        self.alloc_temp_buf();
+    }
+
+    /// Emits STR_STORE_ARRAY_DEREF with ref_var_index and desc_index
+    /// operands. Pops flat_index and buf_idx. Net: -2.
+    pub fn emit_str_store_array_deref(&mut self, ref_var_index: VarIndex, desc_index: u16) {
+        self.emit_opcode(opcode::STR_STORE_ARRAY_DEREF);
+        self.bytecode
+            .extend_from_slice(&ref_var_index.to_le_bytes());
         self.bytecode.extend_from_slice(&desc_index.to_le_bytes());
         self.pop_stack(2);
         self.release_temp_buf();
@@ -896,7 +932,7 @@ impl Emitter {
 
     /// Emits FB_CALL with a type_id.
     /// Net stack effect: 0 (fb_ref stays on stack).
-    pub fn emit_fb_call(&mut self, type_id: u16) {
+    pub fn emit_fb_call(&mut self, type_id: FbTypeId) {
         self.emit_opcode(opcode::FB_CALL);
         self.bytecode.extend_from_slice(&type_id.to_le_bytes());
     }
@@ -2200,8 +2236,9 @@ mod tests {
         em.emit_mid_str(0); // 9
         em.emit_concat_str(0, 0); // 10
         em.emit_builtin(opcode::builtin::CONV_I32_TO_STR).unwrap(); // 11
+        em.emit_str_load_array_deref(VarIndex::new(0), 0); // 12
 
-        assert_eq!(em.max_temp_depth(), 11);
+        assert_eq!(em.max_temp_depth(), 12);
     }
 
     #[test]
@@ -2232,15 +2269,18 @@ mod tests {
         assert_eq!(em.max_temp_depth(), 1);
     }
 
-    /// `STR_STORE_ARRAY_ELEM` is the other consuming opcode, so it has to
-    /// release too: the later CONCAT reuses the slot rather than stacking
-    /// on top of it.
+    /// The string array stores consume a buffer, so they have to release
+    /// too: the later CONCAT reuses the slot rather than stacking on top of
+    /// it.
     #[test]
     fn emitter_when_string_array_element_stored_then_temp_depth_stays_one() {
         let mut em = Emitter::new();
         em.emit_str_load_var(0);
         em.emit_load_const_i32(0);
         em.emit_str_store_array_elem(VarIndex::new(0), 0);
+        em.emit_str_load_var(0);
+        em.emit_load_const_i32(0);
+        em.emit_str_store_array_deref(VarIndex::new(0), 0);
         em.emit_concat_str(0, 0);
         em.emit_str_store_var(0);
 

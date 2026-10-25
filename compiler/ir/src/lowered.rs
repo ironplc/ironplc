@@ -17,33 +17,44 @@
 mod call;
 mod expr;
 mod ids;
+mod in_place;
 mod invariant;
 mod loops;
 mod place;
 mod policy;
 mod print;
+mod print_program;
 mod program;
 mod scalar;
+mod standard_block;
 mod stmt;
 mod str_expr;
 mod types;
 mod variables;
+mod whole;
 
 pub use call::{Arg, Callee, Intrinsic, Param, Signature};
 pub use expr::{BinaryOp, CompareOp, Const, Expr, ExprKind, ShortCircuitOp, UnaryOp};
 pub use ids::{FieldIdx, LoopId, PouId, TypeId, VarId};
+pub use in_place::InPlaceCall;
 pub use loops::{counts_down, is_loop_control, ForParts, LoopScope};
 pub use place::{Place, Projection};
 pub use policy::{NonNumeric, ParseFailure, ParsePolicy};
 pub use program::ProgramBuilder;
 pub use scalar::{ScalarType, Signedness};
+pub use standard_block::{CounterWidth, StandardFunctionBlock};
 pub use stmt::{store_narrowing, CaseArm, CaseLabel, Stmt, StmtKind};
 pub use str_expr::{StrExpr, StrExprKind};
 pub use types::{
-    Encoding, EnumerationValue, Field, IntWidth, NarrowWidth, Nullability, Section, StringShape,
-    TemporalKind, TypeEntry, TypeKind, TypeTable, WideWidth,
+    AddressArea, AddressSize, DirectAddress, Encoding, EnumerationValue, Field, IntWidth,
+    NarrowWidth, Nullability, Retention, Section, StringShape, TemporalKind, TypeEntry, TypeKind,
+    TypeTable, WideWidth,
 };
-pub use variables::{FunctionSignature, Owner, PouTable, Variable, VariableTable};
+pub use variables::{
+    Declaration, Declared, FunctionSignature, Owner, PouKind, PouParts, PouTable, Variable,
+    VariableTable,
+};
+pub use whole::{ExecutionBindings, Program};
 
 #[cfg(test)]
 mod tests;

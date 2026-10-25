@@ -1,7 +1,7 @@
 //! Semantic rule that checks the operands of an operator against the types
 //! the operator is defined for.
 //!
-//! Two families are checked:
+//! Three families are checked:
 //!
 //! - The arithmetic operators `+`, `-`, `*`, `/` and `MOD`, and the calls
 //!   `ADD`, `SUB`, `MUL` and `DIV`. IEC 61131-3 defines each as a numeric
@@ -22,6 +22,14 @@
 //!   diagnostic. Issue #1567 fixed the functional spelling of the same
 //!   family by declaring it `ANY_BIT`; this holds the operator spelling to
 //!   that row.
+//! - Negation, `-x`, of a `BOOL`, a time of day, a date or a date and
+//!   time. See [`RuleOperatorOperandTypeCheck::check_negation`].
+//!
+//! The operands of `AND`, `OR` and `XOR`, in the operator and the function
+//! form, and of the short-circuit `AND_THEN` and `OR_ELSE`, must also have a
+//! type every operand widens to: a narrower bit string widens to a wider one,
+//! but a `BOOL` widens to none. See
+//! [`RuleOperatorOperandTypeCheck::check_bitwise_operands`].
 //!
 //! An operand whose resolved type the predicate cannot judge (a subrange,
 //! an enumeration, a structure) is skipped rather than reported, as the
@@ -52,6 +60,15 @@
 //!     d := d AND 3;      (* P4049: AND is not defined for DINT *)
 //! END_PROGRAM
 //! ```
+//!
+//! ```ignore
+//! PROGRAM main
+//! VAR
+//!     t : TOD;
+//! END_VAR
+//!     t := -t;           (* P4049: a time of day has no negative *)
+//! END_PROGRAM
+//! ```
 
 use ironplc_dsl::{
     common::*,
@@ -73,6 +90,7 @@ use crate::intermediates::operator_function_form::{
 use crate::result::SemanticResult;
 use crate::rule_support::{run_rule, DiagnosticVisitor};
 use crate::semantic_context::SemanticContext;
+use crate::semantic_type::SemanticType;
 use crate::type_compat::{are_types_compatible, is_checkable_type};
 use crate::type_environment::TypeEnvironment;
 use crate::value_type::operand_type_name;
@@ -103,17 +121,20 @@ pub fn apply(
 /// the row is what makes the operator spelling agree with the functional
 /// one, which issue #1567 already fixed in the other direction.
 ///
-/// The relational operators are declared `ANY_ELEMENTARY` in the table.
-/// Holding them to that is a separate decision from this rule.
+/// `AND_THEN` and `OR_ELSE`, a CODESYS/TwinCAT extension, are the
+/// short-circuit forms of `AND` and `OR` and are held to their rows: they
+/// short-circuit on `BOOL`s and are the eager bitwise operators on bit
+/// strings (`specs/design/beckhoff-twincat-dialect.md`).
+///
+/// The comparisons are declared `ANY_ELEMENTARY` in the table; their
+/// operand pair is checked by `rule_comparison_operand_type`.
 fn checked_compare_form(op: &CompareOp) -> Option<&'static OperatorFunctionForm> {
     match op {
         CompareOp::And | CompareOp::Or | CompareOp::Xor => {
             form_of_operator(&FormOf::Compare(op.clone()))
         }
-        // `AND_THEN` and `OR_ELSE` are a CODESYS/TwinCAT short-circuit
-        // extension rather than IEC operators, so the table has no row to
-        // hold them to.
-        CompareOp::AndThen | CompareOp::OrElse => None,
+        CompareOp::AndThen => form_of_operator(&FormOf::Compare(CompareOp::And)),
+        CompareOp::OrElse => form_of_operator(&FormOf::Compare(CompareOp::Or)),
         CompareOp::Eq
         | CompareOp::Ne
         | CompareOp::Lt
@@ -135,8 +156,8 @@ fn checked_compare_form(op: &CompareOp) -> Option<&'static OperatorFunctionForm>
 fn checked_unary_form(op: &UnaryOp) -> Option<&'static OperatorFunctionForm> {
     match op {
         UnaryOp::Not => form_of_operator(&FormOf::Not),
-        // Negation is `ANY_NUM`; holding it to that is a separate decision,
-        // outside the arithmetic overloads (it has no function form).
+        // Negation has no function form to hold it to; `check_negation`
+        // checks it.
         UnaryOp::Neg => None,
     }
 }
@@ -244,19 +265,71 @@ impl RuleOperatorOperandTypeCheck<'_> {
     /// operands, so arity is just the length of `operands`: two for an
     /// arithmetic or compare expression, one for `NOT`.
     ///
-    /// The row carries the operator's name as well as its operand type, so
-    /// no caller passes a label: the name and the type a diagnostic reports
-    /// come from the same row and cannot disagree.
-    fn check_operands(&mut self, form: &OperatorFunctionForm, operands: &[&Expr]) {
+    /// The type a diagnostic reports comes from the row, and the name is
+    /// `operator` as written: the row's own name, but for `AND_THEN` and
+    /// `OR_ELSE`, which are held to the rows of `AND` and `OR`.
+    fn check_operands(&mut self, form: &OperatorFunctionForm, operator: &str, operands: &[&Expr]) {
         let expected = form.operand_type();
         for operand in operands {
-            self.check_operand(form, &expected, operand);
+            self.check_operand(operator, &expected, operand);
         }
+    }
+
+    /// Reports P4049 when `operand`, negated, is a `BOOL`, a time of day, a
+    /// date or a date and time, in any dialect.
+    ///
+    /// IEC 61131-3 defines negation over `ANY_NUM` (Table 24), and IronPLC
+    /// negates a duration too, as the signed integer it is stored as
+    /// (ADR-0025). A `BOOL` is a truth value rather than a number, and a time
+    /// of day, a date and a date and time count from an epoch, so none of
+    /// them has a negative. A bit string is not checked here: it is negated
+    /// as the integer of its width.
+    fn check_negation(&mut self, operand: &Expr) {
+        let Some(ExprType::Concrete(id) | ExprType::Inferred(id)) = &operand.expr_type else {
+            return;
+        };
+        let Some(attributes) = self.types.get_by_id(*id) else {
+            return;
+        };
+        let no_negative = match attributes.representation {
+            SemanticType::Bool
+            | SemanticType::Date { .. }
+            | SemanticType::TimeOfDay { .. }
+            | SemanticType::DateAndTime { .. } => true,
+            SemanticType::Int { .. }
+            | SemanticType::UInt { .. }
+            | SemanticType::Real { .. }
+            | SemanticType::Bytes { .. }
+            | SemanticType::Time { .. }
+            | SemanticType::String { .. }
+            | SemanticType::Reference { .. }
+            | SemanticType::Subrange { .. }
+            | SemanticType::Enumeration { .. }
+            | SemanticType::Structure { .. }
+            | SemanticType::Array { .. }
+            | SemanticType::FunctionBlock { .. }
+            | SemanticType::Interface { .. } => false,
+        };
+        if !no_negative {
+            return;
+        }
+        let Some(actual) = self.operand_name(operand) else {
+            return;
+        };
+        self.diagnostics.push(
+            Diagnostic::problem(
+                Problem::OperatorOperandTypeMismatch,
+                Label::span(operand.span(), "Operand"),
+            )
+            .with_context("operator", &"-".to_string())
+            .with_context("expected", &"ANY_NUM or ANY_DURATION".to_string())
+            .with_context("actual", &actual.to_string()),
+        );
     }
 
     /// Reports P4049 when `operand`'s resolved type is one the predicate can
     /// judge and it is not acceptable where `expected` is required.
-    fn check_operand(&mut self, form: &OperatorFunctionForm, expected: &TypeName, operand: &Expr) {
+    fn check_operand(&mut self, operator: &str, expected: &TypeName, operand: &Expr) {
         let Some(actual) = self.operand_name(operand) else {
             return;
         };
@@ -269,7 +342,7 @@ impl RuleOperatorOperandTypeCheck<'_> {
                     Problem::OperatorOperandTypeMismatch,
                     Label::span(operand.span(), "Operand"),
                 )
-                .with_context("operator", &form.name.to_string())
+                .with_context("operator", &operator.to_string())
                 .with_context("expected", &expected.to_string())
                 .with_context("actual", &actual.to_string()),
             );
@@ -294,27 +367,45 @@ impl Visitor<Infallible> for RuleOperatorOperandTypeCheck<'_> {
     fn visit_expr(&mut self, node: &Expr) -> Result<Self::Value, Infallible> {
         match &node.kind {
             ExprKind::BinaryOp(binary) => self.check_arithmetic_operator(node, binary),
-            ExprKind::Function(function) => self.check_arithmetic_call(function),
+            ExprKind::Function(function) => {
+                self.check_arithmetic_call(function);
+                self.check_bitwise_call(function);
+            }
             ExprKind::Compare(compare) => {
                 if let Some(form) = checked_compare_form(&compare.op) {
-                    self.check_operands(form, &[&compare.left, &compare.right]);
+                    self.check_operands(
+                        form,
+                        compare.op.as_str(),
+                        &[&compare.left, &compare.right],
+                    );
+                }
+                if compare.op.is_bitwise() {
+                    self.check_bitwise_operands(node, &compare.op, &compare.left, &compare.right);
                 }
             }
-            ExprKind::UnaryOp(unary) => {
-                if let Some(form) = checked_unary_form(&unary.op) {
-                    self.check_operands(form, &[&unary.term]);
-                }
-            }
+            ExprKind::UnaryOp(unary) => match checked_unary_form(&unary.op) {
+                Some(form) => self.check_operands(form, form.name, &[&unary.term]),
+                None => self.check_negation(&unary.term),
+            },
             _ => {}
         }
         node.recurse_visit(self)
     }
 }
 
+mod bitwise;
+
+#[cfg(test)]
+mod bitwise_operand_tests;
+
+#[cfg(test)]
+mod negation_tests;
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_helpers::{diagnostic_codes, rule_diagnostics};
+    use spec_test_macro::spec_test;
 
     rule_ok!(
         /// The `NOT` of a negated output is the analyzer's, not the
@@ -509,6 +600,35 @@ VAR
     r : REAL;
 END_VAR
     r := r + d;
+END_PROGRAM",
+        [Problem::OperatorOperandTypeMismatch]
+    );
+
+    rule_ok!(
+        /// A real literal beside an INT is a REAL, which INT widens to
+        /// (#2067).
+        apply_when_int_scaled_by_real_literals_then_ok,
+        "
+PROGRAM main
+VAR
+    sensor : INT;
+    temperature : REAL;
+END_VAR
+    temperature := sensor / 32767.0 * 150.0 - 50.0;
+END_PROGRAM"
+    );
+
+    rule_err!(
+        /// A real literal beside a DINT is a REAL, which DINT does not widen
+        /// to losslessly.
+        apply_when_dint_divided_by_real_literal_then_p4049,
+        "
+PROGRAM main
+VAR
+    d : DINT;
+    r : REAL;
+END_VAR
+    r := d / 2.0;
 END_PROGRAM",
         [Problem::OperatorOperandTypeMismatch]
     );
@@ -826,4 +946,95 @@ END_VAR
 END_PROGRAM",
         [Problem::OperatorOperandTypeMismatch]
     );
+
+    // --- The short-circuit operators (AND_THEN, OR_ELSE) ---
+
+    fn short_circuit_diagnostics(source: &str) -> Vec<Diagnostic> {
+        let options = CompilerOptions {
+            allow_short_circuit_operators: true,
+            ..CompilerOptions::default()
+        };
+        rule_diagnostics(apply, source, &options)
+    }
+
+    /// `AND_THEN` and `OR_ELSE` are held to the rows of `AND` and `OR`, and
+    /// each operand outside `ANY_BIT` is reported under the operator as
+    /// written.
+    #[spec_test(REQ_IC_analyzer_119)]
+    #[test]
+    fn apply_when_short_circuit_of_integer_variables_then_p4049_naming_operator() {
+        let errors = short_circuit_diagnostics(
+            "
+PROGRAM main
+VAR
+    d1 : DINT;
+    d2 : DINT;
+END_VAR
+    d2 := d1 AND_THEN d2;
+    d2 := d1 OR_ELSE d2;
+END_PROGRAM",
+        );
+        assert_eq!(
+            diagnostic_codes(&errors),
+            [Problem::OperatorOperandTypeMismatch.code(); 4]
+        );
+        let operators: Vec<bool> = errors
+            .iter()
+            .map(|e| e.described.contains(&"operator=AND_THEN".to_owned()))
+            .collect();
+        assert_eq!(operators, [true, true, false, false]);
+        assert!(
+            errors[2].described.contains(&"operator=OR_ELSE".to_owned()),
+            "{:?}",
+            errors[2].described
+        );
+    }
+
+    /// A subrange operand is converted to its base type, as an operand of
+    /// `AND` is, so a subrange of an integer is reported too.
+    #[spec_test(REQ_IC_analyzer_119)]
+    #[test]
+    fn apply_when_short_circuit_of_integer_subrange_then_p4049() {
+        let errors = short_circuit_diagnostics(
+            "
+TYPE
+    Pct : INT (0..100);
+END_TYPE
+
+PROGRAM main
+VAR
+    p : Pct := 5;
+    d : INT;
+END_VAR
+    d := p AND_THEN p;
+END_PROGRAM",
+        );
+        assert_eq!(
+            diagnostic_codes(&errors),
+            [Problem::OperatorOperandTypeMismatch.code(); 2]
+        );
+    }
+
+    /// `BOOL`s, bit strings and bit strings of two widths are accepted, as
+    /// they are by `AND` and `OR`.
+    #[spec_test(REQ_IC_analyzer_119)]
+    #[test]
+    fn apply_when_short_circuit_of_bool_or_bit_strings_then_ok() {
+        let errors = short_circuit_diagnostics(
+            "
+PROGRAM main
+VAR
+    a : BOOL;
+    b : BOOL;
+    w : WORD;
+    lw : LWORD;
+END_VAR
+    a := a AND_THEN b;
+    b := a OR_ELSE b;
+    lw := w AND_THEN lw;
+    w := w OR_ELSE w;
+END_PROGRAM",
+        );
+        assert!(errors.is_empty(), "{errors:?}");
+    }
 }

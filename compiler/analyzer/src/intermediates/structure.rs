@@ -32,7 +32,6 @@ pub fn try_from(
         fields.push(SemanticStructField {
             name: element.name.clone(),
             field_type,
-            var_type: None, // Structure fields don't have input/output distinction
             has_default,
         });
     }
@@ -69,7 +68,9 @@ fn field_has_default(
             enum_type_init.initial_value.is_some()
         }
         InitialValueAssignmentKind::FunctionBlock(_)
-        | InitialValueAssignmentKind::FunctionBlockCall(_) => {
+        | InitialValueAssignmentKind::FunctionBlockCall(_)
+        | InitialValueAssignmentKind::Interface(_) => {
+            // An interface field has no initializer either.
             // Function block fields can have their inputs initialized,
             // but function blocks themselves don't have "defaults" in the
             // same sense - they always need to be instantiated.
@@ -112,7 +113,9 @@ fn field_has_default(
         // parser when an explicit `:= expr` was present, so it always
         // counts as having a default (regardless of whether the fold pass
         // has run yet).
-        InitialValueAssignmentKind::SimpleExpr(_) => true,
+        InitialValueAssignmentKind::SimpleExpr(_) | InitialValueAssignmentKind::StringExpr(_) => {
+            true
+        }
     }
 }
 
@@ -205,7 +208,7 @@ fn resolve_field_type(
         }
         InitialValueAssignmentKind::EnumeratedValues(values) => {
             // Handle enumerated field types with values
-            let enum_attrs = try_from_values(values, None)?;
+            let enum_attrs = try_from_values(values, None, None)?;
             Ok(enum_attrs.representation)
         }
         InitialValueAssignmentKind::EnumeratedType(enum_assignment) => {

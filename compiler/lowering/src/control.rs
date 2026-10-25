@@ -16,11 +16,7 @@ use ironplc_ir::lowered::{
 };
 
 use crate::variables::BodyFrame;
-use crate::Lowering;
-
-/// A lowered node, `None` when lowering does not support it, or something
-/// inside it, yet.
-type Made<T> = Result<Option<T>, Diagnostic>;
+use crate::{Lowered, Lowering, Unlowered};
 
 impl Lowering<'_> {
     /// Lowers every statement of `stmts`, each to the statements it runs.
@@ -28,64 +24,42 @@ impl Lowering<'_> {
         &mut self,
         frame: &BodyFrame,
         stmts: &[AstStmtKind],
-    ) -> Made<Vec<Stmt>> {
+    ) -> Lowered<Vec<Stmt>> {
         let mut lowered = Vec::with_capacity(stmts.len());
         for stmt in stmts {
-            let Some(stmts) = self.statement(frame, stmt)? else {
-                return Ok(None);
-            };
-            lowered.extend(stmts);
+            lowered.extend(self.statement(frame, stmt)?);
         }
-        Ok(Some(lowered))
+        Ok(lowered)
     }
 
     /// `IF`, with each `ELSIF` an `If` in the `ELSE` of the one before.
-    pub(crate) fn if_statement(&mut self, frame: &BodyFrame, stmt: &If) -> Made<Stmt> {
-        let Some(mut otherwise) = self.statements(frame, &stmt.else_body)? else {
-            return Ok(None);
-        };
+    pub(crate) fn if_statement(&mut self, frame: &BodyFrame, stmt: &If) -> Lowered<Stmt> {
+        let mut otherwise = self.statements(frame, &stmt.else_body)?;
         for elsif in stmt.else_ifs.iter().rev() {
-            let Some(cond) = self.expr(frame, &elsif.expr)? else {
-                return Ok(None);
-            };
-            let Some(then) = self.statements(frame, &elsif.body)? else {
-                return Ok(None);
-            };
+            let cond = self.expr(frame, &elsif.expr)?;
+            let then = self.statements(frame, &elsif.body)?;
             otherwise = vec![Stmt::if_(cond, then, otherwise, elsif.expr.span())?];
         }
-        let Some(cond) = self.expr(frame, &stmt.expr)? else {
-            return Ok(None);
-        };
-        let Some(then) = self.statements(frame, &stmt.body)? else {
-            return Ok(None);
-        };
-        Stmt::if_(cond, then, otherwise, stmt.span()).map(Some)
+        let cond = self.expr(frame, &stmt.expr)?;
+        let then = self.statements(frame, &stmt.body)?;
+        Ok(Stmt::if_(cond, then, otherwise, stmt.span())?)
     }
 
     /// `CASE`, whose selector the lowered program evaluates once
     /// (REQ-LOW-codegen-124).
-    pub(crate) fn case_statement(&mut self, frame: &BodyFrame, stmt: &Case) -> Made<Stmt> {
-        let Some(selector) = self.expr(frame, &stmt.selector)? else {
-            return Ok(None);
-        };
+    pub(crate) fn case_statement(&mut self, frame: &BodyFrame, stmt: &Case) -> Lowered<Stmt> {
+        let selector = self.expr(frame, &stmt.selector)?;
         let mut arms = Vec::with_capacity(stmt.statement_groups.len());
         for group in &stmt.statement_groups {
             let mut labels = Vec::with_capacity(group.selectors.len());
             for selection in &group.selectors {
-                let Some(label) = self.case_label(&stmt.selector, selector.ty(), selection)? else {
-                    return Ok(None);
-                };
-                labels.push(label);
+                labels.push(self.case_label(&stmt.selector, selector.ty(), selection)?);
             }
-            let Some(body) = self.statements(frame, &group.statements)? else {
-                return Ok(None);
-            };
+            let body = self.statements(frame, &group.statements)?;
             arms.push(CaseArm::new(labels, body));
         }
-        let Some(otherwise) = self.statements(frame, &stmt.else_body)? else {
-            return Ok(None);
-        };
-        Stmt::case(selector, arms, otherwise, stmt.span()).map(Some)
+        let otherwise = self.statements(frame, &stmt.else_body)?;
+        Ok(Stmt::case(selector, arms, otherwise, stmt.span())?)
     }
 
     /// A label of a `CASE` whose selector is `selector`, of type `ty`
@@ -95,8 +69,8 @@ impl Lowering<'_> {
         selector: &AstExpr,
         ty: ScalarType,
         selection: &CaseSelectionKind,
-    ) -> Made<CaseLabel> {
-        Ok(Some(match selection {
+    ) -> Lowered<CaseLabel> {
+        Ok(match selection {
             CaseSelectionKind::SignedInteger(value) => {
                 CaseLabel::Value(label_value(value.is_neg, &value.value, ty)?)
             }
@@ -104,12 +78,11 @@ impl Lowering<'_> {
                 CaseLabel::Value(label_value(false, &literal.value, ty)?)
             }
             CaseSelectionKind::Subrange(range) => {
+                // A bound that names a constant is not lowered yet.
                 let (SignedIntegerRef::Literal(low), SignedIntegerRef::Literal(high)) =
                     (&range.start, &range.end)
                 else {
-                    // A bound that names a constant is not compiled by either
-                    // route yet.
-                    return Ok(None);
+                    return Err(Unlowered::NotYet);
                 };
                 CaseLabel::Range(
                     label_value(low.is_neg, &low.value, ty)?,
@@ -123,7 +96,7 @@ impl Lowering<'_> {
                         .ok_or_else(|| not_of_selector(&value.value.span(), ordinal.into(), ty))?,
                 )
             }
-        }))
+        })
     }
 
     /// The ordinal of `value`, a value of the enumeration that `typed`'s type
@@ -132,7 +105,7 @@ impl Lowering<'_> {
         &mut self,
         typed: &AstExpr,
         value: &EnumeratedValue,
-    ) -> Result<i32, Diagnostic> {
+    ) -> Lowered<i32> {
         let not_a_member = || {
             Diagnostic::internal_error_at(Label::span(
                 value.span(),
@@ -152,33 +125,30 @@ impl Lowering<'_> {
             .and_then(|attributes| attributes.representation.enumeration_members())
             .and_then(|members| members.iter().position(|member| member.name == value.value))
             .ok_or_else(not_a_member)?;
-        let lowered = self.lowered_type(analyzer_type)?.ok_or_else(not_a_member)?;
-        self.program
+        let lowered = self.lowered_type(analyzer_type)?;
+        Ok(self
+            .program
             .types()
             .enumeration_ordinal(lowered, position)
-            .ok_or_else(not_a_member)
+            .ok_or_else(not_a_member)?)
     }
 
     /// `FOR`, whose step is a nonzero constant (REQ-LOW-lowering-067).
-    pub(crate) fn for_statement(&mut self, frame: &BodyFrame, stmt: &For) -> Made<Stmt> {
+    pub(crate) fn for_statement(&mut self, frame: &BodyFrame, stmt: &For) -> Lowered<Stmt> {
         let span = stmt.span();
-        let Some(control) = self.named_place(frame, &stmt.control, &stmt.control.span())? else {
-            return Ok(None);
-        };
-        // What a `VAR_IN_OUT` refers to is not a control variable yet, on
-        // either route.
-        if !is_loop_control(&control) {
-            return Ok(None);
+        let control = self.named_place(frame, &stmt.control, &stmt.control.span())?;
+        // What a `VAR_IN_OUT` refers to is not a control variable yet; what
+        // a `VAR_OUTPUT` parameter refers to is (REQ-LOW-lowering-067).
+        if !is_loop_control(&control) || self.is_in_out(frame, &stmt.control) {
+            return Err(Unlowered::NotYet);
         }
-        let Some(ty) = self.program.types().operation_type(control.ty()) else {
-            return Ok(None);
-        };
-        let Some(mut from) = self.expr(frame, &stmt.from)? else {
-            return Ok(None);
-        };
-        let Some(to) = self.expr(frame, &stmt.to)? else {
-            return Ok(None);
-        };
+        let ty = self
+            .program
+            .types()
+            .operation_type(control.ty())
+            .ok_or(Unlowered::NotYet)?;
+        let mut from = self.expr(frame, &stmt.from)?;
+        let to = self.expr(frame, &stmt.to)?;
         let step = match &stmt.step {
             None => Const::integer(1, ty).ok_or_else(|| {
                 Diagnostic::internal_error_at(Label::span(
@@ -187,24 +157,16 @@ impl Lowering<'_> {
                 ))
             })?,
             Some(step) => {
-                let Some(step) = self.expr(frame, step)? else {
-                    return Ok(None);
-                };
-                match step_constant(&step) {
-                    Some(step) => step,
-                    // A step that is not a constant is not compiled by either
-                    // route.
-                    None => return Ok(None),
-                }
+                let step = self.expr(frame, step)?;
+                // A step that is not a constant is not lowered yet.
+                step_constant(&step).ok_or(Unlowered::NotYet)?
             }
         };
         if let Some(width) = self.program.store_narrowing(control.ty(), &from) {
             let span = from.span().clone();
             from = Expr::truncate(width, from, span)?;
         }
-        let Some((scope, body)) = self.in_loop(|this| this.statements(frame, &stmt.body))? else {
-            return Ok(None);
-        };
+        let (scope, body) = self.in_loop(|this| this.statements(frame, &stmt.body))?;
         let parts = ForParts {
             control,
             from,
@@ -212,75 +174,62 @@ impl Lowering<'_> {
             step,
             body,
         };
-        self.program.for_(scope, parts, span).map(Some)
+        Ok(self.program.for_(scope, parts, span)?)
     }
 
     /// `WHILE c DO b`: a `Loop` whose body leaves when `c` is false, then
     /// runs `b`.
-    pub(crate) fn while_statement(&mut self, frame: &BodyFrame, stmt: &While) -> Made<Stmt> {
+    pub(crate) fn while_statement(&mut self, frame: &BodyFrame, stmt: &While) -> Lowered<Stmt> {
         let span = stmt.span();
-        let Some(cond) = self.expr(frame, &stmt.condition)? else {
-            return Ok(None);
-        };
-        let lowered = self.in_loop(|this| {
+        let cond = self.expr(frame, &stmt.condition)?;
+        let (scope, body) = self.in_loop(|this| {
             let exit = this.current_loop(&span)?.exit(span.clone());
-            let Some(body) = this.statements(frame, &stmt.body)? else {
-                return Ok(None);
-            };
+            let body = this.statements(frame, &stmt.body)?;
             let head = Stmt::if_(cond, vec![], vec![exit], span.clone())?;
-            Ok(Some(std::iter::once(head).chain(body).collect()))
+            Ok(std::iter::once(head).chain(body).collect())
         })?;
-        let Some((scope, body)) = lowered else {
-            return Ok(None);
-        };
-        self.program.loop_(scope, body, vec![], span).map(Some)
+        Ok(self.program.loop_(scope, body, vec![], span)?)
     }
 
     /// `REPEAT b UNTIL c`: a `Loop` with body `b` whose `continuing` leaves
     /// when `c` is true.
-    pub(crate) fn repeat_statement(&mut self, frame: &BodyFrame, stmt: &Repeat) -> Made<Stmt> {
+    pub(crate) fn repeat_statement(&mut self, frame: &BodyFrame, stmt: &Repeat) -> Lowered<Stmt> {
         let span = stmt.span();
-        let lowered = self.in_loop(|this| {
-            let Some(body) = this.statements(frame, &stmt.body)? else {
-                return Ok(None);
-            };
-            let Some(until) = this.expr(frame, &stmt.until)? else {
-                return Ok(None);
-            };
+        let (scope, (body, tail)) = self.in_loop(|this| {
+            let body = this.statements(frame, &stmt.body)?;
+            let until = this.expr(frame, &stmt.until)?;
             let exit = this.current_loop(&span)?.exit(span.clone());
             let tail = Stmt::if_(until, vec![exit], vec![], span.clone())?;
-            Ok(Some((body, tail)))
+            Ok((body, tail))
         })?;
-        let Some((scope, (body, tail))) = lowered else {
-            return Ok(None);
-        };
-        self.program.loop_(scope, body, vec![tail], span).map(Some)
+        Ok(self.program.loop_(scope, body, vec![tail], span)?)
     }
 
-    /// `EXIT`, leaving the innermost loop. An `EXIT` outside every loop being
-    /// lowered is in a loop compiled from the AST, and is not lowered either.
-    pub(crate) fn exit_statement(&self, span: &SourceSpan) -> Made<Stmt> {
-        Ok(self.loops.last().map(|scope| scope.exit(span.clone())))
+    /// `EXIT`, leaving the innermost loop. One outside every loop being
+    /// lowered is not lowered.
+    pub(crate) fn exit_statement(&self, span: &SourceSpan) -> Lowered<Stmt> {
+        let scope = self.loops.last().ok_or(Unlowered::NotYet)?;
+        Ok(scope.exit(span.clone()))
     }
 
-    /// `CONTINUE`, going on with the innermost loop. A `CONTINUE` outside
-    /// every loop being lowered is in a loop compiled from the AST, and is
-    /// not lowered either.
-    pub(crate) fn continue_statement(&self, span: &SourceSpan) -> Made<Stmt> {
-        Ok(self.loops.last().map(|scope| scope.continue_(span.clone())))
+    /// `CONTINUE`, going on with the innermost loop. One outside every loop
+    /// being lowered is not lowered.
+    pub(crate) fn continue_statement(&self, span: &SourceSpan) -> Lowered<Stmt> {
+        let scope = self.loops.last().ok_or(Unlowered::NotYet)?;
+        Ok(scope.continue_(span.clone()))
     }
 
     /// Lowers the body of a new loop with `lower`, returning the loop's scope
     /// with it for the caller to close.
     fn in_loop<T>(
         &mut self,
-        lower: impl FnOnce(&mut Self) -> Made<T>,
-    ) -> Result<Option<(LoopScope, T)>, Diagnostic> {
+        lower: impl FnOnce(&mut Self) -> Lowered<T>,
+    ) -> Lowered<(LoopScope, T)> {
         let scope = self.program.open_loop();
         self.loops.push(scope);
         let lowered = lower(self);
         let scope = self.loops.pop().ok_or_else(Diagnostic::internal_error)?;
-        Ok(lowered?.map(|lowered| (scope, lowered)))
+        Ok((scope, lowered?))
     }
 
     /// The innermost loop being lowered.
@@ -334,6 +283,7 @@ fn integer_constant(expr: &Expr) -> Option<i128> {
         | ExprKind::Compare { .. }
         | ExprKind::ShortCircuit { .. }
         | ExprKind::Call { .. }
+        | ExprKind::InPlaceCall(_)
         | ExprKind::RefTo(_)
         | ExprKind::Null => None,
     }

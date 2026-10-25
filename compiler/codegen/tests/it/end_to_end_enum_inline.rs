@@ -178,6 +178,32 @@ fn end_to_end_when_two_inline_enums_spell_same_values_then_one_debug_entry_each(
     assert_ne!(debug.var_names[0].type_name, debug.var_names[1].type_name);
 }
 
+/// The debug section is built from the lowered program
+/// (REQ-EN-codegen-064, REQ-EN-codegen-092): an inline enumeration is named
+/// by its id in the lowered type table, its variable's entry and its
+/// ENUM_DEF entry agree, and an enumeration the program declares and does
+/// not use has no entry.
+#[test]
+fn end_to_end_when_compiled_then_debug_entries_name_types_program_uses() {
+    let source = "TYPE UNUSED : (P, Q); END_TYPE
+        PROGRAM main VAR e : (Red, Green) := Green; a : (A, B); END_VAR END_PROGRAM";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let debug = container.debug_section.as_ref().unwrap();
+
+    assert_eq!(debug.enum_defs.len(), 2);
+    assert!(debug.enum_defs.iter().all(|def| def.type_name != "UNUSED"));
+    for (var, values) in debug.var_names.iter().zip([["RED", "GREEN"], ["A", "B"]]) {
+        assert!(var.type_name.starts_with("(ANONYMOUS ENUMERATION "));
+        let def = debug
+            .enum_defs
+            .iter()
+            .find(|def| def.type_name == var.type_name)
+            .unwrap();
+        assert_eq!(def.values, values);
+    }
+    assert_ne!(debug.var_names[0].type_name, debug.var_names[1].type_name);
+}
+
 // --- Value names shared by named enumerations (#1943, #1950) ---
 
 // The sources below declare `A : (X, Y)` and `B : (W, X, Z)`.

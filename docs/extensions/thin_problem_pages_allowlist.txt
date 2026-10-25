@@ -33,13 +33,10 @@ reference/compiler/problems/P2023
 reference/compiler/problems/P2028
 reference/compiler/problems/P2030
 reference/compiler/problems/P2031
-reference/compiler/problems/P2032
 reference/compiler/problems/P2033
 reference/compiler/problems/P2034
-reference/compiler/problems/P2036
 reference/compiler/problems/P4005
 reference/compiler/problems/P4021
-reference/compiler/problems/P4022
 reference/compiler/problems/P4030
 reference/compiler/problems/P6007
 reference/compiler/problems/P9002

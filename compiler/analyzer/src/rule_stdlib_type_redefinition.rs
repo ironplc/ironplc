@@ -55,7 +55,7 @@ impl Visitor<Infallible> for RuleStdlibTypeRedefinition {
         &mut self,
         node: &FunctionBlockDeclaration,
     ) -> Result<(), Infallible> {
-        if is_stdlib_function_block(&node.name.name) {
+        if is_stdlib_function_block(&node.name) {
             self.diagnostics.push(
                 Diagnostic::problem(
                     Problem::StdlibTypeRedefinition,

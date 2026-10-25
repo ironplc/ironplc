@@ -382,7 +382,9 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    also the bit-string operators, and skipping an operand has no meaning
    for a bit-string result, so ``AND_THEN``/``OR_ELSE`` on bit-string
    operands evaluate both operands and produce the same value ``AND``
-   and ``OR`` produce.
+   and ``OR`` produce. Like ``AND`` and ``OR``, they accept only ``BOOL``
+   and bit-string operands: an integer operand is :doc:`P4049
+   </reference/compiler/problems/P4049>`.
 
 ``--allow-mixed-located-var-declarations``
    Allow an ``AT``-located variable (complete address like ``AT %IX0.0``,
@@ -397,8 +399,10 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    syntax and always allowed.
 
 ``--allow-constant-initializer-expressions``
-   Allow a ``VAR`` initializer to be a constant *expression* — arithmetic
-   between literals and/or references to declared ``CONSTANT`` variables
+   Allow a ``VAR`` initializer or a ``TYPE`` default to be a constant
+   *expression* — the name of a declared ``CONSTANT`` variable
+   (e.g. ``level : UDINT := DEFAULT_LEVEL;``)
+   or arithmetic between literals and such names
    (e.g. ``scaled : LREAL := SCALE*4.0;``) — rather than only a bare
    literal. The IEC 61131-3 standard's initializer grammar permits only
    literals in this position; this extension folds the expression

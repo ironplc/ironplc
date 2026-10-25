@@ -4,6 +4,7 @@ status: proposed
 date: 2026-07-27
 amended: 2026-09-12 (Implementation Status added; Phase 1's property bullet is unbuilt)
 amended: 2026-10-12 (Implementation Status said THIS^ and SUPER^ calls shipped; they are rejected as not implemented)
+amended: 2026-10-16 (Implementation Status said PROPERTY does not parse; it parses and is analyzed, and its use is rejected as not implemented)
 
 ## Context and Problem Statement
 
@@ -149,14 +150,17 @@ What landed:
 
 What did not:
 
-* **`PROPERTY` is absent end to end.** The bullet "`PROPERTY` reads/writes
-  rewrite to `GET`/`SET` accessor calls at compile time" has no implementation,
-  and neither does the `PropertyDeclaration` half of the resolution bullet above
-  it. `PROPERTY` is not a keyword at any dialect setting -- it lexes as an
-  identifier and a declaration using it is rejected with `P0002` even under
-  `--dialect twincat`. There is no `PropertyDeclaration` node in `dsl`, no
-  `<Property>` handler in `sources/src/xml` beside the `<Method>` one, no
-  `--allow-*` flag, and no codegen rewrite step.
+* **Reading or writing a `PROPERTY`.** The bullet "`PROPERTY` reads/writes
+  rewrite to `GET`/`SET` accessor calls at compile time" has no implementation.
+  The declaration is supported up to that point: with `allow_fb_inheritance`
+  set (as `--dialect twincat` sets it), `PROPERTY` is a keyword and `dsl` has a
+  `PropertyDeclaration` node whose `GET` and `SET` accessors are methods, each
+  with a scope of its own. A property is a symbol in its function block's
+  scope, found through the `EXTENDS` chain like a field
+  ([Variable Binding](../design/variable-binding.md), section 5), but
+  `rule_use_declared_symbolic_var` reports a use of one as not implemented
+  (P9999), so no codegen path compiles one. There is no `<Property>` handler in
+  `sources/src/xml` beside the `<Method>` one.
 * **Method calls through `THIS^` and `SUPER^`.** They are keywords
   (`parser/src/token.rs`), but `rule_method_call_declared` reports a call
   through either as not implemented
@@ -195,9 +199,9 @@ follows is the starting point for that future ADR, not a settled design.
   underlying instance's data reference and its runtime type tag (a
   "fat" reference), reusing the same tag/table mechanism as
   `EXTENDS`-based dispatch -- interface method resolution is "does
-  this concrete type provide a compatible member," already checked
-  statically for shape (name + return type) by the existing
-  `IMPLEMENTS` conformance rule.
+  this concrete type provide a compatible member," which the
+  `IMPLEMENTS` conformance rule (`rule_interface_conformance`) checks
+  statically for shape (name, return type and parameters).
 - The exact table layout and opcode encoding are intentionally **not**
   fixed by this ADR -- they are deferred to Phase 2's own
   implementation plan, once real polymorphic call-site patterns from

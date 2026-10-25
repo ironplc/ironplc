@@ -3,13 +3,15 @@
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
 
-use super::expr::{Const, Expr, ExprKind};
-use super::ids::{LoopId, Stamp, TypeId};
+use super::call::{program_of, Arg, Callee};
+use super::expr::{check_user_call, Const, Expr, ExprKind};
+use super::ids::{LoopId, PouId, Stamp, TypeId};
 use super::invariant::broken;
 use super::place::Place;
 use super::scalar::ScalarType;
 use super::str_expr::StrExpr;
 use super::types::{NarrowWidth, Nullability, TypeKind, TypeTable};
+use super::variables::{PouTable, VariableTable};
 
 /// What a statement does.
 #[derive(Clone, Debug)]
@@ -27,6 +29,16 @@ pub enum StmtKind {
         bits: u8,
         value: Expr,
     },
+    /// Replaces the whole value at `dst`, an array, a structure or a function
+    /// block instance, with the whole value at `src` (REQ-LOW-lowering-061).
+    Copy { dst: Place, src: Place },
+    /// Runs the body of the function block `block` on `instance`, an
+    /// instance of it. A call's inputs and outputs are the assignments
+    /// around it (REQ-LOW-lowering-069).
+    FbCall { instance: Place, block: PouId },
+    /// Calls `callee` with `args`, discarding its result, if any. A call of
+    /// a method is one, wherever its result is not used.
+    Call { callee: Callee, args: Vec<Arg> },
     /// Runs `then` when `cond` is true and `otherwise` when it is false.
     If {
         cond: Expr,
@@ -270,6 +282,113 @@ impl Stmt {
         })
     }
 
+    /// Replaces the whole value at `dst` with the whole value at `src`.
+    ///
+    /// `dst` is an array, a structure or a function block instance, and `src`
+    /// has its type or, for an array or a structure, a type of the same shape
+    /// (REQ-LOW-lowering-061, [`TypeTable::same_shape`]). Both name places of
+    /// one program.
+    pub(crate) fn copy(
+        types: &TypeTable,
+        dst: Place,
+        src: Place,
+        span: SourceSpan,
+    ) -> Result<Self, Diagnostic> {
+        const CONSTRUCTOR: &str = "Stmt::copy";
+        if src.stamp() != dst.stamp() {
+            return Err(broken(
+                CONSTRUCTOR,
+                &span,
+                "the source is a place of another program",
+            ));
+        }
+        let aggregate = match types.kind(dst.ty()) {
+            Some(TypeKind::Array { .. } | TypeKind::Structure { .. }) => {
+                types.same_shape(dst.ty(), src.ty())
+            }
+            Some(TypeKind::FunctionBlock { .. }) => dst.ty() == src.ty(),
+            Some(
+                TypeKind::Bool
+                | TypeKind::Integer { .. }
+                | TypeKind::BitString { .. }
+                | TypeKind::Real { .. }
+                | TypeKind::Temporal { .. }
+                | TypeKind::Enumeration { .. }
+                | TypeKind::Subrange { .. }
+                | TypeKind::String(_)
+                | TypeKind::Program { .. }
+                | TypeKind::Reference { .. },
+            )
+            | None => {
+                return Err(broken(
+                    CONSTRUCTOR,
+                    &span,
+                    format!("{} is not an array, a structure or a block", dst.ty()),
+                ))
+            }
+        };
+        if !aggregate {
+            return Err(broken(
+                CONSTRUCTOR,
+                &span,
+                format!("a value of {} cannot be copied to {}", src.ty(), dst.ty()),
+            ));
+        }
+        let program = Some(dst.stamp());
+        Ok(Self {
+            kind: StmtKind::Copy { dst, src },
+            span,
+            program,
+        })
+    }
+
+    /// Runs the body of the function block `instance` is an instance of, on
+    /// `instance`. The block is the body of the place's type, so the two
+    /// cannot disagree (REQ-LOW-ir-171).
+    pub(crate) fn fb_call(
+        types: &TypeTable,
+        instance: Place,
+        span: SourceSpan,
+    ) -> Result<Self, Diagnostic> {
+        let Some(TypeKind::FunctionBlock { body, .. }) = types.kind(instance.ty()) else {
+            return Err(broken(
+                "Stmt::fb_call",
+                &span,
+                format!("{} is not a function block", instance.ty()),
+            ));
+        };
+        let block = *body;
+        let program = Some(instance.stamp());
+        Ok(Self {
+            kind: StmtKind::FbCall { instance, block },
+            span,
+            program,
+        })
+    }
+
+    /// Calls the function or method `pou` that `pous` declares with `args`,
+    /// which [`check_user_call`] describes, discarding its result, if any.
+    pub(crate) fn call(
+        types: &TypeTable,
+        variables: &VariableTable,
+        pous: &PouTable,
+        pou: PouId,
+        args: Vec<Arg>,
+        span: SourceSpan,
+    ) -> Result<Self, Diagnostic> {
+        const CONSTRUCTOR: &str = "ProgramBuilder::call_stmt";
+        check_user_call(CONSTRUCTOR, types, variables, pous, pou, &args, &span)?;
+        let program = program_of(CONSTRUCTOR, &args, &span)?;
+        Ok(Self {
+            kind: StmtKind::Call {
+                callee: Callee::User(pou),
+                args,
+            },
+            span,
+            program,
+        })
+    }
+
     /// Runs `then` when `cond`, a `BOOL`, is true, and `otherwise` when it is
     /// false.
     pub fn if_(
@@ -418,6 +537,7 @@ fn fits(types: &TypeTable, place: TypeId, width: NarrowWidth, value: &Expr) -> b
         | ExprKind::Compare { .. }
         | ExprKind::ShortCircuit { .. }
         | ExprKind::Call { .. }
+        | ExprKind::InPlaceCall(_)
         | ExprKind::RefTo(_)
         | ExprKind::Null => false,
     }

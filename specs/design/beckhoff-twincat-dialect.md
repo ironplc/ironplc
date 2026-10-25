@@ -141,7 +141,15 @@ In TwinCAT XML, interfaces are a separate object type (`<Itf>` element instead o
 
 **AST representation:** `InterfaceDeclaration` (in `dsl/src/oop.rs`) holds `methods: Vec<MethodPrototype>` and `properties: Vec<PropertyPrototype>`. These are distinct from `MethodDeclaration`/`PropertyDeclaration`, so no pass that walks method bodies sees them. A method prototype is a scope for its parameters, and the interface is a scope around its prototypes, so a prototype's parameters are recorded under `I_X.Method` exactly as a method's are under `FB_X.Method`.
 
-In the type-declaration environment an interface is still modelled as an **empty structure**: a placeholder, not a claim that member or method access through an interface works. The analyzer reports every `INTERFACE` declaration and every `IMPLEMENTS` clause as not yet supported (P9999), and a variable declared with an interface type still fails with P2008 (issue #1891). Dispatch through an interface value is Phase 2 of [ADR-0041](../adrs/0041-staged-method-and-interface-dispatch.md) and is not decided yet.
+**Interface types.** In the type environment an interface is an `IntermediateType::Interface`, and a variable declared with an interface type gets an `InitialValueAssignmentKind::Interface` from the type resolver. A function block instance converts to an interface when the block or a base it `EXTENDS` lists the interface, or an interface that extends it, in `IMPLEMENTS`; an interface value converts to the interfaces it extends (`analyzer/src/supertypes.rs`). An assignment to an interface variable and an input argument for an interface parameter of a function block or method are checked against that relation (P4066). The literal `0` is accepted as well: it makes the variable refer to nothing, and TwinCAT 3.1.4024 accepts `itf := 0;` (checked in XAE). An initial value on an interface variable is P9999.
+
+**Conformance.** A function block that `IMPLEMENTS` an interface must provide every method and property of it and of the interfaces it extends, directly or through its `EXTENDS` chain (`rule_interface_conformance`). A method matches when its return type and its `VAR_INPUT`/`VAR_OUTPUT`/`VAR_IN_OUT` variables (names, kinds, types, order) are the prototype's; a property when its type is the prototype's and it has every accessor the prototype declares. A missing member is P4067, a different one P4068. `ABSTRACT` function blocks follow the same rule: they must declare every member, at least as `METHOD ABSTRACT`.
+
+The rule compares the signatures the type environment records for block methods and properties and for interface prototypes, with `TypeEnvironment::same_type`; a type that did not resolve is left to the rule that reports it. A block is checked against every interface it converts to (`supertypes.rs`), so a block that inherits an interface from its base is checked too, but only for the members it declares itself: an override that differs is P4068 at the member. Each problem is reported once, at the block that introduces it. A name in `IMPLEMENTS` that is not a declared interface (undeclared, or a function block or other type) is P4070.
+
+Checked in XAE on TwinCAT 3.1.4024.66: a renamed, retyped, added, reordered or re-kinded parameter, or a different return or property type, is rejected ("Interface of overridden method ... doesn't match declaration"); an `ABSTRACT` function block that leaves out a method is rejected ("There is no implementation for method ..."); an extra local `VAR` block, an extra `SET` accessor and a member inherited through `EXTENDS` are accepted. TwinCAT gives these errors no code, so P4067/P4068 have no TwinCAT counterpart. TwinCAT only compiles objects something references, so an unreferenced implementer is not checked there at all.
+
+Not yet supported: calling a method through an interface variable (P9999 in `rule_method_call_declared`), and code generation for a variable of an interface type (P9999 before any code is generated). Dispatch through an interface value is Phase 2 of [ADR-0041](../adrs/0041-staged-method-and-interface-dispatch.md) and is not decided yet.
 
 The `twincat_parser.rs` module needs to handle `<Itf>` elements in addition to `<POU>`, `<GVL>`, and `<DUT>`.
 
@@ -154,6 +162,12 @@ FUNCTION_BLOCK FB_AdvancedMotor EXTENDS FB_Motor IMPLEMENTS I_Drivable, I_Loggab
 ```
 
 **Design:** Add `Extends` and `Implements` as keyword tokens. The parser recognizes an optional `EXTENDS base_name` clause and an optional `IMPLEMENTS interface_list` clause after the function block name. These are stored as metadata on the function block AST node.
+
+**The base.** The type environment resolves `EXTENDS base_name` once, when it records the block (`TypeEnvironment::record_block`), and keeps it only when it is a function block the library declares (`TypeEnvironment::base_of`). Everything that follows the chain after the environment is built follows that record: field and method lookup, `FunctionBlocks`, and the symbol environment, so `SUPER^` and the inherited scopes see only a declared base. `rule_extends_base_declared` reports a base the environment did not keep, at the base name: a name that is not declared, or that names another kind of type, is P4088 (XAE: `No definition found for base class 'FB_Missing'`); a standard function block such as `TON` is P9999, because nothing inherits a standard block's fields or methods.
+
+**Overrides.** A block overrides a method by declaring one with the name of a method it inherits. `rule_override_signature` compares each override with the nearest method it overrides, by the signatures the type environment records (`TypeEnvironment::same_signature`, as interface conformance compares them): the return type, the `VAR_INPUT`/`VAR_OUTPUT`/`VAR_IN_OUT` variables (names, sections, types, order) and the `R_EDGE`/`F_EDGE` inputs; not locals. One that differs is P4089, at the overriding method; one that differs from a member of an interface the block implements is P4068 instead, reported by interface conformance. XAE on TwinCAT 3.1.4024 rejects an override whose return type differs (`Interface of overridden method 'DESCRIBE' of base 'FB_ROOT' doesn't match declaration`). The parameter comparison follows the same message probed for interface members and the Edition 3 definition of a signature; an override with a renamed parameter has not been probed in XAE.
+
+A property overrides an inherited property of its name. The same rule compares its type with the nearest property it overrides (P4090; P4068 when it does not provide an interface property instead). Which accessors an override must keep is not checked: an override with a `GET` and no `SET` has not been probed in XAE.
 
 #### 1.5 Member Qualifiers (Access Modifiers, `FINAL`, `ABSTRACT`, `OVERRIDE`)
 
@@ -227,6 +241,8 @@ SUPER^.Start();
 ```
 
 **Design:** Add `This` and `Super` as keyword tokens. Both are promoted from identifiers by the token transform, ensuring consistent treatment. The parser recognizes `THIS^` and `SUPER^` as primary expressions (like variable references) that can be followed by member access (`.`). The `^` is the existing dereference operator in IEC 61131-3. In the AST, these map to new expression variants.
+
+**As shipped (analysis):** `THIS^` has the type of the enclosing function block (in its body, methods and property accessors) and `SUPER^` that of its `EXTENDS` base (`SymbolEnvironment::self_type`). `THIS^.x` is the block's own or inherited field even where a method parameter or local named `x` hides it; `SUPER^.x` looks only at inherited fields. `THIS^.M()` resolves along the block's `EXTENDS` chain and `SUPER^.M()` along the base's. `THIS^` outside a function block and `SUPER^` without a base are P4074. A value of the wrong type assigned to a member, and a bit or partial access or array subscript through one, are checked like any other variable. Not yet supported (P9999): code generation for both, and `THIS^`/`SUPER^` used as a value on its own. `SUPER^()` is a syntax error (P0002). As with any instance, a member that doesn't exist is not reported yet.
 
 ### Priority 2: Type System Extensions
 
@@ -349,7 +365,7 @@ IF (ptr <> 0 AND_THEN ptr^ = 99) THEN
 END_IF;
 ```
 
-**Design:** Add `AndThen` and `OrElse` as keyword tokens, demoted to identifiers unless `--allow-short-circuit-operators` is set. These are binary operators with the same precedence as `AND` and `OR` respectively. In the AST they are `CompareOp::AndThen` and `CompareOp::OrElse` — deliberately *not* normalized to `And`/`Or`, since the evaluation-order difference is real and externally visible. Type resolution treats them like `AND`/`OR`.
+**Design:** Add `AndThen` and `OrElse` as keyword tokens, demoted to identifiers unless `--allow-short-circuit-operators` is set. These are binary operators with the same precedence as `AND` and `OR` respectively. In the AST they are `CompareOp::AndThen` and `CompareOp::OrElse` — deliberately *not* normalized to `And`/`Or`, since the evaluation-order difference is real and externally visible. Type resolution treats them like `AND`/`OR`: they have the type both operands widen to, an operand of another width is converted to it, and the operand rule holds them to the `ANY_BIT` row of `AND` and `OR`, so an integer operand is P4049 ([REQ-IC-analyzer-119](implicit-conversions.md)).
 
 **Code generation:** Each lowers to a conditional branch around the right operand, so the right operand is not evaluated when the left one already decides the answer:
 

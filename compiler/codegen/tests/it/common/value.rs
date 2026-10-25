@@ -176,3 +176,15 @@ impl NearValue for f64 {
         (self - other).abs()
     }
 }
+
+/// The value `value`, read from the variable `name` of the declared type
+/// `declared`, as a `T`. Fails the test when it cannot be converted without
+/// loss, naming where the backend keeps the variable.
+pub(super) fn convert<T: FromValue>(
+    name: &str,
+    declared: &super::backend::Declared,
+    value: &Value,
+) -> T {
+    T::from_value(value, declared.tag)
+        .unwrap_or_else(|reason| panic!("`{name}` {}: {reason}", declared.described))
+}

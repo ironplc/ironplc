@@ -3,7 +3,7 @@
 //! Each test that checks a requirement of `specs/design/lowered-program.md`
 //! names it.
 
-use crate::test_support::lower;
+use crate::test_support::{lower, lower_bodies};
 
 /// REQ-LOW-lowering-031: an element of an array is an `Index` with one
 /// subscript per dimension, in order, each a `DINT`.
@@ -149,6 +149,43 @@ fn lower_statement_when_dereference_then_deref() {
     );
 }
 
+/// What `REF(x)` refers to is `x` itself, read as `x` is, as is what a
+/// `VAR_IN_OUT`'s `REF` refers to.
+#[test]
+fn lower_statement_when_dereference_of_ref_then_read_of_place() {
+    let outcome = lower_bodies(
+        "FUNCTION F : DINT VAR_IN_OUT io : DINT; END_VAR F := REF(io)^; END_FUNCTION
+         PROGRAM main VAR x : DINT; k : DINT; END_VAR
+            k := REF(x)^ + 1;
+         END_PROGRAM",
+        &["main", "F"],
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f1 (add i32s (read i32s v0^.f0) (const i32s 1))",
+            "assign v1 (read i32s v2^)",
+        ]
+    );
+}
+
+/// A subscript of a reference to an array, which the analyzer lets follow
+/// the reference without `^`, indexes the array it refers to, as `pa^[i]`
+/// does.
+#[test]
+fn lower_statement_when_reference_to_array_subscripted_then_deref_then_index() {
+    let outcome = lower(
+        "PROGRAM main VAR pa : REF_TO ARRAY[1..3] OF DINT; i : DINT; END_VAR
+            pa[i] := pa[3];
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        ["assign v0^.f0^[(read i32s v0^.f1)] (read i32s v0^.f0^[(const i32s 3)])"]
+    );
+}
+
 /// An element of an array a reference refers to is a `Deref`, then an
 /// `Index`.
 #[test]
@@ -187,8 +224,28 @@ fn lower_statement_when_bit_or_partial_write_then_assign_bits() {
     );
 }
 
-/// Bits reached through a reference, `p^.3`, are not lowered while codegen's
-/// AST route does not address them.
+/// Bits of an element reached through a reference are one `AssignBits` on
+/// the element, which is a `Deref` then an `Index`.
+#[test]
+fn lower_statement_when_bits_of_element_through_reference_written_then_assign_bits() {
+    let outcome = lower(
+        "PROGRAM main VAR p : REF_TO ARRAY[0..1] OF DWORD; b : BYTE; END_VAR
+            p^[1].0 := TRUE;
+            p^[1].%B2 := b;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign-bits v0^.f0^[(const i32s 1)] 0 1 (const bool true)",
+            "assign-bits v0^.f0^[(const i32s 1)] 16 8 (read i32u v0^.f1)",
+        ]
+    );
+}
+
+/// Bits of the whole of what a reference refers to, `p^.3`, are not lowered
+/// while codegen's AST route does not address them.
 #[test]
 fn lower_statement_when_bits_written_through_reference_then_unsupported() {
     let outcome = lower(
@@ -212,19 +269,6 @@ fn lower_statement_when_bits_of_bits_written_then_unsupported() {
     assert_eq!(outcome.statements, ["unsupported"]);
 }
 
-/// A `BOOL` subscript, which analysis accepts, is not lowered.
-#[test]
-fn lower_statement_when_bool_subscript_then_unsupported() {
-    let outcome = lower(
-        "PROGRAM main VAR a : ARRAY[0..1] OF DINT; b : BOOL; x : DINT; END_VAR
-            a[b] := 1;
-            x := a[b];
-         END_PROGRAM",
-        "main",
-    );
-    assert_eq!(outcome.statements, ["unsupported", "unsupported"]);
-}
-
 /// A field of an instance of a standard function block is a field of the
 /// instance's field, as one of a user-defined block is: `PV` and `CV` are
 /// the third and fifth fields of a `CTU`, and `Q` the third of a `TON`.
@@ -244,6 +288,72 @@ fn lower_statement_when_field_of_standard_block_then_field_of_instance() {
             "assign v0^.f2 (read i32s v0^.f0.f4)",
             "assign v0^.f3 (read bool v0^.f1.f2)",
             "assign v0^.f0.f2 (const i32s 7)",
+        ]
+    );
+}
+
+/// REQ-LOW-lowering-031: an element of an array of arrays is an `Index` for
+/// each array, outermost first, whether the outer array's type is named or
+/// declared in place.
+#[test]
+fn lower_statement_when_element_of_array_of_arrays_then_index_for_each_array() {
+    let outcome = lower(
+        "TYPE Row : ARRAY[1..3] OF DINT; Rows : ARRAY[0..1] OF Row; END_TYPE
+         PROGRAM main VAR rows : ARRAY[1..2] OF Row; named : Rows; i : DINT; END_VAR
+            rows[i][2] := named[0][i];
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        ["assign v0^.f0[(read i32s v0^.f2)][(const i32s 2)] \
+          (read i32s v0^.f1[(const i32s 0)][(read i32s v0^.f2)])"]
+    );
+}
+
+/// An element of a two-dimensional array of arrays takes both subscripts of
+/// the outer array in one `Index`, then one for the inner array.
+#[test]
+fn lower_statement_when_two_dimensional_array_of_arrays_then_index_for_each_array() {
+    let outcome = lower(
+        "TYPE Row : ARRAY[1..3] OF DINT; END_TYPE
+         PROGRAM main VAR grid : ARRAY[1..2, 1..2] OF Row; END_VAR
+            grid[2, 1][3] := 8;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        ["assign v0^.f0[(const i32s 2), (const i32s 1)][(const i32s 3)] (const i32s 8)"]
+    );
+}
+
+/// Fields and elements compose through arrays of arrays: an array of arrays
+/// in a structure, a structure in an array of arrays, with a string field,
+/// and an array in an element of an array of structures.
+#[test]
+fn lower_statement_when_fields_and_arrays_of_arrays_then_projections_compose() {
+    let outcome = lower(
+        "TYPE Row : ARRAY[1..3] OF DINT;
+              S : STRUCT rows : ARRAY[1..2] OF Row; END_STRUCT;
+              N : STRUCT n : DINT; t : STRING[5]; END_STRUCT;
+              NRow : ARRAY[1..3] OF N;
+              R : STRUCT v : ARRAY[1..3] OF DINT; END_STRUCT; END_TYPE
+         PROGRAM main VAR s : S; g : ARRAY[1..2] OF NRow; recs : ARRAY[1..2] OF R; END_VAR
+            s.rows[2][3] := 1;
+            g[2][3].n := 2;
+            g[1][1].t := 'ab';
+            recs[2].v[3] := 3;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f0.f0[(const i32s 2)][(const i32s 3)] (const i32s 1)",
+            "assign v0^.f1[(const i32s 2)][(const i32s 3)].f0 (const i32s 2)",
+            "assign-str v0^.f1[(const i32s 1)][(const i32s 1)].f1 (literal string[2] \"ab\")",
+            "assign v0^.f2[(const i32s 2)].f0[(const i32s 3)] (const i32s 3)",
         ]
     );
 }

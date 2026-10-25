@@ -37,7 +37,7 @@ pub(crate) fn numeric_operation_width(type_name: &TypeName) -> Option<OperationW
 /// and `None` for anything else: an untyped literal's category, a subrange,
 /// an enumeration, a temporal type, or `BOOL`.
 pub(crate) fn numeric_operation_type(type_name: &TypeName) -> Option<OperationType> {
-    let elementary = ElementaryTypeName::try_from(&type_name.name).ok()?;
+    let elementary = ElementaryTypeName::try_from(&type_name.id).ok()?;
     let numeric = GenericTypeName::AnyNum.is_compatible_with(&elementary)
         || matches!(
             elementary,
@@ -81,7 +81,8 @@ pub(crate) fn operation_width_of(representation: &SemanticType) -> Option<Operat
         SemanticType::String { .. }
         | SemanticType::Structure { .. }
         | SemanticType::Array { .. }
-        | SemanticType::FunctionBlock { .. } => None,
+        | SemanticType::FunctionBlock { .. }
+        | SemanticType::Interface { .. } => None,
     }
 }
 
@@ -135,7 +136,8 @@ fn operation_signedness_of(representation: &SemanticType) -> Option<Signedness> 
         | SemanticType::String { .. }
         | SemanticType::Structure { .. }
         | SemanticType::Array { .. }
-        | SemanticType::FunctionBlock { .. } => None,
+        | SemanticType::FunctionBlock { .. }
+        | SemanticType::Interface { .. } => None,
     }
 }
 

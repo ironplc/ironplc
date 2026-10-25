@@ -38,7 +38,7 @@ use ironplc_problems::Problem;
 use std::convert::Infallible;
 
 use crate::call_binding::{bind, normal_form, BindProblem};
-use crate::callee_resolution::{instance_type, receiver_block, BlockParameters, CallParameters};
+use crate::callee_resolution::{instance_type, receiver_block, CallParameters, MethodParameters};
 use crate::function_environment::FunctionEnvironment;
 use crate::symbol_environment::{ScopeTracker, SymbolEnvironment};
 use crate::type_environment::TypeEnvironment;
@@ -53,7 +53,7 @@ pub fn apply(
     functions: &FunctionEnvironment,
 ) -> (Library, Vec<Diagnostic>) {
     let mut binder = CallArgumentBinder {
-        parameters: BlockParameters::of_library(&lib),
+        parameters: MethodParameters::of_library(&lib, types),
         symbols,
         types,
         functions,
@@ -65,8 +65,8 @@ pub fn apply(
 }
 
 struct CallArgumentBinder<'a> {
-    /// The parameters of every block and method a call can name.
-    parameters: BlockParameters,
+    /// The parameters of every method a call can name.
+    parameters: MethodParameters,
     symbols: &'a SymbolEnvironment,
     types: &'a TypeEnvironment,
     functions: &'a FunctionEnvironment,
@@ -118,7 +118,7 @@ impl Fold<Infallible> for CallArgumentBinder<'_> {
             self.symbols,
             self.types,
         )
-        .and_then(|block| self.parameters.of(&block, self.types));
+        .and_then(|block| CallParameters::of_block(&block, self.types));
         if let Some(parameters) = parameters {
             node.params = match normal_form(&parameters, node.params) {
                 Ok(mut normal) => {
@@ -249,7 +249,9 @@ mod tests {
     }
 
     /// A block whose method `M` declares an in-out between two inputs, and
-    /// whose derived block inherits `M` and overrides `Get`.
+    /// whose derived block inherits `M` and overrides `Get`. The override
+    /// declares its inputs in another order, which analysis rejects (P4089);
+    /// the tests pin this pass alone.
     const METHODS: &str = "
 FUNCTION_BLOCK Base
 METHOD M
@@ -315,6 +317,8 @@ END_PROGRAM"
         );
     }
 
+    /// The override reorders its inputs, which analysis rejects (P4089); the
+    /// test pins this pass alone.
     #[spec_test(REQ_CB_analyzer_030)]
     fn apply_when_this_and_super_then_declaration_order_of_method_they_reach() {
         let program = "
@@ -389,6 +393,35 @@ inst(1, 2);
 END_PROGRAM"
         );
         assert_eq!(vec!["a := 1, b := 2"], calls(&program));
+    }
+
+    /// A call to a block that extends another binds the inputs and outputs
+    /// it inherits, and writes them ahead of the block's own.
+    #[spec_test(REQ_CB_analyzer_053)]
+    fn apply_when_block_extends_then_inherited_arguments_first() {
+        let blocks = "
+FUNCTION_BLOCK Base
+VAR_INPUT count : DINT; END_VAR
+VAR_OUTPUT seen : DINT; END_VAR
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK Derived EXTENDS Base
+VAR_INPUT speed : DINT; END_VAR
+VAR_OUTPUT twice : DINT; END_VAR
+END_FUNCTION_BLOCK";
+        let program = format!(
+            "{blocks}
+PROGRAM main VAR d : Derived; x : DINT; r : DINT; s : DINT; END_VAR
+d(twice => r, speed := x, seen => s, count := 3);
+d(1, 2);
+END_PROGRAM"
+        );
+        assert_eq!(
+            vec![
+                "count := 3, speed := x, seen => s, twice => r",
+                "count := 1, speed := 2"
+            ],
+            calls(&program)
+        );
     }
 
     #[test]

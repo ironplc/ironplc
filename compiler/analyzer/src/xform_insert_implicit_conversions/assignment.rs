@@ -18,8 +18,9 @@
 //! those, and its operation type differs from the target's: its width, or the
 //! signedness of an integer, so a `USINT` stored in a `DINT` is converted
 //! although both are operated on in 32 bits. An operation computes at its own
-//! type when it is arithmetic, a negation or `NOT`, an `AND`, `OR` or `XOR`,
-//! or a standard function on one value or of several inputs of one type
+//! type when it is arithmetic, a negation or `NOT`, a bitwise operator
+//! ([`CompareOp::is_bitwise`]), or a standard function on one value or of
+//! several inputs of one type
 //! ([`BuiltinFunction::computes_at_own_type`]). A call to a
 //! user-defined function or a method, a standard function whose signature
 //! fixes its result type ([`BuiltinFunction::result_has_fixed_type`]), and a
@@ -34,6 +35,8 @@
 //! assigned value is converted.
 //!
 //! A directly represented target is not recorded yet.
+//!
+//! [`CompareOp::is_bitwise`]: ironplc_dsl::textual::CompareOp::is_bitwise
 
 use ironplc_dsl::textual::{
     ArrayVariable, Assignment, ConversionKind, Expr, ExprKind, For, Function, ParamAssignmentKind,
@@ -43,7 +46,7 @@ use ironplc_dsl::type_id::TypeId;
 
 use super::arithmetic::arithmetic_operator;
 use super::ImplicitConversions;
-use crate::builtin_function::{is_bitwise, BuiltinFunction};
+use crate::builtin_function::BuiltinFunction;
 use crate::intermediates::conversion_target::concrete;
 use crate::intermediates::numeric_operation::{
     numeric_operation_width, operation_type_of, OperationType, OperationWidth,
@@ -142,7 +145,8 @@ impl ImplicitConversions<'_> {
             | SemanticType::String { .. }
             | SemanticType::Structure { .. }
             | SemanticType::Array { .. }
-            | SemanticType::FunctionBlock { .. } => None,
+            | SemanticType::FunctionBlock { .. }
+            | SemanticType::Interface { .. } => None,
         }
     }
 
@@ -191,7 +195,8 @@ impl ImplicitConversions<'_> {
             | SemanticType::String { .. }
             | SemanticType::Structure { .. }
             | SemanticType::Array { .. }
-            | SemanticType::FunctionBlock { .. } => false,
+            | SemanticType::FunctionBlock { .. }
+            | SemanticType::Interface { .. } => false,
         }
     }
 
@@ -275,9 +280,9 @@ impl ImplicitConversions<'_> {
             // A method returns its declared type, and a dereference reads the
             // referenced variable at its own.
             ExprKind::MethodCall(_) | ExprKind::Deref(_) => true,
-            // `AND`, `OR` and `XOR` compute at their own type, as an
-            // arithmetic operation does; a comparison is a `BOOL`.
-            ExprKind::Compare(compare) => is_bitwise(&compare.op),
+            // A bitwise operator computes at its own type, as an arithmetic
+            // operation does; a comparison is a `BOOL`.
+            ExprKind::Compare(compare) => compare.op.is_bitwise(),
             // A literal compiles at the type the literal pass gives it, and a
             // late-bound name is read at its context's type.
             ExprKind::Const(_) | ExprKind::LateBound(_) => false,

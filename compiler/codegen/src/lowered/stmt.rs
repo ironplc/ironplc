@@ -1,28 +1,26 @@
 //! Emits a lowered statement.
 //!
-//! Each statement is emitted in the shape `compile_stmt.rs` and
-//! `compile_loop.rs` give the statement it was lowered from, fused compare
-//! and branch included, so a body runs the same instructions by either
-//! route. The one difference is `Case`, whose selector is evaluated once
+//! Each statement is emitted in the shape the route that read the AST gave
+//! it, fused compare and branch included. `Case` evaluates its selector once
 //! (REQ-LOW-codegen-124): it stays on the stack while the labels are tested,
 //! and the arm that runs pops it first.
 
 use ironplc_container::opcode::cmp_op;
-use ironplc_dsl::core::SourceSpan;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::{
     counts_down, CaseArm, CaseLabel, CompareOp, Const, Expr, ExprKind, LoopId,
     Place as LoweredPlace, Stmt, StmtKind,
 };
-use ironplc_lowering::Lowering;
+use ironplc_ir::SourceSpan;
+use ironplc_ir::{Diagnostic, Label};
 
 use super::expr::{emit_constant, emit_expr, emit_truncate};
-use super::{constant, op_type, read, storage_name};
+use super::place::variable_name;
+use super::{constant, op_type, read};
 use crate::compile::{CompileContext, OpType};
 use crate::compile_expr::{
     classify_with_named, emit_add, emit_classified_cmp_br, emit_eq, emit_ge, emit_le, ClassifiedCmp,
 };
-use crate::compile_loop::LoopLabels;
 use crate::compile_partial_access::Bits;
 use crate::compile_stmt::{emit_return, record_position};
 use crate::emit::{self, Emitter};
@@ -32,26 +30,36 @@ use crate::emit::{self, Emitter};
 pub(super) fn emit_stmts(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &Lowering<'_>,
+    lowering: &Program,
     stmts: &[Stmt],
 ) -> Result<(), Diagnostic> {
     let mut emission = Emission {
         lowering,
         loops: Vec::new(),
     };
-    stmts
-        .iter()
-        .try_for_each(|stmt| emission.stmt(emitter, ctx, stmt))
+    emission.sequence(emitter, ctx, stmts, false)
+}
+
+/// The labels of a loop that its body can jump to.
+#[derive(Clone, Copy)]
+struct LoopLabels {
+    /// Where `EXIT` goes: the first instruction after the loop.
+    exit: emit::Label,
+    /// Where `CONTINUE` goes: where the loop goes on with its next iteration.
+    next: emit::Label,
+    /// Whether a `CONTINUE` jumps to `next`. The loop binds `next` only
+    /// then, because binding a label ends the peephole window.
+    next_used: bool,
 }
 
 /// What emitting a statement needs besides the compile context.
-struct Emission<'l, 'a> {
-    lowering: &'l Lowering<'a>,
+struct Emission<'l> {
+    lowering: &'l Program,
     /// The loops enclosing the statement being emitted, innermost last.
     loops: Vec<(LoopId, LoopLabels)>,
 }
 
-impl Emission<'_, '_> {
+impl Emission<'_> {
     /// Emits the statements `stmts`, each at its own source position.
     fn block(
         &mut self,
@@ -59,9 +67,42 @@ impl Emission<'_, '_> {
         ctx: &mut CompileContext,
         stmts: &[Stmt],
     ) -> Result<(), Diagnostic> {
-        for stmt in stmts {
-            record_position(emitter, ctx, stmt.span());
-            self.stmt(emitter, ctx, stmt)?;
+        self.sequence(emitter, ctx, stmts, true)
+    }
+
+    /// Emits `stmts` in order, at each one's source position when `record`.
+    /// The stores of a function block call's inputs and the call are emitted
+    /// together (`fb_call.rs`), and so are a call statement, the stores of
+    /// its outputs and the copy of its result (`fn_call.rs`).
+    fn sequence(
+        &mut self,
+        emitter: &mut Emitter,
+        ctx: &mut CompileContext,
+        stmts: &[Stmt],
+        record: bool,
+    ) -> Result<(), Diagnostic> {
+        let mut rest = stmts;
+        while let [first, ..] = rest {
+            if record {
+                record_position(emitter, ctx, first.span());
+            }
+            let emitted = if let Some(call) = super::fb_call::call_site(self.lowering, ctx, rest) {
+                super::fb_call::emit_call_site(emitter, ctx, self.lowering, &call, first.span())?;
+                call.len()
+            } else if let Some(call) = super::fn_call::output_call(self.lowering, ctx, rest) {
+                super::fn_call::emit_call_statement(
+                    emitter,
+                    ctx,
+                    self.lowering,
+                    &call,
+                    first.span(),
+                )?;
+                call.len()
+            } else {
+                self.stmt(emitter, ctx, first)?;
+                1
+            };
+            rest = &rest[emitted..];
         }
         Ok(())
     }
@@ -76,11 +117,15 @@ impl Emission<'_, '_> {
         match stmt.kind() {
             StmtKind::Assign { place, value } => {
                 let lowering = self.lowering;
-                super::place::resolve(lowering, ctx, place, span)?.emit_assign_fitting(
-                    emitter,
-                    ctx,
-                    |emitter, ctx| emit_expr(emitter, ctx, lowering, value),
-                )
+                let storage = super::place::resolve(lowering, ctx, place, span)?;
+                let push = |emitter: &mut Emitter, ctx: &mut CompileContext| {
+                    emit_expr(emitter, ctx, lowering, value)
+                };
+                if super::place::reads_standard_block_field(lowering, ctx, value) {
+                    storage.emit_assign(emitter, ctx, push)
+                } else {
+                    storage.emit_assign_fitting(emitter, ctx, push)
+                }
             }
             StmtKind::AssignStr { place, value } => {
                 super::string::emit_assign_str(emitter, ctx, self.lowering, place, value, span)
@@ -101,6 +146,39 @@ impl Emission<'_, '_> {
                     })
                 })
             }
+            // A call is emitted with the stores of its inputs (`sequence`);
+            // one on its own has none.
+            StmtKind::Copy { dst, src } => {
+                if let Some(copy) =
+                    super::instance_copy::instance_copy(self.lowering, ctx, dst, src)
+                {
+                    super::instance_copy::emit_instance_copy(emitter, &copy);
+                    return Ok(());
+                }
+                if super::aggregate::can_emit(self.lowering, ctx, dst, src) {
+                    return super::aggregate::emit_copy(
+                        emitter,
+                        ctx,
+                        self.lowering,
+                        dst,
+                        src,
+                        span,
+                    );
+                }
+                let copy = super::slot_copy::slot_copy(self.lowering, ctx, dst, src)
+                    .ok_or_else(|| super::aggregate::no_region(span))?;
+                super::slot_copy::emit_slot_copy(emitter, ctx, &copy)
+            }
+            StmtKind::FbCall { instance, .. } => {
+                let call = super::fb_call::bare_call(self.lowering, ctx, instance)
+                    .ok_or_else(|| super::fb_call::no_instance(span))?;
+                super::fb_call::emit_call_site(emitter, ctx, self.lowering, &call, span)
+            }
+            // `sequence` emits a call statement with its outputs.
+            StmtKind::Call { .. } => Err(Diagnostic::internal_error_at(Label::span(
+                span.clone(),
+                "A lowered call statement outside the statements of its call",
+            ))),
             StmtKind::If {
                 cond,
                 then,
@@ -207,7 +285,7 @@ impl Emission<'_, '_> {
     }
 
     /// `cond` as one `CMP_BR_*`, when it compares a signed integer variable
-    /// with a constant, as `try_classify_cmp` finds it in the AST.
+    /// with a constant.
     fn classify(&self, ctx: &mut CompileContext, cond: &Expr) -> Option<ClassifiedCmp> {
         let ExprKind::Compare { op, lhs, rhs } = cond.kind() else {
             return None;
@@ -228,7 +306,8 @@ impl Emission<'_, '_> {
     }
 
     /// `place <cmp> value` as one `CMP_BR_*`, when `place` is a signed integer
-    /// variable.
+    /// variable the layout keeps: a variable, a field of the current
+    /// instance, or what a function's or method's parameter refers to.
     fn classify_place(
         &self,
         ctx: &mut CompileContext,
@@ -238,7 +317,7 @@ impl Emission<'_, '_> {
         cmp: u8,
     ) -> Option<ClassifiedCmp> {
         let value = i64::try_from(value.integer_value(ty)?).ok()?;
-        let name = storage_name(self.lowering, place)?;
+        let name = variable_name(self.lowering, ctx, place)?;
         classify_with_named(ctx, &name, value, cmp)
     }
 
@@ -540,6 +619,9 @@ fn if_parts(stmt: &Stmt) -> Option<(&Expr, &[Stmt], &[Stmt])> {
         StmtKind::Assign { .. }
         | StmtKind::AssignBits { .. }
         | StmtKind::AssignStr { .. }
+        | StmtKind::Copy { .. }
+        | StmtKind::FbCall { .. }
+        | StmtKind::Call { .. }
         | StmtKind::Case { .. }
         | StmtKind::For { .. }
         | StmtKind::Loop { .. }

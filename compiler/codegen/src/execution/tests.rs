@@ -1,13 +1,12 @@
 //! Tests that codegen builds the container from the execution model, and
 //! checks the model against what the VM supports. What the model holds is
-//! the analyzer's to test (`ironplc_analyzer::execution_model`); these tests
+//! lowering's to test (`ironplc_lowering`'s `execution_model`); these tests
 //! check that the container follows it.
 
-use ironplc_analyzer::CleanAnalysis;
 use ironplc_container::{Container, TaskType, FLAG_HAS_SYSTEM_UPTIME};
-use ironplc_dsl::core::{FileId, SourceSpan};
-use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_ir::execution::{DebugName, Schedule, Task, Trigger};
+use ironplc_ir::Diagnostic;
+use ironplc_ir::{FileId, SourceSpan};
 use ironplc_parser::options::CompilerOptions;
 use ironplc_parser::parse_program;
 use ironplc_problems::Problem;
@@ -15,7 +14,6 @@ use spec_test_macro::spec_test;
 use time::Duration;
 
 use super::{ordinal, task_schedule};
-use crate::compile::{compile, CodegenOptions};
 
 /// The code of the P9999 not-implemented problem, which only its
 /// `Diagnostic` constructor may name.
@@ -24,11 +22,7 @@ const NOT_IMPLEMENTED_CODE: &str = "P9999";
 fn compile_with(source: &str, options: &CompilerOptions) -> Result<Container, Diagnostic> {
     let library = parse_program(source, &FileId::default(), options).unwrap();
     let (library, context) = ironplc_analyzer::stages::analyze(&[&library], options).unwrap();
-    compile(
-        CleanAnalysis::new(&library, &context).unwrap(),
-        &CodegenOptions::from(options),
-        &crate::EmptyLookup,
-    )
+    crate::test_support::compile_analyzed(&library, &context)
 }
 
 fn compile_source(source: &str) -> Result<Container, Diagnostic> {
@@ -551,7 +545,7 @@ fn codegen_sources_when_scanned_then_read_no_configuration_declaration() {
 }
 
 #[spec_test(REQ_EM_codegen_007)]
-fn codegen_sources_when_scanned_then_declarations_reached_only_by_id() {
+fn codegen_sources_when_scanned_then_no_declaration_reached() {
     let sources = codegen_sources();
     let calls = |method: &str| {
         sources
@@ -561,8 +555,10 @@ fn codegen_sources_when_scanned_then_declarations_reached_only_by_id() {
             .sum::<usize>()
     };
 
-    assert_eq!(calls(".program_declaration("), 1);
-    assert_eq!(calls(".global_declaration("), 1);
+    // The program's body, and the globals' storage and starting values,
+    // come from the lowered program, which reaches no declaration.
+    assert_eq!(calls(".program_declaration("), 0);
+    assert_eq!(calls(".global_declaration("), 0);
 }
 
 #[test]

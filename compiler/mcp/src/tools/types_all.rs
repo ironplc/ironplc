@@ -124,7 +124,7 @@ fn collect_types(context: &SemanticContext) -> Vec<TypeEntry> {
 
     for (name, attrs) in context.types().iter_user_defined() {
         let entry = match &attrs.representation {
-            SemanticType::Enumeration { members } => {
+            SemanticType::Enumeration { members, .. } => {
                 let values: Vec<String> = members
                     .iter()
                     .map(|member| member.name.to_string())
@@ -278,7 +278,7 @@ fn render_type(ty: &SemanticType) -> String {
             format!("ARRAY OF {}", render_type(element_type))
         }
         SemanticType::Subrange { base_type, .. } => render_type(base_type),
-        SemanticType::FunctionBlock { name, .. } => name.clone(),
+        SemanticType::FunctionBlock { name, .. } | SemanticType::Interface { name } => name.clone(),
         SemanticType::Reference { target_type } => {
             format!("REF_TO {}", render_type(target_type))
         }

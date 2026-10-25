@@ -95,6 +95,24 @@ impl<'a> LibraryRenderer<'a> {
         }
     }
 
+    /// Writes a string type with its length (`STRING[20]`), as a variable
+    /// or a structure element declares it.
+    fn write_string_spec(
+        &mut self,
+        width: &StringType,
+        length: Option<&IntegerRef>,
+    ) -> Result<(), Diagnostic> {
+        self.write_ws(width.keyword());
+
+        if let Some(length) = length {
+            self.write_ws("[");
+            self.visit_integer_ref(length)?;
+            self.write_ws("]");
+        }
+
+        Ok(())
+    }
+
     fn write_ws(&mut self, val: &str) {
         if self.buffer.ends_with('\n') {
             self.buffer.push_str("   ".repeat(self.indents).as_str());
@@ -534,7 +552,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         // "COLOR RED", found while adding explicit_value rendering below).
         match &node.type_name {
             Some(type_name) => {
-                self.write_ws(type_name.name.original().as_str());
+                self.write_ws(type_name.id.original().as_str());
                 self.write("#");
                 self.write(node.value.original().as_str());
             }
@@ -954,18 +972,25 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         &mut self,
         node: &StringInitializer,
     ) -> Result<Self::Value, Diagnostic> {
-        self.write_ws(node.width.keyword());
-
-        if let Some(len) = &node.length {
-            self.write_ws("[");
-            self.visit_integer(len.as_integer().unwrap())?;
-            self.write_ws("]");
-        }
+        self.write_string_spec(&node.width, node.length.as_ref())?;
 
         if let Some(init) = &node.initial_value {
             self.write_ws(":=");
             self.write(&character_string_text(&init.width, &init.value));
         }
+
+        Ok(())
+    }
+
+    // Extension: a string initializer written as a constant expression
+    // (e.g. `STRING[20] := DEFAULT_NAME`), not yet folded to a literal.
+    fn visit_string_expr_initializer(
+        &mut self,
+        node: &StringExprInitializer,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.write_string_spec(&node.width, node.length.as_ref())?;
+        self.write_ws(":=");
+        self.visit_expr(&node.initial_value)?;
 
         Ok(())
     }
@@ -1001,6 +1026,14 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         }
 
         Ok(())
+    }
+
+    // A variable of an interface type (OOP extension) has no initializer.
+    fn visit_interface_initializer(
+        &mut self,
+        node: &InterfaceInitializer,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_type_name(&node.type_name)
     }
 
     // CODESYS/TwinCAT call-style FB instance initializer:
@@ -1144,11 +1177,11 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         if let Some(oop) = &node.oop {
             self.write_qualifiers(&oop.qualifiers);
         }
-        self.visit_id(&node.name.name)?;
+        self.visit_type_name(&node.name)?;
         if let Some(oop) = &node.oop {
             if let Some(base) = &oop.base {
                 self.write_ws("EXTENDS");
-                self.visit_id(&base.name)?;
+                self.visit_type_name(base)?;
             }
             if !oop.implements.is_empty() {
                 self.write_ws("IMPLEMENTS");
@@ -1156,7 +1189,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
                     if i > 0 {
                         self.write_ws(",");
                     }
-                    self.visit_id(&interface.name)?;
+                    self.visit_type_name(interface)?;
                 }
             }
         }
@@ -1280,7 +1313,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
                 if i > 0 {
                     self.write_ws(",");
                 }
-                self.visit_id(&base.name)?;
+                self.visit_id(&base.id)?;
             }
         }
         self.newline();

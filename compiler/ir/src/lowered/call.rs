@@ -10,7 +10,7 @@ use super::place::Place;
 use super::policy::ParsePolicy;
 use super::scalar::{ScalarType, Signedness};
 use super::str_expr::StrExpr;
-use super::types::Encoding;
+use super::types::{Encoding, TypeTable};
 
 /// What a call calls.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -33,16 +33,21 @@ pub enum Arg {
     /// A place, passed by reference: the callee reads and writes the
     /// caller's place, as a `VAR_IN_OUT` does (REQ-LOW-lowering-075).
     Ref(Place),
+    /// An array, a structure or a function block instance at a place,
+    /// passed by value: the callee's parameter holds a copy of it, as a
+    /// `VAR_INPUT` does (REQ-LOW-lowering-075).
+    Copy(Place),
 }
 
 impl Arg {
     /// What the argument passes: a value of its type, a string of its
-    /// encoding, or a place of its type.
+    /// encoding, a place of its type, or a copy of an aggregate of its type.
     pub fn param(&self) -> Param {
         match self {
             Arg::Value(value) => Param::Value(value.ty()),
             Arg::Str(value) => Param::Str(value.shape().encoding),
             Arg::Ref(place) => Param::Ref(place.ty()),
+            Arg::Copy(place) => Param::Copy(place.ty()),
         }
     }
 
@@ -51,7 +56,7 @@ impl Arg {
         match self {
             Arg::Value(value) => value.program(),
             Arg::Str(value) => value.program(),
-            Arg::Ref(place) => Some(place.root().stamp()),
+            Arg::Ref(place) | Arg::Copy(place) => Some(place.root().stamp()),
         }
     }
 }
@@ -90,6 +95,28 @@ pub enum Param {
     Str(Encoding),
     /// A place of this type, passed by reference.
     Ref(TypeId),
+    /// An array, a structure or a function block instance of this type,
+    /// passed by value.
+    Copy(TypeId),
+}
+
+impl Param {
+    /// Whether an argument that passes `self` passes for a parameter that
+    /// takes `param`, of a program whose types are `types`: the same; a
+    /// place of a function block type that extends the one `param` takes,
+    /// which a reference to reaches as its base (REQ-LOW-ir-173,
+    /// REQ-LOW-ir-176); a place of the shape `param` refers to, as an alias
+    /// of its type has (REQ-LOW-lowering-072); or an aggregate of the shape
+    /// `param` takes, as a `Copy` copies one (REQ-LOW-lowering-061).
+    pub fn passes_for(self, param: Param, types: &TypeTable) -> bool {
+        match (self, param) {
+            (Param::Ref(passed), Param::Ref(taken)) => {
+                types.extends(passed, taken) || types.same_shape(passed, taken)
+            }
+            (Param::Copy(passed), Param::Copy(taken)) => types.same_shape(passed, taken),
+            (Param::Value(_) | Param::Str(_) | Param::Ref(_) | Param::Copy(_), _) => self == param,
+        }
+    }
 }
 
 /// An operation the compiler implements itself, at one set of operand types:

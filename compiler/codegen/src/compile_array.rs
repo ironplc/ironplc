@@ -4,40 +4,22 @@
 //! array read/write compilation. Separated from compile.rs to
 //! keep module sizes within the 1000-line guideline.
 
-use ironplc_dsl::core::{Id, Located, SourceSpan};
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{Expr, SymbolicVariableKind, Variable};
+use crate::access::{Access, Field};
+use ironplc_ir::{Diagnostic, Label};
+use ironplc_ir::{Located, SourceSpan};
 use ironplc_problems::Problem;
 
-use ironplc_analyzer::semantic_type::{ArrayDimension, ByteSized, SemanticType};
-use ironplc_container::{CharWidth, ContainerBuilder, SlotIndex, VarIndex};
+use ironplc_container::{CharWidth, SlotIndex, VarIndex};
 
-use super::compile::{CompileContext, OpWidth, Signedness, VarTypeInfo};
+use super::compile::{CompileContext, VarTypeInfo};
 use super::compile_subscript::Subscript;
 use crate::emit::Emitter;
-
-/// Normalized array specification, independent of AST representation.
-/// Both inline (`ARRAY[1..3, 1..4] OF INT`) and named type paths
-/// convert to this form before registration.
-pub(crate) struct ArraySpec {
-    /// Per-dimension bounds as (lower, upper) inclusive pairs.
-    pub dimensions: Vec<(i32, i32)>,
-    /// Element type name (e.g., "INT", "DINT", "STRING").
-    pub element_type_name: Id,
-    /// Whether each element is a REF_TO the named type.
-    pub ref_to: bool,
-    /// For STRING/WSTRING arrays, the maximum string length per element
-    /// (in code units). `None` for non-string element types.
-    pub string_max_len: Option<u16>,
-    /// For STRING/WSTRING arrays, the per-code-unit byte width:
-    /// `Narrow` for STRING, `Wide` for WSTRING. `None` for non-string
-    /// element types.
-    pub string_char_width: Option<CharWidth>,
-}
+use crate::lowered::slot_type;
+use ironplc_ir::lowered::{TypeKind, TypeTable};
 
 /// Metadata for a single dimension of an array, used for index computation.
 #[allow(dead_code)]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct DimensionInfo {
     pub lower_bound: i32,
     pub size: u32,
@@ -46,6 +28,7 @@ pub(crate) struct DimensionInfo {
 
 /// Metadata for an array variable, stored in CompileContext.
 #[allow(dead_code)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ArrayVarInfo {
     pub var_index: VarIndex,
     pub desc_index: u16,
@@ -75,7 +58,7 @@ pub(crate) struct ArrayVarInfo {
 /// Designed for extensibility: when struct access is implemented,
 /// add a `StructField` variant and extend `resolve_access()`.
 /// The dispatch sites gain a new match arm without changing shape.
-pub(crate) enum ResolvedAccess<'ctx, 'ast> {
+pub(crate) enum ResolvedAccess<'ctx, S> {
     /// Simple named variable — use LOAD_VAR/STORE_VAR.
     Scalar { var_index: VarIndex },
     /// `VAR_IN_OUT` parameter of the function being compiled. Its slot holds
@@ -85,12 +68,12 @@ pub(crate) enum ResolvedAccess<'ctx, 'ast> {
     /// Array element — compute flat index, use LOAD_ARRAY/STORE_ARRAY.
     ArrayElement {
         info: &'ctx ArrayVarInfo,
-        subscripts: Vec<&'ast Expr>,
+        subscripts: Vec<S>,
     },
     /// Array element through a dereferenced reference — use LOAD_ARRAY_DEREF/STORE_ARRAY_DEREF.
     DerefArrayElement {
         info: &'ctx ArrayVarInfo,
-        subscripts: Vec<&'ast Expr>,
+        subscripts: Vec<S>,
     },
     /// Array element within a struct field — compute flat index + struct field offset,
     /// then use the struct's LOAD_ARRAY/STORE_ARRAY descriptor.
@@ -104,13 +87,12 @@ pub(crate) enum ResolvedAccess<'ctx, 'ast> {
         /// Dimension info for computing the flat index from subscripts.
         dimensions: Vec<DimensionInfo>,
         /// Subscript expressions.
-        subscripts: Vec<&'ast Expr>,
-        /// Element semantic type, which decides the type the element is
-        /// loaded and stored at.
-        element_type: SemanticType,
+        subscripts: Vec<S>,
+        /// The type the element is loaded and stored at.
+        type_info: VarTypeInfo,
     },
     /// STRING array element within a struct field — see [`StructStringElement`].
-    StructFieldStringArrayElement(StructStringElement<'ast>),
+    StructFieldStringArrayElement(StructStringElement<S>),
 }
 
 /// A STRING element of an array that lives inside a structure's data region.
@@ -120,7 +102,7 @@ pub(crate) enum ResolvedAccess<'ctx, 'ast> {
 /// structure's variable holds the start of the whole structure rather than of
 /// the array, so the array's start is first computed into a scratch variable
 /// ([`StringPlace`](super::compile_string_place::StringPlace)).
-pub(crate) struct StructStringElement<'ast> {
+pub(crate) struct StructStringElement<S> {
     /// Struct variable table index (holds struct data_offset).
     pub var_index: VarIndex,
     /// Scratch variable for the adjusted base offset.
@@ -129,77 +111,54 @@ pub(crate) struct StructStringElement<'ast> {
     pub string_desc_index: u16,
     /// Byte offset of the array field within the struct (slot_offset * 8).
     pub field_byte_offset: u32,
-    /// Encoding of the element, which a stored value must be produced at
-    /// (ADR-0034).
-    pub char_width: CharWidth,
     /// Dimension info for computing the flat index from subscripts.
     pub dimensions: Vec<DimensionInfo>,
     /// Subscript expressions.
-    pub subscripts: Vec<&'ast Expr>,
+    pub subscripts: Vec<S>,
 }
 
-/// Resolves a variable reference into its access kind.
+/// Resolves a place into its access kind.
 ///
-/// For named variables, returns Scalar with the variable table index.
-/// For array variables, walks the ArrayVariable chain to collect
-/// all subscripts and resolve the base variable's ArrayVarInfo.
-///
-/// Two lifetimes separate the context borrow (`'ctx` for `info`) from the
-/// AST borrow (`'ast` for `subscripts`). This allows callers to drop `info`
-/// and then use `ctx` mutably while still holding `subscripts`.
-pub(crate) fn resolve_access<'ctx, 'ast>(
+/// For a named variable, returns Scalar with the variable table index. For
+/// an element of an array, walks the chain of subscripts to collect them
+/// all and resolve the base variable's ArrayVarInfo.
+pub(crate) fn resolve_access<'ctx, S: Clone>(
+    types: &TypeTable,
     ctx: &'ctx CompileContext,
-    variable: &'ast Variable,
-) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
-    match variable {
-        Variable::Symbolic(symbolic) => resolve_symbolic_access(ctx, symbolic),
-        Variable::Direct(direct) => Err(Diagnostic::todo_with_span(direct.position.clone())),
-    }
-}
-
-/// Resolves a symbolic variable reference into its access kind, as
-/// [`resolve_access`] does for a [`Variable`].
-pub(crate) fn resolve_symbolic_access<'ctx, 'ast>(
-    ctx: &'ctx CompileContext,
-    symbolic: &'ast SymbolicVariableKind,
-) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
-    match symbolic {
-        SymbolicVariableKind::Array(array_var) => {
+    access: &Access<S>,
+) -> Result<ResolvedAccess<'ctx, S>, Diagnostic> {
+    match access {
+        Access::Index(array_var) => {
             // Walk the chain collecting subscript groups innermost-first,
-            // then reverse. For nested arrays arr[i][j], the AST is:
-            //   ArrayVariable {
-            //       subscripted_variable: Array(ArrayVariable {
-            //           subscripted_variable: Named(Id("arr")),
-            //           subscripts: [i],
-            //       }),
-            //       subscripts: [j],
-            //   }
-            // We collect: [[j], [i]], reverse to [[i], [j]], flatten to [i, j].
-            let mut levels: Vec<&[Expr]> = Vec::new();
+            // then reverse. For nested arrays arr[i][j] the chain is
+            // Index(Index(Named(arr), [i]), [j]): we collect [[j], [i]],
+            // reverse to [[i], [j]], flatten to [i, j].
+            let mut levels: Vec<&[S]> = Vec::new();
             let mut current = array_var;
             loop {
                 levels.push(&current.subscripts);
-                match current.subscripted_variable.as_ref() {
-                    SymbolicVariableKind::Array(inner) => {
+                match current.array.as_ref() {
+                    Access::Index(inner) => {
                         current = inner;
                     }
-                    SymbolicVariableKind::Named(named) => {
+                    Access::Named(name) => {
                         levels.reverse();
-                        let all_subscripts: Vec<&Expr> = levels.into_iter().flatten().collect();
-                        let info = ctx.array_vars.get(&named.name).ok_or_else(|| {
+                        let all_subscripts: Vec<S> =
+                            levels.into_iter().flatten().cloned().collect();
+                        let info = ctx.array_var(name).ok_or_else(|| {
                             // An element of an array of structures spans
                             // several slots, so it has no single-value load or
                             // store; only its fields are addressable.
-                            if ctx.struct_array_vars.contains_key(&named.name) {
+                            if ctx.struct_array_var(name).is_some() {
                                 Diagnostic::not_implemented(Label::span(
-                                    named.name.span(),
+                                    name.span(),
                                     format!(
                                         "Whole-element access of '{}' -- select a field of the element instead",
-                                        named.name
+                                        name
                                     ),
                                 ))
                             } else {
-                                Diagnostic::todo_with_span(named.name.span())
+                                Diagnostic::todo_with_span(name.span())
                             }
                         })?;
                         return Ok(ResolvedAccess::ArrayElement {
@@ -207,22 +166,21 @@ pub(crate) fn resolve_symbolic_access<'ctx, 'ast>(
                             subscripts: all_subscripts,
                         });
                     }
-                    SymbolicVariableKind::Deref(deref) => {
+                    Access::Deref(deref) => {
                         // Dereference in array chain (e.g., PT^[0] where PT is REF_TO ARRAY).
                         // Walk through the deref to find the base variable name.
-                        let mut inner = deref.variable.as_ref();
-                        while let SymbolicVariableKind::Deref(d) = inner {
-                            inner = d.variable.as_ref();
+                        let mut inner = deref.as_ref();
+                        while let Access::Deref(d) = inner {
+                            inner = d.as_ref();
                         }
                         match inner {
-                            SymbolicVariableKind::Named(named) => {
+                            Access::Named(name) => {
                                 levels.reverse();
-                                let all_subscripts: Vec<&Expr> =
-                                    levels.into_iter().flatten().collect();
+                                let all_subscripts: Vec<S> =
+                                    levels.into_iter().flatten().cloned().collect();
                                 let info = ctx
-                                    .array_vars
-                                    .get(&named.name)
-                                    .ok_or_else(|| Diagnostic::todo_with_span(named.name.span()))?;
+                                    .array_var(name)
+                                    .ok_or_else(|| Diagnostic::todo_with_span(name.span()))?;
                                 return Ok(ResolvedAccess::DerefArrayElement {
                                     info,
                                     subscripts: all_subscripts,
@@ -233,48 +191,50 @@ pub(crate) fn resolve_symbolic_access<'ctx, 'ast>(
                             }
                         }
                     }
-                    SymbolicVariableKind::Structured(structured) => {
+                    Access::Field(structured) => {
                         levels.reverse();
-                        let all_subscripts: Vec<&Expr> = levels.into_iter().flatten().collect();
+                        let all_subscripts: Vec<S> =
+                            levels.into_iter().flatten().cloned().collect();
                         // `a[i].values[j]` -- the record is itself an array
                         // element, so the subscripts collected here index the
                         // *field*, and the element index is still inside the
                         // record. The array-of-struct path combines the two.
-                        if matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) {
+                        if crate::compile_array_struct::element_field_chain(structured).is_some() {
                             return crate::compile_array_struct::resolve_struct_array_element_field(
+                                types,
                                 ctx,
                                 structured,
                                 all_subscripts,
                             );
                         }
-                        return resolve_struct_field_array(ctx, structured, all_subscripts);
-                    }
-                    other => {
-                        return Err(Diagnostic::todo_with_span(other.span()));
+                        return resolve_struct_field_array(types, ctx, structured, all_subscripts);
                     }
                 }
             }
         }
-        // `s.arr[i].field` -- a field selected from an element of an
-        // array-of-struct. The record is an array element rather than a
-        // fixed-offset struct field, so it resolves through the array path.
-        SymbolicVariableKind::Structured(structured)
-            if matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) =>
+        // `s.arr[i].field` and `arr[i].inner.field` -- a field selected
+        // from an element of an array-of-struct. The element is not at a
+        // fixed offset, so it resolves through the array path.
+        Access::Field(structured)
+            if crate::compile_array_struct::element_field_chain(structured).is_some() =>
         {
             crate::compile_array_struct::resolve_struct_array_element_field(
+                types,
                 ctx,
                 structured,
                 Vec::new(),
             )
         }
-        SymbolicVariableKind::Named(named) => {
-            if let Some(ref_slot) = ctx.in_out_ref_slot(&named.name) {
+        Access::Named(name) => {
+            if let Some(ref_slot) = ctx.in_out_ref_slot(name) {
                 return Ok(ResolvedAccess::InOut { ref_slot });
             }
-            let var_index = ctx.var_index(&named.name)?;
+            let var_index = ctx.var_index(name)?;
             Ok(ResolvedAccess::Scalar { var_index })
         }
-        other => Err(Diagnostic::todo_with_span(other.span())),
+        // A field of a structure is at a fixed offset, which `Place::resolve`
+        // addresses, and a whole referenced value has no access kind.
+        Access::Field(_) | Access::Deref(_) => Err(Diagnostic::todo_with_span(access.span())),
     }
 }
 
@@ -284,18 +244,19 @@ pub(crate) fn resolve_symbolic_access<'ctx, 'ast>(
 /// struct chain to get the field's slot offset and type, extract array dimension
 /// info, and return a `StructFieldArrayElement` that the caller uses to emit
 /// `flat_index + slot_offset` followed by the struct's LOAD_ARRAY/STORE_ARRAY.
-pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
+pub(crate) fn resolve_struct_field_array<'ctx, S>(
+    types: &TypeTable,
     ctx: &'ctx CompileContext,
-    structured: &ironplc_dsl::textual::StructuredVariable,
-    subscripts: Vec<&'ast Expr>,
-) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
+    structured: &Field<S>,
+    subscripts: Vec<S>,
+) -> Result<ResolvedAccess<'ctx, S>, Diagnostic> {
     let (root_name, slot_offset, field_type) =
-        crate::compile_struct::walk_struct_chain(ctx, &structured.record, &structured.field, 0)?;
+        crate::compile_struct::walk_struct_chain(types, ctx, structured, 0)?;
 
-    let SemanticType::Array {
-        element_type,
+    let Some(TypeKind::Array {
+        element,
         dimensions: array_dims,
-    } = &field_type
+    }) = types.kind(field_type)
     else {
         return Err(Diagnostic::not_implemented(Label::span(
             structured.field.span(),
@@ -303,27 +264,28 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
         )));
     };
 
-    let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
+    let struct_info = ctx.struct_var(&root_name).ok_or_else(|| {
         Diagnostic::not_implemented(Label::span(
-            structured.span(),
+            structured.field.span(),
             format!("Variable '{}' is not a structure", root_name),
         ))
     })?;
 
     // STRING array fields use dedicated STR_LOAD/STORE_ARRAY_ELEM opcodes
     // with a scratch variable and a STRING-specific array descriptor.
-    if let SemanticType::String { char_width, .. } = element_type.as_ref() {
-        let field_name = structured.field.to_string().to_lowercase();
-        let &(str_desc_index, _, _) =
-            struct_info
-                .string_array_descs
-                .get(&field_name)
-                .ok_or_else(|| {
-                    Diagnostic::not_implemented(Label::span(
-                        structured.field.span(),
-                        "STRING array descriptor not registered for field",
-                    ))
-                })?;
+    if let Some(TypeKind::String(_)) = types.kind(*element) {
+        // The structure registers a descriptor for each of its own fields
+        // that is an array of strings, not for those of a structure it holds.
+        let own_field = matches!(structured.record.as_ref(), Access::Named(_));
+        let &(str_desc_index, _, _) = own_field
+            .then(|| struct_info.string_array_descs.get(&structured.idx))
+            .flatten()
+            .ok_or_else(|| {
+                Diagnostic::not_implemented(Label::span(
+                    structured.field.span(),
+                    "STRING array descriptor not registered for field",
+                ))
+            })?;
         // Allocated for every structure that has a STRING-array descriptor.
         let scratch = struct_info.scratch_var_index.ok_or_else(|| {
             Diagnostic::internal_error_at(Label::span(
@@ -331,7 +293,7 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
                 "Scratch variable not allocated for struct",
             ))
         })?;
-        let dimensions = dimensions_from_semantic_type(array_dims);
+        let dimensions = dimensions_of_bounds(array_dims);
         let field_byte_offset = slot_offset.raw() * 8;
         return Ok(ResolvedAccess::StructFieldStringArrayElement(
             StructStringElement {
@@ -339,21 +301,20 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
                 scratch_var_index: scratch,
                 string_desc_index: str_desc_index,
                 field_byte_offset,
-                char_width: *char_width,
                 dimensions,
                 subscripts,
             },
         ));
     }
 
-    if crate::compile_struct::resolve_field_op_type(element_type).is_none() {
-        return Err(Diagnostic::not_implemented(Label::span(
+    let type_info = slot_type(types, *element).ok_or_else(|| {
+        Diagnostic::not_implemented(Label::span(
             structured.field.span(),
             "Array element type is not a primitive (nested struct/array elements not supported)",
-        )));
-    }
+        ))
+    })?;
 
-    let dimensions = dimensions_from_semantic_type(array_dims);
+    let dimensions = dimensions_of_bounds(array_dims);
 
     Ok(ResolvedAccess::StructFieldArrayElement {
         var_index: struct_info.var_index,
@@ -361,18 +322,19 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
         field_slot_offset: slot_offset,
         dimensions,
         subscripts,
-        element_type: element_type.as_ref().clone(),
+        type_info,
     })
 }
 
-/// Converts `ArrayDimension` bounds into `DimensionInfo` with computed strides.
+/// Converts the bounds of each dimension, `(lower, upper)`, into
+/// `DimensionInfo` with computed strides.
 ///
 /// Strides follow row-major order: the last dimension has stride 1, each
 /// preceding dimension's stride is the product of all subsequent dimension sizes.
-pub(crate) fn dimensions_from_semantic_type(dims: &[ArrayDimension]) -> Vec<DimensionInfo> {
+pub(crate) fn dimensions_of_bounds(dims: &[(i32, i32)]) -> Vec<DimensionInfo> {
     let sizes: Vec<u32> = dims
         .iter()
-        .map(|d| (d.upper as i64 - d.lower as i64 + 1).max(0) as u32)
+        .map(|&(lower, upper)| (upper as i64 - lower as i64 + 1).max(0) as u32)
         .collect();
 
     let mut strides = vec![1u32; sizes.len()];
@@ -382,146 +344,12 @@ pub(crate) fn dimensions_from_semantic_type(dims: &[ArrayDimension]) -> Vec<Dime
 
     dims.iter()
         .zip(sizes.iter().zip(strides.iter()))
-        .map(|(d, (&size, &stride))| DimensionInfo {
-            lower_bound: d.lower,
+        .map(|(&(lower, _), (&size, &stride))| DimensionInfo {
+            lower_bound: lower,
             size,
             stride,
         })
         .collect()
-}
-
-/// Converts a named array type (from the TypeEnvironment) to a normalized ArraySpec.
-///
-/// `span` locates the declaration being compiled; the semantic type has
-/// no span of its own.
-pub(crate) fn array_spec_from_named(
-    element_type: &SemanticType,
-    dimensions: &[ArrayDimension],
-    span: &SourceSpan,
-) -> Result<ArraySpec, Diagnostic> {
-    array_spec_from_type(element_type, dimensions, None, span)
-}
-
-/// Converts an array type to a normalized ArraySpec. `target_name` names
-/// the type an element refers to, for an array of references whose target
-/// has a name the representation does not keep (a structure).
-pub(crate) fn array_spec_from_type(
-    element_type: &SemanticType,
-    dimensions: &[ArrayDimension],
-    target_name: Option<Id>,
-    span: &SourceSpan,
-) -> Result<ArraySpec, Diagnostic> {
-    let dims: Vec<(i32, i32)> = dimensions.iter().map(|d| (d.lower, d.upper)).collect();
-    let ref_to = matches!(element_type, SemanticType::Reference { .. });
-    let inner_type = if let SemanticType::Reference { target_type } = element_type {
-        target_type.as_ref()
-    } else {
-        element_type
-    };
-    let element_type_name = match (ref_to, target_name) {
-        (true, Some(name)) => name,
-        _ => semantic_type_to_name(inner_type, span)?,
-    };
-    let (string_max_len, string_char_width) = match inner_type {
-        SemanticType::String {
-            max_len,
-            char_width,
-        } => {
-            let len = max_len
-                .map(|v| v as u16)
-                .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH);
-            (Some(len), Some(*char_width))
-        }
-        _ => (None, None),
-    };
-    Ok(ArraySpec {
-        dimensions: dims,
-        element_type_name,
-        ref_to,
-        string_max_len,
-        string_char_width,
-    })
-}
-
-/// Maps an SemanticType to the IEC 61131-3 type name (as an Id) that
-/// `type_info::resolve_type_name()` can look up. Only primitive types are
-/// supported (arrays of complex types are out of scope).
-fn semantic_type_to_name(ty: &SemanticType, span: &SourceSpan) -> Result<Id, Diagnostic> {
-    let name = match ty {
-        SemanticType::Bool => "BOOL",
-        SemanticType::Int {
-            size: ByteSized::B8,
-        } => "SINT",
-        SemanticType::Int {
-            size: ByteSized::B16,
-        } => "INT",
-        SemanticType::Int {
-            size: ByteSized::B32,
-        } => "DINT",
-        SemanticType::Int {
-            size: ByteSized::B64,
-        } => "LINT",
-        SemanticType::UInt {
-            size: ByteSized::B8,
-        } => "USINT",
-        SemanticType::UInt {
-            size: ByteSized::B16,
-        } => "UINT",
-        SemanticType::UInt {
-            size: ByteSized::B32,
-        } => "UDINT",
-        SemanticType::UInt {
-            size: ByteSized::B64,
-        } => "ULINT",
-        SemanticType::Bytes {
-            size: ByteSized::B8,
-        } => "BYTE",
-        SemanticType::Bytes {
-            size: ByteSized::B16,
-        } => "WORD",
-        SemanticType::Bytes {
-            size: ByteSized::B32,
-        } => "DWORD",
-        SemanticType::Bytes {
-            size: ByteSized::B64,
-        } => "LWORD",
-        SemanticType::Real {
-            size: ByteSized::B32,
-        } => "REAL",
-        SemanticType::Real {
-            size: ByteSized::B64,
-        } => "LREAL",
-        SemanticType::Time {
-            size: ByteSized::B32,
-        } => "TIME",
-        SemanticType::Time {
-            size: ByteSized::B64,
-        } => "LTIME",
-        SemanticType::Date {
-            size: ByteSized::B64,
-        } => "LDATE",
-        SemanticType::Date { .. } => "DATE",
-        SemanticType::TimeOfDay {
-            size: ByteSized::B64,
-        } => "LTIME_OF_DAY",
-        SemanticType::TimeOfDay { .. } => "TIME_OF_DAY",
-        SemanticType::DateAndTime {
-            size: ByteSized::B64,
-        } => "LDATE_AND_TIME",
-        SemanticType::DateAndTime { .. } => "DATE_AND_TIME",
-        SemanticType::String {
-            char_width: CharWidth::Wide,
-            ..
-        } => "WSTRING",
-        SemanticType::String { .. } => "STRING",
-        _ => {
-            return Err(Diagnostic::not_implemented(Label::span(
-                span.clone(),
-                "Unsupported array element type",
-            )))
-        }
-    };
-    Ok(Id::from(name))
 }
 
 /// Maps VarTypeInfo to the element type byte used in array descriptors.
@@ -594,109 +422,6 @@ pub(crate) fn compute_dimensions(
     }
 
     Ok((dimensions, total_elements))
-}
-
-/// Registers an array variable from a normalized ArraySpec.
-/// Single code path for both inline and named array types.
-pub(crate) fn register_array_variable(
-    ctx: &mut CompileContext,
-    builder: &mut ContainerBuilder,
-    id: &Id,
-    var_index: VarIndex,
-    spec: &ArraySpec,
-    span: &ironplc_dsl::core::SourceSpan,
-) -> Result<(u8, String), Diagnostic> {
-    let is_string = spec.string_max_len.is_some();
-    let string_max_len = spec.string_max_len.unwrap_or(0);
-    let string_char_width = spec.string_char_width.unwrap_or(CharWidth::Narrow);
-
-    // 1. Resolve element type
-    let element_vti = if spec.ref_to {
-        // References are stored as 64-bit unsigned variable-table indices
-        VarTypeInfo {
-            op_width: OpWidth::W64,
-            signedness: Signedness::Unsigned,
-            storage_bits: 64,
-        }
-    } else if is_string {
-        // STRING arrays use string-specific opcodes; VarTypeInfo is a placeholder.
-        VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 0,
-        }
-    } else {
-        super::type_info::resolve_type_name(&spec.element_type_name).ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(span.clone(), "Unsupported array element type"))
-        })?
-    };
-
-    // 2. Build DimensionInfo (with strides) and the element count
-    let (dimensions, total_elements) = compute_dimensions(&spec.dimensions, span)?;
-
-    // 3. Allocate data region space
-    let total_bytes = if is_string {
-        // STRING/WSTRING elements: each element is [max_len:u16][cur_len:u16][data]
-        let element_stride = super::compile::string_region_size(string_max_len, string_char_width);
-        total_elements.checked_mul(element_stride).ok_or_else(|| {
-            Diagnostic::not_supported(Label::span(span.clone(), "Data region overflow"))
-        })?
-    } else {
-        total_elements * 8
-    };
-    let data_offset = crate::data_region::reserve(ctx, total_bytes, span)?;
-
-    // 4. Register descriptor in the container and get its index
-    let (element_type_byte, element_extra) = if is_string {
-        let element_field_type = if string_char_width.is_wide() {
-            ironplc_container::FieldType::WString
-        } else {
-            ironplc_container::FieldType::String
-        };
-        (element_field_type as u8, string_max_len)
-    } else {
-        (var_type_info_to_type_byte(&element_vti), 0)
-    };
-    let desc_index = builder.add_array_descriptor(element_type_byte, total_elements, element_extra);
-
-    // 5. Track max string capacity for temp buffer sizing.
-    if is_string && string_max_len > ctx.max_string_capacity {
-        ctx.max_string_capacity = string_max_len;
-    }
-    if is_string && string_char_width.is_wide() {
-        ctx.has_wide_string = true;
-    }
-
-    // 6. Store in context
-    ctx.array_vars.insert(
-        id.clone(),
-        ArrayVarInfo {
-            var_index,
-            desc_index,
-            data_offset,
-            element_var_type_info: element_vti,
-            total_elements,
-            dimensions,
-            is_string_element: is_string,
-            string_max_len,
-            string_char_width,
-            is_ref: false,
-        },
-    );
-
-    let type_tag = ironplc_container::debug_section::iec_type_tag::ARRAY;
-    let type_name_str = if spec.ref_to {
-        format!(
-            "ARRAY OF REF_TO {}",
-            spec.element_type_name.to_string().to_uppercase()
-        )
-    } else {
-        format!(
-            "ARRAY OF {}",
-            spec.element_type_name.to_string().to_uppercase()
-        )
-    };
-    Ok((type_tag, type_name_str))
 }
 
 /// Emits bytecode to compute the 0-based flat index from subscript expressions.

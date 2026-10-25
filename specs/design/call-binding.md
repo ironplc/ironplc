@@ -45,6 +45,16 @@ like a standard one runs the user-defined block's body.
 **REQ-CB-codegen-002** An instance of a standard function block runs the VM
 block for its recorded identity.
 
+An instance of a block that `EXTENDS` another has the inputs, in-outs and
+outputs each block up its chain declares as well as its own, and a call binds
+them alike. The type environment lists an instance's fields from the root of
+the chain down (`TypeEnvironment::instance_fields`), so normal form writes
+the inherited arguments first. Code generation does not yet lay out the
+fields a derived block inherits, so it reports such a call as not implemented
+(P9999), as it does a read of an inherited field.
+
+**REQ-CB-analyzer-053** A call to a block that `EXTENDS` another binds an argument to an input or output the block inherits as it does one the block declares, and writes the inherited arguments first: with `count` and `seen` declared by the base and `speed` and `twice` by the derived block, `d(twice => r, speed := x, seen => s, count := 3)` binds as `d(count := 3, speed := x, seen => s, twice => r)`, and `d(1, 2)` as `d(count := 1, speed := 2)`.
+
 ### Methods
 
 A method call resolves statically
@@ -112,8 +122,10 @@ call output is not source syntax and appears nowhere else. It is read where
 the call leaves its outputs: for a function block, the instance's field, so
 it is the value `v := inst.q` after the call would assign; for a function or
 a method, the output variable of the callee, which no other call can have
-changed before it is read, since a function or method does not recurse. It
-has the type the output is declared with, `inst.q`'s for a function block.
+changed before it is read, since a function or method does not recurse.
+Lowering reads it from the temporary the call passes for the output
+([Lowered Program](lowered-program.md), REQ-LOW-lowering-092). It has the
+type the output is declared with, `inst.q`'s for a function block.
 The rules check it against the target, and the recording pass converts it
 to the target's type, as they do an assigned value's
 ([Implicit Conversions](implicit-conversions.md)). A negated output that is
@@ -239,8 +251,9 @@ reference.
 positional call with the same inputs in declaration order computes.
 
 **REQ-CB-codegen-026** A positional argument of a call to a user-defined
-function that reaches code generation is an internal error (P9998): the
-analyzer names every argument of a call it binds.
+function that reaches code generation is not compiled: the analyzer names
+every argument of a call it binds, and lowering does not lower an unnamed
+one, so its statement is reported as not implemented (P9999).
 
 ### Evaluation order
 

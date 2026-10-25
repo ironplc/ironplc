@@ -5,7 +5,7 @@
 
 use rstest::rstest;
 
-use crate::compile_route_lowered::{assert_same_code, run_lowered};
+use crate::compile_route_lowered::{assert_compiles, run_lowered};
 
 /// A literal and the string at a place are stored at a string place. A
 /// value longer than the place keeps its first code units
@@ -29,8 +29,7 @@ fn run_when_strings_assigned_then_values() {
     assert_eq!(snapshot.read("w"), "π ≈ 3.14");
 }
 
-/// A string assignment compiles to the same instructions and constants by
-/// both routes.
+/// A string assignment lowers and compiles.
 #[rstest]
 #[case::literal("s := 'abc';")]
 #[case::empty_literal("s := '';")]
@@ -38,14 +37,14 @@ fn run_when_strings_assigned_then_values() {
 #[case::to_shorter("n := t;")]
 #[case::wide_literal("w := \"xyz\";")]
 #[case::wide_variable("w := x;")]
-fn compile_when_string_assignment_lowered_then_same_code_as_ast(#[case] statement: &str) {
+fn compile_when_string_assignment_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
         "PROGRAM main
            VAR s : STRING; t : STRING; n : STRING[3]; w : WSTRING; x : WSTRING; END_VAR
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }
 
 /// The types the tests of string elements and fields use: a structure with a
@@ -86,8 +85,8 @@ fn run_when_string_elements_and_fields_then_values() {
     assert_eq!(snapshot.read_as::<i32>("n"), 8);
 }
 
-/// A string element or field is stored, loaded and passed to a string
-/// function with the same instructions and constants by both routes.
+/// A string element or field that is stored, loaded or passed to a string
+/// function lowers and compiles.
 #[rstest]
 #[case::element_store("names[i] := s;")]
 #[case::element_load("s := names[2];")]
@@ -97,7 +96,7 @@ fn run_when_string_elements_and_fields_then_values() {
 #[case::field_of_element("h.items[i].label := s;")]
 #[case::len_of_element("n := LEN(names[i]);")]
 #[case::concat_of_field_and_element("s := CONCAT(p.label, names[1]);")]
-fn compile_when_string_element_or_field_lowered_then_same_code_as_ast(#[case] statement: &str) {
+fn compile_when_string_element_or_field_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
         "{STRING_PLACES}
          PROGRAM main
@@ -106,7 +105,7 @@ fn compile_when_string_element_or_field_lowered_then_same_code_as_ast(#[case] st
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }
 
 /// `LEN` counts the code units of its string, and `FIND` gives the 1-based
@@ -137,9 +136,9 @@ fn run_when_len_or_find_then_values() {
     assert_eq!(snapshot.read_as::<i32>("r7"), 5);
 }
 
-/// A call of `LEN` or `FIND` compiles to the same instructions and constants
-/// by both routes: the string at a variable is passed as the variable's own
-/// slot, and any other string is first stored in a slot of its capacity.
+/// A call of `LEN` or `FIND` lowers and compiles: the string at a variable is
+/// passed as the variable's own slot, and any other string is first stored
+/// in a slot of its capacity.
 #[rstest]
 #[case::len_of_variable("n := LEN(s);")]
 #[case::len_of_literal("n := LEN('abc');")]
@@ -147,14 +146,14 @@ fn run_when_len_or_find_then_values() {
 #[case::find_of_literal("n := FIND(s, 'b');")]
 #[case::wide_len("n := LEN(w);")]
 #[case::wide_find("n := FIND(w, \"y\");")]
-fn compile_when_len_or_find_lowered_then_same_code_as_ast(#[case] statement: &str) {
+fn compile_when_len_or_find_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
         "PROGRAM main
            VAR s : STRING; t : STRING[3]; w : WSTRING; n : DINT; END_VAR
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }
 
 /// Each string function that yields a string gives what the standard says.
@@ -203,10 +202,9 @@ fn run_when_string_functions_yield_strings_then_values() {
     assert_eq!(snapshot.read("w2"), "≈");
 }
 
-/// A call of a string function that yields a string compiles to the same
-/// instructions and constants by both routes, its operands passed as `LEN`'s
-/// are, and its result stored, or passed to another call in a slot of its
-/// capacity.
+/// A call of a string function that yields a string lowers and compiles,
+/// its operands passed as `LEN`'s are, and its result stored, or passed to
+/// another call in a slot of its capacity.
 #[rstest]
 #[case::concat("s := CONCAT(s, t);")]
 #[case::concat_literal("s := CONCAT(t, 'ab');")]
@@ -220,14 +218,14 @@ fn run_when_string_functions_yield_strings_then_values() {
 #[case::len_of_call("n := LEN(CONCAT(s, t));")]
 #[case::wide_concat("w := CONCAT(w, \"x\");")]
 #[case::wide_mid("w := MID(w, 1, 1);")]
-fn compile_when_string_function_lowered_then_same_code_as_ast(#[case] statement: &str) {
+fn compile_when_string_function_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
         "PROGRAM main
            VAR s : STRING; t : STRING[3]; w : WSTRING; n : DINT; END_VAR
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }
 
 /// A conversion from a `STRING` reads a number of its target type, the
@@ -262,10 +260,9 @@ fn run_when_string_conversion_then_values() {
     assert_eq!(snapshot.read("t3"), "2.5");
 }
 
-/// A conversion to or from a `STRING` compiles to the same instructions and
-/// constants by both routes: a string read as a number is passed by the
-/// offset of its slot, and a number written as a string is a temporary
-/// buffer.
+/// A conversion to or from a `STRING` lowers and compiles: a string read as
+/// a number is passed by the offset of its slot, and a number written as a
+/// string is a temporary buffer.
 #[rstest]
 #[case::to_dint("n := STRING_TO_DINT(s);")]
 #[case::to_udint_of_literal("u := STRING_TO_UDINT('7');")]
@@ -277,14 +274,14 @@ fn run_when_string_conversion_then_values() {
 #[case::from_udint("s := UDINT_TO_STRING(u);")]
 #[case::from_real("s := REAL_TO_STRING(r);")]
 #[case::from_dint_in_call("s := CONCAT(DINT_TO_STRING(n), 'x');")]
-fn compile_when_string_conversion_lowered_then_same_code_as_ast(#[case] statement: &str) {
+fn compile_when_string_conversion_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
         "PROGRAM main
            VAR s : STRING; n : DINT; u : UDINT; q : LINT; r : REAL; l : LREAL; END_VAR
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }
 
 /// Of two strings, the first code unit that differs decides their order, and
@@ -318,9 +315,8 @@ fn run_when_strings_compared_then_values() {
     assert_eq!(read("cond"), 1);
 }
 
-/// A comparison of strings compiles to the same instructions and constants
-/// by both routes: its strings are passed as `LEN`'s are, and the order the
-/// builtin gives them is compared with zero.
+/// A comparison of strings lowers and compiles: its strings are passed as
+/// `LEN`'s are, and the order the builtin gives them is compared with zero.
 #[rstest]
 #[case::eq_literal("x := s = 'abc';")]
 #[case::lt_variables("x := s < t;")]
@@ -329,12 +325,70 @@ fn run_when_strings_compared_then_values() {
 #[case::call_operand("x := CONCAT(s, t) > s;")]
 #[case::wide("x := w <= w;")]
 #[case::if_condition("IF s = t THEN x := TRUE; END_IF;")]
-fn compile_when_string_comparison_lowered_then_same_code_as_ast(#[case] statement: &str) {
+fn compile_when_string_comparison_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
         "PROGRAM main
            VAR s : STRING; t : STRING; w : WSTRING; x : BOOL; END_VAR
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
+}
+
+/// A string declared through a type alias of `STRING` or `WSTRING`, as a
+/// function's or method's input, local or result, is held as a string of
+/// the alias's capacity, as one spelled out is: it is copied in, starts
+/// empty or at its initial value on every call, and keeps no more than its
+/// capacity. The route that read the AST kept such a variable as the index
+/// of a temporary buffer, which trapped when read before it was written.
+#[test]
+fn run_when_string_declared_through_alias_in_function_then_string_values() {
+    let snapshot = run_lowered(
+        "TYPE Name : STRING[20]; END_TYPE
+         TYPE Short : STRING[3]; END_TYPE
+         TYPE WName : WSTRING[10]; END_TYPE
+         FUNCTION FIN : DINT VAR_INPUT n : Name; END_VAR FIN := LEN(n); END_FUNCTION
+         FUNCTION FCOPY : DINT VAR_INPUT n : STRING[20]; END_VAR VAR l : Name; END_VAR
+           l := n;
+           FCOPY := LEN(l);
+         END_FUNCTION
+         FUNCTION FEMPTY : DINT VAR_INPUT x : DINT; END_VAR VAR l : Name; END_VAR
+           FEMPTY := LEN(l);
+         END_FUNCTION
+         FUNCTION FINIT : DINT VAR_INPUT x : DINT; END_VAR VAR l : Name := 'ab'; END_VAR
+           FINIT := LEN(l);
+         END_FUNCTION
+         FUNCTION FRES : Short VAR_INPUT x : DINT; END_VAR FRES := 'abcdef'; END_FUNCTION
+         FUNCTION FWIDE : DINT VAR_INPUT n : WName; END_VAR VAR l : WName; END_VAR
+           l := n;
+           FWIDE := LEN(l);
+         END_FUNCTION
+         FUNCTION_BLOCK B
+           METHOD M : DINT VAR_INPUT n : Name; END_VAR VAR l : Name; END_VAR
+             l := n;
+             M := LEN(l);
+           END_METHOD
+         END_FUNCTION_BLOCK
+         PROGRAM main
+           VAR s : Name := 'abcd'; ws : WName := \"abcdef\"; b : B; result : STRING[20];
+               input : DINT; copied : DINT; empty : DINT; init : DINT; result_len : DINT;
+               wide : DINT; in_method : DINT; END_VAR
+           input := FIN(n := s);
+           copied := FCOPY(n := s);
+           empty := FEMPTY(x := 1);
+           init := FINIT(x := 1);
+           result := FRES(x := 1);
+           result_len := LEN(FRES(x := 1));
+           wide := FWIDE(n := ws);
+           in_method := b.M(n := s);
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read_as::<i32>("input"), 4);
+    assert_eq!(snapshot.read_as::<i32>("copied"), 4);
+    assert_eq!(snapshot.read_as::<i32>("empty"), 0);
+    assert_eq!(snapshot.read_as::<i32>("init"), 2);
+    assert_eq!(snapshot.read("result"), "abc");
+    assert_eq!(snapshot.read_as::<i32>("result_len"), 3);
+    assert_eq!(snapshot.read_as::<i32>("wide"), 6);
+    assert_eq!(snapshot.read_as::<i32>("in_method"), 4);
 }

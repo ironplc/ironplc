@@ -612,6 +612,40 @@ fn type_table_when_subrange_outside_base_then_internal_error() {
     assert!(subrange(lreal, 0, 1).is_err());
 }
 
+/// REQ-LOW-ir-192: an enumeration's underlying type is an integer or a bit
+/// string type in the table.
+#[test]
+fn type_table_when_enumeration_underlying_not_integer_then_internal_error() {
+    let mut f = fixture();
+    let int = f.ty(f.int);
+    let bool = f.ty(f.bool);
+    let lreal = f.ty(f.lreal);
+    let word =
+        f.b.push_type(
+            entry(TypeKind::BitString {
+                width: IntWidth::B16,
+            }),
+            &span(),
+        )
+        .unwrap();
+    let mut enumeration = |underlying| {
+        f.b.push_type(
+            entry(TypeKind::Enumeration {
+                underlying,
+                values: vec![],
+            }),
+            &span(),
+        )
+    };
+    assert!(enumeration(int).is_ok());
+    assert!(enumeration(word).is_ok());
+    assert!(is_internal_error_naming(
+        enumeration(bool),
+        "TypeTable::push"
+    ));
+    assert!(enumeration(lreal).is_err());
+}
+
 /// An array has dimensions, each with its lower bound at most its upper.
 #[test]
 fn type_table_when_array_without_dimensions_then_internal_error() {
@@ -751,6 +785,20 @@ mod calls;
 
 mod control;
 
+mod copies;
+
+mod declarations;
+
+mod declared_types;
+
+mod fb_calls;
+
+mod in_place;
+
+mod methods;
+
 mod places;
 
 mod strings;
+
+mod whole_program;

@@ -4,13 +4,13 @@
 use rstest::rstest;
 
 use crate::common::{date, datetime, time, Duration};
-use crate::compile_route_lowered::{assert_same_code, run_lowered};
+use crate::compile_route_lowered::{assert_compiles, run_lowered};
 
 /// The typed time and date functions, and the operators that resolve to
-/// them, give the values the AST route gives. A negative duration divides
-/// toward zero when it is converted to seconds, a difference of dates and
-/// times is in milliseconds, a `TIME` added to an `LTIME` is widened, and
-/// `DT_TO_DATE` and `DT_TO_TOD` split a date and time at midnight.
+/// them, give the expected values. A negative duration divides toward zero
+/// when it is converted to seconds, a difference of dates and times is in
+/// milliseconds, a `TIME` added to an `LTIME` is widened, and `DT_TO_DATE`
+/// and `DT_TO_TOD` split a date and time at midnight.
 #[test]
 fn run_when_time_functions_then_values() {
     let snapshot = run_lowered(
@@ -53,10 +53,32 @@ fn run_when_time_functions_then_values() {
     assert_eq!(snapshot.read("r14"), Duration::milliseconds(3000));
 }
 
+/// A duration negates as the integer it is stored as: a positive `TIME`
+/// becomes negative, negating it twice gives it back, and an `LTIME` past
+/// the range of 32 bits negates at 64.
+#[test]
+fn run_when_duration_negated_then_values() {
+    let snapshot = run_lowered(
+        "PROGRAM main
+           VAR t : TIME := T#1500ms; lt : LTIME;
+               r1 : TIME; r2 : TIME; r3 : LTIME; END_VAR
+           r1 := -t;
+           r2 := -(-t);
+           lt := t;
+           lt := lt * 2000000;
+           r3 := -lt;
+         END_PROGRAM",
+    );
+    assert_eq!(snapshot.read("r1"), Duration::milliseconds(-1500));
+    assert_eq!(snapshot.read("r2"), Duration::milliseconds(1500));
+    assert_eq!(snapshot.read("r3"), Duration::milliseconds(-3_000_000_000));
+}
+
 /// A typed time function, an operator or function form that resolves to
-/// one, `DT_TO_TOD` and a time or date literal compile to the same
-/// instructions and constants by both routes. `DT_TO_DATE` is left out: the AST route reads its operand
-/// twice, and the lowered route once (REQ-LOW-lowering-165).
+/// one, `DT_TO_TOD`, a time or date literal and a negated duration lower and
+/// compile. `DT_TO_DATE` is left out: the route that read the AST read its
+/// operand twice, and the lowered program reads it once
+/// (REQ-LOW-lowering-165).
 #[rstest]
 #[case::add_time("t := ADD_TIME(t, t2);")]
 #[case::add_tod_time("c := ADD_TOD_TIME(c, t);")]
@@ -82,7 +104,9 @@ fn run_when_time_functions_then_values() {
 #[case::date_literal("d := D#1970-01-02;")]
 #[case::date_and_time_literal("s := DT#1970-01-02-00:00:10;")]
 #[case::literal_operand("s := s + T#4S;")]
-fn compile_when_time_function_lowered_then_same_code_as_ast(#[case] statement: &str) {
+#[case::negated_time("t := -t;")]
+#[case::negated_ltime("lt := -lt;")]
+fn compile_when_time_function_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
         "PROGRAM main
            VAR t : TIME; t2 : TIME; c : TOD; s : DT; d : DATE; lt : LTIME; n : DINT;
@@ -90,5 +114,5 @@ fn compile_when_time_function_lowered_then_same_code_as_ast(#[case] statement: &
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }

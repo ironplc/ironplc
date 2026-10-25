@@ -24,19 +24,23 @@
 //! The pass also records the declared type of each field of a structure or
 //! function block type in the environment
 //! ([`TypeEnvironment::field_type`]): a field is declared as a variable is.
-//! For a function block that `EXTENDS` another, it records the block it
-//! extends, whose fields the derived block's instance has too.
+//! A function block's fields -- its `VAR_INPUT`, `VAR_OUTPUT`, `VAR_IN_OUT`
+//! and `VAR` variables, in order -- the names of its properties, the
+//! signatures of its methods and the block it `EXTENDS` are recorded together
+//! ([`TypeEnvironment::record_block`]), and the block's type lists none of
+//! them.
 //!
 //! A declaration whose type cannot be resolved keeps `type_id: None`. The
 //! rules that check declarations report why; this pass stays silent.
 use ironplc_dsl::common::*;
+use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::type_id::TypeId;
 
 use crate::intermediates::{array, enumeration, string, subrange, TypeResolution};
-use crate::semantic_type::{FunctionBlockVarType, SemanticStructField};
-use crate::type_environment::TypeEnvironment;
+use crate::semantic_type::FunctionBlockVarType;
+use crate::type_environment::{BlockField, TypeEnvironment};
 
 pub fn apply(
     lib: Library,
@@ -73,14 +77,16 @@ fn declared_type_id(
         }
         InitialValueAssignmentKind::EnumeratedType(e) => return env.id_of(&e.type_name),
         InitialValueAssignmentKind::FunctionBlock(fb) => return env.id_of(&fb.type_name),
+        InitialValueAssignmentKind::Interface(itf) => return env.id_of(&itf.type_name),
         InitialValueAssignmentKind::FunctionBlockCall(fbc) => return env.id_of(&fbc.type_name),
         InitialValueAssignmentKind::Structure(s) => return env.id_of(&s.type_name),
         InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
             type_name, ..
         }) => return env.id_of(type_name),
         InitialValueAssignmentKind::SimpleExpr(se) => return env.id_of(&se.type_name),
+        InitialValueAssignmentKind::StringExpr(se) => return env.id_of(&se.type_name()),
         InitialValueAssignmentKind::EnumeratedValues(values) => {
-            enumeration::try_from_values(values, None).ok()?
+            enumeration::try_from_values(values, None, None).ok()?
         }
         InitialValueAssignmentKind::Subrange(subrange) => {
             match subrange::try_from(name, &subrange.spec, env).ok()? {
@@ -122,9 +128,8 @@ fn declared_type_id(
 }
 
 /// The field of a function block's instance that the block's variable
-/// `decl` is: a `VAR_INPUT`, `VAR_OUTPUT`, `VAR_IN_OUT` or `VAR` whose type
-/// is known, with the representation of that type.
-fn block_field(decl: &VarDecl, types: &TypeEnvironment) -> Option<SemanticStructField> {
+/// `decl` is: a `VAR_INPUT`, `VAR_OUTPUT`, `VAR_IN_OUT` or `VAR`.
+fn block_field(decl: &VarDecl) -> Option<BlockField> {
     let var_type = match decl.var_type {
         VariableType::Input => FunctionBlockVarType::Input,
         VariableType::Output => FunctionBlockVarType::Output,
@@ -135,11 +140,16 @@ fn block_field(decl: &VarDecl, types: &TypeEnvironment) -> Option<SemanticStruct
         | VariableType::Global
         | VariableType::Access => return None,
     };
-    Some(SemanticStructField {
+    let address = match &decl.identifier {
+        VariableIdentifier::Symbol(_) => None,
+        VariableIdentifier::Direct(direct) => Some(direct.address_assignment.clone()),
+    };
+    Some(BlockField {
         name: decl.identifier.symbolic_id()?.clone(),
-        field_type: types.get_by_id(decl.type_id?)?.representation.clone(),
-        var_type: Some(var_type),
-        has_default: false,
+        var_type,
+        field_type: decl.type_id,
+        qualifier: decl.qualifier.clone(),
+        address,
     })
 }
 
@@ -157,16 +167,20 @@ impl Fold<Diagnostic> for DeclTypeResolver<'_> {
         &mut self,
         node: StructureDeclaration,
     ) -> Result<StructureDeclaration, Diagnostic> {
+        // A repeated type name keeps its first declaration (P2007): the
+        // environment records a structure once, and nothing on a type of
+        // another kind.
         if let Some(structure) = self.type_environment.id_of(&node.type_name) {
-            for element in &node.elements {
-                let name = TypeName::from_id(&element.name);
-                if let Some(field_type) =
-                    declared_type_id(self.type_environment, &name, &element.init)
-                {
-                    self.type_environment
-                        .record_field(structure, &element.name, field_type);
-                }
-            }
+            let fields: Vec<(Id, TypeId)> = node
+                .elements
+                .iter()
+                .filter_map(|element| {
+                    let name = TypeName::from_id(&element.name);
+                    let field_type = declared_type_id(self.type_environment, &name, &element.init)?;
+                    Some((element.name.clone(), field_type))
+                })
+                .collect();
+            self.type_environment.record_structure(structure, fields);
         }
         node.recurse_fold(self)
     }
@@ -178,31 +192,50 @@ impl Fold<Diagnostic> for DeclTypeResolver<'_> {
         let node = node.recurse_fold(self)?;
         // A repeated block name keeps its first declaration (P4013), and a
         // block the library redeclares over a standard one keeps the
-        // standard block: a declaration the environment did not enter
-        // records nothing on the type it lost to.
-        let function_block = self
-            .type_environment
-            .id_of(&node.name)
-            .filter(|id| self.type_environment.entered_from(*id, &node.name));
-        if let Some(function_block) = function_block {
-            for decl in &node.variables {
-                if let (Some(id), Some(field_type)) = (decl.identifier.symbolic_id(), decl.type_id)
-                {
-                    self.type_environment
-                        .record_field(function_block, id, field_type);
-                }
-            }
-            let fields = node
-                .variables
+        // standard block: the environment records a block once.
+        if let Some(function_block) = self.type_environment.id_of(&node.name) {
+            let fields = node.variables.iter().filter_map(block_field).collect();
+            let base = node
+                .oop
+                .as_ref()
+                .and_then(|oop| oop.base.as_ref())
+                .and_then(|base| self.type_environment.id_of(base));
+            let properties = node
+                .properties
                 .iter()
-                .filter_map(|decl| block_field(decl, self.type_environment))
+                .map(|property| self.type_environment.property_signature(property))
+                .collect();
+            let methods = node
+                .methods
+                .iter()
+                .map(|method| self.type_environment.method_signature(method))
                 .collect();
             self.type_environment
-                .list_function_block_fields(function_block, fields);
-            let base = node.oop.as_ref().and_then(|oop| oop.base.as_ref());
-            if let Some(base) = base.and_then(|base| self.type_environment.id_of(base)) {
-                self.type_environment.record_extends(function_block, base);
-            }
+                .record_block(function_block, fields, properties, methods, base);
+        }
+        Ok(node)
+    }
+
+    fn fold_interface_declaration(
+        &mut self,
+        node: InterfaceDeclaration,
+    ) -> Result<InterfaceDeclaration, Diagnostic> {
+        let node = node.recurse_fold(self)?;
+        // A repeated interface name keeps its first declaration: the
+        // environment records an interface once.
+        if let Some(interface) = self.type_environment.id_of(&TypeName::from_id(&node.name)) {
+            let methods = node
+                .methods
+                .iter()
+                .map(|method| self.type_environment.prototype_signature(method))
+                .collect();
+            let properties = node
+                .properties
+                .iter()
+                .map(|property| self.type_environment.property_prototype_signature(property))
+                .collect();
+            self.type_environment
+                .record_interface(interface, methods, properties);
         }
         Ok(node)
     }
@@ -213,31 +246,10 @@ mod tests {
     use super::*;
     use crate::semantic_context::SemanticContext;
     use crate::semantic_type::SemanticType;
-    use crate::test_helpers::parse_and_resolve_types_with_options;
-    use ironplc_dsl::core::Id;
-    use ironplc_dsl::visitor::Visitor;
+    use crate::test_helpers::{declared_ids, parse_and_resolve_types_with_options};
     use ironplc_parser::options::{CompilerOptions, Dialect};
     use rstest::rstest;
     use spec_test_macro::spec_test;
-    use std::collections::HashMap;
-    use std::convert::Infallible;
-
-    /// Every symbolic declaration's recorded type id, by variable name.
-    fn declared_ids(library: &Library) -> HashMap<String, Option<TypeId>> {
-        struct Collect(HashMap<String, Option<TypeId>>);
-        impl Visitor<Infallible> for Collect {
-            type Value = ();
-            fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
-                if let Some(id) = node.identifier.symbolic_id() {
-                    self.0.insert(id.to_string(), node.type_id);
-                }
-                Ok(())
-            }
-        }
-        let mut collect = Collect(HashMap::new());
-        let _ = collect.walk(library);
-        collect.0
-    }
 
     /// Resolves `program` under edition 3, which has `REF_TO`.
     fn resolve(program: &str) -> (Library, SemanticContext) {
@@ -501,13 +513,14 @@ END_PROGRAM
         assert_eq!(types.element_type(point), None);
     }
 
-    /// REQ-ETR-analyzer-002: the type of a function block lists every
-    /// variable an instance has, whatever its type, in declaration order,
-    /// each with the representation of the type its declaration records.
+    /// REQ-ETR-analyzer-002: the type environment records every variable an
+    /// instance of a block has, whatever its type, in declaration order,
+    /// each with its section and the type its declaration records; the
+    /// block's type lists none of them.
     #[spec_test(REQ_ETR_analyzer_002)]
     #[test]
-    fn apply_when_function_block_then_type_lists_every_variable_in_order() {
-        let (_, context) = resolve(
+    fn apply_when_function_block_then_environment_records_every_variable_in_order() {
+        let (library, context) = resolve(
             "TYPE Point : STRUCT x : DINT; END_STRUCT; END_TYPE
              FUNCTION_BLOCK Block
              VAR_INPUT n : INT; s : STRING[8]; END_VAR
@@ -518,36 +531,34 @@ END_PROGRAM
              END_FUNCTION_BLOCK
              PROGRAM main END_PROGRAM",
         );
+        let declared = declared_ids(&library);
         let types = context.types();
         let block = types.id_of(&TypeName::from("Block")).unwrap();
-        let SemanticType::FunctionBlock { fields, .. } =
-            &types.get_by_id(block).unwrap().representation
-        else {
-            panic!("Block is a function block");
-        };
 
-        let listed: Vec<(String, Option<FunctionBlockVarType>)> = fields
+        let recorded: Vec<(String, FunctionBlockVarType, Option<TypeId>)> = types
+            .block_fields(block)
+            .unwrap()
             .iter()
-            .map(|field| (field.name.to_string(), field.var_type))
+            .map(|field| (field.name.to_string(), field.var_type, field.field_type))
             .collect();
+        let expected = |name: &str, var_type| (name.to_string(), var_type, declared[name]);
         assert_eq!(
-            listed,
+            recorded,
             vec![
-                ("n".to_string(), Some(FunctionBlockVarType::Input)),
-                ("s".to_string(), Some(FunctionBlockVarType::Input)),
-                ("p".to_string(), Some(FunctionBlockVarType::Output)),
-                ("io".to_string(), Some(FunctionBlockVarType::InOut)),
-                ("a".to_string(), Some(FunctionBlockVarType::Internal)),
-                ("r".to_string(), Some(FunctionBlockVarType::Internal)),
+                expected("n", FunctionBlockVarType::Input),
+                expected("s", FunctionBlockVarType::Input),
+                expected("p", FunctionBlockVarType::Output),
+                expected("io", FunctionBlockVarType::InOut),
+                expected("a", FunctionBlockVarType::Internal),
+                expected("r", FunctionBlockVarType::Internal),
             ]
         );
-        for field in fields {
-            let recorded = types
-                .field_type(block, &field.name)
-                .and_then(|id| types.get_by_id(id))
-                .map(|attributes| &attributes.representation);
-            assert_eq!(recorded, Some(&field.field_type), "field {}", field.name);
-        }
+        assert_eq!(
+            types.get_by_id(block).unwrap().representation,
+            SemanticType::FunctionBlock {
+                name: "Block".to_string()
+            }
+        );
     }
 
     /// REQ-ETR-analyzer-003: a field a block inherits through `EXTENDS`,
@@ -614,8 +625,7 @@ PROGRAM main END_PROGRAM";
         let derived = types.id_of(&TypeName::from("Derived")).unwrap();
         let field = |name: &str| types.field_type(derived, &Id::from(name));
         let listed: Vec<String> = types
-            .get_by_id(derived)
-            .and_then(|attributes| attributes.representation.member_fields())
+            .block_fields(derived)
             .unwrap()
             .iter()
             .map(|field| field.name.to_string())
@@ -626,6 +636,46 @@ PROGRAM main END_PROGRAM";
         assert_eq!(field("b"), None);
         assert_eq!(field("y"), None);
         assert_eq!(listed, vec!["x".to_string()]);
+    }
+
+    /// REQ-ETR-analyzer-006: a repeated type name keeps its first
+    /// declaration (P2007), and a structure's recorded fields are that
+    /// declaration's, as its type's are: a later structure of the name adds
+    /// no field and changes no field's type.
+    #[spec_test(REQ_ETR_analyzer_006)]
+    #[rstest]
+    #[case::structure_repeated(
+        "TYPE Pair : STRUCT f : INT; END_STRUCT; END_TYPE
+         TYPE Pair : STRUCT f : STRING; g : BOOL; END_STRUCT; END_TYPE",
+        Some("INT")
+    )]
+    #[case::type_then_structure(
+        "TYPE Pair : INT; END_TYPE
+         TYPE Pair : STRUCT f : STRING; g : BOOL; END_STRUCT; END_TYPE",
+        None
+    )]
+    fn apply_when_type_name_repeated_then_fields_of_first_declaration(
+        #[case] declarations: &str,
+        #[case] field_f: Option<&str>,
+    ) {
+        let (_, context) = resolve(&format!("{declarations}\nPROGRAM main END_PROGRAM"));
+        let types = context.types();
+        let pair = types.id_of(&TypeName::from("Pair")).unwrap();
+        let listed: Vec<String> = types
+            .get_by_id(pair)
+            .unwrap()
+            .representation
+            .structure_fields()
+            .map(|fields| fields.iter().map(|field| field.name.to_string()).collect())
+            .unwrap_or_default();
+
+        assert_eq!(
+            types.field_type(pair, &Id::from("f")),
+            field_f.and_then(|name| types.id_of(&TypeName::from(name)))
+        );
+        assert_eq!(types.field_type(pair, &Id::from("g")), None);
+        let expected: &[&str] = if field_f.is_some() { &["f"] } else { &[] };
+        assert_eq!(listed, expected);
     }
 
     /// A library that declares a block of a standard block's name leaves the
@@ -639,8 +689,7 @@ PROGRAM main END_PROGRAM";
         let types = context.types();
         let ton = types.id_of(&TypeName::from("TON")).unwrap();
         let listed: Vec<String> = types
-            .get_by_id(ton)
-            .and_then(|attributes| attributes.representation.member_fields())
+            .block_fields(ton)
             .unwrap()
             .iter()
             .map(|field| field.name.to_string())

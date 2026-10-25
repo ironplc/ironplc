@@ -1,15 +1,16 @@
-//! Tests for the conversions the pass records for `AND`, `OR` and `XOR`: an
-//! operand of another width is converted to the type of the operation, and
-//! the operation's result to a wider target.
+//! Tests for the conversions the pass records for `AND`, `OR` and `XOR`, and
+//! their short-circuit forms `AND_THEN` and `OR_ELSE`: an operand of another
+//! width is converted to the type of the operation, and the operation's
+//! result to a wider target.
 
 use super::*;
 
 /// The variables the programs of these tests declare.
 const VARS: &str = "b : BYTE; w : WORD; d : DWORD; e : DWORD; lw : LWORD; g : BOOL; h : BOOL;";
 
-/// The operands of every `AND`, `OR` and `XOR` operator expression in a
-/// program assigning `value` to a variable of type `target`, each as
-/// [`describe`] shows it.
+/// The operands of every `AND`, `OR`, `XOR`, `AND_THEN` and `OR_ELSE`
+/// operator expression in a program assigning `value` to a variable of type
+/// `target`, each as [`describe`] shows it.
 fn bitwise_operands(target: &str, value: &str) -> Vec<Vec<String>> {
     struct Operands<'a> {
         types: &'a TypeEnvironment,
@@ -18,7 +19,7 @@ fn bitwise_operands(target: &str, value: &str) -> Vec<Vec<String>> {
     impl Visitor<Infallible> for Operands<'_> {
         type Value = ();
         fn visit_compare_expr(&mut self, node: &CompareExpr) -> Result<(), Infallible> {
-            if matches!(node.op, CompareOp::And | CompareOp::Or | CompareOp::Xor) {
+            if node.op.is_bitwise() {
                 let operands = [&node.left, &node.right];
                 self.operands
                     .push(operands.map(|e| describe(self.types, e)).to_vec());
@@ -26,7 +27,10 @@ fn bitwise_operands(target: &str, value: &str) -> Vec<Vec<String>> {
             node.recurse_visit(self)
         }
     }
-    let options = CompilerOptions::default();
+    let options = CompilerOptions {
+        allow_short_circuit_operators: true,
+        ..CompilerOptions::default()
+    };
     let source = arithmetic_program(target, VARS, value);
     let library = ironplc_parser::parse_program(&source, &FileId::default(), &options).unwrap();
     let (library, context) = analyze(&[&library], &options).unwrap();
@@ -62,6 +66,19 @@ fn apply_when_bitwise_operand_of_another_width_then_converted_to_operation_type(
 fn apply_when_bitwise_operands_share_a_width_then_unchanged(
     #[case] value: &str,
     #[case] target: &str,
+    #[case] expected: [&str; 2],
+) {
+    assert_eq!(bitwise_operands(target, value), operands(&[&expected]));
+}
+
+#[spec_test(REQ_IC_analyzer_119)]
+#[rstest]
+#[case::and_then("LWORD", "w AND_THEN lw", ["WORD->LWORD", "LWORD"])]
+#[case::or_else("LWORD", "lw OR_ELSE d", ["LWORD", "DWORD->LWORD"])]
+#[case::booleans("BOOL", "g AND_THEN h", ["BOOL", "BOOL"])]
+fn apply_when_short_circuit_operands_then_converted_as_bitwise_operands(
+    #[case] target: &str,
+    #[case] value: &str,
     #[case] expected: [&str; 2],
 ) {
     assert_eq!(bitwise_operands(target, value), operands(&[&expected]));

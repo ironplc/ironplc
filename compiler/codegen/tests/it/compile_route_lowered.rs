@@ -1,25 +1,26 @@
 //! Tests of control flow and places compiled from the lowered program.
 //!
-//! The end-to-end tests compare both routes on every program, but only for
-//! the statements that happen to lower. These require the lowered route, so
-//! each program here is known to take it: the edge cases run and are checked
-//! by value, and the shapes are checked to compile to the same instructions
-//! as the AST route.
+//! Every statement is compiled from the lowered program. The edge cases here
+//! run and are checked by value, and the shapes are checked to lower and
+//! compile.
 
-use ironplc_codegen::Route;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_vm::error::Trap;
 use rstest::rstest;
 
-use crate::common::{bc, compile_by_route, parse, run_one_scan, Snapshot};
+use crate::common::{
+    bc, compile_analyzed, parse, parse_and_compile_to_run, run_one_scan, Snapshot,
+};
 
-fn options() -> CompilerOptions {
+pub(crate) fn options() -> CompilerOptions {
     CompilerOptions {
         allow_continue: true,
         allow_ref_to: true,
         allow_reference_to: true,
         allow_partial_access_syntax: true,
         allow_sizeof: true,
+        allow_fb_inheritance: true,
+        allow_short_circuit_operators: true,
         ..CompilerOptions::default()
     }
 }
@@ -29,9 +30,16 @@ fn options() -> CompilerOptions {
 pub(crate) fn run_lowered(source: &str) -> Snapshot {
     let options = options();
     let (library, context) = parse(source, &options);
-    let container = compile_by_route(&library, &context, &options, Route::RequireLowered)
-        .expect("every statement lowers");
+    let container = compile_analyzed(&library, &context, &options).expect("every statement lowers");
     Snapshot::run_compiled(container)
+}
+
+/// Runs `source` with every statement lowered, once one scan of it on every
+/// backend of the end-to-end harness is shown to leave every variable with
+/// the same value.
+pub(crate) fn run_lowered_agreeing(source: &str) -> Snapshot {
+    parse_and_compile_to_run(source, &options());
+    run_lowered(source)
 }
 
 /// An `EXIT` inside a `CASE` arm leaves the loop with the selector already
@@ -151,11 +159,11 @@ fn run_when_continue_in_each_loop_then_next_iteration() {
     assert_eq!(snapshot.read_as::<i64>("rs"), 8);
 }
 
-/// Compiles `source` by `route`, and returns the bytecode of its program body.
-fn body_by_route(source: &str, route: Route) -> Vec<u8> {
+/// Compiles `source`, and returns the bytecode of its program body.
+pub(crate) fn body(source: &str) -> Vec<u8> {
     let options = options();
     let (library, context) = parse(source, &options);
-    let container = compile_by_route(&library, &context, &options, route).unwrap();
+    let container = compile_analyzed(&library, &context, &options).unwrap();
     container
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
@@ -164,27 +172,20 @@ fn body_by_route(source: &str, route: Route) -> Vec<u8> {
 }
 
 /// REQ-LOW-lowering-046: a `FOR` whose first value is a read of a variable
-/// of the control's type stores it untruncated, since it already fits. The
-/// AST route truncates it, a no-op; the rest of the loop is the same.
+/// of the control's type stores it untruncated, since it already fits.
 #[test]
-fn compile_when_for_first_value_fits_control_then_lowered_route_drops_its_truncation() {
+fn compile_when_for_first_value_fits_control_then_stored_untruncated() {
     let source = "PROGRAM main VAR k : INT; s : INT; n : DINT; END_VAR
            FOR k := s TO 10 DO n := n + 1; END_FOR;
          END_PROGRAM";
-    let ast = body_by_route(source, Route::Ast);
-    let lowered = body_by_route(source, Route::RequireLowered);
+    let code = body(source);
     // k is var:0, s var:1.
     let start = [bc::load_var_i32(1), bc::store_var_i32(0)].concat();
-    let truncated_start = [bc::load_var_i32(1), bc::trunc_i16(), bc::store_var_i32(0)].concat();
-    assert!(lowered.starts_with(&start), "{lowered:?}");
-    assert!(ast.starts_with(&truncated_start), "{ast:?}");
-    assert_eq!(lowered[start.len()..], ast[truncated_start.len()..]);
+    assert!(code.starts_with(&start), "{code:?}");
 }
 
-/// Each control-flow statement compiles to the same instructions and
-/// constants by both routes, fused compare and branch included. `CASE` is
-/// the exception, since the lowered route evaluates its selector once
-/// (`compile_route.rs`).
+/// Each control-flow statement lowers and compiles, fused compare and branch
+/// included.
 #[rstest]
 #[case::while_fused("WHILE w < 5 DO w := w + 1; END_WHILE;")]
 #[case::while_unfused("WHILE w < n DO w := w + 1; END_WHILE;")]
@@ -200,28 +201,20 @@ fn compile_when_for_first_value_fits_control_then_lowered_route_drops_its_trunca
     "FOR w := 1 TO 10 DO IF w = 2 THEN CONTINUE; END_IF; IF w > 5 THEN EXIT; END_IF; END_FOR;"
 )]
 #[case::narrow_store("WHILE k < 5 DO k := k + 1; END_WHILE;")]
-fn compile_when_control_flow_lowered_then_same_code_as_ast(#[case] statement: &str) {
+fn compile_when_control_flow_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
         "PROGRAM main VAR w : DINT; n : DINT; k : INT; s : INT; END_VAR
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }
 
-/// Fails unless `source`, with every statement lowered, compiles to the same
-/// code and constants as by the AST route.
-pub(crate) fn assert_same_code(source: &str) {
+/// Fails unless every statement of `source` lowers, and it compiles.
+pub(crate) fn assert_compiles(source: &str) {
     let options = options();
     let (library, context) = parse(source, &options);
-    let ast = compile_by_route(&library, &context, &options, Route::Ast).unwrap();
-    let lowered = compile_by_route(&library, &context, &options, Route::RequireLowered)
-        .expect("every statement lowers");
-    assert_eq!(format!("{:?}", lowered.code), format!("{:?}", ast.code));
-    assert_eq!(
-        format!("{:?}", lowered.constant_pool),
-        format!("{:?}", ast.constant_pool)
-    );
+    compile_analyzed(&library, &context, &options).expect("every statement lowers");
 }
 
 /// Elements of arrays, with lower bounds other than zero and two dimensions,
@@ -255,8 +248,7 @@ fn run_when_array_elements_and_fields_then_values() {
     assert_eq!(snapshot.read_as::<i64>("r4"), 10);
 }
 
-/// A subscript outside the array traps on the lowered route, as on the AST
-/// route (ADR-0023).
+/// A subscript outside the array traps (ADR-0023).
 #[test]
 fn run_when_subscript_outside_array_then_traps() {
     let options = options();
@@ -264,15 +256,14 @@ fn run_when_subscript_outside_array_then_traps() {
            a[i] := 1;
          END_PROGRAM";
     let (library, context) = parse(source, &options);
-    let container = compile_by_route(&library, &context, &options, Route::RequireLowered)
-        .expect("every statement lowers");
+    let container = compile_analyzed(&library, &context, &options).expect("every statement lowers");
     assert!(run_one_scan(&container).is_err());
 }
 
-/// An element of an array and a field of a structure compile to the same
-/// instructions and constants by both routes. The arrays hold `DINT`s, so no
-/// store is narrowed: a read of a narrow place already fits a place of its
-/// type, and only the AST route truncates it again.
+/// An element of an array and a field of a structure lower and compile. The
+/// arrays hold `DINT`s, so no store is narrowed: a read of a narrow place
+/// already fits a place of its type, and only the route that read the AST
+/// truncated it again.
 #[rstest]
 #[case::array_element("a[i] := a[i + 1] + 1;")]
 #[case::constant_subscript("a[3] := a[2];")]
@@ -280,7 +271,7 @@ fn run_when_subscript_outside_array_then_traps() {
 #[case::structure_field("p.x := p.x + 1;")]
 #[case::array_field("p.vals[i] := 1;")]
 #[case::field_of_element("ps[i].x := ps[2].x;")]
-fn compile_when_place_lowered_then_same_code_as_ast(#[case] statement: &str) {
+fn compile_when_place_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
         "TYPE P : STRUCT x : DINT; vals : ARRAY[1..3] OF DINT; END_STRUCT; END_TYPE
          PROGRAM main
@@ -289,7 +280,7 @@ fn compile_when_place_lowered_then_same_code_as_ast(#[case] statement: &str) {
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }
 
 /// A subscript whose type holds values a `DINT` does not selects the element
@@ -327,23 +318,21 @@ fn run_when_subscript_outside_dint_then_traps(#[case] subscript: &str) {
          END_PROGRAM"
     );
     let (library, context) = parse(&source, &options);
-    let container = compile_by_route(&library, &context, &options, Route::RequireLowered)
-        .expect("every statement lowers");
+    let container = compile_analyzed(&library, &context, &options).expect("every statement lowers");
     let Err(fault) = run_one_scan(&container) else {
         panic!("the scan does not trap");
     };
     assert_eq!(fault.trap.v_code(), "V4007");
 }
 
-/// A subscript whose conversion to `DINT` is checked compiles to the same
-/// instructions and constants by both routes: the subscript check of its
-/// type.
+/// A subscript whose conversion to `DINT` is checked lowers and compiles,
+/// with the subscript check of its type.
 #[rstest]
 #[case::udint("a[ud] := a[ud] + 1;")]
 #[case::lint("a[l] := a[l + 1];")]
 #[case::ulint_and_lword("a[ul] := a[lw];")]
 #[case::dword_in_two_dimensions("m[dw, 0] := 1;")]
-fn compile_when_checked_subscript_lowered_then_same_code_as_ast(#[case] statement: &str) {
+fn compile_when_checked_subscript_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
         "PROGRAM main
            VAR a : ARRAY[0..5] OF DINT; m : ARRAY[0..2, 0..3] OF DINT; ud : UDINT; l : LINT;
@@ -351,7 +340,7 @@ fn compile_when_checked_subscript_lowered_then_same_code_as_ast(#[case] statemen
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }
 
 /// What a reference refers to is read and written through it: a variable, a
@@ -386,17 +375,18 @@ fn run_when_read_and_written_through_references_then_values() {
 #[case::read("x := p^;")]
 #[case::write("p^ := 1;")]
 #[case::element("x := pa^[1];")]
+#[case::through_element("x := refs[0]^;")]
 fn run_when_null_reference_dereferenced_then_traps(#[case] statement: &str) {
     let options = options();
     let source = format!(
         "PROGRAM main
-           VAR x : DINT; p : REF_TO DINT; pa : REF_TO ARRAY[1..3] OF DINT; END_VAR
+           VAR x : DINT; p : REF_TO DINT; pa : REF_TO ARRAY[1..3] OF DINT;
+               refs : ARRAY[0..2] OF REF_TO DINT; END_VAR
            {statement}
          END_PROGRAM"
     );
     let (library, context) = parse(&source, &options);
-    let container = compile_by_route(&library, &context, &options, Route::RequireLowered)
-        .expect("every statement lowers");
+    let container = compile_analyzed(&library, &context, &options).expect("every statement lowers");
     let Err(fault) = run_one_scan(&container) else {
         panic!("the scan does not trap");
     };
@@ -404,28 +394,50 @@ fn run_when_null_reference_dereferenced_then_traps(#[case] statement: &str) {
 }
 
 /// What a reference refers to, and an element of an array it refers to,
-/// compile to the same instructions and constants by both routes, the
-/// narrowed store through a reference to an `INT` included.
+/// lower and compile, the narrowed store through a reference to an `INT`
+/// included. So does a read through a reference held in an element of an
+/// array, alone, in an expression or in a condition.
 #[rstest]
 #[case::read_and_write("p^ := p^ + 1;")]
 #[case::read_into_variable("x := p^;")]
 #[case::narrow_store("q^ := q^ + 1;")]
 #[case::element("pa^[i] := pa^[i + 1];")]
-fn compile_when_dereference_lowered_then_same_code_as_ast(#[case] statement: &str) {
+#[case::through_element("x := refs[0]^;")]
+#[case::through_element_by_variable("x := refs[i]^;")]
+#[case::through_element_of_two_dimensions("x := grid[1, 0]^;")]
+#[case::through_element_in_expression("x := refs[0]^ + 1;")]
+#[case::through_element_in_condition("IF refs[0]^ = 42 THEN x := 1; END_IF;")]
+#[case::through_reference_to_element("x := rrefs[0]^;")]
+fn compile_when_dereference_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
         "PROGRAM main
            VAR x : DINT; i : DINT; p : REF_TO DINT; q : REF_TO INT;
-               pa : REF_TO ARRAY[1..3] OF DINT; END_VAR
+               pa : REF_TO ARRAY[1..3] OF DINT; refs : ARRAY[0..2] OF REF_TO DINT;
+               grid : ARRAY[0..1, 0..1] OF REF_TO DINT;
+               rrefs : ARRAY[0..2] OF REFERENCE TO DINT; END_VAR
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
+}
+
+/// A store through a reference held in an element of an array is not
+/// supported yet (P9999).
+#[test]
+fn compile_when_store_through_element_then_left_to_ast() {
+    let options = options();
+    let source = "PROGRAM main
+           VAR refs : ARRAY[0..2] OF REF_TO DINT; END_VAR
+           refs[0]^ := 5;
+         END_PROGRAM";
+    let (library, context) = parse(source, &options);
+    let result = compile_analyzed(&library, &context, &options);
+    assert_eq!(result.unwrap_err().code, "P9999");
 }
 
 /// A field reached through a reference a function receives, `p^.x`, is not
-/// a field of an instance. The lowered route does not take it for the
-/// function's own `x`; it leaves the statement to the AST route, which does
-/// not support it yet.
+/// a field of an instance. It is not taken for the function's own `x`: the
+/// statement is not supported yet (P9999).
 #[test]
 fn compile_when_field_through_reference_parameter_then_not_taken_for_local() {
     let options = options();
@@ -439,14 +451,14 @@ fn compile_when_field_through_reference_parameter_then_not_taken_for_local() {
            r := F(p := REF(s));
          END_PROGRAM";
     let (library, context) = parse(source, &options);
-    let result = compile_by_route(&library, &context, &options, Route::PreferLowered);
+    let result = compile_analyzed(&library, &context, &options);
     assert_eq!(result.unwrap_err().code, "P9999");
 }
 
 /// Bits and parts are written to a variable, an element of an array, a
 /// field of a structure and a field of an element of an array of
 /// structures, leaving the other bits as they were. Setting the top bit of
-/// an `INT` makes it negative, as on the AST route.
+/// an `INT` makes it negative.
 #[test]
 fn run_when_bits_and_parts_written_then_other_bits_kept() {
     let snapshot = run_lowered(
@@ -480,8 +492,7 @@ fn run_when_bits_and_parts_written_then_other_bits_kept() {
 }
 
 /// REQ-LOW-codegen-121: a bit write to an element of an array evaluates the
-/// element's subscript once, keeping the address for the store, where the
-/// AST route evaluates it for the load and again for the store.
+/// element's subscript once, keeping the address for the store.
 #[test]
 fn compile_when_bit_written_to_element_then_subscript_evaluated_once() {
     let source = "PROGRAM main VAR i : DINT; a : ARRAY[0..3] OF WORD; END_VAR
@@ -494,31 +505,29 @@ fn compile_when_bit_written_to_element_then_subscript_evaluated_once() {
             .filter(|window| *window == load_i.as_slice())
             .count()
     };
-    assert_eq!(loads(body_by_route(source, Route::RequireLowered)), 1);
-    assert_eq!(loads(body_by_route(source, Route::Ast)), 2);
+    assert_eq!(loads(body(source)), 1);
 }
 
-/// A bit or partial write to a variable compiles to the same instructions
-/// and constants by both routes: a variable has no address to evaluate.
+/// A bit or partial write to a variable lowers and compiles: a variable has
+/// no address to evaluate.
 #[rstest]
 #[case::bit("w.3 := TRUE;")]
 #[case::first_bit("w.0 := FALSE;")]
 #[case::byte("w.%B1 := b;")]
 #[case::dword_of_lword("l.%D1 := d;")]
 #[case::lword_of_lword("l.%L0 := l;")]
-fn compile_when_bits_written_to_variable_then_same_code_as_ast(#[case] statement: &str) {
+fn compile_when_bits_written_to_variable_then_compiles(#[case] statement: &str) {
     let source = format!(
         "PROGRAM main
            VAR w : WORD; b : BYTE; d : DWORD; l : LWORD; END_VAR
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }
 
 /// Shifts and rotates of each width, and bit and partial reads of a
-/// variable, an element and a signed integer, give the values the AST route
-/// gives.
+/// variable, an element and a signed integer, give the expected values.
 #[test]
 fn run_when_shifts_and_bit_reads_then_values() {
     let snapshot = run_lowered(
@@ -557,8 +566,8 @@ fn run_when_shifts_and_bit_reads_then_values() {
     assert_eq!(snapshot.read_as::<u64>("p3"), 0x89AB_CDEF);
 }
 
-/// A shift or rotate, and a partial read of a 32-bit place, compile to the
-/// same instructions and constants by both routes.
+/// A shift or rotate, and a partial read of a 32-bit place, lower and
+/// compile.
 #[rstest]
 #[case::shl_dword("d := SHL(d, n);")]
 #[case::shr_lword("l := SHR(l, 3);")]
@@ -566,14 +575,14 @@ fn run_when_shifts_and_bit_reads_then_values() {
 #[case::ror_word("w := ROR(w, n);")]
 #[case::rol_lword("l := ROL(l, 2);")]
 #[case::partial_read("b := w.%B1;")]
-fn compile_when_shift_or_partial_read_lowered_then_same_code_as_ast(#[case] statement: &str) {
+fn compile_when_shift_or_partial_read_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
         "PROGRAM main
            VAR b : BYTE; w : WORD; d : DWORD; l : LWORD; n : DINT; END_VAR
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }
 
 /// The function forms of operators and `MOVE` give the values their
@@ -602,10 +611,10 @@ fn run_when_operator_function_forms_then_values() {
     assert_eq!(snapshot.read_as::<i64>("r4"), 3);
 }
 
-/// The function form of an operator compiles to the same instructions and
-/// constants by both routes. `NOT` of a `WORD` is left out: the AST route
-/// truncates its result and then truncates it again for the store, where the
-/// lowered route stores the truncated value as it is.
+/// The function form of an operator lowers and compiles. `NOT` of a `WORD`
+/// is left out: the route that read the AST truncated its result and then
+/// truncated it again for the store, where the lowered program's store keeps
+/// the truncated value as it is.
 #[rstest]
 #[case::add_fold("r := ADD(a, b, c);")]
 #[case::sub("r := SUB(a, b);")]
@@ -615,19 +624,19 @@ fn run_when_operator_function_forms_then_values() {
 #[case::and_word("w := AND(w, v);")]
 #[case::not_bool("x := NOT(x);")]
 #[case::move_("r := MOVE(a);")]
-fn compile_when_operator_form_lowered_then_same_code_as_ast(#[case] statement: &str) {
+fn compile_when_operator_form_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
         "PROGRAM main
            VAR a : DINT; b : DINT; c : DINT; r : DINT; x : BOOL; y : BOOL; w : WORD; v : WORD; END_VAR
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }
 
-/// Numeric functions give the values the AST route gives. `ABS` of the most
-/// negative `DINT` wraps to itself, an integer exponent of a real is
-/// converted to it, and `**` is `EXPT`.
+/// Numeric functions give the expected values. `ABS` of the most negative
+/// `DINT` wraps to itself, an integer exponent of a real is converted to it,
+/// and `**` is `EXPT`.
 #[test]
 fn run_when_numeric_functions_then_values() {
     let snapshot = run_lowered(
@@ -666,8 +675,7 @@ fn run_when_numeric_functions_then_values() {
     assert_eq!(snapshot.read_as::<f32>("sr"), (-2.5_f32).sin());
 }
 
-/// REQ-LOW-codegen-098: `EXPT` of an integer by a negative exponent traps on
-/// the lowered route, as on the AST route.
+/// REQ-LOW-codegen-098: `EXPT` of an integer by a negative exponent traps.
 #[test]
 fn run_when_integer_raised_to_negative_exponent_then_traps() {
     let options = options();
@@ -677,8 +685,7 @@ fn run_when_integer_raised_to_negative_exponent_then_traps() {
          END_PROGRAM",
         &options,
     );
-    let container = compile_by_route(&library, &context, &options, Route::RequireLowered)
-        .expect("every statement lowers");
+    let container = compile_analyzed(&library, &context, &options).expect("every statement lowers");
     let Err(fault) = run_one_scan(&container) else {
         panic!("a negative exponent of an integer traps");
     };
@@ -698,8 +705,7 @@ fn run_when_unsigned_raised_to_exponent_past_dint_then_wraps() {
     assert_eq!(snapshot.read_as::<u64>("r"), 3_840_514_049);
 }
 
-/// A numeric function, and `**`, compile to the same instructions and
-/// constants by both routes.
+/// A numeric function, and `**`, lower and compile.
 #[rstest]
 #[case::abs_int("i := ABS(i);")]
 #[case::abs_lint("l := ABS(l);")]
@@ -714,7 +720,7 @@ fn run_when_unsigned_raised_to_exponent_past_dint_then_wraps() {
 #[case::atan2_lreal("x := ATAN2(x, x);")]
 #[case::trunc_real("r := __TRUNC(r);")]
 #[case::mod_lreal("x := __MOD(x, x);")]
-fn compile_when_numeric_function_lowered_then_same_code_as_ast(#[case] statement: &str) {
+fn compile_when_numeric_function_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
         "PROGRAM main
            VAR i : INT; d : DINT; l : LINT; r : REAL; x : LREAL; u : UDINT; ul : ULINT;
@@ -722,13 +728,13 @@ fn compile_when_numeric_function_lowered_then_same_code_as_ast(#[case] statement
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }
 
-/// REQ-LOW-codegen-089: the selection functions give the values the AST
-/// route gives. `MIN` and `MAX` of unsigned integers compare them unsigned,
-/// `LIMIT` clamps, to its upper bound when the bounds cross, and `SEL` takes
-/// its second input when the selector is `TRUE`. Of reals, `MIN` gives the
+/// REQ-LOW-codegen-089: the selection functions give the expected values.
+/// `MIN` and `MAX` of unsigned integers compare them unsigned, `LIMIT`
+/// clamps, to its upper bound when the bounds cross, and `SEL` takes its
+/// second input when the selector is `TRUE`. Of reals, `MIN` gives the
 /// other input when one is NaN, and `LIMIT` gives NaN.
 #[test]
 fn run_when_selection_functions_then_values() {
@@ -760,8 +766,7 @@ fn run_when_selection_functions_then_values() {
     assert!(snapshot.read_as::<f32>("rln").is_nan());
 }
 
-/// A selection function compiles to the same instructions and constants by
-/// both routes.
+/// A selection function lowers and compiles.
 #[rstest]
 #[case::min_dint("d := MIN(d, e);")]
 #[case::max_udint("u := MAX(u, v);")]
@@ -769,7 +774,7 @@ fn run_when_selection_functions_then_values() {
 #[case::limit_real("r := LIMIT(r, r, r);")]
 #[case::sel_udint("u := SEL(g, u, v);")]
 #[case::sel_lreal("x := SEL(g, x, x);")]
-fn compile_when_selection_function_lowered_then_same_code_as_ast(#[case] statement: &str) {
+fn compile_when_selection_function_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
         "PROGRAM main
            VAR d : DINT; e : DINT; u : UDINT; v : UDINT; l : LINT; r : REAL; x : LREAL;
@@ -777,12 +782,11 @@ fn compile_when_selection_function_lowered_then_same_code_as_ast(#[case] stateme
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }
 
 /// REQ-LOW-codegen-089: `MUX` gives the input its selector names, the first
-/// for a selector below zero and the last for one past the last input, as
-/// on the AST route.
+/// for a selector below zero and the last for one past the last input.
 #[test]
 fn run_when_mux_then_input_selected_with_selector_clamped() {
     let snapshot = run_lowered(
@@ -804,24 +808,23 @@ fn run_when_mux_then_input_selected_with_selector_clamped() {
     assert_eq!(snapshot.read_as::<f64>("r5"), 2.5);
 }
 
-/// A `MUX` compiles to the same instructions and constants by both routes,
-/// whatever its number of inputs and type.
+/// A `MUX` lowers and compiles, whatever its number of inputs and type.
 #[rstest]
 #[case::two_dint("d := MUX(k, d, e);")]
 #[case::three_udint("u := MUX(k, u, u, u);")]
 #[case::lreal("x := MUX(k, x, x);")]
-fn compile_when_mux_lowered_then_same_code_as_ast(#[case] statement: &str) {
+fn compile_when_mux_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
         "PROGRAM main
            VAR k : DINT; d : DINT; e : DINT; u : UDINT; x : LREAL; END_VAR
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }
 
-/// REQ-LOW-codegen-086, REQ-LOW-codegen-087: explicit conversions give the
-/// values the AST route gives. A real converts to an integer toward zero,
+/// REQ-LOW-codegen-086, REQ-LOW-codegen-087: explicit conversions give
+/// the expected values. A real converts to an integer toward zero,
 /// saturating at its operation type, then wraps to a narrow target's
 /// storage. A conversion to `BOOL` tests for zero rather than keeping the
 /// low bit, and `TRUNC` converts to the integer of its context.
@@ -867,11 +870,11 @@ fn run_when_conversions_then_values() {
     assert_eq!(snapshot.read_as::<f32>("r14"), -2.0);
 }
 
-/// An explicit conversion, and `TRUNC`, compile to the same instructions and
-/// constants by both routes. A conversion to a narrow type is stored to a
-/// `DINT`: stored to its own type, the AST route truncates it a second time
-/// and the lowered route does not. A conversion to `BOOL` is left out: the
-/// AST route calls a builtin, and the lowered route compares with zero.
+/// An explicit conversion, and `TRUNC`, lower and compile. A conversion to a
+/// narrow type is stored to a `DINT`: stored to its own type, the route that
+/// read the AST truncated it a second time and the lowered program does not.
+/// A conversion to `BOOL` is left out: the route that read the AST called a
+/// builtin, and the lowered program compares with zero.
 #[rstest]
 #[case::real_to_int("d := REAL_TO_INT(r);")]
 #[case::dint_to_lreal("x := DINT_TO_LREAL(d);")]
@@ -885,7 +888,7 @@ fn run_when_conversions_then_values() {
 #[case::trunc_real("d := TRUNC(r);")]
 #[case::trunc_to_lint("l := TRUNC(x);")]
 #[case::trunc_to_int("i := TRUNC(r);")]
-fn compile_when_conversion_lowered_then_same_code_as_ast(#[case] statement: &str) {
+fn compile_when_conversion_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
         "PROGRAM main
            VAR i : INT; d : DINT; l : LINT; u : UDINT; r : REAL; x : LREAL; g : BOOL;
@@ -893,13 +896,12 @@ fn compile_when_conversion_lowered_then_same_code_as_ast(#[case] statement: &str
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }
 
-/// REQ-LOW-codegen-089: BCD conversions give the values the AST route
-/// gives. `BCD_TO_INT` decodes four bits above 9 as 0, and `INT_TO_BCD`
-/// encodes its input's bits as unsigned, modulo the power of ten its digits
-/// hold.
+/// REQ-LOW-codegen-089: BCD conversions give the expected values.
+/// `BCD_TO_INT` decodes four bits above 9 as 0, and `INT_TO_BCD` encodes its
+/// input's bits as unsigned, modulo the power of ten its digits hold.
 #[test]
 fn run_when_bcd_conversions_then_values() {
     let snapshot = run_lowered(
@@ -926,8 +928,7 @@ fn run_when_bcd_conversions_then_values() {
     assert_eq!(snapshot.read_as::<u64>("r7"), 0x1234_5678);
 }
 
-/// A BCD conversion and `SIZEOF` compile to the same instructions and
-/// constants by both routes.
+/// A BCD conversion and `SIZEOF` lower and compile.
 #[rstest]
 #[case::bcd_to_int_word("d := BCD_TO_INT(w);")]
 #[case::bcd_to_int_to_int("i := BCD_TO_INT(w);")]
@@ -940,7 +941,7 @@ fn run_when_bcd_conversions_then_values() {
 #[case::sizeof_array("d := SIZEOF(arr);")]
 #[case::sizeof_bool("d := SIZEOF(g);")]
 #[case::sizeof_element("l := SIZEOF(arr[1]);")]
-fn compile_when_bcd_or_sizeof_lowered_then_same_code_as_ast(#[case] statement: &str) {
+fn compile_when_bcd_or_sizeof_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
         "PROGRAM main
            VAR w : WORD; dw : DWORD; lw : LWORD; i : INT; d : DINT; u : UDINT; l : LINT;
@@ -948,5 +949,5 @@ fn compile_when_bcd_or_sizeof_lowered_then_same_code_as_ast(#[case] statement: &
            {statement}
          END_PROGRAM"
     );
-    assert_same_code(&source);
+    assert_compiles(&source);
 }

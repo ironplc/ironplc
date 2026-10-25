@@ -54,7 +54,7 @@ use crate::{
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
     string_similarity::find_closest_match,
-    symbol_environment::{Resolution, ScopeTracker, SymbolEnvironment},
+    symbol_environment::{Resolution, ScopeTracker, SymbolEnvironment, SymbolKind},
 };
 use ironplc_parser::options::CompilerOptions;
 
@@ -68,7 +68,6 @@ pub fn apply(
             symbols: context.symbols(),
             scope: ScopeTracker::default(),
             units: Vec::new(),
-            enclosing_properties: Vec::new(),
             diagnostics: Vec::new(),
         },
         lib,
@@ -88,22 +87,18 @@ struct SymbolScopeChecker<'a> {
     /// that opened it, which is in scope within its body, and `None` for a
     /// function or method, whose own name is its result variable.
     units: Vec<Option<Id>>,
-    /// One entry per open scope: the property names of the function block
-    /// that opened it, `None` for any other scope. A name that is not a
-    /// variable but is a property of the enclosing function block is a
-    /// property access, which is not implemented yet, rather than an
-    /// undefined variable.
-    enclosing_properties: Vec<Option<Vec<Id>>>,
     diagnostics: Vec<Diagnostic>,
 }
 
 impl SymbolScopeChecker<'_> {
-    fn is_enclosing_property(&self, name: &Id) -> bool {
-        self.enclosing_properties
-            .iter()
-            .rev()
-            .find_map(|properties| properties.as_ref())
-            .is_some_and(|properties| properties.contains(name))
+    /// Whether `name` is a property of the enclosing function block or of
+    /// a block it `EXTENDS`. A name that is not a variable but is a property
+    /// is a property access, which is not implemented yet, rather than an
+    /// undefined variable.
+    fn is_property(&self, name: &Id) -> bool {
+        self.symbols
+            .find(name, &self.scope.current())
+            .is_some_and(|info| info.kind == SymbolKind::Property)
     }
 
     /// Whether `name` is in scope where the traversal is.
@@ -136,14 +131,8 @@ impl Visitor<Infallible> for SymbolScopeChecker<'_> {
     /// is its result variable, which the symbol environment holds.
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
         self.scope.enter(&node);
-        self.enclosing_properties.push(match &node {
-            ScopeNode::FunctionBlock(node) => {
-                Some(node.properties.iter().map(|p| p.name.clone()).collect())
-            }
-            _ => None,
-        });
         self.units.push(match node {
-            ScopeNode::FunctionBlock(node) => Some(node.name.name.clone()),
+            ScopeNode::FunctionBlock(node) => Some(node.name.id.clone()),
             ScopeNode::Program(node) => Some(node.name.clone()),
             ScopeNode::Function(_)
             | ScopeNode::Method(_)
@@ -155,7 +144,6 @@ impl Visitor<Infallible> for SymbolScopeChecker<'_> {
 
     fn exit_scope(&mut self) {
         self.scope.exit();
-        self.enclosing_properties.pop();
         self.units.pop();
     }
 
@@ -168,7 +156,7 @@ impl Visitor<Infallible> for SymbolScopeChecker<'_> {
             return Ok(());
         }
 
-        if self.is_enclosing_property(&node.name) {
+        if self.is_property(&node.name) {
             self.diagnostics.push(
                 Diagnostic::not_implemented(Label::span(node.name.span(), "Use of a PROPERTY"))
                     .with_context_id("property", &node.name),
@@ -198,7 +186,7 @@ impl Visitor<Infallible> for SymbolScopeChecker<'_> {
 mod tests {
     use crate::test_helpers::fb_inheritance_options;
     use crate::test_helpers::NOT_IMPLEMENTED_CODE;
-    use crate::test_helpers::{diagnostic_codes, rule_diagnostics};
+    use crate::test_helpers::{configuration_with_globals, diagnostic_codes, rule_diagnostics};
 
     use super::*;
 
@@ -728,6 +716,63 @@ END_FUNCTION_BLOCK";
         assert!(errors[0].described.contains(&"property=Speed".to_owned()));
     }
 
+    /// A property a block inherits through `EXTENDS` is recognised like its
+    /// own.
+    #[test]
+    fn apply_when_derived_block_uses_inherited_property_then_not_implemented() {
+        let program = "
+FUNCTION_BLOCK FB_Base
+VAR
+    _speed : REAL;
+END_VAR
+PROPERTY Speed : REAL
+GET
+    Speed := _speed;
+END_GET
+END_PROPERTY
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Motor EXTENDS FB_Base
+METHOD Stop
+    Speed := 0.0;
+END_METHOD
+END_FUNCTION_BLOCK";
+
+        let errors = rule_diagnostics(apply, program, &fb_inheritance_options());
+
+        assert_eq!(diagnostic_codes(&errors), [NOT_IMPLEMENTED_CODE]);
+        assert!(errors[0].described.contains(&"property=Speed".to_owned()));
+    }
+
+    /// A property is found before a global of the same name, because the
+    /// block's scope is searched before the global scope.
+    #[test]
+    fn apply_when_property_has_name_of_global_then_property_found() {
+        let program = "
+VAR_GLOBAL
+    Speed : REAL;
+END_VAR
+FUNCTION_BLOCK FB_Motor
+METHOD Stop
+    Speed := 0.0;
+END_METHOD
+PROPERTY Speed : REAL
+GET
+    Speed := 1.0;
+END_GET
+END_PROPERTY
+END_FUNCTION_BLOCK";
+        let options = CompilerOptions {
+            allow_fb_inheritance: true,
+            allow_top_level_var_global: true,
+            ..CompilerOptions::default()
+        };
+
+        let errors = rule_diagnostics(apply, program, &options);
+
+        assert_eq!(diagnostic_codes(&errors), [NOT_IMPLEMENTED_CODE]);
+    }
+
     /// Property names are visible only inside their own function block.
     #[test]
     fn apply_when_program_uses_name_of_some_property_then_undefined_variable() {
@@ -810,6 +855,24 @@ VAR
 END_VAR
   x := g;
 END_PROGRAM"
+        )
+    );
+
+    // The name is the enumerated value: a global the program does not reach
+    // does not hide it.
+    rule_ok!(
+        apply_when_unreached_global_has_name_of_enumerated_value_then_ok,
+        &format!(
+            "
+TYPE E_State : (IDLE, RUNNING); END_TYPE
+{}
+PROGRAM main
+VAR
+  state : E_State;
+END_VAR
+  state := RUNNING;
+END_PROGRAM",
+            configuration_with_globals("RUNNING : BOOL;")
         )
     );
 

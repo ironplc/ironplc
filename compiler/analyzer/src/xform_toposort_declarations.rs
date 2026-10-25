@@ -82,7 +82,7 @@ pub fn apply(lib: Library) -> Result<(Library, HashSet<Id>), Vec<Diagnostic>> {
         match element {
             LibraryElementKind::DataTypeDeclaration(decl) => {
                 types_by_name
-                    .entry(decl.type_name().name.clone())
+                    .entry(decl.type_name().id.clone())
                     .or_default()
                     .push(decl);
             }
@@ -94,7 +94,7 @@ pub fn apply(lib: Library) -> Result<(Library, HashSet<Id>), Vec<Diagnostic>> {
             }
             LibraryElementKind::FunctionBlockDeclaration(decl) => {
                 elems_by_name
-                    .entry(decl.name.name.clone())
+                    .entry(decl.name.id.clone())
                     .or_default()
                     .push(LibraryElementKind::FunctionBlockDeclaration(decl));
             }
@@ -266,8 +266,8 @@ impl RuleGraphReferenceableElements {
 /// or the element type of an inline array target.
 fn reference_target_type_name(target: &ReferenceTarget) -> Id {
     match target {
-        ReferenceTarget::Named(type_name) => type_name.name.clone(),
-        ReferenceTarget::Array(subranges) => subranges.type_name.to_type_name().name,
+        ReferenceTarget::Named(type_name) => type_name.id.clone(),
+        ReferenceTarget::Array(subranges) => subranges.type_name.to_type_name().id,
     }
 }
 
@@ -295,8 +295,8 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         &mut self,
         node: &LateBoundDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        let this = self.declarations.add_node(&node.data_type_name.name);
-        let depends_on = self.declarations.add_node(&node.base_type_name.name);
+        let this = self.declarations.add_node(&node.data_type_name.id);
+        let depends_on = self.declarations.add_node(&node.base_type_name.id);
         self.declarations.graph.add_edge(depends_on, this, ());
 
         node.recurse_visit(self)
@@ -306,10 +306,10 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         &mut self,
         node: &EnumerationDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        let this = self.declarations.add_node(&node.type_name.name);
+        let this = self.declarations.add_node(&node.type_name.id);
 
         if let SpecificationKind::Named(parent) = &node.spec_init.spec {
-            let depends_on = self.declarations.add_node(&parent.name);
+            let depends_on = self.declarations.add_node(&parent.id);
             self.declarations.graph.add_edge(depends_on, this, ());
         };
 
@@ -320,10 +320,10 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         &mut self,
         node: &SubrangeDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        let this = self.declarations.add_node(&node.type_name.name);
+        let this = self.declarations.add_node(&node.type_name.id);
 
         if let SpecificationKind::Named(parent) = &node.spec {
-            let depends_on = self.declarations.add_node(&parent.name);
+            let depends_on = self.declarations.add_node(&parent.id);
             self.declarations.graph.add_edge(depends_on, this, ());
         };
 
@@ -338,7 +338,7 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         // element type, exactly as `visit_array_declaration` does. Without
         // this edge a `REF_TO` to a type declared in the same source may be
         // resolved before its target exists and fail with a spurious P2011.
-        let this = self.declarations.add_node(&node.type_name.name);
+        let this = self.declarations.add_node(&node.type_name.id);
         let depends_on = self
             .declarations
             .add_node(&reference_target_type_name(&node.target));
@@ -351,17 +351,17 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         &mut self,
         node: &ArrayDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        let this = self.declarations.add_node(&node.type_name.name);
+        let this = self.declarations.add_node(&node.type_name.id);
 
         match &node.spec {
             SpecificationKind::Named(parent) => {
-                let depends_on = self.declarations.add_node(&parent.name);
+                let depends_on = self.declarations.add_node(&parent.id);
                 self.declarations.graph.add_edge(depends_on, this, ());
             }
             SpecificationKind::Inline(array_subranges) => {
                 let depends_on = self
                     .declarations
-                    .add_node(&array_subranges.type_name.to_type_name().name);
+                    .add_node(&array_subranges.type_name.to_type_name().id);
                 self.declarations.graph.add_edge(depends_on, this, ());
             }
         }
@@ -373,8 +373,8 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         &mut self,
         node: &StructureDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.current_from = Some(node.type_name.name.clone());
-        self.declarations.add_node(&node.type_name.name);
+        self.current_from = Some(node.type_name.id.clone());
+        self.declarations.add_node(&node.type_name.id);
         let res = node.recurse_visit(self);
         self.current_from = None;
         res
@@ -390,8 +390,8 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         // Unconditionally resetting to None would wipe the enclosing
         // program's context when visited as a nested node.
         let prev = self.current_from.take();
-        self.current_from = Some(node.type_name.name.clone());
-        self.declarations.add_node(&node.type_name.name);
+        self.current_from = Some(node.type_name.id.clone());
+        self.declarations.add_node(&node.type_name.id);
         let res = node.recurse_visit(self);
         self.current_from = prev;
         res
@@ -401,8 +401,8 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         &mut self,
         node: &SimpleDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.current_from = Some(node.type_name.name.clone());
-        self.declarations.add_node(&node.type_name.name);
+        self.current_from = Some(node.type_name.id.clone());
+        self.declarations.add_node(&node.type_name.id);
         let res = node.recurse_visit(self);
         self.current_from = None;
         res
@@ -412,8 +412,8 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         &mut self,
         node: &StringDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.current_from = Some(node.type_name.name.clone());
-        self.declarations.add_node(&node.type_name.name);
+        self.current_from = Some(node.type_name.id.clone());
+        self.declarations.add_node(&node.type_name.id);
         let res = node.recurse_visit(self);
         self.current_from = None;
         res
@@ -436,10 +436,10 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         &mut self,
         node: &FunctionBlockDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.current_from = Some(node.name.name.clone());
-        let this = self.declarations.add_node(&node.name.name);
+        self.current_from = Some(node.name.id.clone());
+        let this = self.declarations.add_node(&node.name.id);
         if let Some(parent) = node.oop.as_ref().and_then(|oop| oop.base.as_ref()) {
-            let depends_on = self.declarations.add_node(&parent.name);
+            let depends_on = self.declarations.add_node(&parent.id);
             self.declarations.graph.add_edge(depends_on, this, ());
         }
         let res = node.recurse_visit(self);
@@ -463,15 +463,25 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         &mut self,
         node: &InterfaceDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.current_from = Some(node.name.clone());
+        // Only EXTENDS orders an interface, so the method and property
+        // prototypes are not visited. A prototype has no body, and an
+        // interface has no fields (its value is a reference), so the types
+        // a prototype names are not dependencies of the interface.
+        // Recording them reported P4005 for a prototype whose parameter has
+        // the interface's own type, or the type of an interface whose
+        // prototype names this one back.
+        //
+        // A function block method is visited and keeps its parameters'
+        // edges. It runs in its block type's field scratch region, which
+        // invoking a parameter of that same type would overwrite: the
+        // hazard for which specs/design/var-in-out-parameters.md keeps a
+        // function's parameter type as an edge.
         let this = self.declarations.add_node(&node.name);
         for parent in &node.extends {
-            let depends_on = self.declarations.add_node(&parent.name);
+            let depends_on = self.declarations.add_node(&parent.id);
             self.declarations.graph.add_edge(depends_on, this, ());
         }
-        let res = node.recurse_visit(self);
-        self.current_from = None;
-        res
+        Ok(())
     }
 
     fn visit_configuration_declaration(
@@ -520,7 +530,7 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         match &self.current_from {
             Some(from) => {
                 let from = self.declarations.add_node(from);
-                let to = self.declarations.add_node(&init.type_name.name);
+                let to = self.declarations.add_node(&init.type_name.id);
                 self.declarations.graph.add_edge(to, from, ());
             }
             None => {
@@ -556,7 +566,7 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                         // that references it and is then missing from the type
                         // environment, surfacing as a spurious P2021/P2004.
                         let from = self.declarations.add_node(from);
-                        let to = self.declarations.add_node(&enum_init.type_name.name);
+                        let to = self.declarations.add_node(&enum_init.type_name.id);
                         self.declarations.graph.add_edge(to, from, ());
                     }
                     InitialValueAssignmentKind::FunctionBlock(fb) => {
@@ -564,7 +574,7 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                         // arms below: the referenced type must come before the
                         // containing POU.
                         let from = self.declarations.add_node(from);
-                        let to = self.declarations.add_node(&fb.type_name.name);
+                        let to = self.declarations.add_node(&fb.type_name.id);
                         self.declarations.graph.add_edge(to, from, ());
                     }
                     InitialValueAssignmentKind::FunctionBlockCall(fbc) => {
@@ -575,14 +585,21 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                         // (a POU instantiating a later-declared FB) surfaces
                         // as a spurious P2011.
                         let from = self.declarations.add_node(from);
-                        let to = self.declarations.add_node(&fbc.type_name.name);
+                        let to = self.declarations.add_node(&fbc.type_name.id);
+                        self.declarations.graph.add_edge(to, from, ());
+                    }
+                    InitialValueAssignmentKind::Interface(itf) => {
+                        // The interface must come before the POU that
+                        // declares a variable of it.
+                        let from = self.declarations.add_node(from);
+                        let to = self.declarations.add_node(&itf.type_name.id);
                         self.declarations.graph.add_edge(to, from, ());
                     }
                     InitialValueAssignmentKind::Subrange(_) => {}
                     InitialValueAssignmentKind::Structure(struct_init) => {
                         // Track dependency on the nested structure type
                         let from = self.declarations.add_node(from);
-                        let to = self.declarations.add_node(&struct_init.type_name.name);
+                        let to = self.declarations.add_node(&struct_init.type_name.id);
                         self.declarations.graph.add_edge(to, from, ());
                     }
                     InitialValueAssignmentKind::Array(array_init) => {
@@ -593,9 +610,9 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                         // declaration and is then missing from the type
                         // environment, surfacing as a spurious P2013.
                         let element_type_name = match &array_init.spec {
-                            SpecificationKind::Named(parent) => parent.name.clone(),
+                            SpecificationKind::Named(parent) => parent.id.clone(),
                             SpecificationKind::Inline(subranges) => {
-                                subranges.type_name.to_type_name().name
+                                subranges.type_name.to_type_name().id
                             }
                         };
                         let from = self.declarations.add_node(from);
@@ -609,10 +626,11 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                     }) => {
                         // We only care about these because these may be references to a function block
                         let from = self.declarations.add_node(from);
-                        let to = self.declarations.add_node(&lrt.name);
+                        let to = self.declarations.add_node(&lrt.id);
                         self.declarations.graph.add_edge(to, from, ());
                     }
-                    InitialValueAssignmentKind::SimpleExpr(_) => {
+                    InitialValueAssignmentKind::SimpleExpr(_)
+                    | InitialValueAssignmentKind::StringExpr(_) => {
                         // References a variable/constant by name in
                         // expression context, not a type — no declaration
                         // ordering edge needed.
@@ -1517,6 +1535,176 @@ END_PROGRAM";
         let options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
         let library = ironplc_parser::parse_program(program, &FileId::default(), &options).unwrap();
         let (_library, context) = crate::stages::resolve_types(&[&library], &options).unwrap();
+        assert!(
+            !context.has_diagnostics(),
+            "expected type resolution to succeed, got {:?}",
+            context.diagnostics()
+        );
+    }
+
+    // ---------------------------------------------------------------------
+    // Interface method prototypes do not order the interface.
+    // ---------------------------------------------------------------------
+
+    const INTERFACE_METHOD_PARAMETER_OF_OWN_INTERFACE: &str = "
+INTERFACE I_A
+METHOD M
+VAR_INPUT x : I_A; END_VAR
+END_METHOD
+END_INTERFACE";
+
+    const INTERFACE_METHOD_PARAMETERS_NAME_EACH_OTHER: &str = "
+INTERFACE I_A
+METHOD M
+VAR_INPUT x : I_B; END_VAR
+END_METHOD
+END_INTERFACE
+
+INTERFACE I_B
+METHOD N
+VAR_INPUT y : I_A; END_VAR
+END_METHOD
+END_INTERFACE";
+
+    fn twincat_options() -> CompilerOptions {
+        CompilerOptions::from_dialect(ironplc_parser::options::Dialect::TwinCat)
+    }
+
+    fn parse_twincat(program: &str) -> Library {
+        parse_program(program, &FileId::default(), &twincat_options()).unwrap()
+    }
+
+    /// Position of the interface declaration named `name` in the sorted
+    /// library, or `None` when the library does not declare that interface.
+    fn interface_position(library: &Library, name: &str) -> Option<usize> {
+        library.elements.iter().position(|element| match element {
+            LibraryElementKind::InterfaceDeclaration(decl) => decl.name == Id::from(name),
+            _ => false,
+        })
+    }
+
+    /// Position of the function block declaration named `name` in the sorted
+    /// library, or `None` when the library does not declare that block.
+    fn function_block_position(library: &Library, name: &str) -> Option<usize> {
+        library.elements.iter().position(|element| match element {
+            LibraryElementKind::FunctionBlockDeclaration(decl) => decl.name == TypeName::from(name),
+            _ => false,
+        })
+    }
+
+    #[test]
+    fn apply_when_interface_method_parameter_is_own_interface_then_return_ok() {
+        let library = parse_twincat(INTERFACE_METHOD_PARAMETER_OF_OWN_INTERFACE);
+        let (library, _reachable) = apply(library).unwrap();
+
+        assert!(interface_position(&library, "I_A").is_some());
+    }
+
+    #[test]
+    fn apply_when_interface_method_parameters_name_each_other_then_return_ok() {
+        let library = parse_twincat(INTERFACE_METHOD_PARAMETERS_NAME_EACH_OTHER);
+        let (library, _reachable) = apply(library).unwrap();
+
+        assert!(interface_position(&library, "I_A").is_some());
+        assert!(interface_position(&library, "I_B").is_some());
+    }
+
+    #[test]
+    fn apply_when_interface_method_parameter_is_block_holding_interface_then_interface_ordered_first(
+    ) {
+        // The block's variable still orders the interface before it; only
+        // the prototype's parameter, which pointed the other way and closed
+        // the cycle, is not an edge.
+        let program = "
+FUNCTION_BLOCK FB_A
+VAR i : I_A; END_VAR
+END_FUNCTION_BLOCK
+
+INTERFACE I_A
+METHOD M
+VAR_INPUT x : FB_A; END_VAR
+END_METHOD
+END_INTERFACE";
+
+        let library = parse_twincat(program);
+        let (library, _reachable) = apply(library).unwrap();
+
+        let itf = interface_position(&library, "I_A").unwrap();
+        let fb = function_block_position(&library, "FB_A").unwrap();
+        assert!(itf < fb, "I_A must be ordered before FB_A");
+    }
+
+    #[test]
+    fn apply_when_interface_extends_cycle_then_return_error() {
+        let program = "
+INTERFACE I_A EXTENDS I_B
+END_INTERFACE
+
+INTERFACE I_B EXTENDS I_A
+END_INTERFACE";
+
+        let library = parse_twincat(program);
+        let result = apply(library);
+        assert_eq!(
+            result.unwrap_err().first().unwrap().code,
+            Problem::RecursiveCycle.code().to_string()
+        );
+    }
+
+    #[test]
+    fn apply_when_structure_contains_itself_then_return_error() {
+        let program = "
+TYPE S : STRUCT
+    a : S;
+END_STRUCT;
+END_TYPE";
+
+        let library = parse_only(program);
+        let result = apply(library);
+        assert_eq!(
+            result.unwrap_err().first().unwrap().code,
+            Problem::RecursiveCycle.code().to_string()
+        );
+    }
+
+    #[test]
+    fn apply_when_function_block_method_parameter_is_own_function_block_then_return_error() {
+        // Unlike an interface prototype, a method runs in its block type's
+        // field scratch region, which invoking another instance of the type
+        // from the method would overwrite. The parameter's edge stays, so
+        // this is still P4005 (see visit_interface_declaration).
+        let program = "
+FUNCTION_BLOCK FB_A
+METHOD M
+VAR_INPUT x : FB_A; END_VAR
+END_METHOD
+END_FUNCTION_BLOCK";
+
+        let library = parse_twincat(program);
+        let result = apply(library);
+        assert_eq!(
+            result.unwrap_err().first().unwrap().code,
+            Problem::RecursiveCycle.code().to_string()
+        );
+    }
+
+    #[test]
+    fn resolve_types_when_interface_method_parameter_is_own_interface_then_return_ok() {
+        let library = parse_twincat(INTERFACE_METHOD_PARAMETER_OF_OWN_INTERFACE);
+        let (_library, context) =
+            crate::stages::resolve_types(&[&library], &twincat_options()).unwrap();
+        assert!(
+            !context.has_diagnostics(),
+            "expected type resolution to succeed, got {:?}",
+            context.diagnostics()
+        );
+    }
+
+    #[test]
+    fn resolve_types_when_interface_method_parameters_name_each_other_then_return_ok() {
+        let library = parse_twincat(INTERFACE_METHOD_PARAMETERS_NAME_EACH_OTHER);
+        let (_library, context) =
+            crate::stages::resolve_types(&[&library], &twincat_options()).unwrap();
         assert!(
             !context.has_diagnostics(),
             "expected type resolution to succeed, got {:?}",

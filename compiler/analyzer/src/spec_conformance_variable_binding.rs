@@ -26,7 +26,7 @@ use crate::stages::analyze;
 use crate::symbol_environment::{DeclRef, Resolution, ScopeKind, ScopePath, SymbolKind};
 use crate::test_helpers::{
     codes, configuration_with_globals as config, fb_inheritance_options,
-    parse_and_resolve_types_with_options, program_with_externals as program,
+    parse_and_resolve_types_with_options, program_with_externals as program, NOT_IMPLEMENTED_CODE,
 };
 
 /// The scope the chain of declaration names `path` opens.
@@ -646,4 +646,184 @@ END_PROGRAM"
         .find(&Id::from("x"), &scope(&["Sample"]))
         .is_some_and(|field| field.kind == SymbolKind::StructureElement));
     assert_eq!(analyze_codes(&source, &options), codes(&[]));
+}
+
+// ---------------------------------------------------------------------------
+// Properties
+// ---------------------------------------------------------------------------
+
+const BLOCK_WITH_PROPERTY: &str = "
+FUNCTION_BLOCK FB_Axis
+  VAR
+    _pos : INT;
+  END_VAR
+  METHOD Reset
+    Position := 0;
+  END_METHOD
+  PROPERTY Position : INT
+  GET
+    VAR
+      tmp : INT;
+    END_VAR
+    tmp := _pos;
+    Position := tmp;
+  END_GET
+  SET
+    VAR
+      tmp : INT;
+    END_VAR
+    tmp := Position;
+    _pos := tmp;
+  END_SET
+  END_PROPERTY
+END_FUNCTION_BLOCK";
+
+/// REQ-VB-analyzer-060: A property is declared in its block's scope, and a
+/// name that reaches it is not a variable; its use is not implemented.
+#[spec_test(REQ_VB_analyzer_060)]
+fn analyzer_spec_req_vb_060_property_is_declared_in_block_scope_and_not_a_variable() {
+    let options = fb_inheritance_options();
+    let context = resolved(BLOCK_WITH_PROPERTY, &options);
+
+    assert!(context
+        .symbols()
+        .find(&Id::from("Position"), &scope(&["FB_Axis"]))
+        .is_some_and(|property| property.kind == SymbolKind::Property));
+    assert!(matches!(
+        resolve(&context, "Position", &["FB_Axis", "Reset"]),
+        Resolution::NotAVariable
+    ));
+    assert_eq!(
+        analyze_codes(BLOCK_WITH_PROPERTY, &options),
+        [NOT_IMPLEMENTED_CODE]
+    );
+}
+
+/// REQ-VB-analyzer-061: A property hides a global of the same name, and an
+/// inherited property is found from the derived block.
+#[spec_test(REQ_VB_analyzer_061)]
+fn analyzer_spec_req_vb_061_property_hides_global_and_is_inherited() {
+    let source = "
+VAR_GLOBAL
+  Speed : REAL;
+END_VAR
+
+FUNCTION_BLOCK FB_Base
+  VAR
+    _speed : REAL;
+  END_VAR
+  PROPERTY Speed : REAL
+  GET
+    Speed := _speed;
+  END_GET
+  END_PROPERTY
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Motor EXTENDS FB_Base
+  METHOD Stop
+    Speed := 0.0;
+  END_METHOD
+END_FUNCTION_BLOCK";
+    let options = CompilerOptions {
+        allow_fb_inheritance: true,
+        allow_top_level_var_global: true,
+        ..CompilerOptions::default()
+    };
+    let context = resolved(source, &options);
+
+    assert!(matches!(
+        resolve(&context, "Speed", &["FB_Base"]),
+        Resolution::NotAVariable
+    ));
+    assert!(matches!(
+        resolve(&context, "Speed", &["FB_Motor", "Stop"]),
+        Resolution::NotAVariable
+    ));
+    assert!(matches!(
+        resolve(&context, "Speed", &["FB_Base", "Speed.GET"]),
+        Resolution::Variable { .. }
+    ));
+}
+
+/// REQ-VB-analyzer-062: A property and a variable of one name in one block
+/// are a repeated declaration.
+#[spec_test(REQ_VB_analyzer_062)]
+fn analyzer_spec_req_vb_062_property_and_variable_of_one_name_are_repeated() {
+    let source = "
+FUNCTION_BLOCK FB_Axis
+  VAR
+    Position : INT;
+  END_VAR
+  PROPERTY Position : INT
+  GET
+    Position := 1;
+  END_GET
+  END_PROPERTY
+END_FUNCTION_BLOCK";
+
+    assert!(analyze_codes(source, &fb_inheritance_options())
+        .contains(&Problem::SymbolDeclDuplicated.code().to_string()));
+}
+
+/// REQ-VB-analyzer-063: Each accessor has a scope of its own, so a variable
+/// each declares under one name is two declarations, and the property's
+/// name is the accessor's own variable.
+#[spec_test(REQ_VB_analyzer_063)]
+fn analyzer_spec_req_vb_063_each_accessor_has_its_own_scope() {
+    let options = fb_inheritance_options();
+    let context = resolved(BLOCK_WITH_PROPERTY, &options);
+    let get = ["FB_Axis", "Position.GET"];
+    let set = ["FB_Axis", "Position.SET"];
+
+    assert!(matches!(
+        resolve(&context, "tmp", &get),
+        Resolution::Variable { decl: found, .. } if found == decl(&scope(&get), "tmp")
+    ));
+    assert!(matches!(
+        resolve(&context, "tmp", &set),
+        Resolution::Variable { decl: found, .. } if found == decl(&scope(&set), "tmp")
+    ));
+    assert!(matches!(
+        resolve(&context, "Position", &get),
+        Resolution::Variable { decl: found, info }
+            if found == decl(&scope(&get), "Position") && info.kind == SymbolKind::ResultVariable
+    ));
+    assert!(matches!(
+        resolve(&context, "Position", &set),
+        Resolution::Variable { decl: found, info }
+            if found == decl(&scope(&set), "Position") && info.kind == SymbolKind::Parameter
+    ));
+    assert!(!analyze_codes(BLOCK_WITH_PROPERTY, &options)
+        .contains(&Problem::SymbolDeclDuplicated.code().to_string()));
+}
+
+/// REQ-VB-analyzer-064: A variable a derived block declares with the name of
+/// a property a base block declares is P4044.
+#[spec_test(REQ_VB_analyzer_064)]
+fn analyzer_spec_req_vb_064_variable_named_as_inherited_property_is_p4044() {
+    let source = "
+FUNCTION_BLOCK FB_Base
+  VAR
+    _pos : INT;
+  END_VAR
+  PROPERTY Position : INT
+  GET
+    Position := _pos;
+  END_GET
+  END_PROPERTY
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Middle EXTENDS FB_Base
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Middle
+  VAR
+    Position : INT;
+  END_VAR
+END_FUNCTION_BLOCK";
+
+    assert_eq!(
+        analyze_codes(source, &fb_inheritance_options()),
+        codes(&[Problem::ExtendsFieldNameDuplicated])
+    );
 }

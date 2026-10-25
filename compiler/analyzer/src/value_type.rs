@@ -97,7 +97,8 @@ fn operand_name_of(types: &TypeEnvironment, id: TypeId) -> Option<TypeName> {
         SemanticType::Enumeration { .. }
         | SemanticType::Structure { .. }
         | SemanticType::Array { .. }
-        | SemanticType::FunctionBlock { .. } => types.name_of(id).cloned(),
+        | SemanticType::FunctionBlock { .. }
+        | SemanticType::Interface { .. } => types.name_of(id).cloned(),
     }
 }
 
@@ -162,7 +163,8 @@ pub(crate) fn of(types: &TypeEnvironment, expr: &Expr) -> Option<ValueType> {
         SemanticType::Array { .. }
         | SemanticType::Structure { .. }
         | SemanticType::Enumeration { .. }
-        | SemanticType::FunctionBlock { .. } => Some(ValueType::Composite(*id)),
+        | SemanticType::FunctionBlock { .. }
+        | SemanticType::Interface { .. } => Some(ValueType::Composite(*id)),
         SemanticType::Subrange { base_type, .. } => types
             .elementary_type_name_for(base_type)
             .map(ValueType::Scalar)
@@ -228,23 +230,32 @@ pub(crate) fn check(
 /// An array or a structure is accepted where an array or structure of the
 /// same shape is, as a whole-aggregate assignment is (P2037): an inline
 /// `ARRAY[1..2] OF DINT` passes for a parameter declared with a named array
-/// type of that shape. An enumeration or a function block instance is only
-/// ever its own type. Every composite is accepted for `ANY`, the category
-/// of every data type (`SIZEOF(a)`), and none for a narrower generic
-/// category such as `ANY_NUM`.
+/// type of that shape. A function block instance or an interface value is
+/// accepted where an interface it converts to is (see [`crate::supertypes`]).
+/// An enumeration is only ever its own type. Every composite is accepted for
+/// `ANY`, the category of every data type (`SIZEOF(a)`), and none for a
+/// narrower generic category such as `ANY_NUM`.
 fn composite_accepted(types: &TypeEnvironment, expected: &TypeName, id: TypeId) -> bool {
-    match GenericTypeName::try_from(&expected.name) {
+    match GenericTypeName::try_from(&expected.id) {
         Ok(GenericTypeName::Any) => return true,
         Ok(_) => return false,
         Err(_) => {}
     }
-    let (Some(expected), Some(actual)) = (types.get(expected), types.get_by_id(id)) else {
+    let (Some(expected_type), Some(actual)) = (types.get(expected), types.get_by_id(id)) else {
         return false;
     };
-    matches!(
-        actual.representation,
-        SemanticType::Array { .. } | SemanticType::Structure { .. }
-    ) && expected.representation == actual.representation
+    match &actual.representation {
+        SemanticType::Array { .. } | SemanticType::Structure { .. } => {
+            expected_type.representation == actual.representation
+        }
+        SemanticType::FunctionBlock { .. } | SemanticType::Interface { .. } => {
+            expected_type.representation.is_interface()
+                && types
+                    .name_of(id)
+                    .is_some_and(|actual| types.supertypes().is_subtype_of(actual, expected))
+        }
+        _ => false,
+    }
 }
 
 /// The type `id` identifies, as a diagnostic shows it: its name when it
@@ -314,7 +325,7 @@ fn describe_representation(types: &TypeEnvironment, representation: &SemanticTyp
         }
         SemanticType::Structure { .. } => "a structure".to_string(),
         SemanticType::Enumeration { .. } => "an enumeration".to_string(),
-        SemanticType::FunctionBlock { name, .. } => name.clone(),
+        SemanticType::FunctionBlock { name, .. } | SemanticType::Interface { name } => name.clone(),
         SemanticType::Reference { target_type } => {
             format!("REF_TO {}", describe_representation(types, target_type))
         }
@@ -409,6 +420,7 @@ mod tests {
             &mut types,
             SemanticType::Enumeration {
                 members: crate::enumeration_members::EnumerationMembers::default(),
+                underlying_type: None,
             },
         );
 
@@ -424,6 +436,7 @@ mod tests {
             &color,
             TypeAttributes::new(SemanticType::Enumeration {
                 members: crate::enumeration_members::EnumerationMembers::default(),
+                underlying_type: None,
             }),
         );
         let named = types.id_of(&color).unwrap();

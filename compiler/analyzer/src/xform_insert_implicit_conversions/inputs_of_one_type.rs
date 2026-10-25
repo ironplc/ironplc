@@ -14,22 +14,24 @@
 //! * the result type on an untyped literal: the `5` of `MAX(d, 5)` is a
 //!   `DINT`.
 //!
-//! The operator forms of `AND`, `OR` and `XOR` compute at their result type
-//! too, the type both operands widen to, and their operands are recorded the
-//! same way: `w OR lw` on a `WORD` and an `LWORD` is `LWORD(w) OR lw`.
+//! A bitwise operator ([`CompareOp::is_bitwise`]) computes at its result
+//! type too, the type both operands widen to, and its operands are recorded
+//! the same way: `w OR lw` on a `WORD` and an `LWORD` is `LWORD(w) OR lw`.
 //!
 //! `MUX`'s selector `K` is converted to `DINT` when its operation type
 //! differs, and `SEL`'s `G` stays a `BOOL`. A call whose inputs are all
 //! untyped literals has a literal's category until the literal pass gives it
 //! its context's type, which records its inputs then. The conversion of the
 //! result to the type of its context is recorded where that context is.
+//!
+//! [`CompareOp::is_bitwise`]: ironplc_dsl::textual::CompareOp::is_bitwise
 
 use ironplc_dsl::common::{ElementaryTypeName, TypeName};
 use ironplc_dsl::textual::{Expr, ExprKind, ExprType, Function};
 use ironplc_dsl::type_id::TypeId;
 
 use super::ImplicitConversions;
-use crate::builtin_function::{is_bitwise, BuiltinFunction};
+use crate::builtin_function::BuiltinFunction;
 use crate::intermediates::numeric_operation::{operation_type_of, OperationType};
 
 impl ImplicitConversions<'_> {
@@ -44,8 +46,8 @@ impl ImplicitConversions<'_> {
         }
     }
 
-    /// Records the conversions of the operands of `expr` when it is an `AND`,
-    /// `OR` or `XOR` whose own type is settled, to that type.
+    /// Records the conversions of the operands of `expr` when it is a
+    /// bitwise operator whose own type is settled, to that type.
     pub(super) fn record_bitwise_operands(&self, expr: &mut Expr) {
         let Some(result) = expr.expr_type.as_ref().and_then(ExprType::type_id) else {
             return;
@@ -53,7 +55,7 @@ impl ImplicitConversions<'_> {
         let ExprKind::Compare(compare) = &mut expr.kind else {
             return;
         };
-        if !is_bitwise(&compare.op) {
+        if !compare.op.is_bitwise() {
             return;
         }
         let Some(at) = self.operation_type(result) else {

@@ -14,7 +14,6 @@
 //! of a conversion, and whether a typed time function is the long form.
 
 use ironplc_dsl::common::ElementaryTypeName;
-use ironplc_dsl::textual::CompareOp;
 
 use crate::intermediates::operator_function_form::FormOf;
 
@@ -88,7 +87,7 @@ impl BuiltinFunction {
             BuiltinFunction::Numeric(function) => {
                 function.has_one_input() || function.inputs_of_one_type().is_some()
             }
-            BuiltinFunction::Operator(FormOf::Compare(op)) => is_bitwise(op),
+            BuiltinFunction::Operator(FormOf::Compare(op)) => op.is_bitwise(),
             BuiltinFunction::Operator(FormOf::Arithmetic(_))
             | BuiltinFunction::Trunc
             | BuiltinFunction::BcdToInt
@@ -165,7 +164,7 @@ impl BuiltinFunction {
             // Boolean on `BOOL`s and bitwise on bit strings, at the bit
             // string every input widens to: `OR(w, lw)` on a `WORD` and an
             // `LWORD` is an `LWORD`.
-            BuiltinFunction::Operator(FormOf::Compare(op)) if is_bitwise(op) => {
+            BuiltinFunction::Operator(FormOf::Compare(op)) if op.is_bitwise() => {
                 Some(InputsOfOneType {
                     first: 0,
                     result: OneTypeResult::Common,
@@ -184,24 +183,6 @@ impl BuiltinFunction {
             | BuiltinFunction::DtToDate
             | BuiltinFunction::DtToTod => None,
         }
-    }
-}
-
-/// Returns `true` for `AND`, `OR` and `XOR`, whose result has the type of
-/// their operands -- a `BOOL` of `BOOL`s, a bit string of bit strings -- and
-/// `false` for `AND_THEN` and `OR_ELSE`, which take only `BOOL`s, and for the
-/// comparisons, whose result is a `BOOL` whatever they compare.
-pub(crate) fn is_bitwise(op: &CompareOp) -> bool {
-    match op {
-        CompareOp::And | CompareOp::Or | CompareOp::Xor => true,
-        CompareOp::AndThen
-        | CompareOp::OrElse
-        | CompareOp::Eq
-        | CompareOp::Ne
-        | CompareOp::Lt
-        | CompareOp::Gt
-        | CompareOp::LtEq
-        | CompareOp::GtEq => false,
     }
 }
 

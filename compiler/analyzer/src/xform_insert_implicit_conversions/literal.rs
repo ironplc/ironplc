@@ -19,8 +19,8 @@
 use ironplc_dsl::common::{ConstantKind, ElementaryTypeName, GenericTypeName, TypeName};
 use ironplc_dsl::core::Id;
 use ironplc_dsl::textual::{
-    Case, CompareExpr, CompareOp, Expr, ExprKind, ExprType, FbCall, For, Function, If, MethodCall,
-    ParamAssignmentKind, Repeat, SymbolicVariableKind, UnaryOp, Variable, While,
+    Case, CompareExpr, CompareOpKind, Expr, ExprKind, ExprType, FbCall, For, Function, If,
+    MethodCall, ParamAssignmentKind, Repeat, SymbolicVariableKind, UnaryOp, Variable, While,
 };
 use ironplc_dsl::type_id::TypeId;
 
@@ -94,7 +94,8 @@ impl ImplicitConversions<'_> {
                 if let Some(own) = own {
                     self.record_one_type_call(func, own);
                 }
-                self.type_call_literals(func, own, numeric, context, numeric_pair)
+                self.type_call_literals(func, own, numeric, context, numeric_pair);
+                self.type_output_target_literals(&mut func.param_assignment);
             }
             ExprKind::MethodCall(call) => self.type_method_call_literals(call),
             ExprKind::Variable(variable) => self.type_variable_literals(variable),
@@ -268,13 +269,33 @@ impl ImplicitConversions<'_> {
                         .into_iter()
                         .for_each(|arg| self.type_literals(arg, at));
                 }
+                // `BCD_TO_INT` decodes the bit string it is given, at its
+                // width. A dialect may let an untyped integer literal stand
+                // for one (`--allow-int-literal-to-bit-string`), and the
+                // literal is then the bit string as wide as the `DINT` it
+                // defaults to (ADR-0028): `BCD_TO_INT(16#12)` decodes a
+                // `DWORD`.
+                BuiltinFunction::BcdToInt => inputs.into_iter().for_each(|arg| {
+                    let at = match &arg.expr_type {
+                        Some(ExprType::Literal(generic))
+                            if literal_default_type(generic) == Some(ElementaryTypeName::DINT) =>
+                        {
+                            self.dword()
+                        }
+                        Some(_) | None => self.own_or_default(arg),
+                    };
+                    self.type_literals(arg, at);
+                }),
+                // `SIZEOF` measures its argument rather than computing it,
+                // so no backend compiles the argument; the literals of its
+                // subscripts are typed all the same, so that none is left
+                // at a generic category.
                 BuiltinFunction::Trunc
-                | BuiltinFunction::BcdToInt
                 | BuiltinFunction::IntToBcd
                 | BuiltinFunction::Time { .. }
                 | BuiltinFunction::DtToDate
-                | BuiltinFunction::DtToTod => inputs.into_iter().for_each(|arg| self.type_own(arg)),
-                BuiltinFunction::Sizeof => {}
+                | BuiltinFunction::DtToTod
+                | BuiltinFunction::Sizeof => inputs.into_iter().for_each(|arg| self.type_own(arg)),
             },
         }
     }
@@ -293,6 +314,18 @@ impl ImplicitConversions<'_> {
             match at {
                 Some(at) => self.type_literals(arg, Some(at)),
                 None => self.type_own(arg),
+            }
+        }
+        self.type_output_target_literals(&mut call.params);
+    }
+
+    /// Types the literals of the subscripts of each output target of a call,
+    /// as those of an assignment's target are: an output assignment stores
+    /// in its target as an assignment does.
+    fn type_output_target_literals(&self, params: &mut [ParamAssignmentKind]) {
+        for param in params {
+            if let ParamAssignmentKind::Output(output) = param {
+                self.type_variable_literals(&mut output.tgt);
             }
         }
     }
@@ -447,6 +480,7 @@ impl ImplicitConversions<'_> {
                 None => self.type_own(input),
             }
         }
+        self.type_output_target_literals(&mut node.params);
     }
 
     /// The inputs of the function block call `node`, each with the type of
@@ -509,18 +543,9 @@ impl ImplicitConversions<'_> {
 
     fn condition_type(&self, condition: &Expr) -> Option<TypeId> {
         match &condition.kind {
-            ExprKind::Compare(compare) => match compare.op {
-                CompareOp::And
-                | CompareOp::Or
-                | CompareOp::Xor
-                | CompareOp::AndThen
-                | CompareOp::OrElse => self.condition_type(&compare.left),
-                CompareOp::Eq
-                | CompareOp::Ne
-                | CompareOp::Lt
-                | CompareOp::Gt
-                | CompareOp::LtEq
-                | CompareOp::GtEq => {
+            ExprKind::Compare(compare) => match compare.op.kind() {
+                CompareOpKind::Bitwise => self.condition_type(&compare.left),
+                CompareOpKind::Equality | CompareOpKind::Ordering => {
                     if self.conversions.is_string(&compare.left) {
                         self.dint()
                     } else {
@@ -560,6 +585,11 @@ impl ImplicitConversions<'_> {
     pub(super) fn dint(&self) -> Option<TypeId> {
         let dint: TypeName = ElementaryTypeName::DINT.into();
         self.context.types().id_of(&dint)
+    }
+
+    fn dword(&self) -> Option<TypeId> {
+        let dword: TypeName = ElementaryTypeName::DWORD.into();
+        self.context.types().id_of(&dword)
     }
 
     fn lint(&self) -> Option<TypeId> {

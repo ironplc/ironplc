@@ -30,8 +30,11 @@
 //! pass recorded for it.
 //!
 //! A literal the pass converts to another type must be a value of that type
-//! too, as must a literal operand of `AND`, `OR` or `XOR`, which operates at
-//! the type of the operator although no conversion is recorded for it.
+//! too, as must a literal operand of a bitwise operator
+//! ([`CompareOp::is_bitwise`]), which operates at the type of the operator
+//! although no conversion is recorded for it.
+//!
+//! [`CompareOp::is_bitwise`]: ironplc_dsl::textual::CompareOp::is_bitwise
 //!
 //! An untyped real literal recorded as a `REAL` must be a value a `REAL` can
 //! represent. That is reported as the real literal problem
@@ -104,6 +107,7 @@ use ironplc_dsl::{
     diagnostic::{Diagnostic, Label},
     scope::ScopeNode,
     textual::*,
+    type_id::TypeId,
     visitor::Visitor,
 };
 use ironplc_parser::options::CompilerOptions;
@@ -495,39 +499,43 @@ impl RuleConstantRange<'_> {
     /// Checks structure element initializers against the fields of the type
     /// `type_name` names.
     fn check_named_elements(&mut self, type_name: &TypeName, elements: &[StructureElementInit]) {
-        if let Some(declared) = self.representation_of(type_name) {
-            self.check_element_inits(elements, &declared);
+        if let Some(record) = self.type_environment.id_of(type_name) {
+            self.check_element_inits(elements, record);
         }
     }
 
-    /// Checks structure element initializers against the fields of
-    /// `declared`, a structure or function block type.
-    fn check_element_inits(&mut self, elements: &[StructureElementInit], declared: &SemanticType) {
+    /// Checks structure element initializers against the fields of the
+    /// structure or function block type `record`, each of the type the
+    /// environment records for it.
+    fn check_element_inits(&mut self, elements: &[StructureElementInit], record: TypeId) {
         for element in elements {
-            if let Some(field) = variable_type::struct_field_type(declared, &element.name) {
-                self.check_struct_value(&element.init, &field);
+            if let Some(field) = self.type_environment.field_type(record, &element.name) {
+                self.check_struct_value(&element.init, field);
             }
         }
     }
 
     /// Checks the value a structure element initializer stores into a field
-    /// of type `expected`.
-    fn check_struct_value(
-        &mut self,
-        value: &StructInitialValueAssignmentKind,
-        expected: &SemanticType,
-    ) {
+    /// of the type `field`.
+    fn check_struct_value(&mut self, value: &StructInitialValueAssignmentKind, field: TypeId) {
+        let Some(expected) = self
+            .type_environment
+            .get_by_id(field)
+            .map(|attributes| attributes.representation.clone())
+        else {
+            return;
+        };
         match value {
             StructInitialValueAssignmentKind::Constant(constant) => {
-                self.check_constant(constant, expected)
+                self.check_constant(constant, &expected)
             }
             StructInitialValueAssignmentKind::Array(elements) => {
-                self.check_array_elements(elements, expected)
+                self.check_array_elements(elements, &expected)
             }
             StructInitialValueAssignmentKind::Structure(elements) => {
-                self.check_element_inits(elements, expected)
+                self.check_element_inits(elements, field)
             }
-            StructInitialValueAssignmentKind::Expression(expr) => self.check_expr(expr, expected),
+            StructInitialValueAssignmentKind::Expression(expr) => self.check_expr(expr, &expected),
             StructInitialValueAssignmentKind::EnumeratedValue(_)
             | StructInitialValueAssignmentKind::LateBound(_) => {}
         }
@@ -599,18 +607,23 @@ impl RuleConstantRange<'_> {
 
     /// Checks each input argument of a function block call against the type
     /// of the input it binds to: a named argument by name among the
-    /// `VAR_INPUT` and `VAR_IN_OUT` variables, a positional one by position
-    /// among the `VAR_INPUT` variables.
+    /// `VAR_INPUT` and `VAR_IN_OUT` variables of an instance, inherited ones
+    /// included, a positional one by position among its `VAR_INPUT`
+    /// variables.
     fn check_fb_call_arguments(&mut self, node: &FbCall) {
-        let Some(SemanticType::FunctionBlock { fields, .. }) =
-            variable_type::declared(&node.var_name, self.context, &self.scope.current())
-        else {
+        let types = self.type_environment;
+        let Some(fields) = variable_type::declared_type_id(
+            &node.var_name,
+            self.context.symbols(),
+            &self.scope.current(),
+        )
+        .and_then(|block| types.instance_fields(block)) else {
             return;
         };
 
         let mut positional = fields
             .iter()
-            .filter(|field| field.var_type == Some(FunctionBlockVarType::Input));
+            .filter(|field| field.var_type == FunctionBlockVarType::Input);
         for param in &node.params {
             let (field, arg) = match param {
                 ParamAssignmentKind::PositionalInput(input) => (positional.next(), &input.expr),
@@ -619,15 +632,18 @@ impl RuleConstantRange<'_> {
                         field.name == input.name
                             && matches!(
                                 field.var_type,
-                                Some(FunctionBlockVarType::Input | FunctionBlockVarType::InOut)
+                                FunctionBlockVarType::Input | FunctionBlockVarType::InOut
                             )
                     }),
                     &input.expr,
                 ),
                 ParamAssignmentKind::Output(_) => continue,
             };
-            if let Some(field) = field {
-                self.check_expr(arg, &field.field_type);
+            let expected = field
+                .and_then(|field| types.get_by_id(field.field_type?))
+                .map(|attributes| attributes.representation.clone());
+            if let Some(expected) = expected {
+                self.check_expr(arg, &expected);
             }
         }
     }
@@ -635,10 +651,11 @@ impl RuleConstantRange<'_> {
     /// Checks a comparison's literals against the type of the other side.
     ///
     /// `IF c = 200` compares at `c`'s type, so a literal that `c` can never
-    /// hold makes the comparison unsatisfiable rather than false. A logical
-    /// or bitwise operator (`AND`, `OR`, `XOR`) is not a comparison: it
-    /// computes at a type of its own, which its operands' own type checks
-    /// read.
+    /// hold makes the comparison unsatisfiable rather than false. A bitwise
+    /// operator ([`CompareOp::is_bitwise`]) is not a comparison: it computes
+    /// at a type of its own, which its operands' own type checks read.
+    ///
+    /// [`CompareOp::is_bitwise`]: ironplc_dsl::textual::CompareOp::is_bitwise
     fn check_compare(&mut self, compare: &CompareExpr) {
         if !compare.op.is_comparison() {
             return;

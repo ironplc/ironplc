@@ -99,6 +99,11 @@ pub enum SemanticType {
         /// The members, their ordinals and the default. Not compared by
         /// `PartialEq` (see [`EnumerationMembers`]).
         members: EnumerationMembers,
+        /// The integer or bit string type the declaration names for its
+        /// values (`(A, B) WORD`, behind `--allow-enum-base-type`), if it
+        /// names one. It gives `SIZEOF` its size, and changes neither how
+        /// the enumeration is stored nor how it is operated on.
+        underlying_type: Option<Box<SemanticType>>,
     },
     /// Structure type containing named fields
     Structure {
@@ -121,12 +126,25 @@ pub enum SemanticType {
         /// Maximum value (inclusive)
         max_value: i128,
     },
-    /// Function block type
+    /// Function block type.
+    ///
+    /// It names the block and lists none of its fields: those are recorded
+    /// in the type environment (`TypeEnvironment::block_fields`), by the
+    /// block's id. A block's fields are known only once its variables'
+    /// types are, after its type is entered and copied into the types that
+    /// use it (an array of the block, a reference to it), so a field list
+    /// here would be a copy that could go stale.
     FunctionBlock {
         /// Name of the function block type
         name: String,
-        /// Ordered list of fields (variables) in the function block instance
-        fields: Vec<SemanticStructField>,
+    },
+    /// Interface type (OOP extension). A value of this type refers to a
+    /// function block instance that implements the interface. Its runtime
+    /// representation is not decided yet (ADR-0041 Phase 2), so it has no
+    /// size and cannot be laid out.
+    Interface {
+        /// Name of the interface type
+        name: String,
     },
     /// Reference type (REF_TO) pointing to a target type.
     /// References are stored as variable-table indices (u64) at runtime.
@@ -184,6 +202,11 @@ impl SemanticType {
         }
     }
 
+    /// Returns if the type is an interface.
+    pub fn is_interface(&self) -> bool {
+        matches!(self, SemanticType::Interface { .. })
+    }
+
     /// Returns if the type is a function block.
     pub fn is_function_block(&self) -> bool {
         matches!(self, SemanticType::FunctionBlock { .. })
@@ -194,21 +217,18 @@ impl SemanticType {
     /// Structures and function block instances both expose named fields, so
     /// both answer `true`.
     pub fn has_members(&self) -> bool {
-        self.member_fields().is_some()
+        matches!(
+            self,
+            SemanticType::Structure { .. } | SemanticType::FunctionBlock { .. }
+        )
     }
 
-    /// Returns the named fields reachable with `.` access, None if the type
-    /// has no such members.
-    ///
-    /// A function block instance exposes its variables (`timer.Q`) the same way
-    /// a structure exposes its fields (`setup.FLAG`), so both are returned
-    /// here. Use [`SemanticType::is_structure`] instead when the caller
-    /// needs a structure specifically.
-    pub fn member_fields(&self) -> Option<&Vec<SemanticStructField>> {
+    /// The fields a structure lists, `None` for any other type. A function
+    /// block's fields are in the type environment
+    /// (`TypeEnvironment::block_fields`), not in its type.
+    pub fn structure_fields(&self) -> Option<&Vec<SemanticStructField>> {
         match self {
-            SemanticType::Structure { fields } | SemanticType::FunctionBlock { fields, .. } => {
-                Some(fields)
-            }
+            SemanticType::Structure { fields } => Some(fields),
             _ => None,
         }
     }
@@ -277,6 +297,7 @@ impl SemanticType {
             | SemanticType::Array { .. }
             | SemanticType::Subrange { .. }
             | SemanticType::FunctionBlock { .. }
+            | SemanticType::Interface { .. }
             | SemanticType::Reference { .. } => None,
         }
     }
@@ -462,20 +483,20 @@ impl SemanticType {
             }
 
             // Not yet supported in data region
-            SemanticType::FunctionBlock { .. } => Err(SlotCountError::UnsupportedFieldType),
+            SemanticType::FunctionBlock { .. } | SemanticType::Interface { .. } => {
+                Err(SlotCountError::UnsupportedFieldType)
+            }
         }
     }
 }
 
-/// Represents a field within a structure or function block semantic type.
+/// Represents a field within a structure semantic type.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SemanticStructField {
     /// Name of the field
     pub name: Id,
     /// Type of the field
     pub field_type: SemanticType,
-    /// Variable type for function block fields (None for structure fields)
-    pub var_type: Option<FunctionBlockVarType>,
     /// Whether this field has a default value in the type declaration.
     /// Used for const initialization validation - a const variable of structure type
     /// is fully initialized if all fields without defaults are explicitly initialized.
@@ -741,14 +762,13 @@ mod tests {
     }
 
     #[test]
-    fn member_fields_when_structure_then_returns_fields() {
+    fn structure_fields_when_structure_then_returns_fields() {
         use super::SemanticStructField;
         use ironplc_dsl::core::Id;
 
         let fields = vec![SemanticStructField {
             name: Id::from("field1"),
             field_type: SemanticType::Bool,
-            var_type: None,
             has_default: false,
         }];
         let struct_type = SemanticType::Structure {
@@ -756,40 +776,30 @@ mod tests {
         };
 
         assert!(struct_type.has_members());
-        assert_eq!(struct_type.member_fields(), Some(&fields));
+        assert_eq!(struct_type.structure_fields(), Some(&fields));
     }
 
     #[test]
-    fn member_fields_when_function_block_then_returns_fields() {
-        use super::{FunctionBlockVarType, SemanticStructField};
-        use ironplc_dsl::core::Id;
-
-        let fields = vec![SemanticStructField {
-            name: Id::from("Q"),
-            field_type: SemanticType::Bool,
-            var_type: Some(FunctionBlockVarType::Output),
-            has_default: false,
-        }];
+    fn structure_fields_when_function_block_then_none_but_has_members() {
         let fb_type = SemanticType::FunctionBlock {
             name: "MyFB".to_string(),
-            fields: fields.clone(),
         };
 
         assert!(fb_type.has_members());
-        assert_eq!(fb_type.member_fields(), Some(&fields));
+        assert_eq!(fb_type.structure_fields(), None);
     }
 
     #[test]
-    fn member_fields_when_not_composite_then_returns_none() {
+    fn structure_fields_when_not_composite_then_returns_none() {
         assert!(!SemanticType::Bool.has_members());
-        assert_eq!(SemanticType::Bool.member_fields(), None);
+        assert_eq!(SemanticType::Bool.structure_fields(), None);
 
         let array_type = SemanticType::Array {
             element_type: Box::new(SemanticType::Bool),
             dimensions: vec![],
         };
         assert!(!array_type.has_members());
-        assert_eq!(array_type.member_fields(), None);
+        assert_eq!(array_type.structure_fields(), None);
     }
 
     #[test]
@@ -854,6 +864,7 @@ mod tests {
         assert_eq!(
             SemanticType::Enumeration {
                 members: crate::enumeration_members::EnumerationMembers::default(),
+                underlying_type: None,
             }
             .slot_count(),
             Ok(1)
@@ -880,13 +891,11 @@ mod tests {
                     field_type: SemanticType::Int {
                         size: ByteSized::B16,
                     },
-                    var_type: None,
                     has_default: false,
                 },
                 SemanticStructField {
                     name: Id::from("b"),
                     field_type: SemanticType::Bool,
-                    var_type: None,
                     has_default: false,
                 },
             ],
@@ -903,7 +912,6 @@ mod tests {
                     field_type: SemanticType::Int {
                         size: ByteSized::B32,
                     },
-                    var_type: None,
                     has_default: false,
                 },
                 SemanticStructField {
@@ -911,7 +919,6 @@ mod tests {
                     field_type: SemanticType::Int {
                         size: ByteSized::B32,
                     },
-                    var_type: None,
                     has_default: false,
                 },
             ],
@@ -921,13 +928,11 @@ mod tests {
                 SemanticStructField {
                     name: Id::from("inner"),
                     field_type: inner,
-                    var_type: None,
                     has_default: false,
                 },
                 SemanticStructField {
                     name: Id::from("z"),
                     field_type: SemanticType::Bool,
-                    var_type: None,
                     has_default: false,
                 },
             ],
@@ -959,7 +964,6 @@ mod tests {
                     field_type: SemanticType::Int {
                         size: ByteSized::B32,
                     },
-                    var_type: None,
                     has_default: false,
                 },
                 SemanticStructField {
@@ -967,7 +971,6 @@ mod tests {
                     field_type: SemanticType::Int {
                         size: ByteSized::B32,
                     },
-                    var_type: None,
                     has_default: false,
                 },
             ],
@@ -1099,7 +1102,6 @@ mod tests {
                 fields: vec![SemanticStructField {
                     name: Id::from(&format!("f{}", i)),
                     field_type: t,
-                    var_type: None,
                     has_default: false,
                 }],
             };

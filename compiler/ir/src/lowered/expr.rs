@@ -5,9 +5,11 @@ use ironplc_dsl::diagnostic::Diagnostic;
 
 use super::call::{program_of, Arg, Callee, Intrinsic, Param};
 use super::ids::{PouId, Stamp};
+use super::in_place::InPlaceCall;
 use super::invariant::broken;
 use super::place::Place;
 use super::scalar::{ScalarType, Signedness};
+use super::stmt::Stmt;
 use super::types::{NarrowWidth, TypeTable};
 use super::variables::{PouTable, VariableTable};
 
@@ -175,6 +177,10 @@ pub enum ExprKind {
         callee: Callee,
         args: Vec<Arg>,
     },
+    /// The result of a call of a function or method with outputs, run where
+    /// the expression is evaluated: the call, then the stores of its
+    /// outputs (REQ-LOW-ir-182).
+    InPlaceCall(InPlaceCall),
     /// A reference to a place.
     RefTo(Place),
     /// The null reference.
@@ -421,10 +427,10 @@ impl Expr {
         Self::of_one_program("Expr::compare", &lhs, &rhs, &span)?;
         // References are compared only for equality: an order of addresses
         // means something different on every target.
-        let ordered = matches!(
-            op,
-            CompareOp::Lt | CompareOp::Le | CompareOp::Gt | CompareOp::Ge
-        );
+        let ordered = match op {
+            CompareOp::Eq | CompareOp::Ne => false,
+            CompareOp::Lt | CompareOp::Le | CompareOp::Gt | CompareOp::Ge => true,
+        };
         let comparable = match lhs.ty {
             ScalarType::Interface => false,
             ScalarType::Ref => !ordered,
@@ -507,11 +513,9 @@ impl Expr {
         )
     }
 
-    /// The result of calling the function `pou` that `pous` declares with
-    /// `args`: one argument for each of its parameters, in order, at the
-    /// parameter's operation type, or a place of the type a `VAR_IN_OUT`
-    /// parameter refers to (REQ-LOW-lowering-071, REQ-LOW-lowering-072). The
-    /// arguments read places of the program the tables belong to.
+    /// The result of calling the function or method `pou` that `pous`
+    /// declares with `args`, which [`check_user_call`] describes. A method
+    /// without a result is only called by a statement.
     pub(crate) fn call_function(
         types: &TypeTable,
         variables: &VariableTable,
@@ -521,41 +525,34 @@ impl Expr {
         span: SourceSpan,
     ) -> Result<Self, Diagnostic> {
         const CONSTRUCTOR: &str = "ProgramBuilder::call";
-        let Some(signature) = pous.function(pou) else {
-            return Err(broken(
-                CONSTRUCTOR,
-                &span,
-                format!("{pou} is not a function of this program"),
-            ));
+        let Some(result) = check_user_call(CONSTRUCTOR, types, variables, pous, pou, &args, &span)?
+        else {
+            return Err(broken(CONSTRUCTOR, &span, format!("{pou} has no result")));
         };
-        let result = variables
-            .get(signature.result())
-            .and_then(|variable| types.operation_type(variable.ty()));
-        let (Some(params), Some(result)) = (signature.params(types, variables), result) else {
-            return Err(broken(
-                CONSTRUCTOR,
-                &span,
-                format!("{pou} has a parameter or result that is not a scalar"),
-            ));
-        };
-        let passed: Vec<Param> = args.iter().map(Arg::param).collect();
-        if passed != params {
-            return Err(broken(
-                CONSTRUCTOR,
-                &span,
-                format!("{pou} takes {params:?}, not {passed:?}"),
-            ));
-        }
-        if let Some(other) = args.iter().find_map(Arg::program) {
-            if other != pou.stamp() {
-                return Err(broken(
-                    CONSTRUCTOR,
-                    &span,
-                    "the arguments belong to another program",
-                ));
-            }
-        }
         Self::of_call(CONSTRUCTOR, Callee::User(pou), args, result, span)
+    }
+
+    /// The result of calling the function or method `pou` that `pous`
+    /// declares with `args`, which [`check_user_call`] describes, in place:
+    /// the call, then `stores`, which [`InPlaceCall`] describes. The callee
+    /// has a value: a function that returns its result through a parameter
+    /// is called in place by a [`StrExpr`](super::StrExpr).
+    pub(crate) fn call_in_place(
+        types: &TypeTable,
+        variables: &VariableTable,
+        pous: &PouTable,
+        pou: PouId,
+        args: Vec<Arg>,
+        stores: Vec<Stmt>,
+        span: SourceSpan,
+    ) -> Result<Self, Diagnostic> {
+        const CONSTRUCTOR: &str = "ProgramBuilder::call_in_place";
+        let Some(result) = check_user_call(CONSTRUCTOR, types, variables, pous, pou, &args, &span)?
+        else {
+            return Err(broken(CONSTRUCTOR, &span, format!("{pou} has no value")));
+        };
+        let call = InPlaceCall::new(CONSTRUCTOR, pou, args, stores, &span)?;
+        Ok(Self::new(ExprKind::InPlaceCall(call), result, span))
     }
 
     /// The `ty` result of calling `callee` with `args`, whose types the
@@ -583,6 +580,7 @@ impl Expr {
             | ExprKind::Compare { lhs, rhs, .. }
             | ExprKind::ShortCircuit { lhs, rhs, .. } => lhs.program.or(rhs.program),
             ExprKind::Call { args, .. } => args.iter().find_map(Arg::program),
+            ExprKind::InPlaceCall(call) => call.program(),
         };
         Self {
             kind,
@@ -625,4 +623,68 @@ impl Expr {
     pub fn span(&self) -> &SourceSpan {
         &self.span
     }
+}
+
+/// Refuses `args` unless they are one argument for each parameter of the
+/// function or method `pou` that `pous` declares, in order, at the
+/// parameter's operation type, or a place of the type a `VAR_IN_OUT`,
+/// `VAR_OUTPUT` or method's instance parameter refers to, or of a function
+/// block type that extends it (REQ-LOW-lowering-071, REQ-LOW-lowering-072,
+/// REQ-LOW-lowering-076, REQ-LOW-ir-173), that read places of the program
+/// the tables belong to. Returns the operation
+/// type of the result; `None` for a method without one.
+pub(crate) fn check_user_call(
+    constructor: &str,
+    types: &TypeTable,
+    variables: &VariableTable,
+    pous: &PouTable,
+    pou: PouId,
+    args: &[Arg],
+    span: &SourceSpan,
+) -> Result<Option<ScalarType>, Diagnostic> {
+    let Some(signature) = pous.function(pou) else {
+        return Err(broken(
+            constructor,
+            span,
+            format!("{pou} is not a function or method of this program"),
+        ));
+    };
+    // `None` for a result that is not a scalar.
+    let result = match signature.result() {
+        Some(result) => variables
+            .get(result)
+            .and_then(|variable| types.operation_type(variable.ty()))
+            .map(Some),
+        None => Some(None),
+    };
+    let (Some(params), Some(result)) = (signature.params(types, variables), result) else {
+        return Err(broken(
+            constructor,
+            span,
+            format!("{pou} has a parameter or result that is not a scalar"),
+        ));
+    };
+    let passed: Vec<Param> = args.iter().map(Arg::param).collect();
+    let passes = passed.len() == params.len()
+        && passed
+            .iter()
+            .zip(&params)
+            .all(|(passed, param)| passed.passes_for(*param, types));
+    if !passes {
+        return Err(broken(
+            constructor,
+            span,
+            format!("{pou} takes {params:?}, not {passed:?}"),
+        ));
+    }
+    if let Some(other) = args.iter().find_map(Arg::program) {
+        if other != pou.stamp() {
+            return Err(broken(
+                constructor,
+                span,
+                "the arguments belong to another program",
+            ));
+        }
+    }
+    Ok(result)
 }

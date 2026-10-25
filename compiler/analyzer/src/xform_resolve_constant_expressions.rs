@@ -116,7 +116,7 @@ fn extract_integer_value(init: &InitialValueAssignmentKind) -> Option<u128> {
     match init {
         InitialValueAssignmentKind::Simple(simple) => {
             // Check that the type is integer-compatible
-            let is_integer = ElementaryTypeName::try_from(&simple.type_name.name)
+            let is_integer = ElementaryTypeName::try_from(&simple.type_name.id)
                 .map(|t| t.is_integer())
                 .unwrap_or(false);
             if !is_integer {

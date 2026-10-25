@@ -4,7 +4,7 @@ P2036
 
 .. problem-summary:: P2036
 
-This error occurs when a ``REF_TO`` type declaration references another ``REF_TO`` type, creating multi-level indirection. Nested references are not supported.
+This error occurs when a ``REF_TO`` type declaration or a variable declaration references another ``REF_TO`` type, creating multi-level indirection. Nested references are not supported.
 
 Example
 -------
@@ -17,6 +17,20 @@ The following code will generate error P2036:
        IntRef : REF_TO INT;
        IntRefRef : REF_TO IntRef;  (* Error: nested REF_TO *)
    END_TYPE
+
+A variable declared as a reference to a reference type is the same nesting, and generates error P2036 too:
+
+.. code-block::
+
+   TYPE
+       IntRef : REF_TO INT;
+   END_TYPE
+
+   PROGRAM Main
+       VAR
+           rr : REF_TO IntRef;  (* Error: nested REF_TO *)
+       END_VAR
+   END_PROGRAM
 
 To fix this error, use only a single level of indirection:
 

@@ -19,7 +19,7 @@ use std::collections::HashMap;
 
 use ironplc_analyzer::stages::analyze;
 use ironplc_analyzer::CleanAnalysis;
-use ironplc_codegen::{compile, CodegenOptions, SourceLookup};
+use ironplc_codegen::{compile, SourceLookup};
 use ironplc_container::opcode;
 use ironplc_container::{FunctionId, LineMapEntry, SourceFileId, SOURCE_FILE_HASH_LEN};
 use ironplc_dsl::core::FileId;
@@ -50,12 +50,8 @@ fn compile_with_source(source: &str) -> (ironplc_container::Container, FileId) {
     bytes_map.insert(file_id.clone(), source.as_bytes().to_vec());
     let lookup = MapLookup(bytes_map);
 
-    let container = compile(
-        CleanAnalysis::new(&analyzed, &ctx).unwrap(),
-        &CodegenOptions::default(),
-        &lookup,
-    )
-    .unwrap();
+    let program = ironplc_lowering::lower(&CleanAnalysis::new(&analyzed, &ctx).unwrap()).unwrap();
+    let container = compile(&program, &lookup).unwrap();
     (container, file_id)
 }
 
@@ -111,12 +107,8 @@ fn line_map_when_empty_program_then_source_file_table_still_populated_with_zero_
     let library = parse_program(source, &file_id, &options).unwrap();
     let (analyzed, ctx) = analyze(&[&library], &options).unwrap();
 
-    let container = compile(
-        CleanAnalysis::new(&analyzed, &ctx).unwrap(),
-        &CodegenOptions::default(),
-        &ironplc_codegen::EmptyLookup,
-    )
-    .unwrap();
+    let program = ironplc_lowering::lower(&CleanAnalysis::new(&analyzed, &ctx).unwrap()).unwrap();
+    let container = compile(&program, &ironplc_codegen::EmptyLookup).unwrap();
     let debug = container.debug_section.as_ref().unwrap();
 
     // Source file is still registered (so file_ids resolve) but the
@@ -179,4 +171,36 @@ fn line_map_when_optimizer_runs_then_bytecode_offsets_are_on_instruction_boundar
             entry.function_id, bytecode,
         );
     }
+}
+
+/// The lines the line map gives the function named `name`, by its entry in
+/// the function name table.
+fn lines_of(container: &ironplc_container::Container, name: &str) -> Vec<u16> {
+    let debug = container.debug_section.as_ref().unwrap();
+    let function_id = debug
+        .func_names
+        .iter()
+        .find(|entry| entry.name == name)
+        .unwrap_or_else(|| panic!("no function named {name} in {:?}", debug.func_names))
+        .function_id;
+    debug
+        .line_map
+        .iter()
+        .filter(|entry| entry.function_id == function_id)
+        .map(|entry| entry.source_line.raw())
+        .collect()
+}
+
+/// A statement of a function and of a function block, each compiled from
+/// the lowered program, is at the line the lowered program gives it, and
+/// each body is named in the function name table.
+#[test]
+fn line_map_when_function_and_block_statements_then_each_line_covered() {
+    let source = "FUNCTION Twice : DINT\n  VAR_INPUT x : DINT; END_VAR\n  Twice := x * 2;\nEND_FUNCTION\nFUNCTION_BLOCK Count\n  VAR_OUTPUT n : DINT; END_VAR\n  n := n + 1;\nEND_FUNCTION_BLOCK\nPROGRAM main\n  VAR c : Count; y : DINT; END_VAR\n  c();\n  y := Twice(c.n);\nEND_PROGRAM\n";
+    let (container, _) = compile_with_source(source);
+
+    assert!(lines_of(&container, "twice").contains(&3));
+    assert!(lines_of(&container, "COUNT").contains(&7));
+    let main = lines_of(&container, "main");
+    assert!(main.contains(&11) && main.contains(&12), "{main:?}");
 }

@@ -9,7 +9,12 @@
 //!
 //! The walk goes by [`TypeId`] ([`type_id`]): a variable's declared type, then
 //! [`TypeEnvironment::field_type`] for a field, [`TypeEnvironment::element_type`]
-//! for a subscript and [`TypeEnvironment::referenced_type`] for a dereference.
+//! for a subscript list that gives one subscript for each dimension of the
+//! array it subscripts, and [`TypeEnvironment::referenced_type`] for a
+//! dereference. A subscript of a reference to an array indexes the array it
+//! refers to, as a subscript of its dereference does, and the rules that
+//! check a subscript list judge it against the same array
+//! ([`subscripted_type_id`]).
 //! It never reads the fields a structure's or function block's representation
 //! lists, so a field has one type, the one its declaration records.
 //!
@@ -25,8 +30,8 @@ use ironplc_dsl::{common::*, core::Id, textual::*, type_id::TypeId};
 
 use crate::{
     semantic_context::SemanticContext,
-    semantic_type::SemanticType,
-    symbol_environment::{ScopeKind, SymbolEnvironment},
+    semantic_type::{ArrayDimension, SemanticType},
+    symbol_environment::{ScopeKind, ScopePath, SymbolEnvironment, SymbolInfo},
     type_environment::TypeEnvironment,
 };
 
@@ -71,7 +76,7 @@ pub(crate) fn resolve_initializer(
 /// type of a subscript, the type a dereference refers to, and for a bit or
 /// partial access the `BOOL` or bit string it selects. `None` when a step of
 /// the walk has no type, such as a field the record does not have, or for
-/// `THIS^` and `SUPER^`, whose members are not typed yet (issue #1406).
+/// a bare `THIS^` or `SUPER^`, which is an instance rather than a value.
 pub(crate) fn type_id(
     kind: &SymbolicVariableKind,
     symbols: &SymbolEnvironment,
@@ -81,12 +86,25 @@ pub(crate) fn type_id(
     match kind {
         SymbolicVariableKind::Named(named) => declared_type_id(&named.name, symbols, scope),
         SymbolicVariableKind::Structured(structured) => {
+            // A member of `THIS^` or `SUPER^` is found from the function
+            // block's own scope, with its declared type.
+            if let SymbolicVariableKind::SelfRef(self_ref) = structured.record.as_ref() {
+                return self_member(self_ref.kind, &structured.field, symbols, scope)?.type_id;
+            }
             let record = type_id(&structured.record, symbols, types, scope)?;
             types.field_type(record, &structured.field)
         }
         SymbolicVariableKind::Array(array) => {
-            let array = type_id(&array.subscripted_variable, symbols, types, scope)?;
-            types.element_type(array)
+            let subscripted = subscripted_type_id(array, symbols, types, scope)?;
+            // A subscript list subscripts one array, with one subscript for
+            // each of its dimensions: `m[1]` on a two-dimensional array and
+            // `rows[1, 2]` on an array of arrays select no element.
+            if array_dimensions(subscripted, types)
+                .is_some_and(|dimensions| dimensions.len() != array.subscripts.len())
+            {
+                return None;
+            }
+            types.element_type(subscripted)
         }
         // `p^` is the variable `p` references, so it has the referenced
         // type, not `REF_TO`.
@@ -102,7 +120,35 @@ pub(crate) fn type_id(
                 PartialAccessSize::LWord => "LWORD",
             }))
         }
+        // A bare `THIS^` or `SUPER^` is a function block instance, not a
+        // value with a type of its own; its members are typed above.
         SymbolicVariableKind::SelfRef(_) => None,
+    }
+}
+
+/// The id of the type the subscript list of `array` applies to: the type of
+/// the subscripted variable, or for a reference to an array the array it
+/// refers to. A subscript of a reference indexes the array it refers to, as
+/// `r^[i]` does: a TwinCAT `REFERENCE TO`, and a `REF_TO` a subscript follows
+/// without `^`. The rules that check a subscript list count and bound it
+/// against this type, so that they judge the list the walk types.
+pub(crate) fn subscripted_type_id(
+    array: &ArrayVariable,
+    symbols: &SymbolEnvironment,
+    types: &TypeEnvironment,
+    scope: &ScopeKind,
+) -> Option<TypeId> {
+    let subscripted = type_id(&array.subscripted_variable, symbols, types, scope)?;
+    Some(types.referenced_type(subscripted).unwrap_or(subscripted))
+}
+
+/// The dimensions of the array type `id`, or `None` when `id` is not an
+/// array type or records no dimensions, so that its subscripts cannot be
+/// counted.
+pub(crate) fn array_dimensions(id: TypeId, types: &TypeEnvironment) -> Option<&[ArrayDimension]> {
+    match &types.get_by_id(id)?.representation {
+        SemanticType::Array { dimensions, .. } if !dimensions.is_empty() => Some(dimensions),
+        _ => None,
     }
 }
 
@@ -134,6 +180,40 @@ pub(crate) fn of<'a>(
     Some(&types.get_by_id(id)?.representation)
 }
 
+/// The symbol of the member `field` of what `THIS^` or `SUPER^` names from
+/// `scope`.
+///
+/// The field is looked up from the function block's own scope, not from
+/// `scope`, so a method parameter or local that hides it does not answer for
+/// it. `find` walks the `EXTENDS` chain, and for `SUPER^` it starts at the
+/// base so only inherited fields are seen. `None` outside a function block,
+/// for `SUPER^` without a base, and for a field the block does not have.
+pub(crate) fn self_member<'a>(
+    kind: SelfRefKind,
+    field: &Id,
+    symbols: &'a SymbolEnvironment,
+    scope: &ScopeKind,
+) -> Option<&'a SymbolInfo> {
+    let block = symbols.self_type(scope, kind)?;
+    member_of_block(&block, field, symbols)
+}
+
+/// The symbol of the member `field` of the function block `block`, found in
+/// its own scope and then those of its `EXTENDS` chain.
+///
+/// `find` falls back to the globals, which are not members. Neither is a
+/// `VAR_EXTERNAL` declaration, which is a view of a global: TwinCAT reports
+/// `THIS^.g` as no component of the block.
+pub(crate) fn member_of_block<'a>(
+    block: &TypeName,
+    field: &Id,
+    symbols: &'a SymbolEnvironment,
+) -> Option<&'a SymbolInfo> {
+    let block_scope = ScopeKind::Named(ScopePath::from(block.id.clone()));
+    let member = symbols.find(field, &block_scope)?;
+    (member.scope != ScopeKind::Global && !member.is_external).then_some(member)
+}
+
 /// The declared type of the variable `name` names from `scope`: a variable,
 /// parameter or result variable, looked up in the symbol environment.
 pub(crate) fn declared<'a>(
@@ -154,27 +234,6 @@ pub(crate) fn declared_type_id(
     symbols.resolve_variable(name, scope).declared()?.type_id
 }
 
-/// Finds the representation of the field `field_name` among the fields the
-/// structure or function block type `parent_type` lists.
-///
-/// For a check that walks a representation it already holds, such as the
-/// nested initializer of a structure field. A reference to a field is typed
-/// by [`type_id`], which goes by the field's declared type id.
-pub(crate) fn struct_field_type(
-    parent_type: &SemanticType,
-    field_name: &Id,
-) -> Option<SemanticType> {
-    let fields = match parent_type {
-        SemanticType::Structure { fields } => fields,
-        SemanticType::FunctionBlock { fields, .. } => fields,
-        _ => return None,
-    };
-    fields
-        .iter()
-        .find(|f| f.name == *field_name)
-        .map(|f| f.field_type.clone())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -183,6 +242,7 @@ mod tests {
     use crate::test_helpers::{edition3_options, parse_and_resolve_types_with_options};
     use ironplc_container::CharWidth;
     use ironplc_dsl::visitor::Visitor;
+    use ironplc_parser::options::CompilerOptions;
     use spec_test_macro::spec_test;
     use std::convert::Infallible;
 
@@ -297,6 +357,88 @@ END_PROGRAM";
     #[test]
     fn of_when_field_record_does_not_have_then_none() {
         assert_eq!(representations()[7], None);
+    }
+
+    /// REQ-ETR-analyzer-008: each subscript list subscripts one array and
+    /// gives one subscript for each of its dimensions.
+    #[spec_test(REQ_ETR_analyzer_008)]
+    #[test]
+    fn type_id_when_subscripts_then_element_only_when_one_per_dimension() {
+        let program = "
+TYPE Row : ARRAY[1..3] OF DINT; END_TYPE
+PROGRAM main
+  VAR rows : ARRAY[1..2] OF Row; m : ARRAY[1..2, 1..3] OF DINT; END_VAR
+  rows[1] := 0;
+  rows[1][2] := 0;
+  m[1, 2] := 0;
+  rows[1, 2] := 0;
+  m[1] := 0;
+  m[1][2] := 0;
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_options(program, &edition3_options());
+        let main = ScopeKind::Named(ScopePath::new(vec![Id::from("main")]));
+        let types = context.types();
+        let ids: Vec<Option<TypeId>> = targets(&library)
+            .iter()
+            .map(|kind| type_id(kind, context.symbols(), types, &main))
+            .collect();
+        let dint = types.id_of(&TypeName::from("DINT"));
+
+        assert_eq!(
+            ids,
+            [
+                types.id_of(&TypeName::from("Row")),
+                dint,
+                dint,
+                None,
+                None,
+                None
+            ]
+        );
+    }
+
+    /// REQ-ETR-analyzer-009: a subscript of a reference to an array selects
+    /// an element of the array it refers to, as a subscript of its
+    /// dereference does.
+    #[spec_test(REQ_ETR_analyzer_009)]
+    #[test]
+    fn type_id_when_reference_to_array_subscripted_then_element_of_referenced_array() {
+        let program = "
+TYPE Row : ARRAY[1..3] OF DINT; END_TYPE
+PROGRAM main
+  VAR pa : REF_TO ARRAY[1..3] OF DINT; ra : REFERENCE TO ARRAY[1..3] OF DINT;
+      prows : REF_TO ARRAY[1..2] OF Row; END_VAR
+  pa[2] := 0;
+  pa^[2] := 0;
+  ra[2] := 0;
+  prows[1][2] := 0;
+  prows[1] := 0;
+  pa[1, 2] := 0;
+END_PROGRAM";
+        let options = CompilerOptions {
+            allow_reference_to: true,
+            ..edition3_options()
+        };
+        let (library, context) = parse_and_resolve_types_with_options(program, &options);
+        let main = ScopeKind::Named(ScopePath::new(vec![Id::from("main")]));
+        let types = context.types();
+        let ids: Vec<Option<TypeId>> = targets(&library)
+            .iter()
+            .map(|kind| type_id(kind, context.symbols(), types, &main))
+            .collect();
+        let dint = types.id_of(&TypeName::from("DINT"));
+
+        assert_eq!(
+            ids,
+            [
+                dint,
+                dint,
+                dint,
+                dint,
+                types.id_of(&TypeName::from("Row")),
+                None
+            ]
+        );
     }
 
     #[test]

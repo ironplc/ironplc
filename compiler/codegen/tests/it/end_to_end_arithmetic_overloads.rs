@@ -180,6 +180,44 @@ END_PROGRAM",
     );
 }
 
+/// REQ-AO-codegen-013: an `INT` beside a real literal computes at `REAL`,
+/// in either order and in the function form.
+#[spec_test(REQ_AO_codegen_013)]
+#[rstest]
+#[case::literal_right("i * 1.5")]
+#[case::literal_left("1.5 * i")]
+#[case::function_form("MUL(i, 1.5)")]
+fn end_to_end_req_ao_013_when_int_times_real_literal_then_computes_as_real(#[case] expr: &str) {
+    let source = format!(
+        "
+PROGRAM main
+  VAR
+    x : REAL;
+    i : INT := 3;
+  END_VAR
+  x := {expr};
+END_PROGRAM"
+    );
+    assert_run::<f32>(&source, &[("x", 4.5)]);
+}
+
+/// REQ-AO-codegen-013: a sensor reading scaled by real literals (#2067)
+/// computes at `REAL` from the first step.
+#[spec_test(REQ_AO_codegen_013)]
+fn end_to_end_req_ao_013_when_int_scaled_by_real_literals_then_computes_as_real() {
+    assert_run::<f32>(
+        "
+PROGRAM main
+  VAR
+    temperature : REAL;
+    sensor : INT := 32767;
+  END_VAR
+  temperature := sensor / 32767.0 * 150.0 - 50.0;
+END_PROGRAM",
+        &[("temperature", 100.0)],
+    );
+}
+
 /// REQ-AO-codegen-007: a `UDINT` operand of a `LINT` operation is
 /// zero-extended before the 64-bit add.
 #[spec_test(REQ_AO_codegen_007)]

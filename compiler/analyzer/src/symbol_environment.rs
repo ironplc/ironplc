@@ -1,5 +1,8 @@
 use indexmap::IndexMap;
-use ironplc_dsl::common::{DeclarationQualifier, TypeName, VariableType};
+use ironplc_dsl::common::{
+    Accessor, AddressAssignment, ConstantKind, DeclarationQualifier, LocationPrefix, SizePrefix,
+    TypeName, VariableType,
+};
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::scope::ScopeNode;
@@ -57,9 +60,22 @@ impl ScopeTracker {
     fn name_of(node: &ScopeNode<'_>) -> Id {
         match node {
             ScopeNode::Function(node) => node.name.clone(),
-            ScopeNode::FunctionBlock(node) => node.name.name.clone(),
+            ScopeNode::FunctionBlock(node) => node.name.id.clone(),
             ScopeNode::Program(node) => node.name.clone(),
-            ScopeNode::Method(node) => node.name.clone(),
+            // An accessor is named after its property, so GET and SET would
+            // share a scope; the accessor keeps them apart. `.` cannot
+            // appear in an identifier, so this never names a method.
+            ScopeNode::Method(node) => match node.accessor {
+                None => node.name.clone(),
+                Some(accessor) => {
+                    let suffix = match accessor {
+                        Accessor::Get => "GET",
+                        Accessor::Set => "SET",
+                    };
+                    Id::from(&format!("{}.{suffix}", node.name.original()))
+                        .with_position(node.name.span.clone())
+                }
+            },
             ScopeNode::MethodPrototype(node) => node.name.clone(),
             ScopeNode::Interface(node) => node.name.clone(),
         }
@@ -133,6 +149,9 @@ pub enum SymbolKind {
     /// body (`F := ...` inside `FUNCTION F`). A declared variable of the
     /// same name replaces it.
     ResultVariable,
+    /// A `PROPERTY` of a function block, recorded in the block's scope.
+    /// Reading or writing it by name is not implemented yet.
+    Property,
 }
 
 /// Metadata associated with a symbol
@@ -156,8 +175,9 @@ pub struct SymbolInfo {
     /// etc.). Recorded before the compiler infers constants, so a variable
     /// that is never written but not declared `CONSTANT` is not constant here.
     pub qualifier: Option<DeclarationQualifier>,
-    /// Formatted hardware address (e.g. "%IX0.0") for direct variables
-    pub address: Option<String>,
+    /// The direct address of a located variable (`AT %IX0.0`); see
+    /// [`Self::address_text`] for how it is written.
+    pub address: Option<AddressAssignment>,
     /// Source location information
     pub span: ironplc_dsl::core::SourceSpan,
     /// Declared by the compiler rather than by source, such as the implicit
@@ -170,6 +190,37 @@ pub struct SymbolInfo {
     /// For a function block, the function block it `EXTENDS`, whose
     /// fields its own scope sees as well.
     pub extends: Option<TypeName>,
+    /// The value the variable holds for the whole run, when it is known:
+    /// the literal a `CONSTANT` variable, declared or inferred, is
+    /// initialized with. `xform_mark_unwritten_constants`, the pass that
+    /// settles which variables are constant, records it (see
+    /// `specs/design/constant-variable-inference.md`), so it is `None`
+    /// until that pass has run, for a variable that may change, and for a
+    /// constant whose initializer is not one literal (an array, a
+    /// structure). A `VAR_EXTERNAL` records nothing: its global holds the
+    /// value, which [`SymbolEnvironment::constant_value`] reaches.
+    pub constant_value: Option<ConstantKind>,
+}
+
+/// `addr` as IEC 61131-3 writes it, such as `%IX0.0`. A bit address written
+/// without its size (`%I0.0`) and an unspecified one (`%I*`) are written
+/// without a size letter.
+fn address_text(addr: &AddressAssignment) -> String {
+    let loc = match addr.location {
+        LocationPrefix::I => "I",
+        LocationPrefix::Q => "Q",
+        LocationPrefix::M => "M",
+    };
+    let size = match addr.size {
+        SizePrefix::X => "X",
+        SizePrefix::B => "B",
+        SizePrefix::W => "W",
+        SizePrefix::D => "D",
+        SizePrefix::L => "L",
+        SizePrefix::Nil | SizePrefix::Unspecified => "",
+    };
+    let parts: Vec<String> = addr.address.iter().map(|a| a.to_string()).collect();
+    format!("%{loc}{size}{}", parts.join("."))
 }
 
 impl SymbolInfo {
@@ -187,6 +238,7 @@ impl SymbolInfo {
             compiler_provided: false,
             is_abstract: false,
             extends: None,
+            constant_value: None,
         }
     }
 
@@ -223,9 +275,14 @@ impl SymbolInfo {
         self
     }
 
-    pub fn with_address(mut self, addr: String) -> Self {
+    pub fn with_address(mut self, addr: AddressAssignment) -> Self {
         self.address = Some(addr);
         self
+    }
+
+    /// The direct address as IEC 61131-3 writes it, such as `%IX0.0`.
+    pub fn address_text(&self) -> Option<String> {
+        self.address.as_ref().map(address_text)
     }
 
     pub fn with_qualifier(mut self, qualifier: DeclarationQualifier) -> Self {
@@ -315,11 +372,17 @@ fn is_named_as_variable(kind: &SymbolKind) -> bool {
     is_variable(kind) || *kind == SymbolKind::ResultVariable
 }
 
+/// Whether `kind` is a member of a function block: a variable, or a
+/// property, which shares its block's scope with the block's variables.
+fn is_member(kind: &SymbolKind) -> bool {
+    is_variable(kind) || *kind == SymbolKind::Property
+}
+
 /// The problem a second declaration of a name in one scope is: `P4014` for
-/// a variable repeating a variable, otherwise whatever a repeated global
-/// declaration is.
+/// a variable or property repeating a variable or property, otherwise
+/// whatever a repeated global declaration is.
 fn repeated_symbol(existing: &SymbolKind, repeat: &SymbolKind) -> Option<Problem> {
-    if is_variable(existing) && is_variable(repeat) {
+    if is_member(existing) && is_member(repeat) {
         return Some(Problem::SymbolDeclDuplicated);
     }
     repeated_declaration(existing, repeat)
@@ -471,7 +534,7 @@ impl SymbolEnvironment {
         variable_type: VariableType,
         qualifier: DeclarationQualifier,
         type_id: Option<TypeId>,
-        address: Option<String>,
+        address: Option<AddressAssignment>,
     ) -> Result<(), Diagnostic> {
         let kind = match variable_type {
             VariableType::Input => SymbolKind::Parameter,
@@ -593,6 +656,38 @@ impl SymbolEnvironment {
         }
     }
 
+    /// Records `value` as the value the variable `name`, declared in
+    /// `scope`, holds for the whole run (see [`SymbolInfo::constant_value`]).
+    /// Nothing is recorded when `scope` declares no such name.
+    pub fn record_constant_value(&mut self, name: &Id, scope: &ScopeKind, value: ConstantKind) {
+        let symbols = match scope {
+            ScopeKind::Global => Some(&mut self.global_symbols),
+            ScopeKind::Named(_) => self.scoped_symbols.get_mut(scope),
+        };
+        if let Some(info) = symbols.and_then(|symbols| symbols.get_mut(name)) {
+            info.constant_value = Some(value);
+        }
+    }
+
+    /// The value the variable `name` holds for the whole run, reached from
+    /// `from` as [`Self::resolve_variable`] reaches it: through a
+    /// `VAR_EXTERNAL`, the global's. `None` when the name is not a variable,
+    /// when the variable may change, and when its value is not one literal.
+    ///
+    /// A global the scope does not reach is still answered for, as
+    /// [`Resolution::declared`] answers for it: reporting it is the job of
+    /// the rule that reports an undefined variable.
+    pub fn constant_value(&self, name: &Id, from: &ScopeKind) -> Option<&ConstantKind> {
+        let decl = match self.resolve_variable(name, from) {
+            Resolution::Variable { decl, .. } | Resolution::GlobalNotVisible { decl, .. } => decl,
+            Resolution::NotAVariable | Resolution::Undeclared => return None,
+        };
+        self.symbols_in(&decl.scope)?
+            .get(&decl.name)?
+            .constant_value
+            .as_ref()
+    }
+
     /// The global variable named `name`, with the name as its declaration
     /// spells it: one a `VAR_GLOBAL` block declares, or one the compiler
     /// provides. `None` when the global scope declares no variable of that
@@ -650,24 +745,45 @@ impl SymbolEnvironment {
             for depth in (1..=segments.len()).rev() {
                 scopes.push(ScopeKind::Named(ScopePath::new(segments[..depth].to_vec())));
             }
-            // The base chain. The analyzer rejects a cycle in it, but a
-            // name seen twice still ends the walk rather than looping.
-            let mut seen = vec![segments[0].clone()];
-            let mut unit = &segments[0];
-            while let Some(base) = self
-                .function_block(unit)
-                .and_then(|info| info.extends.as_ref())
-            {
-                if seen.contains(&base.name) {
-                    break;
-                }
-                seen.push(base.name.clone());
-                scopes.push(ScopeKind::Named(ScopePath::new(vec![base.name.clone()])));
-                unit = &base.name;
-            }
+            scopes.extend(self.base_scopes(&segments[0]));
         }
         scopes.push(ScopeKind::Global);
         scopes
+    }
+
+    /// The scopes of the function blocks `unit` `EXTENDS`, nearest first.
+    /// Empty when `unit` is not a function block or extends nothing.
+    fn base_scopes(&self, unit: &Id) -> Vec<ScopeKind> {
+        let mut scopes = Vec::new();
+        // The analyzer rejects a cycle in the chain, but a name seen twice
+        // still ends the walk rather than looping.
+        let mut seen = vec![unit.clone()];
+        let mut unit = unit;
+        while let Some(base) = self
+            .function_block(unit)
+            .and_then(|info| info.extends.as_ref())
+        {
+            if seen.contains(&base.id) {
+                break;
+            }
+            seen.push(base.id.clone());
+            scopes.push(ScopeKind::Named(ScopePath::new(vec![base.id.clone()])));
+            unit = &base.id;
+        }
+        scopes
+    }
+
+    /// The member named `name` that the function block `block` inherits:
+    /// the nearest variable or property of that name that a block it
+    /// `EXTENDS` declares, with the name as that declaration spells it.
+    /// `None` when no block in the chain declares one, whatever `block`
+    /// itself declares.
+    pub fn inherited_member(&self, name: &Id, block: &Id) -> Option<(&Id, &SymbolInfo)> {
+        self.base_scopes(block).iter().find_map(|scope| {
+            self.symbols_in(scope)?
+                .get_key_value(name)
+                .filter(|(_, info)| is_member(&info.kind))
+        })
     }
 
     /// The variables visible from `scope`, as [`Self::find`] would see

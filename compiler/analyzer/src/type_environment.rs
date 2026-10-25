@@ -16,10 +16,19 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use crate::intermediates::{array, string, TypeResolution};
-use crate::semantic_type::{ByteSized, SemanticStructField, SemanticType};
+use crate::semantic_type::{ByteSized, SemanticType};
 use crate::symbol_environment::duplicate_declaration;
 use crate::type_id;
 use ironplc_dsl::type_id::TypeId;
+
+mod fields;
+mod interfaces;
+mod methods;
+mod properties;
+mod same_type;
+pub use fields::BlockField;
+pub(crate) use methods::{MethodParameter, MethodResult, MethodSignature};
+pub(crate) use properties::PropertySignature;
 
 static ELEMENTARY_TYPES_LOWER_CASE: [(&str, ElementaryTypeName, SemanticType); 29] = [
     // signed_integer_type_name
@@ -245,7 +254,7 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, ElementaryTypeName, SemanticType); 2
 pub fn elementary_type(type_name: &TypeName) -> Option<&'static SemanticType> {
     ELEMENTARY_TYPES_LOWER_CASE
         .iter()
-        .find(|(name, _, _)| type_name.name.lower_case == *name)
+        .find(|(name, _, _)| type_name.id.lower_case == *name)
         .map(|(_, _, elem_type)| elem_type)
 }
 
@@ -287,22 +296,27 @@ pub struct TypeEnvironment {
     /// of, by the alias's id. The alias copies its base's representation,
     /// which says what the type is but not what its values start at.
     alias_bases: HashMap<TypeId, TypeId>,
-    /// The declared type of each field of a structure or function block
-    /// type, by the id of the type and the field's name. The representation
-    /// of a structure holds each field's structure but not its type, so a
-    /// field of an enumeration, a `WSTRING` or an array of `WSTRING` could not
-    /// otherwise be traced back to it.
-    fields: HashMap<(TypeId, Id), TypeId>,
-    /// The function block each function block `EXTENDS`, by the id of the
-    /// block that extends it. An instance of the derived block has the
-    /// fields of the block it extends as well as its own.
-    extended: HashMap<TypeId, TypeId>,
+    /// The declared type of each field of a structure type, by the id of
+    /// the type, then the field's name. The representation of a structure
+    /// holds each field's structure but not its type, so a field of an
+    /// enumeration, a `WSTRING` or an array of `WSTRING` could not otherwise
+    /// be traced back to it. See [`fields`].
+    structures: HashMap<TypeId, HashMap<Id, TypeId>>,
+    /// The fields of each function block, and the block it `EXTENDS`, by the
+    /// block's id. A block's type lists none of its fields. See [`fields`].
+    blocks: HashMap<TypeId, fields::BlockRecord>,
+    /// The signatures of the members each interface declares, by the
+    /// interface's id. An interface's type lists none of its members. See
+    /// [`interfaces`].
+    interfaces: HashMap<TypeId, interfaces::InterfaceRecord>,
     /// The repeated declarations met while populating, until the transform
     /// that populates the environment drains them with
     /// [`Self::take_duplicates`]. Recorded rather than returned so that a
     /// repeat does not abort the fold that met it: the first declaration is
     /// kept and every other declaration still resolves.
     duplicates: Vec<Diagnostic>,
+    /// Which interfaces each function block and interface converts to.
+    supertypes: crate::supertypes::Supertypes,
 }
 
 impl TypeEnvironment {
@@ -316,10 +330,23 @@ impl TypeEnvironment {
             referenced: HashMap::new(),
             array_elements: HashMap::new(),
             alias_bases: HashMap::new(),
-            fields: HashMap::new(),
-            extended: HashMap::new(),
+            structures: HashMap::new(),
+            blocks: HashMap::new(),
+            interfaces: HashMap::new(),
             duplicates: Vec::new(),
+            supertypes: crate::supertypes::Supertypes::default(),
         }
+    }
+
+    /// Which interfaces each function block and interface converts to.
+    pub(crate) fn supertypes(&self) -> &crate::supertypes::Supertypes {
+        &self.supertypes
+    }
+
+    /// Records the direct supertypes of a function block or an interface,
+    /// see [`crate::supertypes`].
+    pub(crate) fn insert_supertypes(&mut self, name: &TypeName, supertypes: Vec<TypeName>) {
+        self.supertypes.insert(name, supertypes);
     }
 
     /// Adds the type into the environment.
@@ -352,7 +379,7 @@ impl TypeEnvironment {
         };
         self.duplicates.push(duplicate_declaration(
             problem,
-            &type_name.name,
+            &type_name.id,
             existing
                 .name
                 .as_ref()
@@ -513,118 +540,6 @@ impl TypeEnvironment {
             }
         }
         Ok(())
-    }
-
-    /// Records that the field `field` of the structure or function block
-    /// type `record` is declared with the type `field_type`.
-    pub(crate) fn record_field(&mut self, record: TypeId, field: &Id, field_type: TypeId) {
-        self.fields.insert((record, field.clone()), field_type);
-    }
-
-    /// Lists `fields` as the fields of the function block type `block`, in
-    /// place of the empty list the block was entered with: a block's fields
-    /// are its variables, whose types are known only after the block is
-    /// entered. Does nothing when `block` is not a function block type.
-    pub(crate) fn list_function_block_fields(
-        &mut self,
-        block: TypeId,
-        fields: Vec<SemanticStructField>,
-    ) {
-        if let Some(TypeEntry {
-            attributes:
-                crate::type_attributes::TypeAttributes {
-                    representation: SemanticType::FunctionBlock { fields: listed, .. },
-                    ..
-                },
-            ..
-        }) = self.entries.get_mut(&block)
-        {
-            *listed = fields;
-        }
-    }
-
-    /// Records the type of each field of the standard function block
-    /// `block`, every one of which is an elementary type, as the declaration
-    /// of a user-defined block records its fields'.
-    fn record_standard_block_fields(&mut self, block: &TypeName) {
-        let Some(record) = self.id_of(block) else {
-            return;
-        };
-        let Some(SemanticType::FunctionBlock { fields, .. }) = self
-            .get_by_id(record)
-            .map(|attributes| &attributes.representation)
-        else {
-            return;
-        };
-        let field_types: Vec<(Id, TypeId)> = fields
-            .iter()
-            .filter_map(|field| {
-                let name = self.elementary_type_name_for(&field.field_type)?;
-                Some((field.name.clone(), self.id_of(&name)?))
-            })
-            .collect();
-        for (field, field_type) in field_types {
-            self.record_field(record, &field, field_type);
-        }
-    }
-
-    /// Records that the function block `derived` `EXTENDS` the function
-    /// block `base`, so that [`Self::field_type`] finds the fields `derived`
-    /// inherits.
-    ///
-    /// Only a function block the library declares is recorded, as either
-    /// end. A base of another kind, such as a structure, has no fields a
-    /// block inherits, and the program is rejected. A standard block such as
-    /// `TON` is not a base the symbol environment or code generation
-    /// inherits from, so typing its fields here would let a program pass
-    /// analysis and fail later. A block keeps the first base recorded for it,
-    /// and a block that names itself is not recorded: the `EXTENDS` graph is
-    /// acyclic by the time types are recorded, and recording no such edge
-    /// keeps the lookup finite whatever it is given.
-    pub(crate) fn record_extends(&mut self, derived: TypeId, base: TypeId) {
-        if derived != base && self.is_declared_block(derived) && self.is_declared_block(base) {
-            self.extended.entry(derived).or_insert(base);
-        }
-    }
-
-    /// Whether `id` is a function block the library declares, rather than a
-    /// standard block or a type of another kind.
-    fn is_declared_block(&self, id: TypeId) -> bool {
-        self.get_by_id(id).is_some_and(|attributes| {
-            attributes.representation.is_function_block() && attributes.standard_block.is_none()
-        })
-    }
-
-    /// Whether the type `id` was entered from the declaration that spells
-    /// `name` at its span. `false` for a later declaration of a name the
-    /// environment already held, which keeps the first (P2007, P4013), and
-    /// for a declaration of a name the environment provides itself, such as
-    /// a standard function block.
-    pub(crate) fn entered_from(&self, id: TypeId, name: &TypeName) -> bool {
-        // `SourceSpan` equality holds for any two spans, so the positions
-        // are compared.
-        let (spelled, entered) = (name.span(), self.name_of(id).map(|name| name.span()));
-        entered.is_some_and(|entered| {
-            entered.start == spelled.start
-                && entered.end == spelled.end
-                && entered.file_id == spelled.file_id
-        })
-    }
-
-    /// The id of the declared type of the field `field` of the structure or
-    /// function block type `record`, or `None` when `record` has no such
-    /// field or its type is not known. A field of an alias of a structure is
-    /// the field of the structure it names, and a field a function block
-    /// inherits through `EXTENDS` is the field of the block that declares
-    /// it.
-    pub fn field_type(&self, record: TypeId, field: &Id) -> Option<TypeId> {
-        if let Some(field_type) = self.fields.get(&(record, field.clone())) {
-            return Some(*field_type);
-        }
-        let next = self
-            .alias_base(record)
-            .or_else(|| self.extended.get(&record).copied())?;
-        self.field_type(next, field)
     }
 
     /// The type the alias `alias` names (`BYTE` for `TYPE MyByte : BYTE`),
@@ -900,12 +815,12 @@ impl TypeEnvironmentBuilder {
             }
         }
         if self.has_stdlib_function_blocks {
-            for (name, type_attrs) in
+            for (name, block) in
                 crate::intermediates::stdlib_function_block::get_all_stdlib_function_blocks()
             {
                 let name = TypeName::from(name);
-                env.insert_type(&name, type_attrs);
-                env.record_standard_block_fields(&name);
+                env.insert_type(&name, block.attributes);
+                env.record_standard_block(&name, &block.fields);
             }
         }
         Ok(env)
@@ -962,7 +877,6 @@ mod tests {
         let block = || {
             TypeAttributes::new(SemanticType::FunctionBlock {
                 name: "FB".to_string(),
-                fields: vec![],
             })
         };
         env.insert_type(&TypeName::from("FB"), block());
@@ -984,7 +898,6 @@ mod tests {
             &TypeName::from("Shared"),
             TypeAttributes::new(SemanticType::FunctionBlock {
                 name: "Shared".to_string(),
-                fields: vec![],
             }),
         );
 
@@ -1047,6 +960,7 @@ mod tests {
         // Test non-primitive types
         assert!(!SemanticType::Enumeration {
             members: crate::enumeration_members::EnumerationMembers::default(),
+            underlying_type: None,
         }
         .is_primitive());
         assert!(!SemanticType::Structure { fields: vec![] }.is_primitive());
@@ -1095,7 +1009,6 @@ mod tests {
         // Test function block types
         let fb_type = SemanticType::FunctionBlock {
             name: "MyFB".to_string(),
-            fields: vec![],
         };
         assert!(fb_type.is_function_block());
         assert!(!fb_type.is_primitive());
@@ -1138,6 +1051,7 @@ mod tests {
             &TypeName::from("MY_ENUM"),
             TypeAttributes::new(SemanticType::Enumeration {
                 members: crate::enumeration_members::EnumerationMembers::default(),
+                underlying_type: None,
             }),
         );
 
@@ -1199,40 +1113,6 @@ mod tests {
         assert_eq!(field("ctu", "MISSING"), None);
     }
 
-    /// A function block entered with no fields.
-    fn block(env: &mut TypeEnvironment, name: &str) -> TypeId {
-        env.insert_anonymous(TypeAttributes::new(SemanticType::FunctionBlock {
-            name: name.to_string(),
-            fields: vec![],
-        }))
-    }
-
-    #[test]
-    fn record_extends_when_block_names_itself_then_not_recorded() {
-        let mut env = TypeEnvironment::new();
-        let block = block(&mut env, "Block");
-        env.record_extends(block, block);
-
-        assert_eq!(env.field_type(block, &Id::from("missing")), None);
-    }
-
-    #[test]
-    fn list_function_block_fields_when_not_function_block_then_unchanged() {
-        let mut env = TypeEnvironmentBuilder::new()
-            .with_elementary_types()
-            .build()
-            .unwrap();
-        let int = env.id_of(&TypeName::from("INT")).unwrap();
-        env.list_function_block_fields(int, vec![]);
-
-        assert_eq!(
-            env.get_by_id(int).unwrap().representation,
-            SemanticType::Int {
-                size: ByteSized::B16
-            }
-        );
-    }
-
     #[test]
     fn resolve_struct_type_when_structure_then_returns_type() {
         let mut env = TypeEnvironment::new();
@@ -1258,7 +1138,6 @@ mod tests {
             &TypeName::from("MY_FB"),
             TypeAttributes::new(SemanticType::FunctionBlock {
                 name: "MyFB".to_string(),
-                fields: vec![],
             }),
         );
 

@@ -197,7 +197,7 @@ impl RuleFunctionCallTypeCheck<'_> {
         let Some(return_type) = signature.return_type.as_ref().map(|t| t.to_type_name()) else {
             return false;
         };
-        if GenericTypeName::try_from(&return_type.name).is_err() {
+        if GenericTypeName::try_from(&return_type.id).is_err() {
             return false;
         }
         signature

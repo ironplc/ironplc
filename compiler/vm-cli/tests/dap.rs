@@ -278,8 +278,10 @@ fn compile_to_container(source: &str) -> Container {
             .unwrap();
     let (analyzed, context) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
     ironplc_codegen::compile(
-        ironplc_analyzer::CleanAnalysis::new(&analyzed, &context).unwrap(),
-        &ironplc_codegen::CodegenOptions::default(),
+        &ironplc_lowering::lower(
+            &ironplc_analyzer::CleanAnalysis::new(&analyzed, &context).unwrap(),
+        )
+        .unwrap(),
         &ironplc_codegen::EmptyLookup,
     )
     .unwrap()

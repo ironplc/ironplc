@@ -276,18 +276,22 @@ impl RuleRefTo<'_> {
         }
     }
 
-    /// P2035: Only = and <> on references
+    /// P4049: A reference compared with a value that is not a reference
+    /// (`rk = 0`, `rk = k`, `k = NULL`). P2035: Only = and <> on references
     fn check_compare_op(&mut self, expr: &CompareExpr) {
         let left_ref = self.is_expr_reference(&expr.left);
         let right_ref = self.is_expr_reference(&expr.right);
         if !left_ref && !right_ref {
             return;
         }
-        match expr.op {
-            CompareOp::Eq | CompareOp::Ne => {
+        if self.check_compared_with_reference(expr, left_ref) {
+            return;
+        }
+        match expr.op.kind() {
+            CompareOpKind::Equality => {
                 // Equality and inequality are always allowed on references
             }
-            CompareOp::Lt | CompareOp::Gt | CompareOp::LtEq | CompareOp::GtEq => {
+            CompareOpKind::Ordering => {
                 if self.allow_ref_arithmetic {
                     return;
                 }
@@ -301,12 +305,87 @@ impl RuleRefTo<'_> {
                     Label::span(span, "Ordering comparison on reference types"),
                 ));
             }
-            CompareOp::Or
-            | CompareOp::Xor
-            | CompareOp::And
-            | CompareOp::AndThen
-            | CompareOp::OrElse => {}
+            CompareOpKind::Bitwise => {}
         }
+    }
+
+    /// Reports P4049 when `expr` compares a reference with a value that is
+    /// known not to be one, and returns whether it did. `left_ref` is
+    /// whether the left operand is the reference. A reference equals
+    /// `NULL` or another reference, never a number: a CODESYS pointer
+    /// compared with 0 is reported too.
+    fn check_compared_with_reference(&mut self, expr: &CompareExpr, left_ref: bool) -> bool {
+        if !expr.op.is_comparison() {
+            return false;
+        }
+        let other = if left_ref { &expr.right } else { &expr.left };
+        if !self.is_known_non_reference(other) {
+            return false;
+        }
+        self.diagnostics.push(
+            Diagnostic::problem(
+                Problem::OperatorOperandTypeMismatch,
+                Label::span(other.span(), "Operand that is not a reference"),
+            )
+            .with_context("operator", &expr.op.to_string())
+            .with_context("expected", &"a reference or NULL".to_string()),
+        );
+        true
+    }
+
+    /// Returns true when `expr` is known not to be a reference: a literal,
+    /// or an expression whose type the analyzer resolved to a type that is
+    /// not a reference. Where reference arithmetic is allowed, a sum or
+    /// difference with a reference operand is a reference (`p + 1`).
+    fn is_known_non_reference(&self, expr: &Expr) -> bool {
+        match &expr.kind {
+            ExprKind::Const(_) => true,
+            ExprKind::Ref(_) | ExprKind::Null(_) => false,
+            ExprKind::Expression(inner) => self.is_known_non_reference(inner),
+            ExprKind::BinaryOp(binary)
+                if self.allow_ref_arithmetic
+                    && (self.is_expr_reference(&binary.left)
+                        || self.is_expr_reference(&binary.right)) =>
+            {
+                false
+            }
+            ExprKind::Compare(_)
+            | ExprKind::BinaryOp(_)
+            | ExprKind::UnaryOp(_)
+            | ExprKind::EnumeratedValue(_)
+            | ExprKind::Variable(_)
+            | ExprKind::Function(_)
+            | ExprKind::MethodCall(_)
+            | ExprKind::LateBound(_)
+            | ExprKind::Deref(_)
+            | ExprKind::ImplicitConversion(_)
+            | ExprKind::CallOutput(_) => self
+                .type_environment
+                .representation_of_expr(expr)
+                .is_some_and(|representation| !representation.is_reference()),
+        }
+    }
+
+    /// P2032: A value that is not a reference assigned to a reference: a
+    /// literal (`rk := 0`), or a variable or an expression of another type
+    /// (`rk := k`). A reference takes `REF()`, `NULL` or another reference.
+    /// A store through a reference (`rk^ := 0`, and a bare store to a
+    /// `REFERENCE TO`, which the analyzer spells as one) stores the value
+    /// itself, so it is not checked here.
+    fn check_value_assigned_to_reference(&mut self, node: &Assignment) {
+        if node.deref || node.ref_bind || node.set_bind || node.reset_bind {
+            return;
+        }
+        if !self.is_variable_reference(&node.target) || !self.is_known_non_reference(&node.value) {
+            return;
+        }
+        self.diagnostics.push(Diagnostic::problem(
+            Problem::ReferenceTypeMismatch,
+            Label::span(
+                node.value.span(),
+                "Value assigned to a reference is not a reference",
+            ),
+        ));
     }
 
     /// P2034: NULL can only be assigned to REF_TO type
@@ -401,6 +480,18 @@ impl RuleRefTo<'_> {
         }
     }
 
+    /// P2036: A reference to `referenced_type_name` when that type is itself
+    /// a reference, in a type declaration (`TYPE RR : REF_TO RP; END_TYPE`)
+    /// or a variable's (`rr : REF_TO RP;`), labelled at `span`.
+    fn check_nested_reference(&mut self, referenced_type_name: &TypeName, span: SourceSpan) {
+        if self.is_reference_type(referenced_type_name) {
+            self.diagnostics.push(Diagnostic::problem(
+                Problem::NestedRefToNotSupported,
+                Label::span(span, "Nested REF_TO is not supported"),
+            ));
+        }
+    }
+
     /// Returns true when `var` is a named variable whose declared type is
     /// known.
     fn declared_type_known(&self, var: &Variable) -> bool {
@@ -469,14 +560,18 @@ impl Visitor<Infallible> for RuleRefTo<'_> {
         &mut self,
         node: &ReferenceDeclaration,
     ) -> Result<(), Infallible> {
-        // P2036: Check for nested REF_TO (only applicable for named targets)
         if let ReferenceTarget::Named(referenced_type_name) = &node.target {
-            if self.is_reference_type(referenced_type_name) {
-                self.diagnostics.push(Diagnostic::problem(
-                    Problem::NestedRefToNotSupported,
-                    Label::span(node.type_name.span(), "Nested REF_TO is not supported"),
-                ));
-            }
+            self.check_nested_reference(referenced_type_name, node.type_name.span());
+        }
+        node.recurse_visit(self)
+    }
+
+    fn visit_reference_initializer(
+        &mut self,
+        node: &ReferenceInitializer,
+    ) -> Result<(), Infallible> {
+        if let ReferenceTarget::Named(referenced_type_name) = &node.target {
+            self.check_nested_reference(referenced_type_name, referenced_type_name.span());
         }
         node.recurse_visit(self)
     }
@@ -504,9 +599,13 @@ impl Visitor<Infallible> for RuleRefTo<'_> {
         self.check_null_assignment(&node.target, &node.value);
         self.check_ref_assignment(&node.target, &node.value);
         self.check_reference_value_assignment(node);
+        self.check_value_assigned_to_reference(node);
         node.recurse_visit(self)
     }
 }
+
+#[cfg(test)]
+mod non_reference_value_tests;
 
 #[cfg(test)]
 mod reference_value_tests;

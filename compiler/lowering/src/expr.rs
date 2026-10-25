@@ -15,19 +15,17 @@ use ironplc_dsl::textual::{
     UnaryOp as AstUnaryOp, Variable,
 };
 use ironplc_ir::lowered::{
-    BinaryOp, CompareOp, Expr, Place, ScalarType, ShortCircuitOp, TypeId, TypeKind, UnaryOp,
+    BinaryOp, CompareOp, Expr, Place, ShortCircuitOp, TemporalKind, UnaryOp,
 };
 
 use crate::bits::selected_bits;
+use crate::typed::{Arithmetic, Class, LogicalForm};
 use crate::variables::BodyFrame;
-use crate::Lowering;
-
-/// A lowered expression, or `None` when lowering does not support it yet.
-pub(crate) type Lowered = Result<Option<Expr>, Diagnostic>;
+use crate::{Lowered, Lowering, Unlowered};
 
 impl Lowering<'_> {
     /// Lowers the scalar expression `expr` of the body of `frame`.
-    pub(crate) fn expr(&mut self, frame: &BodyFrame, expr: &AstExpr) -> Lowered {
+    pub(crate) fn expr(&mut self, frame: &BodyFrame, expr: &AstExpr) -> Lowered<Expr> {
         let span = expr.span();
         match &expr.kind {
             AstExprKind::Expression(inner) => self.expr(frame, inner),
@@ -38,9 +36,7 @@ impl Lowering<'_> {
                 self.bits_read(frame, expr, symbolic)
             }
             AstExprKind::Variable(variable) => {
-                let Some(place) = self.variable_place(frame, variable)? else {
-                    return Ok(None);
-                };
+                let place = self.variable_place(frame, variable)?;
                 self.read(place, span)
             }
             AstExprKind::BinaryOp(binary) => {
@@ -56,23 +52,25 @@ impl Lowering<'_> {
                         return self.numeric_call(frame, expr, NumericFunction::Expt, &args);
                     }
                 };
-                if self.is_temporal(expr)? {
-                    return self.time_arithmetic(frame, expr, op, &binary.left, &binary.right);
+                let (left, right) = (&binary.left, &binary.right);
+                match self.typed(expr)?.class.arithmetic()? {
+                    Arithmetic::Temporal => self.time_arithmetic(frame, expr, op, left, right),
+                    Arithmetic::Numeric => self.binary(frame, op, left, right, span),
                 }
-                if !self.is_arithmetic(expr)? {
-                    return Ok(None);
-                }
-                self.binary(frame, op, &binary.left, &binary.right, span)
             }
             AstExprKind::UnaryOp(unary) => match unary.op {
                 AstUnaryOp::Neg => {
-                    if !self.is_arithmetic(expr)? {
-                        return Ok(None);
+                    // A number, or a duration, which is negated as the signed
+                    // integer it is stored as (ADR-0025).
+                    let negated = matches!(
+                        self.typed(expr)?.class,
+                        Class::Integer | Class::Real | Class::Temporal(TemporalKind::Time)
+                    );
+                    if !negated {
+                        return Err(Unlowered::NotYet);
                     }
-                    let Some(value) = self.expr(frame, &unary.term)? else {
-                        return Ok(None);
-                    };
-                    Expr::unary(UnaryOp::Neg, value, span).map(Some)
+                    let value = self.expr(frame, &unary.term)?;
+                    Ok(Expr::unary(UnaryOp::Neg, value, span)?)
                 }
                 AstUnaryOp::Not => self.not(frame, expr, &unary.term),
             },
@@ -123,49 +121,35 @@ impl Lowering<'_> {
                 }
             }
             AstExprKind::ImplicitConversion(conversion) => {
-                let Some((_, to)) = self.operated_type(expr)? else {
-                    return Ok(None);
-                };
-                let Some(value) = self.expr(frame, &conversion.value)? else {
-                    return Ok(None);
-                };
+                let to = self.typed(expr)?.scalar()?;
+                let value = self.expr(frame, &conversion.value)?;
                 match conversion.kind {
                     ConversionKind::Ordinary => {
                         if value.ty() == to {
                             // The two types are operated alike, as an `INT`
                             // widened to a `DINT` is: nothing converts.
-                            return Ok(Some(value));
+                            return Ok(value);
                         }
                         if !(value.ty().is_numeric() && to.is_numeric()) {
-                            return Ok(None);
+                            return Err(Unlowered::NotYet);
                         }
-                        Expr::convert(value, to, span).map(Some)
+                        Ok(Expr::convert(value, to, span)?)
                     }
                     ConversionKind::Checked => {
                         if !(value.ty().is_integer() && to.is_integer()) {
-                            return Ok(None);
+                            return Err(Unlowered::NotYet);
                         }
-                        Expr::convert_checked(value, to, span).map(Some)
+                        Ok(Expr::convert_checked(value, to, span)?)
                     }
                 }
             }
             AstExprKind::EnumeratedValue(value) => {
-                let Some((_, ty)) = self.operated_type(expr)? else {
-                    return Ok(None);
-                };
+                let ty = self.typed(expr)?.scalar()?;
                 let ordinal = self.enumerated_ordinal(expr, value)?;
-                Expr::integer(ordinal.into(), ty, span).map(Some)
+                Ok(Expr::integer(ordinal.into(), ty, span)?)
             }
             AstExprKind::Deref(reference) => {
-                // A reference that is not in a variable, such as one a
-                // function returns, is not a place to follow.
-                let AstExprKind::Variable(variable) = &reference.kind else {
-                    return Ok(None);
-                };
-                let Some(reference) = self.variable_place(frame, variable)? else {
-                    return Ok(None);
-                };
-                let place = self.program.deref(reference, &span)?;
+                let place = self.dereferenced_place(frame, reference, &span)?;
                 self.read(place, span)
             }
             AstExprKind::Function(func) => self.function_call(frame, expr, func),
@@ -177,59 +161,81 @@ impl Lowering<'_> {
                     "{} is a name the analyzer did not resolve",
                     late_bound.value
                 ),
-            ))),
+            ))
+            .into()),
             // `REF(x)`: a reference to the place `x` names, which for a
             // `VAR_IN_OUT` is the place it refers to.
             AstExprKind::Ref(variable) => {
-                let Some(place) = self.variable_place(frame, variable)? else {
-                    return Ok(None);
-                };
-                Ok(Some(Expr::ref_to(place, span)))
+                let place = self.variable_place(frame, variable)?;
+                Ok(Expr::ref_to(place, span))
             }
-            AstExprKind::Null(_) => Ok(Some(Expr::null(span))),
-            // A call's output is read by the call statement that leaves it,
-            // which is not lowered yet.
-            AstExprKind::MethodCall(_) | AstExprKind::CallOutput(_) => Ok(None),
+            AstExprKind::Null(_) => Ok(Expr::null(span)),
+            // The output of the function block call whose outputs are being
+            // stored (`fb_call.rs`).
+            AstExprKind::CallOutput(output) => self.call_output(output, span),
+            AstExprKind::MethodCall(call) => self.method_call_expr(frame, expr, call),
         }
     }
 
-    /// The place a variable names, or `None` when lowering does not reach it
-    /// yet.
+    /// The place a variable names. A directly represented variable is not
+    /// lowered yet.
     pub(crate) fn variable_place(
         &mut self,
         frame: &BodyFrame,
         variable: &Variable,
-    ) -> Result<Option<Place>, Diagnostic> {
+    ) -> Lowered<Place> {
         match variable {
             Variable::Symbolic(symbolic) => self.symbolic_place(frame, symbolic),
-            Variable::Direct(_) => Ok(None),
+            Variable::Direct(_) => Err(Unlowered::NotYet),
         }
+    }
+
+    /// The place `reference^` names. `REF(x)^`, and `ADR(x)^`, which the
+    /// analyzer rewrote to `REF(x)^` (`xform_resolve_adr`), is `x` itself,
+    /// and `p^` what the reference variable `p` refers to.
+    pub(crate) fn dereferenced_place(
+        &mut self,
+        frame: &BodyFrame,
+        reference: &AstExpr,
+        span: &SourceSpan,
+    ) -> Lowered<Place> {
+        if let AstExprKind::Ref(variable) = &reference.kind {
+            return self.variable_place(frame, variable);
+        }
+        // A reference that is not in a variable, such as one a function
+        // returns, is not a place to follow.
+        let AstExprKind::Variable(variable) = &reference.kind else {
+            return Err(Unlowered::NotYet);
+        };
+        let reference = self.variable_place(frame, variable)?;
+        Ok(self.program.deref(reference, span)?)
     }
 
     /// The value at `place`, when its type is operated on as one value.
-    pub(crate) fn read(&mut self, place: Place, span: SourceSpan) -> Lowered {
+    pub(crate) fn read(&mut self, place: Place, span: SourceSpan) -> Lowered<Expr> {
         if self.program.types().operation_type(place.ty()).is_none() {
-            return Ok(None);
+            return Err(Unlowered::NotYet);
         }
-        self.program.read(place, span).map(Some)
+        Ok(self.program.read(place, span)?)
     }
 
-    fn constant(&mut self, expr: &AstExpr, constant: &ConstantKind, span: SourceSpan) -> Lowered {
-        let Some((_, ty)) = self.operated_type(expr)? else {
-            return Ok(None);
-        };
+    fn constant(
+        &mut self,
+        expr: &AstExpr,
+        constant: &ConstantKind,
+        span: SourceSpan,
+    ) -> Lowered<Expr> {
+        let ty = self.typed(expr)?.scalar()?;
         let integer = match constant {
             // An integer literal at a real type is that number, as a real.
             ConstantKind::IntegerLiteral(literal) => i128::try_from(literal.value.clone()).ok(),
-            ConstantKind::RealLiteral(literal) => {
-                return Expr::real(literal.value, ty, span).map(Some)
-            }
+            ConstantKind::RealLiteral(literal) => return Ok(Expr::real(literal.value, ty, span)?),
             ConstantKind::Boolean(literal) => {
                 let value = match literal.value {
                     Boolean::True => true,
                     Boolean::False => false,
                 };
-                return Ok(Some(Expr::boolean(value, span)));
+                return Ok(Expr::boolean(value, span));
             }
             ConstantKind::BitStringLiteral(literal) => i128::try_from(literal.value.value).ok(),
             // A time or date is the count it is stored as (ADR-0025): the
@@ -239,12 +245,11 @@ impl Lowering<'_> {
             ConstantKind::TimeOfDay(literal) => Some(literal.whole_milliseconds().into()),
             ConstantKind::Date(literal) => Some(literal.seconds_since_epoch().into()),
             ConstantKind::DateAndTime(literal) => Some(literal.seconds_since_epoch().into()),
-            ConstantKind::CharacterString(_) => return Ok(None),
+            // A string is a `StrExpr` (`string.rs`), not a scalar.
+            ConstantKind::CharacterString(_) => return Err(Unlowered::NotYet),
         };
-        let Some(integer) = integer else {
-            return Ok(None);
-        };
-        Expr::integer(integer, ty, span).map(Some)
+        let integer = integer.ok_or(Unlowered::NotYet)?;
+        Ok(Expr::integer(integer, ty, span)?)
     }
 
     fn binary(
@@ -254,40 +259,36 @@ impl Lowering<'_> {
         left: &AstExpr,
         right: &AstExpr,
         span: SourceSpan,
-    ) -> Lowered {
-        let Some(lhs) = self.expr(frame, left)? else {
-            return Ok(None);
-        };
-        let Some(rhs) = self.expr(frame, right)? else {
-            return Ok(None);
-        };
-        Expr::binary(op, lhs, rhs, span).map(Some)
+    ) -> Lowered<Expr> {
+        let lhs = self.expr(frame, left)?;
+        let rhs = self.expr(frame, right)?;
+        Ok(Expr::binary(op, lhs, rhs, span)?)
     }
 
     /// `NOT term`, the expression `expr`: the logical negation of a `BOOL`,
     /// and the complement of an integer or bit string.
-    pub(crate) fn not(&mut self, frame: &BodyFrame, expr: &AstExpr, term: &AstExpr) -> Lowered {
+    pub(crate) fn not(
+        &mut self,
+        frame: &BodyFrame,
+        expr: &AstExpr,
+        term: &AstExpr,
+    ) -> Lowered<Expr> {
         let span = expr.span();
-        let op = match self.is_bool(expr)? {
-            Some(true) => UnaryOp::BoolNot,
-            Some(false) => UnaryOp::BitNot,
-            None => return Ok(None),
+        let typed = self.typed(expr)?;
+        let op = match typed.class.logical_form()? {
+            LogicalForm::Logical => UnaryOp::BoolNot,
+            LogicalForm::Bitwise => UnaryOp::BitNot,
         };
-        let Some(value) = self.expr(frame, term)? else {
-            return Ok(None);
-        };
+        let value = self.expr(frame, term)?;
         let value = Expr::unary(op, value, span.clone())?;
         if op != UnaryOp::BitNot {
-            return Ok(Some(value));
+            return Ok(value);
         }
         // Inverting a `BYTE` or `WORD` sets the bits above its width, so the
         // result is narrowed back to the width at once.
-        let Some((ty, _)) = self.operated_type(expr)? else {
-            return Ok(None);
-        };
-        match self.program.types().narrowed_storage(ty) {
-            Some(width) => Expr::truncate(width, value, span).map(Some),
-            None => Ok(Some(value)),
+        match self.program.types().narrowed_storage(typed.ty) {
+            Some(width) => Ok(Expr::truncate(width, value, span)?),
+            None => Ok(value),
         }
     }
 
@@ -300,23 +301,22 @@ impl Lowering<'_> {
         ops: (BinaryOp, BinaryOp),
         left: &AstExpr,
         right: &AstExpr,
-    ) -> Lowered {
-        let Some(op) = self.logical_op(expr, ops)? else {
-            return Ok(None);
-        };
+    ) -> Lowered<Expr> {
+        let op = self.logical_op(expr, ops)?;
         self.binary(frame, op, left, right, expr.span())
     }
 
-    /// The form of `ops` for `expr`: the logical one for a `BOOL`, the bitwise
-    /// one for an integer or bit string, and `None` for any other type.
+    /// The form of `ops` for `expr`: the logical one for a `BOOL`, and the
+    /// bitwise one for an integer or bit string.
     pub(crate) fn logical_op(
         &mut self,
         expr: &AstExpr,
         (logical, bitwise): (BinaryOp, BinaryOp),
-    ) -> Result<Option<BinaryOp>, Diagnostic> {
-        Ok(self
-            .is_bool(expr)?
-            .map(|is_bool| if is_bool { logical } else { bitwise }))
+    ) -> Lowered<BinaryOp> {
+        Ok(match self.typed(expr)?.class.logical_form()? {
+            LogicalForm::Logical => logical,
+            LogicalForm::Bitwise => bitwise,
+        })
     }
 
     /// The comparison `op` of `left` and `right`; of two strings, through
@@ -328,17 +328,20 @@ impl Lowering<'_> {
         left: &AstExpr,
         right: &AstExpr,
         span: SourceSpan,
-    ) -> Lowered {
-        if let Some(encoding) = self.string_encoding(left)? {
+    ) -> Lowered<Expr> {
+        // `NULL` has no type of its own: it is compared as the reference it
+        // is.
+        let class = if matches!(left.kind, AstExprKind::Null(_)) {
+            Class::Reference
+        } else {
+            self.typed(left)?.class
+        };
+        if let Class::String(encoding) = class {
             return self.string_compare(frame, encoding, op, (left, right), span);
         }
-        let Some(lhs) = self.expr(frame, left)? else {
-            return Ok(None);
-        };
-        let Some(rhs) = self.expr(frame, right)? else {
-            return Ok(None);
-        };
-        Expr::compare(op, lhs, rhs, span).map(Some)
+        let lhs = self.expr(frame, left)?;
+        let rhs = self.expr(frame, right)?;
+        Ok(Expr::compare(op, lhs, rhs, span)?)
     }
 
     /// `AND_THEN` or `OR_ELSE`: the short circuit of `ops` for a `BOOL`, and
@@ -351,102 +354,13 @@ impl Lowering<'_> {
         (op, bitwise): (ShortCircuitOp, BinaryOp),
         left: &AstExpr,
         right: &AstExpr,
-    ) -> Lowered {
+    ) -> Lowered<Expr> {
         let span = expr.span();
-        match self.is_bool(expr)? {
-            Some(true) => {}
-            Some(false) => return self.binary(frame, bitwise, left, right, span),
-            None => return Ok(None),
+        if let LogicalForm::Bitwise = self.typed(expr)?.class.logical_form()? {
+            return self.binary(frame, bitwise, left, right, span);
         }
-        let Some(lhs) = self.expr(frame, left)? else {
-            return Ok(None);
-        };
-        let Some(rhs) = self.expr(frame, right)? else {
-            return Ok(None);
-        };
-        Expr::short_circuit(op, lhs, rhs, span).map(Some)
-    }
-
-    /// The lowered type the analyzer recorded for `expr`; `None` when it
-    /// recorded none, or one lowering cannot express yet.
-    pub(crate) fn recorded_type(&mut self, expr: &AstExpr) -> Result<Option<TypeId>, Diagnostic> {
-        let Some(recorded) = expr.expr_type.as_ref().and_then(|ty| ty.type_id()) else {
-            return Ok(None);
-        };
-        self.lowered_type(recorded)
-    }
-
-    /// The lowered type the analyzer recorded for `expr`, and the type it is
-    /// operated at; `None` when it recorded none, or one lowering cannot
-    /// operate on as one value.
-    pub(crate) fn operated_type(
-        &mut self,
-        expr: &AstExpr,
-    ) -> Result<Option<(TypeId, ScalarType)>, Diagnostic> {
-        let Some(ty) = self.recorded_type(expr)? else {
-            return Ok(None);
-        };
-        Ok(self
-            .program
-            .types()
-            .operation_type(ty)
-            .map(|operated| (ty, operated)))
-    }
-
-    /// Whether `expr` is computed by arithmetic: a number or a bit string,
-    /// not a time, a date or an enumeration, whose operations follow rules of
-    /// their own.
-    pub(crate) fn is_arithmetic(&mut self, expr: &AstExpr) -> Result<bool, Diagnostic> {
-        let Some((ty, _)) = self.operated_type(expr)? else {
-            return Ok(false);
-        };
-        let Some(kind) = self.program.types().kind(ty) else {
-            return Ok(false);
-        };
-        Ok(match kind {
-            TypeKind::Integer { .. } | TypeKind::BitString { .. } | TypeKind::Real { .. } => true,
-            TypeKind::Subrange { base, .. } => {
-                matches!(
-                    self.program.types().kind(*base),
-                    Some(TypeKind::Integer { .. })
-                )
-            }
-            TypeKind::Bool
-            | TypeKind::Temporal { .. }
-            | TypeKind::Enumeration { .. }
-            | TypeKind::String(_)
-            | TypeKind::Array { .. }
-            | TypeKind::Structure { .. }
-            | TypeKind::FunctionBlock { .. }
-            | TypeKind::Program { .. }
-            | TypeKind::Reference { .. } => false,
-        })
-    }
-
-    /// Whether `expr` is a `BOOL` (`Some(true)`) or an integer or bit string
-    /// (`Some(false)`), which decides between the logical and bitwise form of
-    /// `NOT`, `AND`, `OR` and `XOR` (REQ-LOW-lowering-048). `None` for any
-    /// other type.
-    fn is_bool(&mut self, expr: &AstExpr) -> Result<Option<bool>, Diagnostic> {
-        let Some((ty, _)) = self.operated_type(expr)? else {
-            return Ok(None);
-        };
-        let Some(kind) = self.program.types().kind(ty) else {
-            return Ok(None);
-        };
-        Ok(match kind {
-            TypeKind::Bool => Some(true),
-            TypeKind::Integer { .. } | TypeKind::BitString { .. } => Some(false),
-            TypeKind::Real { .. }
-            | TypeKind::Temporal { .. }
-            | TypeKind::Enumeration { .. }
-            | TypeKind::Subrange { .. }
-            | TypeKind::String(_)
-            | TypeKind::Array { .. }
-            | TypeKind::Structure { .. }
-            | TypeKind::FunctionBlock { .. }
-            | TypeKind::Program { .. }
-            | TypeKind::Reference { .. } => None,
-        })
+        let lhs = self.expr(frame, left)?;
+        let rhs = self.expr(frame, right)?;
+        Ok(Expr::short_circuit(op, lhs, rhs, span)?)
     }
 }

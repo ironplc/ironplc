@@ -20,7 +20,7 @@ use ironplc_dsl::common::{ElementaryTypeName, TypeName};
 use ironplc_dsl::textual::Operator;
 use ironplc_parser::options::CompilerOptions;
 
-use super::common_operand::{common_operand, Side};
+use super::common_operand::common_operand;
 use super::operator_function_form::{form_of_operator, FormOf, OperatorFunctionForm};
 use super::stdlib_time_function::short_overload;
 use crate::type_compat::{are_types_compatible, is_checkable_type, same_temporal_family};
@@ -91,10 +91,12 @@ pub struct FoldFailure {
 ///    [`Overload::Unchecked`].
 /// 2. The numeric overload applies when both operands are in the operator's
 ///    category and one is acceptable where the other is expected; the result
-///    is the operand the other widens to. With
-///    `--allow-bit-string-arithmetic`, a `BYTE`, `WORD`, `DWORD` or `LWORD`
-///    operand of `ADD`, `SUB`, `MUL` or `DIV` is judged as the unsigned
-///    integer of its width (ADR-0053).
+///    is the operand the other widens to. An untyped real literal beside an
+///    integer is a `REAL`, its default type (ADR-0028), so the result of
+///    `i * 1.5` on an `INT` is `REAL` and `d * 1.5` on a `DINT` has none
+///    (see `common_operand`). With `--allow-bit-string-arithmetic`, a
+///    `BYTE`, `WORD`, `DWORD` or `LWORD` operand of `ADD`, `SUB`, `MUL` or
+///    `DIV` is judged as the unsigned integer of its width (ADR-0053).
 /// 3. Otherwise [`typed_overload`] is asked.
 pub fn resolve_arithmetic_overload(
     op: &Operator,
@@ -215,14 +217,17 @@ fn numeric_overload(
     }
     // The result is the operand the other is acceptable as, as written, so a
     // bit string judged as its unsigned integer stays a bit string: `b + 1`
-    // on `BYTE` is `BYTE`.
-    let result = match common_operand(&judged_left, &judged_right, options)? {
-        Side::Left => left,
-        Side::Right => right,
+    // on `BYTE` is `BYTE`. A type that is neither operand's, the `REAL` an
+    // untyped real literal and an `INT` compute at, is the result as it is.
+    let common = common_operand(&judged_left, &judged_right, options)?;
+    let result = if common == judged_left {
+        left.clone()
+    } else if common == judged_right {
+        right.clone()
+    } else {
+        common
     };
-    Some(Overload::Numeric {
-        result: result.clone(),
-    })
+    Some(Overload::Numeric { result })
 }
 
 /// Returns the type `operand` is judged as by the numeric overload of `op`.
@@ -239,7 +244,7 @@ fn judged_as_numeric(op: &Operator, operand: &TypeName, options: &CompilerOption
     if !options.allow_bit_string_arithmetic || *op == Operator::Mod {
         return operand.clone();
     }
-    let unsigned = match ElementaryTypeName::try_from(&operand.name) {
+    let unsigned = match ElementaryTypeName::try_from(&operand.id) {
         Ok(ElementaryTypeName::BYTE) => "USINT",
         Ok(ElementaryTypeName::WORD) => "UINT",
         Ok(ElementaryTypeName::DWORD) => "UDINT",
@@ -260,7 +265,7 @@ impl<'a> OperandType<'a> {
     fn of(type_name: &'a TypeName) -> Self {
         OperandType {
             type_name,
-            elementary: ElementaryTypeName::try_from(&type_name.name).ok(),
+            elementary: ElementaryTypeName::try_from(&type_name.id).ok(),
         }
     }
 }
@@ -269,10 +274,7 @@ impl<'a> OperandType<'a> {
 /// parameter of type `param`: a short temporal type, or `ANY_NUM`.
 fn parameter_accepts(param: &str, operand: &OperandType<'_>) -> bool {
     let param = TypeName::from(param);
-    match (
-        ElementaryTypeName::try_from(&param.name),
-        &operand.elementary,
-    ) {
+    match (ElementaryTypeName::try_from(&param.id), &operand.elementary) {
         // A temporal parameter accepts its family at either width.
         (Ok(param), Some(actual)) => same_temporal_family(&param, actual),
         // A temporal parameter accepts nothing that is not elementary.

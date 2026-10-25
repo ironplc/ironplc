@@ -2,19 +2,22 @@
 
 use ironplc_container::opcode::builtin;
 use ironplc_container::opcode::builtin::str_to_num::Target;
-use ironplc_dsl::core::SourceSpan;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::{
     Arg, BinaryOp, Callee, CompareOp, Const, Expr, ExprKind, Intrinsic, NarrowWidth, Place,
     ShortCircuitOp, UnaryOp,
 };
-use ironplc_lowering::Lowering;
+use ironplc_ir::SourceSpan;
+use ironplc_ir::{Diagnostic, Label};
 
-use super::place::variable_name;
+use super::call_args::emit_passed;
+use super::fn_call::emit_in_place;
+use super::method::{emit_method_call, method_site};
+use super::place::{resolve_load, variable_name, Load};
 use super::policy::parse_builtin;
 use super::string::str_arg_offset;
 use super::{op_type, user_function};
-use crate::compile::{CompileContext, OpWidth, Signedness};
+use crate::compile::{CompileContext, OpWidth, Signedness, UserFunctionInfo};
 use crate::compile_arith::convert;
 use crate::compile_expr::{
     emit_add, emit_div, emit_eq, emit_ge, emit_gt, emit_le, emit_lt, emit_mod, emit_mul, emit_ne,
@@ -27,7 +30,7 @@ use crate::emit::Emitter;
 pub(super) fn emit_expr(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &Lowering<'_>,
+    lowering: &Program,
     expr: &Expr,
 ) -> Result<(), Diagnostic> {
     let op = op_type(expr.ty()).ok_or_else(|| {
@@ -38,35 +41,21 @@ pub(super) fn emit_expr(
     })?;
     match expr.kind() {
         ExprKind::Const(constant) => emit_constant(emitter, ctx, *constant),
-        ExprKind::Read(place) => {
-            super::place::resolve(lowering, ctx, place, expr.span())?.emit_load(emitter, ctx)?;
-        }
+        ExprKind::Read(place) => match resolve_load(lowering, ctx, place, expr.span())? {
+            Load::Stored(storage) => storage.emit_load(emitter, ctx)?,
+            Load::Referenced(storage) => {
+                storage.emit_load(emitter, ctx)?;
+                emitter.emit_load_indirect();
+            }
+        },
         ExprKind::RefTo(place) => emit_ref(emitter, ctx, lowering, place, expr.span())?,
         ExprKind::Null => emit_null(emitter, ctx),
-        ExprKind::Convert(value) => {
+        ExprKind::Convert(value)
+        | ExprKind::ConvertChecked(value)
+        | ExprKind::Truncate { value, .. }
+        | ExprKind::Unary { value, .. } => {
             emit_expr(emitter, ctx, lowering, value)?;
-            let from = op_type(value.ty()).unwrap_or(op);
-            convert(emitter, from, op)?;
-        }
-        ExprKind::ConvertChecked(value) => {
-            emit_expr(emitter, ctx, lowering, value)?;
-            let from = op_type(value.ty()).unwrap_or(op);
-            emit_subscript_check(emitter, from, op, expr.span())?;
-        }
-        ExprKind::Truncate { width, value } => {
-            emit_expr(emitter, ctx, lowering, value)?;
-            emit_truncate(emitter, *width, op.1, expr.span())?;
-        }
-        ExprKind::Unary { op: unary, value } => {
-            emit_expr(emitter, ctx, lowering, value)?;
-            match unary {
-                UnaryOp::Neg => emit_neg(emitter, op),
-                UnaryOp::BitNot => match op.0 {
-                    OpWidth::W64 => emitter.emit_bit_not_64(),
-                    OpWidth::W32 | OpWidth::F32 | OpWidth::F64 => emitter.emit_bit_not_32(),
-                },
-                UnaryOp::BoolNot => emitter.emit_bool_not(),
-            }
+            emit_operation(emitter, expr)?;
         }
         ExprKind::Binary {
             op: binary,
@@ -115,8 +104,8 @@ pub(super) fn emit_expr(
             lhs,
             rhs,
         } => {
-            // As `compile_short_circuit` emits it: the right operand runs only
-            // when the left one does not decide the result.
+            // The right operand runs only when the left one does not decide
+            // the result.
             let alternative = emitter.create_label();
             let end = emitter.create_label();
             emit_expr(emitter, ctx, lowering, lhs)?;
@@ -139,30 +128,101 @@ pub(super) fn emit_expr(
             callee: Callee::User(pou),
             args,
         } => {
-            // `can_emit` leaves to the AST a call of a function this backend
-            // does not pass every argument of.
-            let function = user_function(lowering, ctx, *pou).ok_or_else(|| {
-                Diagnostic::internal_error_at(Label::span(
-                    expr.span().clone(),
-                    "A call of a function this backend does not pass its arguments",
-                ))
-            })?;
-            // A function of the program takes values and places
-            // (`ProgramBuilder::call`), so no string offsets come back.
-            emit_args(emitter, ctx, lowering, args, expr.span())?;
-            emitter.emit_call(
-                function.function_id,
-                function.num_params,
-                function.var_offset,
-                function.max_stack_depth,
-            );
-            ctx.record_call_edge(function.function_id);
+            if let Some(function) = user_function(ctx, *pou) {
+                emit_user_call(emitter, ctx, lowering, &function, args, expr.span())?;
+            } else {
+                // `can_emit` rejects a call of a function or method this
+                // backend does not pass every argument of.
+                let site = method_site(lowering, ctx, *pou, args).ok_or_else(|| {
+                    Diagnostic::internal_error_at(Label::span(
+                        expr.span().clone(),
+                        "A call of a function this backend does not pass its arguments",
+                    ))
+                })?;
+                emit_method_call(emitter, ctx, lowering, &site, &args[1..], expr.span())?;
+                // Drop the instance from beneath the result.
+                emitter.emit_swap();
+                emitter.emit_pop();
+            }
         }
         ExprKind::Call {
             callee: Callee::Intrinsic(intrinsic),
             args,
         } => emit_intrinsic_call(emitter, ctx, lowering, *intrinsic, args, expr.span())?,
+        ExprKind::InPlaceCall(call) => emit_in_place(emitter, ctx, lowering, call, expr.span())?,
     }
+    Ok(())
+}
+
+/// Applies `expr`, an operation of one operand, to the value of its operand
+/// on the stack: a conversion, a narrowing or a unary operation.
+pub(super) fn emit_operation(emitter: &mut Emitter, expr: &Expr) -> Result<(), Diagnostic> {
+    let op = op_type(expr.ty()).ok_or_else(|| {
+        Diagnostic::internal_error_at(Label::span(
+            expr.span().clone(),
+            "A lowered expression has no operation type",
+        ))
+    })?;
+    match expr.kind() {
+        ExprKind::Convert(value) => {
+            let from = op_type(value.ty()).unwrap_or(op);
+            convert(emitter, from, op)?;
+        }
+        ExprKind::ConvertChecked(value) => {
+            let from = op_type(value.ty()).unwrap_or(op);
+            emit_subscript_check(emitter, from, op, expr.span())?;
+        }
+        ExprKind::Truncate { width, .. } => emit_truncate(emitter, *width, op.1, expr.span())?,
+        ExprKind::Unary { op: unary, .. } => match unary {
+            UnaryOp::Neg => emit_neg(emitter, op),
+            UnaryOp::BitNot => match op.0 {
+                OpWidth::W64 => emitter.emit_bit_not_64(),
+                OpWidth::W32 | OpWidth::F32 | OpWidth::F64 => emitter.emit_bit_not_32(),
+            },
+            UnaryOp::BoolNot => emitter.emit_bool_not(),
+        },
+        ExprKind::Const(_)
+        | ExprKind::Read(_)
+        | ExprKind::Binary { .. }
+        | ExprKind::Compare { .. }
+        | ExprKind::ShortCircuit { .. }
+        | ExprKind::Call { .. }
+        | ExprKind::InPlaceCall(_)
+        | ExprKind::RefTo(_)
+        | ExprKind::Null => {
+            return Err(Diagnostic::internal_error_at(Label::span(
+                expr.span().clone(),
+                "A lowered expression that is not an operation of one operand",
+            )))
+        }
+    }
+    Ok(())
+}
+
+/// Calls the user-defined function `function` with `args`, the arguments it
+/// takes for its inputs and in-outs, at `span`, leaving its result on the
+/// stack: a value, or a string's buffer. A string result's header is
+/// initialized before `CALL`, for the function's body to write to.
+pub(super) fn emit_user_call<'s>(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    lowering: &Program,
+    function: &UserFunctionInfo,
+    args: impl IntoIterator<Item = &'s Arg>,
+    span: &SourceSpan,
+) -> Result<(), Diagnostic> {
+    emit_passed(emitter, ctx, lowering, &function.params, args, span)?;
+    if let Some(result) = &function.return_string_info {
+        emitter.emit_str_init(result.data_offset, result.max_length, result.char_width);
+    }
+    let stack_depth = ctx.function_stack_depth(function.function_id, span)?;
+    emitter.emit_call(
+        function.function_id,
+        function.num_params,
+        function.var_offset,
+        stack_depth,
+    );
+    ctx.record_call_edge(function.function_id);
     Ok(())
 }
 
@@ -171,12 +231,12 @@ pub(super) fn emit_expr(
 pub(super) fn emit_intrinsic_call(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &Lowering<'_>,
+    lowering: &Program,
     intrinsic: Intrinsic,
     args: &[Arg],
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
-    // `can_emit` leaves to the AST a call with no instruction.
+    // `can_emit` rejects a call with no instruction.
     let instruction = instruction_of(intrinsic, args.len()).ok_or_else(|| {
         Diagnostic::internal_error_at(Label::span(
             span.clone(),
@@ -211,13 +271,13 @@ pub(super) fn emit_intrinsic_call(
 
 /// Passes each of `args` of the call at `span`, in order: a value on the
 /// stack, a string as the data region offset of a slot that holds it, and a
-/// place by reference, as the AST route passes a `VAR_IN_OUT` argument.
+/// place by reference, as a `VAR_IN_OUT` argument is passed.
 /// Returns the offsets of the strings, in order.
-fn emit_args(
+fn emit_args<'s>(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &Lowering<'_>,
-    args: &[Arg],
+    lowering: &Program,
+    args: impl IntoIterator<Item = &'s Arg>,
     span: &SourceSpan,
 ) -> Result<Vec<u32>, Diagnostic> {
     let mut strings = Vec::new();
@@ -226,17 +286,24 @@ fn emit_args(
             Arg::Value(value) => emit_expr(emitter, ctx, lowering, value)?,
             Arg::Str(value) => strings.push(str_arg_offset(emitter, ctx, lowering, value)?),
             Arg::Ref(place) => emit_ref(emitter, ctx, lowering, place, span)?,
+            // No intrinsic takes an aggregate (REQ-LOW-ir-145).
+            Arg::Copy(_) => {
+                return Err(Diagnostic::internal_error_at(Label::span(
+                    span.clone(),
+                    "An aggregate argument of an intrinsic",
+                )))
+            }
         }
     }
     Ok(strings)
 }
 
 /// Pushes a reference to `place`, a variable or what a `VAR_IN_OUT`
-/// parameter refers to. `can_emit` leaves any other place to the AST.
-fn emit_ref(
+/// parameter refers to. `can_emit` rejects any other place.
+pub(super) fn emit_ref(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &Lowering<'_>,
+    lowering: &Program,
     place: &Place,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
@@ -433,7 +500,7 @@ pub(super) fn emit_truncate(
         (NarrowWidth::B16, Signedness::Signed) => emitter.emit_trunc_i16(),
         (NarrowWidth::B16, Signedness::Unsigned) => emitter.emit_trunc_u16(),
         // The bytecode backend keeps no value narrower than its slot at
-        // 32 bits, so `can_emit` leaves such a truncation to the AST.
+        // 32 bits, so `can_emit` rejects such a truncation.
         (NarrowWidth::B32, Signedness::Signed | Signedness::Unsigned) => {
             return Err(Diagnostic::internal_error_at(Label::span(
                 span.clone(),

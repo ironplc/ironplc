@@ -88,6 +88,18 @@ fn apply_when_folded_operand_out_of_range_then_err() {
     );
 }
 
+/// `ABS` of a literal is folded into a constant, which is checked as a
+/// written one is: the absolute value of the smallest `SINT` is not a `SINT`.
+#[rstest]
+#[case::typed("x := ABS(SINT#-128);\n")]
+#[case::untyped("x := ABS(-128);\n")]
+fn apply_when_abs_of_literal_out_of_range_then_err(#[case] body: &str) {
+    assert_eq!(
+        problems_of(&program_with("x : SINT;\n", body)),
+        codes(OVERFLOW)
+    );
+}
+
 /// A comparison happens at the variable's type, so a literal it can never
 /// equal is a mistake rather than a false condition.
 #[test]
@@ -788,6 +800,26 @@ fn apply_when_call_argument_out_of_range_then_err(
     );
 }
 
+/// An input a block inherits through `EXTENDS` is checked as one it declares.
+#[test]
+fn apply_when_inherited_input_argument_out_of_range_then_err() {
+    let program = format!(
+        "{SMALL_TYPES}FUNCTION_BLOCK DERIVED EXTENDS HOLD
+VAR_INPUT own : USINT; END_VAR
+END_FUNCTION_BLOCK
+{}",
+        program_with("d : DERIVED;\n", "d(i := 300, r := 1.0E300, own := 300);\n")
+    );
+    assert_eq!(
+        rule_codes_after_conversions(super::apply, &program, &edition3_options()),
+        codes(&[
+            Problem::ConstantOverflow,
+            Problem::RealLiteralOutOfRange,
+            Problem::ConstantOverflow
+        ])
+    );
+}
+
 /// A standard function's `ANY_NUM` argument is checked against the type the
 /// call computes at, and the argument of a conversion function against its
 /// source type.
@@ -857,6 +889,34 @@ fn apply_when_assignment_out_of_range_then_error_at_literal() {
     let start = program.find("128").unwrap();
     let location = &diagnostics[0].primary.location;
     assert_eq!((location.start, location.end), (start, start + "128".len()));
+}
+
+#[rstest]
+#[case::in_range("    THIS^.small := 100;", OK)]
+#[case::out_of_range("    THIS^.small := 1000;", OVERFLOW)]
+fn apply_when_assignment_through_this_then_checked_against_field_type(
+    #[case] body: &str,
+    #[case] expected: &[Problem],
+) {
+    let program = format!(
+        "
+FUNCTION_BLOCK FB_A
+VAR
+    small : SINT;
+END_VAR
+METHOD M
+{body}
+END_METHOD
+END_FUNCTION_BLOCK"
+    );
+    assert_eq!(
+        codes(expected),
+        crate::test_helpers::rule_codes(
+            super::apply,
+            &program,
+            &crate::test_helpers::fb_inheritance_options()
+        )
+    );
 }
 
 // --- Subrange values ---

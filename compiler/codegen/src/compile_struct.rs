@@ -6,203 +6,74 @@
 
 use std::collections::HashMap;
 
-use ironplc_dsl::core::{Id, Located, SourceSpan};
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{StructuredVariable, SymbolicVariableKind};
+use crate::access::{Access, Field, Named};
+use ironplc_ir::Located;
+use ironplc_ir::{Diagnostic, Label};
 
-use ironplc_analyzer::semantic_type::{
-    ByteSized, SemanticStructField, SemanticType, SlotCountError,
-};
-use ironplc_container::FieldType;
-use ironplc_container::{ContainerBuilder, SlotIndex, VarIndex};
+use ironplc_container::{SlotIndex, VarIndex};
+use ironplc_ir::lowered::{FieldIdx, TypeId, TypeKind, TypeTable};
 
-use super::compile::{
-    CompileContext, OpType, OpWidth, Signedness, VarTypeInfo, DEFAULT_STRING_MAX_LENGTH,
-};
-use super::compile_enum::enum_var_type_info;
-use super::compile_expr::emit_truncation;
-use crate::emit::Emitter;
+use super::compile::{CompileContext, VarTypeInfo};
+use crate::lowered::slot_type;
 
-/// Metadata for a structure variable, stored in CompileContext.
+/// Where a structure variable is, and how its fields are reached, as the
+/// layout built from the lowered declarations records it.
 #[derive(Clone)]
 pub(crate) struct StructVarInfo {
     /// Variable table index holding the data region offset.
     pub var_index: VarIndex,
     /// Data region byte offset where this structure's fields start.
     pub data_offset: u32,
-    /// Total number of 8-byte slots this structure occupies.
-    #[allow(dead_code)]
-    pub total_slots: SlotIndex,
     /// Array descriptor index for this structure (treats struct as flat slot array).
     pub desc_index: u16,
-    /// Fields in declaration order. Preserving order ensures deterministic
-    /// bytecode emission (reproducible builds) and predictable initialization
-    /// sequences. Use `field_index` for O(1) lookup by name.
-    pub fields: Vec<StructFieldInfo>,
-    /// Maps field name (lowercase) to index in `fields` Vec for O(1) lookup.
-    pub field_index: HashMap<String, usize>,
+    /// The structure's lowered type, whose fields the accesses select.
+    pub ty: TypeId,
     /// Scratch variable for STRING array field access. Allocated lazily
     /// only when the struct has at least one STRING array field or one
     /// STRING field of an array-of-struct element. Holds
     /// `struct_data_offset + field_byte_offset` during STR_LOAD/STORE_ARRAY_ELEM.
     pub scratch_var_index: Option<VarIndex>,
-    /// Per-field STRING array descriptor info. Maps field name (lowercase) to
-    /// `(desc_index, total_elements, max_string_len)`.
-    pub string_array_descs: HashMap<String, (u16, u32, u16)>,
+    /// Per-field STRING array descriptor info. Maps each of the structure's
+    /// own fields that is an array of strings to `(desc_index,
+    /// total_elements, max_string_len)`.
+    pub string_array_descs: HashMap<FieldIdx, (u16, u32, u16)>,
     /// The STRING fields of the elements of the arrays of structures this
     /// structure holds, at any depth of nested structure fields.
     pub element_strings: Vec<crate::compile_array_struct::ElementStringField>,
 }
 
-/// Metadata for a single structure field.
-#[derive(Clone)]
-pub(crate) struct StructFieldInfo {
-    /// Field name (lowercase, for matching against access chains).
-    pub name: String,
-    /// Slot offset relative to the containing structure's base.
-    pub slot_offset: SlotIndex,
-    /// The field's semantic type (for nested resolution).
-    pub field_type: SemanticType,
-    /// For STRING fields, the maximum character length. `None` for non-STRING fields.
-    pub string_max_length: Option<u16>,
-}
-
-/// Maps an SemanticType to its OpType for leaf fields.
-///
-/// Returns `Some((OpWidth, Signedness))` for primitive, enum, and subrange types.
-/// Returns `None` for structure, array, and other composite types (which are
-/// accessed via further resolution, not loaded/stored directly as single values).
-pub(crate) fn resolve_field_op_type(field_type: &SemanticType) -> Option<OpType> {
-    match field_type {
-        SemanticType::Bool => Some((OpWidth::W32, Signedness::Signed)),
-        SemanticType::Int { size } | SemanticType::Time { size } => match size {
-            ByteSized::B8 | ByteSized::B16 | ByteSized::B32 => {
-                Some((OpWidth::W32, Signedness::Signed))
-            }
-            ByteSized::B64 => Some((OpWidth::W64, Signedness::Signed)),
-        },
-        SemanticType::UInt { size }
-        | SemanticType::Bytes { size }
-        | SemanticType::Date { size }
-        | SemanticType::TimeOfDay { size }
-        | SemanticType::DateAndTime { size } => match size {
-            ByteSized::B8 | ByteSized::B16 | ByteSized::B32 => {
-                Some((OpWidth::W32, Signedness::Unsigned))
-            }
-            ByteSized::B64 => Some((OpWidth::W64, Signedness::Unsigned)),
-        },
-        SemanticType::Real { size } => match size {
-            ByteSized::B32 => Some((OpWidth::F32, Signedness::Signed)),
-            ByteSized::B64 => Some((OpWidth::F64, Signedness::Signed)),
-            _ => Some((OpWidth::F32, Signedness::Signed)),
-        },
-        // Every enumeration operates as a DINT (REQ-EN-codegen-003).
-        SemanticType::Enumeration { .. } => {
-            let dint = enum_var_type_info();
-            Some((dint.op_width, dint.signedness))
-        }
-        SemanticType::Subrange { base_type, .. } => resolve_field_op_type(base_type),
-        SemanticType::Reference { .. } => Some((OpWidth::W64, Signedness::Unsigned)),
-        // Composite types are not loaded/stored as single values
-        SemanticType::Structure { .. }
-        | SemanticType::Array { .. }
-        | SemanticType::String { .. }
-        | SemanticType::FunctionBlock { .. } => None,
-    }
-}
-
-/// Builds field metadata (ordered Vec + lookup HashMap) from a structure's
-/// semantic type.
-///
-/// Returns `Err` if any field has an unsupported type (STRING, WSTRING,
-/// FunctionBlock). Nested structures are NOT flattened — each level is a
-/// separate field list.
-pub(crate) fn build_struct_fields(
-    fields: &[SemanticStructField],
-    span: &SourceSpan,
-) -> Result<(Vec<StructFieldInfo>, HashMap<String, usize>), Diagnostic> {
-    let mut field_list = Vec::with_capacity(fields.len());
-    let mut field_index = HashMap::with_capacity(fields.len());
-    let mut slot_offset = SlotIndex::new(0);
-    for field in fields {
-        let field_slots = field.field_type.slot_count().map_err(|e| {
-            let msg = match e {
-                SlotCountError::UnsupportedFieldType => format!(
-                    "Structure field '{}' has unsupported type (STRING, WSTRING, or FunctionBlock)",
-                    field.name
-                ),
-                SlotCountError::MaxDepthExceeded => format!(
-                    "Structure field '{}' exceeds maximum nesting depth (possible recursive type)",
-                    field.name
-                ),
-                SlotCountError::Overflow => format!(
-                    "Structure field '{}' is too large (slot count overflows)",
-                    field.name
-                ),
-            };
-            Diagnostic::not_implemented(Label::span(span.clone(), msg))
-        })?;
-        let name = field.name.to_string().to_lowercase();
-        let string_max_length = match &field.field_type {
-            SemanticType::String { max_len, .. } => {
-                Some(max_len.unwrap_or(DEFAULT_STRING_MAX_LENGTH as u128) as u16)
-            }
-            _ => None,
-        };
-
-        // Defense-in-depth: detect duplicate field names (case-insensitive).
-        // The analyzer should reject these, but if one slips through, silently
-        // overwriting the HashMap entry would make the first field inaccessible
-        // by name while it still occupies slots in the layout.
-        if field_index.contains_key(&name) {
-            return Err(Diagnostic::internal_error_at(Label::span(
-                span.clone(),
-                format!(
-                    "Structure has duplicate field name '{}' (case-insensitive)",
-                    name
-                ),
-            )));
-        }
-        field_index.insert(name.clone(), field_list.len());
-        field_list.push(StructFieldInfo {
-            name,
-            slot_offset,
-            field_type: field.field_type.clone(),
-            string_max_length,
-        });
-        slot_offset = SlotIndex::new(slot_offset.raw() + field_slots);
-    }
-    Ok((field_list, field_index))
-}
-
-/// Looks up a field by name within an SemanticType::Structure's field list.
-///
-/// Delegates to `build_struct_fields` to compute slot offsets, ensuring a single
-/// source of truth for offset computation. This prevents divergence between
-/// the offsets computed during variable allocation and those computed during
-/// expression compilation. Both paths use `build_struct_fields` → `slot_count()`
-/// for offset accumulation.
-///
-/// Returns `(slot_offset, field_type)` for the named field, or an error if the
-/// field is not found.
-pub(crate) fn find_field_in_type(
-    fields: &[SemanticStructField],
-    field_name: &Id,
-    span: &SourceSpan,
-) -> Result<(SlotIndex, SemanticType), Diagnostic> {
-    // Reuse build_struct_fields to compute offsets — do NOT duplicate the
-    // slot-offset accumulation logic. The cost of building the full field
-    // list per lookup is acceptable at compile time (structures are small).
-    let (field_list, field_index) = build_struct_fields(fields, span)?;
-    let name_lower = field_name.to_string().to_lowercase();
-    let &idx = field_index.get(&name_lower).ok_or_else(|| {
+/// The slot of the field `selected` selects of a structure of the type
+/// `record`, from the start of the structure, and the field's type.
+pub(crate) fn field_in<S>(
+    types: &TypeTable,
+    record: TypeId,
+    selected: &Field<S>,
+) -> Result<(SlotIndex, TypeId), Diagnostic> {
+    let field = &selected.field;
+    let not_a_structure = || {
         Diagnostic::not_implemented(Label::span(
-            span.clone(),
-            format!("Unknown field '{}'", field_name),
+            field.span(),
+            format!("Cannot select field '{field}' -- it is not a field of a structure"),
         ))
-    })?;
-    let info = &field_list[idx];
-    Ok((info.slot_offset, info.field_type.clone()))
+    };
+    let Some(TypeKind::Structure { fields }) = types.kind(record) else {
+        return Err(not_a_structure());
+    };
+    let mut slot = 0_u32;
+    for (position, candidate) in fields.iter().enumerate() {
+        if position == selected.idx.index() as usize {
+            return Ok((SlotIndex::new(slot), candidate.ty));
+        }
+        slot = crate::layout::slots(types, candidate.ty)
+            .and_then(|slots| slot.checked_add(slots))
+            .ok_or_else(|| {
+                Diagnostic::not_supported(Label::span(field.span(), "Structure too large"))
+            })?;
+    }
+    Err(Diagnostic::not_implemented(Label::span(
+        field.span(),
+        format!("Unknown field '{field}'"),
+    )))
 }
 
 /// Maximum nesting depth for `walk_struct_chain`. Matches the depth guard
@@ -211,27 +82,24 @@ pub(crate) fn find_field_in_type(
 /// compilation.
 const MAX_STRUCT_CHAIN_DEPTH: u32 = 32;
 
-/// Resolves a `StructuredVariable` AST node to the information needed for
+/// Resolves the field `structured` names to the information needed for
 /// code emission: variable table index, array descriptor index, compile-time
-/// slot offset, op type, and field type.
-///
-/// The returned `SemanticType` enables callers (PR 5 store path) to
-/// derive truncation information from the field's type.
-pub(crate) fn resolve_struct_field_access(
+/// slot offset, and the type the field is loaded and stored at.
+pub(crate) fn resolve_struct_field_access<S>(
+    types: &TypeTable,
     ctx: &CompileContext,
-    structured: &StructuredVariable,
-) -> Result<(VarIndex, u16, SlotIndex, OpType, SemanticType), Diagnostic> {
-    let (root_name, slot_offset, field_type) =
-        walk_struct_chain(ctx, &structured.record, &structured.field, 0)?;
+    structured: &Field<S>,
+) -> Result<(VarIndex, u16, SlotIndex, VarTypeInfo), Diagnostic> {
+    let (root_name, slot_offset, field_type) = walk_struct_chain(types, ctx, structured, 0)?;
 
-    let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
+    let struct_info = ctx.struct_var(&root_name).ok_or_else(|| {
         Diagnostic::not_implemented(Label::span(
-            structured.span(),
+            structured.field.span(),
             format!("Variable '{}' is not a structure", root_name),
         ))
     })?;
 
-    let op_type = resolve_field_op_type(&field_type).ok_or_else(|| {
+    let type_info = slot_type(types, field_type).ok_or_else(|| {
         Diagnostic::not_implemented(Label::span(
             structured.field.span(),
             "Cannot read composite field directly (nested struct or array)",
@@ -242,65 +110,54 @@ pub(crate) fn resolve_struct_field_access(
         struct_info.var_index,
         struct_info.desc_index,
         slot_offset,
-        op_type,
-        field_type,
+        type_info,
     ))
 }
 
-/// Walks a `StructuredVariable` AST chain to resolve the root variable name,
-/// accumulated slot offset, and leaf field type.
+/// Walks a chain of fields, `record.field`, to resolve the root variable
+/// name, accumulated slot offset, and leaf field type, of the types
+/// `types`.
 ///
-/// - **Base case** (`Named`): looks up the field in `ctx.struct_vars`.
-/// - **Recursive case** (`Structured`): recurses to resolve the parent, then
-///   uses `find_field_in_type` to resolve the current field within the parent
+/// - **Base case** (`Named`): looks up the structure in `ctx.struct_vars`,
+///   and the field in its type.
+/// - **Recursive case** (`Field`): recurses to resolve the parent, then
+///   uses [`field_in`] to resolve the current field within the parent
 ///   type, accumulating slot offsets.
-pub(crate) fn walk_struct_chain(
+pub(crate) fn walk_struct_chain<S>(
+    types: &TypeTable,
     ctx: &CompileContext,
-    record: &SymbolicVariableKind,
-    field: &Id,
+    structured: &Field<S>,
     depth: u32,
-) -> Result<(Id, SlotIndex, SemanticType), Diagnostic> {
+) -> Result<(Named, SlotIndex, TypeId), Diagnostic> {
     if depth > MAX_STRUCT_CHAIN_DEPTH {
         return Err(Diagnostic::not_implemented(Label::span(
-            field.span(),
+            structured.field.span(),
             "Structure nesting exceeds maximum depth (possible recursive type)",
         )));
     }
-
-    match record {
-        SymbolicVariableKind::Named(named) => {
-            let struct_info = ctx.struct_vars.get(&named.name).ok_or_else(|| {
+    match structured.record.as_ref() {
+        Access::Named(name) => {
+            let struct_info = ctx.struct_var(name).ok_or_else(|| {
                 Diagnostic::not_implemented(Label::span(
-                    named.name.span(),
-                    format!("Variable '{}' is not a structure", named.name),
+                    name.span(),
+                    format!("Variable '{}' is not a structure", name),
                 ))
             })?;
-            let field_name = field.to_string().to_lowercase();
-            let &field_idx = struct_info.field_index.get(&field_name).ok_or_else(|| {
-                Diagnostic::not_implemented(Label::span(
-                    field.span(),
-                    format!("Unknown field '{}'", field),
-                ))
-            })?;
-            let field_info = &struct_info.fields[field_idx];
-            Ok((
-                named.name.clone(),
-                field_info.slot_offset,
-                field_info.field_type.clone(),
-            ))
+            let (slot_offset, field_type) = field_in(types, struct_info.ty, structured)?;
+            Ok((name.clone(), slot_offset, field_type))
         }
-        SymbolicVariableKind::Structured(inner) => {
+        Access::Field(inner) => {
             let (root, parent_offset, parent_type) =
-                walk_struct_chain(ctx, &inner.record, &inner.field, depth + 1)?;
+                walk_struct_chain(types, ctx, inner, depth + 1)?;
 
-            let SemanticType::Structure { fields } = &parent_type else {
+            if !matches!(types.kind(parent_type), Some(TypeKind::Structure { .. })) {
                 return Err(Diagnostic::not_implemented(Label::span(
                     inner.field.span(),
                     format!("Field '{}' is not a structure type", inner.field),
                 )));
-            };
+            }
 
-            let (field_slot_offset, field_type) = find_field_in_type(fields, field, &field.span())?;
+            let (field_slot_offset, field_type) = field_in(types, parent_type, structured)?;
 
             Ok((
                 root,
@@ -308,460 +165,11 @@ pub(crate) fn walk_struct_chain(
                 field_type,
             ))
         }
-        // An `Array` record (`arr[i].field`, `s.items[i].field`) is resolved by
-        // `compile_array_struct` before the callers reach this walk; the
-        // remaining kinds (bit and partial access, deref, self) cannot own a
-        // field, so nothing is left to resolve here.
-        _ => Err(Diagnostic::todo_with_span(record.span())),
-    }
-}
-
-/// Derives a `VarTypeInfo` from an `SemanticType` for use with `emit_truncation`.
-///
-/// This is needed because struct fields are identified by `SemanticType`, not
-/// by variable-table entries.
-pub(crate) fn var_type_info_for_field(field_type: &SemanticType) -> Option<VarTypeInfo> {
-    let (op_width, signedness) = resolve_field_op_type(field_type)?;
-    let storage_bits = match field_type {
-        SemanticType::Bool => 1,
-        SemanticType::Int { size }
-        | SemanticType::UInt { size }
-        | SemanticType::Real { size }
-        | SemanticType::Bytes { size }
-        | SemanticType::Time { size }
-        | SemanticType::Date { size }
-        | SemanticType::TimeOfDay { size }
-        | SemanticType::DateAndTime { size } => size.bits(),
-        // Every enumeration is stored as a DINT (REQ-EN-codegen-003).
-        SemanticType::Enumeration { .. } => return Some(enum_var_type_info()),
-        SemanticType::Subrange { base_type, .. } => {
-            return var_type_info_for_field(base_type);
-        }
-        SemanticType::Reference { .. } => 64,
-        _ => return None,
-    };
-    Some(VarTypeInfo {
-        op_width,
-        signedness,
-        storage_bits,
-    })
-}
-
-/// Emits truncation instructions for narrow types when storing to a struct field.
-pub(crate) fn emit_truncation_for_field(emitter: &mut Emitter, field_type: &SemanticType) {
-    if let Some(vti) = var_type_info_for_field(field_type) {
-        emit_truncation(emitter, vti);
-    }
-}
-
-/// Allocates data region space for a variable of the structure type
-/// `struct_type` and registers metadata.
-pub(crate) fn allocate_struct_variable(
-    ctx: &mut CompileContext,
-    builder: &mut ContainerBuilder,
-    struct_type: &SemanticType,
-    id: &Id,
-    index: VarIndex,
-    span: &SourceSpan,
-) -> Result<(), Diagnostic> {
-    let SemanticType::Structure { fields } = struct_type else {
-        return Err(Diagnostic::internal_error_at(Label::span(
-            span.clone(),
-            "Structure type did not resolve to a structure",
-        )));
-    };
-
-    // Compute total slots.
-    //
-    // Overflowing the slot count is a fixed limit of the bytecode format, so
-    // it reports P9997 (NotSupported). The other two failures are not limits:
-    // an unsupported field type is a capability the compiler does not offer
-    // *yet*, and exceeding the nesting depth means a recursive type reached
-    // codegen that the analyzer's toposort should have rejected. Both report
-    // P9999 (NotImplemented), which is the code that invites the program in.
-    let total_slots = struct_type.slot_count().map_err(|e| match e {
-        SlotCountError::UnsupportedFieldType => Diagnostic::not_implemented(Label::span(
-            span.clone(),
-            "Structure contains unsupported field types (STRING, WSTRING, or FunctionBlock)",
-        )),
-        SlotCountError::MaxDepthExceeded => Diagnostic::not_implemented(Label::span(
-            span.clone(),
-            "Structure exceeds maximum nesting depth (possible recursive type)",
-        )),
-        SlotCountError::Overflow => Diagnostic::not_supported(Label::span(
-            span.clone(),
-            "Structure is too large (slot count overflows u32)",
-        )),
-    })?;
-
-    // Enforce slot limit (matches existing array limit for i32 flat-index safety)
-    if total_slots > super::compile::MAX_DATA_REGION_SLOTS {
-        return Err(Diagnostic::not_supported(Label::span(
-            span.clone(),
-            "Structure exceeds maximum 32768 slots",
-        )));
-    }
-
-    // Allocate data region space
-    let total_bytes = total_slots.checked_mul(8).ok_or_else(|| {
-        Diagnostic::not_supported(Label::span(
-            span.clone(),
-            "Structure size overflows (slots * 8)",
-        ))
-    })?;
-    let data_offset = crate::data_region::reserve(ctx, total_bytes, span)?;
-
-    // Register array descriptor (treating struct as flat slot array).
-    let desc_index = builder.add_array_descriptor(FieldType::Slot as u8, total_slots, 0);
-
-    // Build field metadata (returns error for unsupported field types)
-    let (fields_vec, field_index) = build_struct_fields(fields, span)?;
-
-    // Track max STRING capacity for temp buffer sizing.
-    for f in &fields_vec {
-        if let Some(max_len) = f.string_max_length {
-            if max_len > ctx.max_string_capacity {
-                ctx.max_string_capacity = max_len;
-            }
-        }
-    }
-
-    // Register STRING array descriptors and scratch variable for fields
-    // that are ARRAY OF STRING.
-    let mut string_array_descs: HashMap<String, (u16, u32, u16)> = HashMap::new();
-    let mut scratch_var_index: Option<VarIndex> = None;
-    for f in &fields_vec {
-        if let SemanticType::Array {
-            element_type,
-            dimensions: array_dims,
-        } = &f.field_type
-        {
-            if let SemanticType::String {
-                max_len,
-                char_width,
-            } = element_type.as_ref()
-            {
-                let max_str_len = max_len.unwrap_or(DEFAULT_STRING_MAX_LENGTH as u128) as u16;
-                let total_elements = array_dims
-                    .iter()
-                    .try_fold(1u32, |acc, d| {
-                        let size = (d.upper as i64 - d.lower as i64 + 1).max(0) as u32;
-                        acc.checked_mul(size)
-                    })
-                    .ok_or_else(|| {
-                        Diagnostic::not_supported(Label::span(span.clone(), "Array too large"))
-                    })?;
-                // Allocate scratch variable once for all STRING/WSTRING array fields.
-                if scratch_var_index.is_none() {
-                    let scratch_idx = ctx.allocate_scratch_variable(&id.to_string());
-                    scratch_var_index = Some(scratch_idx);
-                }
-                let element_field_type = if char_width.is_wide() {
-                    FieldType::WString
-                } else {
-                    FieldType::String
-                };
-                let str_desc_index = builder.add_array_descriptor(
-                    element_field_type as u8,
-                    total_elements,
-                    max_str_len,
-                );
-                string_array_descs.insert(
-                    f.name.clone(),
-                    (str_desc_index, total_elements, max_str_len),
-                );
-                // Track max string capacity for temp buffer sizing.
-                if max_str_len > ctx.max_string_capacity {
-                    ctx.max_string_capacity = max_str_len;
-                }
-            }
-        }
-    }
-
-    // Register a strided STRING descriptor for each STRING field of the
-    // elements of the arrays of structures this structure holds.
-    let mut element_strings = Vec::new();
-    crate::compile_array_struct::register_struct_element_strings(
-        ctx,
-        builder,
-        fields,
-        0,
-        span,
-        &mut element_strings,
-    )?;
-    if !element_strings.is_empty() && scratch_var_index.is_none() {
-        scratch_var_index = Some(ctx.allocate_scratch_variable(&id.to_string()));
-    }
-
-    // Store metadata
-    ctx.struct_vars.insert(
-        id.clone(),
-        StructVarInfo {
-            var_index: index,
-            data_offset,
-            total_slots: SlotIndex::new(total_slots),
-            desc_index,
-            fields: fields_vec,
-            field_index,
-            scratch_var_index,
-            string_array_descs,
-            element_strings,
-        },
-    );
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use ironplc_analyzer::semantic_type::SemanticStructField;
-    use ironplc_container::CharWidth;
-    use ironplc_dsl::core::Id;
-
-    fn make_field(name: &str, field_type: SemanticType) -> SemanticStructField {
-        SemanticStructField {
-            name: Id::from(name),
-            field_type,
-            var_type: None,
-            has_default: false,
-        }
-    }
-
-    #[test]
-    fn build_struct_fields_when_two_fields_then_sequential_offsets() {
-        let fields = vec![
-            make_field(
-                "a",
-                SemanticType::Int {
-                    size: ByteSized::B32,
-                },
-            ),
-            make_field("b", SemanticType::Bool),
-        ];
-        let (field_list, field_index) =
-            build_struct_fields(&fields, &SourceSpan::default()).unwrap();
-        assert_eq!(field_list.len(), 2);
-        assert_eq!(field_list[0].name, "a");
-        assert_eq!(field_list[0].slot_offset, SlotIndex::new(0));
-        assert_eq!(field_list[1].name, "b");
-        assert_eq!(field_list[1].slot_offset, SlotIndex::new(1));
-        assert_eq!(field_index["a"], 0);
-        assert_eq!(field_index["b"], 1);
-    }
-
-    #[test]
-    fn build_struct_fields_when_nested_struct_then_inner_occupies_multiple_slots() {
-        let inner = SemanticType::Structure {
-            fields: vec![
-                make_field(
-                    "x",
-                    SemanticType::Int {
-                        size: ByteSized::B32,
-                    },
-                ),
-                make_field(
-                    "y",
-                    SemanticType::Int {
-                        size: ByteSized::B32,
-                    },
-                ),
-            ],
-        };
-        let fields = vec![
-            make_field("inner", inner),
-            make_field(
-                "z",
-                SemanticType::Int {
-                    size: ByteSized::B32,
-                },
-            ),
-        ];
-        let (field_list, _) = build_struct_fields(&fields, &SourceSpan::default()).unwrap();
-        assert_eq!(field_list[0].slot_offset, SlotIndex::new(0));
-        // inner has 2 slots, so z starts at offset 2
-        assert_eq!(field_list[1].slot_offset, SlotIndex::new(2));
-    }
-
-    #[test]
-    fn build_struct_fields_when_string_field_then_computes_slots() {
-        // STRING[255] needs ceil((4 + 255) / 8) = 33 slots
-        let fields = vec![make_field(
-            "s",
-            SemanticType::String {
-                max_len: Some(255),
-                char_width: CharWidth::Narrow,
-            },
-        )];
-        let (field_list, _) = build_struct_fields(&fields, &SourceSpan::default()).unwrap();
-        assert_eq!(field_list.len(), 1);
-        assert_eq!(field_list[0].name, "s");
-        assert_eq!(field_list[0].slot_offset, SlotIndex::new(0));
-        assert_eq!(field_list[0].string_max_length, Some(255));
-    }
-
-    #[test]
-    fn build_struct_fields_when_string_and_int_then_correct_offsets() {
-        // STRING[30] needs ceil((4 + 30) / 8) = 5 slots, then INT at offset 5
-        let fields = vec![
-            make_field(
-                "s",
-                SemanticType::String {
-                    max_len: Some(30),
-                    char_width: CharWidth::Narrow,
-                },
-            ),
-            make_field(
-                "n",
-                SemanticType::Int {
-                    size: ByteSized::B32,
-                },
-            ),
-        ];
-        let (field_list, _) = build_struct_fields(&fields, &SourceSpan::default()).unwrap();
-        assert_eq!(field_list[0].slot_offset, SlotIndex::new(0));
-        assert_eq!(field_list[1].slot_offset, SlotIndex::new(5));
-    }
-
-    #[test]
-    fn build_struct_fields_when_fb_field_then_returns_error() {
-        let fields = vec![make_field(
-            "fb",
-            SemanticType::FunctionBlock {
-                name: "MyFB".to_string(),
-                fields: vec![],
-            },
-        )];
-        let result = build_struct_fields(&fields, &SourceSpan::default());
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn build_struct_fields_when_iterated_then_declaration_order_preserved() {
-        let fields = vec![
-            make_field("first", SemanticType::Bool),
-            make_field(
-                "second",
-                SemanticType::Int {
-                    size: ByteSized::B32,
-                },
-            ),
-            make_field(
-                "third",
-                SemanticType::Real {
-                    size: ByteSized::B64,
-                },
-            ),
-        ];
-        let (field_list, _) = build_struct_fields(&fields, &SourceSpan::default()).unwrap();
-        let names: Vec<&str> = field_list.iter().map(|f| f.name.as_str()).collect();
-        assert_eq!(names, vec!["first", "second", "third"]);
-    }
-
-    #[test]
-    fn build_struct_fields_when_duplicate_field_names_then_returns_error() {
-        let fields = vec![
-            make_field("x", SemanticType::Bool),
-            make_field("X", SemanticType::Bool),
-        ];
-        let result = build_struct_fields(&fields, &SourceSpan::default());
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn find_field_in_type_when_valid_field_then_matches_build_struct_fields_offset() {
-        let fields = vec![
-            make_field(
-                "a",
-                SemanticType::Int {
-                    size: ByteSized::B32,
-                },
-            ),
-            make_field("b", SemanticType::Bool),
-            make_field(
-                "c",
-                SemanticType::Real {
-                    size: ByteSized::B64,
-                },
-            ),
-        ];
-        let span = SourceSpan::default();
-
-        // Cross-check: find_field_in_type returns the same offsets as
-        // iterating build_struct_fields directly.
-        let (field_list, _) = build_struct_fields(&fields, &span).unwrap();
-
-        let (offset_b, _) = find_field_in_type(&fields, &Id::from("b"), &span).unwrap();
-        assert_eq!(offset_b, field_list[1].slot_offset);
-
-        let (offset_c, _) = find_field_in_type(&fields, &Id::from("c"), &span).unwrap();
-        assert_eq!(offset_c, field_list[2].slot_offset);
-
-        // Unknown field returns error
-        let result = find_field_in_type(&fields, &Id::from("unknown"), &span);
-        assert!(result.is_err());
-    }
-
-    /// A place for a field takes its operation type from
-    /// `var_type_info_for_field`, where the field's resolution takes it from
-    /// `resolve_field_op_type`. The two must agree for every field type.
-    #[test]
-    fn var_type_info_for_field_when_any_field_type_then_op_type_matches_resolve_field_op_type() {
-        use ironplc_analyzer::enumeration_members::EnumerationMembers;
-
-        let sizes = [
-            ByteSized::B8,
-            ByteSized::B16,
-            ByteSized::B32,
-            ByteSized::B64,
-        ];
-        let mut types = vec![SemanticType::Bool];
-        for size in sizes {
-            types.push(SemanticType::Int { size: size.clone() });
-            types.push(SemanticType::UInt { size: size.clone() });
-            types.push(SemanticType::Real { size: size.clone() });
-            types.push(SemanticType::Bytes { size: size.clone() });
-            types.push(SemanticType::Time { size: size.clone() });
-            types.push(SemanticType::Date { size: size.clone() });
-            types.push(SemanticType::TimeOfDay { size: size.clone() });
-            types.push(SemanticType::DateAndTime { size: size.clone() });
-        }
-        types.extend([
-            SemanticType::Enumeration {
-                members: EnumerationMembers::default(),
-            },
-            SemanticType::Subrange {
-                base_type: Box::new(SemanticType::UInt {
-                    size: ByteSized::B8,
-                }),
-                min_value: 0,
-                max_value: 10,
-            },
-            SemanticType::Reference {
-                target_type: Box::new(SemanticType::Bool),
-            },
-            SemanticType::String {
-                max_len: None,
-                char_width: CharWidth::Narrow,
-            },
-            SemanticType::Structure { fields: vec![] },
-            SemanticType::Array {
-                element_type: Box::new(SemanticType::Bool),
-                dimensions: vec![],
-            },
-            SemanticType::FunctionBlock {
-                name: "FB".to_string(),
-                fields: vec![],
-            },
-        ]);
-
-        for field_type in &types {
-            let from_type_info =
-                var_type_info_for_field(field_type).map(|ti| (ti.op_width, ti.signedness));
-            assert_eq!(
-                from_type_info,
-                resolve_field_op_type(field_type),
-                "for {field_type:?}"
-            );
+        // An `Index` record (`arr[i].field`, `s.items[i].field`) is resolved
+        // by `compile_array_struct` before the callers reach this walk, and
+        // a dereference owns no field of a structure the layout reaches.
+        record @ (Access::Index(_) | Access::Deref(_)) => {
+            Err(Diagnostic::todo_with_span(record.span()))
         }
     }
 }

@@ -2,35 +2,31 @@
 //! `STRING` or `WSTRING`, such as the target of an assignment
 //! (`names[i] := s`) or a string read (`t := p.name`).
 //!
-//! [`StringPlace::resolve`] works out where the string is from the variable
-//! reference. [`StringPlace::emit_load`] and [`StringPlace::emit_store`] then
-//! emit the load into a temporary buffer and the store from one for that
-//! shape, as [`Place`](super::compile_place::Place) does for a value in one
-//! slot.
+//! [`StringPlace::resolve`] works out where the string is from the
+//! [`Access`] that names it, and [`StringPlace::through_reference`] where
+//! the string a reference variable refers to is. [`StringPlace::emit_load`] and
+//! [`StringPlace::emit_store`] then emit the load into a temporary buffer
+//! and the store from one for that shape, as
+//! [`Place`](super::compile_place::Place) does for a value in one slot.
 //!
-//! A string place's subscripts are any [`Subscript`]: the AST expressions
-//! [`StringPlace::resolve`] finds, by default.
+//! A string place's subscripts are any [`Subscript`]: the access's own.
 
-use ironplc_analyzer::semantic_type::SemanticType;
-use ironplc_container::{CharWidth, VarIndex};
-use ironplc_dsl::core::{Located, SourceSpan};
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{Expr, SymbolicVariableKind, Variable};
+use ironplc_container::VarIndex;
+use ironplc_ir::lowered::{TypeKind, TypeTable};
+use ironplc_ir::{Diagnostic, Label};
+use ironplc_ir::{Located, SourceSpan};
 
 use super::compile::CompileContext;
 use super::compile_array::{emit_flat_index, resolve_access, DimensionInfo, ResolvedAccess};
-use super::compile_expr::{resolve_variable_name, variable_span};
 use super::compile_struct::walk_struct_chain;
 use super::compile_subscript::Subscript;
+use crate::access::Access;
 use crate::emit::Emitter;
 
 /// The place that holds one string, with subscripts of type `S`.
 pub(crate) struct StringPlace<S> {
     address: StringAddress<S>,
-    /// The encoding of the string, which a value stored there must be
-    /// produced at (ADR-0034).
-    char_width: CharWidth,
-    /// The variable reference, for a diagnostic about its subscripts.
+    /// Where the place is named, for a diagnostic about its subscripts.
     span: SourceSpan,
 }
 
@@ -53,119 +49,121 @@ enum StringAddress<S> {
         dimensions: Vec<DimensionInfo>,
         subscripts: Vec<S>,
     },
+    /// What the reference in `ref_slot` refers to: a string, the one element
+    /// of a one-element array, or an element of an array of strings, at the
+    /// flat index of `subscripts`. `STR_LOAD_ARRAY_DEREF` and
+    /// `STR_STORE_ARRAY_DEREF`, with the descriptor of that array.
+    Referenced {
+        ref_slot: VarIndex,
+        desc_index: u16,
+        dimensions: Vec<DimensionInfo>,
+        subscripts: Vec<S>,
+    },
 }
 
-impl<'ast> StringPlace<&'ast Expr> {
-    /// The string place `variable` names; `None` when it names no string.
+impl<S: Clone> StringPlace<S> {
+    /// The string place `variable` names, of the types `types`; `None` when
+    /// it names no string.
     ///
     /// A field of a function block instance is not a string place; the
     /// caller addresses it first.
     pub(crate) fn resolve(
+        types: &TypeTable,
         ctx: &CompileContext,
-        variable: &'ast Variable,
+        variable: &Access<S>,
     ) -> Result<Option<Self>, Diagnostic> {
-        let span = variable_span(variable);
-        let fixed = |offset, char_width| {
+        let span = variable.span();
+        let fixed = |offset| {
             Some(StringPlace {
                 address: StringAddress::Fixed(offset),
-                char_width,
                 span: span.clone(),
             })
         };
-        // A field at a fixed offset in a structure, not of an element of an
-        // array of structures (`s.arr[i].field`), which `resolve_access`
-        // addresses.
-        if let Variable::Symbolic(SymbolicVariableKind::Structured(structured)) = variable {
-            if !matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) {
-                let (root, slot_offset, field_type) =
-                    walk_struct_chain(ctx, &structured.record, &structured.field, 0)?;
-                let SemanticType::String { char_width, .. } = field_type else {
+        // A field at a fixed offset in a structure, not in an element of an
+        // array of structures (`s.arr[i].field`, `arr[i].inner.field`),
+        // which `resolve_access` addresses.
+        if let Access::Field(structured) = variable {
+            if crate::compile_array_struct::element_field_chain(structured).is_none() {
+                let (root, slot_offset, field_type) = walk_struct_chain(types, ctx, structured, 0)?;
+                let Some(TypeKind::String(_)) = types.kind(field_type) else {
                     return Ok(None);
                 };
                 // `walk_struct_chain` found this structure variable.
-                let structure = ctx.struct_vars.get(&root).ok_or_else(|| {
+                let structure = ctx.struct_var(&root).ok_or_else(|| {
                     Diagnostic::internal_error_at(Label::span(
-                        structured.span(),
+                        structured.field.span(),
                         format!("Variable '{root}' is not a structure"),
                     ))
                 })?;
                 let offset = structure.data_offset + slot_offset.raw() * 8;
-                return Ok(fixed(offset, char_width));
+                return Ok(fixed(offset));
             }
         }
-        if let Some(info) = resolve_variable_name(variable).and_then(|n| ctx.string_vars.get(n)) {
-            return Ok(fixed(info.data_offset, info.char_width));
+        if let Some(info) = variable.name().and_then(|n| ctx.string_var(n)) {
+            return Ok(fixed(info.data_offset));
         }
-        let (address, char_width) = match resolve_access(ctx, variable)? {
-            ResolvedAccess::ArrayElement { info, subscripts } if info.is_string_element => (
+        let address = match resolve_access(types, ctx, variable)? {
+            ResolvedAccess::ArrayElement { info, subscripts } if info.is_string_element => {
                 StringAddress::Element {
                     var_index: info.var_index,
                     desc_index: info.desc_index,
                     within: None,
                     dimensions: info.dimensions.clone(),
                     subscripts,
-                },
-                info.string_char_width,
-            ),
-            ResolvedAccess::StructFieldStringArrayElement(element) => (
-                StringAddress::Element {
-                    var_index: element.scratch_var_index,
-                    desc_index: element.string_desc_index,
-                    within: Some((element.var_index, element.field_byte_offset)),
-                    dimensions: element.dimensions,
-                    subscripts: element.subscripts,
-                },
-                element.char_width,
-            ),
+                }
+            }
+            ResolvedAccess::StructFieldStringArrayElement(element) => StringAddress::Element {
+                var_index: element.scratch_var_index,
+                desc_index: element.string_desc_index,
+                within: Some((element.var_index, element.field_byte_offset)),
+                dimensions: element.dimensions,
+                subscripts: element.subscripts,
+            },
             ResolvedAccess::Scalar { .. }
             | ResolvedAccess::InOut { .. }
             | ResolvedAccess::ArrayElement { .. }
             | ResolvedAccess::DerefArrayElement { .. }
             | ResolvedAccess::StructFieldArrayElement { .. } => return Ok(None),
         };
-        Ok(Some(StringPlace {
-            address,
-            char_width,
-            span,
-        }))
-    }
-}
-
-impl<S> StringPlace<S> {
-    /// The encoding of the string the place holds.
-    pub(crate) fn char_width(&self) -> CharWidth {
-        self.char_width
+        Ok(Some(StringPlace { address, span }))
     }
 
-    /// The same place with each subscript replaced by what `replace` makes
-    /// of it, or the first error `replace` returns.
-    pub(crate) fn try_map_subscripts<T, E>(
-        self,
-        replace: impl FnMut(S) -> Result<T, E>,
-    ) -> Result<StringPlace<T>, E> {
-        let address = match self.address {
-            StringAddress::Fixed(offset) => StringAddress::Fixed(offset),
-            StringAddress::Element {
-                var_index,
-                desc_index,
-                within,
+    /// The string place `variable` names when it is the string a reference
+    /// variable refers to, `rs^`, or an element of the array of strings one
+    /// refers to, `rsa^[i]`. `None` for any other variable, and for a
+    /// reference in a `VAR_IN_OUT` parameter, whose slot holds a reference
+    /// to the reference.
+    pub(crate) fn through_reference(ctx: &CompileContext, variable: &Access<S>) -> Option<Self> {
+        let (deref, subscripts) = match variable {
+            Access::Deref(deref) => (deref, Vec::new()),
+            Access::Index(array) => {
+                let Access::Deref(deref) = array.array.as_ref() else {
+                    return None;
+                };
+                (deref, array.subscripts.clone())
+            }
+            Access::Named(_) | Access::Field(_) => return None,
+        };
+        let name = deref.name()?;
+        if ctx.is_in_out(name) {
+            return None;
+        }
+        let strings = ctx.string_ref(name)?;
+        // An element of an array of strings has its subscripts, and a string
+        // none; neither a whole array nor a subscript of a string is one.
+        let dimensions = match (ctx.array_var(name), subscripts.is_empty()) {
+            (Some(array), false) => array.dimensions.clone(),
+            (None, true) => Vec::new(),
+            (Some(_), true) | (None, false) => return None,
+        };
+        Some(StringPlace {
+            address: StringAddress::Referenced {
+                ref_slot: ctx.var_index(name).ok()?,
+                desc_index: strings.desc_index,
                 dimensions,
                 subscripts,
-            } => StringAddress::Element {
-                var_index,
-                desc_index,
-                within,
-                dimensions,
-                subscripts: subscripts
-                    .into_iter()
-                    .map(replace)
-                    .collect::<Result<_, E>>()?,
             },
-        };
-        Ok(StringPlace {
-            address,
-            char_width: self.char_width,
-            span: self.span,
+            span: variable.span(),
         })
     }
 }
@@ -188,6 +186,14 @@ impl<S: Subscript> StringPlace<S> {
                 self.emit_element_index(emitter, ctx)?;
                 emitter.emit_str_load_array_elem(*var_index, *desc_index);
             }
+            StringAddress::Referenced {
+                ref_slot,
+                desc_index,
+                ..
+            } => {
+                self.emit_element_index(emitter, ctx)?;
+                emitter.emit_str_load_array_deref(*ref_slot, *desc_index);
+            }
         }
         Ok(())
     }
@@ -209,35 +215,51 @@ impl<S: Subscript> StringPlace<S> {
                 self.emit_element_index(emitter, ctx)?;
                 emitter.emit_str_store_array_elem(*var_index, *desc_index);
             }
+            StringAddress::Referenced {
+                ref_slot,
+                desc_index,
+                ..
+            } => {
+                self.emit_element_index(emitter, ctx)?;
+                emitter.emit_str_store_array_deref(*ref_slot, *desc_index);
+            }
         }
         Ok(())
     }
 
-    /// For an element, what `STR_LOAD_ARRAY_ELEM` and `STR_STORE_ARRAY_ELEM`
-    /// need before they run: the array's start, when it is within a
-    /// structure, then the flat index.
+    /// For an element, what the string array element instructions need
+    /// before they run: the array's start, when it is within a structure,
+    /// then the flat index. The flat index of a string a reference refers
+    /// to, which has no subscripts, is 0.
     fn emit_element_index(
         &self,
         emitter: &mut Emitter,
         ctx: &mut CompileContext,
     ) -> Result<(), Diagnostic> {
-        let StringAddress::Element {
-            var_index,
-            within,
-            dimensions,
-            subscripts,
-            ..
-        } = &self.address
-        else {
-            return Ok(());
+        let (dimensions, subscripts) = match &self.address {
+            StringAddress::Fixed(_) => return Ok(()),
+            StringAddress::Element {
+                var_index,
+                within,
+                dimensions,
+                subscripts,
+                ..
+            } => {
+                if let Some((structure, byte_offset)) = within {
+                    emitter.emit_load_var_i32(*structure);
+                    let offset = ctx.add_i32_constant(*byte_offset as i32);
+                    emitter.emit_load_const_i32(offset);
+                    emitter.emit_add_i32();
+                    emitter.emit_store_var_i32(*var_index);
+                }
+                (dimensions, subscripts)
+            }
+            StringAddress::Referenced {
+                dimensions,
+                subscripts,
+                ..
+            } => (dimensions, subscripts),
         };
-        if let Some((structure, byte_offset)) = within {
-            emitter.emit_load_var_i32(*structure);
-            let offset = ctx.add_i32_constant(*byte_offset as i32);
-            emitter.emit_load_const_i32(offset);
-            emitter.emit_add_i32();
-            emitter.emit_store_var_i32(*var_index);
-        }
         emit_flat_index(emitter, ctx, subscripts, dimensions, &self.span)
     }
 }

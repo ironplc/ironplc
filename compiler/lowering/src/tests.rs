@@ -114,13 +114,15 @@ fn lower_statement_when_not_of_narrow_bit_string_then_truncated() {
 }
 
 /// `AND_THEN` and `OR_ELSE` short-circuit on a `BOOL`, and are the eager
-/// bitwise operators on a bit string.
+/// bitwise operators on a bit string, at the bit string both operands widen
+/// to (REQ-IC-analyzer-119).
 #[test]
 fn lower_statement_when_short_circuit_operator_then_form_follows_type() {
     let outcome = lower(
-        "PROGRAM main VAR x : BOOL; y : BOOL; w : DWORD; v : DWORD; END_VAR
+        "PROGRAM main VAR x : BOOL; y : BOOL; w : DWORD; v : DWORD; lw : LWORD; END_VAR
             x := x AND_THEN y;
             w := w OR_ELSE v;
+            lw := w AND_THEN lw;
          END_PROGRAM",
         "main",
     );
@@ -129,6 +131,7 @@ fn lower_statement_when_short_circuit_operator_then_form_follows_type() {
         [
             "assign v0^.f0 (and_then (read bool v0^.f0) (read bool v0^.f1))",
             "assign v0^.f2 (bit_or i32u (read i32u v0^.f2) (read i32u v0^.f3))",
+            "assign v0^.f4 (bit_and i64u (convert i64u (read i32u v0^.f2)) (read i64u v0^.f4))",
         ]
     );
 }
@@ -171,6 +174,27 @@ fn lower_statement_when_literals_at_real_type_then_real_constants() {
             "assign v0^.f0 (const f32 2.0)",
             "assign v0^.f0 (const f32 1.5)",
         ]
+    );
+}
+
+/// REQ-LOW-lowering-170: a program's access path and a located variable with
+/// no name, which no statement names, are no fields of its instance, so its
+/// other variables are.
+#[test]
+fn lower_statement_when_program_declares_access_path_and_unnamed_located_then_lowered() {
+    let outcome = lower(
+        "PROGRAM main
+           VAR k : DINT; END_VAR
+           VAR AT %IX0.0 : BOOL; END_VAR
+           VAR n : DINT; END_VAR
+           VAR_ACCESS acc : k : DINT READ_WRITE; END_VAR
+           k := n + 1;
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        ["assign v0^.f0 (add i32s (read i32s v0^.f1) (const i32s 1))"]
     );
 }
 
@@ -307,8 +331,7 @@ fn lower_statement_when_var_external_then_global_variable() {
 #[test]
 fn lower_statement_when_not_supported_yet_then_unsupported() {
     let outcome = lower(
-        "PROGRAM main VAR t : TON; a : DINT; r : REAL; x : BOOL; END_VAR
-            t(IN := x);
+        "PROGRAM main VAR a : DINT; r : REAL; END_VAR
             FOR a := 1 TO 3 BY a DO r := r; END_FOR;
          END_PROGRAM",
         "main",

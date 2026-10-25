@@ -4,12 +4,13 @@ V9018
 
 .. problem-summary:: V9018
 
-A ``COPY_REGION`` instruction named a source and a destination whose array
-descriptors describe spans of different byte sizes, so the VM halted rather
-than copy a number of bytes that fits neither end.
+A ``COPY_REGION`` or ``COPY_REGION_DEREF`` instruction named a source and a
+destination whose array descriptors describe spans of different byte sizes, so
+the VM halted rather than copy a number of bytes that fits neither end.
 
 ``COPY_REGION`` implements assignment between whole arrays and whole
-structures. It carries no length operand: the VM computes each side's size
+structures, and ``COPY_REGION_DEREF`` assignment to the one a reference
+refers to. Neither carries a length operand: the VM computes each side's size
 from the array descriptor named in the instruction, and this trap is what
 happens when the two do not agree. Deriving the length this way, rather than
 trusting a number stored in the bytecode, is deliberate — a wrong length would
@@ -19,9 +20,9 @@ placed next to it.
 Cause
 -----
 
-In the current compiler this indicates a defect. Before emitting
-``COPY_REGION`` the compiler requires both sides to have identical declared
-types, reporting :doc:`P2037 </reference/compiler/problems/P2037>` when they do
+In the current compiler this indicates a defect. Before emitting either
+instruction the compiler requires both sides to have identical declared types,
+reporting :doc:`P2037 </reference/compiler/problems/P2037>` when they do
 not, so a program that reaches the VM should never present two sizes.
 
 The likely causes are:

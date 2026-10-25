@@ -6,45 +6,9 @@
 //! type ([`crate::TypeAttributes::standard_block`]), and a backend asks the
 //! type rather than matching a name.
 
-/// The integer type a standard counter counts in.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum CounterWidth {
-    /// `CTU`, `CTD`, `CTUD`: counts in `INT`.
-    Int,
-    /// `CTU_DINT`, `CTD_DINT`, `CTUD_DINT`
-    Dint,
-    /// `CTU_LINT`, `CTD_LINT`, `CTUD_LINT`
-    Lint,
-    /// `CTU_UDINT`, `CTD_UDINT`, `CTUD_UDINT`
-    Udint,
-    /// `CTU_ULINT`, `CTD_ULINT`, `CTUD_ULINT`
-    Ulint,
-}
-
-/// A standard function block of IEC 61131-3.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum StandardFunctionBlock {
-    /// Set-dominant bistable.
-    Sr,
-    /// Reset-dominant bistable.
-    Rs,
-    /// Rising edge detection.
-    RTrig,
-    /// Falling edge detection.
-    FTrig,
-    /// On-delay timer.
-    Ton,
-    /// Off-delay timer.
-    Tof,
-    /// Pulse timer.
-    Tp,
-    /// Up counter.
-    Ctu(CounterWidth),
-    /// Down counter.
-    Ctd(CounterWidth),
-    /// Up-down counter.
-    Ctud(CounterWidth),
-}
+// The identity is the lowered program's too, which names the standard block
+// a POU stands for; it is defined there and re-exported here.
+pub use ironplc_ir::lowered::{CounterWidth, StandardFunctionBlock};
 
 #[cfg(test)]
 mod tests {

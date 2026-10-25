@@ -9,11 +9,10 @@
 //!
 //! See `specs/design/behavior-policies.md`.
 
-use ironplc_analyzer::CleanAnalysis;
 use ironplc_container::builtin::str_to_num::{self, Target};
 use ironplc_container::policy::{BehaviorPolicy, StringToNumFailure, StringToNumNonNumeric};
 use ironplc_container::{opcode, FunctionId};
-use ironplc_dsl::core::FileId;
+use ironplc_ir::FileId;
 use ironplc_parser::options::CompilerOptions;
 use spec_test_macro::spec_test;
 
@@ -74,12 +73,7 @@ fn program_bytecode_of(
     };
     let library = ironplc_parser::parse_program(source, &FileId::default(), &options).unwrap();
     let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
-    let container = crate::compile(
-        CleanAnalysis::new(&analyzed, &ctx).unwrap(),
-        &crate::CodegenOptions::from(&options),
-        &crate::EmptyLookup,
-    )
-    .unwrap();
+    let container = crate::test_support::compile_analyzed(&analyzed, &ctx).unwrap();
     container
         .code
         .get_function_bytecode(FunctionId::new(1))

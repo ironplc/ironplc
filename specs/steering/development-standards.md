@@ -106,7 +106,7 @@ Unlike an ADR, a design document is a *description* rather than a decision, so i
 
 Work breakdowns that describe **how** to implement: phased task lists, specific code changes, file modifications, and verification steps. A plan document answers "what steps do I follow to build this?" Plans reference the design they implement.
 
-**A plan lives in its own PR, which is never merged.** No other PR contains the plan file, so no plan reaches `main`. The plan stays viewable on the closed PR (see [Required Steps](#required-steps)).
+**A plan is optional, and never reaches `main`.** Write one when it helps to agree the approach before writing the code; the [Development Process](#development-process) does not require it. No PR that merges contains a plan file.
 
 Plans are the one document type in `specs/` that is not durable. Anything worth keeping — a decision, a constraint, a piece of rationale — must land somewhere durable in a prefactor or core change pull request: `specs/adrs/`, `specs/design/`, or a code doc comment where the reasoning is local to the code (see [Choosing the Right Location](#choosing-the-right-location)).
 
@@ -123,7 +123,7 @@ Guidance for AI assistants working with the codebase (conventions, patterns, wor
 | Why did we choose approach X over Y? | `specs/adrs/` |
 | What should the container format look like? | `specs/design/` |
 | Why is *this function* written this way? | a doc comment on it |
-| What are the steps to implement the container format? | `specs/plans/` (plan PR, never merged) |
+| What are the steps to implement the container format? | `specs/plans/` (optional, never merged) |
 | How should AI assistants name tests? | `specs/steering/` |
 
 **A decision may live in a code comment.** Rationale whose reader is the next
@@ -174,17 +174,19 @@ See [Spec Conformance Testing](../design/spec-conformance-testing.md) for the fu
 
 ## Development Process
 
-**A non-trivial change is a plan PR, then prefactor PRs, then core change PRs, in that order.** Each is a separate PR; never combine them, not even as separate commits. People and AI assistants follow the same process, and a person reviews every PR.
+**A non-trivial change is prefactor PRs, then core change PRs, in that order.** Each is a separate PR; never combine them, not even as separate commits. People and AI assistants follow the same process, and a person reviews every PR.
+
+**A person makes the decisions that need human judgement.** An AI assistant puts each one to a person and waits for the answer; it never settles one by assuming. [Decisions a Person Makes](#decisions-a-person-makes) says which they are.
 
 Never commit or push directly to `main`. Before opening any PR, run `cd compiler && just` and fix what fails; [common-tasks.md](common-tasks.md#critical-pre-pr-requirements) lists the checks for other components. The clippy-suppression rule lives in [compiler-standards.md](compiler-standards.md#code-quality).
 
 ### Required Steps
 
-**1. Plan PR — never merged.**
+**1. Get the decisions made — before writing the code that depends on them.**
 
-- Branch from `main`, write `specs/plans/YYYY-MM-DD-short-description.md`, and open a PR.
-- Revise it until a person approves it.
-- If the change needs more than one core change PR, open an issue listing them and link it from the plan. The issue stays open until they all land.
+- Read the code you will change, and the ADRs, design documents and glossary entries that cover it. A question they answer is [settled](#settled-questions).
+- Put each open [decision](#decisions-a-person-makes) to a person, and wait for the answer.
+- If the change needs more than one core change PR, open an issue listing them. The issue stays open until they all land.
 
 **2. Prefactor PRs — one per prefactor, branched from `main`.**
 
@@ -192,28 +194,63 @@ Never commit or push directly to `main`. Before opening any PR, run `cd compiler
 
 **3. Core change PRs — branched from `main`.**
 
-- Never include the plan file.
+- List the decisions the change rests on in the description (see [Recording the answer](#recording-the-answer)).
 - A core change PR may be stacked on its unmerged prefactor PR. Base the branch on the prefactor branch, open the PR against it, and name the prefactor PR in the description. Once the prefactor merges, rebase onto `main` and retarget the PR. This is the only stacking allowed.
 
 **4. Cleanup.**
 
-- Land any decision worth keeping as an ADR or `specs/design/` update, in a prefactor or core change PR.
-- Open an issue for anything the plan describes that was not delivered.
-- Close the plan PR unmerged, and close the tracking issue if there is one.
+- Open an issue for anything that was intended but not delivered.
+- Close the tracking issue if there is one.
 
 **Session limited to one branch?** Deliver the next PR in the sequence, stop, and say what comes next.
 
-**Skip the plan PR** for mechanical changes: typo fixes, formatting, dependency bumps, single-line bug fixes, or documentation-only edits. These go in a single PR.
+**Mechanical changes** — typo fixes, formatting, dependency bumps, single-line bug fixes, or documentation-only edits — go in a single PR.
+
+### Decisions a Person Makes
+
+Some choices are not engineering questions that reading the code can answer. They are choices about what IronPLC promises its users, and a person makes them:
+
+- **Compatibility with what exists today.** Whether a change may alter what an existing program gets — accepted or rejected, which problem code, what it computes — or what existing CLI flags, `.iplc` containers or output do; and if not, whether to keep the old behaviour with a deprecation period, an alias, a fallback or a shim. Don't add compatibility machinery nobody asked for, and don't narrow or abandon a change to protect behaviour nobody said to protect.
+- **Departing from a recorded decision.** Whether an ADR, a design document or the glossary is wrong for the case in hand. Raise the conflict; never resolve it by working around the decision in code.
+- **A new decision of ADR weight.** A choice that constrains a subsystem, spans crates, or picks between alternatives someone will re-litigate (see [Choosing the Right Location](#choosing-the-right-location)).
+
+Everything else — names, module layout, test structure, which prefactor to make — the standards decide, and the reviewer checks it in the PR. Don't ask about it.
+
+#### Establish the facts
+
+"Does this break existing behaviour?" is a question of fact, not of judgement. Establish the answer; don't assume it either way. Run the tests, compile the examples, and trace which programs reach the changed code. Then say concretely what changes for whom — "programs that do X now report P#### instead of compiling" — or that nothing does, and how you know. A person decides whether the change is acceptable, and needs the facts to do it.
+
+#### Settled questions
+
+Don't ask what a person has already decided; follow the recorded answer. The ones that come up most:
+
+- **IronPLC is not a dialect** ([ADR-0036](../adrs/0036-no-ironplc-dialect.md)). IronPLC accepts the syntax, and gives an operation the behaviour, of a real target — an IEC edition or a real vendor's toolchain — and nothing else.
+  - Never make IronPLC accept or do something no real target does: not as a default, a fallback, a leniency or a new flag. If a change seems to need that, the approach is wrong; raise it as a departure from a recorded decision.
+  - Where IronPLC's current behaviour matches no real target, it is a defect, not a dialect to preserve. Fixing it is a compatibility decision like any other, but keeping the old behaviour behind a flag, a default or a "legacy" mode is not one of the options.
+- **Problem codes keep their meaning across releases** ([problem-code-management.md](problem-code-management.md#version-compatibility)).
+
+#### Putting a decision to a person
+
+Ask the person you are working for, before writing the code that depends on the answer. For each decision give the question in one sentence, the options and what each changes for users, and your recommendation with its reason. Then wait: work that does not depend on the answer can continue, but don't build on your recommendation while the question is open.
+
+**No one to ask?** When running unattended — started from an issue, a review comment or a schedule — don't guess. Deliver only the work that does not depend on the answer, open the PR as a draft with the questions at the top of its description, and stop.
+
+#### Recording the answer
+
+A PR that rests on one of these decisions lists it under **Decisions** in its description: the question, the answer, and who answered. A person contributing directly answers for themselves; listing the decision lets the reviewer weigh it before the code. A reviewer treats a decision in the diff that is not on the list as not yet made.
+
+A decision worth keeping also lands as an ADR, a `specs/design/` update or a code comment (see [Choosing the Right Location](#choosing-the-right-location)) in the PR that implements it, so the next contributor finds it settled instead of asking again.
 
 ### Planning Document
 
-A plan document should include:
+A plan document, when you write one, should include:
 
 - **Goal** — a concise statement of what the change accomplishes
 - **Architecture** — brief summary of the technical approach
 - **Prefactoring** — the simplifications to make *before* adding the new
   behaviour, or an explicit statement that none is needed and why (see
   [Prefactoring](#prefactoring))
+- **Decisions** — each [decision a person makes](#decisions-a-person-makes) that the change raises, with the options and a recommendation
 - **Design doc reference** — link to `specs/design/` doc if one exists
 - **File map** — which files will be created or modified
 - **Tasks** — ordered steps with checkboxes (`- [ ]`) for tracking progress, grouped by the prefactor or core change PR that delivers them
@@ -227,7 +264,7 @@ existing code so the new behaviour drops in, then add it. It is the opposite
 order from the more familiar "make it work, then clean it up" — and it is the
 order this project uses.
 
-Every change **must** start by looking for related prefactoring opportunities t
+Every change **must** start by looking for related prefactoring opportunities to
 prevent complexity creep and avoid the need for premature abstractions.
 
 #### Signals that a change needs prefactoring
@@ -266,7 +303,7 @@ licence to rewrite:
   has asked for. Extract a shared shape when the second or third caller arrives,
   not the first.
 - **No unbounded rewrites.** If the reshaping is far larger than the feature,
-  write it up as its own plan and change, and land the feature the simple way
+  make it a change of its own, and land the feature the simple way
   in the meantime — with a note saying so.
 - **Not for one-line fixes.** Typos, dependency bumps, and single-line bug fixes
   stay single-line.

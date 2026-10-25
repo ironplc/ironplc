@@ -21,6 +21,7 @@ mod expr_type;
 mod inputs_of_one_type;
 mod member;
 mod single_assignment;
+mod subscript;
 
 /// A library after the expression type resolution pass, with the type
 /// environment its expression types are ids into.
@@ -47,9 +48,6 @@ fn run_pass_with_options(program: &str, options: &CompilerOptions) -> Resolved {
     let library = xform_resolve_type_decl_environment::apply(library, &mut type_environment)
         .unwrap()
         .0;
-    let library = xform_resolve_late_bound_expr_kind::apply(library, &mut type_environment)
-        .unwrap()
-        .0;
     let mut function_environment = FunctionEnvironmentBuilder::new()
         .with_stdlib_functions()
         .build();
@@ -59,9 +57,12 @@ fn run_pass_with_options(program: &str, options: &CompilerOptions) -> Resolved {
         library,
         &mut symbol_environment,
         &mut function_environment,
-        &type_environment,
+        &mut type_environment,
     )
     .unwrap();
+    let library = xform_resolve_late_bound_expr_kind::apply(library, &symbol_environment)
+        .unwrap()
+        .0;
     let (library, diagnostics) = apply(
         library,
         &symbol_environment,
@@ -135,7 +136,7 @@ fn collect_all_expr_types(resolved: &Resolved) -> Vec<Option<ironplc_dsl::common
 /// TypeEnvironment stores elementary types in lowercase, but IEC 61131-3
 /// type names are case-insensitive, so we normalize to uppercase for assertions.
 fn type_name_upper(tn: &Option<ironplc_dsl::common::TypeName>) -> Option<String> {
-    tn.as_ref().map(|t| t.name.original().to_uppercase())
+    tn.as_ref().map(|t| t.id.original().to_uppercase())
 }
 
 fn assert_type_eq(tn: &Option<ironplc_dsl::common::TypeName>, expected: &str) {

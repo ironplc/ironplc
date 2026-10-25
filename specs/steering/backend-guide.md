@@ -104,21 +104,25 @@ versions are managed by the release tooling (`shared-version = true` in
 
 | Dependency | Allowed | Why |
 |---|---|---|
-| `ironplc-ir` | Yes | The lowered program, and the re-exported `SourceSpan`, `FileId`, `Label` and `Diagnostic` |
+| `ironplc-ir` | Yes | The lowered program, and what it re-exports from `ironplc-dsl` |
 | `ironplc-problems` | Yes | The `Problem` a target-limit diagnostic names |
 | The target's own libraries (an encoder, LLVM bindings) | Yes | Keep them minimal and cross-platform (Windows, macOS, Linux) |
 | `ironplc-dsl`, `ironplc-parser`, `ironplc-analyzer`, `ironplc-lowering` | **Never**, outside `[dev-dependencies]` | The compiler, not a reviewer, keeps a backend from reaching the AST or analysis ([ADR-0059](../adrs/0059-backends-depend-only-on-the-ir-crate.md)) |
 | `ironplc-codegen`, `ironplc-vm`, `ironplc-container` | **Never**, outside `[dev-dependencies]` | They are another backend and its target. Depending on one couples two targets that must stay independent |
 
-Name `SourceSpan`, `FileId`, `Label` and `Diagnostic` through `ironplc-ir`,
-never through `ironplc-dsl`.
+Name what `ironplc-ir` re-exports from `ironplc-dsl` (see the lowered
+program design's
+[Position in the Pipeline](../design/lowered-program.md#1-position-in-the-pipeline))
+through `ironplc-ir`, never through `ironplc-dsl`.
 
 **The backend does not test its own boundary.** A check outside every backend
-reads each backend crate's manifest and fails if `[dependencies]` names a
-forbidden crate (the rule the design states for the bytecode backend as
-REQ-LOW-codegen-002). It finds backend crates itself, so a new backend is
-covered from its first commit without registering anywhere and without a test
-of its own.
+(`compiler/test/tests/backend_boundary_guard.rs`) reads each backend crate's
+manifest and fails if `[dependencies]` names a forbidden crate (the rule the
+design states for the bytecode backend as REQ-LOW-codegen-002). It finds
+backend crates itself: every crate whose `[dependencies]` name `ironplc-ir` is
+a backend, unless the guard lists it as one that builds the lowered program or
+passes it to a backend. A new backend is therefore covered from its first
+commit without registering anywhere and without a test of its own.
 
 ### Shared pieces still in bytecode crates
 
@@ -127,16 +131,14 @@ need one, move it to `ironplc-ir` (or to a small crate both backends can depend
 on) before the backend uses it. Never add a dependency on the crate that holds
 it.
 
-- **`SourceLookup`** (`codegen/src/source_lookup.rs`): how a backend reads the
-  source bytes its debug information hashes.
 - **The trap codes** (`V4001`–`V4006`, in `compiler/vm/resources/problem-codes.csv`
   and `Trap`): every backend reports a trap under the code the bytecode VM
   gives it (REQ-LOW-codegen-098).
 - **The end-to-end harness** (`codegen/tests/it/common/`): `Snapshot` and
-  `Session` are concrete types today, and become a trait when a second
-  backend lands. The first new backend's design decides where the suite lives
-  and how a backend marks a test it cannot run yet
-  ([End-to-End Test Observation](../design/end-to-end-test-observation.md#no-backend-trait-yet)).
+  `Session` run a program through the `Backend` and `Running` traits, which a
+  new backend implements. The first new backend's design decides where the
+  suite lives and how a backend marks a test it cannot run yet
+  ([End-to-End Test Observation](../design/end-to-end-test-observation.md#backends)).
 
 ### The crate root
 
@@ -263,7 +265,7 @@ For another target, write the same table in your design doc.
 Build it from the lowered program alone: the names and spans on variables,
 fields, POUs and types (REQ-LOW-lowering-006), and the span on every statement
 for the line map (REQ-LOW-lowering-063). Read source bytes through
-`SourceLookup`. A debugger shows what the backend allocated, so a variable an
+`ironplc_ir::source::SourceLookup`. A debugger shows what the backend allocated, so a variable an
 optimization removed does not appear.
 
 The end-to-end suite reads variables **by name** through the backend's debug
@@ -321,9 +323,13 @@ What the host and the generated code do at run time, on every target:
 - **Watchdog**: `Loop` and `For` are the only repetition, and no call is
   recursive (REQ-LOW-lowering-059), so a backend that must bound a round checks
   a deadline at each iteration of a `Loop` or `For`.
-- **Initialization**: `init` runs once, before the first round. A function's
-  locals are re-initialized by statements already at the head of its body; the
-  backend adds nothing.
+- **Initialization**: `init` runs once, before the first round, and holds
+  values only. A backend sets up its own storage before the statements of
+  `init` run, such as a string's header or the data-region offset an
+  aggregate's slot holds; that setup is layout, not part of `init`. A
+  function's locals, and every body's `VAR_TEMP`, a program's included, are
+  re-initialized by statements already at the head of its body, which also
+  hold values only; the backend adds nothing to the values.
 - **Location and retention**: a variable carries its direct address and its
   `RETAIN`/`PERSISTENT` qualifier. Decide in your design doc whether the
   target honors each, and say so in the user docs.
@@ -465,9 +471,9 @@ instructions and §3.10, the capability checks, and requirement IDs such as
 
 #### Step 2: Shared pieces
 
-Move `SourceLookup` to `ironplc-ir`; make the end-to-end harness a trait the
-bytecode backend implements, with a way to mark a test a backend cannot run
-yet; share the trap codes.
+Implement the end-to-end harness's
+`Backend` and `Running` traits, and add a way to mark a test a backend cannot
+run yet; share the trap codes.
 
 #### Step 3: The crate
 

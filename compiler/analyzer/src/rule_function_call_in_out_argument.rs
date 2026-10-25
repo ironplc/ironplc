@@ -162,19 +162,36 @@ impl RuleFunctionCallInOutArgument<'_> {
                 self.is_symbolic_writable(&array.subscripted_variable)
             }
             SymbolicVariableKind::Structured(structured) => {
+                // Inside the block, every member that is not constant is
+                // writable through THIS^/SUPER^, not just the inputs.
+                if let SymbolicVariableKind::SelfRef(self_ref) = structured.record.as_ref() {
+                    return variable_type::self_member(
+                        self_ref.kind,
+                        &structured.field,
+                        self.context.symbols(),
+                        &self.scope.current(),
+                    )
+                    .is_some_and(is_declared_writable);
+                }
                 if !self.is_symbolic_writable(&structured.record) {
                     return false;
                 }
                 // Only a function block's inputs are assignable from
                 // outside the instance; its outputs, locals and VAR_IN_OUT
                 // are not.
-                match variable_type::of(&structured.record, self.context, &self.scope.current()) {
-                    Some(SemanticType::FunctionBlock { fields, .. }) => fields
-                        .iter()
-                        .find(|field| field.name == structured.field)
-                        .is_some_and(|field| {
-                            matches!(field.var_type, Some(FunctionBlockVarType::Input))
-                        }),
+                let types = self.context.types();
+                let record = variable_type::type_id(
+                    &structured.record,
+                    self.context.symbols(),
+                    types,
+                    &self.scope.current(),
+                );
+                match record.and_then(|record| Some((record, types.get_by_id(record)?))) {
+                    Some((record, attributes)) if attributes.representation.is_function_block() => {
+                        types
+                            .block_field(record, &structured.field)
+                            .is_some_and(|field| field.var_type == FunctionBlockVarType::Input)
+                    }
                     Some(_) => true,
                     None => false,
                 }
@@ -593,4 +610,38 @@ END_PROGRAM",
         Problem::FunctionCallInOutArgNotVariable,
         "2"
     );
+
+    #[rstest]
+    #[case::own_field("THIS^.count")]
+    #[case::inherited_field("SUPER^.x")]
+    fn apply_when_in_out_argument_is_member_through_self_ref_then_ok(#[case] argument: &str) {
+        let program = format!(
+            "{INC}
+FUNCTION_BLOCK FB_Base
+VAR
+    x : DINT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_A EXTENDS FB_Base
+VAR
+    count : DINT;
+END_VAR
+METHOD M
+VAR
+    result : DINT;
+END_VAR
+    result := INC(1, {argument});
+END_METHOD
+END_FUNCTION_BLOCK"
+        );
+        assert_eq!(
+            Vec::<String>::new(),
+            rule_codes(
+                apply,
+                &program,
+                &crate::test_helpers::fb_inheritance_options()
+            )
+        );
+    }
 }

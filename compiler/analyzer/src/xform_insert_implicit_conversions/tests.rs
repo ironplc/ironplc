@@ -6,13 +6,17 @@ use ironplc_dsl::core::FileId;
 use ironplc_dsl::textual::*;
 use ironplc_dsl::visitor::Visitor;
 use ironplc_parser::options::CompilerOptions;
+use ironplc_problems::Problem;
 
 use rstest::rstest;
 use spec_test_macro::spec_test;
 
 use crate::stages::analyze;
+use crate::test_helpers;
 use crate::type_environment::TypeEnvironment;
 use crate::value_type::operand_type_name;
+
+use call_arguments::call_arguments;
 
 /// The operands of every comparison in a library, in source order, each as
 /// the type it is compared at: `DINT->LINT` for a `DINT` converted to
@@ -75,20 +79,28 @@ impl Visitor<Infallible> for ComparisonOperands<'_> {
 /// Analyzes `source`, which must be free of diagnostics, and returns the
 /// operands of its comparisons.
 fn comparison_operands(source: &str) -> Vec<[String; 2]> {
+    let (operands, codes) = comparison_operands_and_codes(source);
+    assert!(codes.is_empty(), "unexpected diagnostics: {codes:?}");
+    operands
+}
+
+/// Analyzes `source` and returns the operands of its comparisons, and the
+/// codes of the problems the analysis reports.
+fn comparison_operands_and_codes(source: &str) -> (Vec<[String; 2]>, Vec<String>) {
     let options = CompilerOptions::default();
     let library = ironplc_parser::parse_program(source, &FileId::default(), &options).unwrap();
     let (library, context) = analyze(&[&library], &options).unwrap();
-    assert!(
-        !context.has_diagnostics(),
-        "unexpected diagnostics: {:?}",
-        context.diagnostics()
-    );
+    let codes = context
+        .diagnostics()
+        .iter()
+        .map(|diagnostic| diagnostic.code.clone())
+        .collect();
     let mut visitor = ComparisonOperands {
         types: context.types(),
         operands: vec![],
     };
     let Ok(()) = visitor.walk(&library);
-    visitor.operands
+    (visitor.operands, codes)
 }
 
 /// The operands of every arithmetic operator expression and function form in
@@ -222,11 +234,18 @@ fn apply_when_right_operand_wider_then_left_converted() {
     assert_eq!(comparison_operands(&source), pair("DINT->LINT", "LINT"));
 }
 
+/// A pair neither of which widens to the other is reported; the pass still
+/// compares it at the concrete left operand's type.
 #[spec_test(REQ_IC_analyzer_011)]
 #[test]
-fn apply_when_neither_widens_then_right_converted_to_left() {
+fn apply_when_neither_widens_then_right_converted_to_left_and_reported() {
     let source = program("d : DINT; u : UDINT;", "d < u");
-    assert_eq!(comparison_operands(&source), pair("DINT", "UDINT->DINT"));
+    let (operands, codes) = comparison_operands_and_codes(&source);
+    assert_eq!(operands, pair("DINT", "UDINT->DINT"));
+    assert_eq!(
+        codes,
+        test_helpers::codes(&[Problem::OperatorOperandTypeMismatch])
+    );
 }
 
 /// A named subrange is compared at its base type, so it is the `INT` that
@@ -250,6 +269,14 @@ fn apply_when_literal_on_right_then_literal_takes_operand_type() {
 fn apply_when_literal_on_left_then_literal_takes_operand_type() {
     let source = program("l : LINT;", "1 < l");
     assert_eq!(comparison_operands(&source), pair("LINT", "LINT"));
+}
+
+/// A real literal compared with an INT is a REAL, and the INT is converted
+/// to it (REQ-CMP-analyzer-007).
+#[test]
+fn apply_when_int_compared_with_real_literal_then_compared_as_real() {
+    let source = program("i : INT;", "i < 1.5");
+    assert_eq!(comparison_operands(&source), pair("INT->REAL", "REAL"));
 }
 
 #[test]
@@ -372,6 +399,20 @@ fn apply_when_arithmetic_operand_of_another_operation_type_then_converted_to_res
 fn apply_when_arithmetic_operand_is_literal_then_literal_takes_result_type() {
     let source = arithmetic_program("LINT", "l : LINT;", "l + 1");
     assert_eq!(arithmetic_operands(&source), operands(&[&["LINT", "LINT"]]));
+}
+
+/// A real literal beside an INT is a REAL, the result type, and the INT is
+/// converted to it, on either side.
+#[spec_test(REQ_IC_analyzer_021)]
+#[rstest]
+#[case::literal_right("i * 1.5", ["INT->REAL", "REAL"])]
+#[case::literal_left("1.5 * i", ["REAL", "INT->REAL"])]
+fn apply_when_real_literal_beside_int_then_literal_real_and_int_converted(
+    #[case] value: &str,
+    #[case] expected: [&str; 2],
+) {
+    let source = arithmetic_program("REAL", "i : INT;", value);
+    assert_eq!(arithmetic_operands(&source), operands(&[&expected]));
 }
 
 #[spec_test(REQ_IC_analyzer_022)]
@@ -569,42 +610,6 @@ fn apply_when_subrange_target_then_converted_to_base_type() {
     let source = "TYPE Small : DINT (0..10); END_TYPE
         PROGRAM main VAR s : Small; l : LINT; END_VAR s := l; END_PROGRAM";
     assert_eq!(assigned_values(source), vec!["LINT->DINT"]);
-}
-
-/// The inputs of every call to `name` in `source`, which must be free of
-/// diagnostics, each as [`describe`] shows it.
-fn call_arguments(source: &str, name: &str) -> Vec<String> {
-    struct Arguments<'a> {
-        types: &'a TypeEnvironment,
-        name: &'a str,
-        arguments: Vec<String>,
-    }
-    impl Visitor<Infallible> for Arguments<'_> {
-        type Value = ();
-        fn visit_function(&mut self, node: &Function) -> Result<(), Infallible> {
-            if node.name.original().eq_ignore_ascii_case(self.name) {
-                let inputs = node.param_assignment.iter().filter_map(|p| p.input_expr());
-                self.arguments
-                    .extend(inputs.map(|e| describe(self.types, e)));
-            }
-            node.recurse_visit(self)
-        }
-    }
-    let options = CompilerOptions::default();
-    let library = ironplc_parser::parse_program(source, &FileId::default(), &options).unwrap();
-    let (library, context) = analyze(&[&library], &options).unwrap();
-    assert!(
-        !context.has_diagnostics(),
-        "unexpected diagnostics: {:?}",
-        context.diagnostics()
-    );
-    let mut visitor = Arguments {
-        types: context.types(),
-        name,
-        arguments: vec![],
-    };
-    let Ok(()) = visitor.walk(&library);
-    visitor.arguments
 }
 
 /// A function `f` whose one input is of type `param`, called as `f(<args>)`
@@ -901,6 +906,28 @@ fn apply_when_subscript_then_takes_default_type() {
     assert_eq!(literal_types(source), vec!["DINT"]);
 }
 
+/// The first literal is the function's `F := 0`, and the method's `M := 0`
+/// after it; the rest are the subscripts of the outputs' targets.
+#[spec_test(REQ_IC_analyzer_069)]
+#[test]
+fn apply_when_output_target_subscript_literal_then_takes_dint() {
+    let source = "FUNCTION F : DINT VAR_OUTPUT q : DINT; END_VAR F := 0; END_FUNCTION
+        FUNCTION_BLOCK Acc
+        VAR_OUTPUT q : DINT; END_VAR
+        METHOD M : DINT VAR_OUTPUT mq : DINT; END_VAR M := 0; END_METHOD
+        END_FUNCTION_BLOCK
+        PROGRAM main VAR a : Acc; r : DINT; arr : ARRAY[1..3] OF LINT; END_VAR
+        a(q => arr[1]); r := F(q => arr[2]); a.M(mq => arr[3]); END_PROGRAM";
+    let options = CompilerOptions {
+        allow_fb_inheritance: true,
+        ..CompilerOptions::default()
+    };
+    assert_eq!(
+        literal_types_with(source, &options),
+        vec!["DINT", "DINT", "DINT", "DINT", "DINT"]
+    );
+}
+
 #[spec_test(REQ_IC_analyzer_065)]
 #[test]
 fn apply_when_case_selector_then_literals_take_its_type() {
@@ -976,6 +1003,7 @@ fn apply_when_untyped_literal_typed_then_type_recorded_as_inferred() {
 }
 
 mod bitwise;
+mod call_arguments;
 mod call_result;
 mod fixed_result;
 mod fixed_type;

@@ -14,8 +14,7 @@
 //!
 //! See `specs/design/adr-and-pointer-to.md`.
 
-use ironplc_analyzer::CleanAnalysis;
-use ironplc_dsl::core::FileId;
+use ironplc_ir::FileId;
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use ironplc_vm::test_support::load_and_start;
 use ironplc_vm::VmBuffers;
@@ -73,13 +72,7 @@ fn adr_compile_and_run(
 ) -> (ironplc_container::Container, VmBuffers) {
     let library = ironplc_parser::parse_program(source, &FileId::default(), options).unwrap();
     let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], options).unwrap();
-    let codegen_options = crate::CodegenOptions::default();
-    let container = crate::compile(
-        CleanAnalysis::new(&analyzed, &ctx).unwrap(),
-        &codegen_options,
-        &crate::EmptyLookup,
-    )
-    .unwrap();
+    let container = crate::test_support::compile_analyzed(&analyzed, &ctx).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
