@@ -33,7 +33,6 @@ use crate::compile::{CompileContext, OpType, OpWidth, Signedness, UserFunctionIn
 use crate::compile_subscript::subscript_check;
 use crate::compile_user_call::passes_by_reference;
 use crate::emit::Emitter;
-use crate::layout::ids::LaidOut;
 use crate::layout::names::ScopeId;
 
 mod aggregate;
@@ -350,10 +349,7 @@ pub(super) fn user_function(ctx: &CompileContext, pou: PouId) -> Option<UserFunc
 /// structure's region on the stack. `None` for a method.
 pub(super) fn callee_function(ctx: &CompileContext, pou: PouId) -> Option<UserFunctionInfo> {
     // A method is called by `METHOD_CALL` (`method.rs`).
-    match ctx.lowered_ids.pou(pou)? {
-        LaidOut::Function(name) => ctx.user_function(name).cloned(),
-        LaidOut::Program | LaidOut::Block(_) | LaidOut::Method { .. } => None,
-    }
+    ctx.user_function(pou).cloned()
 }
 
 /// Whether `place` has storage this backend reaches as one value of type
@@ -475,18 +471,23 @@ pub(super) fn instance_field<'p>(
     }
 }
 
-/// The POU whose body is compiled in the current scope; `None` for a body
-/// lowering did not lower.
+/// The POU whose body is compiled in the current scope; `None` outside any
+/// body.
 pub(super) fn current_pou(ctx: &CompileContext) -> Option<PouId> {
-    ctx.lowered_ids.pou_in(ctx.scope)
+    match ctx.scope {
+        ScopeId::Pou(pou) => Some(pou),
+        ScopeId::Global => None,
+    }
 }
 
 /// The name the lowered program gives the POU whose body is compiled in
 /// `scope`, as written.
 pub(crate) fn pou_name(ctx: &CompileContext, scope: ScopeId) -> Result<String, Diagnostic> {
-    ctx.lowered_ids
-        .pou_in(scope)
-        .and_then(|pou| ctx.lowering().ok()?.pous().name(pou))
+    let pou = match scope {
+        ScopeId::Pou(pou) => Some(pou),
+        ScopeId::Global => None,
+    };
+    pou.and_then(|pou| ctx.lowering().ok()?.pous().name(pou))
         .map(ToString::to_string)
         .ok_or_else(|| {
             Diagnostic::internal_error_at(Label::span(
@@ -498,7 +499,7 @@ pub(crate) fn pou_name(ctx: &CompileContext, scope: ScopeId) -> Result<String, D
 
 /// Whether `pou` is the body being compiled.
 pub(super) fn is_current_body(ctx: &CompileContext, pou: PouId) -> bool {
-    ctx.lowered_ids.scope(pou) == Some(ctx.scope)
+    ctx.scope == ScopeId::Pou(pou)
 }
 
 /// Whether two spans are the same text. `SourceSpan`'s own equality holds

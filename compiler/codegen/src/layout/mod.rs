@@ -13,7 +13,6 @@ mod calls;
 mod debug_vars;
 mod descriptors;
 mod entries;
-pub(crate) mod ids;
 mod limits;
 pub(crate) mod lowered;
 pub(crate) mod names;

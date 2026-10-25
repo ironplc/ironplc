@@ -93,11 +93,11 @@ pub(crate) struct Layout {
     pub(super) in_out_params: Scoped<()>,
     pub(super) data_end: u32,
     pub(super) descriptors: Vec<ArrayDescriptor>,
-    /// What a call of each user function needs, by its lower-case name.
-    pub(super) user_functions: HashMap<String, UserFunctionInfo>,
+    /// What a call of each user function needs, by its lowered POU.
+    pub(super) user_functions: HashMap<PouId, UserFunctionInfo>,
     /// What a call of each user function block and its methods needs, by
-    /// the block's upper-case name.
-    pub(super) user_fb_types: HashMap<String, UserFbTypeInfo>,
+    /// the block's lowered POU.
+    pub(super) user_fb_types: HashMap<PouId, UserFbTypeInfo>,
     /// The debug entries of the variables and the strings.
     pub(super) debug: DebugVars,
     /// The debug entry of each enumeration type.
@@ -109,6 +109,8 @@ pub(crate) struct Layout {
     pub(super) blocks: Vec<BlockLayout>,
     /// How many slots the globals and the program's variables take.
     pub(super) program_slots: u16,
+    /// The scope the program's body is compiled in.
+    pub(super) program: ScopeId,
     /// How many slots the variable table holds.
     pub(super) slot_end: VarIndex,
     /// Whether every slot fits the variable table.
@@ -142,13 +144,13 @@ struct Storage<'a> {
 impl Layout {
     /// The layout of the declarations of `lowering`, whose program the
     /// container runs is `program`, and the standard function block each
-    /// type is `standard_blocks`, by its upper-case name. A declaration
+    /// lowered POU that has no body is, `standard_blocks`. A declaration
     /// lowering does not express yet is not supported yet (P9999), and one
     /// that needs more slots than the variable table holds is P9997.
     pub(crate) fn of(
         lowering: &PartialProgram,
         program: &Id,
-        standard_blocks: &HashMap<String, StandardFunctionBlock>,
+        standard_blocks: &HashMap<PouId, StandardFunctionBlock>,
     ) -> Result<Self, Diagnostic> {
         if let Some(span) = lowering.declarations_unsupported().first() {
             return Err(Diagnostic::todo_with_span(span.clone()));
@@ -172,7 +174,7 @@ impl Layout {
     fn of_complete(
         lowering: &PartialProgram,
         pous: &Pous,
-        standard_blocks: &HashMap<String, StandardFunctionBlock>,
+        standard_blocks: &HashMap<PouId, StandardFunctionBlock>,
     ) -> Option<Self> {
         let types = lowering.types();
         let mut storage = Storage {
@@ -180,7 +182,10 @@ impl Layout {
             descriptors: Descriptors::new(types),
             blocks: Blocks::new(lowering, &pous.blocks, standard_blocks),
         };
-        let mut layout = Self::default();
+        let mut layout = Self {
+            program: ScopeId::Pou(pous.program),
+            ..Self::default()
+        };
 
         let program_declarations = lowering.declarations(pous.program)?;
         for (var, system) in globals(lowering) {
@@ -203,7 +208,7 @@ impl Layout {
                 Declaration::Field(idx) => {
                     let field = types.fields(program_type)?.get(idx.index() as usize)?;
                     layout.insert_named(
-                        ScopeId::Program,
+                        layout.program,
                         &mut storage,
                         named_field(program_type, *idx, field),
                         field.ty,
@@ -211,7 +216,7 @@ impl Layout {
                     )?;
                 }
                 Declaration::Variable(var) => {
-                    layout.insert_variable(ScopeId::Program, &mut storage, *var)?;
+                    layout.insert_variable(layout.program, &mut storage, *var)?;
                 }
                 Declaration::External(_) => {}
             }
@@ -221,7 +226,7 @@ impl Layout {
         let mut next = VarIndex::new(u16::try_from(layout.counted).unwrap_or(u16::MAX));
         layout.program_slots = next.raw();
         for (function_id, function) in pous.functions() {
-            let scope = ScopeId::Function(function_id);
+            let scope = ScopeId::Pou(function);
             let frame = frame(lowering, function)?;
             let var_offset = next;
             let mut calling = Calling::default();
@@ -307,12 +312,11 @@ impl Layout {
                 return_op_type: loaded_at(held_type(lowering, result)),
                 return_string_info: info.return_string_info.clone(),
             });
-            let key = lowering.pous().name(function)?.to_string().to_lowercase();
-            layout.user_functions.insert(key, info);
+            layout.user_functions.insert(function, info);
         }
         for (function_id, block) in pous.blocks() {
             let field_var_off = next;
-            let scope = ScopeId::Block(function_id);
+            let scope = ScopeId::Pou(block);
             let block_type = instance_type(types, block)?;
             for (idx, field) in copy_slots(lowering, block)? {
                 let name = named_field(block_type, idx, field);
@@ -337,10 +341,7 @@ impl Layout {
             };
             let mut methods = HashMap::new();
             for (method_id, method) in pous.methods(block) {
-                let scope = ScopeId::Method {
-                    block: function_id,
-                    method: method_id,
-                };
+                let scope = ScopeId::Pou(method);
                 let frame = frame(lowering, method)?;
                 let param_var_off = next;
                 let mut current = next;
@@ -393,15 +394,13 @@ impl Layout {
                     return_op_type,
                     has_return_value,
                 });
-                let key = lowering.pous().name(method)?.to_string().to_lowercase();
-                methods.insert(key, info);
+                methods.insert(method, info);
             }
             layout.blocks.push(body);
             let info = storage
                 .blocks
                 .block_type(block, function_id, field_var_off, methods)?;
-            let key = lowering.pous().name(block)?.to_string().to_uppercase();
-            layout.user_fb_types.insert(key, info);
+            layout.user_fb_types.insert(block, info);
         }
         layout.slot_end = next;
         layout.data_end = storage.region.end();
@@ -439,6 +438,7 @@ impl Layout {
         ctx.region_refs = self.region_refs;
         ctx.fb_instances = self.fb_instances;
         ctx.in_out_params = self.in_out_params;
+        ctx.scope = self.program;
         ctx.user_functions = self.user_functions;
         ctx.user_fb_types = self.user_fb_types;
         ctx.data_region_offset = self.data_end;
@@ -482,7 +482,7 @@ impl Layout {
                 .unwrap_or(0);
         let wide = strings
             .iter()
-            .filter(|(scope, _)| matches!(scope, ScopeId::Global | ScopeId::Program))
+            .filter(|(scope, _)| *scope == ScopeId::Global || *scope == self.program)
             .any(|(_, string)| string.char_width.is_wide())
             || arrays
                 .iter()

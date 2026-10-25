@@ -35,7 +35,6 @@ use super::slot_copy::is_block_reference;
 use crate::compile::{CompileContext, FbFieldIndex};
 use crate::emit::Emitter;
 use crate::held_instances::{layout, layout_of_type};
-use crate::layout::ids::LaidOut;
 
 /// The copy of one instance to another of its block.
 pub(super) struct InstanceCopy {
@@ -137,7 +136,7 @@ fn reached(
             .held
             .iter()
             .find(|held| held.name == name)?;
-        block = layout(ctx, &held.block)?.type_id;
+        block = layout(ctx, held.block)?.type_id;
         fields.push(held.index);
     }
     Some((Reached { var_index, fields }, block))
@@ -171,15 +170,14 @@ fn held_by_current(
     if !is_block_reference(lowering.types(), root.ty()) {
         return None;
     }
-    let block = match ctx.lowered_ids.pou(super::current_pou(ctx)?)? {
-        LaidOut::Block(block) | LaidOut::Method { block, .. } => block,
-        LaidOut::Program | LaidOut::Function(_) => return None,
-    };
+    // The current body is the block's, or one of its methods'.
+    let current = super::current_pou(ctx)?;
+    let block = lowering.pous().method_of(current).unwrap_or(current);
     let held = layout(ctx, block)?
         .held
         .iter()
         .find(|held| held.name == *name.name.lower_case())?;
-    Some((ctx.var_index(name).ok()?, layout(ctx, &held.block)?.type_id))
+    Some((ctx.var_index(name).ok()?, layout(ctx, held.block)?.type_id))
 }
 
 /// Appends to `steps` the steps that copy each field of an instance of the
@@ -194,7 +192,7 @@ fn plan(ctx: &CompileContext, block: FbTypeId, steps: &mut Vec<Step>) -> Option<
         match instances.held.iter().find(|held| held.index == field) {
             Some(held) => {
                 steps.push(Step::Enter(field));
-                plan(ctx, layout(ctx, &held.block)?.type_id, steps)?;
+                plan(ctx, layout(ctx, held.block)?.type_id, steps)?;
                 steps.push(Step::Leave);
             }
             None => steps.push(Step::Field(field)),

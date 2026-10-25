@@ -55,6 +55,7 @@ use ironplc_dsl::common::{
 };
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_ir::lowered::PouId;
 use ironplc_parser::options::{CompilerOptions, StringToNumFailure, StringToNumNonNumeric};
 
 use ironplc_analyzer::{
@@ -476,7 +477,7 @@ fn compile_program_with_functions(
     let mut ctx = CompileContext::new();
     ctx.lowered_route = Some(lowered_route);
     ctx.block_members = ironplc_lowering::initial_value::block_members(types);
-    ctx.standard_blocks = crate::compile_call::standard_blocks_by_name(types);
+    ctx.standard_blocks = crate::compile_call::standard_blocks(ctx.lowering()?, types);
     ctx.builtin_functions = crate::compile_call::builtin_functions_by_name(functions);
     ctx.method_owners = method_owners.clone();
     ctx.string_to_num = string_to_num;
@@ -498,9 +499,8 @@ fn compile_program_with_functions(
     }
 
     // Lay out every declaration from the lowered program before any body is
-    // compiled against it, and match the lowered program's ids to it; then
-    // compile the functions' bodies, then each FB's body followed by its
-    // METHODs'. The functions' bodies come before the FB bodies so that an
+    // compiled against it; then compile the functions' bodies, then each
+    // FB's body followed by its METHODs'. The functions' bodies come before the FB bodies so that an
     // FB body finds each callee's stack depth; per IEC 61131-3 functions
     // cannot instantiate FBs, so they don't require FB bodies to have been
     // compiled first.
@@ -508,7 +508,6 @@ fn compile_program_with_functions(
     let layout =
         crate::layout::lowered::Layout::of(ctx.lowering()?, &program.name, &ctx.standard_blocks)?;
     let bodies = layout.install(&mut ctx, &mut builder)?;
-    ctx.lowered_ids = crate::layout::ids::LoweredIds::matched(ctx.lowering()?, &ctx, &program.name);
     let program_var_count = bodies.program_slots;
     let mut compiled_functions = Vec::new();
     for (func_decl, layout) in func_decls.iter().zip(bodies.functions) {
@@ -719,7 +718,7 @@ fn compile_program_with_functions(
         .max_call_depth(max_call_depth);
 
     // Add debug info, named as the lowered program names each POU.
-    let program_name = crate::lowered::pou_name(&ctx, crate::layout::names::ScopeId::Program)?;
+    let program_name = crate::lowered::pou_name(&ctx, ctx.scope)?;
     builder = builder
         .add_func_name(FuncNameEntry {
             function_id: FunctionId::INIT,
@@ -905,13 +904,9 @@ pub(crate) struct UserFbTypeInfo {
     pub(crate) field_types: HashMap<String, VarTypeInfo>,
     /// The fields that hold an instance of a block (`held_instances.rs`).
     pub(crate) held_fields: Vec<HeldField>,
-    /// Maps method name (lowercase) to compilation metadata (OOP
-    /// extension, ADR-0041 Phase 1). Populated in two steps: `function_id`,
-    /// `num_params`, `param_names_in_order`, and `has_return_value` are known
-    /// from the AST alone and set during the pre-scan registration pass;
-    /// `param_var_off` is set once the method body is actually compiled
-    /// and its scratch region is known (mirrors `var_offset` above).
-    pub(crate) methods: HashMap<String, UserMethodInfo>,
+    /// What a call of each of the block's methods needs, by the method's
+    /// lowered POU (OOP extension, ADR-0041 Phase 1).
+    pub(crate) methods: HashMap<PouId, UserMethodInfo>,
 }
 
 /// Compilation metadata for a single `METHOD` declared on a user-defined
@@ -958,12 +953,9 @@ pub(crate) struct CompileContext {
     /// The program lowering made, which each top-level statement is read
     /// from; `None` only while it is taken to compile from it.
     pub(crate) lowered_route: Option<crate::lowered::LoweredRoute>,
-    /// What the layout knows each POU of the lowered program as, once the
-    /// layout is built.
-    pub(crate) lowered_ids: crate::layout::ids::LoweredIds,
-    /// The scope whose names are being laid out, or whose body is being
-    /// compiled: what the layout's entries are recorded under, and what
-    /// each lookup sees ([`crate::layout::names`]).
+    /// The scope whose body is being compiled: the lowered POU's, which is
+    /// the program's outside the other bodies once the layout is installed
+    /// ([`crate::layout::names`]).
     pub(crate) scope: ScopeId,
     /// The variable-table slot of each variable.
     pub(crate) variables: Scoped<VarIndex>,
@@ -1025,16 +1017,18 @@ pub(crate) struct CompileContext {
     /// `SourceFileId` (debug section SOURCE_FILE_TABLE index) plus cached
     /// source bytes for (line, column) conversion in `compile_statement`.
     pub(crate) debug_source_files: crate::source_lookup::SourceFileRegistry,
-    /// Maps user-defined function name (lowercase) to compilation metadata.
-    pub(crate) user_functions: HashMap<String, UserFunctionInfo>,
+    /// What a call of each user-defined function needs, by its lowered POU.
+    pub(crate) user_functions: HashMap<PouId, UserFunctionInfo>,
     /// The most a call of each user function or method adds to its
     /// caller's stack: the deepest its body's stack goes, known once the
     /// body is compiled.
     pub(crate) function_stack_depths: HashMap<FunctionId, u16>,
-    /// Maps user-defined FB type name (uppercase) to compilation metadata.
-    pub(crate) user_fb_types: HashMap<String, UserFbTypeInfo>,
-    /// Maps standard FB type name (uppercase) to the block it is.
-    pub(crate) standard_blocks: HashMap<String, StandardFunctionBlock>,
+    /// What a call of each user-defined function block and its methods
+    /// needs, by the block's lowered POU.
+    pub(crate) user_fb_types: HashMap<PouId, UserFbTypeInfo>,
+    /// The standard function block each lowered POU without a declaration
+    /// of its own is.
+    pub(crate) standard_blocks: HashMap<PouId, StandardFunctionBlock>,
     /// When compiling a function body that returns a value, describes how an
     /// early `RETURN` statement should produce the return value before the
     /// `RET` opcode. `None` for programs and FBs (RETURN emits `RET_VOID`).
@@ -1082,8 +1076,7 @@ impl CompileContext {
     pub(crate) fn new() -> Self {
         CompileContext {
             lowered_route: None,
-            lowered_ids: crate::layout::ids::LoweredIds::default(),
-            scope: ScopeId::Program,
+            scope: ScopeId::Global,
             variables: Scoped::default(),
             var_types: Scoped::default(),
             constants: Vec::new(),
@@ -1248,9 +1241,9 @@ impl CompileContext {
         self.fb_instances.get(&name.stored)
     }
 
-    /// The user-defined function named `name`, in lower case.
-    pub(crate) fn user_function(&self, name: &str) -> Option<&UserFunctionInfo> {
-        self.user_functions.get(name)
+    /// The user-defined function `pou`.
+    pub(crate) fn user_function(&self, pou: PouId) -> Option<&UserFunctionInfo> {
+        self.user_functions.get(&pou)
     }
 
     /// The most a call at `span` of the user function or method
@@ -1274,9 +1267,9 @@ impl CompileContext {
             })
     }
 
-    /// The user-defined function block type named `name`, in upper case.
-    pub(crate) fn user_fb_type(&self, name: &str) -> Option<&UserFbTypeInfo> {
-        self.user_fb_types.get(name)
+    /// The user-defined function block `pou`.
+    pub(crate) fn user_fb_type(&self, pou: PouId) -> Option<&UserFbTypeInfo> {
+        self.user_fb_types.get(&pou)
     }
 
     /// Looks up type information for a variable by identifier.

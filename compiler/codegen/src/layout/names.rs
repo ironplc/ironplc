@@ -9,27 +9,20 @@
 
 use std::collections::HashMap;
 
-use ironplc_container::FunctionId;
+use ironplc_ir::lowered::PouId;
 
 use crate::access::Stored;
 
 /// A scope that declares variables the layout gives storage to.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub(crate) enum ScopeId {
     /// The globals, the compiler-provided ones included.
+    #[default]
     Global,
-    /// The program's own variables.
-    Program,
-    /// A user function's parameters, locals, outputs and result.
-    Function(FunctionId),
-    /// A function block's copy slots, one for each field.
-    Block(FunctionId),
-    /// The parameters, locals, outputs and result of the method `method`
-    /// of the block whose body is `block`.
-    Method {
-        block: FunctionId,
-        method: FunctionId,
-    },
+    /// The variables of the lowered POU whose body is compiled in it: the
+    /// program's, a function's or a method's own variables, or a function
+    /// block's copy slots, one for each field.
+    Pou(PouId),
 }
 
 /// One kind of entry the layout records for each variable, with the scope

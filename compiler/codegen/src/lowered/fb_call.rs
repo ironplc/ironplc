@@ -34,7 +34,6 @@ use crate::compile::CompileContext;
 use crate::compile_fb_call::FbCallSite;
 use crate::emit::Emitter;
 use crate::held_instances::layout;
-use crate::layout::ids::LaidOut;
 
 /// The stores of a call's inputs and the call, at the head of a list of
 /// lowered statements.
@@ -171,10 +170,7 @@ pub(super) fn reaches_block(
     else {
         return false;
     };
-    let Some(LaidOut::Block(name)) = ctx.lowered_ids.pou(block) else {
-        return false;
-    };
-    layout(ctx, name).is_some_and(|layout| layout.type_id == fb_instance.type_id)
+    layout(ctx, block).is_some_and(|layout| layout.type_id == fb_instance.type_id)
 }
 
 /// The internal error for a call `can_emit` should have rejected.

@@ -26,8 +26,8 @@ pub(super) struct Blocks<'a> {
     /// The reachable user function blocks, which take the type ids from
     /// [`FIRST_USER_FB_TYPE_ID`] in this order.
     user: &'a [PouId],
-    /// The standard function block each type is, by its upper-case name.
-    standard: &'a HashMap<String, StandardFunctionBlock>,
+    /// The standard function block each lowered POU without a body is.
+    standard: &'a HashMap<PouId, StandardFunctionBlock>,
 }
 
 /// The fields of a function block, as an instance's fields are named.
@@ -42,11 +42,11 @@ struct Fields {
 
 impl<'a> Blocks<'a> {
     /// The function blocks of `lowering`: its reachable user blocks `user`,
-    /// and the standard ones `standard` names.
+    /// and the standard ones `standard` holds.
     pub(super) fn new(
         lowering: &'a PartialProgram,
         user: &'a [PouId],
-        standard: &'a HashMap<String, StandardFunctionBlock>,
+        standard: &'a HashMap<PouId, StandardFunctionBlock>,
     ) -> Self {
         Self {
             lowering,
@@ -82,13 +82,13 @@ impl<'a> Blocks<'a> {
 
     /// What a call of the user function block `block`, whose body is
     /// `function_id` and whose copy slots start at `var_offset`, needs, with
-    /// its methods `methods`, by their lower-case names.
+    /// its methods `methods`, by their lowered POUs.
     pub(super) fn block_type(
         &self,
         block: PouId,
         function_id: FunctionId,
         var_offset: VarIndex,
-        methods: HashMap<String, UserMethodInfo>,
+        methods: HashMap<PouId, UserMethodInfo>,
     ) -> Option<UserFbTypeInfo> {
         let fields = self.fields(block)??;
         let types = self.lowering.types();
@@ -99,7 +99,7 @@ impl<'a> Blocks<'a> {
                 held_fields.push(HeldField {
                     name: field.name.to_string().to_lowercase(),
                     index: FbFieldIndex::try_from(index).ok()?,
-                    block: self.lowering.pous().name(*body)?.to_string().to_uppercase(),
+                    block: *body,
                 });
             }
         }
@@ -138,8 +138,7 @@ impl<'a> Blocks<'a> {
                 types: field_types,
             }));
         }
-        let name = self.lowering.pous().name(body)?.to_string().to_uppercase();
-        let Some(block) = self.standard.get(&name) else {
+        let Some(block) = self.standard.get(&body) else {
             return Some(None);
         };
         let (type_id, _, indices) = standard_fb_layout(*block);
