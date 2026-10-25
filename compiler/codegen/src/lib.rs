@@ -54,7 +54,6 @@ mod compile_struct;
 mod compile_struct_init;
 mod compile_subscript;
 mod compile_user_call;
-mod data_region;
 mod emit;
 mod execution;
 mod held_instances;
@@ -63,7 +62,6 @@ mod lowered;
 mod optimize;
 mod source_lookup;
 mod stack_balance;
-mod type_info;
 
 pub use compile::{compile, CodegenOptions, StringToNumPolicies};
 pub use ironplc_ir::source::{EmptyLookup, SourceLookup};

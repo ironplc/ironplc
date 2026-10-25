@@ -2686,7 +2686,8 @@ from the AST and from the lowered declarations, the end-to-end helpers have
 it check the two equal for every program they compile, and an entry either
 records differently, such as a slot's number, the type it is operated at, a
 string's run of the data region or an array descriptor, fails the
-compilation.
+compilation. The backend now builds its layout only from the lowered
+declarations, so there is no second layout to check against.
 
 **Lowering is tested on the tree.** A decision in
 [Decisions](#4-decisions) is asserted by lowering a small program and
@@ -3045,10 +3046,13 @@ This section constrains the order of work; it is not a work breakdown.
   it writes it, in a scan after the first: the lowered route starts it again
   at the head of every scan (REQ-LOW-lowering-201), where the route that read
   the AST gave it its value once, in `init`.
-- **The layouts check each other.** While both layout builders exist, the
-  one from the lowered declarations is checked equal to the one from the AST
-  for every end-to-end program (REQ-LOW-codegen-198), before the bodies are
-  compiled against it (REQ-LOW-codegen-199).
+- **The layouts checked each other.** While both layout builders existed,
+  the one from the lowered declarations was checked equal to the one from
+  the AST for every end-to-end program (REQ-LOW-codegen-198), before the
+  bodies were compiled against it (REQ-LOW-codegen-199). The builder that
+  read the AST is deleted; each declaration is checked within the limits
+  of the bytecode format before the layout is built, as that builder
+  checked it.
 - **Progress could not fall.** While both routes existed, CI reported how
   many top-level statements of the end-to-end programs took the lowered
   route, and the number did not fall.

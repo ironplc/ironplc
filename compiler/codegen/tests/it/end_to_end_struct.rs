@@ -327,8 +327,7 @@ e2e_i32_with!(
 );
 
 // --- 64-bit integer and LTIME struct fields ---
-// Exercise `resolve_field_op_type` / `var_type_info_for_field` on 64-bit
-// signed types (Int B64 and Time B64) — the Signed W64 branch only fires
+// Exercise the type a field is operated at on 64-bit signed types (Int B64 and Time B64) — the Signed W64 branch only fires
 // when these types are declared inside a STRUCT.
 
 e2e_i64!(
@@ -368,8 +367,8 @@ END_PROGRAM
 }
 
 // --- DATE, TOD, DT struct fields ---
-// Exercise the Date / TimeOfDay / DateAndTime patterns in
-// `resolve_field_op_type` and `var_type_info_for_field`.
+// Exercise the type a Date / TimeOfDay / DateAndTime field is operated
+// at.
 
 #[test]
 fn end_to_end_when_struct_field_date_then_reads_and_writes() {

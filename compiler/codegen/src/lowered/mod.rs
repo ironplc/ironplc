@@ -61,9 +61,6 @@ pub(crate) use prologue::{emit_prologue, restarts};
 /// compiled from.
 pub(crate) struct LoweredRoute {
     lowering: PartialProgram,
-    /// Whether the layout built from the lowered declarations is checked
-    /// equal to the one built from the AST.
-    check_layout: bool,
 }
 
 impl LoweredRoute {
@@ -72,16 +69,9 @@ impl LoweredRoute {
         &self.lowering
     }
 
-    /// Whether the layout built from the lowered declarations is checked
-    /// equal to the one built from the AST.
-    pub(crate) fn check_layout(&self) -> bool {
-        self.check_layout
-    }
-
     /// The program `lower` lowers. A P9998 lowering reports fails the
     /// compilation.
     pub(crate) fn new(
-        check_layout: bool,
         lower: impl FnOnce() -> Result<PartialProgram, Vec<Diagnostic>>,
     ) -> Result<Self, Diagnostic> {
         let lowering = lower().map_err(|diagnostics| {
@@ -90,10 +80,7 @@ impl LoweredRoute {
                 .next()
                 .unwrap_or_else(Diagnostic::internal_error)
         })?;
-        Ok(Self {
-            lowering,
-            check_layout,
-        })
+        Ok(Self { lowering })
     }
 }
 

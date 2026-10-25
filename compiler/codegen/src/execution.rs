@@ -31,9 +31,6 @@ pub(crate) struct Runnable<'a> {
     pub(crate) program: &'a ProgramDeclaration,
     /// The task table entry's scheduling fields.
     pub(crate) schedule: TaskSchedule,
-    /// The compiler-provided globals, which the model lists before any
-    /// declared one, in variable-table order.
-    pub(crate) system_globals: Vec<SystemGlobal>,
     /// The declarations of the declared globals that get storage, in
     /// variable-table order after the system globals.
     pub(crate) globals: Vec<VarDecl>,
@@ -61,13 +58,6 @@ pub(crate) fn runnable<'a>(analysis: &CleanAnalysis<'a>) -> Result<Runnable<'a>,
     Ok(Runnable {
         program,
         schedule,
-        system_globals: model
-            .globals()
-            .filter_map(|(_, global)| match global.kind {
-                GlobalKind::System(system) => Some(system),
-                GlobalKind::Declared(_) => None,
-            })
-            .collect(),
         globals: global_declarations(analysis, model)?,
         has_system_uptime: model
             .globals()
@@ -296,8 +286,8 @@ pub(crate) fn apply_task_schedule(container: &mut Container, schedule: TaskSched
 }
 
 /// The declarations of the declared globals the variable table holds, in the
-/// model's order. The system globals are laid out from the model by
-/// [`crate::layout::lay_out_globals`].
+/// model's order. The system globals are laid out from the lowered program
+/// ([`crate::layout::lowered`]).
 ///
 /// A declared global's type and initial value are still compiled from its
 /// declaration, which is reached by id. A resource's `VAR_GLOBAL` gets no

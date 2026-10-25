@@ -1,11 +1,10 @@
 //! The data region the lowered declarations reserve
 //! (`specs/design/lowered-program.md`, "`CompileContext`").
 //!
-//! A variable that does not fit in its slot takes a run of the data region
-//! ([`crate::data_region`]), in the order the walk of the AST declarations
-//! reserves them: a string, a structure, an array, or the fields of a
-//! function block instance, then those of each instance its fields hold, to
-//! any depth ([`crate::held_instances`]).
+//! A variable that does not fit in its slot takes a run of the data region,
+//! in the order the layout visits the declarations: a string, a structure,
+//! an array, or the fields of a function block instance, then those of each
+//! instance its fields hold, to any depth ([`crate::held_instances`]).
 
 use std::collections::HashMap;
 
