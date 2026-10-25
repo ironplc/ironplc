@@ -15,10 +15,11 @@ use ironplc_dsl::textual::{
     UnaryOp as AstUnaryOp, Variable,
 };
 use ironplc_ir::lowered::{
-    BinaryOp, CompareOp, Expr, Place, ScalarType, ShortCircuitOp, TypeId, TypeKind, UnaryOp,
+    BinaryOp, CompareOp, Expr, Place, ShortCircuitOp, TemporalKind, UnaryOp,
 };
 
 use crate::bits::selected_bits;
+use crate::typed::{Arithmetic, Class, LogicalForm};
 use crate::variables::BodyFrame;
 use crate::{Lowered, Lowering, Unlowered};
 
@@ -51,19 +52,21 @@ impl Lowering<'_> {
                         return self.numeric_call(frame, expr, NumericFunction::Expt, &args);
                     }
                 };
-                if self.is_temporal(expr)? {
-                    return self.time_arithmetic(frame, expr, op, &binary.left, &binary.right);
+                let (left, right) = (&binary.left, &binary.right);
+                match self.typed(expr)?.class.arithmetic()? {
+                    Arithmetic::Temporal => self.time_arithmetic(frame, expr, op, left, right),
+                    Arithmetic::Numeric => self.binary(frame, op, left, right, span),
                 }
-                if !self.is_arithmetic(expr)? {
-                    return Err(Unlowered::NotYet);
-                }
-                self.binary(frame, op, &binary.left, &binary.right, span)
             }
             AstExprKind::UnaryOp(unary) => match unary.op {
                 AstUnaryOp::Neg => {
-                    // A duration is negated as the signed integer it is
-                    // stored as (ADR-0025).
-                    if !(self.is_arithmetic(expr)? || self.is_duration(expr)?) {
+                    // A number, or a duration, which is negated as the signed
+                    // integer it is stored as (ADR-0025).
+                    let negated = matches!(
+                        self.typed(expr)?.class,
+                        Class::Integer | Class::Real | Class::Temporal(TemporalKind::Time)
+                    );
+                    if !negated {
                         return Err(Unlowered::NotYet);
                     }
                     let value = self.expr(frame, &unary.term)?;
@@ -118,7 +121,7 @@ impl Lowering<'_> {
                 }
             }
             AstExprKind::ImplicitConversion(conversion) => {
-                let (_, to) = self.operated_type(expr)?;
+                let to = self.typed(expr)?.scalar()?;
                 let value = self.expr(frame, &conversion.value)?;
                 match conversion.kind {
                     ConversionKind::Ordinary => {
@@ -141,7 +144,7 @@ impl Lowering<'_> {
                 }
             }
             AstExprKind::EnumeratedValue(value) => {
-                let (_, ty) = self.operated_type(expr)?;
+                let ty = self.typed(expr)?.scalar()?;
                 let ordinal = self.enumerated_ordinal(expr, value)?;
                 Ok(Expr::integer(ordinal.into(), ty, span)?)
             }
@@ -222,7 +225,7 @@ impl Lowering<'_> {
         constant: &ConstantKind,
         span: SourceSpan,
     ) -> Lowered<Expr> {
-        let (_, ty) = self.operated_type(expr)?;
+        let ty = self.typed(expr)?.scalar()?;
         let integer = match constant {
             // An integer literal at a real type is that number, as a real.
             ConstantKind::IntegerLiteral(literal) => i128::try_from(literal.value.clone()).ok(),
@@ -271,10 +274,10 @@ impl Lowering<'_> {
         term: &AstExpr,
     ) -> Lowered<Expr> {
         let span = expr.span();
-        let op = if self.is_bool(expr)? {
-            UnaryOp::BoolNot
-        } else {
-            UnaryOp::BitNot
+        let typed = self.typed(expr)?;
+        let op = match typed.class.logical_form()? {
+            LogicalForm::Logical => UnaryOp::BoolNot,
+            LogicalForm::Bitwise => UnaryOp::BitNot,
         };
         let value = self.expr(frame, term)?;
         let value = Expr::unary(op, value, span.clone())?;
@@ -283,8 +286,7 @@ impl Lowering<'_> {
         }
         // Inverting a `BYTE` or `WORD` sets the bits above its width, so the
         // result is narrowed back to the width at once.
-        let (ty, _) = self.operated_type(expr)?;
-        match self.program.types().narrowed_storage(ty) {
+        match self.program.types().narrowed_storage(typed.ty) {
             Some(width) => Ok(Expr::truncate(width, value, span)?),
             None => Ok(value),
         }
@@ -311,10 +313,9 @@ impl Lowering<'_> {
         expr: &AstExpr,
         (logical, bitwise): (BinaryOp, BinaryOp),
     ) -> Lowered<BinaryOp> {
-        Ok(if self.is_bool(expr)? {
-            logical
-        } else {
-            bitwise
+        Ok(match self.typed(expr)?.class.logical_form()? {
+            LogicalForm::Logical => logical,
+            LogicalForm::Bitwise => bitwise,
         })
     }
 
@@ -328,7 +329,14 @@ impl Lowering<'_> {
         right: &AstExpr,
         span: SourceSpan,
     ) -> Lowered<Expr> {
-        if let Some(encoding) = self.string_encoding(left)? {
+        // `NULL` has no type of its own: it is compared as the reference it
+        // is.
+        let class = if matches!(left.kind, AstExprKind::Null(_)) {
+            Class::Reference
+        } else {
+            self.typed(left)?.class
+        };
+        if let Class::String(encoding) = class {
             return self.string_compare(frame, encoding, op, (left, right), span);
         }
         let lhs = self.expr(frame, left)?;
@@ -348,90 +356,11 @@ impl Lowering<'_> {
         right: &AstExpr,
     ) -> Lowered<Expr> {
         let span = expr.span();
-        if !self.is_bool(expr)? {
+        if let LogicalForm::Bitwise = self.typed(expr)?.class.logical_form()? {
             return self.binary(frame, bitwise, left, right, span);
         }
         let lhs = self.expr(frame, left)?;
         let rhs = self.expr(frame, right)?;
         Ok(Expr::short_circuit(op, lhs, rhs, span)?)
-    }
-
-    /// The lowered type the analyzer recorded for `expr`. An expression it
-    /// recorded no type for is not lowered.
-    pub(crate) fn recorded_type(&mut self, expr: &AstExpr) -> Lowered<TypeId> {
-        let recorded = expr
-            .expr_type
-            .as_ref()
-            .and_then(|ty| ty.type_id())
-            .ok_or(Unlowered::NotYet)?;
-        self.lowered_type(recorded)
-    }
-
-    /// The lowered type the analyzer recorded for `expr`, and the type it is
-    /// operated at. An expression of a type that is not operated on as one
-    /// value is not lowered as a scalar.
-    pub(crate) fn operated_type(&mut self, expr: &AstExpr) -> Lowered<(TypeId, ScalarType)> {
-        let ty = self.recorded_type(expr)?;
-        let operated = self
-            .program
-            .types()
-            .operation_type(ty)
-            .ok_or(Unlowered::NotYet)?;
-        Ok((ty, operated))
-    }
-
-    /// Whether `expr` is computed by arithmetic: a number or a bit string,
-    /// not a time, a date or an enumeration, whose operations follow rules of
-    /// their own.
-    pub(crate) fn is_arithmetic(&mut self, expr: &AstExpr) -> Lowered<bool> {
-        let (ty, _) = self.operated_type(expr)?;
-        Ok(match self.program.types().kind(ty) {
-            Some(TypeKind::Integer { .. } | TypeKind::BitString { .. } | TypeKind::Real { .. }) => {
-                true
-            }
-            Some(TypeKind::Subrange { base, .. }) => {
-                matches!(
-                    self.program.types().kind(*base),
-                    Some(TypeKind::Integer { .. })
-                )
-            }
-            Some(
-                TypeKind::Bool
-                | TypeKind::Temporal { .. }
-                | TypeKind::Enumeration { .. }
-                | TypeKind::String(_)
-                | TypeKind::Array { .. }
-                | TypeKind::Structure { .. }
-                | TypeKind::FunctionBlock { .. }
-                | TypeKind::Program { .. }
-                | TypeKind::Reference { .. },
-            )
-            | None => false,
-        })
-    }
-
-    /// Whether `expr` is a `BOOL`, rather than an integer or bit string,
-    /// which decides between the logical and bitwise form of `NOT`, `AND`,
-    /// `OR` and `XOR` (REQ-LOW-lowering-048). Those operate on no other
-    /// type, so an expression of one is not lowered.
-    fn is_bool(&mut self, expr: &AstExpr) -> Lowered<bool> {
-        let (ty, _) = self.operated_type(expr)?;
-        match self.program.types().kind(ty) {
-            Some(TypeKind::Bool) => Ok(true),
-            Some(TypeKind::Integer { .. } | TypeKind::BitString { .. }) => Ok(false),
-            Some(
-                TypeKind::Real { .. }
-                | TypeKind::Temporal { .. }
-                | TypeKind::Enumeration { .. }
-                | TypeKind::Subrange { .. }
-                | TypeKind::String(_)
-                | TypeKind::Array { .. }
-                | TypeKind::Structure { .. }
-                | TypeKind::FunctionBlock { .. }
-                | TypeKind::Program { .. }
-                | TypeKind::Reference { .. },
-            )
-            | None => Err(Unlowered::NotYet),
-        }
     }
 }

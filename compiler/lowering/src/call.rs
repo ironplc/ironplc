@@ -21,6 +21,7 @@ use ironplc_ir::lowered::{
     Signedness, StringShape, TypeId, TypeKind, TypeTable,
 };
 
+use crate::typed::Arithmetic;
 use crate::variables::BodyFrame;
 use crate::{Body, Lowered, Lowering, Unlowered};
 
@@ -63,12 +64,13 @@ impl Lowering<'_> {
             },
             BuiltinFunction::BitShift(shift) => {
                 // A shift computes at the type of the value it shifts.
-                let (ty, _) = self.operated_type(expr)?;
-                let types = self.program.types();
-                let intrinsic = types
-                    .operation_type(ty)
-                    .zip(types.bit_width(ty))
-                    .and_then(|(operated, width)| shift_intrinsic(shift, operated, width))
+                let typed = self.typed(expr)?;
+                let operated = typed.scalar()?;
+                let intrinsic = self
+                    .program
+                    .types()
+                    .bit_width(typed.ty)
+                    .and_then(|width| shift_intrinsic(shift, operated, width))
                     .ok_or(Unlowered::NotYet)?;
                 self.intrinsic_call(frame, expr, intrinsic, &args)
             }
@@ -84,7 +86,7 @@ impl Lowering<'_> {
                     Intrinsic::MuxF32,
                     Intrinsic::MuxF64,
                 ]);
-                let (_, operated) = self.operated_type(expr)?;
+                let operated = self.typed(expr)?.scalar()?;
                 let intrinsic = mux.at(operated).ok_or(Unlowered::NotYet)?;
                 self.intrinsic_call(frame, expr, intrinsic, &args)
             }
@@ -137,7 +139,7 @@ impl Lowering<'_> {
     /// context. Like an arithmetic result, it is not narrowed until it is
     /// stored.
     fn trunc(&mut self, frame: &BodyFrame, expr: &AstExpr, value: &AstExpr) -> Lowered<Expr> {
-        let (_, to) = self.operated_type(expr)?;
+        let to = self.typed(expr)?.scalar()?;
         let value = self.expr(frame, value)?;
         if !(value.ty().is_real() && to.is_integer()) {
             return Err(Unlowered::NotYet);
@@ -152,7 +154,8 @@ impl Lowering<'_> {
     fn conversion(&mut self, frame: &BodyFrame, expr: &AstExpr, value: &AstExpr) -> Lowered<Expr> {
         let span = expr.span();
         // The analyzer recorded the target as the type of the call.
-        let (target, to) = self.operated_type(expr)?;
+        let target = self.typed(expr)?;
+        let to = target.scalar()?;
         let value = self.expr(frame, value)?;
         if to == ScalarType::Bool {
             let zero = Expr::integer(0, value.ty(), span.clone())?;
@@ -163,7 +166,7 @@ impl Lowering<'_> {
         } else {
             Expr::convert(value, to, span.clone())?
         };
-        match self.program.types().narrowed_storage(target) {
+        match self.program.types().narrowed_storage(target.ty) {
             Some(width) => Ok(Expr::truncate(width, value, span)?),
             None => Ok(value),
         }
@@ -173,11 +176,11 @@ impl Lowering<'_> {
     /// decoded at its width, then converted to the integer the analyzer
     /// recorded for the call, the integer of its context.
     fn bcd_to_int(&mut self, frame: &BodyFrame, expr: &AstExpr, value: &AstExpr) -> Lowered<Expr> {
-        let (_, to) = self.operated_type(expr)?;
+        let to = self.typed(expr)?.scalar()?;
         if !to.is_integer() {
             return Err(Unlowered::NotYet);
         }
-        let (ty, _) = self.operated_type(value)?;
+        let ty = self.typed(value)?.ty;
         let intrinsic = self
             .program
             .types()
@@ -204,7 +207,8 @@ impl Lowering<'_> {
     /// `INT_TO_BCD(value)`, the expression `expr`: the integer `value`
     /// encoded at its width and signedness, as the bit string as wide as it.
     fn int_to_bcd(&mut self, frame: &BodyFrame, expr: &AstExpr, value: &AstExpr) -> Lowered<Expr> {
-        let (ty, operated) = self.operated_type(value)?;
+        let typed = self.typed(value)?;
+        let operated = typed.scalar()?;
         let at_signedness = match operated.signedness() {
             Some(Signedness::Signed) => [
                 Intrinsic::IntToBcdI8,
@@ -223,7 +227,7 @@ impl Lowering<'_> {
         let intrinsic = self
             .program
             .types()
-            .bit_width(ty)
+            .bit_width(typed.ty)
             .and_then(|width| at_width(width, at_signedness))
             .ok_or(Unlowered::NotYet)?;
         let encoded = self.intrinsic_call(frame, expr, intrinsic, &[value])?;
@@ -235,8 +239,8 @@ impl Lowering<'_> {
     /// analyzer recorded for the call (REQ-LOW-lowering-103). A type whose
     /// size only a layout gives, such as a structure, is not lowered.
     fn sizeof(&mut self, expr: &AstExpr, value: &AstExpr) -> Lowered<Expr> {
-        let (_, ty) = self.operated_type(expr)?;
-        let of = self.recorded_type(value)?;
+        let ty = self.typed(expr)?.scalar()?;
+        let of = self.typed(value)?.ty;
         let size = byte_size(self.program.types(), of).ok_or(Unlowered::NotYet)?;
         if !ty
             .integer_range()
@@ -258,7 +262,7 @@ impl Lowering<'_> {
     ) -> Lowered<Expr> {
         // A numeric function computes at the type the analyzer converted its
         // inputs to.
-        let (_, operated) = self.operated_type(expr)?;
+        let operated = self.typed(expr)?.scalar()?;
         let intrinsic = numeric_intrinsic(function, operated).ok_or(Unlowered::NotYet)?;
         self.intrinsic_call(frame, expr, intrinsic, args)
     }
@@ -334,18 +338,17 @@ impl Lowering<'_> {
         let folded = match form {
             FormOf::Arithmetic(op) => {
                 let op = arithmetic_op(op).ok_or(Unlowered::NotYet)?;
-                if self.is_temporal(expr)? {
-                    // The analyzer wrote a fold of three or more times as
-                    // the two-input calls it folds to.
-                    let [in1, in2] = args else {
-                        return Err(Unlowered::NotYet);
-                    };
-                    return self.time_arithmetic(frame, expr, op, in1, in2);
+                match self.typed(expr)?.class.arithmetic()? {
+                    Arithmetic::Temporal => {
+                        // The analyzer wrote a fold of three or more times
+                        // as the two-input calls it folds to.
+                        let [in1, in2] = args else {
+                            return Err(Unlowered::NotYet);
+                        };
+                        return self.time_arithmetic(frame, expr, op, in1, in2);
+                    }
+                    Arithmetic::Numeric => self.fold(frame, op, args, span)?,
                 }
-                if !self.is_arithmetic(expr)? {
-                    return Err(Unlowered::NotYet);
-                }
-                self.fold(frame, op, args, span)?
             }
             FormOf::Compare(op) => match logical_ops(op) {
                 Some(ops) => {
@@ -396,7 +399,7 @@ impl Lowering<'_> {
     /// `value`, when it has the type the analyzer recorded for `expr`; one
     /// of another type is not lowered.
     fn of_own_type(&mut self, expr: &AstExpr, value: Expr) -> Lowered<Expr> {
-        let (_, operated) = self.operated_type(expr)?;
+        let operated = self.typed(expr)?.scalar()?;
         if value.ty() != operated {
             return Err(Unlowered::NotYet);
         }

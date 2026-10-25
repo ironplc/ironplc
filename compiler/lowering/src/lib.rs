@@ -47,6 +47,7 @@ mod string;
 mod string_result;
 mod structure_result;
 mod time;
+mod typed;
 mod types;
 mod variables;
 mod whole;

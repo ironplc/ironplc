@@ -17,7 +17,7 @@ use ironplc_analyzer::TimeFunction;
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::Expr as AstExpr;
-use ironplc_ir::lowered::{BinaryOp, Expr, ScalarType, Signedness, TemporalKind, TypeId, TypeKind};
+use ironplc_ir::lowered::{BinaryOp, Expr, ScalarType, Signedness, TemporalKind};
 
 use crate::variables::BodyFrame;
 use crate::{Lowered, Lowering, Unlowered};
@@ -36,25 +36,6 @@ enum Unit {
 }
 
 impl Lowering<'_> {
-    /// Whether the analyzer recorded a time or a date for `expr`.
-    pub(crate) fn is_temporal(&mut self, expr: &AstExpr) -> Lowered<bool> {
-        let ty = self.recorded_type(expr)?;
-        Ok(self.unit(ty).is_some())
-    }
-
-    /// Whether the analyzer recorded a duration, a `TIME` or an `LTIME`, for
-    /// `expr`. A date or a time of day counts from an epoch, so it is not.
-    pub(crate) fn is_duration(&mut self, expr: &AstExpr) -> Lowered<bool> {
-        let ty = self.recorded_type(expr)?;
-        Ok(matches!(
-            self.program.types().kind(ty),
-            Some(TypeKind::Temporal {
-                kind: TemporalKind::Time,
-                ..
-            })
-        ))
-    }
-
     /// The typed time function `function`, the expression `expr`, of `args`.
     pub(crate) fn time_function(
         &mut self,
@@ -81,12 +62,11 @@ impl Lowering<'_> {
         in2: &AstExpr,
     ) -> Lowered<Expr> {
         let span = expr.span();
-        let (result_type, result) = self.operated_type(expr)?;
-        let in1_type = self.recorded_type(in1)?;
-        let in2_type = self.recorded_type(in2)?;
-        let result_unit = self.unit(result_type).ok_or(Unlowered::NotYet)?;
-        let in1_unit = self.unit(in1_type).ok_or(Unlowered::NotYet)?;
-        let in2_unit = self.unit(in2_type);
+        let typed = self.typed(expr)?;
+        let result = typed.scalar()?;
+        let result_unit = typed.class.temporal().map(unit).ok_or(Unlowered::NotYet)?;
+        let in1_unit = self.unit_of(in1)?.ok_or(Unlowered::NotYet)?;
+        let in2_unit = self.unit_of(in2)?;
         let in1 = self.expr(frame, in1)?;
         let in2 = self.expr(frame, in2)?;
         let at = signed(result).ok_or(Unlowered::NotYet)?;
@@ -146,7 +126,7 @@ impl Lowering<'_> {
         value: &AstExpr,
         part: impl FnOnce(Expr, ScalarType, SourceSpan) -> Result<Expr, Diagnostic>,
     ) -> Lowered<Expr> {
-        let (_, result) = self.operated_type(expr)?;
+        let result = self.typed(expr)?.scalar()?;
         let value = self.expr(frame, value)?;
         let at = ScalarType::I32(Signedness::Unsigned);
         if value.ty() != at || result != at {
@@ -155,16 +135,18 @@ impl Lowering<'_> {
         Ok(part(value, at, expr.span())?)
     }
 
-    /// The unit a value of the type `ty` counts in; `None` unless it is a
-    /// time or a date.
-    fn unit(&self, ty: TypeId) -> Option<Unit> {
-        let Some(TypeKind::Temporal { kind, .. }) = self.program.types().kind(ty) else {
-            return None;
-        };
-        Some(match kind {
-            TemporalKind::Time | TemporalKind::TimeOfDay => Unit::Millis,
-            TemporalKind::Date | TemporalKind::DateAndTime => Unit::Seconds,
-        })
+    /// The unit `expr` counts in, when it is a time or a date; the number a
+    /// duration is scaled by counts in none.
+    fn unit_of(&mut self, expr: &AstExpr) -> Lowered<Option<Unit>> {
+        Ok(self.typed(expr)?.class.temporal().map(unit))
+    }
+}
+
+/// The unit a time or date of `kind` counts in.
+fn unit(kind: TemporalKind) -> Unit {
+    match kind {
+        TemporalKind::Time | TemporalKind::TimeOfDay => Unit::Millis,
+        TemporalKind::Date | TemporalKind::DateAndTime => Unit::Seconds,
     }
 }
 
