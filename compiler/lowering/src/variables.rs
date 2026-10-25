@@ -37,7 +37,7 @@ use ironplc_ir::lowered::{
     Retention, Section, TypeEntry, TypeId, TypeKind, VarId,
 };
 
-use crate::{Body, Lowering};
+use crate::{Body, Lowered, Lowering, Unlowered};
 
 /// What lowering knows of the body a statement belongs to.
 #[derive(Clone, Debug)]
@@ -81,13 +81,10 @@ impl BodyFrame {
     }
 }
 
-/// A value lowering made, `None` when it cannot express it yet, or a P9998.
-type Made<T> = Result<Option<T>, Diagnostic>;
-
 impl<'a> Lowering<'a> {
     /// The frame of `body`, made the first time a statement of it is
-    /// lowered; `None` when lowering cannot express the body's instance yet.
-    pub(crate) fn frame(&mut self, body: Body<'a>) -> Made<BodyFrame> {
+    /// lowered. A body whose instance lowering cannot express yet has none.
+    pub(crate) fn frame(&mut self, body: Body<'a>) -> Lowered<BodyFrame> {
         let (pou, path) = match body {
             Body::Program(program) => (self.named_pou(&program.name), vec![program.name.clone()]),
             Body::FunctionBlock(block) => {
@@ -102,24 +99,24 @@ impl<'a> Lowering<'a> {
             ),
         };
         if let Some(frame) = self.bodies.get(&pou) {
-            return Ok(frame.clone());
+            return frame.clone();
         }
         let scope = ScopeKind::Named(ScopePath::new(path));
         let instance = match body {
             // A program's `VAR_ACCESS` paths name other variables, and no
             // statement names one, so they are no fields of its instance.
             Body::Program(program) => self
-                .program_instance(pou, &program.name, &program.variables)?
+                .program_instance(pou, &program.name, &program.variables)
                 .map(Some),
             Body::FunctionBlock(block) => self
-                .block_instance(pou, &block.name.id, scope.clone())?
+                .block_instance(pou, &block.name.id, scope.clone())
                 .map(Some),
-            Body::Function(_) => Some(None),
+            Body::Function(_) => Ok(None),
             // A method works on an instance of its block, whose fields its
             // block's scope declares.
             Body::Method { block, .. } => {
                 let fields = ScopeKind::Named(ScopePath::new(vec![block.name.id.clone()]));
-                self.block_instance(pou, &block.name.id, fields)?.map(Some)
+                self.block_instance(pou, &block.name.id, fields).map(Some)
             }
         };
         let frame = instance.map(|instance| BodyFrame {
@@ -128,7 +125,7 @@ impl<'a> Lowering<'a> {
             instance,
         });
         self.bodies.insert(pou, frame.clone());
-        Ok(frame)
+        frame
     }
 
     /// The POU named `name`, declared at `span`, allocated the first time it
@@ -164,10 +161,13 @@ impl<'a> Lowering<'a> {
 
     /// The instance of a program: a type with a field for each variable the
     /// program declares ([`Self::instance_fields`]).
-    fn program_instance(&mut self, pou: PouId, name: &Id, variables: &[VarDecl]) -> Made<Instance> {
-        let Some(fields) = self.instance_fields(variables)? else {
-            return Ok(None);
-        };
+    fn program_instance(
+        &mut self,
+        pou: PouId,
+        name: &Id,
+        variables: &[VarDecl],
+    ) -> Lowered<Instance> {
+        let fields = self.instance_fields(variables)?;
         let program = self.program.push_type(
             TypeEntry {
                 name: Some(DebugName::new(name.to_string(), name.span())),
@@ -176,20 +176,18 @@ impl<'a> Lowering<'a> {
             &name.span(),
         )?;
         let scope = ScopeKind::Named(ScopePath::new(vec![name.clone()]));
-        self.instance(pou, name, program, scope).map(Some)
+        Ok(self.instance(pou, name, program, scope)?)
     }
 
     /// The instance of a function block, the body of `pou` works on: the
     /// block's own type, whose fields `scope` declares.
-    fn block_instance(&mut self, pou: PouId, name: &Id, scope: ScopeKind) -> Made<Instance> {
+    fn block_instance(&mut self, pou: PouId, name: &Id, scope: ScopeKind) -> Lowered<Instance> {
         let types = self.analysis.context().types();
-        let Some(id) = types.id_of(&TypeName::from(&name.to_string())) else {
-            return Ok(None);
-        };
-        let Some(block) = self.lowered_type(id)? else {
-            return Ok(None);
-        };
-        self.instance(pou, name, block, scope).map(Some)
+        let id = types
+            .id_of(&TypeName::from(&name.to_string()))
+            .ok_or(Unlowered::NotYet)?;
+        let block = self.lowered_type(id)?;
+        Ok(self.instance(pou, name, block, scope)?)
     }
 
     /// The fields of the instance of a program that declares `variables`:
@@ -198,9 +196,8 @@ impl<'a> Lowering<'a> {
     /// `VAR_TEMP`, a `VAR_EXTERNAL`, a global variable or an access path,
     /// which a PLCopen program declares in its interface and statements
     /// reach in global scope, and a located variable with no name, which no
-    /// statement names (REQ-LOW-lowering-170). `None` when lowering cannot
-    /// express the type of one of them yet.
-    fn instance_fields(&mut self, variables: &[VarDecl]) -> Made<Vec<Field>> {
+    /// statement names (REQ-LOW-lowering-170).
+    fn instance_fields(&mut self, variables: &[VarDecl]) -> Lowered<Vec<Field>> {
         let mut fields = Vec::new();
         for decl in variables {
             let section = match decl.var_type {
@@ -216,12 +213,8 @@ impl<'a> Lowering<'a> {
             let Some(field_name) = decl.identifier.symbolic_id() else {
                 continue;
             };
-            let Some(type_id) = decl.type_id else {
-                return Ok(None);
-            };
-            let Some(ty) = self.lowered_type(type_id)? else {
-                return Ok(None);
-            };
+            let type_id = decl.type_id.ok_or(Unlowered::NotYet)?;
+            let ty = self.lowered_type(type_id)?;
             let location = match &decl.identifier {
                 VariableIdentifier::Symbol(_) => None,
                 VariableIdentifier::Direct(direct) => {
@@ -236,7 +229,7 @@ impl<'a> Lowering<'a> {
             );
             fields.push(field.declared(location, retention(&decl.qualifier)));
         }
-        Ok(Some(fields))
+        Ok(fields)
     }
 
     /// The instance parameter of the body of `pou`, a non-null reference to
@@ -272,20 +265,21 @@ impl<'a> Lowering<'a> {
         })
     }
 
-    /// The place `name` refers to in the body of `frame`; `None` when it is
-    /// not a variable lowering can reach yet.
+    /// The place `name` refers to in the body of `frame`. A name that is no
+    /// variable the body reaches, and a variable lowering cannot reach yet,
+    /// is not lowered.
     pub(crate) fn named_place(
         &mut self,
         frame: &BodyFrame,
         name: &Id,
         span: &SourceSpan,
-    ) -> Made<Place> {
+    ) -> Lowered<Place> {
         let symbols = self.analysis.context().symbols();
         let (decl, info) = match symbols.resolve_variable(name, &frame.scope) {
             Resolution::Variable { decl, info } => (decl, info),
             Resolution::GlobalNotVisible { .. }
             | Resolution::NotAVariable
-            | Resolution::Undeclared => return Ok(None),
+            | Resolution::Undeclared => return Err(Unlowered::NotYet),
         };
         // A global variable, or one a PLCopen program declares global in its
         // interface, which is no field of the program's instance.
@@ -307,18 +301,15 @@ impl<'a> Lowering<'a> {
                 }
                 // A `VAR_IN_OUT` of a program or function block is a field
                 // its call binds, which lowering does not express yet.
-                Some(VariableType::VarTemp | VariableType::InOut) => return Ok(None),
+                Some(VariableType::VarTemp | VariableType::InOut) => return Err(Unlowered::NotYet),
                 Some(_) | None => {}
             }
-            let position = instance
+            let field = instance
                 .field_names
                 .iter()
-                .position(|field| *field == decl.name);
-            let Some(field) = position
+                .position(|field| *field == decl.name)
                 .and_then(|position| self.program.field_idx(instance.instance_type, position))
-            else {
-                return Ok(None);
-            };
+                .ok_or(Unlowered::NotYet)?;
             let instance_place = match instance.holder {
                 Some(holder) => self.program.var(holder, span)?,
                 None => {
@@ -326,12 +317,12 @@ impl<'a> Lowering<'a> {
                     self.program.deref(this, span)?
                 }
             };
-            let place = self.program.field(instance_place, field, span)?;
-            return Ok(Some(place));
+            return Ok(self.program.field(instance_place, field, span)?);
         }
         if decl.scope != frame.scope {
-            // A field a function block inherits through `EXTENDS`.
-            return Ok(None);
+            // A field a function block inherits through `EXTENDS` is not
+            // lowered yet.
+            return Err(Unlowered::NotYet);
         }
         // A variable of a function or method. Its `VAR_IN_OUT` is a non-null
         // reference to the caller's variable, and its `VAR_OUTPUT` one to the
@@ -345,24 +336,22 @@ impl<'a> Lowering<'a> {
             Some(VariableType::InOut | VariableType::Output)
         ) || self.is_result_through_parameter(frame, info)?;
         if by_reference {
-            let Some(parameter) = self.declared_variable(decl, info, owner, true, span)? else {
-                return Ok(None);
-            };
-            return self.program.deref(parameter, span).map(Some);
+            let parameter = self.declared_variable(decl, info, owner, true, span)?;
+            return Ok(self.program.deref(parameter, span)?);
         }
         self.declared_variable(decl, info, owner, false, span)
     }
 
-    /// The variable of the global `name`, declared in global scope; `None`
-    /// when it is not one lowering can express yet. A `VAR_GLOBAL` a body
-    /// reaches only through a `VAR_EXTERNAL` is the same variable.
-    pub(crate) fn global_place(&mut self, name: &Id, span: &SourceSpan) -> Made<Place> {
+    /// The variable of the global `name`, declared in global scope. A
+    /// `VAR_GLOBAL` a body reaches only through a `VAR_EXTERNAL` is the same
+    /// variable.
+    pub(crate) fn global_place(&mut self, name: &Id, span: &SourceSpan) -> Lowered<Place> {
         let symbols = self.analysis.context().symbols();
         match symbols.resolve_variable(name, &ScopeKind::Global) {
             Resolution::Variable { decl, info } | Resolution::GlobalNotVisible { decl, info } => {
                 self.global_variable(decl, info, span)
             }
-            Resolution::NotAVariable | Resolution::Undeclared => Ok(None),
+            Resolution::NotAVariable | Resolution::Undeclared => Err(Unlowered::NotYet),
         }
     }
 
@@ -372,7 +361,7 @@ impl<'a> Lowering<'a> {
         decl: DeclRef,
         info: &SymbolInfo,
         span: &SourceSpan,
-    ) -> Made<Place> {
+    ) -> Lowered<Place> {
         // A `VAR_EXTERNAL` resolves to its global, whose declaration, not
         // the external's, says whether it is retained or located.
         let info = if decl.scope == ScopeKind::Global {
@@ -405,24 +394,20 @@ impl<'a> Lowering<'a> {
     /// Whether `info` is the result of the function whose body `frame` is,
     /// and the result is a string or a structure, which the function returns
     /// through its result parameter (REQ-LOW-lowering-079). A method's
-    /// result is not: the route that reads the AST does not compile a method
-    /// whose result is a string, and a method whose result is a structure is
-    /// not lowered yet. A function whose result is an array is not lowered:
-    /// the route that reads the AST does not compile one.
+    /// result is not: a method whose result is a string or a structure is
+    /// not lowered yet. Neither is a function whose result is an array.
     fn is_result_through_parameter(
         &mut self,
         frame: &BodyFrame,
         info: &SymbolInfo,
-    ) -> Result<bool, Diagnostic> {
+    ) -> Lowered<bool> {
         if frame.instance.is_some() || info.kind != SymbolKind::ResultVariable {
             return Ok(false);
         }
         let Some(type_id) = info.type_id else {
             return Ok(false);
         };
-        let Some(ty) = self.lowered_type(type_id)? else {
-            return Ok(false);
-        };
+        let ty = self.lowered_type(type_id)?;
         Ok(matches!(
             self.program.types().kind(ty),
             Some(TypeKind::String(_) | TypeKind::Structure { .. })
@@ -431,7 +416,7 @@ impl<'a> Lowering<'a> {
 
     /// The whole of the variable `decl` declares, allocated the first time
     /// it is reached: of its declared type, or, `by_reference`, of a non-null
-    /// reference to it. `None` when lowering cannot express its type yet.
+    /// reference to it.
     fn declared_variable(
         &mut self,
         decl: DeclRef,
@@ -439,16 +424,13 @@ impl<'a> Lowering<'a> {
         owner: Owner,
         by_reference: bool,
         span: &SourceSpan,
-    ) -> Made<Place> {
+    ) -> Lowered<Place> {
         let id = match self.declared.get(&decl) {
             Some(id) => *id,
             None => {
-                let (Some(type_id), Some(declared)) = (info.type_id, declared(info, owner)) else {
-                    return Ok(None);
-                };
-                let Some(mut ty) = self.lowered_type(type_id)? else {
-                    return Ok(None);
-                };
+                let type_id = info.type_id.ok_or(Unlowered::NotYet)?;
+                let declared = declared(info, owner).ok_or(Unlowered::NotYet)?;
+                let mut ty = self.lowered_type(type_id)?;
                 if by_reference {
                     ty = self.non_null_reference(ty, &info.span)?;
                 }
@@ -460,7 +442,7 @@ impl<'a> Lowering<'a> {
                 id
             }
         };
-        self.program.var(id, span).map(Some)
+        Ok(self.program.var(id, span)?)
     }
 
     /// A non-null reference to `target` (REQ-LOW-lowering-035).

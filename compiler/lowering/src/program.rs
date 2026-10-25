@@ -26,9 +26,12 @@
 //! reaches a variable finds the one already declared.
 //!
 //! What it makes is a [`PartialProgram`]: lowering does not express every
-//! declaration and statement yet. [`PartialProgram::into_program`] gives the
-//! whole program once every one is lowered, and otherwise a P9999 at each
-//! that did not.
+//! declaration and statement yet. Each boundary of the walk, a global, a
+//! body's declarations, a starting value and a top-level statement, records
+//! a construct lowering does not express yet as a P9999 there and goes on
+//! (REQ-LOW-lowering-110, REQ-LOW-lowering-111); a broken invariant is a
+//! P9998 that ends the walk. [`PartialProgram::into_program`] gives the
+//! whole program once every one is lowered, and otherwise every P9999.
 
 use std::collections::{HashMap, HashSet};
 
@@ -47,7 +50,7 @@ use ironplc_ir::lowered::{
 use crate::execution_model;
 use crate::init::{Stores, Values};
 use crate::variables::BodyFrame;
-use crate::{Body, Lowering, StatementLowering};
+use crate::{Body, Lowered, Lowering, Unlowered};
 
 /// What one walk of [`Lowering::lower_program`] made: the program's tables,
 /// what each top-level statement of each body lowered to, and the execution
@@ -58,8 +61,9 @@ pub struct PartialProgram {
     execution: ExecutionModel,
     bindings: ExecutionBindings,
     bodies: Vec<LoweredBody>,
-    /// Where a declaration is that lowering cannot express yet.
-    incomplete: Vec<SourceSpan>,
+    /// A P9999 at each global and each body whose declarations lowering
+    /// cannot express yet.
+    incomplete: Vec<Diagnostic>,
     /// The variables a declaration declares, made before any temporary.
     declared: HashSet<VarId>,
     /// The variable of each method whose result is an array or a structure
@@ -90,10 +94,13 @@ struct LoweredBody {
 /// What the statements of one body lowered to.
 #[derive(Clone, Debug)]
 enum Statements {
-    /// Each top-level statement, with its span, by index.
-    Lowered(Vec<(SourceSpan, StatementLowering)>),
-    /// An SFC body, which lowering does not express yet.
-    Sfc,
+    /// Each top-level statement, with its span, by index: the statements it
+    /// runs, or the P9999 at the statement when lowering does not express
+    /// it yet.
+    Lowered(Vec<(SourceSpan, Result<Vec<Stmt>, Diagnostic>)>),
+    /// An SFC body, which lowering does not express yet: the P9999 at the
+    /// body.
+    Sfc(Diagnostic),
     /// The body of a POU whose declarations do not lower, which
     /// [`PartialProgram::incomplete`] records.
     Undeclared,
@@ -101,12 +108,15 @@ enum Statements {
 
 impl PartialProgram {
     /// What the top-level statement at `index` of the body of `pou` lowered
-    /// to; `None` when the body has no such statement, or none lowered.
-    pub fn statement(&self, pou: PouId, index: usize) -> Option<&StatementLowering> {
+    /// to: the statements it runs, or the P9999 at it; `None` when the body
+    /// has no such statement, or none lowered.
+    pub fn statement(&self, pou: PouId, index: usize) -> Option<Result<&[Stmt], &Diagnostic>> {
         let body = self.bodies.iter().find(|body| body.pou == pou)?;
         match &body.statements {
-            Statements::Lowered(statements) => statements.get(index).map(|(_, lowered)| lowered),
-            Statements::Sfc | Statements::Undeclared => None,
+            Statements::Lowered(statements) => statements
+                .get(index)
+                .map(|(_, lowered)| lowered.as_ref().map(Vec::as_slice)),
+            Statements::Sfc(_) | Statements::Undeclared => None,
         }
     }
 
@@ -117,7 +127,7 @@ impl PartialProgram {
         let body = self.bodies.iter().find(|body| body.pou == pou)?;
         match &body.statements {
             Statements::Lowered(statements) => statements.get(index).map(|(span, _)| span),
-            Statements::Sfc | Statements::Undeclared => None,
+            Statements::Sfc(_) | Statements::Undeclared => None,
         }
     }
 
@@ -126,22 +136,6 @@ impl PartialProgram {
     /// those values does not lower yet.
     pub fn init(&self) -> Option<&[Stmt]> {
         self.init.complete()
-    }
-
-    /// Where each declaration is whose starting value `init` does not
-    /// express yet; empty when [`init`](Self::init) is complete.
-    pub fn init_unsupported(&self) -> &[SourceSpan] {
-        &self.init.unsupported
-    }
-
-    /// Where each declaration of the body of `pou` is whose starting value
-    /// its prologue does not express yet; empty when the prologue is
-    /// complete, or `pou` has no body.
-    pub fn prologue_unsupported(&self, pou: PouId) -> &[SourceSpan] {
-        self.bodies
-            .iter()
-            .find(|body| body.pou == pou)
-            .map_or(&[], |body| body.prologue.unsupported.as_slice())
     }
 
     /// The statements at the head of the body of `pou`, which give each of
@@ -153,7 +147,7 @@ impl PartialProgram {
         let body = self.bodies.iter().find(|body| body.pou == pou)?;
         match body.statements {
             Statements::Lowered(_) => body.prologue.complete(),
-            Statements::Sfc | Statements::Undeclared => None,
+            Statements::Sfc(_) | Statements::Undeclared => None,
         }
     }
 
@@ -161,12 +155,6 @@ impl PartialProgram {
     /// lowered.
     pub fn declarations_complete(&self) -> bool {
         self.incomplete.is_empty()
-    }
-
-    /// Where each declaration is that lowering does not express yet; empty
-    /// when [`declarations_complete`](Self::declarations_complete).
-    pub fn declarations_unsupported(&self) -> &[SourceSpan] {
-        &self.incomplete
     }
 
     /// Whether a declaration declares `var`, or a program instance is it,
@@ -247,7 +235,7 @@ impl PartialProgram {
         self.builder.pous()
     }
 
-    /// The whole program; otherwise one P9999 at each declaration, body,
+    /// The whole program; otherwise the P9999 at each declaration, body,
     /// statement and starting value lowering does not express yet, so that
     /// every one is reported (REQ-LOW-lowering-110, 111, 112). A POU with no
     /// body in the library stands for the standard function block of its
@@ -262,20 +250,16 @@ impl PartialProgram {
                     .iter()
                     .flat_map(|body| &body.prologue.unsupported),
             )
-            .map(|span| Diagnostic::todo_with_span(span.clone()))
+            .cloned()
             .collect();
         for body in &self.bodies {
             match &body.statements {
-                Statements::Lowered(statements) => {
-                    for (span, lowered) in statements {
-                        match lowered {
-                            StatementLowering::Lowered(_) => {}
-                            StatementLowering::Unsupported => unsupported
-                                .push(Diagnostic::todo_with_span(reported(span, &body.span))),
-                        }
-                    }
-                }
-                Statements::Sfc => unsupported.push(Diagnostic::todo_with_span(body.span.clone())),
+                Statements::Lowered(statements) => unsupported.extend(
+                    statements
+                        .iter()
+                        .filter_map(|(_, lowered)| lowered.as_ref().err().cloned()),
+                ),
+                Statements::Sfc(diagnostic) => unsupported.push(diagnostic.clone()),
                 Statements::Undeclared => {}
             }
         }
@@ -312,15 +296,13 @@ impl PartialProgram {
                 .map_err(|diagnostic| vec![diagnostic])?;
             let statements = match body.statements {
                 Statements::Lowered(statements) => statements,
-                Statements::Sfc | Statements::Undeclared => Vec::new(),
+                Statements::Sfc(_) | Statements::Undeclared => Vec::new(),
             };
-            let mut lowered = Vec::new();
-            for (_, statement) in statements {
-                match statement {
-                    StatementLowering::Lowered(statements) => lowered.extend(statements),
-                    StatementLowering::Unsupported => {}
-                }
-            }
+            let lowered: Vec<Stmt> = statements
+                .into_iter()
+                .filter_map(|(_, lowered)| lowered.ok())
+                .flatten()
+                .collect();
             builder
                 .set_body(body.pou, body.prologue.statements, lowered, &body.span)
                 .map_err(|diagnostic| vec![diagnostic])?;
@@ -377,17 +359,20 @@ impl<'a> Lowering<'a> {
         let mut incomplete = Vec::new();
         for (id, global) in execution.globals() {
             let name = Id::from(&global.name.to_string());
-            match self.global_place(&name, &global.name.span())? {
-                Some(place) => bindings.bind_global(id, place.root()),
-                None => incomplete.push(global.name.span()),
+            match self.global_place(&name, &global.name.span()) {
+                Ok(place) => bindings.bind_global(id, place.root()),
+                Err(unlowered) => incomplete.push(unlowered.not_yet_at(global.name.span())?),
             }
         }
         let mut frames = Vec::with_capacity(bodies.len());
         for body in &bodies {
-            let frame = self.declare_body(*body)?;
-            if frame.is_none() {
-                incomplete.push(body_name(*body).span());
-            }
+            let frame = match self.declare_body(*body) {
+                Ok(frame) => Some(frame),
+                Err(unlowered) => {
+                    incomplete.push(unlowered.not_yet_at(body_name(*body).span())?);
+                    None
+                }
+            };
             frames.push(frame);
         }
         for (id, _) in execution.programs() {
@@ -403,7 +388,7 @@ impl<'a> Lowering<'a> {
                 continue;
             };
             let pou = self.body_pou(Body::Program(program));
-            let Some(Some(frame)) = self.bodies.get(&pou) else {
+            let Some(Ok(frame)) = self.bodies.get(&pou) else {
                 continue;
             };
             let Some(instance_type) = frame.instance.as_ref().map(|this| this.instance_type) else {
@@ -514,15 +499,11 @@ impl<'a> Lowering<'a> {
 
     /// Declares the frame of `body`, each of its declarations that is no
     /// field of its instance, in declaration order, and, for a function or
-    /// method, its signature, and gives what each declaration declares.
-    /// `None` when one of them is not one lowering expresses yet.
-    fn declare_body(
-        &mut self,
-        body: Body<'a>,
-    ) -> Result<Option<(BodyFrame, Vec<Declaration>)>, Diagnostic> {
-        let Some(frame) = self.frame(body)? else {
-            return Ok(None);
-        };
+    /// method, its signature, and gives what each declaration declares. A
+    /// body with a declaration of its own that lowering does not express
+    /// yet is not declared.
+    fn declare_body(&mut self, body: Body<'a>) -> Lowered<(BodyFrame, Vec<Declaration>)> {
+        let frame = self.frame(body)?;
         let mut declared = Vec::new();
         for decl in declarations(body) {
             // A located variable with no name, which no statement names.
@@ -530,12 +511,12 @@ impl<'a> Lowering<'a> {
                 continue;
             };
             let own = is_own_variable(body, decl);
-            let place = self.named_place(&frame, name, &name.span())?;
-            let Some(place) = place else {
-                if own {
-                    return Ok(None);
-                }
-                continue;
+            let place = match self.named_place(&frame, name, &name.span()) {
+                Ok(place) => place,
+                // A field of the instance lowering does not name yet, such
+                // as a `VAR_IN_OUT`, declares nothing of the body's own.
+                Err(Unlowered::NotYet) if !own => continue,
+                Err(unlowered) => return Err(unlowered),
             };
             let declaration = match place.path() {
                 [] if decl.var_type == VariableType::External => {
@@ -552,16 +533,15 @@ impl<'a> Lowering<'a> {
         }
         match body {
             Body::Function(_) | Body::Method { .. } => {
-                if self.signature_pou(body, &body_name(body).span())?.is_none() {
-                    return Ok(None);
-                }
+                self.signature_pou(body, &body_name(body).span())?;
             }
             Body::Program(_) | Body::FunctionBlock(_) => {}
         }
-        Ok(Some((frame, declared)))
+        Ok((frame, declared))
     }
 
-    /// Lowers each top-level statement of `body`, whose frame is `frame`.
+    /// Lowers each top-level statement of `body`, whose frame is `frame`,
+    /// or none when its declarations did not lower.
     fn lower_body(
         &mut self,
         body: Body<'a>,
@@ -589,14 +569,15 @@ impl<'a> Lowering<'a> {
             return Ok(unsupported(Statements::Undeclared));
         };
         let Some(source) = statements_of(body) else {
-            return Ok(unsupported(Statements::Sfc));
+            let sfc = Diagnostic::todo_with_span(span.clone());
+            return Ok(unsupported(Statements::Sfc(sfc)));
         };
         let prologue = self.lower_prologue(body, &frame, values)?;
         let mut statements = Vec::with_capacity(source.len());
         for stmt in source {
-            let lowered = match self.statement(&frame, stmt)? {
-                Some(lowered) => StatementLowering::Lowered(lowered),
-                None => StatementLowering::Unsupported,
+            let lowered = match self.statement(&frame, stmt) {
+                Ok(lowered) => Ok(lowered),
+                Err(unlowered) => Err(unlowered.not_yet_at(reported(&stmt.span(), &span))?),
             };
             statements.push((stmt.span(), lowered));
         }

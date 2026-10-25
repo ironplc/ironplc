@@ -16,10 +16,12 @@
 //! [`PartialProgram`] records what did not lower, and is the whole lowered
 //! program once everything did.
 //!
-//! Lowering lowers a statement only when it supports the statement and every
-//! statement and expression inside it. A statement it does not support yet
-//! is [`StatementLowering::Unsupported`]: that is not a defect, and is a
-//! P9999 at the statement.
+//! Inside the walk, every function that lowers a node returns [`Lowered`]:
+//! the node, or [`Unlowered`], which says why not. A construct lowering does
+//! not express yet is [`Unlowered::NotYet`], which the walk reports as a
+//! P9999 at the statement or declaration that holds the construct and goes
+//! on with the next; a broken invariant is [`Unlowered::Broken`], a P9998,
+//! which ends the walk.
 //!
 //! Lowering takes a [`CleanAnalysis`] and has no entry point that takes a
 //! library without one (REQ-LOW-lowering-011).
@@ -103,12 +105,13 @@ use ironplc_analyzer::{CleanAnalysis, MethodOwners};
 use ironplc_dsl::common::{
     FunctionBlockDeclaration, FunctionDeclaration, LibraryElementKind, ProgramDeclaration,
 };
-use ironplc_dsl::core::Id;
+use ironplc_dsl::core::{Id, SourceSpan};
+use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::oop::MethodDeclaration;
 pub use program::PartialProgram;
 pub use whole::{lower, parse_policy};
 
-use ironplc_ir::lowered::{LoopScope, ParsePolicy, Place, PouId, ProgramBuilder, Stmt, VarId};
+use ironplc_ir::lowered::{LoopScope, ParsePolicy, Place, PouId, ProgramBuilder, VarId};
 
 /// The body a statement belongs to.
 #[derive(Clone, Copy, Debug)]
@@ -123,16 +126,41 @@ pub enum Body<'a> {
     },
 }
 
-/// What lowering made of one statement.
+/// Why lowering did not make a node (REQ-LOW-lowering-109).
 #[derive(Clone, Debug)]
-pub enum StatementLowering {
-    /// The statement, with everything inside it, lowered to the statements
-    /// it runs, in order.
-    Lowered(Vec<Stmt>),
-    /// The statement, or something inside it, is not one lowering supports
-    /// yet. Not a defect: the statement is a P9999.
-    Unsupported,
+pub(crate) enum Unlowered {
+    /// The node, or something inside it, is a construct lowering does not
+    /// express yet. Not a defect: the walk reports it as a P9999 at the
+    /// statement or declaration that holds the construct, and goes on.
+    NotYet,
+    /// The analyzed library breaks an invariant lowering relies on: a P9998,
+    /// which ends the walk. Boxed so that the common case, a node that
+    /// lowered, carries no more than a pointer for the uncommon one.
+    Broken(Box<Diagnostic>),
 }
+
+impl From<Diagnostic> for Unlowered {
+    fn from(diagnostic: Diagnostic) -> Self {
+        Unlowered::Broken(Box::new(diagnostic))
+    }
+}
+
+impl Unlowered {
+    /// What the walk records for a node that did not lower: for a construct
+    /// lowering does not express yet, the P9999 at `span`, the statement or
+    /// declaration that holds the construct; for a broken invariant, its
+    /// P9998, as the error that ends the walk.
+    #[track_caller]
+    pub(crate) fn not_yet_at(self, span: SourceSpan) -> Result<Diagnostic, Diagnostic> {
+        match self {
+            Unlowered::NotYet => Ok(Diagnostic::todo_with_span(span)),
+            Unlowered::Broken(diagnostic) => Err(*diagnostic),
+        }
+    }
+}
+
+/// A node lowering made, or why it did not.
+pub(crate) type Lowered<T> = Result<T, Unlowered>;
 
 /// Lowers the statements of one analyzed library.
 ///
@@ -147,17 +175,17 @@ pub struct Lowering<'a> {
     /// The lowered program's tables, which every node lowering builds
     /// refers into.
     program: ProgramBuilder,
-    /// The lowered type of each analyzer type, or `None` for one lowering
-    /// cannot express yet.
-    type_ids: HashMap<ironplc_dsl::type_id::TypeId, Option<ironplc_ir::lowered::TypeId>>,
+    /// The lowered type of each analyzer type, or why it did not lower.
+    type_ids: HashMap<ironplc_dsl::type_id::TypeId, Lowered<ironplc_ir::lowered::TypeId>>,
     /// The analyzer types being lowered, each with the lowered type declared
     /// for it if a reference reached it again (`types::reference_target`).
     types_in_progress: HashMap<ironplc_dsl::type_id::TypeId, Option<ironplc_ir::lowered::TypeId>>,
     /// The variable of each declaration that is not a field.
     declared: HashMap<DeclRef, VarId>,
     pou_ids: HashMap<String, PouId>,
-    /// What lowering knows of each body it has lowered a statement of.
-    bodies: HashMap<PouId, Option<variables::BodyFrame>>,
+    /// What lowering knows of each body it has lowered a statement of, or
+    /// why it could not make the body's frame.
+    bodies: HashMap<PouId, Lowered<variables::BodyFrame>>,
     /// The loops enclosing the statement being lowered, innermost last.
     loops: Vec<LoopScope>,
     /// Where the call whose outputs are being lowered leaves them, which
@@ -203,24 +231,15 @@ impl<'a> Lowering<'a> {
     }
 
     /// Lowers `stmt`, a top-level statement of `body`, with every statement
-    /// and expression inside it.
-    ///
-    /// Returns [`StatementLowering::Unsupported`] when lowering does not
-    /// support the statement yet, and a P9998 when the analyzed library
-    /// breaks an invariant lowering relies on.
+    /// and expression inside it, to the statements it runs.
     #[cfg(test)]
     pub(crate) fn lower_statement(
         &mut self,
         body: Body<'a>,
         stmt: &ironplc_dsl::textual::StmtKind,
-    ) -> Result<StatementLowering, ironplc_dsl::diagnostic::Diagnostic> {
-        let Some(frame) = self.frame(body)? else {
-            return Ok(StatementLowering::Unsupported);
-        };
-        Ok(match self.statement(&frame, stmt)? {
-            Some(lowered) => StatementLowering::Lowered(lowered),
-            None => StatementLowering::Unsupported,
-        })
+    ) -> Lowered<Vec<ironplc_ir::lowered::Stmt>> {
+        let frame = self.frame(body)?;
+        self.statement(&frame, stmt)
     }
 
     /// The body of the program, function block or function named `pou`.

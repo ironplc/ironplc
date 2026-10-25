@@ -9,43 +9,40 @@
 //! (REQ-LOW-lowering-179). The expression that holds it runs it where the
 //! source evaluates the call.
 //!
-//! Not lowered yet: a call of a method, whose result the route that reads
-//! the AST does not compile when it is a string.
+//! Not lowered yet: a call of a method whose result is a string.
 
 use ironplc_dsl::common::FunctionDeclaration;
 use ironplc_dsl::core::Located;
-use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{Expr as AstExpr, Function};
 use ironplc_ir::lowered::StrExpr;
 
 use crate::function::UserCall;
 use crate::variables::BodyFrame;
-use crate::Lowering;
+use crate::{Lowered, Lowering, Unlowered};
 
 impl<'a> Lowering<'a> {
     /// The string the call `func`, the expression `expr`, of `function`, a
-    /// function whose result is a string, yields: an in-place call of it.
-    /// `None` when the call is not lowered yet.
+    /// function whose result is a string, yields: an in-place call of it. A
+    /// call of a function whose result is a scalar is a value (`function.rs`),
+    /// not a string.
     pub(crate) fn string_result_call(
         &mut self,
         frame: &BodyFrame,
         expr: &AstExpr,
         func: &Function,
         function: &'a FunctionDeclaration,
-    ) -> Result<Option<StrExpr>, Diagnostic> {
+    ) -> Lowered<StrExpr> {
         let span = expr.span();
         let call = UserCall::Function {
             call: func,
             function,
         };
-        let Some((args, stores)) = self.call_with_stores(frame, call, &span)? else {
-            return Ok(None);
-        };
+        let (args, stores) = self.call_with_stores(frame, call, &span)?;
         if args.result.is_none() {
-            return Ok(None);
+            return Err(Unlowered::NotYet);
         }
-        self.program
-            .str_call_in_place(args.pou, args.args, stores.unwrap_or_default(), span)
-            .map(Some)
+        Ok(self
+            .program
+            .str_call_in_place(args.pou, args.args, stores.unwrap_or_default(), span)?)
     }
 }
