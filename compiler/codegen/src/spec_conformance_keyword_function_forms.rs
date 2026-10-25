@@ -10,7 +10,7 @@
 //! See `specs/design/keyword-function-forms.md`.
 
 use ironplc_container::FunctionId;
-use ironplc_dsl::core::FileId;
+use ironplc_ir::FileId;
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 use spec_test_macro::spec_test;

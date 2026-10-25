@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 
 use ironplc_container::{SourceFileEntry, SourceFileId, SOURCE_FILE_HASH_LEN};
-use ironplc_dsl::core::FileId;
+use ironplc_ir::FileId;
 
 /// Accumulator for the debug section's `SOURCE_FILE_TABLE` (tag 6).
 ///

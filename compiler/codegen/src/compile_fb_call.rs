@@ -7,9 +7,9 @@ use crate::access::Named;
 use std::collections::HashMap;
 
 use ironplc_container::FbTypeId;
-use ironplc_dsl::core::SourceSpan;
-use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_ir::lowered::FieldIdx;
+use ironplc_ir::Diagnostic;
+use ironplc_ir::SourceSpan;
 
 use crate::compile::{CompileContext, VarTypeInfo};
 use crate::compile_expr::emit_truncation;
@@ -88,7 +88,7 @@ mod tests {
     use std::collections::HashMap;
 
     use ironplc_container::{FbTypeId, VarIndex};
-    use ironplc_dsl::core::SourceSpan;
+    use ironplc_ir::SourceSpan;
 
     use super::FbCallSite;
     use crate::access::{test_variable, Stored};

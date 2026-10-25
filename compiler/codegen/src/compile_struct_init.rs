@@ -4,8 +4,8 @@
 //! holds, however deeply nested. Separated from `compile_struct.rs` to keep
 //! module sizes within the 1000-line guideline.
 
-use ironplc_dsl::core::SourceSpan;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_ir::SourceSpan;
+use ironplc_ir::{Diagnostic, Label};
 
 use ironplc_container::VarIndex;
 use ironplc_ir::lowered::{TypeId, TypeKind, TypeTable};

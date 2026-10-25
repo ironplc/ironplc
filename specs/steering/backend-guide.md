@@ -104,21 +104,25 @@ versions are managed by the release tooling (`shared-version = true` in
 
 | Dependency | Allowed | Why |
 |---|---|---|
-| `ironplc-ir` | Yes | The lowered program, and the re-exported `SourceSpan`, `FileId`, `Label` and `Diagnostic` |
+| `ironplc-ir` | Yes | The lowered program, and what it re-exports from `ironplc-dsl` |
 | `ironplc-problems` | Yes | The `Problem` a target-limit diagnostic names |
 | The target's own libraries (an encoder, LLVM bindings) | Yes | Keep them minimal and cross-platform (Windows, macOS, Linux) |
 | `ironplc-dsl`, `ironplc-parser`, `ironplc-analyzer`, `ironplc-lowering` | **Never**, outside `[dev-dependencies]` | The compiler, not a reviewer, keeps a backend from reaching the AST or analysis ([ADR-0059](../adrs/0059-backends-depend-only-on-the-ir-crate.md)) |
 | `ironplc-codegen`, `ironplc-vm`, `ironplc-container` | **Never**, outside `[dev-dependencies]` | They are another backend and its target. Depending on one couples two targets that must stay independent |
 
-Name `SourceSpan`, `FileId`, `Label` and `Diagnostic` through `ironplc-ir`,
-never through `ironplc-dsl`.
+Name what `ironplc-ir` re-exports from `ironplc-dsl` (see the lowered
+program design's
+[Position in the Pipeline](../design/lowered-program.md#1-position-in-the-pipeline))
+through `ironplc-ir`, never through `ironplc-dsl`.
 
 **The backend does not test its own boundary.** A check outside every backend
-reads each backend crate's manifest and fails if `[dependencies]` names a
-forbidden crate (the rule the design states for the bytecode backend as
-REQ-LOW-codegen-002). It finds backend crates itself, so a new backend is
-covered from its first commit without registering anywhere and without a test
-of its own.
+(`compiler/test/tests/backend_boundary_guard.rs`) reads each backend crate's
+manifest and fails if `[dependencies]` names a forbidden crate (the rule the
+design states for the bytecode backend as REQ-LOW-codegen-002). It finds
+backend crates itself: every crate whose `[dependencies]` name `ironplc-ir` is
+a backend, unless the guard lists it as one that builds the lowered program or
+passes it to a backend. A new backend is therefore covered from its first
+commit without registering anywhere and without a test of its own.
 
 ### Shared pieces still in bytecode crates
 

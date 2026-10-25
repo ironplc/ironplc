@@ -19,10 +19,10 @@
 use std::collections::HashMap;
 
 use ironplc_container::{FunctionId, VarIndex};
-use ironplc_dsl::core::SourceSpan;
-use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::{Arg, PouId, VarId};
+use ironplc_ir::Diagnostic;
+use ironplc_ir::SourceSpan;
 
 use super::call_args::{emit_passed, passes};
 use super::place::variable_name;

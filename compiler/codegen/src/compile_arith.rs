@@ -1,7 +1,7 @@
 //! The conversion of a value from one operation type to another, which an
 //! `ImplicitConversion` the analyzer recorded asks for (ADR-0056).
 
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_ir::Diagnostic;
 
 use super::compile::{OpType, VarTypeInfo};
 use super::compile_call::emit_conversion_opcode;

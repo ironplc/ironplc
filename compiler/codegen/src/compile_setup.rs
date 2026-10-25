@@ -5,8 +5,8 @@
 
 use crate::access::Named;
 use ironplc_container::VarIndex;
-use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_ir::lowered::TypeTable;
+use ironplc_ir::Diagnostic;
 
 use super::compile::{CompileContext, OpType, OpWidth};
 use super::compile_expr::emit_store_var;

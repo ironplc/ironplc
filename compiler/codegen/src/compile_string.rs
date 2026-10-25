@@ -2,8 +2,8 @@
 //! computes, at the capacity and encoding it needs.
 
 use ironplc_container::CharWidth;
-use ironplc_dsl::core::SourceSpan;
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_ir::Diagnostic;
+use ironplc_ir::SourceSpan;
 
 use super::compile::{string_region_size, CompileContext};
 use crate::emit::Emitter;

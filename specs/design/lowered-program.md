@@ -286,7 +286,9 @@ Lowering is two new crates:
   the `Intrinsic` enum, and the expansions a backend may call instead of
   implementing a node (REQ-LOW-ir-068). It depends only on `ironplc-dsl`, for
   ids, source spans and diagnostics, and re-exports what a backend needs from
-  it: `SourceSpan`, `FileId`, `Label` and `Diagnostic`. A backend names them
+  it: `SourceSpan`, `FileId`, `Label` and `Diagnostic`; `Id` and `Located`,
+  for the names the program keeps; and `LineColumn`, for a debug line map.
+  A backend names them
   through `ironplc-ir`, so it needs no dependency on `ironplc-dsl`
   (REQ-LOW-codegen-002).
 - **`ironplc-lowering`** is the pass that builds a lowered program, a program
@@ -2709,7 +2711,8 @@ exercises it, such as the most negative `DINT` divided by -1, `REAL_TO_DINT`
 of a NaN, and `SHL` by 33, and every backend runs the same programs.
 
 **Structure is tested mechanically.** REQ-LOW-codegen-002 is a test over the
-crate manifest. REQ-LOW-lowering-082 is enforced by clippy; its conformance
+crate manifest, the workspace's backend boundary guard
+(`compiler/test/tests/backend_boundary_guard.rs`). REQ-LOW-lowering-082 is enforced by clippy; its conformance
 test asserts that each crate root, or for `ironplc-codegen` the root of its
 lowered bridge, carries the `deny` attribute, since a test cannot observe a
 lint that is not configured.
@@ -3072,9 +3075,9 @@ This section constrains the order of work; it is not a work breakdown.
 - **Delete as you go.** Once a construct lowers across the end-to-end
   suite, the code that compiles it from the AST is deleted. New work on a construct that lowering covers goes into lowering
   only.
-- **Dependencies dropped last.** `ironplc-codegen` drops its dependencies on
-  `ironplc-analyzer` and `ironplc-dsl` last, when the route that reads the AST
-  is deleted.
+- **Dependencies dropped last.** `ironplc-codegen` dropped its dependencies
+  on `ironplc-analyzer`, `ironplc-parser`, `ironplc-lowering` and
+  `ironplc-dsl` last, once the route that read the AST was deleted.
 
 ## Alternatives Considered
 

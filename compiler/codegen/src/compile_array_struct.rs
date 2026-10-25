@@ -10,8 +10,8 @@
 //! keep module sizes within the 1000-line guideline.
 
 use crate::access::{Access, Field, Named};
-use ironplc_dsl::core::{Id, Located, SourceSpan};
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_ir::{Diagnostic, Label};
+use ironplc_ir::{Id, Located, SourceSpan};
 
 use ironplc_container::{SlotIndex, VarIndex};
 

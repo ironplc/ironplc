@@ -14,7 +14,7 @@
 use ironplc_analyzer::CleanAnalysis;
 use ironplc_container::debug_section::iec_type_tag;
 use ironplc_container::VarIndex;
-use ironplc_dsl::core::FileId;
+use ironplc_ir::FileId;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_vm::test_support::load_and_start;
 use ironplc_vm::VmBuffers;

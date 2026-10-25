@@ -14,7 +14,7 @@
 //!
 //! See `specs/design/adr-and-pointer-to.md`.
 
-use ironplc_dsl::core::FileId;
+use ironplc_ir::FileId;
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use ironplc_vm::test_support::load_and_start;
 use ironplc_vm::VmBuffers;

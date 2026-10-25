@@ -16,12 +16,12 @@
 //! (`place::instance_slot`). An instance input is copied
 //! into the instance its field holds (`instance_copy.rs`).
 
-use ironplc_dsl::core::SourceSpan;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::{
     Expr, ExprKind, FieldIdx, Place as LoweredPlace, PouId, Projection, Stmt, StmtKind, StrExpr,
 };
+use ironplc_ir::SourceSpan;
+use ironplc_ir::{Diagnostic, Label};
 
 use super::aggregate::emit_source;
 use super::expr::emit_expr;

@@ -12,8 +12,8 @@
 
 use std::fmt;
 
-use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_ir::lowered::{FieldIdx, TypeId, VarId};
+use ironplc_ir::{Id, Located, SourceSpan};
 
 /// A variable the layout gives storage to, by its lowered id: a variable,
 /// or a field of a function block's or the program's instance, which the
@@ -104,8 +104,7 @@ pub(crate) fn test_variable(name: &str) -> Named {
     let source = format!("PROGRAM main VAR {name} : INT; END_VAR END_PROGRAM");
     let options = ironplc_parser::options::CompilerOptions::default();
     let library =
-        ironplc_parser::parse_program(&source, &ironplc_dsl::core::FileId::default(), &options)
-            .unwrap();
+        ironplc_parser::parse_program(&source, &ironplc_ir::FileId::default(), &options).unwrap();
     let (library, context) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
     let completed = ironplc_analyzer::xform_resolve_initial_values::apply(library, &context);
     let analysis = ironplc_analyzer::CleanAnalysis::new(&completed, &context).unwrap();

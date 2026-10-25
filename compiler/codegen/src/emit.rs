@@ -8,7 +8,7 @@ use ironplc_container::opcode;
 use ironplc_container::{
     CharWidth, FbTypeId, FunctionId, SourceColumn, SourceFileId, SourceLine, VarIndex,
 };
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_ir::Diagnostic;
 
 use crate::optimize::OffsetMap;
 

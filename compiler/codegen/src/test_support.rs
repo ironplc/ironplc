@@ -5,7 +5,7 @@
 use ironplc_analyzer::{CleanAnalysis, SemanticContext};
 use ironplc_container::Container;
 use ironplc_dsl::common::Library;
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_ir::Diagnostic;
 
 /// The container of `library`, analyzed with `context`; otherwise the first
 /// problem lowering or codegen reports.

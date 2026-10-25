@@ -3,7 +3,7 @@
 //! variable for a `VAR_IN_OUT`.
 
 use crate::access::Named;
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_ir::Diagnostic;
 
 use super::compile::{CompileContext, StringParamInfo};
 use crate::emit::Emitter;

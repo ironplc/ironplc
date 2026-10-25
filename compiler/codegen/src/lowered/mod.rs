@@ -17,14 +17,14 @@
 // the rule.
 #![deny(clippy::wildcard_enum_match_arm)]
 
-use ironplc_dsl::core::SourceSpan;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::{
     Arg, Callee, Const, Expr, ExprKind, FieldIdx, NarrowWidth, Nullability, Place as LoweredPlace,
     PouId, Projection, ScalarType, Signedness as LoweredSignedness, Stmt, StmtKind, TypeId,
     TypeKind, VarId,
 };
+use ironplc_ir::SourceSpan;
+use ironplc_ir::{Diagnostic, Label};
 
 use crate::access::Named;
 use crate::compile::{CompileContext, OpType, OpWidth, Signedness, UserFunctionInfo};

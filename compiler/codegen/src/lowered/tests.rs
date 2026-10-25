@@ -47,8 +47,7 @@ END_PROGRAM
 ";
     let options = ironplc_parser::options::CompilerOptions::default();
     let library =
-        ironplc_parser::parse_program(source, &ironplc_dsl::core::FileId::default(), &options)
-            .unwrap();
+        ironplc_parser::parse_program(source, &ironplc_ir::FileId::default(), &options).unwrap();
     let (library, context) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
 
     let error = crate::test_support::compile_analyzed(&library, &context)
@@ -67,9 +66,7 @@ fn compile_when_named_then_takes_lowered_program() {
     let entry: fn(
         &ironplc_ir::lowered::Program,
         &dyn ironplc_ir::source::SourceLookup,
-    )
-        -> Result<ironplc_container::Container, ironplc_dsl::diagnostic::Diagnostic> =
-        crate::compile;
+    ) -> Result<ironplc_container::Container, ironplc_ir::Diagnostic> = crate::compile;
 
     let _ = entry;
 }

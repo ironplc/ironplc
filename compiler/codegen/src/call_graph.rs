@@ -22,8 +22,8 @@
 use std::collections::{HashMap, HashSet};
 
 use ironplc_container::FunctionId;
-use ironplc_dsl::core::FileId;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_ir::FileId;
+use ironplc_ir::{Diagnostic, Label};
 
 /// Compute the longest path from `entry` through `graph`, counting
 /// the entry node itself.

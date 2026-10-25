@@ -10,8 +10,8 @@
 //! its target through (`compile_reference.rs`).
 
 use ironplc_container::{ArrayDescriptor, CharWidth, FieldType, VarIndex};
-use ironplc_dsl::core::SourceSpan;
 use ironplc_ir::lowered::{Field, FieldIdx, StringShape, TypeId, TypeKind, TypeTable};
+use ironplc_ir::SourceSpan;
 
 use super::region::{elements, slots, string_shape};
 use crate::compile::{OpWidth, Signedness, VarTypeInfo};

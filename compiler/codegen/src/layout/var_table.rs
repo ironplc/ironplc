@@ -10,8 +10,8 @@
 //! was full.
 
 use ironplc_container::VarIndex;
-use ironplc_dsl::core::SourceSpan;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_ir::SourceSpan;
+use ironplc_ir::{Diagnostic, Label};
 
 /// The most slots the variable table holds.
 const MAX_SLOTS: u16 = u16::MAX;
@@ -63,7 +63,7 @@ impl Counter {
 #[cfg(test)]
 mod tests {
     use ironplc_container::VarIndex;
-    use ironplc_dsl::core::SourceSpan;
+    use ironplc_ir::SourceSpan;
 
     use super::{Counter, MAX_SLOTS};
 

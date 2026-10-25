@@ -12,7 +12,7 @@
 use ironplc_container::builtin::str_to_num::{self, Target};
 use ironplc_container::policy::{BehaviorPolicy, StringToNumFailure, StringToNumNonNumeric};
 use ironplc_container::{opcode, FunctionId};
-use ironplc_dsl::core::FileId;
+use ironplc_ir::FileId;
 use ironplc_parser::options::CompilerOptions;
 use spec_test_macro::spec_test;
 

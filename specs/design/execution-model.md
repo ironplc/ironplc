@@ -303,12 +303,11 @@ backend reaches one only through `DebugName::span`.
 For a backend to drop `ironplc-dsl` altogether (REQ-LOW-codegen-002 in the
 lowered program design), it is not the span alone that has to come from
 elsewhere: `SourceSpan`, `FileId`, `Label` and `Diagnostic` go together.
-`ironplc-ir` re-exports all four from `ironplc-dsl`, and a backend names them
+`ironplc-ir` re-exports them from `ironplc-dsl`, and a backend names them
 through `ironplc-ir` (see the lowered program design's
 [Position in the Pipeline](lowered-program.md#1-position-in-the-pipeline)).
 The execution model's own module still imports `SourceSpan` from
-`ironplc-dsl` directly, and codegen still depends on `ironplc-dsl` until it
-reads only the lowered program.
+`ironplc-dsl` directly.
 
 ## Behaviour
 

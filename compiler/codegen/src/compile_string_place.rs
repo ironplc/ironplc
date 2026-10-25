@@ -12,9 +12,9 @@
 //! A string place's subscripts are any [`Subscript`]: the access's own.
 
 use ironplc_container::VarIndex;
-use ironplc_dsl::core::{Located, SourceSpan};
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::{TypeKind, TypeTable};
+use ironplc_ir::{Diagnostic, Label};
+use ironplc_ir::{Located, SourceSpan};
 
 use super::compile::CompileContext;
 use super::compile_array::{emit_flat_index, resolve_access, DimensionInfo, ResolvedAccess};

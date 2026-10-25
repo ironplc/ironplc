@@ -11,13 +11,13 @@
 //! holds, and what its `VAR_OUTPUT` parameter refers to as the parameter
 //! too, whose slot codegen's layout keeps the output in.
 
-use ironplc_dsl::core::{Id, SourceSpan};
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::{
     Const, Expr, FieldIdx, Nullability, Owner, Place as LoweredPlace, Projection, TypeId, TypeKind,
     TypeTable, Variable as LoweredVariable,
 };
+use ironplc_ir::{Diagnostic, Label};
+use ironplc_ir::{Id, SourceSpan};
 
 use super::expr::emit_expr;
 use super::{constant, instance_field, op_type, stored_field, stored_variable};
