@@ -7,8 +7,9 @@ use crate::access::Named;
 use std::collections::HashMap;
 
 use ironplc_container::FbTypeId;
-use ironplc_dsl::core::{Id, Located, SourceSpan};
+use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_ir::lowered::FieldIdx;
 
 use crate::compile::{CompileContext, VarTypeInfo};
 use crate::compile_expr::emit_truncation;
@@ -20,11 +21,10 @@ pub(crate) struct FbCallSite {
     /// The type `FB_CALL` dispatches on: a user-defined block's, or a
     /// standard block's in the VM.
     type_id: FbTypeId,
-    /// The index of each field of the instance, by its lower-case name.
-    field_indices: HashMap<String, u8>,
-    /// The declared type of each field of the instance, by its lower-case
-    /// name.
-    field_types: HashMap<String, VarTypeInfo>,
+    /// The index of each field of the instance.
+    field_indices: HashMap<FieldIdx, u8>,
+    /// The declared type of each field of the instance.
+    field_types: HashMap<FieldIdx, VarTypeInfo>,
 }
 
 impl FbCallSite {
@@ -48,14 +48,19 @@ impl FbCallSite {
     }
 
     /// Stores the value on the stack in the input `field`, narrowed to the
-    /// field's declared type as an assignment to the field is.
-    pub(crate) fn store_input(&self, emitter: &mut Emitter, field: &Id) -> Result<(), Diagnostic> {
-        let name = field.to_string().to_lowercase();
+    /// field's declared type as an assignment to the field is. A field the
+    /// instance does not keep is not implemented, at `span`, the call.
+    pub(crate) fn store_input(
+        &self,
+        emitter: &mut Emitter,
+        field: FieldIdx,
+        span: &SourceSpan,
+    ) -> Result<(), Diagnostic> {
         let index = self
             .field_indices
-            .get(&name)
-            .ok_or_else(|| Diagnostic::todo_with_span(field.span()))?;
-        if let Some(field_type) = self.field_types.get(&name) {
+            .get(&field)
+            .ok_or_else(|| Diagnostic::todo_with_span(span.clone()))?;
+        if let Some(field_type) = self.field_types.get(&field) {
             emit_truncation(emitter, *field_type);
         }
         emitter.emit_fb_store_param(*index);
@@ -83,10 +88,10 @@ mod tests {
     use std::collections::HashMap;
 
     use ironplc_container::{FbTypeId, VarIndex};
-    use ironplc_dsl::core::{Id, SourceSpan};
+    use ironplc_dsl::core::SourceSpan;
 
     use super::FbCallSite;
-    use crate::access::test_variable;
+    use crate::access::{test_variable, Stored};
     use crate::compile::{CompileContext, FbInstanceInfo};
     use crate::emit::Emitter;
 
@@ -128,7 +133,12 @@ mod tests {
         let call = FbCallSite::open(&mut emitter, &ctx, &f, &SourceSpan::default())
             .expect("the instance is declared");
 
-        let result = call.store_input(&mut emitter, &Id::from("missing"));
+        // A field of another type, which the instance does not keep.
+        let Stored::Field(_, missing) = test_variable("missing").stored else {
+            unreachable!("a program's variable is a field of its instance")
+        };
+
+        let result = call.store_input(&mut emitter, missing, &SourceSpan::default());
 
         assert_eq!(
             result.err().map(|diagnostic| diagnostic.code),

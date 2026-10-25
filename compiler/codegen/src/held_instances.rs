@@ -10,7 +10,7 @@
 //! analyzer rejects a block that holds itself (P4005).
 
 use ironplc_container::FbTypeId;
-use ironplc_ir::lowered::PouId;
+use ironplc_ir::lowered::{FieldIdx, PouId};
 
 use crate::compile::{CompileContext, FbFieldIndex};
 use crate::compile_call::standard_fb_layout;
@@ -20,8 +20,8 @@ use crate::emit::Emitter;
 /// block.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct HeldField {
-    /// The field's name, in lowercase.
-    pub(crate) name: String,
+    /// The field, of the block's lowered type.
+    pub(crate) field: FieldIdx,
     /// The field's index.
     pub(crate) index: FbFieldIndex,
     /// The lowered POU of the block, as `user_fb_types` and

@@ -10,7 +10,7 @@
 //! A place's subscripts are any [`Subscript`]: the access's own.
 
 use ironplc_container::{SlotIndex, VarIndex};
-use ironplc_dsl::core::{Id, Located, SourceSpan};
+use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::TypeTable;
 
@@ -118,30 +118,24 @@ impl<S: Clone> Place<S> {
         let Access::Named(name) = structured.record.as_ref() else {
             return Ok(None);
         };
-        Self::instance_field(ctx, name, &structured.field)
-    }
-
-    /// The field `field` of the function block instance named `instance`, or
-    /// `None` when no instance has that name.
-    pub(crate) fn instance_field(
-        ctx: &CompileContext,
-        instance_name: &Named,
-        field: &Id,
-    ) -> Result<Option<Self>, Diagnostic> {
-        let Some(instance) = ctx.fb_instance(instance_name) else {
+        let field = &structured.field;
+        let Some(instance) = ctx.fb_instance(name) else {
             return Ok(None);
         };
-        let name = field.to_string().to_lowercase();
-        let index = instance.field_indices.get(&name).copied().ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(
-                field.span(),
-                format!(
-                    "Unknown field '{field}' on function block '{instance_name}' \
+        let index = instance
+            .field_indices
+            .get(&structured.idx)
+            .copied()
+            .ok_or_else(|| {
+                Diagnostic::not_implemented(Label::span(
+                    field.span(),
+                    format!(
+                        "Unknown field '{field}' on function block '{name}' \
                      (a PROPERTY is not supported yet)"
-                ),
-            ))
-        })?;
-        let type_info = instance.field_types.get(&name).copied();
+                    ),
+                ))
+            })?;
+        let type_info = instance.field_types.get(&structured.idx).copied();
         Ok(Some(Place {
             address: Address::FbField {
                 instance: instance.var_index,

@@ -25,7 +25,7 @@
 use std::collections::HashMap;
 
 use ironplc_container::VarIndex;
-use ironplc_dsl::core::{Id, SourceSpan};
+use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::{
     Arg, Callee, Expr, ExprKind, InPlaceCall, Place as LoweredPlace, PouId, Stmt, StmtKind,
@@ -79,7 +79,7 @@ enum Output {
 
 impl Target {
     /// The slot of each output.
-    fn outputs(&self) -> &HashMap<Id, VarIndex> {
+    fn outputs(&self) -> &HashMap<VarId, VarIndex> {
         match self {
             Target::Function(function) => &function.outputs,
             Target::Method(site) => &site.outputs,
@@ -87,7 +87,7 @@ impl Target {
     }
 
     /// Where each string output is.
-    fn string_outputs(&self) -> &HashMap<Id, StringVarInfo> {
+    fn string_outputs(&self) -> &HashMap<VarId, StringVarInfo> {
         match self {
             Target::Function(function) => &function.string_outputs,
             Target::Method(site) => &site.string_outputs,
@@ -349,15 +349,14 @@ fn call_target<'s>(
     let mut inputs = Vec::with_capacity(args.len());
     let mut temporaries = Vec::new();
     for (parameter, arg) in parameters.iter().zip(args).skip(receivers) {
-        let name = Id::from(&lowering.variables().get(*parameter)?.name().to_string());
-        let Some(slot) = target.outputs().get(&name) else {
+        let Some(slot) = target.outputs().get(parameter) else {
             inputs.push(arg);
             continue;
         };
         let Arg::Ref(temporary) = arg else {
             return None;
         };
-        let output = match target.string_outputs().get(&name) {
+        let output = match target.string_outputs().get(parameter) {
             Some(string) => Output::String(string.clone()),
             None => Output::Scalar(*slot),
         };

@@ -55,7 +55,7 @@ use ironplc_dsl::common::{
 };
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_ir::lowered::PouId;
+use ironplc_ir::lowered::{FieldIdx, PouId, VarId};
 use ironplc_parser::options::{CompilerOptions, StringToNumFailure, StringToNumNonNumeric};
 
 use ironplc_analyzer::{
@@ -849,12 +849,13 @@ pub(crate) struct UserFunctionInfo {
     /// whole variable (`s := f()`) needs it to emit `COPY_REGION`, whose
     /// source size comes from the descriptor rather than an operand.
     pub(crate) return_struct_desc_index: Option<u16>,
-    /// The slot of each `VAR_OUTPUT`, which a call reads its outputs from
-    /// after the function returns.
-    pub(crate) outputs: HashMap<Id, VarIndex>,
+    /// The slot of each `VAR_OUTPUT`, by its lowered variable, which a call
+    /// reads its outputs from after the function returns.
+    pub(crate) outputs: HashMap<VarId, VarIndex>,
     /// Where in the data region each `STRING` or `WSTRING` `VAR_OUTPUT`
-    /// is, which a call reads it from after the function returns.
-    pub(crate) string_outputs: HashMap<Id, StringVarInfo>,
+    /// is, by its lowered variable, which a call reads it from after the
+    /// function returns.
+    pub(crate) string_outputs: HashMap<VarId, StringVarInfo>,
 }
 
 /// Tracks state during compilation of a single program.
@@ -867,12 +868,12 @@ pub(crate) struct FbInstanceInfo {
     pub(crate) type_id: FbTypeId,
     /// Data region byte offset where this instance's fields start.
     pub(crate) data_offset: u32,
-    /// Maps field name (lowercase) to field index.
-    pub(crate) field_indices: HashMap<String, FbFieldIndex>,
-    /// Maps field name (lowercase) to its declared type: the operation type
-    /// a value stored in the field or read from it is compiled at, and the
-    /// width a store narrows it to.
-    pub(crate) field_types: HashMap<String, VarTypeInfo>,
+    /// The index of each field of its block's lowered type that it keeps.
+    pub(crate) field_indices: HashMap<FieldIdx, FbFieldIndex>,
+    /// The declared type of each field of its block's lowered type that it
+    /// keeps: the operation type a value stored in the field or read from
+    /// it is compiled at, and the width a store narrows it to.
+    pub(crate) field_types: HashMap<FieldIdx, VarTypeInfo>,
     /// The instances its fields hold, and theirs, whose offsets the setup
     /// block stores in the fields that hold them (`held_instances.rs`).
     pub(crate) held: Vec<HeldInstance>,
@@ -893,15 +894,16 @@ pub(crate) struct UserFbTypeInfo {
     pub(crate) type_id: FbTypeId,
     /// Number of data-region fields in each instance.
     pub(crate) num_fields: usize,
-    /// Maps field name (lowercase) to field index (ordinal position).
-    pub(crate) field_indices: HashMap<String, FbFieldIndex>,
+    /// The index of each field of the block's lowered type, its ordinal
+    /// position among the copy slots.
+    pub(crate) field_indices: HashMap<FieldIdx, FbFieldIndex>,
     /// Function ID of the compiled FB body in the container.
     pub(crate) function_id: FunctionId,
     /// Variable table offset where the FB body's slots start.
     pub(crate) var_offset: u16,
-    /// Maps field name (lowercase) to its declared type, as
+    /// The declared type of each field of the block's lowered type, as
     /// [`FbInstanceInfo::field_types`].
-    pub(crate) field_types: HashMap<String, VarTypeInfo>,
+    pub(crate) field_types: HashMap<FieldIdx, VarTypeInfo>,
     /// The fields that hold an instance of a block (`held_instances.rs`).
     pub(crate) held_fields: Vec<HeldField>,
     /// What a call of each of the block's methods needs, by the method's
@@ -926,27 +928,17 @@ pub(crate) struct UserMethodInfo {
     pub(crate) param_var_off: u16,
     /// Number of VAR_INPUT/VAR_IN_OUT parameters, in declaration order.
     pub(crate) num_params: u16,
-    /// The VAR_INPUT/VAR_IN_OUT parameters, in declaration order: the order
-    /// a call's normal form names them in.
-    pub(crate) params: Vec<UserMethodParam>,
+    /// How a call passes each VAR_INPUT and VAR_IN_OUT parameter, in
+    /// declaration order: the order a call's normal form names them in.
+    pub(crate) params: Vec<ParamPassing>,
     pub(crate) has_return_value: bool,
-    /// The slot of each `VAR_OUTPUT`, which a call reads its outputs from
-    /// after the method returns. Empty until the block is laid out.
-    pub(crate) outputs: HashMap<Id, VarIndex>,
+    /// The slot of each `VAR_OUTPUT`, by its lowered variable, which a call
+    /// reads its outputs from after the method returns.
+    pub(crate) outputs: HashMap<VarId, VarIndex>,
     /// Where in the data region each `STRING` or `WSTRING` `VAR_OUTPUT`
-    /// is, which a call reads it from after the method returns. Empty until
-    /// the block is laid out.
-    pub(crate) string_outputs: HashMap<Id, StringVarInfo>,
-}
-
-/// A VAR_INPUT or VAR_IN_OUT parameter of a user-defined method.
-#[derive(Debug, PartialEq)]
-pub(crate) struct UserMethodParam {
-    pub(crate) name: Id,
-    /// How a call site passes the argument for it. A string parameter is
-    /// passed by value until the method is compiled, which gives it the run
-    /// of the data region a call copies its argument into.
-    pub(crate) passing: ParamPassing,
+    /// is, by its lowered variable, which a call reads it from after the
+    /// method returns.
+    pub(crate) string_outputs: HashMap<VarId, StringVarInfo>,
 }
 
 pub(crate) struct CompileContext {

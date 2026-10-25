@@ -250,13 +250,8 @@ pub(crate) fn resolve_struct_field_array<'ctx, S>(
     structured: &Field<S>,
     subscripts: Vec<S>,
 ) -> Result<ResolvedAccess<'ctx, S>, Diagnostic> {
-    let (root_name, slot_offset, field_type) = crate::compile_struct::walk_struct_chain(
-        types,
-        ctx,
-        &structured.record,
-        &structured.field,
-        0,
-    )?;
+    let (root_name, slot_offset, field_type) =
+        crate::compile_struct::walk_struct_chain(types, ctx, structured, 0)?;
 
     let Some(TypeKind::Array {
         element,
@@ -279,17 +274,18 @@ pub(crate) fn resolve_struct_field_array<'ctx, S>(
     // STRING array fields use dedicated STR_LOAD/STORE_ARRAY_ELEM opcodes
     // with a scratch variable and a STRING-specific array descriptor.
     if let Some(TypeKind::String(_)) = types.kind(*element) {
-        let field_name = structured.field.to_string().to_lowercase();
-        let &(str_desc_index, _, _) =
-            struct_info
-                .string_array_descs
-                .get(&field_name)
-                .ok_or_else(|| {
-                    Diagnostic::not_implemented(Label::span(
-                        structured.field.span(),
-                        "STRING array descriptor not registered for field",
-                    ))
-                })?;
+        // The structure registers a descriptor for each of its own fields
+        // that is an array of strings, not for those of a structure it holds.
+        let own_field = matches!(structured.record.as_ref(), Access::Named(_));
+        let &(str_desc_index, _, _) = own_field
+            .then(|| struct_info.string_array_descs.get(&structured.idx))
+            .flatten()
+            .ok_or_else(|| {
+                Diagnostic::not_implemented(Label::span(
+                    structured.field.span(),
+                    "STRING array descriptor not registered for field",
+                ))
+            })?;
         // Allocated for every structure that has a STRING-array descriptor.
         let scratch = struct_info.scratch_var_index.ok_or_else(|| {
             Diagnostic::internal_error_at(Label::span(

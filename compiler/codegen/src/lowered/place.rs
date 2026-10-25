@@ -14,7 +14,7 @@
 use ironplc_dsl::core::{Id, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::{
-    Const, Expr, Nullability, Owner, Place as LoweredPlace, Projection, TypeId, TypeKind,
+    Const, Expr, FieldIdx, Nullability, Owner, Place as LoweredPlace, Projection, TypeId, TypeKind,
     TypeTable, Variable as LoweredVariable,
 };
 use ironplc_lowering::PartialProgram;
@@ -122,14 +122,14 @@ pub(super) fn variable_name(
 }
 
 /// The variable `place` is a field of, through fields only, as this
-/// backend's layout keeps it, and the names of those fields, outermost
-/// first: `h.og.ob` is `h` with `og` and `ob`. A whole variable is itself
-/// with no fields. `None` for any other place.
+/// backend's layout keeps it, and those fields, outermost first: `h.og.ob`
+/// is `h` with `og` and `ob`. A whole variable is itself with no fields.
+/// `None` for any other place.
 pub(super) fn field_path(
     lowering: &PartialProgram,
     ctx: &CompileContext,
     place: &LoweredPlace,
-) -> Option<(Named, Vec<Id>)> {
+) -> Option<(Named, Vec<FieldIdx>)> {
     let mut access = access(lowering, ctx, place)?;
     let mut fields = Vec::new();
     loop {
@@ -139,7 +139,7 @@ pub(super) fn field_path(
                 return Some((name, fields));
             }
             Access::Field(field) => {
-                fields.push(field.field);
+                fields.push(field.idx);
                 access = *field.record;
             }
             Access::Index(_) | Access::Deref(_) => return None,
@@ -272,6 +272,7 @@ fn access<'l>(
                 ty = declared.ty;
                 Access::Field(Field {
                     record: Box::new(access),
+                    idx: *field,
                     field: Id::from(&declared.name.to_string()),
                 })
             }

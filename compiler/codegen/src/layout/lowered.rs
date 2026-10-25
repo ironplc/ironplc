@@ -64,7 +64,7 @@ use super::{BlockLayout, FunctionLayout, MethodLayout};
 use crate::access::{Named, Stored};
 use crate::compile::{
     CompileContext, FbInstanceInfo, OpType, StringReturnInfo, StringVarInfo, UserFbTypeInfo,
-    UserFunctionInfo, UserMethodInfo, UserMethodParam, VarTypeInfo, DEFAULT_OP_TYPE,
+    UserFunctionInfo, UserMethodInfo, VarTypeInfo, DEFAULT_OP_TYPE,
 };
 use crate::compile_array::ArrayVarInfo;
 use crate::compile_array_struct::StructArrayVarInfo;
@@ -242,7 +242,7 @@ impl Layout {
                     layout.insert_reference(&mut storage, scope, name.stored, held, next)?;
                     layout.insert_string(&mut storage, scope, name.stored, held)?
                 };
-                calling.add(section, &name.name, next, string);
+                calling.add(section, var, next, string);
                 layout.debug.local(
                     types,
                     next,
@@ -289,11 +289,7 @@ impl Layout {
                 function_id,
                 var_offset,
                 num_params: u16::try_from(calling.params.len()).ok()?,
-                params: calling
-                    .params
-                    .into_iter()
-                    .map(|(_, passing)| passing)
-                    .collect(),
+                params: calling.params,
                 return_string_info: return_string.map(|string| StringReturnInfo {
                     data_offset: string.data_offset,
                     max_length: string.max_length,
@@ -353,7 +349,7 @@ impl Layout {
                     let held_ty = held(lowering, var)?;
                     let string = layout.insert_string(&mut storage, scope, name.stored, held_ty)?;
                     let section = lowering.variables().get(var)?.section();
-                    calling.add(section, &name.name, current, string);
+                    calling.add(section, var, current, string);
                     layout.insert(scope, name.stored, current, held_type(lowering, var));
                     current = layout.counter.after(current);
                 }
@@ -374,11 +370,7 @@ impl Layout {
                     function_id: method_id,
                     param_var_off: param_var_off.raw(),
                     num_params: u16::try_from(calling.params.len()).ok()?,
-                    params: calling
-                        .params
-                        .into_iter()
-                        .map(|(name, passing)| UserMethodParam { name, passing })
-                        .collect(),
+                    params: calling.params,
                     has_return_value,
                     outputs: calling.outputs,
                     string_outputs: calling.string_outputs,

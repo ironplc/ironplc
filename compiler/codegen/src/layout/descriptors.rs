@@ -11,7 +11,7 @@
 
 use ironplc_container::{ArrayDescriptor, CharWidth, FieldType, VarIndex};
 use ironplc_dsl::core::SourceSpan;
-use ironplc_ir::lowered::{Field, StringShape, TypeId, TypeKind, TypeTable};
+use ironplc_ir::lowered::{Field, FieldIdx, StringShape, TypeId, TypeKind, TypeTable};
 
 use super::region::{elements, slots, string_shape};
 use crate::compile::{OpWidth, Signedness, VarTypeInfo};
@@ -46,10 +46,10 @@ pub(super) struct Reached {
 pub(super) struct Slots {
     /// The descriptor of the flat array.
     pub(super) desc_index: u16,
-    /// Each field of a structure that is an array of strings, by its
-    /// lower-case name: its descriptor, how many strings it holds, and how
-    /// many code units each holds.
-    pub(super) string_arrays: Vec<(String, (u16, u32, u16))>,
+    /// Each field of a structure that is an array of strings: its
+    /// descriptor, how many strings it holds, and how many code units each
+    /// holds.
+    pub(super) string_arrays: Vec<(FieldIdx, (u16, u32, u16))>,
     /// Each string field of the elements of an array of structures it
     /// holds, or is: the slot of the field in the first element, from the
     /// start of the flat array, and its strided descriptor.
@@ -135,7 +135,7 @@ impl<'a> Descriptors<'a> {
         let desc_index = self.add(slot_array(slots(types, ty)?));
         let fields = types.fields(ty)?;
         let mut string_arrays = Vec::new();
-        for field in fields {
+        for (position, field) in fields.iter().enumerate() {
             let TypeKind::Array { element, .. } = types.kind(field.ty)? else {
                 continue;
             };
@@ -143,8 +143,8 @@ impl<'a> Descriptors<'a> {
                 let (max_length, char_width) = string_shape(*shape)?;
                 let total = elements(types, field.ty)?;
                 let desc = self.add(string_array(char_width, total, max_length));
-                let name = field.name.to_string().to_lowercase();
-                string_arrays.push((name, (desc, total, max_length)));
+                let idx = types.field_idx(ty, position)?;
+                string_arrays.push((idx, (desc, total, max_length)));
             }
         }
         let mut element_strings = Vec::new();

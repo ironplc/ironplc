@@ -25,7 +25,7 @@
 //! A `Copy` is taken for one of instances only when its places are function
 //! block instances.
 
-use crate::access::Named;
+use crate::access::{Named, Stored};
 use ironplc_container::{FbTypeId, VarIndex};
 use ironplc_ir::lowered::{Place as LoweredPlace, Projection, TypeKind};
 use ironplc_lowering::PartialProgram;
@@ -131,11 +131,10 @@ fn reached(
     };
     let mut fields = Vec::new();
     for field in path {
-        let name = field.to_string().to_lowercase();
         let held = layout_of_type(ctx, block)?
             .held
             .iter()
-            .find(|held| held.name == name)?;
+            .find(|held| held.field == field)?;
         block = layout(ctx, held.block)?.type_id;
         fields.push(held.index);
     }
@@ -173,10 +172,13 @@ fn held_by_current(
     // The current body is the block's, or one of its methods'.
     let current = super::current_pou(ctx)?;
     let block = lowering.pous().method_of(current).unwrap_or(current);
+    let Stored::Field(_, field) = name.stored else {
+        return None;
+    };
     let held = layout(ctx, block)?
         .held
         .iter()
-        .find(|held| held.name == *name.name.lower_case())?;
+        .find(|held| held.field == field)?;
     Some((ctx.var_index(name).ok()?, layout(ctx, held.block)?.type_id))
 }
 
