@@ -35,23 +35,22 @@
 //! ([`super::debug_vars`]).
 //!
 //! The bodies are compiled against this layout ([`Layout::install`]), which
-//! gives each body where its variables are ([`super::bodies`]), and a
-//! declaration lowering does not express yet is not supported yet (P9999).
-//! Each declaration is checked within the limits of the bytecode format
-//! first ([`super::limits`]).
+//! gives each body where its variables are ([`super::bodies`]). Each
+//! declaration is checked within the limits of the bytecode format first
+//! ([`super::limits`]).
 
 use std::collections::HashMap;
 
 use ironplc_analyzer::StandardFunctionBlock;
 use ironplc_container::debug_section::EnumDefEntry;
 use ironplc_container::{ArrayDescriptor, ContainerBuilder, FunctionId, VarIndex};
-use ironplc_dsl::core::{Id, Located, SourceSpan};
+use ironplc_dsl::core::{Id, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::execution::{GlobalKind, GlobalScope};
+use ironplc_ir::lowered::{Declaration, Program};
 use ironplc_ir::lowered::{
     Field, FieldIdx, Nullability, PouId, PouKind, Section, TypeId, TypeKind, TypeTable, VarId,
 };
-use ironplc_lowering::{Declaration, PartialProgram};
 
 use super::calls::{Blocks, Calling};
 use super::debug_vars::DebugVars;
@@ -143,28 +142,29 @@ struct Storage<'a> {
 
 impl Layout {
     /// The layout of the declarations of `lowering`, whose program the
-    /// container runs is `program`, and the standard function block each
-    /// lowered POU that has no body is, `standard_blocks`. A declaration
-    /// lowering does not express yet is not supported yet (P9999), and one
+    /// container runs is the POU `program`, and the standard function block
+    /// each POU that stands for one is, `standard_blocks`. A declaration
     /// that needs more slots than the variable table holds is P9997.
     pub(crate) fn of(
-        lowering: &PartialProgram,
-        program: &Id,
+        lowering: &Program,
+        program: PouId,
         standard_blocks: &HashMap<PouId, StandardFunctionBlock>,
     ) -> Result<Self, Diagnostic> {
-        if let Some(span) = lowering.declarations_unsupported().first() {
-            return Err(Diagnostic::todo_with_span(span.clone()));
-        }
+        let span = lowering
+            .pous()
+            .name(program)
+            .map(|name| name.span())
+            .unwrap_or_default();
         let no_layout = || {
             Diagnostic::internal_error_at(Label::span(
-                program.span(),
+                span.clone(),
                 "The lowered declarations give no layout",
             ))
         };
         let pous = Pous::of(lowering, program).ok_or_else(no_layout)?;
         super::limits::check(lowering, &pous).ok_or_else(no_layout)??;
         let layout = Self::of_complete(lowering, &pous, standard_blocks).ok_or_else(no_layout)?;
-        layout.counter.check(&program.span())?;
+        layout.counter.check(&span)?;
         Ok(layout)
     }
 
@@ -172,7 +172,7 @@ impl Layout {
     /// lowered and is within the limits, of the POUs `pous`; `None` when
     /// they are not the program's.
     fn of_complete(
-        lowering: &PartialProgram,
+        lowering: &Program,
         pous: &Pous,
         standard_blocks: &HashMap<PouId, StandardFunctionBlock>,
     ) -> Option<Self> {
@@ -657,14 +657,14 @@ fn loaded_at(held: Option<VarTypeInfo>) -> OpType {
 
 /// The type the slot of the variable `var` of a function or method is
 /// operated at: that of what it [holds](held).
-fn held_type(lowering: &PartialProgram, var: VarId) -> Option<VarTypeInfo> {
+fn held_type(lowering: &Program, var: VarId) -> Option<VarTypeInfo> {
     slot_type(lowering.types(), held(lowering, var)?)
 }
 
 /// The type of what the variable `var` of a function or method holds: for
 /// a `VAR_IN_OUT`, a `VAR_OUTPUT` or a result parameter, which lowering
 /// makes a reference to the caller's place, the type of what it refers to.
-fn held(lowering: &PartialProgram, var: VarId) -> Option<TypeId> {
+fn held(lowering: &Program, var: VarId) -> Option<TypeId> {
     let types = lowering.types();
     let ty = lowering.variables().get(var)?.ty();
     Some(match types.reference(ty) {
@@ -677,7 +677,7 @@ fn held(lowering: &PartialProgram, var: VarId) -> Option<TypeId> {
 /// model's order, the compiler-provided ones first, each with whether the
 /// compiler provides it. A resource's `VAR_GLOBAL` has none yet
 /// (`execution.rs`).
-pub(crate) fn globals(lowering: &PartialProgram) -> Vec<(VarId, bool)> {
+pub(crate) fn globals(lowering: &Program) -> Vec<(VarId, bool)> {
     let bindings = lowering.bindings();
     lowering
         .execution()
@@ -755,10 +755,11 @@ fn has_string_field(types: &TypeTable, ty: TypeId) -> bool {
 
 /// The span of the name of each POU whose source file the debug section's
 /// `SOURCE_FILE_TABLE` lists, in the order it lists them: the program the
-/// container runs, `program`, then each function, then each function block.
+/// container runs, the POU `program`, then each function, then each function
+/// block.
 pub(crate) fn source_spans(
-    lowering: &PartialProgram,
-    program: &Id,
+    lowering: &Program,
+    program: PouId,
 ) -> Result<Vec<SourceSpan>, Diagnostic> {
     let spans = Pous::of(lowering, program).and_then(|pous| {
         let table = lowering.pous();
@@ -770,8 +771,8 @@ pub(crate) fn source_spans(
     });
     spans.ok_or_else(|| {
         Diagnostic::internal_error_at(Label::span(
-            program.span(),
-            "The lowered program has no POU of this name",
+            SourceSpan::default(),
+            "The lowered program does not run the program it binds",
         ))
     })
 }
@@ -788,9 +789,9 @@ pub(super) struct Pous {
 }
 
 impl Pous {
-    /// The POUs of `lowering`, whose program the container runs is
+    /// The POUs of `lowering`, whose program the container runs is the POU
     /// `program`.
-    fn of(lowering: &PartialProgram, program: &Id) -> Option<Self> {
+    fn of(lowering: &Program, program: PouId) -> Option<Self> {
         let table = lowering.pous();
         let mut found = None;
         let mut functions = Vec::new();
@@ -803,7 +804,7 @@ impl Pous {
             };
             match parts.kind {
                 PouKind::Program => {
-                    if Id::from(&table.name(pou)?.to_string()) == *program {
+                    if pou == program {
                         found = Some(pou);
                     }
                 }
@@ -853,7 +854,7 @@ impl Pous {
 }
 
 /// The variable `var`, by its name.
-pub(crate) fn named(lowering: &PartialProgram, var: VarId) -> Option<Named> {
+pub(crate) fn named(lowering: &Program, var: VarId) -> Option<Named> {
     let name = lowering.variables().get(var)?.name();
     Some(Named {
         stored: Stored::Var(var),
@@ -894,7 +895,7 @@ pub(crate) fn instance_type(types: &TypeTable, pou: PouId) -> Option<TypeId> {
 /// The fields of the function block `pou` that its copy slots hold, each
 /// with its index: its own inputs, then its outputs, then its locals, each
 /// in declaration order.
-pub(super) fn copy_slots(lowering: &PartialProgram, pou: PouId) -> Option<Vec<(FieldIdx, &Field)>> {
+pub(super) fn copy_slots(lowering: &Program, pou: PouId) -> Option<Vec<(FieldIdx, &Field)>> {
     let types = lowering.types();
     let fields = types.fields(instance_type(types, pou)?)?;
     let mut own = Vec::new();
@@ -924,7 +925,7 @@ pub(super) struct Frame {
 }
 
 /// The variables of the function or method `pou`.
-pub(super) fn frame(lowering: &PartialProgram, pou: PouId) -> Option<Frame> {
+pub(super) fn frame(lowering: &Program, pou: PouId) -> Option<Frame> {
     let variables = lowering.variables();
     let mut inputs = Vec::new();
     let mut rest = Vec::new();

@@ -12,8 +12,10 @@
 //! See `specs/design/arithmetic-operator-overloads.md`.
 
 use ironplc_analyzer::{
-    typed_overload, BuiltinFunction, CleanAnalysis, FunctionEnvironmentBuilder, TypedOverload,
+    typed_overload, BuiltinFunction, FunctionEnvironment, FunctionEnvironmentBuilder, TypedOverload,
 };
+use std::collections::HashMap;
+
 use ironplc_container::FunctionId;
 use ironplc_dsl::common::TypeName;
 use ironplc_dsl::core::{FileId, Id};
@@ -22,7 +24,20 @@ use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
 use spec_test_macro::spec_test;
 
-use crate::compile_call::builtin_functions_by_name;
+/// Returns the operation each standard function in `functions` stands for,
+/// by name.
+///
+/// Codegen recognizes a standard function only through this table, built
+/// from the signatures the analyzer resolved calls against, never by its
+/// spelling.
+fn builtin_functions_by_name(functions: &FunctionEnvironment) -> HashMap<Id, BuiltinFunction> {
+    functions
+        .iter()
+        .filter_map(|(_, signature)| {
+            Some((signature.name.clone(), signature.builtin_function.clone()?))
+        })
+        .collect()
+}
 
 /// Compiles `source` under the Edition 3 dialect, which declares the long
 /// types, and returns the bytecode of its program body.
@@ -30,12 +45,7 @@ fn program_bytecode(source: &str) -> Vec<u8> {
     let options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
     let library = ironplc_parser::parse_program(source, &FileId::default(), &options).unwrap();
     let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
-    let container = crate::compile(
-        CleanAnalysis::new(&analyzed, &ctx).unwrap(),
-        &crate::CodegenOptions::default(),
-        &crate::EmptyLookup,
-    )
-    .unwrap();
+    let container = crate::test_support::compile_analyzed(&analyzed, &ctx).unwrap();
     container
         .code
         .get_function_bytecode(FunctionId::new(1))

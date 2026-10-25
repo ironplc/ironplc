@@ -50,18 +50,9 @@ use ironplc_container::{
 // and codegen size strings the same way. Re-exported here because the rest of
 // codegen reaches for these through `compile`.
 pub(crate) use ironplc_container::string_region_size;
-use ironplc_dsl::common::{
-    FunctionBlockDeclaration, FunctionDeclaration, LibraryElementKind, ProgramDeclaration,
-};
-use ironplc_dsl::core::{Id, Located, SourceSpan};
+use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_ir::lowered::{FieldIdx, PouId, VarId};
-use ironplc_parser::options::{CompilerOptions, StringToNumFailure, StringToNumNonNumeric};
-
-use ironplc_analyzer::{
-    BuiltinFunction, CleanAnalysis, FunctionEnvironment, MethodOwners, StandardFunctionBlock,
-    TypeEnvironment,
-};
+use ironplc_ir::lowered::{FieldIdx, PouId, Program, StandardFunctionBlock, VarId};
 
 use crate::access::{Named, Stored};
 use crate::emit::Emitter;
@@ -71,8 +62,6 @@ use crate::layout::names::{ScopeId, Scoped};
 use super::compile_fn::{compile_user_function, compile_user_function_block};
 use super::compile_method::compile_user_method;
 use super::layout::BlockLayout;
-
-use super::compile_stmt::compile_body;
 
 /// The native operation width used for arithmetic and comparisons.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -193,117 +182,23 @@ pub(crate) fn emit_string_literal_load(
     emitter.emit_load_const_str(pool_index);
 }
 
-/// Options that affect code generation.
+/// Compiles a lowered program into a bytecode container.
 ///
-/// Every front end derives this from the project's [`CompilerOptions`] via
-/// [`From`], so the mapping from a compiler option to what codegen does with
-/// it has exactly one definition.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct CodegenOptions {
-    /// The behavior policies `STRING_TO_<numeric>` calls are compiled under
-    /// (ADR-0049). They select the builtin func_id the call emits.
-    pub string_to_num: StringToNumPolicies,
-}
-
-/// The two behavior policies of a `STRING_TO_<numeric>` conversion.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct StringToNumPolicies {
-    pub non_numeric: StringToNumNonNumeric,
-    pub failure: StringToNumFailure,
-}
-
-impl From<&CompilerOptions> for CodegenOptions {
-    fn from(options: &CompilerOptions) -> Self {
-        CodegenOptions {
-            string_to_num: StringToNumPolicies {
-                non_numeric: options.policy_string_to_num_non_numeric,
-                failure: options.policy_string_to_num_failure,
-            },
-        }
-    }
-}
-
-/// Compiles a library into a bytecode container.
-///
-/// Compiles the program instance the analyzer's execution model runs, under
-/// the task it binds it to, with the globals the model lists, into a
-/// container suitable for execution by the VM. Only user-defined functions
-/// reachable from the program root are included; unreachable functions are
-/// automatically excluded.
-///
-/// Takes a [`CleanAnalysis`], which can only be made from a semantic context
-/// that holds no diagnostics.
+/// Compiles the program instance the execution model runs, under the task it
+/// binds it to, with the globals the model lists, into a container suitable
+/// for execution by the VM. The lowered program holds only the POUs reachable
+/// from a program, so no other is in the container.
 ///
 /// Returns an error if the model asks for more than the VM supports (see
-/// [`crate::execution`]), or if the program contains unsupported constructs.
+/// [`crate::execution`]), or if the program holds a construct this backend
+/// does not compile yet (P9999).
 pub fn compile(
-    analysis: CleanAnalysis<'_>,
-    options: &CodegenOptions,
+    program: &Program,
     sources: &dyn ironplc_ir::source::SourceLookup,
 ) -> Result<Container, Diagnostic> {
-    // Lowering completes every initializer on a copy, and reads the program
-    // and globals from it; the analyzed library stays as written
-    // (specs/design/initial-values.md).
-    let completed = ironplc_analyzer::xform_resolve_initial_values::apply(
-        analysis.library().clone(),
-        analysis.context(),
-    );
-    let analysis = CleanAnalysis::new(&completed, analysis.context())
-        .map_err(|_| Diagnostic::internal_error())?;
-    let library = analysis.library();
-    let context = analysis.context();
-    crate::compile_interface::reject_interface_variables(library)?;
-    let runnable = crate::execution::runnable(&analysis)?;
-
-    let reachable = context.reachable();
-
-    // Collect user-defined function declarations from the library,
-    // filtering to only reachable functions.
-    let func_decls: Vec<&FunctionDeclaration> = library
-        .elements
-        .iter()
-        .filter_map(|e| {
-            if let LibraryElementKind::FunctionDeclaration(f) = e {
-                reachable.contains(&f.name).then_some(f)
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    // Collect user-defined function block declarations from the library,
-    // filtering to only reachable function blocks.
-    let fb_decls: Vec<&FunctionBlockDeclaration> = library
-        .elements
-        .iter()
-        .filter_map(|e| {
-            if let LibraryElementKind::FunctionBlockDeclaration(fb) = e {
-                reachable.contains(&fb.name.id).then_some(fb)
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    let method_owners = MethodOwners::of_library(library, context.types());
-    let parse = crate::lowered::parse_policy(&options.string_to_num);
-    let lowered_route = crate::lowered::LoweredRoute::new(|| {
-        ironplc_lowering::Lowering::new(&analysis, parse).lower_program()
-    })?;
-    let mut container = compile_program_with_functions(
-        ProgramInputs {
-            program: runnable.program,
-            func_decls: &func_decls,
-            fb_decls: &fb_decls,
-            method_owners: &method_owners,
-        },
-        context.functions(),
-        context.types(),
-        options.string_to_num,
-        *context.compiler_options(),
-        sources,
-        lowered_route,
-    )?;
+    let runnable = crate::execution::runnable(program)?;
+    crate::compile_method::reject_string_results(program)?;
+    let mut container = compile_program(program, runnable.program, sources)?;
 
     if runnable.has_system_uptime {
         container.header.flags |= ironplc_container::FLAG_HAS_SYSTEM_UPTIME;
@@ -316,8 +211,7 @@ pub fn compile(
 
 /// Idempotently registers the source file of the POU whose name is at
 /// `span` with the debug section's SOURCE_FILE_TABLE. Called from
-/// `compile_program_with_functions` for the program and each function and
-/// function block.
+/// `compile_program` for the program and each function and function block.
 fn register_pou_source_file(
     ctx: &mut CompileContext,
     span: &SourceSpan,
@@ -437,18 +331,6 @@ pub(crate) fn finalize_function(
     })
 }
 
-/// The AST inputs that [`compile_program_with_functions`] operates on,
-/// all extracted from the same `Library` at the start of `compile()`.
-/// Grouped to keep the helper's argument count manageable.
-struct ProgramInputs<'a> {
-    program: &'a ProgramDeclaration,
-    func_decls: &'a [&'a FunctionDeclaration],
-    fb_decls: &'a [&'a FunctionBlockDeclaration],
-    /// The block that declares each method callable on each block, as the
-    /// analyzer resolves it.
-    method_owners: &'a MethodOwners,
-}
-
 /// Compiles a PROGRAM and its user-defined functions into a container.
 ///
 /// Always emits at least two functions:
@@ -459,29 +341,14 @@ struct ProgramInputs<'a> {
 /// When no initial values exist, the init function is a single RET_VOID.
 // Internal codegen helper split out from `compile()` purely for
 // readability of the public function; called from exactly one site.
-fn compile_program_with_functions(
-    inputs: ProgramInputs<'_>,
-    functions: &FunctionEnvironment,
-    types: &TypeEnvironment,
-    string_to_num: StringToNumPolicies,
-    compiler_options: CompilerOptions,
+fn compile_program(
+    program: &Program,
+    main: PouId,
     sources: &dyn ironplc_ir::source::SourceLookup,
-    lowered_route: crate::lowered::LoweredRoute,
 ) -> Result<Container, Diagnostic> {
-    let ProgramInputs {
-        program,
-        func_decls,
-        fb_decls,
-        method_owners,
-    } = inputs;
     let mut ctx = CompileContext::new();
-    ctx.lowered_route = Some(lowered_route);
-    ctx.block_members = ironplc_lowering::initial_value::block_members(types);
-    ctx.standard_blocks = crate::compile_call::standard_blocks(ctx.lowering()?, types);
-    ctx.builtin_functions = crate::compile_call::builtin_functions_by_name(functions);
-    ctx.method_owners = method_owners.clone();
-    ctx.string_to_num = string_to_num;
-    ctx.compiler_options = compiler_options;
+    ctx.program = Some(program);
+    ctx.standard_blocks = crate::compile_call::standard_blocks(program);
     let mut builder = ContainerBuilder::new();
 
     // Register every top-level POU's source file with the debug
@@ -493,7 +360,7 @@ fn compile_program_with_functions(
     // bodies) determines the `file_id` numbering, which appears in
     // the on-disk container.
     // The lowered program names the POUs and their spans.
-    let pou_spans = crate::layout::lowered::source_spans(ctx.lowering()?, &program.name)?;
+    let pou_spans = crate::layout::lowered::source_spans(program, main)?;
     for span in &pou_spans {
         register_pou_source_file(&mut ctx, span, sources);
     }
@@ -504,18 +371,16 @@ fn compile_program_with_functions(
     // FB body finds each callee's stack depth; per IEC 61131-3 functions
     // cannot instantiate FBs, so they don't require FB bodies to have been
     // compiled first.
-    crate::compile_method::reject_string_results(fb_decls)?;
-    let layout =
-        crate::layout::lowered::Layout::of(ctx.lowering()?, &program.name, &ctx.standard_blocks)?;
+    let layout = crate::layout::lowered::Layout::of(program, main, &ctx.standard_blocks)?;
     let bodies = layout.install(&mut ctx, &mut builder)?;
     let program_var_count = bodies.program_slots;
     let mut compiled_functions = Vec::new();
-    for (func_decl, layout) in func_decls.iter().zip(bodies.functions) {
-        compiled_functions.push(compile_user_function(func_decl, layout, &mut ctx)?);
+    for layout in bodies.functions {
+        compiled_functions.push(compile_user_function(layout, &mut ctx)?);
     }
     let mut compiled_fb_bodies: Vec<CompiledFunction> = Vec::new();
     let mut compiled_methods: Vec<CompiledFunction> = Vec::new();
-    for (fb_decl, layout) in fb_decls.iter().zip(bodies.blocks) {
+    for layout in bodies.blocks {
         let BlockLayout {
             function_id,
             scope,
@@ -523,14 +388,13 @@ fn compile_program_with_functions(
             methods,
         } = layout;
         compiled_fb_bodies.push(compile_user_function_block(
-            fb_decl,
             function_id,
             scope,
             num_locals,
             &mut ctx,
         )?);
-        for (method, layout) in fb_decl.methods.iter().zip(methods) {
-            compiled_methods.push(compile_user_method(method, layout, &mut ctx)?);
+        for layout in methods {
+            compiled_methods.push(compile_user_method(layout, &mut ctx)?);
         }
     }
 
@@ -552,12 +416,7 @@ fn compile_program_with_functions(
     if crate::lowered::restarts(&ctx)? {
         crate::lowered::emit_prologue(&mut scan_emitter, &mut ctx)?;
     }
-    compile_body(
-        &mut scan_emitter,
-        &mut ctx,
-        &program.body,
-        &program.name.span(),
-    )?;
+    crate::lowered::emit_body(&mut scan_emitter, &mut ctx)?;
     ctx.current_function_id = None;
     scan_emitter.emit_ret_void();
 
@@ -941,10 +800,10 @@ pub(crate) struct UserMethodInfo {
     pub(crate) string_outputs: HashMap<VarId, StringVarInfo>,
 }
 
-pub(crate) struct CompileContext {
-    /// The program lowering made, which each top-level statement is read
-    /// from; `None` only while it is taken to compile from it.
-    pub(crate) lowered_route: Option<crate::lowered::LoweredRoute>,
+pub(crate) struct CompileContext<'p> {
+    /// The lowered program every body is compiled from; `None` only for a
+    /// context made to test what does not read it.
+    pub(crate) program: Option<&'p Program>,
     /// The scope whose body is being compiled: the lowered POU's, which is
     /// the program's outside the other bodies once the layout is installed
     /// ([`crate::layout::names`]).
@@ -972,26 +831,6 @@ pub(crate) struct CompileContext {
     /// The descriptor that sizes the whole array or structure each
     /// reference variable whose target is an array or a structure refers to.
     pub(crate) region_refs: Scoped<u16>,
-    /// What an instance's value is read against: see
-    /// [`ironplc_lowering::initial_value::block_members`].
-    pub(crate) block_members: ironplc_lowering::initial_value::BlockMembers,
-    /// The operation each standard function stands for, by name, as the
-    /// analyzer's function environment states it. A call of a name that is
-    /// not here is a call of a user-defined function.
-    /// See [`crate::compile_call::builtin_functions_by_name`].
-    pub(crate) builtin_functions: HashMap<Id, BuiltinFunction>,
-    /// Which block declares the method a call reaches, by the block the
-    /// call's instance is declared as. The analyzer decides it
-    /// ([`MethodOwners`]); a method call asks it rather than looking the
-    /// method up itself.
-    pub(crate) method_owners: MethodOwners,
-    /// The behavior policies `STRING_TO_<numeric>` calls select their
-    /// builtin by (ADR-0049).
-    pub(crate) string_to_num: StringToNumPolicies,
-    /// The options the analyzer ran with. Codegen asks the arithmetic
-    /// overload resolver the analyzer asked, with the same options, for the
-    /// result type of each step of an arithmetic call.
-    pub(crate) compiler_options: CompilerOptions,
     /// Next available byte offset in the data region.
     pub(crate) data_region_offset: u32,
     /// Maximum string capacity across all STRING variables (for temp buffer sizing).
@@ -1064,10 +903,10 @@ pub(crate) enum CurrentFunctionReturn {
     String { data_offset: u32 },
 }
 
-impl CompileContext {
+impl<'p> CompileContext<'p> {
     pub(crate) fn new() -> Self {
         CompileContext {
-            lowered_route: None,
+            program: None,
             scope: ScopeId::Global,
             variables: Scoped::default(),
             var_types: Scoped::default(),
@@ -1091,11 +930,6 @@ impl CompileContext {
             function_stack_depths: HashMap::new(),
             user_fb_types: HashMap::new(),
             standard_blocks: HashMap::new(),
-            block_members: HashMap::new(),
-            builtin_functions: HashMap::new(),
-            method_owners: MethodOwners::default(),
-            string_to_num: StringToNumPolicies::default(),
-            compiler_options: CompilerOptions::default(),
             current_function_return: None,
             current_function_id: None,
             call_graph: HashMap::new(),
@@ -1114,6 +948,12 @@ impl CompileContext {
         }
     }
 
+    /// The lowered program every body is compiled from. It outlives the
+    /// borrow of `self`, so a caller reads it while it changes the context.
+    pub(crate) fn lowering(&self) -> Result<&'p Program, Diagnostic> {
+        self.program.ok_or_else(Diagnostic::internal_error)
+    }
+
     /// Looks up a variable index by identifier, using the provided span for error reporting.
     ///
     /// A `VAR_IN_OUT` parameter's slot holds a reference, not the value, so
@@ -1127,19 +967,6 @@ impl CompileContext {
     /// variable inherited through `EXTENDS` or a `RESOURCE`'s `VAR_GLOBAL`, so
     /// it is reported as not implemented rather than as a mistake in the
     /// program.
-    /// The program lowering made, which every body is compiled from.
-    pub(crate) fn route(&self) -> Result<&crate::lowered::LoweredRoute, Diagnostic> {
-        self.lowered_route
-            .as_ref()
-            .ok_or_else(Diagnostic::internal_error)
-    }
-
-    /// What lowering made of the library, which every body is compiled
-    /// from.
-    pub(crate) fn lowering(&self) -> Result<&ironplc_lowering::PartialProgram, Diagnostic> {
-        self.route().map(crate::lowered::LoweredRoute::lowering)
-    }
-
     pub(crate) fn var_index(&self, name: &Named) -> Result<VarIndex, Diagnostic> {
         if self.is_in_out(name) {
             return Err(Diagnostic::not_implemented(Label::span(
@@ -1408,12 +1235,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(
-            CleanAnalysis::new(&library, &context).unwrap(),
-            &CodegenOptions::default(),
-            &crate::EmptyLookup,
-        )
-        .unwrap();
+        let container = crate::test_support::compile_analyzed(&library, &context).unwrap();
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(container.header.num_functions, 2);
@@ -1450,12 +1272,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(
-            CleanAnalysis::new(&library, &context).unwrap(),
-            &CodegenOptions::default(),
-            &crate::EmptyLookup,
-        )
-        .unwrap();
+        let container = crate::test_support::compile_analyzed(&library, &context).unwrap();
 
         // Should have two functions (init + scan), both just RET_VOID
         assert_eq!(container.header.num_functions, 2);
@@ -1484,12 +1301,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(
-            CleanAnalysis::new(&library, &context).unwrap(),
-            &CodegenOptions::default(),
-            &crate::EmptyLookup,
-        )
-        .unwrap();
+        let container = crate::test_support::compile_analyzed(&library, &context).unwrap();
 
         // Should only have one constant (10 is deduplicated)
         assert_eq!(container.constant_pool.len(), 1);
@@ -1508,12 +1320,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(
-            CleanAnalysis::new(&library, &context).unwrap(),
-            &CodegenOptions::default(),
-            &crate::EmptyLookup,
-        )
-        .unwrap();
+        let container = crate::test_support::compile_analyzed(&library, &context).unwrap();
 
         assert_eq!(container.header.num_variables, 2);
         assert_eq!(container.header.num_functions, 2);
@@ -1550,12 +1357,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(
-            CleanAnalysis::new(&library, &context).unwrap(),
-            &CodegenOptions::default(),
-            &crate::EmptyLookup,
-        )
-        .unwrap();
+        let container = crate::test_support::compile_analyzed(&library, &context).unwrap();
 
         assert_eq!(
             container
@@ -1586,11 +1388,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let result = compile(
-            CleanAnalysis::new(&library, &context).unwrap(),
-            &CodegenOptions::default(),
-            &crate::EmptyLookup,
-        );
+        let result = crate::test_support::compile_analyzed(&library, &context);
 
         assert!(result.is_ok());
     }
@@ -1609,11 +1407,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let result = compile(
-            CleanAnalysis::new(&library, &context).unwrap(),
-            &CodegenOptions::default(),
-            &crate::EmptyLookup,
-        );
+        let result = crate::test_support::compile_analyzed(&library, &context);
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
@@ -1631,12 +1425,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(
-            CleanAnalysis::new(&library, &context).unwrap(),
-            &CodegenOptions::default(),
-            &crate::EmptyLookup,
-        )
-        .unwrap();
+        let container = crate::test_support::compile_analyzed(&library, &context).unwrap();
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(
@@ -1659,12 +1448,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(
-            CleanAnalysis::new(&library, &context).unwrap(),
-            &CodegenOptions::default(),
-            &crate::EmptyLookup,
-        )
-        .unwrap();
+        let container = crate::test_support::compile_analyzed(&library, &context).unwrap();
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(
@@ -1693,12 +1477,7 @@ END_VAR
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(
-            CleanAnalysis::new(&library, &context).unwrap(),
-            &CodegenOptions::default(),
-            &crate::EmptyLookup,
-        )
-        .unwrap();
+        let container = crate::test_support::compile_analyzed(&library, &context).unwrap();
 
         // Should have 3 functions: init, scan, SIGN_R
         assert_eq!(container.header.num_functions, 3);

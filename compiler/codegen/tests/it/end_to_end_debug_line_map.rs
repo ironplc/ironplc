@@ -19,7 +19,7 @@ use std::collections::HashMap;
 
 use ironplc_analyzer::stages::analyze;
 use ironplc_analyzer::CleanAnalysis;
-use ironplc_codegen::{compile, CodegenOptions, SourceLookup};
+use ironplc_codegen::{compile, SourceLookup};
 use ironplc_container::opcode;
 use ironplc_container::{FunctionId, LineMapEntry, SourceFileId, SOURCE_FILE_HASH_LEN};
 use ironplc_dsl::core::FileId;
@@ -50,12 +50,8 @@ fn compile_with_source(source: &str) -> (ironplc_container::Container, FileId) {
     bytes_map.insert(file_id.clone(), source.as_bytes().to_vec());
     let lookup = MapLookup(bytes_map);
 
-    let container = compile(
-        CleanAnalysis::new(&analyzed, &ctx).unwrap(),
-        &CodegenOptions::default(),
-        &lookup,
-    )
-    .unwrap();
+    let program = ironplc_lowering::lower(&CleanAnalysis::new(&analyzed, &ctx).unwrap()).unwrap();
+    let container = compile(&program, &lookup).unwrap();
     (container, file_id)
 }
 
@@ -111,12 +107,8 @@ fn line_map_when_empty_program_then_source_file_table_still_populated_with_zero_
     let library = parse_program(source, &file_id, &options).unwrap();
     let (analyzed, ctx) = analyze(&[&library], &options).unwrap();
 
-    let container = compile(
-        CleanAnalysis::new(&analyzed, &ctx).unwrap(),
-        &CodegenOptions::default(),
-        &ironplc_codegen::EmptyLookup,
-    )
-    .unwrap();
+    let program = ironplc_lowering::lower(&CleanAnalysis::new(&analyzed, &ctx).unwrap()).unwrap();
+    let container = compile(&program, &ironplc_codegen::EmptyLookup).unwrap();
     let debug = container.debug_section.as_ref().unwrap();
 
     // Source file is still registered (so file_ids resolve) but the

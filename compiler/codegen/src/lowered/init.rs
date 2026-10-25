@@ -20,7 +20,7 @@ use ironplc_ir::lowered::{
     Const, Expr, ExprKind, Owner, Place, PouId, Projection, Stmt, StmtKind, StrExprKind, TypeId,
     TypeKind,
 };
-use ironplc_lowering::{Declaration, PartialProgram};
+use ironplc_ir::lowered::{Declaration, Program};
 
 use crate::access::{Named, Stored};
 use crate::compile::CompileContext;
@@ -31,13 +31,11 @@ use crate::layout::lowered::{globals, instance_type, named, named_field};
 /// declarations, from the lowered program, in the program's scope: the one
 /// current outside the other bodies.
 pub(crate) fn emit_init(emitter: &mut Emitter, ctx: &mut CompileContext) -> Result<(), Diagnostic> {
-    let route = super::taken_route(ctx)?;
-    let emitted = match super::current_pou(ctx) {
-        Some(program) => emit(emitter, ctx, route.lowering(), program),
+    let lowering = ctx.lowering()?;
+    match super::current_pou(ctx) {
+        Some(program) => emit(emitter, ctx, lowering, program),
         None => Err(Diagnostic::internal_error()),
-    };
-    ctx.lowered_route = Some(route);
-    emitted
+    }
 }
 
 /// The declaration of a global or of a field of the program instance, and
@@ -50,15 +48,12 @@ struct Declared<'l> {
 fn emit(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &PartialProgram,
+    lowering: &Program,
     program: PouId,
 ) -> Result<(), Diagnostic> {
     // A program's `VAR_TEMP` is not in `init`: the program's prologue gives
     // it its starting value, at the head of every scan.
-    let Some(statements) = lowering.init() else {
-        return Err(super::unsupported_value(lowering.init_unsupported()));
-    };
-    let declared = declarations(lowering, ctx, statements)?;
+    let declared = declarations(lowering, ctx, lowering.init())?;
     let mut ordered = Vec::with_capacity(declared.len());
     for name in visited(lowering, program).ok_or_else(Diagnostic::internal_error)? {
         let stores = declared
@@ -96,7 +91,7 @@ fn emit(
 /// The declarations `init` visits, in order: each declared global, then
 /// each of the own variables and fields of `program`. A global the program
 /// declares in its own interface is visited in both, and set up in both.
-fn visited(lowering: &PartialProgram, program: PouId) -> Option<Vec<Named>> {
+fn visited(lowering: &Program, program: PouId) -> Option<Vec<Named>> {
     let types = lowering.types();
     let program_type = instance_type(types, program)?;
     let mut visited = Vec::new();
@@ -122,7 +117,7 @@ fn visited(lowering: &PartialProgram, program: PouId) -> Option<Vec<Named>> {
 /// each stores into, in the order they come; P9999 at a store this backend
 /// does not emit yet. A store left out is not one this backend need reach.
 fn declarations<'l>(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     statements: &'l [Stmt],
 ) -> Result<Vec<Declared<'l>>, Diagnostic> {
@@ -174,7 +169,7 @@ fn declarations<'l>(
 }
 
 /// Whether `place` is in a global the layout keeps no storage for.
-fn is_unstored_global(lowering: &PartialProgram, ctx: &CompileContext, place: &Place) -> bool {
+fn is_unstored_global(lowering: &Program, ctx: &CompileContext, place: &Place) -> bool {
     lowering
         .variables()
         .get(place.root())
@@ -185,7 +180,7 @@ fn is_unstored_global(lowering: &PartialProgram, ctx: &CompileContext, place: &P
 /// The declaration `place` stores into, as the layout keeps it, and the
 /// type of what it declares.
 fn declaration(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     place: &Place,
 ) -> Option<(Stored, TypeId)> {
@@ -205,7 +200,7 @@ fn declaration(
 
 /// Whether the store `stmt`, into a declaration of the type `declared`, is
 /// emitted: one that leaves its storage cleared is not.
-fn kept(lowering: &PartialProgram, declared: TypeId, stmt: &Stmt) -> bool {
+fn kept(lowering: &Program, declared: TypeId, stmt: &Stmt) -> bool {
     let (place, clears) = match stmt.kind() {
         StmtKind::Assign { place, value } => (place, is_cleared(value)),
         StmtKind::AssignStr { place, value } => (

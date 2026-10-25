@@ -1,34 +1,30 @@
 //! Builds the task table, the program instance and the global variables from
-//! the execution model the analyzer resolved.
+//! the execution model the lowered program holds.
 //!
-//! The analyzer decides which configurations the library declares, which
+//! Lowering resolves which configurations the library declares, which
 //! instances run under which tasks, how each task is scheduled and which
-//! globals exist (`ironplc_analyzer::execution_model`). This module decides
-//! none of it, and never reads the configuration's declarations. It checks
-//! the model against what the VM and the container can represent: a program
-//! to run, one configuration, a body for every instance, one program instance,
-//! no event tasks, a priority that fits `u16` and an interval that fits `u64`
-//! microseconds. It reaches a
-//! declaration only through [`CleanAnalysis::program_declaration`] and
-//! [`CleanAnalysis::global_declaration`].
+//! globals exist, and binds each program the model names to its POU. This
+//! module decides none of it. It checks the model against what the VM and the
+//! container can represent: a program to run, one configuration, a body for
+//! every instance, one program instance, no event tasks, a priority that fits
+//! `u16` and an interval that fits `u64` microseconds.
 //!
 //! See `specs/design/execution-model.md` and ADR-0065.
 
-use ironplc_analyzer::CleanAnalysis;
 use ironplc_container::{Container, TaskType};
-use ironplc_dsl::common::ProgramDeclaration;
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::execution::{
     Configuration, DebugName, ExecutionModel, GlobalKind, InstanceOf, ProgramId, ProgramInstance,
     Schedule, SystemGlobal, Task,
 };
+use ironplc_ir::lowered::{PouId, Program};
 use ironplc_problems::Problem;
 
 /// What the container runs, built from the execution model.
-pub(crate) struct Runnable<'a> {
-    /// The program whose body the one program instance runs.
-    pub(crate) program: &'a ProgramDeclaration,
+pub(crate) struct Runnable {
+    /// The POU of the program whose body the one program instance runs.
+    pub(crate) program: PouId,
     /// The task table entry's scheduling fields.
     pub(crate) schedule: TaskSchedule,
     /// Whether the model lists the uptime global, which the VM writes each
@@ -38,13 +34,13 @@ pub(crate) struct Runnable<'a> {
 
 /// Builds what the container runs from the execution model, after checking
 /// the model against what the VM supports.
-pub(crate) fn runnable<'a>(analysis: &CleanAnalysis<'a>) -> Result<Runnable<'a>, Diagnostic> {
-    let model = analysis.execution_model();
+pub(crate) fn runnable(lowered: &Program) -> Result<Runnable, Diagnostic> {
+    let model = lowered.execution();
     let configuration = single_configuration(model)?;
     check_instances_resolved(configuration)?;
     let (program_id, instance, task) = single_program_instance(model, configuration)?;
     let schedule = task_schedule(task)?;
-    let program = analysis.program_declaration(program_id).ok_or_else(|| {
+    let program = lowered.bindings().program(program_id).ok_or_else(|| {
         Diagnostic::internal_error_at(Label::span(
             instance_name(model, instance)
                 .map(DebugName::span)

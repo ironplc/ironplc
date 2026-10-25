@@ -177,8 +177,7 @@ pub fn compile(
     // Handing it the diagnostics collected so far is what makes a
     // discovery-time problem suppress the container while still letting
     // analysis run against the files that did resolve.
-    let output_result =
-        ironplc_project::compile(&mut project, &compiler_options, &source_lookup, diagnostics);
+    let output_result = ironplc_project::compile(&mut project, &source_lookup, diagnostics);
 
     if let Some(container) = output_result.container {
         // Write the container to the output file

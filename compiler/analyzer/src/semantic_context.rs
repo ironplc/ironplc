@@ -18,7 +18,6 @@ use crate::type_environment::{TypeEnvironment, TypeEnvironmentBuilder};
 use crate::xform_resolve_initial_values::TypeDefaults;
 use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_ir::execution::{ExecutionModel, ExecutionModelBuilder};
 use ironplc_parser::options::CompilerOptions;
 
 /// Contains all environments needed for semantic analysis.
@@ -46,10 +45,6 @@ pub struct SemanticContext {
     reachable: HashSet<Id>,
     /// Compiler options that affect semantic validation (e.g., allow flags).
     compiler_options: CompilerOptions,
-    /// What runs, and when: the configuration, its tasks and program
-    /// instances, and the globals in scope. Codegen builds from this rather
-    /// than reading the configuration's declarations.
-    execution_model: ExecutionModel,
     /// The default of every declared type, from which the starting value
     /// of each declaration is resolved.
     type_defaults: TypeDefaults,
@@ -71,16 +66,8 @@ impl SemanticContext {
             diagnostics: Vec::new(),
             reachable,
             compiler_options,
-            // Until a library is resolved there is nothing in it.
-            execution_model: ExecutionModelBuilder::new().build(Vec::new()),
             type_defaults: TypeDefaults::default(),
         }
-    }
-
-    /// Records the execution model resolved from the library.
-    pub(crate) fn with_execution_model(mut self, execution_model: ExecutionModel) -> Self {
-        self.execution_model = execution_model;
-        self
     }
 
     /// This context with `type_defaults` as the defaults of the declared
@@ -130,12 +117,6 @@ impl SemanticContext {
     /// Returns the set of declarations reachable from PROGRAM roots.
     pub fn reachable(&self) -> &HashSet<Id> {
         &self.reachable
-    }
-
-    /// Returns the execution model resolved from the library: what runs, and
-    /// when.
-    pub fn execution_model(&self) -> &ExecutionModel {
-        &self.execution_model
     }
 
     /// Provides read-only access to the compiler options.

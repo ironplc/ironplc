@@ -17,8 +17,8 @@
 
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::{Owner, Place as LoweredPlace, Projection, TypeId, TypeKind, TypeTable};
-use ironplc_lowering::PartialProgram;
 
 use super::aggregate;
 use super::place::{resolve, LoweredSubscript};
@@ -40,7 +40,7 @@ pub(super) struct SlotCopy<'l> {
 /// (`fb_call.rs`). A global source keeps its region, whose offset its slot
 /// holds. `None` for any other `Copy`.
 pub(super) fn slot_copy<'l>(
-    lowering: &'l PartialProgram,
+    lowering: &'l Program,
     ctx: &CompileContext,
     dst: &'l LoweredPlace,
     src: &'l LoweredPlace,
@@ -88,7 +88,7 @@ pub(super) fn emit_slot_copy(
 /// or method body: a local or parameter of a function or method, a
 /// `VAR_TEMP` of a function block, or a field of the function block instance
 /// a body works on.
-fn body_variable(lowering: &PartialProgram, place: &LoweredPlace) -> bool {
+fn body_variable(lowering: &Program, place: &LoweredPlace) -> bool {
     let types = lowering.types();
     let Some(root) = lowering.variables().get(place.root()) else {
         return false;

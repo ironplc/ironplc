@@ -27,8 +27,8 @@
 
 use crate::access::{Named, Stored};
 use ironplc_container::{FbTypeId, VarIndex};
+use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::{Place as LoweredPlace, Projection, TypeKind};
-use ironplc_lowering::PartialProgram;
 
 use super::place::field_path;
 use super::slot_copy::is_block_reference;
@@ -67,7 +67,7 @@ enum Step {
 /// The copy of `src` to `dst` when both are instances this backend reaches,
 /// of one block. `None` for any other `Copy`.
 pub(super) fn instance_copy(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     dst: &LoweredPlace,
     src: &LoweredPlace,
@@ -120,7 +120,7 @@ pub(super) fn emit_instance_copy(emitter: &mut Emitter, copy: &InstanceCopy) {
 /// The instance `place` is, when this backend reaches it, and the type ID of
 /// its block.
 fn reached(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     place: &LoweredPlace,
 ) -> Option<(Reached, FbTypeId)> {
@@ -144,7 +144,7 @@ fn reached(
 /// Whether `place` is the whole of a field of the instance a function
 /// block's body or method works on, and the field holds an instance.
 pub(super) fn holds_instance(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     place: &LoweredPlace,
 ) -> bool {
@@ -157,7 +157,7 @@ pub(super) fn holds_instance(
 /// method works on, and the type ID of the block of the instance the field
 /// holds, when `place` is in that field and the field holds an instance.
 fn held_by_current(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     place: &LoweredPlace,
     name: &Named,

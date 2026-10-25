@@ -13,11 +13,11 @@
 
 use ironplc_dsl::core::{Id, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::{
     Const, Expr, FieldIdx, Nullability, Owner, Place as LoweredPlace, Projection, TypeId, TypeKind,
     TypeTable, Variable as LoweredVariable,
 };
-use ironplc_lowering::PartialProgram;
 
 use super::expr::emit_expr;
 use super::{constant, instance_field, op_type, stored_field, stored_variable};
@@ -31,7 +31,7 @@ use crate::emit::Emitter;
 /// A subscript of a lowered place.
 #[derive(Clone, Copy)]
 pub(super) struct LoweredSubscript<'l> {
-    lowering: &'l PartialProgram,
+    lowering: &'l Program,
     expr: &'l Expr,
 }
 
@@ -53,7 +53,7 @@ type LoweredAccess<'l> = Access<LoweredSubscript<'l>>;
 
 /// Where codegen's layout stores `place`, as one value in one slot.
 pub(super) fn resolve<'l>(
-    lowering: &'l PartialProgram,
+    lowering: &'l Program,
     ctx: &CompileContext,
     place: &'l LoweredPlace,
     span: &SourceSpan,
@@ -75,7 +75,7 @@ pub(super) enum Load<'l> {
 /// in a variable refers to is read by loading the reference and then what it
 /// refers to. A store to it is not supported yet.
 pub(super) fn resolve_load<'l>(
-    lowering: &'l PartialProgram,
+    lowering: &'l Program,
     ctx: &CompileContext,
     place: &'l LoweredPlace,
     span: &SourceSpan,
@@ -94,7 +94,7 @@ pub(super) fn resolve_load<'l>(
 
 /// Where codegen's layout stores `place`, which `access` names.
 fn storage<'l>(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     place: &LoweredPlace,
     access: &LoweredAccess<'l>,
@@ -111,7 +111,7 @@ fn storage<'l>(
 /// it: a variable, a field of the current instance, or what a `VAR_IN_OUT`
 /// parameter refers to. `None` for any other place.
 pub(super) fn variable_name(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     place: &LoweredPlace,
 ) -> Option<Named> {
@@ -126,7 +126,7 @@ pub(super) fn variable_name(
 /// is `h` with `og` and `ob`. A whole variable is itself with no fields.
 /// `None` for any other place.
 pub(super) fn field_path(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     place: &LoweredPlace,
 ) -> Option<(Named, Vec<FieldIdx>)> {
@@ -152,7 +152,7 @@ pub(super) fn field_path(
 /// reference in a `VAR_IN_OUT` parameter, whose slot holds a reference to
 /// the reference.
 pub(super) fn referenced_by(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     place: &LoweredPlace,
 ) -> Option<Named> {
@@ -176,7 +176,7 @@ pub(super) fn referenced_by(
 /// proof that a read fits the type it reads (REQ-LOW-lowering-046) does not
 /// hold for one, and a store of it is narrowed.
 pub(super) fn reads_standard_block_field(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     expr: &Expr,
 ) -> bool {
@@ -205,7 +205,7 @@ pub(super) fn reads_standard_block_field(
 /// buffer for a string (issue 1753) and the region offset of the value stored
 /// for a structure or an array.
 pub(super) fn instance_slot<'l>(
-    lowering: &'l PartialProgram,
+    lowering: &'l Program,
     ctx: &CompileContext,
     place: &'l LoweredPlace,
 ) -> Option<Place<LoweredSubscript<'l>>> {
@@ -220,7 +220,7 @@ pub(super) fn instance_slot<'l>(
 /// a reference variable refers to, `rs^` or `rsa^[i]`, reached through the
 /// reference.
 pub(super) fn resolve_string<'l>(
-    lowering: &'l PartialProgram,
+    lowering: &'l Program,
     ctx: &CompileContext,
     place: &'l LoweredPlace,
     span: &SourceSpan,
@@ -242,7 +242,7 @@ fn no_storage(span: &SourceSpan) -> Diagnostic {
 /// The access that names `place` in this backend's layout, with the lowered
 /// subscripts; `None` for a place this backend does not reach yet.
 fn access<'l>(
-    lowering: &'l PartialProgram,
+    lowering: &'l Program,
     ctx: &CompileContext,
     place: &'l LoweredPlace,
 ) -> Option<LoweredAccess<'l>> {

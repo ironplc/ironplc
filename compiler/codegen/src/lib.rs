@@ -1,33 +1,24 @@
 #![allow(clippy::result_large_err)]
 //! Code generation for IronPLC.
 //!
-//! This crate transforms a parsed and analyzed IEC 61131-3 AST (`Library`)
+//! This crate compiles a lowered program (`ironplc_ir::lowered::Program`)
 //! into bytecode that the IronPLC VM can execute, packaged as a `Container`.
-//!
-//! # Supported Subset
-//!
-//! The initial implementation supports a minimal subset of the language
-//! sufficient for a steel-thread demonstration:
-//!
-//! - PROGRAM declarations
-//! - INT variable declarations (`VAR`)
-//! - Assignment statements
-//! - Integer literal constants
-//! - Binary Add operator
-//! - Variable references (named symbolic variables)
+//! Lowering builds the program from an analyzed library
+//! (`ironplc_lowering::lower`); see `specs/design/lowered-program.md`.
 //!
 //! # Example
 //!
 //! ```ignore
 //! use ironplc_analyzer::CleanAnalysis;
-//! use ironplc_codegen::{compile, CodegenOptions, EmptyLookup};
+//! use ironplc_codegen::{compile, EmptyLookup};
 //! use ironplc_parser::parse_program;
 //!
 //! let source = "PROGRAM main VAR x : INT; END_VAR x := 42; END_PROGRAM";
 //! let library = parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
 //! let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], &CompilerOptions::default()).unwrap();
 //! let analysis = CleanAnalysis::new(&analyzed, &ctx).unwrap();
-//! let container = compile(analysis, &CodegenOptions::default(), &EmptyLookup).unwrap();
+//! let program = ironplc_lowering::lower(&analysis).unwrap();
+//! let container = compile(&program, &EmptyLookup).unwrap();
 //! ```
 
 mod access;
@@ -41,7 +32,6 @@ mod compile_enum;
 mod compile_expr;
 mod compile_fb_call;
 mod compile_fn;
-mod compile_interface;
 mod compile_method;
 mod compile_partial_access;
 mod compile_place;
@@ -62,8 +52,10 @@ mod lowered;
 mod optimize;
 mod source_lookup;
 mod stack_balance;
+#[cfg(test)]
+mod test_support;
 
-pub use compile::{compile, CodegenOptions, StringToNumPolicies};
+pub use compile::compile;
 pub use ironplc_ir::source::{EmptyLookup, SourceLookup};
 
 // Spec conformance testing infrastructure (test-only)

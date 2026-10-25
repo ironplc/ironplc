@@ -19,10 +19,10 @@
 //! does not emit yet, is not supported yet (P9999).
 
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_ir::lowered::{Declaration, Program};
 use ironplc_ir::lowered::{
     Place, PouId, Projection, Section, Stmt, StmtKind, StrExprKind, TypeId, TypeKind,
 };
-use ironplc_lowering::{Declaration, PartialProgram};
 
 use crate::access::{Named, Stored};
 use crate::compile::CompileContext;
@@ -45,16 +45,14 @@ pub(crate) fn emit_prologue(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
 ) -> Result<(), Diagnostic> {
-    let route = super::taken_route(ctx)?;
-    let emitted = emit(emitter, ctx, route.lowering());
-    ctx.lowered_route = Some(route);
-    emitted
+    let lowering = ctx.lowering()?;
+    emit(emitter, ctx, lowering)
 }
 
 /// The variables of `pou` that start again on every call, in declaration
 /// order: a function's or a method's `VAR`, `VAR_TEMP` and `VAR_OUTPUT`,
 /// and a program's or a function block's `VAR_TEMP`.
-fn restarting(lowering: &PartialProgram, pou: PouId) -> Option<Vec<Named>> {
+fn restarting(lowering: &Program, pou: PouId) -> Option<Vec<Named>> {
     let called = lowering.pous().function(pou).is_some();
     let variables = lowering.variables();
     let mut restarting = Vec::new();
@@ -97,7 +95,7 @@ struct Declared<'l> {
 fn emit(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &PartialProgram,
+    lowering: &Program,
 ) -> Result<(), Diagnostic> {
     for declared in planned(lowering, ctx)? {
         set_up(emitter, ctx, lowering, &declared)?;
@@ -113,7 +111,7 @@ fn emit(
 fn set_up(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &PartialProgram,
+    lowering: &Program,
     declared: &Declared,
 ) -> Result<(), Diagnostic> {
     if declared.cleared {
@@ -163,17 +161,16 @@ fn set_up(
 }
 
 /// The declarations of the prologue of the current body, in declaration
-/// order, then the result, each with its stores; P9999 at a starting value
-/// the prologue does not express yet, or at a store this backend does not
-/// emit yet.
+/// order, then the result, each with its stores; P9999 at a store this
+/// backend does not emit yet.
 fn planned<'l>(
-    lowering: &'l PartialProgram,
+    lowering: &'l Program,
     ctx: &CompileContext,
 ) -> Result<Vec<Declared<'l>>, Diagnostic> {
     let pou = super::current_pou(ctx).ok_or_else(Diagnostic::internal_error)?;
     let statements = lowering
         .prologue(pou)
-        .ok_or_else(|| super::unsupported_value(lowering.prologue_unsupported(pou)))?;
+        .ok_or_else(Diagnostic::internal_error)?;
     let restarting = restarting(lowering, pou).ok_or_else(Diagnostic::internal_error)?;
     let result = match lowering.result(pou) {
         Some(var) => Some(named(lowering, var).ok_or_else(Diagnostic::internal_error)?),
@@ -243,7 +240,7 @@ fn planned<'l>(
 /// method body (REQ-LOW-codegen-165): the variable's slot holds what another
 /// stores in it, so the prologue clears it rather than storing into what it
 /// does not have.
-fn unstored(lowering: &PartialProgram, ctx: &CompileContext, place: &Place, name: &Named) -> bool {
+fn unstored(lowering: &Program, ctx: &CompileContext, place: &Place, name: &Named) -> bool {
     if !matches!(
         place.path(),
         [Projection::Field(_) | Projection::Index(_), ..]
@@ -266,7 +263,7 @@ fn unstored(lowering: &PartialProgram, ctx: &CompileContext, place: &Place, name
 /// The type of the variable `place` stores into, through the reference that
 /// holds it for an output or a result passed by reference, and whether
 /// `place` is that whole variable.
-fn declared_type(lowering: &PartialProgram, place: &Place) -> Option<(TypeId, bool)> {
+fn declared_type(lowering: &Program, place: &Place) -> Option<(TypeId, bool)> {
     let ty = lowering.variables().get(place.root())?.ty();
     match place.path() {
         [] => Some((ty, true)),

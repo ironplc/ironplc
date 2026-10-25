@@ -1,50 +1,12 @@
-//! A body's statements, each compiled from the lowered program
-//! ([`crate::lowered`]), the source position each records for the line map,
-//! a `RETURN`, and the capacity a string declaration states.
+//! The source position each statement of a body records for the line map,
+//! and a `RETURN`. The statements themselves are compiled from the lowered
+//! program ([`crate::lowered::emit_body`]).
 
-use ironplc_dsl::common::FunctionBlockBodyKind;
 use ironplc_dsl::core::SourceSpan;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::Statements;
 
 use super::compile::{CompileContext, CurrentFunctionReturn};
 use super::compile_expr::emit_load_var;
 use crate::emit::Emitter;
-
-/// Compiles a function block body.
-///
-/// `pou_span` locates the program organization unit that owns the body. An
-/// SFC body carries no span of its own, so a diagnostic about the body kind
-/// points at the POU instead.
-pub(crate) fn compile_body(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    body: &FunctionBlockBodyKind,
-    pou_span: &SourceSpan,
-) -> Result<(), Diagnostic> {
-    match body {
-        FunctionBlockBodyKind::Statements(statements) => {
-            compile_statements(emitter, ctx, statements)
-        }
-        FunctionBlockBodyKind::Empty => Ok(()),
-        FunctionBlockBodyKind::Sfc(_) => Err(Diagnostic::not_implemented(Label::span(
-            pou_span.clone(),
-            "Sequential function chart body",
-        ))),
-    }
-}
-
-/// Compiles the top-level statements of the current body.
-pub(crate) fn compile_statements(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    statements: &Statements,
-) -> Result<(), Diagnostic> {
-    for (index, stmt) in statements.body.iter().enumerate() {
-        crate::lowered::compile_statement(emitter, ctx, index, stmt)?;
-    }
-    Ok(())
-}
 
 /// Records `span` as the source position of the opcodes that follow, so
 /// they get a line-map entry pointing at the statement there.

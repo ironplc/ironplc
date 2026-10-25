@@ -228,8 +228,9 @@ two functions was called, and the range it names is the same.
    `dialects` surfaces follow from `POLICY_DESCRIPTORS`; the CLI needs one
    `clap_policy!` newtype and one `Option` field, which its drift test
    enforces.
-4. Thread the field from `CodegenOptions` to the emitter and select the
-   func_id from it.
+4. Lower the field into the operation's `Intrinsic`, from the options the
+   analysis ran with, as `ironplc_lowering::parse_policy` does, and select
+   the func_id from the intrinsic in the emitter.
 5. Dispatch in the VM on the decoded ID, in a module of its own.
 6. Document the policy on the page for the operation it governs, with the
    result for every alternative and any divergence from a vendor whose

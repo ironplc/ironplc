@@ -12,7 +12,6 @@ use ironplc_problems::Problem;
 use log::debug;
 
 use crate::{
-    execution_model,
     function_environment::FunctionEnvironmentBuilder,
     ironplc_dsl::common::Library,
     result::SemanticResult,
@@ -366,10 +365,6 @@ pub fn resolve_types(
     debug!("Symbol Environment:");
     debug!("{symbol_environment:?}");
 
-    // What runs, and when, resolved once next to `reachable`, so that a
-    // backend builds from it rather than deciding it again.
-    let model = execution_model::resolve(&library, options);
-
     let mut context = SemanticContext::new(
         type_environment,
         function_environment,
@@ -377,7 +372,6 @@ pub fn resolve_types(
         reachable,
         *options,
     )
-    .with_execution_model(model)
     .with_type_defaults(type_defaults);
     context.add_diagnostics(diagnostics);
 

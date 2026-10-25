@@ -1,37 +1,15 @@
-//! The standard library as this backend sees it: the builtin each standard
-//! function stands for, the conversion between two operation types, and the
-//! field layout of each standard function block, which runs in the VM.
+//! The standard library as this backend sees it: the conversion between two
+//! operation types, and the field layout of each standard function block,
+//! which runs in the VM.
 
 use std::collections::HashMap;
 
-use ironplc_analyzer::{
-    BuiltinFunction, CounterWidth, FunctionEnvironment, StandardFunctionBlock, TypeEnvironment,
-};
 use ironplc_container::{opcode, FbTypeId};
-use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_ir::lowered::PouId;
-use ironplc_lowering::PartialProgram;
+use ironplc_ir::lowered::{CounterWidth, PouId, Program, StandardFunctionBlock};
 
 use super::compile::{OpWidth, Signedness, VarTypeInfo};
 use crate::emit::Emitter;
-
-/// Returns the operation each standard function in `functions` stands for,
-/// by name.
-///
-/// Codegen recognizes a standard function only through this table, built
-/// from the signatures the analyzer resolved calls against, never by its
-/// spelling.
-pub(crate) fn builtin_functions_by_name(
-    functions: &FunctionEnvironment,
-) -> HashMap<Id, BuiltinFunction> {
-    functions
-        .iter()
-        .filter_map(|(_, signature)| {
-            Some((signature.name.clone(), signature.builtin_function.clone()?))
-        })
-        .collect()
-}
 
 /// Emits the appropriate conversion BUILTIN opcode for the source->target
 /// type transition. Does nothing for same-domain integer conversions that
@@ -134,30 +112,13 @@ pub(crate) fn standard_fb_layout(
     (FbTypeId::new(type_id), fields, field_map)
 }
 
-/// The standard function block each POU of `lowering` without a
-/// declaration of its own is, as the type environment `types` records the
-/// type of the POU's name: the block whose VM block [`standard_fb_layout`]
-/// gives a lowered call of the POU.
-///
-/// Lowering does not generate the standard blocks yet (issue 2288), so the
-/// POU's name is what matches it to its block, here, once.
-pub(crate) fn standard_blocks(
-    lowering: &PartialProgram,
-    types: &TypeEnvironment,
-) -> HashMap<PouId, StandardFunctionBlock> {
-    let by_name: HashMap<String, StandardFunctionBlock> = types
-        .iter()
-        .filter_map(|(name, attributes)| {
-            Some((name.to_string().to_uppercase(), attributes.standard_block?))
-        })
-        .collect();
-    let pous = lowering.pous();
+/// The standard function block each POU of `program` stands for, which
+/// runs in the VM: the block whose VM block [`standard_fb_layout`] gives a
+/// lowered call of the POU.
+pub(crate) fn standard_blocks(program: &Program) -> HashMap<PouId, StandardFunctionBlock> {
+    let pous = program.pous();
     pous.ids()
-        .filter(|pou| lowering.parts(*pou).is_none())
-        .filter_map(|pou| {
-            let name = pous.name(pou)?.to_string().to_uppercase();
-            Some((pou, *by_name.get(&name)?))
-        })
+        .filter_map(|pou| Some((pou, pous.standard_block(pou)?)))
         .collect()
 }
 

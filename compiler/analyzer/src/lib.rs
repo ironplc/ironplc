@@ -27,7 +27,6 @@ mod clean_analysis;
 mod constant_folding;
 mod enumerated_value_type;
 pub mod enumeration_members;
-pub mod execution_model;
 mod function_environment;
 mod result;
 mod rule_abstract_not_instantiated;
@@ -145,6 +144,9 @@ pub use builtin_function::{
 };
 pub use callee_resolution::MethodOwners;
 pub use clean_analysis::CleanAnalysis;
+// The options an analysis ran with, which `SemanticContext::compiler_options`
+// gives, re-exported so that a pass after the analyzer names them through
+// this crate.
 pub use function_environment::{
     FunctionEnvironment, FunctionEnvironmentBuilder, FunctionSignature,
 };
@@ -153,6 +155,7 @@ pub use intermediates::arithmetic_overload::{
     TypedOverload,
 };
 pub use intermediates::operator_function_form::FormOf;
+pub use ironplc_parser::options::CompilerOptions;
 pub use semantic_context::{SemanticContext, SemanticContextBuilder};
 pub use semantic_type::SemanticType;
 pub use standard_function_block::{CounterWidth, StandardFunctionBlock};

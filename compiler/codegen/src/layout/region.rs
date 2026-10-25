@@ -10,8 +10,8 @@ use std::collections::HashMap;
 
 use ironplc_analyzer::StandardFunctionBlock;
 use ironplc_container::CharWidth;
+use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::{Encoding, PouId, StringShape, TypeId, TypeKind, TypeTable};
-use ironplc_lowering::PartialProgram;
 
 use super::lowered::copy_slots;
 use crate::compile::{string_region_size, FbFieldIndex, StringVarInfo};
@@ -29,7 +29,7 @@ pub(super) struct Run {
 
 /// The runs of the data region reserved so far.
 pub(super) struct Region<'a> {
-    lowering: &'a PartialProgram,
+    lowering: &'a Program,
     /// The reachable user function blocks, which an instance of one is laid
     /// out for.
     blocks: &'a [PouId],
@@ -43,7 +43,7 @@ impl<'a> Region<'a> {
     /// An empty data region, for the declarations of `lowering`, whose
     /// reachable user function blocks are `blocks`.
     pub(super) fn new(
-        lowering: &'a PartialProgram,
+        lowering: &'a Program,
         blocks: &'a [PouId],
         standard_blocks: &'a HashMap<PouId, StandardFunctionBlock>,
     ) -> Self {
@@ -181,7 +181,7 @@ impl<'a> Region<'a> {
     }
 
     /// The declarations the region is reserved for.
-    pub(super) fn lowering(&self) -> &'a PartialProgram {
+    pub(super) fn lowering(&self) -> &'a Program {
         self.lowering
     }
 
