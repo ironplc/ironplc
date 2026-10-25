@@ -47,7 +47,7 @@ impl Lowering<'_> {
         expr: &AstExpr,
         symbolic: &SymbolicVariableKind,
     ) -> Lowered<Expr> {
-        let (_, recorded) = self.operated_type(expr)?;
+        let recorded = self.typed(expr)?.scalar()?;
         let value = self.selected_value(frame, symbolic)?;
         // The analyzer gave the access the type its selection has.
         if value.ty() != recorded {

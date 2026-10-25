@@ -28,9 +28,10 @@ use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::textual::{Expr as AstExpr, ExprKind as AstExprKind, Function};
 use ironplc_ir::lowered::{
     Arg, CompareOp, Encoding, Expr, Intrinsic, NarrowWidth, Param, Place, ScalarType, Signedness,
-    Stmt, StrExpr, TypeKind,
+    Stmt, StrExpr,
 };
 
+use crate::typed::Class;
 use crate::variables::BodyFrame;
 use crate::{Body, Lowered, Lowering, Unlowered};
 
@@ -143,7 +144,7 @@ impl Lowering<'_> {
         let [value] = args else {
             return Err(Unlowered::NotYet);
         };
-        let (_, operated) = self.operated_type(value)?;
+        let operated = self.typed(value)?.scalar()?;
         let intrinsic = match operated {
             ScalarType::I32(Signedness::Signed) => Intrinsic::I32ToString,
             ScalarType::I32(Signedness::Unsigned) => Intrinsic::U32ToString,
@@ -169,7 +170,8 @@ impl Lowering<'_> {
         expr: &AstExpr,
         value: &AstExpr,
     ) -> Lowered<Expr> {
-        let (target, operated) = self.operated_type(expr)?;
+        let target = self.typed(expr)?;
+        let operated = target.scalar()?;
         let parse = self.parse;
         let intrinsic = match operated {
             ScalarType::I32(signedness) => {
@@ -185,7 +187,7 @@ impl Lowering<'_> {
                         Intrinsic::StringToU32(parse),
                     ],
                 };
-                match self.program.types().narrowed_storage(target) {
+                match self.program.types().narrowed_storage(target.ty) {
                     Some(NarrowWidth::B8) => bits_8,
                     Some(NarrowWidth::B16) => bits_16,
                     None => bits_32,
@@ -223,19 +225,6 @@ impl Lowering<'_> {
         Ok(Expr::compare(op, order, zero, span)?)
     }
 
-    /// The encoding of the string type the analyzer recorded for `expr`;
-    /// `None` when it recorded no type, or one that is not a string.
-    pub(crate) fn string_encoding(&mut self, expr: &AstExpr) -> Lowered<Option<Encoding>> {
-        let Some(recorded) = expr.expr_type.as_ref().and_then(|ty| ty.type_id()) else {
-            return Ok(None);
-        };
-        let ty = self.lowered_type(recorded)?;
-        let Some(TypeKind::String(shape)) = self.program.types().kind(ty) else {
-            return Ok(None);
-        };
-        Ok(Some(shape.encoding))
-    }
-
     /// The intrinsic of the string function `function` for the encoding the
     /// analyzer recorded for its first argument.
     fn string_intrinsic(
@@ -255,7 +244,9 @@ impl Lowering<'_> {
             StringFunction::Mid => [Intrinsic::MidString, Intrinsic::MidWString],
         };
         let first = args.first().ok_or(Unlowered::NotYet)?;
-        let encoding = self.string_encoding(first)?.ok_or(Unlowered::NotYet)?;
+        let Class::String(encoding) = self.typed(first)?.class else {
+            return Err(Unlowered::NotYet);
+        };
         Ok(match encoding {
             Encoding::Narrow => narrow,
             Encoding::Wide => wide,
