@@ -237,7 +237,9 @@ END_CONFIGURATION
     let mut other = parse_program(other, &FileId::default(), &options).unwrap();
     let mut resource2 = configuration_mut(&mut other).resource_decl.remove(0);
     resource2.programs.clear();
-    configuration_mut(&mut library).resource_decl.push(resource2);
+    configuration_mut(&mut library)
+        .resource_decl
+        .push(resource2);
     let (library, context) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
     let container = compile_analyzed(&library, &context, &options).unwrap();
 
