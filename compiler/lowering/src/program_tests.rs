@@ -5,7 +5,7 @@ use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_ir::lowered::{Declaration, Owner, PouId, Section, StandardFunctionBlock};
 
 use crate::test_support::lower_whole;
-use crate::{PartialProgram, StatementLowering};
+use crate::PartialProgram;
 
 /// One task running the instance `inst` of the program `main`.
 const CONFIGURATION: &str = "
@@ -301,14 +301,8 @@ END_PROGRAM
 ";
     let program = whole(source);
     let f = pou(&program, "F");
-    assert!(matches!(
-        program.statement(f, 0),
-        Some(StatementLowering::Unsupported)
-    ));
-    assert!(matches!(
-        program.statement(f, 1),
-        Some(StatementLowering::Lowered(_))
-    ));
+    assert!(matches!(program.statement(f, 0), Some(Err(_))));
+    assert!(matches!(program.statement(f, 1), Some(Ok(_))));
     assert!(program.statement(f, 2).is_none());
 
     assert_eq!(
@@ -340,14 +334,8 @@ END_PROGRAM
     let program = whole(source);
     assert!(!program.declarations_complete());
     let main = pou(&program, "main");
-    assert!(matches!(
-        program.statement(main, 0),
-        Some(StatementLowering::Unsupported)
-    ));
-    assert!(matches!(
-        program.statement(main, 1),
-        Some(StatementLowering::Lowered(_))
-    ));
+    assert!(matches!(program.statement(main, 0), Some(Err(_))));
+    assert!(matches!(program.statement(main, 1), Some(Ok(_))));
     assert!(program.statement(pou(&program, "F"), 0).is_none());
 
     assert_eq!(unsupported_at(program, source), ["F", ":="]);

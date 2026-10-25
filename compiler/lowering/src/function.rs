@@ -47,8 +47,7 @@
 //! that is an array (REQ-LOW-lowering-079), a call with `EN` or `ENO` (REQ-LOW-lowering-160),
 //! a call through `THIS^` or `SUPER^`, and a call of a method its receiver's
 //! block inherits from a block whose type it does not extend in the lowered
-//! program (REQ-LOW-lowering-177). The route that reads the AST passes no
-//! string to a `VAR_IN_OUT` (`compile_reference_arg`).
+//! program (REQ-LOW-lowering-177).
 
 use ironplc_analyzer::symbol_environment::Resolution;
 use ironplc_dsl::common::{
@@ -63,16 +62,11 @@ use ironplc_dsl::textual::{
 };
 use ironplc_ir::execution::DebugName;
 use ironplc_ir::lowered::{
-    Arg, Owner, Param, Place, PouId, Projection, Stmt, TypeId, TypeKind, VarId,
+    Arg, Expr, Owner, Param, Place, PouId, Projection, Stmt, TypeId, TypeKind, VarId,
 };
 
-use crate::expr::Lowered;
 use crate::variables::BodyFrame;
-use crate::{Body, CallOutputs, Lowering};
-
-/// A lowered node, `None` when lowering does not support it, or something
-/// inside it, yet.
-type Made<T> = Result<Option<T>, Diagnostic>;
+use crate::{Body, CallOutputs, Lowered, Lowering, Unlowered};
 
 /// The section that declares a parameter of a function or method.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -169,7 +163,7 @@ impl<'a> Lowering<'a> {
         expr: &AstExpr,
         func: &Function,
         function: &'a FunctionDeclaration,
-    ) -> Lowered {
+    ) -> Lowered<Expr> {
         self.user_call(
             frame,
             expr,
@@ -186,32 +180,32 @@ impl<'a> Lowering<'a> {
         frame: &BodyFrame,
         expr: &AstExpr,
         call: &MethodCall,
-    ) -> Lowered {
-        match self.method_call(frame, call) {
-            Some(call) => self.user_call(frame, expr, call),
-            None => Ok(None),
-        }
+    ) -> Lowered<Expr> {
+        let call = self.method_call(frame, call).ok_or(Unlowered::NotYet)?;
+        self.user_call(frame, expr, call)
     }
 
     /// The call `call`, the expression `expr`, a value: a `Call`, or an
     /// in-place call of a callee with outputs.
-    fn user_call(&mut self, frame: &BodyFrame, expr: &AstExpr, call: UserCall<'_, 'a>) -> Lowered {
+    fn user_call(
+        &mut self,
+        frame: &BodyFrame,
+        expr: &AstExpr,
+        call: UserCall<'_, 'a>,
+    ) -> Lowered<Expr> {
         let span = expr.span();
-        let Some((args, stores)) = self.call_with_stores(frame, call, &span)? else {
-            return Ok(None);
-        };
+        let (args, stores) = self.call_with_stores(frame, call, &span)?;
         if self.result_type(args.pou).is_none() {
             // The analyzer rejects a value of a method without a result
             // (P4057), a function whose result is a string is a string, and
             // one whose result is a structure is only assigned whole.
-            return Ok(None);
+            return Err(Unlowered::NotYet);
         }
         match stores {
-            Some(stores) => self
+            Some(stores) => Ok(self
                 .program
-                .call_in_place(args.pou, args.args, stores, span)
-                .map(Some),
-            None => self.program.call(args.pou, args.args, span).map(Some),
+                .call_in_place(args.pou, args.args, stores, span)?),
+            None => Ok(self.program.call(args.pou, args.args, span)?),
         }
     }
 
@@ -223,27 +217,20 @@ impl<'a> Lowering<'a> {
         frame: &BodyFrame,
         call: UserCall<'_, 'a>,
         span: &SourceSpan,
-    ) -> Made<(CallArgs, Option<Vec<Stmt>>)> {
-        let Some(parameters) = call.parameters() else {
-            return Ok(None);
-        };
-        let Some(mut args) = self.call_args(frame, call, &parameters, span)? else {
-            return Ok(None);
-        };
+    ) -> Lowered<(CallArgs, Option<Vec<Stmt>>)> {
+        let parameters = call.parameters().ok_or(Unlowered::NotYet)?;
+        let mut args = self.call_args(frame, call, &parameters, span)?;
         if !has_outputs(&parameters) {
-            return Ok(Some((args, None)));
+            return Ok((args, None));
         }
         let temporaries = std::mem::take(&mut args.temporaries);
-        let Some(stores) = self.outputs(
+        let stores = self.outputs(
             frame,
             CallOutputs::Temporaries(temporaries),
             call.params(),
             span,
-        )?
-        else {
-            return Ok(None);
-        };
-        Ok(Some((args, Some(stores))))
+        )?;
+        Ok((args, Some(stores)))
     }
 
     /// The method call statement `call`: a `Call` statement, whose result,
@@ -252,19 +239,15 @@ impl<'a> Lowering<'a> {
         &mut self,
         frame: &BodyFrame,
         call: &MethodCall,
-    ) -> Made<Vec<Stmt>> {
+    ) -> Lowered<Vec<Stmt>> {
         // Every part is the statement the call is, for the line map
         // (REQ-LOW-lowering-063).
         let span = call.span();
-        let Some(user_call) = self.method_call(frame, call) else {
-            return Ok(None);
-        };
-        let Some((args, stores)) = self.call_with_stores(frame, user_call, &span)? else {
-            return Ok(None);
-        };
+        let user_call = self.method_call(frame, call).ok_or(Unlowered::NotYet)?;
+        let (args, stores) = self.call_with_stores(frame, user_call, &span)?;
         let mut stmts = vec![self.program.call_stmt(args.pou, args.args, span)?];
         stmts.extend(stores.unwrap_or_default());
-        Ok(Some(stmts))
+        Ok(stmts)
     }
 
     /// The method `call` calls in the body of `frame`: the one the block of
@@ -329,23 +312,17 @@ impl<'a> Lowering<'a> {
         call: UserCall<'_, 'a>,
         parameters: &[(&Id, Section)],
         span: &SourceSpan,
-    ) -> Made<CallArgs> {
+    ) -> Lowered<CallArgs> {
         let callee = call.callee().span();
-        let Some(pou) = self.callee_pou(call.body(), parameters, &callee)? else {
-            return Ok(None);
-        };
-        let Some(params) = self.program.params(pou) else {
-            return Ok(None);
-        };
+        let pou = self.callee_pou(call.body(), parameters, &callee)?;
+        let params = self.program.params(pou).ok_or(Unlowered::NotYet)?;
         let mut args = Vec::with_capacity(params.len());
         let mut declared = params.iter();
         if let UserCall::Method { call, .. } = call {
             let MethodReceiver::Instance(instance) = &call.receiver else {
-                return Ok(None);
+                return Err(Unlowered::NotYet);
             };
-            let Some(receiver) = self.named_place(frame, instance, &instance.span())? else {
-                return Ok(None);
-            };
+            let receiver = self.named_place(frame, instance, &instance.span())?;
             // The instance parameter.
             declared.next();
             args.push(Arg::Ref(receiver));
@@ -362,7 +339,7 @@ impl<'a> Lowering<'a> {
         let mut result = None;
         if returns_through {
             let Some(Param::Ref(ty)) = declared.next() else {
-                return Ok(None);
+                return Err(Unlowered::NotYet);
             };
             let temporary = self.temporary(frame, format!("{}()", call.callee()), *ty, span)?;
             args.push(Arg::Ref(temporary.clone()));
@@ -379,15 +356,12 @@ impl<'a> Lowering<'a> {
             match (section, param) {
                 (Section::Input | Section::InOut, _) => {
                     let Some(ParamAssignmentKind::NamedInput(input)) = inputs.next() else {
-                        return Ok(None);
+                        return Err(Unlowered::NotYet);
                     };
                     if input.name != **name {
-                        return Ok(None);
+                        return Err(Unlowered::NotYet);
                     }
-                    let Some(arg) = self.arg(frame, *param, &input.expr)? else {
-                        return Ok(None);
-                    };
-                    args.push(arg);
+                    args.push(self.arg(frame, *param, &input.expr)?);
                 }
                 (Section::Output, Param::Ref(ty)) => {
                     let label = format!("{}.{}", call.callee(), name);
@@ -396,17 +370,17 @@ impl<'a> Lowering<'a> {
                     temporaries.push(((*name).clone(), temporary));
                 }
                 (Section::Output, Param::Value(_) | Param::Str(_) | Param::Copy(_)) => {
-                    return Ok(None)
+                    return Err(Unlowered::NotYet)
                 }
             }
         }
         if inputs.next().is_some() {
-            return Ok(None);
+            return Err(Unlowered::NotYet);
         }
         // A `VAR_IN_OUT`'s variable, and a receiver, is of its parameter's
         // type, which the analyzer checked, or a receiver of a block that
         // extends the method's; one lowered to another type, such as a
-        // receiver of a block whose type records no base, stays on the AST.
+        // receiver of a block whose type records no base, is not lowered.
         let types = self.program.types();
         let passes = args.len() == params.len()
             && args
@@ -414,48 +388,44 @@ impl<'a> Lowering<'a> {
                 .zip(&params)
                 .all(|(arg, param)| arg.param().passes_for(*param, types));
         if !passes {
-            return Ok(None);
+            return Err(Unlowered::NotYet);
         }
-        Ok(Some(CallArgs {
+        Ok(CallArgs {
             pou,
             args,
             temporaries,
             result,
-        }))
+        })
     }
 
     /// The POU of the function or method `body`, declared with its
     /// parameters and result the first time a call reaches it or the whole
-    /// program is lowered; `None` for any other body, or when its
-    /// parameters are not ones lowering expresses yet.
-    pub(crate) fn signature_pou(&mut self, body: Body<'a>, span: &SourceSpan) -> Made<PouId> {
-        let Some(parameters) = body_parameters(body) else {
-            return Ok(None);
-        };
+    /// program is lowered. Any other body, and one whose parameters are not
+    /// ones lowering expresses yet, is not lowered.
+    pub(crate) fn signature_pou(&mut self, body: Body<'a>, span: &SourceSpan) -> Lowered<PouId> {
+        let parameters = body_parameters(body).ok_or(Unlowered::NotYet)?;
         self.callee_pou(body, &parameters, span)
     }
 
     /// The POU of the function or method `body`, whose parameters are
     /// `parameters`, declared with its parameters and result, at `span`,
-    /// the first time it is asked for; `None` when one of them is not a
-    /// scalar, or, for an input or an output, a string, or, for an input,
-    /// an array or a structure.
+    /// the first time it is asked for. A parameter that is not a scalar, or,
+    /// for an input or an output, a string, or, for an input, an array or a
+    /// structure, is not lowered yet.
     fn callee_pou(
         &mut self,
         body: Body<'a>,
         parameters: &[(&Id, Section)],
         span: &SourceSpan,
-    ) -> Made<PouId> {
+    ) -> Lowered<PouId> {
         let result = match body {
             Body::Function(function) => Some(&function.name),
             Body::Method { method, .. } => method.return_type.as_ref().map(|_| &method.name),
-            Body::Program(_) | Body::FunctionBlock(_) => return Ok(None),
+            Body::Program(_) | Body::FunctionBlock(_) => return Err(Unlowered::NotYet),
         };
-        let Some(frame) = self.frame(body)? else {
-            return Ok(None);
-        };
+        let frame = self.frame(body)?;
         if self.program.pous().function(frame.pou).is_some() {
-            return Ok(Some(frame.pou));
+            return Ok(frame.pou);
         }
         let mut variables = Vec::with_capacity(parameters.len() + 1);
         if let Some(instance) = &frame.instance {
@@ -466,14 +436,11 @@ impl<'a> Lowering<'a> {
                 // An array, structure or function block input is passed by
                 // copy (REQ-LOW-lowering-075).
                 Section::Input => match self.aggregate_variable(&frame, name)? {
-                    Some(aggregate) => Some(aggregate),
+                    Some(aggregate) => aggregate,
                     None => self.scalar_variable(&frame, name, true)?,
                 },
                 Section::Output => self.scalar_variable(&frame, name, true)?,
                 Section::InOut => self.scalar_variable(&frame, name, false)?,
-            };
-            let Some(parameter) = parameter else {
-                return Ok(None);
             };
             variables.push(parameter);
         }
@@ -504,10 +471,13 @@ impl<'a> Lowering<'a> {
         // Any other result is the variable named after the function or
         // method, unless that name is a parameter's.
         let result = match (result_parameter, result) {
-            (None, Some(name)) => match self.scalar_variable(&frame, name, false)? {
-                Some(result) if !variables.contains(&result) => Some(result),
-                Some(_) | None => return Ok(None),
-            },
+            (None, Some(name)) => {
+                let result = self.scalar_variable(&frame, name, false)?;
+                if variables.contains(&result) {
+                    return Err(Unlowered::NotYet);
+                }
+                Some(result)
+            }
             (Some(_), _) | (None, None) => None,
         };
         match (body, result_parameter, result) {
@@ -524,20 +494,18 @@ impl<'a> Lowering<'a> {
                     .declare_method(frame.pou, variables, result, span)?;
             }
             (Body::Function(_), None, None) | (Body::Program(_) | Body::FunctionBlock(_), _, _) => {
-                return Ok(None)
+                return Err(Unlowered::NotYet)
             }
         }
-        Ok(Some(frame.pou))
+        Ok(frame.pou)
     }
 
     /// The result parameter of the function named `name`, whose body is
     /// `frame`, when its result is a string or a structure: the variable its
     /// body reaches the result through (REQ-LOW-lowering-079). `None` for
     /// any other result.
-    fn result_parameter(&mut self, frame: &BodyFrame, name: &Id) -> Made<VarId> {
-        let Some(place) = self.named_place(frame, name, &name.span())? else {
-            return Ok(None);
-        };
+    fn result_parameter(&mut self, frame: &BodyFrame, name: &Id) -> Lowered<Option<VarId>> {
+        let place = self.named_place(frame, name, &name.span())?;
         let through = matches!(place.path(), [Projection::Deref]);
         let returned = matches!(
             self.program.types().kind(place.ty()),
@@ -549,10 +517,8 @@ impl<'a> Lowering<'a> {
     /// The variable `name` refers to in the body of `frame`, a function or
     /// method, when it is the whole of an array, a structure or a function
     /// block instance, as an input of one is; `None` otherwise.
-    fn aggregate_variable(&mut self, frame: &BodyFrame, name: &Id) -> Made<VarId> {
-        let Some(place) = self.named_place(frame, name, &name.span())? else {
-            return Ok(None);
-        };
+    fn aggregate_variable(&mut self, frame: &BodyFrame, name: &Id) -> Lowered<Option<VarId>> {
+        let place = self.named_place(frame, name, &name.span())?;
         let aggregate = place.path().is_empty()
             && matches!(
                 self.program.types().kind(place.ty()),
@@ -566,19 +532,20 @@ impl<'a> Lowering<'a> {
     }
 
     /// The variable `name` refers to in the body of `frame`, a function or
-    /// method; `None` unless it is a variable of a scalar type, or a
-    /// `VAR_IN_OUT` or `VAR_OUTPUT`, a reference to one. Where `string`, it
-    /// may also be a string, as a `VAR_INPUT` is, or refer to one, as a
-    /// `VAR_OUTPUT` does.
-    fn scalar_variable(&mut self, frame: &BodyFrame, name: &Id, string: bool) -> Made<VarId> {
-        let Some(place) = self.named_place(frame, name, &name.span())? else {
-            return Ok(None);
-        };
+    /// method, when it is a variable of a scalar type, or a `VAR_IN_OUT` or
+    /// `VAR_OUTPUT`, a reference to one. Where `string`, it may also be a
+    /// string, as a `VAR_INPUT` is, or refer to one, as a `VAR_OUTPUT` does.
+    /// Any other variable is not lowered as a parameter yet.
+    fn scalar_variable(&mut self, frame: &BodyFrame, name: &Id, string: bool) -> Lowered<VarId> {
+        let place = self.named_place(frame, name, &name.span())?;
         let types = self.program.types();
         let whole = matches!(place.path(), [] | [Projection::Deref]);
         let scalar = whole && types.operation_type(place.ty()).is_some();
         let of_string = whole && matches!(types.kind(place.ty()), Some(TypeKind::String(_)));
-        Ok((scalar || (string && of_string)).then(|| place.root()))
+        if !(scalar || (string && of_string)) {
+            return Err(Unlowered::NotYet);
+        }
+        Ok(place.root())
     }
 
     /// The type of the result of the function or method `pou`; `None` for a

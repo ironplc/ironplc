@@ -13,7 +13,6 @@
 use ironplc_analyzer::{BitShift, BuiltinFunction, FormOf, NumericFunction};
 use ironplc_dsl::common::ElementaryTypeName;
 use ironplc_dsl::core::{Located, SourceSpan};
-use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{
     CompareOp, Expr as AstExpr, ExprKind as AstExprKind, Function, Operator,
 };
@@ -22,9 +21,8 @@ use ironplc_ir::lowered::{
     Signedness, StringShape, TypeId, TypeKind, TypeTable,
 };
 
-use crate::expr::Lowered;
 use crate::variables::BodyFrame;
-use crate::{Body, Lowering};
+use crate::{Body, Lowered, Lowering, Unlowered};
 
 impl Lowering<'_> {
     /// The call `func`, the expression `expr`.
@@ -33,17 +31,20 @@ impl Lowering<'_> {
         frame: &BodyFrame,
         expr: &AstExpr,
         func: &Function,
-    ) -> Lowered {
-        let Some(signature) = self.analysis.context().functions().get(&func.name) else {
-            return Ok(None);
-        };
+    ) -> Lowered<Expr> {
+        let signature = self
+            .analysis
+            .context()
+            .functions()
+            .get(&func.name)
+            .ok_or(Unlowered::NotYet)?;
         let Some(builtin) = signature.builtin_function.clone() else {
             return match self.body_named(&func.name) {
                 Some(Body::Function(function)) => {
                     self.user_function_call(frame, expr, func, function)
                 }
                 Some(Body::Program(_) | Body::FunctionBlock(_) | Body::Method { .. }) | None => {
-                    Ok(None)
+                    Err(Unlowered::NotYet)
                 }
             };
         };
@@ -58,21 +59,17 @@ impl Lowering<'_> {
                     let value = self.expr(frame, value)?;
                     self.of_own_type(expr, value)
                 }
-                _ => Ok(None),
+                _ => Err(Unlowered::NotYet),
             },
             BuiltinFunction::BitShift(shift) => {
                 // A shift computes at the type of the value it shifts.
-                let Some((ty, _)) = self.operated_type(expr)? else {
-                    return Ok(None);
-                };
+                let (ty, _) = self.operated_type(expr)?;
                 let types = self.program.types();
-                let Some(intrinsic) = types
+                let intrinsic = types
                     .operation_type(ty)
                     .zip(types.bit_width(ty))
                     .and_then(|(operated, width)| shift_intrinsic(shift, operated, width))
-                else {
-                    return Ok(None);
-                };
+                    .ok_or(Unlowered::NotYet)?;
                 self.intrinsic_call(frame, expr, intrinsic, &args)
             }
             BuiltinFunction::Numeric(function) => self.numeric_call(frame, expr, function, &args),
@@ -87,39 +84,35 @@ impl Lowering<'_> {
                     Intrinsic::MuxF32,
                     Intrinsic::MuxF64,
                 ]);
-                let Some(intrinsic) = self
-                    .operated_type(expr)?
-                    .and_then(|(_, operated)| mux.at(operated))
-                else {
-                    return Ok(None);
-                };
+                let (_, operated) = self.operated_type(expr)?;
+                let intrinsic = mux.at(operated).ok_or(Unlowered::NotYet)?;
                 self.intrinsic_call(frame, expr, intrinsic, &args)
             }
             BuiltinFunction::Trunc => match args.as_slice() {
                 [value] => self.trunc(frame, expr, value),
-                _ => Ok(None),
+                _ => Err(Unlowered::NotYet),
             },
             BuiltinFunction::Conversion { source, target } => match args.as_slice() {
                 // A conversion to a `STRING` yields a string, a `StrExpr`
-                // (`string.rs`).
-                [_] if target == ElementaryTypeName::STRING => Ok(None),
+                // (`string.rs`), not a scalar.
+                [_] if target == ElementaryTypeName::STRING => Err(Unlowered::NotYet),
                 [value] if source == ElementaryTypeName::STRING => {
                     self.string_to_number(frame, expr, value)
                 }
                 [value] => self.conversion(frame, expr, value),
-                _ => Ok(None),
+                _ => Err(Unlowered::NotYet),
             },
             BuiltinFunction::BcdToInt => match args.as_slice() {
                 [value] => self.bcd_to_int(frame, expr, value),
-                _ => Ok(None),
+                _ => Err(Unlowered::NotYet),
             },
             BuiltinFunction::IntToBcd => match args.as_slice() {
                 [value] => self.int_to_bcd(frame, expr, value),
-                _ => Ok(None),
+                _ => Err(Unlowered::NotYet),
             },
             BuiltinFunction::Sizeof => match args.as_slice() {
                 [value] => self.sizeof(expr, value),
-                _ => Ok(None),
+                _ => Err(Unlowered::NotYet),
             },
             // A typed time function computes at the width of its result.
             BuiltinFunction::Time { function, .. } => {
@@ -127,11 +120,11 @@ impl Lowering<'_> {
             }
             BuiltinFunction::DtToDate => match args.as_slice() {
                 [value] => self.dt_to_date(frame, expr, value),
-                _ => Ok(None),
+                _ => Err(Unlowered::NotYet),
             },
             BuiltinFunction::DtToTod => match args.as_slice() {
                 [value] => self.dt_to_tod(frame, expr, value),
-                _ => Ok(None),
+                _ => Err(Unlowered::NotYet),
             },
             BuiltinFunction::String(function) => {
                 self.string_function_call(frame, expr, function, &args)
@@ -143,35 +136,27 @@ impl Lowering<'_> {
     /// the integer the analyzer recorded for the call, the integer of its
     /// context. Like an arithmetic result, it is not narrowed until it is
     /// stored.
-    fn trunc(&mut self, frame: &BodyFrame, expr: &AstExpr, value: &AstExpr) -> Lowered {
-        let Some((_, to)) = self.operated_type(expr)? else {
-            return Ok(None);
-        };
-        let Some(value) = self.expr(frame, value)? else {
-            return Ok(None);
-        };
+    fn trunc(&mut self, frame: &BodyFrame, expr: &AstExpr, value: &AstExpr) -> Lowered<Expr> {
+        let (_, to) = self.operated_type(expr)?;
+        let value = self.expr(frame, value)?;
         if !(value.ty().is_real() && to.is_integer()) {
-            return Ok(None);
+            return Err(Unlowered::NotYet);
         }
-        Expr::convert(value, to, expr.span()).map(Some)
+        Ok(Expr::convert(value, to, expr.span())?)
     }
 
     /// The type conversion `<SOURCE>_TO_<TARGET>(value)`, the expression
     /// `expr`: a `Convert` where the operation type changes, then a
     /// `Truncate` where the target's storage narrows. A conversion to `BOOL`
     /// is a comparison with zero.
-    fn conversion(&mut self, frame: &BodyFrame, expr: &AstExpr, value: &AstExpr) -> Lowered {
+    fn conversion(&mut self, frame: &BodyFrame, expr: &AstExpr, value: &AstExpr) -> Lowered<Expr> {
         let span = expr.span();
         // The analyzer recorded the target as the type of the call.
-        let Some((target, to)) = self.operated_type(expr)? else {
-            return Ok(None);
-        };
-        let Some(value) = self.expr(frame, value)? else {
-            return Ok(None);
-        };
+        let (target, to) = self.operated_type(expr)?;
+        let value = self.expr(frame, value)?;
         if to == ScalarType::Bool {
             let zero = Expr::integer(0, value.ty(), span.clone())?;
-            return Expr::compare(LoweredCompareOp::Ne, value, zero, span).map(Some);
+            return Ok(Expr::compare(LoweredCompareOp::Ne, value, zero, span)?);
         }
         let value = if value.ty() == to {
             value
@@ -179,24 +164,24 @@ impl Lowering<'_> {
             Expr::convert(value, to, span.clone())?
         };
         match self.program.types().narrowed_storage(target) {
-            Some(width) => Expr::truncate(width, value, span).map(Some),
-            None => Ok(Some(value)),
+            Some(width) => Ok(Expr::truncate(width, value, span)?),
+            None => Ok(value),
         }
     }
 
     /// `BCD_TO_INT(value)`, the expression `expr`: the bit string `value`
     /// decoded at its width, then converted to the integer the analyzer
     /// recorded for the call, the integer of its context.
-    fn bcd_to_int(&mut self, frame: &BodyFrame, expr: &AstExpr, value: &AstExpr) -> Lowered {
-        let Some((_, to)) = self.operated_type(expr)? else {
-            return Ok(None);
-        };
+    fn bcd_to_int(&mut self, frame: &BodyFrame, expr: &AstExpr, value: &AstExpr) -> Lowered<Expr> {
+        let (_, to) = self.operated_type(expr)?;
         if !to.is_integer() {
-            return Ok(None);
+            return Err(Unlowered::NotYet);
         }
-        let Some(intrinsic) = self
-            .operated_type(value)?
-            .and_then(|(ty, _)| self.program.types().bit_width(ty))
+        let (ty, _) = self.operated_type(value)?;
+        let intrinsic = self
+            .program
+            .types()
+            .bit_width(ty)
             .and_then(|width| {
                 at_width(
                     width,
@@ -208,24 +193,18 @@ impl Lowering<'_> {
                     ],
                 )
             })
-        else {
-            return Ok(None);
-        };
-        let Some(decoded) = self.intrinsic_call(frame, expr, intrinsic, &[value])? else {
-            return Ok(None);
-        };
+            .ok_or(Unlowered::NotYet)?;
+        let decoded = self.intrinsic_call(frame, expr, intrinsic, &[value])?;
         if decoded.ty() == to {
-            return Ok(Some(decoded));
+            return Ok(decoded);
         }
-        Expr::convert(decoded, to, expr.span()).map(Some)
+        Ok(Expr::convert(decoded, to, expr.span())?)
     }
 
     /// `INT_TO_BCD(value)`, the expression `expr`: the integer `value`
     /// encoded at its width and signedness, as the bit string as wide as it.
-    fn int_to_bcd(&mut self, frame: &BodyFrame, expr: &AstExpr, value: &AstExpr) -> Lowered {
-        let Some((ty, operated)) = self.operated_type(value)? else {
-            return Ok(None);
-        };
+    fn int_to_bcd(&mut self, frame: &BodyFrame, expr: &AstExpr, value: &AstExpr) -> Lowered<Expr> {
+        let (ty, operated) = self.operated_type(value)?;
         let at_signedness = match operated.signedness() {
             Some(Signedness::Signed) => [
                 Intrinsic::IntToBcdI8,
@@ -239,40 +218,33 @@ impl Lowering<'_> {
                 Intrinsic::IntToBcdU32,
                 Intrinsic::IntToBcdU64,
             ],
-            None => return Ok(None),
+            None => return Err(Unlowered::NotYet),
         };
-        let Some(intrinsic) = self
+        let intrinsic = self
             .program
             .types()
             .bit_width(ty)
             .and_then(|width| at_width(width, at_signedness))
-        else {
-            return Ok(None);
-        };
+            .ok_or(Unlowered::NotYet)?;
         let encoded = self.intrinsic_call(frame, expr, intrinsic, &[value])?;
         self.of_own_type(expr, encoded)
     }
 
     /// `SIZEOF(value)`, the expression `expr`: the size in bytes of the type
     /// of `value`, which is not evaluated, as a constant of the integer the
-    /// analyzer recorded for the call (REQ-LOW-lowering-103).
-    fn sizeof(&mut self, expr: &AstExpr, value: &AstExpr) -> Lowered {
-        let Some((_, ty)) = self.operated_type(expr)? else {
-            return Ok(None);
-        };
-        let Some(size) = self
-            .recorded_type(value)?
-            .and_then(|of| byte_size(self.program.types(), of))
-        else {
-            return Ok(None);
-        };
+    /// analyzer recorded for the call (REQ-LOW-lowering-103). A type whose
+    /// size only a layout gives, such as a structure, is not lowered.
+    fn sizeof(&mut self, expr: &AstExpr, value: &AstExpr) -> Lowered<Expr> {
+        let (_, ty) = self.operated_type(expr)?;
+        let of = self.recorded_type(value)?;
+        let size = byte_size(self.program.types(), of).ok_or(Unlowered::NotYet)?;
         if !ty
             .integer_range()
             .is_some_and(|(min, max)| (min..=max).contains(&size))
         {
-            return Ok(None);
+            return Err(Unlowered::NotYet);
         }
-        Expr::integer(size, ty, expr.span()).map(Some)
+        Ok(Expr::integer(size, ty, expr.span())?)
     }
 
     /// The call `expr` of the numeric function `function` with `args`. The
@@ -283,15 +255,11 @@ impl Lowering<'_> {
         expr: &AstExpr,
         function: NumericFunction,
         args: &[&AstExpr],
-    ) -> Lowered {
+    ) -> Lowered<Expr> {
         // A numeric function computes at the type the analyzer converted its
         // inputs to.
-        let Some(intrinsic) = self
-            .operated_type(expr)?
-            .and_then(|(_, operated)| numeric_intrinsic(function, operated))
-        else {
-            return Ok(None);
-        };
+        let (_, operated) = self.operated_type(expr)?;
+        let intrinsic = numeric_intrinsic(function, operated).ok_or(Unlowered::NotYet)?;
         self.intrinsic_call(frame, expr, intrinsic, args)
     }
 
@@ -302,63 +270,54 @@ impl Lowering<'_> {
         expr: &AstExpr,
         intrinsic: Intrinsic,
         args: &[&AstExpr],
-    ) -> Lowered {
-        let Some(args) = self.intrinsic_args(frame, intrinsic, args)? else {
-            return Ok(None);
-        };
-        Expr::call(intrinsic, args, expr.span()).map(Some)
+    ) -> Lowered<Expr> {
+        let args = self.intrinsic_args(frame, intrinsic, args)?;
+        Ok(Expr::call(intrinsic, args, expr.span())?)
     }
 
     /// `args` of a call of `intrinsic`, each lowered as what its parameter
-    /// takes ([`Self::arg`]). `None` when one of them is not supported, or is
-    /// of another type than its parameter's, which the analyzer did not
-    /// convert to it.
+    /// takes ([`Self::arg`]). An argument of another type than its
+    /// parameter's, which the analyzer did not convert to it, is not
+    /// lowered.
     pub(crate) fn intrinsic_args(
         &mut self,
         frame: &BodyFrame,
         intrinsic: Intrinsic,
         args: &[&AstExpr],
-    ) -> Result<Option<Vec<Arg>>, Diagnostic> {
+    ) -> Lowered<Vec<Arg>> {
         let signature = intrinsic.signature();
         let mut lowered = Vec::with_capacity(args.len());
         for (index, arg) in args.iter().enumerate() {
-            let Some(param) = signature.param(index) else {
-                return Ok(None);
-            };
-            let Some(arg) = self.arg(frame, param, arg)? else {
-                return Ok(None);
-            };
-            lowered.push(arg);
+            let param = signature.param(index).ok_or(Unlowered::NotYet)?;
+            lowered.push(self.arg(frame, param, arg)?);
         }
         let passed: Vec<Param> = lowered.iter().map(Arg::param).collect();
-        Ok(signature.takes(&passed).then_some(lowered))
+        if !signature.takes(&passed) {
+            return Err(Unlowered::NotYet);
+        }
+        Ok(lowered)
     }
 
     /// `expr` lowered as what `param` takes: a value, a string, or the place
     /// a variable names, passed by reference or, for an array or a
-    /// structure, copied. `None` when it is not supported.
-    pub(crate) fn arg(
-        &mut self,
-        frame: &BodyFrame,
-        param: Param,
-        expr: &AstExpr,
-    ) -> Result<Option<Arg>, Diagnostic> {
-        Ok(match param {
-            Param::Value(_) => self.expr(frame, expr)?.map(Arg::Value),
-            Param::Str(_) => self.str_expr(frame, expr)?.map(Arg::Str),
+    /// structure, copied.
+    pub(crate) fn arg(&mut self, frame: &BodyFrame, param: Param, expr: &AstExpr) -> Lowered<Arg> {
+        match param {
+            Param::Value(_) => Ok(Arg::Value(self.expr(frame, expr)?)),
+            Param::Str(_) => Ok(Arg::Str(self.str_expr(frame, expr)?)),
             Param::Ref(_) => {
                 let AstExprKind::Variable(variable) = &expr.kind else {
-                    return Ok(None);
+                    return Err(Unlowered::NotYet);
                 };
-                self.variable_place(frame, variable)?.map(Arg::Ref)
+                Ok(Arg::Ref(self.variable_place(frame, variable)?))
             }
             Param::Copy(_) => {
                 let AstExprKind::Variable(variable) = &expr.kind else {
-                    return Ok(None);
+                    return Err(Unlowered::NotYet);
                 };
-                self.variable_place(frame, variable)?.map(Arg::Copy)
+                Ok(Arg::Copy(self.variable_place(frame, variable)?))
             }
-        })
+        }
     }
 
     /// The function form of an operator, `expr`: the expression the
@@ -370,41 +329,37 @@ impl Lowering<'_> {
         expr: &AstExpr,
         form: &FormOf,
         args: &[&AstExpr],
-    ) -> Lowered {
+    ) -> Lowered<Expr> {
         let span = expr.span();
         let folded = match form {
             FormOf::Arithmetic(op) => {
-                let Some(op) = arithmetic_op(op) else {
-                    return Ok(None);
-                };
+                let op = arithmetic_op(op).ok_or(Unlowered::NotYet)?;
                 if self.is_temporal(expr)? {
                     // The analyzer wrote a fold of three or more times as
                     // the two-input calls it folds to.
                     let [in1, in2] = args else {
-                        return Ok(None);
+                        return Err(Unlowered::NotYet);
                     };
                     return self.time_arithmetic(frame, expr, op, in1, in2);
                 }
                 if !self.is_arithmetic(expr)? {
-                    return Ok(None);
+                    return Err(Unlowered::NotYet);
                 }
                 self.fold(frame, op, args, span)?
             }
             FormOf::Compare(op) => match logical_ops(op) {
                 Some(ops) => {
-                    let Some(op) = self.logical_op(expr, ops)? else {
-                        return Ok(None);
-                    };
+                    let op = self.logical_op(expr, ops)?;
                     self.fold(frame, op, args, span)?
                 }
                 None => match (compare_op(op), args) {
                     (Some(op), [left, right]) => self.compare(frame, op, left, right, span)?,
-                    _ => None,
+                    _ => return Err(Unlowered::NotYet),
                 },
             },
             FormOf::Not => match args {
                 [term] => self.not(frame, expr, term)?,
-                _ => None,
+                _ => return Err(Unlowered::NotYet),
             },
         };
         self.of_own_type(expr, folded)
@@ -417,50 +372,35 @@ impl Lowering<'_> {
         op: BinaryOp,
         args: &[&AstExpr],
         span: SourceSpan,
-    ) -> Lowered {
-        let Some(values) = self.exprs(frame, args)? else {
-            return Ok(None);
-        };
-        let mut values = values.into_iter();
+    ) -> Lowered<Expr> {
+        let mut values = self.exprs(frame, args)?.into_iter();
         let (Some(mut folded), Some(_)) = (values.next(), args.get(1)) else {
-            return Ok(None);
+            return Err(Unlowered::NotYet);
         };
         for value in values {
             // The analyzer converted every input to the type the call
             // computes at; one it did not convert is not lowered yet.
             if value.ty() != folded.ty() {
-                return Ok(None);
+                return Err(Unlowered::NotYet);
             }
             folded = Expr::binary(op, folded, value, span.clone())?;
         }
-        Ok(Some(folded))
+        Ok(folded)
     }
 
-    /// Each of `args` lowered, or `None` when one of them is not supported.
-    fn exprs(
-        &mut self,
-        frame: &BodyFrame,
-        args: &[&AstExpr],
-    ) -> Result<Option<Vec<Expr>>, Diagnostic> {
-        let mut values = Vec::with_capacity(args.len());
-        for arg in args {
-            let Some(value) = self.expr(frame, arg)? else {
-                return Ok(None);
-            };
-            values.push(value);
+    /// Each of `args` lowered.
+    fn exprs(&mut self, frame: &BodyFrame, args: &[&AstExpr]) -> Lowered<Vec<Expr>> {
+        args.iter().map(|arg| self.expr(frame, arg)).collect()
+    }
+
+    /// `value`, when it has the type the analyzer recorded for `expr`; one
+    /// of another type is not lowered.
+    fn of_own_type(&mut self, expr: &AstExpr, value: Expr) -> Lowered<Expr> {
+        let (_, operated) = self.operated_type(expr)?;
+        if value.ty() != operated {
+            return Err(Unlowered::NotYet);
         }
-        Ok(Some(values))
-    }
-
-    /// `value`, when it has the type the analyzer recorded for `expr`.
-    fn of_own_type(&mut self, expr: &AstExpr, value: Option<Expr>) -> Lowered {
-        let Some(value) = value else {
-            return Ok(None);
-        };
-        let Some((_, operated)) = self.operated_type(expr)? else {
-            return Ok(None);
-        };
-        Ok((value.ty() == operated).then_some(value))
+        Ok(value)
     }
 }
 
