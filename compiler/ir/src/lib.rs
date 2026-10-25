@@ -19,8 +19,8 @@ pub mod source;
 // source file, re-exported so that a backend names them through this crate
 // and needs no dependency on `ironplc-dsl` (`specs/design/lowered-program.md`,
 // "Position in the Pipeline").
-pub use ironplc_dsl::core::{FileId, SourceSpan};
-pub use ironplc_dsl::diagnostic::{Diagnostic, Label};
+pub use ironplc_dsl::core::{FileId, Id, Located, SourceSpan};
+pub use ironplc_dsl::diagnostic::{Diagnostic, Label, LineColumn};
 
 // Spec conformance testing infrastructure (test-only)
 #[cfg(test)]

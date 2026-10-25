@@ -10,7 +10,7 @@
 use std::io::Cursor;
 
 use ironplc_container::{integrity, FileHeader, HEADER_SIZE};
-use ironplc_dsl::core::FileId;
+use ironplc_ir::FileId;
 use ironplc_parser::options::CompilerOptions;
 use spec_test_macro::spec_test;
 

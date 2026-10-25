@@ -4,9 +4,9 @@
 //! check that the container follows it.
 
 use ironplc_container::{Container, TaskType, FLAG_HAS_SYSTEM_UPTIME};
-use ironplc_dsl::core::{FileId, SourceSpan};
-use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_ir::execution::{DebugName, Schedule, Task, Trigger};
+use ironplc_ir::Diagnostic;
+use ironplc_ir::{FileId, SourceSpan};
 use ironplc_parser::options::CompilerOptions;
 use ironplc_parser::parse_program;
 use ironplc_problems::Problem;

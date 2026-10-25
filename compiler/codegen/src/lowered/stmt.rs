@@ -6,13 +6,13 @@
 //! and the arm that runs pops it first.
 
 use ironplc_container::opcode::cmp_op;
-use ironplc_dsl::core::SourceSpan;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::{
     counts_down, CaseArm, CaseLabel, CompareOp, Const, Expr, ExprKind, LoopId,
     Place as LoweredPlace, Stmt, StmtKind,
 };
+use ironplc_ir::SourceSpan;
+use ironplc_ir::{Diagnostic, Label};
 
 use super::expr::{emit_constant, emit_expr, emit_truncate};
 use super::place::variable_name;

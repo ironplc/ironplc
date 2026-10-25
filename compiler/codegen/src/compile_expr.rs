@@ -6,7 +6,7 @@
 
 use crate::access::Named;
 use ironplc_container::{opcode, VarIndex};
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_ir::Diagnostic;
 use paste::paste;
 
 use super::compile::{CompileContext, OpType, OpWidth, Signedness, VarTypeInfo};

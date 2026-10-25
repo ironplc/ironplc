@@ -12,13 +12,13 @@
 //! See `specs/design/execution-model.md` and ADR-0065.
 
 use ironplc_container::{Container, TaskType};
-use ironplc_dsl::core::FileId;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::execution::{
     Configuration, DebugName, ExecutionModel, GlobalKind, InstanceOf, ProgramId, ProgramInstance,
     Schedule, SystemGlobal, Task,
 };
 use ironplc_ir::lowered::{PouId, Program};
+use ironplc_ir::FileId;
+use ironplc_ir::{Diagnostic, Label};
 use ironplc_problems::Problem;
 
 /// What the container runs, built from the execution model.

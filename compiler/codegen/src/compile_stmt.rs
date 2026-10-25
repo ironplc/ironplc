@@ -2,7 +2,7 @@
 //! and a `RETURN`. The statements themselves are compiled from the lowered
 //! program ([`crate::lowered::emit_body`]).
 
-use ironplc_dsl::core::SourceSpan;
+use ironplc_ir::SourceSpan;
 
 use super::compile::{CompileContext, CurrentFunctionReturn};
 use super::compile_expr::emit_load_var;
@@ -31,7 +31,7 @@ pub(crate) fn record_position(
     let Ok(text) = std::str::from_utf8(bytes) else {
         return;
     };
-    let lc = ironplc_dsl::diagnostic::LineColumn::from_offset(text, span.start);
+    let lc = ironplc_ir::LineColumn::from_offset(text, span.start);
     // 0-based → 1-based; clamp to u16 range (source files larger than
     // ~64k lines are theoretical, but the saturating add keeps us out
     // of UB territory either way).

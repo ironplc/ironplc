@@ -17,10 +17,10 @@
 //! (REQ-LOW-codegen-189).
 
 use ironplc_container::CharWidth;
-use ironplc_dsl::core::SourceSpan;
-use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::{Encoding, Place as LoweredPlace, StrExpr, StrExprKind};
+use ironplc_ir::Diagnostic;
+use ironplc_ir::SourceSpan;
 
 use super::expr::{emit_intrinsic_call, instruction_of};
 use super::fn_call::{emit_in_place, str_in_place_can_emit};

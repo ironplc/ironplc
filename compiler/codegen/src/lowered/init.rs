@@ -15,12 +15,12 @@
 //! does not emit yet, is not supported yet (P9999), at the declaration or
 //! the store.
 
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::{
     Const, Expr, ExprKind, Owner, Place, PouId, Projection, Stmt, StmtKind, StrExprKind, TypeId,
     TypeKind,
 };
 use ironplc_ir::lowered::{Declaration, Program};
+use ironplc_ir::{Diagnostic, Label};
 
 use crate::access::{Named, Stored};
 use crate::compile::CompileContext;

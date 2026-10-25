@@ -17,10 +17,10 @@ use ironplc_container::debug_section::{
     function_id, iec_type_tag, var_section, EnumDefEntry, StringLayoutEntry, VarNameEntry,
 };
 use ironplc_container::{FunctionId, VarIndex};
-use ironplc_dsl::core::Id;
 use ironplc_ir::lowered::{
     Encoding, IntWidth, Section, TemporalKind, TypeId, TypeKind, TypeTable, WideWidth,
 };
+use ironplc_ir::Id;
 
 use crate::compile::StringVarInfo;
 

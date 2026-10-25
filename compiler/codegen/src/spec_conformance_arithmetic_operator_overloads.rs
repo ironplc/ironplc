@@ -18,8 +18,8 @@ use std::collections::HashMap;
 
 use ironplc_container::FunctionId;
 use ironplc_dsl::common::TypeName;
-use ironplc_dsl::core::{FileId, Id};
 use ironplc_dsl::textual::Operator;
+use ironplc_ir::{FileId, Id};
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
 use spec_test_macro::spec_test;

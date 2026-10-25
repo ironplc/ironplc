@@ -8,9 +8,9 @@
 
 use std::collections::HashMap;
 
-use ironplc_analyzer::StandardFunctionBlock;
 use ironplc_container::CharWidth;
 use ironplc_ir::lowered::Program;
+use ironplc_ir::lowered::StandardFunctionBlock;
 use ironplc_ir::lowered::{Encoding, PouId, StringShape, TypeId, TypeKind, TypeTable};
 
 use super::lowered::copy_slots;

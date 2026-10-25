@@ -50,9 +50,9 @@ use ironplc_container::{
 // and codegen size strings the same way. Re-exported here because the rest of
 // codegen reaches for these through `compile`.
 pub(crate) use ironplc_container::string_region_size;
-use ironplc_dsl::core::SourceSpan;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::{FieldIdx, PouId, Program, StandardFunctionBlock, VarId};
+use ironplc_ir::SourceSpan;
+use ironplc_ir::{Diagnostic, Label};
 
 use crate::access::{Named, Stored};
 use crate::emit::Emitter;
@@ -1181,7 +1181,7 @@ impl<'p> CompileContext<'p> {
 mod tests {
     use super::*;
     use ironplc_dsl::common::Library;
-    use ironplc_dsl::core::FileId;
+    use ironplc_ir::FileId;
     use ironplc_parser::options::CompilerOptions;
     use ironplc_parser::parse_program;
 

@@ -7,8 +7,8 @@
 use std::collections::HashMap;
 
 use crate::access::{Access, Field, Named};
-use ironplc_dsl::core::Located;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_ir::Located;
+use ironplc_ir::{Diagnostic, Label};
 
 use ironplc_container::{SlotIndex, VarIndex};
 use ironplc_ir::lowered::{FieldIdx, TypeId, TypeKind, TypeTable};

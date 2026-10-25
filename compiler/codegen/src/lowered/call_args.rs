@@ -9,10 +9,10 @@
 //! offset of its region (`aggregate.rs`). A function and a method pass their
 //! arguments alike, so both check and push them here.
 
-use ironplc_dsl::core::SourceSpan;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::Arg;
 use ironplc_ir::lowered::Program;
+use ironplc_ir::SourceSpan;
+use ironplc_ir::{Diagnostic, Label};
 
 use super::aggregate::emit_source;
 use super::expr::{emit_expr, emit_ref};

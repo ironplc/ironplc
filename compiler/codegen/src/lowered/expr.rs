@@ -2,13 +2,13 @@
 
 use ironplc_container::opcode::builtin;
 use ironplc_container::opcode::builtin::str_to_num::Target;
-use ironplc_dsl::core::SourceSpan;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::{
     Arg, BinaryOp, Callee, CompareOp, Const, Expr, ExprKind, Intrinsic, NarrowWidth, Place,
     ShortCircuitOp, UnaryOp,
 };
+use ironplc_ir::SourceSpan;
+use ironplc_ir::{Diagnostic, Label};
 
 use super::call_args::emit_passed;
 use super::fn_call::emit_in_place;

@@ -1,6 +1,7 @@
 use std::{fs, path::PathBuf};
 
 pub mod fixtures;
+pub mod manifest;
 pub mod rule_conventions;
 
 /// Extracts the inner value from a tuple enum variant, panicking with a

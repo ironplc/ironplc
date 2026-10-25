@@ -9,8 +9,8 @@
 //! convention. Structurally this mirrors `compile_fn::compile_user_function`
 //! closely; the differences are exactly the parts of that convention.
 
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::{Nullability, PouKind, Program, TypeKind};
+use ironplc_ir::{Diagnostic, Label};
 
 use super::compile::{finalize_function, CompileContext, CompiledFunction, CurrentFunctionReturn};
 use super::compile_expr::emit_load_var;

@@ -25,13 +25,13 @@
 use std::collections::HashMap;
 
 use ironplc_container::VarIndex;
-use ironplc_dsl::core::SourceSpan;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::{
     Arg, Callee, Expr, ExprKind, InPlaceCall, Place as LoweredPlace, PouId, Stmt, StmtKind,
     StrExprKind, VarId,
 };
+use ironplc_ir::SourceSpan;
+use ironplc_ir::{Diagnostic, Label};
 
 use super::aggregate::{emit_copy_from_stack, reaches_region};
 use super::call_args::passes;

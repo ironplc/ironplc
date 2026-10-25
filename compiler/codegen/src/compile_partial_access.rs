@@ -6,7 +6,7 @@
 //! program's shift and mask.
 
 use ironplc_container::opcode;
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_ir::Diagnostic;
 
 use super::compile::{CompileContext, OpWidth};
 use crate::emit::Emitter;

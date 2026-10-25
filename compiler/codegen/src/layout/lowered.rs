@@ -41,16 +41,16 @@
 
 use std::collections::HashMap;
 
-use ironplc_analyzer::StandardFunctionBlock;
 use ironplc_container::debug_section::EnumDefEntry;
 use ironplc_container::{ArrayDescriptor, ContainerBuilder, FunctionId, VarIndex};
-use ironplc_dsl::core::{Id, SourceSpan};
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::execution::{GlobalKind, GlobalScope};
+use ironplc_ir::lowered::StandardFunctionBlock;
 use ironplc_ir::lowered::{Declaration, Program};
 use ironplc_ir::lowered::{
     Field, FieldIdx, Nullability, PouId, PouKind, Section, TypeId, TypeKind, TypeTable, VarId,
 };
+use ironplc_ir::{Diagnostic, Label};
+use ironplc_ir::{Id, SourceSpan};
 
 use super::calls::{Blocks, Calling};
 use super::debug_vars::DebugVars;

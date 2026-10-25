@@ -15,10 +15,10 @@
 //! block's instance that holds an instance, which has storage of its own
 //! (`held_instances.rs`).
 
-use ironplc_dsl::core::SourceSpan;
-use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::{Owner, Place as LoweredPlace, Projection, TypeId, TypeKind, TypeTable};
+use ironplc_ir::Diagnostic;
+use ironplc_ir::SourceSpan;
 
 use super::aggregate;
 use super::place::{resolve, LoweredSubscript};

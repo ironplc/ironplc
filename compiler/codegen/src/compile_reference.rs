@@ -17,7 +17,7 @@
 use crate::access::Named;
 use ironplc_container::reference::data_region_reference;
 use ironplc_container::CharWidth;
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_ir::Diagnostic;
 
 use super::compile::CompileContext;
 

@@ -6,10 +6,10 @@
 //! not lay out yet (P9999); and a function block with more fields than an
 //! instruction names (P9997).
 
-use ironplc_dsl::core::SourceSpan;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::{Declaration, Program};
 use ironplc_ir::lowered::{TypeId, TypeKind, TypeTable};
+use ironplc_ir::SourceSpan;
+use ironplc_ir::{Diagnostic, Label};
 
 use super::lowered::{copy_slots, frame, globals, instance_type, Pous};
 use super::region::{elements, slots};

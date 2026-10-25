@@ -4,9 +4,9 @@
 
 use std::collections::HashMap;
 
-use ironplc_analyzer::StandardFunctionBlock;
 use ironplc_container::{FbTypeId, FunctionId, VarIndex};
 use ironplc_ir::lowered::Program;
+use ironplc_ir::lowered::StandardFunctionBlock;
 use ironplc_ir::lowered::{FieldIdx, PouId, Section, TypeId, TypeKind, VarId};
 
 use super::lowered::{copy_slots, instance_type};

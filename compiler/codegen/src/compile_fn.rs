@@ -5,7 +5,7 @@
 //! the 1000-line guideline.
 
 use ironplc_container::FunctionId;
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_ir::Diagnostic;
 
 use super::compile::{finalize_function, CompileContext, CompiledFunction, CurrentFunctionReturn};
 use super::compile_expr::emit_load_var;

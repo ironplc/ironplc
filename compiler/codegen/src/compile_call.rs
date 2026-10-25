@@ -5,8 +5,8 @@
 use std::collections::HashMap;
 
 use ironplc_container::{opcode, FbTypeId};
-use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_ir::lowered::{CounterWidth, PouId, Program, StandardFunctionBlock};
+use ironplc_ir::Diagnostic;
 
 use super::compile::{OpWidth, Signedness, VarTypeInfo};
 use crate::emit::Emitter;

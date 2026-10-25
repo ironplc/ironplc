@@ -30,10 +30,10 @@
 //! (P9999).
 
 use ironplc_container::VarIndex;
-use ironplc_dsl::core::SourceSpan;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::{Place as LoweredPlace, TypeKind};
+use ironplc_ir::SourceSpan;
+use ironplc_ir::{Diagnostic, Label};
 
 use super::place::{instance_slot, referenced_by, variable_name};
 use super::stored;
