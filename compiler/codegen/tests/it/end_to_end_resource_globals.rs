@@ -181,6 +181,212 @@ END_PROGRAM
     });
 }
 
+e2e_i32!(
+    end_to_end_when_resource_global_wstring_then_length_readable,
+    "
+CONFIGURATION config
+  RESOURCE resource1 ON PLC
+    VAR_GLOBAL
+      label : WSTRING := \"abc\";
+    END_VAR
+    PROGRAM main_instance : main;
+  END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM main
+  VAR_EXTERNAL
+    label : WSTRING;
+  END_VAR
+  VAR
+    length : INT;
+  END_VAR
+  length := LEN(label);
+END_PROGRAM
+",
+    &[("length", 3)],
+);
+
+e2e_i32!(
+    end_to_end_when_resource_global_array_of_strings_then_elements_writable,
+    "
+CONFIGURATION config
+  RESOURCE resource1 ON PLC
+    VAR_GLOBAL
+      names : ARRAY[1..2] OF STRING;
+    END_VAR
+    PROGRAM main_instance : main;
+  END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM main
+  VAR_EXTERNAL
+    names : ARRAY[1..2] OF STRING;
+  END_VAR
+  VAR
+    length : INT;
+  END_VAR
+  names[2] := 'xyz';
+  length := LEN(names[1]) + LEN(names[2]);
+END_PROGRAM
+",
+    &[("length", 3)],
+);
+
+e2e_i32!(
+    end_to_end_when_resource_global_two_dimensional_array_then_initial_elements_readable,
+    "
+CONFIGURATION config
+  RESOURCE resource1 ON PLC
+    VAR_GLOBAL
+      grid : ARRAY[1..2, 1..2] OF INT := [1, 2, 3, 4];
+    END_VAR
+    PROGRAM main_instance : main;
+  END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM main
+  VAR_EXTERNAL
+    grid : ARRAY[1..2, 1..2] OF INT;
+  END_VAR
+  VAR
+    corner : INT;
+  END_VAR
+  corner := grid[2, 1];
+END_PROGRAM
+",
+    &[("corner", 3)],
+);
+
+e2e_i32!(
+    end_to_end_when_resource_global_array_of_structs_then_fields_writable,
+    "
+TYPE POINT :
+  STRUCT
+    x : INT;
+  END_STRUCT;
+END_TYPE
+
+CONFIGURATION config
+  RESOURCE resource1 ON PLC
+    VAR_GLOBAL
+      points : ARRAY[1..2] OF POINT;
+    END_VAR
+    PROGRAM main_instance : main;
+  END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM main
+  VAR_EXTERNAL
+    points : ARRAY[1..2] OF POINT;
+  END_VAR
+  VAR
+    result : INT;
+  END_VAR
+  points[2].x := 5;
+  result := points[1].x + points[2].x;
+END_PROGRAM
+",
+    &[("result", 5)],
+);
+
+e2e_i32!(
+    end_to_end_when_resource_global_struct_with_string_field_then_field_writable,
+    "
+TYPE TAG :
+  STRUCT
+    name : STRING;
+    id : INT;
+  END_STRUCT;
+END_TYPE
+
+CONFIGURATION config
+  RESOURCE resource1 ON PLC
+    VAR_GLOBAL
+      tag : TAG;
+    END_VAR
+    PROGRAM main_instance : main;
+  END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM main
+  VAR_EXTERNAL
+    tag : TAG;
+  END_VAR
+  VAR
+    length : INT;
+  END_VAR
+  tag.name := 'hi';
+  length := LEN(tag.name);
+END_PROGRAM
+",
+    &[("length", 2)],
+);
+
+e2e_i32!(
+    end_to_end_when_resource_global_function_block_then_callable_via_external,
+    "
+CONFIGURATION config
+  RESOURCE resource1 ON PLC
+    VAR_GLOBAL
+      timer : TON;
+    END_VAR
+    PROGRAM main_instance : main;
+  END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM main
+  VAR_EXTERNAL
+    timer : TON;
+  END_VAR
+  VAR
+    running : INT;
+  END_VAR
+  timer(IN := TRUE, PT := T#1s);
+  IF NOT timer.Q THEN
+    running := 1;
+  END_IF;
+END_PROGRAM
+",
+    &[("running", 1)],
+);
+
+#[test]
+fn end_to_end_when_resource_global_string_appended_over_scans_then_value_persists() {
+    let source = "
+CONFIGURATION config
+  RESOURCE resource1 ON PLC
+    VAR_GLOBAL
+      text : STRING := 'abc';
+    END_VAR
+    PROGRAM main_instance : main;
+  END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM main
+  VAR_EXTERNAL
+    text : STRING;
+  END_VAR
+  VAR
+    length : INT;
+    matched : BOOL;
+  END_VAR
+  length := LEN(text);
+  matched := text = 'abcd';
+  text := CONCAT(text, 'd');
+END_PROGRAM
+";
+    run_scans(source, &CompilerOptions::default(), |session| {
+        session.scan(0).unwrap();
+        assert_eq!(session.read("length"), 3);
+        assert_eq!(session.read("matched"), false);
+        assert_eq!(session.read("text"), "abcd");
+        session.scan(1).unwrap();
+        assert_eq!(session.read("length"), 4);
+        assert_eq!(session.read("matched"), true);
+        assert_eq!(session.read("text"), "abcdd");
+    });
+}
+
 /// The configuration `library` declares.
 fn configuration_mut(library: &mut Library) -> &mut ConfigurationDeclaration {
     library
