@@ -290,6 +290,12 @@ mod tests {
     #[case::inline_enumeration_in_a_method(
         "FUNCTION_BLOCK FB METHOD M VAR t : (T0, T1) := T1; END_VAR t := T0; END_METHOD END_FUNCTION_BLOCK"
     )]
+    // `ON` is a keyword that the parser also accepts as a name.
+    // See https://github.com/ironplc/ironplc/issues/1944.
+    #[case::keyword_named_member(
+        "TYPE M : (Off, On); END_TYPE
+         FUNCTION_BLOCK FB VAR c : M; END_VAR c := On; END_FUNCTION_BLOCK"
+    )]
     fn apply_when_no_variable_has_the_name_then_enumerated_value(#[case] program: &str) {
         assert_eq!(vec![Became::EnumeratedValue], became(program));
     }
