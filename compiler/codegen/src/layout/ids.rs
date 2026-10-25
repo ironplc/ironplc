@@ -1,21 +1,16 @@
-//! The lowered program's ids, each matched once to what this backend's
+//! The lowered program's POUs, each matched once to what this backend's
 //! layout knows it as (`specs/design/lowered-program.md`, "`CompileContext`").
 //!
-//! The layout is still built from the AST, so it knows each variable, POU
-//! and field by the scope that declares it and its name. Once it is built,
-//! [`LoweredIds::matched`] matches each lowered variable, POU and function
-//! block or program field to that entry, by owner and name, and the bridge's
-//! lookups take the lowered id from then on.
-//!
-//! What the layout keeps no entry for is left out: a temporary lowering
-//! makes for a call's output or result, which has no storage of its own, a
-//! program instance, a POU no compiled body reaches, and a field a block
-//! inherits, whose storage this backend's layout does not reserve.
+//! The layout keeps each variable and field by its lowered id
+//! ([`crate::access::Stored`]), but still knows a POU by its name. Once it
+//! is built, [`LoweredIds::matched`] matches each lowered POU to that entry,
+//! and the bridge's lookups take the lowered id from then on. A POU no
+//! compiled body reaches is left out.
 
 use std::collections::HashMap;
 
 use ironplc_dsl::core::Id;
-use ironplc_ir::lowered::{FieldIdx, Owner, PouId, TypeId, TypeKind, VarId};
+use ironplc_ir::lowered::PouId;
 use ironplc_lowering::PartialProgram;
 
 use super::names::ScopeId;
@@ -44,19 +39,14 @@ struct Pou {
     scope: Option<ScopeId>,
 }
 
-/// The layout's entry for each lowered id that has one.
+/// The layout's entry for each lowered POU that has one.
 #[derive(Default)]
 pub(crate) struct LoweredIds {
     pous: HashMap<PouId, Pou>,
-    /// The scope that declares each variable, and its name there.
-    variables: HashMap<VarId, (ScopeId, Id)>,
-    /// The name of the slot each field of a function block or program
-    /// instance is kept in while its body runs, in that body's scope.
-    fields: HashMap<(TypeId, FieldIdx), Id>,
 }
 
 impl LoweredIds {
-    /// Matches each id of `lowering` to the entry `ctx`'s layout has for it,
+    /// Matches each POU of `lowering` to the entry `ctx`'s layout has for it,
     /// once the layout is built. `program` is the name of the program the
     /// container runs.
     pub(crate) fn matched(lowering: &PartialProgram, ctx: &CompileContext, program: &Id) -> Self {
@@ -65,51 +55,6 @@ impl LoweredIds {
         for pou in pous.ids() {
             if let Some(matched) = match_pou(lowering, ctx, program, pou) {
                 ids.pous.insert(pou, matched);
-            }
-        }
-        for (var, variable) in lowering.variables().iter() {
-            // A global the program declares in its own interface is laid out
-            // with the program's variables.
-            let scopes = match variable.owner() {
-                Owner::Global => vec![ScopeId::Global, ScopeId::Program],
-                Owner::Pou(pou) => ids.scope(pou).into_iter().collect(),
-            };
-            let name = Id::from(&variable.name().to_string());
-            if let Some(scope) = scopes
-                .into_iter()
-                .find(|scope| ctx.variables.declares(*scope, &name))
-            {
-                ids.variables.insert(var, (scope, name));
-            }
-        }
-        let types = lowering.types();
-        for (ty, entry) in types.iter() {
-            let (fields, body) = match &entry.kind {
-                TypeKind::FunctionBlock { fields, body, .. }
-                | TypeKind::Program { fields, body } => (fields, *body),
-                TypeKind::Bool
-                | TypeKind::Integer { .. }
-                | TypeKind::BitString { .. }
-                | TypeKind::Real { .. }
-                | TypeKind::Temporal { .. }
-                | TypeKind::Enumeration { .. }
-                | TypeKind::Subrange { .. }
-                | TypeKind::String(_)
-                | TypeKind::Array { .. }
-                | TypeKind::Structure { .. }
-                | TypeKind::Reference { .. } => continue,
-            };
-            let Some(scope) = ids.scope(body) else {
-                continue;
-            };
-            for (position, field) in fields.iter().enumerate() {
-                let name = Id::from(&field.name.to_string());
-                let Some(idx) = types.field_idx(ty, position) else {
-                    continue;
-                };
-                if ctx.variables.declares(scope, &name) {
-                    ids.fields.insert((ty, idx), name);
-                }
             }
         }
         ids
@@ -132,17 +77,6 @@ impl LoweredIds {
             .iter()
             .find(|(_, matched)| matched.scope == Some(scope))
             .map(|(pou, _)| *pou)
-    }
-
-    /// The scope that declares `var`, and its name there.
-    pub(crate) fn variable(&self, var: VarId) -> Option<&(ScopeId, Id)> {
-        self.variables.get(&var)
-    }
-
-    /// The name of the slot the field `field` of an instance of the
-    /// function block or program `ty` is kept in while its body runs.
-    pub(crate) fn field(&self, ty: TypeId, field: FieldIdx) -> Option<&Id> {
-        self.fields.get(&(ty, field))
     }
 }
 

@@ -41,12 +41,7 @@ pub(crate) fn compile_user_function(
     // the locals the analyzer flags, and the result, start again at their
     // resolved values on every call. The flat variable table (ADR-0046)
     // retains stale values between calls otherwise.
-    crate::lowered::emit_prologue(
-        &mut func_emitter,
-        ctx,
-        &func_decl.variables,
-        Some(&func_decl.name),
-    )?;
+    crate::lowered::emit_prologue(&mut func_emitter, ctx)?;
 
     let body = ironplc_dsl::textual::Statements {
         body: func_decl.body.clone(),
@@ -133,8 +128,8 @@ pub(crate) fn compile_user_function_block(
     let mut fb_emitter = Emitter::new();
     // A `VAR_TEMP` starts again on every call, from the lowered program; the
     // AST gives a function block's none.
-    if crate::lowered::restarts(&fb_decl.variables) {
-        crate::lowered::emit_prologue(&mut fb_emitter, ctx, &fb_decl.variables, None)?;
+    if crate::lowered::restarts(ctx)? {
+        crate::lowered::emit_prologue(&mut fb_emitter, ctx)?;
     }
     compile_body(&mut fb_emitter, ctx, &fb_decl.body, &fb_decl.name.span())?;
     fb_emitter.emit_ret_void();

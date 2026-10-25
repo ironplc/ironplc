@@ -8,8 +8,8 @@
 //! call leaves the instance on the stack beneath the result, if any. A
 //! method leaves its outputs in its own variables, as a function does.
 //!
-//! The backend reaches the receiver by name, and finds the method in its
-//! layout by the names of its block and itself. A method a block inherits is
+//! The backend reaches the receiver as a variable the layout keeps, and
+//! finds the method in its layout by the names of its block and itself. A method a block inherits is
 //! the method of the block that declares it.
 //!
 //! `METHOD_CALL` names how many fields it copies by a byte. The layout
@@ -65,7 +65,7 @@ impl MethodSite {
 }
 
 /// The call of the method `pou` with `args`, whose first is a `Ref` to the
-/// receiver: an instance this backend reaches by name, of the block whose
+/// receiver: an instance this backend reaches as a variable, of the block whose
 /// method `pou` is or of a block that extends it. `None` when `pou` is no
 /// method, or this backend does not reach the receiver or the method.
 pub(super) fn method_site(

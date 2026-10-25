@@ -49,7 +49,7 @@ use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::execution::{GlobalKind, GlobalScope};
 use ironplc_ir::lowered::{
-    Field, Nullability, PouId, PouKind, Section, TypeId, TypeKind, TypeTable, VarId,
+    Field, FieldIdx, Nullability, PouId, PouKind, Section, TypeId, TypeKind, TypeTable, VarId,
 };
 use ironplc_lowering::{Declaration, PartialProgram};
 
@@ -57,10 +57,11 @@ use super::calls::{Blocks, Calling};
 use super::debug_vars::DebugVars;
 use super::descriptors::Descriptors;
 use super::entries;
-use super::names::{self, ScopeId, Scoped};
+use super::names::{ScopeId, Scoped};
 use super::region::{string_at, Region};
 use super::var_table::Counter;
 use super::{BlockLayout, FunctionLayout, MethodLayout};
+use crate::access::{Named, Stored};
 use crate::compile::{
     CompileContext, FbInstanceInfo, OpType, StringReturnInfo, StringVarInfo, UserFbTypeInfo,
     UserFunctionInfo, UserMethodInfo, UserMethodParam, VarTypeInfo, DEFAULT_OP_TYPE,
@@ -112,6 +113,8 @@ pub(crate) struct Layout {
     pub(super) slot_end: VarIndex,
     /// Whether every slot fits the variable table.
     counter: Counter,
+    /// How many slots the globals and the program count so far.
+    counted: usize,
 }
 
 /// What the bodies are compiled with, of a [`Layout`] once it is installed.
@@ -184,10 +187,10 @@ impl Layout {
             if system {
                 // The runtime writes a compiler-provided global, which no
                 // body operates on through the layout's type.
-                let name = name(lowering, var)?;
-                let index = layout.insert_counted(ScopeId::Global, name.clone(), None);
+                let name = named(lowering, var)?;
+                let index = layout.insert_counted(ScopeId::Global, name.stored, None);
                 let ty = lowering.variables().get(var)?.ty();
-                layout.debug.system(types, index, &name, ty);
+                layout.debug.system(types, index, &name.name, ty);
             } else if !program_declarations.contains(&Declaration::Variable(var)) {
                 // A global the program declares is laid out with its
                 // variables.
@@ -197,12 +200,12 @@ impl Layout {
         let program_type = instance_type(types, pous.program)?;
         for declaration in program_declarations {
             match declaration {
-                Declaration::Field(field) => {
-                    let field = types.fields(program_type)?.get(field.index() as usize)?;
+                Declaration::Field(idx) => {
+                    let field = types.fields(program_type)?.get(idx.index() as usize)?;
                     layout.insert_named(
                         ScopeId::Program,
                         &mut storage,
-                        name_of(field),
+                        named_field(program_type, *idx, field),
                         field.ty,
                         field.section,
                     )?;
@@ -215,8 +218,7 @@ impl Layout {
         }
 
         // Saturated: a count past the table has marked it full.
-        let program_slots = names::slot_count(&layout.slots, ScopeId::Program);
-        let mut next = VarIndex::new(u16::try_from(program_slots).unwrap_or(u16::MAX));
+        let mut next = VarIndex::new(u16::try_from(layout.counted).unwrap_or(u16::MAX));
         layout.program_slots = next.raw();
         for (function_id, function) in pous.functions() {
             let scope = ScopeId::Function(function_id);
@@ -224,39 +226,43 @@ impl Layout {
             let var_offset = next;
             let mut calling = Calling::default();
             for var in frame.variables {
-                let name = name(lowering, var)?;
+                let name = named(lowering, var)?;
                 let section = lowering.variables().get(var)?.section();
                 // A `VAR_IN_OUT` refers to its caller's variable.
                 let string = if section == Section::InOut {
-                    layout.in_out_params.insert(scope, name.clone(), ());
+                    layout.in_out_params.insert(scope, name.stored, ());
                     None
                 } else {
                     let held = held(lowering, var)?;
-                    layout.insert_reference(&mut storage, scope, &name, held, next)?;
-                    layout.insert_string(&mut storage, scope, &name, held)?
+                    layout.insert_reference(&mut storage, scope, name.stored, held, next)?;
+                    layout.insert_string(&mut storage, scope, name.stored, held)?
                 };
-                calling.add(section, &name, next, string);
+                calling.add(section, &name.name, next, string);
                 layout.debug.local(
                     types,
                     next,
                     function_id,
                     Some(section),
-                    &name,
+                    &name.name,
                     held(lowering, var)?,
                 );
-                layout.insert(scope, name, next, held_type(lowering, var));
+                layout.insert(scope, name.stored, next, held_type(lowering, var));
                 next = layout.counter.after(next);
             }
             let result = frame.result?;
-            let name = name(lowering, result)?;
+            let name = named(lowering, result)?;
             let result_index = next;
-            layout
-                .debug
-                .result(types, next, function_id, &name, held(lowering, result)?);
-            layout.insert(scope, name.clone(), next, held_type(lowering, result));
+            layout.debug.result(
+                types,
+                next,
+                function_id,
+                &name.name,
+                held(lowering, result)?,
+            );
+            layout.insert(scope, name.stored, next, held_type(lowering, result));
             next = layout.counter.after(next);
             let ty = held(lowering, result)?;
-            let return_string = layout.insert_string(&mut storage, scope, &name, ty)?;
+            let return_string = layout.insert_string(&mut storage, scope, name.stored, ty)?;
             let mut return_struct_desc_index = None;
             if matches!(types.kind(ty), Some(TypeKind::Structure { .. })) {
                 let data_offset = storage.region.structure(ty)?;
@@ -268,11 +274,11 @@ impl Layout {
                 // parameter, which refers to the caller's structure.
                 let scratch_index = needs_scratch(types, ty).then_some(next);
                 if scratch_index.is_some() {
-                    layout.insert(scope, scratch(&name), next, None);
+                    layout.counter.slot(usize::from(next.raw()));
                     next = layout.counter.after(next);
                 }
                 let entry = entries::structure(ty, result_index, data_offset, scratch_index, slots);
-                layout.struct_vars.insert(scope, name, entry);
+                layout.struct_vars.insert(scope, name.stored, entry);
             }
             let info = UserFunctionInfo {
                 function_id,
@@ -307,14 +313,20 @@ impl Layout {
         for (function_id, block) in pous.blocks() {
             let field_var_off = next;
             let scope = ScopeId::Block(function_id);
-            for field in copy_slots(lowering, block)? {
-                let name = name_of(field);
-                layout
-                    .debug
-                    .local(types, next, function_id, field.section, &name, field.ty);
-                layout.insert_string(&mut storage, scope, &name, field.ty)?;
-                layout.insert_reference(&mut storage, scope, &name, field.ty, next)?;
-                layout.insert(scope, name, next, slot_type(types, field.ty));
+            let block_type = instance_type(types, block)?;
+            for (idx, field) in copy_slots(lowering, block)? {
+                let name = named_field(block_type, idx, field);
+                layout.debug.local(
+                    types,
+                    next,
+                    function_id,
+                    field.section,
+                    &name.name,
+                    field.ty,
+                );
+                layout.insert_string(&mut storage, scope, name.stored, field.ty)?;
+                layout.insert_reference(&mut storage, scope, name.stored, field.ty, next)?;
+                layout.insert(scope, name.stored, next, slot_type(types, field.ty));
                 next = layout.counter.after(next);
             }
             let mut body = BlockLayout {
@@ -334,14 +346,14 @@ impl Layout {
                 let mut current = next;
                 let mut calling = Calling::default();
                 for var in frame.variables {
-                    let name = name(lowering, var)?;
+                    let name = named(lowering, var)?;
                     // A call copies a string argument into the run of the
                     // parameter, a `VAR_IN_OUT`'s too.
-                    let string =
-                        layout.insert_string(&mut storage, scope, &name, held(lowering, var)?)?;
+                    let held_ty = held(lowering, var)?;
+                    let string = layout.insert_string(&mut storage, scope, name.stored, held_ty)?;
                     let section = lowering.variables().get(var)?.section();
-                    calling.add(section, &name, current, string);
-                    layout.insert(scope, name, current, held_type(lowering, var));
+                    calling.add(section, &name.name, current, string);
+                    layout.insert(scope, name.stored, current, held_type(lowering, var));
                     current = layout.counter.after(current);
                 }
                 let has_return_value = frame.result.is_some();
@@ -352,7 +364,7 @@ impl Layout {
                 if let Some(result) = frame.result {
                     let held = held_type(lowering, result);
                     return_op_type = loaded_at(held);
-                    layout.insert(scope, name(lowering, result)?, current, held);
+                    layout.insert(scope, Stored::Var(result), current, held);
                 }
                 current = layout.counter.after(current);
                 // The next method's slots follow this method's own.
@@ -478,14 +490,20 @@ impl Layout {
         (capacity, wide)
     }
 
-    /// Records `name` in `scope` at the slot `index`, operated at `held`;
+    /// Records `stored` in `scope` at the slot `index`, operated at `held`;
     /// the table is marked full when it has no slot `index`.
-    fn insert(&mut self, scope: ScopeId, name: Id, index: VarIndex, held: Option<VarTypeInfo>) {
+    fn insert(
+        &mut self,
+        scope: ScopeId,
+        stored: Stored,
+        index: VarIndex,
+        held: Option<VarTypeInfo>,
+    ) {
         let index = self.counter.slot(usize::from(index.raw()));
         if let Some(held) = held {
-            self.var_types.insert(scope, name.clone(), held);
+            self.var_types.insert(scope, stored, held);
         }
-        self.slots.insert(scope, name, index);
+        self.slots.insert(scope, stored, index);
     }
 
     /// Records the variable `var` in `scope`, the globals' or the
@@ -494,18 +512,18 @@ impl Layout {
         let lowering = storage.region.lowering();
         let variable = lowering.variables().get(var)?;
         let (ty, section) = (variable.ty(), variable.section());
-        self.insert_named(scope, storage, name(lowering, var)?, ty, Some(section))
+        self.insert_named(scope, storage, named(lowering, var)?, ty, Some(section))
     }
 
     /// Records `name`, of the type `ty`, in `scope`, the globals' or the
-    /// program's, at the next slot the scope counts, and its scratch slot
-    /// after it if it takes one; and reserves its run of the data region
-    /// and its array descriptors, if it has any.
+    /// program's, at the next slot the globals and the program count, and
+    /// its scratch slot after it if it takes one; and reserves its run of
+    /// the data region and its array descriptors, if it has any.
     fn insert_named(
         &mut self,
         scope: ScopeId,
         storage: &mut Storage,
-        name: Id,
+        name: Named,
         ty: TypeId,
         section: Option<Section>,
     ) -> Option<()> {
@@ -517,33 +535,32 @@ impl Layout {
             _ => None,
         };
         if let Some(string) = &string {
-            self.string_vars.insert(scope, name.clone(), string.clone());
+            self.string_vars.insert(scope, name.stored, string.clone());
         }
-        let index = self.insert_counted(scope, name.clone(), slot_type(types, ty));
+        let index = self.insert_counted(scope, name.stored, slot_type(types, ty));
         self.debug
-            .declared(types, index, section, &name, ty, string.as_ref());
+            .declared(types, index, section, &name.name, ty, string.as_ref());
         if let (Some(TypeKind::FunctionBlock { .. }), Some(run)) = (types.kind(ty), run) {
             if let Some(instance) = storage.blocks.instance(ty, index, run)? {
-                self.fb_instances.insert(scope, name.clone(), instance);
+                self.fb_instances.insert(scope, name.stored, instance);
             }
         }
         let reached = storage.descriptors.variable(ty, index, start)?;
-        let scratch_index =
-            needs_scratch(types, ty).then(|| self.insert_counted(scope, scratch(&name), None));
+        let scratch_index = needs_scratch(types, ty).then(|| self.count());
         if let Some(slots) = reached.slots {
             let data_offset = start?;
             if matches!(types.kind(ty)?, TypeKind::Structure { .. }) {
                 let entry = entries::structure(ty, index, data_offset, scratch_index, slots);
-                self.struct_vars.insert(scope, name.clone(), entry);
+                self.struct_vars.insert(scope, name.stored, entry);
             } else {
                 let entry =
                     entries::struct_array(types, ty, index, data_offset, scratch_index, slots)?;
-                self.struct_array_vars.insert(scope, name.clone(), entry);
+                self.struct_array_vars.insert(scope, name.stored, entry);
             }
         }
         self.insert_reached(
             scope,
-            &name,
+            name.stored,
             reached.array,
             reached.string_ref,
             reached.region_ref,
@@ -551,54 +568,54 @@ impl Layout {
         Some(())
     }
 
-    /// Records how `name` in `scope` is reached as an array, through the
+    /// Records how `stored` in `scope` is reached as an array, through the
     /// strings it refers to and through the descriptor that sizes what it
     /// refers to, of those it has.
     fn insert_reached(
         &mut self,
         scope: ScopeId,
-        name: &Id,
+        stored: Stored,
         array: Option<ArrayVarInfo>,
         string_ref: Option<StringRefInfo>,
         region_ref: Option<u16>,
     ) {
         if let Some(array) = array {
-            self.array_vars.insert(scope, name.clone(), array);
+            self.array_vars.insert(scope, stored, array);
         }
         if let Some(string_ref) = string_ref {
-            self.string_refs.insert(scope, name.clone(), string_ref);
+            self.string_refs.insert(scope, stored, string_ref);
         }
         if let Some(region_ref) = region_ref {
-            self.region_refs.insert(scope, name.clone(), region_ref);
+            self.region_refs.insert(scope, stored, region_ref);
         }
     }
 
-    /// Reserves the run of the data region that `name`, of a function, a
+    /// Reserves the run of the data region that `stored`, of a function, a
     /// function block or a method, holds in `scope` when its type `ty` is a
     /// string, and returns where it is.
     fn insert_string(
         &mut self,
         storage: &mut Storage,
         scope: ScopeId,
-        name: &Id,
+        stored: Stored,
         ty: TypeId,
     ) -> Option<Option<StringVarInfo>> {
         let Some(TypeKind::String(shape)) = storage.region.lowering().types().kind(ty) else {
             return Some(None);
         };
         let string = storage.region.string(*shape)?;
-        self.string_vars.insert(scope, name.clone(), string.clone());
+        self.string_vars.insert(scope, stored, string.clone());
         Some(Some(string))
     }
 
-    /// Adds the array descriptors that `name`, of a function or a function
+    /// Adds the array descriptors that `stored`, of a function or a function
     /// block, whose slot is `index`, reaches its target through in `scope`
     /// when its type `ty` is a reference.
     fn insert_reference(
         &mut self,
         storage: &mut Storage,
         scope: ScopeId,
-        name: &Id,
+        stored: Stored,
         ty: TypeId,
         index: VarIndex,
     ) -> Option<()> {
@@ -607,7 +624,7 @@ impl Layout {
             let reached = storage.descriptors.reference(*target, index)?;
             self.insert_reached(
                 scope,
-                name,
+                stored,
                 reached.array,
                 reached.string_ref,
                 reached.region_ref,
@@ -616,12 +633,24 @@ impl Layout {
         Some(())
     }
 
-    /// Records `name` in `scope` at the next slot the body of `scope`
-    /// counts, as the globals, the program's variables and their scratch
-    /// slots are numbered.
-    fn insert_counted(&mut self, scope: ScopeId, name: Id, held: Option<VarTypeInfo>) -> VarIndex {
-        let index = self.counter.slot(names::slot_count(&self.slots, scope));
-        self.insert(scope, name, index, held);
+    /// Records `stored` in `scope` at the next slot the globals and the
+    /// program count.
+    fn insert_counted(
+        &mut self,
+        scope: ScopeId,
+        stored: Stored,
+        held: Option<VarTypeInfo>,
+    ) -> VarIndex {
+        let index = self.count();
+        self.insert(scope, stored, index, held);
+        index
+    }
+
+    /// The next slot the globals and the program count, which their
+    /// variables and their scratch slots are numbered from.
+    fn count(&mut self) -> VarIndex {
+        let index = self.counter.slot(self.counted);
+        self.counted += 1;
         index
     }
 }
@@ -656,7 +685,7 @@ fn held(lowering: &PartialProgram, var: VarId) -> Option<TypeId> {
 /// model's order, the compiler-provided ones first, each with whether the
 /// compiler provides it. A resource's `VAR_GLOBAL` has none yet
 /// (`execution.rs`).
-pub(super) fn globals(lowering: &PartialProgram) -> Vec<(VarId, bool)> {
+pub(crate) fn globals(lowering: &PartialProgram) -> Vec<(VarId, bool)> {
     let bindings = lowering.bindings();
     lowering
         .execution()
@@ -670,12 +699,6 @@ pub(super) fn globals(lowering: &PartialProgram) -> Vec<(VarId, bool)> {
             Some((bindings.global(id)?, system))
         })
         .collect()
-}
-
-/// The name of the scratch slot of the variable `name`, which no
-/// IEC 61131-3 identifier can collide with.
-fn scratch(name: &Id) -> Id {
-    Id::from(&format!("$scratch_{name}"))
 }
 
 /// Whether a variable of the type `ty` takes a scratch slot: a structure
@@ -837,19 +860,27 @@ impl Pous {
     }
 }
 
-/// The name of the variable `var`.
-fn name(lowering: &PartialProgram, var: VarId) -> Option<Id> {
-    Some(Id::from(&lowering.variables().get(var)?.name().to_string()))
+/// The variable `var`, by its name.
+pub(crate) fn named(lowering: &PartialProgram, var: VarId) -> Option<Named> {
+    let name = lowering.variables().get(var)?.name();
+    Some(Named {
+        stored: Stored::Var(var),
+        name: Id::from(&name.to_string()).with_position(name.span()),
+    })
 }
 
-/// The name of the field `field`.
-fn name_of(field: &Field) -> Id {
-    Id::from(&field.name.to_string())
+/// The field `idx` of an instance of `instance`, which is `field`, by its
+/// name.
+pub(crate) fn named_field(instance: TypeId, idx: FieldIdx, field: &Field) -> Named {
+    Named {
+        stored: Stored::Field(instance, idx),
+        name: Id::from(&field.name.to_string()).with_position(field.name.span()),
+    }
 }
 
 /// The type of the instance the body of `pou` works on, a program or a
 /// function block.
-pub(super) fn instance_type(types: &TypeTable, pou: PouId) -> Option<TypeId> {
+pub(crate) fn instance_type(types: &TypeTable, pou: PouId) -> Option<TypeId> {
     types.iter().find_map(|(ty, entry)| match &entry.kind {
         TypeKind::Program { body, .. } | TypeKind::FunctionBlock { body, .. } => {
             (*body == pou).then_some(ty)
@@ -868,21 +899,25 @@ pub(super) fn instance_type(types: &TypeTable, pou: PouId) -> Option<TypeId> {
     })
 }
 
-/// The fields of the function block `pou` that its copy slots hold: its
-/// own inputs, then its outputs, then its locals, each in declaration order.
-pub(super) fn copy_slots(lowering: &PartialProgram, pou: PouId) -> Option<Vec<&Field>> {
+/// The fields of the function block `pou` that its copy slots hold, each
+/// with its index: its own inputs, then its outputs, then its locals, each
+/// in declaration order.
+pub(super) fn copy_slots(lowering: &PartialProgram, pou: PouId) -> Option<Vec<(FieldIdx, &Field)>> {
     let types = lowering.types();
     let fields = types.fields(instance_type(types, pou)?)?;
     let mut own = Vec::new();
     for declaration in lowering.declarations(pou)? {
         match declaration {
-            Declaration::Field(field) => own.push(fields.get(field.index() as usize)?),
+            Declaration::Field(idx) => own.push((*idx, fields.get(idx.index() as usize)?)),
             Declaration::Variable(_) | Declaration::External(_) => {}
         }
     }
     let mut slots = Vec::with_capacity(own.len());
     for section in [Section::Input, Section::Output, Section::Local] {
-        slots.extend(own.iter().filter(|field| field.section == Some(section)));
+        slots.extend(
+            own.iter()
+                .filter(|(_, field)| field.section == Some(section)),
+        );
     }
     Some(slots)
 }

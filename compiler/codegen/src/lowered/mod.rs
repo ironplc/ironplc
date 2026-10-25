@@ -7,11 +7,10 @@
 //! statement's index. A statement lowering, or this backend, does not
 //! support yet is a P9999.
 //!
-//! A lowered statement finds its variables' storage in the layout codegen
-//! already builds, through the current body's scope, by the name lowering
-//! keeps on each variable and field. The lowered program carries that name
-//! for debug information (REQ-LOW-lowering-006), and the design allows the
-//! lookup by name until a POU's statements all lower.
+//! A lowered statement finds its variables' storage in the layout built from
+//! the lowered declarations, by the id of each variable and field
+//! (REQ-LOW-codegen-123). The name lowering keeps on each is for debug
+//! information and diagnostics (REQ-LOW-lowering-006).
 
 // A match over a lowered enum names every variant, so a variant added later
 // fails to compile wherever it is not handled (REQ-LOW-lowering-082). The
@@ -19,7 +18,7 @@
 // the rule.
 #![deny(clippy::wildcard_enum_match_arm)]
 
-use ironplc_dsl::core::{Id, Located, SourceSpan};
+use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::StmtKind as AstStmtKind;
 use ironplc_ir::lowered::{
@@ -29,6 +28,7 @@ use ironplc_ir::lowered::{
 };
 use ironplc_lowering::{PartialProgram, StatementLowering};
 
+use crate::access::Named;
 use crate::compile::{CompileContext, OpType, OpWidth, Signedness, UserFunctionInfo};
 use crate::compile_subscript::subscript_check;
 use crate::compile_user_call::passes_by_reference;
@@ -406,32 +406,49 @@ fn subscripts_can_emit(
     })
 }
 
-/// The name this backend's layout knows a variable `place` by: the
-/// variable's name, or the name of the slot a field of the current instance
-/// is copied into. `None` for any other place, and for a variable the
-/// current body does not see by that name.
-pub(super) fn storage_name(
+/// The variable `place` is the whole of, as this backend's layout keeps
+/// it: a variable, or the slot a field of the current instance is copied
+/// into. `None` for any other place, and for a variable the layout keeps no
+/// slot for.
+pub(super) fn stored(
     lowering: &PartialProgram,
     ctx: &CompileContext,
     place: &LoweredPlace,
-) -> Option<Id> {
+) -> Option<Named> {
     let root = lowering.variables().get(place.root())?;
     if place.path().is_empty() {
-        return seen_name(ctx, place.root()).cloned();
+        return stored_variable(lowering, ctx, place.root());
     }
     let (instance, field, rest) = instance_field(lowering, root.ty(), place.path())?;
     if !rest.is_empty() {
         return None;
     }
-    ctx.lowered_ids.field(instance, field).cloned()
+    stored_field(lowering, ctx, instance, field)
 }
 
-/// The name the layout knows the variable `var` by, when the current body
-/// sees it by that name; `None` for a variable the layout keeps no slot for,
-/// or one the current body does not see.
-pub(super) fn seen_name(ctx: &CompileContext, var: VarId) -> Option<&Id> {
-    let (scope, name) = ctx.lowered_ids.variable(var)?;
-    ctx.sees(*scope, name).then_some(name)
+/// The variable `var`, when the layout keeps a slot for it.
+pub(super) fn stored_variable(
+    lowering: &PartialProgram,
+    ctx: &CompileContext,
+    var: VarId,
+) -> Option<Named> {
+    crate::layout::lowered::named(lowering, var).filter(|named| ctx.has_slot(named))
+}
+
+/// The field `field` of an instance of `instance`, when the layout keeps a
+/// slot for it while the instance's body runs.
+pub(super) fn stored_field(
+    lowering: &PartialProgram,
+    ctx: &CompileContext,
+    instance: TypeId,
+    field: FieldIdx,
+) -> Option<Named> {
+    let declared = lowering
+        .types()
+        .fields(instance)?
+        .get(field.index() as usize)?;
+    let named = crate::layout::lowered::named_field(instance, field, declared);
+    ctx.has_slot(&named).then_some(named)
 }
 
 /// When `path` starts by reaching a field of an instance: of the current

@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use crate::access::{Access, Field};
+use crate::access::{Access, Field, Named};
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 
@@ -129,7 +129,7 @@ pub(crate) fn walk_struct_chain<S>(
     record: &Access<S>,
     field: &Id,
     depth: u32,
-) -> Result<(Id, SlotIndex, TypeId), Diagnostic> {
+) -> Result<(Named, SlotIndex, TypeId), Diagnostic> {
     if depth > MAX_STRUCT_CHAIN_DEPTH {
         return Err(Diagnostic::not_implemented(Label::span(
             field.span(),

@@ -16,12 +16,12 @@
 
 use ironplc_analyzer::CleanAnalysis;
 use ironplc_container::{Container, TaskType};
-use ironplc_dsl::common::{ProgramDeclaration, VarDecl};
+use ironplc_dsl::common::ProgramDeclaration;
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::execution::{
-    Configuration, DebugName, ExecutionModel, GlobalKind, GlobalScope, InstanceOf, ProgramId,
-    ProgramInstance, Schedule, SystemGlobal, Task,
+    Configuration, DebugName, ExecutionModel, GlobalKind, InstanceOf, ProgramId, ProgramInstance,
+    Schedule, SystemGlobal, Task,
 };
 use ironplc_problems::Problem;
 
@@ -31,9 +31,6 @@ pub(crate) struct Runnable<'a> {
     pub(crate) program: &'a ProgramDeclaration,
     /// The task table entry's scheduling fields.
     pub(crate) schedule: TaskSchedule,
-    /// The declarations of the declared globals that get storage, in
-    /// variable-table order after the system globals.
-    pub(crate) globals: Vec<VarDecl>,
     /// Whether the model lists the uptime global, which the VM writes each
     /// scan.
     pub(crate) has_system_uptime: bool,
@@ -58,7 +55,6 @@ pub(crate) fn runnable<'a>(analysis: &CleanAnalysis<'a>) -> Result<Runnable<'a>,
     Ok(Runnable {
         program,
         schedule,
-        globals: global_declarations(analysis, model)?,
         has_system_uptime: model
             .globals()
             .any(|(_, global)| matches!(global.kind, GlobalKind::System(SystemGlobal::UpTime))),
@@ -283,37 +279,6 @@ pub(crate) fn apply_task_schedule(container: &mut Container, schedule: TaskSched
         entry.interval_us = schedule.interval_us;
         entry.task_type = schedule.task_type;
     }
-}
-
-/// The declarations of the declared globals the variable table holds, in the
-/// model's order. The system globals are laid out from the lowered program
-/// ([`crate::layout::lowered`]).
-///
-/// A declared global's type and initial value are still compiled from its
-/// declaration, which is reached by id. A resource's `VAR_GLOBAL` gets no
-/// storage yet, so that a program that compiles today keeps its variable
-/// indexes; a program that uses one is reported when the use is compiled.
-fn global_declarations(
-    analysis: &CleanAnalysis<'_>,
-    model: &ExecutionModel,
-) -> Result<Vec<VarDecl>, Diagnostic> {
-    let mut declarations = Vec::new();
-    for (id, global) in model.globals() {
-        match global.kind {
-            GlobalKind::System(_) => {}
-            GlobalKind::Declared(GlobalScope::TopLevel | GlobalScope::Configuration) => {
-                let decl = analysis.global_declaration(id).ok_or_else(|| {
-                    Diagnostic::internal_error_at(Label::span(
-                        global.name.span(),
-                        "Global variable in the execution model has no declaration",
-                    ))
-                })?;
-                declarations.push(decl.clone());
-            }
-            GlobalKind::Declared(GlobalScope::Resource) => {}
-        }
-    }
-    Ok(declarations)
 }
 
 /// Builds the P4080 diagnostic for instances of types that are not a

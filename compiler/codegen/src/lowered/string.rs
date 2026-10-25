@@ -78,8 +78,8 @@ pub(super) fn reaches_string(
 
 /// The string variable `place` is, the string field of the current
 /// instance, or the string output of the function or method being compiled,
-/// which this backend keeps in a slot of its own, by name. `None` for any
-/// other place.
+/// which this backend keeps in a slot of its own. `None` for any other
+/// place.
 fn string_storage<'c>(
     lowering: &PartialProgram,
     ctx: &'c CompileContext,

@@ -9,7 +9,7 @@
 //! Separated from `compile_array.rs`, whose arrays hold one value per slot, to
 //! keep module sizes within the 1000-line guideline.
 
-use crate::access::{Access, Field};
+use crate::access::{Access, Field, Named};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 
@@ -266,7 +266,7 @@ enum ArrayOfStructBase<'a, S> {
     /// An array field of a structure, as in `holder.items[i]`.
     Field(&'a Field<S>),
     /// A variable that is itself an array of structures, as in `items[i]`.
-    Variable(&'a Id),
+    Variable(&'a Named),
 }
 
 /// Builds the access for `<array-of-struct>[i].field`.

@@ -2,7 +2,7 @@
 //! a string copied into the parameter's slot, and a reference to the caller's
 //! variable for a `VAR_IN_OUT`.
 
-use ironplc_dsl::core::Id;
+use crate::access::Named;
 use ironplc_dsl::diagnostic::Diagnostic;
 
 use super::compile::{CompileContext, StringParamInfo};
@@ -35,7 +35,7 @@ pub(crate) fn copy_string_arg(
 /// lives in its own slot, unlike a string, array, structure or instance,
 /// which lives in the data region. A `VAR_IN_OUT` parameter of the function
 /// being compiled is one.
-pub(crate) fn passes_by_reference(ctx: &CompileContext, name: &Id) -> bool {
+pub(crate) fn passes_by_reference(ctx: &CompileContext, name: &Named) -> bool {
     ctx.var_type_info(name).is_some()
         && !ctx.string_var(name).is_some()
         && !ctx.array_var(name).is_some()
@@ -50,7 +50,7 @@ pub(crate) fn passes_by_reference(ctx: &CompileContext, name: &Id) -> bool {
 pub(crate) fn emit_reference(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    name: &Id,
+    name: &Named,
 ) -> Result<(), Diagnostic> {
     if let Some(ref_slot) = ctx.in_out_ref_slot(name) {
         emitter.emit_load_var_i64(ref_slot);

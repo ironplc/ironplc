@@ -62,7 +62,11 @@ pub(super) fn check(lowering: &PartialProgram, pous: &Pous) -> Option<Result<(),
             ))
             .with_context("fields", &fields.len().to_string())));
         }
-        declared.extend(fields.iter().map(|field| (field.ty, field.name.span())));
+        declared.extend(
+            fields
+                .iter()
+                .map(|(_, field)| (field.ty, field.name.span())),
+        );
     }
     Some(
         declared

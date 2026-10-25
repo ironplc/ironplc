@@ -306,7 +306,7 @@ impl Emission<'_> {
     }
 
     /// `place <cmp> value` as one `CMP_BR_*`, when `place` is a signed integer
-    /// variable, found by its name: a variable, a field of the current
+    /// variable the layout keeps: a variable, a field of the current
     /// instance, or what a function's or method's parameter refers to.
     fn classify_place(
         &self,
