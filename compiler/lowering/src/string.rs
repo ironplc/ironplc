@@ -284,7 +284,7 @@ impl Lowering<'_> {
             AstExprKind::Function(func) => self.string_call(frame, expr, func),
             // The string output of the call whose outputs are being stored.
             AstExprKind::CallOutput(output) => {
-                let place = self.call_output_place(output)?;
+                let place = self.call_output_place(frame, output)?;
                 Ok(self.program.read_str(place, span)?)
             }
             // The string a reference variable refers to, and `REF(s)^`, a

@@ -502,7 +502,7 @@ impl<'a> Lowering<'a> {
     /// method, its signature, and gives what each declaration declares. A
     /// body with a declaration of its own that lowering does not express
     /// yet is not declared.
-    fn declare_body(&mut self, body: Body<'a>) -> Lowered<(BodyFrame, Vec<Declaration>)> {
+    fn declare_body(&mut self, body: Body<'a>) -> Lowered<(BodyFrame<'static>, Vec<Declaration>)> {
         let frame = self.frame(body)?;
         let mut declared = Vec::new();
         for decl in declarations(body) {
@@ -545,7 +545,7 @@ impl<'a> Lowering<'a> {
     fn lower_body(
         &mut self,
         body: Body<'a>,
-        frame: Option<(BodyFrame, Vec<Declaration>)>,
+        frame: Option<(BodyFrame<'static>, Vec<Declaration>)>,
         values: &Values,
     ) -> Result<LoweredBody, Diagnostic> {
         let span = body_name(body).span();

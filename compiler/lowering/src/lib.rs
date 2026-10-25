@@ -112,7 +112,7 @@ use ironplc_dsl::oop::MethodDeclaration;
 pub use program::PartialProgram;
 pub use whole::{lower, parse_policy};
 
-use ironplc_ir::lowered::{LoopScope, ParsePolicy, Place, PouId, ProgramBuilder, VarId};
+use ironplc_ir::lowered::{ParsePolicy, PouId, ProgramBuilder, VarId};
 
 /// The body a statement belongs to.
 #[derive(Clone, Copy, Debug)]
@@ -184,31 +184,15 @@ pub struct Lowering<'a> {
     /// The variable of each declaration that is not a field.
     declared: HashMap<DeclRef, VarId>,
     pou_ids: HashMap<String, PouId>,
-    /// What lowering knows of each body it has lowered a statement of, or
-    /// why it could not make the body's frame.
-    bodies: HashMap<PouId, Lowered<variables::BodyFrame>>,
-    /// The loops enclosing the statement being lowered, innermost last.
-    loops: Vec<LoopScope>,
-    /// Where the call whose outputs are being lowered leaves them, which
-    /// its call outputs read.
-    call_outputs: Option<CallOutputs>,
+    /// The frame of each body it has lowered a statement of, enclosed by
+    /// nothing, or why it could not make the body's frame.
+    bodies: HashMap<PouId, Lowered<variables::BodyFrame<'static>>>,
     /// The block that declares each method a call can reach, as the
     /// analyzer resolves it (ADR-0041).
     method_owners: MethodOwners,
     /// The variable of the body of each method whose result is an array or
     /// a structure, which holds the result (REQ-LOW-lowering-187).
     aggregate_results: HashMap<PouId, VarId>,
-}
-
-/// Where a call leaves its outputs for the assignments of its outputs to
-/// read.
-#[derive(Clone, Debug)]
-enum CallOutputs {
-    /// In the fields of the function block instance it called.
-    Instance(Place),
-    /// In the temporary it passed for each output of a function or method,
-    /// by the output's name (REQ-LOW-lowering-092).
-    Temporaries(Vec<(Id, Place)>),
 }
 
 impl<'a> Lowering<'a> {
@@ -224,8 +208,6 @@ impl<'a> Lowering<'a> {
             declared: HashMap::new(),
             pou_ids: HashMap::new(),
             bodies: HashMap::new(),
-            loops: Vec::new(),
-            call_outputs: None,
             method_owners: MethodOwners::of_library(analysis.library(), analysis.context().types()),
             aggregate_results: HashMap::new(),
         }

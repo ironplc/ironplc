@@ -10,7 +10,7 @@
     "uplot": "^1.6.31"
   },
   "devDependencies": {
-    "@playwright/test": "^1.63.0",
+    "@playwright/test": "^1.64.1",
     "typescript": "^7.0.2"
   }
 }
