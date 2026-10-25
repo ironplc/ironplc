@@ -13,20 +13,20 @@
 //! offset of that instance's fields (`held_instances.rs`), so the instance
 //! it holds is copied in turn, into the one the destination's field holds.
 //!
-//! An instance is copied when this backend reaches it: by name, or as the
-//! instance a field of one it reaches holds, to any depth (`g.ob`,
-//! `h.og.ob`). Only an instance it reaches by name is called (`fb_call.rs`).
+//! An instance is copied when this backend reaches it: as a variable, or as
+//! the instance a field of one it reaches holds, to any depth (`g.ob`,
+//! `h.og.ob`). Only an instance it reaches as a variable is called
+//! (`fb_call.rs`).
 //! In a function block's body or method, the instance that a field of the
 //! instance it works on holds is reached too (`ob := loc`): the call copies
 //! that instance's fields into the body's slots and back (`compile_fn.rs`),
 //! so the field's slot holds the offset of the instance it holds.
 //!
-//! A function's body sees the program's instances by name, and its own
-//! structures may share their names, so a `Copy` is taken for one of
-//! instances only when its places are function block instances.
+//! A `Copy` is taken for one of instances only when its places are function
+//! block instances.
 
+use crate::access::Named;
 use ironplc_container::{FbTypeId, VarIndex};
-use ironplc_dsl::core::Id;
 use ironplc_ir::lowered::{Place as LoweredPlace, Projection, TypeKind};
 use ironplc_lowering::PartialProgram;
 
@@ -162,7 +162,7 @@ fn held_by_current(
     lowering: &PartialProgram,
     ctx: &CompileContext,
     place: &LoweredPlace,
-    name: &Id,
+    name: &Named,
 ) -> Option<(VarIndex, FbTypeId)> {
     if !matches!(place.path(), [Projection::Deref, Projection::Field(_), ..]) {
         return None;
@@ -178,7 +178,7 @@ fn held_by_current(
     let held = layout(ctx, block)?
         .held
         .iter()
-        .find(|held| held.name == *name.lower_case())?;
+        .find(|held| held.name == *name.name.lower_case())?;
     Some((ctx.var_index(name).ok()?, layout(ctx, &held.block)?.type_id))
 }
 

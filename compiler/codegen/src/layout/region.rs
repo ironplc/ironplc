@@ -139,7 +139,10 @@ impl<'a> Region<'a> {
         };
         let body = *body;
         if self.blocks.contains(&body) {
-            let fields = copy_slots(self.lowering, body)?;
+            let fields: Vec<_> = copy_slots(self.lowering, body)?
+                .into_iter()
+                .map(|(_, field)| field)
+                .collect();
             let start = self.reserve(u32::try_from(fields.len()).ok()?.checked_mul(8)?)?;
             let holders: Vec<(FbFieldIndex, TypeId)> = fields
                 .iter()

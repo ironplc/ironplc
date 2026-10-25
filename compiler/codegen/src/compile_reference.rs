@@ -14,9 +14,9 @@
 //! references through [`register_reference_variable`], or, given the type
 //! referenced, [`register_reference_of_type`].
 
+use crate::access::Named;
 use ironplc_container::reference::data_region_reference;
 use ironplc_container::CharWidth;
-use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::Diagnostic;
 
 use super::compile::CompileContext;
@@ -38,7 +38,7 @@ pub(crate) struct StringRefInfo {
 /// data-region reference to the header of a string, which lives in the data
 /// region, and a variable reference to the slot of any other variable
 /// (`specs/design/var-in-out-parameters.md`, "References").
-pub(crate) fn reference_to(ctx: &CompileContext, name: &Id) -> Result<u64, Diagnostic> {
+pub(crate) fn reference_to(ctx: &CompileContext, name: &Named) -> Result<u64, Diagnostic> {
     match ctx.string_var(name) {
         Some(string) => Ok(data_region_reference(string.data_offset)),
         None => Ok(u64::from(ctx.var_index(name)?.raw())),

@@ -18,41 +18,70 @@
 //! A starting value lowering does not express yet, or a store this backend
 //! does not emit yet, is not supported yet (P9999).
 
-use ironplc_dsl::common::VarDecl;
-use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_ir::lowered::{Place, Projection, Stmt, StmtKind, StrExprKind, TypeId, TypeKind};
-use ironplc_lowering::PartialProgram;
+use ironplc_ir::lowered::{
+    Place, PouId, Projection, Section, Stmt, StmtKind, StrExprKind, TypeId, TypeKind,
+};
+use ironplc_lowering::{Declaration, PartialProgram};
 
+use crate::access::{Named, Stored};
 use crate::compile::CompileContext;
 use crate::emit::Emitter;
+use crate::layout::lowered::named;
 
-/// Whether any of `variables` starts again on every call: a program or a
-/// function block has a prologue only when it declares a `VAR_TEMP`.
-pub(crate) fn restarts(variables: &[VarDecl]) -> bool {
-    variables.iter().any(|decl| decl.reset_on_call)
+/// Whether the current body has a prologue: a program or a function block
+/// has one only when it declares a `VAR_TEMP`.
+pub(crate) fn restarts(ctx: &CompileContext) -> Result<bool, Diagnostic> {
+    let pou = super::current_pou(ctx).ok_or_else(Diagnostic::internal_error)?;
+    Ok(!restarting(ctx.lowering()?, pou)
+        .ok_or_else(Diagnostic::internal_error)?
+        .is_empty())
 }
 
-/// Emits the prologue of the current body, which declares `variables` and,
-/// for a function or a method that returns a value, the result `result`,
-/// from the lowered program.
+/// Emits the prologue of the current body, from the lowered program: its
+/// declarations that start again on every call and, for a function or a
+/// method that returns a value, its result.
 pub(crate) fn emit_prologue(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    variables: &[VarDecl],
-    result: Option<&Id>,
 ) -> Result<(), Diagnostic> {
     let route = super::taken_route(ctx)?;
-    let emitted = emit(emitter, ctx, route.lowering(), variables, result);
+    let emitted = emit(emitter, ctx, route.lowering());
     ctx.lowered_route = Some(route);
     emitted
+}
+
+/// The variables of `pou` that start again on every call, in declaration
+/// order: a function's or a method's `VAR`, `VAR_TEMP` and `VAR_OUTPUT`,
+/// and a program's or a function block's `VAR_TEMP`.
+fn restarting(lowering: &PartialProgram, pou: PouId) -> Option<Vec<Named>> {
+    let called = lowering.pous().function(pou).is_some();
+    let variables = lowering.variables();
+    let mut restarting = Vec::new();
+    for declaration in lowering.declarations(pou)? {
+        let Declaration::Variable(var) = declaration else {
+            continue;
+        };
+        let restarts = match variables.get(*var)?.section() {
+            Section::Temporary => true,
+            Section::Local | Section::Output => called,
+            Section::Global
+            | Section::Input
+            | Section::InOut
+            | Section::Instance
+            | Section::Internal => false,
+        };
+        if restarts {
+            restarting.push(named(lowering, *var)?);
+        }
+    }
+    Some(restarting)
 }
 
 /// A declaration of the prologue, and the statements that store its
 /// starting value.
 struct Declared<'l> {
-    name: Id,
-    span: SourceSpan,
+    name: Named,
     /// Whether it is a function's or method's result.
     result: bool,
     /// The type of what it declares, as its stores reach it; `None` when
@@ -69,10 +98,8 @@ fn emit(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     lowering: &PartialProgram,
-    variables: &[VarDecl],
-    result: Option<&Id>,
 ) -> Result<(), Diagnostic> {
-    for declared in planned(lowering, ctx, variables, result)? {
+    for declared in planned(lowering, ctx)? {
         set_up(emitter, ctx, lowering, &declared)?;
         let stores: Vec<Stmt> = declared.stores.into_iter().cloned().collect();
         super::stmt::emit_stmts(emitter, ctx, lowering, &stores)?;
@@ -112,7 +139,7 @@ fn set_up(
                     ctx,
                     lowering.types(),
                     &info,
-                    &declared.span,
+                    &declared.name.span(),
                 )?;
             }
         }
@@ -142,24 +169,22 @@ fn set_up(
 fn planned<'l>(
     lowering: &'l PartialProgram,
     ctx: &CompileContext,
-    variables: &[VarDecl],
-    result: Option<&Id>,
 ) -> Result<Vec<Declared<'l>>, Diagnostic> {
     let pou = super::current_pou(ctx).ok_or_else(Diagnostic::internal_error)?;
     let statements = lowering
         .prologue(pou)
         .ok_or_else(|| super::unsupported_value(lowering.prologue_unsupported(pou)))?;
-    let mut planned: Vec<Declared> = variables
-        .iter()
-        .filter(|decl| decl.reset_on_call)
-        .filter_map(|decl| {
-            let name = decl.identifier.symbolic_id()?;
-            Some((name.clone(), decl.identifier.span(), false))
-        })
-        .chain(result.map(|result| (result.clone(), result.span(), true)))
-        .map(|(name, span, result)| Declared {
+    let restarting = restarting(lowering, pou).ok_or_else(Diagnostic::internal_error)?;
+    let result = match lowering.result(pou) {
+        Some(var) => Some(named(lowering, var).ok_or_else(Diagnostic::internal_error)?),
+        None => None,
+    };
+    let mut planned: Vec<Declared> = restarting
+        .into_iter()
+        .map(|name| (name, false))
+        .chain(result.map(|result| (result, true)))
+        .map(|(name, result)| Declared {
             name,
-            span,
             result,
             ty: None,
             cleared: false,
@@ -191,18 +216,13 @@ fn planned<'l>(
                 "A store of the prologue is into no variable the prologue declares",
             ))
         };
-        let (_, name) = ctx
-            .lowered_ids
-            .variable(place.root())
-            .filter(|(scope, _)| *scope == ctx.scope)
-            .ok_or_else(unknown)?;
         let declared = planned
             .iter_mut()
-            .find(|declared| declared.name == *name)
+            .find(|declared| declared.name.stored == Stored::Var(place.root()))
             .ok_or_else(unknown)?;
         let (ty, whole) = declared_type(lowering, place).ok_or_else(unknown)?;
         declared.ty = Some(ty);
-        if unstored(lowering, ctx, place, name) {
+        if unstored(lowering, ctx, place, &declared.name) {
             declared.cleared = true;
             continue;
         }
@@ -223,7 +243,7 @@ fn planned<'l>(
 /// method body (REQ-LOW-codegen-165): the variable's slot holds what another
 /// stores in it, so the prologue clears it rather than storing into what it
 /// does not have.
-fn unstored(lowering: &PartialProgram, ctx: &CompileContext, place: &Place, name: &Id) -> bool {
+fn unstored(lowering: &PartialProgram, ctx: &CompileContext, place: &Place, name: &Named) -> bool {
     if !matches!(
         place.path(),
         [Projection::Field(_) | Projection::Index(_), ..]

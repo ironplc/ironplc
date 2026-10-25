@@ -3,6 +3,7 @@
 //! (`FB_LOAD_INSTANCE`, `FB_STORE_PARAM`, `FB_CALL`, `POP`). A call's
 //! outputs are stored after it, each in its target.
 
+use crate::access::Named;
 use std::collections::HashMap;
 
 use ironplc_container::FbTypeId;
@@ -32,7 +33,7 @@ impl FbCallSite {
     pub(crate) fn open(
         emitter: &mut Emitter,
         ctx: &CompileContext,
-        instance: &Id,
+        instance: &Named,
         span: &SourceSpan,
     ) -> Result<Self, Diagnostic> {
         let info = ctx
@@ -85,6 +86,7 @@ mod tests {
     use ironplc_dsl::core::{Id, SourceSpan};
 
     use super::FbCallSite;
+    use crate::access::test_variable;
     use crate::compile::{CompileContext, FbInstanceInfo};
     use crate::emit::Emitter;
 
@@ -96,7 +98,7 @@ mod tests {
         let result = FbCallSite::open(
             &mut emitter,
             &ctx,
-            &Id::from("missing"),
+            &test_variable("missing"),
             &SourceSpan::default(),
         );
 
@@ -109,9 +111,10 @@ mod tests {
     #[test]
     fn store_input_when_instance_has_no_such_field_then_not_implemented() {
         let mut ctx = CompileContext::new();
+        let f = test_variable("f");
         ctx.fb_instances.insert(
             ctx.scope,
-            Id::from("f"),
+            f.stored,
             FbInstanceInfo {
                 var_index: VarIndex::new(0),
                 type_id: FbTypeId::default(),
@@ -122,7 +125,7 @@ mod tests {
             },
         );
         let mut emitter = Emitter::new();
-        let call = FbCallSite::open(&mut emitter, &ctx, &Id::from("f"), &SourceSpan::default())
+        let call = FbCallSite::open(&mut emitter, &ctx, &f, &SourceSpan::default())
             .expect("the instance is declared");
 
         let result = call.store_input(&mut emitter, &Id::from("missing"));

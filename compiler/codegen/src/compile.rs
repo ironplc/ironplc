@@ -51,8 +51,7 @@ use ironplc_container::{
 // codegen reaches for these through `compile`.
 pub(crate) use ironplc_container::string_region_size;
 use ironplc_dsl::common::{
-    FunctionBlockDeclaration, FunctionDeclaration, LibraryElementKind, ProgramDeclaration, VarDecl,
-    VariableType,
+    FunctionBlockDeclaration, FunctionDeclaration, LibraryElementKind, ProgramDeclaration,
 };
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -63,9 +62,10 @@ use ironplc_analyzer::{
     TypeEnvironment,
 };
 
+use crate::access::{Named, Stored};
 use crate::emit::Emitter;
 use crate::held_instances::{HeldField, HeldInstance};
-use crate::layout::names::{self, ScopeId, Scoped};
+use crate::layout::names::{ScopeId, Scoped};
 
 use super::compile_fn::{compile_user_function, compile_user_function_block};
 use super::compile_method::compile_user_method;
@@ -294,7 +294,6 @@ pub fn compile(
             program: runnable.program,
             func_decls: &func_decls,
             fb_decls: &fb_decls,
-            global_vars: &runnable.globals,
             method_owners: &method_owners,
         },
         context.functions(),
@@ -444,8 +443,6 @@ struct ProgramInputs<'a> {
     program: &'a ProgramDeclaration,
     func_decls: &'a [&'a FunctionDeclaration],
     fb_decls: &'a [&'a FunctionBlockDeclaration],
-    /// The declared globals that get storage, in variable-table order.
-    global_vars: &'a [VarDecl],
     /// The block that declares each method callable on each block, as the
     /// analyzer resolves it.
     method_owners: &'a MethodOwners,
@@ -474,7 +471,6 @@ fn compile_program_with_functions(
         program,
         func_decls,
         fb_decls,
-        global_vars,
         method_owners,
     } = inputs;
     let mut ctx = CompileContext::new();
@@ -513,12 +509,6 @@ fn compile_program_with_functions(
         crate::layout::lowered::Layout::of(ctx.lowering()?, &program.name, &ctx.standard_blocks)?;
     let bodies = layout.install(&mut ctx, &mut builder)?;
     ctx.lowered_ids = crate::layout::ids::LoweredIds::matched(ctx.lowering()?, &ctx, &program.name);
-    let local_vars: Vec<VarDecl> = program
-        .variables
-        .iter()
-        .filter(|v| v.var_type != VariableType::External)
-        .cloned()
-        .collect();
     let program_var_count = bodies.program_slots;
     let mut compiled_functions = Vec::new();
     for (func_decl, layout) in func_decls.iter().zip(bodies.functions) {
@@ -550,7 +540,7 @@ fn compile_program_with_functions(
     // Emit bytecode for variable initial values into the init emitter, from
     // the lowered program.
     let mut init_emitter = Emitter::new();
-    crate::lowered::emit_init(&mut init_emitter, &mut ctx, global_vars, &local_vars)?;
+    crate::lowered::emit_init(&mut init_emitter, &mut ctx)?;
     init_emitter.emit_ret_void();
 
     // Compile the program body into the scan emitter. Mark
@@ -560,8 +550,8 @@ fn compile_program_with_functions(
     ctx.current_function_id = Some(FunctionId::SCAN);
     // A `VAR_TEMP` starts again at the head of every scan, from the lowered
     // program.
-    if crate::lowered::restarts(&local_vars) {
-        crate::lowered::emit_prologue(&mut scan_emitter, &mut ctx, &local_vars, None)?;
+    if crate::lowered::restarts(&ctx)? {
+        crate::lowered::emit_prologue(&mut scan_emitter, &mut ctx)?;
     }
     compile_body(
         &mut scan_emitter,
@@ -968,7 +958,7 @@ pub(crate) struct CompileContext {
     /// The program lowering made, which each top-level statement is read
     /// from; `None` only while it is taken to compile from it.
     pub(crate) lowered_route: Option<crate::lowered::LoweredRoute>,
-    /// What the layout knows each id of the lowered program as, once the
+    /// What the layout knows each POU of the lowered program as, once the
     /// layout is built.
     pub(crate) lowered_ids: crate::layout::ids::LoweredIds,
     /// The scope whose names are being laid out, or whose body is being
@@ -1165,7 +1155,7 @@ impl CompileContext {
         self.route().map(crate::lowered::LoweredRoute::lowering)
     }
 
-    pub(crate) fn var_index(&self, name: &Id) -> Result<VarIndex, Diagnostic> {
+    pub(crate) fn var_index(&self, name: &Named) -> Result<VarIndex, Diagnostic> {
         if self.is_in_out(name) {
             return Err(Diagnostic::not_implemented(Label::span(
                 name.span(),
@@ -1184,84 +1174,78 @@ impl CompileContext {
     /// Returns the slot holding the reference when `name` is a `VAR_IN_OUT`
     /// parameter of the function being compiled, or `None` for any other
     /// variable.
-    pub(crate) fn in_out_ref_slot(&self, name: &Id) -> Option<VarIndex> {
+    pub(crate) fn in_out_ref_slot(&self, name: &Named) -> Option<VarIndex> {
         if !self.is_in_out(name) {
             return None;
         }
         self.slot(name)
     }
 
-    /// The slot of the variable `name` that the current scope sees.
-    fn slot(&self, name: &Id) -> Option<VarIndex> {
-        self.seen(&self.variables, names::SLOTS, name).copied()
+    /// The slot of the variable `name`.
+    fn slot(&self, name: &Named) -> Option<VarIndex> {
+        self.variables.get(&name.stored).copied()
     }
 
-    /// The entry of `map` for `name` that the current scope sees, which
-    /// `reach` says of the globals' and the program's.
-    fn seen<'m, V>(&self, map: &'m Scoped<V>, reach: names::Reach, name: &Id) -> Option<&'m V> {
-        names::lookup(map, &self.variables, reach, self.scope, name)
-    }
-
-    /// Whether the current scope sees the variable `name` that `scope`
-    /// declares: whether the name reaches that variable's slot here.
-    pub(crate) fn sees(&self, scope: ScopeId, name: &Id) -> bool {
-        let declared = names::lookup(&self.variables, &self.variables, names::SLOTS, scope, name);
-        declared.is_some() && declared == self.seen(&self.variables, names::SLOTS, name)
-    }
-
-    /// Whether `name` has a slot in the variable table in the current scope,
-    /// a `VAR_IN_OUT`'s included.
-    pub(crate) fn has_slot(&self, name: &Id) -> bool {
+    /// Whether `name` has a slot in the variable table, a `VAR_IN_OUT`'s
+    /// included.
+    pub(crate) fn has_slot(&self, name: &Named) -> bool {
         self.slot(name).is_some()
     }
 
+    /// Whether the layout gives `stored` a slot in the variable table.
+    pub(crate) fn stores(&self, stored: &Stored) -> bool {
+        self.variables.get(stored).is_some()
+    }
+
     /// Whether `name` is a `VAR_IN_OUT` of the body being compiled.
-    pub(crate) fn is_in_out(&self, name: &Id) -> bool {
-        self.seen(&self.in_out_params, names::IN_OUTS, name)
-            .is_some()
+    pub(crate) fn is_in_out(&self, name: &Named) -> bool {
+        self.in_out_params.get(&name.stored).is_some()
     }
 
     /// Where the string variable `name` is held; `None` when it is no string.
-    pub(crate) fn string_var(&self, name: &Id) -> Option<&StringVarInfo> {
-        self.seen(&self.string_vars, names::SLOTS, name)
+    pub(crate) fn string_var(&self, name: &Named) -> Option<&StringVarInfo> {
+        self.string_vars.get(&name.stored)
     }
 
     /// How the strings the reference variable `name` refers to are reached
     /// through it; `None` when it refers to no string or array of strings.
-    pub(crate) fn string_ref(&self, name: &Id) -> Option<&crate::compile_reference::StringRefInfo> {
-        self.seen(&self.string_refs, names::SLOTS, name)
+    pub(crate) fn string_ref(
+        &self,
+        name: &Named,
+    ) -> Option<&crate::compile_reference::StringRefInfo> {
+        self.string_refs.get(&name.stored)
     }
 
     /// The descriptor that sizes the whole array or structure the reference
     /// variable `name` refers to; `None` when it refers to no such target.
-    pub(crate) fn region_ref(&self, name: &Id) -> Option<u16> {
-        self.seen(&self.region_refs, names::SLOTS, name).copied()
+    pub(crate) fn region_ref(&self, name: &Named) -> Option<u16> {
+        self.region_refs.get(&name.stored).copied()
     }
 
     /// The layout of the array variable `name`; `None` when it is no array.
-    pub(crate) fn array_var(&self, name: &Id) -> Option<&crate::compile_array::ArrayVarInfo> {
-        self.seen(&self.array_vars, names::ARRAYS, name)
+    pub(crate) fn array_var(&self, name: &Named) -> Option<&crate::compile_array::ArrayVarInfo> {
+        self.array_vars.get(&name.stored)
     }
 
     /// The layout of the structure variable `name`; `None` when it is no
     /// structure.
-    pub(crate) fn struct_var(&self, name: &Id) -> Option<&crate::compile_struct::StructVarInfo> {
-        self.seen(&self.struct_vars, names::SLOTS, name)
+    pub(crate) fn struct_var(&self, name: &Named) -> Option<&crate::compile_struct::StructVarInfo> {
+        self.struct_vars.get(&name.stored)
     }
 
     /// The layout of the variable `name`, an array of structures; `None`
     /// when it is no such array.
     pub(crate) fn struct_array_var(
         &self,
-        name: &Id,
+        name: &Named,
     ) -> Option<&crate::compile_array_struct::StructArrayVarInfo> {
-        self.seen(&self.struct_array_vars, names::SLOTS, name)
+        self.struct_array_vars.get(&name.stored)
     }
 
     /// The layout of the function block instance `name`; `None` when it is
     /// no instance.
-    pub(crate) fn fb_instance(&self, name: &Id) -> Option<&FbInstanceInfo> {
-        self.seen(&self.fb_instances, names::INSTANCES, name)
+    pub(crate) fn fb_instance(&self, name: &Named) -> Option<&FbInstanceInfo> {
+        self.fb_instances.get(&name.stored)
     }
 
     /// The user-defined function named `name`, in lower case.
@@ -1296,8 +1280,8 @@ impl CompileContext {
     }
 
     /// Looks up type information for a variable by identifier.
-    pub(crate) fn var_type_info(&self, name: &Id) -> Option<VarTypeInfo> {
-        self.seen(&self.var_types, names::SLOTS, name).copied()
+    pub(crate) fn var_type_info(&self, name: &Named) -> Option<VarTypeInfo> {
+        self.var_types.get(&name.stored).copied()
     }
 
     /// Returns the index of an existing constant matching `matches`, or

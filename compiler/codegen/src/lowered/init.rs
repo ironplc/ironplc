@@ -15,29 +15,28 @@
 //! does not emit yet, is not supported yet (P9999), at the declaration or
 //! the store.
 
-use ironplc_dsl::common::VarDecl;
-use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::{
-    Const, Expr, ExprKind, Owner, Place, Projection, Stmt, StmtKind, StrExprKind, TypeId, TypeKind,
+    Const, Expr, ExprKind, Owner, Place, PouId, Projection, Stmt, StmtKind, StrExprKind, TypeId,
+    TypeKind,
 };
-use ironplc_lowering::PartialProgram;
+use ironplc_lowering::{Declaration, PartialProgram};
 
+use crate::access::{Named, Stored};
 use crate::compile::CompileContext;
 use crate::emit::Emitter;
+use crate::layout::lowered::{globals, instance_type, named, named_field};
 use crate::layout::names::ScopeId;
 
-/// Emits `init`, the globals `globals` declare and then the program's
-/// variables `program` declares, from the lowered program.
-pub(crate) fn emit_init(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    globals: &[VarDecl],
-    program: &[VarDecl],
-) -> Result<(), Diagnostic> {
+/// Emits `init`, the declared globals and then the program's own
+/// declarations, from the lowered program.
+pub(crate) fn emit_init(emitter: &mut Emitter, ctx: &mut CompileContext) -> Result<(), Diagnostic> {
     let route = super::taken_route(ctx)?;
     let caller = std::mem::replace(&mut ctx.scope, ScopeId::Program);
-    let emitted = emit(emitter, ctx, route.lowering(), globals, program);
+    let emitted = match ctx.lowered_ids.pou_in(ScopeId::Program) {
+        Some(program) => emit(emitter, ctx, route.lowering(), program),
+        None => Err(Diagnostic::internal_error()),
+    };
     ctx.scope = caller;
     ctx.lowered_route = Some(route);
     emitted
@@ -46,8 +45,7 @@ pub(crate) fn emit_init(
 /// The declaration of a global or of a field of the program instance, and
 /// the statements of `init` that store its starting value.
 struct Declared<'l> {
-    scope: ScopeId,
-    name: Id,
+    stored: Stored,
     stores: Vec<&'l Stmt>,
 }
 
@@ -55,8 +53,7 @@ fn emit(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     lowering: &PartialProgram,
-    globals: &[VarDecl],
-    program: &[VarDecl],
+    program: PouId,
 ) -> Result<(), Diagnostic> {
     // A program's `VAR_TEMP` is not in `init`: the program's prologue gives
     // it its starting value, at the head of every scan.
@@ -64,40 +61,31 @@ fn emit(
         return Err(super::unsupported_value(lowering.init_unsupported()));
     };
     let declared = declarations(lowering, ctx, statements)?;
-    let order = globals
-        .iter()
-        .map(|decl| (ScopeId::Global, decl))
-        .chain(program.iter().map(|decl| (ScopeId::Program, decl)));
     let mut ordered = Vec::with_capacity(declared.len());
-    for (scope, decl) in order {
-        let Some(id) = decl.identifier.symbolic_id() else {
-            continue;
-        };
+    for name in visited(lowering, program).ok_or_else(Diagnostic::internal_error)? {
         let stores = declared
             .iter()
-            .find(|declared| declared.name == *id && same_scope(declared.scope, scope));
-        ordered.push((decl, id, stores));
+            .find(|declared| declared.stored == name.stored);
+        ordered.push((name, stores));
     }
     // Every store belongs to one of the declarations `init` visits.
     let unvisited = declared.iter().find(|declared| {
         !ordered
             .iter()
-            .any(|(_, _, stores)| stores.is_some_and(|stores| std::ptr::eq(stores, *declared)))
+            .any(|(_, stores)| stores.is_some_and(|stores| std::ptr::eq(stores, *declared)))
     });
     if let Some(unvisited) = unvisited {
         return Err(Diagnostic::internal_error_at(Label::span(
-            unvisited.name.span(),
+            unvisited
+                .stores
+                .first()
+                .map(|stmt| stmt.span().clone())
+                .unwrap_or_default(),
             "A store of init is into no declaration init visits",
         )));
     }
-    for (decl, id, stores) in ordered {
-        crate::compile_setup::set_up_storage(
-            emitter,
-            ctx,
-            lowering.types(),
-            id,
-            &decl.identifier.span(),
-        )?;
+    for (name, stores) in ordered {
+        crate::compile_setup::set_up_storage(emitter, ctx, lowering.types(), &name)?;
         let Some(declared) = stores else {
             continue;
         };
@@ -107,11 +95,29 @@ fn emit(
     Ok(())
 }
 
-/// Whether a declaration recorded under `layout` is the one `init` visits
-/// in `visited`: a global the program declares in its own interface is laid
-/// out with the program's variables.
-fn same_scope(layout: ScopeId, visited: ScopeId) -> bool {
-    layout == visited || (layout == ScopeId::Program && visited == ScopeId::Global)
+/// The declarations `init` visits, in order: each declared global, then
+/// each of the own variables and fields of `program`. A global the program
+/// declares in its own interface is visited in both, and set up in both.
+fn visited(lowering: &PartialProgram, program: PouId) -> Option<Vec<Named>> {
+    let types = lowering.types();
+    let program_type = instance_type(types, program)?;
+    let mut visited = Vec::new();
+    for (var, system) in globals(lowering) {
+        if !system {
+            visited.push(named(lowering, var)?);
+        }
+    }
+    for declaration in lowering.declarations(program)? {
+        match declaration {
+            Declaration::Field(idx) => {
+                let field = types.fields(program_type)?.get(idx.index() as usize)?;
+                visited.push(named_field(program_type, *idx, field));
+            }
+            Declaration::Variable(var) => visited.push(named(lowering, *var)?),
+            Declaration::External(_) => {}
+        }
+    }
+    Some(visited)
 }
 
 /// The statements of `init` that are emitted ([`kept`]), by the declaration
@@ -138,7 +144,7 @@ fn declarations<'l>(
             | StmtKind::Continue(_)
             | StmtKind::Return => return Err(super::unsupported_store(stmt)),
         };
-        let Some((scope, name, ty)) = declaration(lowering, ctx, place) else {
+        let Some((stored, ty)) = declaration(lowering, ctx, place) else {
             // A resource's global has no storage (REQ-EM-codegen-007), so
             // neither does what it starts with.
             if is_unstored_global(lowering, ctx, place) {
@@ -157,12 +163,11 @@ fn declarations<'l>(
         }
         match declared
             .iter_mut()
-            .find(|declared| declared.scope == scope && declared.name == name)
+            .find(|declared| declared.stored == stored)
         {
             Some(declared) => declared.stores.push(stmt),
             None => declared.push(Declared {
-                scope,
-                name,
+                stored,
                 stores: vec![stmt],
             }),
         }
@@ -176,28 +181,28 @@ fn is_unstored_global(lowering: &PartialProgram, ctx: &CompileContext, place: &P
         .variables()
         .get(place.root())
         .is_some_and(|root| root.owner() == Owner::Global)
-        && ctx.lowered_ids.variable(place.root()).is_none()
+        && !ctx.stores(&Stored::Var(place.root()))
 }
 
-/// The declaration `place` stores into: its scope and name in the layout,
-/// and the type of what it declares.
+/// The declaration `place` stores into, as the layout keeps it, and the
+/// type of what it declares.
 fn declaration(
     lowering: &PartialProgram,
     ctx: &CompileContext,
     place: &Place,
-) -> Option<(ScopeId, Id, TypeId)> {
+) -> Option<(Stored, TypeId)> {
     let root = lowering.variables().get(place.root())?;
     if let Some((instance, field, _)) = super::instance_field(lowering, root.ty(), place.path()) {
-        let name = ctx.lowered_ids.field(instance, field)?.clone();
+        let stored = Stored::Field(instance, field);
         let ty = lowering
             .types()
             .fields(instance)?
             .get(field.index() as usize)?
             .ty;
-        return Some((ScopeId::Program, name, ty));
+        return ctx.stores(&stored).then_some((stored, ty));
     }
-    let (scope, name) = ctx.lowered_ids.variable(place.root())?;
-    Some((*scope, name.clone(), root.ty()))
+    let stored = Stored::Var(place.root());
+    ctx.stores(&stored).then_some((stored, root.ty()))
 }
 
 /// Whether the store `stmt`, into a declaration of the type `declared`, is

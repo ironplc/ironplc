@@ -4,8 +4,8 @@
 //! branch. The lowered program's expressions and statements are emitted
 //! through them (`lowered/`).
 
+use crate::access::Named;
 use ironplc_container::{opcode, VarIndex};
-use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::Diagnostic;
 use paste::paste;
 
@@ -41,7 +41,7 @@ pub(crate) struct ClassifiedCmp {
 
 pub(crate) fn classify_with_named(
     ctx: &mut CompileContext,
-    name: &Id,
+    name: &Named,
     value: i64,
     cmp_op_byte: u8,
 ) -> Option<ClassifiedCmp> {

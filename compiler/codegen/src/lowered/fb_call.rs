@@ -29,6 +29,7 @@ use super::instance_copy::{emit_instance_copy, instance_copy};
 use super::place::variable_name;
 use super::same_span;
 use super::string::emit_str_expr;
+use crate::access::Named;
 use crate::compile::CompileContext;
 use crate::compile_fb_call::FbCallSite;
 use crate::emit::Emitter;
@@ -38,8 +39,8 @@ use crate::layout::ids::LaidOut;
 /// The stores of a call's inputs and the call, at the head of a list of
 /// lowered statements.
 pub(super) struct CallSite<'s> {
-    /// The name this backend's layout knows the instance by.
-    instance: Id,
+    /// The instance, as this backend's layout keeps it.
+    instance: Named,
     /// Each input's field, by name, and what is stored in it, in order.
     inputs: Vec<(Id, Input<'s>)>,
 }
@@ -153,7 +154,7 @@ pub(super) fn emit_call_site(
 }
 
 /// Whether this backend calls `block` on `instance`: an instance it reaches
-/// by name, of the user-defined block whose body it compiled for `block`, or
+/// as a variable, of the user-defined block whose body it compiled for `block`, or
 /// of the VM's block for the standard block `block` is named after.
 ///
 /// Lowering does not generate the standard blocks yet (issue 2288), so a

@@ -562,7 +562,9 @@ fn codegen_sources_when_scanned_then_declarations_reached_only_by_id() {
     };
 
     assert_eq!(calls(".program_declaration("), 1);
-    assert_eq!(calls(".global_declaration("), 1);
+    // The globals are laid out and given their starting values from the
+    // lowered program, which reaches no declaration.
+    assert_eq!(calls(".global_declaration("), 0);
 }
 
 #[test]

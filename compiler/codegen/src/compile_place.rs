@@ -21,7 +21,7 @@ use super::compile_array::{
 use super::compile_expr::{emit_load_in_out, emit_load_var, emit_store_var, emit_truncation};
 use super::compile_struct::resolve_struct_field_access;
 use super::compile_subscript::Subscript;
-use crate::access::{Access, Field};
+use crate::access::{Access, Field, Named};
 use crate::emit::Emitter;
 
 /// A place that holds one value in a single slot, with subscripts of type `S`.
@@ -125,7 +125,7 @@ impl<S: Clone> Place<S> {
     /// `None` when no instance has that name.
     pub(crate) fn instance_field(
         ctx: &CompileContext,
-        instance_name: &Id,
+        instance_name: &Named,
         field: &Id,
     ) -> Result<Option<Self>, Diagnostic> {
         let Some(instance) = ctx.fb_instance(instance_name) else {
@@ -161,7 +161,7 @@ impl<S: Clone> Place<S> {
     pub(crate) fn from_access(
         ctx: &CompileContext,
         access: ResolvedAccess<'_, S>,
-        name: Option<&Id>,
+        name: Option<&Named>,
         span: SourceSpan,
     ) -> Result<Self, Diagnostic> {
         let (address, type_info) = match access {
@@ -521,12 +521,12 @@ fn array_element<S>(
 }
 
 /// The type of the variable `name`, when the reference is a plain name.
-fn variable_type_info(ctx: &CompileContext, name: Option<&Id>) -> Option<VarTypeInfo> {
+fn variable_type_info(ctx: &CompileContext, name: Option<&Named>) -> Option<VarTypeInfo> {
     name.and_then(|name| ctx.var_type_info(name))
 }
 
 /// Returns `true` if `name` is a STRING variable.
-fn is_string_variable(ctx: &CompileContext, name: Option<&Id>) -> bool {
+fn is_string_variable(ctx: &CompileContext, name: Option<&Named>) -> bool {
     name.is_some_and(|name| ctx.string_var(name).is_some())
 }
 

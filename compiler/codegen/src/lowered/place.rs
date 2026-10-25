@@ -1,8 +1,8 @@
 //! Addressing a lowered place in the storage codegen lays out.
 //!
 //! A lowered place is stored where codegen's own layout puts what the place
-//! names, and that layout is found by name. So a lowered place is addressed
-//! as the [`Access`] that names it, with the lowered subscripts, which
+//! names, which the layout keeps by its lowered id. So a lowered place is
+//! addressed as the [`Access`] that names it, with the lowered subscripts, which
 //! [`Place::resolve`] resolves. An element is then addressed through the
 //! layout's own code, bounds check included, and what a reference variable
 //! refers to through its indirect load and store. What a function's
@@ -20,8 +20,8 @@ use ironplc_ir::lowered::{
 use ironplc_lowering::PartialProgram;
 
 use super::expr::emit_expr;
-use super::{constant, instance_field, op_type, seen_name};
-use crate::access::{Access, Field, Index};
+use super::{constant, instance_field, op_type, stored_field, stored_variable};
+use crate::access::{Access, Field, Index, Named};
 use crate::compile::{CompileContext, OpWidth, VarTypeInfo};
 use crate::compile_place::Place;
 use crate::compile_string_place::StringPlace;
@@ -107,29 +107,29 @@ fn storage<'l>(
     Place::resolve(lowering.types(), ctx, access)
 }
 
-/// The name of the variable `place` is the whole of, as this backend's
-/// layout knows it: a variable, a field of the current instance, or what a
-/// `VAR_IN_OUT` parameter refers to. `None` for any other place.
+/// The variable `place` is the whole of, as this backend's layout keeps
+/// it: a variable, a field of the current instance, or what a `VAR_IN_OUT`
+/// parameter refers to. `None` for any other place.
 pub(super) fn variable_name(
     lowering: &PartialProgram,
     ctx: &CompileContext,
     place: &LoweredPlace,
-) -> Option<Id> {
+) -> Option<Named> {
     let Access::Named(name) = access(lowering, ctx, place)? else {
         return None;
     };
     Some(name)
 }
 
-/// The name of the variable `place` is a field of, through fields only, as
-/// this backend's layout knows it, and the names of those fields, outermost
-/// first: `h.og.ob` is `h` with `og` and `ob`. A whole variable is its name
+/// The variable `place` is a field of, through fields only, as this
+/// backend's layout keeps it, and the names of those fields, outermost
+/// first: `h.og.ob` is `h` with `og` and `ob`. A whole variable is itself
 /// with no fields. `None` for any other place.
 pub(super) fn field_path(
     lowering: &PartialProgram,
     ctx: &CompileContext,
     place: &LoweredPlace,
-) -> Option<(Id, Vec<Id>)> {
+) -> Option<(Named, Vec<Id>)> {
     let mut access = access(lowering, ctx, place)?;
     let mut fields = Vec::new();
     loop {
@@ -147,15 +147,15 @@ pub(super) fn field_path(
     }
 }
 
-/// The name of the reference variable `place` is what it refers to, `p^`,
-/// as this backend's layout knows it. `None` for any other place, and for a
+/// The reference variable `place` is what it refers to, `p^`, as this
+/// backend's layout keeps it. `None` for any other place, and for a
 /// reference in a `VAR_IN_OUT` parameter, whose slot holds a reference to
 /// the reference.
 pub(super) fn referenced_by(
     lowering: &PartialProgram,
     ctx: &CompileContext,
     place: &LoweredPlace,
-) -> Option<Id> {
+) -> Option<Named> {
     let Access::Deref(deref) = access(lowering, ctx, place)? else {
         return None;
     };
@@ -166,7 +166,8 @@ pub(super) fn referenced_by(
 }
 
 /// Whether `expr` reads a field of an instance of a standard function block:
-/// an instance this backend reaches by name, of no user-defined block's type.
+/// an instance this backend reaches as a variable, of no user-defined block's
+/// type.
 ///
 /// Until lowering generates the standard blocks (issue 2288), the VM's own
 /// block gives such a field its value, and may leave it outside the field's
@@ -195,8 +196,8 @@ pub(super) fn reads_standard_block_field(
     })
 }
 
-/// The slot of an instance that this backend reaches by name, other than the
-/// current instance, that holds the field `place` is (`f.si`), whatever the
+/// The slot of an instance that this backend reaches as a variable, other
+/// than the current instance, that holds the field `place` is (`f.si`), whatever the
 /// field's type. `None` for any other place.
 ///
 /// This backend's layout keeps no data region for a string, structure or
@@ -253,13 +254,13 @@ fn access<'l>(
         Some((instance, field, rest)) => {
             let declared = types.fields(instance)?.get(field.index() as usize)?;
             (
-                Access::Named(ctx.lowered_ids.field(instance, field)?.clone()),
+                Access::Named(stored_field(lowering, ctx, instance, field)?),
                 declared.ty,
                 rest,
             )
         }
         None => (
-            Access::Named(seen_name(ctx, place.root())?.clone()),
+            Access::Named(stored_variable(lowering, ctx, place.root())?),
             root.ty(),
             place.path(),
         ),

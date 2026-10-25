@@ -3,8 +3,8 @@
 //! (`lowered/init.rs`, `lowered/prologue.rs`). The layout itself is decided
 //! first (`layout/`).
 
+use crate::access::Named;
 use ironplc_container::VarIndex;
-use ironplc_dsl::core::{Id, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_ir::lowered::TypeTable;
 
@@ -21,9 +21,9 @@ pub(crate) fn set_up_storage(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     types: &TypeTable,
-    id: &Id,
-    span: &SourceSpan,
+    id: &Named,
 ) -> Result<(), Diagnostic> {
+    let span = &id.span();
     if let Some(info) = ctx.struct_var(id).cloned() {
         return crate::compile_struct_init::set_up_struct_variable(
             emitter, ctx, types, &info, span,

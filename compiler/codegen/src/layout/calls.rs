@@ -94,7 +94,7 @@ impl<'a> Blocks<'a> {
         let types = self.lowering.types();
         let copy_slots = copy_slots(self.lowering, block)?;
         let mut held_fields = Vec::new();
-        for (index, field) in copy_slots.iter().enumerate() {
+        for (index, (_, field)) in copy_slots.iter().enumerate() {
             if let TypeKind::FunctionBlock { body, .. } = types.kind(field.ty)? {
                 held_fields.push(HeldField {
                     name: field.name.to_string().to_lowercase(),
@@ -123,7 +123,7 @@ impl<'a> Blocks<'a> {
         if let Some(position) = self.user.iter().position(|user| *user == body) {
             let mut indices = HashMap::new();
             let mut field_types = HashMap::new();
-            for (index, field) in copy_slots(self.lowering, body)?.into_iter().enumerate() {
+            for (index, (_, field)) in copy_slots(self.lowering, body)?.into_iter().enumerate() {
                 let name = field.name.to_string().to_lowercase();
                 indices.insert(name.clone(), FbFieldIndex::try_from(index).ok()?);
                 let held = slot_type(types, field.ty).unwrap_or(DEFAULT_VAR_TYPE_INFO);

@@ -58,17 +58,11 @@ pub(crate) fn compile_user_method(
         return_op_type,
         has_return_value,
     } = layout;
-    let return_id = method.name.clone();
     let caller = std::mem::replace(&mut ctx.scope, scope);
 
     let mut method_emitter = Emitter::new();
 
-    crate::lowered::emit_prologue(
-        &mut method_emitter,
-        ctx,
-        &method.variables,
-        has_return_value.then_some(&return_id),
-    )?;
+    crate::lowered::emit_prologue(&mut method_emitter, ctx)?;
     if !has_return_value {
         // No lowered variable holds the result slot of a method that
         // returns nothing, so it is cleared as this backend's own setup.
