@@ -1,6 +1,7 @@
 //! End-to-end integration tests for bit access on integer variables (e.g., `a.0`).
 
-use crate::common::bit_string_options;
+use crate::common::{bc, bit_string_options, parse_and_compile};
+use ironplc_container::opcode;
 use ironplc_parser::options::CompilerOptions;
 use spec_test_macro::spec_test;
 
@@ -190,3 +191,78 @@ e2e_i32_with!(
     "PROGRAM main VAR arr : ARRAY[0..1] OF BYTE := [2#10101010, 2#00000000]; b0 : BYTE; b1 : BYTE; END_VAR arr[0].%X0 := TRUE; arr[1].%X7 := TRUE; b0 := arr[0]; b1 := arr[1]; END_PROGRAM",
     &[("b0", 171), ("b1", 128)],
 );
+
+// --- Bytecode of a bit write ---
+//
+// A shift by zero changes nothing, so a write of bit 0 emits no SHL.
+
+fn bit_access_bytecode(source: &str) -> Vec<u8> {
+    parse_and_compile(source, &CompilerOptions::default())
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap()
+        .to_vec()
+}
+
+#[test]
+fn compile_when_write_bit_0_of_dint_then_no_shift() {
+    let bytecode =
+        bit_access_bytecode("PROGRAM main VAR x : DINT; y : BOOL; END_VAR x.0 := y; END_PROGRAM");
+    assert_bytecode!(
+        &bytecode,
+        [
+            bc::load_var_i32(0),
+            bc::load_const_i32(0), // pool:0 (clear mask !1)
+            bc::bit_and_32(),
+            bc::load_var_i32(1),
+            bc::load_const_i32(1), // pool:1 (mask 1)
+            bc::bit_and_32(),
+            bc::bit_or_32(),
+            bc::store_var_i32(0),
+            bc::ret_void(),
+        ]
+    );
+}
+
+#[test]
+fn compile_when_write_bit_3_of_dint_then_shifts_by_3() {
+    let bytecode =
+        bit_access_bytecode("PROGRAM main VAR x : DINT; y : BOOL; END_VAR x.3 := y; END_PROGRAM");
+    assert_bytecode!(
+        &bytecode,
+        [
+            bc::load_var_i32(0),
+            bc::load_const_i32(0), // pool:0 (clear mask !8)
+            bc::bit_and_32(),
+            bc::load_var_i32(1),
+            bc::load_const_i32(1), // pool:1 (mask 1)
+            bc::bit_and_32(),
+            bc::load_const_i32(2), // pool:2 (3)
+            bc::builtin(opcode::builtin::SHL_I32),
+            bc::bit_or_32(),
+            bc::store_var_i32(0),
+            bc::ret_void(),
+        ]
+    );
+}
+
+#[test]
+fn compile_when_write_bit_0_of_lint_then_no_shift() {
+    let bytecode =
+        bit_access_bytecode("PROGRAM main VAR x : LINT; y : BOOL; END_VAR x.0 := y; END_PROGRAM");
+    assert_bytecode!(
+        &bytecode,
+        [
+            bc::load_var_i64(0),
+            bc::load_const_i64(0), // pool:0 (clear mask !1)
+            bc::bit_and_64(),
+            bc::load_var_i32(1),
+            bc::load_const_i32(1), // pool:1 (mask 1)
+            bc::bit_and_32(),
+            bc::builtin(opcode::builtin::CONV_U32_TO_I64),
+            bc::bit_or_64(),
+            bc::store_var_i64(0),
+            bc::ret_void(),
+        ]
+    );
+}
