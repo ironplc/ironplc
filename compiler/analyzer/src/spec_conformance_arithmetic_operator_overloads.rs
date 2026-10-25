@@ -127,12 +127,71 @@ fn analyzer_spec_req_ao_003_integer_literal_takes_other_operand_type(
 #[case("REAL", "DINT")]
 #[case("DINT", "UDINT")]
 #[case("SINT", "USINT")]
+// A real literal is a REAL, which the wider integers do not widen to.
 #[case("DINT", "ANY_REAL")]
+#[case("ANY_REAL", "LINT")]
+#[case("UDINT", "ANY_REAL")]
+#[case("ANY_REAL", "ULINT")]
 fn analyzer_spec_req_ao_004_non_widening_pair_does_not_resolve(
     #[case] left: &str,
     #[case] right: &str,
 ) {
     assert_eq!(resolve(Operator::Add, left, right), None);
+}
+
+/// REQ-AO-analyzer-016: a real literal beside an integer that widens to
+/// `REAL` resolves to `REAL`, on either side, in the function form, and for
+/// a bit string judged as such an integer; beside a wider integer it does
+/// not resolve (REQ-AO-analyzer-004).
+#[spec_test(REQ_AO_analyzer_016)]
+#[rstest]
+#[case("INT", "ANY_REAL")]
+#[case("ANY_REAL", "INT")]
+#[case("SINT", "ANY_REAL")]
+#[case("USINT", "ANY_REAL")]
+#[case("ANY_REAL", "UINT")]
+fn analyzer_spec_req_ao_016_real_literal_beside_narrow_integer_resolves_to_real(
+    #[case] left: &str,
+    #[case] right: &str,
+) {
+    for op in [Operator::Add, Operator::Sub, Operator::Mul, Operator::Div] {
+        assert_eq!(
+            resolve(op.clone(), left, right),
+            numeric("REAL"),
+            "{op:?} on {left}, {right}"
+        );
+    }
+    let options = CompilerOptions::default();
+    let (left, right) = (TypeName::from(left), TypeName::from(right));
+    assert_eq!(
+        resolve_arithmetic_fold(&Operator::Mul, &[Some(&left), Some(&right)], &options),
+        Ok(Overload::Numeric {
+            result: TypeName::from("REAL")
+        })
+    );
+}
+
+/// REQ-AO-analyzer-016: with `--allow-bit-string-arithmetic`, a `BYTE` or
+/// `WORD` is judged as an integer that widens to `REAL`, and a `DWORD` or
+/// `LWORD` as one that does not.
+#[spec_test(REQ_AO_analyzer_016)]
+#[rstest]
+#[case("BYTE", Some("REAL"))]
+#[case("WORD", Some("REAL"))]
+#[case("DWORD", None)]
+#[case("LWORD", None)]
+fn analyzer_spec_req_ao_016_real_literal_beside_bit_string_resolves_as_its_integer(
+    #[case] bit_string: &str,
+    #[case] result: Option<&str>,
+) {
+    assert_eq!(
+        resolve_with_bit_strings(Operator::Mul, bit_string, "ANY_REAL", true),
+        result.and_then(numeric)
+    );
+    assert_eq!(
+        resolve_with_bit_strings(Operator::Mul, bit_string, "ANY_REAL", false),
+        None
+    );
 }
 
 /// Every Table 30 row: the operator, a pair of short operand types, the typed
@@ -553,6 +612,8 @@ fn codes(diagnostics: &[Diagnostic]) -> Vec<String> {
 #[spec_test(REQ_AO_analyzer_020)]
 #[rstest]
 #[case("i : INT; r : REAL;", "REAL", "i + r", "REAL")]
+#[case("i : INT;", "REAL", "i * 1.5", "REAL")]
+#[case("i : INT;", "LREAL", "i / 32767.0", "REAL")]
 #[case("i : INT; d : DINT;", "DINT", "i + d", "DINT")]
 #[case("t1 : TIME; t2 : TIME;", "TIME", "t1 + t2", "TIME")]
 #[case("d1 : DATE; d2 : DATE;", "TIME", "d1 - d2", "TIME")]
@@ -678,6 +739,7 @@ fn analyzer_spec_req_ao_030_unresolved_operator_names_operator_and_operands() {
 #[case("s1 : STRING; s2 : STRING;", "STRING", "s1 + s2")]
 #[case("x : BOOL;", "BOOL", "x * x")]
 #[case("d : DINT; r : REAL;", "DINT", "d - r")]
+#[case("d : DINT;", "REAL", "d / 2.0")]
 #[case("t1 : TIME; t2 : TIME;", "TIME", "t1 / t2")]
 fn analyzer_spec_req_ao_031_every_arithmetic_operator_is_checked(
     #[case] vars: &str,
@@ -725,6 +787,10 @@ fn analyzer_spec_req_ao_032_unresolved_call_is_p4049_not_p4026(
 #[case("d1 : DATE; d2 : DATE;", "TIME", "d1 - d2")]
 #[case("t : TIME; lt : LTIME;", "LTIME", "t + lt")]
 #[case("i : INT; d : DINT;", "DINT", "i + d")]
+#[case("i : INT;", "REAL", "i / 32767.0 * 150.0 - 50.0")]
+#[case("i : INT;", "REAL", "1.5 * i")]
+#[case("i : INT;", "REAL", "MUL(i, 1.5)")]
+#[case("u : UINT;", "REAL", "u + 1.5")]
 #[case("t : TIME;", "TIME", "t * 2")]
 fn analyzer_spec_req_ao_033_resolved_operator_is_clean(
     #[case] vars: &str,

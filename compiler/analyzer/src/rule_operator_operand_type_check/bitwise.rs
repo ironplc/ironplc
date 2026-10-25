@@ -10,7 +10,7 @@ use ironplc_dsl::{
 };
 
 use super::RuleOperatorOperandTypeCheck;
-use crate::intermediates::common_operand::{common_operand, Side};
+use crate::intermediates::common_operand::common_operand;
 use crate::intermediates::operator_function_form::{
     form_of_operator, operator_function_form, FormOf,
 };
@@ -73,8 +73,7 @@ impl RuleOperatorOperandTypeCheck<'_> {
             widest = match widest {
                 None => Some(name),
                 Some(widest) => match common_operand(&widest, &name, self.options) {
-                    Some(Side::Left) => Some(widest),
-                    Some(Side::Right) => Some(name),
+                    Some(common) => Some(common),
                     None => {
                         self.report_arithmetic(
                             Label::span(function.name.span(), "Function call"),

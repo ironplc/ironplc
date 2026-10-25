@@ -271,6 +271,14 @@ fn apply_when_literal_on_left_then_literal_takes_operand_type() {
     assert_eq!(comparison_operands(&source), pair("LINT", "LINT"));
 }
 
+/// A real literal compared with an INT is a REAL, and the INT is converted
+/// to it (REQ-CMP-analyzer-007).
+#[test]
+fn apply_when_int_compared_with_real_literal_then_compared_as_real() {
+    let source = program("i : INT;", "i < 1.5");
+    assert_eq!(comparison_operands(&source), pair("INT->REAL", "REAL"));
+}
+
 #[test]
 fn apply_when_operands_same_type_then_unchanged() {
     let source = program("d1 : DINT; d2 : DINT;", "d1 = d2");
@@ -391,6 +399,20 @@ fn apply_when_arithmetic_operand_of_another_operation_type_then_converted_to_res
 fn apply_when_arithmetic_operand_is_literal_then_literal_takes_result_type() {
     let source = arithmetic_program("LINT", "l : LINT;", "l + 1");
     assert_eq!(arithmetic_operands(&source), operands(&[&["LINT", "LINT"]]));
+}
+
+/// A real literal beside an INT is a REAL, the result type, and the INT is
+/// converted to it, on either side.
+#[spec_test(REQ_IC_analyzer_021)]
+#[rstest]
+#[case::literal_right("i * 1.5", ["INT->REAL", "REAL"])]
+#[case::literal_left("1.5 * i", ["REAL", "INT->REAL"])]
+fn apply_when_real_literal_beside_int_then_literal_real_and_int_converted(
+    #[case] value: &str,
+    #[case] expected: [&str; 2],
+) {
+    let source = arithmetic_program("REAL", "i : INT;", value);
+    assert_eq!(arithmetic_operands(&source), operands(&[&expected]));
 }
 
 #[spec_test(REQ_IC_analyzer_022)]
