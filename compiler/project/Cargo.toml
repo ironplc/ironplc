@@ -21,6 +21,8 @@ ironplc-dsl = { path = "../dsl", version = "0.250.0" }
 ironplc-problems = { path = "../problems", version = "0.250.0" }
 ironplc-sources = { path = "../sources", version = "0.250.0" }
 ironplc-container = { path = "../container", version = "0.250.0" }
+ironplc-ir = { path = "../ir", version = "0.250.0" }
+ironplc-lowering = { path = "../lowering", version = "0.250.0" }
 log = "0.4.29"
 serde_json = "1.0"
 

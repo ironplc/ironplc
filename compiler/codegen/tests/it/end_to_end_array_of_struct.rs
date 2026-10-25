@@ -32,6 +32,47 @@ END_PROGRAM
     &[("result", 42)],
 );
 
+// A field of a structure field of an element, written and read through a
+// literal and a variable index, sits at the element's offset plus the
+// nested field's: the field after the nested structure, and the other
+// elements, keep their own values. A nested structure's field starts at its
+// type's default.
+e2e_i32!(
+    end_to_end_when_field_of_structure_in_element_written_then_reads_back,
+    "
+TYPE Inner : STRUCT
+  x : DINT;
+  y : DINT := 9;
+END_STRUCT;
+END_TYPE
+
+TYPE Item : STRUCT
+  a : DINT;
+  inner : Inner;
+  b : DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARRAY[1..3] OF Item;
+    i : DINT := 3;
+    x1 : DINT; x3 : DINT; y2 : DINT; b1 : DINT; a3 : DINT;
+  END_VAR
+  arr[1].b := 5;
+  arr[1].inner.x := 7;
+  arr[i].inner.x := 11;
+  arr[3].a := 2;
+  x1 := arr[1].inner.x;
+  x3 := arr[i].inner.x;
+  y2 := arr[2].inner.y;
+  b1 := arr[1].b;
+  a3 := arr[3].a;
+END_PROGRAM
+",
+    &[("x1", 7), ("x3", 11), ("y2", 9), ("b1", 5), ("a3", 2)],
+);
+
 // The reported repro: a BOOL field written through a literal index. Exercises
 // the narrow-width truncation path on store.
 e2e_i32!(
@@ -735,31 +776,5 @@ PROGRAM main
 END_PROGRAM
 ",
         "a whole-element assignment",
-    );
-}
-
-#[test]
-fn compile_when_top_level_array_of_struct_composite_field_read_then_not_implemented() {
-    assert_codegen_rejects(
-        "
-TYPE Inner : STRUCT
-  x : DINT;
-END_STRUCT;
-END_TYPE
-
-TYPE Item : STRUCT
-  inner : Inner;
-END_STRUCT;
-END_TYPE
-
-PROGRAM main
-  VAR
-    arr : ARRAY[1..3] OF Item;
-    result : DINT;
-  END_VAR
-  result := arr[1].inner.x;
-END_PROGRAM
-",
-        "a composite field of an element",
     );
 }

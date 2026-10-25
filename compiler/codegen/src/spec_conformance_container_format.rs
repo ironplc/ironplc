@@ -9,9 +9,8 @@
 
 use std::io::Cursor;
 
-use ironplc_analyzer::CleanAnalysis;
 use ironplc_container::{integrity, FileHeader, HEADER_SIZE};
-use ironplc_dsl::core::FileId;
+use ironplc_ir::FileId;
 use ironplc_parser::options::CompilerOptions;
 use spec_test_macro::spec_test;
 
@@ -26,12 +25,8 @@ fn compiled(source: &str) -> (Vec<u8>, FileHeader) {
 fn try_compiled(source: &str, options: &CompilerOptions) -> Result<(Vec<u8>, FileHeader), String> {
     let library = ironplc_parser::parse_program(source, &FileId::default(), options).unwrap();
     let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], options).unwrap();
-    let container = crate::compile(
-        CleanAnalysis::new(&analyzed, &ctx).unwrap(),
-        &crate::CodegenOptions::from(options),
-        &crate::EmptyLookup,
-    )
-    .map_err(|diagnostic| diagnostic.code)?;
+    let container = crate::test_support::compile_analyzed(&analyzed, &ctx)
+        .map_err(|diagnostic| diagnostic.code)?;
     let mut buf = Vec::new();
     container.write_to(&mut buf).unwrap();
     let header = FileHeader::read_from(&mut Cursor::new(&buf[..HEADER_SIZE])).unwrap();

@@ -128,7 +128,7 @@ pub fn apply(
                     ),
                 )
                 .with_secondary(Label::span(overridden.name.span(), "Overridden method"))
-                .with_context_id("function block", &fb.name.name)
+                .with_context_type("function block", &fb.name)
                 .with_context_id("method", &method.name),
             );
         }
@@ -157,7 +157,7 @@ pub fn apply(
                     ),
                 )
                 .with_secondary(Label::span(overridden.name.span(), "Overridden property"))
-                .with_context_id("function block", &fb.name.name)
+                .with_context_type("function block", &fb.name)
                 .with_context_id("property", &property.name),
             );
         }
@@ -287,7 +287,7 @@ fn type_text(types: &TypeEnvironment, type_id: Option<TypeId>) -> String {
     let Some(name) = type_id.and_then(|id| types.name_of(id)) else {
         return "an unresolved type".to_string();
     };
-    match ElementaryTypeName::try_from(&name.name) {
+    match ElementaryTypeName::try_from(&name.id) {
         Ok(_) => name.to_string().to_uppercase(),
         Err(_) => name.to_string(),
     }

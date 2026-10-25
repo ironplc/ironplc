@@ -1342,6 +1342,10 @@ INVALID_SYNTAX"
             None
         }
 
+        fn lowered_program(&self) -> Option<&ironplc_ir::lowered::Program> {
+            None
+        }
+
         fn sources(&self) -> Vec<&ironplc_sources::Source> {
             vec![]
         }

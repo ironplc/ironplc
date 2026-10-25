@@ -16,12 +16,12 @@
 //! (`place::instance_slot`). An instance input is copied
 //! into the instance its field holds (`instance_copy.rs`).
 
-use ironplc_dsl::core::{Id, SourceSpan};
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::{
-    Expr, ExprKind, Place as LoweredPlace, PouId, Projection, Stmt, StmtKind, StrExpr,
+    Expr, ExprKind, FieldIdx, Place as LoweredPlace, PouId, Projection, Stmt, StmtKind, StrExpr,
 };
-use ironplc_lowering::PartialProgram;
+use ironplc_ir::SourceSpan;
+use ironplc_ir::{Diagnostic, Label};
 
 use super::aggregate::emit_source;
 use super::expr::emit_expr;
@@ -29,19 +29,20 @@ use super::instance_copy::{emit_instance_copy, instance_copy};
 use super::place::variable_name;
 use super::same_span;
 use super::string::emit_str_expr;
+use crate::access::Named;
 use crate::compile::CompileContext;
 use crate::compile_fb_call::FbCallSite;
 use crate::emit::Emitter;
 use crate::held_instances::layout;
-use crate::layout::ids::LaidOut;
 
 /// The stores of a call's inputs and the call, at the head of a list of
 /// lowered statements.
 pub(super) struct CallSite<'s> {
-    /// The name this backend's layout knows the instance by.
-    instance: Id,
-    /// Each input's field, by name, and what is stored in it, in order.
-    inputs: Vec<(Id, Input<'s>)>,
+    /// The instance, as this backend's layout keeps it.
+    instance: Named,
+    /// Each input's field, of the instance's lowered type, and what is
+    /// stored in it, in order.
+    inputs: Vec<(FieldIdx, Input<'s>)>,
 }
 
 /// What a call stores in one of its inputs.
@@ -70,7 +71,7 @@ impl CallSite<'_> {
 /// `stmts` does not start with one, as when a source assignment to a field
 /// comes before a separate call.
 pub(super) fn call_site<'s>(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     stmts: &'s [Stmt],
 ) -> Option<CallSite<'s>> {
@@ -90,7 +91,7 @@ pub(super) fn call_site<'s>(
     }
     let inputs = stmts[..call_at]
         .iter()
-        .map(|stmt| input(lowering, instance, stmt))
+        .map(|stmt| input(instance, stmt))
         .collect::<Option<Vec<_>>>()?;
     Some(CallSite {
         instance: variable_name(lowering, ctx, instance)?,
@@ -100,7 +101,7 @@ pub(super) fn call_site<'s>(
 
 /// The call site of `instance` with no inputs: a lone `FbCall`.
 pub(super) fn bare_call<'s>(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     instance: &LoweredPlace,
 ) -> Option<CallSite<'s>> {
@@ -114,7 +115,7 @@ pub(super) fn bare_call<'s>(
 pub(super) fn emit_call_site(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &PartialProgram,
+    lowering: &Program,
     call: &CallSite<'_>,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
@@ -126,10 +127,9 @@ pub(super) fn emit_call_site(
                 // type of, so the narrowing lowering made
                 // (REQ-LOW-lowering-046) is left to it rather than emitted
                 // twice.
-                let narrowed_by_site = ctx.fb_instance(&call.instance).is_some_and(|info| {
-                    info.field_types
-                        .contains_key(&field.to_string().to_lowercase())
-                });
+                let narrowed_by_site = ctx
+                    .fb_instance(&call.instance)
+                    .is_some_and(|info| info.field_types.contains_key(field));
                 let value = match untruncated(value) {
                     Some(inner) if narrowed_by_site => inner,
                     Some(_) | None => value,
@@ -146,21 +146,21 @@ pub(super) fn emit_call_site(
                 emit_source(emitter, ctx, lowering, src, span)?
             }
         }
-        site.store_input(emitter, field)?;
+        site.store_input(emitter, *field, span)?;
     }
     site.close(emitter, ctx);
     Ok(())
 }
 
 /// Whether this backend calls `block` on `instance`: an instance it reaches
-/// by name, of the user-defined block whose body it compiled for `block`, or
+/// as a variable, of the user-defined block whose body it compiled for `block`, or
 /// of the VM's block for the standard block `block` is named after.
 ///
 /// Lowering does not generate the standard blocks yet (issue 2288), so a
 /// standard block's POU has no body in the lowered program, and `FB_CALL`
 /// runs the VM's block on the instance.
 pub(super) fn reaches_block(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     instance: &LoweredPlace,
     block: PouId,
@@ -170,10 +170,7 @@ pub(super) fn reaches_block(
     else {
         return false;
     };
-    let Some(LaidOut::Block(name)) = ctx.lowered_ids.pou(block) else {
-        return false;
-    };
-    layout(ctx, name).is_some_and(|layout| layout.type_id == fb_instance.type_id)
+    layout(ctx, block).is_some_and(|layout| layout.type_id == fb_instance.type_id)
 }
 
 /// The internal error for a call `can_emit` should have rejected.
@@ -186,11 +183,7 @@ pub(super) fn no_instance(span: &SourceSpan) -> Diagnostic {
 
 /// The field of `instance` that `stmt` stores in, and what it stores; `None`
 /// when `stmt` stores in no field of `instance`.
-fn input<'s>(
-    lowering: &PartialProgram,
-    instance: &LoweredPlace,
-    stmt: &'s Stmt,
-) -> Option<(Id, Input<'s>)> {
+fn input<'s>(instance: &LoweredPlace, stmt: &'s Stmt) -> Option<(FieldIdx, Input<'s>)> {
     let (place, input) = match stmt.kind() {
         StmtKind::Assign { place, value } => (place, Input::Value(value)),
         StmtKind::AssignStr { place, value } => (place, Input::Str(value)),
@@ -215,14 +208,7 @@ fn input<'s>(
             .iter()
             .zip(instance.path())
             .all(|(step, other)| same_projection(step, other));
-    if !of_instance {
-        return None;
-    }
-    let declared = lowering
-        .types()
-        .fields(instance.ty())?
-        .get(field.index() as usize)?;
-    Some((Id::from(&declared.name.to_string()), input))
+    of_instance.then_some((*field, input))
 }
 
 /// Whether two steps of a path to an instance are the same step. An instance

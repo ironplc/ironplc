@@ -1,187 +1,22 @@
 //! User-defined function and function block compilation.
 //!
-//! Contains compilation of FUNCTION and FUNCTION_BLOCK declarations,
-//! including variable setup, body compilation, and metadata registration.
-//! Separated from compile.rs to keep module sizes within the 1000-line guideline.
+//! Contains compilation of the bodies of the lowered program's functions and
+//! function blocks. Separated from compile.rs to keep module sizes within
+//! the 1000-line guideline.
 
-use ironplc_container::debug_section::{iec_type_tag, VarNameEntry};
-use ironplc_container::{CharWidth, FunctionId, VarIndex};
-use ironplc_dsl::common::{
-    FunctionBlockDeclaration, FunctionDeclaration, InitialValueAssignmentKind, VarDecl,
-    VariableType,
-};
-use ironplc_dsl::core::{Id, Located, SourceSpan};
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::type_id::TypeId;
+use ironplc_container::FunctionId;
+use ironplc_ir::Diagnostic;
 
-use ironplc_analyzer::{SemanticType, TypeEnvironment};
-
-use super::compile::{
-    char_width_for_string_type, finalize_function, string_region_size, CompileContext,
-    CompiledFunction, CurrentFunctionReturn, ParamPassing, StringParamInfo, StringVarInfo,
-    VarTypeInfo, DEFAULT_STRING_MAX_LENGTH,
-};
+use super::compile::{finalize_function, CompileContext, CompiledFunction, CurrentFunctionReturn};
 use super::compile_expr::emit_load_var;
-use super::compile_setup::emit_function_local_prologue;
-use super::compile_stmt::{compile_body, compile_statements, resolve_string_max_length};
 use super::layout::names::ScopeId;
-use super::layout::{debug_type_for_decl, map_var_section, FunctionLayout};
-use super::type_info::resolve_type_name;
+use super::layout::FunctionLayout;
 use crate::emit::Emitter;
 
-/// Reserves the run of the data region the string variable `id`, which
-/// `decl` declares, is held in, and records it in `ctx.string_vars`, when
-/// `decl` declares a string. Every declared string of a function, function
-/// block or method is held in a run of its own, sized to its declared
-/// capacity.
-#[track_caller]
-pub(crate) fn register_declared_string(
-    ctx: &mut CompileContext,
-    id: &Id,
-    decl: &VarDecl,
-) -> Result<(), Diagnostic> {
-    let (max_length, char_width, span) =
-        if let InitialValueAssignmentKind::String(string_init) = &decl.initializer {
-            (
-                resolve_string_max_length(string_init)?,
-                char_width_for_string_type(&string_init.width),
-                string_init.span(),
-            )
-        } else if let Some((max_length, char_width)) = aliased_string(ctx, decl.type_id) {
-            (max_length, char_width, decl.identifier.span())
-        } else {
-            return Ok(());
-        };
-    register_string(ctx, id, max_length, char_width, &span)?;
-    Ok(())
-}
-
-/// The capacity and character width of the string type `type_id` names,
-/// when it is a type alias of a string (`TYPE Name : STRING[20]; END_TYPE`),
-/// which the analyzer resolves to the string type it names. `None` for any
-/// other type.
-pub(crate) fn aliased_string(
-    ctx: &CompileContext,
-    type_id: Option<TypeId>,
-) -> Option<(u16, CharWidth)> {
-    let Some(SemanticType::String {
-        max_len,
-        char_width,
-    }) = type_id.and_then(|id| ctx.types.get(&id))
-    else {
-        return None;
-    };
-    let max_length = max_len.map_or(DEFAULT_STRING_MAX_LENGTH, |len| len as u16);
-    Some((max_length, *char_width))
-}
-
-/// Reserves a run of the data region for a string of `max_length` code
-/// units of `char_width`, records it in `ctx.string_vars` as `id`'s, and
-/// returns its offset.
-pub(crate) fn register_string(
-    ctx: &mut CompileContext,
-    id: &Id,
-    max_length: u16,
-    char_width: CharWidth,
-    span: &SourceSpan,
-) -> Result<u32, Diagnostic> {
-    let total_bytes = string_region_size(max_length, char_width);
-    let data_offset = crate::data_region::reserve(ctx, total_bytes, span)?;
-
-    if max_length > ctx.max_string_capacity {
-        ctx.max_string_capacity = max_length;
-    }
-
-    ctx.string_vars.insert(
-        ctx.scope,
-        id.clone(),
-        StringVarInfo {
-            data_offset,
-            max_length,
-            char_width,
-        },
-    );
-    Ok(data_offset)
-}
-
-/// How a call site passes an argument to the input parameter `decl`
-/// declares, once the callee's variables have their storage: by reference
-/// to a `VAR_IN_OUT`, copied into the parameter's run of the data region for
-/// a string, and by value otherwise.
-pub(crate) fn param_passing(ctx: &CompileContext, decl: &VarDecl) -> ParamPassing {
-    if decl.var_type == VariableType::InOut {
-        return ParamPassing::Reference;
-    }
-    let declares_string = matches!(decl.initializer, InitialValueAssignmentKind::String(_))
-        || aliased_string(ctx, decl.type_id).is_some();
-    let string = declares_string
-        .then(|| decl.identifier.symbolic_id())
-        .flatten()
-        .and_then(|id| ctx.string_var(id));
-    string.map_or(ParamPassing::Value, |info| {
-        ParamPassing::String(StringParamInfo {
-            data_offset: info.data_offset,
-            max_length: info.max_length,
-            char_width: info.char_width,
-        })
-    })
-}
-
-/// Records a debug [`VarNameEntry`] for a function- or FB-local variable
-/// (parameter or local) owned by `function_id`. Mirrors the program/global
-/// emission in `layout::storage::assign_variables`, but tags the entry with
-/// the owning function so a debugger can filter a frame's variables to the
-/// current stack frame (plus globals).
-pub(crate) fn push_local_var_name(
-    ctx: &mut CompileContext,
-    var_index: VarIndex,
-    function_id: FunctionId,
-    decl: &VarDecl,
-    id: &Id,
-    types: &TypeEnvironment,
-) {
-    let (tag, type_name) = debug_type_for_decl(decl, types);
-    // A VAR_IN_OUT parameter's slot holds a reference to the caller's
-    // variable, so it is described as one rather than as the value.
-    let (tag, type_name) = if decl.var_type == VariableType::InOut {
-        (iec_type_tag::OTHER, format!("REF_TO {type_name}"))
-    } else {
-        (tag, type_name)
-    };
-    ctx.debug_var_names.push(VarNameEntry {
-        var_index,
-        function_id,
-        var_section: map_var_section(&decl.var_type),
-        iec_type_tag: tag,
-        name: id.to_string(),
-        type_name,
-    });
-}
-
-/// Returns the type of the value a function's `VAR_IN_OUT` parameter
-/// refers to.
-///
-/// A `VAR_IN_OUT` parameter is passed as a reference to a single slot, so
-/// only elementary types are supported. A string, array, structure,
-/// reference or function block instance lives in the data region (or is
-/// itself a reference), and passing one by reference is not implemented.
-pub(crate) fn in_out_value_type(decl: &VarDecl) -> Result<VarTypeInfo, Diagnostic> {
-    if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
-        if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
-            return Ok(type_info);
-        }
-    }
-    Err(Diagnostic::not_implemented(Label::span(
-        decl.identifier.span(),
-        "VAR_IN_OUT parameter of a type other than an elementary type",
-    )))
-}
-
-/// Compiles the body of the user function `func_decl`, which `layout` lays
-/// out, in the function's scope; the caller's is current again once the
-/// body is compiled.
+/// Compiles the body of the user function `layout` lays out, in the
+/// function's scope; the caller's is current again once the body is
+/// compiled.
 pub(crate) fn compile_user_function(
-    func_decl: &FunctionDeclaration,
     layout: FunctionLayout,
     ctx: &mut CompileContext,
 ) -> Result<CompiledFunction, Diagnostic> {
@@ -202,26 +37,7 @@ pub(crate) fn compile_user_function(
     // the locals the analyzer flags, and the result, start again at their
     // resolved values on every call. The flat variable table (ADR-0046)
     // retains stale values between calls otherwise.
-    if !crate::lowered::try_emit_prologue(
-        &mut func_emitter,
-        ctx,
-        &func_decl.variables,
-        Some(&func_decl.name),
-    )? {
-        emit_function_local_prologue(
-            &mut func_emitter,
-            ctx,
-            &func_decl.variables,
-            Some(&func_decl.result),
-            &func_decl.name,
-            return_var_index,
-            return_op_type,
-        )?;
-    }
-
-    let body = ironplc_dsl::textual::Statements {
-        body: func_decl.body.clone(),
-    };
+    crate::lowered::emit_prologue(&mut func_emitter, ctx)?;
 
     // Make the return descriptor visible to nested `RETURN` statements so an
     // early RETURN produces the function's value before the RET opcode (rather
@@ -244,7 +60,7 @@ pub(crate) fn compile_user_function(
     let saved_current_fn = ctx.current_function_id.take();
     ctx.current_function_id = Some(function_id);
 
-    compile_statements(&mut func_emitter, ctx, &body)?;
+    crate::lowered::emit_body(&mut func_emitter, ctx)?;
 
     ctx.current_function_id = saved_current_fn;
     ctx.current_function_return = saved_return_ctx;
@@ -265,9 +81,7 @@ pub(crate) fn compile_user_function(
     ctx.function_stack_depths
         .insert(function_id, finalized.max_stack_depth);
 
-    let name = crate::lowered::pou_name(ctx, ctx.scope)
-        .map(|name| name.to_lowercase())
-        .unwrap_or_else(|| func_decl.name.lower_case().to_string());
+    let name = crate::lowered::pou_name(ctx, ctx.scope)?.to_lowercase();
     ctx.scope = caller;
 
     Ok(CompiledFunction {
@@ -282,21 +96,17 @@ pub(crate) fn compile_user_function(
     })
 }
 
-/// Compiles the body of the user function block `fb_decl`, whose id is
-/// `function_id` and whose `num_locals` copy slots the layout gave it, in
-/// the block's scope, `scope`; the caller's is current again once the body
-/// is compiled.
+/// Compiles the body of the user function block whose id is `function_id`
+/// and whose `num_locals` copy slots the layout gave it, in the block's
+/// scope, `scope`; the caller's is current again once the body is compiled.
 pub(crate) fn compile_user_function_block(
-    fb_decl: &FunctionBlockDeclaration,
     function_id: FunctionId,
     scope: ScopeId,
     num_locals: u16,
     ctx: &mut CompileContext,
 ) -> Result<CompiledFunction, Diagnostic> {
     let caller = std::mem::replace(&mut ctx.scope, scope);
-    let fb_name = crate::lowered::pou_name(ctx, scope)
-        .unwrap_or_else(|| fb_decl.name.name.to_string())
-        .to_uppercase();
+    let fb_name = crate::lowered::pou_name(ctx, scope)?.to_uppercase();
 
     // Compile the FB body.
     // Mark this FB's body as the current caller so nested CALL / FB_CALL
@@ -308,10 +118,10 @@ pub(crate) fn compile_user_function_block(
     let mut fb_emitter = Emitter::new();
     // A `VAR_TEMP` starts again on every call, from the lowered program; the
     // AST gives a function block's none.
-    if crate::lowered::restarts(&fb_decl.variables) {
-        crate::lowered::try_emit_prologue(&mut fb_emitter, ctx, &fb_decl.variables, None)?;
+    if crate::lowered::restarts(ctx)? {
+        crate::lowered::emit_prologue(&mut fb_emitter, ctx)?;
     }
-    compile_body(&mut fb_emitter, ctx, &fb_decl.body, &fb_decl.name.span())?;
+    crate::lowered::emit_body(&mut fb_emitter, ctx)?;
     fb_emitter.emit_ret_void();
 
     ctx.current_function_id = saved_current_fn;

@@ -2,29 +2,26 @@
 //! such as the target of an assignment (`a[i] := v`) or the base of a bit
 //! access (`x.3`) or a partial access (`x.%B1`).
 //!
-//! [`Place::resolve`] works out where the value is from the variable
-//! reference. [`Place::emit_load`] and [`Place::emit_store`] then emit the
+//! [`Place::resolve`] works out where the value is from the [`Access`] that
+//! names it. [`Place::emit_load`] and [`Place::emit_store`] then emit the
 //! load and the store for that shape, so a caller that reads, modifies and
 //! writes the value does not depend on the shape.
 //!
-//! A place's subscripts are any [`Subscript`]: the AST expressions
-//! [`Place::resolve`] finds, by default.
+//! A place's subscripts are any [`Subscript`]: the access's own.
 
 use ironplc_container::{SlotIndex, VarIndex};
-use ironplc_dsl::core::{Id, Located, SourceSpan};
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{Expr, StructuredVariable, SymbolicVariableKind, Variable};
+use ironplc_ir::lowered::TypeTable;
+use ironplc_ir::{Diagnostic, Label};
+use ironplc_ir::{Located, SourceSpan};
 
 use super::compile::{CompileContext, OpType, VarTypeInfo, DEFAULT_OP_TYPE};
 use super::compile_array::{
-    emit_flat_index, resolve_symbolic_access, ArrayVarInfo, DimensionInfo, ResolvedAccess,
+    emit_flat_index, resolve_access, ArrayVarInfo, DimensionInfo, ResolvedAccess,
 };
-use super::compile_expr::{
-    emit_load_in_out, emit_load_var, emit_store_var, emit_truncation, resolve_variable_name,
-    variable_span,
-};
-use super::compile_struct::{resolve_struct_field_access, var_type_info_for_field};
+use super::compile_expr::{emit_load_in_out, emit_load_var, emit_store_var, emit_truncation};
+use super::compile_struct::resolve_struct_field_access;
 use super::compile_subscript::Subscript;
+use crate::access::{Access, Field, Named};
 use crate::emit::Emitter;
 
 /// A place that holds one value in a single slot, with subscripts of type `S`.
@@ -34,7 +31,7 @@ pub(crate) struct Place<S> {
     /// context records no type for, which is loaded and stored at the default
     /// type and not truncated.
     type_info: Option<VarTypeInfo>,
-    /// The variable reference, for a diagnostic about its subscripts.
+    /// Where the place is named, for a diagnostic about its subscripts.
     span: SourceSpan,
 }
 
@@ -75,23 +72,25 @@ enum ElementIndex<S> {
     },
 }
 
-impl<'ast> Place<&'ast Expr> {
-    /// Resolves the place that `base` names.
+impl<S: Clone> Place<S> {
+    /// Resolves the place that `base` names, of the types `types`.
     pub(crate) fn resolve(
+        types: &TypeTable,
         ctx: &CompileContext,
-        base: &'ast SymbolicVariableKind,
+        base: &Access<S>,
     ) -> Result<Self, Diagnostic> {
         let span = base.span();
 
-        // A field at a fixed offset in a structure. In `a[i].field` the record
-        // is an element of an array of structures, which resolves below.
-        if let SymbolicVariableKind::Structured(structured) = base {
+        // A field at a fixed offset in a structure. In `a[i].field` and
+        // `a[i].inner.field` the field is in an element of an array of
+        // structures, which resolves below.
+        if let Access::Field(structured) = base {
             if let Some(place) = Self::fb_field(ctx, structured)? {
                 return Ok(place);
             }
-            if !matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) {
-                let (var_index, desc_index, slot, _op_type, field_type) =
-                    resolve_struct_field_access(ctx, structured)?;
+            if crate::compile_array_struct::element_field_chain(structured).is_none() {
+                let (var_index, desc_index, slot, type_info) =
+                    resolve_struct_field_access(types, ctx, structured)?;
                 return Ok(Place {
                     address: Address::Element {
                         var_index,
@@ -99,17 +98,13 @@ impl<'ast> Place<&'ast Expr> {
                         through_ref: false,
                         index: ElementIndex::Slot(slot),
                     },
-                    type_info: var_type_info_for_field(&field_type),
+                    type_info: Some(type_info),
                     span,
                 });
             }
         }
 
-        let name = match base {
-            SymbolicVariableKind::Named(named) => Some(&named.name),
-            _ => None,
-        };
-        Self::from_access(ctx, resolve_symbolic_access(ctx, base)?, name, span)
+        Self::from_access(ctx, resolve_access(types, ctx, base)?, base.name(), span)
     }
 
     /// The field of a function block instance that `structured` names
@@ -118,35 +113,29 @@ impl<'ast> Place<&'ast Expr> {
     /// to a variable of that type does.
     pub(crate) fn fb_field(
         ctx: &CompileContext,
-        structured: &StructuredVariable,
+        structured: &Field<S>,
     ) -> Result<Option<Self>, Diagnostic> {
-        let SymbolicVariableKind::Named(named) = structured.record.as_ref() else {
+        let Access::Named(name) = structured.record.as_ref() else {
             return Ok(None);
         };
-        Self::instance_field(ctx, &named.name, &structured.field)
-    }
-
-    /// The field `field` of the function block instance named `instance`, or
-    /// `None` when no instance has that name.
-    pub(crate) fn instance_field(
-        ctx: &CompileContext,
-        instance_name: &Id,
-        field: &Id,
-    ) -> Result<Option<Self>, Diagnostic> {
-        let Some(instance) = ctx.fb_instance(instance_name) else {
+        let field = &structured.field;
+        let Some(instance) = ctx.fb_instance(name) else {
             return Ok(None);
         };
-        let name = field.to_string().to_lowercase();
-        let index = instance.field_indices.get(&name).copied().ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(
-                field.span(),
-                format!(
-                    "Unknown field '{field}' on function block '{instance_name}' \
+        let index = instance
+            .field_indices
+            .get(&structured.idx)
+            .copied()
+            .ok_or_else(|| {
+                Diagnostic::not_implemented(Label::span(
+                    field.span(),
+                    format!(
+                        "Unknown field '{field}' on function block '{name}' \
                      (a PROPERTY is not supported yet)"
-                ),
-            ))
-        })?;
-        let type_info = instance.field_types.get(&name).copied();
+                    ),
+                ))
+            })?;
+        let type_info = instance.field_types.get(&structured.idx).copied();
         Ok(Some(Place {
             address: Address::FbField {
                 instance: instance.var_index,
@@ -165,8 +154,8 @@ impl<'ast> Place<&'ast Expr> {
     /// [`Place::resolve`] addresses it.
     pub(crate) fn from_access(
         ctx: &CompileContext,
-        access: ResolvedAccess<'_, 'ast>,
-        name: Option<&Id>,
+        access: ResolvedAccess<'_, S>,
+        name: Option<&Named>,
         span: SourceSpan,
     ) -> Result<Self, Diagnostic> {
         let (address, type_info) = match access {
@@ -191,8 +180,7 @@ impl<'ast> Place<&'ast Expr> {
                 field_slot_offset,
                 dimensions,
                 subscripts,
-                element_type,
-                ..
+                type_info,
             } => (
                 Address::Element {
                     var_index,
@@ -204,7 +192,7 @@ impl<'ast> Place<&'ast Expr> {
                         offset: Some(field_slot_offset),
                     },
                 },
-                var_type_info_for_field(&element_type),
+                Some(type_info),
             ),
             ResolvedAccess::StructFieldStringArrayElement(_) => return Err(string_place(span)),
         };
@@ -223,13 +211,14 @@ impl<S> Place<S> {
     /// Only a variable's reference is followed. A `VAR_IN_OUT` parameter's
     /// slot holds a reference to the caller's variable, not the reference
     /// to follow, so it is not one.
-    pub(crate) fn through_reference(
+    pub(crate) fn through_reference<T>(
         ctx: &CompileContext,
-        reference: &Variable,
+        reference: &Access<T>,
         target: Option<VarTypeInfo>,
     ) -> Result<Self, Diagnostic> {
-        let span = variable_span(reference);
-        let ref_slot = resolve_variable_name(reference)
+        let span = reference.span();
+        let ref_slot = reference
+            .name()
             .and_then(|name| ctx.var_index(name).ok())
             .ok_or_else(|| {
                 Diagnostic::not_implemented(Label::span(
@@ -241,49 +230,6 @@ impl<S> Place<S> {
             address: Address::Indirect(ref_slot),
             type_info: target,
             span,
-        })
-    }
-
-    /// The same place with each subscript replaced by what `replace` makes
-    /// of it, or the first error `replace` returns.
-    pub(crate) fn try_map_subscripts<T, E>(
-        self,
-        mut replace: impl FnMut(S) -> Result<T, E>,
-    ) -> Result<Place<T>, E> {
-        let address = match self.address {
-            Address::Variable(var_index) => Address::Variable(var_index),
-            Address::Indirect(ref_slot) => Address::Indirect(ref_slot),
-            Address::FbField { instance, field } => Address::FbField { instance, field },
-            Address::Element {
-                var_index,
-                desc_index,
-                through_ref,
-                index,
-            } => Address::Element {
-                var_index,
-                desc_index,
-                through_ref,
-                index: match index {
-                    ElementIndex::Slot(slot) => ElementIndex::Slot(slot),
-                    ElementIndex::Subscripts {
-                        dimensions,
-                        subscripts,
-                        offset,
-                    } => ElementIndex::Subscripts {
-                        dimensions,
-                        subscripts: subscripts
-                            .into_iter()
-                            .map(&mut replace)
-                            .collect::<Result<_, E>>()?,
-                        offset,
-                    },
-                },
-            },
-        };
-        Ok(Place {
-            address,
-            type_info: self.type_info,
-            span: self.span,
         })
     }
 }
@@ -546,12 +492,12 @@ impl<S: Subscript> ElementIndex<S> {
 
 /// The address and type of an element of an array variable, or of the array
 /// a reference variable refers to when `through_ref` is set.
-fn array_element<'ast>(
+fn array_element<S>(
     info: &ArrayVarInfo,
-    subscripts: Vec<&'ast Expr>,
+    subscripts: Vec<S>,
     through_ref: bool,
     span: &SourceSpan,
-) -> Result<(Address<&'ast Expr>, Option<VarTypeInfo>), Diagnostic> {
+) -> Result<(Address<S>, Option<VarTypeInfo>), Diagnostic> {
     if info.is_string_element {
         return Err(string_place(span.clone()));
     }
@@ -569,12 +515,12 @@ fn array_element<'ast>(
 }
 
 /// The type of the variable `name`, when the reference is a plain name.
-fn variable_type_info(ctx: &CompileContext, name: Option<&Id>) -> Option<VarTypeInfo> {
+fn variable_type_info(ctx: &CompileContext, name: Option<&Named>) -> Option<VarTypeInfo> {
     name.and_then(|name| ctx.var_type_info(name))
 }
 
 /// Returns `true` if `name` is a STRING variable.
-fn is_string_variable(ctx: &CompileContext, name: Option<&Id>) -> bool {
+fn is_string_variable(ctx: &CompileContext, name: Option<&Named>) -> bool {
     name.is_some_and(|name| ctx.string_var(name).is_some())
 }
 

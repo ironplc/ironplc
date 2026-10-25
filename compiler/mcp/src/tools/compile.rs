@@ -108,12 +108,7 @@ pub fn build_response(
     // Run the pipeline (parse, analysis, codegen) that `ironplc-project` owns.
     // No sources come from disk here, so codegen gets no source bytes to hash
     // into the container's debug section.
-    let output = ironplc_project::compile(
-        &mut project,
-        &compiler_options,
-        &ironplc_codegen::EmptyLookup,
-        vec![],
-    );
+    let output = ironplc_project::compile(&mut project, &ironplc_codegen::EmptyLookup, vec![]);
     let mut diagnostics = serialize_diagnostics(&output.diagnostics);
 
     let Some(container) = output.container else {

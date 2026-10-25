@@ -82,10 +82,10 @@ pub fn apply(
 /// encoding check judges.
 fn is_string_type(type_name: &TypeName) -> bool {
     matches!(
-        ElementaryTypeName::try_from(&type_name.name),
+        ElementaryTypeName::try_from(&type_name.id),
         Ok(ElementaryTypeName::STRING | ElementaryTypeName::WSTRING)
     ) || matches!(
-        GenericTypeName::try_from(&type_name.name),
+        GenericTypeName::try_from(&type_name.id),
         Ok(GenericTypeName::AnyString)
     )
 }

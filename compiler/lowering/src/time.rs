@@ -17,11 +17,10 @@ use ironplc_analyzer::TimeFunction;
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::Expr as AstExpr;
-use ironplc_ir::lowered::{BinaryOp, Expr, ScalarType, Signedness, TemporalKind, TypeId, TypeKind};
+use ironplc_ir::lowered::{BinaryOp, Expr, ScalarType, Signedness, TemporalKind};
 
-use crate::expr::Lowered;
 use crate::variables::BodyFrame;
-use crate::Lowering;
+use crate::{Lowered, Lowering, Unlowered};
 
 /// The milliseconds in a second.
 const MILLIS_PER_SECOND: i128 = 1000;
@@ -37,27 +36,6 @@ enum Unit {
 }
 
 impl Lowering<'_> {
-    /// Whether the analyzer recorded a time or a date for `expr`.
-    pub(crate) fn is_temporal(&mut self, expr: &AstExpr) -> Result<bool, Diagnostic> {
-        let unit = self.recorded_type(expr)?.and_then(|ty| self.unit(ty));
-        Ok(unit.is_some())
-    }
-
-    /// Whether the analyzer recorded a duration, a `TIME` or an `LTIME`, for
-    /// `expr`. A date or a time of day counts from an epoch, so it is not.
-    pub(crate) fn is_duration(&mut self, expr: &AstExpr) -> Result<bool, Diagnostic> {
-        let Some(ty) = self.recorded_type(expr)? else {
-            return Ok(false);
-        };
-        Ok(matches!(
-            self.program.types().kind(ty),
-            Some(TypeKind::Temporal {
-                kind: TemporalKind::Time,
-                ..
-            })
-        ))
-    }
-
     /// The typed time function `function`, the expression `expr`, of `args`.
     pub(crate) fn time_function(
         &mut self,
@@ -65,9 +43,9 @@ impl Lowering<'_> {
         expr: &AstExpr,
         function: TimeFunction,
         args: &[&AstExpr],
-    ) -> Lowered {
+    ) -> Lowered<Expr> {
         let [in1, in2] = args else {
-            return Ok(None);
+            return Err(Unlowered::NotYet);
         };
         self.time_arithmetic(frame, expr, operation(function), in1, in2)
     }
@@ -82,44 +60,25 @@ impl Lowering<'_> {
         op: BinaryOp,
         in1: &AstExpr,
         in2: &AstExpr,
-    ) -> Lowered {
+    ) -> Lowered<Expr> {
         let span = expr.span();
-        let Some((result_type, result)) = self.operated_type(expr)? else {
-            return Ok(None);
-        };
-        let (Some(in1_type), Some(in2_type)) = (self.recorded_type(in1)?, self.recorded_type(in2)?)
-        else {
-            return Ok(None);
-        };
-        let (Some(result_unit), Some(in1_unit)) = (self.unit(result_type), self.unit(in1_type))
-        else {
-            return Ok(None);
-        };
-        let in2_unit = self.unit(in2_type);
-        let (Some(in1), Some(in2)) = (self.expr(frame, in1)?, self.expr(frame, in2)?) else {
-            return Ok(None);
-        };
-        let Some(at) = signed(result) else {
-            return Ok(None);
-        };
-        let Some(in1) = of_width(in1, at, &span)? else {
-            return Ok(None);
-        };
+        let typed = self.typed(expr)?;
+        let result = typed.scalar()?;
+        let result_unit = typed.class.temporal().map(unit).ok_or(Unlowered::NotYet)?;
+        let in1_unit = self.unit_of(in1)?.ok_or(Unlowered::NotYet)?;
+        let in2_unit = self.unit_of(in2)?;
+        let in1 = self.expr(frame, in1)?;
+        let in2 = self.expr(frame, in2)?;
+        let at = signed(result).ok_or(Unlowered::NotYet)?;
+        let in1 = of_width(in1, at, &span)?;
         let value = match in2_unit {
             Some(in2_unit) => {
-                let Some(in2) = of_width(in2, at, &span)? else {
-                    return Ok(None);
-                };
+                let in2 = of_width(in2, at, &span)?;
                 let in2 = rescale(in2, in2_unit, in1_unit, &span)?;
                 Expr::binary(op, in1, in2, span.clone())?
             }
             // A duration multiplied or divided by a number.
-            None => {
-                let Some(scaled) = scale(op, in1, in2, &span)? else {
-                    return Ok(None);
-                };
-                scaled
-            }
+            None => scale(op, in1, in2, &span)?,
         };
         let value = rescale(value, in1_unit, result_unit, &span)?;
         of_width(value, result, &span)
@@ -133,7 +92,7 @@ impl Lowering<'_> {
         frame: &BodyFrame,
         expr: &AstExpr,
         value: &AstExpr,
-    ) -> Lowered {
+    ) -> Lowered<Expr> {
         self.of_day(frame, expr, value, |value, ty, span| {
             let day = Expr::integer(SECONDS_PER_DAY, ty, span.clone())?;
             let days = Expr::binary(BinaryOp::Div, value, day.clone(), span.clone())?;
@@ -148,7 +107,7 @@ impl Lowering<'_> {
         frame: &BodyFrame,
         expr: &AstExpr,
         value: &AstExpr,
-    ) -> Lowered {
+    ) -> Lowered<Expr> {
         self.of_day(frame, expr, value, |value, ty, span| {
             let day = Expr::integer(SECONDS_PER_DAY, ty, span.clone())?;
             let seconds = Expr::binary(BinaryOp::Mod, value, day, span.clone())?;
@@ -166,30 +125,28 @@ impl Lowering<'_> {
         expr: &AstExpr,
         value: &AstExpr,
         part: impl FnOnce(Expr, ScalarType, SourceSpan) -> Result<Expr, Diagnostic>,
-    ) -> Lowered {
-        let Some((_, result)) = self.operated_type(expr)? else {
-            return Ok(None);
-        };
-        let Some(value) = self.expr(frame, value)? else {
-            return Ok(None);
-        };
+    ) -> Lowered<Expr> {
+        let result = self.typed(expr)?.scalar()?;
+        let value = self.expr(frame, value)?;
         let at = ScalarType::I32(Signedness::Unsigned);
         if value.ty() != at || result != at {
-            return Ok(None);
+            return Err(Unlowered::NotYet);
         }
-        part(value, at, expr.span()).map(Some)
+        Ok(part(value, at, expr.span())?)
     }
 
-    /// The unit a value of the type `ty` counts in; `None` unless it is a
-    /// time or a date.
-    fn unit(&self, ty: TypeId) -> Option<Unit> {
-        let Some(TypeKind::Temporal { kind, .. }) = self.program.types().kind(ty) else {
-            return None;
-        };
-        Some(match kind {
-            TemporalKind::Time | TemporalKind::TimeOfDay => Unit::Millis,
-            TemporalKind::Date | TemporalKind::DateAndTime => Unit::Seconds,
-        })
+    /// The unit `expr` counts in, when it is a time or a date; the number a
+    /// duration is scaled by counts in none.
+    fn unit_of(&mut self, expr: &AstExpr) -> Lowered<Option<Unit>> {
+        Ok(self.typed(expr)?.class.temporal().map(unit))
+    }
+}
+
+/// The unit a time or date of `kind` counts in.
+fn unit(kind: TemporalKind) -> Unit {
+    match kind {
+        TemporalKind::Time | TemporalKind::TimeOfDay => Unit::Millis,
+        TemporalKind::Date | TemporalKind::DateAndTime => Unit::Seconds,
     }
 }
 
@@ -240,34 +197,32 @@ fn signed(ty: ScalarType) -> Option<ScalarType> {
 /// duration's width scales it directly; a real scales it converted to the
 /// real's type and back. A `REAL` does not scale a 64-bit duration, which
 /// needs more digits than it holds: the analyzer converts one to `LREAL`.
-fn scale(op: BinaryOp, duration: Expr, by: Expr, span: &SourceSpan) -> Lowered {
+fn scale(op: BinaryOp, duration: Expr, by: Expr, span: &SourceSpan) -> Lowered<Expr> {
     let at = duration.ty();
     let real = by.ty();
     if !real.is_real() {
-        let Some(by) = of_width(by, at, span)? else {
-            return Ok(None);
-        };
-        return Expr::binary(op, duration, by, span.clone()).map(Some);
+        let by = of_width(by, at, span)?;
+        return Ok(Expr::binary(op, duration, by, span.clone())?);
     }
     if real.bits() < at.bits() {
-        return Ok(None);
+        return Err(Unlowered::NotYet);
     }
     let duration = Expr::convert(duration, real, span.clone())?;
     let scaled = Expr::binary(op, duration, by, span.clone())?;
-    Expr::convert(scaled, at, span.clone()).map(Some)
+    Ok(Expr::convert(scaled, at, span.clone())?)
 }
 
 /// `value` at the integer `ty`, which it differs from at most in signedness:
 /// a `DATE`, `TIME_OF_DAY` or `DATE_AND_TIME` is unsigned, and the
-/// arithmetic on it signed, and at one width they hold the same bits. `None`
-/// for a value of another width, which the analyzer did not convert to the
-/// width the operation computes at.
-fn of_width(value: Expr, ty: ScalarType, span: &SourceSpan) -> Lowered {
+/// arithmetic on it signed, and at one width they hold the same bits. A
+/// value of another width, which the analyzer did not convert to the width
+/// the operation computes at, is not lowered.
+fn of_width(value: Expr, ty: ScalarType, span: &SourceSpan) -> Lowered<Expr> {
     if value.ty() == ty {
-        return Ok(Some(value));
+        return Ok(value);
     }
     if !(value.ty().is_integer() && ty.is_integer() && value.ty().bits() == ty.bits()) {
-        return Ok(None);
+        return Err(Unlowered::NotYet);
     }
-    Expr::convert(value, ty, span.clone()).map(Some)
+    Ok(Expr::convert(value, ty, span.clone())?)
 }

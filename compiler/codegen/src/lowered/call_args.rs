@@ -9,10 +9,10 @@
 //! offset of its region (`aggregate.rs`). A function and a method pass their
 //! arguments alike, so both check and push them here.
 
-use ironplc_dsl::core::SourceSpan;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::Arg;
-use ironplc_lowering::PartialProgram;
+use ironplc_ir::lowered::Program;
+use ironplc_ir::SourceSpan;
+use ironplc_ir::{Diagnostic, Label};
 
 use super::aggregate::emit_source;
 use super::expr::{emit_expr, emit_ref};
@@ -40,7 +40,7 @@ pub(super) fn passes<'s>(
 pub(super) fn emit_passed<'s>(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &PartialProgram,
+    lowering: &Program,
     params: &[ParamPassing],
     args: impl IntoIterator<Item = &'s Arg>,
     span: &SourceSpan,
@@ -67,9 +67,8 @@ pub(super) fn emit_passed<'s>(
                 let Arg::Str(value) = arg else {
                     return Err(not_passed(span));
                 };
-                // Put in a slot as `resolve_string_arg` puts it: a string
-                // variable is its own slot, and any other string is computed
-                // into a temporary slot of its capacity.
+                // A string variable is its own slot, and any other string is
+                // computed into a temporary slot of its capacity.
                 copy_string_arg(emitter, ctx, param, |emitter, ctx| {
                     str_arg_offset(emitter, ctx, lowering, value)
                 })?;

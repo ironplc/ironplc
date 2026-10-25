@@ -26,6 +26,7 @@ mod print;
 mod print_program;
 mod program;
 mod scalar;
+mod standard_block;
 mod stmt;
 mod str_expr;
 mod types;
@@ -41,6 +42,7 @@ pub use place::{Place, Projection};
 pub use policy::{NonNumeric, ParseFailure, ParsePolicy};
 pub use program::ProgramBuilder;
 pub use scalar::{ScalarType, Signedness};
+pub use standard_block::{CounterWidth, StandardFunctionBlock};
 pub use stmt::{store_narrowing, CaseArm, CaseLabel, Stmt, StmtKind};
 pub use str_expr::{StrExpr, StrExprKind};
 pub use types::{
@@ -49,7 +51,8 @@ pub use types::{
     TypeTable, WideWidth,
 };
 pub use variables::{
-    Declared, FunctionSignature, Owner, PouKind, PouParts, PouTable, Variable, VariableTable,
+    Declaration, Declared, FunctionSignature, Owner, PouKind, PouParts, PouTable, Variable,
+    VariableTable,
 };
 pub use whole::{ExecutionBindings, Program};
 

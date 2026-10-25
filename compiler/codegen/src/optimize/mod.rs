@@ -38,8 +38,8 @@ mod tests;
 
 use std::collections::{HashMap, HashSet};
 
-use ironplc_dsl::core::FileId;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_ir::FileId;
+use ironplc_ir::{Diagnostic, Label};
 
 use crate::compile::PoolConstant;
 use crate::emit::UnpatchedCode;

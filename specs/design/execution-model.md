@@ -20,13 +20,13 @@ codegen, and makes them the first part of the
 
 - **`ironplc-ir`**, a new crate, holds the **execution model**: what runs and
   when, as plain data.
-- **The analyzer** builds it, in `execution_model::resolve`, and stores it on
-  the `SemanticContext`, next to `reachable()`. It also checks the task
+- **Lowering** builds it from a clean analysis, in its `execution_model`
+  module, and the lowered program holds it. The analyzer checks the task
   parameters that can make a program invalid, as rules: a negative
   `INTERVAL`, and a `SINGLE` that names no `BOOL` global.
-- **Codegen** takes the model through `CleanAnalysis`, builds the task table,
-  the program instance and the global variables from it, and never reads the
-  configuration's declarations.
+- **Codegen** reads the model from the lowered program, builds the task
+  table, the program instance and the global variables from it, and never
+  reads the configuration's declarations.
 
 A second backend reads the same model, so it cannot decide differently. This
 follows ADR-0056: backends lower; they do not decide what the language means.
@@ -36,36 +36,27 @@ follows ADR-0056: backends lower; they do not decide what the language means.
 | Crate | Holds | Depends on |
 |---|---|---|
 | `ironplc-ir` (new) | The execution model's types, in a module `execution` | `ironplc-dsl`, for `SourceSpan` alone (see [Source positions](#source-positions)); `time` |
-| `ironplc-analyzer` | `execution_model::resolve`, which builds the model; the two task rules | `ironplc-ir`, for now (see below), and its dependencies today |
-| `ironplc-codegen` | The capability checks; the task table and globals, built from the model | `ironplc-ir`; and `ironplc-analyzer` as today, while it compiles bodies from the library |
+| `ironplc-analyzer` | The two task rules | Its dependencies today |
+| `ironplc-lowering` | `execution_model`, which builds the model, with the declaration behind each of its ids | `ironplc-analyzer`, `ironplc-ir` |
+| `ironplc-codegen` | The capability checks; the task table and globals, built from the model the lowered program holds | `ironplc-ir` |
 
-### A temporary departure from the lowered program's crates
+### Where the model is built
 
-The lowered program design has a lowering stage, in a crate of its own, build
-everything in `ironplc-ir`, and the analyzer not depend on `ironplc-ir` at all
-(proposed ADR-0059). It also gives lowering the decisions no valid program can
-get wrong (proposed ADR-0058), and which instance runs under which task, how a
-task is scheduled and which global goes where are decisions of that kind.
+The analyzer built the model until `ironplc-lowering` existed, a departure
+from the lowered program's crates that ADR-0065 records. The module moved
+into lowering unchanged once lowering built the whole program, and the
+requirements on what the model holds became lowering's (`REQ-EM-lowering-*`).
 
-This design departs from both, on purpose and for now (ADR-0065). `ironplc-lowering` does
-not exist yet, and creating it to hold one function would be a crate with no
-other reason to exist. So the analyzer depends on `ironplc-ir` and builds the
-model itself.
-
-The departure is kept small enough to undo by moving one module:
-
-- **`resolve` reads only what a clean analysis holds**: the library, the
-  type environment and the compiler options, never the analyzer's internals. When `ironplc-lowering`
-  exists, `execution_model` moves into it unchanged and takes a
-  `CleanAnalysis`, and the analyzer drops its dependency on `ironplc-ir`.
-- **The model's types do not change** when it moves. They are `ironplc-ir`'s
+- **`resolve` reads only what a clean analysis holds**: the library and the
+  compiler options, never the analyzer's internals.
+- **The model's types did not change** when it moved. They are `ironplc-ir`'s
   from the start.
-- **The analyzer reports nothing about the model.** The model describes the
+- **Lowering reports nothing about the model.** The model describes the
   library as it is: a library with no `PROGRAM`, several configurations, or
   an instance of a program declared in another file is a valid library. That
-  a backend cannot build one is the backend's check, as it would be under
-  lowering (REQ-LOW-lowering-109). The rules that can make a program invalid
-  are the analyzer's under ADR-0058 too, and stay there after the move.
+  a backend cannot build one is the backend's check (REQ-LOW-lowering-109).
+  The rules that can make a program invalid are the analyzer's under
+  ADR-0058.
 
 ## Representation
 
@@ -215,7 +206,7 @@ Ownership goes to scheduling, which is what this model is for.
 
 - **The schedule is one value.** `Schedule` carries the data each kind needs,
   so a cyclic task without an interval, or an event task without a trigger,
-  cannot be written. The analyzer decides the kind ([Task kind](#task-kind));
+  cannot be written. Lowering decides the kind ([Task kind](#task-kind));
   no backend reads `INTERVAL` and `SINGLE` to decide it again.
 - **The model describes the library, not what a backend can build.** A
   library with no `PROGRAM`, several configurations or several programs, or
@@ -233,8 +224,8 @@ Ownership goes to scheduling, which is what this model is for.
   backend what the runtime writes into it. The backend does not recognise the
   global by its name, or by its type.
 - **A global carries no type.** What a backend stores for a declared global is
-  its type in the lowered program's type table, which does not exist yet.
-  Until it does, see [What a backend still reads](#what-a-backend-still-reads).
+  the type of the variable the lowered program binds it to, in the program's
+  type table, and its starting value is a statement of `init`.
 - **The interval is a duration, not microseconds.** Microseconds are the
   container's unit, and the bytecode backend converts.
 - **The priority is as declared.** `u32` is what the source can write; the
@@ -242,30 +233,6 @@ Ownership goes to scheduling, which is what this model is for.
 - **Only names carry a position.** A diagnostic about a task's priority or
   interval is labelled at the task's name, so the interval carries no span of
   its own.
-
-### What a backend still reads
-
-The model replaces the configuration's declarations. It does not yet replace
-two things codegen compiles from the analyzed library, and both are reached
-by id, never by name in codegen:
-
-- **A program's body**, from `ProgramId`. Moving bodies to the lowered program
-  is that design's work.
-- **A declared global's type and initial value**, from `GlobalId`. The
-  lowered program carries both: its variables have a type in its type table,
-  and initial values are statements in `init`.
-
-`CleanAnalysis` answers both by id, as `program_declaration(ProgramId)` and
-`global_declaration(GlobalId)`, from the same walk of the library that
-allocated the ids. `CleanAnalysis::new` runs that walk on the library it
-holds, so the model codegen receives is always that library's, and the walk
-keeps a reference to each declaration rather than a position in the library:
-the borrow checker, not a convention, ties a declaration to the library it
-came from. The `SemanticContext` keeps its own copy of the model, without the
-declarations, for `check` and the editor. `CleanAnalysis` lives in the
-analyzer, not `ironplc-ir`, because it hands out declaration nodes. It is the only place a backend reaches a declaration
-through the model, and it goes away when the lowered program carries bodies,
-types and initial values.
 
 ### Relationship to the lowered program
 
@@ -280,9 +247,11 @@ and is the first thing in `ironplc-ir`:
 | The storage of a `ProgramInstance` | A global holding the instance (§3.2), which lowering allocates |
 | `DebugName` | The names kept on declarations for debug information (REQ-LOW-lowering-021) |
 
-When the lowered program's `Program` exists, it holds the `ExecutionModel`
-rather than repeating it, and `ProgramId` and `GlobalId` become, or are
-replaced by, its `PouId` and `VarId`.
+The lowered program's `Program` holds the `ExecutionModel` rather than
+repeating it, and binds each `ProgramId` and `GlobalId` to its `PouId` and
+`VarId` (`ExecutionBindings`). Lowering resolves the model, with the
+declaration behind each id, from the library it lowers, so a backend reaches
+no declaration through the model.
 
 Only POUs reachable from a program instance are lowered
 (REQ-LOW-lowering-025), so a library with no program instance lowers nothing.
@@ -306,9 +275,9 @@ lowers as it compiles today.
 - **The types in the analyzer until `ironplc-ir` exists.** Rejected: creating
   `ironplc-ir` now puts the model where the lowered program will hold it, and
   sets up the crate the lowering work needs.
-- **`ironplc-lowering` now, to build the model.** Rejected for now: it would
-  hold one function. The analyzer builds the model until lowering exists (see
-  [A temporary departure](#a-temporary-departure-from-the-lowered-programs-crates)).
+- **`ironplc-lowering` at the start, to build the model.** Rejected at the
+  time: it would have held one function. The analyzer built the model until
+  lowering existed (see [Where the model is built](#where-the-model-is-built)).
 - **A source position type of the model's own.** Rejected; see
   [Source positions](#source-positions).
 
@@ -334,12 +303,11 @@ backend reaches one only through `DebugName::span`.
 For a backend to drop `ironplc-dsl` altogether (REQ-LOW-codegen-002 in the
 lowered program design), it is not the span alone that has to come from
 elsewhere: `SourceSpan`, `FileId`, `Label` and `Diagnostic` go together.
-`ironplc-ir` re-exports all four from `ironplc-dsl`, and a backend names them
+`ironplc-ir` re-exports them from `ironplc-dsl`, and a backend names them
 through `ironplc-ir` (see the lowered program design's
 [Position in the Pipeline](lowered-program.md#1-position-in-the-pipeline)).
 The execution model's own module still imports `SourceSpan` from
-`ironplc-dsl` directly, and codegen still depends on `ironplc-dsl` until it
-reads only the lowered program.
+`ironplc-dsl` directly.
 
 ## Behaviour
 
@@ -356,7 +324,7 @@ checks](#backend-capability-checks)).
 
 ### Binding programs to tasks
 
-**REQ-EM-analyzer-012** With no `CONFIGURATION` and at least one `PROGRAM`, the model has one implicit configuration holding one implicit resource, which holds one implicit freewheeling task of priority 0, which runs one implicit instance of every `PROGRAM`, in source order. With no `PROGRAM` either, the model has no configuration.
+**REQ-EM-lowering-012** With no `CONFIGURATION` and at least one `PROGRAM`, the model has one implicit configuration holding one implicit resource, which holds one implicit freewheeling task of priority 0, which runs one implicit instance of every `PROGRAM`, in source order. With no `PROGRAM` either, the model has no configuration.
 
 For a library of one `PROGRAM` this is what codegen did before the model, and
 the model keeps it. The default
@@ -364,43 +332,43 @@ configuration sketched in [Task Support](61131-task-support.md) has a cyclic
 task of 10 ms; the compiler has never built that, and this design does not
 adopt it.
 
-**REQ-EM-analyzer-011** An instance with no `WITH` clause is owned by an implicit freewheeling task of its resource, listed after the declared tasks and shared by every such instance of that resource.
+**REQ-EM-lowering-011** An instance with no `WITH` clause is owned by an implicit freewheeling task of its resource, listed after the declared tasks and shared by every such instance of that resource.
 
 A `WITH` that names a task the resource does not declare is reported by
 `rule_program_task_definition_exists` (P4006); the model binds that instance to
 the implicit task, so every instance has a task.
 
-**REQ-EM-analyzer-013** A configuration none of whose resources has a program instance gets an implicit resource, after its declared ones, which runs an implicit instance of every `PROGRAM` as REQ-EM-analyzer-012 describes.
+**REQ-EM-lowering-013** A configuration none of whose resources has a program instance gets an implicit resource, after its declared ones, which runs an implicit instance of every `PROGRAM` as REQ-EM-lowering-012 describes.
 
 Every instance in an `ExecutionModel` is owned by exactly one task, so an
 instance cannot be bound to no task, or to a task of another resource.
 
 ### Task kind
 
-**REQ-EM-analyzer-020** A task that declares `SINGLE` has an event schedule, whatever its interval; a `SINGLE` naming a global triggers on that global's `GlobalId`.
+**REQ-EM-lowering-020** A task that declares `SINGLE` has an event schedule, whatever its interval; a `SINGLE` naming a global triggers on that global's `GlobalId`.
 
-**REQ-EM-analyzer-021** A task with a positive `INTERVAL` and no `SINGLE` has a cyclic schedule, whose interval is recorded as a duration at the precision written.
+**REQ-EM-lowering-021** A task with a positive `INTERVAL` and no `SINGLE` has a cyclic schedule, whose interval is recorded as a duration at the precision written.
 
-**REQ-EM-analyzer-022** A task with an absent or zero `INTERVAL` and no `SINGLE` has a freewheeling schedule. A zero interval means "as fast as possible", which is what a freewheeling task does; scheduling it as cyclic with a zero period would leave it permanently overdue.
+**REQ-EM-lowering-022** A task with an absent or zero `INTERVAL` and no `SINGLE` has a freewheeling schedule. A zero interval means "as fast as possible", which is what a freewheeling task does; scheduling it as cyclic with a zero period would leave it permanently overdue.
 
-**REQ-EM-analyzer-023** The declared priority is recorded unchanged, whatever its size; whether a backend can represent it is the backend's check.
+**REQ-EM-lowering-023** The declared priority is recorded unchanged, whatever its size; whether a backend can represent it is the backend's check.
 
 ### Several resources, tasks and instances
 
-**REQ-EM-analyzer-030** Every resource, task and program instance of the configuration is resolved: a configuration of two resources with several tasks and several instances resolves completely.
+**REQ-EM-lowering-030** Every resource, task and program instance of the configuration is resolved: a configuration of two resources with several tasks and several instances resolves completely.
 
 The structured text grammar accepts one `RESOURCE` per configuration; the
 PLCopen XML front end gives a configuration as many as it declares.
 
-**REQ-EM-analyzer-031** Every `CONFIGURATION` the library declares is in the model, in source order, each resolved as REQ-EM-analyzer-030 describes; the model does not pick one.
+**REQ-EM-lowering-031** Every `CONFIGURATION` the library declares is in the model, in source order, each resolved as REQ-EM-lowering-030 describes; the model does not pick one.
 
-**REQ-EM-analyzer-032** Every `PROGRAM` declaration is a program type of the model, in source order, whether or not an instance runs it.
+**REQ-EM-lowering-032** Every `PROGRAM` declaration is a program type of the model, in source order, whether or not an instance runs it.
 
 ### Globals
 
-**REQ-EM-analyzer-040** The globals in scope are listed system first, then top-level `VAR_GLOBAL` in the order the files were given, then the configuration's, then each resource's in declaration order; a global's `GlobalId` is its position in that list.
+**REQ-EM-lowering-040** The globals in scope are listed system first, then top-level `VAR_GLOBAL` in the order the files were given, then the configuration's, then each resource's in declaration order; a global's `GlobalId` is its position in that list.
 
-**REQ-EM-analyzer-041** With `allow_system_uptime_global`, the first globals are the system globals `SystemGlobal::UpTime` and `SystemGlobal::UpLTime` (`__SYSTEM_UP_TIME` and `__SYSTEM_UP_LTIME`); without it there are none.
+**REQ-EM-lowering-041** With `allow_system_uptime_global`, the first globals are the system globals `SystemGlobal::UpTime` and `SystemGlobal::UpLTime` (`__SYSTEM_UP_TIME` and `__SYSTEM_UP_LTIME`); without it there are none.
 
 The VM writes the uptime globals by slot, which is why they come first.
 
@@ -414,7 +382,7 @@ variable indexes.
 
 ### Instances of a type the library does not declare as a program
 
-**REQ-EM-analyzer-054** A program instance whose type is not a `PROGRAM` declaration of the library, such as a function block or a name declared nowhere, is in the model as `InstanceOf::Unresolved`, with its type name as written.
+**REQ-EM-lowering-054** A program instance whose type is not a `PROGRAM` declaration of the library, such as a function block or a name declared nowhere, is in the model as `InstanceOf::Unresolved`, with its type name as written.
 
 A configuration is commonly kept in a file of its own, and checking that file
 alone must not report the programs it names as missing, which is why this is
@@ -463,7 +431,7 @@ configurations without a word; that now reports P4081.
 
 **REQ-EM-codegen-006** The container header's system-uptime flag is set exactly when the model lists `SystemGlobal::UpTime`.
 
-**REQ-EM-codegen-007** `ironplc-codegen` builds the task table and the global variables from the execution model, and reaches a declaration only through `CleanAnalysis::program_declaration` and `CleanAnalysis::global_declaration`.
+**REQ-EM-codegen-007** `ironplc-codegen` builds the task table and the global variables from the execution model the lowered program holds, and reaches no declaration of the library.
 
 A program that compiled before the model compiles to the same container bytes
 under it.

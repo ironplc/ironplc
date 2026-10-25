@@ -21,7 +21,9 @@
 //! take part: `SEL`'s `G` and `MUX`'s `K` select between the others and have
 //! types of their own. An untyped literal takes the other inputs' type when
 //! its category allows, so `MAX(d, 1)` passes and `MAX(d, 1.5)` is reported,
-//! as `d + 1.5` is. `EXPT` is typed by its base, with the exponent converted
+//! as `d + 1.5` is; a real literal beside an integer that widens to `REAL`
+//! is a `REAL`, so `MIN(i, 1.5)` on an `INT` passes, as `i + 1.5` does.
+//! `EXPT` is typed by its base, with the exponent converted
 //! to it, so it has nothing to check, and the function forms of `AND`, `OR`
 //! and `XOR` are the operator rule's.
 //!
@@ -267,6 +269,8 @@ END_PROGRAM"
     #[case::mux_inputs_widen_to_the_last("MUX(k, d, u, l)")]
     #[case::integer_literal_takes_the_other_type("MAX(d, 1)")]
     #[case::real_literal_with_a_real("MAX(r, 1.5)")]
+    #[case::real_literal_with_a_narrow_integer("MIN(i, 1.5)")]
+    #[case::real_literals_around_a_narrow_integer("LIMIT(0.5, i, 2.5)")]
     #[case::literals_only("MAX(1, 2.5)")]
     #[case::real_and_long_real("ATAN2(r, lr)")]
     fn apply_when_every_input_widens_to_one_then_ok(#[case] value: &str) {

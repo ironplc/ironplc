@@ -25,16 +25,15 @@ use ironplc_analyzer::{BuiltinFunction, StringFunction};
 use ironplc_container::DEFAULT_STRING_MAX_LENGTH;
 use ironplc_dsl::common::{ConstantKind, ElementaryTypeName, StringType};
 use ironplc_dsl::core::{Located, SourceSpan};
-use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{Expr as AstExpr, ExprKind as AstExprKind, Function};
 use ironplc_ir::lowered::{
     Arg, CompareOp, Encoding, Expr, Intrinsic, NarrowWidth, Param, Place, ScalarType, Signedness,
-    Stmt, StrExpr, TypeKind,
+    Stmt, StrExpr,
 };
 
-use crate::expr::Lowered;
+use crate::typed::Class;
 use crate::variables::BodyFrame;
-use crate::{Body, Lowering};
+use crate::{Body, Lowered, Lowering, Unlowered};
 
 impl Lowering<'_> {
     /// `place := value`, where `place` is a string.
@@ -44,11 +43,9 @@ impl Lowering<'_> {
         place: Place,
         value: &AstExpr,
         span: SourceSpan,
-    ) -> Result<Option<Stmt>, Diagnostic> {
-        let Some(value) = self.str_expr(frame, value)? else {
-            return Ok(None);
-        };
-        self.program.assign_str(place, value, span).map(Some)
+    ) -> Lowered<Stmt> {
+        let value = self.str_expr(frame, value)?;
+        Ok(self.program.assign_str(place, value, span)?)
     }
 
     /// The call `expr` of the string function `function` with `args`, where
@@ -60,12 +57,10 @@ impl Lowering<'_> {
         expr: &AstExpr,
         function: StringFunction,
         args: &[&AstExpr],
-    ) -> Lowered {
-        let Some(intrinsic) = self.string_intrinsic(function, args)? else {
-            return Ok(None);
-        };
+    ) -> Lowered<Expr> {
+        let intrinsic = self.string_intrinsic(function, args)?;
         let Param::Value(_) = intrinsic.signature().result() else {
-            return Ok(None);
+            return Err(Unlowered::NotYet);
         };
         self.intrinsic_call(frame, expr, intrinsic, args)
     }
@@ -73,24 +68,27 @@ impl Lowering<'_> {
     /// The string the call `func`, the expression `expr`, yields: a call of
     /// a standard string function that yields a string, a conversion to a
     /// `STRING`, or a call of a function whose result is a string, moved
-    /// out of its statement (`string_result.rs`). `None` for a call of any
-    /// other function.
+    /// out of its statement (`string_result.rs`). A call of any other
+    /// function yields a number, an `Expr` (`call.rs`), not a string.
     fn string_call(
         &mut self,
         frame: &BodyFrame,
         expr: &AstExpr,
         func: &Function,
-    ) -> Result<Option<StrExpr>, Diagnostic> {
-        let Some(signature) = self.analysis.context().functions().get(&func.name) else {
-            return Ok(None);
-        };
+    ) -> Lowered<StrExpr> {
+        let signature = self
+            .analysis
+            .context()
+            .functions()
+            .get(&func.name)
+            .ok_or(Unlowered::NotYet)?;
         let Some(builtin) = signature.builtin_function.clone() else {
             return match self.body_named(&func.name) {
                 Some(Body::Function(function)) => {
                     self.string_result_call(frame, expr, func, function)
                 }
                 Some(Body::Program(_) | Body::FunctionBlock(_) | Body::Method { .. }) | None => {
-                    Ok(None)
+                    Err(Unlowered::NotYet)
                 }
             };
         };
@@ -107,7 +105,7 @@ impl Lowering<'_> {
         {
             return self.number_to_string(frame, expr, &args);
         }
-        Ok(None)
+        Err(Unlowered::NotYet)
     }
 
     /// The string the call `expr` of the string function `function` with
@@ -121,21 +119,17 @@ impl Lowering<'_> {
         expr: &AstExpr,
         function: StringFunction,
         args: &[&AstExpr],
-    ) -> Result<Option<StrExpr>, Diagnostic> {
-        let Some(intrinsic) = self.string_intrinsic(function, args)? else {
-            return Ok(None);
-        };
+    ) -> Lowered<StrExpr> {
+        let intrinsic = self.string_intrinsic(function, args)?;
         let Param::Str(_) = intrinsic.signature().result() else {
-            return Ok(None);
+            return Err(Unlowered::NotYet);
         };
-        let Some(args) = self.intrinsic_args(frame, intrinsic, args)? else {
-            return Ok(None);
-        };
+        let args = self.intrinsic_args(frame, intrinsic, args)?;
         let capacity = args.iter().fold(0u32, |sum, arg| match arg {
             Arg::Str(value) => sum.saturating_add(value.shape().capacity),
             Arg::Value(_) | Arg::Ref(_) | Arg::Copy(_) => sum,
         });
-        StrExpr::call(intrinsic, args, capacity, expr.span()).map(Some)
+        Ok(StrExpr::call(intrinsic, args, capacity, expr.span())?)
     }
 
     /// The conversion of `args`, one number, to a `STRING`, the expression
@@ -146,13 +140,11 @@ impl Lowering<'_> {
         frame: &BodyFrame,
         expr: &AstExpr,
         args: &[&AstExpr],
-    ) -> Result<Option<StrExpr>, Diagnostic> {
+    ) -> Lowered<StrExpr> {
         let [value] = args else {
-            return Ok(None);
+            return Err(Unlowered::NotYet);
         };
-        let Some((_, operated)) = self.operated_type(value)? else {
-            return Ok(None);
-        };
+        let operated = self.typed(value)?.scalar()?;
         let intrinsic = match operated {
             ScalarType::I32(Signedness::Signed) => Intrinsic::I32ToString,
             ScalarType::I32(Signedness::Unsigned) => Intrinsic::U32ToString,
@@ -161,13 +153,11 @@ impl Lowering<'_> {
             | ScalarType::F64
             | ScalarType::Bool
             | ScalarType::Ref
-            | ScalarType::Interface => return Ok(None),
+            | ScalarType::Interface => return Err(Unlowered::NotYet),
         };
-        let Some(args) = self.intrinsic_args(frame, intrinsic, args)? else {
-            return Ok(None);
-        };
+        let args = self.intrinsic_args(frame, intrinsic, args)?;
         let capacity = u32::from(DEFAULT_STRING_MAX_LENGTH);
-        StrExpr::call(intrinsic, args, capacity, expr.span()).map(Some)
+        Ok(StrExpr::call(intrinsic, args, capacity, expr.span())?)
     }
 
     /// `STRING_TO_*(value)`, the expression `expr`: the intrinsic that reads
@@ -179,10 +169,9 @@ impl Lowering<'_> {
         frame: &BodyFrame,
         expr: &AstExpr,
         value: &AstExpr,
-    ) -> Lowered {
-        let Some((target, operated)) = self.operated_type(expr)? else {
-            return Ok(None);
-        };
+    ) -> Lowered<Expr> {
+        let target = self.typed(expr)?;
+        let operated = target.scalar()?;
         let parse = self.parse;
         let intrinsic = match operated {
             ScalarType::I32(signedness) => {
@@ -198,18 +187,20 @@ impl Lowering<'_> {
                         Intrinsic::StringToU32(parse),
                     ],
                 };
-                match self.program.types().narrowed_storage(target) {
+                match self.program.types().narrowed_storage(target.ty) {
                     Some(NarrowWidth::B8) => bits_8,
                     Some(NarrowWidth::B16) => bits_16,
                     None => bits_32,
-                    Some(NarrowWidth::B32) => return Ok(None),
+                    Some(NarrowWidth::B32) => return Err(Unlowered::NotYet),
                 }
             }
             ScalarType::I64(Signedness::Signed) => Intrinsic::StringToI64(parse),
             ScalarType::I64(Signedness::Unsigned) => Intrinsic::StringToU64(parse),
             ScalarType::F32 => Intrinsic::StringToF32(parse),
             ScalarType::F64 => Intrinsic::StringToF64(parse),
-            ScalarType::Bool | ScalarType::Ref | ScalarType::Interface => return Ok(None),
+            ScalarType::Bool | ScalarType::Ref | ScalarType::Interface => {
+                return Err(Unlowered::NotYet)
+            }
         };
         self.intrinsic_call(frame, expr, intrinsic, &[value])
     }
@@ -223,42 +214,24 @@ impl Lowering<'_> {
         op: CompareOp,
         (left, right): (&AstExpr, &AstExpr),
         span: SourceSpan,
-    ) -> Lowered {
+    ) -> Lowered<Expr> {
         let intrinsic = match encoding {
             Encoding::Narrow => Intrinsic::CompareString,
             Encoding::Wide => Intrinsic::CompareWString,
         };
-        let Some(args) = self.intrinsic_args(frame, intrinsic, &[left, right])? else {
-            return Ok(None);
-        };
+        let args = self.intrinsic_args(frame, intrinsic, &[left, right])?;
         let order = Expr::call(intrinsic, args, span.clone())?;
         let zero = Expr::integer(0, order.ty(), span.clone())?;
-        Expr::compare(op, order, zero, span).map(Some)
-    }
-
-    /// The encoding of the string type the analyzer recorded for `expr`;
-    /// `None` when it recorded no string type.
-    pub(crate) fn string_encoding(
-        &mut self,
-        expr: &AstExpr,
-    ) -> Result<Option<Encoding>, Diagnostic> {
-        let Some(ty) = self.recorded_type(expr)? else {
-            return Ok(None);
-        };
-        let Some(TypeKind::String(shape)) = self.program.types().kind(ty) else {
-            return Ok(None);
-        };
-        Ok(Some(shape.encoding))
+        Ok(Expr::compare(op, order, zero, span)?)
     }
 
     /// The intrinsic of the string function `function` for the encoding the
-    /// analyzer recorded for its first argument; `None` when it recorded no
-    /// string type.
+    /// analyzer recorded for its first argument.
     fn string_intrinsic(
         &mut self,
         function: StringFunction,
         args: &[&AstExpr],
-    ) -> Result<Option<Intrinsic>, Diagnostic> {
+    ) -> Lowered<Intrinsic> {
         let [narrow, wide] = match function {
             StringFunction::Len => [Intrinsic::LenString, Intrinsic::LenWString],
             StringFunction::Find => [Intrinsic::FindString, Intrinsic::FindWString],
@@ -270,25 +243,20 @@ impl Lowering<'_> {
             StringFunction::Right => [Intrinsic::RightString, Intrinsic::RightWString],
             StringFunction::Mid => [Intrinsic::MidString, Intrinsic::MidWString],
         };
-        let Some(first) = args.first() else {
-            return Ok(None);
+        let first = args.first().ok_or(Unlowered::NotYet)?;
+        let Class::String(encoding) = self.typed(first)?.class else {
+            return Err(Unlowered::NotYet);
         };
-        let Some(encoding) = self.string_encoding(first)? else {
-            return Ok(None);
-        };
-        Ok(Some(match encoding {
+        Ok(match encoding {
             Encoding::Narrow => narrow,
             Encoding::Wide => wide,
-        }))
+        })
     }
 
-    /// The string `expr` makes; `None` for one lowering does not support
-    /// yet, such as a string conversion.
-    pub(crate) fn str_expr(
-        &mut self,
-        frame: &BodyFrame,
-        expr: &AstExpr,
-    ) -> Result<Option<StrExpr>, Diagnostic> {
+    /// The string `expr` makes. A method's string result is not lowered
+    /// yet, and an expression that yields a number, a `BOOL`, a time or a
+    /// date is a scalar (`expr.rs`), not a string.
+    pub(crate) fn str_expr(&mut self, frame: &BodyFrame, expr: &AstExpr) -> Lowered<StrExpr> {
         let span = expr.span();
         match &expr.kind {
             AstExprKind::Expression(inner) => self.str_expr(frame, inner),
@@ -298,7 +266,7 @@ impl Lowering<'_> {
                         StringType::String => Encoding::Narrow,
                         StringType::WString => Encoding::Wide,
                     };
-                    StrExpr::literal(literal.value.clone(), encoding, span).map(Some)
+                    Ok(StrExpr::literal(literal.value.clone(), encoding, span)?)
                 }
                 ConstantKind::IntegerLiteral(_)
                 | ConstantKind::RealLiteral(_)
@@ -307,31 +275,24 @@ impl Lowering<'_> {
                 | ConstantKind::TimeOfDay(_)
                 | ConstantKind::Date(_)
                 | ConstantKind::DateAndTime(_)
-                | ConstantKind::BitStringLiteral(_) => Ok(None),
+                | ConstantKind::BitStringLiteral(_) => Err(Unlowered::NotYet),
             },
             AstExprKind::Variable(variable) => {
-                let Some(place) = self.variable_place(frame, variable)? else {
-                    return Ok(None);
-                };
-                self.program.read_str(place, span).map(Some)
+                let place = self.variable_place(frame, variable)?;
+                Ok(self.program.read_str(place, span)?)
             }
             AstExprKind::Function(func) => self.string_call(frame, expr, func),
             // The string output of the call whose outputs are being stored.
             AstExprKind::CallOutput(output) => {
-                let Some(place) = self.call_output_place(output)? else {
-                    return Ok(None);
-                };
-                self.program.read_str(place, span).map(Some)
+                let place = self.call_output_place(output)?;
+                Ok(self.program.read_str(place, span)?)
             }
             // The string a reference variable refers to, and `REF(s)^`, a
             // read of `s` (REQ-LOW-lowering-188).
             AstExprKind::Deref(reference) => {
-                let Some(place) = self.dereferenced_place(frame, reference, &span)? else {
-                    return Ok(None);
-                };
-                self.program.read_str(place, span).map(Some)
+                let place = self.dereferenced_place(frame, reference, &span)?;
+                Ok(self.program.read_str(place, span)?)
             }
-            // A method's string result is not lowered yet.
             AstExprKind::MethodCall(_)
             | AstExprKind::Compare(_)
             | AstExprKind::BinaryOp(_)
@@ -340,7 +301,7 @@ impl Lowering<'_> {
             | AstExprKind::LateBound(_)
             | AstExprKind::Ref(_)
             | AstExprKind::ImplicitConversion(_)
-            | AstExprKind::Null(_) => Ok(None),
+            | AstExprKind::Null(_) => Err(Unlowered::NotYet),
         }
     }
 }

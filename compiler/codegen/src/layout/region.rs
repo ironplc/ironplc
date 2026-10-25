@@ -1,18 +1,17 @@
 //! The data region the lowered declarations reserve
 //! (`specs/design/lowered-program.md`, "`CompileContext`").
 //!
-//! A variable that does not fit in its slot takes a run of the data region
-//! ([`crate::data_region`]), in the order the walk of the AST declarations
-//! reserves them: a string, a structure, an array, or the fields of a
-//! function block instance, then those of each instance its fields hold, to
-//! any depth ([`crate::held_instances`]).
+//! A variable that does not fit in its slot takes a run of the data region,
+//! in the order the layout visits the declarations: a string, a structure,
+//! an array, or the fields of a function block instance, then those of each
+//! instance its fields hold, to any depth ([`crate::held_instances`]).
 
 use std::collections::HashMap;
 
-use ironplc_analyzer::StandardFunctionBlock;
 use ironplc_container::CharWidth;
+use ironplc_ir::lowered::Program;
+use ironplc_ir::lowered::StandardFunctionBlock;
 use ironplc_ir::lowered::{Encoding, PouId, StringShape, TypeId, TypeKind, TypeTable};
-use ironplc_lowering::PartialProgram;
 
 use super::lowered::copy_slots;
 use crate::compile::{string_region_size, FbFieldIndex, StringVarInfo};
@@ -30,12 +29,12 @@ pub(super) struct Run {
 
 /// The runs of the data region reserved so far.
 pub(super) struct Region<'a> {
-    lowering: &'a PartialProgram,
+    lowering: &'a Program,
     /// The reachable user function blocks, which an instance of one is laid
     /// out for.
     blocks: &'a [PouId],
-    /// The standard function block each type is, by its upper-case name.
-    standard_blocks: &'a HashMap<String, StandardFunctionBlock>,
+    /// The standard function block each lowered POU without a body is.
+    standard_blocks: &'a HashMap<PouId, StandardFunctionBlock>,
     /// Where the next run starts.
     next: u32,
 }
@@ -44,9 +43,9 @@ impl<'a> Region<'a> {
     /// An empty data region, for the declarations of `lowering`, whose
     /// reachable user function blocks are `blocks`.
     pub(super) fn new(
-        lowering: &'a PartialProgram,
+        lowering: &'a Program,
         blocks: &'a [PouId],
-        standard_blocks: &'a HashMap<String, StandardFunctionBlock>,
+        standard_blocks: &'a HashMap<PouId, StandardFunctionBlock>,
     ) -> Self {
         Self {
             lowering,
@@ -140,7 +139,10 @@ impl<'a> Region<'a> {
         };
         let body = *body;
         if self.blocks.contains(&body) {
-            let fields = copy_slots(self.lowering, body)?;
+            let fields: Vec<_> = copy_slots(self.lowering, body)?
+                .into_iter()
+                .map(|(_, field)| field)
+                .collect();
             let start = self.reserve(u32::try_from(fields.len()).ok()?.checked_mul(8)?)?;
             let holders: Vec<(FbFieldIndex, TypeId)> = fields
                 .iter()
@@ -162,8 +164,7 @@ impl<'a> Region<'a> {
             }
             return Some(Some(start));
         }
-        let name = self.lowering.pous().name(body)?.to_string().to_uppercase();
-        let Some(block) = self.standard_blocks.get(&name) else {
+        let Some(block) = self.standard_blocks.get(&body) else {
             return Some(None);
         };
         let (_, fields, _) = standard_fb_layout(*block);
@@ -180,7 +181,7 @@ impl<'a> Region<'a> {
     }
 
     /// The declarations the region is reserved for.
-    pub(super) fn lowering(&self) -> &'a PartialProgram {
+    pub(super) fn lowering(&self) -> &'a Program {
         self.lowering
     }
 
@@ -201,7 +202,7 @@ pub(super) fn string_at(data_offset: u32, shape: StringShape) -> Option<StringVa
 }
 
 /// The capacity and width of the strings of the shape `shape`.
-pub(super) fn string_shape(shape: StringShape) -> Option<(u16, CharWidth)> {
+pub(crate) fn string_shape(shape: StringShape) -> Option<(u16, CharWidth)> {
     let char_width = match shape.encoding {
         Encoding::Narrow => CharWidth::Narrow,
         Encoding::Wide => CharWidth::Wide,
@@ -210,7 +211,7 @@ pub(super) fn string_shape(shape: StringShape) -> Option<(u16, CharWidth)> {
 }
 
 /// How many elements an array of the type `ty` has, across its dimensions.
-pub(super) fn elements(types: &TypeTable, ty: TypeId) -> Option<u32> {
+pub(crate) fn elements(types: &TypeTable, ty: TypeId) -> Option<u32> {
     let TypeKind::Array { dimensions, .. } = types.kind(ty)? else {
         return None;
     };
@@ -225,7 +226,7 @@ pub(super) fn elements(types: &TypeTable, ty: TypeId) -> Option<u32> {
 /// one for a scalar or a reference, the sum of its fields' for a structure,
 /// its elements' for an array, and enough for the header and the
 /// characters of a string. A function block or a program has none.
-pub(super) fn slots(types: &TypeTable, ty: TypeId) -> Option<u32> {
+pub(crate) fn slots(types: &TypeTable, ty: TypeId) -> Option<u32> {
     match types.kind(ty)? {
         TypeKind::Bool
         | TypeKind::Integer { .. }

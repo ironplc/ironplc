@@ -80,7 +80,7 @@ impl RuleAbstractNotInstantiated<'_> {
     /// Whether `type_name` names a function block declared `ABSTRACT`.
     fn is_abstract_function_block(&self, type_name: &TypeName) -> bool {
         self.symbols
-            .find(&type_name.name, &ScopeKind::Global)
+            .find(&type_name.id, &ScopeKind::Global)
             .is_some_and(|info| info.kind == SymbolKind::FunctionBlock && info.is_abstract)
     }
 }

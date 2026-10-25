@@ -50,7 +50,7 @@ impl Declarations {
             let LibraryElementKind::FunctionBlockDeclaration(block) = element else {
                 continue;
             };
-            let name = &block.name.name;
+            let name = &block.name.id;
             for method in &block.methods {
                 let parameters = method
                     .variables
@@ -74,7 +74,7 @@ impl Declarations {
     /// the one the nearest block it `EXTENDS` declares.
     pub(super) fn method(&self, block: &TypeName, method: &Id) -> Option<&Parameters> {
         let owner = self.owners.declaring_block(block, method)?;
-        self.methods.get(&(owner.name.clone(), method.clone()))
+        self.methods.get(&(owner.id.clone(), method.clone()))
     }
 }
 

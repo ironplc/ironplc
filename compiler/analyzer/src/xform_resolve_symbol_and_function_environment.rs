@@ -331,7 +331,7 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
         &mut self,
         node: &ironplc_dsl::common::FunctionBlockDeclaration,
     ) -> Result<Self::Value, Infallible> {
-        let name = &node.name.name;
+        let name = &node.name.id;
         // The base is the one the type environment records: only a function
         // block the library declares (`rule_extends_base_declared` reports
         // any other), so a name that is not one is no scope on the lookup
@@ -407,10 +407,10 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
     ) -> Result<Self::Value, Infallible> {
         match node {
             ironplc_dsl::common::DataTypeDeclarationKind::Simple(decl) => {
-                self.declare_global(&decl.type_name.name, SymbolKind::Type);
+                self.declare_global(&decl.type_name.id, SymbolKind::Type);
             }
             ironplc_dsl::common::DataTypeDeclarationKind::Structure(decl) => {
-                self.declare_global(&decl.type_name.name, SymbolKind::Type);
+                self.declare_global(&decl.type_name.id, SymbolKind::Type);
             }
             ironplc_dsl::common::DataTypeDeclarationKind::Enumeration(_) => {
                 // Declared by `visit_enumeration_declaration`, which the
@@ -419,13 +419,13 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
                 // repeat.
             }
             ironplc_dsl::common::DataTypeDeclarationKind::Array(decl) => {
-                self.declare_global(&decl.type_name.name, SymbolKind::Type);
+                self.declare_global(&decl.type_name.id, SymbolKind::Type);
             }
             ironplc_dsl::common::DataTypeDeclarationKind::Subrange(decl) => {
-                self.declare_global(&decl.type_name.name, SymbolKind::Type);
+                self.declare_global(&decl.type_name.id, SymbolKind::Type);
             }
             ironplc_dsl::common::DataTypeDeclarationKind::String(decl) => {
-                self.declare_global(&decl.type_name.name, SymbolKind::Type);
+                self.declare_global(&decl.type_name.id, SymbolKind::Type);
             }
             ironplc_dsl::common::DataTypeDeclarationKind::LateBound(_) => {
                 // Skip late-bound types for now
@@ -434,7 +434,7 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
                 // Skip structure initializations for now
             }
             ironplc_dsl::common::DataTypeDeclarationKind::Reference(decl) => {
-                self.declare_global(&decl.type_name.name, SymbolKind::Type);
+                self.declare_global(&decl.type_name.id, SymbolKind::Type);
             }
         }
         node.recurse_visit(self)
@@ -452,7 +452,7 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
         &mut self,
         node: &ironplc_dsl::common::StructureDeclaration,
     ) -> Result<Self::Value, Infallible> {
-        let scope = ScopeKind::Named(ScopePath::from(node.type_name.name.clone()));
+        let scope = ScopeKind::Named(ScopePath::from(node.type_name.id.clone()));
         for element in &node.elements {
             let result =
                 self.symbol_env
@@ -468,7 +468,7 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
     ) -> Result<Self::Value, Infallible> {
         // Add the enumeration type itself. Its values are recorded with the
         // type, in the type environment.
-        self.declare_global(&node.type_name.name, SymbolKind::Type);
+        self.declare_global(&node.type_name.id, SymbolKind::Type);
 
         node.recurse_visit(self)
     }

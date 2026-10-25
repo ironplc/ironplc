@@ -35,8 +35,8 @@ END_VAR
     m();
 END_PROGRAM
 ",
-    "STRING\n",
-    "STRING"
+    "Name : STRING",
+    "Name"
 )]
 #[case::property_read(
     "

@@ -1,33 +1,27 @@
 //! Addressing a lowered place in the storage codegen lays out.
 //!
 //! A lowered place is stored where codegen's own layout puts what the place
-//! names, and that layout is found by name,
-//! through [`Place::resolve`] on a variable reference. So a lowered place is
-//! addressed by rebuilding the variable reference it stands for, with a
-//! numbered placeholder for each subscript, resolving that, and putting the
-//! lowered subscripts in the placeholders' places. An element is then
-//! addressed through the layout's own code, bounds check included, and what a
-//! reference variable refers to through its indirect load and store.
-//! What a function's `VAR_IN_OUT` parameter refers to is rebuilt as the
-//! parameter's own name, which codegen's layout reaches through the
-//! reference the parameter's slot holds, and what its `VAR_OUTPUT` parameter
-//! refers to as the parameter's own name too, whose slot codegen's layout
-//! keeps the output in.
+//! names, which the layout keeps by its lowered id. So a lowered place is
+//! addressed as the [`Access`] that names it, with the lowered subscripts, which
+//! [`Place::resolve`] resolves. An element is then addressed through the
+//! layout's own code, bounds check included, and what a reference variable
+//! refers to through its indirect load and store. What a function's
+//! `VAR_IN_OUT` parameter refers to is named as the parameter itself, which
+//! codegen's layout reaches through the reference the parameter's slot
+//! holds, and what its `VAR_OUTPUT` parameter refers to as the parameter
+//! too, whose slot codegen's layout keeps the output in.
 
-use ironplc_dsl::core::{Id, SourceSpan};
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{
-    ArrayVariable, DerefVariable, Expr as AstExpr, ExprKind as AstExprKind, NamedVariable,
-    StructuredVariable, SymbolicVariableKind, Variable,
-};
+use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::{
-    Const, Expr, Nullability, Owner, Place as LoweredPlace, Projection, TypeId, TypeKind,
+    Const, Expr, FieldIdx, Nullability, Owner, Place as LoweredPlace, Projection, TypeId, TypeKind,
     TypeTable, Variable as LoweredVariable,
 };
-use ironplc_lowering::PartialProgram;
+use ironplc_ir::{Diagnostic, Label};
+use ironplc_ir::{Id, SourceSpan};
 
 use super::expr::emit_expr;
-use super::{constant, instance_field, op_type, seen_name};
+use super::{constant, instance_field, op_type, stored_field, stored_variable};
+use crate::access::{Access, Field, Index, Named};
 use crate::compile::{CompileContext, OpWidth, VarTypeInfo};
 use crate::compile_place::Place;
 use crate::compile_string_place::StringPlace;
@@ -35,8 +29,9 @@ use crate::compile_subscript::Subscript;
 use crate::emit::Emitter;
 
 /// A subscript of a lowered place.
+#[derive(Clone, Copy)]
 pub(super) struct LoweredSubscript<'l> {
-    lowering: &'l PartialProgram,
+    lowering: &'l Program,
     expr: &'l Expr,
 }
 
@@ -53,17 +48,18 @@ impl Subscript for LoweredSubscript<'_> {
     }
 }
 
+/// A lowered place, as the layout addresses it.
+type LoweredAccess<'l> = Access<LoweredSubscript<'l>>;
+
 /// Where codegen's layout stores `place`, as one value in one slot.
 pub(super) fn resolve<'l>(
-    lowering: &'l PartialProgram,
+    lowering: &'l Program,
     ctx: &CompileContext,
     place: &'l LoweredPlace,
     span: &SourceSpan,
 ) -> Result<Place<LoweredSubscript<'l>>, Diagnostic> {
-    let mut subscripts = Vec::new();
-    let reference =
-        reference(lowering, ctx, place, &mut subscripts).ok_or_else(|| no_storage(span))?;
-    storage(lowering, ctx, place, reference, &subscripts, span)
+    let access = access(lowering, ctx, place).ok_or_else(|| no_storage(span))?;
+    storage(lowering, ctx, place, &access)
 }
 
 /// Where the value a read of `place` loads is.
@@ -79,116 +75,99 @@ pub(super) enum Load<'l> {
 /// in a variable refers to is read by loading the reference and then what it
 /// refers to. A store to it is not supported yet.
 pub(super) fn resolve_load<'l>(
-    lowering: &'l PartialProgram,
+    lowering: &'l Program,
     ctx: &CompileContext,
     place: &'l LoweredPlace,
     span: &SourceSpan,
 ) -> Result<Load<'l>, Diagnostic> {
-    let mut subscripts = Vec::new();
-    let reference =
-        reference(lowering, ctx, place, &mut subscripts).ok_or_else(|| no_storage(span))?;
-    let SymbolicVariableKind::Deref(deref) = reference else {
-        return storage(lowering, ctx, place, reference, &subscripts, span).map(Load::Stored);
+    let access = access(lowering, ctx, place).ok_or_else(|| no_storage(span))?;
+    let Access::Deref(deref) = &access else {
+        return storage(lowering, ctx, place, &access).map(Load::Stored);
     };
     // A reference in a variable keeps the indirect address that
     // `resolve` gives it.
-    if let SymbolicVariableKind::Named(_) = *deref.variable {
-        let reference = SymbolicVariableKind::Deref(deref);
-        return storage(lowering, ctx, place, reference, &subscripts, span).map(Load::Stored);
+    if let Access::Named(_) = deref.as_ref() {
+        return storage(lowering, ctx, place, &access).map(Load::Stored);
     }
-    Place::resolve(ctx, &deref.variable)?
-        .try_map_subscripts(|placeholder| {
-            lowered_subscript(lowering, &subscripts, placeholder, span)
-        })
-        .map(Load::Referenced)
+    Place::resolve(lowering.types(), ctx, deref).map(Load::Referenced)
 }
 
-/// Where codegen's layout stores `place`, which `reference` stands for with
-/// `subscripts` as its placeholders.
+/// Where codegen's layout stores `place`, which `access` names.
 fn storage<'l>(
-    lowering: &'l PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
-    place: &'l LoweredPlace,
-    reference: SymbolicVariableKind,
-    subscripts: &[&'l Expr],
-    span: &SourceSpan,
+    place: &LoweredPlace,
+    access: &LoweredAccess<'l>,
 ) -> Result<Place<LoweredSubscript<'l>>, Diagnostic> {
     // The whole of what a reference variable refers to: `p^`.
-    if let SymbolicVariableKind::Deref(deref) = reference {
+    if let Access::Deref(deref) = access {
         let target = type_info(lowering.types(), place.ty());
-        return Place::through_reference(ctx, &Variable::Symbolic(*deref.variable), target);
+        return Place::through_reference(ctx, deref, target);
     }
-    Place::resolve(ctx, &reference)?.try_map_subscripts(|placeholder| {
-        lowered_subscript(lowering, subscripts, placeholder, span)
-    })
+    Place::resolve(lowering.types(), ctx, access)
 }
 
-/// The name of the variable `place` is the whole of, as this backend's
-/// layout knows it: a variable, a field of the current instance, or what a
-/// `VAR_IN_OUT` parameter refers to. `None` for any other place.
+/// The variable `place` is the whole of, as this backend's layout keeps
+/// it: a variable, a field of the current instance, or what a `VAR_IN_OUT`
+/// parameter refers to. `None` for any other place.
 pub(super) fn variable_name(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     place: &LoweredPlace,
-) -> Option<Id> {
-    let SymbolicVariableKind::Named(named) = reference(lowering, ctx, place, &mut Vec::new())?
-    else {
+) -> Option<Named> {
+    let Access::Named(name) = access(lowering, ctx, place)? else {
         return None;
     };
-    Some(named.name)
+    Some(name)
 }
 
-/// The name of the variable `place` is a field of, through fields only, as
-/// this backend's layout knows it, and the names of those fields, outermost
-/// first: `h.og.ob` is `h` with `og` and `ob`. A whole variable is its name
-/// with no fields. `None` for any other place.
+/// The variable `place` is a field of, through fields only, as this
+/// backend's layout keeps it, and those fields, outermost first: `h.og.ob`
+/// is `h` with `og` and `ob`. A whole variable is itself with no fields.
+/// `None` for any other place.
 pub(super) fn field_path(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     place: &LoweredPlace,
-) -> Option<(Id, Vec<Id>)> {
-    let mut reference = reference(lowering, ctx, place, &mut Vec::new())?;
+) -> Option<(Named, Vec<FieldIdx>)> {
+    let mut access = access(lowering, ctx, place)?;
     let mut fields = Vec::new();
     loop {
-        match reference {
-            SymbolicVariableKind::Named(named) => {
+        match access {
+            Access::Named(name) => {
                 fields.reverse();
-                return Some((named.name, fields));
+                return Some((name, fields));
             }
-            SymbolicVariableKind::Structured(structured) => {
-                fields.push(structured.field);
-                reference = *structured.record;
+            Access::Field(field) => {
+                fields.push(field.idx);
+                access = *field.record;
             }
-            SymbolicVariableKind::Array(_)
-            | SymbolicVariableKind::Deref(_)
-            | SymbolicVariableKind::BitAccess(_)
-            | SymbolicVariableKind::PartialAccess(_)
-            | SymbolicVariableKind::SelfRef(_) => return None,
+            Access::Index(_) | Access::Deref(_) => return None,
         }
     }
 }
 
-/// The name of the reference variable `place` is what it refers to, `p^`,
-/// as this backend's layout knows it. `None` for any other place, and for a
+/// The reference variable `place` is what it refers to, `p^`, as this
+/// backend's layout keeps it. `None` for any other place, and for a
 /// reference in a `VAR_IN_OUT` parameter, whose slot holds a reference to
 /// the reference.
 pub(super) fn referenced_by(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     place: &LoweredPlace,
-) -> Option<Id> {
-    let SymbolicVariableKind::Deref(deref) = reference(lowering, ctx, place, &mut Vec::new())?
-    else {
+) -> Option<Named> {
+    let Access::Deref(deref) = access(lowering, ctx, place)? else {
         return None;
     };
-    let SymbolicVariableKind::Named(named) = *deref.variable else {
+    let Access::Named(name) = *deref else {
         return None;
     };
-    (!ctx.is_in_out(&named.name)).then_some(named.name)
+    (!ctx.is_in_out(&name)).then_some(name)
 }
 
 /// Whether `expr` reads a field of an instance of a standard function block:
-/// an instance this backend reaches by name, of no user-defined block's type.
+/// an instance this backend reaches as a variable, of no user-defined block's
+/// type.
 ///
 /// Until lowering generates the standard blocks (issue 2288), the VM's own
 /// block gives such a field its value, and may leave it outside the field's
@@ -197,30 +176,28 @@ pub(super) fn referenced_by(
 /// proof that a read fits the type it reads (REQ-LOW-lowering-046) does not
 /// hold for one, and a store of it is narrowed.
 pub(super) fn reads_standard_block_field(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     expr: &Expr,
 ) -> bool {
     let Some(place) = super::read(expr) else {
         return false;
     };
-    let Some(SymbolicVariableKind::Structured(field)) =
-        reference(lowering, ctx, place, &mut Vec::new())
-    else {
+    let Some(Access::Field(field)) = access(lowering, ctx, place) else {
         return false;
     };
-    let SymbolicVariableKind::Named(record) = field.record.as_ref() else {
+    let Access::Named(record) = field.record.as_ref() else {
         return false;
     };
-    ctx.fb_instance(&record.name).is_some_and(|instance| {
+    ctx.fb_instance(record).is_some_and(|instance| {
         ctx.user_fb_types
             .values()
             .all(|block| block.type_id != instance.type_id)
     })
 }
 
-/// The slot of an instance that this backend reaches by name, other than the
-/// current instance, that holds the field `place` is (`f.si`), whatever the
+/// The slot of an instance that this backend reaches as a variable, other
+/// than the current instance, that holds the field `place` is (`f.si`), whatever the
 /// field's type. `None` for any other place.
 ///
 /// This backend's layout keeps no data region for a string, structure or
@@ -228,19 +205,14 @@ pub(super) fn reads_standard_block_field(
 /// buffer for a string (issue 1753) and the region offset of the value stored
 /// for a structure or an array.
 pub(super) fn instance_slot<'l>(
-    lowering: &'l PartialProgram,
+    lowering: &'l Program,
     ctx: &CompileContext,
     place: &'l LoweredPlace,
 ) -> Option<Place<LoweredSubscript<'l>>> {
-    let SymbolicVariableKind::Structured(field) = reference(lowering, ctx, place, &mut Vec::new())?
-    else {
+    let Access::Field(field) = access(lowering, ctx, place)? else {
         return None;
     };
-    // An instance's field has no subscripts.
-    Place::fb_field(ctx, &field)
-        .ok()??
-        .try_map_subscripts(|_| Err(()))
-        .ok()
+    Place::fb_field(ctx, &field).ok()?
 }
 
 /// Where codegen's layout stores the string `place`: a string variable, an
@@ -248,37 +220,18 @@ pub(super) fn instance_slot<'l>(
 /// a reference variable refers to, `rs^` or `rsa^[i]`, reached through the
 /// reference.
 pub(super) fn resolve_string<'l>(
-    lowering: &'l PartialProgram,
+    lowering: &'l Program,
     ctx: &CompileContext,
     place: &'l LoweredPlace,
     span: &SourceSpan,
 ) -> Result<StringPlace<LoweredSubscript<'l>>, Diagnostic> {
-    let mut subscripts = Vec::new();
-    let reference =
-        reference(lowering, ctx, place, &mut subscripts).ok_or_else(|| no_storage(span))?;
-    let reference = Variable::Symbolic(reference);
-    let string = match StringPlace::through_reference(ctx, &reference) {
-        Some(string) => string,
-        None => StringPlace::resolve(ctx, &reference)?.ok_or_else(|| no_storage(span))?,
-    };
-    string.try_map_subscripts(|placeholder| {
-        lowered_subscript(lowering, &subscripts, placeholder, span)
-    })
-}
-
-/// The lowered subscript the literal `placeholder` stands for: the one at
-/// its position in `subscripts`.
-fn lowered_subscript<'l>(
-    lowering: &'l PartialProgram,
-    subscripts: &[&'l Expr],
-    placeholder: &AstExpr,
-    span: &SourceSpan,
-) -> Result<LoweredSubscript<'l>, Diagnostic> {
-    let expr = placeholder
-        .literal()
-        .and_then(|position| subscripts.get(usize::try_from(position).ok()?))
-        .ok_or_else(|| no_storage(span))?;
-    Ok(LoweredSubscript { lowering, expr })
+    let access = access(lowering, ctx, place).ok_or_else(|| no_storage(span))?;
+    match StringPlace::through_reference(ctx, &access) {
+        Some(string) => Ok(string),
+        None => {
+            StringPlace::resolve(lowering.types(), ctx, &access)?.ok_or_else(|| no_storage(span))
+        }
+    }
 }
 
 /// The internal error for a place `can_emit` should have rejected.
@@ -286,41 +239,40 @@ fn no_storage(span: &SourceSpan) -> Diagnostic {
     Diagnostic::internal_error_at(Label::span(span.clone(), "A lowered place has no storage"))
 }
 
-/// The variable reference `place` stands for, with the subscript at
-/// position `k` of `subscripts` as the literal `k`; `None` for a place this
-/// backend does not reach yet.
-fn reference<'l>(
-    lowering: &PartialProgram,
+/// The access that names `place` in this backend's layout, with the lowered
+/// subscripts; `None` for a place this backend does not reach yet.
+fn access<'l>(
+    lowering: &'l Program,
     ctx: &CompileContext,
     place: &'l LoweredPlace,
-    subscripts: &mut Vec<&'l Expr>,
-) -> Option<SymbolicVariableKind> {
+) -> Option<LoweredAccess<'l>> {
     let types = lowering.types();
     let root = lowering.variables().get(place.root())?;
-    let (mut reference, mut ty, path) = match instance_field(lowering, root.ty(), place.path()) {
+    let (mut access, mut ty, path) = match instance_field(lowering, root.ty(), place.path()) {
         // A field of the current instance, which codegen copies into a slot
         // of the field's name.
         Some((instance, field, rest)) => {
             let declared = types.fields(instance)?.get(field.index() as usize)?;
             (
-                named(ctx.lowered_ids.field(instance, field)?),
+                Access::Named(stored_field(lowering, ctx, instance, field)?),
                 declared.ty,
                 rest,
             )
         }
         None => (
-            named(seen_name(ctx, place.root())?),
+            Access::Named(stored_variable(lowering, ctx, place.root())?),
             root.ty(),
             place.path(),
         ),
     };
     for projection in path {
-        reference = match projection {
+        access = match projection {
             Projection::Field(field) => {
                 let declared = types.fields(ty)?.get(field.index() as usize)?;
                 ty = declared.ty;
-                SymbolicVariableKind::Structured(StructuredVariable {
-                    record: Box::new(reference),
+                Access::Field(Field {
+                    record: Box::new(access),
+                    idx: *field,
                     field: Id::from(&declared.name.to_string()),
                 })
             }
@@ -329,50 +281,43 @@ fn reference<'l>(
                     return None;
                 };
                 ty = *element;
-                let placeholders = exprs
-                    .iter()
-                    .map(|expr| {
-                        let position = subscripts.len();
-                        subscripts.push(expr);
-                        AstExpr::new(AstExprKind::integer_literal(&position.to_string()))
-                    })
-                    .collect();
-                SymbolicVariableKind::Array(ArrayVariable {
-                    subscripted_variable: Box::new(reference),
-                    subscripts: placeholders,
+                Access::Index(Index {
+                    array: Box::new(access),
+                    subscripts: exprs
+                        .iter()
+                        .map(|expr| LoweredSubscript { lowering, expr })
+                        .collect(),
                 })
             }
             Projection::Deref => {
                 let (target, nullability) = types.reference(ty)?;
                 ty = target;
                 match nullability {
-                    Nullability::Nullable => SymbolicVariableKind::Deref(DerefVariable {
-                        variable: Box::new(reference),
-                    }),
-                    Nullability::NonNull => by_reference(ctx, root, reference)?,
+                    Nullability::Nullable => Access::Deref(Box::new(access)),
+                    Nullability::NonNull => by_reference(ctx, root, access)?,
                 }
             }
         };
     }
-    Some(reference)
+    Some(access)
 }
 
-/// `reference`, when it names a parameter of the function being compiled,
+/// `access`, when it names a parameter of the function being compiled,
 /// `root`, that refers to a place of the caller: a `VAR_IN_OUT`, whose slot
 /// holds a reference this backend follows, or a `VAR_OUTPUT`, whose value
 /// this backend keeps in the parameter's own slot for the call to read once
 /// the function returns (ADR-0046). They are the only non-null references
 /// this backend follows outside a body's instance parameter.
-fn by_reference(
+fn by_reference<'l>(
     ctx: &CompileContext,
     root: &LoweredVariable,
-    reference: SymbolicVariableKind,
-) -> Option<SymbolicVariableKind> {
-    let SymbolicVariableKind::Named(named) = &reference else {
+    access: LoweredAccess<'l>,
+) -> Option<LoweredAccess<'l>> {
+    let Access::Named(name) = &access else {
         return None;
     };
-    if ctx.in_out_ref_slot(&named.name).is_some() {
-        return Some(reference);
+    if ctx.in_out_ref_slot(name).is_some() {
+        return Some(access);
     }
     // Lowering makes no other non-null reference a variable of a function
     // or method than its `VAR_IN_OUT`s and `VAR_OUTPUT`s
@@ -381,7 +326,7 @@ fn by_reference(
         return None;
     };
     let compiled = super::is_current_body(ctx, owner);
-    (compiled && ctx.has_slot(&named.name)).then_some(reference)
+    (compiled && ctx.has_slot(name)).then_some(access)
 }
 
 /// What this backend knows a value of the lowered type `ty` as: the type it
@@ -402,6 +347,15 @@ pub(crate) fn type_info(types: &TypeTable, ty: TypeId) -> Option<VarTypeInfo> {
     })
 }
 
-fn named(name: &Id) -> SymbolicVariableKind {
-    SymbolicVariableKind::Named(NamedVariable { name: name.clone() })
+/// The type a slot holding a value of the lowered type `ty` is operated
+/// at. A `BOOL` holds one bit of value, which also marks it for the
+/// conversion path (`type_info.rs`).
+pub(crate) fn slot_type(types: &TypeTable, ty: TypeId) -> Option<VarTypeInfo> {
+    match types.kind(ty) {
+        Some(TypeKind::Bool) => Some(VarTypeInfo {
+            storage_bits: 1,
+            ..type_info(types, ty)?
+        }),
+        _ => type_info(types, ty),
+    }
 }

@@ -14,13 +14,11 @@
 use ironplc_analyzer::CleanAnalysis;
 use ironplc_container::debug_section::iec_type_tag;
 use ironplc_container::VarIndex;
-use ironplc_dsl::core::FileId;
+use ironplc_ir::FileId;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_vm::test_support::load_and_start;
 use ironplc_vm::VmBuffers;
 use spec_test_macro::spec_test;
-
-use crate::compile_enum::enum_var_type_info;
 
 // ---------------------------------------------------------------------------
 // Meta-test: completeness check
@@ -48,13 +46,7 @@ pub(crate) fn compile_and_run(source: &str) -> (ironplc_container::Container, Vm
     let library = parse_library(source);
     let (analyzed, ctx) =
         ironplc_analyzer::stages::analyze(&[&library], &CompilerOptions::default()).unwrap();
-    let codegen_options = crate::CodegenOptions::default();
-    let container = crate::compile(
-        CleanAnalysis::new(&analyzed, &ctx).unwrap(),
-        &codegen_options,
-        &crate::EmptyLookup,
-    )
-    .unwrap();
+    let container = crate::test_support::compile_analyzed(&analyzed, &ctx).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
@@ -88,13 +80,7 @@ pub(crate) fn compile_only(source: &str) -> ironplc_container::Container {
     let library = parse_library(source);
     let (analyzed, ctx) =
         ironplc_analyzer::stages::analyze(&[&library], &CompilerOptions::default()).unwrap();
-    let codegen_options = crate::CodegenOptions::default();
-    crate::compile(
-        CleanAnalysis::new(&analyzed, &ctx).unwrap(),
-        &codegen_options,
-        &crate::EmptyLookup,
-    )
-    .unwrap()
+    crate::test_support::compile_analyzed(&analyzed, &ctx).unwrap()
 }
 
 // ---------------------------------------------------------------------------
@@ -139,7 +125,34 @@ END_PROGRAM
 /// REQ-EN-codegen-003: Enums use DINT (W32, Signed, 32-bit) at codegen level.
 #[spec_test(REQ_EN_codegen_003)]
 fn enum_spec_req_en_003_var_type_info_is_dint() {
-    let info = enum_var_type_info();
+    let source = "
+TYPE COLOR : (RED, GREEN, BLUE); END_TYPE
+PROGRAM main VAR c : COLOR; END_VAR END_PROGRAM
+";
+    let options = CompilerOptions::default();
+    let library = ironplc_parser::parse_program(source, &FileId::default(), &options).unwrap();
+    let (library, context) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
+    let completed = ironplc_analyzer::xform_resolve_initial_values::apply(library, &context);
+    let analysis = CleanAnalysis::new(&completed, &context).unwrap();
+    let lowering = ironplc_lowering::Lowering::new(
+        &analysis,
+        ironplc_lowering::parse_policy(&Default::default()),
+    )
+    .lower_program()
+    .unwrap();
+    let types = lowering.types();
+    let (color, _) = types
+        .iter()
+        .find(|(_, entry)| {
+            matches!(
+                entry.kind,
+                ironplc_ir::lowered::TypeKind::Enumeration { .. }
+            )
+        })
+        .unwrap();
+
+    let info = crate::lowered::slot_type(types, color).unwrap();
+
     assert!(matches!(info.op_width, crate::compile::OpWidth::W32));
     assert!(matches!(
         info.signedness,
@@ -680,12 +693,7 @@ fn enum_spec_req_en_080_ordinals_from_type_members() {
     )
     .unwrap();
     let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
-    let container = crate::compile(
-        CleanAnalysis::new(&analyzed, &ctx).unwrap(),
-        &crate::CodegenOptions::default(),
-        &crate::EmptyLookup,
-    )
-    .unwrap();
+    let container = crate::test_support::compile_analyzed(&analyzed, &ctx).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
@@ -818,13 +826,7 @@ fn compile_and_try_run_with(
 ) -> Result<(ironplc_container::Container, VmBuffers), ironplc_vm::FaultContext> {
     let library = ironplc_parser::parse_program(source, &FileId::default(), options).unwrap();
     let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], options).unwrap();
-    let codegen_options = crate::CodegenOptions::default();
-    let container = crate::compile(
-        CleanAnalysis::new(&analyzed, &ctx).unwrap(),
-        &codegen_options,
-        &crate::EmptyLookup,
-    )
-    .unwrap();
+    let container = crate::test_support::compile_analyzed(&analyzed, &ctx).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs)?;

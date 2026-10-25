@@ -57,11 +57,11 @@ fn declarations<'a>(library: &'a Library, pou: &str) -> Vec<&'a VarDecl> {
                 found.extend(&f.variables)
             }
             LibraryElementKind::FunctionBlockDeclaration(fb) => {
-                if fb.name.name == Id::from(pou) {
+                if fb.name.id == Id::from(pou) {
                     found.extend(&fb.variables);
                 }
                 for method in &fb.methods {
-                    if format!("{}.{}", fb.name.name, method.name).eq_ignore_ascii_case(pou) {
+                    if format!("{}.{}", fb.name.id, method.name).eq_ignore_ascii_case(pou) {
                         found.extend(&method.variables);
                     }
                 }

@@ -14,9 +14,10 @@ use ironplc_dsl::diagnostic::Diagnostic;
 use super::ids::{PouId, VarId};
 use super::invariant::broken;
 use super::program::ProgramBuilder;
+use super::standard_block::StandardFunctionBlock;
 use super::stmt::Stmt;
 use super::types::{Nullability, Section, TypeKind, TypeTable};
-use super::variables::{Owner, PouKind, PouParts, PouTable, Variable, VariableTable};
+use super::variables::{Declaration, Owner, PouKind, PouParts, PouTable, Variable, VariableTable};
 use crate::execution::{ExecutionModel, GlobalId, InstanceOf, ProgramId};
 
 /// The variable or POU each entry of the execution model is in the lowered
@@ -115,6 +116,36 @@ impl Program {
     pub fn bindings(&self) -> &ExecutionBindings {
         &self.bindings
     }
+
+    /// The parts of the POU `pou`; `None` for a POU that stands for a
+    /// standard function block.
+    pub fn parts(&self, pou: PouId) -> Option<&PouParts> {
+        self.pous.parts(pou)
+    }
+
+    /// What each declaration of the POU `pou` declares, in the order it
+    /// declares them; `None` for a POU that stands for a standard function
+    /// block.
+    pub fn declarations(&self, pou: PouId) -> Option<&[Declaration]> {
+        self.parts(pou).map(|parts| parts.declarations.as_slice())
+    }
+
+    /// The variable that holds the result of the function or method `pou`;
+    /// `None` for any other POU.
+    pub fn result(&self, pou: PouId) -> Option<VarId> {
+        self.parts(pou)?.result
+    }
+
+    /// The prologue of the POU `pou`: the stores at the head of its body
+    /// that give its variables their starting values.
+    pub fn prologue(&self, pou: PouId) -> Option<&[Stmt]> {
+        self.pous.prologue(pou)
+    }
+
+    /// The statements of the body of the POU `pou` after its prologue.
+    pub fn statements(&self, pou: PouId) -> Option<&[Stmt]> {
+        self.pous.statements(pou)
+    }
 }
 
 impl ProgramBuilder {
@@ -145,7 +176,12 @@ impl ProgramBuilder {
                 .get(var)
                 .filter(|variable| variable.owner() == Owner::Pou(pou))
         };
-        if let Some(local) = parts.locals.iter().find(|var| owned(**var).is_none()) {
+        if let Some(local) = parts
+            .locals
+            .iter()
+            .chain(&parts.result)
+            .find(|var| owned(**var).is_none())
+        {
             return Err(broken(
                 CONSTRUCTOR,
                 span,
@@ -202,14 +238,28 @@ impl ProgramBuilder {
         (of_program == (kind == PouKind::Program)).then_some(body)
     }
 
-    /// Sets the body of the POU `pou`, the statements it runs, in order.
+    /// Sets the body of the POU `pou`, the statements it runs, in order:
+    /// its prologue, `prologue`, then its own, `statements`.
     pub fn set_body(
         &mut self,
         pou: PouId,
-        body: Vec<Stmt>,
+        prologue: Vec<Stmt>,
+        statements: Vec<Stmt>,
         span: &SourceSpan,
     ) -> Result<(), Diagnostic> {
-        self.pous.set_body(pou, body, span)
+        self.pous.set_body(pou, prologue, statements, span)
+    }
+
+    /// Declares that the POU `pou`, which has no parts or body, stands for
+    /// the standard function block `block`, which a backend implements
+    /// until lowering generates the standard blocks (issue 2288).
+    pub fn declare_standard_block(
+        &mut self,
+        pou: PouId,
+        block: StandardFunctionBlock,
+        span: &SourceSpan,
+    ) -> Result<(), Diagnostic> {
+        self.pous.declare_standard_block(pou, block, span)
     }
 
     /// Adds `stmt` to the end of `init`.
@@ -221,7 +271,8 @@ impl ProgramBuilder {
     /// anything is missing (REQ-LOW-ir-081, REQ-LOW-ir-029).
     ///
     /// Every POU has its parts and its body, and a function or method its
-    /// signature. Every global of the model is bound to a global variable.
+    /// signature, but a POU that stands for a standard function block, which
+    /// has neither. Every global of the model is bound to a global variable.
     /// Every instance of a program type is bound to a global variable of
     /// section `Instance` whose type is the program type of the POU its
     /// program is bound to. An instance of an unresolved type is bound to
@@ -238,6 +289,9 @@ impl ProgramBuilder {
                 .name(pou)
                 .map(|name| name.span())
                 .unwrap_or_default();
+            if self.pous.standard_block(pou).is_some() {
+                continue;
+            }
             let Some(parts) = self.pous.parts(pou) else {
                 return Err(broken(CONSTRUCTOR, &span, format!("{pou} has no parts")));
             };

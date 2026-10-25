@@ -29,6 +29,8 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
+use ironplc_test::manifest::{quoted_strings, workspace_members};
+
 /// Payloads that ship alongside the executables but are not executables, so the
 /// Homebrew install list is not purely a binary list.
 const NON_BINARY_PAYLOADS: &[&str] = &["resources", "bom.cdx.json"];
@@ -37,41 +39,9 @@ const NON_BINARY_PAYLOADS: &[&str] = &["resources", "bom.cdx.json"];
 // Parsers (pure — fixture-tested below)
 // ---------------------------------------------------------------------------
 
-/// The string literals inside the first `[…]` list that follows `key` in
-/// `text`. Used for TOML arrays and Ruby argument lists alike, both of which
-/// quote every element.
-fn quoted_items_after(text: &str, key: &str) -> Vec<String> {
-    let Some(idx) = text.find(key) else {
-        return Vec::new();
-    };
-    let after = &text[idx + key.len()..];
-    let end = after.find(']').unwrap_or(after.len());
-    quoted_strings(&after[..end])
-}
-
-/// Every double-quoted string literal in `span`, in order.
-fn quoted_strings(span: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut rest = span;
-    while let Some(open) = rest.find('"') {
-        let after = &rest[open + 1..];
-        let Some(close) = after.find('"') else {
-            break;
-        };
-        out.push(after[..close].to_string());
-        rest = &after[close + 1..];
-    }
-    out
-}
-
 /// True when a manifest line is a whole-line comment for `prefix` syntax.
 fn is_comment(line: &str, prefix: &str) -> bool {
     line.trim_start().starts_with(prefix)
-}
-
-/// The `members` list of a workspace `Cargo.toml`.
-fn workspace_members(cargo_toml: &str) -> Vec<String> {
-    quoted_items_after(cargo_toml, "members = [")
 }
 
 /// The `name` of every `[[bin]]` target declared in a crate's `Cargo.toml`.
@@ -368,19 +338,6 @@ fn every_built_binary_has_a_reference_page() {
 // ---------------------------------------------------------------------------
 // Fixture-based unit tests (no dependency on live repo state)
 // ---------------------------------------------------------------------------
-
-#[test]
-fn workspace_members_when_multiline_list_then_extracts_all() {
-    let toml = r#"
-[workspace]
-members = [
-    "analyzer",
-    "vm-cli",
-]
-resolver = "2"
-"#;
-    assert_eq!(workspace_members(toml), vec!["analyzer", "vm-cli"]);
-}
 
 #[test]
 fn bin_names_when_multiple_bins_then_extracts_each() {

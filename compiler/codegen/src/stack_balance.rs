@@ -16,8 +16,8 @@
 //! into a compiler diagnostic.
 
 use ironplc_container::{Container, FunctionId};
-use ironplc_dsl::core::FileId;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_ir::FileId;
+use ironplc_ir::{Diagnostic, Label};
 
 /// Verifies operand-stack discipline across every function in `container`.
 ///

@@ -83,20 +83,23 @@ pub fn parse_and_compile_to_run(source: &str, options: &CompilerOptions) -> Prog
     compile_to_run(&library, &context, options).unwrap()
 }
 
-/// Compiles an analyzed library on the VM's bytecode backend.
+/// Compiles an analyzed library on the VM's bytecode backend: lowers it, as
+/// the project does, with the policies the analysis ran with, then compiles
+/// the lowered program. The first problem lowering reports fails the
+/// compilation.
 pub(super) fn compile_on_vm(
     library: &Library,
     context: &SemanticContext,
-    options: &CompilerOptions,
+    _options: &CompilerOptions,
 ) -> Result<Container, Diagnostic> {
     let analysis = CleanAnalysis::new(library, context).expect("analysis reported diagnostics");
-    // The layout built from the lowered declarations is checked equal to
-    // the one from the AST for every program (REQ-LOW-codegen-198).
-    let codegen_options = ironplc_codegen::CodegenOptions {
-        check_layout: true,
-        ..ironplc_codegen::CodegenOptions::from(options)
-    };
-    let compiled = compile(analysis, &codegen_options, &ironplc_codegen::EmptyLookup);
+    let program = ironplc_lowering::lower(&analysis).map_err(|diagnostics| {
+        diagnostics
+            .into_iter()
+            .next()
+            .unwrap_or_else(Diagnostic::internal_error)
+    })?;
+    let compiled = compile(&program, &ironplc_codegen::EmptyLookup);
     if let Ok(container) = &compiled {
         dump_container(container);
     }

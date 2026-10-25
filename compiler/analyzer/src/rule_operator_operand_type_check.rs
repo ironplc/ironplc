@@ -605,6 +605,35 @@ END_PROGRAM",
     );
 
     rule_ok!(
+        /// A real literal beside an INT is a REAL, which INT widens to
+        /// (#2067).
+        apply_when_int_scaled_by_real_literals_then_ok,
+        "
+PROGRAM main
+VAR
+    sensor : INT;
+    temperature : REAL;
+END_VAR
+    temperature := sensor / 32767.0 * 150.0 - 50.0;
+END_PROGRAM"
+    );
+
+    rule_err!(
+        /// A real literal beside a DINT is a REAL, which DINT does not widen
+        /// to losslessly.
+        apply_when_dint_divided_by_real_literal_then_p4049,
+        "
+PROGRAM main
+VAR
+    d : DINT;
+    r : REAL;
+END_VAR
+    r := d / 2.0;
+END_PROGRAM",
+        [Problem::OperatorOperandTypeMismatch]
+    );
+
+    rule_ok!(
         apply_when_sub_of_dates_then_ok,
         "
 PROGRAM main

@@ -30,13 +30,13 @@
 //! (P9999).
 
 use ironplc_container::VarIndex;
-use ironplc_dsl::core::SourceSpan;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::{Place as LoweredPlace, TypeKind};
-use ironplc_lowering::PartialProgram;
+use ironplc_ir::SourceSpan;
+use ironplc_ir::{Diagnostic, Label};
 
 use super::place::{instance_slot, referenced_by, variable_name};
-use super::storage_name;
+use super::stored;
 use crate::compile::{CompileContext, DEFAULT_OP_TYPE};
 use crate::compile_expr::emit_load_var;
 use crate::emit::Emitter;
@@ -57,7 +57,7 @@ struct Referenced {
 
 /// Whether this backend emits the copy of `src` to `dst`.
 pub(super) fn can_emit(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     dst: &LoweredPlace,
     src: &LoweredPlace,
@@ -78,7 +78,7 @@ pub(super) fn can_emit(
 pub(super) fn emit_copy(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &PartialProgram,
+    lowering: &Program,
     dst: &LoweredPlace,
     src: &LoweredPlace,
     span: &SourceSpan,
@@ -104,19 +104,16 @@ pub(super) fn emit_copy(
 
 /// Whether this backend copies a structure or an array into `dst`: a whole
 /// variable or a field of the current instance that it keeps as a region.
-pub(super) fn reaches_region(
-    lowering: &PartialProgram,
-    ctx: &CompileContext,
-    dst: &LoweredPlace,
-) -> bool {
+pub(super) fn reaches_region(lowering: &Program, ctx: &CompileContext, dst: &LoweredPlace) -> bool {
     region(lowering, ctx, dst).is_some()
 }
 
 /// Whether this backend passes `src` as the structure, array or function
 /// block input of a function or method: a place it keeps as a region, or an
-/// instance it calls by name, whose slot holds the data offset of its fields.
+/// instance it calls as a variable, whose slot holds the data offset of its
+/// fields.
 pub(super) fn reaches_argument(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     src: &LoweredPlace,
 ) -> bool {
@@ -130,7 +127,7 @@ pub(super) fn reaches_argument(
 pub(super) fn emit_copy_from_stack(
     emitter: &mut Emitter,
     ctx: &CompileContext,
-    lowering: &PartialProgram,
+    lowering: &Program,
     dst: &LoweredPlace,
     src_desc: u16,
     span: &SourceSpan,
@@ -153,7 +150,7 @@ pub(super) fn emit_copy_from_stack(
 pub(super) fn emit_source(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &PartialProgram,
+    lowering: &Program,
     src: &LoweredPlace,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
@@ -185,14 +182,8 @@ pub(super) fn no_region(span: &SourceSpan) -> Diagnostic {
 }
 
 /// The slot of `place`, when it is a function block instance this backend
-/// calls by name (`fb_call.rs`). A function's body sees the program's
-/// instances by name, and its own structures may share their names, so
-/// `place` must be an instance.
-fn instance(
-    lowering: &PartialProgram,
-    ctx: &CompileContext,
-    place: &LoweredPlace,
-) -> Option<VarIndex> {
+/// calls as a variable (`fb_call.rs`).
+fn instance(lowering: &Program, ctx: &CompileContext, place: &LoweredPlace) -> Option<VarIndex> {
     if !matches!(
         lowering.types().kind(place.ty()),
         Some(TypeKind::FunctionBlock { .. })
@@ -204,11 +195,7 @@ fn instance(
 }
 
 /// Whether this backend keeps a data region for `place`.
-pub(super) fn has_region(
-    lowering: &PartialProgram,
-    ctx: &CompileContext,
-    place: &LoweredPlace,
-) -> bool {
+pub(super) fn has_region(lowering: &Program, ctx: &CompileContext, place: &LoweredPlace) -> bool {
     region(lowering, ctx, place).is_some()
 }
 
@@ -216,8 +203,8 @@ pub(super) fn has_region(
 /// current instance that this backend keeps as a structure, an array, or an
 /// array of structures. A `REF_TO ARRAY` parameter's slot holds a variable
 /// index, not a region, so it has none.
-fn region(lowering: &PartialProgram, ctx: &CompileContext, place: &LoweredPlace) -> Option<Region> {
-    let name = storage_name(lowering, ctx, place)?;
+fn region(lowering: &Program, ctx: &CompileContext, place: &LoweredPlace) -> Option<Region> {
+    let name = stored(lowering, ctx, place)?;
     if let Some(info) = ctx.struct_var(&name) {
         return Some(Region {
             var_index: info.var_index,
@@ -245,7 +232,7 @@ fn region(lowering: &PartialProgram, ctx: &CompileContext, place: &LoweredPlace)
 /// refers to, `p^`, whose declaration registered the descriptor that sizes
 /// it.
 fn referenced(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     place: &LoweredPlace,
 ) -> Option<Referenced> {

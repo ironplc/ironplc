@@ -8,13 +8,12 @@ use ironplc_dsl::textual::{
 use ironplc_ir::lowered::{Expr, Place, Stmt, TypeKind};
 
 use crate::variables::BodyFrame;
-use crate::Lowering;
+use crate::{Lowered, Lowering, Unlowered};
 
 impl Lowering<'_> {
     /// Lowers the statement `stmt` of the body of `frame` to the statements
-    /// it runs, in order, or `None` when lowering does not support it, or
-    /// something inside it, yet. A function block call lowers to the stores
-    /// of its inputs, the call and the stores of its outputs, a method call
+    /// it runs, in order. A function block call lowers to the stores of its
+    /// inputs, the call and the stores of its outputs, a method call
     /// statement to the call and the stores of its outputs, and the
     /// assignment of a call of a function whose result is a structure to the
     /// call, the stores of its outputs and the copy of its result; every
@@ -23,15 +22,10 @@ impl Lowering<'_> {
         &mut self,
         frame: &BodyFrame,
         stmt: &AstStmtKind,
-    ) -> Result<Option<Vec<Stmt>>, Diagnostic> {
-        let one = |stmt: Result<Option<Stmt>, Diagnostic>| Ok(stmt?.map(|stmt| vec![stmt]));
+    ) -> Lowered<Vec<Stmt>> {
+        let one = |stmt: Lowered<Stmt>| stmt.map(|stmt| vec![stmt]);
         match stmt {
-            AstStmtKind::Assignment(assignment) => {
-                match self.structure_result_assignment(frame, assignment)? {
-                    Some(statements) => Ok(Some(statements)),
-                    None => one(self.assignment(frame, assignment)),
-                }
-            }
+            AstStmtKind::Assignment(assignment) => self.assignment(frame, assignment),
             AstStmtKind::If(stmt) => one(self.if_statement(frame, stmt)),
             AstStmtKind::Case(stmt) => one(self.case_statement(frame, stmt)),
             AstStmtKind::For(stmt) => one(self.for_statement(frame, stmt)),
@@ -40,30 +34,32 @@ impl Lowering<'_> {
             AstStmtKind::Exit(span) => one(self.exit_statement(span)),
             AstStmtKind::Continue(span) => one(self.continue_statement(span)),
             // The AST keeps no span for a `RETURN`.
-            AstStmtKind::Return => one(Ok(Some(Stmt::return_(SourceSpan::default())))),
+            AstStmtKind::Return => Ok(vec![Stmt::return_(SourceSpan::default())]),
             AstStmtKind::FbCall(call) => self.fb_call(frame, call),
             AstStmtKind::MethodCall(call) => self.method_call_statement(frame, call),
         }
     }
 
-    /// `target := value`.
-    pub(crate) fn assignment(
-        &mut self,
-        frame: &BodyFrame,
-        assignment: &Assignment,
-    ) -> Result<Option<Stmt>, Diagnostic> {
+    /// `target := value`: one statement, or, for the assignment of a call of
+    /// a function whose result is a structure, the call, the stores of its
+    /// outputs and the copy of its result (`structure_result.rs`).
+    fn assignment(&mut self, frame: &BodyFrame, assignment: &Assignment) -> Lowered<Vec<Stmt>> {
         // `S=` and `R=` are not lowered yet. `r REF= x` is `r := REF(x)`:
         // the parser writes its value as `REF(x)`.
         if assignment.set_bind || assignment.reset_bind {
-            return Ok(None);
+            return Err(Unlowered::NotYet);
         }
-        self.store(
+        if let Some((func, function)) = self.structure_result_call(assignment) {
+            return self.structure_result_assignment(frame, assignment, func, function);
+        }
+        let stmt = self.store(
             frame,
             &assignment.target,
             assignment.deref,
             &assignment.value,
             assignment.span(),
-        )
+        )?;
+        Ok(vec![stmt])
     }
 
     /// Stores the source value `value` at `target`, or, when `deref`, at what
@@ -78,15 +74,13 @@ impl Lowering<'_> {
         deref: bool,
         value: &AstExpr,
         span: SourceSpan,
-    ) -> Result<Option<Stmt>, Diagnostic> {
+    ) -> Lowered<Stmt> {
         if let Variable::Symbolic(target) = target {
             if crate::bits::selected_bits(target).is_some() {
                 return self.bits_assignment(frame, target, deref, value, span);
             }
         }
-        let Some(mut place) = self.variable_place(frame, target)? else {
-            return Ok(None);
-        };
+        let mut place = self.variable_place(frame, target)?;
         if deref {
             place = self.program.deref(place, &target.span())?;
         }
@@ -102,7 +96,7 @@ impl Lowering<'_> {
         place: Place,
         value: &AstExpr,
         span: SourceSpan,
-    ) -> Result<Option<Stmt>, Diagnostic> {
+    ) -> Lowered<Stmt> {
         match self.program.types().kind(place.ty()) {
             Some(TypeKind::String(_)) => return self.string_assignment(frame, place, value, span),
             Some(
@@ -123,23 +117,21 @@ impl Lowering<'_> {
             )
             | None => {}
         }
-        let Some(operated) = self.program.types().operation_type(place.ty()) else {
-            // A program instance, which is not assigned.
-            return Ok(None);
-        };
-        let Some(value) = self.expr(frame, value)? else {
-            return Ok(None);
-        };
-        if value.ty() != operated {
-            // A reference, an interface value or a value the analyzer did
-            // not convert to the target's type: the analyzer records every
-            // conversion, so the last is a defect, which `Stmt::assign`
-            // reports below.
-            if !value.ty().is_numeric() || !operated.is_numeric() {
-                return Ok(None);
-            }
+        // A program instance is not assigned.
+        let operated = self
+            .program
+            .types()
+            .operation_type(place.ty())
+            .ok_or(Unlowered::NotYet)?;
+        let value = self.expr(frame, value)?;
+        // A reference, an interface value or a value the analyzer did not
+        // convert to the target's type is not lowered: the analyzer records
+        // every conversion, so a numeric value of another numeric type is a
+        // defect, which `Stmt::assign` reports.
+        if value.ty() != operated && !(value.ty().is_numeric() && operated.is_numeric()) {
+            return Err(Unlowered::NotYet);
         }
-        self.assign_value(place, value, span).map(Some)
+        Ok(self.assign_value(place, value, span)?)
     }
 
     /// Stores the lowered scalar `value` at `place`, narrowed to the place's
@@ -168,17 +160,14 @@ impl Lowering<'_> {
         place: Place,
         value: &AstExpr,
         span: SourceSpan,
-    ) -> Result<Option<Stmt>, Diagnostic> {
+    ) -> Lowered<Stmt> {
         let source = if let AstExprKind::CallOutput(output) = &value.kind {
             self.call_output_place(output)?
         } else if let AstExprKind::Variable(variable) = &value.kind {
             self.variable_place(frame, variable)?
         } else {
-            return Ok(None);
+            return Err(Unlowered::NotYet);
         };
-        let Some(source) = source else {
-            return Ok(None);
-        };
-        self.program.copy(place, source, span).map(Some)
+        Ok(self.program.copy(place, source, span)?)
     }
 }

@@ -2,25 +2,22 @@
 //! which program instances run under which tasks, how each task is scheduled,
 //! and which globals are in scope.
 //!
-//! These are language decisions, so they are made once, here, and a backend
-//! lowers the answer. [`resolve`] builds an [`ExecutionModel`] of
-//! `ironplc-ir`'s types from an analyzed library. The
-//! [`SemanticContext`](crate::SemanticContext) stores it for `check` and the
-//! editor, and [`CleanAnalysis::new`](crate::CleanAnalysis::new) resolves it
-//! again, with the declaration behind each id, from the library it hands to
-//! codegen.
+//! These are language decisions, so they are made once, here, and the
+//! lowered program holds the answer for a backend. [`resolve_with_declarations`] builds an
+//! [`ExecutionModel`] of `ironplc-ir`'s types from an analyzed library, with
+//! the declaration behind each id, for lowering
+//! ([`Lowering::lower_program`](crate::Lowering::lower_program)).
 //!
-//! `resolve` reads only what a clean analysis holds (the library and the
-//! compiler options), never the analyzer's internals, so that the module can
-//! move unchanged into a lowering crate when one exists. It reports nothing:
-//! the model describes the library as it is, and whether a backend can build
-//! it (one configuration, one program, a body for every instance) is that
-//! backend's check.
+//! It reads only what a clean analysis holds (the library and the
+//! compiler options). It reports nothing: the model describes the library as
+//! it is, and whether a backend can build it (one configuration, one program,
+//! a body for every instance) is that backend's check.
 //!
 //! See `specs/design/execution-model.md` and ADR-0065.
 
 use std::collections::HashMap;
 
+use ironplc_analyzer::CompilerOptions;
 use ironplc_dsl::common::{Library, LibraryElementKind, ProgramDeclaration, VarDecl};
 use ironplc_dsl::configuration::{
     ConfigurationDeclaration, DataSourceKind, ResourceDeclaration, TaskConfiguration,
@@ -31,14 +28,8 @@ use ironplc_ir::execution::{
     GlobalScope, InstanceOf, ProgramId, ProgramInstance, ProgramType, Resource, Schedule, Task,
     Trigger,
 };
-use ironplc_parser::options::CompilerOptions;
 
-use crate::system_globals::SYSTEM_UPTIME_GLOBALS;
-
-/// Resolves the execution model of an analyzed library.
-pub fn resolve(library: &Library, options: &CompilerOptions) -> ExecutionModel {
-    resolve_with_declarations(library, options).0
-}
+use ironplc_analyzer::system_globals::SYSTEM_UPTIME_GLOBALS;
 
 /// Resolves the execution model, and the declaration behind each id the
 /// model allocated.
@@ -55,13 +46,9 @@ pub(crate) fn resolve_with_declarations<'a>(
 }
 
 /// The declaration behind each id of a model, borrowed from the library the
-/// model was resolved from.
-///
-/// Codegen still compiles a program's body, and a declared global's type and
-/// initial value, from the library. It reaches them by id, through
-/// [`CleanAnalysis`](crate::CleanAnalysis), from the walk that allocated the
-/// ids. It goes away when the lowered program carries bodies, types and
-/// initial values.
+/// model was resolved from: lowering lowers a program's body, and a declared
+/// global's type and initial value, from them, reached by id from the walk
+/// that allocated the ids.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Declarations<'a> {
     programs: HashMap<ProgramId, &'a ProgramDeclaration>,
@@ -115,7 +102,10 @@ impl<'a> Walk<'a> {
                 LibraryElementKind::ProgramDeclaration(program) => programs.push(program),
                 LibraryElementKind::ConfigurationDeclaration(config) => configurations.push(config),
                 LibraryElementKind::GlobalVarDeclarations(decls) => top_level.push(decls),
-                _ => {}
+                LibraryElementKind::DataTypeDeclaration(_)
+                | LibraryElementKind::FunctionDeclaration(_)
+                | LibraryElementKind::FunctionBlockDeclaration(_)
+                | LibraryElementKind::InterfaceDeclaration(_) => {}
             }
         }
         // The toposort reorders POUs and configurations, and for declarations

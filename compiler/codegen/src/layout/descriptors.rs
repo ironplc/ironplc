@@ -2,7 +2,7 @@
 //! (`specs/design/lowered-program.md`, "`CompileContext`").
 //!
 //! The container keeps each shape of array once, and numbers the shapes in
-//! the order the walk of the AST declarations first adds them: an array's
+//! the order the layout first adds them: an array's
 //! own; a structure's, as a flat array of slots, then one for each field
 //! that is an array of strings, then one for each string field of the
 //! elements of each array of structures it holds, strided by the element;
@@ -10,8 +10,8 @@
 //! its target through (`compile_reference.rs`).
 
 use ironplc_container::{ArrayDescriptor, CharWidth, FieldType, VarIndex};
-use ironplc_dsl::core::SourceSpan;
-use ironplc_ir::lowered::{Field, StringShape, TypeId, TypeKind, TypeTable};
+use ironplc_ir::lowered::{Field, FieldIdx, StringShape, TypeId, TypeKind, TypeTable};
+use ironplc_ir::SourceSpan;
 
 use super::region::{elements, slots, string_shape};
 use crate::compile::{OpWidth, Signedness, VarTypeInfo};
@@ -46,10 +46,10 @@ pub(super) struct Reached {
 pub(super) struct Slots {
     /// The descriptor of the flat array.
     pub(super) desc_index: u16,
-    /// Each field of a structure that is an array of strings, by its
-    /// lower-case name: its descriptor, how many strings it holds, and how
-    /// many code units each holds.
-    pub(super) string_arrays: Vec<(String, (u16, u32, u16))>,
+    /// Each field of a structure that is an array of strings: its
+    /// descriptor, how many strings it holds, and how many code units each
+    /// holds.
+    pub(super) string_arrays: Vec<(FieldIdx, (u16, u32, u16))>,
     /// Each string field of the elements of an array of structures it
     /// holds, or is: the slot of the field in the first element, from the
     /// start of the flat array, and its strided descriptor.
@@ -135,7 +135,7 @@ impl<'a> Descriptors<'a> {
         let desc_index = self.add(slot_array(slots(types, ty)?));
         let fields = types.fields(ty)?;
         let mut string_arrays = Vec::new();
-        for field in fields {
+        for (position, field) in fields.iter().enumerate() {
             let TypeKind::Array { element, .. } = types.kind(field.ty)? else {
                 continue;
             };
@@ -143,8 +143,8 @@ impl<'a> Descriptors<'a> {
                 let (max_length, char_width) = string_shape(*shape)?;
                 let total = elements(types, field.ty)?;
                 let desc = self.add(string_array(char_width, total, max_length));
-                let name = field.name.to_string().to_lowercase();
-                string_arrays.push((name, (desc, total, max_length)));
+                let idx = types.field_idx(ty, position)?;
+                string_arrays.push((idx, (desc, total, max_length)));
             }
         }
         let mut element_strings = Vec::new();
@@ -169,9 +169,9 @@ impl<'a> Descriptors<'a> {
                 let element_type = if matches!(types.kind(*element)?, TypeKind::Reference { .. }) {
                     REFERENCE_TYPE
                 } else {
-                    // A name the AST layout does not know as an elementary
-                    // type is operated as a 32-bit unsigned element.
-                    super::lowered::slot_type(types, *element).unwrap_or(VarTypeInfo {
+                    // An element that is not operated on as a value is a
+                    // 32-bit unsigned element.
+                    crate::lowered::slot_type(types, *element).unwrap_or(VarTypeInfo {
                         op_width: OpWidth::W32,
                         signedness: Signedness::Unsigned,
                         storage_bits: 32,
@@ -272,7 +272,7 @@ impl<'a> Descriptors<'a> {
             let element_type = if matches!(types.kind(*element)?, TypeKind::Reference { .. }) {
                 REFERENCE_TYPE
             } else {
-                super::lowered::slot_type(types, *element)?
+                crate::lowered::slot_type(types, *element)?
             };
             let byte = var_type_info_to_type_byte(&element_type);
             (element_type, ArrayDescriptor::new(byte, total, 0))
@@ -387,7 +387,8 @@ fn bounds(types: &TypeTable, ty: TypeId) -> Option<Vec<(i32, i32)>> {
 }
 
 /// The span a limit of an array would be reported at: none, since an
-/// array over a limit fails the AST layout before the check.
+/// array over a limit fails the limits check before the layout is built
+/// ([`super::limits`]).
 fn no_span() -> SourceSpan {
     SourceSpan::default()
 }

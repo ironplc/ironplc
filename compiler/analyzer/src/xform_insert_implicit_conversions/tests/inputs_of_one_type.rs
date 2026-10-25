@@ -27,6 +27,7 @@ fn strings(values: &[&str]) -> Vec<String> {
 #[case::mux("MUX(n, i, l)", "MUX", &["INT", "INT->LINT", "LINT"])]
 #[case::atan2("ATAN2(r, lr)", "ATAN2", &["REAL->LREAL", "LREAL"])]
 #[case::expt_exponent("EXPT(r, l)", "EXPT", &["REAL", "LINT->REAL"])]
+#[case::real_literal_with_narrow_integer("MIN(i, 1.5)", "MIN", &["INT->REAL", "REAL"])]
 fn apply_when_input_of_another_operation_type_then_converted_to_result_type(
     #[case] value: &str,
     #[case] name: &str,

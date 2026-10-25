@@ -286,7 +286,9 @@ Lowering is two new crates:
   the `Intrinsic` enum, and the expansions a backend may call instead of
   implementing a node (REQ-LOW-ir-068). It depends only on `ironplc-dsl`, for
   ids, source spans and diagnostics, and re-exports what a backend needs from
-  it: `SourceSpan`, `FileId`, `Label` and `Diagnostic`. A backend names them
+  it: `SourceSpan`, `FileId`, `Label` and `Diagnostic`; `Id` and `Located`,
+  for the names the program keeps; and `LineColumn`, for a debug line map.
+  A backend names them
   through `ironplc-ir`, so it needs no dependency on `ironplc-dsl`
   (REQ-LOW-codegen-002).
 - **`ironplc-lowering`** is the pass that builds a lowered program, a program
@@ -323,14 +325,13 @@ program carries its own type table (see
 [Program, POUs and variables](#32-program-pous-and-variables)), so a backend
 needs nothing more.
 
-`ironplc-ir` already exists, holding the execution model (see
-[The Resolved Execution Model](execution-model.md)). Until `ironplc-lowering`
-exists, the analyzer builds that model and so depends on `ironplc-ir`, and
-codegen depends on both, contrary to the table above
-([ADR-0065](../adrs/0065-the-analyzer-builds-the-execution-model-until-lowering-exists.md)).
-The analyzer's `execution_model` module reads only what a clean analysis
-holds, so that it moves into `ironplc-lowering` unchanged, and the analyzer
-then drops the dependency.
+`ironplc-ir` holds the execution model (see
+[The Resolved Execution Model](execution-model.md)), which lowering builds
+([ADR-0065](../adrs/0065-the-analyzer-builds-the-execution-model-until-lowering-exists.md)
+records that the analyzer built it until lowering existed). Until lowering
+generates the standard function blocks, the analyzer depends on `ironplc-ir`
+too, contrary to the table above, for the identity of a standard function
+block that the lowered program names (REQ-LOW-ir-203).
 
 **REQ-LOW-lowering-001** The lowering entry point takes a clean analysis (see
 [The Clean-Analysis Gate](#2-the-clean-analysis-gate)) and returns either a
@@ -382,41 +383,34 @@ covers, not compared byte for byte with the one built from the `Library`.
 
 ## 2. The Clean-Analysis Gate
 
-Code generation already runs behind the gate. A clean analysis,
+Lowering runs behind the gate. A clean analysis,
 `ironplc_analyzer::CleanAnalysis`, borrows the `Library` and the
 `SemanticContext` and can be constructed only when the context holds no
-diagnostics. `ironplc_codegen::compile` takes one, so a caller cannot forget
-the check. Every caller builds one: `ironplc_project::compile`, which also
-serves the MCP server and the playground, `lsp_runner.rs`, the benchmarks, and
-the tests of codegen and of the VM command line.
+diagnostics. `ironplc_lowering::lower` takes one, so a caller cannot forget
+the check, and `ironplc_codegen::compile` takes the lowered program it gives.
+Every caller builds one: `ironplc_project`'s analysis, which `check`,
+`compile`, the MCP server and the playground share, `lsp_runner.rs`, the
+benchmarks, and the tests of codegen and of the VM command line.
 
 ```rust
 pub struct CleanAnalysis<'a> {
     library: &'a Library,
     context: &'a SemanticContext,
-    execution_model: ExecutionModel,   // resolved from `library` by `new`
-    declarations: Declarations<'a>,    // the declaration behind each model id
 }
 
 impl<'a> CleanAnalysis<'a> {
     // The error is the context's diagnostics.
     pub fn new(library: &'a Library, context: &'a SemanticContext)
         -> Result<Self, &'a [Diagnostic]>;
-    pub fn execution_model(&self) -> &ExecutionModel;
-    pub fn program_declaration(&self, id: ProgramId) -> Option<&'a ProgramDeclaration>;
-    pub fn global_declaration(&self, id: GlobalId) -> Option<&'a VarDecl>;
+    pub fn library(&self) -> &'a Library;
+    pub fn context(&self) -> &'a SemanticContext;
 }
 ```
 
-`new` resolves the execution model from the library it holds, so the model
-codegen builds from is always that library's. `program_declaration` and
-`global_declaration` are how codegen reaches a program's body and a declared
-global's type and initial value by model id, and they go away when the
-lowered program carries bodies, types and initial values (see
-[What a backend still reads](execution-model.md#what-a-backend-still-reads)).
-
-Lowering takes the same value. Nothing about the gate changes when lowering
-arrives: codegen passes the clean analysis it receives on to lowering.
+Lowering resolves the execution model from the library the clean analysis
+holds, with the declaration behind each of the model's ids (see
+[Where the model is built](execution-model.md#where-the-model-is-built)), so
+the model a backend reads is always that library's.
 
 **REQ-LOW-analyzer-010** Constructing a clean analysis from a
 `SemanticContext` that holds any diagnostic fails.
@@ -566,9 +560,14 @@ the `VarId` of the global that holds it. A backend reads what runs from the
 model and where it lives from the bindings.
 
 **REQ-LOW-ir-029** A lowered program is finished only when every POU has its
-parts and its body, every function and method its signature, every global of
+parts and its body, but one that stands for a standard function block
+(REQ-LOW-ir-203), every function and method its signature, every global of
 the execution model is bound to a global variable, and every instance of a
 program type is bound to a global variable of that program's type.
+
+**REQ-LOW-ir-203** Until lowering generates the standard function blocks, a
+POU that stands for one names the standard function block it is, and has no
+parts or body; no other POU names one.
 
 A program, like a function block, has an instance: the global that a program
 configuration declares holds it, and the program's variables are the fields of
@@ -720,6 +719,11 @@ structure or a function block instance element by element and field by field.
 Whether a store can be left out because the backend's storage starts cleared
 is the backend's to say.
 
+A member initializer that is an expression (`f : Fb := (k := x + 1)`) is
+stored as an assignment of it would be. The program's variables it names are
+reached through the program instance, as `init` runs in no body and so has
+no instance parameter.
+
 `init` holds values only. A backend sets up its own storage before the
 statements of `init` run, such as a string's header or the data-region offset
 an aggregate's slot holds: that setup is layout, not part of `init`.
@@ -730,9 +734,9 @@ in declaration order (a string's header, the data-region offset the slot of
 an aggregate or an instance holds, and the offset of each instance an
 instance's fields hold), each followed by the statements of `init` that store
 into it, and stores nothing else. It leaves out a store that leaves its
-storage cleared where the `init` it builds from the AST leaves it out. While
-that `init` exists, an `init` lowering does not complete, or one with a store
-the backend does not emit yet, is built from the AST, whole.
+storage cleared, and a store into a global its layout keeps no storage for
+(REQ-EM-codegen-007). A starting value lowering does not express yet, or a
+store the backend does not emit yet, is not supported yet (P9999).
 
 **REQ-LOW-lowering-195** The body of a function or method begins with the
 stores of the completed initializer of each of its declarations the analyzer
@@ -750,15 +754,16 @@ string's header, before them.
 
 **REQ-LOW-codegen-202** The bytecode backend's prologue of a body sets up,
 for each declaration that starts again on every call, in declaration order,
-and then for a function's or method's result, what the prologue it builds
-from the AST sets up (a string's header, and a structure result's
-data-region offset and the headers of its strings), each followed by the
-statements at the head of the body that store into it, and clears the result
-slot of a method that returns nothing. It leaves out an empty string stored
-into a whole string variable, which its header has just emptied. While that
-prologue exists, a prologue lowering does not complete, or one with a store
-the backend does not emit yet, is built from the AST, whole; a program's
-`VAR_TEMP` then takes its value once, in `init`.
+and then for a function's or method's result, the storage its layout gives it
+on every call (a string's header, and a structure result's data-region offset
+and the headers of its strings), each followed by the statements at the head
+of the body that store into it, and clears the result slot of a method that
+returns nothing. It leaves out an empty string stored into a whole string
+variable, which its header has just emptied. A structure, an array or an
+instance of the body's own that its layout keeps no storage for there
+(REQ-LOW-codegen-165) has its slot cleared in place of the stores into its
+fields or elements. A starting value lowering does not express yet, or a
+store the backend does not emit yet, is not supported yet (P9999).
 
 **REQ-LOW-lowering-025** The lowered program contains only POUs reachable from
 a program instance, matching what `SemanticContext::reachable` gives codegen
@@ -1424,10 +1429,11 @@ Not lowered yet, so each stays on the route that reads the AST:
 
 Until lowering generates the standard function blocks
 ([issue 2288](https://github.com/ironplc/ironplc/issues/2288)), a call of one
-lowers as any other call does, to an `FbCall` of a POU named after the block
-that has no body in the lowered program, and the bytecode backend calls the
-VM's own block on the instance. That `FbCall` names a standard function block,
-which REQ-LOW-lowering-077 rules out once lowering generates them.
+lowers as any other call does, to an `FbCall` of a POU that stands for the
+block: it has no parts or body, and names the standard function block it is
+(REQ-LOW-ir-203), and the bytecode backend calls the VM's own block on the
+instance. That `FbCall` names a standard function block, which
+REQ-LOW-lowering-077 rules out once lowering generates them.
 
 While both routes exist, the bytecode backend emits the stores of a call's
 inputs and its `FbCall` as the route that reads the AST emits a call
@@ -2312,7 +2318,7 @@ today.
 | Variable and field identity | Nine name-keyed maps; lower-cased field names | `VarId`, `FieldIdx` |
 | Default initial value | The analyzer's `xform_resolve_initial_values`, which codegen runs on a copy of the library and whose completed initializers `emit_initial_values` stores ([Initial Values](initial-values.md)) | `Assign` statements in `init` |
 | Function local re-initialization ([ADR-0024](../adrs/0024-function-local-reinit-via-bytecode-prologue.md)) | `emit_function_local_prologue` | Statements at the head of the function body |
-| Behaviour policy | `CodegenOptions::string_to_num` | `Intrinsic` variant |
+| Behaviour policy | Lowering, from the options the analysis ran with (`ironplc_lowering::parse_policy`) | `Intrinsic` variant |
 | Target of `EXIT` and `CONTINUE` | `loop_labels` stack, with a P9998 as a fallback | `LoopId` |
 | String encoding and capacity of a string value | The encoding: the analyzer's string type; the capacity: `string_width.rs` | `StringShape` |
 | Temporal literal count and unit ([ADR-0021](../adrs/0021-time-32bit-ltime-64bit.md), [ADR-0025](../adrs/0025-datetime-unsigned-representation.md)) | `compile_time_count` | `Const` |
@@ -2571,9 +2577,9 @@ Nothing is deleted before its last reader has moved to the lowered program.
 | `FunctionEnvironment` | Keep | Signatures of built-in functions name their `BuiltinFunction` (REQ-LOW-analyzer-070). |
 | `BuiltinFunction` (`builtin_function.rs`) | Keep | Formerly `Intrinsic`; renamed (see [Names](#names)), so that `Intrinsic` names only the IR's typed enum. |
 | `SymbolEnvironment` | Keep | Supplies the declarations `VarId`s are allocated from: lowering asks `resolve_variable` which declaration each name refers to, and allocates one `VarId` for each `DeclRef` it answers with ([Variable Binding](variable-binding.md)). |
-| `execution_model` | Move to lowering | Builds the execution model until lowering exists (ADR-0065); moves into `ironplc-lowering` unchanged, and the analyzer drops its dependency on `ironplc-ir`. |
-| `xform_resolve_initial_values` | Keep | Completes every initializer ([Initial Values](initial-values.md)). Codegen runs it today, and lowering runs it once lowering exists. |
-| `CleanAnalysis::program_declaration`, `global_declaration` | Remove | Hand codegen declarations by execution model id until the lowered program carries bodies, types and initial values. |
+| `execution_model` | Moved to lowering | Built the execution model until lowering existed (ADR-0065); moved into `ironplc-lowering` unchanged. |
+| `xform_resolve_initial_values` | Keep | Completes every initializer ([Initial Values](initial-values.md)). Lowering runs it on a copy of the library (`ironplc_lowering::lower`). |
+| `CleanAnalysis::program_declaration`, `global_declaration` | Removed | Handed codegen declarations by execution model id until the lowered program carried bodies, types and initial values. |
 | `Expr::expr_type`, `VarDecl::type_id`, `ExprKind::LateBound` | Keep | Lowering is their last reader. |
 
 ### `CompileContext`
@@ -2586,14 +2592,14 @@ Nothing is deleted before its last reader has moved to the lowered program.
 | `variables`, `string_vars`, `array_vars`, `struct_vars`, `struct_array_vars`, `fb_instances`, `in_out_params`, `user_functions`, `user_fb_types`, `next_user_fb_type_id` | Storage layout | Keep in the bytecode backend as its layout, keyed by id, immutable during emission. |
 | `constants`, `loop_labels`, `current_function_return`, `current_function_id`, `call_graph`, `data_region_offset`, `max_string_capacity`, `has_wide_string`, `debug_*` | Emission state | Keep in a smaller emit context. |
 
-**REQ-LOW-codegen-199** When every declaration of a program lowers, the
-bytecode backend compiles the program's bodies against the layout it builds
-from the lowered declarations. It keeps the layout it builds from the AST for
-a program a declaration of which does not lower, and, until the stages that
-replace them, for the entries the lowered layout does not hold: a
-structure's and an array of structures' analyzer types. The debug entries of
-the variables, the strings and the enumeration types are the lowered
-layout's.
+**REQ-LOW-codegen-199** The bytecode backend compiles a program's bodies
+against the layout it builds from the lowered declarations. A declaration
+lowering does not express yet is not supported yet (P9999), at the POU that
+declares it. Until the stages that replace them, the walk of the AST
+declarations still gives the entries the lowered layout does not hold: a
+structure's and an array of structures' analyzer types, and the array
+descriptors it adds to the container. The debug entries of the variables,
+the strings and the enumeration types are the lowered layout's.
 
 ### Other codegen types
 
@@ -2606,7 +2612,8 @@ layout's.
 | `Place` (`compile_place.rs`), `ResolvedAccess` | Keep in the bytecode backend. They are that backend's addressing: the result of asking its layout how to reach a lowered `Place`. |
 | `ParamPassing` | Dissolves into `Arg`, which adds the by-value aggregate mode `ParamPassing` lacks. |
 | `Scope` (formerly `SavedFbScope`) | Absorbed into the bytecode backend's layout. Ids do not collide across scopes, and a function block's variables are fields of its instance. While both routes exist it is how a lowered statement finds its variables' storage (see [Delivery Constraints](#delivery-constraints)). |
-| `type_info.rs`, `string_width.rs` | Move into lowering. |
+| `type_info.rs` | Move into lowering. |
+| `string_width.rs` | Deleted: the capacity of a string value is the `StringShape` of its `StrExpr`. |
 | `TimeArith`, `StringConversion`, `ShortCircuitOp` | Become desugarings, `Intrinsic` variants and an `ExprKind` respectively. |
 | `ClassifiedCmp` | Keep in the bytecode backend. The fused compare and branch is a VM optimization. |
 | `for_loop_trunc_can_be_elided`, the fused `FOR` head | Keep in the bytecode backend. They read the bounds of a `For` node. |
@@ -2679,7 +2686,8 @@ from the AST and from the lowered declarations, the end-to-end helpers have
 it check the two equal for every program they compile, and an entry either
 records differently, such as a slot's number, the type it is operated at, a
 string's run of the data region or an array descriptor, fails the
-compilation.
+compilation. The backend now builds its layout only from the lowered
+declarations, so there is no second layout to check against.
 
 **Lowering is tested on the tree.** A decision in
 [Decisions](#4-decisions) is asserted by lowering a small program and
@@ -2703,7 +2711,8 @@ exercises it, such as the most negative `DINT` divided by -1, `REAL_TO_DINT`
 of a NaN, and `SHL` by 33, and every backend runs the same programs.
 
 **Structure is tested mechanically.** REQ-LOW-codegen-002 is a test over the
-crate manifest. REQ-LOW-lowering-082 is enforced by clippy; its conformance
+crate manifest, the workspace's backend boundary guard
+(`compiler/test/tests/backend_boundary_guard.rs`). REQ-LOW-lowering-082 is enforced by clippy; its conformance
 test asserts that each crate root, or for `ironplc-codegen` the root of its
 lowered bridge, carries the `deny` attribute, since a test cannot observe a
 lint that is not configured.
@@ -2958,10 +2967,9 @@ This section constrains the order of work; it is not a work breakdown.
 - **P9998 only once unreachable.** An error path of codegen becomes a P9998 in
   lowering only once it is shown unreachable from a program analysis accepts
   (see [The Clean-Analysis Gate](#2-the-clean-analysis-gate)).
-- **The gate is already in place.** Codegen's entry point takes a
-  `CleanAnalysis`. While both routes exist, codegen passes it on to
-  lowering's entry point, so the lowered route meets REQ-LOW-lowering-011
-  from its first statement, and no caller moves again.
+- **The gate is in place.** Lowering's entry point takes a `CleanAnalysis`
+  (REQ-LOW-lowering-011), and codegen's takes the lowered program lowering
+  gives (REQ-LOW-codegen-003).
 
 **Growing one statement at a time**
 
@@ -3038,10 +3046,13 @@ This section constrains the order of work; it is not a work breakdown.
   it writes it, in a scan after the first: the lowered route starts it again
   at the head of every scan (REQ-LOW-lowering-201), where the route that read
   the AST gave it its value once, in `init`.
-- **The layouts check each other.** While both layout builders exist, the
-  one from the lowered declarations is checked equal to the one from the AST
-  for every end-to-end program (REQ-LOW-codegen-198), before the bodies are
-  compiled against it (REQ-LOW-codegen-199).
+- **The layouts checked each other.** While both layout builders existed,
+  the one from the lowered declarations was checked equal to the one from
+  the AST for every end-to-end program (REQ-LOW-codegen-198), before the
+  bodies were compiled against it (REQ-LOW-codegen-199). The builder that
+  read the AST is deleted; each declaration is checked within the limits
+  of the bytecode format before the layout is built, as that builder
+  checked it.
 - **Progress could not fall.** While both routes existed, CI reported how
   many top-level statements of the end-to-end programs took the lowered
   route, and the number did not fall.
@@ -3064,9 +3075,9 @@ This section constrains the order of work; it is not a work breakdown.
 - **Delete as you go.** Once a construct lowers across the end-to-end
   suite, the code that compiles it from the AST is deleted. New work on a construct that lowering covers goes into lowering
   only.
-- **Dependencies dropped last.** `ironplc-codegen` drops its dependencies on
-  `ironplc-analyzer` and `ironplc-dsl` last, when the route that reads the AST
-  is deleted.
+- **Dependencies dropped last.** `ironplc-codegen` dropped its dependencies
+  on `ironplc-analyzer`, `ironplc-parser`, `ironplc-lowering` and
+  `ironplc-dsl` last, once the route that read the AST was deleted.
 
 ## Alternatives Considered
 

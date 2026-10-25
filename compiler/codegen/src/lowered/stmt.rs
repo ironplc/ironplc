@@ -6,13 +6,13 @@
 //! and the arm that runs pops it first.
 
 use ironplc_container::opcode::cmp_op;
-use ironplc_dsl::core::SourceSpan;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::{
     counts_down, CaseArm, CaseLabel, CompareOp, Const, Expr, ExprKind, LoopId,
     Place as LoweredPlace, Stmt, StmtKind,
 };
-use ironplc_lowering::PartialProgram;
+use ironplc_ir::SourceSpan;
+use ironplc_ir::{Diagnostic, Label};
 
 use super::expr::{emit_constant, emit_expr, emit_truncate};
 use super::place::variable_name;
@@ -30,7 +30,7 @@ use crate::emit::{self, Emitter};
 pub(super) fn emit_stmts(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &PartialProgram,
+    lowering: &Program,
     stmts: &[Stmt],
 ) -> Result<(), Diagnostic> {
     let mut emission = Emission {
@@ -54,7 +54,7 @@ struct LoopLabels {
 
 /// What emitting a statement needs besides the compile context.
 struct Emission<'l> {
-    lowering: &'l PartialProgram,
+    lowering: &'l Program,
     /// The loops enclosing the statement being emitted, innermost last.
     loops: Vec<(LoopId, LoopLabels)>,
 }
@@ -306,7 +306,7 @@ impl Emission<'_> {
     }
 
     /// `place <cmp> value` as one `CMP_BR_*`, when `place` is a signed integer
-    /// variable, found by its name: a variable, a field of the current
+    /// variable the layout keeps: a variable, a field of the current
     /// instance, or what a function's or method's parameter refers to.
     fn classify_place(
         &self,

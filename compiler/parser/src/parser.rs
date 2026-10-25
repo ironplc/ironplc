@@ -453,16 +453,16 @@ parser! {
 
     // B.1.3.2 Generic data types - used for polymorphic function signatures
     rule generic_type_name() -> TypeName =
-        t:tok(TokenType::Any) { TypeName { name: Id::from("ANY").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyDerived) { TypeName { name: Id::from("ANY_DERIVED").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyElementary) { TypeName { name: Id::from("ANY_ELEMENTARY").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyMagnitude) { TypeName { name: Id::from("ANY_MAGNITUDE").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyNum) { TypeName { name: Id::from("ANY_NUM").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyReal) { TypeName { name: Id::from("ANY_REAL").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyInt) { TypeName { name: Id::from("ANY_INT").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyBit) { TypeName { name: Id::from("ANY_BIT").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyString) { TypeName { name: Id::from("ANY_STRING").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyDate) { TypeName { name: Id::from("ANY_DATE").with_position(t.span.clone()) } }
+        t:tok(TokenType::Any) { TypeName { id: Id::from("ANY").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyDerived) { TypeName { id: Id::from("ANY_DERIVED").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyElementary) { TypeName { id: Id::from("ANY_ELEMENTARY").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyMagnitude) { TypeName { id: Id::from("ANY_MAGNITUDE").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyNum) { TypeName { id: Id::from("ANY_NUM").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyReal) { TypeName { id: Id::from("ANY_REAL").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyInt) { TypeName { id: Id::from("ANY_INT").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyBit) { TypeName { id: Id::from("ANY_BIT").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyString) { TypeName { id: Id::from("ANY_STRING").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyDate) { TypeName { id: Id::from("ANY_DATE").with_position(t.span.clone()) } }
 
     // B.1.2 Constants
     // Every literal kind records the span of the tokens it matched. Recording

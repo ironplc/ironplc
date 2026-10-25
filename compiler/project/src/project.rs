@@ -5,24 +5,40 @@
 
 use std::path::Path;
 
-use ironplc_analyzer::{stages::analyze, SemanticContext};
+use ironplc_analyzer::{stages::analyze, CleanAnalysis, SemanticContext};
 use ironplc_dsl::{
     common::Library,
     core::{FileId, SourceSpan},
     diagnostic::{Diagnostic, Label},
 };
+use ironplc_ir::lowered::Program;
 use ironplc_parser::{options::CompilerOptions, token::Token, tokenize_program};
 use ironplc_problems::Problem;
 use ironplc_sources::{FileType, LibraryName, Source, SourceProject};
 use log::{debug, trace};
 
-/// Runs semantic analysis on the given source project and compiler options.
+/// What one semantic analysis of a project made.
+struct Analyzed {
+    /// Every problem parsing, analysis and lowering reported; empty when the
+    /// project is clean.
+    diagnostics: Vec<Diagnostic>,
+    /// The semantic context, when type resolution succeeded.
+    context: Option<SemanticContext>,
+    /// The analyzed library, when type resolution succeeded.
+    library: Option<Library>,
+    /// The lowered program, when analysis reported nothing and lowering
+    /// expressed every construct.
+    program: Option<Program>,
+}
+
+/// Runs semantic analysis on the given source project and compiler options,
+/// then lowers a clean analysis.
 ///
 /// This is the shared implementation used by both [`FileBackedProject`] and
 /// [`MemoryBackedProject`]. It parses each source into a library, merges them,
-/// runs the analyzer, and returns the collected diagnostics (empty when the
-/// project is clean) plus the semantic context (when type resolution
-/// succeeds).
+/// runs the analyzer, and, when nothing reported a problem, lowers the
+/// analyzed library, so that a construct the compiler cannot generate yet is
+/// reported without generating code (REQ-LOW-project-004).
 ///
 /// `preparsed_libraries` are compatibility libraries the caller already parsed,
 /// injected alongside the ones the bundled registry loads. They exist for hosts
@@ -32,7 +48,7 @@ fn run_semantic_analysis(
     source_project: &mut SourceProject,
     compiler_options: &CompilerOptions,
     preparsed_libraries: &[Library],
-) -> (Vec<Diagnostic>, Option<SemanticContext>, Option<Library>) {
+) -> Analyzed {
     let mut all_libraries = vec![];
     let mut all_diagnostics: Vec<Diagnostic> = vec![];
 
@@ -79,7 +95,12 @@ fn run_semantic_analysis(
     // `NoContent` exists to report. Partial failure is unaffected -- analysis
     // runs on whatever did parse.
     if all_libraries.is_empty() && any_source_failed_to_parse {
-        return (all_diagnostics, None, None);
+        return Analyzed {
+            diagnostics: all_diagnostics,
+            context: None,
+            library: None,
+            program: None,
+        };
     }
 
     // Activation order: the compatibility libraries precede user source in the
@@ -93,12 +114,49 @@ fn run_semantic_analysis(
         Ok((library, context)) => {
             debug!("Semantic analysis completed {context:?}");
             all_diagnostics.extend(context.diagnostics().iter().cloned());
-            (all_diagnostics, Some(context), Some(library))
+            let program = if all_diagnostics.is_empty() {
+                lower(&library, &context, &mut all_diagnostics)
+            } else {
+                None
+            };
+            Analyzed {
+                diagnostics: all_diagnostics,
+                context: Some(context),
+                library: Some(library),
+                program,
+            }
         }
         Err(diagnostics) => {
             debug!("Semantic analysis errored {diagnostics:?}");
             all_diagnostics.extend(diagnostics);
-            (all_diagnostics, None, None)
+            Analyzed {
+                diagnostics: all_diagnostics,
+                context: None,
+                library: None,
+                program: None,
+            }
+        }
+    }
+}
+
+/// The lowered program of `library`, analyzed with `context`, which holds no
+/// diagnostics; otherwise `None`, with what lowering reported added to
+/// `diagnostics`.
+fn lower(
+    library: &Library,
+    context: &SemanticContext,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<Program> {
+    let Ok(analysis) = CleanAnalysis::new(library, context) else {
+        diagnostics.push(Diagnostic::internal_error());
+        return None;
+    };
+    match ironplc_lowering::lower(&analysis) {
+        Ok(program) => Some(program),
+        Err(lowering) => {
+            debug!("Lowering reported {lowering:?}");
+            diagnostics.extend(lowering);
+            None
         }
     }
 }
@@ -139,12 +197,14 @@ pub trait Project {
     /// Requests tokens for the file.
     fn tokenize(&self, file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>);
 
-    /// Requests semantic analysis for the project.
+    /// Requests semantic analysis for the project, and lowers a clean
+    /// analysis.
     ///
     /// Analysis goes as far as it can and returns every diagnostic that
-    /// parsing and analysis produced — an empty vector means the project is
-    /// clean. The analyzed artifacts are cached and available through
-    /// `semantic_context()` and `analyzed_library()`.
+    /// parsing, analysis and lowering produced — an empty vector means the
+    /// project is clean. The analyzed artifacts are cached and available
+    /// through `semantic_context()`, `analyzed_library()` and
+    /// `lowered_program()`.
     fn semantic(&mut self) -> Vec<Diagnostic>;
 
     /// Gets the semantic context from the last analysis.
@@ -161,6 +221,14 @@ pub trait Project {
     /// producing a merged and resolved library. Returns `None` if `semantic()`
     /// has not been called or if foundational type resolution failed.
     fn analyzed_library(&self) -> Option<&Library>;
+
+    /// Gets the lowered program from the last semantic analysis.
+    ///
+    /// Returns `Some` when the last call to `semantic()` reported nothing,
+    /// so that lowering expressed every construct of the project. `compile`
+    /// passes it to the backend rather than lowering again
+    /// (REQ-LOW-project-005).
+    fn lowered_program(&self) -> Option<&Program>;
 
     /// Gets the sources that are the project.
     fn sources(&self) -> Vec<&Source>;
@@ -180,6 +248,8 @@ pub struct FileBackedProject {
     semantic_context: Option<SemanticContext>,
     /// Cached analyzed library from the last successful analysis
     analyzed_library: Option<Library>,
+    /// Cached lowered program from the last clean analysis
+    lowered_program: Option<Program>,
 }
 
 impl Default for FileBackedProject {
@@ -195,6 +265,7 @@ impl FileBackedProject {
             compiler_options: CompilerOptions::default(),
             semantic_context: None,
             analyzed_library: None,
+            lowered_program: None,
         }
     }
 
@@ -204,6 +275,7 @@ impl FileBackedProject {
             compiler_options,
             semantic_context: None,
             analyzed_library: None,
+            lowered_program: None,
         }
     }
 
@@ -276,11 +348,12 @@ impl Project for FileBackedProject {
     fn semantic(&mut self) -> Vec<Diagnostic> {
         self.semantic_context = None;
         self.analyzed_library = None;
-        let (diagnostics, context, library) =
-            run_semantic_analysis(&mut self.source_project, &self.compiler_options, &[]);
-        self.semantic_context = context;
-        self.analyzed_library = library;
-        diagnostics
+        self.lowered_program = None;
+        let analyzed = run_semantic_analysis(&mut self.source_project, &self.compiler_options, &[]);
+        self.semantic_context = analyzed.context;
+        self.analyzed_library = analyzed.library;
+        self.lowered_program = analyzed.program;
+        analyzed.diagnostics
     }
 
     fn semantic_context(&self) -> Option<&SemanticContext> {
@@ -289,6 +362,10 @@ impl Project for FileBackedProject {
 
     fn analyzed_library(&self) -> Option<&Library> {
         self.analyzed_library.as_ref()
+    }
+
+    fn lowered_program(&self) -> Option<&Program> {
+        self.lowered_program.as_ref()
     }
 
     fn sources(&self) -> Vec<&Source> {
@@ -317,6 +394,8 @@ pub struct MemoryBackedProject {
     semantic_context: Option<SemanticContext>,
     /// Cached analyzed library from the last successful analysis
     analyzed_library: Option<Library>,
+    /// Cached lowered program from the last clean analysis
+    lowered_program: Option<Program>,
     /// Compatibility libraries the caller parsed itself, injected ahead of
     /// user source alongside any the bundled registry loads.
     preparsed_libraries: Vec<Library>,
@@ -330,6 +409,7 @@ impl MemoryBackedProject {
             compiler_options,
             semantic_context: None,
             analyzed_library: None,
+            lowered_program: None,
             preparsed_libraries: Vec::new(),
         }
     }
@@ -409,14 +489,16 @@ impl Project for MemoryBackedProject {
     fn semantic(&mut self) -> Vec<Diagnostic> {
         self.semantic_context = None;
         self.analyzed_library = None;
-        let (diagnostics, context, library) = run_semantic_analysis(
+        self.lowered_program = None;
+        let analyzed = run_semantic_analysis(
             &mut self.source_project,
             &self.compiler_options,
             &self.preparsed_libraries,
         );
-        self.semantic_context = context;
-        self.analyzed_library = library;
-        diagnostics
+        self.semantic_context = analyzed.context;
+        self.analyzed_library = analyzed.library;
+        self.lowered_program = analyzed.program;
+        analyzed.diagnostics
     }
 
     fn semantic_context(&self) -> Option<&SemanticContext> {
@@ -425,6 +507,10 @@ impl Project for MemoryBackedProject {
 
     fn analyzed_library(&self) -> Option<&Library> {
         self.analyzed_library.as_ref()
+    }
+
+    fn lowered_program(&self) -> Option<&Program> {
+        self.lowered_program.as_ref()
     }
 
     fn sources(&self) -> Vec<&Source> {
@@ -852,9 +938,9 @@ mod test {
         use ironplc_sources::SourceProject;
 
         fn element_names(source_project: &mut SourceProject) -> Vec<String> {
-            let (_, _, library) =
+            let analyzed =
                 super::run_semantic_analysis(source_project, &CompilerOptions::default(), &[]);
-            let library = library.unwrap();
+            let library = analyzed.library.unwrap();
             library
                 .elements
                 .iter()

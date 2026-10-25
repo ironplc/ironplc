@@ -2159,7 +2159,7 @@ END_IF;
         let enum_decl = cast!(decl, DataTypeDeclarationKind::Enumeration);
 
         // Verify the type name has a non-zero span
-        let span = &enum_decl.type_name.name.span;
+        let span = &enum_decl.type_name.id.span;
         assert!(
             span.start < span.end,
             "Expected non-zero span for type name, got start={} end={}",

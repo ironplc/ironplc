@@ -1,17 +1,15 @@
-//! Compiles each statement from the lowered program
+//! Compiles each body from the lowered program
 //! (`specs/design/lowered-program.md`, "Delivery Constraints").
 //!
-//! Lowering lowers the whole library once, before codegen emits anything
-//! ([`ironplc_lowering::Lowering::lower_program`]), and codegen reads what
-//! each top-level statement of a body lowered to, by the body's POU and the
-//! statement's index. A statement lowering, or this backend, does not
-//! support yet is a P9999.
+//! Lowering lowers the whole library before codegen emits anything
+//! (`ironplc_lowering::lower`), and codegen compiles each POU's body, its
+//! prologue and then its statements, as the lowered program gives them. A
+//! statement this backend does not emit yet is a P9999.
 //!
-//! A lowered statement finds its variables' storage in the layout codegen
-//! already builds, through the current body's scope, by the name lowering
-//! keeps on each variable and field. The lowered program carries that name
-//! for debug information (REQ-LOW-lowering-006), and the design allows the
-//! lookup by name until a POU's statements all lower.
+//! A lowered statement finds its variables' storage in the layout built from
+//! the lowered declarations, by the id of each variable and field
+//! (REQ-LOW-codegen-123). The name lowering keeps on each is for debug
+//! information and diagnostics (REQ-LOW-lowering-006).
 
 // A match over a lowered enum names every variant, so a variant added later
 // fails to compile wherever it is not handled (REQ-LOW-lowering-082). The
@@ -19,21 +17,20 @@
 // the rule.
 #![deny(clippy::wildcard_enum_match_arm)]
 
-use ironplc_dsl::core::{Id, Located, SourceSpan};
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::StmtKind as AstStmtKind;
+use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::{
     Arg, Callee, Const, Expr, ExprKind, FieldIdx, NarrowWidth, Nullability, Place as LoweredPlace,
     PouId, Projection, ScalarType, Signedness as LoweredSignedness, Stmt, StmtKind, TypeId,
     TypeKind, VarId,
 };
-use ironplc_lowering::{PartialProgram, StatementLowering};
+use ironplc_ir::SourceSpan;
+use ironplc_ir::{Diagnostic, Label};
 
+use crate::access::Named;
 use crate::compile::{CompileContext, OpType, OpWidth, Signedness, UserFunctionInfo};
 use crate::compile_subscript::subscript_check;
 use crate::compile_user_call::passes_by_reference;
 use crate::emit::Emitter;
-use crate::layout::ids::LaidOut;
 use crate::layout::names::ScopeId;
 
 mod aggregate;
@@ -52,115 +49,51 @@ mod stmt;
 mod string;
 
 use call_args::passes;
-pub(crate) use init::try_emit_init;
-pub(crate) use place::type_info;
-pub(crate) use policy::parse_policy;
-pub(crate) use prologue::{restarts, try_emit_prologue};
+pub(crate) use init::emit_init;
+pub(crate) use place::slot_type;
+pub(crate) use prologue::{emit_prologue, restarts};
 
-/// The program lowering made for a compilation, which every statement is
-/// compiled from.
-pub(crate) struct LoweredRoute {
-    lowering: PartialProgram,
-    /// Whether the layout built from the lowered declarations is checked
-    /// equal to the one built from the AST.
-    check_layout: bool,
-}
-
-impl LoweredRoute {
-    /// The program lowering made.
-    pub(crate) fn lowering(&self) -> &PartialProgram {
-        &self.lowering
-    }
-
-    /// Whether the layout built from the lowered declarations is checked
-    /// equal to the one built from the AST.
-    pub(crate) fn check_layout(&self) -> bool {
-        self.check_layout
-    }
-
-    /// The program `lower` lowers. A P9998 lowering reports fails the
-    /// compilation.
-    pub(crate) fn new(
-        check_layout: bool,
-        lower: impl FnOnce() -> Result<PartialProgram, Vec<Diagnostic>>,
-    ) -> Result<Self, Diagnostic> {
-        let lowering = lower().map_err(|diagnostics| {
-            diagnostics
-                .into_iter()
-                .next()
-                .unwrap_or_else(Diagnostic::internal_error)
-        })?;
-        Ok(Self {
-            lowering,
-            check_layout,
-        })
-    }
-}
-
-/// Compiles `stmt`, the top-level statement at `index` of the current body,
-/// from the lowered program. A statement lowering, or this backend, does not
-/// support yet is a P9999.
-pub(crate) fn compile_statement(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    index: usize,
-    stmt: &AstStmtKind,
-) -> Result<(), Diagnostic> {
-    let Some(route) = ctx.lowered_route.take() else {
-        return Err(Diagnostic::internal_error());
-    };
-    let compiled = compile_lowered(route.lowering(), emitter, ctx, index, stmt);
-    ctx.lowered_route = Some(route);
-    compiled
-}
-
-fn compile_lowered(
-    lowering: &PartialProgram,
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    index: usize,
-    stmt: &AstStmtKind,
-) -> Result<(), Diagnostic> {
-    let lowered = match current_pou(ctx).and_then(|pou| lowering.statement(pou, index)) {
-        Some(StatementLowering::Lowered(lowered)) => Some(lowered),
-        Some(StatementLowering::Unsupported) | None => None,
-    };
-    match lowered {
-        Some(lowered) if can_emit_all(lowering, ctx, lowered) => {
-            if let Some(span) = current_pou(ctx).and_then(|pou| lowering.statement_span(pou, index))
-            {
-                crate::compile_stmt::record_position(emitter, ctx, span);
-            }
-            stmt::emit_stmts(emitter, ctx, lowering, lowered)
+/// Emits the statements of the current body after its prologue, from the
+/// lowered program: each statement of the source, the lowered statements
+/// that carry its span, after its line-map position. One this backend does
+/// not emit yet is a P9999 at it.
+pub(crate) fn emit_body(emitter: &mut Emitter, ctx: &mut CompileContext) -> Result<(), Diagnostic> {
+    let lowering = ctx.lowering()?;
+    let pou = current_pou(ctx).ok_or_else(Diagnostic::internal_error)?;
+    let statements = lowering
+        .statements(pou)
+        .ok_or_else(Diagnostic::internal_error)?;
+    // Lowering gives each statement a statement of the source lowers to
+    // that statement's span (REQ-LOW-lowering-063), so each run of one span
+    // is one statement of the source.
+    for source in statements.chunk_by(|stmt, next| same_span(stmt.span(), next.span())) {
+        let span = source[0].span();
+        if !can_emit_all(lowering, ctx, source) {
+            return Err(Diagnostic::not_implemented(Label::span(
+                span.clone(),
+                "Statement the lowered route does not support yet",
+            )));
         }
-        Some(_) | None => Err(Diagnostic::not_implemented(Label::span(
-            statement_span(stmt),
-            "Statement the lowered route does not support yet",
-        ))),
+        crate::compile_stmt::record_position(emitter, ctx, span);
+        stmt::emit_stmts(emitter, ctx, lowering, source)?;
     }
+    Ok(())
 }
 
-/// Where `stmt` is, for a diagnostic about it.
-fn statement_span(stmt: &AstStmtKind) -> ironplc_dsl::core::SourceSpan {
-    match stmt {
-        AstStmtKind::Assignment(assignment) => assignment.span(),
-        AstStmtKind::FbCall(call) => call.span(),
-        AstStmtKind::MethodCall(call) => call.span(),
-        AstStmtKind::If(stmt) => stmt.span(),
-        AstStmtKind::Case(stmt) => stmt.span(),
-        AstStmtKind::For(stmt) => stmt.span(),
-        AstStmtKind::While(stmt) => stmt.span(),
-        AstStmtKind::Repeat(stmt) => stmt.span(),
-        AstStmtKind::Return => ironplc_dsl::core::SourceSpan::default(),
-        AstStmtKind::Exit(span) | AstStmtKind::Continue(span) => span.clone(),
-    }
+/// The P9999 for a store of a starting value this backend does not emit
+/// yet.
+fn unsupported_store(stmt: &Stmt) -> Diagnostic {
+    Diagnostic::not_implemented(Label::span(
+        stmt.span().clone(),
+        "Starting value the lowered route does not support yet",
+    ))
 }
 
 /// Whether this backend emits every statement of `stmts`, as `stmt.rs` emits
 /// them: a call statement, the stores of its outputs and, for a function
 /// whose result is a structure, the copy of its result together
 /// (`fn_call.rs`), and any other statement on its own.
-fn can_emit_all(lowering: &PartialProgram, ctx: &CompileContext, stmts: &[Stmt]) -> bool {
+fn can_emit_all(lowering: &Program, ctx: &CompileContext, stmts: &[Stmt]) -> bool {
     let mut rest = stmts;
     while let [first, ..] = rest {
         let taken = match fn_call::output_call(lowering, ctx, rest) {
@@ -178,7 +111,7 @@ fn can_emit_all(lowering: &PartialProgram, ctx: &CompileContext, stmts: &[Stmt])
 /// value, at the operation type the lowered program gives it. A statement
 /// whose storage this backend does not reach yet is not supported yet
 /// (P9999).
-fn can_emit(lowering: &PartialProgram, ctx: &CompileContext, stmt: &Stmt) -> bool {
+fn can_emit(lowering: &Program, ctx: &CompileContext, stmt: &Stmt) -> bool {
     let all = |stmts: &[Stmt]| can_emit_all(lowering, ctx, stmts);
     match stmt.kind() {
         StmtKind::Assign { place, value } => {
@@ -240,7 +173,7 @@ fn can_emit(lowering: &PartialProgram, ctx: &CompileContext, stmt: &Stmt) -> boo
 }
 
 /// Whether this backend emits `expr`.
-fn expr_can_emit(lowering: &PartialProgram, ctx: &CompileContext, expr: &Expr) -> bool {
+fn expr_can_emit(lowering: &Program, ctx: &CompileContext, expr: &Expr) -> bool {
     if op_type(expr.ty()).is_none() {
         return false;
     }
@@ -314,7 +247,7 @@ fn operation_can_emit(expr: &Expr) -> bool {
 
 /// Whether this backend passes each of `args`.
 fn args_can_emit<'s>(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     args: impl IntoIterator<Item = &'s Arg>,
 ) -> bool {
@@ -339,20 +272,12 @@ pub(super) fn user_function(ctx: &CompileContext, pou: PouId) -> Option<UserFunc
 /// structure's region on the stack. `None` for a method.
 pub(super) fn callee_function(ctx: &CompileContext, pou: PouId) -> Option<UserFunctionInfo> {
     // A method is called by `METHOD_CALL` (`method.rs`).
-    match ctx.lowered_ids.pou(pou)? {
-        LaidOut::Function(name) => ctx.user_function(name).cloned(),
-        LaidOut::Program | LaidOut::Block(_) | LaidOut::Method { .. } => None,
-    }
+    ctx.user_function(pou).cloned()
 }
 
 /// Whether `place` has storage this backend reaches as one value of type
 /// `ty`.
-fn reaches(
-    lowering: &PartialProgram,
-    ctx: &CompileContext,
-    place: &LoweredPlace,
-    ty: ScalarType,
-) -> bool {
+fn reaches(lowering: &Program, ctx: &CompileContext, place: &LoweredPlace, ty: ScalarType) -> bool {
     subscripts_can_emit(lowering, ctx, place)
         && place::resolve(lowering, ctx, place, &SourceSpan::default())
             .is_ok_and(|storage| op_type(ty) == Some(storage.op_type()))
@@ -361,12 +286,7 @@ fn reaches(
 /// Whether this backend reads `place` as one value of type `ty`: from its
 /// storage, or through the reference its storage holds, as one value of the
 /// type the place gives what that reference refers to.
-fn reads(
-    lowering: &PartialProgram,
-    ctx: &CompileContext,
-    place: &LoweredPlace,
-    ty: ScalarType,
-) -> bool {
+fn reads(lowering: &Program, ctx: &CompileContext, place: &LoweredPlace, ty: ScalarType) -> bool {
     subscripts_can_emit(lowering, ctx, place)
         && match place::resolve_load(lowering, ctx, place, &SourceSpan::default()) {
             Ok(place::Load::Stored(storage)) => op_type(ty) == Some(storage.op_type()),
@@ -382,11 +302,7 @@ fn reads(
 }
 
 /// Whether this backend emits every subscript on the way to `place`.
-fn subscripts_can_emit(
-    lowering: &PartialProgram,
-    ctx: &CompileContext,
-    place: &LoweredPlace,
-) -> bool {
+fn subscripts_can_emit(lowering: &Program, ctx: &CompileContext, place: &LoweredPlace) -> bool {
     place.path().iter().all(|projection| match projection {
         Projection::Index(subscripts) => subscripts
             .iter()
@@ -395,32 +311,49 @@ fn subscripts_can_emit(
     })
 }
 
-/// The name this backend's layout knows a variable `place` by: the
-/// variable's name, or the name of the slot a field of the current instance
-/// is copied into. `None` for any other place, and for a variable the
-/// current body does not see by that name.
-pub(super) fn storage_name(
-    lowering: &PartialProgram,
+/// The variable `place` is the whole of, as this backend's layout keeps
+/// it: a variable, or the slot a field of the current instance is copied
+/// into. `None` for any other place, and for a variable the layout keeps no
+/// slot for.
+pub(super) fn stored(
+    lowering: &Program,
     ctx: &CompileContext,
     place: &LoweredPlace,
-) -> Option<Id> {
+) -> Option<Named> {
     let root = lowering.variables().get(place.root())?;
     if place.path().is_empty() {
-        return seen_name(ctx, place.root()).cloned();
+        return stored_variable(lowering, ctx, place.root());
     }
     let (instance, field, rest) = instance_field(lowering, root.ty(), place.path())?;
     if !rest.is_empty() {
         return None;
     }
-    ctx.lowered_ids.field(instance, field).cloned()
+    stored_field(lowering, ctx, instance, field)
 }
 
-/// The name the layout knows the variable `var` by, when the current body
-/// sees it by that name; `None` for a variable the layout keeps no slot for,
-/// or one the current body does not see.
-pub(super) fn seen_name(ctx: &CompileContext, var: VarId) -> Option<&Id> {
-    let (scope, name) = ctx.lowered_ids.variable(var)?;
-    ctx.sees(*scope, name).then_some(name)
+/// The variable `var`, when the layout keeps a slot for it.
+pub(super) fn stored_variable(
+    lowering: &Program,
+    ctx: &CompileContext,
+    var: VarId,
+) -> Option<Named> {
+    crate::layout::lowered::named(lowering, var).filter(|named| ctx.has_slot(named))
+}
+
+/// The field `field` of an instance of `instance`, when the layout keeps a
+/// slot for it while the instance's body runs.
+pub(super) fn stored_field(
+    lowering: &Program,
+    ctx: &CompileContext,
+    instance: TypeId,
+    field: FieldIdx,
+) -> Option<Named> {
+    let declared = lowering
+        .types()
+        .fields(instance)?
+        .get(field.index() as usize)?;
+    let named = crate::layout::lowered::named_field(instance, field, declared);
+    ctx.has_slot(&named).then_some(named)
 }
 
 /// When `path` starts by reaching a field of an instance: of the current
@@ -429,7 +362,7 @@ pub(super) fn seen_name(ctx: &CompileContext, var: VarId) -> Option<&Id> {
 /// body. Gives the instance's type, that field, and the projections after
 /// it; `None` for any other path.
 pub(super) fn instance_field<'p>(
-    lowering: &PartialProgram,
+    lowering: &Program,
     root: TypeId,
     path: &'p [Projection],
 ) -> Option<(TypeId, FieldIdx, &'p [Projection])> {
@@ -447,23 +380,35 @@ pub(super) fn instance_field<'p>(
     }
 }
 
-/// The POU whose body is compiled in the current scope; `None` for a body
-/// lowering did not lower.
+/// The POU whose body is compiled in the current scope; `None` outside any
+/// body.
 pub(super) fn current_pou(ctx: &CompileContext) -> Option<PouId> {
-    ctx.lowered_ids.pou_in(ctx.scope)
+    match ctx.scope {
+        ScopeId::Pou(pou) => Some(pou),
+        ScopeId::Global => None,
+    }
 }
 
 /// The name the lowered program gives the POU whose body is compiled in
-/// `scope`, as written; `None` for a body lowering did not lower.
-pub(crate) fn pou_name(ctx: &CompileContext, scope: ScopeId) -> Option<String> {
-    let route = ctx.lowered_route.as_ref()?;
-    let pou = ctx.lowered_ids.pou_in(scope)?;
-    Some(route.lowering().pous().name(pou)?.to_string())
+/// `scope`, as written.
+pub(crate) fn pou_name(ctx: &CompileContext, scope: ScopeId) -> Result<String, Diagnostic> {
+    let pou = match scope {
+        ScopeId::Pou(pou) => Some(pou),
+        ScopeId::Global => None,
+    };
+    pou.and_then(|pou| ctx.lowering().ok()?.pous().name(pou))
+        .map(ToString::to_string)
+        .ok_or_else(|| {
+            Diagnostic::internal_error_at(Label::span(
+                SourceSpan::default(),
+                "A body the lowered program does not name",
+            ))
+        })
 }
 
 /// Whether `pou` is the body being compiled.
 pub(super) fn is_current_body(ctx: &CompileContext, pou: PouId) -> bool {
-    ctx.lowered_ids.scope(pou) == Some(ctx.scope)
+    ctx.scope == ScopeId::Pou(pou)
 }
 
 /// Whether two spans are the same text. `SourceSpan`'s own equality holds
@@ -534,7 +479,7 @@ pub(super) fn read(expr: &Expr) -> Option<&LoweredPlace> {
 /// non-null reference to a program or function block through which the body
 /// reaches its own fields. A `REF_TO` is nullable, and lowering binds no
 /// other non-null reference yet, so no other variable is one.
-fn is_instance(lowering: &PartialProgram, ty: TypeId) -> bool {
+fn is_instance(lowering: &Program, ty: TypeId) -> bool {
     let types = lowering.types();
     types.reference(ty).is_some_and(|(target, nullability)| {
         nullability == Nullability::NonNull

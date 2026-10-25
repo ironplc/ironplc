@@ -11,7 +11,7 @@ use ironplc_parser::options::CompilerOptions;
 
 use ironplc_ir::lowered::{NonNumeric, ParseFailure, ParsePolicy, TypeTable, Variable};
 
-use crate::{Body, Lowering, PartialProgram, StatementLowering};
+use crate::{Body, Lowering, PartialProgram, Unlowered};
 
 /// What lowering made of each top-level statement of one body: the text of
 /// the statements it lowered to, one per line, or `unsupported`, and the
@@ -47,13 +47,13 @@ pub(crate) fn lower_bodies(source: &str, pous: &[&str]) -> Outcome {
         let (body, stmts) = body_of(&library, pou);
         for stmt in stmts {
             let text = match lowering.lower_statement(body, stmt) {
-                Ok(StatementLowering::Lowered(lowered)) => lowered
+                Ok(lowered) => lowered
                     .iter()
                     .map(ToString::to_string)
                     .collect::<Vec<_>>()
                     .join("\n"),
-                Ok(StatementLowering::Unsupported) => "unsupported".to_string(),
-                Err(diagnostic) => panic!("lowering reported {diagnostic:?}"),
+                Err(Unlowered::NotYet) => "unsupported".to_string(),
+                Err(Unlowered::Broken(diagnostic)) => panic!("lowering reported {diagnostic:?}"),
             };
             statements.push(text);
         }
@@ -129,7 +129,7 @@ fn body_of<'a>(library: &'a Library, pou: &str) -> (Body<'a>, &'a [StmtKind]) {
                 return (Body::Program(program), statements(&program.body));
             }
             LibraryElementKind::FunctionBlockDeclaration(block)
-                if block.name.name.to_string() == pou =>
+                if block.name.to_string() == pou =>
             {
                 return (Body::FunctionBlock(block), statements(&block.body));
             }

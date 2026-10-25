@@ -17,10 +17,10 @@
 //! (REQ-LOW-codegen-189).
 
 use ironplc_container::CharWidth;
-use ironplc_dsl::core::SourceSpan;
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::{Encoding, Place as LoweredPlace, StrExpr, StrExprKind};
-use ironplc_lowering::PartialProgram;
+use ironplc_ir::Diagnostic;
+use ironplc_ir::SourceSpan;
 
 use super::expr::{emit_intrinsic_call, instruction_of};
 use super::fn_call::{emit_in_place, str_in_place_can_emit};
@@ -34,7 +34,7 @@ use crate::emit::Emitter;
 pub(super) fn emit_assign_str(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &PartialProgram,
+    lowering: &Program,
     place: &LoweredPlace,
     value: &StrExpr,
     span: &SourceSpan,
@@ -49,11 +49,7 @@ pub(super) fn emit_assign_str(
 }
 
 /// Whether this backend reaches every string place `value` reads.
-pub(super) fn str_can_emit(
-    lowering: &PartialProgram,
-    ctx: &CompileContext,
-    value: &StrExpr,
-) -> bool {
+pub(super) fn str_can_emit(lowering: &Program, ctx: &CompileContext, value: &StrExpr) -> bool {
     match value.kind() {
         StrExprKind::Literal(_) => true,
         StrExprKind::Read(place) => reaches_string(lowering, ctx, place),
@@ -67,7 +63,7 @@ pub(super) fn str_can_emit(
 /// Whether this backend reaches the string `place`, and every subscript on
 /// the way to it.
 pub(super) fn reaches_string(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     place: &LoweredPlace,
 ) -> bool {
@@ -78,24 +74,23 @@ pub(super) fn reaches_string(
 
 /// The string variable `place` is, the string field of the current
 /// instance, or the string output of the function or method being compiled,
-/// which this backend keeps in a slot of its own, by name. `None` for any
-/// other place.
+/// which this backend keeps in a slot of its own. `None` for any other
+/// place.
 fn string_storage<'c>(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &'c CompileContext,
     place: &LoweredPlace,
 ) -> Option<&'c StringVarInfo> {
     ctx.string_var(&variable_name(lowering, ctx, place)?)
 }
 
-/// The data region offset of a slot that holds the string `value`, as
-/// `resolve_string_arg` gives it: the place's own slot for the
-/// string at a place, and otherwise a temporary slot of `value`'s encoding
-/// and capacity that `value` is computed into.
+/// The data region offset of a slot that holds the string `value`: the
+/// place's own slot for the string at a place, and otherwise a temporary
+/// slot of `value`'s encoding and capacity that `value` is computed into.
 pub(super) fn str_arg_offset(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &PartialProgram,
+    lowering: &Program,
     value: &StrExpr,
 ) -> Result<u32, Diagnostic> {
     if let StrExprKind::Read(place) = value.kind() {
@@ -124,7 +119,7 @@ pub(super) fn str_arg_offset(
 pub(super) fn emit_str_expr(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &PartialProgram,
+    lowering: &Program,
     value: &StrExpr,
 ) -> Result<(), Diagnostic> {
     match value.kind() {

@@ -1,52 +1,12 @@
-//! A body's statements, each compiled from the lowered program
-//! ([`crate::lowered`]), the source position each records for the line map,
-//! a `RETURN`, and the capacity a string declaration states.
+//! The source position each statement of a body records for the line map,
+//! and a `RETURN`. The statements themselves are compiled from the lowered
+//! program ([`crate::lowered::emit_body`]).
 
-use ironplc_dsl::common::{
-    FunctionBlockBodyKind, Integer, IntegerRef, StringInitializer, StringSpecification,
-};
-use ironplc_dsl::core::SourceSpan;
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::Statements;
+use ironplc_ir::SourceSpan;
 
-use super::compile::{CompileContext, CurrentFunctionReturn, DEFAULT_STRING_MAX_LENGTH};
+use super::compile::{CompileContext, CurrentFunctionReturn};
 use super::compile_expr::emit_load_var;
 use crate::emit::Emitter;
-
-/// Compiles a function block body.
-///
-/// `pou_span` locates the program organization unit that owns the body. An
-/// SFC body carries no span of its own, so a diagnostic about the body kind
-/// points at the POU instead.
-pub(crate) fn compile_body(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    body: &FunctionBlockBodyKind,
-    pou_span: &SourceSpan,
-) -> Result<(), Diagnostic> {
-    match body {
-        FunctionBlockBodyKind::Statements(statements) => {
-            compile_statements(emitter, ctx, statements)
-        }
-        FunctionBlockBodyKind::Empty => Ok(()),
-        FunctionBlockBodyKind::Sfc(_) => Err(Diagnostic::not_implemented(Label::span(
-            pou_span.clone(),
-            "Sequential function chart body",
-        ))),
-    }
-}
-
-/// Compiles the top-level statements of the current body.
-pub(crate) fn compile_statements(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    statements: &Statements,
-) -> Result<(), Diagnostic> {
-    for (index, stmt) in statements.body.iter().enumerate() {
-        crate::lowered::compile_statement(emitter, ctx, index, stmt)?;
-    }
-    Ok(())
-}
 
 /// Records `span` as the source position of the opcodes that follow, so
 /// they get a line-map entry pointing at the statement there.
@@ -71,7 +31,7 @@ pub(crate) fn record_position(
     let Ok(text) = std::str::from_utf8(bytes) else {
         return;
     };
-    let lc = ironplc_dsl::diagnostic::LineColumn::from_offset(text, span.start);
+    let lc = ironplc_ir::LineColumn::from_offset(text, span.start);
     // 0-based → 1-based; clamp to u16 range (source files larger than
     // ~64k lines are theoretical, but the saturating add keeps us out
     // of UB territory either way).
@@ -103,47 +63,4 @@ pub(crate) fn emit_return(emitter: &mut Emitter, ctx: &CompileContext) {
             emitter.emit_ret_void();
         }
     }
-}
-
-/// Extracts the max length from a `StringInitializer`, returning a
-/// not-implemented diagnostic if the length is an unresolved constant reference.
-pub(crate) fn resolve_string_max_length(
-    string_init: &StringInitializer,
-) -> Result<u16, Diagnostic> {
-    match &string_init.length {
-        None => Ok(DEFAULT_STRING_MAX_LENGTH),
-        Some(IntegerRef::Literal(i)) => string_length_u16(i),
-        Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id)),
-    }
-}
-
-/// Extracts the max length from a `StringSpecification` (used for function
-/// return types), returning a not-implemented diagnostic if the length is an
-/// unresolved constant reference.
-pub(crate) fn resolve_string_spec_max_length(
-    spec: &StringSpecification,
-) -> Result<u16, Diagnostic> {
-    match &spec.length {
-        None => Ok(DEFAULT_STRING_MAX_LENGTH),
-        Some(IntegerRef::Literal(i)) => string_length_u16(i),
-        Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id)),
-    }
-}
-
-/// Converts a declared string length to the `u16` the string header holds.
-///
-/// The analyzer rejects a length above `u16::MAX` (P2041) before codegen
-/// runs, so a failure here is a compiler defect -- the rule missed a
-/// declaration site -- and is reported as one rather than wrapped to a
-/// capacity the program never wrote.
-fn string_length_u16(length: &Integer) -> Result<u16, Diagnostic> {
-    u16::try_from(length.value).map_err(|_| {
-        Diagnostic::internal_error_at(Label::span(
-            length.span.clone(),
-            format!(
-                "String length {} was not rejected by the analyzer",
-                length.value
-            ),
-        ))
-    })
 }

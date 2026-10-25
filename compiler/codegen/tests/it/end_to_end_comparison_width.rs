@@ -107,6 +107,9 @@ fn end_to_end_when_unsigned_narrow_operand_then_zero_extended(
 #[case::real_equal("r = lr", 0)]
 #[case::real_narrow_right("lr > r", 1)]
 #[case::int_below_real("n < r_half", 1)]
+// Compared at INT the literal would be 1, and 1 < 1 FALSE.
+#[case::int_below_real_literal("n < 1.5", 1)]
+#[case::real_literal_above_int("1.5 > n", 1)]
 fn end_to_end_when_real_compared_with_wider_then_converted(
     #[case] expr: &str,
     #[case] expected: i64,

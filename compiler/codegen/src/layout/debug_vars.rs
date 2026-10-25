@@ -1,10 +1,8 @@
 //! The debug section's entry of each variable (`VAR_NAME`) and of each
 //! string a global or the program declares (`STRING_LAYOUT`), from the
-//! lowered declarations, as the walk of the AST declarations records them
-//! (`globals.rs`, `storage.rs`, `function.rs`, `block.rs`).
+//! lowered declarations.
 //!
-//! The walk gives a variable its debug type two ways, and this follows
-//! both:
+//! A variable gets its debug type two ways:
 //!
 //! - a global's or the program's from the type it resolves to: an alias of
 //!   an elementary type is known by the elementary type, an array by its
@@ -19,13 +17,12 @@ use ironplc_container::debug_section::{
     function_id, iec_type_tag, var_section, EnumDefEntry, StringLayoutEntry, VarNameEntry,
 };
 use ironplc_container::{FunctionId, VarIndex};
-use ironplc_dsl::core::Id;
 use ironplc_ir::lowered::{
     Encoding, IntWidth, Section, TemporalKind, TypeId, TypeKind, TypeTable, WideWidth,
 };
+use ironplc_ir::Id;
 
 use crate::compile::StringVarInfo;
-use crate::compile_enum::ANONYMOUS_PREFIX;
 
 /// The debug entries the layout records, in the walk's order.
 #[derive(Default)]
@@ -56,38 +53,6 @@ pub(super) fn enum_definitions(types: &TypeTable) -> Vec<EnumDefEntry> {
 }
 
 impl DebugVars {
-    /// Each entry that differs from `var_names` and `string_layouts`, the
-    /// ones the walk of the AST declarations records. An anonymous
-    /// enumeration is named by its id in each type table, so its names are
-    /// compared without the id.
-    pub(super) fn differences(
-        &self,
-        var_names: &[VarNameEntry],
-        string_layouts: &[StringLayoutEntry],
-    ) -> Vec<String> {
-        let mut differences = Vec::new();
-        let unnumbered = |entries: &[VarNameEntry]| -> Vec<VarNameEntry> {
-            entries
-                .iter()
-                .map(|entry| VarNameEntry {
-                    type_name: without_id(&entry.type_name),
-                    ..entry.clone()
-                })
-                .collect()
-        };
-        let (mine, theirs) = (unnumbered(var_names), unnumbered(&self.var_names));
-        if mine != theirs {
-            differences.push(format!("debug variable names {mine:?} and {theirs:?}"));
-        }
-        if string_layouts != self.string_layouts.as_slice() {
-            differences.push(format!(
-                "debug string layouts {string_layouts:?} and {:?}",
-                self.string_layouts
-            ));
-        }
-        differences
-    }
-
     /// Records the global or the program's variable `name` of the type
     /// `ty`, of the section `section`, in the slot `var_index`, which holds
     /// the string `string` when it is one.
@@ -229,7 +194,7 @@ fn section_of(section: Option<Section>) -> u8 {
 }
 
 /// The debug type of a global or the program's variable of the type `ty`:
-/// by the type it resolves to (`storage.rs`).
+/// by the type it resolves to.
 fn resolved(types: &TypeTable, ty: TypeId) -> (u8, String) {
     let Some(kind) = types.kind(ty) else {
         return (iec_type_tag::OTHER, String::new());
@@ -263,7 +228,7 @@ fn resolved(types: &TypeTable, ty: TypeId) -> (u8, String) {
 }
 
 /// The debug type of a function's or a function block's variable of the
-/// type `ty`: by the type its declaration names (`debug_type.rs`).
+/// type `ty`: by the type its declaration names.
 fn as_declared(types: &TypeTable, ty: TypeId) -> (u8, String) {
     let Some(kind) = types.kind(ty) else {
         return (iec_type_tag::OTHER, String::new());
@@ -438,26 +403,9 @@ fn elementary(kind: Option<&TypeKind>) -> Option<(u8, &'static str)> {
     })
 }
 
-/// `type_name` without the id an anonymous enumeration's name holds.
-fn without_id(type_name: &str) -> String {
-    match type_name.strip_prefix(ANONYMOUS_PREFIX) {
-        Some(_) => ANONYMOUS_PREFIX.to_string(),
-        None => type_name.to_string(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn without_id_when_anonymous_enumeration_then_id_dropped() {
-        assert_eq!(
-            without_id("(ANONYMOUS ENUMERATION 42)"),
-            without_id("(ANONYMOUS ENUMERATION 7)")
-        );
-        assert_eq!(without_id("COLOR"), "COLOR");
-    }
 
     #[test]
     fn elementary_when_long_temporal_then_long_tag_and_name() {
