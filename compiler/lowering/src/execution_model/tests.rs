@@ -454,6 +454,42 @@ END_CONFIGURATION
     );
 }
 
+#[spec_test(REQ_EM_lowering_042)]
+fn resolve_when_resource_declares_globals_then_resource_lists_their_ids() {
+    let source = format!(
+        "{MAIN}
+CONFIGURATION config
+  VAR_GLOBAL
+    shared : DINT;
+  END_VAR
+  RESOURCE resource1 ON PLC
+    VAR_GLOBAL
+      first : BOOL;
+      second : INT;
+    END_VAR
+    PROGRAM instance1 : main;
+  END_RESOURCE
+END_CONFIGURATION
+"
+    );
+    let model = resolve_source(&source);
+
+    let resource = &model.configurations()[0].resources[0];
+    let names: Vec<String> = resource
+        .globals
+        .iter()
+        .map(|id| model.global(*id).unwrap().name.to_string())
+        .collect();
+    assert_eq!(names, ["first", "second"]);
+}
+
+#[spec_test(REQ_EM_lowering_042)]
+fn resolve_when_no_configuration_then_implicit_resource_lists_no_globals() {
+    let model = resolve_source(MAIN);
+
+    assert!(model.configurations()[0].resources[0].globals.is_empty());
+}
+
 #[spec_test(REQ_EM_lowering_040)]
 fn resolve_when_globals_then_clean_analysis_answers_each_declaration_by_id() {
     let source = format!(
