@@ -48,7 +48,7 @@ pub(crate) struct MethodLayout {
     /// The method's id in the container.
     pub(crate) function_id: FunctionId,
     /// The scope the method's variables are recorded under, which its body
-    /// is compiled in, and which sees its block's too.
+    /// is compiled in.
     pub(crate) scope: ScopeId,
     /// The slots the VM's frame for the method spans, from the first of
     /// its block's copy slots through the method's result: the copy slots,

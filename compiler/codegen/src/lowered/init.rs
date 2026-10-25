@@ -26,18 +26,16 @@ use crate::access::{Named, Stored};
 use crate::compile::CompileContext;
 use crate::emit::Emitter;
 use crate::layout::lowered::{globals, instance_type, named, named_field};
-use crate::layout::names::ScopeId;
 
 /// Emits `init`, the declared globals and then the program's own
-/// declarations, from the lowered program.
+/// declarations, from the lowered program, in the program's scope: the one
+/// current outside the other bodies.
 pub(crate) fn emit_init(emitter: &mut Emitter, ctx: &mut CompileContext) -> Result<(), Diagnostic> {
     let route = super::taken_route(ctx)?;
-    let caller = std::mem::replace(&mut ctx.scope, ScopeId::Program);
-    let emitted = match ctx.lowered_ids.pou_in(ScopeId::Program) {
+    let emitted = match super::current_pou(ctx) {
         Some(program) => emit(emitter, ctx, route.lowering(), program),
         None => Err(Diagnostic::internal_error()),
     };
-    ctx.scope = caller;
     ctx.lowered_route = Some(route);
     emitted
 }

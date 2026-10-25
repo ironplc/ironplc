@@ -33,8 +33,8 @@ pub(super) struct Region<'a> {
     /// The reachable user function blocks, which an instance of one is laid
     /// out for.
     blocks: &'a [PouId],
-    /// The standard function block each type is, by its upper-case name.
-    standard_blocks: &'a HashMap<String, StandardFunctionBlock>,
+    /// The standard function block each lowered POU without a body is.
+    standard_blocks: &'a HashMap<PouId, StandardFunctionBlock>,
     /// Where the next run starts.
     next: u32,
 }
@@ -45,7 +45,7 @@ impl<'a> Region<'a> {
     pub(super) fn new(
         lowering: &'a PartialProgram,
         blocks: &'a [PouId],
-        standard_blocks: &'a HashMap<String, StandardFunctionBlock>,
+        standard_blocks: &'a HashMap<PouId, StandardFunctionBlock>,
     ) -> Self {
         Self {
             lowering,
@@ -164,8 +164,7 @@ impl<'a> Region<'a> {
             }
             return Some(Some(start));
         }
-        let name = self.lowering.pous().name(body)?.to_string().to_uppercase();
-        let Some(block) = self.standard_blocks.get(&name) else {
+        let Some(block) = self.standard_blocks.get(&body) else {
             return Some(None);
         };
         let (_, fields, _) = standard_fb_layout(*block);

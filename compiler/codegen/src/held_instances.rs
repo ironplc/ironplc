@@ -10,6 +10,7 @@
 //! analyzer rejects a block that holds itself (P4005).
 
 use ironplc_container::FbTypeId;
+use ironplc_ir::lowered::PouId;
 
 use crate::compile::{CompileContext, FbFieldIndex};
 use crate::compile_call::standard_fb_layout;
@@ -23,9 +24,9 @@ pub(crate) struct HeldField {
     pub(crate) name: String,
     /// The field's index.
     pub(crate) index: FbFieldIndex,
-    /// The name of the block, in uppercase, as `user_fb_types` and
+    /// The lowered POU of the block, as `user_fb_types` and
     /// `standard_blocks` know it.
-    pub(crate) block: String,
+    pub(crate) block: PouId,
 }
 
 /// What the layout keeps for each instance of a block.
@@ -66,8 +67,8 @@ impl HeldInstance {
     }
 }
 
-/// The layout of the instances of the block named `block`, in uppercase.
-pub(crate) fn layout<'c>(ctx: &'c CompileContext, block: &str) -> Option<BlockLayout<'c>> {
+/// The layout of the instances of the block whose lowered POU is `block`.
+pub(crate) fn layout(ctx: &CompileContext, block: PouId) -> Option<BlockLayout<'_>> {
     if let Some(user_fb) = ctx.user_fb_type(block) {
         return Some(BlockLayout {
             type_id: user_fb.type_id,
@@ -75,7 +76,7 @@ pub(crate) fn layout<'c>(ctx: &'c CompileContext, block: &str) -> Option<BlockLa
             held: &user_fb.held_fields,
         });
     }
-    let (type_id, fields, _) = standard_fb_layout(*ctx.standard_blocks.get(block)?);
+    let (type_id, fields, _) = standard_fb_layout(*ctx.standard_blocks.get(&block)?);
     Some(BlockLayout {
         type_id,
         fields,

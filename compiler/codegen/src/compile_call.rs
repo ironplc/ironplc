@@ -10,6 +10,8 @@ use ironplc_analyzer::{
 use ironplc_container::{opcode, FbTypeId};
 use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_ir::lowered::PouId;
+use ironplc_lowering::PartialProgram;
 
 use super::compile::{OpWidth, Signedness, VarTypeInfo};
 use crate::emit::Emitter;
@@ -132,16 +134,29 @@ pub(crate) fn standard_fb_layout(
     (FbTypeId::new(type_id), fields, field_map)
 }
 
-/// The standard function block each type of `types` is, by the type's
-/// upper-case name, as the type environment records it: the block whose VM
-/// block [`standard_fb_layout`] gives a lowered call of a POU of that name.
-pub(crate) fn standard_blocks_by_name(
+/// The standard function block each POU of `lowering` without a
+/// declaration of its own is, as the type environment `types` records the
+/// type of the POU's name: the block whose VM block [`standard_fb_layout`]
+/// gives a lowered call of the POU.
+///
+/// Lowering does not generate the standard blocks yet (issue 2288), so the
+/// POU's name is what matches it to its block, here, once.
+pub(crate) fn standard_blocks(
+    lowering: &PartialProgram,
     types: &TypeEnvironment,
-) -> HashMap<String, StandardFunctionBlock> {
-    types
+) -> HashMap<PouId, StandardFunctionBlock> {
+    let by_name: HashMap<String, StandardFunctionBlock> = types
         .iter()
         .filter_map(|(name, attributes)| {
             Some((name.to_string().to_uppercase(), attributes.standard_block?))
+        })
+        .collect();
+    let pous = lowering.pous();
+    pous.ids()
+        .filter(|pou| lowering.parts(*pou).is_none())
+        .filter_map(|pou| {
+            let name = pous.name(pou)?.to_string().to_uppercase();
+            Some((pou, *by_name.get(&name)?))
         })
         .collect()
 }

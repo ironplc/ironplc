@@ -28,7 +28,6 @@ use super::call_args::{emit_passed, passes};
 use super::place::variable_name;
 use crate::compile::{CompileContext, ParamPassing, StringVarInfo};
 use crate::emit::Emitter;
-use crate::layout::ids::LaidOut;
 
 /// A call of a method, as this backend's layout knows it: the receiver's
 /// instance, and the method.
@@ -74,15 +73,8 @@ pub(super) fn method_site(
     pou: PouId,
     args: &[Arg],
 ) -> Option<MethodSite> {
-    let LaidOut::Method {
-        block: block_name,
-        method: method_name,
-    } = ctx.lowered_ids.pou(pou)?
-    else {
-        return None;
-    };
-    let block = ctx.user_fb_type(block_name)?;
-    let method = block.methods.get(method_name)?;
+    let block = ctx.user_fb_type(lowering.pous().method_of(pou)?)?;
+    let method = block.methods.get(&pou)?;
     let Some(Arg::Ref(receiver)) = args.first() else {
         return None;
     };
