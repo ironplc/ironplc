@@ -65,8 +65,8 @@ use ironplc_ir::lowered::{
     Arg, Expr, Owner, Param, Place, PouId, Projection, Stmt, TypeId, TypeKind, VarId,
 };
 
-use crate::variables::BodyFrame;
-use crate::{Body, CallOutputs, Lowered, Lowering, Unlowered};
+use crate::variables::{BodyFrame, CallOutputs};
+use crate::{Body, Lowered, Lowering, Unlowered};
 
 /// The section that declares a parameter of a function or method.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

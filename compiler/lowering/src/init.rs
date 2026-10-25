@@ -91,10 +91,10 @@ enum Reach<'f> {
     /// The initializer of a field of the program instance, the variable,
     /// whose body is the frame: it names the program's variables, reached
     /// through the instance, as `init` runs in no body.
-    Instance(&'f BodyFrame, VarId),
+    Instance(&'f BodyFrame<'f>, VarId),
     /// The initializer of a variable of the body of the frame, which runs
     /// in that body.
-    Body(&'f BodyFrame),
+    Body(&'f BodyFrame<'f>),
 }
 
 impl<'a> Lowering<'a> {

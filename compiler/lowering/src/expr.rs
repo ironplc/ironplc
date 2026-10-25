@@ -172,7 +172,7 @@ impl Lowering<'_> {
             AstExprKind::Null(_) => Ok(Expr::null(span)),
             // The output of the function block call whose outputs are being
             // stored (`fb_call.rs`).
-            AstExprKind::CallOutput(output) => self.call_output(output, span),
+            AstExprKind::CallOutput(output) => self.call_output(frame, output, span),
             AstExprKind::MethodCall(call) => self.method_call_expr(frame, expr, call),
         }
     }
