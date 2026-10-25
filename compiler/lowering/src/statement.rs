@@ -31,8 +31,8 @@ impl Lowering<'_> {
             AstStmtKind::For(stmt) => one(self.for_statement(frame, stmt)),
             AstStmtKind::While(stmt) => one(self.while_statement(frame, stmt)),
             AstStmtKind::Repeat(stmt) => one(self.repeat_statement(frame, stmt)),
-            AstStmtKind::Exit(span) => one(self.exit_statement(span)),
-            AstStmtKind::Continue(span) => one(self.continue_statement(span)),
+            AstStmtKind::Exit(span) => one(self.exit_statement(frame, span)),
+            AstStmtKind::Continue(span) => one(self.continue_statement(frame, span)),
             // The AST keeps no span for a `RETURN`.
             AstStmtKind::Return => Ok(vec![Stmt::return_(SourceSpan::default())]),
             AstStmtKind::FbCall(call) => self.fb_call(frame, call),
@@ -162,7 +162,7 @@ impl Lowering<'_> {
         span: SourceSpan,
     ) -> Lowered<Stmt> {
         let source = if let AstExprKind::CallOutput(output) = &value.kind {
-            self.call_output_place(output)?
+            self.call_output_place(frame, output)?
         } else if let AstExprKind::Variable(variable) = &value.kind {
             self.variable_place(frame, variable)?
         } else {
