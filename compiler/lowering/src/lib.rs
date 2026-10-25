@@ -8,16 +8,18 @@
 //! the program: only P9999 for a construct it cannot express yet, and P9998
 //! for a compiler defect (REQ-LOW-lowering-109).
 //!
-//! [`Lowering::lower_program`] lowers the whole library in one walk: every
-//! declaration of every reachable POU and every global first, then each
-//! top-level statement of each body. A [`PartialProgram`] records what did
-//! not lower, and is the whole lowered program once everything did.
+//! [`lower`] gives the whole lowered program a backend compiles, or a P9999
+//! at each construct lowering does not express yet. It completes every
+//! initializer on a copy of the library, then [`Lowering::lower_program`]
+//! lowers the copy in one walk: every declaration of every reachable POU and
+//! every global first, then each top-level statement of each body. A
+//! [`PartialProgram`] records what did not lower, and is the whole lowered
+//! program once everything did.
 //!
-//! While codegen still compiles some statements from the AST, lowering grows
-//! one top-level statement at a time. It lowers a statement only when it
-//! supports the statement and every statement and expression inside it. A
-//! statement it does not support yet is [`StatementLowering::Unsupported`]:
-//! that is not a defect, and codegen compiles the statement from the AST.
+//! Lowering lowers a statement only when it supports the statement and every
+//! statement and expression inside it. A statement it does not support yet
+//! is [`StatementLowering::Unsupported`]: that is not a defect, and is a
+//! P9999 at the statement.
 //!
 //! Lowering takes a [`CleanAnalysis`] and has no entry point that takes a
 //! library without one (REQ-LOW-lowering-011).
@@ -29,11 +31,13 @@
 mod bits;
 mod call;
 mod control;
+mod execution_model;
 mod expr;
 mod fb_call;
 mod function;
 mod init;
 pub mod initial_value;
+mod interface;
 mod place;
 mod program;
 mod statement;
@@ -43,6 +47,7 @@ mod structure_result;
 mod time;
 mod types;
 mod variables;
+mod whole;
 
 #[cfg(test)]
 mod call_tests;
@@ -83,6 +88,14 @@ mod time_tests;
 #[cfg(test)]
 mod types_tests;
 
+// Spec conformance testing infrastructure (test-only)
+#[cfg(test)]
+mod spec_requirements {
+    include!(concat!(env!("OUT_DIR"), "/spec_requirements.rs"));
+}
+#[cfg(test)]
+mod spec_conformance;
+
 use std::collections::HashMap;
 
 use ironplc_analyzer::symbol_environment::DeclRef;
@@ -92,7 +105,8 @@ use ironplc_dsl::common::{
 };
 use ironplc_dsl::core::Id;
 use ironplc_dsl::oop::MethodDeclaration;
-pub use program::{Declaration, PartialProgram};
+pub use program::PartialProgram;
+pub use whole::{lower, parse_policy};
 
 use ironplc_ir::lowered::{LoopScope, ParsePolicy, Place, PouId, ProgramBuilder, Stmt, VarId};
 
@@ -116,7 +130,7 @@ pub enum StatementLowering {
     /// it runs, in order.
     Lowered(Vec<Stmt>),
     /// The statement, or something inside it, is not one lowering supports
-    /// yet. Not a defect: the statement is compiled from the AST.
+    /// yet. Not a defect: the statement is a P9999.
     Unsupported,
 }
 

@@ -26,22 +26,25 @@
 //! reaches a variable finds the one already declared.
 //!
 //! What it makes is a [`PartialProgram`]: lowering does not express every
-//! declaration and statement yet, and codegen compiles one it does not from
-//! the AST. [`PartialProgram::into_program`] gives the whole program once
-//! every one is lowered.
+//! declaration and statement yet. [`PartialProgram::into_program`] gives the
+//! whole program once every one is lowered, and otherwise a P9999 at each
+//! that did not.
 
 use std::collections::{HashMap, HashSet};
 
+use ironplc_dsl::common::TypeName;
 use ironplc_dsl::common::{FunctionBlockBodyKind, LibraryElementKind, VarDecl, VariableType};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::StmtKind;
 use ironplc_ir::execution::{DebugName, ExecutionModel, InstanceOf};
 use ironplc_ir::lowered::{
-    Declared, ExecutionBindings, FieldIdx, Owner, PouId, PouKind, PouParts, PouTable, Program,
-    ProgramBuilder, Projection, Section, Stmt, TypeTable, VarId, VariableTable,
+    Declaration, Declared, ExecutionBindings, Owner, PouId, PouKind, PouParts, PouTable, Program,
+    ProgramBuilder, Projection, Section, StandardFunctionBlock, Stmt, TypeTable, VarId,
+    VariableTable,
 };
 
+use crate::execution_model;
 use crate::init::{Stores, Values};
 use crate::variables::BodyFrame;
 use crate::{Body, Lowering, StatementLowering};
@@ -62,20 +65,10 @@ pub struct PartialProgram {
     /// The variable of each method whose result is an array or a structure
     /// that holds the result.
     aggregate_results: HashMap<PouId, VarId>,
+    /// The standard function block each POU with no body in the library
+    /// stands for, which lowering does not generate yet (issue 2288).
+    standard_blocks: HashMap<PouId, StandardFunctionBlock>,
     init: Stores,
-}
-
-/// One declaration of a body: what its name declares, in the order the body
-/// declares them.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Declaration {
-    /// A field of the body's instance.
-    Field(FieldIdx),
-    /// A variable of the body's own, or a global a PLCopen program declares
-    /// in its interface.
-    Variable(VarId),
-    /// The global a `VAR_EXTERNAL` names.
-    External(VarId),
 }
 
 /// One body of the program and what its statements lowered to.
@@ -219,7 +212,24 @@ impl PartialProgram {
     /// temporaries lowering makes for its statements.
     pub fn parts(&self, pou: PouId) -> Option<PouParts> {
         let body = self.bodies.iter().find(|body| body.pou == pou)?;
-        Some(parts(&self.builder, body))
+        Some(self.parts_of(body))
+    }
+
+    /// The parts of the POU of `body`.
+    fn parts_of(&self, body: &LoweredBody) -> PouParts {
+        PouParts {
+            kind: body.kind,
+            instance: body.instance,
+            locals: locals(&self.builder, body.pou, body.instance),
+            declarations: body.declarations.clone(),
+            result: self.result(body.pou),
+        }
+    }
+
+    /// The standard function block the POU `pou`, which has no body in the
+    /// library, stands for; `None` for any other POU.
+    pub fn standard_block(&self, pou: PouId) -> Option<StandardFunctionBlock> {
+        self.standard_blocks.get(&pou).copied()
     }
 
     /// The types the program refers to.
@@ -238,10 +248,10 @@ impl PartialProgram {
     }
 
     /// The whole program; otherwise one P9999 at each declaration, body,
-    /// statement and starting value lowering does not express yet, and at
-    /// each POU that has no body in the library, a standard function
-    /// block's, so that every one is reported (REQ-LOW-lowering-110, 111,
-    /// 112).
+    /// statement and starting value lowering does not express yet, so that
+    /// every one is reported (REQ-LOW-lowering-110, 111, 112). A POU with no
+    /// body in the library stands for the standard function block of its
+    /// name (REQ-LOW-ir-203).
     pub fn into_program(self) -> Result<Program, Vec<Diagnostic>> {
         let mut unsupported: Vec<Diagnostic> = self
             .incomplete
@@ -271,7 +281,9 @@ impl PartialProgram {
         }
         let pous = self.builder.pous();
         for pou in pous.ids() {
-            if !self.bodies.iter().any(|body| body.pou == pou) {
+            let declared = self.bodies.iter().any(|body| body.pou == pou)
+                || self.standard_blocks.contains_key(&pou);
+            if !declared {
                 let span = pous.name(pou).map(|name| name.span()).unwrap_or_default();
                 unsupported.push(Diagnostic::todo_with_span(span));
             }
@@ -279,12 +291,22 @@ impl PartialProgram {
         if !unsupported.is_empty() {
             return Err(unsupported);
         }
+        let all_parts: Vec<PouParts> = self.bodies.iter().map(|body| self.parts_of(body)).collect();
         let mut builder = self.builder;
         for stmt in self.init.statements {
             builder.push_init(stmt);
         }
-        for body in self.bodies {
-            let parts = parts(&builder, &body);
+        for (pou, block) in self.standard_blocks {
+            let span = builder
+                .pous()
+                .name(pou)
+                .map(|name| name.span())
+                .unwrap_or_default();
+            builder
+                .declare_standard_block(pou, block, &span)
+                .map_err(|diagnostic| vec![diagnostic])?;
+        }
+        for (body, parts) in self.bodies.into_iter().zip(all_parts) {
             builder
                 .declare_parts(body.pou, parts, &body.span)
                 .map_err(|diagnostic| vec![diagnostic])?;
@@ -292,7 +314,7 @@ impl PartialProgram {
                 Statements::Lowered(statements) => statements,
                 Statements::Sfc | Statements::Undeclared => Vec::new(),
             };
-            let mut lowered = body.prologue.statements;
+            let mut lowered = Vec::new();
             for (_, statement) in statements {
                 match statement {
                     StatementLowering::Lowered(statements) => lowered.extend(statements),
@@ -300,21 +322,12 @@ impl PartialProgram {
                 }
             }
             builder
-                .set_body(body.pou, lowered, &body.span)
+                .set_body(body.pou, body.prologue.statements, lowered, &body.span)
                 .map_err(|diagnostic| vec![diagnostic])?;
         }
         builder
             .finish(self.execution, self.bindings)
             .map_err(|diagnostic| vec![diagnostic])
-    }
-}
-
-/// The parts of the POU of `body`.
-fn parts(builder: &ProgramBuilder, body: &LoweredBody) -> PouParts {
-    PouParts {
-        kind: body.kind,
-        instance: body.instance,
-        locals: locals(builder, body.pou, body.instance),
     }
 }
 
@@ -356,7 +369,10 @@ impl<'a> Lowering<'a> {
         for body in &bodies {
             self.body_pou(*body);
         }
-        let execution = self.analysis.execution_model().clone();
+        let (execution, declarations) = execution_model::resolve_with_declarations(
+            self.analysis.library(),
+            self.analysis.context().compiler_options(),
+        );
         let mut bindings = ExecutionBindings::new();
         let mut incomplete = Vec::new();
         for (id, global) in execution.globals() {
@@ -375,7 +391,7 @@ impl<'a> Lowering<'a> {
             frames.push(frame);
         }
         for (id, _) in execution.programs() {
-            if let Some(program) = self.analysis.program_declaration(id) {
+            if let Some(program) = declarations.program(id) {
                 bindings.bind_program(id, self.body_pou(Body::Program(program)));
             }
         }
@@ -383,7 +399,7 @@ impl<'a> Lowering<'a> {
             let InstanceOf::Program(id) = &instance.program else {
                 continue;
             };
-            let Some(program) = self.analysis.program_declaration(*id) else {
+            let Some(program) = declarations.program(*id) else {
                 continue;
             };
             let pou = self.body_pou(Body::Program(program));
@@ -412,11 +428,12 @@ impl<'a> Lowering<'a> {
             .map(|(var, _)| var)
             .collect();
         let values = Values::of(self.analysis.context().types());
-        let init = self.lower_init(&execution, &bindings, &values)?;
+        let init = self.lower_init(&execution, &declarations, &bindings, &values)?;
         let mut lowered = Vec::with_capacity(bodies.len());
         for (body, frame) in bodies.into_iter().zip(frames) {
             lowered.push(self.lower_body(body, frame, &values)?);
         }
+        let standard_blocks = self.standard_blocks(&lowered);
         Ok(PartialProgram {
             builder: std::mem::replace(&mut self.program, ProgramBuilder::new()),
             execution,
@@ -425,8 +442,27 @@ impl<'a> Lowering<'a> {
             incomplete,
             declared,
             aggregate_results: std::mem::take(&mut self.aggregate_results),
+            standard_blocks,
             init,
         })
+    }
+
+    /// The standard function block each POU that is neither a method nor
+    /// one of `bodies` stands for: the one the type of its name is, as the
+    /// type environment records it. Lowering does not generate the standard
+    /// blocks yet (issue 2288), so a call of one names a POU after the
+    /// block, and its name is what matches it to its block, here, once.
+    fn standard_blocks(&self, bodies: &[LoweredBody]) -> HashMap<PouId, StandardFunctionBlock> {
+        let types = self.analysis.context().types();
+        let pous = self.program.pous();
+        pous.ids()
+            .filter(|pou| pous.method_of(*pou).is_none())
+            .filter(|pou| !bodies.iter().any(|body| body.pou == *pou))
+            .filter_map(|pou| {
+                let name = TypeName::from(&pous.name(pou)?.to_string());
+                Some((pou, types.get(&name)?.standard_block?))
+            })
+            .collect()
     }
 
     /// The bodies of the reachable programs, functions and function blocks,

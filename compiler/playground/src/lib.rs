@@ -471,12 +471,7 @@ fn compile_inner(source: &str, dialect: &str, allows: &str, libraries: &str) -> 
     project.set_preparsed_libraries(compat_libraries);
     project.add_source_with_file_type(FileId::default(), source.to_owned(), file_type);
 
-    let output = ironplc_project::compile(
-        &mut project,
-        &options,
-        &ironplc_codegen::EmptyLookup,
-        vec![],
-    );
+    let output = ironplc_project::compile(&mut project, &ironplc_codegen::EmptyLookup, vec![]);
 
     let Some(container) = output.container else {
         return CompileResult {

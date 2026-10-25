@@ -12,7 +12,7 @@
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::Arg;
-use ironplc_lowering::PartialProgram;
+use ironplc_ir::lowered::Program;
 
 use super::aggregate::emit_source;
 use super::expr::{emit_expr, emit_ref};
@@ -40,7 +40,7 @@ pub(super) fn passes<'s>(
 pub(super) fn emit_passed<'s>(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &PartialProgram,
+    lowering: &Program,
     params: &[ParamPassing],
     args: impl IntoIterator<Item = &'s Arg>,
     span: &SourceSpan,

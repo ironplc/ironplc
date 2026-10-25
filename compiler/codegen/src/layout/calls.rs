@@ -6,8 +6,8 @@ use std::collections::HashMap;
 
 use ironplc_analyzer::StandardFunctionBlock;
 use ironplc_container::{FbTypeId, FunctionId, VarIndex};
+use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::{FieldIdx, PouId, Section, TypeId, TypeKind, VarId};
-use ironplc_lowering::PartialProgram;
 
 use super::lowered::{copy_slots, instance_type};
 use super::region::Run;
@@ -21,7 +21,7 @@ use crate::lowered::slot_type;
 
 /// The function blocks an instance can be of.
 pub(super) struct Blocks<'a> {
-    lowering: &'a PartialProgram,
+    lowering: &'a Program,
     /// The reachable user function blocks, which take the type ids from
     /// [`FIRST_USER_FB_TYPE_ID`] in this order.
     user: &'a [PouId],
@@ -42,7 +42,7 @@ impl<'a> Blocks<'a> {
     /// The function blocks of `lowering`: its reachable user blocks `user`,
     /// and the standard ones `standard` holds.
     pub(super) fn new(
-        lowering: &'a PartialProgram,
+        lowering: &'a Program,
         user: &'a [PouId],
         standard: &'a HashMap<PouId, StandardFunctionBlock>,
     ) -> Self {

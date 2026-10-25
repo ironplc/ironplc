@@ -9,43 +9,48 @@
 //! convention. Structurally this mirrors `compile_fn::compile_user_function`
 //! closely; the differences are exactly the parts of that convention.
 
-use ironplc_dsl::common::{FunctionBlockDeclaration, FunctionReturnType, MethodDeclaration};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_ir::lowered::{Nullability, PouKind, Program, TypeKind};
 
 use super::compile::{finalize_function, CompileContext, CompiledFunction, CurrentFunctionReturn};
 use super::compile_expr::emit_load_var;
 use super::compile_setup::emit_clear_result_slot;
-use super::compile_stmt::compile_statements;
 use super::layout::MethodLayout;
 use crate::emit::Emitter;
 
-/// Rejects a method of one of `fb_decls` whose result is a `STRING` or a
-/// `WSTRING`, which this backend does not compile yet (P9999).
-pub(crate) fn reject_string_results(
-    fb_decls: &[&FunctionBlockDeclaration],
-) -> Result<(), Diagnostic> {
-    let string_result = fb_decls
-        .iter()
-        .flat_map(|fb_decl| &fb_decl.methods)
-        .find_map(|method| match &method.return_type {
-            Some(FunctionReturnType::String(spec) | FunctionReturnType::WString(spec)) => {
-                Some(spec.keyword_span.clone())
-            }
-            Some(FunctionReturnType::Named(_)) | None => None,
-        });
-    match string_result {
-        Some(span) => Err(Diagnostic::not_implemented(Label::span(
-            span,
-            "STRING return type of a METHOD",
-        ))),
-        None => Ok(()),
+/// Rejects a method of `program` whose result is a `STRING` or a `WSTRING`,
+/// which this backend does not compile yet (P9999).
+pub(crate) fn reject_string_results(program: &Program) -> Result<(), Diagnostic> {
+    let types = program.types();
+    for pou in program.pous().ids() {
+        if program.parts(pou).map(|parts| parts.kind) != Some(PouKind::Method) {
+            continue;
+        }
+        let Some(result) = program
+            .result(pou)
+            .and_then(|var| program.variables().get(var))
+        else {
+            continue;
+        };
+        // A result returned through a parameter is a reference to the
+        // caller's place.
+        let ty = match types.reference(result.ty()) {
+            Some((target, Nullability::NonNull)) => target,
+            Some((_, Nullability::Nullable)) | None => result.ty(),
+        };
+        if matches!(types.kind(ty), Some(TypeKind::String(_))) {
+            return Err(Diagnostic::not_implemented(Label::span(
+                result.name().span(),
+                "STRING return type of a METHOD",
+            )));
+        }
     }
+    Ok(())
 }
 
-/// Compiles the body of `method`, which `layout` lays out, in the method's
-/// scope; the caller's is current again once the body is compiled.
+/// Compiles the body of the method `layout` lays out, in the method's scope;
+/// the caller's is current again once the body is compiled.
 pub(crate) fn compile_user_method(
-    method: &MethodDeclaration,
     layout: MethodLayout,
     ctx: &mut CompileContext,
 ) -> Result<CompiledFunction, Diagnostic> {
@@ -69,10 +74,6 @@ pub(crate) fn compile_user_method(
         emit_clear_result_slot(&mut method_emitter, ctx, return_var_index, return_op_type);
     }
 
-    let body = ironplc_dsl::textual::Statements {
-        body: method.body.clone(),
-    };
-
     let saved_return_ctx = ctx.current_function_return.take();
     ctx.current_function_return = has_return_value.then_some(CurrentFunctionReturn::Scalar {
         var_index: return_var_index,
@@ -82,7 +83,7 @@ pub(crate) fn compile_user_method(
     let saved_current_fn = ctx.current_function_id.take();
     ctx.current_function_id = Some(function_id);
 
-    compile_statements(&mut method_emitter, ctx, &body)?;
+    crate::lowered::emit_body(&mut method_emitter, ctx)?;
 
     ctx.current_function_id = saved_current_fn;
     ctx.current_function_return = saved_return_ctx;

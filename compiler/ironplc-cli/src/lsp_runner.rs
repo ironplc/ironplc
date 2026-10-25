@@ -258,9 +258,21 @@ fn compile_to_bytes(source: &str, options: &CompilerOptions) -> Result<Vec<u8>, 
         ),
     })?;
 
-    let codegen_options = ironplc_codegen::CodegenOptions::from(options);
-    let container = codegen_compile(analysis, &codegen_options, &ironplc_codegen::EmptyLookup)
-        .map_err(|diag| RunResult {
+    let program = ironplc_lowering::lower(&analysis).map_err(|diagnostics| RunResult {
+        ok: false,
+        variables: vec![],
+        total_scans: 0,
+        error: Some(
+            diagnostics
+                .iter()
+                .map(|d| d.description())
+                .collect::<Vec<_>>()
+                .join("; "),
+        ),
+    })?;
+
+    let container =
+        codegen_compile(&program, &ironplc_codegen::EmptyLookup).map_err(|diag| RunResult {
             ok: false,
             variables: vec![],
             total_scans: 0,

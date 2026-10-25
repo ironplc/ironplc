@@ -23,6 +23,7 @@ ironplc-plc2plc = { path = "../plc2plc", version = "0.250.0" }
 ironplc-sources = { path = "../sources", version = "0.250.0" }
 ironplc-test = { path = "../test", version = "0.250.0" }
 ironplc-codegen = { path = "../codegen", version = "0.250.0" }
+ironplc-lowering = { path = "../lowering", version = "0.250.0" }
 ironplc-container = { path = "../container", version = "0.250.0" }
 ironplc-vm = { path = "../vm", version = "0.250.0" }
 ironplc-cli-support = { path = "../cli-support", version = "0.250.0" }
@@ -39,6 +40,8 @@ crossbeam-channel = "0.5"
 encoding_rs = "0.8"
 
 [dev-dependencies]
+# For the lowered program a test `Project` reports it has none of.
+ironplc-ir = { path = "../ir", version = "0.250.0" }
 assert_cmd = { version = "2.2" }
 predicates = { version = "3.1" }
 tempfile = "3"

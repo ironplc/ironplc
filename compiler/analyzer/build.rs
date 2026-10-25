@@ -23,9 +23,8 @@ fn main() {
         // Inspecting the expression type annotation (`REQ-ETR-analyzer-*`):
         // how a type is spelled in the annotated rendering.
         "expression-type-resolution.md",
-        // The resolved execution model (`REQ-EM-analyzer-*`): the
-        // configuration, its tasks and program instances, and the globals in
-        // scope, and the language rules on task parameters.
+        // The language rules on task parameters (`REQ-EM-analyzer-*`).
+        // Lowering owns the resolved execution model.
         "execution-model.md",
         // Initial values (`REQ-IV-analyzer-*`): the starting value of each declaration.
         "initial-values.md",

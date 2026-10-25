@@ -126,6 +126,8 @@ impl Whole {
             kind: PouKind::Program,
             instance: Some(self.this),
             locals: vec![],
+            declarations: vec![],
+            result: None,
         };
         self.b.declare_parts(self.main, parts, &span()).unwrap();
         let this = self.b.var(self.this, &span()).unwrap();
@@ -135,7 +137,7 @@ impl Whole {
         let g = self.b.var(self.g, &span()).unwrap();
         let read = self.b.read(g.clone(), span()).unwrap();
         let body = vec![self.b.assign(x, read, span()).unwrap()];
-        self.b.set_body(self.main, body, &span()).unwrap();
+        self.b.set_body(self.main, vec![], body, &span()).unwrap();
         let init = self.b.assign(g, int(5), span()).unwrap();
         self.b.push_init(init);
         self
@@ -191,6 +193,8 @@ fn finish_when_pou_has_no_body_then_internal_error() {
         kind: PouKind::Program,
         instance: Some(w.this),
         locals: vec![],
+        declarations: vec![],
+        result: None,
     };
     w.b.declare_parts(w.main, parts, &span()).unwrap();
 
@@ -204,7 +208,7 @@ fn finish_when_pou_has_no_body_then_internal_error() {
 #[test]
 fn finish_when_pou_has_no_parts_then_internal_error() {
     let mut w = whole();
-    w.b.set_body(w.main, vec![], &span()).unwrap();
+    w.b.set_body(w.main, vec![], vec![], &span()).unwrap();
 
     assert!(is_internal_error_naming(
         w.finish(),
@@ -221,9 +225,11 @@ fn finish_when_function_has_no_signature_then_internal_error() {
         kind: PouKind::Function,
         instance: None,
         locals: vec![],
+        declarations: vec![],
+        result: None,
     };
     w.b.declare_parts(function, parts, &span()).unwrap();
-    w.b.set_body(function, vec![], &span()).unwrap();
+    w.b.set_body(function, vec![], vec![], &span()).unwrap();
 
     assert!(is_internal_error_naming(
         w.finish(),
@@ -293,6 +299,8 @@ fn declare_parts_when_instance_or_kind_wrong_then_internal_error() {
         kind,
         instance,
         locals: vec![],
+        declarations: vec![],
+        result: None,
     };
 
     let mut w = whole();
@@ -345,6 +353,8 @@ fn declare_parts_when_local_of_another_pou_or_declared_twice_then_internal_error
         kind: PouKind::Program,
         instance: Some(w.this),
         locals: vec![w.g],
+        declarations: vec![],
+        result: None,
     };
     let result = w.b.declare_parts(w.main, parts, &span());
     assert!(is_internal_error_naming(
@@ -357,15 +367,108 @@ fn declare_parts_when_local_of_another_pou_or_declared_twice_then_internal_error
         kind: PouKind::Program,
         instance: Some(w.this),
         locals: vec![],
+        declarations: vec![],
+        result: None,
     };
     let twice = w.b.declare_parts(w.main, parts, &span());
     assert!(is_internal_error_naming(
         twice,
         "ProgramBuilder::declare_parts"
     ));
-    let body_twice = w.b.set_body(w.main, vec![], &span());
+    let body_twice = w.b.set_body(w.main, vec![], vec![], &span());
     assert!(is_internal_error_naming(
         body_twice,
         "ProgramBuilder::set_body"
+    ));
+}
+
+/// REQ-LOW-ir-203: a POU that stands for a standard function block needs no
+/// parts or body, and names the block.
+#[test]
+fn finish_when_pou_stands_for_standard_block_then_program_names_block() {
+    let mut w = whole().complete();
+    let ton = w.b.push_pou(name("TON"));
+    w.b.declare_standard_block(ton, StandardFunctionBlock::Ton, &span())
+        .unwrap();
+
+    let program = w.finish().unwrap();
+
+    assert_eq!(
+        program.pous().standard_block(ton),
+        Some(StandardFunctionBlock::Ton)
+    );
+    assert!(program.parts(ton).is_none());
+    assert!(program.pous().body(ton).is_none());
+}
+
+/// REQ-LOW-ir-203: a POU is a standard function block or has parts and a
+/// body, never both.
+#[test]
+fn declare_standard_block_when_pou_has_parts_or_block_then_internal_error() {
+    let mut w = whole().complete();
+    let with_parts =
+        w.b.declare_standard_block(w.main, StandardFunctionBlock::Ton, &span());
+    assert!(is_internal_error_naming(
+        with_parts,
+        "ProgramBuilder::declare_standard_block"
+    ));
+
+    let mut w = whole();
+    let ton = w.b.push_pou(name("TON"));
+    w.b.declare_standard_block(ton, StandardFunctionBlock::Ton, &span())
+        .unwrap();
+    let twice =
+        w.b.declare_standard_block(ton, StandardFunctionBlock::Tof, &span());
+    assert!(is_internal_error_naming(
+        twice,
+        "ProgramBuilder::declare_standard_block"
+    ));
+    let body = w.b.set_body(ton, vec![], vec![], &span());
+    assert!(is_internal_error_naming(body, "ProgramBuilder::set_body"));
+}
+
+/// REQ-LOW-lowering-195, 201: a POU's body runs its prologue and then its own
+/// statements, and the program tells the two apart.
+#[test]
+fn set_body_when_prologue_and_statements_then_body_runs_both_in_order() {
+    let mut w = whole();
+    let parts = PouParts {
+        kind: PouKind::Program,
+        instance: Some(w.this),
+        locals: vec![],
+        declarations: vec![],
+        result: None,
+    };
+    w.b.declare_parts(w.main, parts, &span()).unwrap();
+    let g = w.b.var(w.g, &span()).unwrap();
+    let first = w.b.assign(g.clone(), int(1), span()).unwrap();
+    let second = w.b.assign(g, int(2), span()).unwrap();
+    w.b.set_body(w.main, vec![first], vec![second], &span())
+        .unwrap();
+    let main = w.main;
+
+    let program = w.finish().unwrap();
+
+    assert_eq!(program.pous().body(main).map(<[Stmt]>::len), Some(2));
+    assert_eq!(program.prologue(main).map(<[Stmt]>::len), Some(1));
+    assert_eq!(program.statements(main).map(<[Stmt]>::len), Some(1));
+}
+
+/// REQ-LOW-lowering-197: the variable that holds a POU's result is one the
+/// POU owns.
+#[test]
+fn declare_parts_when_result_of_another_pou_then_internal_error() {
+    let mut w = whole();
+    let parts = PouParts {
+        kind: PouKind::Program,
+        instance: Some(w.this),
+        locals: vec![],
+        declarations: vec![],
+        result: Some(w.g),
+    };
+    let result = w.b.declare_parts(w.main, parts, &span());
+    assert!(is_internal_error_naming(
+        result,
+        "ProgramBuilder::declare_parts"
     ));
 }

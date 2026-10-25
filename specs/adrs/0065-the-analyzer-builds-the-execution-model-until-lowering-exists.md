@@ -2,6 +2,7 @@
 
 status: accepted
 date: 2026-10-09
+amended: 2026-10-25 (the model moved into `ironplc-lowering`; see "The move")
 
 ## Context and Problem Statement
 
@@ -76,6 +77,23 @@ lowered program will hold them.
   from the same walk that allocated the ids, which keeps a reference to each
   declaration, borrowed from the library, rather than its position. They go
   away when the lowered program carries bodies, types and initial values.
+
+### The move
+
+Once lowering built the whole lowered program, `execution_model` moved into
+`ironplc-lowering` unchanged, and lowering resolves the model, with the
+declaration behind each id, from the library it lowers. The
+`SemanticContext` no longer stores a copy, and `CleanAnalysis` holds only the
+library and its context: `execution_model`, `program_declaration` and
+`global_declaration` are gone, since the lowered program carries the bodies,
+the globals' storage and their starting values. The requirements on what the
+model holds are lowering's (`REQ-EM-lowering-*`); the two task rules stay the
+analyzer's.
+
+The analyzer still depends on `ironplc-ir`, now for the identity of a
+standard function block, which the lowered program also names on the POU
+that stands for one until lowering generates the standard blocks
+(`specs/design/lowered-program.md`, REQ-LOW-ir-203).
 
 ### Consequences
 

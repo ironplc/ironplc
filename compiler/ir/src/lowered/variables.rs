@@ -8,8 +8,9 @@ use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
 
 use super::call::Param;
-use super::ids::{PouId, Stamp, TypeId, VarId};
+use super::ids::{FieldIdx, PouId, Stamp, TypeId, VarId};
 use super::invariant::broken;
+use super::standard_block::StandardFunctionBlock;
 use super::stmt::Stmt;
 use super::types::{DirectAddress, Nullability, Retention, Section, TypeKind, TypeTable};
 use crate::execution::DebugName;
@@ -266,7 +267,8 @@ pub enum PouKind {
 }
 
 /// What a POU's declaration gives it besides its name and signature: what
-/// it is, the instance parameter its body works on, and its locals.
+/// it is, the instance parameter its body works on, its locals, what each of
+/// its declarations declares, and the variable that holds its result.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PouParts {
     pub kind: PouKind,
@@ -276,18 +278,50 @@ pub struct PouParts {
     /// The locals of a function or method, and the `VAR_TEMP` of any body,
     /// in declaration order. Its parameters and result are its signature's.
     pub locals: Vec<VarId>,
+    /// What each of its declarations declares, in the order it declares
+    /// them (REQ-LOW-lowering-197).
+    pub declarations: Vec<Declaration>,
+    /// The variable that holds a function's or method's result: its
+    /// signature's result or result parameter, or, for a method whose result
+    /// is an array or a structure, the local that holds it. `None` for any
+    /// other POU.
+    pub result: Option<VarId>,
+}
+
+/// One declaration of a body: what its name declares.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Declaration {
+    /// A field of the body's instance.
+    Field(FieldIdx),
+    /// A variable of the body's own, or a global a PLCopen program declares
+    /// in its interface.
+    Variable(VarId),
+    /// The global a `VAR_EXTERNAL` names.
+    External(VarId),
+}
+
+/// The statements a POU runs: the stores at its head that give its
+/// variables their starting values (REQ-LOW-lowering-195, 201), then its
+/// own.
+#[derive(Clone, Debug)]
+struct Body {
+    statements: Vec<Stmt>,
+    /// How many of `statements`, at their head, are the prologue.
+    prologue: usize,
 }
 
 /// One POU: its name, its signature when it is a function or method a call
 /// reaches, for a method the body of the function block it belongs to, and,
-/// once the whole program is lowered, its parts and its body.
+/// once the whole program is lowered, its parts and its body, or the
+/// standard function block it stands for.
 #[derive(Clone, Debug)]
 struct PouEntry {
     name: DebugName,
     function: Option<FunctionSignature>,
     method_of: Option<PouId>,
     parts: Option<PouParts>,
-    body: Option<Vec<Stmt>>,
+    body: Option<Body>,
+    standard_block: Option<StandardFunctionBlock>,
 }
 
 /// Every POU of a lowered program, by [`PouId`]. A
@@ -317,6 +351,7 @@ impl PouTable {
             method_of,
             parts: None,
             body: None,
+            standard_block: None,
         });
         id
     }
@@ -331,9 +366,33 @@ impl PouTable {
         self.entry(id).and_then(|entry| entry.parts.as_ref())
     }
 
-    /// The body of the POU `id`, or `None` if it is not set.
+    /// The body of the POU `id`, its prologue and then its own statements,
+    /// or `None` if it is not set.
     pub fn body(&self, id: PouId) -> Option<&[Stmt]> {
-        self.entry(id).and_then(|entry| entry.body.as_deref())
+        self.entry(id)
+            .and_then(|entry| entry.body.as_ref())
+            .map(|body| body.statements.as_slice())
+    }
+
+    /// The prologue of the POU `id`, the stores at the head of its body
+    /// that give its variables their starting values, or `None` if its body
+    /// is not set.
+    pub fn prologue(&self, id: PouId) -> Option<&[Stmt]> {
+        let body = self.entry(id)?.body.as_ref()?;
+        body.statements.get(..body.prologue)
+    }
+
+    /// The statements of the body of the POU `id` after its prologue, or
+    /// `None` if its body is not set.
+    pub fn statements(&self, id: PouId) -> Option<&[Stmt]> {
+        let body = self.entry(id)?.body.as_ref()?;
+        body.statements.get(body.prologue..)
+    }
+
+    /// The standard function block the POU `id` stands for, which has no
+    /// parts or body; `None` for any other POU.
+    pub fn standard_block(&self, id: PouId) -> Option<StandardFunctionBlock> {
+        self.entry(id).and_then(|entry| entry.standard_block)
     }
 
     /// Declares the parts of the POU `id`, or a P9998 at `span` if this
@@ -346,7 +405,7 @@ impl PouTable {
         span: &SourceSpan,
     ) -> Result<(), Diagnostic> {
         let entry = self.entry_mut("ProgramBuilder::declare_parts", id, span)?;
-        if entry.parts.is_some() {
+        if entry.parts.is_some() || entry.standard_block.is_some() {
             return Err(broken(
                 "ProgramBuilder::declare_parts",
                 span,
@@ -357,23 +416,53 @@ impl PouTable {
         Ok(())
     }
 
-    /// Sets the body of the POU `id`, or a P9998 at `span` if this table did
-    /// not allocate `id` or its body is set already.
+    /// Sets the body of the POU `id`, `prologue` and then `statements`, or a
+    /// P9998 at `span` if this table did not allocate `id` or its body is set
+    /// already.
     pub(crate) fn set_body(
         &mut self,
         id: PouId,
-        body: Vec<Stmt>,
+        prologue: Vec<Stmt>,
+        statements: Vec<Stmt>,
         span: &SourceSpan,
     ) -> Result<(), Diagnostic> {
         let entry = self.entry_mut("ProgramBuilder::set_body", id, span)?;
-        if entry.body.is_some() {
+        if entry.body.is_some() || entry.standard_block.is_some() {
             return Err(broken(
                 "ProgramBuilder::set_body",
                 span,
                 format!("the body of {id} is set already"),
             ));
         }
-        entry.body = Some(body);
+        let length = prologue.len();
+        let mut body = prologue;
+        body.extend(statements);
+        entry.body = Some(Body {
+            statements: body,
+            prologue: length,
+        });
+        Ok(())
+    }
+
+    /// Declares the POU `id` the standard function block `block`, or a
+    /// P9998 at `span` if this table did not allocate `id`, or `id` has
+    /// parts, a body or a standard block already.
+    pub(crate) fn declare_standard_block(
+        &mut self,
+        id: PouId,
+        block: StandardFunctionBlock,
+        span: &SourceSpan,
+    ) -> Result<(), Diagnostic> {
+        const CONSTRUCTOR: &str = "ProgramBuilder::declare_standard_block";
+        let entry = self.entry_mut(CONSTRUCTOR, id, span)?;
+        if entry.parts.is_some() || entry.body.is_some() || entry.standard_block.is_some() {
+            return Err(broken(
+                CONSTRUCTOR,
+                span,
+                format!("{id} is declared already"),
+            ));
+        }
+        entry.standard_block = Some(block);
         Ok(())
     }
 

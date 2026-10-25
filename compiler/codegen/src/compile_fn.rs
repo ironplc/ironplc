@@ -1,26 +1,22 @@
 //! User-defined function and function block compilation.
 //!
-//! Contains compilation of FUNCTION and FUNCTION_BLOCK declarations,
-//! including variable setup, body compilation, and metadata registration.
-//! Separated from compile.rs to keep module sizes within the 1000-line guideline.
+//! Contains compilation of the bodies of the lowered program's functions and
+//! function blocks. Separated from compile.rs to keep module sizes within
+//! the 1000-line guideline.
 
 use ironplc_container::FunctionId;
-use ironplc_dsl::common::{FunctionBlockDeclaration, FunctionDeclaration};
-use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::Diagnostic;
 
 use super::compile::{finalize_function, CompileContext, CompiledFunction, CurrentFunctionReturn};
 use super::compile_expr::emit_load_var;
-use super::compile_stmt::{compile_body, compile_statements};
 use super::layout::names::ScopeId;
 use super::layout::FunctionLayout;
 use crate::emit::Emitter;
 
-/// Compiles the body of the user function `func_decl`, which `layout` lays
-/// out, in the function's scope; the caller's is current again once the
-/// body is compiled.
+/// Compiles the body of the user function `layout` lays out, in the
+/// function's scope; the caller's is current again once the body is
+/// compiled.
 pub(crate) fn compile_user_function(
-    func_decl: &FunctionDeclaration,
     layout: FunctionLayout,
     ctx: &mut CompileContext,
 ) -> Result<CompiledFunction, Diagnostic> {
@@ -43,10 +39,6 @@ pub(crate) fn compile_user_function(
     // retains stale values between calls otherwise.
     crate::lowered::emit_prologue(&mut func_emitter, ctx)?;
 
-    let body = ironplc_dsl::textual::Statements {
-        body: func_decl.body.clone(),
-    };
-
     // Make the return descriptor visible to nested `RETURN` statements so an
     // early RETURN produces the function's value before the RET opcode (rather
     // than emitting a bare RET_VOID, which would leave the caller's stack
@@ -68,7 +60,7 @@ pub(crate) fn compile_user_function(
     let saved_current_fn = ctx.current_function_id.take();
     ctx.current_function_id = Some(function_id);
 
-    compile_statements(&mut func_emitter, ctx, &body)?;
+    crate::lowered::emit_body(&mut func_emitter, ctx)?;
 
     ctx.current_function_id = saved_current_fn;
     ctx.current_function_return = saved_return_ctx;
@@ -104,12 +96,10 @@ pub(crate) fn compile_user_function(
     })
 }
 
-/// Compiles the body of the user function block `fb_decl`, whose id is
-/// `function_id` and whose `num_locals` copy slots the layout gave it, in
-/// the block's scope, `scope`; the caller's is current again once the body
-/// is compiled.
+/// Compiles the body of the user function block whose id is `function_id`
+/// and whose `num_locals` copy slots the layout gave it, in the block's
+/// scope, `scope`; the caller's is current again once the body is compiled.
 pub(crate) fn compile_user_function_block(
-    fb_decl: &FunctionBlockDeclaration,
     function_id: FunctionId,
     scope: ScopeId,
     num_locals: u16,
@@ -131,7 +121,7 @@ pub(crate) fn compile_user_function_block(
     if crate::lowered::restarts(ctx)? {
         crate::lowered::emit_prologue(&mut fb_emitter, ctx)?;
     }
-    compile_body(&mut fb_emitter, ctx, &fb_decl.body, &fb_decl.name.span())?;
+    crate::lowered::emit_body(&mut fb_emitter, ctx)?;
     fb_emitter.emit_ret_void();
 
     ctx.current_function_id = saved_current_fn;

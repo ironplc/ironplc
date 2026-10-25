@@ -68,7 +68,7 @@ impl HeldInstance {
 }
 
 /// The layout of the instances of the block whose lowered POU is `block`.
-pub(crate) fn layout(ctx: &CompileContext, block: PouId) -> Option<BlockLayout<'_>> {
+pub(crate) fn layout<'c>(ctx: &'c CompileContext, block: PouId) -> Option<BlockLayout<'c>> {
     if let Some(user_fb) = ctx.user_fb_type(block) {
         return Some(BlockLayout {
             type_id: user_fb.type_id,

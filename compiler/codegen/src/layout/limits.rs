@@ -8,8 +8,8 @@
 
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_ir::lowered::{Declaration, Program};
 use ironplc_ir::lowered::{TypeId, TypeKind, TypeTable};
-use ironplc_lowering::{Declaration, PartialProgram};
 
 use super::lowered::{copy_slots, frame, globals, instance_type, Pous};
 use super::region::{elements, slots};
@@ -22,7 +22,7 @@ const MAX_USER_FB_FIELDS: usize = u8::MAX as usize;
 
 /// Checks every declaration of the POUs `pous` of `lowering` within the
 /// limits, at the first that is not.
-pub(super) fn check(lowering: &PartialProgram, pous: &Pous) -> Option<Result<(), Diagnostic>> {
+pub(super) fn check(lowering: &Program, pous: &Pous) -> Option<Result<(), Diagnostic>> {
     let types = lowering.types();
     let variables = lowering.variables();
     let mut declared = Vec::new();

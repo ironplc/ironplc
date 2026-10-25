@@ -13,7 +13,7 @@ use ironplc_parser::options::CompilerOptions;
 use ironplc_parser::parse_program;
 
 /// Compiles an IEC 61131-3 source string through the full pipeline:
-/// parse → analyze (all semantic rules) → codegen.
+/// parse → analyze (all semantic rules) → lower → codegen.
 ///
 /// Panics if the source fails to parse, has semantic diagnostics, or fails
 /// to compile. The panic message lists the diagnostic codes so a failing
@@ -26,6 +26,9 @@ pub fn compile_st(source: &str) -> Container {
         let codes: Vec<&str> = diagnostics.iter().map(|d| d.code.as_str()).collect();
         panic!("Source has semantic diagnostics: {codes:?}")
     });
-    let codegen_options = ironplc_codegen::CodegenOptions::default();
-    compile(analysis, &codegen_options, &ironplc_codegen::EmptyLookup).unwrap()
+    let program = ironplc_lowering::lower(&analysis).unwrap_or_else(|diagnostics| {
+        let codes: Vec<&str> = diagnostics.iter().map(|d| d.code.as_str()).collect();
+        panic!("Source does not lower: {codes:?}")
+    });
+    compile(&program, &ironplc_codegen::EmptyLookup).unwrap()
 }

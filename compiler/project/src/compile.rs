@@ -1,4 +1,4 @@
-//! The compile pipeline: parse -> analyze -> codegen.
+//! The compile pipeline: parse -> analyze -> lower -> codegen.
 //!
 //! This module owns "compile a project". Every front end (the CLI's `compile`
 //! command, the MCP `compile` tool, the browser playground) calls
@@ -11,11 +11,9 @@
 //! codes and a file on disk, a JSON response and a cache handle, or a base64
 //! string handed back to JavaScript.
 
-use ironplc_analyzer::CleanAnalysis;
-use ironplc_codegen::{CodegenOptions, SourceLookup};
+use ironplc_codegen::SourceLookup;
 use ironplc_container::Container;
 use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_parser::options::CompilerOptions;
 use log::debug;
 
 use crate::project::Project;
@@ -23,7 +21,8 @@ use crate::project::Project;
 /// What the compile pipeline produced.
 pub struct CompileOutput {
     /// Every diagnostic the pipeline collected, in stage order: the
-    /// caller-supplied ones first, then parsing and analysis, then codegen.
+    /// caller-supplied ones first, then parsing, analysis and lowering, then
+    /// codegen.
     ///
     /// Empty means the project is clean.
     pub diagnostics: Vec<Diagnostic>,
@@ -37,8 +36,8 @@ pub struct CompileOutput {
     pub container: Option<Container>,
 }
 
-/// Runs the full compile pipeline -- parse, semantic analysis, codegen -- over
-/// `project`.
+/// Runs the full compile pipeline -- parse, semantic analysis, lowering,
+/// codegen -- over `project`.
 ///
 /// `diagnostics` seeds the collection with problems the caller found before
 /// the pipeline ran (the CLI's project-discovery and output-path problems).
@@ -47,26 +46,28 @@ pub struct CompileOutput {
 /// hide a real bug in the files that did resolve, but it must still prevent a
 /// container from being produced.
 ///
-/// Analysis always runs. Codegen runs only when nothing at all -- seeded,
-/// parse, or analysis -- reported a problem.
+/// Analysis always runs, and lowering after a clean analysis. Codegen runs
+/// only when nothing at all -- seeded, parse, analysis or lowering --
+/// reported a problem, and compiles the program the analysis lowered: it
+/// does not lower a second time (REQ-LOW-project-005).
 ///
 /// `source_lookup` hands codegen the exact bytes the parser saw for each file,
 /// which the container's debug section hashes so a debugger can detect drift.
 /// Callers with no source bytes to offer pass
 /// [`EmptyLookup`](ironplc_codegen::EmptyLookup).
 ///
-/// The analyzed library and semantic context stay cached on `project`, so a
-/// caller that needs them (for task/program metadata, or to build a symbol
-/// map) reads them back through [`Project::analyzed_library`] and
-/// [`Project::semantic_context`] after this returns.
+/// The analyzed library, the semantic context and the lowered program stay
+/// cached on `project`, so a caller that needs them (for task/program
+/// metadata, or to build a symbol map) reads them back through
+/// [`Project::analyzed_library`], [`Project::semantic_context`] and
+/// [`Project::lowered_program`] after this returns.
 pub fn compile(
     project: &mut dyn Project,
-    compiler_options: &CompilerOptions,
     source_lookup: &dyn SourceLookup,
     mut diagnostics: Vec<Diagnostic>,
 ) -> CompileOutput {
-    // Parse and analyze. Analysis goes as far as it can and reports everything
-    // it found; it never short-circuits on the seeded diagnostics.
+    // Parse, analyze and lower. Analysis goes as far as it can and reports
+    // everything it found; it never short-circuits on the seeded diagnostics.
     diagnostics.extend(project.semantic());
 
     if !diagnostics.is_empty() {
@@ -77,14 +78,10 @@ pub fn compile(
         };
     }
 
-    let Some(Ok(analysis)) = project
-        .analyzed_library()
-        .zip(project.semantic_context())
-        .map(|(library, context)| CleanAnalysis::new(library, context))
-    else {
-        // A clean analysis always caches its artifacts, and the context's
-        // diagnostics are among those checked above, so this is a compiler
-        // defect rather than a problem with the input.
+    let Some(program) = project.lowered_program() else {
+        // A clean analysis always caches the program it lowered, and
+        // lowering's diagnostics are among those checked above, so this is a
+        // compiler defect rather than a problem with the input.
         diagnostics.push(Diagnostic::internal_error());
         return CompileOutput {
             diagnostics,
@@ -92,11 +89,9 @@ pub fn compile(
         };
     };
 
-    // Generate bytecode, skipping user-defined functions not reachable from
-    // the PROGRAM root to reduce container size.
-    let codegen_options = CodegenOptions::from(compiler_options);
-
-    match ironplc_codegen::compile(analysis, &codegen_options, source_lookup) {
+    // Generate bytecode. The lowered program holds only the POUs reachable
+    // from a program.
+    match ironplc_codegen::compile(program, source_lookup) {
         Ok(container) => CompileOutput {
             diagnostics,
             container: Some(container),
@@ -149,12 +144,7 @@ END_PROGRAM
     #[test]
     fn compile_when_valid_program_then_container_and_no_diagnostics() {
         let mut project = project_with(VALID_PROGRAM);
-        let output = compile(
-            &mut project,
-            &CompilerOptions::default(),
-            &EmptyLookup,
-            vec![],
-        );
+        let output = compile(&mut project, &EmptyLookup, vec![]);
 
         assert!(
             output.diagnostics.is_empty(),
@@ -167,12 +157,7 @@ END_PROGRAM
     #[test]
     fn compile_when_syntax_error_then_no_container() {
         let mut project = project_with("PROGRAM END_PROGRAM");
-        let output = compile(
-            &mut project,
-            &CompilerOptions::default(),
-            &EmptyLookup,
-            vec![],
-        );
+        let output = compile(&mut project, &EmptyLookup, vec![]);
 
         assert!(!output.diagnostics.is_empty());
         assert!(output.container.is_none());
@@ -182,12 +167,7 @@ END_PROGRAM
     fn compile_when_semantic_error_then_no_container() {
         let mut project =
             project_with("PROGRAM Main VAR x : INT; END_VAR x := undeclared_var; END_PROGRAM");
-        let output = compile(
-            &mut project,
-            &CompilerOptions::default(),
-            &EmptyLookup,
-            vec![],
-        );
+        let output = compile(&mut project, &EmptyLookup, vec![]);
 
         assert!(!output.diagnostics.is_empty());
         assert!(output.container.is_none());
@@ -201,12 +181,7 @@ END_PROGRAM
     fn compile_when_seeded_diagnostic_then_no_container() {
         let mut project = project_with(VALID_PROGRAM);
 
-        let output = compile(
-            &mut project,
-            &CompilerOptions::default(),
-            &EmptyLookup,
-            seeded_diagnostic(),
-        );
+        let output = compile(&mut project, &EmptyLookup, seeded_diagnostic());
 
         assert!(output.container.is_none());
         assert_eq!(output.diagnostics.len(), 1);
@@ -220,12 +195,7 @@ END_PROGRAM
         let mut project =
             project_with("PROGRAM Main VAR x : INT; END_VAR x := undeclared_var; END_PROGRAM");
 
-        let output = compile(
-            &mut project,
-            &CompilerOptions::default(),
-            &EmptyLookup,
-            seeded_diagnostic(),
-        );
+        let output = compile(&mut project, &EmptyLookup, seeded_diagnostic());
 
         assert!(
             output.diagnostics.len() >= 2,
@@ -237,17 +207,70 @@ END_PROGRAM
     #[test]
     fn compile_when_clean_then_analyzed_artifacts_remain_available() {
         let mut project = project_with(VALID_PROGRAM);
-        let output = compile(
-            &mut project,
-            &CompilerOptions::default(),
-            &EmptyLookup,
-            vec![],
-        );
+        let output = compile(&mut project, &EmptyLookup, vec![]);
 
         assert!(output.container.is_some());
         // Callers read metadata back off the project after compiling.
         assert!(project.analyzed_library().is_some());
         assert!(project.semantic_context().is_some());
+        assert!(project.lowered_program().is_some());
+    }
+
+    /// A step that is not a constant, which lowering does not express yet.
+    const NOT_LOWERED: &str = r#"
+PROGRAM Main
+VAR
+  a : INT;
+  r : INT;
+  x : INT := 1;
+END_VAR
+  FOR a := 1 TO 3 BY x DO r := r + 1; END_FOR;
+END_PROGRAM
+"#;
+
+    /// REQ-LOW-project-004: a construct the compiler cannot generate yet,
+    /// in a POU a program instance reaches, is reported by the analysis
+    /// `check` runs, without generating code.
+    #[test]
+    fn semantic_when_construct_does_not_lower_then_reports_not_implemented() {
+        let mut project = project_with(NOT_LOWERED);
+
+        let diagnostics = project.semantic();
+
+        let codes: Vec<&str> = diagnostics.iter().map(|d| d.code.as_str()).collect();
+        assert_eq!(codes, ["P9999"]);
+        assert!(project.lowered_program().is_none());
+    }
+
+    /// REQ-LOW-project-004: a construct the compiler cannot generate yet
+    /// leaves no container.
+    #[test]
+    fn compile_when_construct_does_not_lower_then_no_container() {
+        let mut project = project_with(NOT_LOWERED);
+
+        let output = compile(&mut project, &EmptyLookup, vec![]);
+
+        assert!(output.container.is_none());
+        let codes: Vec<&str> = output.diagnostics.iter().map(|d| d.code.as_str()).collect();
+        assert_eq!(codes, ["P9999"]);
+    }
+
+    /// REQ-LOW-project-005: `compile` passes the backend the program the
+    /// analysis lowered, and lowers nothing again.
+    #[test]
+    fn compile_when_clean_then_container_is_the_lowered_programs() {
+        let mut project = project_with(VALID_PROGRAM);
+
+        let output = compile(&mut project, &EmptyLookup, vec![]);
+
+        let program = project.lowered_program().unwrap();
+        let expected = ironplc_codegen::compile(program, &EmptyLookup).unwrap();
+        let bytes = |container: &ironplc_container::Container| {
+            let mut buf = Vec::new();
+            container.write_to(&mut buf).unwrap();
+            buf
+        };
+        assert_eq!(bytes(&output.container.unwrap()), bytes(&expected));
     }
 
     // The "clean analysis cached no artifacts" arm has no test: it guards an

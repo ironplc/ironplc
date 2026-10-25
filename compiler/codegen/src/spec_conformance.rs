@@ -46,13 +46,7 @@ pub(crate) fn compile_and_run(source: &str) -> (ironplc_container::Container, Vm
     let library = parse_library(source);
     let (analyzed, ctx) =
         ironplc_analyzer::stages::analyze(&[&library], &CompilerOptions::default()).unwrap();
-    let codegen_options = crate::CodegenOptions::default();
-    let container = crate::compile(
-        CleanAnalysis::new(&analyzed, &ctx).unwrap(),
-        &codegen_options,
-        &crate::EmptyLookup,
-    )
-    .unwrap();
+    let container = crate::test_support::compile_analyzed(&analyzed, &ctx).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
@@ -86,13 +80,7 @@ pub(crate) fn compile_only(source: &str) -> ironplc_container::Container {
     let library = parse_library(source);
     let (analyzed, ctx) =
         ironplc_analyzer::stages::analyze(&[&library], &CompilerOptions::default()).unwrap();
-    let codegen_options = crate::CodegenOptions::default();
-    crate::compile(
-        CleanAnalysis::new(&analyzed, &ctx).unwrap(),
-        &codegen_options,
-        &crate::EmptyLookup,
-    )
-    .unwrap()
+    crate::test_support::compile_analyzed(&analyzed, &ctx).unwrap()
 }
 
 // ---------------------------------------------------------------------------
@@ -148,7 +136,7 @@ PROGRAM main VAR c : COLOR; END_VAR END_PROGRAM
     let analysis = CleanAnalysis::new(&completed, &context).unwrap();
     let lowering = ironplc_lowering::Lowering::new(
         &analysis,
-        crate::lowered::parse_policy(&Default::default()),
+        ironplc_lowering::parse_policy(&Default::default()),
     )
     .lower_program()
     .unwrap();
@@ -705,12 +693,7 @@ fn enum_spec_req_en_080_ordinals_from_type_members() {
     )
     .unwrap();
     let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
-    let container = crate::compile(
-        CleanAnalysis::new(&analyzed, &ctx).unwrap(),
-        &crate::CodegenOptions::default(),
-        &crate::EmptyLookup,
-    )
-    .unwrap();
+    let container = crate::test_support::compile_analyzed(&analyzed, &ctx).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
@@ -843,13 +826,7 @@ fn compile_and_try_run_with(
 ) -> Result<(ironplc_container::Container, VmBuffers), ironplc_vm::FaultContext> {
     let library = ironplc_parser::parse_program(source, &FileId::default(), options).unwrap();
     let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], options).unwrap();
-    let codegen_options = crate::CodegenOptions::default();
-    let container = crate::compile(
-        CleanAnalysis::new(&analyzed, &ctx).unwrap(),
-        &codegen_options,
-        &crate::EmptyLookup,
-    )
-    .unwrap();
+    let container = crate::test_support::compile_analyzed(&analyzed, &ctx).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs)?;

@@ -968,6 +968,7 @@ dependencies = [
  "ironplc-codegen",
  "ironplc-container",
  "ironplc-dsl",
+ "ironplc-lowering",
  "ironplc-parser",
  "ironplc-vm",
 ]
@@ -988,6 +989,8 @@ dependencies = [
  "ironplc-codegen",
  "ironplc-container",
  "ironplc-dsl",
+ "ironplc-ir",
+ "ironplc-lowering",
  "ironplc-parser",
  "ironplc-plc2plc",
  "ironplc-problems",
@@ -1081,6 +1084,9 @@ dependencies = [
  "ironplc-dsl",
  "ironplc-ir",
  "ironplc-parser",
+ "ironplc-spec-requirements-gen",
+ "spec_test_macro",
+ "time",
 ]
 
 [[package]]
@@ -1183,6 +1189,8 @@ dependencies = [
  "ironplc-codegen",
  "ironplc-container",
  "ironplc-dsl",
+ "ironplc-ir",
+ "ironplc-lowering",
  "ironplc-parser",
  "ironplc-problems",
  "ironplc-sources",
@@ -1249,6 +1257,7 @@ dependencies = [
  "ironplc-codegen",
  "ironplc-container",
  "ironplc-dsl",
+ "ironplc-lowering",
  "ironplc-parser",
  "ironplc-spec-requirements-gen",
  "ironplc-vm",

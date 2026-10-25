@@ -138,10 +138,13 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         source: "PROGRAM main\nVAR\nx : INT;\np : POINTER TO INT;\nEND_VAR\np := ADR(x);\nEND_PROGRAM",
     },
     // Arithmetic on a REF_TO type (P2033). Needs REF_TO to parse at all.
+    // Lowering does not lower it yet, so it is in a block no program
+    // instantiates: `check` lowers only what a program reaches, and reports
+    // here only what analysis decides.
     FlagFixture {
         key: "allow_ref_arithmetic",
         prereqs: &["allow_ref_to"],
-        source: "PROGRAM Main\nVAR\nx : INT;\nr : REF_TO INT := REF(x);\ny : INT;\nEND_VAR\ny := r + 1;\nEND_PROGRAM",
+        source: "FUNCTION_BLOCK Unused\nVAR\nx : INT;\nr : REF_TO INT := REF(x);\ny : INT;\nEND_VAR\ny := r + 1;\nEND_FUNCTION_BLOCK\nPROGRAM Main\nEND_PROGRAM",
     },
     // REF() on a stack-allocated (function VAR_INPUT) variable (P2029).
     FlagFixture {
@@ -257,11 +260,12 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
     // A general expression (pointer deref + member access) as a struct/FB
     // initializer value. The parser accepts it unconditionally; a semantic
     // rule rejects it (P4043) when the flag is off. Requires allow_ref_to for
-    // the REF_TO deref in the value expression.
+    // the REF_TO deref in the value expression. Lowering does not lower such
+    // an initializer yet, so it is in a block no program instantiates.
     FlagFixture {
         key: "allow_struct_initializer_expressions",
         prereqs: &["allow_ref_to"],
-        source: "FUNCTION_BLOCK FB_Device\nVAR_INPUT\nDelta : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nTYPE MyStruct :\nSTRUCT\nx : INT;\nEND_STRUCT;\nEND_TYPE\nPROGRAM main\nVAR\npDevice : REF_TO FB_Device;\ns : MyStruct := (x := pDevice^.Delta);\nEND_VAR\nEND_PROGRAM",
+        source: "FUNCTION_BLOCK FB_Device\nVAR_INPUT\nDelta : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nTYPE MyStruct :\nSTRUCT\nx : INT;\nEND_STRUCT;\nEND_TYPE\nFUNCTION_BLOCK Unused\nVAR\npDevice : REF_TO FB_Device;\ns : MyStruct := (x := pDevice^.Delta);\nEND_VAR\nEND_FUNCTION_BLOCK\nPROGRAM main\nEND_PROGRAM",
     },
     // The IEC 61131-3:2013 EXTENDS clause on a FUNCTION_BLOCK header. With the
     // flag off, EXTENDS demotes to a plain identifier, so two consecutive

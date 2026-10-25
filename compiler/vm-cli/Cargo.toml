@@ -49,6 +49,7 @@ ironplc-container = { path = "../container", version = "0.250.0", features = [
 # Hand-writing that container would test the test's arithmetic, not codegen's.
 ironplc-analyzer = { path = "../analyzer", version = "0.250.0" }
 ironplc-codegen = { path = "../codegen", version = "0.250.0" }
+ironplc-lowering = { path = "../lowering", version = "0.250.0" }
 ironplc-dsl = { path = "../dsl", version = "0.250.0" }
 ironplc-parser = { path = "../parser", version = "0.250.0" }
 blake3 = "1"

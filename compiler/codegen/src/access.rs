@@ -111,7 +111,7 @@ pub(crate) fn test_variable(name: &str) -> Named {
     let analysis = ironplc_analyzer::CleanAnalysis::new(&completed, &context).unwrap();
     let lowering = ironplc_lowering::Lowering::new(
         &analysis,
-        crate::lowered::parse_policy(&Default::default()),
+        ironplc_lowering::parse_policy(&Default::default()),
     )
     .lower_program()
     .unwrap();

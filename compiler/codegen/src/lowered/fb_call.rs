@@ -18,10 +18,10 @@
 
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::{
     Expr, ExprKind, FieldIdx, Place as LoweredPlace, PouId, Projection, Stmt, StmtKind, StrExpr,
 };
-use ironplc_lowering::PartialProgram;
 
 use super::aggregate::emit_source;
 use super::expr::emit_expr;
@@ -71,7 +71,7 @@ impl CallSite<'_> {
 /// `stmts` does not start with one, as when a source assignment to a field
 /// comes before a separate call.
 pub(super) fn call_site<'s>(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     stmts: &'s [Stmt],
 ) -> Option<CallSite<'s>> {
@@ -101,7 +101,7 @@ pub(super) fn call_site<'s>(
 
 /// The call site of `instance` with no inputs: a lone `FbCall`.
 pub(super) fn bare_call<'s>(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     instance: &LoweredPlace,
 ) -> Option<CallSite<'s>> {
@@ -115,7 +115,7 @@ pub(super) fn bare_call<'s>(
 pub(super) fn emit_call_site(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    lowering: &PartialProgram,
+    lowering: &Program,
     call: &CallSite<'_>,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
@@ -160,7 +160,7 @@ pub(super) fn emit_call_site(
 /// standard block's POU has no body in the lowered program, and `FB_CALL`
 /// runs the VM's block on the instance.
 pub(super) fn reaches_block(
-    lowering: &PartialProgram,
+    lowering: &Program,
     ctx: &CompileContext,
     instance: &LoweredPlace,
     block: PouId,

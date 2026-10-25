@@ -18,8 +18,13 @@ ironplc-container = { path = "../container", version = "0.250.0" }
 ironplc-dsl = { path = "../dsl", version = "0.250.0" }
 ironplc-ir = { path = "../ir", version = "0.250.0" }
 
+[build-dependencies]
+ironplc-spec-requirements-gen = { path = "../spec_requirements_gen" }
+
 [dev-dependencies]
 ironplc-parser = { path = "../parser", version = "0.250.0" }
+spec_test_macro = { path = "../spec_test_macro" }
+time = "0.3.47"
 
 [lints]
 workspace = true

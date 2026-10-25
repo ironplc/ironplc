@@ -41,6 +41,7 @@ use ironplc_ir::lowered::{
     StrExpr, TypeKind, VarId,
 };
 
+use crate::execution_model::Declarations;
 use crate::initial_value::{self, BlockMembers, FieldValue, InitialValue, ReferenceValue, Scalar};
 use crate::variables::BodyFrame;
 use crate::{Body, Lowering};
@@ -101,18 +102,18 @@ type Made = Result<Option<()>, Diagnostic>;
 
 impl<'a> Lowering<'a> {
     /// The statements of `init` for the globals and program instances of
-    /// `execution`, which `bindings` binds to the program's variables.
+    /// `execution`, whose ids name `declarations` and which `bindings` binds
+    /// to the program's variables.
     pub(crate) fn lower_init(
         &mut self,
         execution: &ExecutionModel,
+        declarations: &Declarations<'a>,
         bindings: &ExecutionBindings,
         values: &Values,
     ) -> Result<Stores, Diagnostic> {
         let mut init = Stores::default();
         for (id, _) in execution.globals() {
-            let (Some(var), Some(decl)) =
-                (bindings.global(id), self.analysis.global_declaration(id))
-            else {
+            let (Some(var), Some(decl)) = (bindings.global(id), declarations.global(id)) else {
                 continue;
             };
             let place = self.program.var(var, &decl.identifier.span())?;
@@ -122,10 +123,9 @@ impl<'a> Lowering<'a> {
             let InstanceOf::Program(id) = &instance.program else {
                 continue;
             };
-            let (Some(var), Some(program)) = (
-                bindings.instance(position),
-                self.analysis.program_declaration(*id),
-            ) else {
+            let (Some(var), Some(program)) =
+                (bindings.instance(position), declarations.program(*id))
+            else {
                 continue;
             };
             let pou = self.body_pou(Body::Program(program));

@@ -2,10 +2,10 @@
 //! program it makes, and what it reports when a part does not lower yet.
 
 use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_ir::lowered::{Owner, PouId, Section};
+use ironplc_ir::lowered::{Declaration, Owner, PouId, Section, StandardFunctionBlock};
 
 use crate::test_support::lower_whole;
-use crate::{Declaration, PartialProgram, StatementLowering};
+use crate::{PartialProgram, StatementLowering};
 
 /// One task running the instance `inst` of the program `main`.
 const CONFIGURATION: &str = "
@@ -353,23 +353,39 @@ END_PROGRAM
     assert_eq!(unsupported_at(program, source), ["F", ":="]);
 }
 
-/// A standard function block has no body in the library, so a program
-/// that declares one is not whole yet.
+/// REQ-LOW-ir-203: a standard function block has no body in the library,
+/// so its POU stands for the block, which the type of its name is, and the
+/// program is whole without a body for it.
 #[test]
-fn into_program_when_standard_function_block_then_p9999() {
+fn into_program_when_standard_function_block_then_pou_names_block() {
     let program = whole(
         "
+FUNCTION_BLOCK CTU_INT
+  VAR_INPUT CU : BOOL; END_VAR
+END_FUNCTION_BLOCK
 PROGRAM main
-  VAR timer : TON; END_VAR
+  VAR timer : TON; counter : CTU_INT; END_VAR
   timer(IN := TRUE, PT := T#1s);
+  counter(CU := TRUE);
 END_PROGRAM
 ",
     );
-    assert!(program.declarations_complete());
+    let ton = pou(&program, "TON");
+    let user = pou(&program, "CTU_INT");
+    assert_eq!(
+        program.standard_block(ton),
+        Some(StandardFunctionBlock::Ton)
+    );
+    assert_eq!(program.standard_block(user), None);
 
-    let diagnostics = program.into_program().unwrap_err();
-    assert_eq!(diagnostics.len(), 1);
-    assert_eq!(diagnostics[0].code, "P9999");
+    let whole = program.into_program().unwrap();
+
+    assert_eq!(
+        whole.pous().standard_block(ton),
+        Some(StandardFunctionBlock::Ton)
+    );
+    assert!(whole.parts(ton).is_none());
+    assert!(whole.parts(user).is_some());
 }
 
 /// What each declaration of the body of the POU `name` declares, by kind

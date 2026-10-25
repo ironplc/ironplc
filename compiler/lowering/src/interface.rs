@@ -1,10 +1,10 @@
-//! Interface values (OOP extension) in code generation.
+//! Interface values (OOP extension) in lowering.
 //!
 //! A variable of an interface type refers to a function block instance
 //! that implements the interface. How that reference is laid out at run
-//! time is not decided yet (ADR-0041 Phase 2), so a program that declares
-//! one is refused before any code is generated, rather than compiled with
-//! the variable left out.
+//! time is not decided yet (ADR-0041 Phase 2), so a library that declares
+//! one is refused before it is lowered, rather than lowered with the
+//! variable left out.
 
 use ironplc_dsl::common::{InterfaceInitializer, Library};
 use ironplc_dsl::core::Located;
