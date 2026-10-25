@@ -84,8 +84,7 @@ impl<S: Clone> StringPlace<S> {
         // which `resolve_access` addresses.
         if let Access::Field(structured) = variable {
             if crate::compile_array_struct::element_field_chain(structured).is_none() {
-                let (root, slot_offset, field_type) =
-                    walk_struct_chain(types, ctx, &structured.record, &structured.field, 0)?;
+                let (root, slot_offset, field_type) = walk_struct_chain(types, ctx, structured, 0)?;
                 let Some(TypeKind::String(_)) = types.kind(field_type) else {
                     return Ok(None);
                 };

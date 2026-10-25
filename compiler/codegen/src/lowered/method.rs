@@ -19,9 +19,9 @@
 use std::collections::HashMap;
 
 use ironplc_container::{FunctionId, VarIndex};
-use ironplc_dsl::core::{Id, SourceSpan};
+use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_ir::lowered::{Arg, PouId};
+use ironplc_ir::lowered::{Arg, PouId, VarId};
 use ironplc_lowering::PartialProgram;
 
 use super::call_args::{emit_passed, passes};
@@ -45,9 +45,9 @@ pub(super) struct MethodSite {
     /// How a call passes each input, in order.
     params: Vec<ParamPassing>,
     /// The slot of each output.
-    pub(super) outputs: HashMap<Id, VarIndex>,
+    pub(super) outputs: HashMap<VarId, VarIndex>,
     /// Where each string output is in the data region.
-    pub(super) string_outputs: HashMap<Id, StringVarInfo>,
+    pub(super) string_outputs: HashMap<VarId, StringVarInfo>,
 }
 
 impl MethodSite {
@@ -95,11 +95,7 @@ pub(super) fn method_site(
         param_var_off: VarIndex::new(method.param_var_off),
         num_params: method.num_params,
         has_return_value: method.has_return_value,
-        params: method
-            .params
-            .iter()
-            .map(|param| param.passing.clone())
-            .collect(),
+        params: method.params.clone(),
         outputs: method.outputs.clone(),
         string_outputs: method.string_outputs.clone(),
     })

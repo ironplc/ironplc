@@ -16,10 +16,10 @@
 //! (`place::instance_slot`). An instance input is copied
 //! into the instance its field holds (`instance_copy.rs`).
 
-use ironplc_dsl::core::{Id, SourceSpan};
+use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_ir::lowered::{
-    Expr, ExprKind, Place as LoweredPlace, PouId, Projection, Stmt, StmtKind, StrExpr,
+    Expr, ExprKind, FieldIdx, Place as LoweredPlace, PouId, Projection, Stmt, StmtKind, StrExpr,
 };
 use ironplc_lowering::PartialProgram;
 
@@ -40,8 +40,9 @@ use crate::held_instances::layout;
 pub(super) struct CallSite<'s> {
     /// The instance, as this backend's layout keeps it.
     instance: Named,
-    /// Each input's field, by name, and what is stored in it, in order.
-    inputs: Vec<(Id, Input<'s>)>,
+    /// Each input's field, of the instance's lowered type, and what is
+    /// stored in it, in order.
+    inputs: Vec<(FieldIdx, Input<'s>)>,
 }
 
 /// What a call stores in one of its inputs.
@@ -90,7 +91,7 @@ pub(super) fn call_site<'s>(
     }
     let inputs = stmts[..call_at]
         .iter()
-        .map(|stmt| input(lowering, instance, stmt))
+        .map(|stmt| input(instance, stmt))
         .collect::<Option<Vec<_>>>()?;
     Some(CallSite {
         instance: variable_name(lowering, ctx, instance)?,
@@ -126,10 +127,9 @@ pub(super) fn emit_call_site(
                 // type of, so the narrowing lowering made
                 // (REQ-LOW-lowering-046) is left to it rather than emitted
                 // twice.
-                let narrowed_by_site = ctx.fb_instance(&call.instance).is_some_and(|info| {
-                    info.field_types
-                        .contains_key(&field.to_string().to_lowercase())
-                });
+                let narrowed_by_site = ctx
+                    .fb_instance(&call.instance)
+                    .is_some_and(|info| info.field_types.contains_key(field));
                 let value = match untruncated(value) {
                     Some(inner) if narrowed_by_site => inner,
                     Some(_) | None => value,
@@ -146,7 +146,7 @@ pub(super) fn emit_call_site(
                 emit_source(emitter, ctx, lowering, src, span)?
             }
         }
-        site.store_input(emitter, field)?;
+        site.store_input(emitter, *field, span)?;
     }
     site.close(emitter, ctx);
     Ok(())
@@ -183,11 +183,7 @@ pub(super) fn no_instance(span: &SourceSpan) -> Diagnostic {
 
 /// The field of `instance` that `stmt` stores in, and what it stores; `None`
 /// when `stmt` stores in no field of `instance`.
-fn input<'s>(
-    lowering: &PartialProgram,
-    instance: &LoweredPlace,
-    stmt: &'s Stmt,
-) -> Option<(Id, Input<'s>)> {
+fn input<'s>(instance: &LoweredPlace, stmt: &'s Stmt) -> Option<(FieldIdx, Input<'s>)> {
     let (place, input) = match stmt.kind() {
         StmtKind::Assign { place, value } => (place, Input::Value(value)),
         StmtKind::AssignStr { place, value } => (place, Input::Str(value)),
@@ -212,14 +208,7 @@ fn input<'s>(
             .iter()
             .zip(instance.path())
             .all(|(step, other)| same_projection(step, other));
-    if !of_instance {
-        return None;
-    }
-    let declared = lowering
-        .types()
-        .fields(instance.ty())?
-        .get(field.index() as usize)?;
-    Some((Id::from(&declared.name.to_string()), input))
+    of_instance.then_some((*field, input))
 }
 
 /// Whether two steps of a path to an instance are the same step. An instance

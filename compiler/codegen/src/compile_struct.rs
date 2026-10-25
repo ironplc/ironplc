@@ -7,11 +7,11 @@
 use std::collections::HashMap;
 
 use crate::access::{Access, Field, Named};
-use ironplc_dsl::core::{Id, Located};
+use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 
 use ironplc_container::{SlotIndex, VarIndex};
-use ironplc_ir::lowered::{TypeId, TypeKind, TypeTable};
+use ironplc_ir::lowered::{FieldIdx, TypeId, TypeKind, TypeTable};
 
 use super::compile::{CompileContext, VarTypeInfo};
 use crate::lowered::slot_type;
@@ -33,21 +33,23 @@ pub(crate) struct StructVarInfo {
     /// STRING field of an array-of-struct element. Holds
     /// `struct_data_offset + field_byte_offset` during STR_LOAD/STORE_ARRAY_ELEM.
     pub scratch_var_index: Option<VarIndex>,
-    /// Per-field STRING array descriptor info. Maps field name (lowercase) to
-    /// `(desc_index, total_elements, max_string_len)`.
-    pub string_array_descs: HashMap<String, (u16, u32, u16)>,
+    /// Per-field STRING array descriptor info. Maps each of the structure's
+    /// own fields that is an array of strings to `(desc_index,
+    /// total_elements, max_string_len)`.
+    pub string_array_descs: HashMap<FieldIdx, (u16, u32, u16)>,
     /// The STRING fields of the elements of the arrays of structures this
     /// structure holds, at any depth of nested structure fields.
     pub element_strings: Vec<crate::compile_array_struct::ElementStringField>,
 }
 
-/// The slot of the field `field` of a structure of the type `record`, from
-/// the start of the structure, and the field's type.
-pub(crate) fn field_in(
+/// The slot of the field `selected` selects of a structure of the type
+/// `record`, from the start of the structure, and the field's type.
+pub(crate) fn field_in<S>(
     types: &TypeTable,
     record: TypeId,
-    field: &Id,
+    selected: &Field<S>,
 ) -> Result<(SlotIndex, TypeId), Diagnostic> {
+    let field = &selected.field;
     let not_a_structure = || {
         Diagnostic::not_implemented(Label::span(
             field.span(),
@@ -57,10 +59,9 @@ pub(crate) fn field_in(
     let Some(TypeKind::Structure { fields }) = types.kind(record) else {
         return Err(not_a_structure());
     };
-    let name = field.to_string().to_lowercase();
     let mut slot = 0_u32;
-    for candidate in fields {
-        if candidate.name.to_string().to_lowercase() == name {
+    for (position, candidate) in fields.iter().enumerate() {
+        if position == selected.idx.index() as usize {
             return Ok((SlotIndex::new(slot), candidate.ty));
         }
         slot = crate::layout::slots(types, candidate.ty)
@@ -89,8 +90,7 @@ pub(crate) fn resolve_struct_field_access<S>(
     ctx: &CompileContext,
     structured: &Field<S>,
 ) -> Result<(VarIndex, u16, SlotIndex, VarTypeInfo), Diagnostic> {
-    let (root_name, slot_offset, field_type) =
-        walk_struct_chain(types, ctx, &structured.record, &structured.field, 0)?;
+    let (root_name, slot_offset, field_type) = walk_struct_chain(types, ctx, structured, 0)?;
 
     let struct_info = ctx.struct_var(&root_name).ok_or_else(|| {
         Diagnostic::not_implemented(Label::span(
@@ -126,17 +126,16 @@ pub(crate) fn resolve_struct_field_access<S>(
 pub(crate) fn walk_struct_chain<S>(
     types: &TypeTable,
     ctx: &CompileContext,
-    record: &Access<S>,
-    field: &Id,
+    structured: &Field<S>,
     depth: u32,
 ) -> Result<(Named, SlotIndex, TypeId), Diagnostic> {
     if depth > MAX_STRUCT_CHAIN_DEPTH {
         return Err(Diagnostic::not_implemented(Label::span(
-            field.span(),
+            structured.field.span(),
             "Structure nesting exceeds maximum depth (possible recursive type)",
         )));
     }
-    match record {
+    match structured.record.as_ref() {
         Access::Named(name) => {
             let struct_info = ctx.struct_var(name).ok_or_else(|| {
                 Diagnostic::not_implemented(Label::span(
@@ -144,12 +143,12 @@ pub(crate) fn walk_struct_chain<S>(
                     format!("Variable '{}' is not a structure", name),
                 ))
             })?;
-            let (slot_offset, field_type) = field_in(types, struct_info.ty, field)?;
+            let (slot_offset, field_type) = field_in(types, struct_info.ty, structured)?;
             Ok((name.clone(), slot_offset, field_type))
         }
         Access::Field(inner) => {
             let (root, parent_offset, parent_type) =
-                walk_struct_chain(types, ctx, &inner.record, &inner.field, depth + 1)?;
+                walk_struct_chain(types, ctx, inner, depth + 1)?;
 
             if !matches!(types.kind(parent_type), Some(TypeKind::Structure { .. })) {
                 return Err(Diagnostic::not_implemented(Label::span(
@@ -158,7 +157,7 @@ pub(crate) fn walk_struct_chain<S>(
                 )));
             }
 
-            let (field_slot_offset, field_type) = field_in(types, parent_type, field)?;
+            let (field_slot_offset, field_type) = field_in(types, parent_type, structured)?;
 
             Ok((
                 root,
@@ -169,6 +168,8 @@ pub(crate) fn walk_struct_chain<S>(
         // An `Index` record (`arr[i].field`, `s.items[i].field`) is resolved
         // by `compile_array_struct` before the callers reach this walk, and
         // a dereference owns no field of a structure the layout reaches.
-        Access::Index(_) | Access::Deref(_) => Err(Diagnostic::todo_with_span(record.span())),
+        record @ (Access::Index(_) | Access::Deref(_)) => {
+            Err(Diagnostic::todo_with_span(record.span()))
+        }
     }
 }

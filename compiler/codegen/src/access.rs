@@ -61,10 +61,12 @@ pub(crate) enum Access<S> {
     Deref(Box<Access<S>>),
 }
 
-/// The field `field` of the record `record`.
+/// The field `idx` of the record `record`, a structure or a function block
+/// instance, declared as `field`, for a diagnostic about it.
 #[derive(Clone, Debug)]
 pub(crate) struct Field<S> {
     pub record: Box<Access<S>>,
+    pub idx: FieldIdx,
     pub field: Id,
 }
 

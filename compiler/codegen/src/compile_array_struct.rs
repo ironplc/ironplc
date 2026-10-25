@@ -84,8 +84,8 @@ struct ArrayOfStructRegion<'ctx> {
 /// to the element's field, whose record is the array element, and the fields
 /// selected after it, outermost first, ending with `structured`'s own; `None`
 /// when no array element is under the chain of fields.
-pub(crate) fn element_field_chain<S>(structured: &Field<S>) -> Option<(&Field<S>, Vec<&Id>)> {
-    let mut fields = vec![&structured.field];
+pub(crate) fn element_field_chain<S>(structured: &Field<S>) -> Option<(&Field<S>, Vec<&Field<S>>)> {
+    let mut fields = vec![structured];
     let mut current = structured;
     loop {
         match current.record.as_ref() {
@@ -94,7 +94,7 @@ pub(crate) fn element_field_chain<S>(structured: &Field<S>) -> Option<(&Field<S>
                 return Some((current, fields));
             }
             Access::Field(record) => {
-                fields.push(&record.field);
+                fields.push(record);
                 current = record;
             }
             Access::Named(_) | Access::Deref(_) => return None,
@@ -131,17 +131,17 @@ pub(crate) fn resolve_struct_array_element_field<'ctx, S: Clone>(
 
 /// The slot offset, from the start of an element of the type `element`, of
 /// the field `fields` selects, through structure fields, and its type.
-fn element_field(
+fn element_field<S>(
     types: &TypeTable,
     element: TypeId,
-    fields: &[&Id],
+    fields: &[&Field<S>],
 ) -> Result<(SlotIndex, TypeId), Diagnostic> {
     let mut offset = 0u32;
     let mut ty = element;
     for field in fields {
         let (field_offset, field_type) = crate::compile_struct::field_in(types, ty, field)?;
         offset = offset.checked_add(field_offset.raw()).ok_or_else(|| {
-            Diagnostic::not_supported(Label::span(field.span(), "Structure too large"))
+            Diagnostic::not_supported(Label::span(field.field.span(), "Structure too large"))
         })?;
         ty = field_type;
     }
@@ -202,7 +202,7 @@ fn locate_array_of_struct<'ctx, S: Clone>(
     match base {
         ArrayOfStructBase::Field(base) => {
             let (root_name, field_slot_offset, field_type) =
-                crate::compile_struct::walk_struct_chain(types, ctx, &base.record, &base.field, 0)?;
+                crate::compile_struct::walk_struct_chain(types, ctx, base, 0)?;
 
             let Some(TypeKind::Array {
                 element,
@@ -296,7 +296,7 @@ enum ArrayOfStructBase<'a, S> {
 fn struct_array_element_field<'ctx, S>(
     types: &TypeTable,
     array: LocatedArrayOfStruct<'ctx, S>,
-    fields: &[&Id],
+    fields: &[&Field<S>],
     field_subscripts: Vec<S>,
 ) -> Result<ResolvedAccess<'ctx, S>, Diagnostic> {
     let LocatedArrayOfStruct {
@@ -309,7 +309,7 @@ fn struct_array_element_field<'ctx, S>(
     } = array;
     let array_span = &array_span;
     // The field selected last, which the access reads or writes.
-    let Some(&field) = fields.last() else {
+    let Some(field) = fields.last().map(|selected| &selected.field) else {
         return Err(Diagnostic::internal_error_at(Label::span(
             array_span.clone(),
             "An element access selects no field",
