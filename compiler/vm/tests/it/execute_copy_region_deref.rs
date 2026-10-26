@@ -2,12 +2,11 @@
 //! the one a reference refers to, a data-region reference or a variable
 //! reference.
 
-use crate::common::VmBuffers;
+use crate::common::{freewheeling_task, load_and_start, program_instance, VmBuffers};
 use ironplc_container::opcode;
 use ironplc_container::reference::data_region_reference;
-use ironplc_container::{Container, ContainerBuilder, FunctionId, VarIndex};
+use ironplc_container::{Container, ContainerBuilder, FunctionId, ProgramInstanceEntry, VarIndex};
 use ironplc_vm::error::Trap;
-use ironplc_vm::test_support::load_and_start;
 use rstest::rstest;
 
 /// The destination's offset in the data region, and the source's: two
@@ -15,13 +14,16 @@ use rstest::rstest;
 const DST_OFFSET: i32 = 0;
 const SRC_OFFSET: i32 = 32;
 
-/// Variable layout: var[0] holds the destination's offset, var[1] the
-/// source's, var[2] the reference to the destination, var[3] the
-/// destination's first slot read back.
+/// Variable layout of the program instance that copies: var[0] holds the
+/// destination's offset, var[1] the source's, var[2] the reference to the
+/// destination, var[3] the destination's first slot read back.
 const DST_VAR: u16 = 0;
 const SRC_VAR: u16 = 1;
 const REF_VAR: u16 = 2;
 const READ_VAR: u16 = 3;
+/// The one variable of a second program instance, which a reference the
+/// first instance holds must not reach.
+const OTHER_INSTANCE_VAR: u16 = 4;
 
 /// The value stored in the source's first slot before the copy.
 const SEED: i32 = 42;
@@ -30,10 +32,12 @@ fn le(v: u16) -> [u8; 2] {
     v.to_le_bytes()
 }
 
-/// A container whose scan seeds the source's first slot, copies the source,
-/// of `src_elements` slots, into the region of `dst_elements` slots that the
-/// reference `reference` in var[2] refers to, then reads the destination's
-/// first slot into var[3].
+/// A container of two program instances on one task. The first, whose
+/// variables are `[0, 4)`, seeds the source's first slot each scan, copies
+/// the source, of `src_elements` slots, into the region of `dst_elements`
+/// slots that the reference `reference` in var[2] refers to, then reads the
+/// destination's first slot into var[3]. The second, whose one variable is
+/// var[4], runs nothing.
 fn deref_container(dst_elements: u32, src_elements: u32, reference: u64) -> Container {
     // Constant pool: the two offsets, the reference, index 0 and the seed.
     #[rustfmt::skip]
@@ -61,7 +65,7 @@ fn deref_container(dst_elements: u32, src_elements: u32, reference: u64) -> Cont
         opcode::RET_VOID,
     ];
     let mut builder = ContainerBuilder::new()
-        .num_variables(4)
+        .num_variables(5)
         .data_region_bytes(64)
         .add_i32_constant(DST_OFFSET)
         .add_i32_constant(SRC_OFFSET)
@@ -73,10 +77,15 @@ fn deref_container(dst_elements: u32, src_elements: u32, reference: u64) -> Cont
     assert_eq!(builder.add_array_descriptor(0, dst_elements, 0), 0);
     assert_eq!(builder.add_array_descriptor(2, src_elements, 0), 1);
     builder
-        .add_function(FunctionId::new(0), &init_bytecode, 2, 4, 0)
-        .add_function(FunctionId::new(1), &scan, 8, 4, 0)
-        .init_function_id(FunctionId::new(0))
-        .entry_function_id(FunctionId::new(1))
+        .add_function(FunctionId::INIT, &init_bytecode, 2, 5, 0)
+        .add_function(FunctionId::SCAN, &scan, 8, 5, 0)
+        .add_function(FunctionId::new(2), &[opcode::RET_VOID], 0, 5, 0)
+        .add_task(freewheeling_task(0, 0, 0))
+        .add_program_instance(program_instance(0, 0, 1, DST_VAR, 4))
+        .add_program_instance(ProgramInstanceEntry {
+            init_function_id: FunctionId::new(2),
+            ..program_instance(1, 0, 2, OTHER_INSTANCE_VAR, 1)
+        })
         .max_call_depth(1)
         .build()
 }
@@ -99,6 +108,26 @@ fn run(container: &Container) -> Result<i32, Trap> {
 #[case::variable_reference(u64::from(DST_VAR))]
 fn execute_when_copy_region_deref_then_bytes_move_to_referenced_region(#[case] reference: u64) {
     assert_eq!(run(&deref_container(4, 4, reference)), Ok(SEED));
+}
+
+/// A slot that holds neither a data-region reference nor a variable
+/// reference within the instance's scope traps, as `LOAD_INDIRECT` does,
+/// rather than being read as a variable reference: a value above `u16::MAX`
+/// is no variable index, a value with other bits above bit 32 set is no
+/// data-region reference either, and a variable of another program instance
+/// is outside the scope.
+#[rstest]
+#[case::above_u16_max(u64::from(u16::MAX) + 1, u16::MAX)]
+#[case::neither_form(1 << 33, u16::MAX)]
+#[case::other_instance(u64::from(OTHER_INSTANCE_VAR), OTHER_INSTANCE_VAR)]
+fn execute_when_copy_region_deref_of_forged_reference_then_invalid_variable_index(
+    #[case] reference: u64,
+    #[case] index: u16,
+) {
+    assert_eq!(
+        run(&deref_container(4, 4, reference)),
+        Err(Trap::InvalidVariableIndex(VarIndex::new(index)))
+    );
 }
 
 #[test]
