@@ -105,6 +105,7 @@ pub struct Configuration {
 pub struct Resource {
     pub name: Option<DebugName>,          // None: the implicit resource
     pub tasks: Vec<Task>,                 // declared tasks, then the implicit one
+    pub globals: Vec<GlobalId>,           // its own VAR_GLOBAL, declaration order
 }
 
 pub struct Task {
@@ -375,10 +376,10 @@ The VM writes the uptime globals by slot, which is why they come first.
 With several configurations, each configuration's globals, then its
 resources', follow the top-level ones, configurations in source order.
 
-A resource's `VAR_GLOBAL` is in the model, but codegen does not give it storage
-yet: it builds the variable table from the system, top-level and configuration
-globals, in the order above, so that a program that compiles today keeps its
-variable indexes.
+**REQ-EM-lowering-042** Each resource lists the `GlobalId`s of its own `VAR_GLOBAL`, in declaration order; the implicit resource lists none.
+
+A resource's globals are visible only to the programs of that resource
+(IEC 61131-3, 2.7.1), so a backend needs to know which resource declares each.
 
 ### Instances of a type the library does not declare as a program
 
@@ -430,6 +431,13 @@ P4080 instead of compiling. Codegen also used to build the last of several
 configurations without a word; that now reports P4081.
 
 **REQ-EM-codegen-006** The container header's system-uptime flag is set exactly when the model lists `SystemGlobal::UpTime`.
+
+**REQ-EM-codegen-009** The variable table starts with the system, top-level and configuration globals, then the globals of the resource that runs the program instance, in the model's order, before the program's own variables; the globals of any other resource have no storage.
+
+Codegen used to give a resource's `VAR_GLOBAL` no storage, so a program that
+read one through `VAR_EXTERNAL` did not compile. A program that declares a
+resource global it never uses now has its own variables one slot later per
+such global.
 
 **REQ-EM-codegen-007** `ironplc-codegen` builds the task table and the global variables from the execution model the lowered program holds, and reaches no declaration of the library.
 

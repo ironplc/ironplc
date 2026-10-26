@@ -33,21 +33,41 @@ use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_ir::execution::DebugName;
 use ironplc_ir::lowered::{
-    AddressArea, AddressSize, Declared, DirectAddress, Field, Nullability, Owner, Place, PouId,
-    Retention, Section, TypeEntry, TypeId, TypeKind, VarId,
+    AddressArea, AddressSize, Declared, DirectAddress, Field, LoopScope, Nullability, Owner, Place,
+    PouId, Retention, Section, TypeEntry, TypeId, TypeKind, VarId,
 };
 
 use crate::{Body, Lowered, Lowering, Unlowered};
 
-/// What lowering knows of the body a statement belongs to.
+/// What lowering knows of the body a statement belongs to, and what encloses
+/// the statement in it: the loops it is in, and the call whose outputs it
+/// stores. A frame enclosed by nothing, as a top-level statement's is, is a
+/// `BodyFrame<'static>`; one inside a loop or a call borrows what encloses
+/// it for as long as that is lowered.
 #[derive(Clone, Debug)]
-pub(crate) struct BodyFrame {
+pub(crate) struct BodyFrame<'e> {
     pub(crate) pou: PouId,
     /// The scope the body's names are resolved from.
     pub(crate) scope: ScopeKind,
     /// The instance a program, function block or method body works on;
     /// `None` for a function.
     pub(crate) instance: Option<Instance>,
+    /// The loops enclosing the statement, innermost last.
+    loops: Vec<&'e LoopScope>,
+    /// Where the call whose outputs the statement stores left them, which
+    /// the statement's call outputs read.
+    call_outputs: Option<&'e CallOutputs>,
+}
+
+/// Where a call leaves its outputs for the assignments of its outputs to
+/// read.
+#[derive(Clone, Debug)]
+pub(crate) enum CallOutputs {
+    /// In the fields of the function block instance it called.
+    Instance(Place),
+    /// In the temporary it passed for each output of a function or method,
+    /// by the output's name (REQ-LOW-lowering-092).
+    Temporaries(Vec<(Id, Place)>),
 }
 
 /// The instance parameter of a body and the fields of its type.
@@ -67,12 +87,45 @@ pub(crate) struct Instance {
     holder: Option<VarId>,
 }
 
-impl BodyFrame {
+impl<'e> BodyFrame<'e> {
+    /// This frame inside the loop `scope`.
+    pub(crate) fn in_loop<'i>(&self, scope: &'i LoopScope) -> BodyFrame<'i>
+    where
+        'e: 'i,
+    {
+        let mut inner: BodyFrame<'i> = self.clone();
+        inner.loops.push(scope);
+        inner
+    }
+
+    /// This frame while the outputs of the call that left them in `outputs`
+    /// are stored.
+    pub(crate) fn storing<'i>(&self, outputs: &'i CallOutputs) -> BodyFrame<'i>
+    where
+        'e: 'i,
+    {
+        let mut storing: BodyFrame<'i> = self.clone();
+        storing.call_outputs = Some(outputs);
+        storing
+    }
+
+    /// The innermost loop enclosing the statement; `None` outside every
+    /// loop.
+    pub(crate) fn innermost_loop(&self) -> Option<&'e LoopScope> {
+        self.loops.last().copied()
+    }
+
+    /// Where the call whose outputs the statement stores left them; `None`
+    /// for a statement that stores no call's outputs.
+    pub(crate) fn call_outputs(&self) -> Option<&'e CallOutputs> {
+        self.call_outputs
+    }
+
     /// This frame, with the fields of its instance reached through the
     /// variable `holder`, which holds the instance, rather than through the
     /// body's instance parameter: the frame an initializer of a field of a
     /// program instance is lowered in, as `init` runs in no body.
-    pub(crate) fn held_by(&self, holder: VarId) -> BodyFrame {
+    pub(crate) fn held_by(&self, holder: VarId) -> BodyFrame<'e> {
         let mut frame = self.clone();
         if let Some(instance) = frame.instance.as_mut() {
             instance.holder = Some(holder);
@@ -84,7 +137,7 @@ impl BodyFrame {
 impl<'a> Lowering<'a> {
     /// The frame of `body`, made the first time a statement of it is
     /// lowered. A body whose instance lowering cannot express yet has none.
-    pub(crate) fn frame(&mut self, body: Body<'a>) -> Lowered<BodyFrame> {
+    pub(crate) fn frame(&mut self, body: Body<'a>) -> Lowered<BodyFrame<'static>> {
         let (pou, path) = match body {
             Body::Program(program) => (self.named_pou(&program.name), vec![program.name.clone()]),
             Body::FunctionBlock(block) => {
@@ -123,6 +176,8 @@ impl<'a> Lowering<'a> {
             pou,
             scope,
             instance,
+            loops: Vec::new(),
+            call_outputs: None,
         });
         self.bodies.insert(pou, frame.clone());
         frame

@@ -11,8 +11,7 @@ use ironplc_dsl::textual::{
     Case, CaseSelectionKind, Expr as AstExpr, For, If, Repeat, StmtKind as AstStmtKind, While,
 };
 use ironplc_ir::lowered::{
-    is_loop_control, CaseArm, CaseLabel, Const, Expr, ExprKind, ForParts, LoopScope, ScalarType,
-    Stmt, UnaryOp,
+    is_loop_control, CaseArm, CaseLabel, Const, Expr, ExprKind, ForParts, ScalarType, Stmt, UnaryOp,
 };
 
 use crate::variables::BodyFrame;
@@ -166,7 +165,8 @@ impl Lowering<'_> {
             let span = from.span().clone();
             from = Expr::truncate(width, from, span)?;
         }
-        let (scope, body) = self.in_loop(|this| this.statements(frame, &stmt.body))?;
+        let scope = self.program.open_loop();
+        let body = self.statements(&frame.in_loop(&scope), &stmt.body)?;
         let parts = ForParts {
             control,
             from,
@@ -182,12 +182,11 @@ impl Lowering<'_> {
     pub(crate) fn while_statement(&mut self, frame: &BodyFrame, stmt: &While) -> Lowered<Stmt> {
         let span = stmt.span();
         let cond = self.expr(frame, &stmt.condition)?;
-        let (scope, body) = self.in_loop(|this| {
-            let exit = this.current_loop(&span)?.exit(span.clone());
-            let body = this.statements(frame, &stmt.body)?;
-            let head = Stmt::if_(cond, vec![], vec![exit], span.clone())?;
-            Ok(std::iter::once(head).chain(body).collect())
-        })?;
+        let scope = self.program.open_loop();
+        let exit = scope.exit(span.clone());
+        let body = self.statements(&frame.in_loop(&scope), &stmt.body)?;
+        let head = Stmt::if_(cond, vec![], vec![exit], span.clone())?;
+        let body = std::iter::once(head).chain(body).collect();
         Ok(self.program.loop_(scope, body, vec![], span)?)
     }
 
@@ -195,48 +194,26 @@ impl Lowering<'_> {
     /// when `c` is true.
     pub(crate) fn repeat_statement(&mut self, frame: &BodyFrame, stmt: &Repeat) -> Lowered<Stmt> {
         let span = stmt.span();
-        let (scope, (body, tail)) = self.in_loop(|this| {
-            let body = this.statements(frame, &stmt.body)?;
-            let until = this.expr(frame, &stmt.until)?;
-            let exit = this.current_loop(&span)?.exit(span.clone());
-            let tail = Stmt::if_(until, vec![exit], vec![], span.clone())?;
-            Ok((body, tail))
-        })?;
+        let scope = self.program.open_loop();
+        let body = self.statements(&frame.in_loop(&scope), &stmt.body)?;
+        let until = self.expr(frame, &stmt.until)?;
+        let exit = scope.exit(span.clone());
+        let tail = Stmt::if_(until, vec![exit], vec![], span.clone())?;
         Ok(self.program.loop_(scope, body, vec![tail], span)?)
     }
 
     /// `EXIT`, leaving the innermost loop. One outside every loop being
     /// lowered is not lowered.
-    pub(crate) fn exit_statement(&self, span: &SourceSpan) -> Lowered<Stmt> {
-        let scope = self.loops.last().ok_or(Unlowered::NotYet)?;
+    pub(crate) fn exit_statement(&self, frame: &BodyFrame, span: &SourceSpan) -> Lowered<Stmt> {
+        let scope = frame.innermost_loop().ok_or(Unlowered::NotYet)?;
         Ok(scope.exit(span.clone()))
     }
 
     /// `CONTINUE`, going on with the innermost loop. One outside every loop
     /// being lowered is not lowered.
-    pub(crate) fn continue_statement(&self, span: &SourceSpan) -> Lowered<Stmt> {
-        let scope = self.loops.last().ok_or(Unlowered::NotYet)?;
+    pub(crate) fn continue_statement(&self, frame: &BodyFrame, span: &SourceSpan) -> Lowered<Stmt> {
+        let scope = frame.innermost_loop().ok_or(Unlowered::NotYet)?;
         Ok(scope.continue_(span.clone()))
-    }
-
-    /// Lowers the body of a new loop with `lower`, returning the loop's scope
-    /// with it for the caller to close.
-    fn in_loop<T>(
-        &mut self,
-        lower: impl FnOnce(&mut Self) -> Lowered<T>,
-    ) -> Lowered<(LoopScope, T)> {
-        let scope = self.program.open_loop();
-        self.loops.push(scope);
-        let lowered = lower(self);
-        let scope = self.loops.pop().ok_or_else(Diagnostic::internal_error)?;
-        Ok((scope, lowered?))
-    }
-
-    /// The innermost loop being lowered.
-    fn current_loop(&self, span: &SourceSpan) -> Result<&LoopScope, Diagnostic> {
-        self.loops.last().ok_or_else(|| {
-            Diagnostic::internal_error_at(Label::span(span.clone(), "No loop is being lowered"))
-        })
     }
 }
 
