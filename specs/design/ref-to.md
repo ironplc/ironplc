@@ -302,11 +302,11 @@ This approach works because references are type-erased at the bytecode level (al
 | No REF of ephemeral variables | P2029 | `REF(temp)` for VAR_TEMP in any FUNCTION; `REF(input)` for VAR_INPUT/VAR_OUTPUT in a FUNCTION (not FB) — these are stack-allocated and destroyed when the function returns |
 | No REF of array elements | P2030 | `REF(arr[3])` — array elements use descriptor-based access, not simple variable indices |
 | Deref requires reference type | P2031 | `x^` where x has type INT — dereference is only valid on reference types |
-| Reference type compatibility | P2032 | Assigning `REF_TO INT` to `REF_TO REAL` — target types must match exactly |
+| Reference type compatibility | P2032 | Assigning `REF_TO INT` to `REF_TO REAL`, or `REF(x)` of a `REAL` to a `REF_TO INT`, by an assignment or as a declaration's initial value — target types must match exactly |
 | No arithmetic on references | P2033 | `ref + 1` — arithmetic operators applied to reference type |
 | NULL only for reference types | P2034 | `x := NULL` where x has type INT — NULL is only assignable to reference types |
 | Only = and <> on references | P2035 | `ref < other_ref` — ordering comparison on references (only `=` and `<>` are allowed) |
-| No nested REF_TO | P2036 | `REF_TO REF_TO INT`, or a type or variable declared `REF_TO RP` where `RP` is a reference type — multi-level indirection is not supported in this implementation |
+| No nested REF_TO | P2036 | `REF_TO REF_TO INT`, a type or variable declared `REF_TO RP` where `RP` is a reference type, or `REF(r)` of a reference variable `r` stored in a reference — multi-level indirection is not supported in this implementation |
 
 These codes are in the P2000-P3999 range (type system errors), continuing from the existing highest code P2027.
 

@@ -32,6 +32,22 @@ A variable declared as a reference to a reference type is the same nesting, and 
        END_VAR
    END_PROGRAM
 
+``REF()`` of a variable that is itself a reference makes the same nesting
+when it is stored in a reference, by an assignment or as the reference's
+initial value, and generates error P2036 too:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           x : INT;
+           r : REF_TO INT := REF(x);
+           rr : REF_TO INT := REF(r);  (* Error: REF() of a reference *)
+       END_VAR
+
+       rr := REF(r);  (* Error: REF() of a reference *)
+   END_PROGRAM
+
 To fix this error, use only a single level of indirection:
 
 .. code-block::

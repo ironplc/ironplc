@@ -35,6 +35,21 @@ To fix this error, ensure the reference type matches the variable type:
        y := REF(x);  (* Correct: REF_TO INT matches INT variable *)
    END_PROGRAM
 
+A reference's initial value
+---------------------------
+
+A ``REF()`` written as a reference's initial value is checked in the same
+way, so the following code will generate error P2032 too:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           x : INT;
+           y : REF_TO REAL := REF(x);  (* Error: REF_TO REAL cannot hold reference to INT *)
+       END_VAR
+   END_PROGRAM
+
 A value that is not a reference
 -------------------------------
 

@@ -400,30 +400,60 @@ impl RuleRefTo<'_> {
         }
     }
 
-    /// P2032: Reference type mismatch in assignment
+    /// P2032: `REF()` assigned to a variable that is not a reference
+    /// (`x := REF(i)`). Assigned to a reference, it gets the checks of a
+    /// `REF()` stored in one (see [`Self::check_ref_stored`]).
     fn check_ref_assignment(&mut self, target: &Variable, value: &Expr) {
-        if let ExprKind::Ref(ref_var) = &value.kind {
-            let ref_span = variable_span(ref_var);
-            if !self.is_variable_reference(target) {
-                self.diagnostics.push(Diagnostic::problem(
-                    Problem::ReferenceTypeMismatch,
-                    Label::span(ref_span, "Reference type mismatch in assignment"),
-                ));
-            } else if !self.allow_ref_type_punning {
-                // Check type compatibility (P2032 type mismatch branch).
-                // Suppressed when allow_ref_type_punning is enabled — OSCAT
-                // uses REF() to reinterpret a REAL's bits as DWORD.
-                let target_ref_type = self.get_reference_target_type(target);
-                let operand_type = self.variable_type_id(ref_var);
-                if let (Some(target_type), Some(operand_type)) = (target_ref_type, operand_type) {
-                    if target_type != operand_type {
-                        self.diagnostics.push(Diagnostic::problem(
-                            Problem::ReferenceTypeMismatch,
-                            Label::span(ref_span, "Reference type mismatch in assignment"),
-                        ));
-                    }
-                }
-            }
+        let ExprKind::Ref(ref_var) = &value.kind else {
+            return;
+        };
+        if !self.is_variable_reference(target) {
+            self.diagnostics.push(Diagnostic::problem(
+                Problem::ReferenceTypeMismatch,
+                Label::span(
+                    variable_span(ref_var),
+                    "Reference type mismatch in assignment",
+                ),
+            ));
+            return;
+        }
+        let referenced = self.get_reference_target_type(target);
+        self.check_ref_stored(referenced, ref_var);
+    }
+
+    /// P2036 and P2032: `REF(ref_var)` stored in a reference to the type
+    /// `referenced` identifies, by an assignment (`r := REF(x)`) or as a
+    /// declaration's initial value (`r : REF_TO INT := REF(x)`).
+    ///
+    /// A reference to a variable that is itself a reference is a nested
+    /// reference (P2036), the nesting a declaration may not spell either
+    /// (`REF_TO IntRef`). A reference to a variable of another type is a
+    /// mismatch (P2032). `referenced` is `None` when the referenced type has
+    /// no name to compare by (an inline array), and the operand is not
+    /// compared when its type has none (see [`Self::variable_type_id`]).
+    ///
+    /// Both are suppressed when type punning is allowed: OSCAT uses `REF()`
+    /// to reinterpret a `REAL`'s bits as a `DWORD`.
+    fn check_ref_stored(&mut self, referenced: Option<TypeId>, ref_var: &Variable) {
+        if self.allow_ref_type_punning {
+            return;
+        }
+        let span = variable_span(ref_var);
+        if self.is_variable_reference(ref_var) {
+            self.diagnostics.push(Diagnostic::problem(
+                Problem::NestedRefToNotSupported,
+                Label::span(span, "REF() of a reference is a nested reference"),
+            ));
+            return;
+        }
+        let (Some(referenced), Some(operand)) = (referenced, self.variable_type_id(ref_var)) else {
+            return;
+        };
+        if referenced != operand {
+            self.diagnostics.push(Diagnostic::problem(
+                Problem::ReferenceTypeMismatch,
+                Label::span(span, "Reference type mismatch in assignment"),
+            ));
         }
     }
 
@@ -514,6 +544,14 @@ impl RuleRefTo<'_> {
         self.type_environment.name_of(target)?;
         Some(target)
     }
+
+    /// Returns the id of the type a declaration's `REF_TO` names, when it
+    /// has a name the type can be compared by: a type spelled out in place
+    /// (an inline array) has none. The id the declaration's reference type
+    /// references (see [`Self::get_reference_target_type`]) is this one.
+    fn declared_reference_target(&self, target: &ReferenceTarget) -> Option<TypeId> {
+        self.type_environment.id_of(target.type_name()?)
+    }
 }
 
 /// Extracts a best-effort span from an Expr.
@@ -573,6 +611,15 @@ impl Visitor<Infallible> for RuleRefTo<'_> {
         if let ReferenceTarget::Named(referenced_type_name) = &node.target {
             self.check_nested_reference(referenced_type_name, referenced_type_name.span());
         }
+        // `REF()` as the initial value gets the checks the expression form
+        // gets: the operand rules, and those of a `REF()` stored in a
+        // reference. The initial value is a variable, not an expression,
+        // so `visit_expr` does not see it.
+        if let Some(ReferenceInitialValue::Ref(var)) = &node.initial_value {
+            self.check_ref_operand(var);
+            let referenced = self.declared_reference_target(&node.target);
+            self.check_ref_stored(referenced, var);
+        }
         node.recurse_visit(self)
     }
 
@@ -606,6 +653,12 @@ impl Visitor<Infallible> for RuleRefTo<'_> {
 
 #[cfg(test)]
 mod non_reference_value_tests;
+
+#[cfg(test)]
+mod ref_initial_value_tests;
+
+#[cfg(test)]
+mod ref_of_reference_tests;
 
 #[cfg(test)]
 mod reference_value_tests;
