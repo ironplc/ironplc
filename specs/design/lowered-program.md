@@ -2378,6 +2378,7 @@ implements it.
 | Enumerated value | `Const` |
 | `MOVE(x)`, parenthesised expression | The operand, whatever its type: the operand's `Expr`, `StrExpr` or `Place` (REQ-LOW-lowering-203) |
 | `SEL` and `MUX` of `BOOL`s | The selection at the signed 32-bit integer of each `BOOL` converted to it, compared with zero (REQ-LOW-lowering-202) |
+| `x := SEL(g, a, b)` and `x := MUX(k, a, b, ...)` of strings, arrays or structures | The `If` or `Case` whose arms store the input each selects at `x`, after the stores of the selector and each input in temporaries where the inputs need them (REQ-LOW-lowering-204) |
 | Comparison of strings, such as `s < t` | A `Compare` with zero of the `Call` of the `Intrinsic` that orders two strings of their encoding (REQ-LOW-lowering-169) |
 | Conversion from a `STRING`, such as `STRING_TO_DINT(s)` | `Call` of the `Intrinsic` that reads a number of the call's type, a bit string as the unsigned integer of its width, carrying the parse policy (REQ-LOW-lowering-073) |
 | Conversion to a `STRING`, such as `DINT_TO_STRING(n)` | A `StrExpr` `Call` of the `Intrinsic` that writes a number of its operation type, of the default capacity (REQ-LOW-lowering-168) |
@@ -2439,8 +2440,37 @@ copy copies from.
 type and through any number of `MOVE`s: `s := MOVE(t)`, `s := CONCAT(MOVE(t),
 t)`, `p := MOVE(q)`, `n := f(MOVE(q))` and `b(v := MOVE(q))` on strings and
 structures lower as `s := t`, `s := CONCAT(t, t)`, `p := q`, `n := f(q)` and
-`b(v := q)` do. `SEL` and `MUX` of a string, an array or a structure are not
-lowered yet (P9999).
+`b(v := q)` do.
+
+`SEL` and `MUX` of a string, an array or a structure have no expression to
+lower to either, so they lower where their value is stored: an assignment, a
+function block input and a starting value. A selection evaluates its
+selector and then every input, in the order of its parameters, as a call of
+any function does and as the selection of a number does, so an input that is
+not selected still runs its calls and still traps on a subscript out of
+range. When every input is a literal or a variable reached through fields,
+constant subscripts and references that are never null, evaluating an input
+has no effect and cannot trap, and its value is the one it had when the
+selector was evaluated, so each arm stores its input itself. Otherwise the
+selector, unless it is a constant, and then each input but a literal are
+stored in temporaries of their own types first, in order.
+
+**REQ-LOW-lowering-204** `x := SEL(g, a, b)` and `x := MUX(k, a, b, ...)` of
+strings, arrays or structures lower to the `If` on `g`, or the `Case` on `k`
+with the labels `..0`, `1`, ... and an `else` for the last input, whose arms
+store the input each selects at `x`. When an input calls, computes a
+subscript or goes through a reference that may be null, the `If` or `Case`
+follows the store of `g` or `k` in a temporary, unless it is a constant, and
+then of each input but a literal in a temporary of its type, in order, and
+its arms store the temporaries: `s := SEL(g, names[i], 'none')` stores `g`
+and `names[i]` in temporaries, then stores `'none'` or the temporary. A
+selection inside an expression, such as an argument of `CONCAT` or of a
+function, and an input that is a call of a function whose result is a
+structure, are not lowered yet (P9999).
+
+The bytecode backend gives a compiler-provided temporary no storage of its
+own (see [In-place calls](#in-place-calls)), so it compiles a selection whose
+inputs need no temporaries, and reports one that needs them as P9999.
 
 Codegen has already folded the cross product of access kind and base shape
 into one addressing path (`compile_place.rs`) and one bit write

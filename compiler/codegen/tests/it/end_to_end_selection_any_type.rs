@@ -173,3 +173,83 @@ END_PROGRAM
         assert_eq!(snapshot.read_as::<i32>(name), expected, "{name}");
     }
 }
+
+/// `SEL` and `MUX` of strings, structures and arrays whose inputs are
+/// literals or variables store the input they select: a selector of `MUX`
+/// out of range is clamped, and a string is truncated to its target.
+#[spec_test(REQ_IC_codegen_025)]
+#[test]
+fn end_to_end_when_string_structure_or_array_variables_selected_then_stores_selected_input() {
+    let source = r#"
+TYPE Point : STRUCT x : DINT; y : DINT; END_STRUCT; END_TYPE
+TYPE Other : STRUCT x : DINT; y : DINT; END_STRUCT; END_TYPE
+FUNCTION pick : STRING
+  VAR_INPUT g : BOOL; a : STRING; b : STRING; END_VAR
+  pick := SEL(g, a, b);
+END_FUNCTION
+PROGRAM main
+  VAR
+    g : BOOL := TRUE; k : DINT := 1; low : DINT := -3; high : DINT := 7;
+    s0 : STRING := 'zero'; s1 : STRING := 'one'; s2 : STRING := 'two';
+    ws0 : WSTRING := "wide0"; ws1 : WSTRING := "wide1";
+    sel_s : STRING; mux_s : STRING; mux_low : STRING; mux_high : STRING; short : STRING[2];
+    sel_ws : WSTRING; literal : STRING; picked : STRING;
+    p0 : Point := (x := 1, y := 2); o1 : Other := (x := 3, y := 4); p : Point;
+    px : DINT; py : DINT;
+    a0 : ARRAY[1..2] OF DINT := [5, 6]; a1 : ARRAY[1..2] OF DINT := [7, 8];
+    a : ARRAY[1..2] OF DINT; first : DINT; second : DINT;
+  END_VAR
+  sel_s := SEL(g, s0, s1);
+  mux_s := MUX(k, s0, s1, s2);
+  mux_low := MUX(low, s0, s1, s2);
+  mux_high := MUX(high, s0, s1, s2);
+  short := SEL(g, s0, s1);
+  sel_ws := SEL(NOT g, ws0, ws1);
+  literal := SEL(g, s0, 'literal');
+  picked := pick(FALSE, s0, s1);
+  p := SEL(g, p0, o1);
+  px := p.x;
+  py := p.y;
+  a := MUX(0, a0, a1);
+  first := a[1];
+  second := a[2];
+END_PROGRAM
+"#;
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    for (name, expected) in [
+        ("sel_s", "one"),
+        ("mux_s", "one"),
+        ("mux_low", "zero"),
+        ("mux_high", "two"),
+        ("short", "on"),
+        ("sel_ws", "wide0"),
+        ("literal", "literal"),
+        ("picked", "zero"),
+    ] {
+        assert_eq!(snapshot.read(name), expected, "{name}");
+    }
+    for (name, expected) in [("px", 3), ("py", 4), ("first", 5), ("second", 6)] {
+        assert_eq!(snapshot.read_as::<i32>(name), expected, "{name}");
+    }
+}
+
+/// A selection of strings, structures or arrays whose inputs need
+/// temporaries, an input with a call, a computed subscript or another
+/// selection, is not supported yet: this backend gives no temporary storage
+/// of its own.
+#[spec_test(REQ_IC_codegen_025)]
+#[rstest]
+#[case::call("s := SEL(g, CONCAT(s, t), t);")]
+#[case::computed_subscript("s := SEL(g, names[i], t);")]
+#[case::nested_selection("s := SEL(g, s, MUX(i, s, t));")]
+fn end_to_end_when_selection_inputs_need_temporaries_then_not_supported_yet(#[case] body: &str) {
+    let source = format!(
+        "PROGRAM main VAR g : BOOL; i : DINT := 1; names : ARRAY[1..2] OF STRING; s : STRING;
+             t : STRING; END_VAR {body} END_PROGRAM"
+    );
+    let compiled = crate::common::try_parse_and_compile(&source, &CompilerOptions::default());
+    let Err(diagnostic) = compiled else {
+        panic!("{body} compiled");
+    };
+    assert_eq!(diagnostic.code, "P9999", "{body}");
+}

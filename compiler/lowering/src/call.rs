@@ -356,7 +356,7 @@ impl Lowering<'_> {
                 Ok(Arg::Ref(self.variable_place(frame, variable)?))
             }
             Param::Copy(_) => {
-                let AstExprKind::Variable(variable) = &self.moved(expr).kind else {
+                let AstExprKind::Variable(variable) = &self.unwrapped(expr).kind else {
                     return Err(Unlowered::NotYet);
                 };
                 Ok(Arg::Copy(self.variable_place(frame, variable)?))
@@ -364,28 +364,40 @@ impl Lowering<'_> {
         }
     }
 
-    /// The value `MOVE(x)` is: `x`, through any number of `MOVE`s, and
-    /// `expr` itself when it is no call of `MOVE` (REQ-LOW-lowering-203). An
-    /// array, a structure or a function block instance is copied from a
-    /// place rather than lowered as an expression, so where one is copied
-    /// lowering reads through `MOVE` to the place it copies.
-    pub(crate) fn moved<'e>(&self, mut expr: &'e AstExpr) -> &'e AstExpr {
-        while let AstExprKind::Function(func) = &expr.kind {
-            let is_move = self
-                .analysis
-                .context()
-                .functions()
-                .get(&func.name)
-                .is_some_and(|signature| {
-                    matches!(signature.builtin_function, Some(BuiltinFunction::Move))
-                });
-            let mut inputs = func.inputs();
-            match (is_move, inputs.next(), inputs.next()) {
-                (true, Some(value), None) => expr = value,
-                _ => break,
+    /// The value `MOVE(x)` and `(x)` are: `x`, through any number of `MOVE`s
+    /// and parentheses, and `expr` itself when it is neither
+    /// (REQ-LOW-lowering-203). An array, a structure or a function block
+    /// instance is copied from a place rather than lowered as an expression,
+    /// so where one is copied lowering reads through them to the place it
+    /// copies.
+    pub(crate) fn unwrapped<'e>(&self, mut expr: &'e AstExpr) -> &'e AstExpr {
+        loop {
+            if let AstExprKind::Expression(inner) = &expr.kind {
+                expr = inner;
+                continue;
             }
+            if let AstExprKind::Function(func) = &expr.kind {
+                let mut inputs = func.inputs();
+                if let (true, Some(value), None) =
+                    (self.is_move(func), inputs.next(), inputs.next())
+                {
+                    expr = value;
+                    continue;
+                }
+            }
+            return expr;
         }
-        expr
+    }
+
+    /// Whether `func` is a call of `MOVE`.
+    fn is_move(&self, func: &Function) -> bool {
+        self.analysis
+            .context()
+            .functions()
+            .get(&func.name)
+            .is_some_and(|signature| {
+                matches!(signature.builtin_function, Some(BuiltinFunction::Move))
+            })
     }
 
     /// The function form of an operator, `expr`: the expression the

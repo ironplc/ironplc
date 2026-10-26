@@ -621,19 +621,3 @@ fn lower_statement_when_move_of_string_or_aggregate_then_same_as_operand() {
         assert_eq!(outcome.statements[0], outcome.statements[1], "{form}");
     }
 }
-
-/// `SEL` and `MUX` of a string, a structure or an array are not lowered
-/// yet.
-#[test]
-fn lower_statement_when_selection_of_string_or_aggregate_then_unsupported() {
-    let outcome = lower(
-        "TYPE Point : STRUCT x : DINT; y : DINT; END_STRUCT; END_TYPE
-         PROGRAM main VAR g : BOOL; k : DINT; s : STRING; t : STRING; p : Point; q : Point;
-             END_VAR
-            s := SEL(g, s, t);
-            p := MUX(k, p, q);
-         END_PROGRAM",
-        "main",
-    );
-    assert_eq!(outcome.statements, ["unsupported", "unsupported"]);
-}

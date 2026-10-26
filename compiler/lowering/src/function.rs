@@ -558,7 +558,7 @@ impl<'a> Lowering<'a> {
     /// A new temporary of type `ty` for a call at `span` in the body of
     /// `frame`, named `label` for debug information. The label is not an
     /// identifier, so no name in the source refers to the temporary.
-    fn temporary(
+    pub(crate) fn temporary(
         &mut self,
         frame: &BodyFrame,
         label: String,
