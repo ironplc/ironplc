@@ -25,12 +25,12 @@ the opcodes are assigned in
 
 ### Key Insight: Source and Target Types Differ
 
-Unlike existing stdlib functions (ABS, SIN, etc.) where input and output share the same OpType, conversion functions have different source and target types. This requires a dedicated codegen handler that:
+Unlike existing stdlib functions (ABS, SIN, etc.) where input and output share the same OpType, conversion functions have different source and target types. A conversion therefore:
 
-1. Parses the function name to extract source and target type names
-2. Compiles the argument with the **source** type's OpType
-3. Emits a conversion opcode when source and target cross domain boundaries
-4. Emits truncation when the target is sub-32-bit
+1. Takes its source and target types from the built-in function the analyzer recorded for the call, not from the function's name
+2. Evaluates the argument at the **source** type
+3. Converts the value when source and target cross domain boundaries
+4. Truncates the result when the target is sub-32-bit
 
 ### Conversion Categories at the VM Level
 
@@ -72,9 +72,14 @@ Starting at 0x037E (next available after ATAN_F64):
 
 ### Codegen Routing
 
-Each conversion's signature names the built-in function `BuiltinFunction::Conversion` with its source and target types (`analyzer/src/intermediates/stdlib_conversion_function.rs`). `compile_function_call` routes a call by that built-in function, never by parsing the function's name: a conversion to or from `STRING` goes to `compile_string_conversion`, and any other to `compile_type_conversion`.
+Each conversion's signature names the built-in function `BuiltinFunction::Conversion` with its source and target types (`analyzer/src/intermediates/stdlib_conversion_function.rs`). Lowering routes a call by that built-in function, never by parsing the function's name (`lowering/src/call.rs`):
 
-The handler determines which opcode to emit based on source and target VarTypeInfo:
+- A conversion from `STRING` lowers to the call of a `StringTo*` intrinsic for the target type (`string_to_number` in `lowering/src/string.rs`).
+- A conversion to `STRING` lowers to a string expression, the call of a `*ToString` intrinsic for the source type (`number_to_string` in `lowering/src/string.rs`).
+- A conversion to `BOOL` lowers to the comparison of the value with zero.
+- Any other conversion lowers to the argument wrapped in `ExprKind::Convert` when the two types differ, then in `ExprKind::Truncate` when the target's storage is narrower than its operation width.
+
+Codegen emits a `Convert` with `emit_conversion_opcode` (`codegen/src/compile_call.rs`, through `convert` in `codegen/src/compile_arith.rs`), which determines the opcode from the source and target operation types:
 
 ```
 match (source.op_width, source.signedness, target.op_width) {
@@ -96,4 +101,4 @@ match (source.op_width, source.signedness, target.op_width) {
 }
 ```
 
-After the conversion opcode, emit truncation if target storage_bits < native width.
+After the conversion opcode, codegen emits the `Truncate` lowering placed around it, if any (`emit_truncate` in `codegen/src/lowered/expr.rs`).

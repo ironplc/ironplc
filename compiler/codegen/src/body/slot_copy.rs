@@ -6,7 +6,7 @@
 //! registers no data region for its own structures and arrays, and calls no
 //! instance it declares (`scope.rs`). This backend compiles no read inside
 //! such a variable there, nor a call of such an instance, so what its slot
-//! holds is never followed. For a `Copy` of one, `lp := lq`, the bridge
+//! holds is never followed. For a `Copy` of one, `lp := lq`, the backend
 //! stores the source's slot in the destination's: no program tells that from
 //! a copy of the values (REQ-LOW-codegen-165).
 //!

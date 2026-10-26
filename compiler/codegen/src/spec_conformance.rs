@@ -151,7 +151,7 @@ PROGRAM main VAR c : COLOR; END_VAR END_PROGRAM
         })
         .unwrap();
 
-    let info = crate::lowered::slot_type(types, color).unwrap();
+    let info = crate::body::slot_type(types, color).unwrap();
 
     assert!(matches!(info.op_width, crate::compile::OpWidth::W32));
     assert!(matches!(

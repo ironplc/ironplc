@@ -970,19 +970,6 @@ fn apply_when_typed_literal_in_context_of_its_own_type_then_unchanged() {
     assert_eq!(assigned_values(&source), vec!["LINT"]);
 }
 
-#[spec_test(REQ_IC_analyzer_127)]
-#[rstest]
-#[case::wider("LWORD", "DWORD#16#FFFFFFFF", "DWORD->LWORD")]
-#[case::own_type("DWORD", "DWORD#16#FFFFFFFF", "DWORD")]
-fn apply_when_bit_string_literal_in_context_of_another_width_then_converted_to_it(
-    #[case] target: &str,
-    #[case] value: &str,
-    #[case] expected: &str,
-) {
-    let source = arithmetic_program(target, "", value);
-    assert_eq!(assigned_values(&source), vec![expected]);
-}
-
 /// How the type of each literal in `source` was recorded: `inferred` or
 /// `stated`.
 fn literal_type_origins(source: &str) -> Vec<&'static str> {

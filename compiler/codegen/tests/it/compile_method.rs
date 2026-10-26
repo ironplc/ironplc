@@ -1,13 +1,12 @@
 //! Tests of calls of methods, and of methods' bodies, compiled from the
-//! lowered program (REQ-LOW-lowering-076), with every statement required to
-//! lower. A program whose methods have only scalar outputs is also checked
-//! to leave every variable with the same values on every backend after one
-//! scan.
+//! lowered program (REQ-LOW-lowering-076). A program whose methods have only
+//! scalar outputs is also checked to leave every variable with the same
+//! values on every backend after one scan.
 
 use rstest::rstest;
 
 use crate::common::{compile_analyzed, parse};
-use crate::compile_route_lowered::{assert_compiles, options, run_lowered, run_lowered_agreeing};
+use crate::compile_body::{assert_compiles, compile_and_run, compile_and_run_agreeing, options};
 
 /// A block whose methods add to its count, read it scaled, and split it
 /// into a quotient output, whether that is positive, and a remainder.
@@ -36,7 +35,7 @@ const BLOCK: &str = "
 /// it; one whose result is used converts it where it is stored.
 #[test]
 fn run_when_methods_called_then_receivers_fields_change() {
-    let snapshot = run_lowered_agreeing(&format!(
+    let snapshot = compile_and_run_agreeing(&format!(
         "{BLOCK}
          PROGRAM main
            VAR a : Counter; b : Counter; x : DINT := 4; ra : DINT; rb : LINT; r : DINT; END_VAR
@@ -60,7 +59,7 @@ fn run_when_methods_called_then_receivers_fields_change() {
 /// is not used stores its outputs too.
 #[test]
 fn run_when_method_with_outputs_called_then_outputs_and_result_stored() {
-    let snapshot = run_lowered_agreeing(&format!(
+    let snapshot = compile_and_run_agreeing(&format!(
         "{BLOCK}
          PROGRAM main
            VAR c : Counter; high : DINT; low : LINT; done : BOOL := TRUE; wide : LINT;
@@ -82,7 +81,7 @@ fn run_when_method_with_outputs_called_then_outputs_and_result_stored() {
 /// branch where they run.
 #[test]
 fn run_when_method_called_in_loop_and_branch_then_each_call() {
-    let snapshot = run_lowered_agreeing(&format!(
+    let snapshot = compile_and_run_agreeing(&format!(
         "{BLOCK}
          PROGRAM main VAR c : Counter; i : DINT; total : DINT; END_VAR
            FOR i := 1 TO 4 DO c.Add(k := i); END_FOR;
@@ -140,7 +139,7 @@ fn compile_when_method_called_then_compiles(#[case] statement: &str) {
 /// as a string is, at the target's capacity.
 #[test]
 fn run_when_method_has_string_output_then_stored() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "FUNCTION_BLOCK Named
            VAR count : DINT; END_VAR
            METHOD Label : DINT
@@ -163,7 +162,7 @@ fn run_when_method_has_string_output_then_stored() {
 /// A call of a method the receiver's block inherits from a block that
 /// declares a field is not supported yet (P9999, REQ-LOW-codegen-178).
 #[test]
-fn compile_when_inherited_method_called_then_lowered_route_leaves_it() {
+fn compile_when_inherited_method_called_then_not_implemented() {
     let source = format!(
         "{BLOCK}
          FUNCTION_BLOCK Derived EXTENDS Counter END_FUNCTION_BLOCK
@@ -200,7 +199,7 @@ const INHERITED: &str = "
 /// between, and through a block in between that declares a field.
 #[test]
 fn run_when_method_inherited_from_base_without_fields_then_base_method_runs() {
-    let snapshot = run_lowered(&format!(
+    let snapshot = compile_and_run(&format!(
         "{INHERITED}
          PROGRAM main VAR d : Derived; l : Leaf; u : Under; r1 : DINT; r2 : DINT; r3 : DINT; END_VAR
            r1 := d.Get(k := 2);
@@ -257,7 +256,7 @@ fn wide_block(fields: usize) -> String {
 /// `METHOD_CALL` counts, runs on every one of them.
 #[test]
 fn run_when_method_of_block_with_255_fields_called_then_reads_last_field() {
-    let snapshot = run_lowered(&wide_block(255));
+    let snapshot = compile_and_run(&wide_block(255));
     assert_eq!(snapshot.read_as::<i32>("r"), 7);
     assert_eq!(snapshot.read_as::<i32>("o"), 7);
 }

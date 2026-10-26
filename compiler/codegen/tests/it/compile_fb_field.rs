@@ -1,10 +1,10 @@
-//! Tests of the fields of function block instances read and written from
-//! the lowered program, with every statement required to lower.
+//! Tests of the fields of function block instances read and written from the
+//! lowered program.
 
 use rstest::rstest;
 
 use crate::common::Duration;
-use crate::compile_route_lowered::{assert_compiles, run_lowered, run_lowered_agreeing};
+use crate::compile_body::{assert_compiles, compile_and_run, compile_and_run_agreeing};
 
 /// A block with fields of several types, which no test calls.
 const BLOCK: &str = "
@@ -19,7 +19,7 @@ const BLOCK: &str = "
 /// written and read.
 #[test]
 fn run_when_block_fields_read_and_written_then_values() {
-    let snapshot = run_lowered(&format!(
+    let snapshot = compile_and_run(&format!(
         "{BLOCK}
          PROGRAM main
            VAR b : B := (t := T#250MS); c : CTU; s : TON := (PT := T#2S);
@@ -49,16 +49,15 @@ fn run_when_block_fields_read_and_written_then_values() {
     assert_eq!(snapshot.read_as::<u64>("r8"), 0);
 }
 
-/// A field of a block lowers and compiles. A bit of a field is left out: the
-/// route that read the AST addressed the field once to read it and again to
-/// write it, and the lowered program addresses it once
-/// (REQ-LOW-codegen-121).
+/// A field of a block lowers and compiles. A bit of a field is written with
+/// the field addressed once (REQ-LOW-codegen-121).
 #[rstest]
 #[case::read("d := b.a;")]
 #[case::read_output("x := b.q;")]
 #[case::write("b.a := d;")]
 #[case::write_constant("b.a := 7;")]
 #[case::read_and_write("b.a := b.a + d;")]
+#[case::bit_of_field("b.w.3 := x;")]
 #[case::read_standard_block("d := c.CV;")]
 #[case::read_standard_block_output("x := t.Q;")]
 #[case::write_standard_block("c.PV := 7;")]
@@ -181,8 +180,8 @@ fn compile_when_string_or_aggregate_field_lowered_then_compiles(#[case] statemen
 /// backend, and the scalar input and output pass as they do for a block with
 /// only scalar fields.
 #[test]
-fn run_when_string_and_aggregate_inputs_passed_then_routes_agree() {
-    let snapshot = run_lowered_agreeing(&format!(
+fn run_when_string_and_aggregate_inputs_passed_then_backends_agree() {
+    let snapshot = compile_and_run_agreeing(&format!(
         "{AGGREGATES}
          PROGRAM main
            VAR f : S; t : STRING := 'b'; v : P := (x := 5); arr : ARRAY[1..2] OF DINT;

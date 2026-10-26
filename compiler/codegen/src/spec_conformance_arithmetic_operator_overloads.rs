@@ -173,8 +173,8 @@ fn codegen_spec_req_ao_009_extensible_call_folds_through_typed_routine(
 }
 
 /// Every typed name the analyzer's typed step can answer with is registered
-/// as a time function, at both widths: `compile_arith` compiles the pair
-/// through the routine of the function it is registered as.
+/// as a time function, at both widths: lowering lowers the pair as the
+/// function it is registered as (`lowering/src/time.rs`).
 #[test]
 fn typed_overload_when_any_pair_then_names_a_registered_time_function() {
     let intrinsics = builtin_functions_by_name(

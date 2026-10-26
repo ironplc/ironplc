@@ -13,8 +13,8 @@ use ironplc_container::{CharWidth, SlotIndex, VarIndex};
 
 use super::compile::{CompileContext, VarTypeInfo};
 use super::compile_subscript::Subscript;
+use crate::body::slot_type;
 use crate::emit::Emitter;
-use crate::lowered::slot_type;
 use ironplc_ir::lowered::{TypeKind, TypeTable};
 
 /// Metadata for a single dimension of an array, used for index computation.
@@ -186,7 +186,7 @@ pub(crate) fn resolve_access<'ctx, S: Clone>(
                                     subscripts: all_subscripts,
                                 });
                             }
-                            other => {
+                            other @ (Access::Field(_) | Access::Index(_) | Access::Deref(_)) => {
                                 return Err(Diagnostic::todo_with_span(other.span()));
                             }
                         }

@@ -70,21 +70,19 @@ pub(crate) enum CallOutputs {
     Temporaries(Vec<(Id, Place)>),
 }
 
-/// The instance parameter of a body and the fields of its type.
+/// The instance a body works on: its instance parameter, and the place of
+/// the instance itself, whose fields the body's names reach.
 #[derive(Clone, Debug)]
 pub(crate) struct Instance {
+    /// The instance parameter, a non-null reference to the instance.
     pub(crate) this: VarId,
-    /// The type of the instance `this` refers to.
-    pub(crate) instance_type: TypeId,
-    /// The name of each field of the instance's type, by position.
-    field_names: Vec<Id>,
+    /// The instance itself: what `this` refers to, or, in `init`, which runs
+    /// in no body, the variable that holds the instance
+    /// ([`BodyFrame::held_by`]).
+    pub(crate) root: Place,
     /// The scope that declares the fields: the body's own for a program or
     /// function block, and its block's for a method.
     scope: ScopeKind,
-    /// The variable that holds the instance itself, when the fields are
-    /// reached through it rather than through `this`: in `init`, which runs
-    /// in no body and so has no instance parameter.
-    holder: Option<VarId>,
 }
 
 impl<'e> BodyFrame<'e> {
@@ -121,14 +119,14 @@ impl<'e> BodyFrame<'e> {
         self.call_outputs
     }
 
-    /// This frame, with the fields of its instance reached through the
-    /// variable `holder`, which holds the instance, rather than through the
-    /// body's instance parameter: the frame an initializer of a field of a
-    /// program instance is lowered in, as `init` runs in no body.
-    pub(crate) fn held_by(&self, holder: VarId) -> BodyFrame<'e> {
+    /// This frame with its instance at `holder`, the variable that holds
+    /// the instance, rather than at what the body's instance parameter
+    /// refers to: the frame an initializer of a field of a program instance
+    /// is lowered in, as `init` runs in no body.
+    pub(crate) fn held_by(&self, holder: Place) -> BodyFrame<'e> {
         let mut frame = self.clone();
         if let Some(instance) = frame.instance.as_mut() {
-            instance.holder = Some(holder);
+            instance.root = holder;
         }
         frame
     }
@@ -287,8 +285,9 @@ impl<'a> Lowering<'a> {
         Ok(fields)
     }
 
-    /// The instance parameter of the body of `pou`, a non-null reference to
-    /// `instance_type`, whose fields `scope` declares.
+    /// The instance of the body of `pou`, of type `instance_type`, whose
+    /// fields `scope` declares, reached through the body's instance
+    /// parameter, a non-null reference to it.
     fn instance(
         &mut self,
         pou: PouId,
@@ -296,28 +295,16 @@ impl<'a> Lowering<'a> {
         instance_type: TypeId,
         scope: ScopeKind,
     ) -> Result<Instance, Diagnostic> {
-        let field_names = self
-            .program
-            .types()
-            .fields(instance_type)
-            .unwrap_or_default()
-            .iter()
-            .map(|field| Id::from(&field.name.to_string()))
-            .collect();
-        let this_type = self.non_null_reference(instance_type, &name.span())?;
+        let span = name.span();
+        let this_type = self.non_null_reference(instance_type, &span)?;
         let this = self.program.push_declared_variable(
-            DebugName::new("THIS", name.span()),
+            DebugName::new("THIS", span.clone()),
             Owner::Pou(pou),
             Declared::in_section(Section::Instance),
             this_type,
         )?;
-        Ok(Instance {
-            this,
-            instance_type,
-            field_names,
-            scope,
-            holder: None,
-        })
+        let root = self.program.deref(self.program.var(this, &span)?, &span)?;
+        Ok(Instance { this, root, scope })
     }
 
     /// The place `name` refers to in the body of `frame`. A name that is no
@@ -359,20 +346,8 @@ impl<'a> Lowering<'a> {
                 Some(VariableType::VarTemp | VariableType::InOut) => return Err(Unlowered::NotYet),
                 Some(_) | None => {}
             }
-            let field = instance
-                .field_names
-                .iter()
-                .position(|field| *field == decl.name)
-                .and_then(|position| self.program.field_idx(instance.instance_type, position))
-                .ok_or(Unlowered::NotYet)?;
-            let instance_place = match instance.holder {
-                Some(holder) => self.program.var(holder, span)?,
-                None => {
-                    let this = self.program.var(instance.this, span)?;
-                    self.program.deref(this, span)?
-                }
-            };
-            return Ok(self.program.field(instance_place, field, span)?);
+            let root = instance.root.clone();
+            return self.field_of(root, &decl.name, span);
         }
         if decl.scope != frame.scope {
             // A field a function block inherits through `EXTENDS` is not

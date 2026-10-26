@@ -31,14 +31,13 @@
 use std::collections::HashMap;
 
 use ironplc_dsl::common::{VarDecl, VariableType};
-use ironplc_dsl::core::{Id, Located, SourceSpan};
+use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{SymbolicVariableKind, Variable};
 use ironplc_dsl::type_id::TypeId as AstTypeId;
 use ironplc_ir::execution::{ExecutionModel, InstanceOf};
 use ironplc_ir::lowered::{
-    ExecutionBindings, Expr, ExprKind, Owner, Place, Projection, ScalarType, Signedness, Stmt,
-    StrExpr, TypeKind, VarId,
+    ExecutionBindings, Expr, Owner, Place, ScalarType, Signedness, Stmt, StrExpr, TypeKind, VarId,
 };
 
 use crate::execution_model::Declarations;
@@ -88,10 +87,11 @@ impl Values {
 enum Reach<'f> {
     /// A global's initializer, which names other globals.
     Global,
-    /// The initializer of a field of the program instance, the variable,
-    /// whose body is the frame: it names the program's variables, reached
-    /// through the instance, as `init` runs in no body.
-    Instance(&'f BodyFrame<'f>, VarId),
+    /// The initializer of a field of a program instance, in `init`, which
+    /// runs in no body: the frame of the program's body held by the
+    /// variable that holds the instance ([`BodyFrame::held_by`]), so that
+    /// the program's variables are reached through the instance itself.
+    Init(&'f BodyFrame<'f>),
     /// The initializer of a variable of the body of the frame, which runs
     /// in that body.
     Body(&'f BodyFrame<'f>),
@@ -152,12 +152,11 @@ impl<'a> Lowering<'a> {
             return Ok(());
         };
         let span = name.span();
-        let place = match decl.var_type {
-            VariableType::Var | VariableType::Input | VariableType::Output => {
-                let this = self.program.var(instance, &span)?;
-                self.field_named(this, name, &span)
-            }
-            VariableType::Global => self.named_place(frame, name, &span),
+        match decl.var_type {
+            VariableType::Var
+            | VariableType::Input
+            | VariableType::Output
+            | VariableType::Global => {}
             // A `VAR_IN_OUT` is bound by a call, a `VAR_TEMP` starts again
             // in each scan, a `VAR_EXTERNAL` is its global's and an access
             // path names another variable.
@@ -165,11 +164,10 @@ impl<'a> Lowering<'a> {
             | VariableType::VarTemp
             | VariableType::External
             | VariableType::Access => return Ok(()),
-        };
-        match place {
-            Ok(place) => {
-                self.store_declaration(Reach::Instance(frame, instance), place, decl, values, init)
-            }
+        }
+        let held = frame.held_by(self.program.var(instance, &span)?);
+        match self.named_place(&held, name, &span) {
+            Ok(place) => self.store_declaration(Reach::Init(&held), place, decl, values, init),
             Err(unlowered) => {
                 init.unsupported.push(unlowered.not_yet_at(span)?);
                 Ok(())
@@ -292,7 +290,7 @@ impl<'a> Lowering<'a> {
             }
             InitialValue::Structure(fields) => {
                 for FieldValue { name, value } in fields {
-                    let field = self.field_named(place.clone(), name, span)?;
+                    let field = self.field_of(place.clone(), name, span)?;
                     self.store_value(reach, field, value, span, statements)?;
                 }
             }
@@ -302,13 +300,8 @@ impl<'a> Lowering<'a> {
             // itself, as `init` has no instance parameter. One of a global
             // is not lowered yet.
             InitialValue::Expression(expr) => {
-                let held;
                 let frame = match reach {
-                    Reach::Body(frame) => frame,
-                    Reach::Instance(frame, instance) => {
-                        held = frame.held_by(instance);
-                        &held
-                    }
+                    Reach::Body(frame) | Reach::Init(frame) => frame,
                     Reach::Global => return Err(Unlowered::NotYet),
                 };
                 statements.push(self.store_at(frame, place, expr, span.clone())?);
@@ -317,80 +310,32 @@ impl<'a> Lowering<'a> {
         Ok(())
     }
 
-    /// The field `name` of the record at `place`, matched without regard to
-    /// case as IEC identifiers are. A record with no field of that name is
-    /// not lowered.
-    fn field_named(&self, place: Place, name: &Id, span: &SourceSpan) -> Lowered<Place> {
-        let wanted = name.to_string().to_lowercase();
-        let position = self
-            .program
-            .types()
-            .fields(place.ty())
-            .and_then(|fields| {
-                fields
-                    .iter()
-                    .position(|field| field.name.to_string().to_lowercase() == wanted)
-            })
-            .ok_or(Unlowered::NotYet)?;
-        let field = self
-            .program
-            .field_idx(place.ty(), position)
-            .ok_or(Unlowered::NotYet)?;
-        Ok(self.program.field(place, field, span)?)
-    }
-
     /// The place `REF(variable)` refers to, reached as `reach` says: a
-    /// global, what a body names, or, in the initializer of a field of a
-    /// program instance, what the program's body names reached through the
-    /// instance rather than the body's instance parameter. Any other place
-    /// is not lowered yet.
+    /// global, what a body names, or, in `init`, what the program's body
+    /// names, reached through the instance itself. `init` runs in no body,
+    /// so a variable a body owns is no place it reaches.
     fn reference_target(&mut self, reach: Reach<'_>, variable: &Variable) -> Lowered<Place> {
-        let (frame, instance) = match reach {
-            Reach::Global => {
-                return match variable {
-                    Variable::Symbolic(SymbolicVariableKind::Named(named)) => {
-                        self.global_place(&named.name, &named.name.span())
-                    }
-                    Variable::Symbolic(_) | Variable::Direct(_) => Err(Unlowered::NotYet),
-                };
-            }
-            Reach::Body(frame) => return self.variable_place(frame, variable),
-            Reach::Instance(frame, instance) => (frame, instance),
-        };
-        let place = self.variable_place(frame, variable)?;
-        let span = variable.span();
-        let owner = self
-            .program
-            .variables()
-            .get(place.root())
-            .map(|var| var.owner());
-        let this = frame.instance.as_ref().map(|instance| instance.this);
-        if owner == Some(Owner::Global) {
-            return Ok(place);
-        }
-        let ([Projection::Deref, path @ ..], true) = (place.path(), this == Some(place.root()))
-        else {
-            return Err(Unlowered::NotYet);
-        };
-        let mut rebased = self.program.var(instance, &span)?;
-        for projection in path {
-            rebased = match projection {
-                Projection::Field(field) => self.program.field(rebased, *field, &span)?,
-                Projection::Deref => self.program.deref(rebased, &span)?,
-                Projection::Index(subscripts) => {
-                    // A subscript that reads a place would read it through
-                    // the instance parameter too.
-                    let constant = subscripts
-                        .iter()
-                        .all(|subscript| matches!(subscript.kind(), ExprKind::Const(_)));
-                    if !constant {
-                        return Err(Unlowered::NotYet);
-                    }
-                    self.program.index(rebased, subscripts.clone(), &span)?
+        match reach {
+            Reach::Global => match variable {
+                Variable::Symbolic(SymbolicVariableKind::Named(named)) => {
+                    self.global_place(&named.name, &named.name.span())
                 }
-            };
+                Variable::Symbolic(_) | Variable::Direct(_) => Err(Unlowered::NotYet),
+            },
+            Reach::Body(frame) => self.variable_place(frame, variable),
+            Reach::Init(frame) => {
+                let place = self.variable_place(frame, variable)?;
+                let owner = self
+                    .program
+                    .variables()
+                    .get(place.root())
+                    .map(|var| var.owner());
+                if owner != Some(Owner::Global) {
+                    return Err(Unlowered::NotYet);
+                }
+                Ok(place)
+            }
         }
-        Ok(rebased)
     }
 }
 

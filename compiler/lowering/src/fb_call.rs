@@ -133,20 +133,10 @@ impl Lowering<'_> {
     /// is one of `section`. Any other field, such as a `VAR_IN_OUT`, and a
     /// field the block's lowered type does not hold, is not lowered.
     fn block_field(&mut self, instance: &Place, name: &Id, section: Section) -> Lowered<Place> {
-        let position = self
-            .program
-            .types()
-            .fields(instance.ty())
-            .and_then(|fields| {
-                fields.iter().position(|field| {
-                    field.section == Some(section) && Id::from(&field.name.to_string()) == *name
-                })
-            })
-            .ok_or(Unlowered::NotYet)?;
-        let field = self
-            .program
-            .field_idx(instance.ty(), position)
-            .ok_or(Unlowered::NotYet)?;
+        let (field, declared) = self.field_named(instance, name).ok_or(Unlowered::NotYet)?;
+        if declared.section != Some(section) {
+            return Err(Unlowered::NotYet);
+        }
         Ok(self.program.field(instance.clone(), field, &name.span())?)
     }
 }

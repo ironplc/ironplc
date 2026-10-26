@@ -5,14 +5,14 @@
 use ironplc_vm::error::Trap;
 
 use crate::common::{compile_analyzed, parse, run_one_scan};
-use crate::compile_route_lowered::{options, run_lowered};
+use crate::compile_body::{compile_and_run, options};
 
 /// A copy through a reference gives the referenced array or structure the
 /// source's values, and storage of its own: a later store to the source
 /// leaves it as it is (REQ-LOW-codegen-165).
 #[test]
 fn run_when_aggregate_copied_through_reference_then_referenced_holds_copy() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "TYPE P : STRUCT x : DINT; y : DINT; END_STRUCT; END_TYPE
          PROGRAM main
            VAR a : ARRAY[1..3] OF DINT := [1, 2, 3]; z : ARRAY[1..3] OF DINT := [7, 8, 9];
@@ -48,7 +48,7 @@ fn run_when_aggregate_copied_through_reference_then_referenced_holds_copy() {
 /// array assigned to it is copied into that array.
 #[test]
 fn run_when_array_assigned_to_reference_to_then_bound_array_holds_copy() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR a : ARRAY[1..3] OF DINT; z : ARRAY[1..3] OF DINT := [4, 5, 6];
                r : REFERENCE TO ARRAY[1..3] OF DINT; a3 : DINT; END_VAR

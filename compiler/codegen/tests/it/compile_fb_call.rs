@@ -1,7 +1,7 @@
 //! Tests of calls of function blocks, user-defined and standard, compiled
-//! from the lowered program (REQ-LOW-lowering-069), with every statement
-//! required to lower, and one scan of each program checked to leave every
-//! variable with the same values on every backend.
+//! from the lowered program (REQ-LOW-lowering-069), and one scan of each
+//! program checked to leave every variable with the same values on every
+//! backend.
 
 use ironplc_parser::options::CompilerOptions;
 
@@ -10,7 +10,7 @@ use rstest::rstest;
 use crate::common::{
     compile_analyzed, parse, parse_and_compile_to_run, run_compiled_scans, Duration, Snapshot,
 };
-use crate::compile_route_lowered::{assert_compiles, options, run_lowered, run_lowered_agreeing};
+use crate::compile_body::{assert_compiles, compile_and_run, compile_and_run_agreeing, options};
 
 /// A block whose outputs are its inputs' sum, whether the sum is positive,
 /// a `REAL`, a `UDINT` and a count of its calls.
@@ -31,7 +31,7 @@ const BLOCK: &str = "
 /// and one in an element of an array at a literal subscript.
 #[test]
 fn run_when_block_called_then_inputs_stored_and_outputs_read() {
-    let snapshot = run_lowered_agreeing(&format!(
+    let snapshot = compile_and_run_agreeing(&format!(
         "{BLOCK}
          PROGRAM main
            VAR f : FB; a : DINT := 40; b : BOOL := TRUE; lr : LREAL; lu : LINT;
@@ -52,7 +52,7 @@ fn run_when_block_called_then_inputs_stored_and_outputs_read() {
 /// call stored, and the instance keeps its fields from one call to the next.
 #[test]
 fn run_when_block_called_twice_then_omitted_input_and_fields_kept() {
-    let snapshot = run_lowered_agreeing(&format!(
+    let snapshot = compile_and_run_agreeing(&format!(
         "{BLOCK}
          PROGRAM main VAR f : FB; first : DINT; second : DINT; n : DINT; END_VAR
            f(x := 5, s := 1, q => first);
@@ -68,7 +68,7 @@ fn run_when_block_called_twice_then_omitted_input_and_fields_kept() {
 /// two instances of one block keep separate fields.
 #[test]
 fn run_when_block_called_in_loop_and_if_then_runs_each_time() {
-    let snapshot = run_lowered_agreeing(&format!(
+    let snapshot = compile_and_run_agreeing(&format!(
         "{BLOCK}
          PROGRAM main
            VAR f : FB; g : FB; i : DINT; total : DINT; skipped : DINT; fc : DINT; gc : DINT;
@@ -93,7 +93,7 @@ fn run_when_block_called_in_loop_and_if_then_runs_each_time() {
 /// stores it, narrowed to the field's storage (#2292).
 #[test]
 fn run_when_input_outside_narrow_field_then_narrowed() {
-    let snapshot = run_lowered_agreeing(
+    let snapshot = compile_and_run_agreeing(
         "FUNCTION_BLOCK Narrow
            VAR_INPUT s : SINT; u : USINT; END_VAR
            VAR_OUTPUT q : DINT; qu : DINT; END_VAR
@@ -133,7 +133,7 @@ fn compile_when_block_called_then_compiles(#[case] statement: &str) {
 /// A call of an instance declared inside a function block is not supported
 /// yet (P9999, #1553).
 #[test]
-fn compile_when_instance_declared_in_block_then_lowered_route_leaves_it() {
+fn compile_when_instance_declared_in_block_then_not_implemented() {
     assert_not_implemented(&format!(
         "{BLOCK}
          FUNCTION_BLOCK Outer
@@ -249,7 +249,7 @@ fn compile_when_every_counter_input_and_output_bound_then_compiles(
 /// input.
 #[test]
 fn run_when_standard_blocks_called_then_outputs_of_vm_blocks() {
-    let snapshot = run_lowered_agreeing(
+    let snapshot = compile_and_run_agreeing(
         "PROGRAM main
            VAR c : CTU_DINT; down : CTD; ud : CTUD_ULINT; e : R_TRIG; s : SR; r : RS;
                cv : DINT; cq : BOOL; dv : INT; dq : BOOL; udv : ULINT; uq : BOOL;
@@ -278,7 +278,7 @@ fn run_when_standard_blocks_called_then_outputs_of_vm_blocks() {
 /// -25536.
 #[test]
 fn run_when_standard_block_input_outside_field_then_narrowed_once() {
-    let snapshot = run_lowered_agreeing(
+    let snapshot = compile_and_run_agreeing(
         "PROGRAM main
            VAR c : CTU; a : INT := 20000; b : INT := 20000; preset : DINT; END_VAR
            c(CU := FALSE, PV := a + b);
@@ -293,7 +293,7 @@ fn run_when_standard_block_input_outside_field_then_narrowed_once() {
 /// of the field, narrows it to the target.
 #[test]
 fn run_when_int_counter_counts_past_int_then_stored_narrowed() {
-    let snapshot = run_lowered_agreeing(
+    let snapshot = compile_and_run_agreeing(
         "PROGRAM main VAR d : CTD; out : INT; read : INT; END_VAR
            d(CD := FALSE, LD := TRUE, PV := -32768);
            d(CD := TRUE, LD := FALSE, CV => out);
@@ -308,7 +308,7 @@ fn run_when_int_counter_counts_past_int_then_stored_narrowed() {
 /// names for it.
 #[test]
 fn run_when_standard_block_called_positionally_then_inputs_stored() {
-    let snapshot = run_lowered_agreeing(
+    let snapshot = compile_and_run_agreeing(
         "PROGRAM main
            VAR c : CTU; cv : INT; pv : INT; q : BOOL; END_VAR
            c(TRUE, FALSE, 1);
@@ -364,8 +364,7 @@ fn compile_when_standard_instance_declared_in_block_then_not_implemented() {
 }
 
 /// A call of a standard block's instance a program reaches through
-/// `VAR_EXTERNAL`, which the route that read the AST called by its name,
-/// lowers and compiles.
+/// `VAR_EXTERNAL` lowers and compiles.
 #[test]
 fn compile_when_standard_instance_external_then_compiles() {
     assert_compiles(
@@ -387,12 +386,10 @@ fn compile_when_standard_instance_external_then_compiles() {
 /// REQ-LOW-codegen-165: an instance assigned from another of its block gets
 /// a copy of every field, in storage of its own, so a later call of either
 /// leaves the other as it was, and an instance assigned to itself is
-/// unchanged. This corrected the route that read the AST, which stored the
-/// source's slot in the destination's and so made `f` an alias of `g`:
-/// there `f(v := 9)` called `g`, and `r` was 9 and `g` counted two calls.
+/// unchanged: `f(v := 9)` calls `f`, not `g`.
 #[test]
 fn run_when_instance_assigned_then_copy_of_its_fields() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "FUNCTION_BLOCK FBV
            VAR_INPUT v : DINT; END_VAR
            VAR_OUTPUT q : DINT; calls : DINT; END_VAR
@@ -420,9 +417,7 @@ fn run_when_instance_assigned_then_copy_of_its_fields() {
 /// REQ-LOW-codegen-165: a standard block's instance assigned from another
 /// gets the fields the VM's block keeps for itself as well as its inputs and
 /// outputs. `t := u` while `u` times copies the time `u` started at, so `t`
-/// has run as long as `u`; resetting `t` afterwards leaves `u` timing. On the
-/// route that read the AST, `t` was `u`, so resetting `t` reset `u`, and `u`
-/// restarted at the last scan.
+/// has run as long as `u`; resetting `t` afterwards leaves `u` timing.
 #[test]
 fn run_when_timer_assigned_while_timing_then_copy_keeps_its_start() {
     let source = "PROGRAM main
@@ -500,7 +495,7 @@ const LINKED: &str = "
 /// every backend leaves every variable the same.
 #[test]
 fn run_when_block_refers_to_itself_through_reference_then_values() {
-    let snapshot = run_lowered_agreeing(&format!(
+    let snapshot = compile_and_run_agreeing(&format!(
         "{LINKED}
          PROGRAM main
            VAR a : Node; b : Node; pi : Ping; po : Pong;

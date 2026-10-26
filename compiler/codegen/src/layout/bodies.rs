@@ -1,6 +1,6 @@
 //! Where each user function's, function block's and method's variables are,
 //! which their bodies are compiled against: the layout built from the
-//! lowered declarations gives one for each body ([`super::lowered`]).
+//! lowered declarations gives one for each body ([`super::declarations`]).
 
 use ironplc_container::{FunctionId, VarIndex};
 

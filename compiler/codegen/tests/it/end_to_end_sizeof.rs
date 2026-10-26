@@ -373,11 +373,9 @@ END_PROGRAM
     &[("s", 40)],
 );
 
-/// REQ-LOW-lowering-103: with every statement lowered, `SIZEOF` of a string
-/// is its capacity and terminator, and of an enumeration its underlying
-/// type's size, as CODESYS, TwinCAT and RuSTy give them. (The route that
-/// read the AST gave 0 for an array of strings and 4 for every
-/// enumeration.)
+/// REQ-LOW-lowering-103: `SIZEOF` of a string is its capacity and
+/// terminator, and of an enumeration its underlying type's size, as CODESYS,
+/// TwinCAT and RuSTy give them.
 #[test]
 fn run_when_sizeof_string_or_enumeration_lowered_then_language_size() {
     let options = CompilerOptions {

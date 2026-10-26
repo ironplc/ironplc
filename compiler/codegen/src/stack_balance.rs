@@ -103,7 +103,7 @@ mod tests {
     /// Wraps an emitter's finished bytecode in a runnable single-function
     /// container, declaring the stack depth the emitter itself computed.
     ///
-    /// This is the same sequence `compile_program_with_functions` performs,
+    /// This is the same sequence `compile` performs (`finalize_function`),
     /// reduced to one function — so what these tests feed the verifier is
     /// what codegen would have shipped.
     fn container_from(emitter: &mut Emitter, num_params: u16) -> ironplc_container::Container {

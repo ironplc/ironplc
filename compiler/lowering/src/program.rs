@@ -391,7 +391,8 @@ impl<'a> Lowering<'a> {
             let Some(Ok(frame)) = self.bodies.get(&pou) else {
                 continue;
             };
-            let Some(instance_type) = frame.instance.as_ref().map(|this| this.instance_type) else {
+            let Some(instance_type) = frame.instance.as_ref().map(|instance| instance.root.ty())
+            else {
                 continue;
             };
             let name = instance

@@ -12,27 +12,29 @@
 //! ([`ConversionKind::Checked`]): it traps on such a value rather than
 //! wrapping it to the position of another element.
 //!
-//! It records a conversion where the value has a type of its own, which an
-//! untyped literal does not. A value converts to its context when it is a
-//! variable, an operation that computes at its own result type, or a
-//! parenthesized one of those, and its operation type differs from the
-//! target's: its width, or the signedness of an integer, so a `USINT` stored
-//! in a `DINT` is converted although both are operated on in 32 bits. An
-//! operation computes at its own type when it is arithmetic, a negation or
-//! `NOT`, a bitwise operator ([`CompareOp::is_bitwise`]), or a standard
-//! function on one value or of several inputs of one type
-//! ([`BuiltinFunction::computes_at_own_type`]); the function form of an
-//! arithmetic operator on time or date operands computes as the typed time
-//! or date function it resolves to (see `time.rs`). A call to a user-defined
-//! function or a method, a standard function whose signature fixes its
-//! result type ([`BuiltinFunction::result_has_fixed_type`]), and a
+//! It records a conversion where the value has a type of its own, which a
+//! number literal does not. A value converts to its context when it is a
+//! variable, an operation that computes at its own result type, a literal
+//! whose prefix names its type, or a parenthesized one of those, and its
+//! operation type differs from the target's: its width, or the signedness of
+//! an integer, so a `USINT` stored in a `DINT` is converted although both
+//! are operated on in 32 bits. An operation computes at its own type when it
+//! is arithmetic, a negation or `NOT`, a bitwise operator
+//! ([`CompareOp::is_bitwise`]), or a standard function on one value or of
+//! several inputs of one type ([`BuiltinFunction::computes_at_own_type`]);
+//! the function form of an arithmetic operator on a pair with a typed
+//! overload computes as the typed time or date function the pair resolves to
+//! (`ADD(dt, t)` is `ADD_DT_TIME`), at that routine's type. A call to a
+//! user-defined function or a method, a standard function whose signature
+//! fixes its result type ([`BuiltinFunction::result_has_fixed_type`]), and a
 //! dereference, have the type the function returns or the referenced
-//! variable has, and convert to their context too. So does a time, date or
-//! bit-string literal, whose prefix is its type: `DT#2100-01-01-00:00:00` is
-//! a `DATE_AND_TIME`, and is widened to an `LDATE_AND_TIME` as a variable
-//! is. Any other value -- a numeric literal, which the literal pass types
-//! (see `literal.rs`), a call to `TRUNC` -- is compiled at the target's
-//! width rather than converted to it, so there is no conversion to record.
+//! variable has, and convert to their context too. A time or date literal
+//! and a bit string literal have the type their prefix names (`T#5s` is a
+//! `TIME`, `LDT#2020-01-01-00:00:00` an `LDT`, `DWORD#16#FF` a `DWORD`) and
+//! are compiled at it, so they convert as a variable of that type does. Any
+//! other value -- a number literal, a call to `TRUNC` -- is compiled at the
+//! target's width rather than converted to it, so there is no conversion to
+//! record.
 //!
 //! An output assignment of a call (`f(q => v)`) stores the value the binding
 //! pass recorded on it, the output the call leaves, and converts it as an
@@ -272,9 +274,10 @@ impl ImplicitConversions<'_> {
             // standard function whose signature fixes its result type (a type
             // conversion, a typed time function). The function form of an
             // arithmetic operator, on a numeric pair or on a pair with a typed
-            // overload, an operation on one value and a function of several
-            // inputs of one type compute at their own type, and any other
-            // standard function at its context's.
+            // overload (`ADD(dt, t)` computes as `ADD_DT_TIME`), an operation
+            // on one value and a function of several inputs of one type
+            // compute at their own type, and any other standard function at
+            // its context's.
             ExprKind::Function(func) => match self.builtin_function_of(func) {
                 None => true,
                 Some(builtin) => {
@@ -290,25 +293,27 @@ impl ImplicitConversions<'_> {
             // A bitwise operator computes at its own type, as an arithmetic
             // operation does; a comparison is a `BOOL`.
             ExprKind::Compare(compare) => compare.op.is_bitwise(),
-            // A numeric literal compiles at the type the literal pass gives
-            // it, and a late-bound name is read at its context's type.
-            ExprKind::Const(ConstantKind::IntegerLiteral(_) | ConstantKind::RealLiteral(_))
-            | ExprKind::LateBound(_) => false,
-            // A time, date or bit-string literal has the type its prefix
-            // names, and converts to its context's as a variable does.
-            ExprKind::Const(
+            ExprKind::Const(constant) => match constant {
+                // A time or date literal and a bit string literal have the
+                // type their prefix names, and compile at it:
+                // `DT#2020-01-01-00:00:00` is a `DATE_AND_TIME` and
+                // `DWORD#16#FF` a `DWORD` wherever they are stored.
                 ConstantKind::Duration(_)
                 | ConstantKind::TimeOfDay(_)
                 | ConstantKind::Date(_)
                 | ConstantKind::DateAndTime(_)
-                | ConstantKind::BitStringLiteral(_),
-            ) => true,
-            // Not a number: a boolean or string literal, an enumeration's
-            // ordinal, or a reference.
-            ExprKind::Const(ConstantKind::Boolean(_) | ConstantKind::CharacterString(_))
-            | ExprKind::EnumeratedValue(_)
-            | ExprKind::Ref(_)
-            | ExprKind::Null(_) => false,
+                | ConstantKind::BitStringLiteral(_) => true,
+                // A number literal compiles at the type the literal pass
+                // gives it; a `BOOL` or a string is not a number.
+                ConstantKind::IntegerLiteral(_)
+                | ConstantKind::RealLiteral(_)
+                | ConstantKind::Boolean(_)
+                | ConstantKind::CharacterString(_) => false,
+            },
+            // A late-bound name is read at its context's type.
+            ExprKind::LateBound(_) => false,
+            // Not a number: an enumeration's ordinal, or a reference.
+            ExprKind::EnumeratedValue(_) | ExprKind::Ref(_) | ExprKind::Null(_) => false,
         }
     }
 

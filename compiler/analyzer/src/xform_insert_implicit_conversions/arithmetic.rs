@@ -224,21 +224,12 @@ impl ImplicitConversions<'_> {
         Some((*id, numeric_operation_type(&name)?))
     }
 
-    /// Returns `true` when the operands of `op` have a typed overload on the
-    /// time and date types.
-    pub(super) fn has_typed_overload(&self, op: &Operator, left: &Expr, right: &Expr) -> bool {
-        let (Some(left), Some(right)) = (
-            self.conversions.operand_name(left),
-            self.conversions.operand_name(right),
-        ) else {
-            return false;
-        };
-        typed_overload(op, &left, &right).is_some()
-    }
-
     /// Returns `true` when `func` is the function form of an arithmetic
-    /// operator whose first two inputs have a typed overload: a call that
-    /// computes as the typed time or date function, at its result type.
+    /// operator whose first two inputs have a typed overload on the time and
+    /// date types: the shape that computes as the typed time or date function
+    /// the pair resolves to (`ADD(dt, t)` is `ADD_DT_TIME`). A fold of three
+    /// or more inputs is judged by its first pair, as `typed_steps` folds it
+    /// from the left.
     pub(super) fn is_typed_pair(&self, func: &Function) -> bool {
         let Some(op) = arithmetic_operator(func) else {
             return false;
@@ -250,6 +241,18 @@ impl ImplicitConversions<'_> {
             },
             _ => false,
         }
+    }
+
+    /// Returns `true` when the operands of `op` have a typed overload on the
+    /// time and date types.
+    pub(super) fn has_typed_overload(&self, op: &Operator, left: &Expr, right: &Expr) -> bool {
+        let (Some(left), Some(right)) = (
+            self.conversions.operand_name(left),
+            self.conversions.operand_name(right),
+        ) else {
+            return false;
+        };
+        typed_overload(op, &left, &right).is_some()
     }
 
     /// Makes `operand` an operand of the step: an untyped literal takes the
