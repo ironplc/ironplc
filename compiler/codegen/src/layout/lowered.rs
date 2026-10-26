@@ -4,7 +4,8 @@
 //! It numbers the variable-table slots from the execution model's globals
 //! and each body's declarations, in the order the body declares them:
 //!
-//! 1. the globals, the compiler-provided ones first, but a resource's;
+//! 1. the globals, the compiler-provided ones first, then those of the
+//!    resource that runs the program;
 //! 2. the program's fields, `VAR_TEMP` and the globals a PLCopen program
 //!    declares in its interface;
 //! 3. each user function, in library order: its `VAR_INPUT` and
@@ -43,7 +44,7 @@ use std::collections::HashMap;
 
 use ironplc_container::debug_section::EnumDefEntry;
 use ironplc_container::{ArrayDescriptor, ContainerBuilder, FunctionId, VarIndex};
-use ironplc_ir::execution::{GlobalKind, GlobalScope};
+use ironplc_ir::execution::{GlobalId, GlobalKind, GlobalScope};
 use ironplc_ir::lowered::StandardFunctionBlock;
 use ironplc_ir::lowered::{Declaration, Program};
 use ironplc_ir::lowered::{
@@ -675,17 +676,28 @@ fn held(lowering: &Program, var: VarId) -> Option<TypeId> {
 
 /// The variables of the globals that have storage, in the execution
 /// model's order, the compiler-provided ones first, each with whether the
-/// compiler provides it. A resource's `VAR_GLOBAL` has none yet
-/// (`execution.rs`).
+/// compiler provides it.
+///
+/// A resource's `VAR_GLOBAL` is visible only to the programs of that
+/// resource (IEC 61131-3, 2.7.1), so only the resource that runs the program
+/// instance gives its globals storage; another resource's have none.
 pub(crate) fn globals(lowering: &Program) -> Vec<(VarId, bool)> {
     let bindings = lowering.bindings();
-    lowering
-        .execution()
+    let execution = lowering.execution();
+    let running: Vec<GlobalId> = execution
+        .configurations()
+        .iter()
+        .flat_map(|configuration| &configuration.resources)
+        .filter(|resource| resource.tasks.iter().any(|task| !task.instances.is_empty()))
+        .flat_map(|resource| resource.globals.iter().copied())
+        .collect();
+    execution
         .globals()
         .filter_map(|(id, global)| {
             let system = match global.kind {
                 GlobalKind::System(_) => true,
                 GlobalKind::Declared(GlobalScope::TopLevel | GlobalScope::Configuration) => false,
+                GlobalKind::Declared(GlobalScope::Resource) if running.contains(&id) => false,
                 GlobalKind::Declared(GlobalScope::Resource) => return None,
             };
             Some((bindings.global(id)?, system))

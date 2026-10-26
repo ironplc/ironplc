@@ -148,6 +148,7 @@ fn execution_model_when_built_then_every_id_names_an_entry_of_the_model() {
         name: Some(name("config")),
         resources: vec![Resource {
             name: Some(name("resource1")),
+            globals: Vec::new(),
             tasks: vec![Task {
                 name: Some(name("on_start")),
                 priority: 1,

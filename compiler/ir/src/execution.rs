@@ -108,6 +108,9 @@ pub struct Resource {
     pub name: Option<DebugName>,
     /// The declared tasks, in declaration order, then the implicit one.
     pub tasks: Vec<Task>,
+    /// The resource's own `VAR_GLOBAL`s, in declaration order. They are
+    /// visible only to the programs of this resource (IEC 61131-3, 2.7.1).
+    pub globals: Vec<GlobalId>,
 }
 
 /// A task of a resource, and the program instances it runs.
@@ -434,6 +437,7 @@ mod tests {
             name: Some(name("config")),
             resources: vec![Resource {
                 name: Some(name("resource1")),
+                globals: Vec::new(),
                 tasks: vec![Task {
                     name: Some(name("fast")),
                     priority: 70000,
@@ -464,6 +468,7 @@ mod tests {
             name: Some(name("config")),
             resources: vec![Resource {
                 name: Some(name("resource1")),
+                globals: Vec::new(),
                 tasks: vec![Task {
                     name: None,
                     priority: 0,
