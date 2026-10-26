@@ -222,11 +222,11 @@ fn lower_statement_when_var_temp_then_own_variable() {
 fn lower_statement_when_function_block_variable_then_field_of_instance() {
     let outcome = lower(
         "FUNCTION_BLOCK counter
-            VAR_INPUT step : DINT; END_VAR
+            VAR_INPUT delta : DINT; END_VAR
             VAR_OUTPUT count : DINT; END_VAR
-            count := count + step;
+            count := count + delta;
          END_FUNCTION_BLOCK
-         PROGRAM main VAR c : counter; END_VAR c(step := 1); END_PROGRAM",
+         PROGRAM main VAR c : counter; END_VAR c(delta := 1); END_PROGRAM",
         "counter",
     );
     assert_eq!(

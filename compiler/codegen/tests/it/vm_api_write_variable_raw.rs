@@ -137,10 +137,10 @@ fn vm_api_when_retained_lint_restored_raw_then_accumulator_resumes() {
 PROGRAM main
   VAR
     total : LINT;
-    step : LINT;
+    delta : LINT;
   END_VAR
-  step := 1000000000;
-  total := total + step;
+  delta := 1000000000;
+  total := total + delta;
 END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());

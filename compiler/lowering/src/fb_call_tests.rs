@@ -71,8 +71,8 @@ fn lower_statement_when_block_called_inside_if_then_among_its_statements() {
     let outcome = lower(
         &format!(
             "{BLOCK}
-             PROGRAM main VAR f : FB; on : BOOL; n : DINT; END_VAR
-               IF on THEN
+             PROGRAM main VAR f : FB; enabled : BOOL; n : DINT; END_VAR
+               IF enabled THEN
                  f(x := n, q => n);
                END_IF;
              END_PROGRAM"
