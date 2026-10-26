@@ -55,3 +55,33 @@ e2e_i64!(
      END_PROGRAM",
     &[("product", 1_410_065_408), ("sum", 5_000_100_000)],
 );
+
+e2e_f32!(
+    #[spec_test(REQ_IC_codegen_012)]
+    end_to_end_when_subrange_field_assigned_to_real_then_converts_value,
+    "TYPE R : INT (5..50); S : STRUCT v : R; x : INT; END_STRUCT; END_TYPE
+     PROGRAM main
+     VAR s : S; r2 : REAL; r4 : REAL; END_VAR
+       s.v := 7;
+       s.x := 11;
+       r2 := s.v;
+       r4 := s.x;
+     END_PROGRAM",
+    &[("r2", 7.0), ("r4", 11.0)],
+);
+
+e2e_f64!(
+    #[spec_test(REQ_IC_codegen_012)]
+    end_to_end_when_field_of_array_field_element_assigned_to_lreal_then_converts_value,
+    "TYPE R : INT (5..50);
+     Item : STRUCT a : DINT; v : R; END_STRUCT;
+     Holder : STRUCT items : ARRAY[1..3] OF Item; END_STRUCT; END_TYPE
+     PROGRAM main
+     VAR h : Holder; lr : LREAL; lv : LREAL; END_VAR
+       h.items[1].a := -5;
+       h.items[2].v := 8;
+       lr := h.items[1].a;
+       lv := h.items[2].v;
+     END_PROGRAM",
+    &[("lr", -5.0), ("lv", 8.0)],
+);

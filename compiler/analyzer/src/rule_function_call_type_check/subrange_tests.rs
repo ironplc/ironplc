@@ -38,3 +38,30 @@ rule_err!(
     with_types!("PROGRAM main VAR r : DINT; d : DINT; END_VAR r := f(d); END_PROGRAM"),
     [Problem::FunctionCallArgTypeMismatch]
 );
+
+/// The structures the field tests below declare: a field of a subrange type,
+/// and a field reached through an element of an array field.
+macro_rules! with_fields {
+    ($program:literal) => {
+        concat!(
+            "TYPE R : INT (5..50);
+             S : STRUCT v : R; END_STRUCT;
+             Item : STRUCT a : DINT; END_STRUCT;
+             Holder : STRUCT items : ARRAY[1..3] OF Item; END_STRUCT; END_TYPE ",
+            $program
+        )
+    };
+}
+
+rule_ok!(
+    #[spec_test(REQ_IC_analyzer_095)]
+    apply_when_subrange_field_assigned_to_real_then_ok,
+    with_fields!("PROGRAM main VAR s : S; r : REAL; END_VAR r := s.v; END_PROGRAM")
+);
+
+rule_err!(
+    #[spec_test(REQ_IC_analyzer_095)]
+    apply_when_dint_field_of_array_field_element_assigned_to_real_then_assignment_type_mismatch,
+    with_fields!("PROGRAM main VAR h : Holder; r : REAL; END_VAR r := h.items[1].a; END_PROGRAM"),
+    [Problem::AssignmentTypeMismatch]
+);
