@@ -51,7 +51,7 @@ User-defined function calls use the `CALL` opcode (0x84), already specified in t
 
 Validates function calls in two ways:
 
-1. **Argument type matching** — For each positional argument, checks the expression's `expr_type` (set by `xform_resolve_expr_types`) against the corresponding parameter's declared type from `FunctionSignature` with `value_type::check`: the types must match, up to the implicit conversions `type_compat` allows. Standard-library functions, whose parameters use `ANY_*` categories, are checked the same way.
+1. **Argument type matching** — For each positional argument, checks the expression's `expr_type` (set by `xform_resolve_expr_types`) against the corresponding parameter's declared type from `FunctionSignature` with `value_type::check_parameter`: the types must match, up to the implicit conversions `type_compat` allows. A parameter's type is a `ParameterType`: the `TypeId` its declaration declares (ADR-0055), a generic `ANY_*` category, or the name as written when it does not resolve. A type with no name, such as the array a `REF_TO ARRAY[1..3] OF DINT` parameter references, accepts a value of the same shape. Standard-library functions, whose parameters use `ANY_*` categories or elementary types, are checked the same way.
 
 2. **Return type matching** — The function call expression's `expr_type` is already set to the function's return type by `xform_resolve_expr_types`. Assignment compatibility is verified by comparing this against the destination variable's type.
 

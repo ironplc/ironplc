@@ -438,8 +438,15 @@ fn get_string_conversion_functions() -> Vec<FunctionSignature> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::semantic_type::ParameterType;
+    use crate::type_id;
     use ironplc_dsl::common::FunctionReturnType;
     use rstest::rstest;
+
+    /// The parameter type of the elementary type `elementary`.
+    fn elementary(elementary: ElementaryTypeName) -> ParameterType {
+        ParameterType::Type(type_id::elementary(&elementary))
+    }
 
     #[rstest]
     #[case::sint("STRING_TO_SINT", "SINT")]
@@ -466,7 +473,10 @@ mod tests {
             .find(|f| f.name.original() == name)
             .unwrap();
         assert_eq!(sig.parameters.len(), 1);
-        assert_eq!(sig.parameters[0].param_type, TypeName::from("STRING"));
+        assert_eq!(
+            sig.parameters[0].param_type,
+            elementary(ElementaryTypeName::STRING)
+        );
         assert_eq!(
             sig.return_type,
             Some(FunctionReturnType::Named(TypeName::from(target)))
@@ -483,7 +493,10 @@ mod tests {
         assert_eq!(sig.parameters[0].name.original(), "IN");
         assert!(sig.parameters[0].is_input);
         // Parameter type is now TypeName, not SemanticType
-        assert_eq!(sig.parameters[0].param_type, TypeName::from("INT"));
+        assert_eq!(
+            sig.parameters[0].param_type,
+            elementary(ElementaryTypeName::INT)
+        );
         // Return type is now TypeName, not SemanticType
         assert_eq!(
             sig.return_type,
@@ -640,7 +653,10 @@ mod tests {
 
         assert_eq!(bool_to_int.input_parameter_count(), 1);
         assert_eq!(bool_to_int.parameters[0].name.original(), "IN");
-        assert_eq!(bool_to_int.parameters[0].param_type, TypeName::from("BOOL"));
+        assert_eq!(
+            bool_to_int.parameters[0].param_type,
+            elementary(ElementaryTypeName::BOOL)
+        );
         assert_eq!(
             bool_to_int.return_type,
             Some(FunctionReturnType::Named(TypeName::from("INT")))
@@ -687,7 +703,10 @@ mod tests {
 
         assert_eq!(int_to_bool.input_parameter_count(), 1);
         assert_eq!(int_to_bool.parameters[0].name.original(), "IN");
-        assert_eq!(int_to_bool.parameters[0].param_type, TypeName::from("INT"));
+        assert_eq!(
+            int_to_bool.parameters[0].param_type,
+            elementary(ElementaryTypeName::INT)
+        );
         assert_eq!(
             int_to_bool.return_type,
             Some(FunctionReturnType::Named(TypeName::from("BOOL")))
@@ -726,7 +745,7 @@ mod tests {
         assert_eq!(byte_to_word.parameters[0].name.original(), "IN");
         assert_eq!(
             byte_to_word.parameters[0].param_type,
-            TypeName::from("BYTE")
+            elementary(ElementaryTypeName::BYTE)
         );
         assert_eq!(
             byte_to_word.return_type,

@@ -49,3 +49,39 @@ fn apply_when_reference_to_parameter_type_passed_then_ok(#[case] body: &str) {
     let codes = rule_codes(super::apply, &program(body), &edition3_options());
     assert!(codes.is_empty(), "{codes:?}");
 }
+
+/// A function `f` whose parameter references an array spelled out in place,
+/// followed by a program whose body is `body`.
+fn array_program(body: &str) -> String {
+    format!(
+        "TYPE Row : ARRAY[1..3] OF DINT; END_TYPE
+FUNCTION f : INT
+VAR_INPUT a : REF_TO ARRAY[1..3] OF DINT; END_VAR
+  f := 0;
+END_FUNCTION
+PROGRAM main
+VAR arr : ARRAY[1..3] OF DINT; row : Row; wide : ARRAY[1..4] OF DINT; d : DINT; x : INT; END_VAR
+  {body}
+END_PROGRAM"
+    )
+}
+
+#[spec_test(REQ_IC_analyzer_086)]
+#[rstest]
+#[case::inline_array("x := f(REF(arr));")]
+#[case::named_array("x := f(REF(row));")]
+fn apply_when_reference_to_array_of_parameter_shape_passed_then_ok(#[case] body: &str) {
+    let codes = rule_codes(super::apply, &array_program(body), &edition3_options());
+    assert!(codes.is_empty(), "{codes:?}");
+}
+
+#[spec_test(REQ_IC_analyzer_086)]
+#[rstest]
+#[case::element_type("x := f(REF(d));")]
+#[case::other_shape("x := f(REF(wide));")]
+fn apply_when_reference_to_other_than_parameter_array_passed_then_p4026(#[case] body: &str) {
+    assert_eq!(
+        rule_codes(super::apply, &array_program(body), &edition3_options()),
+        [Problem::FunctionCallArgTypeMismatch.code()]
+    );
+}

@@ -243,6 +243,8 @@ fn other_time_functions() -> Vec<FunctionSignature> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::intermediates::stdlib_function::stdlib_parameter_type;
+    use crate::semantic_type::ParameterType;
     use ironplc_dsl::core::Id;
     use rstest::rstest;
 
@@ -287,7 +289,7 @@ mod tests {
         let sig = registered(name);
         assert!(sig.is_some(), "{name} is not registered");
         let sig = sig.unwrap();
-        let params: Vec<(Id, TypeName)> = sig
+        let params: Vec<(Id, ParameterType)> = sig
             .parameters
             .iter()
             .map(|p| (p.name.clone(), p.param_type.clone()))
@@ -295,8 +297,8 @@ mod tests {
         assert_eq!(
             params,
             vec![
-                (Id::from("IN1"), TypeName::from(in1)),
-                (Id::from("IN2"), TypeName::from(in2)),
+                (Id::from("IN1"), stdlib_parameter_type(in1)),
+                (Id::from("IN2"), stdlib_parameter_type(in2)),
             ]
         );
         assert!(sig.parameters.iter().all(|p| p.is_input));

@@ -326,7 +326,10 @@ impl Default for FunctionEnvironmentBuilder {
 mod tests {
     use super::*;
     use crate::intermediates::operator_function_form::FormOf;
+    use crate::intermediates::stdlib_function::stdlib_parameter_type;
+    use crate::semantic_type::ParameterType;
     use ironplc_dsl::common::ElementaryTypeName;
+    use ironplc_dsl::common::GenericTypeName;
     use ironplc_dsl::textual::Operator;
 
     fn create_test_signature(name: &str, return_type_name: &str) -> FunctionSignature {
@@ -437,7 +440,7 @@ mod tests {
         let params = vec![
             SemanticFunctionParameter {
                 name: Id::from("IN1"),
-                param_type: TypeName::from("INT"),
+                param_type: stdlib_parameter_type("INT"),
                 is_input: true,
                 is_output: false,
                 is_inout: false,
@@ -445,7 +448,7 @@ mod tests {
             },
             SemanticFunctionParameter {
                 name: Id::from("IN2"),
-                param_type: TypeName::from("INT"),
+                param_type: stdlib_parameter_type("INT"),
                 is_input: true,
                 is_output: false,
                 is_inout: false,
@@ -453,7 +456,7 @@ mod tests {
             },
             SemanticFunctionParameter {
                 name: Id::from("OUT1"),
-                param_type: TypeName::from("INT"),
+                param_type: stdlib_parameter_type("INT"),
                 is_input: false,
                 is_output: true,
                 is_inout: false,
@@ -474,7 +477,7 @@ mod tests {
     fn input(name: &str, type_name: &str) -> SemanticFunctionParameter {
         SemanticFunctionParameter {
             name: Id::from(name),
-            param_type: TypeName::from(type_name),
+            param_type: stdlib_parameter_type(type_name),
             is_input: true,
             is_output: false,
             is_inout: false,
@@ -540,9 +543,9 @@ mod tests {
             names(params.iter().cloned()),
             vec!["IN1", "IN2", "IN3", "IN4", "IN5"]
         );
-        assert!(params
-            .iter()
-            .all(|p| p.param_type == TypeName::from("ANY_NUM") && p.is_input));
+        assert!(params.iter().all(|p| p.param_type
+            == ParameterType::Generic(GenericTypeName::AnyNum)
+            && p.is_input));
     }
 
     #[test]

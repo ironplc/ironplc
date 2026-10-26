@@ -18,6 +18,7 @@ use rstest::rstest;
 use spec_test_macro::spec_test;
 
 use crate::intermediates::operator_function_form::operator_function_form;
+use crate::semantic_type::ParameterType;
 use crate::stages::analyze;
 
 /// Analyzes `program` under default options and returns its problem codes.
@@ -159,7 +160,11 @@ fn analyzer_spec_req_kf_007_mod_operator_agrees_with_its_form(
     operand_type: &str,
 ) {
     let signature = operator_function_form("MOD").unwrap().signature();
-    let category = GenericTypeName::try_from(&signature.parameters[0].param_type.id).unwrap();
+    let param_type = signature.parameters[0].param_type.clone();
+    assert!(matches!(param_type, ParameterType::Generic(_)));
+    let ParameterType::Generic(category) = param_type else {
+        return;
+    };
     let elementary = ElementaryTypeName::try_from(&Id::from(operand_type)).unwrap();
     let admitted = category.is_compatible_with(&elementary);
 
@@ -283,7 +288,11 @@ fn analyzer_spec_req_kf_005_argument_outside_category_is_p4026(
     operand_type: &str,
 ) {
     let signature = operator_function_form(function).unwrap().signature();
-    let category = GenericTypeName::try_from(&signature.parameters[0].param_type.id).unwrap();
+    let param_type = signature.parameters[0].param_type.clone();
+    assert!(matches!(param_type, ParameterType::Generic(_)));
+    let ParameterType::Generic(category) = param_type else {
+        return;
+    };
     let result_type = signature.return_type.unwrap().to_type_name();
     let result_type = if GenericTypeName::try_from(&result_type.id).is_ok() {
         operand_type

@@ -2,9 +2,11 @@ use ironplc_analyzer::extractors::{
     FunctionBlockSymbol as FunctionBlockView, FunctionSymbolView, ProgramSymbol as ProgramView,
     TypeSymbolView, VariableDirection, VariableSymbol,
 };
+use ironplc_analyzer::semantic_type::{ParameterType, SemanticFunctionParameter};
+use ironplc_analyzer::value_type::spelling;
 use ironplc_analyzer::SemanticContext;
-use ironplc_dsl::common::LocationPrefix;
-use ironplc_dsl::core::FileId;
+use ironplc_dsl::common::{GenericTypeName, LocationPrefix};
+use ironplc_dsl::core::{FileId, Id};
 use ironplc_project::project::{MemoryBackedProject, Project};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -114,7 +116,7 @@ pub fn build_response(
     let mut functions: Vec<FunctionSymbol> = context
         .user_defined_functions()
         .iter()
-        .map(map_function)
+        .map(|function| map_function(context, function))
         .collect();
     let mut function_blocks: Vec<FunctionBlockSymbol> = context
         .function_blocks()
@@ -191,12 +193,12 @@ fn map_function_block(
     }
 }
 
-fn map_function(view: &FunctionSymbolView<'_>) -> FunctionSymbol {
+fn map_function(context: &SemanticContext, view: &FunctionSymbolView<'_>) -> FunctionSymbol {
     let parameters: Vec<VariableInfo> = view
         .parameters()
         .map(|p| VariableInfo {
             name: p.param.name.to_string(),
-            type_name: p.param.param_type.to_string(),
+            type_name: parameter_type_name(context, p.param),
             direction: p.direction.as_str().to_string(),
             address: None,
             external: false,
@@ -216,6 +218,25 @@ fn map_type(view: &TypeSymbolView<'_>) -> TypeSymbol {
     TypeSymbol {
         name: view.name.to_string(),
         kind: view.kind.as_str().to_string(),
+    }
+}
+
+/// The type a function's parameter is declared with, as Structured Text
+/// writes it; a `REF_TO` parameter by the type it references.
+fn parameter_type_name(context: &SemanticContext, param: &SemanticFunctionParameter) -> String {
+    match &param.param_type {
+        ParameterType::Type(id) => {
+            let types = context.types();
+            let id = match param.is_reference {
+                true => types.referenced_type(*id).unwrap_or(*id),
+                false => *id,
+            };
+            spelling(types, id)
+        }
+        ParameterType::Generic(generic) => {
+            <Id as From<GenericTypeName>>::from(generic.clone()).to_string()
+        }
+        ParameterType::Unresolved(name) => name.to_string(),
     }
 }
 

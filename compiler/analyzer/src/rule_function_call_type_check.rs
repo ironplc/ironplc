@@ -62,7 +62,7 @@ use crate::{
     rule_string_encoding_compat,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
-    semantic_type::SemanticType,
+    semantic_type::{ParameterType, SemanticType},
     symbol_environment::ScopeTracker,
     type_compat::is_checkable_type,
     value_type::{self, ValueType},
@@ -197,14 +197,15 @@ impl RuleFunctionCallTypeCheck<'_> {
         let Some(return_type) = signature.return_type.as_ref().map(|t| t.to_type_name()) else {
             return false;
         };
-        if GenericTypeName::try_from(&return_type.id).is_err() {
+        let Ok(generic) = GenericTypeName::try_from(&return_type.id) else {
             return false;
-        }
+        };
+        let return_type = ParameterType::Generic(generic);
         signature
             .inputs_of(&call.param_assignment)
             .any(|(param, argument)| {
                 param.param_type == return_type
-                    && value_type::check(
+                    && value_type::check_parameter(
                         self.context.types(),
                         &param.param_type,
                         argument,
@@ -372,16 +373,11 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
                 if param.is_inout {
                     continue;
                 }
-                // A `REF_TO INT` parameter records `INT`, the type it
-                // references; the argument is a reference, known as one.
-                let expected = value_type::parameter_type_name(
-                    self.context.types(),
-                    &param.param_type,
-                    param.is_reference,
-                );
+                let types = self.context.types();
                 if let Err(mismatch) =
-                    value_type::check(self.context.types(), &expected, arg_expr, self.options)
+                    value_type::check_parameter(types, &param.param_type, arg_expr, self.options)
                 {
+                    let expected = value_type::describe_parameter(types, &param.param_type);
                     self.diagnostics.push(
                         Diagnostic::problem(
                             Problem::FunctionCallArgTypeMismatch,
@@ -389,7 +385,7 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
                         )
                         .with_context("function", &node.name.original().to_string())
                         .with_context("parameter", &param.name.original().to_string())
-                        .with_context("expected", &expected.to_string())
+                        .with_context("expected", &expected)
                         .with_context("actual", &mismatch.actual),
                     );
                 }

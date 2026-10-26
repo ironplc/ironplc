@@ -24,7 +24,7 @@
 //! number's type, which is the routine's own computation, not a conversion
 //! of either operand to the other.
 
-use ironplc_dsl::common::{ElementaryTypeName, TypeName};
+use ironplc_dsl::common::ElementaryTypeName;
 use ironplc_dsl::core::Id;
 use ironplc_dsl::textual::{Expr, ExprType, Function, Operator};
 use ironplc_dsl::type_id::TypeId;
@@ -36,6 +36,7 @@ use crate::intermediates::conversion_target::concrete;
 use crate::intermediates::numeric_operation::{
     literal_default_type, operation_width_of, OperationWidth,
 };
+use crate::semantic_type::ParameterType;
 
 impl ImplicitConversions<'_> {
     /// Records the conversions of the inputs of `func` when it is a call to a
@@ -75,17 +76,19 @@ impl ImplicitConversions<'_> {
         let Some(BuiltinFunction::Time { long, .. }) = signature.builtin_function else {
             return;
         };
-        let params: Vec<TypeName> = signature
+        let params: Vec<ParameterType> = signature
             .input_parameters()
             .take(2)
             .map(|param| param.param_type)
             .collect();
         for (input, param) in [in1, in2].into_iter().zip(&params) {
-            match self.conversions.id_of(param) {
-                Some(target) => self.record_temporal_input(input, target),
+            match param {
+                ParameterType::Type(target) => self.record_temporal_input(input, *target),
                 // The one parameter that is not a type is the `ANY_NUM` of
                 // `MUL` and `DIV`.
-                None => self.record_scale(input, long),
+                ParameterType::Generic(_) | ParameterType::Unresolved(_) => {
+                    self.record_scale(input, long)
+                }
             }
         }
     }

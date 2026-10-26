@@ -72,7 +72,7 @@ use ironplc_problems::Problem;
 use crate::result::SemanticResult;
 use crate::rule_support::{run_rule, DiagnosticVisitor};
 use crate::semantic_context::SemanticContext;
-use crate::semantic_type::SemanticType;
+use crate::semantic_type::{ParameterType, SemanticType};
 use crate::symbol_environment::{ScopeKind, ScopeTracker};
 use crate::variable_type;
 use ironplc_container::CharWidth;
@@ -218,7 +218,7 @@ impl RuleStringEncodingCompat<'_> {
         let Some(signature) = self.context.functions().get(&node.name) else {
             return;
         };
-        let any_string = TypeName::from("ANY_STRING");
+        let any_string = ParameterType::Generic(GenericTypeName::AnyString);
         let scope = self.scope.current();
         let mut first: Option<StringType> = None;
         for (param, argument) in signature.inputs_of(&node.param_assignment) {

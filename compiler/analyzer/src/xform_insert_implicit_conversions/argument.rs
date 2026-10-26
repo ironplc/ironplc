@@ -38,7 +38,7 @@ use crate::intermediates::conversion_target::wrap;
 use crate::intermediates::numeric_operation::{
     literal_default_type, operation_type_of, operation_width_of, OperationType, OperationWidth,
 };
-use crate::semantic_type::SemanticFunctionParameter;
+use crate::semantic_type::{ParameterType, SemanticFunctionParameter};
 use crate::type_environment::elementary_type;
 
 impl ImplicitConversions<'_> {
@@ -88,7 +88,10 @@ impl ImplicitConversions<'_> {
         if param.is_inout || param.is_reference {
             return;
         }
-        let Some((target, at)) = self.passed_as(&param.param_type) else {
+        let ParameterType::Type(param_type) = param.param_type else {
+            return;
+        };
+        let Some((target, at)) = self.passed_as(param_type) else {
             return;
         };
         if self.is_integer_result_in_other_context(arg, target) {
@@ -128,17 +131,14 @@ impl ImplicitConversions<'_> {
         }
     }
 
-    /// The type a parameter declared as `param_type` is passed as, and its
+    /// The type a parameter of the type `param_type` is passed as, and its
     /// operation type: the elementary type it is operated as, its own, the
     /// base type of a subrange, or the type an alias names. `None` for a
     /// parameter that is not a single numeric value: a string, which is
     /// copied rather than passed, or an enumeration.
-    fn passed_as(&self, param_type: &TypeName) -> Option<(TypeId, OperationType)> {
+    fn passed_as(&self, param_type: TypeId) -> Option<(TypeId, OperationType)> {
         let types = self.context.types();
-        let representation = match elementary_type(param_type) {
-            Some(representation) => representation,
-            None => &types.get(param_type)?.representation,
-        };
+        let representation = &types.get_by_id(param_type)?.representation;
         let id = elementary_of(types, representation)?;
         let at = operation_type_of(&types.get_by_id(id)?.representation)?;
         Some((id, at))
