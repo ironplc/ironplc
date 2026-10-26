@@ -23,6 +23,7 @@ use crate::{
     semantic_context::SemanticContext,
     symbol_environment::{ScopeTracker, SymbolEnvironment, SymbolInfo},
     type_environment::TypeEnvironment,
+    variable_type,
 };
 
 pub fn apply(
@@ -122,29 +123,31 @@ impl RuleRefTo<'_> {
             .unwrap_or(false)
     }
 
-    /// Returns the id of the type of the value `kind` names: the declared
-    /// type of a variable, and the element type of an array element.
-    ///
-    /// A field access has no answer: a field's type is known by its
-    /// representation only, so it has no id to give.
-    fn value_type_id(&self, kind: &SymbolicVariableKind) -> Option<TypeId> {
-        match kind {
-            SymbolicVariableKind::Named(named) => self.symbol(&named.name)?.type_id,
-            SymbolicVariableKind::Array(array) => self
-                .type_environment
-                .element_type(self.value_type_id(&array.subscripted_variable)?),
-            _ => None,
-        }
-    }
-
-    /// Returns the id of the type of the value `var` names, when it is a
-    /// reference type: a reference variable, or an element of an array of
-    /// references.
-    fn reference_type_id(&self, var: &Variable) -> Option<TypeId> {
+    /// Returns the id of the type of the value `var` names: the declared
+    /// type of a variable or of a field, the element type of an array
+    /// element, and the type a dereference refers to, by the walk
+    /// [`variable_type::type_id`] makes. A field has the type its
+    /// declaration records ([`TypeEnvironment::field_type`]), so a field
+    /// access answers as a variable does. `None` for a directly represented
+    /// variable, and when a step of the walk has no type.
+    fn value_type_id(&self, var: &Variable) -> Option<TypeId> {
         let Variable::Symbolic(kind) = var else {
             return None;
         };
-        let type_id = self.value_type_id(kind)?;
+        variable_type::type_id(
+            kind,
+            self.symbols,
+            self.type_environment,
+            &self.scope.current(),
+        )
+    }
+
+    /// Returns the id of the type of the value `var` names, when it is a
+    /// reference type: a reference variable, a reference field of a
+    /// structure or function block instance, or an element of an array of
+    /// references.
+    fn reference_type_id(&self, var: &Variable) -> Option<TypeId> {
+        let type_id = self.value_type_id(var)?;
         self.type_environment
             .get_by_id(type_id)?
             .representation
@@ -465,9 +468,9 @@ impl RuleRefTo<'_> {
                     }
                 }
             }
-            // Only a named variable whose declared type is known can be
-            // said not to be a reference; a field's type is not looked up.
-            None if self.declared_type_known(&node.target) => {
+            // Only a variable whose type is known can be said not to be a
+            // reference.
+            None if self.type_known(&node.target) => {
                 self.diagnostics.push(Diagnostic::problem(
                     Problem::ReferenceTypeMismatch,
                     Label::span(
@@ -492,17 +495,12 @@ impl RuleRefTo<'_> {
         }
     }
 
-    /// Returns true when `var` is a named variable whose declared type is
-    /// known.
-    fn declared_type_known(&self, var: &Variable) -> bool {
-        match var {
-            Variable::Symbolic(SymbolicVariableKind::Named(named)) => self
-                .symbol(&named.name)
-                .and_then(|symbol| symbol.type_id)
-                .and_then(|id| self.type_environment.get_by_id(id))
-                .is_some(),
-            _ => false,
-        }
+    /// Returns true when the type of the value `var` names is known: a
+    /// variable, field or element whose type the environment has.
+    fn type_known(&self, var: &Variable) -> bool {
+        self.value_type_id(var)
+            .and_then(|id| self.type_environment.get_by_id(id))
+            .is_some()
     }
 
     /// Returns the id of the type a REF_TO variable references, when that
@@ -603,6 +601,9 @@ impl Visitor<Infallible> for RuleRefTo<'_> {
         node.recurse_visit(self)
     }
 }
+
+#[cfg(test)]
+mod field_tests;
 
 #[cfg(test)]
 mod non_reference_value_tests;
