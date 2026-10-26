@@ -323,6 +323,8 @@ pub(super) fn signatures() -> Vec<FunctionSignature> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::intermediates::stdlib_function::stdlib_parameter_type;
+    use crate::semantic_type::ParameterType;
     use ironplc_dsl::core::Id;
     use rstest::rstest;
 
@@ -363,14 +365,14 @@ mod tests {
             signature.return_type.unwrap().to_type_name(),
             TypeName::from(return_type)
         );
-        let params: Vec<(Id, TypeName)> = signature
+        let params: Vec<(Id, ParameterType)> = signature
             .parameters
             .iter()
             .map(|p| (p.name.clone(), p.param_type.clone()))
             .collect();
-        let expected: Vec<(Id, TypeName)> = param_names
+        let expected: Vec<(Id, ParameterType)> = param_names
             .iter()
-            .map(|n| (Id::from(n), TypeName::from(operands)))
+            .map(|n| (Id::from(n), stdlib_parameter_type(operands)))
             .collect();
         assert_eq!(params, expected);
         assert!(signature.parameters.iter().all(|p| p.is_input));

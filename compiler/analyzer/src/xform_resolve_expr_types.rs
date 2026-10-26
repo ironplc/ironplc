@@ -22,6 +22,7 @@ use crate::intermediates::arithmetic_overload::{
 use crate::intermediates::common_operand::{common_operand_of, CommonOperand};
 use crate::intermediates::numeric_operation::literal_default_type;
 use crate::intermediates::operator_function_form::{operator_function_form, FormOf};
+use crate::semantic_type::ParameterType;
 use crate::symbol_environment::{ScopeTracker, SymbolEnvironment};
 use crate::type_environment::{MethodSignature, TypeEnvironment};
 use crate::value_type::operand_type_name;
@@ -212,9 +213,11 @@ impl ExprTypeResolver<'_> {
                 // whose parameter declaration type matches the generic return type.
                 // This correctly skips selector parameters whose type differs from
                 // the return type (e.g., BOOL for SEL, ANY_INT for MUX).
+                let generic =
+                    ParameterType::Generic(GenericTypeName::try_from(&return_type.id).ok()?);
                 sig.inputs_of(&f.param_assignment)
                     .find_map(|(param, expr)| {
-                        if param.param_type == return_type {
+                        if param.param_type == generic {
                             expr.expr_type.clone()
                         } else {
                             None
@@ -290,12 +293,9 @@ impl ExprTypeResolver<'_> {
                     .parameters
                     .iter()
                     .find(|parameter| parameter.is_output && parameter.name == *output)?;
-                let declared = self.type_environment.id_of(&parameter.param_type)?;
-                // A `REF_TO` parameter records the type it references.
-                if parameter.is_reference {
-                    self.type_environment.reference_to(declared)
-                } else {
-                    Some(declared)
+                match parameter.param_type {
+                    ParameterType::Type(declared) => Some(declared),
+                    ParameterType::Generic(_) | ParameterType::Unresolved(_) => None,
                 }
             }
             CallFrame::Method {

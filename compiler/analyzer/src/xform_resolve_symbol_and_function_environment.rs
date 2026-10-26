@@ -31,12 +31,13 @@ use std::convert::Infallible;
 
 use crate::{
     function_environment::{FunctionEnvironment, FunctionSignature},
-    semantic_type::SemanticFunctionParameter,
+    semantic_type::{ParameterType, SemanticFunctionParameter},
     symbol_environment::{
         duplicate_declaration, ScopeKind, ScopePath, ScopeTracker, SymbolEnvironment, SymbolInfo,
         SymbolKind,
     },
     type_environment::TypeEnvironment,
+    value_type::reference_name,
 };
 
 /// Populates the environments from `lib`. Always keeps the library: the
@@ -232,9 +233,9 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
         // (Functions are tracked in FunctionEnvironment, not SymbolEnvironment)
         // Collect parameters (INPUT, OUTPUT, INOUT variables)
         //
-        // Note: We store TypeName references, not resolved types. This allows
-        // building complete signatures even when type resolution fails. Types
-        // are resolved on-demand during validation via TypeEnvironment.
+        // A parameter's type is the type its declaration declares, which
+        // `xform_resolve_decl_types` records as `VarDecl::type_id`; a name
+        // that resolves to no type is kept as written.
         let mut parameters = Vec::new();
         for var_decl in &node.variables {
             if !var_decl.var_type.is_parameter() {
@@ -247,27 +248,28 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
                 ironplc_dsl::common::VariableIdentifier::Direct(_) => continue,
             };
 
-            // Get parameter type name (store as TypeName, resolve later).
-            // REF_TO parameters report TypeReference::Inline from type_name(),
-            // so we check the initializer directly to extract the referenced type.
-            let (param_type, is_reference) = match var_decl.type_name() {
+            // The name the declaration writes the type with. A REF_TO
+            // parameter reports TypeReference::Inline from type_name(), so
+            // the initializer gives the referenced type.
+            let (written, is_reference) = match var_decl.type_name() {
                 TypeReference::Named(type_name) => (type_name, false),
                 TypeReference::Inline => match &var_decl.initializer {
-                    InitialValueAssignmentKind::Reference(ref_init) => {
-                        match &ref_init.target {
-                            crate::ironplc_dsl::common::ReferenceTarget::Named(tn) => {
-                                (tn.clone(), true)
-                            }
-                            crate::ironplc_dsl::common::ReferenceTarget::Array(subranges) => {
-                                // REF_TO ARRAY[...] OF T — use the element type name
-                                // so the parameter is registered in the function signature.
-                                (subranges.type_name.to_type_name(), true)
-                            }
+                    InitialValueAssignmentKind::Reference(ref_init) => match &ref_init.target {
+                        crate::ironplc_dsl::common::ReferenceTarget::Named(tn) => {
+                            (tn.clone(), true)
                         }
-                    }
+                        crate::ironplc_dsl::common::ReferenceTarget::Array(subranges) => {
+                            (subranges.type_name.to_type_name(), true)
+                        }
+                    },
                     _ => continue,
                 },
                 _ => continue,
+            };
+            let param_type = match var_decl.type_id {
+                Some(id) => ParameterType::Type(id),
+                None if is_reference => ParameterType::Unresolved(reference_name(&written)),
+                None => ParameterType::Unresolved(written),
             };
 
             parameters.push(SemanticFunctionParameter {

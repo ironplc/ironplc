@@ -71,7 +71,7 @@ use crate::{
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
-    semantic_type::{FunctionBlockVarType, SemanticType},
+    semantic_type::{FunctionBlockVarType, ParameterType, SemanticType},
     symbol_environment::{ScopeTracker, SymbolInfo, SymbolKind},
     type_compat::is_checkable_type,
     variable_type,
@@ -237,14 +237,17 @@ impl RuleFunctionCallInOutArgument<'_> {
             .or_else(|| types.name_of(*id).cloned())
     }
 
-    /// Resolves a type name through aliases and subranges to its
-    /// elementary type, or `None` when it is not an elementary type.
-    fn elementary(&self, type_name: &TypeName) -> Option<TypeName> {
-        let resolved = self
-            .context
-            .types()
-            .resolve_elementary_type_name(type_name)
-            .unwrap_or_else(|| type_name.clone());
+    /// Resolves a parameter's type through aliases to its elementary type,
+    /// or `None` when it is not an elementary type.
+    fn elementary(&self, param_type: &ParameterType) -> Option<TypeName> {
+        let types = self.context.types();
+        let resolved = match param_type {
+            ParameterType::Type(id) => types
+                .elementary_type_name_for(&types.get_by_id(*id)?.representation)
+                .or_else(|| types.name_of(*id).cloned())?,
+            ParameterType::Generic(generic) => generic.clone().into(),
+            ParameterType::Unresolved(name) => name.clone(),
+        };
         is_checkable_type(&resolved).then_some(resolved)
     }
 }

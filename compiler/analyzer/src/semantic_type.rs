@@ -12,7 +12,9 @@
 
 use crate::enumeration_members::EnumerationMembers;
 use ironplc_container::{string_region_size, CharWidth, DEFAULT_STRING_MAX_LENGTH};
+use ironplc_dsl::common::{GenericTypeName, TypeName};
 use ironplc_dsl::core::Id;
+use ironplc_dsl::type_id::TypeId;
 
 /// Bounds for a single dimension of an array type.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -503,25 +505,41 @@ pub struct SemanticStructField {
     pub has_default: bool,
 }
 
-/// Represents a parameter in a function or function block declaration.
+/// The type a function parameter is declared with.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ParameterType {
+    /// A type in the type environment, by its id: an elementary type, a
+    /// named type or, for a `REF_TO` parameter, the reference type.
+    Type(TypeId),
+    /// A generic category (`ANY_NUM`), which a standard function's parameter
+    /// takes. A category is a set of types, not a type, so it has no id
+    /// (ADR-0055).
+    Generic(GenericTypeName),
+    /// A type name that resolves to no type, as the declaration wrote it.
+    /// The declaration's own rules report why.
+    Unresolved(TypeName),
+}
+
+/// Represents a parameter in a function declaration.
 ///
-/// Uses `TypeName` instead of resolved `SemanticType` to allow building
-/// complete function signatures even when type resolution fails. Types can
-/// be resolved on-demand via `TypeEnvironment` when needed for validation.
+/// A parameter whose type does not resolve is still a parameter, so the
+/// signature is complete even when type resolution fails: its type is then
+/// [`ParameterType::Unresolved`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct SemanticFunctionParameter {
     /// Name of the parameter
     pub name: ironplc_dsl::core::Id,
-    /// Type name of the parameter (resolved on-demand via TypeEnvironment)
-    pub param_type: ironplc_dsl::common::TypeName,
+    /// The type the parameter is declared with
+    pub param_type: ParameterType,
     /// Whether this is an input parameter
     pub is_input: bool,
     /// Whether this is an output parameter
     pub is_output: bool,
     /// Whether this is an input-output parameter
     pub is_inout: bool,
-    /// Whether this parameter is a REF_TO reference type.
-    /// When true, `param_type` holds the referenced type name (e.g., BYTE for REF_TO BYTE).
+    /// Whether this parameter is declared `REF_TO`. Its `param_type` is then
+    /// the reference type, or `REF_TO` the name the declaration wrote when
+    /// that does not resolve.
     pub is_reference: bool,
 }
 

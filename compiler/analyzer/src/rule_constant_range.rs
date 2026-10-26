@@ -121,7 +121,7 @@ use crate::{
     rule_real_literal_range,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
-    semantic_type::{ByteSized, FunctionBlockVarType, SemanticType},
+    semantic_type::{ByteSized, FunctionBlockVarType, ParameterType, SemanticType},
     symbol_environment::ScopeTracker,
     type_environment::TypeEnvironment,
     value_range, variable_type,
@@ -599,7 +599,11 @@ impl RuleConstantRange<'_> {
             if param.is_reference {
                 continue;
             }
-            if let Some(expected) = self.representation_of(&param.param_type) {
+            let ParameterType::Type(id) = &param.param_type else {
+                continue;
+            };
+            if let Some(attributes) = self.type_environment.get_by_id(*id) {
+                let expected = attributes.representation.clone();
                 self.check_expr(arg, &expected);
             }
         }

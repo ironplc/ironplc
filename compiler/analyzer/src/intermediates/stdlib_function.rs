@@ -12,7 +12,7 @@
 //! These functions are automatically available in the function environment
 //! and do not need to be declared by the user.
 
-use ironplc_dsl::common::TypeName;
+use ironplc_dsl::common::{ElementaryTypeName, GenericTypeName, TypeName};
 use ironplc_dsl::core::Id;
 
 use crate::builtin_function::{BitShift, BuiltinFunction, NumericFunction, StringFunction};
@@ -20,17 +20,33 @@ use crate::function_environment::FunctionSignature;
 use crate::intermediates::operator_function_form;
 use crate::intermediates::stdlib_conversion_function;
 use crate::intermediates::stdlib_time_function;
-use crate::semantic_type::SemanticFunctionParameter;
+use crate::semantic_type::{ParameterType, SemanticFunctionParameter};
+use crate::type_id;
 
-/// Helper to create an input parameter.
+/// Helper to create an input parameter of the generic category or
+/// elementary type `param_type_name`.
 pub(super) fn input_param(name: &str, param_type_name: &str) -> SemanticFunctionParameter {
     SemanticFunctionParameter {
         name: Id::from(name),
-        param_type: TypeName::from(param_type_name),
+        param_type: stdlib_parameter_type(param_type_name),
         is_input: true,
         is_output: false,
         is_inout: false,
         is_reference: false,
+    }
+}
+
+/// The type a standard function's parameter is declared as `name`: a generic
+/// category or an elementary type, both of which the type environment knows
+/// without a library.
+pub(crate) fn stdlib_parameter_type(name: &str) -> ParameterType {
+    let id = Id::from(name);
+    if let Ok(generic) = GenericTypeName::try_from(&id) {
+        return ParameterType::Generic(generic);
+    }
+    match ElementaryTypeName::try_from(&id) {
+        Ok(elementary) => ParameterType::Type(type_id::elementary(&elementary)),
+        Err(()) => ParameterType::Unresolved(TypeName::from(name)),
     }
 }
 
@@ -686,6 +702,47 @@ mod tests {
     }
 
     #[test]
+    fn stdlib_parameter_type_when_generic_category_then_generic() {
+        assert_eq!(
+            stdlib_parameter_type("ANY_NUM"),
+            ParameterType::Generic(GenericTypeName::AnyNum)
+        );
+    }
+
+    #[test]
+    fn stdlib_parameter_type_when_elementary_then_type_id_of_elementary() {
+        assert_eq!(
+            stdlib_parameter_type("TIME_OF_DAY"),
+            ParameterType::Type(type_id::elementary(&ElementaryTypeName::TimeOfDay))
+        );
+    }
+
+    #[test]
+    fn stdlib_parameter_type_when_unknown_name_then_unresolved() {
+        assert_eq!(
+            stdlib_parameter_type("NOPE"),
+            ParameterType::Unresolved(TypeName::from("NOPE"))
+        );
+    }
+
+    #[test]
+    fn stdlib_functions_when_any_parameter_then_type_or_generic_category() {
+        let functions = get_all_stdlib_functions()
+            .into_iter()
+            .chain(get_compiler_intrinsic_functions());
+        for function in functions {
+            for parameter in &function.parameters {
+                assert!(
+                    !matches!(parameter.param_type, ParameterType::Unresolved(_)),
+                    "{}.{} does not resolve",
+                    function.name,
+                    parameter.name
+                );
+            }
+        }
+    }
+
+    #[test]
     fn stdlib_functions_have_builtin_span() {
         for func in get_all_stdlib_functions() {
             assert!(
@@ -706,7 +763,10 @@ mod tests {
             .unwrap();
         assert!(trunc.is_stdlib());
         assert_eq!(trunc.input_parameter_count(), 1);
-        assert_eq!(trunc.parameters[0].param_type, TypeName::from("ANY_REAL"));
+        assert_eq!(
+            trunc.parameters[0].param_type,
+            ParameterType::Generic(GenericTypeName::AnyReal)
+        );
         assert_eq!(
             trunc.return_type,
             Some(FunctionReturnType::Named(TypeName::from("ANY_REAL")))
@@ -718,8 +778,14 @@ mod tests {
             .unwrap();
         assert!(fmod.is_stdlib());
         assert_eq!(fmod.input_parameter_count(), 2);
-        assert_eq!(fmod.parameters[0].param_type, TypeName::from("ANY_REAL"));
-        assert_eq!(fmod.parameters[1].param_type, TypeName::from("ANY_REAL"));
+        assert_eq!(
+            fmod.parameters[0].param_type,
+            ParameterType::Generic(GenericTypeName::AnyReal)
+        );
+        assert_eq!(
+            fmod.parameters[1].param_type,
+            ParameterType::Generic(GenericTypeName::AnyReal)
+        );
         assert_eq!(
             fmod.return_type,
             Some(FunctionReturnType::Named(TypeName::from("ANY_REAL")))

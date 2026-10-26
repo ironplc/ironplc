@@ -83,7 +83,7 @@ use crate::{
     semantic_context::SemanticContext,
     type_compat::are_types_compatible,
     type_environment::TypeEnvironment,
-    value_type::operand_type_name,
+    value_type::{operand_type_name, parameter_type_name},
 };
 
 pub fn apply(
@@ -150,7 +150,10 @@ impl RuleFunctionInputsCommonType<'_> {
             else {
                 return;
             };
-            if !are_types_compatible(&parameter.param_type, &name, self.options) {
+            let Some(param_type) = parameter_type_name(self.types, &parameter.param_type) else {
+                return;
+            };
+            if !are_types_compatible(&param_type, &name, self.options) {
                 return;
             }
             inputs.push((parameter.name, name));

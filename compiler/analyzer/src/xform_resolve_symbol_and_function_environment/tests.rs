@@ -14,6 +14,7 @@ use crate::{
 };
 
 mod extends;
+mod parameters;
 mod property;
 
 #[test]

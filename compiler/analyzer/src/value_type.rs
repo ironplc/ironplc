@@ -22,7 +22,7 @@ use ironplc_dsl::textual::{Expr, ExprType};
 use ironplc_dsl::type_id::TypeId;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::semantic_type::SemanticType;
+use crate::semantic_type::{ParameterType, SemanticType};
 use crate::type_compat::are_types_compatible;
 use crate::type_environment::TypeEnvironment;
 use crate::type_id::elementary_debug_tag;
@@ -113,34 +113,121 @@ pub(crate) fn reference_name(referenced: &TypeName) -> TypeName {
     TypeName::from(format!("REF_TO {referenced}").as_str())
 }
 
-/// The name the value of a parameter declared with the type `declared` is
-/// known by, as [`operand_type_name`] knows an argument's: an alias by the
-/// type it names, a subrange by its base type, and a `REF_TO` parameter,
-/// whose `declared` is the type it references, by [`reference_name`].
+/// The name the value of a parameter of type `param_type` is known by, as
+/// [`operand_type_name`] knows an argument's: a subrange by its base type, a
+/// reference by [`reference_name`], any other type by its own name, a
+/// generic category by its own and a type that does not resolve by the name
+/// the declaration wrote. `None` for a type with no name: an anonymous type,
+/// or a reference to one.
 ///
 /// A subrange parameter so takes a value of its base type, as a subrange
 /// variable does when assigned: `f(s + 1)` on a subrange of `INT` passes the
 /// `INT` sum.
 pub(crate) fn parameter_type_name(
     types: &TypeEnvironment,
-    declared: &TypeName,
-    is_reference: bool,
-) -> TypeName {
-    let known = || {
-        types
-            .id_of(declared)
-            .and_then(|id| operand_name_of(types, id))
-            .unwrap_or_else(|| declared.clone())
-    };
-    if is_reference {
-        return reference_name(&known());
+    param_type: &ParameterType,
+) -> Option<TypeName> {
+    match param_type {
+        ParameterType::Generic(generic) => Some(generic.clone().into()),
+        ParameterType::Unresolved(name) => Some(name.clone()),
+        ParameterType::Type(id) => match &types.get_by_id(*id)?.representation {
+            SemanticType::Subrange { .. } | SemanticType::Reference { .. } => {
+                operand_name_of(types, *id)
+            }
+            _ => types.name_of(*id).cloned(),
+        },
     }
-    match types
-        .get(declared)
-        .map(|attributes| &attributes.representation)
-    {
-        Some(SemanticType::Subrange { .. }) => known(),
-        _ => declared.clone(),
+}
+
+/// The type of a parameter of type `param_type`, as a diagnostic shows the
+/// type an argument is expected to have: the name the checks know it by
+/// ([`parameter_type_name`]), with a type the declaration names spelled as
+/// Structured Text writes it ([`spelling`]), and an anonymous type by its
+/// shape.
+pub(crate) fn describe_parameter(types: &TypeEnvironment, param_type: &ParameterType) -> String {
+    let ParameterType::Type(id) = param_type else {
+        return parameter_type_name(types, param_type)
+            .map(|name| name.to_string())
+            .unwrap_or_default();
+    };
+    let operated_as = types.get_by_id(*id).is_some_and(|attributes| {
+        matches!(
+            attributes.representation,
+            SemanticType::Subrange { .. } | SemanticType::Reference { .. }
+        )
+    });
+    match parameter_type_name(types, param_type) {
+        Some(name) if operated_as => name.to_string(),
+        _ => spelling(types, *id),
+    }
+}
+
+/// Checks that the value of `expr` may be passed to a parameter of type
+/// `param_type`, as [`check`] does for a type that has a name
+/// ([`parameter_type_name`]).
+///
+/// A type with no name accepts a value of its own type, and a value of the
+/// same shape: an array or a structure of the same shape, or a reference to
+/// one. `Ok` when the analyzer resolved no type for the value, or the value
+/// is `NULL`.
+pub(crate) fn check_parameter(
+    types: &TypeEnvironment,
+    param_type: &ParameterType,
+    expr: &Expr,
+    options: &CompilerOptions,
+) -> Result<(), Mismatch> {
+    if let Some(expected) = parameter_type_name(types, param_type) {
+        return check(types, &expected, expr, options);
+    }
+    let ParameterType::Type(expected) = param_type else {
+        return Ok(());
+    };
+    let Some(expr_type) = expr.expr_type.as_ref() else {
+        return Ok(());
+    };
+    let accepted = match expr_type {
+        ExprType::Null => true,
+        ExprType::Literal(_) => false,
+        ExprType::Concrete(own) | ExprType::Inferred(own) => same_shape(types, *expected, *own),
+    };
+    if accepted {
+        return Ok(());
+    }
+    let actual = match (operand_type_name(types, expr_type), expr_type.type_id()) {
+        (Some(name), _) => name.to_string(),
+        (None, Some(id)) => describe(types, id),
+        (None, None) => "an unknown type".to_string(),
+    };
+    Err(Mismatch { actual })
+}
+
+/// Whether a value of type `actual` is accepted where the type `expected`,
+/// which has no name, is required: it is that type, an array or structure
+/// of its shape, or, for a reference, a reference to a type so accepted.
+fn same_shape(types: &TypeEnvironment, expected: TypeId, actual: TypeId) -> bool {
+    if expected == actual {
+        return true;
+    }
+    let (Some(expected_type), Some(actual_type)) =
+        (types.get_by_id(expected), types.get_by_id(actual))
+    else {
+        return false;
+    };
+    match (&expected_type.representation, &actual_type.representation) {
+        (SemanticType::Reference { .. }, SemanticType::Reference { .. }) => {
+            match (
+                types.referenced_type(expected),
+                types.referenced_type(actual),
+            ) {
+                (Some(expected), Some(actual)) => same_shape(types, expected, actual),
+                _ => false,
+            }
+        }
+        (SemanticType::Array { .. }, SemanticType::Array { .. })
+        | (SemanticType::Structure { .. }, SemanticType::Structure { .. }) => {
+            expected_type.representation == actual_type.representation
+        }
+        _ => false,
     }
 }
 
@@ -367,6 +454,54 @@ mod tests {
             .with_elementary_types()
             .build()
             .unwrap()
+    }
+
+    #[test]
+    fn parameter_type_name_when_generic_or_unresolved_then_name() {
+        let types = environment();
+
+        assert_eq!(
+            parameter_type_name(&types, &ParameterType::Generic(GenericTypeName::AnyNum)),
+            Some(TypeName::from("ANY_NUM"))
+        );
+        assert_eq!(
+            parameter_type_name(&types, &ParameterType::Unresolved(TypeName::from("Nope"))),
+            Some(TypeName::from("Nope"))
+        );
+    }
+
+    #[test]
+    fn parameter_type_name_when_anonymous_type_then_none() {
+        let mut types = environment();
+        let array = anonymous(
+            &mut types,
+            SemanticType::Array {
+                element_type: Box::new(SemanticType::Int {
+                    size: ByteSized::B32,
+                }),
+                dimensions: vec![ArrayDimension { lower: 1, upper: 3 }],
+            },
+        );
+
+        assert_eq!(
+            parameter_type_name(&types, &ParameterType::Type(array)),
+            None
+        );
+        assert_eq!(
+            describe_parameter(&types, &ParameterType::Type(array)),
+            "ARRAY[1..3] OF DINT"
+        );
+    }
+
+    #[test]
+    fn describe_parameter_when_elementary_then_upper_case_name() {
+        let types = environment();
+        let dint = types.id_of(&TypeName::from("DINT")).unwrap();
+
+        assert_eq!(
+            describe_parameter(&types, &ParameterType::Type(dint)),
+            "DINT"
+        );
     }
 
     #[test]
