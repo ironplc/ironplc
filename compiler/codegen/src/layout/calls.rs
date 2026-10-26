@@ -1,6 +1,6 @@
 //! How each function block instance is reached, and what a call of each user
 //! function, function block and method needs, from the lowered declarations
-//! (`lowered.rs`).
+//! (`declarations.rs`).
 
 use std::collections::HashMap;
 
@@ -9,15 +9,15 @@ use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::StandardFunctionBlock;
 use ironplc_ir::lowered::{FieldIdx, PouId, Section, TypeId, TypeKind, VarId};
 
-use super::lowered::{copy_slots, instance_type};
+use super::declarations::{copy_slots, instance_type};
 use super::region::Run;
+use crate::body::slot_type;
 use crate::compile::{
     FbFieldIndex, FbInstanceInfo, ParamPassing, StringParamInfo, StringVarInfo, UserFbTypeInfo,
     UserMethodInfo, VarTypeInfo, DEFAULT_VAR_TYPE_INFO, FIRST_USER_FB_TYPE_ID,
 };
 use crate::compile_call::standard_fb_layout;
 use crate::held_instances::HeldField;
-use crate::lowered::slot_type;
 
 /// The function blocks an instance can be of.
 pub(super) struct Blocks<'a> {

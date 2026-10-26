@@ -317,55 +317,49 @@ still checks their arity (P4018) and every other function's inputs (P4026),
 including a call to a typed name such as `ADD_TIME(a, b)`, which is not
 resolved: it is bound to its own registered signature as today.
 
-### Codegen
+### Lowering
 
-Codegen changes in two places. The code that reads the AST, where this was
-first built, is deleted: lowering now does both, a typed pair through the
-time intrinsics (`lowering/src/time.rs`) and a numeric expression at the
-width of its resolved type, and the requirements below hold of the lowered
-program the bytecode backend compiles.
+Two things follow from the resolved overload. Lowering makes both: it lowers
+a typed pair to the arithmetic of its time function and a numeric expression
+at the width of its resolved type, and the requirements below hold of the
+lowered program the bytecode backend compiles.
 
-**Typed dispatch.** Both spellings compile in `compile_arith.rs`: the
-operator expression and the function-form fold ask the typed step. When it
-answers, they compile the two operands through the routine of the time
-function that the answer's signature names as its intrinsic
-(`compile_time_arith.rs`), the routine a call of `ADD_TIME(a, b)` reaches
-through the same intrinsic. The typed routines take their operands rather
-than a `Function`, so both spellings share them, and take their operation
-width from the intrinsic (32-bit for the short form, 64-bit for the long one)
-instead of hard-coding 32-bit, so the long forms compile. The analyzer writes
-a typed fold of three or more inputs as the two-input calls it folds to, and
-converts a short-width operand of a long form to its long type (see
+**Typed dispatch.** Both spellings lower the same way: the operator
+expression (`lowering/src/expr.rs`) and the function-form fold
+(`lowering/src/call.rs`) lower a pair the typed step answered to the
+arithmetic of the time function its signature names, the arithmetic a call
+of `ADD_TIME(a, b)` lowers to (`lowering/src/time.rs`). The operation's width
+follows the time function (32-bit for the short form, 64-bit for the long
+one), so the long forms compile. The analyzer writes a typed fold of three
+or more inputs as the two-input calls it folds to, and converts a
+short-width operand of a long form to its long type (see
 `implicit-conversions.md`, Time and date operations), which widens it by its
 signedness: a `TIME` is sign-extended and a date type is zero-extended. Each
-routine compiles its operands at the types the analyzer recorded.
+operand lowers at the type the analyzer recorded.
 
-**Numeric width.** A numeric binary expression compiles at the width of its
-resolved type, not at the width of the variable it is assigned to. An operand
-whose natural width differs is compiled at its own width and followed by the
-conversion opcode, as `compile_user_function_call` already does for an
-argument; the result is converted to the enclosing width after the opcode.
-This is ADR-0001's promote-operate-truncate applied to the expression rather
-than to the statement: `INT + REAL` loads the `INT` at 32 bits, converts it
-to `REAL`, and adds as `REAL`; `UDINT + LINT` zero-extends the `UDINT` before
-the 64-bit add. It also changes an expression whose operands are narrower than
-its target: `l := d1 * d2` with `l : LINT` and `DINT` operands multiplies at
-32 bits and widens the product, which is what the standard's "the result has
-the input type" means, rather than multiplying at 64 bits as today.
+**Numeric width.** A numeric binary expression is computed at the width of
+its resolved type, not at the width of the variable it is assigned to. An
+operand whose natural width differs is computed at its own width and then
+converted, and the result is converted to the enclosing width after the
+operation. This is ADR-0001's promote-operate-truncate applied to the
+expression rather than to the statement: `INT + REAL` loads the `INT` at 32
+bits, converts it to `REAL`, and adds as `REAL`; `UDINT + LINT` zero-extends
+the `UDINT` before the 64-bit add. It also fixes an expression whose
+operands are narrower than its target: `l := d1 * d2` with `l : LINT` and
+`DINT` operands multiplies at 32 bits and widens the product, which is what
+the standard's "the result has the input type" means.
 
-The resolved type fixes the signedness as well as the width. Today an
-expression takes the signedness of its target, so `d := u1 / u2` with `UDINT`
-operands and a `DINT` target divides signed; it now divides unsigned, as its
-operands are. An expression whose operands and target share both width and
-signedness compiles to the same bytecode as before.
+The resolved type fixes the signedness as well as the width, so
+`d := u1 / u2` with `UDINT` operands and a `DINT` target divides unsigned,
+as its operands are, not signed as its target is.
 
-Codegen applies this when the expression's resolved type is a concrete
-elementary numeric or bit-string type, a subrange being known by its base
-type's name. An expression the analyzer resolved to neither that nor a typed
-overload is an internal error, not compiled at another type.
+This applies when the expression's resolved type is a concrete elementary
+numeric or bit-string type, a subrange being known by its base type's name.
+An expression the analyzer resolved to neither that nor a typed overload is
+an internal error (P9998), not computed at another type.
 
 The function form follows the same rule at each step of its fold, so
-`ADD(i, r)` and `i + r` compute the same value, and `ADD(a, b, c)` compiles
+`ADD(i, r)` and `i + r` compute the same value, and `ADD(a, b, c)` computes
 as `(a + b) + c` does.
 
 ### Considered: lowering to typed calls

@@ -59,9 +59,9 @@ FUNCTION Twice : INT
 END_FUNCTION
 
 FUNCTION_BLOCK Counter
-  VAR_INPUT step : INT; END_VAR
+  VAR_INPUT delta : INT; END_VAR
   VAR count : INT; END_VAR
-  count := count + step;
+  count := count + delta;
   METHOD Bump : INT
     VAR_INPUT n : INT; END_VAR
     VAR_TEMP t : INT; END_VAR
@@ -87,7 +87,7 @@ END_PROGRAM
   t0 \"dint\" i32
   t1 \"int\" i16
   t2 \"Counter\" function-block pou0
-    f0 step : t1 input
+    f0 delta : t1 input
     f1 count : t1 local
   t3 ref non-null t2
   t4 ref non-null t2

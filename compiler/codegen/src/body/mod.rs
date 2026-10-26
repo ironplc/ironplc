@@ -11,12 +11,6 @@
 //! (REQ-LOW-codegen-123). The name lowering keeps on each is for debug
 //! information and diagnostics (REQ-LOW-lowering-006).
 
-// A match over a lowered enum names every variant, so a variant added later
-// fails to compile wherever it is not handled (REQ-LOW-lowering-082). The
-// deny covers this module tree only: the code that reads the AST predates
-// the rule.
-#![deny(clippy::wildcard_enum_match_arm)]
-
 use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::{
     Arg, Callee, Const, Expr, ExprKind, FieldIdx, NarrowWidth, Nullability, Place as LoweredPlace,
@@ -71,7 +65,7 @@ pub(crate) fn emit_body(emitter: &mut Emitter, ctx: &mut CompileContext) -> Resu
         if !can_emit_all(lowering, ctx, source) {
             return Err(Diagnostic::not_implemented(Label::span(
                 span.clone(),
-                "Statement the lowered route does not support yet",
+                "Statement code generation does not support yet",
             )));
         }
         crate::compile_stmt::record_position(emitter, ctx, span);
@@ -85,7 +79,7 @@ pub(crate) fn emit_body(emitter: &mut Emitter, ctx: &mut CompileContext) -> Resu
 fn unsupported_store(stmt: &Stmt) -> Diagnostic {
     Diagnostic::not_implemented(Label::span(
         stmt.span().clone(),
-        "Starting value the lowered route does not support yet",
+        "Starting value code generation does not support yet",
     ))
 }
 
@@ -337,7 +331,7 @@ pub(super) fn stored_variable(
     ctx: &CompileContext,
     var: VarId,
 ) -> Option<Named> {
-    crate::layout::lowered::named(lowering, var).filter(|named| ctx.has_slot(named))
+    crate::layout::declarations::named(lowering, var).filter(|named| ctx.has_slot(named))
 }
 
 /// The field `field` of an instance of `instance`, when the layout keeps a
@@ -352,7 +346,7 @@ pub(super) fn stored_field(
         .types()
         .fields(instance)?
         .get(field.index() as usize)?;
-    let named = crate::layout::lowered::named_field(instance, field, declared);
+    let named = crate::layout::declarations::named_field(instance, field, declared);
     ctx.has_slot(&named).then_some(named)
 }
 

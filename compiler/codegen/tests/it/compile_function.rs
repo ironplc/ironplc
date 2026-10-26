@@ -1,9 +1,9 @@
 //! Tests of calls of user-defined functions compiled from the lowered
-//! program, with every statement required to lower.
+//! program.
 
 use rstest::rstest;
 
-use crate::compile_route_lowered::{assert_compiles, run_lowered, run_lowered_agreeing};
+use crate::compile_body::{assert_compiles, compile_and_run, compile_and_run_agreeing};
 
 /// Functions the tests call: one of three `DINT`s, two returning an `INT`,
 /// one that calls another, and one whose local starts from its initial value
@@ -32,7 +32,7 @@ const FUNCTIONS: &str = "
 /// stored, a function calls another, and a local starts again at every call.
 #[test]
 fn run_when_user_functions_called_then_values() {
-    let snapshot = run_lowered(&format!(
+    let snapshot = compile_and_run(&format!(
         "{FUNCTIONS}
          PROGRAM main
            VAR s : SINT := -2; r1 : DINT; r2 : INT; r3 : DINT; r4 : DINT; r5 : DINT;
@@ -53,14 +53,13 @@ fn run_when_user_functions_called_then_values() {
     assert_eq!(snapshot.read_as::<i32>("r6"), -25536);
 }
 
-/// A call of a user-defined function lowers and compiles. Only the functions
-/// a program calls are compiled, so `SCALE` is left out: its `LREAL_TO_INT`,
-/// stored to an `INT`, the route that read the AST narrowed twice.
+/// A call of a user-defined function lowers and compiles.
 #[rstest]
 #[case::positional("d := ADD3(d, e, 1);")]
 #[case::named_out_of_order("d := ADD3(c := d, a := e, b := 1);")]
 #[case::converted_argument("d := ADD3(s, d, s);")]
 #[case::narrow_result("i := HALF(i) + HALF(s);")]
+#[case::converted_result("i := SCALE(1.5, 2);")]
 #[case::nested("d := ADD3(ADD3(d, e, 1), TWICE(e), COUNT()) + 1;")]
 fn compile_when_user_function_call_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
@@ -94,7 +93,7 @@ const IN_OUT_FUNCTIONS: &str = "
 /// `VAR_IN_OUT`, and passes on one it was passed (REQ-LOW-lowering-033).
 #[test]
 fn run_when_in_out_passed_then_callee_writes_callers_variable() {
-    let snapshot = run_lowered(&format!(
+    let snapshot = compile_and_run(&format!(
         "{IN_OUT_FUNCTIONS}
          PROGRAM main
            VAR x : DINT := 5; r1 : DINT; r2 : DINT; i : DINT := 1; j : DINT := 2;
@@ -113,11 +112,10 @@ fn run_when_in_out_passed_then_callee_writes_callers_variable() {
 }
 
 /// Bits written to a function's `VAR_IN_OUT` are written to the caller's
-/// variable through its reference, leaving the other bits as they were. The
-/// route that read the AST reported the write as not implemented.
+/// variable through its reference, leaving the other bits as they were.
 #[test]
 fn run_when_in_out_has_bits_written_then_callers_variable() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "FUNCTION SET0 : BOOL VAR_IN_OUT w : WORD; END_VAR
            w.0 := TRUE;
            SET0 := w.1;
@@ -175,7 +173,7 @@ fn run_when_aggregate_input_passed_then_compiles() {
           r3 := f.M(q := pt);
         END_PROGRAM";
     assert_compiles(source);
-    let snapshot = run_lowered_agreeing(source);
+    let snapshot = compile_and_run_agreeing(source);
     assert_eq!(snapshot.read_as::<i32>("r1"), 7);
     assert_eq!(snapshot.read_as::<i32>("r2"), 9);
     assert_eq!(snapshot.read_as::<i32>("k"), 1);
@@ -213,8 +211,8 @@ fn compile_when_method_aggregate_result_discarded_then_compiles(#[case] statemen
 /// REQ-LOW-lowering-187: calls of methods whose results are a structure and
 /// an array leave every variable with the same values on every backend.
 #[test]
-fn run_when_method_aggregate_result_discarded_then_routes_agree() {
-    let snapshot = run_lowered_agreeing(&format!(
+fn run_when_method_aggregate_result_discarded_then_backends_agree() {
+    let snapshot = compile_and_run_agreeing(&format!(
         "{AGGREGATE_RESULTS}
          PROGRAM main VAR b : BP; r : DINT; END_VAR
            b.MKP(v := 3);
@@ -250,7 +248,7 @@ fn compile_when_in_out_argument_type_is_alias_then_compiles(#[case] statement: &
 /// `VAR_IN_OUT` whose type is an alias of the variable's, or the reverse.
 #[test]
 fn run_when_in_out_argument_type_is_alias_then_callee_writes_it() {
-    let snapshot = run_lowered_agreeing(&format!(
+    let snapshot = compile_and_run_agreeing(&format!(
         "{IN_OUT_ALIASES}
          PROGRAM main VAR a : MyInt := 4; d : DINT := 5; r1 : DINT; r2 : DINT; END_VAR
            r1 := F(x := a);
@@ -302,8 +300,8 @@ fn compile_when_instance_or_field_input_lowered_then_compiles(#[case] statement:
 /// give. This backend compiles no call or read of such an input in the
 /// callee's body (issue 1553).
 #[test]
-fn run_when_instance_or_field_input_passed_then_routes_agree() {
-    let snapshot = run_lowered_agreeing(&format!(
+fn run_when_instance_or_field_input_passed_then_backends_agree() {
+    let snapshot = compile_and_run_agreeing(&format!(
         "{INSTANCE_INPUTS}
          PROGRAM main
            VAR f : INNER; g : OUTER; b : BP; t : TON;

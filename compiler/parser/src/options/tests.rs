@@ -96,6 +96,7 @@ fn rusty_dialect_enables_exactly_these_flags() {
             "allow_enum_explicit_values",
             "allow_enum_base_type",
             "allow_continue",
+            "allow_keywords_as_names",
         ],
     );
 }
@@ -145,6 +146,7 @@ fn codesys_dialect_enables_exactly_these_flags() {
             "allow_enum_explicit_values",
             "allow_enum_base_type",
             "allow_continue",
+            "allow_keywords_as_names",
         ],
     );
 }
@@ -194,6 +196,7 @@ fn twincat_dialect_enables_exactly_these_flags() {
             "allow_enum_explicit_values",
             "allow_enum_base_type",
             "allow_continue",
+            "allow_keywords_as_names",
         ],
     );
 }

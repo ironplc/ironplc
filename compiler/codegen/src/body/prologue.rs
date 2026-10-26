@@ -27,7 +27,7 @@ use ironplc_ir::{Diagnostic, Label};
 use crate::access::{Named, Stored};
 use crate::compile::CompileContext;
 use crate::emit::Emitter;
-use crate::layout::lowered::named;
+use crate::layout::declarations::named;
 
 /// Whether the current body has a prologue: a program or a function block
 /// has one only when it declares a `VAR_TEMP`.

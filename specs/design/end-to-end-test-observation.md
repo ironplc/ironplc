@@ -207,9 +207,7 @@ program of the **reference** backend, the bytecode backend.
 **Decided:** the traits exist before a second backend does, so that the
 suite does not change shape when that backend lands. This replaces the
 earlier decision to keep `Snapshot` and `Session` concrete until then. The
-bytecode backend is the only backend yet. While both of its routes existed
-([Lowered Program](lowered-program.md#delivery-constraints)), each was a
-backend of its own here.
+bytecode backend is the only backend yet.
 
 **Still open:** the design for the second backend decides where the suite
 lives (it is in `codegen/tests` only because codegen was the only backend),

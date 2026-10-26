@@ -1,11 +1,11 @@
 //! Tests of string assignments, of strings that are elements of arrays or
 //! fields of structures, of the standard string functions, of conversions to
 //! and from a `STRING` and of comparisons of strings, compiled from the
-//! lowered program, with every statement required to lower.
+//! lowered program.
 
 use rstest::rstest;
 
-use crate::compile_route_lowered::{assert_compiles, run_lowered};
+use crate::compile_body::{assert_compiles, compile_and_run};
 
 /// A literal and the string at a place are stored at a string place. A
 /// value longer than the place keeps its first code units
@@ -13,7 +13,7 @@ use crate::compile_route_lowered::{assert_compiles, run_lowered};
 /// cannot hold.
 #[test]
 fn run_when_strings_assigned_then_values() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR s : STRING[5]; t : STRING := 'hello world'; u : STRING; v : STRING;
                w : WSTRING; END_VAR
@@ -60,7 +60,7 @@ const STRING_PLACES: &str = "
 /// function.
 #[test]
 fn run_when_string_elements_and_fields_then_values() {
-    let snapshot = run_lowered(&format!(
+    let snapshot = compile_and_run(&format!(
         "{STRING_PLACES}
          PROGRAM main
            VAR names : ARRAY[1..3] OF STRING[8]; p : Item; h : Holder; i : DINT := 2;
@@ -114,7 +114,7 @@ fn compile_when_string_element_or_field_lowered_then_compiles(#[case] statement:
 /// (REQ-LOW-codegen-089). A `WSTRING` counts 16-bit code units.
 #[test]
 fn run_when_len_or_find_then_values() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR s : STRING[8] := 'hello'; w : WSTRING := \"π ≈ 3.14\";
                r1, r2, r3, r4, r5, r6, r7 : DINT; END_VAR
@@ -163,7 +163,7 @@ fn compile_when_len_or_find_lowered_then_compiles(#[case] statement: &str) {
 /// code units (REQ-LOW-codegen-056).
 #[test]
 fn run_when_string_functions_yield_strings_then_values() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR s : STRING := 'hello'; w : WSTRING := \"π ≈ 3.14\"; short : STRING[4];
                r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11 : STRING;
@@ -233,7 +233,7 @@ fn compile_when_string_function_lowered_then_compiles(#[case] statement: &str) {
 /// a `STRING` writes its number's decimal text (REQ-LOW-codegen-089).
 #[test]
 fn run_when_string_conversion_then_values() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR s : STRING := ' 42 '; f : STRING := '1.5'; n : DINT; u : UDINT; i : SINT;
                r : REAL; l : LREAL; q : LINT; neg : INT := -7; big : UDINT := 4000000000;
@@ -288,7 +288,7 @@ fn compile_when_string_conversion_lowered_then_compiles(#[case] statement: &str)
 /// a string that is a prefix of the other is less (REQ-LOW-codegen-089).
 #[test]
 fn run_when_strings_compared_then_values() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR s : STRING := 'abc'; t : STRING := 'abd'; w : WSTRING := \"xy\";
                eq, ne, lt, le, gt, ge, prefix, wide, cond : BOOL; END_VAR
@@ -339,11 +339,10 @@ fn compile_when_string_comparison_lowered_then_compiles(#[case] statement: &str)
 /// function's or method's input, local or result, is held as a string of
 /// the alias's capacity, as one spelled out is: it is copied in, starts
 /// empty or at its initial value on every call, and keeps no more than its
-/// capacity. The route that read the AST kept such a variable as the index
-/// of a temporary buffer, which trapped when read before it was written.
+/// capacity.
 #[test]
 fn run_when_string_declared_through_alias_in_function_then_string_values() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "TYPE Name : STRING[20]; END_TYPE
          TYPE Short : STRING[3]; END_TYPE
          TYPE WName : WSTRING[10]; END_TYPE

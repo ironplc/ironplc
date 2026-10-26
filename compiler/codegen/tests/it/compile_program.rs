@@ -1,14 +1,13 @@
 //! Tests of programs whose declarations include some that are no fields of
 //! the program's instance (REQ-LOW-lowering-170), compiled from the lowered
-//! program with every statement required to lower: an access path, a
-//! located variable with no name, and the global variables a PLCopen XML
-//! program declares in its interface.
+//! program: an access path, a located variable with no name, and the global
+//! variables a PLCopen XML program declares in its interface.
 
 use ironplc_dsl::core::FileId;
 use ironplc_sources::parsers::xml_parser;
 
 use crate::common::{compile_analyzed, compile_to_run, Snapshot};
-use crate::compile_route_lowered::{assert_compiles, options, run_lowered_agreeing};
+use crate::compile_body::{assert_compiles, compile_and_run_agreeing, options};
 
 /// A program with an access path and a located variable with no name, which
 /// no statement names, among its declarations.
@@ -26,7 +25,7 @@ const DECLARATIONS: &str = "
 #[test]
 fn run_when_program_declares_access_path_and_unnamed_located_then_lowered() {
     assert_compiles(DECLARATIONS);
-    let snapshot = run_lowered_agreeing(DECLARATIONS);
+    let snapshot = compile_and_run_agreeing(DECLARATIONS);
     assert_eq!(snapshot.read_as::<i32>("k"), 5);
 }
 

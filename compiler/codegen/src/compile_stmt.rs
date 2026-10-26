@@ -1,6 +1,6 @@
 //! The source position each statement of a body records for the line map,
 //! and a `RETURN`. The statements themselves are compiled from the lowered
-//! program ([`crate::lowered::emit_body`]).
+//! program ([`crate::body::emit_body`]).
 
 use ironplc_ir::SourceSpan;
 

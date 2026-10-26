@@ -140,14 +140,14 @@ fn lower_statement_when_block_variable_retained_then_block_field_keeps_it() {
     let outcome = lower(
         "FUNCTION_BLOCK Counter
          VAR RETAIN n : DINT; END_VAR
-         VAR_INPUT step : DINT; END_VAR
-            n := n + step;
+         VAR_INPUT delta : DINT; END_VAR
+            n := n + delta;
          END_FUNCTION_BLOCK",
         "Counter",
     );
 
     assert_eq!(instance_field(&outcome, "n").retention, Retention::Retain);
-    assert_eq!(instance_field(&outcome, "step").retention, Retention::None);
+    assert_eq!(instance_field(&outcome, "delta").retention, Retention::None);
     let this = &outcome.variables[0];
     let (block, _) = outcome.types.reference(this.ty()).unwrap();
     assert!(matches!(

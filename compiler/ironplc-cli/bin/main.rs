@@ -293,6 +293,12 @@ struct FileArgs {
     #[arg(long)]
     allow_continue: bool,
 
+    /// Allow the keywords ON, STEP, R_EDGE and F_EDGE as names of variables
+    /// and enumeration members (e.g. `(Off, On)`). IEC 61131-3 reserves its
+    /// keywords, so this is a dialect extension.
+    #[arg(long)]
+    allow_keywords_as_names: bool,
+
     /// What STRING_TO_<numeric> treats as convertible when the string has
     /// non-numeric characters. A behavior policy: the dialect selects an
     /// alternative and this flag replaces it.
@@ -353,6 +359,7 @@ impl FileArgs {
         options.allow_enum_explicit_values |= self.allow_enum_explicit_values;
         options.allow_enum_base_type |= self.allow_enum_base_type;
         options.allow_continue |= self.allow_continue;
+        options.allow_keywords_as_names |= self.allow_keywords_as_names;
         options
     }
 }

@@ -4,7 +4,7 @@
 //! An aggregate variable's slot holds the byte offset of its data region,
 //! and `COPY_REGION` moves the bytes from the region whose offset is on the
 //! stack to the region of the destination, sizing both from their array
-//! descriptors. The bridge emits a `Copy` between whole variables, and
+//! descriptors. The backend emits a `Copy` between whole variables, and
 //! fields of the current instance, that this backend's layout keeps as
 //! aggregate regions. A whole array of structures is copied by storing the
 //! source's slot, so the target becomes an alias of the source
@@ -16,7 +16,7 @@
 //!
 //! A structure or array field of another function block instance has no
 //! region in this layout. For a `Copy` to one (`place::instance_slot`), the
-//! bridge stores the region offset of the value in the field's slot, as it
+//! backend stores the region offset of the value in the field's slot, as it
 //! stores a call's input (`fb_call.rs`): the source's offset, or the offset
 //! the source's slot holds when the source is such a field too. This backend
 //! compiles no read of what such a field holds, in the block's body, a method
@@ -212,9 +212,8 @@ fn region(lowering: &Program, ctx: &CompileContext, place: &LoweredPlace) -> Opt
         });
     }
     // An array of structures: its descriptor covers the whole array, string
-    // fields included, so `COPY_REGION` copies it by value, where the route
-    // that reads the AST stores the source's slot and so makes the target
-    // an alias of the source.
+    // fields included, so `COPY_REGION` copies it by value, and the target
+    // is no alias of the source.
     if let Some(info) = ctx.struct_array_var(&name) {
         return Some(Region {
             var_index: info.var_index,

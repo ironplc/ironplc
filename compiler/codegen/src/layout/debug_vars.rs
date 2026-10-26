@@ -37,15 +37,17 @@ pub(crate) struct DebugVars {
 pub(super) fn enum_definitions(types: &TypeTable) -> Vec<EnumDefEntry> {
     let mut entries: Vec<EnumDefEntry> = types
         .iter()
-        .filter_map(|(ty, entry)| match &entry.kind {
-            TypeKind::Enumeration { values, .. } => Some(EnumDefEntry {
+        .filter_map(|(ty, entry)| {
+            let TypeKind::Enumeration { values, .. } = &entry.kind else {
+                return None;
+            };
+            Some(EnumDefEntry {
                 type_name: enumeration_name(types, ty),
                 values: values
                     .iter()
                     .map(|value| value.name.to_string().to_uppercase())
                     .collect(),
-            }),
-            _ => None,
+            })
         })
         .collect();
     entries.sort_by(|a, b| a.type_name.cmp(&b.type_name));
