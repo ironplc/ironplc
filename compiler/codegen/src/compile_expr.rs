@@ -2,7 +2,7 @@
 //! or stored at its operation type, a narrow store truncated to its storage
 //! width, `NULL`, what a `VAR_IN_OUT` refers to, and the fused compare and
 //! branch. The lowered program's expressions and statements are emitted
-//! through them (`lowered/`).
+//! through them (`body/`).
 
 use crate::access::Named;
 use ironplc_container::{opcode, VarIndex};

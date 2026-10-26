@@ -1,6 +1,6 @@
 //! The limits of the bytecode format a declaration can exceed, checked over
 //! every declaration the layout lays out before it is built
-//! ([`super::lowered`]): an array of more elements, or a structure or an
+//! ([`super::declarations`]): an array of more elements, or a structure or an
 //! array of structures of more slots, than flat-index arithmetic reaches
 //! (P9997); a structure that holds a function block, which this backend does
 //! not lay out yet (P9999); and a function block with more fields than an
@@ -11,7 +11,7 @@ use ironplc_ir::lowered::{TypeId, TypeKind, TypeTable};
 use ironplc_ir::SourceSpan;
 use ironplc_ir::{Diagnostic, Label};
 
-use super::lowered::{copy_slots, frame, globals, instance_type, Pous};
+use super::declarations::{copy_slots, frame, globals, instance_type, Pous};
 use super::region::{elements, slots};
 use crate::compile::MAX_DATA_REGION_SLOTS;
 

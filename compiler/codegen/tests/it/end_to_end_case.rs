@@ -4,7 +4,7 @@ use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 
 use crate::common::assert_run_with;
-use crate::compile_route_lowered::run_lowered;
+use crate::compile_body::compile_and_run;
 
 e2e_i32!(
     end_to_end_when_case_matches_first_arm_then_executes_body,
@@ -257,8 +257,7 @@ END_PROGRAM
 /// the last of its arm or the last, a range, a range failing at either
 /// bound, with or without an `ELSE`. `NEXT_VAL` counts its calls in
 /// `calls`, so `calls` ends one above where it started, and a selector left
-/// on the operand stack fails the test. The route that read the AST
-/// evaluated the selector again for each label it tested.
+/// on the operand stack fails the test.
 #[rstest]
 #[case::first_label(4, "ELSE y := -1;", 5, 5)]
 #[case::label_before_last_of_arm(5, "ELSE y := -1;", 6, 6)]
@@ -273,7 +272,7 @@ fn end_to_end_when_case_selector_has_side_effect_then_evaluated_once(
     #[case] calls: i64,
     #[case] y: i64,
 ) {
-    let snapshot = run_lowered(&format!(
+    let snapshot = compile_and_run(&format!(
         "
 FUNCTION NEXT_VAL : DINT
   VAR_IN_OUT c : DINT; END_VAR

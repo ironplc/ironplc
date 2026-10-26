@@ -25,7 +25,7 @@ use ironplc_ir::{Diagnostic, Label};
 use crate::access::{Named, Stored};
 use crate::compile::CompileContext;
 use crate::emit::Emitter;
-use crate::layout::lowered::{globals, instance_type, named, named_field};
+use crate::layout::declarations::{globals, instance_type, named, named_field};
 
 /// Emits `init`, the declared globals and then the program's own
 /// declarations, from the lowered program, in the program's scope: the one

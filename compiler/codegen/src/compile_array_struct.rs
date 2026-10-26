@@ -393,7 +393,7 @@ fn struct_array_element_field<'ctx, S>(
 
     // A composite value has no single-slot load or store, and the appended
     // strides above assume one slot per innermost element.
-    let Some(type_info) = crate::lowered::slot_type(types, value_type) else {
+    let Some(type_info) = crate::body::slot_type(types, value_type) else {
         return Err(Diagnostic::not_implemented(Label::span(
             field.span(),
             format!(

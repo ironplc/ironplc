@@ -3,15 +3,14 @@
 //! source evaluates them (REQ-LOW-lowering-172, REQ-LOW-lowering-174,
 //! REQ-LOW-lowering-179, REQ-LOW-lowering-180).
 //!
-//! Each program compiles with every statement lowered (REQ-LOW-codegen-175)
-//! and leaves every variable with the same value on every backend after one
-//! scan.
+//! Each program compiles (REQ-LOW-codegen-175) and leaves every variable
+//! with the same value on every backend after one scan.
 
 use ironplc_vm::error::Trap;
 use rstest::rstest;
 
 use crate::common::{compile_analyzed, parse, parse_and_compile_to_run, run_one_scan, Snapshot};
-use crate::compile_route_lowered::{assert_compiles, options, run_lowered_agreeing};
+use crate::compile_body::{assert_compiles, compile_and_run_agreeing, options};
 
 /// The functions, blocks and variables the programs share.
 ///
@@ -139,7 +138,7 @@ fn run_when_call_in_place_then_same_code_and_values(
 ) {
     let source = program(statements);
     assert_compiles(&source);
-    let snapshot = run_lowered_agreeing(&source);
+    let snapshot = compile_and_run_agreeing(&source);
     let actual: Vec<(&str, i64)> = expected
         .iter()
         .map(|(name, _)| (*name, snapshot.read_as::<i64>(name)))
@@ -165,22 +164,19 @@ fn run_when_string_result_in_place_then_same_code_and_values(
 ) {
     let source = program(statements);
     assert_compiles(&source);
-    let snapshot = run_lowered_agreeing(&source);
+    let snapshot = compile_and_run_agreeing(&source);
     assert_eq!(snapshot.read("s"), text);
     assert_eq!(snapshot.read_as::<i64>("k"), k);
 }
 
-/// A call that leaves every variable with the same values on every backend,
-/// though its code differed from the code of the route that read the AST:
+/// A call in place leaves every variable with the same values on every
+/// backend:
 ///
-/// * in a `CASE` selector, which is evaluated once (REQ-LOW-codegen-124),
-///   where the route that read the AST evaluated it for each label it
-///   tested. Neither function has a side effect, so the values agreed;
-/// * in an `ELSIF` condition with no `ELSE`, after whose last branch the
-///   route that read the AST jumped to the next instruction;
-/// * storing an output in a `WORD`, which the route that read the AST
-///   narrowed again. Here `AssignBits` reads `w` before its value, so the
-///   output the call stores in `w` is lost (REQ-LOW-codegen-185).
+/// * in a `CASE` selector, which is evaluated once (REQ-LOW-codegen-124);
+/// * in an `ELSIF` condition with no `ELSE`;
+/// * storing an output in a `WORD` whose bit the statement writes.
+///   `AssignBits` reads `w` before its value, so the output the call stores
+///   in `w` is lost (REQ-LOW-codegen-185).
 #[rstest]
 #[case::string_in_selector(
     "CASE LEN(G(s)) OF 2: k := 1; ELSE k := 2; END_CASE;",
@@ -195,11 +191,11 @@ fn run_when_string_result_in_place_then_same_code_and_values(
     &[("k", 2)]
 )]
 #[case::output_to_bit_written_place_lost("w.3 := FW(x := 1, q => w) > 0;", &[("w", 8)])]
-fn run_when_call_in_place_then_routes_agree(
+fn run_when_call_in_place_then_backends_agree(
     #[case] statements: &str,
     #[case] expected: &[(&str, i64)],
 ) {
-    let snapshot = run_lowered_agreeing(&program(statements));
+    let snapshot = compile_and_run_agreeing(&program(statements));
     let actual: Vec<(&str, i64)> = expected
         .iter()
         .map(|(name, _)| (*name, snapshot.read_as::<i64>(name)))
@@ -209,10 +205,9 @@ fn run_when_call_in_place_then_routes_agree(
 
 /// A call with outputs in a function's body lowers. Inside a function's
 /// body the VM reaches no variable of another function, so reading the
-/// output traps (`InvalidVariableIndex`), as it did on the route that read
-/// the AST.
+/// output traps (`InvalidVariableIndex`).
 #[test]
-fn run_when_call_with_outputs_in_function_body_then_traps_as_ast_route() {
+fn run_when_call_with_outputs_in_function_body_then_traps() {
     let source = program("r := W(d := 3);");
     let options = options();
     parse_and_compile_to_run(&source, &options);
@@ -225,9 +220,8 @@ fn run_when_call_with_outputs_in_function_body_then_traps_as_ast_route() {
 }
 
 /// REQ-LOW-codegen-124: a call with outputs in a `CASE` selector runs once,
-/// whatever label matches. The route that read the AST evaluated the
-/// selector again for each label it tested, so it would have counted three
-/// calls here and run the `ELSE`.
+/// whatever label matches, so it counts one call here and does not run the
+/// `ELSE`.
 #[test]
 fn run_when_call_with_outputs_in_case_selector_then_called_once() {
     let source = "

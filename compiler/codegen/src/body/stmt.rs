@@ -1,9 +1,8 @@
 //! Emits a lowered statement.
 //!
-//! Each statement is emitted in the shape the route that read the AST gave
-//! it, fused compare and branch included. `Case` evaluates its selector once
-//! (REQ-LOW-codegen-124): it stays on the stack while the labels are tested,
-//! and the arm that runs pops it first.
+//! Conditions use the fused compare and branch. `Case` evaluates its
+//! selector once (REQ-LOW-codegen-124): it stays on the stack while the
+//! labels are tested, and the arm that runs pops it first.
 
 use ironplc_container::opcode::cmp_op;
 use ironplc_ir::lowered::Program;
@@ -242,8 +241,7 @@ impl Emission<'_> {
         super::place::resolve(self.lowering, ctx, place, span)?.emit_load(emitter, ctx)
     }
 
-    /// As `compile_if`: the `else` branch is jumped over only when there is
-    /// one.
+    /// An `If`: the `else` branch is jumped over only when there is one.
     fn if_(
         &mut self,
         emitter: &mut Emitter,
@@ -367,9 +365,9 @@ impl Emission<'_> {
         Ok(())
     }
 
-    /// As `compile_for`, with the loop test fused into one `CMP_BR_*` when the
-    /// bound is a constant, and the truncation of the control variable left
-    /// out when constant bounds keep it within its type.
+    /// A `For`, with the loop test fused into one `CMP_BR_*` when the bound
+    /// is a constant, and the truncation of the control variable left out
+    /// when constant bounds keep it within its type.
     #[allow(clippy::too_many_arguments)]
     fn for_(
         &mut self,
@@ -426,8 +424,8 @@ impl Emission<'_> {
     }
 
     /// A `Loop`. The two shapes `WHILE` and `REPEAT` lower to are emitted as
-    /// `compile_while` and `compile_repeat` emit them; any other repeats
-    /// `body` then `continuing`.
+    /// those loops (`while_`, `repeat`); any other repeats `body` then
+    /// `continuing`.
     fn loop_(
         &mut self,
         emitter: &mut Emitter,
@@ -459,7 +457,7 @@ impl Emission<'_> {
         Ok(())
     }
 
-    /// `WHILE cond DO body`, as `compile_while` emits it.
+    /// `WHILE cond DO body`.
     fn while_(
         &mut self,
         emitter: &mut Emitter,
@@ -490,7 +488,7 @@ impl Emission<'_> {
         Ok(())
     }
 
-    /// `REPEAT body UNTIL until`, as `compile_repeat` emits it.
+    /// `REPEAT body UNTIL until`.
     fn repeat(
         &mut self,
         emitter: &mut Emitter,
@@ -501,8 +499,8 @@ impl Emission<'_> {
     ) -> Result<(), Diagnostic> {
         let head = emitter.create_label();
         let end = emitter.create_label();
-        // Classified before the body, as `compile_repeat` does, so the
-        // constant pool holds the same constants in the same order.
+        // Classified before the body, so the condition's constants come
+        // before the body's in the constant pool.
         let fused = self.classify(ctx, until);
         emitter.bind_label(head);
         let next = self.loop_body(emitter, ctx, id, end, body)?;

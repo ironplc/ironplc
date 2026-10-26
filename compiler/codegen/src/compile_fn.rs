@@ -37,7 +37,7 @@ pub(crate) fn compile_user_function(
     // the locals the analyzer flags, and the result, start again at their
     // resolved values on every call. The flat variable table (ADR-0046)
     // retains stale values between calls otherwise.
-    crate::lowered::emit_prologue(&mut func_emitter, ctx)?;
+    crate::body::emit_prologue(&mut func_emitter, ctx)?;
 
     // Make the return descriptor visible to nested `RETURN` statements so an
     // early RETURN produces the function's value before the RET opcode (rather
@@ -60,7 +60,7 @@ pub(crate) fn compile_user_function(
     let saved_current_fn = ctx.current_function_id.take();
     ctx.current_function_id = Some(function_id);
 
-    crate::lowered::emit_body(&mut func_emitter, ctx)?;
+    crate::body::emit_body(&mut func_emitter, ctx)?;
 
     ctx.current_function_id = saved_current_fn;
     ctx.current_function_return = saved_return_ctx;
@@ -81,7 +81,7 @@ pub(crate) fn compile_user_function(
     ctx.function_stack_depths
         .insert(function_id, finalized.max_stack_depth);
 
-    let name = crate::lowered::pou_name(ctx, ctx.scope)?.to_lowercase();
+    let name = crate::body::pou_name(ctx, ctx.scope)?.to_lowercase();
     ctx.scope = caller;
 
     Ok(CompiledFunction {
@@ -106,7 +106,7 @@ pub(crate) fn compile_user_function_block(
     ctx: &mut CompileContext,
 ) -> Result<CompiledFunction, Diagnostic> {
     let caller = std::mem::replace(&mut ctx.scope, scope);
-    let fb_name = crate::lowered::pou_name(ctx, scope)?.to_uppercase();
+    let fb_name = crate::body::pou_name(ctx, scope)?.to_uppercase();
 
     // Compile the FB body.
     // Mark this FB's body as the current caller so nested CALL / FB_CALL
@@ -118,10 +118,10 @@ pub(crate) fn compile_user_function_block(
     let mut fb_emitter = Emitter::new();
     // A `VAR_TEMP` starts again on every call, from the lowered program; the
     // AST gives a function block's none.
-    if crate::lowered::restarts(ctx)? {
-        crate::lowered::emit_prologue(&mut fb_emitter, ctx)?;
+    if crate::body::restarts(ctx)? {
+        crate::body::emit_prologue(&mut fb_emitter, ctx)?;
     }
-    crate::lowered::emit_body(&mut fb_emitter, ctx)?;
+    crate::body::emit_body(&mut fb_emitter, ctx)?;
     fb_emitter.emit_ret_void();
 
     ctx.current_function_id = saved_current_fn;

@@ -1,10 +1,9 @@
-//! Tests of arithmetic on times and dates compiled from the lowered program,
-//! with every statement required to lower.
+//! Tests of arithmetic on times and dates compiled from the lowered program.
 
 use rstest::rstest;
 
 use crate::common::{date, datetime, time, Duration};
-use crate::compile_route_lowered::{assert_compiles, run_lowered};
+use crate::compile_body::{assert_compiles, compile_and_run};
 
 /// The typed time and date functions, and the operators that resolve to
 /// them, give the expected values. A negative duration divides toward zero
@@ -13,7 +12,7 @@ use crate::compile_route_lowered::{assert_compiles, run_lowered};
 /// and `DT_TO_TOD` split a date and time at midnight.
 #[test]
 fn run_when_time_functions_then_values() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR t1 : TIME := T#1500ms; t2 : TIME := T#4s; lt : LTIME;
                s : DT := DT#1970-01-02-00:00:10; s0 : DT := DT#1970-01-01-00:00:00;
@@ -58,7 +57,7 @@ fn run_when_time_functions_then_values() {
 /// the range of 32 bits negates at 64.
 #[test]
 fn run_when_duration_negated_then_values() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR t : TIME := T#1500ms; lt : LTIME;
                r1 : TIME; r2 : TIME; r3 : LTIME; END_VAR
@@ -76,9 +75,7 @@ fn run_when_duration_negated_then_values() {
 
 /// A typed time function, an operator or function form that resolves to
 /// one, `DT_TO_TOD`, a time or date literal and a negated duration lower and
-/// compile. `DT_TO_DATE` is left out: the route that read the AST read its
-/// operand twice, and the lowered program reads it once
-/// (REQ-LOW-lowering-165).
+/// compile. `DT_TO_DATE` reads its operand once (REQ-LOW-lowering-165).
 #[rstest]
 #[case::add_time("t := ADD_TIME(t, t2);")]
 #[case::add_tod_time("c := ADD_TOD_TIME(c, t);")]
@@ -91,6 +88,7 @@ fn run_when_duration_negated_then_values() {
 #[case::add_ltime("lt := ADD_LTIME(lt, lt);")]
 #[case::mul_ltime_lreal("lt := MUL_LTIME(lt, lr);")]
 #[case::dt_to_tod("c := DT_TO_TOD(s);")]
+#[case::dt_to_date("d := DT_TO_DATE(s);")]
 #[case::add_time_operator("t := t + t2;")]
 #[case::sub_tod_time_operator("c := c - t;")]
 #[case::sub_dt_time_operator("s := s - t;")]

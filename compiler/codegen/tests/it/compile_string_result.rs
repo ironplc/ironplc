@@ -1,11 +1,11 @@
 //! Tests of calls of user-defined functions whose result is a string,
 //! compiled from the lowered program (REQ-LOW-lowering-079,
-//! REQ-LOW-lowering-179), with every statement required to lower. Each
-//! program compiles, the functions' bodies included, and leaves every
-//! variable with the same values on every backend after one scan.
+//! REQ-LOW-lowering-179). Each program compiles, the functions' bodies
+//! included, and leaves every variable with the same values on every backend
+//! after one scan.
 
 use crate::common::{compile_analyzed, parse};
-use crate::compile_route_lowered::{assert_compiles, options, run_lowered_agreeing};
+use crate::compile_body::{assert_compiles, compile_and_run_agreeing, options};
 
 /// Functions whose results are strings: a `STRING[20]` input doubled, the
 /// same with a `!` after it, and a `WSTRING` input as it is.
@@ -37,7 +37,7 @@ fn run_when_result_assigned_to_argument_or_nested_then_values() {
          END_PROGRAM"
     );
     assert_compiles(&source);
-    let snapshot = run_lowered_agreeing(&source);
+    let snapshot = compile_and_run_agreeing(&source);
     assert_eq!(snapshot.read("same"), "abab");
     assert_eq!(snapshot.read("nested"), "xxxx");
 }
@@ -66,7 +66,7 @@ fn run_when_result_is_operand_then_call_emitted_where_read() {
          END_PROGRAM"
     );
     assert_compiles(&source);
-    let snapshot = run_lowered_agreeing(&source);
+    let snapshot = compile_and_run_agreeing(&source);
     assert_eq!(snapshot.read("joined"), "aabb");
     assert_eq!(snapshot.read("wide"), "abcd");
     assert_eq!(snapshot.read_as::<i32>("n"), 256);
@@ -88,7 +88,7 @@ fn run_when_called_in_loop_then_buffers_released_and_pool_of_one_iteration() {
          END_PROGRAM"
     );
     assert_compiles(&source);
-    let snapshot = run_lowered_agreeing(&source);
+    let snapshot = compile_and_run_agreeing(&source);
     assert_eq!(snapshot.read("t"), "hi!");
     assert_eq!(snapshot.read_as::<i32>("n"), 800);
     let options = options();
@@ -101,9 +101,7 @@ fn run_when_called_in_loop_then_buffers_released_and_pool_of_one_iteration() {
 
 /// REQ-LOW-lowering-180: a call in an `ELSIF` condition is in place there,
 /// so it runs only when the conditions before it are false: it decides the
-/// second statement and not the first. The code differed from the route
-/// that read the AST only in the jump that route emitted after the last
-/// branch of an `IF` with no `ELSE`.
+/// second statement and not the first.
 #[test]
 fn run_when_result_in_elsif_condition_then_lowered_in_place() {
     let source = format!(
@@ -113,7 +111,7 @@ fn run_when_result_in_elsif_condition_then_lowered_in_place() {
            IF n < 0 THEN j := 1; ELSIF TWICE(a) = 'aa' THEN j := 2; END_IF;
          END_PROGRAM"
     );
-    let snapshot = run_lowered_agreeing(&source);
+    let snapshot = compile_and_run_agreeing(&source);
     assert_eq!(snapshot.read_as::<i32>("k"), 1);
     assert_eq!(snapshot.read_as::<i32>("j"), 2);
 }
@@ -134,7 +132,7 @@ fn run_when_result_is_argument_of_call_with_outputs_then_values() {
          END_PROGRAM"
     );
     assert_compiles(&source);
-    let snapshot = run_lowered_agreeing(&source);
+    let snapshot = compile_and_run_agreeing(&source);
     assert_eq!(snapshot.read_as::<i32>("r"), 4);
     assert_eq!(snapshot.read_as::<i32>("q"), 8);
 }

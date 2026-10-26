@@ -352,7 +352,7 @@ fn compile_program(
     let mut builder = ContainerBuilder::new();
 
     // Register every top-level POU's source file with the debug
-    // section's SOURCE_FILE_TABLE. Each statement's `compile_statement`
+    // section's SOURCE_FILE_TABLE. Each statement's `record_position`
     // call later looks up the resulting `SourceFileId` via
     // `ctx.debug_source_files.get(&span.file_id)` and pairs it with the
     // statement's (line, column) for the LineMapEntry. The
@@ -360,7 +360,7 @@ fn compile_program(
     // bodies) determines the `file_id` numbering, which appears in
     // the on-disk container.
     // The lowered program names the POUs and their spans.
-    let pou_spans = crate::layout::lowered::source_spans(program, main)?;
+    let pou_spans = crate::layout::declarations::source_spans(program, main)?;
     for span in &pou_spans {
         register_pou_source_file(&mut ctx, span, sources);
     }
@@ -371,7 +371,7 @@ fn compile_program(
     // FB body finds each callee's stack depth; per IEC 61131-3 functions
     // cannot instantiate FBs, so they don't require FB bodies to have been
     // compiled first.
-    let layout = crate::layout::lowered::Layout::of(program, main, &ctx.standard_blocks)?;
+    let layout = crate::layout::declarations::Layout::of(program, main, &ctx.standard_blocks)?;
     let bodies = layout.install(&mut ctx, &mut builder)?;
     let program_var_count = bodies.program_slots;
     let mut compiled_functions = Vec::new();
@@ -403,7 +403,7 @@ fn compile_program(
     // Emit bytecode for variable initial values into the init emitter, from
     // the lowered program.
     let mut init_emitter = Emitter::new();
-    crate::lowered::emit_init(&mut init_emitter, &mut ctx)?;
+    crate::body::emit_init(&mut init_emitter, &mut ctx)?;
     init_emitter.emit_ret_void();
 
     // Compile the program body into the scan emitter. Mark
@@ -413,10 +413,10 @@ fn compile_program(
     ctx.current_function_id = Some(FunctionId::SCAN);
     // A `VAR_TEMP` starts again at the head of every scan, from the lowered
     // program.
-    if crate::lowered::restarts(&ctx)? {
-        crate::lowered::emit_prologue(&mut scan_emitter, &mut ctx)?;
+    if crate::body::restarts(&ctx)? {
+        crate::body::emit_prologue(&mut scan_emitter, &mut ctx)?;
     }
-    crate::lowered::emit_body(&mut scan_emitter, &mut ctx)?;
+    crate::body::emit_body(&mut scan_emitter, &mut ctx)?;
     ctx.current_function_id = None;
     scan_emitter.emit_ret_void();
 
@@ -577,7 +577,7 @@ fn compile_program(
         .max_call_depth(max_call_depth);
 
     // Add debug info, named as the lowered program names each POU.
-    let program_name = crate::lowered::pou_name(&ctx, ctx.scope)?;
+    let program_name = crate::body::pou_name(&ctx, ctx.scope)?;
     builder = builder
         .add_func_name(FuncNameEntry {
             function_id: FunctionId::INIT,
@@ -846,7 +846,7 @@ pub(crate) struct CompileContext<'p> {
     pub(crate) debug_enum_defs: Vec<ironplc_container::debug_section::EnumDefEntry>,
     /// Debug info: registry mapping each referenced source `FileId` to its
     /// `SourceFileId` (debug section SOURCE_FILE_TABLE index) plus cached
-    /// source bytes for (line, column) conversion in `compile_statement`.
+    /// source bytes for (line, column) conversion in `record_position`.
     pub(crate) debug_source_files: crate::source_lookup::SourceFileRegistry,
     /// What a call of each user-defined function needs, by its lowered POU.
     pub(crate) user_functions: HashMap<PouId, UserFunctionInfo>,

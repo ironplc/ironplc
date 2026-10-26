@@ -6,7 +6,7 @@ use ironplc_parser::options::CompilerOptions;
 use ironplc_vm::error::Trap;
 
 use crate::common::{compile_analyzed, parse, run_one_scan, Snapshot};
-use crate::compile_route_lowered::{options, run_lowered};
+use crate::compile_body::{compile_and_run, options};
 
 /// A string a reference refers to, read whole, by `LEN`, as an argument of
 /// a standard function and in a comparison, and an element of an array of
@@ -14,7 +14,7 @@ use crate::compile_route_lowered::{options, run_lowered};
 /// when they are read.
 #[test]
 fn run_when_string_read_through_reference_then_values() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR s : STRING := 'abcd'; w : WSTRING := \"xyz\";
                sa : ARRAY[1..2] OF STRING := ['xy', 'pqr']; i : DINT := 1;
@@ -57,7 +57,7 @@ fn run_when_string_read_through_reference_then_values() {
 /// other strings as they were.
 #[test]
 fn run_when_string_stored_through_reference_then_referenced_string_holds_it() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "TYPE Short : STRING[3]; END_TYPE
          PROGRAM main
            VAR s : STRING; k : Short; w : WSTRING; sa : ARRAY[1..3] OF STRING[4];
@@ -93,7 +93,7 @@ fn run_when_string_stored_through_reference_then_referenced_string_holds_it() {
 /// written as that string.
 #[test]
 fn run_when_reference_to_string_read_and_written_then_bound_string() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR s : STRING := 'abc'; r : REFERENCE TO STRING; t : STRING; n : DINT; END_VAR
            r REF= s;
@@ -111,7 +111,7 @@ fn run_when_reference_to_string_read_and_written_then_bound_string() {
 /// statement makes does, and two references to the same string are equal.
 #[test]
 fn run_when_reference_starts_referring_to_string_then_reads_it() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR first : STRING := 'first'; s : STRING := 'abc';
                rs : REF_TO STRING := REF(s); t : STRING; same : BOOL; END_VAR
@@ -128,7 +128,7 @@ fn run_when_reference_starts_referring_to_string_then_reads_it() {
 /// reference to its own string reaches that.
 #[test]
 fn run_when_body_reads_and_writes_string_through_reference_then_values() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "FUNCTION F : DINT VAR_INPUT p : REF_TO STRING; END_VAR
            F := LEN(p^);
            p^ := 'set by F';
