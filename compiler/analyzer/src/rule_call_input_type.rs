@@ -15,7 +15,12 @@
 //! As for an assignment, only a variable whose type the relation can judge
 //! (an elementary type, or an alias or a subrange of one) is checked; an
 //! input of another type, and an input whose variable or value type is not
-//! known, is left alone.
+//! known, is left alone. The exception is a reference variable (`REF_TO
+//! INT`), which is checked as a function's `REF_TO` parameter is: it takes
+//! a reference to the type it references, a reference variable or `REF()`
+//! of a variable of that type, or `NULL`, and a reference to another type
+//! is P4026 too: `h(rr := REF(d))` and `h(rr := rd)` with `rr : REF_TO
+//! INT`, `d : DINT` and `rd : REF_TO DINT`.
 //!
 //! ## Passes
 //!
@@ -65,9 +70,10 @@ use crate::{
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    semantic_type::ParameterType,
     symbol_environment::ScopeTracker,
     type_compat::is_checkable_type,
-    value_type::{self, ValueType},
+    value_type::{self, Mismatch, ValueType},
     variable_type::declared_type_id,
 };
 use ironplc_dsl::common::VariableType;
@@ -126,38 +132,83 @@ impl RuleCallInputType<'_> {
     /// whose variable has the type `variable_type`, is of a type the variable
     /// does not accept.
     fn check_input(&mut self, callee: &Callee, input: &Id, variable_type: TypeId, value: &Expr) {
-        let types = self.context.types();
-        let Some(declared) = types.name_of(variable_type) else {
+        let reference = self
+            .context
+            .types()
+            .get_by_id(variable_type)
+            .is_some_and(|attributes| attributes.representation.is_reference());
+        let judged = if reference {
+            Some(self.judge_reference_input(variable_type, value))
+        } else {
+            self.judge_elementary_input(variable_type, value)
+        };
+        let Some((expected, Err(mismatch))) = judged else {
             return;
         };
+        self.diagnostics.push(
+            Diagnostic::problem(
+                Problem::FunctionCallArgTypeMismatch,
+                Label::span(value.span(), "Input value"),
+            )
+            .with_context(callee.kind, &callee.name.original().to_string())
+            .with_context("parameter", &input.original().to_string())
+            .with_context("expected", &expected)
+            .with_context("actual", &mismatch.actual),
+        );
+    }
+
+    /// Judges `value` against a reference variable's type as a function's
+    /// `REF_TO` parameter judges its argument (REQ-IC-analyzer-086): a
+    /// reference to the type the variable references, under whatever name,
+    /// or `NULL`. A reference variable and `REF()` are both references,
+    /// known by `REF_TO` and the type they reference; a reference type with
+    /// no name (`REF_TO ARRAY[1..3] OF DINT`) accepts a reference to a type
+    /// of its shape. Answers the type a diagnostic shows as expected, and
+    /// the verdict.
+    fn judge_reference_input(
+        &self,
+        variable_type: TypeId,
+        value: &Expr,
+    ) -> (String, Result<(), Mismatch>) {
+        let types = self.context.types();
+        let parameter = ParameterType::Type(variable_type);
+        (
+            value_type::describe_parameter(types, &parameter),
+            value_type::check_parameter(types, &parameter, value, self.options),
+        )
+    }
+
+    /// Judges `value` against a variable of an elementary type, or an alias
+    /// or a subrange of one, as an assigned value is judged. `None` for a
+    /// variable of another type, and for a value whose type the relation
+    /// cannot judge (a sized string) or does not know. Answers the type a
+    /// diagnostic shows as expected, and the verdict.
+    fn judge_elementary_input(
+        &self,
+        variable_type: TypeId,
+        value: &Expr,
+    ) -> Option<(String, Result<(), Mismatch>)> {
+        let types = self.context.types();
+        let declared = types.name_of(variable_type)?;
         // An alias or a subrange is checked as the elementary type it names,
         // as the value's type is.
         let expected = types
             .resolve_elementary_type_name(declared)
             .unwrap_or_else(|| declared.clone());
         if !is_checkable_type(&expected) {
-            return;
+            return None;
         }
-        let checkable = match value_type::of(types, value) {
-            None => false,
-            Some(ValueType::Scalar(value_type)) => is_checkable_type(&value_type),
-            Some(ValueType::Composite(_)) => true,
+        let checkable = match value_type::of(types, value)? {
+            ValueType::Scalar(value_type) => is_checkable_type(&value_type),
+            ValueType::Composite(_) => true,
         };
         if !checkable {
-            return;
+            return None;
         }
-        if let Err(mismatch) = value_type::check(types, &expected, value, self.options) {
-            self.diagnostics.push(
-                Diagnostic::problem(
-                    Problem::FunctionCallArgTypeMismatch,
-                    Label::span(value.span(), "Input value"),
-                )
-                .with_context(callee.kind, &callee.name.original().to_string())
-                .with_context("parameter", &input.original().to_string())
-                .with_context("expected", &expected.to_string())
-                .with_context("actual", &mismatch.actual),
-            );
-        }
+        Some((
+            expected.to_string(),
+            value_type::check(types, &expected, value, self.options),
+        ))
     }
 }
 
@@ -225,6 +276,9 @@ impl Visitor<Infallible> for RuleCallInputType<'_> {
         node.recurse_visit(self)
     }
 }
+
+#[cfg(test)]
+mod reference_input_tests;
 
 #[cfg(test)]
 mod tests {
