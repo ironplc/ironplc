@@ -375,9 +375,9 @@ into a call of the typed name, in a transform after constant folding, so that
 codegen would only ever see calls it already compiles. That is one more pass,
 a call node in the analyzed tree that the user did not write, a fabricated
 span on its name, and a rule whose correctness depends on the pass having
-run. Codegen already depends on the analyzer's table (`compile_function_call`
-compiles a call as the intrinsic its signature names), so asking the typed
-step from codegen is
+run. The backend already depends on the analyzer's table (lowering compiles
+a call as the intrinsic its signature names, `compiler/lowering/src/call.rs`),
+so asking the typed step from the backend is
 the same dependency with no new node, and the tree stays what the parser
 produced for every consumer of it. The rewrite was dropped.
 

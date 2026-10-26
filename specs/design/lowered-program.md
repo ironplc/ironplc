@@ -1363,9 +1363,9 @@ for the store, rather than reusing the one emitted for the load.
 `For` stays a node rather than becoming a `Loop`, so that its control
 variable, bounds and step stay visible: the bytecode backend uses them to fuse
 the loop test and to drop the control variable's truncation when the bounds
-prove it in range (`compile_loop.rs`), and a vectorizing pass would match them
-(see [Vectorized operations](#vectorized-operations)). Its meaning is what
-`compile_loop.rs` does today, stated here so that every backend does the same.
+prove it in range (`For` in `codegen/src/lowered/stmt.rs`), and a vectorizing
+pass would match them (see [Vectorized operations](#vectorized-operations)).
+Its meaning is stated here so that every backend does the same.
 
 **REQ-LOW-lowering-066** A `For` assigns `from` to `control` once and then
 repeats: it evaluates `to`; it leaves the loop when `control` is greater than
