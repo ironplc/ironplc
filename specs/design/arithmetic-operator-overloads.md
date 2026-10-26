@@ -338,7 +338,11 @@ a typed fold of three or more inputs as the two-input calls it folds to, and
 converts a short-width operand of a long form to its long type (see
 `implicit-conversions.md`, Time and date operations), which widens it by its
 signedness: a `TIME` is sign-extended and a date type is zero-extended. Each
-routine compiles its operands at the types the analyzer recorded.
+routine compiles its operands at the types the analyzer recorded. The result
+of either spelling has the routine's result type, and the analyzer converts
+it to the type of its context as it converts a typed call's result
+(`implicit-conversions.md`, REQ-IC-analyzer-128): `ldt := ADD(dt, t)` widens
+the `DATE_AND_TIME` by its signedness as `ldt := dt + t` does.
 
 **Numeric width.** A numeric binary expression compiles at the width of its
 resolved type, not at the width of the variable it is assigned to. An operand

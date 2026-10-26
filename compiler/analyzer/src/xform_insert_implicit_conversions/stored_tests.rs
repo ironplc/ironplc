@@ -9,7 +9,7 @@ use std::convert::Infallible;
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::textual::*;
 use ironplc_dsl::visitor::Visitor;
-use ironplc_parser::options::CompilerOptions;
+use ironplc_parser::options::{CompilerOptions, Dialect};
 
 use spec_test_macro::spec_test;
 
@@ -235,6 +235,21 @@ fn apply_when_function_block_input_then_converted_to_declared_type_of_its_field(
     assert_eq!(
         stored_values(&source, &CompilerOptions::default()),
         vec!["DINT->LINT", "LINT", "BOOL", "SINT", "BOOL", "DINT->LINT"]
+    );
+}
+
+#[spec_test(REQ_IC_analyzer_127)]
+#[test]
+fn apply_when_function_block_input_or_method_argument_is_time_or_date_literal_then_converted() {
+    let source = "FUNCTION_BLOCK Keep VAR_INPUT x : LDATE; END_VAR
+        METHOD Set VAR_INPUT y : LDATE_AND_TIME; END_VAR END_METHOD
+        END_FUNCTION_BLOCK
+        PROGRAM main VAR keep : Keep; END_VAR
+        keep(x := D#2100-01-01); keep.Set(DT#2100-01-01-00:00:00); END_PROGRAM";
+    let options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
+    assert_eq!(
+        stored_values(source, &options),
+        vec!["DATE->LDATE", "DATE_AND_TIME->LDATE_AND_TIME"]
     );
 }
 

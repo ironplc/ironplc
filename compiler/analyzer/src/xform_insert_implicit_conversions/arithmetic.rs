@@ -236,6 +236,22 @@ impl ImplicitConversions<'_> {
         typed_overload(op, &left, &right).is_some()
     }
 
+    /// Returns `true` when `func` is the function form of an arithmetic
+    /// operator whose first two inputs have a typed overload: a call that
+    /// computes as the typed time or date function, at its result type.
+    pub(super) fn is_typed_pair(&self, func: &Function) -> bool {
+        let Some(op) = arithmetic_operator(func) else {
+            return false;
+        };
+        match func.param_assignment.as_slice() {
+            [left, right, ..] => match (left.input_expr(), right.input_expr()) {
+                (Some(left), Some(right)) => self.has_typed_overload(&op, left, right),
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
     /// Makes `operand` an operand of the step: an untyped literal takes the
     /// step's type, and a numeric operand of another operation type is
     /// converted to it. An operand of the same operation type is operated on

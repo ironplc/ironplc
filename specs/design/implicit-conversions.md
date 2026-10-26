@@ -184,6 +184,10 @@ A standard function whose signature fixes its result type -- a type conversion (
 
 **REQ-IC-analyzer-102** The result of a standard function whose signature fixes its type is converted to the type of a target of another width: in `lr := INT_TO_REAL(i)` the `REAL` is converted to `LREAL`, in `l := DINT_TO_UDINT(d)` and `l := LEN(s)` the `UDINT` and the `INT` to `LINT`, and in `ldt := SUB_DT_TIME(dt, t)` and `ld := DT_TO_DATE(dt)` the short date types to their long ones.
 
+The function form of an arithmetic operator on time or date operands computes as the typed time or date function it resolves to (REQ-IC-analyzer-096), so its result has that function's type and converts to its context as a call to the function does. The pass used to treat the function form as computing at its context's type unless its operands were a numeric pair, so nothing converted the `DATE_AND_TIME` of `ldt := ADD(dt, t)`, which the lowered program rejected as a 32-bit value stored in a 64-bit place, where `ldt := dt + t` and `ldt := ADD_DT_TIME(dt, t)` were converted.
+
+**REQ-IC-analyzer-128** The result of the function form of an arithmetic operator on time or date operands is converted to the type of a target of another width, as the operator expression's and the typed call's are: the `DATE_AND_TIME` of `ldt := ADD(dt, t)` and `ldt := SUB(dt, t)` is converted to `LDATE_AND_TIME`, the `TIME_OF_DAY` of `ltod := ADD(tod, t)` to `LTIME_OF_DAY`, and the `TIME` of `lt := ADD(t, t)`, `lt := SUB(dt, dt)` and `lt := MUL(t, 2)` to `LTIME`; `t2 := ADD(t, t)` on a `TIME` and `lt := ADD(lt, t)` are not converted.
+
 **REQ-IC-analyzer-034** An array element or structure field target converts the value to the element's or field's type.
 
 **REQ-IC-analyzer-035** A function's result assignment converts the value to the function's return type, looking the result variable up in the function's scope.
@@ -199,6 +203,10 @@ A value assigned to a function block field is converted to the field's declared 
 A time or date is converted as a number is, between the short and the long type of its family. The pass used to record only the conversions of numbers and bit strings, so the code generator read a short time or date at its long target's 64 bits, which sign-extended the unsigned seconds of a date after 2038.
 
 **REQ-IC-analyzer-099** A time or date stored in a target of the other width of its family is converted to the target's type, as an assigned value, a function block input, a method argument and a `FOR` bound are: in `ld := d`, `lt := t`, `ltod := tod` and `ldt := dt` the short value is converted to the long type, and `b(x := d)` on an `LDATE` input converts the `DATE`.
+
+A time, date or bit-string literal has the type its prefix names (`DT#2100-01-01-00:00:00` is a `DATE_AND_TIME`, `DWORD#16#FF` a `DWORD`), as a variable has its declared type, and is converted as a variable of that type is. The literal pass types numeric literals only, so the pass used to store such a literal unconverted, which the lowered program rejected as a 32-bit value stored in a 64-bit place.
+
+**REQ-IC-analyzer-127** A time, date or bit-string literal stored in a target of another width is converted to the target's type as a variable is, as an assigned value, a function block input and a method argument: in `ldt := DT#2100-01-01-00:00:00`, `ld := D#2100-01-01`, `lt := T#-5s`, `ltod := TOD#23:00:00`, `b(x := D#2100-01-01)` on an `LDATE` input and `k.Set(DT#2100-01-01-00:00:00)` on an `LDATE_AND_TIME` parameter the short literal is converted to the long type, and in `lw := DWORD#16#FFFFFFFF` the `DWORD` to `LWORD`. A literal of the target's type, `t2 := T#5s` and `ldt := LDT#2100-01-01-00:00:00`, is not converted.
 
 A reference refers only to a variable of the type it names (P2032), so the conversion stores a value of that variable's own type. A value the referenced type cannot hold without narrowing is rejected, as it is when assigned to the variable itself.
 
@@ -402,6 +410,8 @@ that type's width as a value stored in the variable directly is (ADR-0001).
 **REQ-IC-codegen-021** A value stored through a dereference wraps at the width of the type the reference refers to: `p^ := a + a` on `SINT`s of 100 stores -56, as `x := a + a` does.
 
 **REQ-IC-codegen-014** A time or date stored in a variable or input of its long type keeps its value: `ld := d` with `d = D#2100-01-01` stores `LDATE#2100-01-01` where it stored a date thousands of millennia away, and so do `ldt := dt` after 2038, `keep(x := d)` on an `LDATE` input, `lt := t` with `t = T#-5s` and `ltod := tod`.
+
+**REQ-IC-codegen-023** A time or date stored in a variable of its long type keeps its value however it is written: a literal (`ldt := DT#2100-01-01-12:00:00`, `keep(x := D#2100-01-01)` on an `LDATE` input), an element or a field (`ldt := stamps[1]`, `ldt := stamp.moment`), a call (`ldt := late()`, `ld := DT_TO_DATE(dt)`), an operator expression (`ldt := dt + t`, `lt := dt2 - dt1`, `lt := t * 2`), a typed time function (`ldt := ADD_DT_TIME(dt, t)`, `ldt := CONCAT_DATE_TOD(d, tod)`) and the function form of the operator (`ldt := ADD(dt, t)`, `lt := SUB(dt2, dt1)`, `lt := MUL(t, 2)`), with every date after 2038 and every `TIME` negative; and a short date compared with a long one, `ldt > dt`, is widened the same way. A bit-string literal keeps its value too: `lw := DWORD#16#FFFFFFFF` stores 4294967295.
 
 **REQ-IC-codegen-009** The result of a call to a user-defined function or a method, and a dereference, stored in a wider target keep their value: `l := big(u)` with `big` returning the `UDINT` 4000000000 stores 4000000000, as do `l := k.Big()` and `l := p^`, and `lr := half(3.0)` with `half` returning a `REAL` stores 1.5.
 

@@ -3,6 +3,7 @@
 //! reinterpreted.
 
 use ironplc_parser::options::CompilerOptions;
+use spec_test_macro::spec_test;
 
 use crate::common::Snapshot;
 
@@ -75,6 +76,21 @@ END_PROGRAM
 ";
     let snapshot = Snapshot::run(source, &CompilerOptions::default());
     assert_eq!(snapshot.read_as::<i64>("l"), 4_000_000_000);
+}
+
+#[spec_test(REQ_IC_codegen_023)]
+#[test]
+fn end_to_end_when_dword_literal_assigned_to_lword_then_zero_extended() {
+    let source = "
+PROGRAM main
+  VAR
+    lw : LWORD;
+  END_VAR
+  lw := DWORD#16#FFFFFFFF;
+END_PROGRAM
+";
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<i64>("lw"), 0xFFFF_FFFF);
 }
 
 e2e_f32!(
