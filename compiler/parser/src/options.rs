@@ -501,7 +501,7 @@ define_compiler_options! {
 
     "Allow the keywords ON, STEP, R_EDGE and F_EDGE as names of variables and enumeration members",
     "--allow-keywords-as-names",
-    [Rusty],
+    [Rusty, Codesys, TwinCat],
     allow_keywords_as_names,
 
     policies {
