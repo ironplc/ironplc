@@ -183,6 +183,7 @@ impl<'a> Walk<'a> {
         configuration.resources.push(Resource {
             name: None,
             tasks: vec![implicit_task(instances)],
+            globals: Vec::new(),
         });
     }
 
@@ -200,20 +201,24 @@ impl<'a> Walk<'a> {
         let mut resource_scopes = Vec::new();
         for resource in &config.resource_decl {
             let mut scope = Scope::new();
+            let mut globals = Vec::new();
             for decl in &resource.global_vars {
                 let id = self.add_global(decl, GlobalScope::Resource);
                 if let Some(name) = decl.identifier.symbolic_id() {
                     scope.insert(name.clone(), id);
                 }
+                globals.push(id);
             }
-            resource_scopes.push(scope);
+            resource_scopes.push((scope, globals));
         }
 
         let resources = config
             .resource_decl
             .iter()
-            .zip(&resource_scopes)
-            .map(|(resource, scope)| self.resolve_resource(resource, scope, &configuration_scope))
+            .zip(resource_scopes)
+            .map(|(resource, (scope, globals))| {
+                self.resolve_resource(resource, &scope, globals, &configuration_scope)
+            })
             .collect();
 
         Configuration {
@@ -223,10 +228,13 @@ impl<'a> Walk<'a> {
     }
 
     /// Resolves a resource's tasks and gives each program instance to one.
+    /// The resource owns `globals`, the ids of its `VAR_GLOBAL`s, which
+    /// `scope` names.
     fn resolve_resource(
         &self,
         resource: &ResourceDeclaration,
         scope: &Scope,
+        globals: Vec<GlobalId>,
         configuration_scope: &Scope,
     ) -> Resource {
         let mut tasks: Vec<Task> = resource
@@ -263,6 +271,7 @@ impl<'a> Walk<'a> {
         Resource {
             name: Some(debug_name(&resource.name)),
             tasks,
+            globals,
         }
     }
 

@@ -467,8 +467,22 @@ fn compile_when_model_has_no_system_globals_then_uptime_flag_clear() {
     assert_eq!(container.header.num_variables, 1);
 }
 
-#[spec_test(REQ_EM_codegen_007)]
-fn compile_when_globals_in_every_scope_then_resource_globals_get_no_storage() {
+/// The names of the variables of `container`, in variable-table order.
+fn variable_names(container: &Container) -> Vec<String> {
+    let mut entries: Vec<_> = container
+        .debug_section
+        .as_ref()
+        .unwrap()
+        .var_names
+        .iter()
+        .map(|entry| (i64::from(entry.var_index), entry.name.clone()))
+        .collect();
+    entries.sort();
+    entries.into_iter().map(|(_, name)| name).collect()
+}
+
+#[spec_test(REQ_EM_codegen_009)]
+fn compile_when_globals_in_every_scope_then_resource_globals_after_configuration_globals() {
     let source = format!(
         "
 VAR_GLOBAL
@@ -494,8 +508,8 @@ END_CONFIGURATION
     };
     let container = compile_with(&source, &options).unwrap();
 
-    // `top`, `shared` and `main`'s `x`.
-    assert_eq!(container.header.num_variables, 3);
+    assert_eq!(container.header.num_variables, 4);
+    assert_eq!(variable_names(&container), ["top", "shared", "local", "x"]);
 }
 
 /// The source files of this crate, with their paths.

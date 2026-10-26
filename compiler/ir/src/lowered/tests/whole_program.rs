@@ -92,6 +92,7 @@ fn whole() -> Whole {
         name: Some(name("config")),
         resources: vec![Resource {
             name: Some(name("res")),
+            globals: Vec::new(),
             tasks: vec![Task {
                 name: Some(name("t")),
                 priority: 1,
