@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.250.0">
+<meta name="ironplc-version" content="0.251.0">
 </head>
   <body>
     
@@ -626,6 +626,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4091.html">P4091</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4092.html">P4092</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4093.html">P4093</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4094.html">P4094</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4095.html">P4095</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6003.html">P6003</a></li>
@@ -820,7 +822,8 @@ names like <a class="reference internal" href="../reference/language/data-types/
 <code class="docutils literal notranslate"><span class="pre">--allow-bit-string-case-labels</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-paren-string-length</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-struct-initializer-expressions</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-enum-explicit-values</span></code>,
-<code class="docutils literal notranslate"><span class="pre">--allow-enum-base-type</span></code>, and <code class="docutils literal notranslate"><span class="pre">--allow-continue</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">--allow-enum-base-type</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-continue</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">--allow-keywords-as-names</span></code>.</p>
 <p><strong>Selects:</strong> <code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-non-numeric</span> <span class="pre">reject</span></code> and
 <code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-failure</span> <span class="pre">zero</span></code> — RuSTy rejects a string with
 trailing characters and never faults.</p>
@@ -852,7 +855,8 @@ runtime convention rather than a CODESYS feature.</p>
 <code class="docutils literal notranslate"><span class="pre">--allow-bit-string-case-labels</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-paren-string-length</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-struct-initializer-expressions</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-enum-explicit-values</span></code>,
-<code class="docutils literal notranslate"><span class="pre">--allow-enum-base-type</span></code>, and <code class="docutils literal notranslate"><span class="pre">--allow-continue</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">--allow-enum-base-type</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-continue</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">--allow-keywords-as-names</span></code>.</p>
 <p><strong>Selects:</strong> <code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-non-numeric</span> <span class="pre">ignore-trailing</span></code> and
 <code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-failure</span> <span class="pre">zero</span></code> — CODESYS stops parsing at the
 first invalid character and returns 0 for a string that is not valid in
@@ -892,7 +896,8 @@ rather than a TwinCAT feature.</p>
 <code class="docutils literal notranslate"><span class="pre">--allow-bit-string-case-labels</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-paren-string-length</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-struct-initializer-expressions</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-enum-explicit-values</span></code>,
-<code class="docutils literal notranslate"><span class="pre">--allow-enum-base-type</span></code>, and <code class="docutils literal notranslate"><span class="pre">--allow-continue</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">--allow-enum-base-type</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-continue</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">--allow-keywords-as-names</span></code>.</p>
 <p><strong>Selects:</strong> <code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-non-numeric</span> <span class="pre">ignore-trailing</span></code> and
 <code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-failure</span> <span class="pre">zero</span></code>, as <code class="docutils literal notranslate"><span class="pre">codesys</span></code>.</p>
 </dd>
@@ -1107,8 +1112,9 @@ this flag, mixing produces problem
 <em>only</em> located variables is unaffected by this flag — it is standard
 syntax and always allowed.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-constant-initializer-expressions</span></code></dt><dd><p>Allow a <code class="docutils literal notranslate"><span class="pre">VAR</span></code> initializer to be a constant <em>expression</em> — the name of
-a declared <code class="docutils literal notranslate"><span class="pre">CONSTANT</span></code> variable (e.g. <code class="docutils literal notranslate"><span class="pre">level</span> <span class="pre">:</span> <span class="pre">UDINT</span> <span class="pre">:=</span> <span class="pre">DEFAULT_LEVEL;</span></code>)
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-constant-initializer-expressions</span></code></dt><dd><p>Allow a <code class="docutils literal notranslate"><span class="pre">VAR</span></code> initializer or a <code class="docutils literal notranslate"><span class="pre">TYPE</span></code> default to be a constant
+<em>expression</em> — the name of a declared <code class="docutils literal notranslate"><span class="pre">CONSTANT</span></code> variable
+(e.g. <code class="docutils literal notranslate"><span class="pre">level</span> <span class="pre">:</span> <span class="pre">UDINT</span> <span class="pre">:=</span> <span class="pre">DEFAULT_LEVEL;</span></code>)
 or arithmetic between literals and such names
 (e.g. <code class="docutils literal notranslate"><span class="pre">scaled</span> <span class="pre">:</span> <span class="pre">LREAL</span> <span class="pre">:=</span> <span class="pre">SCALE*4.0;</span></code>) — rather than only a bare
 literal. The IEC 61131-3 standard’s initializer grammar permits only
@@ -1196,6 +1202,14 @@ statement, which goes on with the next iteration of the innermost loop.
 <code class="docutils literal notranslate"><span class="pre">CONTINUE</span></code> was added in Edition 3. Without this flag, <code class="docutils literal notranslate"><span class="pre">CONTINUE</span></code> is an
 ordinary identifier, so a <code class="docutils literal notranslate"><span class="pre">CONTINUE;</span></code> statement is a syntax error and a
 variable may be named <code class="docutils literal notranslate"><span class="pre">continue</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-keywords-as-names</span></code></dt><dd><p>Allow the keywords <code class="docutils literal notranslate"><span class="pre">ON</span></code>, <code class="docutils literal notranslate"><span class="pre">STEP</span></code>, <code class="docutils literal notranslate"><span class="pre">R_EDGE</span></code> and <code class="docutils literal notranslate"><span class="pre">F_EDGE</span></code> as names of
+variables and enumeration members, as in <code class="docutils literal notranslate"><span class="pre">TYPE</span> <span class="pre">M</span> <span class="pre">:</span> <span class="pre">(Off,</span> <span class="pre">On);</span> <span class="pre">END_TYPE</span></code>
+or <code class="docutils literal notranslate"><span class="pre">VAR_INPUT</span> <span class="pre">step</span> <span class="pre">:</span> <span class="pre">DINT;</span> <span class="pre">END_VAR</span></code>. IEC 61131-3 reserves its keywords
+for their own use, while other toolchains do not reserve these four.
+Each keyword keeps its keyword role in the same program
+(<code class="docutils literal notranslate"><span class="pre">RESOURCE</span> <span class="pre">r</span> <span class="pre">ON</span> <span class="pre">PLC</span></code>, an <code class="docutils literal notranslate"><span class="pre">R_EDGE</span></code> input). Without this flag such a
+name produces <a class="reference internal" href="../reference/compiler/problems/P4095.html"><span class="doc">P4095</span></a>.</p>
 </dd>
 </dl>
 <p>Pass the flag when running <strong class="program">ironplcc</strong>:</p>

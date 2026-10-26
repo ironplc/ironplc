@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.250.0">
+<meta name="ironplc-version" content="0.251.0">
 </head>
   <body>
     
@@ -626,6 +626,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4091.html">P4091</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4092.html">P4092</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4093.html">P4093</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4094.html">P4094</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4095.html">P4095</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -802,7 +804,10 @@ negative).</p>
 <p>The control variable, start expression, end expression, and step expression
 must all be integer types. A control variable of any other type, such as a
 <code class="docutils literal notranslate"><span class="pre">REAL</span></code> or a <code class="docutils literal notranslate"><span class="pre">WORD</span></code>, is an error
-(<a class="reference internal" href="../../compiler/problems/P4091.html"><span class="doc">P4091</span></a>).</p>
+(<a class="reference internal" href="../../compiler/problems/P4091.html"><span class="doc">P4091</span></a>). A real literal such as
+<code class="docutils literal notranslate"><span class="pre">1.5</span></code> as the start expression, end expression or step expression of an
+integer loop is an error too
+(<a class="reference internal" href="../../compiler/problems/P4094.html"><span class="doc">P4094</span></a>).</p>
 <p>The step must not be zero: a step of zero never moves the control variable,
 so the loop never ends. A step written as <code class="docutils literal notranslate"><span class="pre">0</span></code>, as an expression that folds
 to zero, or as the name of a constant whose value is zero is an error

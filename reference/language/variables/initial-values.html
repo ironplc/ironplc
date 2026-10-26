@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.250.0">
+<meta name="ironplc-version" content="0.251.0">
 </head>
   <body>
     
@@ -626,6 +626,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4091.html">P4091</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4092.html">P4092</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4093.html">P4093</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4094.html">P4094</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4095.html">P4095</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -819,7 +821,9 @@ default value of its type (typically zero or empty).</p>
 <p>The initial value may name a variable declared with the <code class="docutils literal notranslate"><span class="pre">CONSTANT</span></code>
 qualifier, or be an expression over literals and such constants. The
 compiler replaces the name with the constant’s value when it compiles the
-program, so the variable starts at that value.</p>
+program, so the variable starts at that value. A <code class="docutils literal notranslate"><span class="pre">STRING</span></code> or <code class="docutils literal notranslate"><span class="pre">WSTRING</span></code>
+variable and the default of a <code class="docutils literal notranslate"><span class="pre">TYPE</span></code> declaration take a constant’s name
+the same way.</p>
 <div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>check<span class="w"> </span>--allow-constant-initializer-expressions<span class="w"> </span>main.st
 </pre></div>
 </div>
@@ -828,14 +832,16 @@ program, so the variable starts at that value.</p>
 reference.</p>
 <div class="tab-set docutils">
 <input checked="True" class="tab-input" id="tab-set--1-input--1" name="tab-set--1" type="radio" /><label class="tab-label" for="tab-set--1-input--1">Try it</label><div class="tab-content docutils">
-<iframe src="https://playground.ironplc.com/?embed=true&allows=constant-initializer-expressions&source=ironplc-docs&host=reference%2Flanguage%2Fvariables%2Finitial-values&code=UFJPR1JBTSBtYWluCiAgICBWQVIgQ09OU1RBTlQKICAgICAgICBMSU1JVCA6IElOVCA6PSAxMDA7CiAgICBFTkRfVkFSCiAgICBWQVIKICAgICAgICB0aHJlc2hvbGQgOiBJTlQgOj0gTElNSVQ7CiAgICBFTkRfVkFSCgogICAgdGhyZXNob2xkIDo9IHRocmVzaG9sZCAtIDE7CkVORF9QUk9HUkFN" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:433px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
+<iframe src="https://playground.ironplc.com/?embed=true&allows=constant-initializer-expressions&source=ironplc-docs&host=reference%2Flanguage%2Fvariables%2Finitial-values&code=UFJPR1JBTSBtYWluCiAgICBWQVIgQ09OU1RBTlQKICAgICAgICBMSU1JVCA6IElOVCA6PSAxMDA7CiAgICAgICAgTkFNRSA6IFNUUklORyA6PSAncHVtcCc7CiAgICBFTkRfVkFSCiAgICBWQVIKICAgICAgICB0aHJlc2hvbGQgOiBJTlQgOj0gTElNSVQ7CiAgICAgICAgbGFiZWwgOiBTVFJJTkdbMjBdIDo9IE5BTUU7CiAgICBFTkRfVkFSCgogICAgdGhyZXNob2xkIDo9IHRocmVzaG9sZCAtIDE7CkVORF9QUk9HUkFN" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:473px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
 <input class="tab-input" id="tab-set--1-input--2" name="tab-set--1" type="radio" /><label class="tab-label" for="tab-set--1-input--2">Source</label><div class="tab-content docutils">
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
     <span class="n">VAR</span> <span class="n">CONSTANT</span>
         <span class="n">LIMIT</span> <span class="p">:</span> <span class="n">INT</span> <span class="o">:=</span> <span class="mi">100</span><span class="p">;</span>
+        <span class="n">NAME</span> <span class="p">:</span> <span class="n">STRING</span> <span class="o">:=</span> <span class="s1">'pump'</span><span class="p">;</span>
     <span class="n">END_VAR</span>
     <span class="n">VAR</span>
         <span class="n">threshold</span> <span class="p">:</span> <span class="n">INT</span> <span class="o">:=</span> <span class="n">LIMIT</span><span class="p">;</span>
+        <span class="n">label</span> <span class="p">:</span> <span class="n">STRING</span><span class="p">[</span><span class="mi">20</span><span class="p">]</span> <span class="o">:=</span> <span class="n">NAME</span><span class="p">;</span>
     <span class="n">END_VAR</span>
 
     <span class="n">threshold</span> <span class="o">:=</span> <span class="n">threshold</span> <span class="o">-</span> <span class="mi">1</span><span class="p">;</span>

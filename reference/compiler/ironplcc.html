@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.250.0">
+<meta name="ironplc-version" content="0.251.0">
 </head>
   <body>
     
@@ -626,6 +626,8 @@
 <li class="toctree-l4"><a class="reference internal" href="problems/P4091.html">P4091</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P4092.html">P4092</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P4093.html">P4093</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P4094.html">P4094</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P4095.html">P4095</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P6003.html">P6003</a></li>
@@ -993,8 +995,9 @@ its own dedicated block. Produces
 <a class="reference internal" href="problems/P4036.html"><span class="doc">P4036</span></a> when mixed without
 this flag.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-constant-initializer-expressions</span></code></dt><dd><p>Allow a <code class="docutils literal notranslate"><span class="pre">VAR</span></code> initializer to be a constant expression: the name of a
-<code class="docutils literal notranslate"><span class="pre">CONSTANT</span></code> variable (e.g. <code class="docutils literal notranslate"><span class="pre">level</span> <span class="pre">:</span> <span class="pre">UDINT</span> <span class="pre">:=</span> <span class="pre">DEFAULT_LEVEL;</span></code>) or
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-constant-initializer-expressions</span></code></dt><dd><p>Allow a <code class="docutils literal notranslate"><span class="pre">VAR</span></code> initializer or a <code class="docutils literal notranslate"><span class="pre">TYPE</span></code> default to be a constant
+expression: the name of a <code class="docutils literal notranslate"><span class="pre">CONSTANT</span></code> variable (e.g.
+<code class="docutils literal notranslate"><span class="pre">level</span> <span class="pre">:</span> <span class="pre">UDINT</span> <span class="pre">:=</span> <span class="pre">DEFAULT_LEVEL;</span></code>) or
 arithmetic over literals and constants (e.g.
 <code class="docutils literal notranslate"><span class="pre">scaled</span> <span class="pre">:</span> <span class="pre">LREAL</span> <span class="pre">:=</span> <span class="pre">SCALE*4.0;</span></code>), rather than only a bare literal.
 Folded to a literal at compile time; produces
@@ -1061,6 +1064,12 @@ flag.</p>
 the innermost <code class="docutils literal notranslate"><span class="pre">FOR</span></code>, <code class="docutils literal notranslate"><span class="pre">WHILE</span></code>, or <code class="docutils literal notranslate"><span class="pre">REPEAT</span></code> loop. <code class="docutils literal notranslate"><span class="pre">CONTINUE</span></code> was added
 in IEC 61131-3:2013 (Edition 3); without this flag it is an ordinary
 identifier.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-keywords-as-names</span></code></dt><dd><p>Allow the keywords <code class="docutils literal notranslate"><span class="pre">ON</span></code>, <code class="docutils literal notranslate"><span class="pre">STEP</span></code>, <code class="docutils literal notranslate"><span class="pre">R_EDGE</span></code> and <code class="docutils literal notranslate"><span class="pre">F_EDGE</span></code> as names of
+variables and enumeration members (e.g. <code class="docutils literal notranslate"><span class="pre">(Off,</span> <span class="pre">On)</span></code>). IEC 61131-3
+reserves its keywords, so this is an extension. Produces
+<a class="reference internal" href="problems/P4095.html"><span class="doc">P4095</span></a> when used without this
+flag.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-non-numeric</span></code> <em>ALTERNATIVE</em></dt><dd><p>Select what <code class="docutils literal notranslate"><span class="pre">STRING_TO_&lt;numeric&gt;</span></code> treats as convertible when the string
 has non-numeric characters: <code class="docutils literal notranslate"><span class="pre">reject</span></code> (the whole string must be a

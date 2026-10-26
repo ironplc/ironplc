@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.250.0">
+<meta name="ironplc-version" content="0.251.0">
 </head>
   <body>
     
@@ -626,6 +626,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4091.html">P4091</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4092.html">P4092</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4093.html">P4093</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4094.html">P4094</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4095.html">P4095</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -841,8 +843,11 @@ defined only for integer types.</p>
 <p>When the two operands have different numeric types, the narrower one widens
 to the wider, and the operation is carried out at the wider type, which is
 also the result’s type: <code class="docutils literal notranslate"><span class="pre">INT</span> <span class="pre">+</span> <span class="pre">DINT</span></code> is a <code class="docutils literal notranslate"><span class="pre">DINT</span></code>, and <code class="docutils literal notranslate"><span class="pre">INT</span> <span class="pre">+</span> <span class="pre">REAL</span></code> is a
-<code class="docutils literal notranslate"><span class="pre">REAL</span></code>. Two types where neither widens to the other, such as <code class="docutils literal notranslate"><span class="pre">DINT</span></code> and
-<code class="docutils literal notranslate"><span class="pre">REAL</span></code>, are an error (<a class="reference internal" href="../../compiler/problems/P4049.html"><span class="doc">P4049</span></a>).
+<code class="docutils literal notranslate"><span class="pre">REAL</span></code>. A bare integer literal takes the other operand’s type, and a bare
+real literal next to an integer is a <code class="docutils literal notranslate"><span class="pre">REAL</span></code>, so <code class="docutils literal notranslate"><span class="pre">i</span> <span class="pre">*</span> <span class="pre">1.5</span></code> on an <code class="docutils literal notranslate"><span class="pre">INT</span></code>
+is a <code class="docutils literal notranslate"><span class="pre">REAL</span></code>. Two types where neither widens to the other, such as <code class="docutils literal notranslate"><span class="pre">DINT</span></code>
+and <code class="docutils literal notranslate"><span class="pre">REAL</span></code> or <code class="docutils literal notranslate"><span class="pre">DINT</span></code> and <code class="docutils literal notranslate"><span class="pre">1.5</span></code>, are an error
+(<a class="reference internal" href="../../compiler/problems/P4049.html"><span class="doc">P4049</span></a>).
 See <a class="reference internal" href="../../../explanation/type-conversions.html"><span class="doc">Type Conversions</span></a>.</p>
 <p><code class="docutils literal notranslate"><span class="pre">+</span></code>, <code class="docutils literal notranslate"><span class="pre">-</span></code>, <code class="docutils literal notranslate"><span class="pre">*</span></code> and <code class="docutils literal notranslate"><span class="pre">/</span></code> are also defined on the time and date types,
 each combination being one of the typed time functions:</p>

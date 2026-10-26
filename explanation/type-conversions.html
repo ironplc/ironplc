@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.250.0">
+<meta name="ironplc-version" content="0.251.0">
 </head>
   <body>
     
@@ -626,6 +626,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4091.html">P4091</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4092.html">P4092</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4093.html">P4093</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4094.html">P4094</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4095.html">P4095</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6003.html">P6003</a></li>
@@ -1041,13 +1043,20 @@ different types. The narrower operand widens to the wider one, the operation
 is carried out at the wider type, and the result has that type: <code class="docutils literal notranslate"><span class="pre">INT</span> <span class="pre">+</span> <span class="pre">DINT</span></code>
 is a <code class="docutils literal notranslate"><span class="pre">DINT</span></code>, and <code class="docutils literal notranslate"><span class="pre">INT</span> <span class="pre">+</span> <span class="pre">REAL</span></code> is a <code class="docutils literal notranslate"><span class="pre">REAL</span></code> computed in floating point. A
 bare integer literal takes the other operand’s type, so <code class="docutils literal notranslate"><span class="pre">d</span> <span class="pre">+</span> <span class="pre">1</span></code> is a
-<code class="docutils literal notranslate"><span class="pre">DINT</span></code> and <code class="docutils literal notranslate"><span class="pre">r</span> <span class="pre">*</span> <span class="pre">2</span></code> a <code class="docutils literal notranslate"><span class="pre">REAL</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">DINT</span></code> and <code class="docutils literal notranslate"><span class="pre">r</span> <span class="pre">*</span> <span class="pre">2</span></code> a <code class="docutils literal notranslate"><span class="pre">REAL</span></code>. A bare real literal takes a real operand’s
+type, <code class="docutils literal notranslate"><span class="pre">REAL</span></code> or <code class="docutils literal notranslate"><span class="pre">LREAL</span></code>; next to an integer it is a <code class="docutils literal notranslate"><span class="pre">REAL</span></code>, so
+<code class="docutils literal notranslate"><span class="pre">i</span> <span class="pre">*</span> <span class="pre">1.5</span></code> on an <code class="docutils literal notranslate"><span class="pre">INT</span></code> is a <code class="docutils literal notranslate"><span class="pre">REAL</span></code> computed in floating point, while
+<code class="docutils literal notranslate"><span class="pre">d</span> <span class="pre">*</span> <span class="pre">1.5</span></code> on a <code class="docutils literal notranslate"><span class="pre">DINT</span></code> is an error because <code class="docutils literal notranslate"><span class="pre">DINT</span></code> does not widen to
+<code class="docutils literal notranslate"><span class="pre">REAL</span></code>. Type the literal as <code class="docutils literal notranslate"><span class="pre">LREAL#1.5</span></code>, which a <code class="docutils literal notranslate"><span class="pre">DINT</span></code> widens to, or
+convert the <code class="docutils literal notranslate"><span class="pre">DINT</span></code>.</p>
 <p>When neither operand widens to the other, the expression is an error
 (<a class="reference internal" href="../reference/compiler/problems/P4049.html"><span class="doc">P4049</span></a>). <code class="docutils literal notranslate"><span class="pre">DINT</span> <span class="pre">+</span> <span class="pre">REAL</span></code> is one
 such pair, because a 32-bit integer does not fit exactly in <code class="docutils literal notranslate"><span class="pre">REAL</span></code>; so is
 <code class="docutils literal notranslate"><span class="pre">DINT</span> <span class="pre">+</span> <span class="pre">UDINT</span></code>, because neither type holds every value of the other.
 Convert one operand explicitly, or widen to a type that holds both, such as
-<code class="docutils literal notranslate"><span class="pre">LREAL</span></code> or <code class="docutils literal notranslate"><span class="pre">LINT</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">LREAL</span></code> or <code class="docutils literal notranslate"><span class="pre">LINT</span></code>. The selection functions <code class="docutils literal notranslate"><span class="pre">MIN</span></code>, <code class="docutils literal notranslate"><span class="pre">MAX</span></code>, <code class="docutils literal notranslate"><span class="pre">LIMIT</span></code>,
+<code class="docutils literal notranslate"><span class="pre">SEL</span></code> and <code class="docutils literal notranslate"><span class="pre">MUX</span></code> widen their inputs the same way, and report the same error
+for inputs that widen to no one type.</p>
 <p>The result is then assigned like any other value, so assigning a <code class="docutils literal notranslate"><span class="pre">DINT</span></code>
 result to an <code class="docutils literal notranslate"><span class="pre">INT</span></code> needs an explicit conversion:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">VAR</span>
@@ -1058,6 +1067,7 @@ result to an <code class="docutils literal notranslate"><span class="pre">INT</s
     <span class="n">y</span> <span class="p">:</span> <span class="n">DINT</span><span class="p">;</span>
 <span class="n">END_VAR</span>
     <span class="n">x</span> <span class="o">:=</span> <span class="n">i</span> <span class="o">+</span> <span class="n">r</span><span class="p">;</span>              <span class="p">(</span><span class="o">*</span> <span class="mf">4.5</span><span class="p">:</span> <span class="n">i</span> <span class="n">widens</span> <span class="n">to</span> <span class="n">REAL</span> <span class="o">*</span><span class="p">)</span>
+    <span class="n">x</span> <span class="o">:=</span> <span class="n">i</span> <span class="o">*</span> <span class="mf">1.5</span><span class="p">;</span>            <span class="p">(</span><span class="o">*</span> <span class="mf">4.5</span><span class="p">:</span> <span class="n">the</span> <span class="n">literal</span> <span class="ow">is</span> <span class="n">a</span> <span class="n">REAL</span> <span class="o">*</span><span class="p">)</span>
     <span class="n">y</span> <span class="o">:=</span> <span class="n">i</span> <span class="o">+</span> <span class="n">d</span><span class="p">;</span>              <span class="p">(</span><span class="o">*</span> <span class="n">a</span> <span class="n">DINT</span> <span class="n">result</span> <span class="o">*</span><span class="p">)</span>
     <span class="n">i</span> <span class="o">:=</span> <span class="n">DINT_TO_INT</span><span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="n">d</span><span class="p">);</span> <span class="p">(</span><span class="o">*</span> <span class="n">narrowing</span> <span class="n">needs</span> <span class="n">a</span> <span class="n">conversion</span> <span class="o">*</span><span class="p">)</span>
 </pre></div>

@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.250.0">
+<meta name="ironplc-version" content="0.251.0">
 </head>
   <body>
     
@@ -626,6 +626,8 @@
 <li class="toctree-l4"><a class="reference internal" href="P4091.html">P4091</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4092.html">P4092</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4093.html">P4093</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4094.html">P4094</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4095.html">P4095</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6003.html">P6003</a></li>
@@ -786,6 +788,9 @@ the branches seldom run as intended.</p>
 <p>The bit-string types <code class="docutils literal notranslate"><span class="pre">BYTE</span></code>, <code class="docutils literal notranslate"><span class="pre">WORD</span></code>, <code class="docutils literal notranslate"><span class="pre">DWORD</span></code> and <code class="docutils literal notranslate"><span class="pre">LWORD</span></code> are also
 rejected. A bit string is a pattern rather than a magnitude, and the standard
 does not list it as a <code class="docutils literal notranslate"><span class="pre">CASE</span></code> selector type.</p>
+<p>A real literal selector, <code class="docutils literal notranslate"><span class="pre">CASE</span> <span class="pre">1.5</span> <span class="pre">OF</span></code>, is rejected too. A literal written
+without a type takes its type from where it is used, but a real literal is a
+real whatever it spells, and a <code class="docutils literal notranslate"><span class="pre">CASE</span></code> has no real type to give it.</p>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
 <p>The following code will generate error P4053:</p>

@@ -260,14 +260,21 @@ different types. The narrower operand widens to the wider one, the operation
 is carried out at the wider type, and the result has that type: ``INT + DINT``
 is a ``DINT``, and ``INT + REAL`` is a ``REAL`` computed in floating point. A
 bare integer literal takes the other operand's type, so ``d + 1`` is a
-``DINT`` and ``r * 2`` a ``REAL``.
+``DINT`` and ``r * 2`` a ``REAL``. A bare real literal takes a real operand's
+type, ``REAL`` or ``LREAL``; next to an integer it is a ``REAL``, so
+``i * 1.5`` on an ``INT`` is a ``REAL`` computed in floating point, while
+``d * 1.5`` on a ``DINT`` is an error because ``DINT`` does not widen to
+``REAL``. Type the literal as ``LREAL#1.5``, which a ``DINT`` widens to, or
+convert the ``DINT``.
 
 When neither operand widens to the other, the expression is an error
 (:doc:`P4049 </reference/compiler/problems/P4049>`). ``DINT + REAL`` is one
 such pair, because a 32-bit integer does not fit exactly in ``REAL``; so is
 ``DINT + UDINT``, because neither type holds every value of the other.
 Convert one operand explicitly, or widen to a type that holds both, such as
-``LREAL`` or ``LINT``.
+``LREAL`` or ``LINT``. The selection functions ``MIN``, ``MAX``, ``LIMIT``,
+``SEL`` and ``MUX`` widen their inputs the same way, and report the same error
+for inputs that widen to no one type.
 
 The result is then assigned like any other value, so assigning a ``DINT``
 result to an ``INT`` needs an explicit conversion:
@@ -282,6 +289,7 @@ result to an ``INT`` needs an explicit conversion:
        y : DINT;
    END_VAR
        x := i + r;              (* 4.5: i widens to REAL *)
+       x := i * 1.5;            (* 4.5: the literal is a REAL *)
        y := i + d;              (* a DINT result *)
        i := DINT_TO_INT(i + d); (* narrowing needs a conversion *)
 

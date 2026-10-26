@@ -263,8 +263,9 @@ Options
    this flag.
 
 ``--allow-constant-initializer-expressions``
-   Allow a ``VAR`` initializer to be a constant expression: the name of a
-   ``CONSTANT`` variable (e.g. ``level : UDINT := DEFAULT_LEVEL;``) or
+   Allow a ``VAR`` initializer or a ``TYPE`` default to be a constant
+   expression: the name of a ``CONSTANT`` variable (e.g.
+   ``level : UDINT := DEFAULT_LEVEL;``) or
    arithmetic over literals and constants (e.g.
    ``scaled : LREAL := SCALE*4.0;``), rather than only a bare literal.
    Folded to a literal at compile time; produces
@@ -338,6 +339,13 @@ Options
    the innermost ``FOR``, ``WHILE``, or ``REPEAT`` loop. ``CONTINUE`` was added
    in IEC 61131-3:2013 (Edition 3); without this flag it is an ordinary
    identifier.
+
+``--allow-keywords-as-names``
+   Allow the keywords ``ON``, ``STEP``, ``R_EDGE`` and ``F_EDGE`` as names of
+   variables and enumeration members (e.g. ``(Off, On)``). IEC 61131-3
+   reserves its keywords, so this is an extension. Produces
+   :doc:`P4095 </reference/compiler/problems/P4095>` when used without this
+   flag.
 
 ``--policy-string-to-num-non-numeric`` *ALTERNATIVE*
    Select what ``STRING_TO_<numeric>`` treats as convertible when the string

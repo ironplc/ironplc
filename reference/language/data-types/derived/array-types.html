@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.250.0">
+<meta name="ironplc-version" content="0.251.0">
 </head>
   <body>
     
@@ -626,6 +626,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4091.html">P4091</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4092.html">P4092</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4093.html">P4093</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4094.html">P4094</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4095.html">P4095</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6003.html">P6003</a></li>
@@ -815,6 +817,10 @@
 </div>
 <p>Multi-dimensional arrays use comma-separated ranges in the index
 specification.</p>
+<p>Each subscript is an integer. A <code class="docutils literal notranslate"><span class="pre">BOOL</span></code> subscript is error
+<a class="reference internal" href="../../../compiler/problems/P4086.html"><span class="doc">P4086</span></a>, and a real literal
+subscript such as <code class="docutils literal notranslate"><span class="pre">values[1.5]</span></code> is error
+<a class="reference internal" href="../../../compiler/problems/P4094.html"><span class="doc">P4094</span></a>.</p>
 </section>
 <section id="arrays-of-arrays">
 <h2>Arrays of Arrays<a class="headerlink" href="#arrays-of-arrays" title="Link to this heading">¶</a></h2>

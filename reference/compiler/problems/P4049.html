@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.250.0">
+<meta name="ironplc-version" content="0.251.0">
 </head>
   <body>
     
@@ -626,6 +626,8 @@
 <li class="toctree-l4"><a class="reference internal" href="P4091.html">P4091</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4092.html">P4092</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4093.html">P4093</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4094.html">P4094</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4095.html">P4095</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6003.html">P6003</a></li>
@@ -789,6 +791,9 @@ signature and reports <a class="reference internal" href="P4026.html"><span clas
 <p>Each arithmetic expression is reported once, naming both operand types. When
 an operand of an expression is itself an expression that failed, the
 enclosing expression may be reported as well.</p>
+<p>The selection functions <code class="docutils literal notranslate"><span class="pre">MIN</span></code>, <code class="docutils literal notranslate"><span class="pre">MAX</span></code>, <code class="docutils literal notranslate"><span class="pre">LIMIT</span></code>, <code class="docutils literal notranslate"><span class="pre">SEL</span></code> and <code class="docutils literal notranslate"><span class="pre">MUX</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">ATAN2</span></code>, compute at one type too, and report this error when their inputs
+have no common type, naming the function and the type of each input.</p>
 <section id="mixed-numeric-types">
 <h2>Mixed numeric types<a class="headerlink" href="#mixed-numeric-types" title="Link to this heading">¶</a></h2>
 <p>The following code will generate error P4049:</p>
@@ -806,9 +811,13 @@ enclosing expression may be reported as well.</p>
 hold every 32-bit integer exactly, and a <code class="docutils literal notranslate"><span class="pre">REAL</span></code> does not widen to <code class="docutils literal notranslate"><span class="pre">DINT</span></code>.
 Neither operand can take the other’s type, so the operator is not defined for
 the pair. The same applies to a signed and an unsigned integer of the same
-width, such as <code class="docutils literal notranslate"><span class="pre">DINT</span></code> and <code class="docutils literal notranslate"><span class="pre">UDINT</span></code>.</p>
-<p>To fix this error, convert one operand explicitly, or use a type that holds
-both:</p>
+width, such as <code class="docutils literal notranslate"><span class="pre">DINT</span></code> and <code class="docutils literal notranslate"><span class="pre">UDINT</span></code>. A bare real literal such as <code class="docutils literal notranslate"><span class="pre">1.5</span></code> is
+a <code class="docutils literal notranslate"><span class="pre">REAL</span></code>, so <code class="docutils literal notranslate"><span class="pre">count</span> <span class="pre">*</span> <span class="pre">1.5</span></code> is reported for the same reason, while an
+integer of 16 bits or fewer, such as <code class="docutils literal notranslate"><span class="pre">INT</span></code>, widens to <code class="docutils literal notranslate"><span class="pre">REAL</span></code> and is
+accepted next to a <code class="docutils literal notranslate"><span class="pre">REAL</span></code> or a real literal.</p>
+<p>To fix this error, convert one operand explicitly, type the literal as an
+<code class="docutils literal notranslate"><span class="pre">LREAL</span></code>, which a <code class="docutils literal notranslate"><span class="pre">DINT</span></code> widens to (<code class="docutils literal notranslate"><span class="pre">count</span> <span class="pre">*</span> <span class="pre">LREAL#1.5</span></code>), or use a type
+that holds both:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
 <span class="n">VAR</span>
     <span class="n">count</span> <span class="p">:</span> <span class="n">DINT</span> <span class="o">:=</span> <span class="mi">7</span><span class="p">;</span>
@@ -820,6 +829,49 @@ both:</p>
 </pre></div>
 </div>
 <p>See <a class="reference internal" href="../../../explanation/type-conversions.html"><span class="doc">Type Conversions</span></a> for which types widen to which.</p>
+</section>
+<section id="selection-functions-with-inputs-of-different-types">
+<h2>Selection functions with inputs of different types<a class="headerlink" href="#selection-functions-with-inputs-of-different-types" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">MIN</span></code>, <code class="docutils literal notranslate"><span class="pre">MAX</span></code>, <code class="docutils literal notranslate"><span class="pre">LIMIT</span></code>, <code class="docutils literal notranslate"><span class="pre">SEL</span></code> and <code class="docutils literal notranslate"><span class="pre">MUX</span></code> compare or select between
+their inputs, and <code class="docutils literal notranslate"><span class="pre">ATAN2</span></code> combines its two, so each computes at one type: a
+narrower input widens to a wider one, and the result has the wider type. When
+no input’s type holds every other input, the call is reported, naming the
+function as the operator and the type of each input by its parameter name.
+The selector <code class="docutils literal notranslate"><span class="pre">G</span></code> of <code class="docutils literal notranslate"><span class="pre">SEL</span></code> and <code class="docutils literal notranslate"><span class="pre">K</span></code> of <code class="docutils literal notranslate"><span class="pre">MUX</span></code> choose between the other
+inputs and take no part.</p>
+<p>The following code will generate error P4049:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
+<span class="n">VAR</span>
+    <span class="n">lowest</span> <span class="p">:</span> <span class="n">DINT</span> <span class="o">:=</span> <span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+    <span class="n">count</span> <span class="p">:</span> <span class="n">UDINT</span> <span class="o">:=</span> <span class="mi">4000000000</span><span class="p">;</span>
+    <span class="n">largest</span> <span class="p">:</span> <span class="n">LINT</span><span class="p">;</span>
+<span class="n">END_VAR</span>
+    <span class="n">largest</span> <span class="o">:=</span> <span class="n">MAX</span><span class="p">(</span><span class="n">lowest</span><span class="p">,</span> <span class="n">count</span><span class="p">);</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+<p>A <code class="docutils literal notranslate"><span class="pre">UDINT</span></code> above 2147483647 does not fit a <code class="docutils literal notranslate"><span class="pre">DINT</span></code>, and a negative <code class="docutils literal notranslate"><span class="pre">DINT</span></code>
+does not fit a <code class="docutils literal notranslate"><span class="pre">UDINT</span></code>, so neither type holds every value of the other and
+there is no type at which to compare them.</p>
+<p>To fix this error, convert the inputs to a type that holds both:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
+<span class="n">VAR</span>
+    <span class="n">lowest</span> <span class="p">:</span> <span class="n">DINT</span> <span class="o">:=</span> <span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+    <span class="n">count</span> <span class="p">:</span> <span class="n">UDINT</span> <span class="o">:=</span> <span class="mi">4000000000</span><span class="p">;</span>
+    <span class="n">largest</span> <span class="p">:</span> <span class="n">LINT</span><span class="p">;</span>
+<span class="n">END_VAR</span>
+    <span class="n">largest</span> <span class="o">:=</span> <span class="n">MAX</span><span class="p">(</span><span class="n">DINT_TO_LINT</span><span class="p">(</span><span class="n">lowest</span><span class="p">),</span> <span class="n">UDINT_TO_LINT</span><span class="p">(</span><span class="n">count</span><span class="p">));</span>   <span class="p">(</span><span class="o">*</span> <span class="mi">4000000000</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+<p>A further input of such a type makes the conversion implicit:
+<code class="docutils literal notranslate"><span class="pre">LIMIT(lowest,</span> <span class="pre">count,</span> <span class="pre">ceiling)</span></code> with <code class="docutils literal notranslate"><span class="pre">ceiling</span> <span class="pre">:</span> <span class="pre">LINT</span></code> compares at
+<code class="docutils literal notranslate"><span class="pre">LINT</span></code>, because a <code class="docutils literal notranslate"><span class="pre">DINT</span></code> and a <code class="docutils literal notranslate"><span class="pre">UDINT</span></code> both widen to it.</p>
+<p>A bare real literal is a <code class="docutils literal notranslate"><span class="pre">REAL</span></code>, and is accepted or reported with an
+integer input as it is with an integer operand: <code class="docutils literal notranslate"><span class="pre">MAX(lowest,</span> <span class="pre">1.5)</span></code> is this
+error, because a <code class="docutils literal notranslate"><span class="pre">DINT</span></code> does not widen to <code class="docutils literal notranslate"><span class="pre">REAL</span></code>, while <code class="docutils literal notranslate"><span class="pre">MIN(reading,</span>
+<span class="pre">1.5)</span></code> with <code class="docutils literal notranslate"><span class="pre">reading</span> <span class="pre">:</span> <span class="pre">INT</span></code> compares two <code class="docutils literal notranslate"><span class="pre">REAL</span></code>s, and <code class="docutils literal notranslate"><span class="pre">MAX(lowest,</span> <span class="pre">1)</span></code>
+two <code class="docutils literal notranslate"><span class="pre">DINT</span></code>s, because a bare integer literal takes the other input’s type.</p>
 </section>
 <section id="time-and-date-operands">
 <h2>Time and date operands<a class="headerlink" href="#time-and-date-operands" title="Link to this heading">¶</a></h2>
@@ -1177,6 +1229,7 @@ with a small sample that demonstrates the problem.</p>
             <ul>
 <li><a class="reference internal" href="#">P4049</a><ul>
 <li><a class="reference internal" href="#mixed-numeric-types">Mixed numeric types</a></li>
+<li><a class="reference internal" href="#selection-functions-with-inputs-of-different-types">Selection functions with inputs of different types</a></li>
 <li><a class="reference internal" href="#time-and-date-operands">Time and date operands</a></li>
 <li><a class="reference internal" href="#negating-a-time-of-day-or-a-date">Negating a time of day or a date</a></li>
 <li><a class="reference internal" href="#mixing-a-bool-with-a-bit-string">Mixing a BOOL with a bit string</a></li>

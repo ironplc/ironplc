@@ -24,6 +24,10 @@ Each arithmetic expression is reported once, naming both operand types. When
 an operand of an expression is itself an expression that failed, the
 enclosing expression may be reported as well.
 
+The selection functions ``MIN``, ``MAX``, ``LIMIT``, ``SEL`` and ``MUX``, and
+``ATAN2``, compute at one type too, and report this error when their inputs
+have no common type, naming the function and the type of each input.
+
 Mixed numeric types
 -------------------
 
@@ -44,10 +48,14 @@ A ``DINT`` does not widen to ``REAL`` without loss, because ``REAL`` cannot
 hold every 32-bit integer exactly, and a ``REAL`` does not widen to ``DINT``.
 Neither operand can take the other's type, so the operator is not defined for
 the pair. The same applies to a signed and an unsigned integer of the same
-width, such as ``DINT`` and ``UDINT``.
+width, such as ``DINT`` and ``UDINT``. A bare real literal such as ``1.5`` is
+a ``REAL``, so ``count * 1.5`` is reported for the same reason, while an
+integer of 16 bits or fewer, such as ``INT``, widens to ``REAL`` and is
+accepted next to a ``REAL`` or a real literal.
 
-To fix this error, convert one operand explicitly, or use a type that holds
-both:
+To fix this error, convert one operand explicitly, type the literal as an
+``LREAL``, which a ``DINT`` widens to (``count * LREAL#1.5``), or use a type
+that holds both:
 
 .. code-block::
 
@@ -61,6 +69,57 @@ both:
    END_PROGRAM
 
 See :doc:`/explanation/type-conversions` for which types widen to which.
+
+Selection functions with inputs of different types
+--------------------------------------------------
+
+``MIN``, ``MAX``, ``LIMIT``, ``SEL`` and ``MUX`` compare or select between
+their inputs, and ``ATAN2`` combines its two, so each computes at one type: a
+narrower input widens to a wider one, and the result has the wider type. When
+no input's type holds every other input, the call is reported, naming the
+function as the operator and the type of each input by its parameter name.
+The selector ``G`` of ``SEL`` and ``K`` of ``MUX`` choose between the other
+inputs and take no part.
+
+The following code will generate error P4049:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       lowest : DINT := -1;
+       count : UDINT := 4000000000;
+       largest : LINT;
+   END_VAR
+       largest := MAX(lowest, count);
+   END_PROGRAM
+
+A ``UDINT`` above 2147483647 does not fit a ``DINT``, and a negative ``DINT``
+does not fit a ``UDINT``, so neither type holds every value of the other and
+there is no type at which to compare them.
+
+To fix this error, convert the inputs to a type that holds both:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       lowest : DINT := -1;
+       count : UDINT := 4000000000;
+       largest : LINT;
+   END_VAR
+       largest := MAX(DINT_TO_LINT(lowest), UDINT_TO_LINT(count));   (* 4000000000 *)
+   END_PROGRAM
+
+A further input of such a type makes the conversion implicit:
+``LIMIT(lowest, count, ceiling)`` with ``ceiling : LINT`` compares at
+``LINT``, because a ``DINT`` and a ``UDINT`` both widen to it.
+
+A bare real literal is a ``REAL``, and is accepted or reported with an
+integer input as it is with an integer operand: ``MAX(lowest, 1.5)`` is this
+error, because a ``DINT`` does not widen to ``REAL``, while ``MIN(reading,
+1.5)`` with ``reading : INT`` compares two ``REAL``\ s, and ``MAX(lowest, 1)``
+two ``DINT``\ s, because a bare integer literal takes the other input's type.
 
 Time and date operands
 ----------------------
