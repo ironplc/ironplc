@@ -1,9 +1,9 @@
 //! Places named in the source: a variable, a field of a structure, an
 //! element of an array, and what a reference refers to.
 
-use ironplc_dsl::core::{Id, Located};
+use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::textual::{Expr as AstExpr, SymbolicVariableKind};
-use ironplc_ir::lowered::{Expr, Place};
+use ironplc_ir::lowered::{Expr, Field, FieldIdx, Place};
 
 use crate::variables::BodyFrame;
 use crate::{Lowered, Lowering, Unlowered};
@@ -24,23 +24,7 @@ impl Lowering<'_> {
             }
             SymbolicVariableKind::Structured(structured) => {
                 let record = self.symbolic_place(frame, &structured.record)?;
-                let position = self
-                    .program
-                    .types()
-                    .fields(record.ty())
-                    .and_then(|fields| {
-                        fields
-                            .iter()
-                            .position(|field| Id::from(&field.name.to_string()) == structured.field)
-                    })
-                    .ok_or(Unlowered::NotYet)?;
-                let field = self
-                    .program
-                    .field_idx(record.ty(), position)
-                    .ok_or(Unlowered::NotYet)?;
-                Ok(self
-                    .program
-                    .field(record, field, &structured.field.span())?)
+                self.field_of(record, &structured.field, &structured.field.span())
             }
             SymbolicVariableKind::Array(array) => {
                 let mut base = self.symbolic_place(frame, &array.subscripted_variable)?;
@@ -64,6 +48,25 @@ impl Lowering<'_> {
             | SymbolicVariableKind::PartialAccess(_)
             | SymbolicVariableKind::SelfRef(_) => Err(Unlowered::NotYet),
         }
+    }
+
+    /// The field `name` of the record at `record`, named at `span`. A record
+    /// whose type has no field of that name is not lowered.
+    pub(crate) fn field_of(&self, record: Place, name: &Id, span: &SourceSpan) -> Lowered<Place> {
+        let (field, _) = self.field_named(&record, name).ok_or(Unlowered::NotYet)?;
+        Ok(self.program.field(record, field, span)?)
+    }
+
+    /// The field `name` of the record at `record`, matched without regard to
+    /// case as IEC identifiers are, with its index; `None` when the type of
+    /// `record` is no record, or has no field of that name.
+    pub(crate) fn field_named(&self, record: &Place, name: &Id) -> Option<(FieldIdx, &Field)> {
+        let fields = self.program.types().fields(record.ty())?;
+        let position = fields
+            .iter()
+            .position(|field| Id::from(&field.name.to_string()) == *name)?;
+        let field = self.program.field_idx(record.ty(), position)?;
+        Some((field, &fields[position]))
     }
 
     /// A subscript, a `DINT` (REQ-LOW-lowering-161). The analyzer converts a
