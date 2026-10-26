@@ -28,9 +28,9 @@ Signature
      END_VAR
    END_FUNCTION
 
-IEC 61131-3 declares each ``INn`` input as any type (``ANY``). IronPLC
-supports ``SINT``, ``INT``, ``DINT``, ``LINT``, ``USINT``, ``UINT``, ``UDINT``,
-``ULINT``, ``REAL``, ``LREAL``.
+IEC 61131-3 declares each ``INn`` input as any type (``ANY``).
+
+.. include:: ../../../includes/selection-input-types.rst
 
 .. include:: ../../../includes/widest-input-return-type.rst
 

@@ -119,3 +119,27 @@ fn apply_when_result_passed_to_wider_parameter_then_converted() {
     let source = call_program("LINT", "d : DINT; e : DINT;", "MAX(d, e)");
     assert_eq!(call_arguments(&source, "f"), strings(&["DINT->LINT"]));
 }
+
+/// The inputs `SEL` and `MUX` select between widen to one type whatever
+/// their type, as a number's do: the short one of a time or date or a bit
+/// string beside the long one is converted to it.
+#[spec_test(REQ_IC_analyzer_129)]
+#[rstest]
+#[case::sel_dates("LDATE", "SEL(g, da, lda)", "SEL", &["BOOL", "DATE->LDATE", "LDATE"])]
+#[case::mux_durations("LTIME", "MUX(n, lt, t)", "MUX", &["INT", "LTIME", "TIME->LTIME"])]
+#[case::sel_bit_strings("LWORD", "SEL(g, w, lw)", "SEL", &["BOOL", "WORD->LWORD", "LWORD"])]
+fn apply_when_selected_inputs_of_another_width_then_converted_to_result_type(
+    #[case] target: &str,
+    #[case] value: &str,
+    #[case] name: &str,
+    #[case] expected: &[&str],
+) {
+    let vars = "g : BOOL; n : INT; da : DATE; lda : LDATE; t : TIME; lt : LTIME; w : WORD;
+        lw : LWORD;";
+    let source = arithmetic_program(target, vars, value);
+    let options = CompilerOptions::from_dialect(ironplc_parser::options::Dialect::Iec61131_3Ed3);
+    assert_eq!(
+        super::call_arguments::call_arguments_with(&source, name, &options),
+        strings(expected)
+    );
+}

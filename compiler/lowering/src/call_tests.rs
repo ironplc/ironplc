@@ -526,3 +526,114 @@ fn lower_statement_when_sizeof_of_layout_then_unsupported() {
     );
     assert_eq!(outcome.statements, ["unsupported"; 2]);
 }
+
+/// REQ-LOW-lowering-202: `SEL` and `MUX` of `BOOL`s select between the
+/// signed 32-bit integers the `BOOL`s convert to, and the integer selected
+/// is compared with zero. The selector is lowered as it is.
+#[test]
+fn lower_statement_when_selection_of_bools_then_integer_selection_compared_with_zero() {
+    let outcome = lower(
+        "PROGRAM main VAR g : BOOL; x : BOOL; y : BOOL; k : DINT; END_VAR
+            x := SEL(g, x, y);
+            x := MUX(k, x, y, TRUE);
+         END_PROGRAM",
+        "main",
+    );
+    let (x, y) = (
+        "(convert i32s (read bool v0^.f1))",
+        "(convert i32s (read bool v0^.f2))",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            format!(
+                "assign v0^.f1 (ne (call sel_i32 i32s (read bool v0^.f0) {x} {y}) (const i32s 0))"
+            ),
+            format!(
+                "assign v0^.f1 (ne (call mux_i32 i32s (read i32s v0^.f3) {x} {y} \
+                 (convert i32s (const bool true))) (const i32s 0))"
+            ),
+        ]
+    );
+}
+
+/// REQ-LOW-lowering-147: a selection function of a bit string, a time or a
+/// date, or an enumeration is the intrinsic at the type it is operated at:
+/// a `WORD` and a `DATE` at the unsigned 32-bit integer, a `TIME` and an
+/// enumeration at the signed one.
+#[test]
+fn lower_statement_when_selection_of_bit_string_temporal_or_enumeration_then_intrinsic_at_operation_type(
+) {
+    let outcome = lower(
+        "TYPE Color : (Red, Green); END_TYPE
+         PROGRAM main VAR g : BOOL; w : WORD; t : TIME; d : DATE; c : Color; END_VAR
+            w := SEL(g, w, w);
+            t := SEL(g, t, t);
+            d := MOVE(d);
+            c := MUX(1, c, c);
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f1 (truncate 16 (call sel_u32 i32u (read bool v0^.f0) (read i32u v0^.f1) \
+             (read i32u v0^.f1)))",
+            "assign v0^.f2 (call sel_i32 i32s (read bool v0^.f0) (read i32s v0^.f2) \
+             (read i32s v0^.f2))",
+            "assign v0^.f3 (read i32u v0^.f3)",
+            "assign v0^.f4 (call mux_i32 i32s (const i32s 1) (read i32s v0^.f4) \
+             (read i32s v0^.f4))",
+        ]
+    );
+}
+
+/// REQ-LOW-lowering-203: `MOVE` of a string, a structure or an array is its
+/// operand, through any number of `MOVE`s, where it is assigned, passed to a
+/// function and stored in a function block input.
+#[test]
+fn lower_statement_when_move_of_string_or_aggregate_then_same_as_operand() {
+    let pairs = [
+        ("s := MOVE(t);", "s := t;"),
+        ("s := MOVE(MOVE(t));", "s := t;"),
+        ("s := CONCAT(MOVE(t), t);", "s := CONCAT(t, t);"),
+        ("p := MOVE(q);", "p := q;"),
+        ("a := MOVE(b);", "a := b;"),
+        ("n := width(MOVE(q));", "n := width(q);"),
+        ("keep(v := MOVE(q));", "keep(v := q);"),
+    ];
+    for (form, operand) in pairs {
+        let outcome = lower(
+            &format!(
+                "TYPE Point : STRUCT x : DINT; y : DINT; END_STRUCT; END_TYPE
+                 FUNCTION width : DINT VAR_INPUT v : Point; END_VAR width := v.x; END_FUNCTION
+                 FUNCTION_BLOCK Keep VAR_INPUT v : Point; END_VAR END_FUNCTION_BLOCK
+                 PROGRAM main VAR s : STRING; t : STRING; p : Point; q : Point;
+                     a : ARRAY[1..2] OF DINT; b : ARRAY[1..2] OF DINT; n : DINT; keep : Keep;
+                     END_VAR
+                    {form}
+                    {operand}
+                 END_PROGRAM"
+            ),
+            "main",
+        );
+        assert_ne!(outcome.statements[0], "unsupported", "{form}");
+        assert_eq!(outcome.statements[0], outcome.statements[1], "{form}");
+    }
+}
+
+/// `SEL` and `MUX` of a string, a structure or an array are not lowered
+/// yet.
+#[test]
+fn lower_statement_when_selection_of_string_or_aggregate_then_unsupported() {
+    let outcome = lower(
+        "TYPE Point : STRUCT x : DINT; y : DINT; END_STRUCT; END_TYPE
+         PROGRAM main VAR g : BOOL; k : DINT; s : STRING; t : STRING; p : Point; q : Point;
+             END_VAR
+            s := SEL(g, s, t);
+            p := MUX(k, p, q);
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(outcome.statements, ["unsupported", "unsupported"]);
+}

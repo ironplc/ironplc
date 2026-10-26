@@ -213,6 +213,7 @@ mod end_to_end_right;
 mod end_to_end_sel;
 mod end_to_end_sel_float;
 mod end_to_end_sel_lint;
+mod end_to_end_selection_any_type;
 mod end_to_end_shift;
 mod end_to_end_short_circuit;
 mod end_to_end_sizeof;

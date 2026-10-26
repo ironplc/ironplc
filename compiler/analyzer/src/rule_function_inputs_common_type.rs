@@ -222,6 +222,7 @@ VAR
     s : STRING;
     m : Small;
     w : WORD;
+    t : TIME;
 END_VAR
     x := {value};
 END_PROGRAM"
@@ -247,6 +248,8 @@ END_PROGRAM"
     #[case::subrange_at_its_base_type("MAX(m, u)")]
     #[case::named_inputs("MAX(IN2 := u, IN1 := d)")]
     #[case::reported_once_in_an_outer_call("MAX(MIN(d, u), l)")]
+    #[case::sel_of_a_duration_and_an_integer("SEL(g, t, d)")]
+    #[case::mux_of_integers_and_a_string("MUX(k, d, d, d, s)")]
     fn apply_when_no_input_type_holds_every_other_then_p4049(#[case] value: &str) {
         assert_eq!(codes_for(value, &CompilerOptions::default()), vec![p4049()]);
     }
@@ -276,6 +279,9 @@ END_PROGRAM"
     #[case::real_literals_around_a_narrow_integer("LIMIT(0.5, i, 2.5)")]
     #[case::literals_only("MAX(1, 2.5)")]
     #[case::real_and_long_real("ATAN2(r, lr)")]
+    #[case::sel_of_strings("SEL(g, s, s)")]
+    #[case::sel_of_bools("SEL(g, g, g)")]
+    #[case::mux_of_durations("MUX(k, t, t)")]
     fn apply_when_every_input_widens_to_one_then_ok(#[case] value: &str) {
         assert!(codes_for(value, &CompilerOptions::default()).is_empty());
     }

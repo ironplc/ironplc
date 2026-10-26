@@ -78,6 +78,10 @@ impl Lowering<'_> {
             BuiltinFunction::Mux => {
                 // `MUX` computes at the type the analyzer converted its
                 // inputs to.
+                let operated = self.typed(expr)?.scalar()?;
+                if operated == ScalarType::Bool {
+                    return self.bool_selection(frame, expr, Intrinsic::MuxI32, &args);
+                }
                 let mux = AtTypes::every([
                     Intrinsic::MuxI32,
                     Intrinsic::MuxI64,
@@ -86,7 +90,6 @@ impl Lowering<'_> {
                     Intrinsic::MuxF32,
                     Intrinsic::MuxF64,
                 ]);
-                let operated = self.typed(expr)?.scalar()?;
                 let intrinsic = mux.at(operated).ok_or(Unlowered::NotYet)?;
                 self.intrinsic_call(frame, expr, intrinsic, &args)
             }
@@ -263,8 +266,45 @@ impl Lowering<'_> {
         // A numeric function computes at the type the analyzer converted its
         // inputs to.
         let operated = self.typed(expr)?.scalar()?;
+        if function == NumericFunction::Sel && operated == ScalarType::Bool {
+            return self.bool_selection(frame, expr, Intrinsic::SelI32, args);
+        }
         let intrinsic = numeric_intrinsic(function, operated).ok_or(Unlowered::NotYet)?;
         self.intrinsic_call(frame, expr, intrinsic, args)
+    }
+
+    /// `SEL` or `MUX` of `BOOL`s, the call `expr`: the selection `intrinsic`
+    /// at the signed 32-bit integer, of each `BOOL` it selects between
+    /// converted to that integer as `BOOL_TO_DINT` converts it, compared with
+    /// zero as `DINT_TO_BOOL` converts the integer back (REQ-LOW-lowering-202).
+    /// No `Intrinsic` selects between `BOOL`s, and the integers of `TRUE` and
+    /// `FALSE` select as the `BOOL`s do. The selector is lowered as it is.
+    fn bool_selection(
+        &mut self,
+        frame: &BodyFrame,
+        expr: &AstExpr,
+        intrinsic: Intrinsic,
+        args: &[&AstExpr],
+    ) -> Lowered<Expr> {
+        let span = expr.span();
+        let integer = ScalarType::I32(Signedness::Signed);
+        let (selector, inputs) = args.split_first().ok_or(Unlowered::NotYet)?;
+        let mut lowered = Vec::with_capacity(args.len());
+        lowered.push(Arg::Value(self.expr(frame, selector)?));
+        for input in inputs {
+            let value = self.expr(frame, input)?;
+            if value.ty() != ScalarType::Bool {
+                return Err(Unlowered::NotYet);
+            }
+            lowered.push(Arg::Value(Expr::convert(value, integer, input.span())?));
+        }
+        let passed: Vec<Param> = lowered.iter().map(Arg::param).collect();
+        if !intrinsic.signature().takes(&passed) {
+            return Err(Unlowered::NotYet);
+        }
+        let selected = Expr::call(intrinsic, lowered, span.clone())?;
+        let zero = Expr::integer(0, integer, span.clone())?;
+        Ok(Expr::compare(LoweredCompareOp::Ne, selected, zero, span)?)
     }
 
     /// The call `expr` of `intrinsic` with `args`.
@@ -316,12 +356,36 @@ impl Lowering<'_> {
                 Ok(Arg::Ref(self.variable_place(frame, variable)?))
             }
             Param::Copy(_) => {
-                let AstExprKind::Variable(variable) = &expr.kind else {
+                let AstExprKind::Variable(variable) = &self.moved(expr).kind else {
                     return Err(Unlowered::NotYet);
                 };
                 Ok(Arg::Copy(self.variable_place(frame, variable)?))
             }
         }
+    }
+
+    /// The value `MOVE(x)` is: `x`, through any number of `MOVE`s, and
+    /// `expr` itself when it is no call of `MOVE` (REQ-LOW-lowering-203). An
+    /// array, a structure or a function block instance is copied from a
+    /// place rather than lowered as an expression, so where one is copied
+    /// lowering reads through `MOVE` to the place it copies.
+    pub(crate) fn moved<'e>(&self, mut expr: &'e AstExpr) -> &'e AstExpr {
+        while let AstExprKind::Function(func) = &expr.kind {
+            let is_move = self
+                .analysis
+                .context()
+                .functions()
+                .get(&func.name)
+                .is_some_and(|signature| {
+                    matches!(signature.builtin_function, Some(BuiltinFunction::Move))
+                });
+            let mut inputs = func.inputs();
+            match (is_move, inputs.next(), inputs.next()) {
+                (true, Some(value), None) => expr = value,
+                _ => break,
+            }
+        }
+        expr
     }
 
     /// The function form of an operator, `expr`: the expression the

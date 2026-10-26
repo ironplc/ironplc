@@ -2412,7 +2412,8 @@ implements it.
 | Explicit conversion such as `REAL_TO_INT(x)` | A `Convert` where the operation type changes, then a `Truncate` where the storage narrows; a conversion to `BOOL` is a `Compare` with zero |
 | `TRUNC(x)` | A `Convert` to the integer the analyzer recorded for the call, narrowed where it is stored, as an arithmetic result is |
 | Enumerated value | `Const` |
-| `MOVE(x)`, parenthesised expression | The operand |
+| `MOVE(x)`, parenthesised expression | The operand, whatever its type: the operand's `Expr`, `StrExpr` or `Place` (REQ-LOW-lowering-203) |
+| `SEL` and `MUX` of `BOOL`s | The selection at the signed 32-bit integer of each `BOOL` converted to it, compared with zero (REQ-LOW-lowering-202) |
 | Comparison of strings, such as `s < t` | A `Compare` with zero of the `Call` of the `Intrinsic` that orders two strings of their encoding (REQ-LOW-lowering-169) |
 | Conversion from a `STRING`, such as `STRING_TO_DINT(s)` | `Call` of the `Intrinsic` that reads a number of the call's type, a bit string as the unsigned integer of its width, carrying the parse policy (REQ-LOW-lowering-073) |
 | Conversion to a `STRING`, such as `DINT_TO_STRING(n)` | A `StrExpr` `Call` of the `Intrinsic` that writes a number of its operation type, of the default capacity (REQ-LOW-lowering-168) |
@@ -2453,6 +2454,29 @@ overload's name: `dt + t`, `ADD(dt, t)` and `ADD_DT_TIME(dt, t)` lower to
 **REQ-LOW-lowering-169** A comparison of two strings compares with zero the
 order the `Intrinsic` of their encoding gives them: `s < t` lowers to
 `(lt (call compare_string i32s s t) (const i32s 0))`.
+
+No `Intrinsic` selects between `BOOL`s. A `BOOL` converts to the integer 1 or
+0, as `BOOL_TO_DINT` converts it, and back by a comparison with zero, so
+lowering selects between the integers, and no backend implements a selection
+of `BOOL`s.
+
+**REQ-LOW-lowering-202** `SEL` and `MUX` of `BOOL`s lower to the `Call` of
+`SelI32` or `MuxI32` with each `BOOL` they select between converted to the
+signed 32-bit integer, its selector as it is, compared with zero: `x := SEL(g,
+a, b)` on `BOOL`s lowers to `(ne (call sel_i32 i32s g (convert i32s a)
+(convert i32s b)) (const i32s 0))`.
+
+A string is a `StrExpr` and an array, a structure or a function block instance
+a `Place`, not an `Expr`, so `MOVE` of one is the operand where the operand is
+read: the `StrExpr` a string assignment or argument reads, and the place a
+copy copies from.
+
+**REQ-LOW-lowering-203** `MOVE(x)` lowers to what `x` lowers to, whatever its
+type and through any number of `MOVE`s: `s := MOVE(t)`, `s := CONCAT(MOVE(t),
+t)`, `p := MOVE(q)`, `n := f(MOVE(q))` and `b(v := MOVE(q))` on strings and
+structures lower as `s := t`, `s := CONCAT(t, t)`, `p := q`, `n := f(q)` and
+`b(v := q)` do. `SEL` and `MUX` of a string, an array or a structure are not
+lowered yet (P9999).
 
 Codegen has already folded the cross product of access kind and base shape
 into one addressing path (`compile_place.rs`) and one bit write
