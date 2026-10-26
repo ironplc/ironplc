@@ -224,6 +224,25 @@ impl ImplicitConversions<'_> {
         Some((*id, numeric_operation_type(&name)?))
     }
 
+    /// Returns `true` when `func` is the function form of an arithmetic
+    /// operator whose first two inputs have a typed overload on the time and
+    /// date types: the shape that computes as the typed time or date function
+    /// the pair resolves to (`ADD(dt, t)` is `ADD_DT_TIME`). A fold of three
+    /// or more inputs is judged by its first pair, as `typed_steps` folds it
+    /// from the left.
+    pub(super) fn is_typed_pair(&self, func: &Function) -> bool {
+        let Some(op) = arithmetic_operator(func) else {
+            return false;
+        };
+        match func.param_assignment.as_slice() {
+            [left, right, ..] => match (left.input_expr(), right.input_expr()) {
+                (Some(left), Some(right)) => self.has_typed_overload(&op, left, right),
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
     /// Returns `true` when the operands of `op` have a typed overload on the
     /// time and date types.
     pub(super) fn has_typed_overload(&self, op: &Operator, left: &Expr, right: &Expr) -> bool {
