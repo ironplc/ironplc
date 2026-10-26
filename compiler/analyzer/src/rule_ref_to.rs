@@ -23,6 +23,7 @@ use crate::{
     semantic_context::SemanticContext,
     symbol_environment::{ScopeTracker, SymbolEnvironment, SymbolInfo},
     type_environment::TypeEnvironment,
+    variable_type,
 };
 
 pub fn apply(
@@ -94,26 +95,6 @@ impl RuleRefTo<'_> {
             .declared()
     }
 
-    /// Returns the id of a variable's declared type, if it has a name the
-    /// type can be compared by.
-    ///
-    /// A field access (`s.f`) answers for its record. A type spelled out in
-    /// place (an inline array) has no name, and each declaration of one is
-    /// a type of its own, so it is not compared.
-    fn variable_type_id(&self, var: &Variable) -> Option<TypeId> {
-        let id = match var {
-            Variable::Symbolic(SymbolicVariableKind::Named(named)) => &named.name,
-            Variable::Symbolic(SymbolicVariableKind::Structured(s)) => match s.record.as_ref() {
-                SymbolicVariableKind::Named(named) => &named.name,
-                _ => return None,
-            },
-            _ => return None,
-        };
-        let type_id = self.symbol(id)?.type_id?;
-        self.type_environment.name_of(type_id)?;
-        Some(type_id)
-    }
-
     /// Returns true if the given type resolves to a reference type.
     fn is_reference_type(&self, type_name: &TypeName) -> bool {
         self.type_environment
@@ -122,64 +103,109 @@ impl RuleRefTo<'_> {
             .unwrap_or(false)
     }
 
-    /// Returns the id of the type of the value `kind` names: the declared
-    /// type of a variable, and the element type of an array element.
-    ///
-    /// A field access has no answer: a field's type is known by its
-    /// representation only, so it has no id to give.
-    fn value_type_id(&self, kind: &SymbolicVariableKind) -> Option<TypeId> {
-        match kind {
-            SymbolicVariableKind::Named(named) => self.symbol(&named.name)?.type_id,
-            SymbolicVariableKind::Array(array) => self
-                .type_environment
-                .element_type(self.value_type_id(&array.subscripted_variable)?),
-            _ => None,
-        }
+    /// Returns true when the type `id` identifies is a reference type.
+    fn is_reference_id(&self, id: TypeId) -> bool {
+        self.type_environment
+            .get_by_id(id)
+            .is_some_and(|attributes| attributes.representation.is_reference())
     }
 
-    /// Returns the id of the type of the value `var` names, when it is a
-    /// reference type: a reference variable, or an element of an array of
-    /// references.
-    fn reference_type_id(&self, var: &Variable) -> Option<TypeId> {
+    /// The id of the type of the value `var` names: its declared type,
+    /// walked through fields, subscripts and dereferences by the
+    /// environment (`h.rr` is the field's type, `ra[0]` the element's, `pp^`
+    /// what `pp` refers to). `None` for a directly represented variable and
+    /// for a name the walk cannot type.
+    fn variable_type_id(&self, var: &Variable) -> Option<TypeId> {
         let Variable::Symbolic(kind) = var else {
             return None;
         };
-        let type_id = self.value_type_id(kind)?;
-        self.type_environment
-            .get_by_id(type_id)?
-            .representation
-            .is_reference()
-            .then_some(type_id)
+        variable_type::type_id(
+            kind,
+            self.symbols,
+            self.type_environment,
+            &self.scope.current(),
+        )
+    }
+
+    /// The id of the type of the value of `expr`: a variable by the walk
+    /// above, any other expression by the type the analyzer resolved for
+    /// it. `None` for an untyped literal, `NULL`, and an expression the
+    /// analyzer did not type.
+    fn value_type_id(&self, expr: &Expr) -> Option<TypeId> {
+        match &expr.kind {
+            ExprKind::Variable(var) => self.variable_type_id(var),
+            ExprKind::Expression(inner) => self.value_type_id(inner),
+            _ => match expr.expr_type.as_ref()? {
+                ExprType::Concrete(id) | ExprType::Inferred(id) => Some(*id),
+                ExprType::Literal(_) | ExprType::Null => None,
+            },
+        }
+    }
+
+    /// The id of the type of the reference `expr` names, when `expr` is a
+    /// place that holds one: a variable (`ri`, `refs[0]`, `h.r`) or what a
+    /// reference refers to (`pp^`). `None` for any other expression, and
+    /// for a place that holds a value.
+    fn held_reference_type_id(&self, expr: &Expr) -> Option<TypeId> {
+        let id = match &expr.kind {
+            ExprKind::Variable(var) => self.variable_type_id(var)?,
+            ExprKind::Deref(_) => self.value_type_id(expr)?,
+            ExprKind::Expression(inner) => return self.held_reference_type_id(inner),
+            _ => return None,
+        };
+        self.is_reference_id(id).then_some(id)
+    }
+
+    /// The id of the type of the place an assignment stores to: its
+    /// target's type, or for a store through a reference (`p^ := v`) the
+    /// type `p` refers to.
+    fn assigned_type_id(&self, node: &Assignment) -> Option<TypeId> {
+        let target = self.variable_type_id(&node.target)?;
+        if node.deref {
+            self.type_environment.referenced_type(target)
+        } else {
+            Some(target)
+        }
     }
 
     /// Returns true if the value the variable names is a reference.
     fn is_variable_reference(&self, var: &Variable) -> bool {
-        self.reference_type_id(var).is_some()
+        self.variable_type_id(var)
+            .is_some_and(|id| self.is_reference_id(id))
     }
 
     /// Returns true if the expression resolves to a reference type.
     fn is_expr_reference(&self, expr: &Expr) -> bool {
         match &expr.kind {
-            ExprKind::Ref(_) => true,
-            ExprKind::Null(_) => true,
-            ExprKind::Variable(var) => self.is_variable_reference(var),
+            ExprKind::Ref(_) | ExprKind::Null(_) => true,
             // Any other expression is a reference when its value's type is.
-            ExprKind::Compare(_)
-            | ExprKind::BinaryOp(_)
-            | ExprKind::UnaryOp(_)
-            | ExprKind::Expression(_)
-            | ExprKind::Const(_)
-            | ExprKind::EnumeratedValue(_)
-            | ExprKind::Function(_)
-            | ExprKind::MethodCall(_)
-            | ExprKind::LateBound(_)
-            | ExprKind::Deref(_)
-            | ExprKind::ImplicitConversion(_)
-            | ExprKind::CallOutput(_) => matches!(
-                self.type_environment.representation_of_expr(expr),
-                Some(crate::semantic_type::SemanticType::Reference { .. })
-            ),
+            _ => self
+                .value_type_id(expr)
+                .is_some_and(|id| self.is_reference_id(id)),
         }
+    }
+
+    /// Whether the types `a` and `b` identify are the same type, when that
+    /// can be said. A reference type is one type however it is spelled or
+    /// named, so two reference types are the same when what they refer to
+    /// is; a reference and a value never are. Any other type is itself
+    /// only, compared by id when both have a name: a type spelled out in
+    /// place (an inline array) is a type of its own at each declaration, so
+    /// it is not compared, and the answer is `None`.
+    fn same_type(&self, a: TypeId, b: TypeId) -> Option<bool> {
+        if a == b {
+            return Some(true);
+        }
+        let (a_reference, b_reference) = (self.is_reference_id(a), self.is_reference_id(b));
+        if a_reference != b_reference {
+            return Some(false);
+        }
+        if a_reference {
+            let referenced = |id| self.type_environment.referenced_type(id);
+            return self.same_type(referenced(a)?, referenced(b)?);
+        }
+        let named = |id| self.type_environment.name_of(id).is_some();
+        (named(a) && named(b)).then_some(false)
     }
 
     /// P2028: REF() operand must be a simple named variable
@@ -238,19 +264,26 @@ impl RuleRefTo<'_> {
         }
     }
 
-    /// P2031: Dereference requires reference type
+    /// P2031: Dereference requires reference type. A variable operand is
+    /// judged by the environment's walk of it; any other operand (`(r^)^`,
+    /// `f()^`, `5^`) by the type the analyzer resolved for it, and one whose
+    /// type is not resolved is not reported. A dereference of a dereference
+    /// (`pp^^`) is a reference when `pp^` is one.
     fn check_deref(&mut self, inner: &Expr) {
-        if let ExprKind::Variable(var) = &inner.kind {
-            if !self.is_variable_reference(var) {
-                self.diagnostics.push(Diagnostic::problem(
-                    Problem::DerefRequiresReferenceType,
-                    Label::span(
-                        variable_span(var),
-                        "Dereference operator (^) requires a REF_TO type",
-                    ),
-                ));
-            }
+        let is_reference = match &inner.kind {
+            ExprKind::Variable(var) => self.is_variable_reference(var),
+            _ => !self.is_known_non_reference(inner),
+        };
+        if is_reference {
+            return;
         }
+        self.diagnostics.push(Diagnostic::problem(
+            Problem::DerefRequiresReferenceType,
+            Label::span(
+                inner.span(),
+                "Dereference operator (^) requires a REF_TO type",
+            ),
+        ));
     }
 
     /// P2033: No arithmetic on reference types
@@ -360,23 +393,26 @@ impl RuleRefTo<'_> {
             | ExprKind::Deref(_)
             | ExprKind::ImplicitConversion(_)
             | ExprKind::CallOutput(_) => self
-                .type_environment
-                .representation_of_expr(expr)
-                .is_some_and(|representation| !representation.is_reference()),
+                .value_type_id(expr)
+                .is_some_and(|id| !self.is_reference_id(id)),
         }
     }
 
     /// P2032: A value that is not a reference assigned to a reference: a
     /// literal (`rk := 0`), or a variable or an expression of another type
-    /// (`rk := k`). A reference takes `REF()`, `NULL` or another reference.
-    /// A store through a reference (`rk^ := 0`, and a bare store to a
-    /// `REFERENCE TO`, which the analyzer spells as one) stores the value
-    /// itself, so it is not checked here.
+    /// (`rk := k`), to a reference variable or through a reference to one
+    /// (`pp^ := 0` on a `REF_TO REF_TO INT`). A reference takes `REF()`,
+    /// `NULL` or another reference. A store through a reference to a value
+    /// (`rk^ := 0`, and a bare store to a `REFERENCE TO`, which the analyzer
+    /// spells as one) stores the value itself.
     fn check_value_assigned_to_reference(&mut self, node: &Assignment) {
-        if node.deref || node.ref_bind || node.set_bind || node.reset_bind {
+        if node.ref_bind || node.set_bind || node.reset_bind {
             return;
         }
-        if !self.is_variable_reference(&node.target) || !self.is_known_non_reference(&node.value) {
+        let Some(assigned) = self.assigned_type_id(node) else {
+            return;
+        };
+        if !self.is_reference_id(assigned) || !self.is_known_non_reference(&node.value) {
             return;
         }
         self.diagnostics.push(Diagnostic::problem(
@@ -388,131 +424,149 @@ impl RuleRefTo<'_> {
         ));
     }
 
-    /// P2034: NULL can only be assigned to REF_TO type
-    fn check_null_assignment(&mut self, target: &Variable, value: &Expr) {
-        if let ExprKind::Null(span) = &value.kind {
-            if !self.is_variable_reference(target) {
-                self.diagnostics.push(Diagnostic::problem(
-                    Problem::NullRequiresReferenceType,
-                    Label::span(span.clone(), "NULL can only be assigned to a REF_TO type"),
-                ));
-            }
-        }
-    }
-
-    /// P2032: Reference type mismatch in assignment
-    fn check_ref_assignment(&mut self, target: &Variable, value: &Expr) {
-        if let ExprKind::Ref(ref_var) = &value.kind {
-            let ref_span = variable_span(ref_var);
-            if !self.is_variable_reference(target) {
-                self.diagnostics.push(Diagnostic::problem(
-                    Problem::ReferenceTypeMismatch,
-                    Label::span(ref_span, "Reference type mismatch in assignment"),
-                ));
-            } else if !self.allow_ref_type_punning {
-                // Check type compatibility (P2032 type mismatch branch).
-                // Suppressed when allow_ref_type_punning is enabled — OSCAT
-                // uses REF() to reinterpret a REAL's bits as DWORD.
-                let target_ref_type = self.get_reference_target_type(target);
-                let operand_type = self.variable_type_id(ref_var);
-                if let (Some(target_type), Some(operand_type)) = (target_ref_type, operand_type) {
-                    if target_type != operand_type {
-                        self.diagnostics.push(Diagnostic::problem(
-                            Problem::ReferenceTypeMismatch,
-                            Label::span(ref_span, "Reference type mismatch in assignment"),
-                        ));
-                    }
-                }
-            }
-        }
-    }
-
-    /// P2032: A reference variable assigned where it does not fit: to a
-    /// variable that is not a reference, which would store the variable
-    /// index the reference holds (`x := ri`), or to a reference to another
-    /// type (`ri := rd`), unless type punning is allowed.
-    ///
-    /// A read through a reference is a dereference (`ri^`), which the
-    /// analyzer spells as one even for a bare `REFERENCE TO` read, so the
-    /// value here is the reference itself.
-    fn check_reference_value_assignment(&mut self, node: &Assignment) {
-        if node.deref || node.ref_bind || node.set_bind || node.reset_bind {
-            return;
-        }
-        let ExprKind::Variable(value) = &node.value.kind else {
+    /// P2034: NULL can only be assigned to a reference: a reference
+    /// variable, or what a reference to a reference refers to (`pp^`).
+    /// `rk^ := NULL` on a `REF_TO INT` stores into the `INT`.
+    fn check_null_assignment(&mut self, node: &Assignment) {
+        let ExprKind::Null(span) = &node.value.kind else {
             return;
         };
-        let Some(value_reference) = self.reference_type_id(value) else {
+        let Some(assigned) = self.assigned_type_id(node) else {
             return;
         };
-        let span = variable_span(value);
-        match self.reference_type_id(&node.target) {
-            Some(_) if self.allow_ref_type_punning => {}
-            Some(target_reference) => {
-                let referenced = |id| {
-                    let target = self.type_environment.referenced_type(id)?;
-                    self.type_environment.name_of(target)?;
-                    Some(target)
-                };
-                if let (Some(target), Some(value)) =
-                    (referenced(target_reference), referenced(value_reference))
-                {
-                    if target != value {
-                        self.diagnostics.push(Diagnostic::problem(
-                            Problem::ReferenceTypeMismatch,
-                            Label::span(span, "Reference type mismatch in assignment"),
-                        ));
-                    }
-                }
-            }
-            // Only a named variable whose declared type is known can be
-            // said not to be a reference; a field's type is not looked up.
-            None if self.declared_type_known(&node.target) => {
-                self.diagnostics.push(Diagnostic::problem(
-                    Problem::ReferenceTypeMismatch,
-                    Label::span(
-                        span,
-                        "Reference assigned to a variable that is not a reference",
-                    ),
-                ));
-            }
-            None => {}
-        }
-    }
-
-    /// P2036: A reference to `referenced_type_name` when that type is itself
-    /// a reference, in a type declaration (`TYPE RR : REF_TO RP; END_TYPE`)
-    /// or a variable's (`rr : REF_TO RP;`), labelled at `span`.
-    fn check_nested_reference(&mut self, referenced_type_name: &TypeName, span: SourceSpan) {
-        if self.is_reference_type(referenced_type_name) {
+        if !self.is_reference_id(assigned) {
             self.diagnostics.push(Diagnostic::problem(
-                Problem::NestedRefToNotSupported,
-                Label::span(span, "Nested REF_TO is not supported"),
+                Problem::NullRequiresReferenceType,
+                Label::span(span.clone(), "NULL can only be assigned to a REF_TO type"),
             ));
         }
     }
 
-    /// Returns true when `var` is a named variable whose declared type is
-    /// known.
-    fn declared_type_known(&self, var: &Variable) -> bool {
-        match var {
-            Variable::Symbolic(SymbolicVariableKind::Named(named)) => self
-                .symbol(&named.name)
-                .and_then(|symbol| symbol.type_id)
-                .and_then(|id| self.type_environment.get_by_id(id))
-                .is_some(),
-            _ => false,
+    /// P2032: `REF(x)` assigned where it does not fit: to a place that is
+    /// not a reference, or to a reference to another type than `x`'s
+    /// (`ri := REF(d)`, and `ri := REF(ri)`, a reference to a reference
+    /// stored in a reference to a value), unless type punning is allowed.
+    fn check_ref_assignment(&mut self, node: &Assignment) {
+        let ExprKind::Ref(ref_var) = &node.value.kind else {
+            return;
+        };
+        if node.set_bind || node.reset_bind {
+            return;
+        }
+        let ref_span = variable_span(ref_var);
+        let Some(assigned) = self.assigned_type_id(node) else {
+            return;
+        };
+        if !self.is_reference_id(assigned) {
+            self.diagnostics.push(Diagnostic::problem(
+                Problem::ReferenceTypeMismatch,
+                Label::span(ref_span, "Reference type mismatch in assignment"),
+            ));
+            return;
+        }
+        // Suppressed when allow_ref_type_punning is enabled — OSCAT uses
+        // REF() to reinterpret a REAL's bits as DWORD.
+        if self.allow_ref_type_punning {
+            return;
+        }
+        let (Some(referenced), Some(operand)) = (
+            self.type_environment.referenced_type(assigned),
+            self.variable_type_id(ref_var),
+        ) else {
+            return;
+        };
+        if self.same_type(referenced, operand) == Some(false) {
+            self.diagnostics.push(Diagnostic::problem(
+                Problem::ReferenceTypeMismatch,
+                Label::span(ref_span, "Reference type mismatch in assignment"),
+            ));
         }
     }
 
-    /// Returns the id of the type a REF_TO variable references, when that
-    /// type has a name the type can be compared by.
-    fn get_reference_target_type(&self, var: &Variable) -> Option<TypeId> {
-        let target = self
-            .type_environment
-            .referenced_type(self.reference_type_id(var)?)?;
-        self.type_environment.name_of(target)?;
-        Some(target)
+    /// P2032: A reference held in a variable, or in what a reference refers
+    /// to (`pp^`), assigned where it does not fit: to a place that is not a
+    /// reference, which would store the variable index the reference holds
+    /// (`x := ri`, `x := pp^`), or to a reference to another type (`ri :=
+    /// rd`, `pp := ri` on a `REF_TO REF_TO INT`), unless type punning is
+    /// allowed.
+    ///
+    /// A read through a reference to a value is a dereference (`ri^`),
+    /// which the analyzer spells as one even for a bare `REFERENCE TO`
+    /// read, so the value here is the reference itself. `REF()` and `NULL`
+    /// are checked by the rules above, and an expression on a reference
+    /// (`ri + 1`) by the arithmetic rule.
+    fn check_reference_value_assignment(&mut self, node: &Assignment) {
+        if node.ref_bind || node.set_bind || node.reset_bind {
+            return;
+        }
+        let Some(value) = self.held_reference_type_id(&node.value) else {
+            return;
+        };
+        let span = node.value.span();
+        let Some(assigned) = self.assigned_type_id(node) else {
+            return;
+        };
+        if !self.is_reference_id(assigned) {
+            self.diagnostics.push(Diagnostic::problem(
+                Problem::ReferenceTypeMismatch,
+                Label::span(
+                    span,
+                    "Reference assigned to a variable that is not a reference",
+                ),
+            ));
+            return;
+        }
+        if self.allow_ref_type_punning {
+            return;
+        }
+        if self.same_type(assigned, value) == Some(false) {
+            self.diagnostics.push(Diagnostic::problem(
+                Problem::ReferenceTypeMismatch,
+                Label::span(span, "Reference type mismatch in assignment"),
+            ));
+        }
+    }
+
+    /// P2036: A TwinCAT `REFERENCE TO` whose target is a reference type
+    /// (`rr : REFERENCE TO IntRef`, `rp : REFERENCE TO POINTER TO INT`), or
+    /// a reference of any syntax whose target is spelled `REFERENCE TO`
+    /// (`POINTER TO REFERENCE TO INT`), labelled at `span`. TwinCAT declares
+    /// neither `REFERENCE TO REFERENCE` nor `POINTER TO REFERENCE`. IronPLC
+    /// gives a `REFERENCE TO` variable its auto-dereference by its own
+    /// declaration (`xform_insert_implicit_deref`), which a reference
+    /// reached through another has not, and which does not reach through a
+    /// pointer the variable refers to, so a `REFERENCE TO` a pointer, which
+    /// TwinCAT declares, is not supported either. `REF_TO REF_TO INT` and
+    /// `POINTER TO POINTER TO INT` are nested references, which IEC 61131-3
+    /// and CODESYS allow.
+    fn check_reference_to_nested(
+        &mut self,
+        syntax: RefSyntax,
+        target: &ReferenceTarget,
+        span: SourceSpan,
+    ) {
+        if self.is_reference_to_nested(syntax, target) {
+            self.diagnostics.push(Diagnostic::problem(
+                Problem::NestedRefToNotSupported,
+                Label::span(span, "REFERENCE TO a reference is not supported"),
+            ));
+        }
+    }
+
+    /// Whether a reference spelled with `syntax` to `target` nests a
+    /// `REFERENCE TO` at any level.
+    fn is_reference_to_nested(&self, syntax: RefSyntax, target: &ReferenceTarget) -> bool {
+        match target {
+            ReferenceTarget::Named(name) => {
+                syntax == RefSyntax::ReferenceTo && self.is_reference_type(name)
+            }
+            ReferenceTarget::Array(_) => false,
+            ReferenceTarget::Reference(spec) => {
+                syntax == RefSyntax::ReferenceTo
+                    || spec.syntax == RefSyntax::ReferenceTo
+                    || self.is_reference_to_nested(spec.syntax, &spec.target)
+            }
+        }
     }
 }
 
@@ -560,18 +614,19 @@ impl Visitor<Infallible> for RuleRefTo<'_> {
         &mut self,
         node: &ReferenceDeclaration,
     ) -> Result<(), Infallible> {
-        if let ReferenceTarget::Named(referenced_type_name) = &node.target {
-            self.check_nested_reference(referenced_type_name, node.type_name.span());
-        }
+        self.check_reference_to_nested(node.syntax, &node.target, node.type_name.span());
         node.recurse_visit(self)
     }
 
-    fn visit_reference_initializer(
-        &mut self,
-        node: &ReferenceInitializer,
-    ) -> Result<(), Infallible> {
-        if let ReferenceTarget::Named(referenced_type_name) = &node.target {
-            self.check_nested_reference(referenced_type_name, referenced_type_name.span());
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
+        if let InitialValueAssignmentKind::Reference(init) = &node.initializer {
+            // Labelled at the named target, or at the variable for a target
+            // spelled in place, whose elementary type name has no span.
+            let span = match &init.target {
+                ReferenceTarget::Named(name) => name.span(),
+                ReferenceTarget::Array(_) | ReferenceTarget::Reference(_) => node.identifier.span(),
+            };
+            self.check_reference_to_nested(init.syntax, &init.target, span);
         }
         node.recurse_visit(self)
     }
@@ -596,13 +651,16 @@ impl Visitor<Infallible> for RuleRefTo<'_> {
     }
 
     fn visit_assignment(&mut self, node: &Assignment) -> Result<(), Infallible> {
-        self.check_null_assignment(&node.target, &node.value);
-        self.check_ref_assignment(&node.target, &node.value);
+        self.check_null_assignment(node);
+        self.check_ref_assignment(node);
         self.check_reference_value_assignment(node);
         self.check_value_assigned_to_reference(node);
         node.recurse_visit(self)
     }
 }
+
+#[cfg(test)]
+mod nested_reference_tests;
 
 #[cfg(test)]
 mod non_reference_value_tests;

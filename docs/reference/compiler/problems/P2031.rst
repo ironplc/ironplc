@@ -35,3 +35,36 @@ To fix this error, ensure the variable is declared as a reference type:
 
        y := xRef^;  (* Correct: xRef is REF_TO INT *)
    END_PROGRAM
+
+A dereference of a value that is not a reference
+------------------------------------------------
+
+The operand of ``^`` may be any expression, and it is this error whenever
+that expression is not a reference. ``r^`` on a ``REF_TO INT`` is the
+``INT`` the reference refers to, so a second ``^`` dereferences an ``INT``:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           x : INT := 42;
+           y : INT;
+           r : REF_TO INT := REF(x);
+       END_VAR
+
+       y := r^^;  (* Error: r^ is INT, not REF_TO *)
+   END_PROGRAM
+
+To fix this error, dereference once:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           x : INT := 42;
+           y : INT;
+           r : REF_TO INT := REF(x);
+       END_VAR
+
+       y := r^;  (* Correct: r is REF_TO INT, r^ is the INT *)
+   END_PROGRAM

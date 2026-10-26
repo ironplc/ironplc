@@ -394,14 +394,20 @@ fn run_when_null_reference_dereferenced_then_traps(#[case] statement: &str) {
 
 /// What a reference refers to, and an element of an array it refers to,
 /// lower and compile, the narrowed store through a reference to an `INT`
-/// included. So does a read through a reference held in an element of an
-/// array, alone, in an expression or in a condition.
+/// included. So does a read or a store through a reference held in an
+/// element of an array, alone, in an expression or in a condition, and a
+/// read or a store through a reference a reference refers to
+/// (REQ-LOW-codegen-203).
 #[rstest]
 #[case::read_and_write("p^ := p^ + 1;")]
 #[case::read_into_variable("x := p^;")]
 #[case::narrow_store("q^ := q^ + 1;")]
 #[case::element("pa^[i] := pa^[i + 1];")]
 #[case::through_element("x := refs[0]^;")]
+#[case::store_through_element("refs[0]^ := 5;")]
+#[case::through_reference_to_reference("x := pp^^;")]
+#[case::store_through_reference_to_reference("pp^^ := pp^^ + 1;")]
+#[case::reference_through_reference_to_reference("pp^ := p;")]
 #[case::through_element_by_variable("x := refs[i]^;")]
 #[case::through_element_of_two_dimensions("x := grid[1, 0]^;")]
 #[case::through_element_in_expression("x := refs[0]^ + 1;")]
@@ -411,6 +417,7 @@ fn compile_when_dereference_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
         "PROGRAM main
            VAR x : DINT; i : DINT; p : REF_TO DINT; q : REF_TO INT;
+               pp : REF_TO REF_TO DINT;
                pa : REF_TO ARRAY[1..3] OF DINT; refs : ARRAY[0..2] OF REF_TO DINT;
                grid : ARRAY[0..1, 0..1] OF REF_TO DINT;
                rrefs : ARRAY[0..2] OF REFERENCE TO DINT; END_VAR
@@ -418,20 +425,6 @@ fn compile_when_dereference_lowered_then_compiles(#[case] statement: &str) {
          END_PROGRAM"
     );
     assert_compiles(&source);
-}
-
-/// A store through a reference held in an element of an array is not
-/// supported yet (P9999).
-#[test]
-fn compile_when_store_through_element_then_not_implemented() {
-    let options = options();
-    let source = "PROGRAM main
-           VAR refs : ARRAY[0..2] OF REF_TO DINT; END_VAR
-           refs[0]^ := 5;
-         END_PROGRAM";
-    let (library, context) = parse(source, &options);
-    let result = compile_analyzed(&library, &context, &options);
-    assert_eq!(result.unwrap_err().code, "P9999");
 }
 
 /// A field reached through a reference a function receives, `p^.x`, is not

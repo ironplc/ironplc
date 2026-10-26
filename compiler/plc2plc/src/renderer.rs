@@ -2061,6 +2061,10 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         match node {
             ReferenceTarget::Named(type_name) => self.visit_type_name(type_name),
             ReferenceTarget::Array(subranges) => self.visit_array_subranges(subranges),
+            ReferenceTarget::Reference(spec) => {
+                self.write_ref_keyword(&spec.syntax);
+                self.visit_reference_target(&spec.target)
+            }
         }
     }
 

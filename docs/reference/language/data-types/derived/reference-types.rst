@@ -131,6 +131,38 @@ Example
      r^ := 99;
    END_PROGRAM
 
+.. _ref-nested-references:
+
+Nested references
+-----------------
+
+A reference can refer to a reference variable. ``REF_TO REF_TO INT`` is a
+reference to a ``REF_TO INT``, ``REF(r)`` of a reference variable ``r`` is
+one, and each ``^`` follows one level:
+
+.. code-block::
+
+   PROGRAM main
+     VAR
+       counter : INT := 42;
+       other : INT := 7;
+       value : INT;
+       r : REF_TO INT := REF(counter);
+       rr : REF_TO REF_TO INT := REF(r);
+     END_VAR
+
+     value := rr^^;     (* the INT r refers to: 42 *)
+     rr^^ := 99;        (* writes counter *)
+     rr^ := REF(other); (* r now refers to other *)
+   END_PROGRAM
+
+A reference to a reference is checked at each level: ``rr^`` is a
+``REF_TO INT`` and takes only ``REF()``, ``NULL`` or another reference to an
+``INT``, and ``rr^^`` is the ``INT``. Storing a reference to a reference where
+a reference to a value is expected, as ``r := REF(r)`` does, is
+:doc:`/reference/compiler/problems/P2032`. The TwinCAT ``REFERENCE TO`` does
+not nest, as in TwinCAT: see :doc:`/reference/compiler/problems/P2036`.
+
 Restrictions
 ------------
 
@@ -138,7 +170,8 @@ Restrictions
   literals).
 - References to temporary variables (``VAR_TEMP``, function parameters)
   are not allowed.
-- Nested references (``REF_TO REF_TO``) are not supported.
+- An array, a structure or a string reached through a reference to a
+  reference (``rr^^[i]``) is not supported yet.
 - Arithmetic on references is not supported by default. Use
   ``--allow-ref-arithmetic`` to enable it.
 - Only ``=`` and ``<>`` comparison operators work with references by default.
@@ -151,6 +184,7 @@ Related Problem Codes
 - :doc:`/reference/compiler/problems/P2031` — Dereference requires a REF_TO type
 - :doc:`/reference/compiler/problems/P2032` — Reference type mismatch
 - :doc:`/reference/compiler/problems/P2034` — NULL can only be assigned to REF_TO types
+- :doc:`/reference/compiler/problems/P2036` — REFERENCE TO a reference is not supported
 
 External References
 -------------------

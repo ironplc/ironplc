@@ -109,7 +109,7 @@ fn can_emit(lowering: &Program, ctx: &CompileContext, stmt: &Stmt) -> bool {
     let all = |stmts: &[Stmt]| can_emit_all(lowering, ctx, stmts);
     match stmt.kind() {
         StmtKind::Assign { place, value } => {
-            reaches(lowering, ctx, place, value.ty()) && expr_can_emit(lowering, ctx, value)
+            reads(lowering, ctx, place, value.ty()) && expr_can_emit(lowering, ctx, value)
         }
         StmtKind::AssignStr { place, value } => {
             string::reaches_string(lowering, ctx, place)
@@ -277,15 +277,15 @@ fn reaches(lowering: &Program, ctx: &CompileContext, place: &LoweredPlace, ty: S
             .is_ok_and(|storage| op_type(ty) == Some(storage.op_type()))
 }
 
-/// Whether this backend reads `place` as one value of type `ty`: from its
-/// storage, or through the reference its storage holds, as one value of the
-/// type the place gives what that reference refers to.
+/// Whether this backend reads or stores `place` as one value of type `ty`:
+/// in its storage, or through the reference its storage holds, as one value
+/// of the type the place gives what that reference refers to.
 fn reads(lowering: &Program, ctx: &CompileContext, place: &LoweredPlace, ty: ScalarType) -> bool {
     subscripts_can_emit(lowering, ctx, place)
         && match place::resolve_load(lowering, ctx, place, &SourceSpan::default()) {
             Ok(place::Load::Stored(storage)) => op_type(ty) == Some(storage.op_type()),
-            Ok(place::Load::Referenced(storage)) => {
-                op_type(ScalarType::Ref) == Some(storage.op_type())
+            Ok(load @ place::Load::Referenced(_)) => {
+                op_type(ScalarType::Ref) == Some(load.storage().op_type())
                     && lowering
                         .types()
                         .operation_type(place.ty())
