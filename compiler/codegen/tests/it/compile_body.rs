@@ -25,28 +25,28 @@ pub(crate) fn options() -> CompilerOptions {
     }
 }
 
-/// Compiles `source` with every statement lowered and runs it for one scan.
+/// Compiles `source` and runs it for one scan.
 /// The scan fails the test if it leaves a value on the operand stack.
-pub(crate) fn run_lowered(source: &str) -> Snapshot {
+pub(crate) fn compile_and_run(source: &str) -> Snapshot {
     let options = options();
     let (library, context) = parse(source, &options);
     let container = compile_analyzed(&library, &context, &options).expect("every statement lowers");
     Snapshot::run_compiled(container)
 }
 
-/// Runs `source` with every statement lowered, once one scan of it on every
+/// Runs `source`, once one scan of it on every
 /// backend of the end-to-end harness is shown to leave every variable with
 /// the same value.
-pub(crate) fn run_lowered_agreeing(source: &str) -> Snapshot {
+pub(crate) fn compile_and_run_agreeing(source: &str) -> Snapshot {
     parse_and_compile_to_run(source, &options());
-    run_lowered(source)
+    compile_and_run(source)
 }
 
 /// An `EXIT` inside a `CASE` arm leaves the loop with the selector already
 /// popped.
 #[test]
 fn run_when_exit_in_case_arm_then_leaves_loop_with_stack_balanced() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main VAR i : DINT; hits : DINT; END_VAR
            FOR i := 1 TO 10 DO
              CASE i OF
@@ -64,7 +64,7 @@ fn run_when_exit_in_case_arm_then_leaves_loop_with_stack_balanced() {
 /// A `RETURN` inside a `CASE` arm returns with the selector already popped.
 #[test]
 fn run_when_return_in_case_arm_then_returns_with_stack_balanced() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main VAR x : DINT := 1; a : DINT; b : DINT; END_VAR
            CASE x OF
              1: a := 10; RETURN;
@@ -80,7 +80,7 @@ fn run_when_return_in_case_arm_then_returns_with_stack_balanced() {
 /// at the extremes of their types.
 #[test]
 fn run_when_case_selector_unsigned_or_64_bit_then_matches_by_its_type() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR u : UDINT := 4294967295; l : LINT := -9223372036854775808;
                ul : ULINT := 18446744073709551615; a : DINT; b : DINT; c : DINT; END_VAR
@@ -108,7 +108,7 @@ fn run_when_case_selector_unsigned_or_64_bit_then_matches_by_its_type() {
 /// converted to the control's type.
 #[test]
 fn run_when_for_over_lint_with_converted_step_then_counts() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main VAR l : LINT; n : DINT; END_VAR
            FOR l := 0 TO 10 BY DINT#3 DO n := n + 1; END_FOR;
          END_PROGRAM",
@@ -121,7 +121,7 @@ fn run_when_for_over_lint_with_converted_step_then_counts() {
 /// its control, since no constant bound proves it unneeded.
 #[test]
 fn run_when_for_counts_int_down_from_variable_then_counts() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main VAR start : INT := 10; k : INT; n : DINT; END_VAR
            FOR k := start TO 1 BY -3 DO n := n + 1; END_FOR;
          END_PROGRAM",
@@ -135,7 +135,7 @@ fn run_when_for_counts_int_down_from_variable_then_counts() {
 /// `REPEAT`.
 #[test]
 fn run_when_continue_in_each_loop_then_next_iteration() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR i : DINT; f : DINT; w : DINT; ws : DINT; r : DINT; rs : DINT; END_VAR
            FOR i := 1 TO 5 DO
@@ -222,7 +222,7 @@ pub(crate) fn assert_compiles(source: &str) {
 /// and an element of an array field, each read and written.
 #[test]
 fn run_when_array_elements_and_fields_then_values() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "TYPE P : STRUCT x : DINT; vals : ARRAY[1..3] OF DINT; END_STRUCT; END_TYPE
          PROGRAM main
            VAR a : ARRAY[1..5] OF DINT; m : ARRAY[1..2, 0..3] OF INT;
@@ -262,8 +262,7 @@ fn run_when_subscript_outside_array_then_traps() {
 
 /// An element of an array and a field of a structure lower and compile. The
 /// arrays hold `DINT`s, so no store is narrowed: a read of a narrow place
-/// already fits a place of its type, and only the route that read the AST
-/// truncated it again.
+/// already fits a place of its type.
 #[rstest]
 #[case::array_element("a[i] := a[i + 1] + 1;")]
 #[case::constant_subscript("a[3] := a[2];")]
@@ -287,7 +286,7 @@ fn compile_when_place_lowered_then_compiles(#[case] statement: &str) {
 /// it names when its value is a `DINT` (REQ-LOW-codegen-164).
 #[test]
 fn run_when_subscript_wider_than_dint_then_selects_its_element() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR a : ARRAY[-3..5] OF DINT; ud : UDINT := 1; l : LINT := -3; ul : ULINT := 5;
                dw : DWORD := 2; r1 : DINT; r2 : DINT; END_VAR
@@ -349,7 +348,7 @@ fn compile_when_checked_subscript_lowered_then_compiles(#[case] statement: &str)
 /// not lowered yet.
 #[test]
 fn run_when_read_and_written_through_references_then_values() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR x : DINT := 5; n : INT := 100; arr : ARRAY[1..3] OF DINT; i : DINT := 2;
                p : REF_TO DINT := REF(x); q : REF_TO INT := REF(n);
@@ -424,7 +423,7 @@ fn compile_when_dereference_lowered_then_compiles(#[case] statement: &str) {
 /// A store through a reference held in an element of an array is not
 /// supported yet (P9999).
 #[test]
-fn compile_when_store_through_element_then_left_to_ast() {
+fn compile_when_store_through_element_then_not_implemented() {
     let options = options();
     let source = "PROGRAM main
            VAR refs : ARRAY[0..2] OF REF_TO DINT; END_VAR
@@ -461,7 +460,7 @@ fn compile_when_field_through_reference_parameter_then_not_taken_for_local() {
 /// an `INT` makes it negative.
 #[test]
 fn run_when_bits_and_parts_written_then_other_bits_kept() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "TYPE P : STRUCT w : WORD; END_STRUCT; END_TYPE
          PROGRAM main
            VAR w : WORD := 16#00F0; n : INT; l : LWORD; a : ARRAY[1..3] OF BYTE;
@@ -530,7 +529,7 @@ fn compile_when_bits_written_to_variable_then_compiles(#[case] statement: &str) 
 /// variable, an element and a signed integer, give the expected values.
 #[test]
 fn run_when_shifts_and_bit_reads_then_values() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR b : BYTE := 16#81; w : WORD := 16#1234; d : DWORD := 16#80000001;
                l : LWORD := 16#0123456789ABCDEF; n : INT := -2; i : DINT := 1;
@@ -589,7 +588,7 @@ fn compile_when_shift_or_partial_read_lowered_then_compiles(#[case] statement: &
 /// operators give.
 #[test]
 fn run_when_operator_function_forms_then_values() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR a : DINT := 7; b : DINT := 3; c : DINT := 2; w : WORD := 16#00FF;
                r1 : DINT; r2 : DINT; r3 : DINT; x1 : BOOL; x2 : BOOL; rw : WORD; r4 : DINT; END_VAR
@@ -611,10 +610,7 @@ fn run_when_operator_function_forms_then_values() {
     assert_eq!(snapshot.read_as::<i64>("r4"), 3);
 }
 
-/// The function form of an operator lowers and compiles. `NOT` of a `WORD`
-/// is left out: the route that read the AST truncated its result and then
-/// truncated it again for the store, where the lowered program's store keeps
-/// the truncated value as it is.
+/// The function form of an operator lowers and compiles.
 #[rstest]
 #[case::add_fold("r := ADD(a, b, c);")]
 #[case::sub("r := SUB(a, b);")]
@@ -623,6 +619,7 @@ fn run_when_operator_function_forms_then_values() {
 #[case::and_bool("x := AND(x, y);")]
 #[case::and_word("w := AND(w, v);")]
 #[case::not_bool("x := NOT(x);")]
+#[case::not_word("w := NOT(w);")]
 #[case::move_("r := MOVE(a);")]
 fn compile_when_operator_form_lowered_then_compiles(#[case] statement: &str) {
     let source = format!(
@@ -639,7 +636,7 @@ fn compile_when_operator_form_lowered_then_compiles(#[case] statement: &str) {
 /// and `**` is `EXPT`.
 #[test]
 fn run_when_numeric_functions_then_values() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR i : INT := -5; d : DINT := -2147483648; l : LINT := -7; r : REAL := -2.5;
                x : LREAL := 2.0; b : DINT := 3; n : INT := 10;
@@ -697,7 +694,7 @@ fn run_when_integer_raised_to_negative_exponent_then_traps() {
 /// trapping.
 #[test]
 fn run_when_unsigned_raised_to_exponent_past_dint_then_wraps() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main VAR b : UDINT := 3; n : UDINT := 3000000000; r : UDINT; END_VAR
            r := EXPT(b, n);
          END_PROGRAM",
@@ -738,7 +735,7 @@ fn compile_when_numeric_function_lowered_then_compiles(#[case] statement: &str) 
 /// other input when one is NaN, and `LIMIT` gives NaN.
 #[test]
 fn run_when_selection_functions_then_values() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR u : UDINT := 3000000000; one : UDINT := 1; d : DINT := -4; l : LINT := 9;
                r : REAL := 7.5; ul : ULINT := 5; g : BOOL := TRUE; m : REAL := -1.0;
@@ -789,7 +786,7 @@ fn compile_when_selection_function_lowered_then_compiles(#[case] statement: &str
 /// for a selector below zero and the last for one past the last input.
 #[test]
 fn run_when_mux_then_input_selected_with_selector_clamped() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR one : DINT := 1; below : INT := -1; past : DINT := 5; u : UDINT := 4000000000;
                x : LREAL := 2.5; l : LINT := 2;
@@ -830,7 +827,7 @@ fn compile_when_mux_lowered_then_compiles(#[case] statement: &str) {
 /// low bit, and `TRUNC` converts to the integer of its context.
 #[test]
 fn run_when_conversions_then_values() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR big : REAL := 40000.0; neg : REAL := -2.7; huge : REAL := 1.0E20;
                u : UDINT := 3000000000; m : DINT := -1; i : INT := 300; w : WORD := 16#0100;
@@ -870,17 +867,15 @@ fn run_when_conversions_then_values() {
     assert_eq!(snapshot.read_as::<f32>("r14"), -2.0);
 }
 
-/// An explicit conversion, and `TRUNC`, lower and compile. A conversion to a
-/// narrow type is stored to a `DINT`: stored to its own type, the route that
-/// read the AST truncated it a second time and the lowered program does not.
-/// A conversion to `BOOL` is left out: the route that read the AST called a
-/// builtin, and the lowered program compares with zero.
+/// An explicit conversion, and `TRUNC`, lower and compile.
 #[rstest]
 #[case::real_to_int("d := REAL_TO_INT(r);")]
 #[case::dint_to_lreal("x := DINT_TO_LREAL(d);")]
 #[case::udint_to_lint("l := UDINT_TO_LINT(u);")]
 #[case::lint_to_dint("d := LINT_TO_DINT(l);")]
 #[case::int_to_sint("d := INT_TO_SINT(i);")]
+#[case::dint_to_int("i := DINT_TO_INT(d);")]
+#[case::int_to_bool("g := INT_TO_BOOL(i);")]
 #[case::lreal_to_udint("u := LREAL_TO_UDINT(x);")]
 #[case::bool_to_int("d := BOOL_TO_INT(g);")]
 #[case::time_to_dint("d := TIME_TO_DINT(t);")]
@@ -904,7 +899,7 @@ fn compile_when_conversion_lowered_then_compiles(#[case] statement: &str) {
 /// input's bits as unsigned, modulo the power of ten its digits hold.
 #[test]
 fn run_when_bcd_conversions_then_values() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR w : WORD := 16#1234; b : BYTE := 16#9A; lw : LWORD := 16#1234567890123456;
                i : INT := 1234; s : SINT := -1; us : USINT := 123; u : UDINT := 12345678;

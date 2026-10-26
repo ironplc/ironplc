@@ -67,7 +67,7 @@ pub(crate) fn compile_user_method(
 
     let mut method_emitter = Emitter::new();
 
-    crate::lowered::emit_prologue(&mut method_emitter, ctx)?;
+    crate::body::emit_prologue(&mut method_emitter, ctx)?;
     if !has_return_value {
         // No lowered variable holds the result slot of a method that
         // returns nothing, so it is cleared as this backend's own setup.
@@ -83,7 +83,7 @@ pub(crate) fn compile_user_method(
     let saved_current_fn = ctx.current_function_id.take();
     ctx.current_function_id = Some(function_id);
 
-    crate::lowered::emit_body(&mut method_emitter, ctx)?;
+    crate::body::emit_body(&mut method_emitter, ctx)?;
 
     ctx.current_function_id = saved_current_fn;
     ctx.current_function_return = saved_return_ctx;
@@ -101,7 +101,7 @@ pub(crate) fn compile_user_method(
     ctx.function_stack_depths
         .insert(function_id, finalized.max_stack_depth);
 
-    let name = crate::lowered::pou_name(ctx, ctx.scope)?;
+    let name = crate::body::pou_name(ctx, ctx.scope)?;
     ctx.scope = caller;
 
     Ok(CompiledFunction {

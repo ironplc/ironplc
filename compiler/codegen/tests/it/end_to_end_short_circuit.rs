@@ -12,7 +12,7 @@ use ironplc_parser::options::{CompilerOptions, Dialect};
 use ironplc_vm::error::Trap;
 
 use crate::common::{parse_and_try_run, Snapshot};
-use crate::compile_route_lowered::run_lowered;
+use crate::compile_body::compile_and_run;
 
 /// Options enabling the short-circuit operators and nothing else.
 fn short_circuit_options() -> CompilerOptions {
@@ -257,11 +257,10 @@ END_PROGRAM
 }
 
 /// On bit strings `AND_THEN` and `OR_ELSE` are the eager bitwise operators,
-/// at the bit string both operands widen to (REQ-IC-analyzer-119), with
-/// every statement lowered.
+/// at the bit string both operands widen to (REQ-IC-analyzer-119).
 #[test]
 fn end_to_end_when_short_circuit_of_bit_strings_of_two_widths_then_bitwise_at_wider() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "
 PROGRAM main
   VAR

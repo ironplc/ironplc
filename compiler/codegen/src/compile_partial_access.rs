@@ -79,7 +79,7 @@ impl Bits {
                 }
                 emitter.emit_bit_or_64();
             }
-            _ => {
+            OpWidth::W32 | OpWidth::F32 | OpWidth::F64 => {
                 let clear_mask = !((self.mask() << self.shift) as u32) as i32;
                 let clear_const = ctx.add_i32_constant(clear_mask);
                 emitter.emit_load_const_i32(clear_const);

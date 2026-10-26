@@ -1,9 +1,8 @@
 //! Tests of assignments of calls of user-defined functions with outputs
 //! compiled from the lowered program (REQ-LOW-lowering-092,
-//! REQ-LOW-lowering-172, REQ-LOW-lowering-174), with every statement
-//! required to lower. A program with only scalar outputs is also checked to
-//! leave every variable with the same values on every backend after one
-//! scan.
+//! REQ-LOW-lowering-172, REQ-LOW-lowering-174). A program with only scalar
+//! outputs is also checked to leave every variable with the same values on
+//! every backend after one scan.
 
 use ironplc_parser::options::CompilerOptions;
 use ironplc_vm::error::Trap;
@@ -11,7 +10,7 @@ use ironplc_vm::error::Trap;
 use rstest::rstest;
 
 use crate::common::{compile_analyzed, parse, run_one_scan};
-use crate::compile_route_lowered::{assert_compiles, run_lowered, run_lowered_agreeing};
+use crate::compile_body::{assert_compiles, compile_and_run, compile_and_run_agreeing};
 
 /// A function whose outputs are its input plus one, whether that is
 /// positive, a `REAL` and a count of the calls of the output it writes
@@ -36,7 +35,7 @@ const FUNCTION: &str = "
 /// outputs.
 #[test]
 fn run_when_function_with_outputs_called_then_outputs_and_result_stored() {
-    let snapshot = run_lowered_agreeing(&format!(
+    let snapshot = compile_and_run_agreeing(&format!(
         "{FUNCTION}
          PROGRAM main
            VAR d : DINT := 4; b : BOOL := TRUE; lr : LREAL; l : LREAL; t : DINT;
@@ -61,7 +60,7 @@ fn run_when_function_with_outputs_called_then_outputs_and_result_stored() {
 /// the result.
 #[test]
 fn run_when_output_target_is_assignment_target_then_result_last() {
-    let snapshot = run_lowered_agreeing(&format!(
+    let snapshot = compile_and_run_agreeing(&format!(
         "{FUNCTION}
          PROGRAM main VAR d : DINT := 4; END_VAR
            d := F(a := d, q => d);
@@ -74,7 +73,7 @@ fn run_when_output_target_is_assignment_target_then_result_last() {
 /// an output starts again at every call.
 #[test]
 fn run_when_function_with_outputs_called_in_loop_and_if_then_each_call() {
-    let snapshot = run_lowered_agreeing(&format!(
+    let snapshot = compile_and_run_agreeing(&format!(
         "{FUNCTION}
          PROGRAM main VAR i : DINT; sum : DINT; last : DINT; r : DINT; b : BOOL; END_VAR
            FOR i := 1 TO 3 DO
@@ -137,7 +136,7 @@ fn compile_when_function_with_outputs_called_then_compiles(#[case] statement: &s
 /// which the result overwrites.
 #[test]
 fn run_when_calls_with_outputs_inside_expression_then_in_order() {
-    let snapshot = run_lowered_agreeing(&format!(
+    let snapshot = compile_and_run_agreeing(&format!(
         "{FUNCTION}
          PROGRAM main
            VAR r1 : DINT; r2 : DINT; r3 : DINT; r4 : DINT; d : DINT := 1;
@@ -202,7 +201,7 @@ fn run_when_function_has_string_outputs_then_stored() {
           ok := NAMED(n := 0, s => t2);
           len := LEN(t);
         END_PROGRAM";
-    let snapshot = run_lowered(source);
+    let snapshot = compile_and_run(source);
     assert_eq!(snapshot.read_as::<i32>("ok"), 0);
     assert_eq!(snapshot.read_as::<i32>("len"), 4);
     assert_eq!(snapshot.read("t"), "abcd");
@@ -236,8 +235,7 @@ const OUTPUT_CONTROLS: &str = "
 
 /// REQ-LOW-lowering-067: what a function's or a method's `VAR_OUTPUT`
 /// parameter refers to counts a `FOR` loop, and its comparison with a
-/// constant is one compare and branch, as the route that read the AST
-/// compiled both.
+/// constant is one compare and branch.
 #[test]
 fn compile_when_output_counts_loop_then_compiles() {
     assert_compiles(OUTPUT_CONTROLS);
@@ -247,7 +245,7 @@ fn compile_when_output_counts_loop_then_compiles() {
 /// its target, and the function's comparison of its output sees that value.
 #[test]
 fn run_when_output_counts_loop_then_left_past_bound() {
-    let snapshot = run_lowered_agreeing(OUTPUT_CONTROLS);
+    let snapshot = compile_and_run_agreeing(OUTPUT_CONTROLS);
     assert_eq!(snapshot.read_as::<i32>("s"), 106);
     assert_eq!(snapshot.read_as::<i32>("n"), 4);
     assert_eq!(snapshot.read_as::<i32>("m"), 3);

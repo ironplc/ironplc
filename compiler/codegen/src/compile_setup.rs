@@ -1,6 +1,6 @@
 //! The setup of the storage the layout gives a variable before its starting
 //! value is stored, by `init` and by each prologue from the lowered program
-//! (`lowered/init.rs`, `lowered/prologue.rs`). The layout itself is decided
+//! (`body/init.rs`, `body/prologue.rs`). The layout itself is decided
 //! first (`layout/`).
 
 use crate::access::Named;

@@ -1,15 +1,14 @@
 //! Tests of the instance that a field of a function block type holds,
-//! compiled from the lowered program with every statement required to lower
-//! (REQ-LOW-codegen-196): a copy from such a field, `f := g.ob` or
-//! `g(ob => f)`, to one, `g.ob := f` or `g(inner := f)`, a copy of an
-//! instance whose fields hold instances, and a copy between such fields in a
-//! block's body or method, `ob := inp`.
+//! compiled from the lowered program (REQ-LOW-codegen-196): a copy from such
+//! a field, `f := g.ob` or `g(ob => f)`, to one, `g.ob := f` or
+//! `g(inner := f)`, a copy of an instance whose fields hold instances, and a
+//! copy between such fields in a block's body or method, `ob := inp`.
 //!
-//! The route that read the AST stored the field's slot, which made the
-//! destination an alias of the instance the field holds.
+//! Each copy gives the destination its own copy of the instance's fields, so
+//! the destination is no alias of the instance the field holds.
 
 use crate::common::Duration;
-use crate::compile_route_lowered::run_lowered;
+use crate::compile_body::compile_and_run;
 
 /// Blocks whose fields hold instances, of a user-defined block and of a
 /// standard one, and a block whose field holds an instance that holds them
@@ -36,7 +35,7 @@ const BLOCKS: &str = "
 /// laid out first, shows.
 #[test]
 fn run_when_instance_stored_from_output_then_copy_of_held_instance() {
-    let snapshot = run_lowered(&format!(
+    let snapshot = compile_and_run(&format!(
         "{BLOCKS}
          PROGRAM main
            VAR first : INNER; g : OUTER; f : INNER; f2 : INNER; f3 : INNER;
@@ -64,7 +63,7 @@ fn run_when_instance_stored_from_output_then_copy_of_held_instance() {
 /// they were.
 #[test]
 fn run_when_standard_instance_stored_from_output_then_copy_of_held_instance() {
-    let snapshot = run_lowered(&format!(
+    let snapshot = compile_and_run(&format!(
         "{BLOCKS}
          PROGRAM main
            VAR g : OUTER; t : TON; t2 : TON; r : DINT; pt : TIME; pt2 : TIME; END_VAR
@@ -86,7 +85,7 @@ fn run_when_standard_instance_stored_from_output_then_copy_of_held_instance() {
 /// call of the source leaves that copy as it was.
 #[test]
 fn run_when_instance_stored_in_field_then_field_holds_copy() {
-    let snapshot = run_lowered(&format!(
+    let snapshot = compile_and_run(&format!(
         "{BLOCKS}
          PROGRAM main
            VAR f : INNER; g : OUTER; t : TON; f2 : INNER; f3 : INNER;
@@ -113,7 +112,7 @@ fn run_when_instance_stored_in_field_then_field_holds_copy() {
 /// to the source's leaves the destination's as it was.
 #[test]
 fn run_when_instance_holding_instances_copied_then_held_instances_copied() {
-    let snapshot = run_lowered(&format!(
+    let snapshot = compile_and_run(&format!(
         "{BLOCKS}
          PROGRAM main
            VAR f : INNER; h : HOLDER; h2 : HOLDER; f2 : INNER; f3 : INNER;
@@ -139,7 +138,7 @@ fn run_when_instance_holding_instances_copied_then_held_instances_copied() {
 /// was, and no other instance changes.
 #[test]
 fn run_when_body_copies_between_held_fields_then_copy_of_held_instance() {
-    let snapshot = run_lowered(&format!(
+    let snapshot = compile_and_run(&format!(
         "{BLOCKS}
          FUNCTION_BLOCK RELAY
            VAR_INPUT inp : INNER; END_VAR

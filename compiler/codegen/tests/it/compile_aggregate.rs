@@ -1,11 +1,10 @@
-//! Tests of whole arrays and structures assigned from the lowered program,
-//! with every statement required to lower.
+//! Tests of whole arrays and structures assigned from the lowered program.
 
 use rstest::rstest;
 
 use crate::common::{compile_analyzed, parse};
 
-use crate::compile_route_lowered::{assert_compiles, options, run_lowered, run_lowered_agreeing};
+use crate::compile_body::{assert_compiles, compile_and_run, compile_and_run_agreeing, options};
 
 /// The declarations the tests copy between.
 const TYPES: &str = "
@@ -16,7 +15,7 @@ const TYPES: &str = "
 /// was.
 #[test]
 fn run_when_arrays_and_structures_copied_then_destination_holds_values() {
-    let snapshot = run_lowered(&format!(
+    let snapshot = compile_and_run(&format!(
         "{TYPES}
          PROGRAM main
            VAR x : ARRAY[1..3] OF DINT; y : ARRAY[1..3] OF DINT;
@@ -52,7 +51,7 @@ fn run_when_arrays_and_structures_copied_then_destination_holds_values() {
 /// a write to the source afterwards leaves the destination as it was.
 #[test]
 fn run_when_array_of_structures_copied_then_destination_holds_values() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "TYPE P : STRUCT x : DINT; n : STRING[8]; END_STRUCT; END_TYPE
          PROGRAM main
            VAR ps : ARRAY[0..2] OF P; qs : ARRAY[0..2] OF P;
@@ -140,7 +139,7 @@ fn compile_when_copy_not_emitted_then_not_implemented(#[case] pous: &str) {
     assert_eq!(error.code, "P9999");
     assert_eq!(
         error.primary.message,
-        "Statement the lowered route does not support yet"
+        "Statement code generation does not support yet"
     );
 }
 
@@ -204,8 +203,8 @@ fn compile_when_copy_in_body_lowered_then_compiles(#[case] pous: &str) {
 /// same values on every backend, the function's result and the block's
 /// output included.
 #[test]
-fn run_when_copy_in_body_then_routes_agree() {
-    let snapshot = run_lowered_agreeing(&format!(
+fn run_when_copy_in_body_then_backends_agree() {
+    let snapshot = compile_and_run_agreeing(&format!(
         "{TYPES}
          {INNER}
          FUNCTION FC : DINT VAR lp : S; lq : S; END_VAR lp := lq; FC := 3; END_FUNCTION

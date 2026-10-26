@@ -6,7 +6,7 @@
 //! (`ironplc_ir::lowered::Place`), and the layout keeps each variable by
 //! the id that names it (`specs/design/lowered-program.md`,
 //! REQ-LOW-codegen-123). So a lowered place is addressed as the [`Access`]
-//! that names it ([`crate::lowered`]), with its own subscripts, and the
+//! that names it ([`crate::body`]), with its own subscripts, and the
 //! layout's addressing ([`crate::compile_place`],
 //! [`crate::compile_string_place`]) resolves that.
 
@@ -117,9 +117,11 @@ pub(crate) fn test_variable(name: &str) -> Named {
     let types = lowering.types();
     let (program, fields) = types
         .iter()
-        .find_map(|(ty, entry)| match &entry.kind {
-            ironplc_ir::lowered::TypeKind::Program { fields, .. } => Some((ty, fields)),
-            _ => None,
+        .find_map(|(ty, entry)| {
+            let ironplc_ir::lowered::TypeKind::Program { fields, .. } = &entry.kind else {
+                return None;
+            };
+            Some((ty, fields))
         })
         .unwrap();
     let position = fields

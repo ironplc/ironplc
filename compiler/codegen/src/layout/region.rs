@@ -13,7 +13,7 @@ use ironplc_ir::lowered::Program;
 use ironplc_ir::lowered::StandardFunctionBlock;
 use ironplc_ir::lowered::{Encoding, PouId, StringShape, TypeId, TypeKind, TypeTable};
 
-use super::lowered::copy_slots;
+use super::declarations::copy_slots;
 use crate::compile::{string_region_size, FbFieldIndex, StringVarInfo};
 use crate::compile_call::standard_fb_layout;
 use crate::held_instances::HeldInstance;

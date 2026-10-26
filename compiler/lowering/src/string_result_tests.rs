@@ -228,8 +228,7 @@ fn lower_statement_when_string_result_with_outputs_then_in_place_with_stores() {
     );
 }
 
-/// A method whose result is a string is not lowered: the route that reads
-/// the AST does not compile one.
+/// A method whose result is a string is not lowered yet.
 #[test]
 fn lower_statement_when_method_result_is_string_then_unsupported() {
     assert_eq!(main("s := f.Name();"), ["unsupported"]);

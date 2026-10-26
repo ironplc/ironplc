@@ -266,8 +266,7 @@ fn lower_statement_when_call_with_outputs_has_string_input_then_str_before_tempo
     );
 }
 
-/// A `VAR_IN_OUT` of a string type is not lowered yet: the route that reads
-/// the AST passes no string by reference.
+/// A `VAR_IN_OUT` of a string type is not lowered yet.
 #[test]
 fn lower_statement_when_function_has_string_in_out_then_unsupported() {
     let outcome = lower(

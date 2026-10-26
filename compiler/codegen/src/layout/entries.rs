@@ -1,5 +1,5 @@
 //! What the layout built from the lowered declarations records of a
-//! structure and of an array of structures (`lowered.rs`): where it is, how
+//! structure and of an array of structures (`declarations.rs`): where it is, how
 //! its fields and elements are reached, and the capacity of each string it
 //! holds, which sizes the temporary buffers.
 

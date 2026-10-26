@@ -1,10 +1,10 @@
 //! Tests of calls of user-defined functions whose result is a structure,
 //! compiled from the lowered program (REQ-LOW-lowering-079,
-//! REQ-LOW-lowering-186), with every statement required to lower. Each
-//! program compiles, the functions' bodies included, and leaves every
-//! variable with the same values on every backend after one scan.
+//! REQ-LOW-lowering-186). Each program compiles, the functions' bodies
+//! included, and leaves every variable with the same values on every backend
+//! after one scan.
 
-use crate::compile_route_lowered::{assert_compiles, run_lowered_agreeing};
+use crate::compile_body::{assert_compiles, compile_and_run_agreeing};
 
 /// A structure; a function of an input and an output whose result is one,
 /// which returns early for a negative input; a function of no parameters
@@ -49,7 +49,7 @@ fn run_when_structure_result_assigned_then_outputs_stored_then_result_copied() {
          END_PROGRAM"
     );
     assert_compiles(&source);
-    let snapshot = run_lowered_agreeing(&source);
+    let snapshot = compile_and_run_agreeing(&source);
     assert_eq!(snapshot.read_as::<i32>("px"), 3);
     assert_eq!(snapshot.read_as::<f32>("py"), 1.5);
     assert_eq!(snapshot.read_as::<i32>("k"), 4);
@@ -70,6 +70,6 @@ fn run_when_structure_result_returned_early_then_copied_as_set() {
          END_PROGRAM"
     );
     assert_compiles(&source);
-    let snapshot = run_lowered_agreeing(&source);
+    let snapshot = compile_and_run_agreeing(&source);
     assert_eq!(snapshot.read_as::<i32>("px"), -1);
 }

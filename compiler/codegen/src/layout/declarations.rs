@@ -61,6 +61,7 @@ use super::region::{string_at, Region};
 use super::var_table::Counter;
 use super::{BlockLayout, FunctionLayout, MethodLayout};
 use crate::access::{Named, Stored};
+use crate::body::slot_type;
 use crate::compile::{
     CompileContext, FbInstanceInfo, OpType, StringReturnInfo, StringVarInfo, UserFbTypeInfo,
     UserFunctionInfo, UserMethodInfo, VarTypeInfo, DEFAULT_OP_TYPE,
@@ -69,7 +70,6 @@ use crate::compile_array::ArrayVarInfo;
 use crate::compile_array_struct::StructArrayVarInfo;
 use crate::compile_reference::StringRefInfo;
 use crate::compile_struct::StructVarInfo;
-use crate::lowered::slot_type;
 
 /// What the layout built from the lowered declarations knows of each name:
 /// its slot, the type the slot is operated at, a string's run of the data

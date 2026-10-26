@@ -1,4 +1,7 @@
 #![allow(clippy::result_large_err)]
+// A match over a lowered enum names every variant, so a variant added later
+// fails to compile wherever it is not handled (REQ-LOW-lowering-082).
+#![deny(clippy::wildcard_enum_match_arm)]
 //! Code generation for IronPLC.
 //!
 //! This crate compiles a lowered program (`ironplc_ir::lowered::Program`)
@@ -22,6 +25,7 @@
 //! ```
 
 mod access;
+mod body;
 mod call_graph;
 mod compile;
 mod compile_arith;
@@ -48,7 +52,6 @@ mod emit;
 mod execution;
 mod held_instances;
 mod layout;
-mod lowered;
 mod optimize;
 mod source_lookup;
 mod stack_balance;

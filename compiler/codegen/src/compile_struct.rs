@@ -14,7 +14,7 @@ use ironplc_container::{SlotIndex, VarIndex};
 use ironplc_ir::lowered::{FieldIdx, TypeId, TypeKind, TypeTable};
 
 use super::compile::{CompileContext, VarTypeInfo};
-use crate::lowered::slot_type;
+use crate::body::slot_type;
 
 /// Where a structure variable is, and how its fields are reached, as the
 /// layout built from the lowered declarations records it.

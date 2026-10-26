@@ -133,8 +133,8 @@ fn lower_statement_when_bits_of_element_through_reference_read_then_shift_and_ma
     );
 }
 
-/// Bits of the whole of what a reference refers to, `p^.3`, are not read
-/// while codegen's AST route does not address them.
+/// Bits of the whole of what a reference refers to, `p^.3`, are not lowered
+/// yet.
 #[test]
 fn lower_statement_when_bits_read_through_reference_then_unsupported() {
     let outcome = lower(

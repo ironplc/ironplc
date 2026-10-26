@@ -1,14 +1,14 @@
-//! Tests of references made, compared and followed in the lowered program,
-//! with every statement required to lower: `REF(x)`, `r REF= x`, `NULL`,
-//! `REF(x)^` and the bits of an element a reference reaches.
+//! Tests of references made, compared and followed in the lowered program:
+//! `REF(x)`, `r REF= x`, `NULL`, `REF(x)^` and the bits of an element a
+//! reference reaches.
 
 use rstest::rstest;
 
 use ironplc_parser::options::CompilerOptions;
 
 use crate::common::{bc, compile_analyzed, compile_to_run, parse, Snapshot};
-use crate::compile_route_lowered::{
-    assert_compiles, body, options, run_lowered, run_lowered_agreeing,
+use crate::compile_body::{
+    assert_compiles, body, compile_and_run, compile_and_run_agreeing, options,
 };
 
 /// A reference made by `REF(x)` or `REF=` reaches its variable, read and
@@ -17,7 +17,7 @@ use crate::compile_route_lowered::{
 /// it.
 #[test]
 fn run_when_references_made_and_compared_then_values() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR x : DINT := 5; y : DINT; p : REF_TO DINT; q : REF_TO DINT;
                same : BOOL; set : BOOL; cleared : BOOL; END_VAR
@@ -42,7 +42,7 @@ fn run_when_references_made_and_compared_then_values() {
 /// which a write through the reference changes.
 #[test]
 fn run_when_ref_of_in_out_then_refers_to_callers_variable() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "FUNCTION BUMP : BOOL VAR_IN_OUT v : DINT; END_VAR VAR p : REF_TO DINT; END_VAR
            p := REF(v);
            p^ := p^ + 10;
@@ -80,7 +80,7 @@ fn compile_when_reference_lowered_then_compiles(#[case] statement: &str) {
 /// and read from it.
 #[test]
 fn run_when_bits_of_element_through_reference_then_referenced_array() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR a : ARRAY[0..1] OF DWORD := [0, 16#12345678]; p : REF_TO ARRAY[0..1] OF DWORD;
                b : BYTE := 16#FF; i : DINT := 1; x : BOOL; y : BOOL; r : DWORD; part : BYTE; END_VAR
@@ -137,7 +137,7 @@ fn compile_when_bit_written_to_element_through_reference_then_subscript_evaluate
 /// assignment, in a condition and through a function's `VAR_IN_OUT`.
 #[test]
 fn run_when_ref_dereferenced_then_value_of_place() {
-    let snapshot = run_lowered_agreeing(
+    let snapshot = compile_and_run_agreeing(
         "FUNCTION TWICE : DINT VAR_IN_OUT v : DINT; END_VAR TWICE := REF(v)^ * 2; END_FUNCTION
          PROGRAM main VAR x : DINT := 7; k : DINT; j : DINT; t : DINT; END_VAR
            k := REF(x)^ + 1;
@@ -169,14 +169,11 @@ fn run_when_adr_dereferenced_then_value_of_place() {
 
 /// A subscript of a reference to an array, a TwinCAT `REFERENCE TO` or a
 /// `REF_TO` the analyzer lets a subscript follow without `^`, writes and
-/// reads the array the reference refers to, as `p^[i]` does. This corrected
-/// the route that read the AST, which indexed the reference's own slot as
-/// though it held the array's data: there `r[2] := 6` left `b` as it was
-/// and wrote into the bytes of `a`, and `p[i]` read what `p^[i]` did not
-/// write.
+/// reads the array the reference refers to, as `p^[i]` does, not the
+/// reference's own slot.
 #[test]
 fn run_when_reference_to_array_subscripted_then_referenced_array() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR a : ARRAY[1..3] OF DINT; b : ARRAY[1..3] OF DINT; c : ARRAY[1..3] OF DINT;
                r : REFERENCE TO ARRAY[1..3] OF DINT; p : REF_TO ARRAY[1..3] OF DINT;
@@ -206,7 +203,7 @@ fn run_when_reference_to_array_subscripted_then_referenced_array() {
 /// is the number, not its bits.
 #[test]
 fn run_when_element_through_reference_assigned_to_wider_target_then_converted() {
-    let snapshot = run_lowered(
+    let snapshot = compile_and_run(
         "PROGRAM main
            VAR b : ARRAY[1..3] OF DINT := [1, -2, 3];
                r : REFERENCE TO ARRAY[1..3] OF DINT; p : REF_TO ARRAY[1..3] OF DINT;

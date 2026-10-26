@@ -245,7 +245,7 @@ fn lower_statement_when_bits_of_element_through_reference_written_then_assign_bi
 }
 
 /// Bits of the whole of what a reference refers to, `p^.3`, are not lowered
-/// while codegen's AST route does not address them.
+/// yet.
 #[test]
 fn lower_statement_when_bits_written_through_reference_then_unsupported() {
     let outcome = lower(

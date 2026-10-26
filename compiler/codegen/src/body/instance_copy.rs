@@ -2,11 +2,10 @@
 //! `f := g.ob`, `g.ob := f`).
 //!
 //! An instance's slot holds the data region offset of its fields, so storing
-//! one slot in the other would make the destination an alias of the source,
-//! as the route that read the AST did. A `Copy` gives the destination the
-//! source's values in storage of its own (REQ-LOW-codegen-165), so the bridge
-//! copies the instance field by field, with `FB_LOAD_PARAM` and
-//! `FB_STORE_PARAM`: every field of the block, its inputs, outputs and
+//! one slot in the other would make the destination an alias of the source.
+//! A `Copy` gives the destination the source's values in storage of its own
+//! (REQ-LOW-codegen-165), so the backend copies the instance field by field,
+//! with `FB_LOAD_PARAM` and `FB_STORE_PARAM`: every field of the block, its inputs, outputs and
 //! variables, and for a standard block the fields the VM's block keeps for
 //! itself, such as a timer's start time. A field is one slot, so each is
 //! copied whole, except a field that holds an instance: its slot holds the

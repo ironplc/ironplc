@@ -1,11 +1,11 @@
-//! Tests of the lowered bridge as a whole.
+//! Tests of the bytecode backend as a whole.
 
-/// REQ-LOW-lowering-082: the lowered bridge denies wildcard arms over the
+/// REQ-LOW-lowering-082: the bytecode backend denies wildcard arms over the
 /// lowered program's enums. A test cannot observe a lint that is not
-/// configured, so it checks the module root.
+/// configured, so it checks the crate root.
 #[test]
-fn module_root_when_read_then_denies_wildcard_enum_match_arm() {
-    assert!(include_str!("mod.rs").contains("#![deny(clippy::wildcard_enum_match_arm)]"));
+fn crate_root_when_read_then_denies_wildcard_enum_match_arm() {
+    assert!(include_str!("../lib.rs").contains("#![deny(clippy::wildcard_enum_match_arm)]"));
 }
 
 /// A declaration whose initializer reaches code generation without a

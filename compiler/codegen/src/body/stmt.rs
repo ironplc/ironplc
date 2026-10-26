@@ -1,9 +1,8 @@
 //! Emits a lowered statement.
 //!
-//! Each statement is emitted in the shape the route that read the AST gave
-//! it, fused compare and branch included. `Case` evaluates its selector once
-//! (REQ-LOW-codegen-124): it stays on the stack while the labels are tested,
-//! and the arm that runs pops it first.
+//! Conditions use the fused compare and branch. `Case` evaluates its
+//! selector once (REQ-LOW-codegen-124): it stays on the stack while the
+//! labels are tested, and the arm that runs pops it first.
 
 use ironplc_container::opcode::cmp_op;
 use ironplc_ir::lowered::Program;
