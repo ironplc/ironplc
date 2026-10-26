@@ -162,3 +162,4 @@ P4091,ForControlTypeInvalid,FOR control variable is not an integer
 P4092,EdgeInputNotAllowed,R_EDGE or F_EDGE input is declared by a function or method
 P4093,ForStepZero,FOR step is zero
 P4094,RealLiteralInIntegerPosition,FOR bound or step or array subscript is a real literal rather than an integer
+P4095,KeywordAsNameNotAllowed,Keyword used as a name requires choosing a dialect or --allow-keywords-as-names flag

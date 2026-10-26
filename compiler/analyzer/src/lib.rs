@@ -61,6 +61,7 @@ mod rule_function_call_type_check;
 mod rule_function_inputs_common_type;
 mod rule_interface_conformance;
 mod rule_interface_conversion;
+mod rule_keyword_name_allowed;
 mod rule_loop_control_inside_loop;
 mod rule_member_qualifier_allowed;
 mod rule_member_qualifier_invalid;

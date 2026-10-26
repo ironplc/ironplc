@@ -499,6 +499,11 @@ define_compiler_options! {
     [Rusty, Codesys, TwinCat],
     allow_enum_base_type,
 
+    "Allow the keywords ON, STEP, R_EDGE and F_EDGE as names of variables and enumeration members",
+    "--allow-keywords-as-names",
+    [Rusty],
+    allow_keywords_as_names,
+
     policies {
         "What STRING_TO_<numeric> treats as convertible when the string has non-numeric characters",
         "--policy-string-to-num-non-numeric",

@@ -1,0 +1,42 @@
+=====
+P4095
+=====
+
+.. problem-summary:: P4095
+
+This error occurs when one of the keywords ``ON``, ``STEP``, ``R_EDGE`` or
+``F_EDGE`` names a variable or an enumeration member (e.g. ``TYPE M : (Off,
+On); END_TYPE``) without the ``--allow-keywords-as-names`` compiler flag.
+
+IEC 61131-3 reserves its keywords: a keyword is not to be used for any other
+purpose, such as a variable name. ``ON`` belongs to a resource declaration
+(``RESOURCE r ON PLC``), ``STEP`` to sequential function charts, and
+``R_EDGE`` and ``F_EDGE`` to edge-detecting inputs. Other toolchains do not
+reserve these four, so programs written for them often use them as names.
+
+A name that only contains one of the keywords, such as ``OnState`` or
+``StepCount``, is an ordinary identifier and is always allowed.
+
+Example
+-------
+
+The following code will generate error P4095:
+
+.. code-block::
+
+   TYPE
+       M : (Off, On);
+   END_TYPE
+
+To fix this error, choose a name that is not a keyword:
+
+.. code-block::
+
+   TYPE
+       M : (Off, Running);
+   END_TYPE
+
+Or enable the extension:
+
+.. |flag| replace:: ``--allow-keywords-as-names``
+.. include:: /includes/enabled-by-flag.rst

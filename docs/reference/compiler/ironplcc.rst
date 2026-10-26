@@ -340,6 +340,13 @@ Options
    in IEC 61131-3:2013 (Edition 3); without this flag it is an ordinary
    identifier.
 
+``--allow-keywords-as-names``
+   Allow the keywords ``ON``, ``STEP``, ``R_EDGE`` and ``F_EDGE`` as names of
+   variables and enumeration members (e.g. ``(Off, On)``). IEC 61131-3
+   reserves its keywords, so this is an extension. Produces
+   :doc:`P4095 </reference/compiler/problems/P4095>` when used without this
+   flag.
+
 ``--policy-string-to-num-non-numeric`` *ALTERNATIVE*
    Select what ``STRING_TO_<numeric>`` treats as convertible when the string
    has non-numeric characters: ``reject`` (the whole string must be a
