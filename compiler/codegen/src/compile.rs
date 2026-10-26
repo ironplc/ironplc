@@ -352,7 +352,7 @@ fn compile_program(
     let mut builder = ContainerBuilder::new();
 
     // Register every top-level POU's source file with the debug
-    // section's SOURCE_FILE_TABLE. Each statement's `compile_statement`
+    // section's SOURCE_FILE_TABLE. Each statement's `record_position`
     // call later looks up the resulting `SourceFileId` via
     // `ctx.debug_source_files.get(&span.file_id)` and pairs it with the
     // statement's (line, column) for the LineMapEntry. The
@@ -846,7 +846,7 @@ pub(crate) struct CompileContext<'p> {
     pub(crate) debug_enum_defs: Vec<ironplc_container::debug_section::EnumDefEntry>,
     /// Debug info: registry mapping each referenced source `FileId` to its
     /// `SourceFileId` (debug section SOURCE_FILE_TABLE index) plus cached
-    /// source bytes for (line, column) conversion in `compile_statement`.
+    /// source bytes for (line, column) conversion in `record_position`.
     pub(crate) debug_source_files: crate::source_lookup::SourceFileRegistry,
     /// What a call of each user-defined function needs, by its lowered POU.
     pub(crate) user_functions: HashMap<PouId, UserFunctionInfo>,

@@ -1336,27 +1336,28 @@ they were. The value is a `BOOL` for one bit, a 32-bit integer for up to 32
 bits, and a 64-bit integer for more.
 
 An `AssignBits` reads the value at its place before it evaluates its value,
-so a write the value makes to the place is lost: `w.3 := F(x := 1, n => w) > 0` replaces bit 3 of the value `w`
-had before the call, and the output `F` stores in `w` is overwritten.
+so a write the value makes to the place is lost: `w.3 := F(x := 1, n => w) >
+0` replaces bit 3 of the value `w` had before the call, and the output `F`
+stores in `w` is overwritten.
 
 **REQ-LOW-codegen-185** An `AssignBits` reads the value at its place before it
 evaluates its value, and stores that value with its bits replaced.
 
 The arms of a `Case` are tried in order and the first arm with a matching
-label runs, as `compile_case` does today.
+label runs.
 
 `AssignBits` is the one read-modify-write statement. It exists as a node, and is
 not desugared to an `Assign` of a masked `Read`, because that would name the
-place twice and so evaluate its subscripts twice. Codegen does exactly that
-today: `Place::emit_store` (`compile_place.rs`) emits a base's address again
-for the store, rather than reusing the one emitted for the load.
+place twice and so evaluate its subscripts twice. The bytecode backend emits
+the place's address once and keeps it for the store (`Place::emit_update` in
+`compile_place.rs`, REQ-LOW-codegen-121).
 
 `For` stays a node rather than becoming a `Loop`, so that its control
 variable, bounds and step stay visible: the bytecode backend uses them to fuse
 the loop test and to drop the control variable's truncation when the bounds
-prove it in range (`compile_loop.rs`), and a vectorizing pass would match them
-(see [Vectorized operations](#vectorized-operations)). Its meaning is what
-`compile_loop.rs` does today, stated here so that every backend does the same.
+prove it in range (`body/stmt.rs`), and a vectorizing pass would match them
+(see [Vectorized operations](#vectorized-operations)). Its meaning is stated
+here so that every backend does the same.
 
 **REQ-LOW-lowering-066** A `For` assigns `from` to `control` once and then
 repeats: it evaluates `to`; it leaves the loop when `control` is greater than
@@ -2745,8 +2746,9 @@ Two constraints follow for whoever adds one:
 The compiler cannot compile any of these languages today:
 
 - **Sequential function charts (SFC)** have an AST (`ironplc_dsl::sfc`), which
-  the parser and the PLCopen XML importer produce and analysis accepts. Codegen
-  refuses it with P9999 (`compile_stmt.rs`).
+  the parser and the PLCopen XML importer produce and analysis accepts.
+  Lowering does not express it yet, and reports it as P9999
+  (`lowering/src/program.rs`).
 - **Ladder diagrams (LD), function block diagrams (FBD) and instruction lists
   (IL)** have no AST. The XML importer rejects their bodies with P9003.
 
