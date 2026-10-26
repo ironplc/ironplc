@@ -337,7 +337,9 @@ Both opcodes are untyped — they operate on 64-bit Slots, same as all existing 
 
 The null sentinel is `u64::MAX`. It cannot collide with a valid variable index because the variable table uses u16 indices (max 65535), and `u64::MAX` is far outside that range.
 
-## Code Generation — `compiler/codegen/src/compile.rs`
+## Code Generation
+
+Codegen compiles the lowered program (`ironplc_ir::lowered`), so a reference reaches it as lowering left it: `REF(var)` as `ExprKind::RefTo` of a place, `NULL` as `ExprKind::Null`, and `ref^` as a place with a `Projection::Deref` (`compiler/lowering/src/expr.rs`, `compiler/lowering/src/place.rs`).
 
 ### VarTypeInfo Integration
 
@@ -345,22 +347,22 @@ Reference variables use `VarTypeInfo { op_width: W64, signedness: Unsigned, stor
 
 ### Expression Compilation
 
-New arms in the `compile_expr` match on `ExprKind`:
+`emit_expr` (`compiler/codegen/src/lowered/expr.rs`) emits each reference expression:
 
-- **`ExprKind::Ref(var)`**: Resolve the variable's index at compile time, emit `LOAD_CONST_I64 index`. This is a compile-time constant — the variable index is known statically.
-- **`ExprKind::Null`**: Emit `LOAD_CONST_I64 u64::MAX`.
-- **`ExprKind::Deref(expr)`** (r-value — reading through a reference): Compile the inner expression (pushes the reference index onto the stack), then emit `LOAD_INDIRECT`.
+- **`ExprKind::RefTo(place)`**: `emit_ref` pushes the reference to the variable `place` names, a compile-time constant, as `LOAD_CONST_I64`: the variable's index, or for a string a data-region reference to its header (`reference_to` in `compiler/codegen/src/compile_reference.rs`). What a `VAR_IN_OUT` parameter refers to is already a reference in the parameter's slot, and is loaded from it with `LOAD_VAR_I64`.
+- **`ExprKind::Null`**: `emit_null` emits `LOAD_CONST_I64 u64::MAX`.
+- **A read of a dereferenced place** (r-value — reading through a reference): the place resolves to an indirect address (`compiler/codegen/src/lowered/place.rs`), whose load pushes the reference from its slot and emits `LOAD_INDIRECT` (`Place::emit_load` in `compiler/codegen/src/compile_place.rs`).
 
 ### Default Initialization
 
-During variable initialization (the codegen phase that emits initial values for all variables), reference variables without an explicit initializer must be initialized to NULL:
+The analyzer gives a reference variable without an explicit initializer the initial value `NULL` (`compiler/analyzer/src/xform_resolve_initial_values/`), and lowering initializes each reference variable with an `Assign` of `Null`, or of `RefTo` the variable it is initialized to (`compiler/lowering/src/init.rs`). Codegen emits that assignment as any other, so a variable without an initializer, or with `:= NULL`, starts as:
 
 ```
 LOAD_CONST_I64 u64::MAX
 STORE_VAR_I64 ref_slot
 ```
 
-Reference variables with `:= NULL` emit the same code. Reference variables with `:= REF(var)` emit:
+and one with `:= REF(var)` as:
 
 ```
 LOAD_CONST_I64 var_index
@@ -369,16 +371,11 @@ STORE_VAR_I64 ref_slot
 
 ### L-Value Dereference (Assignment Through a Reference)
 
-The assignment `ref^ := value` requires a new code path in the assignment compiler (`StmtKind::Assignment`). The existing assignment flow resolves the target to a static variable index via `resolve_variable_name()` and emits `STORE_VAR`. But `ref^` as a target doesn't resolve to a static index — it requires evaluating the reference expression at runtime.
+The assignment `ref^ := value` lowers to an `Assign` whose place ends in a `Projection::Deref`. That place does not resolve to a static variable index: codegen resolves it to an indirect address through the slot that holds the reference (`Address::Indirect` in `compiler/codegen/src/compile_place.rs`), and its store:
 
-**Detection:** Before the normal assignment flow, check if the assignment target is a `Deref` expression (i.e., the outermost node of the target is `ExprKind::Deref`). If so, use the indirect store path.
-
-**Indirect store path:**
-1. Compile the value expression (pushes value onto the stack)
-2. Compile the inner expression of the `Deref` (pushes the reference index)
-3. Emit `STORE_INDIRECT` (pops ref, pops value, stores value at the referenced index)
-
-This is a new branch at the top of the assignment handler, before `resolve_variable_name()`.
+1. Compiles the value expression (pushes value onto the stack)
+2. Loads the reference from its slot (`LOAD_VAR_I64 ref_slot`)
+3. Emits `STORE_INDIRECT` (pops ref, pops value, stores value at the referenced index)
 
 ### Compilation Rules Summary
 

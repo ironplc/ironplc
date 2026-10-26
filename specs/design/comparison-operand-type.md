@@ -126,5 +126,8 @@ integers on the stack rather than through the string comparison.
 - The ordered comparison functions are binary; the extensible monotonic form
   `GT(a, b, c)` is not implemented (see
   [Keyword Function Forms](keyword-function-forms.md)).
-- A string comparison takes its own path, `compile_string_compare`, and is
-  unchanged but for being reachable from the function form.
+- A string comparison takes its own path and is unchanged but for being
+  reachable from the function form: lowering compares the order the
+  `CompareString` or `CompareWString` intrinsic gives the two strings with
+  zero (`string_compare` in `lowering/src/string.rs`), for the operator and
+  the function form alike.

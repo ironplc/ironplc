@@ -1,5 +1,13 @@
 # Array Code Generation — Implementation Plan
 
+This is the plan arrays of primitive types were first built from, against a code generator that compiled the AST. That code generator has since been deleted, and the functions and files the steps below name as codegen's (`compile_expr`, `compile_statement`, `compile_program_with_functions`, `compile_variable_read`, `assign_variables()`, `emit_initial_values()`, `signed_integer_to_i32()`, `register_array_variable()`, and the line numbers in `compile.rs`) no longer exist; read the steps as the record of how the work was ordered, not as a description of the compiler. The design decisions below, the opcodes, the container's array descriptors and the VM's handlers still hold.
+
+Codegen now compiles arrays from the lowered program (`ironplc_ir::lowered`, see [Lowered Program](lowered-program.md)):
+
+- The layout built from the lowered declarations gives each array its run of the data region and its descriptor (`compiler/codegen/src/layout/lowered.rs`, `compiler/codegen/src/layout/descriptors.rs`), recorded as an `ArrayVarInfo` (`compiler/codegen/src/compile_array.rs`).
+- Lowering initializes an array with one `Assign` per element it gives a value (`compiler/lowering/src/init.rs`).
+- A lowered place with a `Projection::Index` resolves to an element address (`compiler/codegen/src/lowered/place.rs`, through `resolve_access()` in `compile_array.rs`), whose load and store compute the flat index with `emit_flat_index()` and emit `LOAD_ARRAY` and `STORE_ARRAY` (`compiler/codegen/src/compile_place.rs`).
+
 ## Overview
 
 Add code generation and VM support for arrays of primitive types. This document has enough detail for an implementer to work from without additional design decisions.

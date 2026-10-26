@@ -235,23 +235,32 @@ only additive use of one is `SUB` and `x - (-0.0)` is `x` just as
 
 ### Why the instruction is there to remove
 
-Under ADR-0001, `emit_truncation` emits a `TRUNC_*` before every store to a
-sub-32-bit slot. It cannot tell whether the value on the stack came from a
-constant: it is handed an `OpType` — a width and a signedness, which collapses
-`SINT`/`INT`/`DINT` alike to `(W32, Signed)` — while the `storage_bits` that
-select the truncation width live one level up in `VarTypeInfo`. So a narrow
-constant store emits the constant at 32 bits and narrows it with an
+Under ADR-0001, a value stored to a sub-32-bit slot is narrowed by a
+`TRUNC_*` first. Lowering decides where: it wraps a stored value in a
+`Truncate` unless the value already fits the place, as a constant within the
+place's range does (`store_narrowing` in `ir/src/lowered/stmt.rs`,
+REQ-LOW-lowering-046), and codegen emits each `Truncate` as a `TRUNC_*`
+(`emit_truncate` in `codegen/src/lowered/expr.rs`). A few store sites in
+codegen narrow by the place's type instead, whatever the value
+(`emit_truncation` in `codegen/src/compile_expr.rs`): an input of a function
+block call (`store_input` in `codegen/src/compile_fb_call.rs`), and the store
+of a value read from a standard block's field (`Place::emit_assign` in
+`codegen/src/compile_place.rs`). Either way a constant can still reach a
+`TRUNC_*` — a bit-string constant outside its type's range, such as
+`BYTE#300`, which does not fit, or a constant input of a block, `inst(n := 5)`
+with `n : INT` — and is then emitted at 32 bits and narrowed by an
 instruction the compiler could have evaluated itself.
 
-That is the common case, not an edge case. On a representative program — a
-structure with `INT`/`BYTE`/`SINT` fields, a function block with narrow
-locals, and a `PROGRAM` with narrow scalar, structure-field and array-element
-assignments plus a `FOR` loop — 16 of 17 `TRUNC_*` instructions were
-immediately preceded by a constant load, and all 16 were already in range.
-The survivor was `arr[i] := i` inside the loop, where the value genuinely is
-computed at run time. Structure-field initialization alone emits a constant
-load per narrow field of every structure, where the value is always the type
-default or a literal initializer.
+When this pass was written, codegen narrowed every store to a sub-32-bit slot
+by the slot's type, and the constant case was the common one: on a
+representative program — a structure with `INT`/`BYTE`/`SINT` fields, a
+function block with narrow locals, and a `PROGRAM` with narrow scalar,
+structure-field and array-element assignments plus a `FOR` loop — 16 of 17
+`TRUNC_*` instructions were immediately preceded by a constant load, and all
+16 were already in range. The survivor was `arr[i] := i` inside the loop,
+where the value genuinely is computed at run time. Lowering's
+REQ-LOW-lowering-046 now leaves most of those 16 out before the pass sees
+them.
 
 ### The fold
 
@@ -288,8 +297,8 @@ Because the pass matches on the emitted instruction stream rather than on any
 one syntactic form, it reaches every narrow store whose value is a constant —
 scalar assignment, array element, structure field, dereference store,
 initializers, zero defaults, subrange minimums, enumeration values and
-analyzer-folded constant expressions — without any of the dozen
-`emit_truncation` call sites knowing about it.
+analyzer-folded constant expressions — without any of the sites that emit
+a `TRUNC_*` knowing about it.
 
 ### Deliberate limits
 
@@ -301,8 +310,8 @@ optimal.
 
 Only `LOAD_CONST_I32` can precede a `TRUNC_*` with a foldable value:
 `TRUNC_*` takes an I32 operand, and `BOOL` — the one type reached by
-`LOAD_TRUE`/`LOAD_FALSE` — has `storage_bits: 1`, for which
-`emit_truncation` already emits nothing.
+`LOAD_TRUE`/`LOAD_FALSE` — is never narrowed: lowering gives it no narrowed
+storage, and `emit_truncation` emits nothing for its `storage_bits: 1`.
 
 **REQ-PEEP-codegen-044** A pool index that is out of bounds, or that names a
 constant of another type, is left unfolded rather than diagnosed. This pass is
@@ -319,13 +328,15 @@ programs that can trigger it at all, tracked separately in
 
 Three other homes were considered:
 
-- **At the `emit_truncation` call sites.** A dozen sites would each need the
-  same check, and none of them would catch a constant that reaches a
-  `TRUNC_*` from a zero default or a subrange minimum.
-- **In `compile_constant`, by widening `OpType` to carry `storage_bits`.**
-  `OpType` is threaded through every expression-compiling function in the
-  crate, so this is a large, high-risk refactor for a narrow benefit — and it
-  still would not catch the non-expression constants above.
+- **At the sites that place a truncation.** Lowering already leaves out the
+  `Truncate` of a constant within its place's range (REQ-LOW-lowering-046),
+  but it does not fold one outside it, and each codegen site that narrows by
+  type would need the same check again.
+- **In `emit_constant` (`codegen/src/lowered/expr.rs`), by handing it the
+  width of the store.** `emit_constant` emits a `Const` without the place it
+  is stored to, and the `TRUNC_*` that follows it is emitted by its caller,
+  so this would thread the store's width through every expression-emitting
+  function in the crate: a large, high-risk refactor for a narrow benefit.
 - **In `Emitter`, alongside the existing `DUP` peepholes.** The emitter sees
   pool *indices*, not values; the pool lives in `CompileContext`.
 
@@ -334,10 +345,11 @@ Three other homes were considered:
 A narrow store of a *computed* value (`total := total + i` where
 `total : INT`) still executes a `TRUNC_*`, because proving it unnecessary
 needs range tracking across arbitrary expressions rather than a single
-instruction pair. `for_loop_trunc_can_be_elided`
-(`codegen/src/compile_loop.rs`) covers one further case — a `FOR` loop whose
-constant bounds provably keep the control variable inside its declared range
-— for the loop's own init and increment only.
+instruction pair. `stays_within` (`codegen/src/lowered/stmt.rs`) covers one
+further case — a `FOR` loop whose constant bounds provably keep the control
+variable inside its declared range — for the loop's increment; the loop's
+init is a store of `from`, which lowering leaves un-narrowed when it is a
+constant within that range (REQ-LOW-lowering-046).
 
 Both are narrow, local instances of the interval analysis sketched under
 [VM Performance §13, Layer 1](vm-performance.md), which is where the general

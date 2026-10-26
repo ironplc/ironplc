@@ -366,14 +366,14 @@ as `(a + b) + c` does.
 
 An earlier draft rewrote every operator that resolved to a typed overload
 into a call of the typed name, in a transform after constant folding, so that
-code generation would only ever see calls. That is one more pass, a call
-node in the analyzed tree that the user did not write, a fabricated span on
-its name, and a rule whose correctness depends on the pass having run.
-Lowering already reads the analyzer's table to lower a call of a typed name
-as the time function its signature names, so lowering an operator from the
-typed step's answer is the same dependency with no new node, and the tree
-stays what the parser produced for every consumer of it. The rewrite was
-dropped.
+codegen would only ever see calls it already compiles. That is one more pass,
+a call node in the analyzed tree that the user did not write, a fabricated
+span on its name, and a rule whose correctness depends on the pass having
+run. The backend already depends on the analyzer's table (lowering compiles
+a call as the intrinsic its signature names, `compiler/lowering/src/call.rs`),
+so asking the typed step from the backend is
+the same dependency with no new node, and the tree stays what the parser
+produced for every consumer of it. The rewrite was dropped.
 
 ### Relationship to Keyword Function Forms
 
