@@ -378,6 +378,12 @@ impl Fold<Diagnostic> for TypeEnvironment {
             target_type: Box::new(target_type),
         });
         self.insert_type(&node.type_name, attrs);
+        // The target by id, for a target the representation does not
+        // identify: a reference type (`TYPE RR : REF_TO IntRef`) or one
+        // spelled in place (`TYPE RR : REF_TO REF_TO INT`).
+        if let Some(target) = self.reference_target_id(&node.target) {
+            self.record_declared_reference_target(&node.type_name, target);
+        }
         Ok(node)
     }
 

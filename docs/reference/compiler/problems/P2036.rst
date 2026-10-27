@@ -4,7 +4,19 @@ P2036
 
 .. problem-summary:: P2036
 
-This error occurs when a ``REF_TO`` type declaration or a variable declaration references another ``REF_TO`` type, creating multi-level indirection. Nested references are not supported.
+This error occurs when a TwinCAT ``REFERENCE TO`` is nested: a ``REFERENCE TO``
+whose target is a reference or pointer type, or a reference of any kind whose
+target is spelled ``REFERENCE TO``. TwinCAT declares neither ``REFERENCE TO
+REFERENCE`` nor ``POINTER TO REFERENCE``. IronPLC gives a ``REFERENCE TO``
+variable its automatic dereference by its own declaration, which a reference
+reached through another reference does not have, and which does not reach
+through a pointer the variable refers to, so a ``REFERENCE TO`` a pointer is
+not supported either.
+
+The IEC 61131-3 ``REF_TO`` and the CODESYS ``POINTER TO`` nest:
+``REF_TO REF_TO INT`` and ``POINTER TO POINTER TO INT`` are references to a
+reference, followed one level at a time with ``^``. See
+:ref:`Nested references <ref-nested-references>` on the reference types page.
 
 Example
 -------
@@ -15,10 +27,17 @@ The following code will generate error P2036:
 
    TYPE
        IntRef : REF_TO INT;
-       IntRefRef : REF_TO IntRef;  (* Error: nested REF_TO *)
    END_TYPE
 
-A variable declared as a reference to a reference type is the same nesting, and generates error P2036 too:
+   PROGRAM Main
+       VAR
+           rr : REFERENCE TO IntRef;        (* Error: REFERENCE TO a reference *)
+           pp : POINTER TO REFERENCE TO INT; (* Error: a reference to a REFERENCE TO *)
+       END_VAR
+   END_PROGRAM
+
+To fix this error, refer to the reference with ``REF_TO`` or ``POINTER TO``,
+which nest, or to the value itself with ``REFERENCE TO``:
 
 .. code-block::
 
@@ -28,14 +47,10 @@ A variable declared as a reference to a reference type is the same nesting, and 
 
    PROGRAM Main
        VAR
-           rr : REF_TO IntRef;  (* Error: nested REF_TO *)
+           x : INT;
+           rr : REF_TO IntRef;       (* Correct: a reference to a reference *)
+           r : REFERENCE TO INT;     (* Correct: a reference to a value *)
        END_VAR
+
+       r REF= x;
    END_PROGRAM
-
-To fix this error, use only a single level of indirection:
-
-.. code-block::
-
-   TYPE
-       IntRef : REF_TO INT;  (* Correct: single level of REF_TO *)
-   END_TYPE

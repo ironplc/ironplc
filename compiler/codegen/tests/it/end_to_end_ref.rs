@@ -504,3 +504,205 @@ END_PROGRAM
 ",
     &[("deref", 2.5)],
 );
+
+// --- References to references ---------------------------------------------
+//
+// A `REF_TO REF_TO INT` holds the index of a reference variable, so following
+// it is one `LOAD_INDIRECT` to the reference and another to the value
+// (REQ-LOW-codegen-203). A store through both levels loads the reference the
+// same way and then stores through it.
+
+e2e_i32_with!(
+    end_to_end_when_ref_to_ref_read_then_value_of_referenced_reference,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
+PROGRAM main
+  VAR
+    x : INT := 5;
+    y : INT;
+    r : REF_TO INT := REF(x);
+    rr : REF_TO REF_TO INT;
+  END_VAR
+  rr := REF(r);
+  y := rr^^;
+END_PROGRAM
+",
+    &[("y", 5)],
+);
+
+e2e_i32_with!(
+    end_to_end_when_ref_to_ref_write_then_modifies_referenced_target,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
+PROGRAM main
+  VAR
+    x : INT := 5;
+    r : REF_TO INT := REF(x);
+    rr : REF_TO REF_TO INT := REF(r);
+  END_VAR
+  rr^^ := 7;
+END_PROGRAM
+",
+    &[("x", 7)],
+);
+
+// Storing a reference through the outer level retargets the inner reference.
+e2e_i32_with!(
+    end_to_end_when_ref_to_ref_retargets_inner_then_inner_follows_new_target,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
+PROGRAM main
+  VAR
+    x : INT := 5;
+    z : INT := 9;
+    w : INT;
+    r : REF_TO INT := REF(x);
+    rr : REF_TO REF_TO INT := REF(r);
+  END_VAR
+  rr^ := REF(z);
+  w := r^;
+END_PROGRAM
+",
+    &[("w", 9)],
+);
+
+e2e_i32_with!(
+    end_to_end_when_three_levels_then_value_through_all,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
+PROGRAM main
+  VAR
+    x : INT := 5;
+    y : INT;
+    r : REF_TO INT := REF(x);
+    rr : REF_TO REF_TO INT := REF(r);
+    rrr : REF_TO REF_TO REF_TO INT := REF(rr);
+  END_VAR
+  rrr^^^ := 11;
+  y := rrr^^^;
+END_PROGRAM
+",
+    &[("x", 11), ("y", 11)],
+);
+
+e2e_i32_with!(
+    end_to_end_when_named_ref_to_ref_then_value,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
+TYPE
+  IntRef : REF_TO INT;
+  IntRefRef : REF_TO IntRef;
+END_TYPE
+PROGRAM main
+  VAR
+    x : INT := 5;
+    y : INT;
+    r : IntRef;
+    rr : IntRefRef;
+  END_VAR
+  r := REF(x);
+  rr := REF(r);
+  y := rr^^;
+END_PROGRAM
+",
+    &[("y", 5)],
+);
+
+e2e_i32_with!(
+    end_to_end_when_ref_to_ref_compared_then_identity_at_each_level,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
+PROGRAM main
+  VAR
+    x : INT := 5;
+    outer_null : BOOL;
+    inner_null : BOOL;
+    same : BOOL;
+    r : REF_TO INT := REF(x);
+    rr : REF_TO REF_TO INT := REF(r);
+  END_VAR
+  outer_null := rr = NULL;
+  inner_null := rr^ = NULL;
+  same := rr^ = r;
+END_PROGRAM
+",
+    &[("outer_null", 0), ("inner_null", 0), ("same", 1)],
+);
+
+#[test]
+fn end_to_end_when_ref_to_ref_outer_null_then_trap() {
+    let source = "
+PROGRAM main
+  VAR
+    y : INT;
+    rr : REF_TO REF_TO INT;
+  END_VAR
+  y := rr^^;
+END_PROGRAM
+";
+    let err = parse_and_try_run(
+        source,
+        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    )
+    .unwrap_err();
+    assert_eq!(err.trap, Trap::NullDereference);
+}
+
+#[test]
+fn end_to_end_when_ref_to_ref_inner_null_then_trap() {
+    let source = "
+PROGRAM main
+  VAR
+    y : INT;
+    r : REF_TO INT;
+    rr : REF_TO REF_TO INT := REF(r);
+  END_VAR
+  y := rr^^;
+END_PROGRAM
+";
+    let err = parse_and_try_run(
+        source,
+        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    )
+    .unwrap_err();
+    assert_eq!(err.trap, Trap::NullDereference);
+}
+
+e2e_i32_with!(
+    end_to_end_when_pointer_to_pointer_then_value_through_both,
+    CompilerOptions::from_dialect(Dialect::Codesys),
+    "
+PROGRAM main
+  VAR
+    x : INT := 5;
+    y : INT;
+    p : POINTER TO INT;
+    pp : POINTER TO POINTER TO INT;
+  END_VAR
+  p := ADR(x);
+  pp := ADR(p);
+  pp^^ := 3;
+  y := pp^^;
+END_PROGRAM
+",
+    &[("x", 3), ("y", 3)],
+);
+
+// A reference held in an array element is not in a variable either, so a
+// store through it loads the element and stores through the reference it
+// holds (REQ-LOW-codegen-203).
+e2e_i32_with!(
+    end_to_end_when_store_through_element_reference_then_modifies_target,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
+PROGRAM main
+  VAR
+    x : INT := 5;
+    refs : ARRAY[0..1] OF REF_TO INT;
+  END_VAR
+  refs[1] := REF(x);
+  refs[1]^ := 8;
+END_PROGRAM
+",
+    &[("x", 8)],
+);

@@ -194,6 +194,7 @@ behavior.
 - **REQ-PTR-analyzer-414** `ADR` of an array element is rejected (P2030); `ADR` of a structure field is rejected (P2028) — slot indices cannot name a sub-object.
 - **REQ-PTR-analyzer-415** Binding `ADR(x)` to a pointer whose target type differs from `typeof(x)` is rejected (P2032) unless `allow_ref_type_punning` is set.
 - **REQ-PTR-analyzer-416** `ADR` of a stack-allocated variable (`VAR_TEMP`) is rejected (P2029) unless `allow_ref_stack_variables` is set.
+- **REQ-PTR-analyzer-417** A pointer to a pointer is declared and bound as CODESYS declares and binds it: `pp : POINTER TO POINTER TO INT` is accepted, `pp := ADR(p)` on a `POINTER TO INT` binds it, and `pp^^ := 3` and `i := pp^^` reach the `INT` through both.
 
 ### Execution (codegen)
 

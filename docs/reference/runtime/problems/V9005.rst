@@ -4,8 +4,16 @@ V9005
 
 .. problem-summary:: V9005
 
-The VM tried to access a variable table slot that does not exist. This is an
-internal error indicating the compiler allocated insufficient variable slots.
+The VM tried to access a variable table slot that does not exist, or followed
+a reference whose value is not the location of a variable. This is an
+internal error: the compiler allocated too few variable slots, or let a
+program store a value that is not a reference in a reference.
+
+A program compiled with ``--allow-ref-type-punning`` can reach this error
+without a compiler bug. Type punning lets a reference reinterpret the storage
+of another reference, so a value written through the first is followed by the
+second as a variable location. Check what the program writes through a punned
+reference before reporting the error.
 
 .. include:: ../../../includes/internal-vm-error-cause.rst
 

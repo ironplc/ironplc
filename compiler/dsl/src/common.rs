@@ -1450,8 +1450,9 @@ impl Located for LateBoundDeclaration {
 
 /// The target of a REF_TO declaration.
 ///
-/// A reference can point to either a named type (e.g., `REF_TO INT`) or an
-/// inline array type (e.g., `REF_TO ARRAY[1..10] OF INT`).
+/// A reference can point to a named type (`REF_TO INT`), an inline array
+/// type (`REF_TO ARRAY[1..10] OF INT`), or a reference type spelled in
+/// place (`REF_TO REF_TO INT`).
 ///
 /// See IEC 61131-3 Edition 3, section 2.3.3.1.
 #[derive(Clone, Debug, PartialEq, Recurse)]
@@ -1460,16 +1461,44 @@ pub enum ReferenceTarget {
     Named(TypeName),
     /// Reference to an inline array type: `REF_TO ARRAY[1..10] OF INT`
     Array(ArraySubranges),
+    /// Reference to a reference type spelled in place: the `REF_TO INT` of
+    /// `REF_TO REF_TO INT`, or the `POINTER TO INT` of
+    /// `POINTER TO POINTER TO INT`.
+    Reference(Box<ReferenceSpec>),
 }
 
 impl ReferenceTarget {
-    /// Returns the type name for named targets, or `None` for inline array targets.
+    /// Returns the type name for named targets, or `None` for inline array
+    /// and reference targets.
     pub fn type_name(&self) -> Option<&TypeName> {
         match self {
             ReferenceTarget::Named(tn) => Some(tn),
-            ReferenceTarget::Array(_) => None,
+            ReferenceTarget::Array(_) | ReferenceTarget::Reference(_) => None,
         }
     }
+
+    /// The named type the target is spelled from: the type itself, the
+    /// element type of an inline array, or the named type a reference
+    /// spelled in place ends in (`INT` for `REF_TO REF_TO INT`).
+    pub fn innermost_type_name(&self) -> TypeName {
+        match self {
+            ReferenceTarget::Named(tn) => tn.clone(),
+            ReferenceTarget::Array(subranges) => subranges.type_name.to_type_name(),
+            ReferenceTarget::Reference(spec) => spec.target.innermost_type_name(),
+        }
+    }
+}
+
+/// A reference type spelled in place as what another reference refers to:
+/// the `ref_spec` of IEC 61131-3 Edition 3, section 2.3.3.1, with the
+/// keyword that spelled it. `REF_TO REF_TO INT` is a `ReferenceTarget`
+/// holding the spec `REF_TO INT`.
+#[derive(Clone, Debug, PartialEq, Recurse)]
+pub struct ReferenceSpec {
+    /// The surface keyword that produced this level.
+    #[recurse(ignore)]
+    pub syntax: RefSyntax,
+    pub target: ReferenceTarget,
 }
 
 /// The surface syntax that produced a reference declaration or initializer.

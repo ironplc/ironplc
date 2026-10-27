@@ -928,6 +928,20 @@ type is an array, and carries exactly one subscript per dimension.
 **REQ-LOW-lowering-032** A `Deref` projection applies only to a place whose
 type is a reference.
 
+**REQ-LOW-lowering-202** What a reference a reference refers to refers to is
+a `Deref` of the `Deref`: `pp^^` on a `REF_TO REF_TO DINT`, as an expression
+and as the dereferenced variable of `pp^^ := v`, lowers to the place `pp`
+with two `Deref` projections, read and written as the `DINT` it names, and
+`pp^` to the place with one, read and written as the reference it names.
+
+**REQ-LOW-codegen-203** The bytecode backend follows a reference that is not
+in a variable by loading it and then what it refers to: a read of `pp^^`
+loads the reference variable `pp`, follows it to the reference `pp^` with
+`LOAD_INDIRECT`, and follows that with another; a store to `pp^^` pushes the
+value, loads the reference `pp^` the same way, and stores through it with
+`STORE_INDIRECT`. Each level null-checks and range-checks as a reference in
+a variable does (V4004, V9005).
+
 **REQ-LOW-lowering-033** A `VAR_IN_OUT` parameter is a variable of reference
 type, every access to it carries an explicit `Deref`, and the matching argument
 at each call site is the place passed by reference

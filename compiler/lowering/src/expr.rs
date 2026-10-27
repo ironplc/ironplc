@@ -192,22 +192,36 @@ impl Lowering<'_> {
 
     /// The place `reference^` names. `REF(x)^`, and `ADR(x)^`, which the
     /// analyzer rewrote to `REF(x)^` (`xform_resolve_adr`), is `x` itself,
-    /// and `p^` what the reference variable `p` refers to.
+    /// `p^` what the reference variable `p` refers to, and `pp^^` what the
+    /// reference `pp^` refers to: a `Deref` of the place `pp^` names
+    /// (REQ-LOW-lowering-202).
     pub(crate) fn dereferenced_place(
         &mut self,
         frame: &BodyFrame,
         reference: &AstExpr,
         span: &SourceSpan,
     ) -> Lowered<Place> {
-        if let AstExprKind::Ref(variable) = &reference.kind {
-            return self.variable_place(frame, variable);
-        }
-        // A reference that is not in a variable, such as one a function
-        // returns, is not a place to follow.
-        let AstExprKind::Variable(variable) = &reference.kind else {
-            return Err(Unlowered::NotYet);
+        let reference = match &reference.kind {
+            AstExprKind::Ref(variable) => return self.variable_place(frame, variable),
+            AstExprKind::Variable(variable) => self.variable_place(frame, variable)?,
+            AstExprKind::Deref(inner) => self.dereferenced_place(frame, inner, span)?,
+            AstExprKind::Expression(inner) => {
+                return self.dereferenced_place(frame, inner, span);
+            }
+            // A reference that is not in a variable, such as one a function
+            // returns, is not a place to follow.
+            AstExprKind::Compare(_)
+            | AstExprKind::BinaryOp(_)
+            | AstExprKind::UnaryOp(_)
+            | AstExprKind::Const(_)
+            | AstExprKind::EnumeratedValue(_)
+            | AstExprKind::Function(_)
+            | AstExprKind::MethodCall(_)
+            | AstExprKind::LateBound(_)
+            | AstExprKind::Null(_)
+            | AstExprKind::ImplicitConversion(_)
+            | AstExprKind::CallOutput(_) => return Err(Unlowered::NotYet),
         };
-        let reference = self.variable_place(frame, variable)?;
         Ok(self.program.deref(reference, span)?)
     }
 

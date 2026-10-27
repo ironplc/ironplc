@@ -125,6 +125,21 @@ impl Located for Variable {
 }
 
 impl Variable {
+    /// The variable this variable refers to, `self^`, as a variable: the
+    /// dereference the parser spells within a chain (`p^.f`, `p^[i]`) and
+    /// as the variable of `pp^^ := v`. A directly represented variable is
+    /// not a reference; it is returned unchanged for a rule to reject.
+    pub fn dereferenced(self) -> Variable {
+        match self {
+            Variable::Symbolic(kind) => {
+                Variable::Symbolic(SymbolicVariableKind::Deref(DerefVariable {
+                    variable: Box::new(kind),
+                }))
+            }
+            Variable::Direct(_) => self,
+        }
+    }
+
     pub fn named(name: &str) -> Variable {
         Variable::Symbolic(SymbolicVariableKind::Named(NamedVariable {
             name: Id::from(name),

@@ -1331,6 +1331,9 @@ parser! {
       / tok(TokenType::Ref) _ tok(TokenType::LeftParen) _ v:variable() _ tok(TokenType::RightParen) { ReferenceInitialValue::Ref(v) }
     rule ref_to_target() -> ReferenceTarget =
       subranges:array_subranges() { ReferenceTarget::Array(subranges) }
+      // A reference type spelled in place: `REF_TO REF_TO INT`, and the
+      // TwinCAT/CODESYS `POINTER TO POINTER TO INT`, at any depth.
+      / syntax:ref_to_keyword() _ target:ref_to_target() { ReferenceTarget::Reference(Box::new(ReferenceSpec { syntax, target })) }
       / tn:non_generic_type_name() { ReferenceTarget::Named(tn) }
     pub rule output_declarations() -> Vec<VarDecl> = tok(TokenType::VarOutput) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep_or_empty(<var_init_decl()>) _ tok(TokenType::EndVar) {
       VarDeclarations::flat_map(declarations, VariableType::Output, qualifier)
@@ -2292,9 +2295,14 @@ parser! {
           span: eq.span.clone(),
         })
       }
-      / var:variable() _ tok(TokenType::Caret) _ assign:tok(TokenType::Assignment) _ expr:expression() {
+      // A store through a reference: `p^ := v`, and through a reference a
+      // reference refers to, `pp^^ := v`. The last caret is the store
+      // through the reference; each caret before it dereferences the
+      // variable, so the target of `pp^^ := v` is the variable `pp^`.
+      / var:variable() carets:(_ c:tok(TokenType::Caret) { c })+ _ assign:tok(TokenType::Assignment) _ expr:expression() {
+        let target = carets.iter().skip(1).fold(var, |var, _| var.dereferenced());
         StmtKind::Assignment(Assignment {
-          target: var,
+          target,
           deref: true,
           ref_bind: false,
           set_bind: false,
