@@ -52,14 +52,13 @@ impl Lowering<'_> {
         if let Some((func, function)) = self.structure_result_call(assignment) {
             return self.structure_result_assignment(frame, assignment, func, function);
         }
-        let stmt = self.store(
+        self.store(
             frame,
             &assignment.target,
             assignment.deref,
             &assignment.value,
             assignment.span(),
-        )?;
-        Ok(vec![stmt])
+        )
     }
 
     /// Stores the source value `value` at `target`, or, when `deref`, at what
@@ -74,10 +73,11 @@ impl Lowering<'_> {
         deref: bool,
         value: &AstExpr,
         span: SourceSpan,
-    ) -> Lowered<Stmt> {
+    ) -> Lowered<Vec<Stmt>> {
         if let Variable::Symbolic(target) = target {
             if crate::bits::selected_bits(target).is_some() {
-                return self.bits_assignment(frame, target, deref, value, span);
+                let stmt = self.bits_assignment(frame, target, deref, value, span)?;
+                return Ok(vec![stmt]);
             }
         }
         let mut place = self.variable_place(frame, target)?;
@@ -87,23 +87,35 @@ impl Lowering<'_> {
         self.store_at(frame, place, value, span)
     }
 
-    /// Stores the source value `value` at `place`: a string, or a scalar
-    /// value narrowed to the place's storage unless it already fits
-    /// (REQ-LOW-lowering-046).
+    /// Stores the source value `value` at `place`: a string, an aggregate,
+    /// or a scalar value narrowed to the place's storage unless it already
+    /// fits (REQ-LOW-lowering-046). A selection of strings or aggregates
+    /// stores the input it selects (`selection.rs`), after the statements that
+    /// evaluate its inputs; any other value is one statement.
     pub(crate) fn store_at(
         &mut self,
         frame: &BodyFrame,
         place: Place,
         value: &AstExpr,
         span: SourceSpan,
-    ) -> Lowered<Stmt> {
+    ) -> Lowered<Vec<Stmt>> {
         match self.program.types().kind(place.ty()) {
-            Some(TypeKind::String(_)) => return self.string_assignment(frame, place, value, span),
+            Some(
+                TypeKind::String(_)
+                | TypeKind::Array { .. }
+                | TypeKind::Structure { .. }
+                | TypeKind::FunctionBlock { .. },
+            ) if self.is_selection(value) => {
+                return self.store_selection(frame, place, value, span);
+            }
+            Some(TypeKind::String(_)) => {
+                return Ok(vec![self.string_assignment(frame, place, value, span)?]);
+            }
             Some(
                 TypeKind::Array { .. }
                 | TypeKind::Structure { .. }
                 | TypeKind::FunctionBlock { .. },
-            ) => return self.aggregate_assignment(frame, place, value, span),
+            ) => return Ok(vec![self.aggregate_assignment(frame, place, value, span)?]),
             Some(
                 TypeKind::Bool
                 | TypeKind::Integer { .. }
@@ -131,7 +143,7 @@ impl Lowering<'_> {
         if value.ty() != operated && !(value.ty().is_numeric() && operated.is_numeric()) {
             return Err(Unlowered::NotYet);
         }
-        Ok(self.assign_value(place, value, span)?)
+        Ok(vec![self.assign_value(place, value, span)?])
     }
 
     /// Stores the lowered scalar `value` at `place`, narrowed to the place's
@@ -151,9 +163,10 @@ impl Lowering<'_> {
 
     /// Copies the whole of the variable `value`, or of the output of a call
     /// `value` reads (`ob => f`), to `place`, an array, a structure or a
-    /// function block instance (REQ-LOW-lowering-061). Any other source is
-    /// not lowered here; the assignment of a call of a function that returns
-    /// a structure is `structure_result.rs`'s.
+    /// function block instance (REQ-LOW-lowering-061), `MOVE(x)` and `(x)`
+    /// being `x` (REQ-LOW-lowering-203). Any other source is not lowered
+    /// here; the assignment of a call of a function that returns a structure
+    /// is `structure_result.rs`'s.
     fn aggregate_assignment(
         &mut self,
         frame: &BodyFrame,
@@ -161,6 +174,7 @@ impl Lowering<'_> {
         value: &AstExpr,
         span: SourceSpan,
     ) -> Lowered<Stmt> {
+        let value = self.unwrapped(value);
         let source = if let AstExprKind::CallOutput(output) = &value.kind {
             self.call_output_place(frame, output)?
         } else if let AstExprKind::Variable(variable) = &value.kind {

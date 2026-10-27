@@ -31,6 +31,13 @@
 //! does not accept, ends the check of its call: the rule that failed to type
 //! it, or the argument type check (P4026), has already said why.
 //!
+//! An input of an array, structure or function block type, which `SEL` and
+//! `MUX` select between as they do any type, is not one the relation knows.
+//! Such inputs have one type to select at when every one has the shape of
+//! the first, as an assignment of one to another requires (P2037), and the
+//! call is reported as P4049 otherwise, as is one that selects between such
+//! an input and a value of another kind.
+//!
 //! ## Passes
 //!
 //! ```ignore
@@ -67,7 +74,7 @@ use ironplc_dsl::{
     common::{Library, TypeName},
     core::Located,
     diagnostic::{Diagnostic, Label},
-    textual::{Expr, ExprKind, Function},
+    textual::{Expr, ExprKind, ExprType, Function},
     visitor::Visitor,
 };
 use ironplc_parser::options::CompilerOptions;
@@ -75,15 +82,16 @@ use ironplc_problems::Problem;
 use std::convert::Infallible;
 
 use crate::{
-    builtin_function::{BuiltinFunction, OneTypeResult},
+    builtin_function::{BuiltinFunction, NumericFunction, OneTypeResult},
     function_environment::FunctionEnvironment,
     intermediates::common_operand::common_operand_of,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    semantic_type::SemanticType,
     type_compat::are_types_compatible,
     type_environment::TypeEnvironment,
-    value_type::{operand_type_name, parameter_type_name},
+    value_type::{describe, operand_type_name, parameter_type_name},
 };
 
 pub fn apply(
@@ -135,6 +143,40 @@ impl RuleFunctionInputsCommonType<'_> {
         if shape.result != OneTypeResult::Common {
             return;
         }
+        let selected: Vec<_> = signature
+            .inputs_of(&call.param_assignment)
+            .skip(shape.first)
+            .collect();
+        // `SEL` and `MUX` select between inputs of any type; another
+        // function's parameters accept no aggregate (P4026).
+        let selects = matches!(
+            builtin,
+            BuiltinFunction::Numeric(NumericFunction::Sel) | BuiltinFunction::Mux
+        );
+        if selects
+            && selected
+                .iter()
+                .any(|(_, input)| self.composite(input).is_some())
+        {
+            let first = selected
+                .first()
+                .and_then(|(_, input)| self.composite(input));
+            let same_shape = selected.iter().all(|(_, input)| {
+                self.composite(input).is_some() && self.composite(input) == first
+            });
+            if !same_shape {
+                self.report(
+                    call,
+                    selected
+                        .iter()
+                        .map(|(parameter, input)| {
+                            (parameter.name.original().to_string(), self.named(input))
+                        })
+                        .collect(),
+                );
+            }
+            return;
+        }
         // Each input of the function's type, as its parameter's name and the
         // name the relation knows its type by. An input without a type, or
         // of a type its parameter does not accept, is another rule's.
@@ -167,16 +209,73 @@ impl RuleFunctionInputsCommonType<'_> {
         if common_operand_of(&names, self.options).is_some() {
             return;
         }
+        self.report(
+            call,
+            inputs
+                .iter()
+                .map(|(parameter, name)| {
+                    (
+                        parameter.original().to_string(),
+                        name.to_string().to_uppercase(),
+                    )
+                })
+                .collect(),
+        );
+    }
+
+    /// Reports P4049 at `call`, naming the type of each of its `inputs` by
+    /// its parameter.
+    fn report(&mut self, call: &Function, inputs: Vec<(String, String)>) {
         let mut diagnostic = Diagnostic::problem(
             Problem::OperatorOperandTypeMismatch,
             Label::span(call.name.span(), "Function call"),
         )
         .with_context("operator", call.name.original());
         for (parameter, name) in &inputs {
-            diagnostic =
-                diagnostic.with_context(parameter.original(), &name.to_string().to_uppercase());
+            diagnostic = diagnostic.with_context(parameter, name);
         }
         self.diagnostics.push(diagnostic);
+    }
+
+    /// The shape of the type of `input` when it is an array, a structure or
+    /// a function block, which an input is selected as the whole value of.
+    fn composite(&self, input: &Expr) -> Option<&SemanticType> {
+        let Some(ExprType::Concrete(id) | ExprType::Inferred(id)) = &input.expr_type else {
+            return None;
+        };
+        let representation = &self.types.get_by_id(*id)?.representation;
+        match representation {
+            SemanticType::Array { .. }
+            | SemanticType::Structure { .. }
+            | SemanticType::FunctionBlock { .. } => Some(representation),
+            SemanticType::Bool
+            | SemanticType::Int { .. }
+            | SemanticType::UInt { .. }
+            | SemanticType::Real { .. }
+            | SemanticType::Bytes { .. }
+            | SemanticType::Time { .. }
+            | SemanticType::Date { .. }
+            | SemanticType::TimeOfDay { .. }
+            | SemanticType::DateAndTime { .. }
+            | SemanticType::String { .. }
+            | SemanticType::Enumeration { .. }
+            | SemanticType::Subrange { .. }
+            | SemanticType::Reference { .. }
+            | SemanticType::Interface { .. } => None,
+        }
+    }
+
+    /// The type of `input` as a diagnostic names it.
+    fn named(&self, input: &Expr) -> String {
+        match &input.expr_type {
+            Some(ExprType::Concrete(id) | ExprType::Inferred(id)) => {
+                describe(self.types, *id).to_uppercase()
+            }
+            Some(expr_type) => operand_type_name(self.types, expr_type)
+                .map(|name| name.to_string().to_uppercase())
+                .unwrap_or_default(),
+            None => String::new(),
+        }
     }
 }
 
@@ -222,6 +321,7 @@ VAR
     s : STRING;
     m : Small;
     w : WORD;
+    t : TIME;
 END_VAR
     x := {value};
 END_PROGRAM"
@@ -236,6 +336,41 @@ END_PROGRAM"
         Problem::OperatorOperandTypeMismatch.code().to_string()
     }
 
+    /// A program declaring structures of two shapes, arrays of two bounds
+    /// and a number, whose body assigns `value` to the structure `x`.
+    fn aggregates_with(value: &str) -> String {
+        format!(
+            "TYPE Point : STRUCT x : DINT; y : DINT; END_STRUCT; END_TYPE
+             TYPE Other : STRUCT x : DINT; y : DINT; END_STRUCT; END_TYPE
+             TYPE Wide : STRUCT x : DINT; y : DINT; z : DINT; END_STRUCT; END_TYPE
+             PROGRAM main VAR x : Point; g : BOOL; k : DINT; d : DINT; p : Point; o : Other;
+                 w : Wide; a : ARRAY[1..2] OF DINT; b : ARRAY[1..3] OF DINT; END_VAR
+               x := {value};
+             END_PROGRAM"
+        )
+    }
+
+    #[spec_test(REQ_IC_analyzer_130)]
+    #[rstest]
+    #[case::structures_of_other_fields("SEL(g, p, w)")]
+    #[case::arrays_of_other_bounds("SEL(g, a, b)")]
+    #[case::structure_and_number("SEL(g, p, d)")]
+    #[case::mux_with_one_of_other_fields("MUX(k, p, o, w)")]
+    fn apply_when_selected_aggregates_differ_in_shape_then_p4049(#[case] value: &str) {
+        let codes = rule_codes(apply, &aggregates_with(value), &CompilerOptions::default());
+        assert_eq!(codes, vec![p4049()], "{value}");
+    }
+
+    #[spec_test(REQ_IC_analyzer_130)]
+    #[rstest]
+    #[case::same_type("SEL(g, p, p)")]
+    #[case::same_shape("SEL(g, p, o)")]
+    #[case::mux_of_one_shape("MUX(k, p, o, p)")]
+    fn apply_when_selected_aggregates_share_a_shape_then_ok(#[case] value: &str) {
+        let codes = rule_codes(apply, &aggregates_with(value), &CompilerOptions::default());
+        assert!(codes.is_empty(), "{value}: {codes:?}");
+    }
+
     #[spec_test(REQ_IC_analyzer_125)]
     #[rstest]
     #[case::max_of_signed_and_unsigned("MAX(d, u)")]
@@ -247,6 +382,8 @@ END_PROGRAM"
     #[case::subrange_at_its_base_type("MAX(m, u)")]
     #[case::named_inputs("MAX(IN2 := u, IN1 := d)")]
     #[case::reported_once_in_an_outer_call("MAX(MIN(d, u), l)")]
+    #[case::sel_of_a_duration_and_an_integer("SEL(g, t, d)")]
+    #[case::mux_of_integers_and_a_string("MUX(k, d, d, d, s)")]
     fn apply_when_no_input_type_holds_every_other_then_p4049(#[case] value: &str) {
         assert_eq!(codes_for(value, &CompilerOptions::default()), vec![p4049()]);
     }
@@ -276,6 +413,9 @@ END_PROGRAM"
     #[case::real_literals_around_a_narrow_integer("LIMIT(0.5, i, 2.5)")]
     #[case::literals_only("MAX(1, 2.5)")]
     #[case::real_and_long_real("ATAN2(r, lr)")]
+    #[case::sel_of_strings("SEL(g, s, s)")]
+    #[case::sel_of_bools("SEL(g, g, g)")]
+    #[case::mux_of_durations("MUX(k, t, t)")]
     fn apply_when_every_input_widens_to_one_then_ok(#[case] value: &str) {
         assert!(codes_for(value, &CompilerOptions::default()).is_empty());
     }

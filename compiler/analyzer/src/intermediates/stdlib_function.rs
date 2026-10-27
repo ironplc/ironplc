@@ -101,15 +101,15 @@ fn get_numeric_functions() -> Vec<FunctionSignature> {
                 input_param("MX", "ANY_NUM"),
             ],
         ),
-        // SEL: binary selection (BOOL, ANY_NUM, ANY_NUM -> ANY_NUM)
+        // SEL: binary selection (BOOL, ANY, ANY -> ANY)
         FunctionSignature::stdlib(
             "SEL",
             BuiltinFunction::Numeric(NumericFunction::Sel),
-            TypeName::from("ANY_NUM"),
+            TypeName::from("ANY"),
             vec![
                 input_param("G", "BOOL"),
-                input_param("IN0", "ANY_NUM"),
-                input_param("IN1", "ANY_NUM"),
+                input_param("IN0", "ANY"),
+                input_param("IN1", "ANY"),
             ],
         ),
         // LN: natural logarithm (ANY_REAL -> ANY_REAL)
@@ -203,22 +203,23 @@ fn get_numeric_functions() -> Vec<FunctionSignature> {
 ///
 /// MUX is an extensible multiplexer that selects one of N inputs based on
 /// an integer selector K. Unlike SEL (which uses a BOOL selector and exactly
-/// 2 inputs), MUX uses an ANY_INT selector and supports 2..16 inputs.
+/// 2 inputs), MUX uses an ANY_INT selector and supports 2..16 inputs. Its
+/// inputs are of any type (`ANY`), as SEL's are.
 ///
 /// The declared parameters define the minimum (K + 2 IN values = 3 args).
 /// Additional IN arguments are accepted because the signature is extensible.
 fn get_selection_functions() -> Vec<FunctionSignature> {
     vec![
-        // MUX: multiplexer (ANY_INT, ANY_NUM, ANY_NUM, ... -> ANY_NUM)
+        // MUX: multiplexer (ANY_INT, ANY, ANY, ... -> ANY)
         // MUX supports K + 2..16 IN values = 3..17 total input arguments
         FunctionSignature::stdlib_extensible(
             "MUX",
             BuiltinFunction::Mux,
-            TypeName::from("ANY_NUM"),
+            TypeName::from("ANY"),
             vec![
                 input_param("K", "ANY_INT"),
-                input_param("IN0", "ANY_NUM"),
-                input_param("IN1", "ANY_NUM"),
+                input_param("IN0", "ANY"),
+                input_param("IN1", "ANY"),
             ],
             Some(17),
         ),
@@ -231,17 +232,16 @@ fn get_selection_functions() -> Vec<FunctionSignature> {
 
 /// Returns the MOVE standard function definition.
 ///
-/// MOVE copies the input value to the output, equivalent to assignment.
-/// IEC 61131-3 defines MOVE as operating on ANY type, but since the codegen
-/// currently supports numeric types we use ANY_NUM here.
+/// MOVE copies the input value to the output, equivalent to assignment, and
+/// IEC 61131-3 declares it on any type (`ANY`).
 fn get_assignment_functions() -> Vec<FunctionSignature> {
     vec![
-        // MOVE: assignment (ANY_NUM -> ANY_NUM)
+        // MOVE: assignment (ANY -> ANY)
         FunctionSignature::stdlib(
             "MOVE",
             BuiltinFunction::Move,
-            TypeName::from("ANY_NUM"),
-            vec![input_param("IN", "ANY_NUM")],
+            TypeName::from("ANY"),
+            vec![input_param("IN", "ANY")],
         ),
     ]
 }
