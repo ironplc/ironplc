@@ -22,8 +22,10 @@ use crate::builder::ContainerBuilder;
 use crate::container::Container;
 use crate::debug_section::{iec_type_tag, var_section, VarNameEntry};
 use crate::header::{FileHeader, HEADER_SIZE};
-use crate::id_types::{FunctionId, VarIndex};
+use crate::id_types::{FunctionId, InstanceId, TaskId, VarIndex};
 use crate::opcode;
+use crate::task_table::{ProgramInstanceEntry, TaskEntry};
+use crate::task_type::TaskType;
 
 /// The "steel thread" constant pool: `10` at index 0, `32` at index 1.
 pub const STEEL_THREAD_CONSTANTS: [i32; 2] = [10, 32];
@@ -267,4 +269,44 @@ pub fn with_tampered_header(data: &[u8], tamper: impl FnOnce(&mut FileHeader)) -
     header.write_to(&mut tampered).unwrap();
     tampered.extend_from_slice(&data[HEADER_SIZE..]);
     tampered
+}
+
+/// An enabled freewheeling task `task_id` of priority `priority`, with the
+/// watchdog `watchdog_us` (0 disables it).
+pub fn freewheeling_task(task_id: u16, priority: u16, watchdog_us: u64) -> TaskEntry {
+    TaskEntry {
+        task_id: TaskId::new(task_id),
+        priority,
+        task_type: TaskType::Freewheeling,
+        flags: 0x01, // enabled
+        interval_us: 0,
+        single_var_index: VarIndex::NO_SINGLE_VAR,
+        watchdog_us,
+        input_image_offset: 0,
+        output_image_offset: 0,
+        reserved: [0; 4],
+    }
+}
+
+/// The program instance `instance_id` of task `task_id`, whose scan is
+/// function `function_id` and whose partition of the variable table is
+/// `[var_offset, var_offset + var_count)`. Its init function is
+/// [`FunctionId::INIT`]; a test that needs another one overrides the field.
+pub fn program_instance(
+    instance_id: u16,
+    task_id: u16,
+    function_id: u16,
+    var_offset: u16,
+    var_count: u16,
+) -> ProgramInstanceEntry {
+    ProgramInstanceEntry {
+        instance_id: InstanceId::new(instance_id),
+        task_id: TaskId::new(task_id),
+        entry_function_id: FunctionId::new(function_id),
+        var_table_offset: var_offset,
+        var_table_count: var_count,
+        fb_instance_offset: 0,
+        fb_instance_count: 0,
+        init_function_id: FunctionId::INIT,
+    }
 }
