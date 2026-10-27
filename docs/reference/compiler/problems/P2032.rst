@@ -4,7 +4,7 @@ P2032
 
 .. problem-summary:: P2032
 
-This error occurs when a reference assignment has incompatible types. The reference type and the target type must match exactly, and a reference takes only ``REF()``, ``NULL`` or another reference.
+This error occurs when a reference assignment, or a reference's initial value, has incompatible types. The reference type and the target type must match exactly, and a reference takes only ``REF()``, ``NULL`` or another reference.
 
 Example
 -------
@@ -111,3 +111,30 @@ To fix this error, take the reference at the level the target expects:
        rr^ := REF(x); (* Correct: stores a reference to an INT in r *)
    END_PROGRAM
 
+A reference's initial value
+---------------------------
+
+The compiler checks a ``REF()`` initial value in a declaration as it checks
+the same ``REF()`` assigned to the reference. The following code will
+generate error P2032:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           x : DINT;
+           r : REF_TO INT := REF(x);  (* Error: REF(x) is REF_TO DINT *)
+       END_VAR
+   END_PROGRAM
+
+To fix this error, declare the reference to the type of the variable it
+refers to:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           x : DINT;
+           r : REF_TO DINT := REF(x);  (* Correct: REF_TO DINT matches DINT variable *)
+       END_VAR
+   END_PROGRAM

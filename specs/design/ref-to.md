@@ -312,6 +312,8 @@ This approach works because references are type-erased at the bytecode level (al
 
 These codes are in the P2000-P3999 range (type system errors), continuing from the existing highest code P2027.
 
+The checks on `REF(x)` (P2028, P2029, P2030 and P2032) apply wherever the reference is stored: an assignment, and a declaration's initial value (`r : REF_TO INT := REF(x)`, REQ-IC-analyzer-133). A reference passed to a reference input of a function, a function block or a method is checked as an argument is instead, and a mismatch there is P4026 (REQ-IC-analyzer-086, REQ-IC-analyzer-132).
+
 ## Nested References
 
 A reference to a reference (`REF_TO REF_TO INT`, spelled in place or through a named reference type, and the CODESYS `POINTER TO POINTER TO INT`) is a reference like any other: its slot holds the variable index of a reference variable, and following it is one more `LOAD_INDIRECT`. Nothing in the VM is specific to nesting; each level null-checks and range-checks as a single level does.

@@ -442,10 +442,8 @@ impl RuleRefTo<'_> {
         }
     }
 
-    /// P2032: `REF(x)` assigned where it does not fit: to a place that is
-    /// not a reference, or to a reference to another type than `x`'s
-    /// (`ri := REF(d)`, and `ri := REF(ri)`, a reference to a reference
-    /// stored in a reference to a value), unless type punning is allowed.
+    /// P2032: `REF(x)` assigned where it does not fit (see
+    /// [`Self::check_ref_stored`]).
     fn check_ref_assignment(&mut self, node: &Assignment) {
         let ExprKind::Ref(ref_var) = &node.value.kind else {
             return;
@@ -453,10 +451,20 @@ impl RuleRefTo<'_> {
         if node.set_bind || node.reset_bind {
             return;
         }
-        let ref_span = variable_span(ref_var);
         let Some(assigned) = self.assigned_type_id(node) else {
             return;
         };
+        self.check_ref_stored(assigned, ref_var);
+    }
+
+    /// P2032: `REF(ref_var)` stored in a place of type `assigned` where it
+    /// does not fit: a place that is not a reference, or a reference to
+    /// another type than `ref_var`'s (`ri := REF(d)`, and `ri := REF(ri)`,
+    /// a reference to a reference stored in a reference to a value), unless
+    /// type punning is allowed. An assignment stores it, and so does a
+    /// declaration's initial value (`ri : REF_TO INT := REF(d)`).
+    fn check_ref_stored(&mut self, assigned: TypeId, ref_var: &Variable) {
+        let ref_span = variable_span(ref_var);
         if !self.is_reference_id(assigned) {
             self.diagnostics.push(Diagnostic::problem(
                 Problem::ReferenceTypeMismatch,
@@ -627,6 +635,15 @@ impl Visitor<Infallible> for RuleRefTo<'_> {
                 ReferenceTarget::Array(_) | ReferenceTarget::Reference(_) => node.identifier.span(),
             };
             self.check_reference_to_nested(init.syntax, &init.target, span);
+            // `r : REF_TO INT := REF(x)` stores `REF(x)` in `r` as
+            // `r := REF(x)` does, so it is checked as that assignment is,
+            // in the same order: the type first, then the operand.
+            if let Some(ReferenceInitialValue::Ref(ref_var)) = &init.initial_value {
+                if let Some(declared) = node.type_id {
+                    self.check_ref_stored(declared, ref_var);
+                }
+                self.check_ref_operand(ref_var);
+            }
         }
         node.recurse_visit(self)
     }
@@ -658,6 +675,9 @@ impl Visitor<Infallible> for RuleRefTo<'_> {
         node.recurse_visit(self)
     }
 }
+
+#[cfg(test)]
+mod initializer_tests;
 
 #[cfg(test)]
 mod nested_reference_tests;
