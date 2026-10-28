@@ -69,3 +69,45 @@ or the reference to a variable:
        r := NULL;    (* Correct: refers to nothing *)
        r := REF(x);  (* Correct: refers to x *)
    END_PROGRAM
+
+A reference to a reference
+--------------------------
+
+``REF()`` of a reference variable is a reference to a reference, and a
+reference to a reference is not a reference to a value. Each level takes only
+a reference to the type at that level, so the following code will generate
+error P2032 twice:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           x : INT;
+           r : REF_TO INT;
+           rr : REF_TO REF_TO INT;
+       END_VAR
+
+       r := REF(r);   (* Error: REF(r) is REF_TO REF_TO INT, r is REF_TO INT *)
+       rr := REF(x);  (* Error: REF(x) is REF_TO INT, rr is REF_TO REF_TO INT *)
+   END_PROGRAM
+
+Had the first assignment been accepted, ``r`` would hold the location of
+itself, and ``r^ := 5`` would then make ``r`` refer to whatever variable is at
+location 5.
+
+To fix this error, take the reference at the level the target expects:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           x : INT;
+           r : REF_TO INT;
+           rr : REF_TO REF_TO INT;
+       END_VAR
+
+       r := REF(x);   (* Correct: a reference to the INT *)
+       rr := REF(r);  (* Correct: a reference to the reference *)
+       rr^ := REF(x); (* Correct: stores a reference to an INT in r *)
+   END_PROGRAM
+

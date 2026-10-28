@@ -95,6 +95,10 @@ impl Lowering<'_> {
         // The analyzer wrote the call in normal form: its inputs in the order
         // of the function's parameters.
         let args: Vec<&AstExpr> = func.inputs().collect();
+        // `MOVE(s)` is `s` (REQ-LOW-lowering-203).
+        if let (BuiltinFunction::Move, [value]) = (&builtin, args.as_slice()) {
+            return self.str_expr(frame, value);
+        }
         if let BuiltinFunction::String(function) = builtin {
             return self.string_function_string(frame, expr, function, &args);
         }

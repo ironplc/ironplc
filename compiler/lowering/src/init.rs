@@ -304,7 +304,7 @@ impl<'a> Lowering<'a> {
                     Reach::Body(frame) | Reach::Init(frame) => frame,
                     Reach::Global => return Err(Unlowered::NotYet),
                 };
-                statements.push(self.store_at(frame, place, expr, span.clone())?);
+                statements.extend(self.store_at(frame, place, expr, span.clone())?);
             }
         }
         Ok(())

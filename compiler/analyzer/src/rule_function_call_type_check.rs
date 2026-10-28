@@ -397,6 +397,9 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
 }
 
 #[cfg(test)]
+mod any_input_tests;
+
+#[cfg(test)]
 mod bitwise_tests;
 
 #[cfg(test)]
@@ -621,20 +624,6 @@ VAR
     result : WORD;
 END_VAR
     result := AND(a, b, c);
-END_PROGRAM",
-        [Problem::FunctionCallArgTypeMismatch]
-    );
-
-    rule_err!(
-        apply_when_mux_fourth_input_mismatch_then_error,
-        "
-PROGRAM main
-VAR
-    a : DINT;
-    s : STRING;
-    result : DINT;
-END_VAR
-    result := MUX(0, a, a, a, s);
 END_PROGRAM",
         [Problem::FunctionCallArgTypeMismatch]
     );

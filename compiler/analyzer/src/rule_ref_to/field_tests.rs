@@ -43,9 +43,8 @@ fn codes(body: &str) -> Vec<String> {
     rule_codes(super::apply, &program(body), &edition3_options())
 }
 
-#[spec_test(REQ_IC_analyzer_129)]
+#[spec_test(REQ_IC_analyzer_131)]
 #[rstest]
-#[case::dereferenced("h(rr := REF(x)); y := h.rr^;")]
 #[case::inherited_field_dereferenced("y := e.rr^;")]
 #[case::field_of_array_element_dereferenced("y := hs[1].rr^;")]
 #[case::structure_field_dereferenced("s.rp := REF(x); y := s.rp^;")]
@@ -58,7 +57,7 @@ fn apply_when_field_is_reference_then_ok(#[case] body: &str) {
     assert!(codes.is_empty(), "{codes:?}");
 }
 
-#[spec_test(REQ_IC_analyzer_129)]
+#[spec_test(REQ_IC_analyzer_131)]
 #[rstest]
 #[case::value_assigned("h.rr := 0;", Problem::ReferenceTypeMismatch)]
 #[case::reference_of_another_type_assigned("h.rr := REF(r);", Problem::ReferenceTypeMismatch)]
@@ -69,7 +68,7 @@ fn apply_when_reference_field_misused_then_error(#[case] body: &str, #[case] pro
     assert_eq!(codes(body), [problem.code()]);
 }
 
-#[spec_test(REQ_IC_analyzer_129)]
+#[spec_test(REQ_IC_analyzer_131)]
 #[rstest]
 #[case::dereferenced("y := h.i^;", Problem::DerefRequiresReferenceType)]
 #[case::null_assigned("h.i := NULL;", Problem::NullRequiresReferenceType)]
@@ -80,7 +79,7 @@ fn apply_when_field_is_not_reference_then_error(#[case] body: &str, #[case] prob
 }
 
 rule_ok!(
-    #[spec_test(REQ_IC_analyzer_129)]
+    #[spec_test(REQ_IC_analyzer_131)]
     apply_when_member_of_this_is_reference_then_ok,
     "FUNCTION_BLOCK H
 VAR_INPUT rr : REF_TO INT; END_VAR

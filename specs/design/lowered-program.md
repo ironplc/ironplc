@@ -928,6 +928,20 @@ type is an array, and carries exactly one subscript per dimension.
 **REQ-LOW-lowering-032** A `Deref` projection applies only to a place whose
 type is a reference.
 
+**REQ-LOW-lowering-202** What a reference a reference refers to refers to is
+a `Deref` of the `Deref`: `pp^^` on a `REF_TO REF_TO DINT`, as an expression
+and as the dereferenced variable of `pp^^ := v`, lowers to the place `pp`
+with two `Deref` projections, read and written as the `DINT` it names, and
+`pp^` to the place with one, read and written as the reference it names.
+
+**REQ-LOW-codegen-203** The bytecode backend follows a reference that is not
+in a variable by loading it and then what it refers to: a read of `pp^^`
+loads the reference variable `pp`, follows it to the reference `pp^` with
+`LOAD_INDIRECT`, and follows that with another; a store to `pp^^` pushes the
+value, loads the reference `pp^` the same way, and stores through it with
+`STORE_INDIRECT`. Each level null-checks and range-checks as a reference in
+a variable does (V4004, V9005).
+
 **REQ-LOW-lowering-033** A `VAR_IN_OUT` parameter is a variable of reference
 type, every access to it carries an explicit `Deref`, and the matching argument
 at each call site is the place passed by reference
@@ -2376,7 +2390,9 @@ implements it.
 | Explicit conversion such as `REAL_TO_INT(x)` | A `Convert` where the operation type changes, then a `Truncate` where the storage narrows; a conversion to `BOOL` is a `Compare` with zero |
 | `TRUNC(x)` | A `Convert` to the integer the analyzer recorded for the call, narrowed where it is stored, as an arithmetic result is |
 | Enumerated value | `Const` |
-| `MOVE(x)`, parenthesised expression | The operand |
+| `MOVE(x)`, parenthesised expression | The operand, whatever its type: the operand's `Expr`, `StrExpr` or `Place` (REQ-LOW-lowering-203) |
+| `SEL` and `MUX` of `BOOL`s | The selection at the signed 32-bit integer of each `BOOL` converted to it, compared with zero (REQ-LOW-lowering-202) |
+| `x := SEL(g, a, b)` and `x := MUX(k, a, b, ...)` of strings, arrays or structures | The `If` or `Case` whose arms store the input each selects at `x`, after the stores of the selector and each input in temporaries where the inputs need them (REQ-LOW-lowering-204) |
 | Comparison of strings, such as `s < t` | A `Compare` with zero of the `Call` of the `Intrinsic` that orders two strings of their encoding (REQ-LOW-lowering-169) |
 | Conversion from a `STRING`, such as `STRING_TO_DINT(s)` | `Call` of the `Intrinsic` that reads a number of the call's type, a bit string as the unsigned integer of its width, carrying the parse policy (REQ-LOW-lowering-073) |
 | Conversion to a `STRING`, such as `DINT_TO_STRING(n)` | A `StrExpr` `Call` of the `Intrinsic` that writes a number of its operation type, of the default capacity (REQ-LOW-lowering-168) |
@@ -2417,6 +2433,58 @@ overload's name: `dt + t`, `ADD(dt, t)` and `ADD_DT_TIME(dt, t)` lower to
 **REQ-LOW-lowering-169** A comparison of two strings compares with zero the
 order the `Intrinsic` of their encoding gives them: `s < t` lowers to
 `(lt (call compare_string i32s s t) (const i32s 0))`.
+
+No `Intrinsic` selects between `BOOL`s. A `BOOL` converts to the integer 1 or
+0, as `BOOL_TO_DINT` converts it, and back by a comparison with zero, so
+lowering selects between the integers, and no backend implements a selection
+of `BOOL`s.
+
+**REQ-LOW-lowering-202** `SEL` and `MUX` of `BOOL`s lower to the `Call` of
+`SelI32` or `MuxI32` with each `BOOL` they select between converted to the
+signed 32-bit integer, its selector as it is, compared with zero: `x := SEL(g,
+a, b)` on `BOOL`s lowers to `(ne (call sel_i32 i32s g (convert i32s a)
+(convert i32s b)) (const i32s 0))`.
+
+A string is a `StrExpr` and an array, a structure or a function block instance
+a `Place`, not an `Expr`, so `MOVE` of one is the operand where the operand is
+read: the `StrExpr` a string assignment or argument reads, and the place a
+copy copies from.
+
+**REQ-LOW-lowering-203** `MOVE(x)` lowers to what `x` lowers to, whatever its
+type and through any number of `MOVE`s: `s := MOVE(t)`, `s := CONCAT(MOVE(t),
+t)`, `p := MOVE(q)`, `n := f(MOVE(q))` and `b(v := MOVE(q))` on strings and
+structures lower as `s := t`, `s := CONCAT(t, t)`, `p := q`, `n := f(q)` and
+`b(v := q)` do.
+
+`SEL` and `MUX` of a string, an array or a structure have no expression to
+lower to either, so they lower where their value is stored: an assignment, a
+function block input and a starting value. A selection evaluates its
+selector and then every input, in the order of its parameters, as a call of
+any function does and as the selection of a number does, so an input that is
+not selected still runs its calls and still traps on a subscript out of
+range. When every input is a literal or a variable reached through fields,
+constant subscripts and references that are never null, evaluating an input
+has no effect and cannot trap, and its value is the one it had when the
+selector was evaluated, so each arm stores its input itself. Otherwise the
+selector, unless it is a constant, and then each input but a literal are
+stored in temporaries of their own types first, in order.
+
+**REQ-LOW-lowering-204** `x := SEL(g, a, b)` and `x := MUX(k, a, b, ...)` of
+strings, arrays or structures lower to the `If` on `g`, or the `Case` on `k`
+with the labels `..0`, `1`, ... and an `else` for the last input, whose arms
+store the input each selects at `x`. When an input calls, computes a
+subscript or goes through a reference that may be null, the `If` or `Case`
+follows the store of `g` or `k` in a temporary, unless it is a constant, and
+then of each input but a literal in a temporary of its type, in order, and
+its arms store the temporaries: `s := SEL(g, names[i], 'none')` stores `g`
+and `names[i]` in temporaries, then stores `'none'` or the temporary. A
+selection inside an expression, such as an argument of `CONCAT` or of a
+function, and an input that is a call of a function whose result is a
+structure, are not lowered yet (P9999).
+
+The bytecode backend gives a compiler-provided temporary no storage of its
+own (see [In-place calls](#in-place-calls)), so it compiles a selection whose
+inputs need no temporaries, and reports one that needs them as P9999.
 
 Codegen has already folded the cross product of access kind and base shape
 into one addressing path (`compile_place.rs`) and one bit write

@@ -36,6 +36,7 @@ mod debug_engine;
 mod execute_add_i32;
 mod execute_arith_f32;
 mod execute_arith_f64;
+mod execute_array_deref;
 mod execute_array_ops;
 mod execute_bitwise;
 mod execute_bool;

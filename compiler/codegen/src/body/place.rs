@@ -22,7 +22,7 @@ use ironplc_ir::{Id, SourceSpan};
 use super::expr::emit_expr;
 use super::{constant, instance_field, op_type, stored_field, stored_variable};
 use crate::access::{Access, Field, Index, Named};
-use crate::compile::{CompileContext, OpWidth, VarTypeInfo};
+use crate::compile::{CompileContext, OpWidth, Signedness, VarTypeInfo};
 use crate::compile_place::Place;
 use crate::compile_string_place::StringPlace;
 use crate::compile_subscript::Subscript;
@@ -62,18 +62,75 @@ pub(super) fn resolve<'l>(
     storage(lowering, ctx, place, &access)
 }
 
-/// Where the value a read of `place` loads is.
+/// Where the value a read of `place` loads is, or a store to it goes.
 pub(super) enum Load<'l> {
     /// In this storage.
     Stored(Place<LoweredSubscript<'l>>),
-    /// In what the reference this storage holds refers to: `refs[0]^`, whose
-    /// reference is not in a variable.
-    Referenced(Place<LoweredSubscript<'l>>),
+    /// In what the reference at this location refers to: `refs[0]^`, whose
+    /// reference is in an array element, and `pp^^`, whose reference `pp^`
+    /// is what a reference variable refers to. The reference is loaded
+    /// from its location and then followed (REQ-LOW-codegen-203).
+    Referenced(Box<Load<'l>>),
 }
+
+impl<'l> Load<'l> {
+    /// Pushes the value at this location: the storage's, or the one the
+    /// loaded reference refers to.
+    pub(super) fn emit_load(
+        &self,
+        emitter: &mut Emitter,
+        ctx: &mut CompileContext,
+    ) -> Result<(), Diagnostic> {
+        match self {
+            Load::Stored(storage) => storage.emit_load(emitter, ctx),
+            Load::Referenced(reference) => {
+                reference.emit_load(emitter, ctx)?;
+                emitter.emit_load_indirect();
+                Ok(())
+            }
+        }
+    }
+
+    /// Pops a value that already fits the place's type, as every value the
+    /// lowered program stores does (REQ-LOW-lowering-046), and stores it
+    /// at this location: in the storage, or in what the loaded reference
+    /// refers to, which `STORE_INDIRECT` takes above the value.
+    pub(super) fn emit_store_fitting(
+        &self,
+        emitter: &mut Emitter,
+        ctx: &mut CompileContext,
+    ) -> Result<(), Diagnostic> {
+        match self {
+            Load::Stored(storage) => storage.emit_store_fitting(emitter, ctx),
+            Load::Referenced(reference) => {
+                reference.emit_load(emitter, ctx)?;
+                emitter.emit_store_indirect();
+                Ok(())
+            }
+        }
+    }
+
+    /// The storage the location is reached from: the one that holds the
+    /// value, or the one the first reference followed to it is in.
+    pub(super) fn storage(&self) -> &Place<LoweredSubscript<'l>> {
+        match self {
+            Load::Stored(storage) => storage,
+            Load::Referenced(reference) => reference.storage(),
+        }
+    }
+}
+
+/// What this backend knows a reference as: a 64-bit slot, as a reference
+/// variable is (`specs/design/ref-to.md`, "VarTypeInfo Integration").
+const REFERENCE_INFO: VarTypeInfo = VarTypeInfo {
+    op_width: OpWidth::W64,
+    signedness: Signedness::Unsigned,
+    storage_bits: 64,
+};
 
 /// Where the value a read of `place` loads is. What a reference that is not
 /// in a variable refers to is read by loading the reference and then what it
-/// refers to. A store to it is not supported yet.
+/// refers to.
 pub(super) fn resolve_load<'l>(
     lowering: &'l Program,
     ctx: &CompileContext,
@@ -89,7 +146,29 @@ pub(super) fn resolve_load<'l>(
     if let Access::Named(_) = deref.as_ref() {
         return storage(lowering, ctx, place, &access).map(Load::Stored);
     }
-    Place::resolve(lowering.types(), ctx, deref).map(Load::Referenced)
+    Ok(Load::Referenced(Box::new(reference_load(
+        lowering, ctx, deref,
+    )?)))
+}
+
+/// Where the reference `reference` is, to be loaded and followed: in the
+/// storage `refs[0]` or `s.r` names, or, for `pp^`, in what the reference
+/// variable `pp` refers to, which is loaded and followed in turn
+/// (REQ-LOW-codegen-203).
+fn reference_load<'l>(
+    lowering: &'l Program,
+    ctx: &CompileContext,
+    reference: &LoweredAccess<'l>,
+) -> Result<Load<'l>, Diagnostic> {
+    let Access::Deref(inner) = reference else {
+        return Place::resolve(lowering.types(), ctx, reference).map(Load::Stored);
+    };
+    if let Access::Named(_) = inner.as_ref() {
+        return Place::through_reference(ctx, inner, Some(REFERENCE_INFO)).map(Load::Stored);
+    }
+    Ok(Load::Referenced(Box::new(reference_load(
+        lowering, ctx, inner,
+    )?)))
 }
 
 /// Where codegen's layout stores `place`, which `access` names.

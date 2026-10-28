@@ -14,11 +14,12 @@ use ironplc_ir::SourceSpan;
 use ironplc_ir::{Diagnostic, Label};
 
 use super::expr::{emit_constant, emit_expr, emit_truncate};
-use super::place::variable_name;
+use super::place::{variable_name, Load};
 use super::{constant, op_type, read};
 use crate::compile::{CompileContext, OpType};
 use crate::compile_expr::{
-    classify_with_named, emit_add, emit_classified_cmp_br, emit_eq, emit_ge, emit_le, ClassifiedCmp,
+    classify_with_named, emit_add, emit_classified_cmp_br, emit_eq, emit_ge, emit_le,
+    emit_truncation, ClassifiedCmp,
 };
 use crate::compile_partial_access::Bits;
 use crate::compile_stmt::{emit_return, record_position};
@@ -116,14 +117,27 @@ impl Emission<'_> {
         match stmt.kind() {
             StmtKind::Assign { place, value } => {
                 let lowering = self.lowering;
-                let storage = super::place::resolve(lowering, ctx, place, span)?;
                 let push = |emitter: &mut Emitter, ctx: &mut CompileContext| {
                     emit_expr(emitter, ctx, lowering, value)
                 };
-                if super::place::reads_standard_block_field(lowering, ctx, value) {
-                    storage.emit_assign(emitter, ctx, push)
-                } else {
-                    storage.emit_assign_fitting(emitter, ctx, push)
+                let truncate = super::place::reads_standard_block_field(lowering, ctx, value);
+                match super::place::resolve_load(lowering, ctx, place, span)? {
+                    Load::Stored(storage) if truncate => storage.emit_assign(emitter, ctx, push),
+                    Load::Stored(storage) => storage.emit_assign_fitting(emitter, ctx, push),
+                    // A store through a reference that is not in a variable
+                    // (`pp^^ := v`): the value, then the reference, which
+                    // `STORE_INDIRECT` takes above it (REQ-LOW-codegen-203).
+                    referenced @ Load::Referenced(_) => {
+                        push(emitter, ctx)?;
+                        if truncate {
+                            if let Some(info) =
+                                super::place::type_info(lowering.types(), place.ty())
+                            {
+                                emit_truncation(emitter, info);
+                            }
+                        }
+                        referenced.emit_store_fitting(emitter, ctx)
+                    }
                 }
             }
             StmtKind::AssignStr { place, value } => {
