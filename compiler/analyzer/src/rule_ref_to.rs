@@ -660,6 +660,9 @@ impl Visitor<Infallible> for RuleRefTo<'_> {
 }
 
 #[cfg(test)]
+mod field_tests;
+
+#[cfg(test)]
 mod nested_reference_tests;
 
 #[cfg(test)]

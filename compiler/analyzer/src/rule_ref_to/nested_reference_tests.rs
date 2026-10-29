@@ -47,7 +47,7 @@ fn codes(body: &str) -> Vec<String> {
     rule_codes(super::apply, &program(body), &edition3_options())
 }
 
-#[spec_test(REQ_IC_analyzer_127)]
+#[spec_test(REQ_IC_analyzer_132)]
 #[rstest]
 #[case::dereference_of_a_value("i := r^^;")]
 #[case::parenthesized_dereference("i := (r^)^;")]
@@ -59,7 +59,7 @@ fn apply_when_value_not_reference_dereferenced_then_p2031(#[case] body: &str) {
     assert_eq!(codes(body), [Problem::DerefRequiresReferenceType.code()]);
 }
 
-#[spec_test(REQ_IC_analyzer_127)]
+#[spec_test(REQ_IC_analyzer_132)]
 #[rstest]
 #[case::variable("i := r^;")]
 #[case::parenthesized_variable("i := (r)^;")]
@@ -74,7 +74,7 @@ fn apply_when_reference_dereferenced_then_ok(#[case] body: &str) {
     assert!(codes.is_empty(), "{codes:?}");
 }
 
-#[spec_test(REQ_IC_analyzer_128)]
+#[spec_test(REQ_IC_analyzer_133)]
 #[rstest]
 #[case::reference_of_a_reference("rr := REF(r);")]
 #[case::named_reference_of_a_reference("rn := REF(r);")]
@@ -90,7 +90,7 @@ fn apply_when_reference_to_reference_used_at_its_level_then_ok(#[case] body: &st
     assert!(codes.is_empty(), "{codes:?}");
 }
 
-#[spec_test(REQ_IC_analyzer_128)]
+#[spec_test(REQ_IC_analyzer_133)]
 #[rstest]
 #[case::reference_of_a_reference_to_a_reference_to_a_value("r := REF(r);")]
 #[case::reference_of_a_value_to_a_reference_to_a_reference("rr := REF(i);")]
@@ -103,7 +103,7 @@ fn apply_when_reference_to_reference_used_at_another_level_then_p2032(#[case] bo
     assert_eq!(codes(body), [Problem::ReferenceTypeMismatch.code()]);
 }
 
-#[spec_test(REQ_IC_analyzer_128)]
+#[spec_test(REQ_IC_analyzer_133)]
 #[rstest]
 #[case::through_both("rr^^ := NULL;")]
 #[case::through_one("r^ := NULL;")]
@@ -111,7 +111,7 @@ fn apply_when_null_stored_through_to_a_value_then_p2034(#[case] body: &str) {
     assert_eq!(codes(body), [Problem::NullRequiresReferenceType.code()]);
 }
 
-#[spec_test(REQ_IC_analyzer_128)]
+#[spec_test(REQ_IC_analyzer_133)]
 #[rstest]
 #[case::reference_to_a_reference("rr := r;")]
 #[case::reference_of_a_reference("r := REF(r);")]
@@ -159,7 +159,7 @@ fn twincat_with_ref_to() -> CompilerOptions {
     }
 }
 
-#[spec_test(REQ_IC_analyzer_129)]
+#[spec_test(REQ_IC_analyzer_134)]
 #[rstest]
 #[case::reference_to_a_named_reference(
     "TYPE IntRef : REF_TO INT; END_TYPE
@@ -185,7 +185,7 @@ fn apply_when_reference_to_nests_then_p2036(#[case] program: &str) {
     );
 }
 
-#[spec_test(REQ_IC_analyzer_129)]
+#[spec_test(REQ_IC_analyzer_134)]
 #[rstest]
 #[case::reference_to_a_value("PROGRAM Main VAR r : REFERENCE TO INT; END_VAR END_PROGRAM")]
 #[case::pointer_to_a_pointer(
@@ -202,7 +202,7 @@ fn apply_when_reference_to_does_not_nest_then_ok(#[case] program: &str) {
 
 /// A nested `REFERENCE TO` spelled in place is labelled at the variable,
 /// since the elementary type it ends in has no span of its own.
-#[spec_test(REQ_IC_analyzer_129)]
+#[spec_test(REQ_IC_analyzer_134)]
 #[test]
 fn apply_when_reference_to_nests_in_place_then_p2036_at_variable() {
     let program = "PROGRAM Main VAR pp : POINTER TO REFERENCE TO INT; END_VAR END_PROGRAM";
