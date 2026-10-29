@@ -168,7 +168,7 @@ fn parse_when_case_label_radix_bound_and_flag_off_then_p4041() {
 #[test]
 fn parse_when_case_label_radix_bound_and_flag_on_then_ok() {
     let options = CompilerOptions {
-        allow_bit_string_case_labels: true,
+        allow_radix_case_labels: true,
         ..CompilerOptions::default()
     };
     assert!(problem_codes(CASE_SOURCE, &options).is_empty());
@@ -179,7 +179,7 @@ fn parse_when_case_label_radix_bound_and_flag_on_then_ok() {
 #[case::subrange_type(TYPE_SOURCE)]
 fn parse_when_declaration_radix_bound_and_flag_off_then_p4073(#[case] source: &str) {
     let options = CompilerOptions {
-        allow_bit_string_case_labels: true,
+        allow_radix_case_labels: true,
         ..CompilerOptions::default()
     };
     assert_eq!(problem_codes(source, &options), vec!["P4096"]);

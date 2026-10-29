@@ -7,7 +7,7 @@ P4041
 This error occurs when a hex, binary, or octal bit-string literal (e.g.
 ``16#D012``, ``2#1010``, ``8#17``) is used as a ``CASE`` label, or as a bound
 of a subrange label (``16#01..16#0F:``), without the
-``--allow-bit-string-case-labels`` compiler flag.
+``--allow-radix-case-labels`` compiler flag.
 
 The IEC 61131-3 standard grammar for a case label (Annex B) is
 ``case_list_element ::= subrange | signed_integer | enumerated_value``,
@@ -53,5 +53,5 @@ To fix this error, either use a decimal label:
 
 Or enable the extension:
 
-.. |flag| replace:: ``--allow-bit-string-case-labels``
+.. |flag| replace:: ``--allow-radix-case-labels``
 .. include:: /includes/enabled-by-flag.rst

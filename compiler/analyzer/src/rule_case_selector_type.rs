@@ -12,7 +12,7 @@
 //! (`BYTE`, `WORD`, `DWORD`, `LWORD`) is a pattern rather than a magnitude,
 //! and the standard does not list it; a program that selects on one compiled
 //! before this rule existed, but should not have. The bit-string *label*
-//! extension (`--allow-bit-string-case-labels`) is unaffected: it pairs a
+//! extension (`--allow-radix-case-labels`) is unaffected: it pairs a
 //! radix-prefixed label with an integer selector.
 //!
 //! An untyped literal has no type of its own until the place it is used

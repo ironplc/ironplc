@@ -275,7 +275,7 @@ Options
    :doc:`P4022 </reference/compiler/problems/P4022>` if a named constant's
    type is not compatible with the variable's.
 
-``--allow-bit-string-case-labels``
+``--allow-radix-case-labels``
    Allow a hex, binary, or octal bit-string literal (e.g. ``16#D012``,
    ``2#1010``) as a ``CASE`` label or as a bound of a subrange label. The
    IEC 61131-3 standard permits only a subrange of decimal integers, a

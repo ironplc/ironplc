@@ -7,7 +7,7 @@
 //! `subrange_bound()`) and holds it as the same literal a decimal bound is,
 //! so this token-stream check is what enforces the flags:
 //!
-//! - In a `CASE` label, `--allow-bit-string-case-labels` (P4041), the flag
+//! - In a `CASE` label, `--allow-radix-case-labels` (P4041), the flag
 //!   that already gates a radix label such as `16#D012:`.
 //! - In a subrange type or an array dimension,
 //!   `--allow-radix-subrange-bounds` (P4096).
@@ -45,7 +45,7 @@ fn is_radix(t: &TokenType) -> bool {
 }
 
 pub fn apply(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<Diagnostic>> {
-    if options.allow_bit_string_case_labels && options.allow_radix_subrange_bounds {
+    if options.allow_radix_case_labels && options.allow_radix_subrange_bounds {
         return Ok(());
     }
 
@@ -63,7 +63,7 @@ pub fn apply(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<Diag
             TokenType::Range => {
                 let in_case = case_depth > 0;
                 let allowed = if in_case {
-                    options.allow_bit_string_case_labels
+                    options.allow_radix_case_labels
                 } else {
                     options.allow_radix_subrange_bounds
                 };
@@ -75,7 +75,7 @@ pub fn apply(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<Diag
                 for bound in [before, after].into_iter().flatten() {
                     if is_radix(&bound.token_type) {
                         let problem = if in_case {
-                            Problem::BitStringCaseLabelNotAllowed
+                            Problem::RadixCaseLabelNotAllowed
                         } else {
                             Problem::RadixSubrangeBoundNotAllowed
                         };
@@ -156,14 +156,14 @@ mod test {
     token_rule_err!(
         apply_when_case_bound_and_flag_off_then_error,
         in_case(hex_start_tokens()),
-        [Problem::BitStringCaseLabelNotAllowed]
+        [Problem::RadixCaseLabelNotAllowed]
     );
 
     token_rule_ok!(
         apply_when_case_bound_and_flag_on_then_ok,
         in_case(hex_start_tokens()),
         CompilerOptions {
-            allow_bit_string_case_labels: true,
+            allow_radix_case_labels: true,
             ..CompilerOptions::default()
         }
     );
@@ -173,7 +173,7 @@ mod test {
         after_end_case(hex_start_tokens()),
         [Problem::RadixSubrangeBoundNotAllowed],
         CompilerOptions {
-            allow_bit_string_case_labels: true,
+            allow_radix_case_labels: true,
             ..CompilerOptions::default()
         }
     );

@@ -63,7 +63,7 @@ Supported Dialects
    ``--allow-short-circuit-operators``,
    ``--allow-mixed-located-var-declarations``,
    ``--allow-constant-initializer-expressions``,
-   ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
+   ``--allow-radix-case-labels``, ``--allow-paren-string-length``,
    ``--allow-struct-initializer-expressions``,
    ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``,
    ``--allow-enum-base-type``, ``--allow-continue``,
@@ -99,7 +99,7 @@ Supported Dialects
    ``--allow-pragmas``, ``--allow-short-circuit-operators``,
    ``--allow-mixed-located-var-declarations``,
    ``--allow-constant-initializer-expressions``,
-   ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
+   ``--allow-radix-case-labels``, ``--allow-paren-string-length``,
    ``--allow-struct-initializer-expressions``,
    ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``,
    ``--allow-enum-base-type``, ``--allow-continue``,
@@ -143,7 +143,7 @@ Supported Dialects
    ``--allow-short-circuit-operators``,
    ``--allow-mixed-located-var-declarations``,
    ``--allow-constant-initializer-expressions``,
-   ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
+   ``--allow-radix-case-labels``, ``--allow-paren-string-length``,
    ``--allow-struct-initializer-expressions``,
    ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``,
    ``--allow-enum-base-type``, ``--allow-continue``,
@@ -415,7 +415,7 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    non-``CONSTANT`` variable), it produces
    :doc:`P4038 </reference/compiler/problems/P4038>`.
 
-``--allow-bit-string-case-labels``
+``--allow-radix-case-labels``
    Allow a hex, binary, or octal bit-string literal (e.g. ``16#D012``,
    ``2#1010``, ``8#17``) as a ``CASE`` label. The IEC 61131-3 standard
    grammar for a case label permits only a subrange, a *decimal*
@@ -447,7 +447,7 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    grammar defines a subrange's bounds as *decimal* ``signed_integer``\ s.
    Without this flag, such a bound produces
    :doc:`P4096 </reference/compiler/problems/P4096>`. The bounds of a
-   ``CASE`` subrange label are allowed by ``--allow-bit-string-case-labels``
+   ``CASE`` subrange label are allowed by ``--allow-radix-case-labels``
    instead.
 
 ``--allow-struct-initializer-expressions``
