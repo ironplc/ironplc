@@ -97,6 +97,7 @@ fn rusty_dialect_enables_exactly_these_flags() {
             "allow_enum_base_type",
             "allow_continue",
             "allow_keywords_as_names",
+            "allow_radix_subrange_bounds",
         ],
     );
 }
@@ -147,6 +148,7 @@ fn codesys_dialect_enables_exactly_these_flags() {
             "allow_enum_base_type",
             "allow_continue",
             "allow_keywords_as_names",
+            "allow_radix_subrange_bounds",
         ],
     );
 }
@@ -197,6 +199,7 @@ fn twincat_dialect_enables_exactly_these_flags() {
             "allow_enum_base_type",
             "allow_continue",
             "allow_keywords_as_names",
+            "allow_radix_subrange_bounds",
         ],
     );
 }
