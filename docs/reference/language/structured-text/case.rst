@@ -28,8 +28,9 @@ Syntax
 Each ``case_value`` is an integer literal, a subrange (``low .. high``), or an
 enumerated value. Multiple values can be listed separated by commas.
 
-A hex, binary or octal label such as ``16#D012`` is an extension; without the
-``--allow-bit-string-case-labels`` flag it is reported as
+A hex, binary or octal label such as ``16#D012``, or a subrange label with
+such a bound (``16#01..16#0F``), is an extension; without the
+``--allow-radix-case-labels`` flag it is reported as
 :doc:`P4041 </reference/compiler/problems/P4041>`.
 
 Every integer label, and each bound of a subrange label, must be a value the

@@ -89,7 +89,7 @@ fn rusty_dialect_enables_exactly_these_flags() {
             "allow_short_circuit_operators",
             "allow_mixed_located_var_declarations",
             "allow_constant_initializer_expressions",
-            "allow_bit_string_case_labels",
+            "allow_radix_case_labels",
             "allow_paren_string_length",
             "allow_struct_initializer_expressions",
             "allow_fb_inheritance",
@@ -97,6 +97,7 @@ fn rusty_dialect_enables_exactly_these_flags() {
             "allow_enum_base_type",
             "allow_continue",
             "allow_keywords_as_names",
+            "allow_radix_subrange_bounds",
         ],
     );
 }
@@ -139,7 +140,7 @@ fn codesys_dialect_enables_exactly_these_flags() {
             "allow_short_circuit_operators",
             "allow_mixed_located_var_declarations",
             "allow_constant_initializer_expressions",
-            "allow_bit_string_case_labels",
+            "allow_radix_case_labels",
             "allow_paren_string_length",
             "allow_struct_initializer_expressions",
             "allow_fb_inheritance",
@@ -147,6 +148,7 @@ fn codesys_dialect_enables_exactly_these_flags() {
             "allow_enum_base_type",
             "allow_continue",
             "allow_keywords_as_names",
+            "allow_radix_subrange_bounds",
         ],
     );
 }
@@ -189,7 +191,7 @@ fn twincat_dialect_enables_exactly_these_flags() {
             "allow_short_circuit_operators",
             "allow_mixed_located_var_declarations",
             "allow_constant_initializer_expressions",
-            "allow_bit_string_case_labels",
+            "allow_radix_case_labels",
             "allow_paren_string_length",
             "allow_struct_initializer_expressions",
             "allow_fb_inheritance",
@@ -197,6 +199,7 @@ fn twincat_dialect_enables_exactly_these_flags() {
             "allow_enum_base_type",
             "allow_continue",
             "allow_keywords_as_names",
+            "allow_radix_subrange_bounds",
         ],
     );
 }

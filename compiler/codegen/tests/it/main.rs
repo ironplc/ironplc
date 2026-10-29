@@ -204,6 +204,7 @@ mod end_to_end_partial_access;
 mod end_to_end_partial_access_bases;
 mod end_to_end_pow;
 mod end_to_end_property_declaration;
+mod end_to_end_radix_subrange_bound;
 mod end_to_end_ref;
 mod end_to_end_ref_to_array;
 mod end_to_end_reference_to;

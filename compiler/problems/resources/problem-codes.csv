@@ -86,7 +86,7 @@ P4037,ConstantInitializerExpressionNotAllowed,Constant expression in VAR initial
 P4038,InitializerNotConstantExpression,Variable initializer expression does not reduce to a constant value
 P4039,ConstantExpressionDivisionByZero,Constant expression divides or takes the modulo of a value by zero
 P4040,ConstantExpressionOverflow,Constant expression result cannot be represented
-P4041,BitStringCaseLabelNotAllowed,Hex/binary/octal bit-string literal as a CASE label requires choosing a dialect or --allow-bit-string-case-labels flag
+P4041,RadixCaseLabelNotAllowed,Hex/binary/octal literal as a CASE label requires choosing a dialect or --allow-radix-case-labels flag
 P4042,ParenStringLengthNotAllowed,STRING(n)/WSTRING(n) parenthesis length delimiter requires choosing a dialect or --allow-paren-string-length flag
 P4043,StructInitializerExpressionNotAllowed,General expression as a struct/FB-instance initializer value requires choosing a dialect or --allow-struct-initializer-expressions flag
 P4044,ExtendsFieldNameDuplicated,Function block field name is already declared in a base function block via EXTENDS
@@ -163,3 +163,4 @@ P4092,EdgeInputNotAllowed,R_EDGE or F_EDGE input is declared by a function or me
 P4093,ForStepZero,FOR step is zero
 P4094,RealLiteralInIntegerPosition,FOR bound or step or array subscript is a real literal rather than an integer
 P4095,KeywordAsNameNotAllowed,Keyword used as a name requires choosing a dialect or --allow-keywords-as-names flag
+P4096,RadixSubrangeBoundNotAllowed,Hex/binary/octal literal as a subrange or array bound requires choosing a dialect or --allow-radix-subrange-bounds flag
