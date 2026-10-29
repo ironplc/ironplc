@@ -99,104 +99,110 @@ pub fn apply(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<Diag
 
 #[cfg(test)]
 mod test {
-    use dsl::core::SourceSpan;
+    use crate::test_rule_helpers::token;
+    use ironplc_problems::Problem;
 
     use crate::{
         options::CompilerOptions,
-        rule_token_radix_subrange_bound::apply,
         token::{Token, TokenType},
     };
-
-    fn mk_token(token_type: TokenType, text: &str) -> Token {
-        Token {
-            token_type,
-            span: SourceSpan::default(),
-            line: 1,
-            col: 1,
-            text: text.to_string(),
-        }
-    }
 
     /// `16#0 (* c *) .. 15`: a bound separated from `..` by trivia.
     fn hex_start_tokens() -> Vec<Token> {
         vec![
-            mk_token(TokenType::HexDigits, "16#0"),
-            mk_token(TokenType::Whitespace, " "),
-            mk_token(TokenType::Comment, "(* c *)"),
-            mk_token(TokenType::Range, ".."),
-            mk_token(TokenType::Digits, "15"),
+            token(TokenType::HexDigits, "16#0"),
+            token(TokenType::Whitespace, " "),
+            token(TokenType::Comment, "(* c *)"),
+            token(TokenType::Range, ".."),
+            token(TokenType::Digits, "15"),
         ]
     }
 
     fn in_case(mut tokens: Vec<Token>) -> Vec<Token> {
-        tokens.insert(0, mk_token(TokenType::Case, "CASE"));
-        tokens.push(mk_token(TokenType::EndCase, "END_CASE"));
+        tokens.insert(0, token(TokenType::Case, "CASE"));
+        tokens.push(token(TokenType::EndCase, "END_CASE"));
         tokens
-    }
-
-    fn codes(result: Result<(), Vec<dsl::diagnostic::Diagnostic>>) -> Vec<String> {
-        result
-            .err()
-            .unwrap_or_default()
-            .into_iter()
-            .map(|d| d.code)
-            .collect()
-    }
-
-    #[test]
-    fn apply_when_declaration_bound_after_trivia_and_flag_off_then_p4073() {
-        let result = apply(&hex_start_tokens(), &CompilerOptions::default());
-        assert_eq!(codes(result), vec!["P4096"]);
-    }
-
-    #[test]
-    fn apply_when_case_bound_and_flag_off_then_p4041() {
-        let result = apply(&in_case(hex_start_tokens()), &CompilerOptions::default());
-        assert_eq!(codes(result), vec!["P4041"]);
-    }
-
-    #[test]
-    fn apply_when_bound_after_end_case_then_declaration_flag_applies() {
-        let mut tokens = in_case(vec![]);
-        tokens.extend(hex_start_tokens());
-        let options = CompilerOptions {
-            allow_bit_string_case_labels: true,
-            ..CompilerOptions::default()
-        };
-        assert_eq!(codes(apply(&tokens, &options)), vec!["P4096"]);
-    }
-
-    #[test]
-    fn apply_when_both_bounds_radix_then_error_per_bound() {
-        let tokens = vec![
-            mk_token(TokenType::BinDigits, "2#0"),
-            mk_token(TokenType::Range, ".."),
-            mk_token(TokenType::OctDigits, "8#17"),
-        ];
-        let result = apply(&tokens, &CompilerOptions::default());
-        assert_eq!(codes(result), vec!["P4096", "P4096"]);
     }
 
     fn decimal_tokens() -> Vec<Token> {
         vec![
-            mk_token(TokenType::Digits, "0"),
-            mk_token(TokenType::Range, ".."),
-            mk_token(TokenType::Digits, "15"),
+            token(TokenType::Digits, "0"),
+            token(TokenType::Range, ".."),
+            token(TokenType::Digits, "15"),
         ]
     }
 
-    #[test]
-    fn apply_when_decimal_bounds_then_ok() {
-        assert!(apply(&in_case(decimal_tokens()), &CompilerOptions::default()).is_ok());
-        assert!(apply(&decimal_tokens(), &CompilerOptions::default()).is_ok());
+    fn after_end_case(tokens: Vec<Token>) -> Vec<Token> {
+        let mut all = in_case(vec![]);
+        all.extend(tokens);
+        all
     }
 
-    #[test]
-    fn apply_when_radix_literal_not_next_to_range_then_ok() {
-        let tokens = in_case(vec![
-            mk_token(TokenType::HexDigits, "16#D012"),
-            mk_token(TokenType::Colon, ":"),
-        ]);
-        assert!(apply(&tokens, &CompilerOptions::default()).is_ok());
-    }
+    token_rule_err!(
+        apply_when_declaration_bound_after_trivia_and_flag_off_then_error,
+        hex_start_tokens(),
+        [Problem::RadixSubrangeBoundNotAllowed]
+    );
+
+    token_rule_ok!(
+        apply_when_declaration_bound_and_flag_on_then_ok,
+        hex_start_tokens(),
+        CompilerOptions {
+            allow_radix_subrange_bounds: true,
+            ..CompilerOptions::default()
+        }
+    );
+
+    token_rule_err!(
+        apply_when_case_bound_and_flag_off_then_error,
+        in_case(hex_start_tokens()),
+        [Problem::BitStringCaseLabelNotAllowed]
+    );
+
+    token_rule_ok!(
+        apply_when_case_bound_and_flag_on_then_ok,
+        in_case(hex_start_tokens()),
+        CompilerOptions {
+            allow_bit_string_case_labels: true,
+            ..CompilerOptions::default()
+        }
+    );
+
+    token_rule_err!(
+        apply_when_bound_after_end_case_then_declaration_flag_applies,
+        after_end_case(hex_start_tokens()),
+        [Problem::RadixSubrangeBoundNotAllowed],
+        CompilerOptions {
+            allow_bit_string_case_labels: true,
+            ..CompilerOptions::default()
+        }
+    );
+
+    token_rule_err!(
+        apply_when_both_bounds_radix_then_error_per_bound,
+        vec![
+            token(TokenType::BinDigits, "2#0"),
+            token(TokenType::Range, ".."),
+            token(TokenType::OctDigits, "8#17"),
+        ],
+        [Problem::RadixSubrangeBoundNotAllowed; 2]
+    );
+
+    token_rule_ok!(
+        apply_when_case_decimal_bounds_then_ok,
+        in_case(decimal_tokens())
+    );
+
+    token_rule_ok!(
+        apply_when_declaration_decimal_bounds_then_ok,
+        decimal_tokens()
+    );
+
+    token_rule_ok!(
+        apply_when_radix_literal_not_next_to_range_then_ok,
+        in_case(vec![
+            token(TokenType::HexDigits, "16#D012"),
+            token(TokenType::Colon, ":"),
+        ])
+    );
 }
