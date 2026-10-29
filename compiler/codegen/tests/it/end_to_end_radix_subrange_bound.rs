@@ -5,7 +5,7 @@
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
 
-use crate::common::assert_run_i32_with;
+use crate::common::assert_run_with;
 
 fn twincat() -> CompilerOptions {
     CompilerOptions::from_dialect(Dialect::TwinCat)
@@ -37,7 +37,7 @@ END_PROGRAM
 "
     );
 
-    assert_run_i32_with(&source, &twincat(), &[(0, expected)]);
+    assert_run_with::<i32>(&source, &twincat(), &[("y", expected)]);
 }
 
 /// A radix range that fills an unsigned selector narrows by value, as a
@@ -56,7 +56,7 @@ PROGRAM main
 END_PROGRAM
 ";
 
-    assert_run_i32_with(source, &twincat(), &[(0, 1)]);
+    assert_run_with::<i32>(source, &twincat(), &[("y", 1)]);
 }
 
 #[test]
@@ -73,7 +73,7 @@ PROGRAM main
 END_PROGRAM
 ";
 
-    assert_run_i32_with(source, &twincat(), &[(0, 73)]);
+    assert_run_with::<i32>(source, &twincat(), &[("y", 73)]);
 }
 
 #[test]
@@ -92,5 +92,5 @@ PROGRAM main
 END_PROGRAM
 ";
 
-    assert_run_i32_with(source, &twincat(), &[(0, 200)]);
+    assert_run_with::<i32>(source, &twincat(), &[("y", 200)]);
 }
