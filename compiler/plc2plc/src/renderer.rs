@@ -220,6 +220,35 @@ impl<'a> LibraryRenderer<'a> {
         Ok(())
     }
 
+    /// Writes the `VAR_GLOBAL` block of a `CONFIGURATION` or a `RESOURCE`.
+    ///
+    /// The grammar allows one block there, and the parser copies the block's
+    /// qualifier onto each declaration, so parsed text renders as one block.
+    /// Declarations from PLCopen XML can mix qualifiers, which one block
+    /// cannot say: each run of a qualifier gets its own block rather than a
+    /// qualifier it did not have. Writes nothing when there are none.
+    fn write_global_var_blocks(&mut self, vars: &[VarDecl]) -> Result<(), Diagnostic> {
+        for block in vars.chunk_by(|a, b| a.qualifier == b.qualifier) {
+            let Some(first) = block.first() else {
+                continue;
+            };
+
+            self.write_ws("VAR_GLOBAL");
+            self.write_declaration_qualifier(&first.qualifier);
+            self.newline();
+
+            self.indent();
+            for var in block {
+                self.write_var_decl_line(var)?;
+            }
+            self.outdent();
+
+            self.write_ws("END_VAR");
+            self.newline();
+        }
+        Ok(())
+    }
+
     fn render_data_source_kind(
         &mut self,
         source: &dsl::configuration::DataSourceKind,
@@ -1447,16 +1476,16 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         self.newline();
 
         self.indent();
+        // The grammar puts the resource's globals before its tasks and
+        // programs.
+        self.write_global_var_blocks(&node.global_vars)?;
+
         for task in node.tasks.iter() {
             self.visit_task_configuration(task)?;
         }
 
         for program in node.programs.iter() {
             self.visit_program_configuration(program)?;
-        }
-
-        for var in node.global_vars.iter() {
-            self.visit_var_decl(var)?;
         }
 
         self.outdent();
@@ -1513,6 +1542,9 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         self.newline();
 
         self.indent();
+        // The grammar puts the configuration's globals before its resources.
+        self.write_global_var_blocks(&node.global_var)?;
+
         for res in node.resource_decl.iter() {
             self.visit_resource_declaration(res)?;
         }
