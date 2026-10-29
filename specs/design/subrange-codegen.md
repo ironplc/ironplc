@@ -46,19 +46,19 @@ appears, including function locals, function block fields and array elements
 
 ## 2. Late-Bound Type Resolution
 
-**REQ-SR-010** When a variable is declared with a named subrange type and no initializer (`VAR x : MY_RANGE; END_VAR`), the parser produces `InitialValueAssignmentKind::LateResolvedType`. The late-bound resolver must convert this to `InitialValueAssignmentKind::Subrange(SpecificationKind::Named(type_name))`.
+**REQ-SR-010** When a variable is declared with a named subrange type and no initializer (`VAR x : MY_RANGE; END_VAR`), the parser produces `InitialValueAssignmentKind::LateResolvedType`. The late-bound resolver must convert this to `InitialValueAssignmentKind::Subrange` whose `spec` is `SpecificationKind::Named(type_name)`.
 
 **REQ-SR-011** The late-bound resolver checks `SemanticType::is_subrange()` on the type environment entry before falling through to the scoped type table.
 
-**REQ-SR-012** The scoped type table match handles `TypeDefinitionKind::Subrange` by producing `InitialValueAssignmentKind::Subrange(SpecificationKind::Named(type_name))`.
+**REQ-SR-012** The scoped type table match handles `TypeDefinitionKind::Subrange` by producing `InitialValueAssignmentKind::Subrange` whose `spec` is `SpecificationKind::Named(type_name)`.
 
 **REQ-SR-013** When a variable is declared with a named subrange type and an explicit initializer (`VAR x : MY_RANGE := 75; END_VAR`), the parser produces `InitialValueAssignmentKind::Simple`. The codegen `assign_variables` function lays out every declaration's storage from the type the analyzer resolved for it, so the subrange is stored as its base type whichever initializer it arrives with.
 
 ## 3. Variable Allocation
 
-**REQ-SR-020** A variable declared with `InitialValueAssignmentKind::Subrange(SpecificationKind::Named(type_name))` receives `VarTypeInfo` resolved from the type environment's `SemanticType::Subrange`.
+**REQ-SR-020** A variable declared with `InitialValueAssignmentKind::Subrange` whose `spec` is `SpecificationKind::Named(type_name)` receives `VarTypeInfo` resolved from the type environment's `SemanticType::Subrange`.
 
-**REQ-SR-021** A variable declared with `InitialValueAssignmentKind::Subrange(SpecificationKind::Inline(spec))` receives `VarTypeInfo` resolved from the inline specification's `ElementaryTypeName`.
+**REQ-SR-021** A variable declared with `InitialValueAssignmentKind::Subrange` whose `spec` is `SpecificationKind::Inline(spec)` receives `VarTypeInfo` resolved from the inline specification's `ElementaryTypeName`.
 
 **REQ-SR-022** A variable declared with `InitialValueAssignmentKind::Simple` whose type name resolves to a subrange in the type environment receives `VarTypeInfo` from the subrange's base type.
 
