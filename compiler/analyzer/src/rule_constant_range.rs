@@ -866,4 +866,7 @@ fn integer_constant(value: &SignedInteger) -> ConstantKind {
 }
 
 #[cfg(test)]
+mod method_argument_tests;
+
+#[cfg(test)]
 mod tests;
