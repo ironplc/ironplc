@@ -174,6 +174,144 @@ END_PROGRAM
     &[("n", 5)],
 );
 
+// --- LEN of a string no run can change -------------------------------------
+//
+// Lowering gives these a constant (REQ-LOW-lowering-205); what they pin is
+// that the constant is the length the VM reads for the same string. The
+// literals above, and `s` of the first test, which nothing writes, are folded
+// too.
+
+e2e_i32!(
+    end_to_end_when_len_of_declared_constant_string_then_returns_length,
+    "
+PROGRAM main
+  VAR CONSTANT
+    msg : STRING := 'Hello';
+  END_VAR
+  VAR
+    n : INT;
+  END_VAR
+  n := LEN(msg);
+END_PROGRAM
+",
+    &[("n", 5)],
+);
+
+e2e_i32!(
+    end_to_end_when_len_of_declared_constant_wstring_then_returns_code_unit_count,
+    "
+PROGRAM main
+  VAR CONSTANT
+    msg : WSTRING := \"héllo\";
+  END_VAR
+  VAR
+    n : INT;
+  END_VAR
+  n := LEN(msg);
+END_PROGRAM
+",
+    &[("n", 5)],
+);
+
+// An initial value longer than the declaration holds is cut when it is
+// stored, so the constant's length is the declared capacity.
+e2e_i32!(
+    end_to_end_when_len_of_constant_with_longer_initial_value_then_returns_capacity,
+    "
+PROGRAM main
+  VAR CONSTANT
+    msg : STRING[3] := 'Hello';
+  END_VAR
+  VAR
+    n : INT;
+  END_VAR
+  n := LEN(msg);
+END_PROGRAM
+",
+    &[("n", 3)],
+);
+
+e2e_i32!(
+    end_to_end_when_len_of_concat_of_constant_and_literal_then_returns_total_length,
+    "
+PROGRAM main
+  VAR CONSTANT
+    msg : STRING[20] := 'Hello';
+  END_VAR
+  VAR
+    n : INT;
+  END_VAR
+  n := LEN(CONCAT(msg, ', world'));
+END_PROGRAM
+",
+    &[("n", 12)],
+);
+
+// A written variable is not constant: LEN reads its current value.
+e2e_i32!(
+    end_to_end_when_len_of_written_string_then_returns_current_length,
+    "
+PROGRAM main
+  VAR
+    msg : STRING := 'Hello';
+    n : INT;
+  END_VAR
+  msg := 'Hi';
+  n := LEN(msg);
+END_PROGRAM
+",
+    &[("n", 2)],
+);
+
+e2e_i32!(
+    end_to_end_when_len_of_constant_string_in_function_then_returns_length,
+    "
+FUNCTION f : INT
+  VAR CONSTANT
+    s : STRING := 'abcd';
+  END_VAR
+  f := LEN(s);
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    n : INT;
+  END_VAR
+  n := f();
+END_PROGRAM
+",
+    &[("n", 4)],
+);
+
+// The field's length is its initial value's. This backend does not store a
+// function block's string fields yet
+// (github.com/ironplc/ironplc/issues/1753), so reading the field itself
+// still gives an empty string.
+e2e_i32!(
+    end_to_end_when_len_of_constant_string_in_function_block_then_returns_length,
+    "
+FUNCTION_BLOCK fb
+  VAR_OUTPUT
+    len_out : INT;
+  END_VAR
+  VAR CONSTANT
+    s : STRING := 'abcde';
+  END_VAR
+  len_out := LEN(s);
+END_FUNCTION_BLOCK
+
+PROGRAM main
+  VAR
+    inst : fb;
+    n : INT;
+  END_VAR
+  inst();
+  n := inst.len_out;
+END_PROGRAM
+",
+    &[("n", 5)],
+);
+
 // --- LEN of a string reached through an aggregate --------------------------
 //
 // Neither an array element nor a structure field owns a data-region slot of

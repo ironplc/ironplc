@@ -35,6 +35,27 @@ END_PROGRAM
     assert_eq!(num_temp_bufs(source), 0);
 }
 
+/// `LEN` of a literal, or of a `CONCAT` of literals, lowers to a constant
+/// (REQ-LOW-lowering-205): no string is computed to be measured, so neither
+/// the pool nor the data region holds one.
+#[test]
+fn compile_when_len_of_constant_string_then_no_string_is_held() {
+    for operand in ["'Hello'", "\"Hello\"", "CONCAT('ab', 'cde')"] {
+        let source = format!(
+            "
+PROGRAM main
+  VAR n : INT; END_VAR
+  n := LEN({operand});
+END_PROGRAM
+"
+        );
+        let container = parse_and_compile(&source, &CompilerOptions::default());
+        assert_eq!(container.header.num_temp_bufs, 0, "{operand}");
+        assert_eq!(container.header.max_temp_buf_bytes, 0, "{operand}");
+        assert_eq!(container.header.data_region_bytes, 0, "{operand}");
+    }
+}
+
 #[test]
 fn compile_when_one_string_assignment_then_pool_holds_one() {
     let source = "
@@ -178,6 +199,8 @@ END_PROGRAM
 
 /// A literal is loaded into a pool slot before it reaches its temporary, so
 /// its own length has to size the slot when nothing declared is as long.
+/// (`LEN` of a literal would not do: it lowers to a constant and loads
+/// nothing.)
 #[test]
 fn compile_when_literal_longer_than_declared_strings_then_pool_slot_holds_it() {
     let literal = "a".repeat(300);
@@ -185,7 +208,7 @@ fn compile_when_literal_longer_than_declared_strings_then_pool_slot_holds_it() {
         "
 PROGRAM main
   VAR s : STRING[10]; n : INT; END_VAR
-  n := LEN('{literal}');
+  n := FIND(s, '{literal}');
 END_PROGRAM
 "
     );
