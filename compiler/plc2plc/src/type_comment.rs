@@ -44,14 +44,14 @@ fn prefix(expr: &Expr) -> &'static str {
 }
 
 /// The type recorded for `expr`. A type the analyzer did not decide is
-/// marked `?`: none at all, or a generic category, which leaves codegen to
-/// choose.
+/// marked `?`: none at all, the error type, or a generic category, which
+/// leaves codegen to choose.
 fn type_text(expr: &Expr, type_name: TypeNamer) -> String {
     match &expr.expr_type {
         Some(ExprType::Concrete(id) | ExprType::Inferred(id)) => type_name(*id),
         Some(ExprType::Null) => String::from("NULL"),
         Some(ExprType::Literal(category)) => format!("? {}", category.as_str()),
-        None => String::from("?"),
+        Some(ExprType::Error) | None => String::from("?"),
     }
 }
 

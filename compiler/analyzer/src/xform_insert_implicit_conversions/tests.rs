@@ -981,7 +981,7 @@ fn literal_type_origins(source: &str) -> Vec<&'static str> {
                 self.0.push(match node.expr_type {
                     Some(ExprType::Inferred(_)) => "inferred",
                     Some(ExprType::Concrete(_)) => "stated",
-                    Some(ExprType::Literal(_) | ExprType::Null) | None => "none",
+                    Some(ExprType::Literal(_) | ExprType::Null | ExprType::Error) | None => "none",
                 });
             }
             node.recurse_visit(self)

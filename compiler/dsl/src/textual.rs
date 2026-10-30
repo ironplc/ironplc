@@ -550,15 +550,21 @@ pub enum ExprType {
     /// `NULL`: a reference to no variable, of whichever reference type it
     /// is used as.
     Null,
+    /// No valid type: the analyzer reported the expression, or an operand
+    /// its type is computed from, as ill-typed. A check that judges a
+    /// value's type skips this one, so the problem is reported once rather
+    /// than again at every expression that encloses it. See *Type
+    /// resolution* in `specs/design/arithmetic-operator-overloads.md`.
+    Error,
 }
 
 impl ExprType {
     /// The type of the value, whether the program stated it or analysis
-    /// inferred it; `None` for a category or `NULL`.
+    /// inferred it; `None` for a category, `NULL` or the error type.
     pub fn type_id(&self) -> Option<TypeId> {
         match self {
             ExprType::Concrete(id) | ExprType::Inferred(id) => Some(*id),
-            ExprType::Literal(_) | ExprType::Null => None,
+            ExprType::Literal(_) | ExprType::Null | ExprType::Error => None,
         }
     }
 }

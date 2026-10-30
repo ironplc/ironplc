@@ -85,18 +85,33 @@ fn all_inputs(f: &Function) -> Option<Vec<&Expr>> {
         .collect()
 }
 
+/// Returns true when `expr` has the error type.
+fn is_error(expr: &Expr) -> bool {
+    expr.expr_type == Some(ExprType::Error)
+}
+
 /// The type of an operation on two operands that keeps their type: the
-/// concrete operand's when the other is an untyped literal (an untyped
-/// literal and a `DWORD` give a `DWORD`), else the left operand's, else the
-/// right's.
+/// error type when either operand has it, else the concrete operand's when
+/// the other is an untyped literal (an untyped literal and a `DWORD` give a
+/// `DWORD`), else the left operand's, else the right's.
 fn prefer_concrete(left: &Option<ExprType>, right: &Option<ExprType>) -> Option<ExprType> {
     match (left, right) {
+        (Some(ExprType::Error), _) | (_, Some(ExprType::Error)) => Some(ExprType::Error),
         (Some(ExprType::Literal(_)), Some(concrete @ ExprType::Concrete(_))) => {
             Some(concrete.clone())
         }
         (Some(left), _) => Some(left.clone()),
         (None, right) => right.clone(),
     }
+}
+
+/// The type of a call to `ADD`, `SUB`, `MUL` or `DIV` that the overloads
+/// decide.
+enum OverloadedCall {
+    /// The result type of the overload that applies.
+    Result(TypeName),
+    /// The error type: an input has it, or no overload applies.
+    Error,
 }
 
 struct ExprTypeResolver<'a> {
@@ -146,12 +161,17 @@ impl ExprTypeResolver<'_> {
             // precise one for an alias (`x : MyByte` is a `MyByte`).
             ExprKind::Variable(var) => self.variable_type_id(var).map(ExprType::Concrete),
             ExprKind::BinaryOp(op) => {
+                if is_error(&op.left) || is_error(&op.right) {
+                    return Some(ExprType::Error);
+                }
                 let left = self.operand_name(&op.left);
                 let right = self.operand_name(&op.right);
                 // The type of the overload that applies (see
-                // `intermediates::arithmetic_overload`). Where none is
-                // judged or none applies, the left operand's type, so later
-                // passes still see a type and the operator rule reports it.
+                // `intermediates::arithmetic_overload`). Where none applies,
+                // the operator rule reports the expression and it has the
+                // error type, so nothing enclosing it is judged against a
+                // type the operands do not have. Where none is judged, the
+                // left operand's type, so codegen can still place it.
                 match resolve_arithmetic_overload(
                     &op.op,
                     left.as_ref(),
@@ -159,11 +179,13 @@ impl ExprTypeResolver<'_> {
                     &self.options,
                 ) {
                     Some(Overload::Numeric { result } | Overload::Typed { result, .. }) => {
-                        return self.expr_type_named(result);
+                        self.expr_type_named(result)
                     }
-                    Some(Overload::Unchecked { .. }) | None => {}
+                    Some(Overload::Unchecked { .. }) => {
+                        prefer_concrete(&op.left.expr_type, &op.right.expr_type)
+                    }
+                    None => Some(ExprType::Error),
                 }
-                prefer_concrete(&op.left.expr_type, &op.right.expr_type)
             }
             ExprKind::UnaryOp(op) => op.term.expr_type.clone(),
             ExprKind::Compare(compare) => match compare.op.kind() {
@@ -183,8 +205,10 @@ impl ExprTypeResolver<'_> {
                 }
             },
             ExprKind::Function(f) => {
-                if let Some(result) = self.resolve_overloaded_call(f) {
-                    return self.expr_type_named(result);
+                match self.resolve_overloaded_call(f) {
+                    Some(OverloadedCall::Result(result)) => return self.expr_type_named(result),
+                    Some(OverloadedCall::Error) => return Some(ExprType::Error),
+                    None => {}
                 }
                 let sig = self.function_environment.get(&f.name)?;
                 let return_type = sig.return_type.as_ref()?.to_type_name();
@@ -212,17 +236,20 @@ impl ExprTypeResolver<'_> {
                 // Generic return type: infer concrete type from the first argument
                 // whose parameter declaration type matches the generic return type.
                 // This correctly skips selector parameters whose type differs from
-                // the return type (e.g., BOOL for SEL, ANY_INT for MUX).
+                // the return type (e.g., BOOL for SEL, ANY_INT for MUX). When any
+                // such argument has the error type, so does the call: the type
+                // binds to it as much as to the first.
                 let generic =
                     ParameterType::Generic(GenericTypeName::try_from(&return_type.id).ok()?);
-                sig.inputs_of(&f.param_assignment)
-                    .find_map(|(param, expr)| {
-                        if param.param_type == generic {
-                            expr.expr_type.clone()
-                        } else {
-                            None
-                        }
-                    })
+                let mut bound = sig
+                    .inputs_of(&f.param_assignment)
+                    .filter(|(param, _)| param.param_type == generic)
+                    .filter_map(|(_, expr)| expr.expr_type.clone());
+                let first = bound.next()?;
+                if first == ExprType::Error || bound.any(|t| t == ExprType::Error) {
+                    return Some(ExprType::Error);
+                }
+                Some(first)
             }
             // The method's return type. A call to a method without a return
             // type has no type here; the method call rule reports it.
@@ -261,6 +288,7 @@ impl ExprTypeResolver<'_> {
                     .type_environment
                     .referenced_type(*reference)
                     .map(ExprType::Concrete),
+                Some(ExprType::Error) => Some(ExprType::Error),
                 Some(ExprType::Literal(_) | ExprType::Null) | None => None,
             },
             ExprKind::Null(_) => Some(ExprType::Null),
@@ -412,10 +440,14 @@ impl ExprTypeResolver<'_> {
     /// applies to its inputs folded from the left: `SUB(d1, d2)` on `DATE`
     /// is `TIME`, and `ADD(i, d)` on `INT` and `DINT` is `DINT`.
     ///
+    /// The call has the error type when an input has it, or when no
+    /// overload applies to a step of the fold; the operator rule reports
+    /// the latter.
+    ///
     /// Returns `None` for any other function, for a call with an output
-    /// assignment, or when no overload is judged or applies; the caller then
-    /// types the call from its signature.
-    fn resolve_overloaded_call(&self, f: &Function) -> Option<TypeName> {
+    /// assignment, or when no overload is judged; the caller then types the
+    /// call from its signature.
+    fn resolve_overloaded_call(&self, f: &Function) -> Option<OverloadedCall> {
         let form = operator_function_form(&f.name.to_string())?;
         let FormOf::Arithmetic(op) = &form.operator else {
             return None;
@@ -423,14 +455,21 @@ impl ExprTypeResolver<'_> {
         if form.typed_overloads().is_empty() {
             return None;
         }
-        let names: Vec<Option<TypeName>> = all_inputs(f)?
+        let inputs = all_inputs(f)?;
+        if inputs.iter().any(|input| is_error(input)) {
+            return Some(OverloadedCall::Error);
+        }
+        let names: Vec<Option<TypeName>> = inputs
             .into_iter()
             .map(|input| self.operand_name(input))
             .collect();
         let inputs: Vec<Option<&TypeName>> = names.iter().map(Option::as_ref).collect();
         match resolve_arithmetic_fold(op, &inputs, &self.options) {
-            Ok(Overload::Numeric { result } | Overload::Typed { result, .. }) => Some(result),
-            Ok(Overload::Unchecked { .. }) | Err(_) => None,
+            Ok(Overload::Numeric { result } | Overload::Typed { result, .. }) => {
+                Some(OverloadedCall::Result(result))
+            }
+            Ok(Overload::Unchecked { .. }) => None,
+            Err(_) => Some(OverloadedCall::Error),
         }
     }
 
@@ -467,12 +506,17 @@ impl ExprTypeResolver<'_> {
     /// compares at its concrete left operand's;
     /// `rule_function_inputs_common_type` reports the call, as the
     /// comparison rule reports the comparison.
+    ///
+    /// When an input has the error type, so does the call.
     fn inputs_of_one_type_result(
         &self,
         inputs: &[&Expr],
         shape: InputsOfOneType,
     ) -> Option<ExprType> {
         let inputs = inputs.get(shape.first..)?;
+        if inputs.iter().any(|input| is_error(input)) {
+            return Some(ExprType::Error);
+        }
         let index = match shape.result {
             OneTypeResult::First => 0,
             OneTypeResult::Common => {
