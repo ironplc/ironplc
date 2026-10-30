@@ -42,15 +42,23 @@ END_FUNCTION_BLOCK",
 }
 
 #[test]
-fn parse_when_program_with_var_temp_then_fails() {
-    let source = "PROGRAM main
+fn parse_when_program_with_var_temp_then_succeeds() {
+    let lib = parse_text(
+        "PROGRAM main
+VAR
+    q : INT;
+END_VAR
 VAR_TEMP
     t : INT;
 END_VAR
     t := 42;
-END_PROGRAM";
-    let result = parse_program(source, &FileId::default(), &CompilerOptions::default());
-    assert!(result.is_err());
+    q := t;
+END_PROGRAM",
+    );
+    let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+    assert_eq!(prog.variables.len(), 2);
+    assert_eq!(prog.variables[0].var_type, VariableType::Var);
+    assert_eq!(prog.variables[1].var_type, VariableType::VarTemp);
 }
 
 #[test]
