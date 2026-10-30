@@ -37,7 +37,10 @@ impl<'a> ConversionTarget<'a> {
             {
                 wrap(operand, target);
             }
-            Some(ExprType::Concrete(_) | ExprType::Inferred(_) | ExprType::Null) | None => {}
+            Some(
+                ExprType::Concrete(_) | ExprType::Inferred(_) | ExprType::Null | ExprType::Error,
+            )
+            | None => {}
         }
     }
 
@@ -68,7 +71,7 @@ impl<'a> ConversionTarget<'a> {
                 matches!(self.representation(*id), Some(SemanticType::String { .. }))
             }
             Some(ExprType::Literal(generic)) => *generic == GenericTypeName::AnyString,
-            Some(ExprType::Null) | None => false,
+            Some(ExprType::Null | ExprType::Error) | None => false,
         }
     }
 

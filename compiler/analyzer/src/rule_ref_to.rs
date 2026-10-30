@@ -129,15 +129,15 @@ impl RuleRefTo<'_> {
 
     /// The id of the type of the value of `expr`: a variable by the walk
     /// above, any other expression by the type the analyzer resolved for
-    /// it. `None` for an untyped literal, `NULL`, and an expression the
-    /// analyzer did not type.
+    /// it. `None` for an untyped literal, `NULL`, the error type, and an
+    /// expression the analyzer did not type.
     fn value_type_id(&self, expr: &Expr) -> Option<TypeId> {
         match &expr.kind {
             ExprKind::Variable(var) => self.variable_type_id(var),
             ExprKind::Expression(inner) => self.value_type_id(inner),
             _ => match expr.expr_type.as_ref()? {
                 ExprType::Concrete(id) | ExprType::Inferred(id) => Some(*id),
-                ExprType::Literal(_) | ExprType::Null => None,
+                ExprType::Literal(_) | ExprType::Null | ExprType::Error => None,
             },
         }
     }

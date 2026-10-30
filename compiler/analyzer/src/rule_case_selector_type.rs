@@ -148,7 +148,7 @@ impl RuleCaseSelectorType<'_> {
             }
             // An untyped integer literal is `ANY_INT`, which a `CASE`
             // selects on; the other categories are not a literal's.
-            ExprType::Literal(_) | ExprType::Null => None,
+            ExprType::Literal(_) | ExprType::Null | ExprType::Error => None,
         }
     }
 }
