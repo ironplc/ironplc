@@ -163,3 +163,4 @@ P4092,EdgeInputNotAllowed,R_EDGE or F_EDGE input is declared by a function or me
 P4093,ForStepZero,FOR step is zero
 P4094,RealLiteralInIntegerPosition,FOR bound or step or array subscript is a real literal rather than an integer
 P4095,KeywordAsNameNotAllowed,Keyword used as a name requires choosing a dialect or --allow-keywords-as-names flag
+P4096,SubscriptNotArray,Subscripted variable is not an array
