@@ -50,7 +50,7 @@ subscript such as ``values[1.5]`` is error
 
 Only an array can be subscripted. A subscript on anything else, such as a
 ``DINT``, a ``STRING`` or a structure, is error
-:doc:`P4096 </reference/compiler/problems/P4096>`.
+:doc:`P4097 </reference/compiler/problems/P4097>`.
 
 Arrays of Arrays
 ----------------
@@ -109,6 +109,23 @@ flag. The constant must be declared in a
    PROGRAM main
      VAR
        instance : fb1;
+     END_VAR
+   END_PROGRAM
+
+Radix Bounds (Language Extension)
+---------------------------------
+
+.. include:: ../../../../includes/requires-dialect-extension.rst
+
+With the ``--allow-radix-subrange-bounds`` flag, a bound can be written in
+hex, binary, or octal. Without the flag, such a bound is reported as
+:doc:`P4096 </reference/compiler/problems/P4096>`.
+
+.. code-block::
+
+   PROGRAM main
+     VAR
+       nibbles : ARRAY[16#0..16#F] OF BYTE;
      END_VAR
    END_PROGRAM
 

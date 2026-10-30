@@ -249,17 +249,23 @@ struct FileArgs {
     #[arg(long)]
     allow_constant_initializer_expressions: bool,
 
-    /// Allow hex/binary/octal bit-string literals (e.g. 16#D012, 2#1010) as
-    /// CASE labels. This is an extension not part of the IEC 61131-3
-    /// standard.
+    /// Allow hex/binary/octal literals (e.g. 16#D012, 2#1010) as CASE labels
+    /// and as the bounds of a CASE subrange label. This is an extension not
+    /// part of the IEC 61131-3 standard.
     #[arg(long)]
-    allow_bit_string_case_labels: bool,
+    allow_radix_case_labels: bool,
 
     /// Allow the STRING(n)/WSTRING(n) parenthesis length delimiter in addition
     /// to the standard STRING[n]/WSTRING[n] brackets. This is a dialect
     /// extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_paren_string_length: bool,
+
+    /// Allow hex/binary/octal literals (e.g. 16#FF, 2#1010) as the bounds
+    /// of a subrange type or an array dimension. This is an extension not
+    /// part of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_radix_subrange_bounds: bool,
 
     /// Allow a general (non-constant) expression as the value in a
     /// structured/call-style initializer's `name := value` pairs (e.g.
@@ -352,8 +358,9 @@ impl FileArgs {
         options.allow_mixed_located_var_declarations |= self.allow_mixed_located_var_declarations;
         options.allow_constant_initializer_expressions |=
             self.allow_constant_initializer_expressions;
-        options.allow_bit_string_case_labels |= self.allow_bit_string_case_labels;
+        options.allow_radix_case_labels |= self.allow_radix_case_labels;
         options.allow_paren_string_length |= self.allow_paren_string_length;
+        options.allow_radix_subrange_bounds |= self.allow_radix_subrange_bounds;
         options.allow_struct_initializer_expressions |= self.allow_struct_initializer_expressions;
         options.allow_fb_inheritance |= self.allow_fb_inheritance;
         options.allow_enum_explicit_values |= self.allow_enum_explicit_values;

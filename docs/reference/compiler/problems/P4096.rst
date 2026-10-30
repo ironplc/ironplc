@@ -4,68 +4,38 @@ P4096
 
 .. problem-summary:: P4096
 
-This error occurs when a subscript list (``x[1]``) is written on a variable
-that is not an array. Only an array has elements for a subscript to select.
-The variables this rejects include:
+This error occurs when a bound of a subrange type or of an array dimension
+is a hex, binary, or octal literal (e.g. ``16#FF``, ``2#1010``, ``8#17``)
+without the ``--allow-radix-subrange-bounds`` compiler flag.
 
-- an elementary value, such as a ``DINT``, a ``WORD`` or a ``BOOL``
-- a ``STRING`` or a ``WSTRING``
-- a structure or a function block instance, and a field of one when the
-  field is not itself an array
-- an element of an array that is not itself an array, such as
-  ``values[1][2]`` on a one-dimensional ``values``
-- a reference to something that is not an array, with or without ``^``
+The IEC 61131-3 standard grammar (Annex B) defines
+``subrange ::= signed_integer '..' signed_integer``, where ``signed_integer``
+is a *decimal* digit sequence, so a radix bound is an extension. A bound of a
+``CASE`` subrange label is gated by its own flag and reported as
+:doc:`P4041 <P4041>`.
 
-A subscript of a reference to an array selects an element of the array it
-refers to, so ``p[1]`` on a ``REF_TO ARRAY[1..3] OF DINT`` is accepted.
+A decimal bound (``0..255``) is standard syntax and is always allowed.
 
 Example
 -------
 
-The following code will generate error P4096 twice:
+The following code will generate error P4096:
 
-.. playground::
-
-   TYPE
-     Reading : STRUCT
-       level : DINT;
-     END_STRUCT;
-   END_TYPE
-
-   PROGRAM main
-     VAR
-       count : DINT;
-       sensor : Reading;
-     END_VAR
-     count[1] := 5;             (* Error: count is a DINT *)
-     count := sensor.level[1];  (* Error: the field level is a DINT *)
-   END_PROGRAM
-
-``count`` and the field ``level`` each hold one value, so there is no element
-for a subscript to select.
-
-To fix this error, declare the variable or the field as an array, or remove
-the subscript:
-
-.. playground::
+.. code-block::
 
    TYPE
-     Reading : STRUCT
-       level : ARRAY[1..4] OF DINT;
-     END_STRUCT;
+       BYTE_RANGE : INT (16#00..16#FF);
    END_TYPE
 
-   PROGRAM main
-     VAR
-       counts : ARRAY[1..4] OF DINT;
-       sensor : Reading;
-     END_VAR
-     counts[1] := 5;
-     counts[2] := sensor.level[1];
-   END_PROGRAM
+To fix this error, either write the bounds in decimal:
 
-See Also
---------
+.. code-block::
 
-- :doc:`/reference/language/data-types/derived/array-types` — declaring and subscripting an array
-- :doc:`P4085` — a subscript list with the wrong number of subscripts
+   TYPE
+       BYTE_RANGE : INT (0..255);
+   END_TYPE
+
+Or enable the extension:
+
+.. |flag| replace:: ``--allow-radix-subrange-bounds``
+.. include:: /includes/enabled-by-flag.rst

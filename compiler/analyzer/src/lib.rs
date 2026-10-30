@@ -39,7 +39,7 @@ mod rule_assignment_aggregate_type_compat;
 mod rule_bit_and_partial_access_range;
 mod rule_bit_shift_input_type;
 mod rule_call_input_type;
-mod rule_case_bit_string_label;
+mod rule_case_radix_label;
 mod rule_case_selector_type;
 mod rule_comparison_operand_type;
 mod rule_condition_type;

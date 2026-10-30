@@ -390,7 +390,7 @@ END_FUNCTION"
         assert!(diagnostics[0].described.contains(&"type=dint".to_owned()));
     }
 
-    // The examples of `docs/reference/compiler/problems/P4096.rst`.
+    // The examples of `docs/reference/compiler/problems/P4097.rst`.
     const DOCUMENTED_PROGRAM: &str = "
 TYPE
   Reading : STRUCT

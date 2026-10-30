@@ -7,6 +7,7 @@ mod common;
 
 mod adr;
 mod case;
+mod configuration_globals;
 mod constant_initializers;
 mod constant_name_initializers;
 mod continue_statement;
@@ -25,6 +26,7 @@ mod partial_access;
 mod persistent_var;
 mod pointer_to;
 mod property;
+mod radix_subrange_bound;
 mod reference_to;
 mod set_reset_bind;
 mod short_circuit;

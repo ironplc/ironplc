@@ -150,11 +150,11 @@ that records no dimensions has none to count against.
 
 A list on something that is not an array, nor a reference to one, selects no
 element and has no type either; `rule_array_subscript_operand` reports it
-(P4096), whatever the dialect. Lowering indexes only an array (see
+(P4097), whatever the dialect. Lowering indexes only an array (see
 [Lowered Program](lowered-program.md)), so the analyzer rejects every other
 list before it is lowered.
 
-**REQ-ETR-analyzer-011** A subscript list on something that is not an array, nor a reference to one, reports P4096: with `x : DINT`, `q : STRING`, `a : ARRAY[1..3] OF DINT` and `pd : REF_TO DINT`, `x[1]`, `q[1]`, `a[1][2]`, `pd[1]` and `pd^[1]` each report it, and `a[1]` does not.
+**REQ-ETR-analyzer-011** A subscript list on something that is not an array, nor a reference to one, reports P4097: with `x : DINT`, `q : STRING`, `a : ARRAY[1..3] OF DINT` and `pd : REF_TO DINT`, `x[1]`, `q[1]`, `a[1][2]`, `pd[1]` and `pd^[1]` each report it, and `a[1]` does not.
 
 **REQ-ETR-analyzer-008** With `Row : ARRAY[1..3] OF DINT`, `rows : ARRAY[1..2] OF Row` and `m : ARRAY[1..2, 1..3] OF DINT`, `rows[1]` is a `Row`, `rows[1][2]` and `m[1, 2]` are `DINT`, and `rows[1, 2]`, `m[1]` and `m[1][2]` have no type.
 

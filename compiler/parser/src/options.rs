@@ -464,10 +464,10 @@ define_compiler_options! {
     [Rusty, Codesys, TwinCat],
     allow_constant_initializer_expressions,
 
-    "Allow hex/binary/octal bit-string literals (16#D012, 2#1010) as CASE labels",
-    "--allow-bit-string-case-labels",
+    "Allow hex/binary/octal literals (16#D012, 2#1010) as CASE labels and as the bounds of a CASE subrange label",
+    "--allow-radix-case-labels",
     [Rusty, Codesys, TwinCat],
-    allow_bit_string_case_labels,
+    allow_radix_case_labels,
 
     "Allow STRING(n)/WSTRING(n) parenthesis length delimiter in addition to the standard STRING[n]/WSTRING[n] brackets",
     "--allow-paren-string-length",
@@ -503,6 +503,11 @@ define_compiler_options! {
     "--allow-keywords-as-names",
     [Rusty, Codesys, TwinCat],
     allow_keywords_as_names,
+
+    "Allow hex/binary/octal literals (16#FF, 2#1010) as the bounds of a subrange type or an array dimension",
+    "--allow-radix-subrange-bounds",
+    [Rusty, Codesys, TwinCat],
+    allow_radix_subrange_bounds,
 
     policies {
         "What STRING_TO_<numeric> treats as convertible when the string has non-numeric characters",

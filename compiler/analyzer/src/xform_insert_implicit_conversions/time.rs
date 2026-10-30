@@ -124,7 +124,7 @@ impl ImplicitConversions<'_> {
                 }
             }
             // A literal a short form scales by takes its default type.
-            Some(ExprType::Literal(_) | ExprType::Null) | None => return,
+            Some(ExprType::Literal(_) | ExprType::Null | ExprType::Error) | None => return,
         };
         if let Some(target) = self.conversions.id_of(&target.into()) {
             self.convert(input, target);
