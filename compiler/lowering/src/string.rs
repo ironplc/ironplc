@@ -11,7 +11,9 @@
 //! (P4034), so the encoding of its first string chooses its `Intrinsic`.
 //! `LEN` and `FIND` yield a number, an `Expr`; the others yield a string, a
 //! `StrExpr` with room for every code unit of their strings
-//! (REQ-LOW-lowering-167).
+//! (REQ-LOW-lowering-167). `LEN` of a string no run can change, such as a
+//! literal or a constant, is a `Const` of its length (REQ-LOW-lowering-205),
+//! so no backend computes the string to measure it.
 //!
 //! A conversion from a `STRING` reads a number of the type the analyzer
 //! recorded for the call, as the program's parse policy says. A conversion
@@ -25,7 +27,9 @@ use ironplc_analyzer::{BuiltinFunction, StringFunction};
 use ironplc_container::DEFAULT_STRING_MAX_LENGTH;
 use ironplc_dsl::common::{ConstantKind, ElementaryTypeName, StringType};
 use ironplc_dsl::core::{Located, SourceSpan};
-use ironplc_dsl::textual::{Expr as AstExpr, ExprKind as AstExprKind, Function};
+use ironplc_dsl::textual::{
+    Expr as AstExpr, ExprKind as AstExprKind, Function, SymbolicVariableKind, Variable,
+};
 use ironplc_ir::lowered::{
     Arg, CompareOp, Encoding, Expr, Intrinsic, NarrowWidth, Param, Place, ScalarType, Signedness,
     Stmt, StrExpr,
@@ -50,7 +54,9 @@ impl Lowering<'_> {
 
     /// The call `expr` of the string function `function` with `args`, where
     /// it yields a number: `LEN` and `FIND`. A string function that yields
-    /// a string is a `StrExpr` ([`Self::string_call`]).
+    /// a string is a `StrExpr` ([`Self::string_call`]). `LEN` of a string
+    /// whose length no run can change is that length
+    /// ([`Self::constant_length`]).
     pub(crate) fn string_function_call(
         &mut self,
         frame: &BodyFrame,
@@ -59,10 +65,91 @@ impl Lowering<'_> {
         args: &[&AstExpr],
     ) -> Lowered<Expr> {
         let intrinsic = self.string_intrinsic(function, args)?;
-        let Param::Value(_) = intrinsic.signature().result() else {
+        let Param::Value(ty) = intrinsic.signature().result() else {
             return Err(Unlowered::NotYet);
         };
+        if let (StringFunction::Len, [value]) = (function, args) {
+            if let Some(length) = self.constant_length(frame, value)? {
+                return Ok(Expr::integer(i128::from(length), ty, expr.span())?);
+            }
+        }
         self.intrinsic_call(frame, expr, intrinsic, args)
+    }
+
+    /// The length, in code units, of the string `expr` whenever it is
+    /// evaluated, when no run can change it (REQ-LOW-lowering-205): a
+    /// literal; a variable the analyzer recorded the value of, which it holds
+    /// for the whole run (`SymbolEnvironment::constant_value`), as many code
+    /// units of it as the variable's capacity holds; and `MOVE` of one, or
+    /// `CONCAT` of two, whose result has room for both. `None` for any other
+    /// string, whose length `LEN` reads when it runs.
+    ///
+    /// Evaluating such a string has no effect and cannot trap, so `LEN`
+    /// computes the same without evaluating it.
+    fn constant_length(&mut self, frame: &BodyFrame, expr: &AstExpr) -> Lowered<Option<u32>> {
+        let analysis = self.analysis;
+        let length = match &expr.kind {
+            AstExprKind::Expression(inner) => return self.constant_length(frame, inner),
+            AstExprKind::Const(ConstantKind::CharacterString(literal)) => literal.value.len(),
+            AstExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(named))) => {
+                let Some(ConstantKind::CharacterString(value)) = analysis
+                    .context()
+                    .symbols()
+                    .constant_value(&named.name, &frame.scope)
+                else {
+                    return Ok(None);
+                };
+                // The variable holds as much of the literal as its capacity
+                // has room for.
+                let capacity = self.str_expr(frame, expr)?.shape().capacity;
+                value
+                    .value
+                    .len()
+                    .min(usize::try_from(capacity).unwrap_or(usize::MAX))
+            }
+            AstExprKind::Function(func) => {
+                let builtin = analysis
+                    .context()
+                    .functions()
+                    .get(&func.name)
+                    .and_then(|signature| signature.builtin_function.as_ref());
+                let args: Vec<&AstExpr> = func.inputs().collect();
+                return match (builtin, args.as_slice()) {
+                    (Some(BuiltinFunction::Move), [value]) => self.constant_length(frame, value),
+                    (Some(BuiltinFunction::String(StringFunction::Concat)), [first, second]) => {
+                        let first = self.constant_length(frame, first)?;
+                        let second = self.constant_length(frame, second)?;
+                        Ok(first
+                            .zip(second)
+                            .map(|(first, second)| first.saturating_add(second)))
+                    }
+                    _ => Ok(None),
+                };
+            }
+            AstExprKind::Const(
+                ConstantKind::IntegerLiteral(_)
+                | ConstantKind::RealLiteral(_)
+                | ConstantKind::Boolean(_)
+                | ConstantKind::Duration(_)
+                | ConstantKind::TimeOfDay(_)
+                | ConstantKind::Date(_)
+                | ConstantKind::DateAndTime(_)
+                | ConstantKind::BitStringLiteral(_),
+            )
+            | AstExprKind::Variable(_)
+            | AstExprKind::CallOutput(_)
+            | AstExprKind::Deref(_)
+            | AstExprKind::MethodCall(_)
+            | AstExprKind::Compare(_)
+            | AstExprKind::BinaryOp(_)
+            | AstExprKind::UnaryOp(_)
+            | AstExprKind::EnumeratedValue(_)
+            | AstExprKind::LateBound(_)
+            | AstExprKind::Ref(_)
+            | AstExprKind::ImplicitConversion(_)
+            | AstExprKind::Null(_) => return Ok(None),
+        };
+        Ok(u32::try_from(length).ok())
     }
 
     /// The string the call `func`, the expression `expr`, yields: a call of
