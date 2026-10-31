@@ -17,6 +17,7 @@ mod enums;
 mod exit_return;
 mod expression_types;
 mod fb_inheritance;
+mod inline_subrange;
 mod interfaces;
 mod keyword_names;
 mod method_call_expression;

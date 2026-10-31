@@ -155,6 +155,7 @@ mod end_to_end_implicit_widening;
 mod end_to_end_in_place_call;
 mod end_to_end_initial_value_matrix;
 mod end_to_end_initial_values;
+mod end_to_end_inline_subrange;
 mod end_to_end_inputs_of_one_type;
 mod end_to_end_insert;
 mod end_to_end_integer_result;

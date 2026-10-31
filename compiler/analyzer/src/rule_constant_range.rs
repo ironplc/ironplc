@@ -454,7 +454,8 @@ impl RuleConstantRange<'_> {
             InitialValueAssignmentKind::FunctionBlock(function_block) => {
                 self.check_named_elements(&function_block.type_name, &function_block.init);
             }
-            // A structure field's subrange value (`x : INT (0..15) := 3`).
+            // A variable's or a structure field's inline subrange value
+            // (`x : INT (0..15) := 3`).
             InitialValueAssignmentKind::Subrange(subrange) => {
                 if let Some(value) = &subrange.initial_value {
                     if let Some(declared) = self.subrange_representation(&subrange.spec) {
