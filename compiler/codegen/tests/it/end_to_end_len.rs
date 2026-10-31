@@ -285,8 +285,9 @@ END_PROGRAM
 
 // The field's length is its initial value's. This backend does not store a
 // function block's string fields yet
-// (github.com/ironplc/ironplc/issues/1753), so reading the field itself
-// still gives an empty string.
+// (github.com/ironplc/ironplc/issues/1753), so a read that reaches the
+// field itself, such as `copy := s`, still traps V9015; the folded LEN does
+// not read it.
 e2e_i32!(
     end_to_end_when_len_of_constant_string_in_function_block_then_returns_length,
     "
