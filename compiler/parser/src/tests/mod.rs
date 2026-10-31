@@ -19,6 +19,7 @@ mod enums;
 mod expression_spans;
 mod fb_inheritance;
 mod function_calls;
+mod inline_subrange;
 mod interfaces;
 mod keyword_identifiers;
 mod late_resolved_initializers;

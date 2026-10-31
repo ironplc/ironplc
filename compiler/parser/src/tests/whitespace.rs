@@ -258,6 +258,21 @@ END_CONFIGURATION"
     verbatim,
     CompilerOptions::default
 )]
+#[case::var_declaration_inline_subrange(
+    "PROGRAM main VAR x·:·INT·(·0·..·15·)·:=·3·; END_VAR x := 2; END_PROGRAM",
+    verbatim,
+    CompilerOptions::default
+)]
+#[case::global_declaration_inline_subrange(
+    "CONFIGURATION config VAR_GLOBAL g·:·INT·(·0·..·15·)·:=·3·; END_VAR RESOURCE res ON PLC PROGRAM p : main; END_RESOURCE END_CONFIGURATION",
+    verbatim,
+    CompilerOptions::default
+)]
+#[case::external_declaration_inline_subrange(
+    "PROGRAM main VAR_EXTERNAL g·:·INT·(·0·..·15·)·; END_VAR g := 2; END_PROGRAM",
+    verbatim,
+    CompilerOptions::default
+)]
 #[case::var_declaration_named_constant(
     "PROGRAM main VAR x·:·INT·:=·C·; END_VAR x := 2; END_PROGRAM",
     verbatim,

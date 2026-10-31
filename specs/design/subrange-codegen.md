@@ -22,7 +22,6 @@ The design builds on:
 **In scope:** Named subrange types declared via `TYPE ... END_TYPE`, type aliases to subrange types, inline subrange specifications in variable declarations, use in variable declarations with and without explicit initialization, participation in arithmetic and comparison expressions, signed and unsigned integer base types.
 
 **Out of scope (deferred):**
-- Runtime bounds checking (clamping or trapping on out-of-range assignment)
 - Subrange-typed function/FB parameters (VAR_INPUT, VAR_OUTPUT, VAR_IN_OUT) other than their starting value
 - Subrange types in structure field declarations (already works via `compile_struct.rs`)
 
@@ -91,3 +90,43 @@ appears, including function locals, function block fields and array elements
 **REQ-SR-051** A subrange variable participates in comparison expressions (EQ, NE, LT, LE, GT, GE) using the same opcodes as its base type.
 
 **REQ-SR-052** Assignment to a subrange variable uses the same `STORE_VAR` opcode as the base type, with truncation applied for narrow types per REQ-SR-033.
+
+## 7. Range Checking
+
+The range of a subrange is checked at compile time only. The analyzer reports
+a constant outside the range (P2026) wherever one is stored in a subrange
+variable, field or element: an initial value, a type's default, an assigned
+literal or a literal argument.
+
+**REQ-SR-060** A value computed at run time is stored in a subrange variable
+as its base type stores it, whether or not it is inside the range: codegen
+emits no range check, clamp or trap, and the base type's truncation (REQ-SR-033)
+is the only change a store makes to the value.
+
+IEC 61131-3 calls a subrange value outside its range an error and leaves the
+handling to the implementer. CODESYS and TwinCAT check the range at run time
+only when the project declares the implicit check functions
+(`CheckRangeSigned`, `CheckRangeUnsigned`, `CheckLRangeSigned`,
+`CheckLRangeUnsigned`), whose bodies the user writes; without them the value is
+stored unchecked. IronPLC stores the value unchecked in every dialect, and
+calls no implicit check function.
+
+## 8. Inline Subrange Declarations
+
+**REQ-SR-070** A variable declared with a subrange spelled in place
+(`x : INT (0..15)`, optionally `:= value`) is accepted in `VAR`, `VAR_INPUT`,
+`VAR_OUTPUT`, `VAR_TEMP`, `VAR CONSTANT`, `VAR RETAIN`, `VAR_GLOBAL`, a located
+declaration and a `VAR_CONFIG` entry, as `subrange_spec_init` allows in
+IEC 61131-3 Annex B.1.4.3. The parser produces
+`InitialValueAssignmentKind::Subrange` whose `spec` is
+`SpecificationKind::Inline` and whose `initial_value` holds the value, if any.
+
+**REQ-SR-071** A `VAR_EXTERNAL` declaration accepts a subrange spelled in place
+without an initial value. It matches a global declared with the same base type
+and bounds spelled in place, and does not match a global of a named subrange
+type, as an array spelled in place does not match a named array type.
+
+**REQ-SR-072** An inline subrange's explicit initial value is its starting
+value (REQ-SR-032 for a named subrange); without one, it starts at the lower
+bound (REQ-SR-030). A `CONSTANT` inline subrange without an initial value is
+P4008 (`ConstantMustHaveInitializer`), as a `CONSTANT` of a named subrange is.

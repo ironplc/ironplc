@@ -152,12 +152,18 @@ impl<'a> Visitor<Infallible> for RuleConstantVarsInitialized<'a> {
                     )
                     .with_context("variable", &node.identifier.to_string()),
                 ),
-                // Subrange and late-resolved initializers are both resolved to
-                // a concrete kind before semantic rules run, so reaching either
-                // here is a compiler bug. Report it against this declaration
-                // and keep checking the others.
-                InitialValueAssignmentKind::Subrange(_) => {
-                    self.diagnostics.push(Diagnostic::internal_error());
+                // A named subrange is resolved to a concrete kind before semantic
+                // rules run; what remains here is an inline subrange.
+                InitialValueAssignmentKind::Subrange(subrange) => {
+                    if subrange.initial_value.is_none() {
+                        self.diagnostics.push(
+                            Diagnostic::problem(
+                                Problem::ConstantMustHaveInitializer,
+                                Label::span(node.span(), "Variable declaration"),
+                            )
+                            .with_context("variable", &node.identifier.to_string()),
+                        );
+                    }
                 }
                 InitialValueAssignmentKind::Structure(struct_init) => {
                     // For const structures, verify that all fields without defaults
@@ -576,5 +582,57 @@ ResetCounterValue : ARRAY[1..3] OF INT := [1, 2, 3];
 END_VAR
 
 END_FUNCTION_BLOCK"
+    );
+
+    rule_ok!(
+        apply_when_const_inline_subrange_has_initializer_then_ok,
+        "
+FUNCTION_BLOCK LOGGER
+VAR CONSTANT
+ResetCounterValue : INT(0..15) := 3;
+END_VAR
+
+END_FUNCTION_BLOCK"
+    );
+
+    rule_ok!(
+        apply_when_inline_subrange_initialized_and_never_written_then_ok,
+        "
+FUNCTION_BLOCK LOGGER
+VAR
+ResetCounterValue : INT(0..15) := 3;
+END_VAR
+
+END_FUNCTION_BLOCK"
+    );
+
+    rule_err_at!(
+        apply_when_const_inline_subrange_missing_initializer_then_error,
+        "
+FUNCTION_BLOCK LOGGER
+VAR CONSTANT
+ResetCounterValue : INT(0..15);
+END_VAR
+
+END_FUNCTION_BLOCK",
+        Problem::ConstantMustHaveInitializer,
+        "ResetCounterValue"
+    );
+
+    rule_err_at!(
+        apply_when_const_named_subrange_missing_initializer_then_error,
+        "
+TYPE
+COUNTER : INT(0..15);
+END_TYPE
+
+FUNCTION_BLOCK LOGGER
+VAR CONSTANT
+ResetCounterValue : COUNTER;
+END_VAR
+
+END_FUNCTION_BLOCK",
+        Problem::ConstantMustHaveInitializer,
+        "ResetCounterValue"
     );
 }

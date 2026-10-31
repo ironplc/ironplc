@@ -803,6 +803,12 @@ parser! {
     rule subrange_spec_init__with_range() -> (SubrangeSpecificationKind, Option<SignedInteger>) = spec:subrange_specification__with_range() _ default:(tok(TokenType::Assignment) _ def:signed_integer() { def })? {
       (spec, default)
     }
+    // An integer type keyword followed by `(` can only start a subrange, so
+    // trying this ahead of the elementary type alternatives changes no other
+    // declaration's meaning.
+    rule subrange_spec_init__inline() -> InitialValueAssignmentKind = subrange:subrange_spec_init__with_range() {
+      InitialValueAssignmentKind::Subrange(SubrangeInitialValueAssignment { spec: subrange.0, initial_value: subrange.1 })
+    }
     rule subrange_specification__with_range() -> SubrangeSpecificationKind
       = type_name:integer_type_name() _ tok(TokenType::LeftParen) _ subrange:subrange() _ tok(TokenType::RightParen) { SpecificationKind::Inline(SubrangeSpecification{ type_name, subrange }) }
     rule integer_ref() -> IntegerRef = i:integer() { IntegerRef::Literal(i) } / id:identifier() { IntegerRef::Constant(id) }
@@ -941,7 +947,7 @@ parser! {
     rule structure_element_declaration() -> StructureElementDeclaration = name:structure_element_name() _ tok(TokenType::Colon) _ init:(
       arr:array_spec_init() { InitialValueAssignmentKind::Array(arr) }
       // handle the initial value
-      / subrange:subrange_spec_init__with_range() { InitialValueAssignmentKind::Subrange(SubrangeInitialValueAssignment { spec: subrange.0, initial_value: subrange.1 }) }
+      / subrange_spec_init__inline()
       / i:initialized_structure__without_ambiguous() { late_resolved_members(i) }
       / spec_init:enumerated_spec_init__with_value() {
         match spec_init.0 {
@@ -999,7 +1005,8 @@ parser! {
     //
     // There is still value in trying to disambiguate early because it allows us to use
     // the parser definitions.
-    rule simple_or_enumerated_or_subrange_ambiguous_struct_spec_init() -> InitialValueAssignmentKind = simple_spec_init__elementary_with_expression()
+    rule simple_or_enumerated_or_subrange_ambiguous_struct_spec_init() -> InitialValueAssignmentKind = subrange_spec_init__inline()
+    / simple_spec_init__elementary_with_expression()
     / s:simple_type_name() _ tok(TokenType::Assignment) _ e:expression() {?
       // A user type name takes the same expression shapes, except that a
       // bare identifier (no operators) is rejected here (backtracking to
@@ -1413,8 +1420,10 @@ parser! {
       let qualifier = qualifier.unwrap_or(DeclarationQualifier::Unspecified);
       VarDeclarations::External(VarDeclarations::map(declarations, &qualifier))
     }
-    // TODO external_declaration_spec needs subrange_specification, structure_type_name and others
-    rule external_declaration_spec() -> InitialValueAssignmentKind = spec:array_specification() {
+    // TODO external_declaration_spec needs structure_type_name and others
+    rule external_declaration_spec() -> InitialValueAssignmentKind = spec:subrange_specification__with_range() {
+      InitialValueAssignmentKind::Subrange(SubrangeInitialValueAssignment::bare(spec))
+    } / spec:array_specification() {
       InitialValueAssignmentKind::Array(ArrayInitialValueAssignment {
         spec,
         initial_values: vec![],
@@ -1471,7 +1480,7 @@ parser! {
       (vec![Id::from("")], None)
     }
     // TODO this is completely fabricated - it isn't correct.
-    rule located_var_spec_init() -> InitialValueAssignmentKind = arr:array_spec_init() { InitialValueAssignmentKind::Array(arr) } / simple:simple_spec_init() { simple }
+    rule located_var_spec_init() -> InitialValueAssignmentKind = subrange_spec_init__inline() / arr:array_spec_init() { InitialValueAssignmentKind::Array(arr) } / simple:simple_spec_init() { simple }
     rule location() -> AddressAssignment = tok(TokenType::At) _ v:direct_variable() { v }
     rule global_var_list() -> Vec<Id> = names:global_var_name() ++ (_ tok(TokenType::Comma) _) { names }
     rule string_var_declaration() -> Vec<UntypedVarDecl> = string_var_declaration__with_expression() / single_byte_string_var_declaration() / double_byte_string_var_declaration()
