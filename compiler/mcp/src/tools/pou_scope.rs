@@ -4,8 +4,8 @@
 //! REQ-TOL-mcp-220 and REQ-TOL-mcp-221.
 
 use ironplc_dsl::common::{
-    ConstantKind, FunctionBlockDeclaration, FunctionDeclaration, InitialValueAssignmentKind,
-    Library, LibraryElementKind, ProgramDeclaration, TypeReference, VarDecl, VariableType,
+    FunctionBlockDeclaration, FunctionDeclaration, InitialValueAssignmentKind, Library,
+    LibraryElementKind, ProgramDeclaration, TypeReference, VarDecl, VariableType,
 };
 use ironplc_dsl::core::FileId;
 use ironplc_project::project::{MemoryBackedProject, Project};
@@ -217,10 +217,9 @@ fn direction_of(vt: &VariableType) -> String {
 fn render_initial_value(init: &InitialValueAssignmentKind) -> Option<String> {
     match init {
         InitialValueAssignmentKind::Simple(s) => s.initial_value.as_ref().map(|c| c.to_string()),
-        InitialValueAssignmentKind::String(s) => s
-            .initial_value
-            .as_ref()
-            .map(|lit| ConstantKind::CharacterString(lit.clone()).to_string()),
+        InitialValueAssignmentKind::String(s) => {
+            s.initial_value.as_ref().map(|lit| lit.to_string())
+        }
         InitialValueAssignmentKind::EnumeratedType(e) => {
             e.initial_value.as_ref().map(|v| v.value.to_string())
         }
@@ -280,6 +279,34 @@ mod tests {
         assert_eq!(count.type_name.to_uppercase(), "DINT");
         assert_eq!(count.direction, "Local");
         assert_eq!(count.initial_value.as_deref(), Some("0"));
+    }
+
+    #[test]
+    fn build_response_when_temporal_and_bit_string_initial_values_then_iec_spelling() {
+        // Issue #1939: these rendered as Rust `Debug` text, span included.
+        let resp = build(
+            "PROGRAM p\nVAR\n  tod_v : TIME_OF_DAY := TOD#10:00:00.25;\n  t_v : TIME := T#1s;\n  d_v : DATE := D#2024-01-15;\n  dt_v : DATE_AND_TIME := DT#2024-01-15-10:00:00;\n  b_v : BYTE := BYTE#16#FF;\n  r_v : REAL := 2.0;\n  s_v : STRING := 'a$'b';\nEND_VAR\nEND_PROGRAM",
+            "p",
+        );
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        let initial = |name: &str| {
+            resp.variables
+                .iter()
+                .find(|v| v.name == name)
+                .unwrap()
+                .initial_value
+                .clone()
+        };
+        assert_eq!(initial("tod_v").as_deref(), Some("TIME_OF_DAY#10:00:00.25"));
+        assert_eq!(initial("t_v").as_deref(), Some("TIME#1000ms"));
+        assert_eq!(initial("d_v").as_deref(), Some("DATE#2024-01-15"));
+        assert_eq!(
+            initial("dt_v").as_deref(),
+            Some("DATE_AND_TIME#2024-01-15-10:00:00")
+        );
+        assert_eq!(initial("b_v").as_deref(), Some("BYTE#255"));
+        assert_eq!(initial("r_v").as_deref(), Some("2.0"));
+        assert_eq!(initial("s_v").as_deref(), Some("'a$'b'"));
     }
 
     #[test]

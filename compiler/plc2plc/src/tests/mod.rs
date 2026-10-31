@@ -29,6 +29,7 @@ mod property;
 mod radix_subrange_bound;
 mod reference_to;
 mod set_reset_bind;
+mod sfc_action_qualifiers;
 mod short_circuit;
 mod string_literals;
 mod struct_init_expressions;

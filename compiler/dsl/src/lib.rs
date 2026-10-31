@@ -3,6 +3,8 @@
 
 pub mod common;
 pub mod configuration;
+#[cfg(test)]
+mod constant_display_tests;
 pub mod core;
 pub mod diagnostic;
 pub mod extension;

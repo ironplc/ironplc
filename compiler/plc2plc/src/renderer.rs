@@ -66,16 +66,6 @@ struct LibraryRenderer<'a> {
     type_name: Option<TypeNamer<'a>>,
 }
 
-/// The spelling of a character string: its characters, `$`-escaped where
-/// they cannot appear as themselves, inside the delimiter `width` selects.
-fn character_string_text(width: &StringType, value: &[char]) -> String {
-    let delimiter = width.delimiter();
-    let mut val = String::from(delimiter);
-    val.push_str(&ironplc_dsl::string_escape::encode(value, width));
-    val.push(delimiter);
-    val
-}
-
 impl<'a> LibraryRenderer<'a> {
     fn new(type_name: Option<TypeNamer<'a>>) -> Self {
         Self {
@@ -415,20 +405,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
     }
 
     fn visit_real_literal(&mut self, node: &RealLiteral) -> Result<Self::Value, Diagnostic> {
-        let mut val = String::new();
-        if let Some(data_type) = &node.data_type {
-            val.push_str(data_type.as_id().original());
-            val.push('#');
-        }
-        // A real literal always carries a decimal point; `f64::to_string`
-        // drops it for whole values.
-        let mut value = node.value.to_string();
-        if node.value.is_finite() && !value.contains(['.', 'e', 'E']) {
-            value.push_str(".0");
-        }
-        val.push_str(value.as_str());
-
-        self.write_ws(val.as_str());
+        self.write_ws(&node.to_string());
         Ok(())
     }
 
@@ -441,34 +418,26 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         Ok(())
     }
 
+    // Each literal's `Display` is its source spelling: `$`-escaped strings in
+    // the delimiter of their width, and every temporal literal with the prefix
+    // of the type it names. Writing the 32-bit prefix for all of them narrowed
+    // the type on round trip -- `LTIME#30d` came back as `TIME#2592000000ms`,
+    // which is a different type and, since that count does not fit a `TIME`,
+    // no longer compiles.
+
     fn visit_character_string_literal(
         &mut self,
         node: &CharacterStringLiteral,
     ) -> Result<Self::Value, Diagnostic> {
-        // Single quotes delimit a STRING, double quotes a WSTRING, per
-        // IEC 61131-3 section 2.2.2. `node.value` holds the decoded
-        // characters, so they are escaped on the way out.
-        self.write_ws(&character_string_text(&node.width, &node.value));
+        self.write_ws(&node.to_string());
         Ok(())
     }
-
-    // Every temporal literal is written with the prefix of the type it names,
-    // taken from the literal itself. Writing the 32-bit prefix for all of them
-    // narrowed the type on round trip -- `LTIME#30d` came back as
-    // `TIME#2592000000ms`, which is a different type and, since that count does
-    // not fit a `TIME`, no longer compiles.
 
     fn visit_duration_literal(
         &mut self,
         node: &DurationLiteral,
     ) -> Result<Self::Value, Diagnostic> {
-        // Always write out as milliseconds. The largest unit is allowed to be "out of range"
-        let val = format!(
-            "{}#{}ms",
-            node.type_name(),
-            node.interval.whole_milliseconds()
-        );
-        self.write_ws(val.as_str());
+        self.write_ws(&node.to_string());
         Ok(())
     }
 
@@ -476,13 +445,12 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         &mut self,
         node: &TimeOfDayLiteral,
     ) -> Result<Self::Value, Diagnostic> {
-        self.write_ws(format!("{}#{}", node.type_name(), node.daytime_text()).as_str());
+        self.write_ws(&node.to_string());
         Ok(())
     }
 
     fn visit_date_literal(&mut self, node: &DateLiteral) -> Result<Self::Value, Diagnostic> {
-        let (year, month, day) = node.ymd();
-        self.write_ws(format!("{}#{year:0>4}-{month:0>2}-{day:0>2}", node.type_name()).as_str());
+        self.write_ws(&node.to_string());
         Ok(())
     }
 
@@ -490,15 +458,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         &mut self,
         node: &DateAndTimeLiteral,
     ) -> Result<Self::Value, Diagnostic> {
-        let (year, month, day) = node.ymd();
-        self.write_ws(
-            format!(
-                "{}#{year:0>4}-{month:0>2}-{day:0>2}-{}",
-                node.type_name(),
-                node.daytime_text()
-            )
-            .as_str(),
-        );
+        self.write_ws(&node.to_string());
         Ok(())
     }
 
@@ -506,14 +466,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         &mut self,
         node: &BitStringLiteral,
     ) -> Result<Self::Value, Diagnostic> {
-        let mut s = String::new();
-        if let Some(data_type) = &node.data_type {
-            s.push_str(data_type.as_id().to_string().as_str());
-            s.push('#');
-        }
-        s.push_str(&node.value.value.to_string());
-
-        self.write_ws(&s);
+        self.write_ws(&node.to_string());
         Ok(())
     }
 
@@ -770,7 +723,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
 
         if let Some(init) = &node.init {
             self.write_ws(":=");
-            self.write(&character_string_text(&init.width, &init.value));
+            self.write(&init.to_string());
         }
 
         Ok(())
@@ -1005,7 +958,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
 
         if let Some(init) = &node.initial_value {
             self.write_ws(":=");
-            self.write(&character_string_text(&init.width, &init.value));
+            self.write(&init.to_string());
         }
 
         Ok(())

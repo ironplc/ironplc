@@ -334,7 +334,7 @@ Returns all variables visible to the named POU, derived from the symbol table bu
 - `options`: required object; same schema as `check`
 - `pou`: required string — the POU name to scope the query to
 
-**REQ-TOL-mcp-220** The `pou_scope` tool returns a `variables` array for the named POU. Each entry contains: `name`, `type`, `direction` (one of `"Local"`, `"In"`, `"Out"`, `"InOut"`, `"Global"`, `"External"`), and `initial_value` (opaque string rendering, or `null` when no initial value is declared). The rendering is for display only and is not guaranteed to be a parseable expression.
+**REQ-TOL-mcp-220** The `pou_scope` tool returns a `variables` array for the named POU. Each entry contains: `name`, `type`, `direction` (one of `"Local"`, `"In"`, `"Out"`, `"InOut"`, `"Global"`, `"External"`), and `initial_value` (opaque string rendering, or `null` when no initial value is declared). The rendering is for display only and is not guaranteed to be a parseable expression; for a constant it is the literal's IEC 61131-3 spelling (`TIME_OF_DAY#10:00:00.25`, `TIME#1000ms`), never internal debug text.
 
 **REQ-TOL-mcp-221** The `pou_scope` tool resolves `pou` against Programs, Functions, and Function Blocks in that order. When no POU with the given name exists, the tool returns `ok: false`, `found: false`, an empty `variables` array, and a diagnostic.
 
