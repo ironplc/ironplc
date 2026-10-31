@@ -48,6 +48,10 @@ Each subscript is an integer. A ``BOOL`` subscript is error
 subscript such as ``values[1.5]`` is error
 :doc:`P4094 </reference/compiler/problems/P4094>`.
 
+Only an array can be subscripted. A subscript on anything else, such as a
+``DINT``, a ``STRING`` or a structure, is error
+:doc:`P4097 </reference/compiler/problems/P4097>`.
+
 Arrays of Arrays
 ----------------
 
