@@ -116,19 +116,15 @@ impl Located for ConstantKind {
 impl fmt::Display for ConstantKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ConstantKind::IntegerLiteral(lit) => write!(f, "{}", lit.value),
-            ConstantKind::RealLiteral(lit) => write!(f, "{}", lit.value),
-            ConstantKind::Boolean(lit) => write!(f, "{}", lit.value),
-            ConstantKind::CharacterString(lit) => {
-                let delimiter = lit.width.delimiter();
-                let text = crate::string_escape::encode(&lit.value, &lit.width);
-                write!(f, "{delimiter}{text}{delimiter}")
-            }
-            ConstantKind::Duration(lit) => write!(f, "{:?}", lit),
-            ConstantKind::TimeOfDay(lit) => write!(f, "{:?}", lit),
-            ConstantKind::Date(lit) => write!(f, "{:?}", lit),
-            ConstantKind::DateAndTime(lit) => write!(f, "{:?}", lit),
-            ConstantKind::BitStringLiteral(lit) => write!(f, "{:?}", lit),
+            ConstantKind::IntegerLiteral(lit) => write!(f, "{lit}"),
+            ConstantKind::RealLiteral(lit) => write!(f, "{lit}"),
+            ConstantKind::Boolean(lit) => write!(f, "{lit}"),
+            ConstantKind::CharacterString(lit) => write!(f, "{lit}"),
+            ConstantKind::Duration(lit) => write!(f, "{lit}"),
+            ConstantKind::TimeOfDay(lit) => write!(f, "{lit}"),
+            ConstantKind::Date(lit) => write!(f, "{lit}"),
+            ConstantKind::DateAndTime(lit) => write!(f, "{lit}"),
+            ConstantKind::BitStringLiteral(lit) => write!(f, "{lit}"),
         }
     }
 }
@@ -593,9 +589,16 @@ impl RealLiteral {
 
 impl fmt::Display for RealLiteral {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.data_type {
-            Some(dt) => write!(f, "{}#{}", dt, self.value),
-            None => write!(f, "{}", self.value),
+        if let Some(dt) = &self.data_type {
+            write!(f, "{dt}#")?;
+        }
+        // A real literal always carries a decimal point; `f64::to_string`
+        // drops it for whole values.
+        let value = self.value.to_string();
+        if self.value.is_finite() && !value.contains(['.', 'e', 'E']) {
+            write!(f, "{value}.0")
+        } else {
+            write!(f, "{value}")
         }
     }
 }
@@ -658,10 +661,12 @@ impl CharacterStringLiteral {
 }
 
 impl fmt::Display for CharacterStringLiteral {
+    /// The literal's spelling: its characters, `$`-escaped where they cannot
+    /// appear as themselves, inside the delimiter its width selects.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s: String = self.value.iter().collect();
         let delimiter = self.width.delimiter();
-        write!(f, "{delimiter}{s}{delimiter}")
+        let text = crate::string_escape::encode(&self.value, &self.width);
+        write!(f, "{delimiter}{text}{delimiter}")
     }
 }
 

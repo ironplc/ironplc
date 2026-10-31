@@ -270,7 +270,13 @@ impl DurationLiteral {
 
 impl fmt::Display for DurationLiteral {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "TIME#{}ms", self.interval.whole_milliseconds())
+        // Always milliseconds: the largest unit is allowed to be "out of range".
+        write!(
+            f,
+            "{}#{}ms",
+            self.type_name(),
+            self.interval.whole_milliseconds()
+        )
     }
 }
 
@@ -357,7 +363,7 @@ impl TimeOfDayLiteral {
 
 impl fmt::Display for TimeOfDayLiteral {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "TIME_OF_DAY#{}", self.daytime_text())
+        write!(f, "{}#{}", self.type_name(), self.daytime_text())
     }
 }
 
@@ -476,7 +482,7 @@ impl DateLiteral {
 impl fmt::Display for DateLiteral {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (y, m, d) = self.ymd();
-        write!(f, "DATE#{}-{:02}-{:02}", y, m, d)
+        write!(f, "{}#{y:0>4}-{m:0>2}-{d:0>2}", self.type_name())
     }
 }
 
@@ -580,10 +586,8 @@ impl fmt::Display for DateAndTimeLiteral {
         let (y, m, d) = self.ymd();
         write!(
             f,
-            "DATE_AND_TIME#{}-{:02}-{:02}-{}",
-            y,
-            m,
-            d,
+            "{}#{y:0>4}-{m:0>2}-{d:0>2}-{}",
+            self.type_name(),
             self.daytime_text()
         )
     }
