@@ -562,7 +562,10 @@ END_CONFIGURATION
         ..
     } = only_task(&model).schedule
     else {
-        panic!("not triggered by a global: {:?}", only_task(&model).schedule);
+        panic!(
+            "not triggered by a global: {:?}",
+            only_task(&model).schedule
+        );
     };
     assert_eq!(model.global(id).unwrap().name.to_string(), "start");
 }
