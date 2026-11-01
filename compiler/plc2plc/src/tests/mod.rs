@@ -13,6 +13,7 @@ mod constant_name_initializers;
 mod continue_statement;
 mod corpus;
 mod declarations;
+mod direct_address;
 mod enums;
 mod exit_return;
 mod expression_types;
