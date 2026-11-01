@@ -76,19 +76,23 @@ fn get_numeric_functions() -> Vec<FunctionSignature> {
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
-        // MIN: minimum of two values (ANY_NUM, ANY_NUM -> ANY_NUM)
-        FunctionSignature::stdlib(
+        // MIN: minimum of two or more values (ANY_NUM, ANY_NUM, ... -> ANY_NUM).
+        // Extensible, as IEC 61131-3 table 31 declares it (REQ-CB-analyzer-054).
+        FunctionSignature::stdlib_extensible(
             "MIN",
             BuiltinFunction::Numeric(NumericFunction::Min),
             TypeName::from("ANY_NUM"),
             vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+            None,
         ),
-        // MAX: maximum of two values (ANY_NUM, ANY_NUM -> ANY_NUM)
-        FunctionSignature::stdlib(
+        // MAX: maximum of two or more values (ANY_NUM, ANY_NUM, ... -> ANY_NUM).
+        // Extensible, as IEC 61131-3 table 31 declares it (REQ-CB-analyzer-054).
+        FunctionSignature::stdlib_extensible(
             "MAX",
             BuiltinFunction::Numeric(NumericFunction::Max),
             TypeName::from("ANY_NUM"),
             vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+            None,
         ),
         // LIMIT: clamp value to range (ANY_NUM, ANY_NUM, ANY_NUM -> ANY_NUM)
         FunctionSignature::stdlib(
@@ -554,6 +558,7 @@ mod tests {
     use ironplc_dsl::common::{ElementaryTypeName, FunctionReturnType};
     use ironplc_dsl::textual::Operator;
     use rstest::rstest;
+    use spec_test_macro::spec_test;
 
     #[test]
     fn get_numeric_functions_when_called_then_contains_all_functions() {
@@ -632,6 +637,25 @@ mod tests {
         assert_eq!(max.parameters[0].name.original(), "IN1");
         assert_eq!(max.parameters[1].name.original(), "IN2");
         assert!(max.is_stdlib());
+    }
+
+    #[spec_test(REQ_CB_analyzer_054)]
+    fn get_numeric_functions_when_min_or_max_then_extensible_past_in2() {
+        let functions = get_numeric_functions();
+        for name in ["MIN", "MAX"] {
+            let function = functions
+                .iter()
+                .find(|f| f.name.original() == name)
+                .unwrap();
+            assert!(function.is_extensible, "{name}");
+            assert_eq!(function.max_inputs, None, "{name}");
+            let names: Vec<String> = function
+                .input_parameters()
+                .take(4)
+                .map(|p| p.name.original().to_string())
+                .collect();
+            assert_eq!(names, ["IN1", "IN2", "IN3", "IN4"], "{name}");
+        }
     }
 
     #[test]

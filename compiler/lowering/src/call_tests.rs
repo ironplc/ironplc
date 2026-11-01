@@ -302,6 +302,33 @@ fn lower_statement_when_selection_function_then_intrinsic_at_its_type() {
     }
 }
 
+/// REQ-LOW-lowering-206: `MIN` and `MAX` of three or more inputs are their
+/// two-input intrinsic folded from the left, at the type the call computes
+/// at.
+#[test]
+fn lower_statement_when_min_max_of_three_inputs_then_folded_from_the_left() {
+    let outcome = lower(
+        "PROGRAM main VAR a : DINT; b : DINT; c : DINT; d : DINT; END_VAR
+            a := MAX(a, b, c);
+            a := MIN(a, b, c, d);
+         END_PROGRAM",
+        "main",
+    );
+    let (a, b, c, d) = (
+        "(read i32s v0^.f0)",
+        "(read i32s v0^.f1)",
+        "(read i32s v0^.f2)",
+        "(read i32s v0^.f3)",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            format!("assign v0^.f0 (call max_i32 i32s (call max_i32 i32s {a} {b}) {c})"),
+            format!("assign v0^.f0 (call min_i32 i32s (call min_i32 i32s (call min_i32 i32s {a} {b}) {c}) {d})"),
+        ]
+    );
+}
+
 /// REQ-LOW-lowering-147: `MUX` is the intrinsic for the type it computes at,
 /// taking its `DINT` selector and then each of its inputs. A selector of
 /// another integer type is the `DINT` the analyzer converted it to.

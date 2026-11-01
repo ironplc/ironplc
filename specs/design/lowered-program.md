@@ -1939,6 +1939,11 @@ one `Intrinsic` variant for its `BuiltinFunction` at the operand types the
 analyzer recorded, with a match that has no wildcard arm. A combination with no
 variant is P9999.
 
+**REQ-LOW-lowering-206** A call of the extensible `MIN` or `MAX` with three or
+more inputs lowers to its two-input `Intrinsic` folded from the left, each
+input at the type the call computes at, so `MAX(a, b, c)` is
+`max(max(a, b), c)`, as the function form of an operator folds.
+
 **REQ-LOW-lowering-071** A call's arguments correspond one to one, in order, to
 the callee's parameters: its instance parameter, its result parameter and its
 declared parameters, each where it has one.

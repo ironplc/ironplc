@@ -270,7 +270,39 @@ impl Lowering<'_> {
             return self.bool_selection(frame, expr, Intrinsic::SelI32, args);
         }
         let intrinsic = numeric_intrinsic(function, operated).ok_or(Unlowered::NotYet)?;
+        if matches!(function, NumericFunction::Min | NumericFunction::Max) && args.len() > 2 {
+            return self.fold_intrinsic(frame, expr, intrinsic, args);
+        }
         self.intrinsic_call(frame, expr, intrinsic, args)
+    }
+
+    /// The call `expr` of the extensible `MIN` or `MAX` with three or more
+    /// `args`: the two-input `intrinsic` folded from the left, as the
+    /// function forms of the operators fold (REQ-LOW-lowering-206).
+    fn fold_intrinsic(
+        &mut self,
+        frame: &BodyFrame,
+        expr: &AstExpr,
+        intrinsic: Intrinsic,
+        args: &[&AstExpr],
+    ) -> Lowered<Expr> {
+        let signature = intrinsic.signature();
+        let span = expr.span();
+        let mut lowered = Vec::with_capacity(args.len());
+        for (index, arg) in args.iter().enumerate() {
+            // every input is of the operated type, as the first two are
+            let param = signature.param(index.min(1)).ok_or(Unlowered::NotYet)?;
+            lowered.push(self.arg(frame, param, arg)?);
+        }
+        let mut values = lowered.into_iter();
+        let (Some(first), Some(second)) = (values.next(), values.next()) else {
+            return Err(Unlowered::NotYet);
+        };
+        let mut folded = Expr::call(intrinsic, vec![first, second], span.clone())?;
+        for value in values {
+            folded = Expr::call(intrinsic, vec![Arg::Value(folded), value], span.clone())?;
+        }
+        Ok(folded)
     }
 
     /// `SEL` or `MUX` of `BOOL`s, the call `expr`: the selection `intrinsic`
