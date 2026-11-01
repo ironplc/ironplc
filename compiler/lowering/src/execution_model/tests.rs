@@ -490,6 +490,83 @@ fn resolve_when_no_configuration_then_implicit_resource_lists_no_globals() {
     assert!(model.configurations()[0].resources[0].globals.is_empty());
 }
 
+#[spec_test(REQ_EM_lowering_043)]
+fn resolve_when_located_globals_in_every_scope_then_named_ones_listed() {
+    let source = format!(
+        "
+VAR_GLOBAL
+  top AT %IX0.0 : BOOL;
+END_VAR
+VAR_GLOBAL
+  AT %IX0.1 : BOOL;
+END_VAR
+{MAIN}
+CONFIGURATION config
+  VAR_GLOBAL
+    AT %MW2 : INT;
+    shared AT %QX0.0 : BOOL;
+  END_VAR
+  RESOURCE resource1 ON PLC
+    VAR_GLOBAL
+      local AT %MW4 : INT;
+      AT %MW6 : INT;
+    END_VAR
+    PROGRAM instance1 : main;
+  END_RESOURCE
+END_CONFIGURATION
+"
+    );
+    let options = CompilerOptions {
+        allow_top_level_var_global: true,
+        ..CompilerOptions::default()
+    };
+    let model = resolve_source_with(&source, &options);
+
+    assert_eq!(
+        globals(&model),
+        [
+            "top: Declared(TopLevel)",
+            "shared: Declared(Configuration)",
+            "local: Declared(Resource)",
+        ]
+    );
+    let resource = &model.configurations()[0].resources[0];
+    let names: Vec<String> = resource
+        .globals
+        .iter()
+        .map(|id| model.global(*id).unwrap().name.to_string())
+        .collect();
+    assert_eq!(names, ["local"]);
+}
+
+#[spec_test(REQ_EM_lowering_043)]
+fn resolve_when_single_names_located_global_then_triggers_on_it() {
+    let source = format!(
+        "{MAIN}
+CONFIGURATION config
+  VAR_GLOBAL
+    AT %IX0.1 : BOOL;
+    start AT %IX0.0 : BOOL;
+  END_VAR
+  RESOURCE resource1 ON PLC
+    TASK on_start (SINGLE := start, PRIORITY := 1);
+    PROGRAM instance1 WITH on_start : main;
+  END_RESOURCE
+END_CONFIGURATION
+"
+    );
+    let model = resolve_source(&source);
+
+    let Schedule::Event {
+        trigger: Trigger::Global(id),
+        ..
+    } = only_task(&model).schedule
+    else {
+        panic!("not triggered by a global: {:?}", only_task(&model).schedule);
+    };
+    assert_eq!(model.global(id).unwrap().name.to_string(), "start");
+}
+
 #[spec_test(REQ_EM_lowering_040)]
 fn resolve_when_globals_then_clean_analysis_answers_each_declaration_by_id() {
     let source = format!(

@@ -381,6 +381,13 @@ resources', follow the top-level ones, configurations in source order.
 A resource's globals are visible only to the programs of that resource
 (IEC 61131-3, 2.7.1), so a backend needs to know which resource declares each.
 
+**REQ-EM-lowering-043** A located `VAR_GLOBAL` with a name (`lamp AT %QX0.0 : BOOL`) is a global like any other; one with no name (`AT %MW4 : INT`) is not listed, in any scope.
+
+No statement and no `SINGLE` can name a located global with no name, for the
+same reason a program's located variable with no name is no field of its
+instance (see REQ-LOW-lowering-170 in
+[Lowered Program](lowered-program.md#32-program-pous-and-variables)).
+
 ### Instances of a type the library does not declare as a program
 
 **REQ-EM-lowering-054** A program instance whose type is not a `PROGRAM` declaration of the library, such as a function block or a name declared nowhere, is in the model as `InstanceOf::Unresolved`, with its type name as written.

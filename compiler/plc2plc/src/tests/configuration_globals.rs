@@ -3,9 +3,6 @@
 //! The grammar allows at most one `VAR_GLOBAL` block in each, and only at a
 //! fixed position: before the resources of a configuration, and before the
 //! tasks and programs of a resource (IEC 61131-3 Edition 2, B.1.7).
-//!
-//! Located globals (`x AT %QX0.0 : BOOL`) are left out: the parser rejects
-//! them in these blocks (#1913).
 
 use super::common::*;
 
@@ -78,6 +75,38 @@ CONFIGURATION config
   VAR_CONFIG
     resource1.plc_task_instance.x AT %QB1 : BYTE;
   END_VAR
+END_CONFIGURATION
+";
+    assert_round_trips(source, &CompilerOptions::default());
+}
+
+#[test]
+fn write_to_string_when_configuration_has_located_globals_then_round_trips() {
+    let source = "
+CONFIGURATION config
+  VAR_GLOBAL
+    level AT %IW2 : INT := 7;
+    AT %MW4 : INT;
+    plain : BOOL;
+  END_VAR
+  RESOURCE resource1 ON PLC
+    PROGRAM plc_task_instance : plc_prg;
+  END_RESOURCE
+END_CONFIGURATION
+";
+    assert_round_trips(source, &CompilerOptions::default());
+}
+
+#[test]
+fn write_to_string_when_resource_global_block_retain_located_then_round_trips() {
+    let source = "
+CONFIGURATION config
+  RESOURCE resource1 ON PLC
+    VAR_GLOBAL RETAIN
+      lamp AT %QX0.1 : BOOL;
+    END_VAR
+    PROGRAM plc_task_instance : plc_prg;
+  END_RESOURCE
 END_CONFIGURATION
 ";
     assert_round_trips(source, &CompilerOptions::default());

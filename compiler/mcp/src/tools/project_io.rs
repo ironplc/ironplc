@@ -214,7 +214,6 @@ mod tests {
     use crate::tools::test_support::{
         ed2_options, source, unnamed_source, SEMANTIC_ERROR_PROGRAM, VALID_PROGRAM,
     };
-    use ironplc_dsl::common::AddressAssignment;
     use spec_test_macro::spec_test;
 
     fn build(src: &str) -> ProjectIoResponse {
@@ -245,27 +244,6 @@ mod tests {
              END_CONFIGURATION\n\
              PROGRAM p\n{program_body}\nEND_PROGRAM"
         )
-    }
-
-    /// Classifies a global declared at `address`: located globals do not
-    /// parse in any `VAR_GLOBAL` block yet (#1913), so the symbol is built
-    /// the way the analyzer records one.
-    fn classify_global_at(address: &str) -> (Vec<IoEntry>, Vec<IoEntry>) {
-        let info = SymbolInfo::new(
-            SymbolKind::Variable,
-            ScopeKind::Global,
-            ironplc_dsl::core::SourceSpan::default(),
-        )
-        .with_variable_type(VariableType::Global)
-        .with_address(AddressAssignment::try_from(address).expect("a direct address"));
-        let (mut inputs, mut outputs) = (vec![], vec![]);
-        let entry = IoEntry {
-            name: "g".to_string(),
-            type_name: String::new(),
-            address: info.address_text(),
-        };
-        classify(entry, &info, IoScope::Global, &mut inputs, &mut outputs);
-        (inputs, outputs)
     }
 
     #[test]
@@ -411,26 +389,29 @@ mod tests {
     }
 
     #[spec_test(REQ_TOL_mcp_210)]
-    fn classify_when_global_at_input_address_then_inputs_only() {
-        let (inputs, outputs) = classify_global_at("%IX0.0");
-        assert_eq!(names(&inputs), vec!["g"]);
-        assert_eq!(inputs[0].address.as_deref(), Some("%IX0.0"));
-        assert!(outputs.is_empty(), "outputs: {outputs:?}");
+    fn build_response_when_configuration_global_at_input_address_then_inputs_only() {
+        let resp = build(&configuration("g AT %IX0.0 : BOOL;", ""));
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        assert_eq!(names(&resp.inputs), vec!["g"]);
+        assert_eq!(resp.inputs[0].address.as_deref(), Some("%IX0.0"));
+        assert!(resp.outputs.is_empty(), "outputs: {:?}", resp.outputs);
     }
 
     #[spec_test(REQ_TOL_mcp_211)]
-    fn classify_when_global_at_output_address_then_outputs_only() {
-        let (inputs, outputs) = classify_global_at("%QX0.0");
-        assert!(inputs.is_empty(), "inputs: {inputs:?}");
-        assert_eq!(names(&outputs), vec!["g"]);
-        assert_eq!(outputs[0].address.as_deref(), Some("%QX0.0"));
+    fn build_response_when_configuration_global_at_output_address_then_outputs_only() {
+        let resp = build(&configuration("g AT %QX0.0 : BOOL;", ""));
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        assert!(resp.inputs.is_empty(), "inputs: {:?}", resp.inputs);
+        assert_eq!(names(&resp.outputs), vec!["g"]);
+        assert_eq!(resp.outputs[0].address.as_deref(), Some("%QX0.0"));
     }
 
     #[spec_test(REQ_TOL_mcp_211)]
-    fn classify_when_global_at_memory_address_then_in_neither() {
-        let (inputs, outputs) = classify_global_at("%MW2");
-        assert!(inputs.is_empty(), "inputs: {inputs:?}");
-        assert!(outputs.is_empty(), "outputs: {outputs:?}");
+    fn build_response_when_configuration_global_at_memory_address_then_in_neither() {
+        let resp = build(&configuration("g AT %MW2 : INT;", ""));
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        assert!(resp.inputs.is_empty(), "inputs: {:?}", resp.inputs);
+        assert!(resp.outputs.is_empty(), "outputs: {:?}", resp.outputs);
     }
 
     #[spec_test(REQ_TOL_mcp_213)]
