@@ -194,6 +194,7 @@ mod end_to_end_mux;
 mod end_to_end_mux_float;
 mod end_to_end_mux_lint;
 mod end_to_end_name_resolution;
+mod end_to_end_named_array_global;
 mod end_to_end_named_return_type;
 mod end_to_end_neg;
 mod end_to_end_nested;
