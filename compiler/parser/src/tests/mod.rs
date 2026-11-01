@@ -24,6 +24,7 @@ mod interfaces;
 mod keyword_identifiers;
 mod late_resolved_initializers;
 mod literals;
+mod located_globals;
 mod member_qualifiers;
 mod method_call_expression;
 mod methods;

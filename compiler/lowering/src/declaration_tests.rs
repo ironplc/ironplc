@@ -103,6 +103,39 @@ fn lower_statement_when_program_reaches_global_then_instance_and_global_sections
     assert_eq!(global.location(), None);
 }
 
+/// REQ-LOW-lowering-023, REQ-LOW-lowering-024: a located global reached
+/// through a `VAR_EXTERNAL` carries the address and the retention its
+/// `VAR_GLOBAL` declares, not the external's, which declares neither.
+#[test]
+fn lower_statement_when_program_reaches_located_global_then_global_keeps_address() {
+    let outcome = lower(
+        "CONFIGURATION config
+           VAR_GLOBAL RETAIN lamp AT %QX0.1 : BOOL; END_VAR
+           RESOURCE res ON PLC
+             PROGRAM inst : main;
+           END_RESOURCE
+         END_CONFIGURATION
+         PROGRAM main
+         VAR_EXTERNAL lamp : BOOL; END_VAR
+            lamp := TRUE;
+         END_PROGRAM",
+        "main",
+    );
+
+    let global = &outcome.variables[1];
+    assert_eq!(global.name().to_string(), "lamp");
+    assert_eq!(global.section(), Section::Global);
+    assert_eq!(
+        global.location(),
+        Some(&DirectAddress {
+            area: AddressArea::Output,
+            size: AddressSize::Bit,
+            path: vec![0, 1],
+        })
+    );
+    assert_eq!(global.retention(), Retention::Retain);
+}
+
 /// REQ-LOW-lowering-023, REQ-LOW-lowering-024: a program's located or
 /// retained variable is a field of its instance that carries its address or
 /// retention.
