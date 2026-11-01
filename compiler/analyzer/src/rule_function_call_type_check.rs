@@ -47,7 +47,7 @@
 
 use ironplc_dsl::{
     common::*,
-    core::{Id, Located},
+    core::Located,
     diagnostic::{Diagnostic, Label},
     scope::ScopeNode,
     textual::*,
@@ -66,6 +66,7 @@ use crate::{
     symbol_environment::ScopeTracker,
     type_compat::is_checkable_type,
     value_type::{self, ValueType},
+    variable_type,
 };
 use ironplc_parser::options::CompilerOptions;
 pub fn apply(
@@ -102,45 +103,33 @@ impl DiagnosticVisitor for RuleFunctionCallTypeCheck<'_> {
 }
 
 impl RuleFunctionCallTypeCheck<'_> {
-    /// The type name a variable in scope was declared with, or `None` for
-    /// one declared with an inline type or not declared at all.
+    /// The variable an assignment to `target` stores into, as a diagnostic
+    /// names it, and the name of the type it stores its value at: the type
+    /// of the variable, field or element `target` names, or for a
+    /// dereference (`deref`) the type the reference `target` refers to.
+    ///
+    /// Every target the variable walk types is answered, a field (`t.f`), an
+    /// element (`a[1]`), a field of an element (`a[1].f`) and a member of
+    /// `THIS^` as well as a variable, so that each is checked as a variable
+    /// of its type is. `None` for a directly represented variable, and for
+    /// a target the walk does not type, such as a variable not declared or
+    /// a field the record does not have, which another rule reports.
     ///
     /// A function's or method's own name is its result variable, so
     /// assigning it is an assignment with a target type like any other.
-    fn declared_type_name(&self, id: &Id) -> Option<TypeName> {
-        let type_id = self
-            .context
-            .symbols()
-            .resolve_variable(id, &self.scope.current())
-            .declared()?
-            .type_id?;
-        self.context.types().name_of(type_id).cloned()
-    }
-
-    /// The type name an assignment to `id` stores its value at: the type `id`
-    /// was declared with, or for a dereference (`deref`) the elementary type
-    /// the reference `id` refers to.
-    fn assigned_type_name(&self, id: &Id, deref: bool) -> Option<TypeName> {
-        if deref {
-            self.referenced_type_name(id)
-        } else {
-            self.declared_type_name(id)
-        }
-    }
-
-    /// The elementary type the reference variable `id` refers to, or `None`
-    /// when `id` is not a reference or refers to a type that is not
-    /// elementary.
-    fn referenced_type_name(&self, id: &Id) -> Option<TypeName> {
-        let type_id = self
-            .context
-            .symbols()
-            .resolve_variable(id, &self.scope.current())
-            .declared()?
-            .type_id?;
+    fn assigned_type_name(&self, target: &Variable, deref: bool) -> Option<(String, TypeName)> {
+        let Variable::Symbolic(kind) = target else {
+            return None;
+        };
         let types = self.context.types();
-        let referenced = types.get_by_id(type_id)?.representation.referenced_type()?;
-        types.elementary_type_name_for(referenced)
+        let id =
+            variable_type::type_id(kind, self.context.symbols(), types, &self.scope.current())?;
+        let id = if deref {
+            types.referenced_type(id)?
+        } else {
+            id
+        };
+        Some((kind.to_string(), types.name_of(id)?.clone()))
     }
 
     /// Checks whether a function call expression assigned to a variable has a
@@ -157,10 +146,7 @@ impl RuleFunctionCallTypeCheck<'_> {
         let ExprKind::Function(ref func_call) = value.kind else {
             return;
         };
-        let Variable::Symbolic(SymbolicVariableKind::Named(ref nv)) = target else {
-            return;
-        };
-        let Some(target_type) = self.assigned_type_name(&nv.name, deref) else {
+        let Some((_, target_type)) = self.assigned_type_name(target, deref) else {
             return;
         };
         if self.generic_return_bound_to_mismatched_argument(func_call) {
@@ -247,11 +233,14 @@ impl RuleFunctionCallTypeCheck<'_> {
     /// This complements [`Self::check_return_type`], which handles the case where
     /// the right-hand side is a user-function call. Here we handle every other
     /// right-hand side (arithmetic, variables, literals, stdlib calls) by
-    /// comparing the target's declared type against the resolved expression type.
-    /// Only simple named targets that resolve to an elementary type are checked,
-    /// and the dereference of one (`deref`), which stores into the variable
-    /// the reference refers to; user-defined targets (enums, structures,
-    /// arrays, function blocks) are skipped to avoid false positives.
+    /// comparing the target's type against the resolved expression type.
+    /// A target of an elementary type is checked whatever names it -- a
+    /// variable, a field, an array element -- and so is the dereference of
+    /// one (`deref`), which stores into the variable the reference refers to
+    /// (see [`Self::assigned_type_name`]). A target of a user-defined type
+    /// (an enumeration, structure, array or function block) is skipped: the
+    /// compatibility relation judges elementary types only, and
+    /// `rule_assignment_aggregate_type_compat` judges an aggregate.
     ///
     /// `label` names the value in the diagnostic: an assigned value, or the
     /// output an output assignment stores.
@@ -261,9 +250,6 @@ impl RuleFunctionCallTypeCheck<'_> {
             return;
         }
 
-        let Variable::Symbolic(SymbolicVariableKind::Named(nv)) = target else {
-            return;
-        };
         // A string variable of the other encoding is P4034's business;
         // reporting it here too would give two diagnostics for one mistake.
         if rule_string_encoding_compat::mixes_encodings(
@@ -274,7 +260,7 @@ impl RuleFunctionCallTypeCheck<'_> {
         ) {
             return;
         }
-        let Some(declared) = self.assigned_type_name(&nv.name, deref) else {
+        let Some((target_name, declared)) = self.assigned_type_name(target, deref) else {
             return;
         };
         // Resolve aliases/subranges to the underlying elementary type so the
@@ -307,7 +293,7 @@ impl RuleFunctionCallTypeCheck<'_> {
                     Problem::AssignmentTypeMismatch,
                     Label::span(value.span(), label),
                 )
-                .with_context("target", &nv.name.original().to_string())
+                .with_context("target", &target_name)
                 .with_context("target_type", &target_type.to_string())
                 .with_context("value_type", &mismatch.actual),
             );
@@ -428,6 +414,9 @@ mod string_encoding_tests;
 
 #[cfg(test)]
 mod subrange_tests;
+
+#[cfg(test)]
+mod target_tests;
 
 #[cfg(test)]
 mod tests {

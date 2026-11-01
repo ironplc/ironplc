@@ -229,7 +229,7 @@ END_PROGRAM
 #[rstest]
 #[case::bits_of_bits("d : DWORD;", "d.%B1.3 := TRUE;")]
 #[case::through_reference("x : BYTE; p : REF_TO BYTE;", "p := REF(x); p^.3 := TRUE;")]
-#[case::part_through_reference("x : WORD; p : REF_TO WORD;", "p := REF(x); p^.%B1 := 1;")]
+#[case::part_through_reference("x : WORD; p : REF_TO WORD;", "p := REF(x); p^.%B1 := BYTE#1;")]
 #[case::read_through_reference("x : BYTE; p : REF_TO BYTE; r : BOOL;", "p := REF(x); r := p^.3;")]
 fn partial_access_when_base_is_not_a_place_then_not_implemented(
     #[case] decls: &str,
