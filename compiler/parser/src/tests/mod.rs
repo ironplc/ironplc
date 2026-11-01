@@ -14,6 +14,7 @@ mod continue_statement;
 mod corpus;
 mod daytime_fraction;
 mod dialect_flags;
+mod direct_address;
 mod duration;
 mod enums;
 mod expression_spans;
