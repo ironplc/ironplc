@@ -2551,18 +2551,23 @@ impl AddressAssignment {
 }
 
 lazy_static! {
-    static ref DIRECT_ADDRESS_UNASSIGNED: Regex = Regex::new(r"%([IQM])\*").unwrap();
-    // Accepts what the `DirectAddress` token accepts, so `[0-9]` rather than
-    // the Unicode-aware `\d`.
+    // Accept what the `DirectAddress` and `DirectAddressIncomplete` tokens
+    // accept, matched against upper-cased text: `[0-9]` rather than the
+    // Unicode-aware `\d`, and fields of any number of digits with single
+    // `_` separators.
+    static ref DIRECT_ADDRESS_UNASSIGNED: Regex = Regex::new(r"^%([IQM])\*$").unwrap();
     static ref DIRECT_ADDRESS: Regex =
-        Regex::new(r"%([IQM])([XBWDL])?([0-9](\.[0-9])*)").unwrap();
+        Regex::new(r"^%([IQM])([XBWDL])?([0-9](_?[0-9])*(\.[0-9](_?[0-9])*)*)$").unwrap();
 }
 
 impl TryFrom<&str> for AddressAssignment {
     type Error = &'static str;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        if let Some(cap) = DIRECT_ADDRESS_UNASSIGNED.captures(value) {
+        // The letters of a direct address are not case-sensitive (`%ix0.0`).
+        let value = value.to_ascii_uppercase();
+
+        if let Some(cap) = DIRECT_ADDRESS_UNASSIGNED.captures(&value) {
             let location_prefix = LocationPrefix::try_from(&cap[1])?;
             return Ok(AddressAssignment {
                 location: location_prefix,
@@ -2572,15 +2577,15 @@ impl TryFrom<&str> for AddressAssignment {
             });
         }
 
-        if let Some(cap) = DIRECT_ADDRESS.captures(value) {
+        if let Some(cap) = DIRECT_ADDRESS.captures(&value) {
             let location_prefix = LocationPrefix::try_from(&cap[1])?;
             // The size letter is optional (`%I1`); without it the size is `Nil`.
             let size_prefix = SizePrefix::try_from(cap.get(2).map_or("", |m| m.as_str()))?;
             let pos = cap[3]
                 .split('.')
-                .map(|v| v.parse::<u32>())
+                .map(|v| v.replace('_', "").parse::<u32>())
                 .collect::<Result<Vec<u32>, _>>()
-                .map_err(|_| "Address field is not a number")?;
+                .map_err(|_| "Direct address field does not fit in 32 bits")?;
 
             return Ok(AddressAssignment {
                 location: location_prefix,
