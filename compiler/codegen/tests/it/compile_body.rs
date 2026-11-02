@@ -529,7 +529,7 @@ fn run_when_shifts_and_bit_reads_then_values() {
                a : ARRAY[0..1] OF WORD; k : DINT := 4;
                rb : BYTE; rw : WORD; rd : DWORD; rl : LWORD; rl2 : LWORD;
                x1 : BOOL; x2 : BOOL; x3 : BOOL; x4 : BOOL; p1 : BYTE; p2 : BYTE; p3 : DWORD; END_VAR
-           a[i] := 16#0008;
+           a[i] := WORD#16#0008;
            rb := ROL(b, 1);
            rw := ROR(w, k);
            rd := SHL(d, 1);
