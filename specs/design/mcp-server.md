@@ -184,7 +184,7 @@ This is the full-project answer to "what is declared here?" For questions about 
 
 **REQ-TOL-mcp-050** The `symbols` tool returns the top-level declarations for programs, functions, function blocks, and types found in the sources under analysis.
 
-**REQ-TOL-mcp-051** Each program entry in the `symbols` response includes the program name and its variable declarations. Each variable entry contains `name`, `type`, `direction` (one of `"Local"`, `"In"`, `"Out"`, `"InOut"`, `"Global"`, `"External"`), `address` (the direct-variable string such as `"%IX0.0"` when the variable is mapped to a hardware address, otherwise `null`), and `external` (`true` when the variable can be driven from outside the program — i.e. `direction` is `"In"`, `"InOut"`, `"External"`, or `"Global"`, or `address` is a `%I*` hardware input).
+**REQ-TOL-mcp-051** Each program entry in the `symbols` response includes the program name and its variable declarations. Each variable entry contains `name`, `type`, `direction` (one of `"Local"`, `"In"`, `"Out"`, `"InOut"`, `"Global"`, `"External"`), `address` (the direct-variable string as IEC 61131-3 writes it, such as `"%IX0.0"`, or `"%I*"` for an incomplete address, when the variable is mapped to a hardware address, otherwise `null`), and `external` (`true` when the variable can be driven from outside the program — i.e. `direction` is `"In"`, `"InOut"`, `"External"`, or `"Global"`, or the variable is at an `%I` address).
 
 **REQ-TOL-mcp-052** Each function entry in the `symbols` response includes the function name, return type, and parameter list.
 
@@ -311,7 +311,7 @@ Returns every variable the caller can drive (`inputs`) and every variable the ca
 
 **REQ-TOL-mcp-211** The `project_io` tool returns every variable that represents an output visible outside the program: `VAR_OUTPUT` parameters of Programs, `VAR_IN_OUT` parameters of Programs, global variables without a direct-variable address, and variables mapped to a hardware output address (`%Q*`). A `VAR_IN_OUT` variable and a non-addressed global appear in both `inputs` and `outputs`; this reflects the IEC 61131-3 semantics that they can be both driven and observed. Variables mapped to marker memory (`%M*`) are neither inputs nor outputs and do not appear in either list.
 
-**REQ-TOL-mcp-212** Each entry in the `inputs` and `outputs` arrays contains `name` (fully qualified; see Variable Naming in Architecture), `type`, and `address` (the direct-variable string such as `"%IX0.0"` when present, otherwise `null`).
+**REQ-TOL-mcp-212** Each entry in the `inputs` and `outputs` arrays contains `name` (fully qualified; see Variable Naming in Architecture), `type`, and `address` (the direct-variable string as IEC 61131-3 writes it, such as `"%IX0.0"`, or `"%I*"` for an incomplete address, when present, otherwise `null`).
 
 **REQ-TOL-mcp-213** A variable the caller cannot write is not in `inputs`, whatever its declaration otherwise qualifies it for: a `CONSTANT` global, a Program's `VAR_EXTERNAL CONSTANT` reference, and a global the compiler provides rather than the sources declare (such as `__SYSTEM_UP_TIME`, which the VM updates every scan). A `CONSTANT` or compiler-provided global without a direct-variable address is still observable, so it appears in `outputs` only. A global declared without `CONSTANT` is an input even when the compiler infers it constant because no code writes it.
 
