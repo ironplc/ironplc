@@ -874,35 +874,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         &mut self,
         node: &AddressAssignment,
     ) -> Result<Self::Value, Diagnostic> {
-        let mut address = String::from("%");
-
-        let loc = match &node.location {
-            LocationPrefix::I => 'I',
-            LocationPrefix::Q => 'Q',
-            LocationPrefix::M => 'M',
-        };
-        address.push(loc);
-
-        let size = match &node.size {
-            SizePrefix::Unspecified => "*",
-            SizePrefix::Nil => "",
-            SizePrefix::X => "X",
-            SizePrefix::B => "B",
-            SizePrefix::W => "W",
-            SizePrefix::D => "D",
-            SizePrefix::L => "L",
-        };
-        address.push_str(size);
-
-        let location: String = node
-            .address
-            .iter()
-            .map(|&id| id.to_string() + ".")
-            .collect();
-        address.push_str(location.trim_end_matches('.'));
-
-        self.write_ws(address.as_str());
-
+        self.write_ws(&node.to_string());
         Ok(())
     }
 

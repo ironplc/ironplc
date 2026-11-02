@@ -1,7 +1,6 @@
 use indexmap::IndexMap;
 use ironplc_dsl::common::{
-    Accessor, AddressAssignment, ConstantKind, DeclarationQualifier, LocationPrefix, SizePrefix,
-    TypeName, VariableType,
+    Accessor, AddressAssignment, ConstantKind, DeclarationQualifier, TypeName, VariableType,
 };
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -202,27 +201,6 @@ pub struct SymbolInfo {
     pub constant_value: Option<ConstantKind>,
 }
 
-/// `addr` as IEC 61131-3 writes it, such as `%IX0.0`. A bit address written
-/// without its size (`%I0.0`) and an unspecified one (`%I*`) are written
-/// without a size letter.
-fn address_text(addr: &AddressAssignment) -> String {
-    let loc = match addr.location {
-        LocationPrefix::I => "I",
-        LocationPrefix::Q => "Q",
-        LocationPrefix::M => "M",
-    };
-    let size = match addr.size {
-        SizePrefix::X => "X",
-        SizePrefix::B => "B",
-        SizePrefix::W => "W",
-        SizePrefix::D => "D",
-        SizePrefix::L => "L",
-        SizePrefix::Nil | SizePrefix::Unspecified => "",
-    };
-    let parts: Vec<String> = addr.address.iter().map(|a| a.to_string()).collect();
-    format!("%{loc}{size}{}", parts.join("."))
-}
-
 impl SymbolInfo {
     pub fn new(kind: SymbolKind, scope: ScopeKind, span: ironplc_dsl::core::SourceSpan) -> Self {
         Self {
@@ -280,9 +258,11 @@ impl SymbolInfo {
         self
     }
 
-    /// The direct address as IEC 61131-3 writes it, such as `%IX0.0`.
+    /// The direct address as IEC 61131-3 writes it, such as `%IX0.0`. An
+    /// incomplete address keeps its `*` (`%I*`): the MCP tools `symbols` and
+    /// `project_io` report this text, and `%I` alone is not an address.
     pub fn address_text(&self) -> Option<String> {
-        self.address.as_ref().map(address_text)
+        self.address.as_ref().map(AddressAssignment::to_string)
     }
 
     pub fn with_qualifier(mut self, qualifier: DeclarationQualifier) -> Self {

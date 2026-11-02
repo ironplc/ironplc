@@ -2608,12 +2608,32 @@ impl fmt::Debug for AddressAssignment {
     }
 }
 
+/// The address as IEC 61131-3 writes it: `%IX0.0`, `%MW10`, `%Q1.2.3`, or
+/// `%I*` for an address assigned later in a `VAR_CONFIG`.
 impl fmt::Display for AddressAssignment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("AddressAssignment")
-            .field("location", &self.location)
-            .field("size", &self.size)
-            .finish()
+        let location = match self.location {
+            LocationPrefix::I => "I",
+            LocationPrefix::Q => "Q",
+            LocationPrefix::M => "M",
+        };
+        let size = match self.size {
+            SizePrefix::Unspecified => "*",
+            SizePrefix::Nil => "",
+            SizePrefix::X => "X",
+            SizePrefix::B => "B",
+            SizePrefix::W => "W",
+            SizePrefix::D => "D",
+            SizePrefix::L => "L",
+        };
+        write!(f, "%{location}{size}")?;
+        for (i, field) in self.address.iter().enumerate() {
+            if i > 0 {
+                f.write_str(".")?;
+            }
+            write!(f, "{field}")?;
+        }
+        Ok(())
     }
 }
 
