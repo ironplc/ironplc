@@ -2,10 +2,16 @@
 //! IEC 61131-3 (B.1.4.1) writes one: each field is an `integer`
 //! (`digit {['_'] digit}`) of any length, and the letters are not
 //! case-sensitive.
+//!
+//! Also tests that `Display` writes the address back the same way. It is the
+//! one place the spelling lives: `plc2plc` writes source through it and the
+//! MCP tools `symbols` and `project_io` show it, so it may not fall back to
+//! `Debug` text.
 
 use rstest::rstest;
 
 use crate::common::{AddressAssignment, LocationPrefix, SizePrefix};
+use crate::core::SourceSpan;
 
 #[rstest]
 #[case("%MW10", LocationPrefix::M, SizePrefix::W, &[10])]
@@ -41,4 +47,29 @@ fn try_from_when_valid_address_then_fields(
 #[case::size_before_star("%IX*")]
 fn try_from_when_not_a_direct_address_then_err(#[case] text: &str) {
     assert!(AddressAssignment::try_from(text).is_err());
+}
+
+#[rstest]
+#[case(LocationPrefix::I, SizePrefix::X, vec![0, 0], "%IX0.0")]
+#[case(LocationPrefix::Q, SizePrefix::B, vec![7], "%QB7")]
+#[case(LocationPrefix::M, SizePrefix::W, vec![10], "%MW10")]
+#[case(LocationPrefix::I, SizePrefix::D, vec![4], "%ID4")]
+#[case(LocationPrefix::Q, SizePrefix::L, vec![2], "%QL2")]
+#[case(LocationPrefix::Q, SizePrefix::Nil, vec![1, 2, 3], "%Q1.2.3")]
+#[case(LocationPrefix::I, SizePrefix::Unspecified, vec![], "%I*")]
+#[case(LocationPrefix::M, SizePrefix::Unspecified, vec![], "%M*")]
+fn display_when_address_then_iec_spelling(
+    #[case] location: LocationPrefix,
+    #[case] size: SizePrefix,
+    #[case] address: Vec<u32>,
+    #[case] expected: &str,
+) {
+    let address = AddressAssignment {
+        location,
+        size,
+        address,
+        position: SourceSpan::default(),
+    };
+
+    assert_eq!(address.to_string(), expected);
 }

@@ -282,6 +282,14 @@ mod tests {
     }
 
     #[test]
+    fn build_response_when_variable_has_incomplete_address_then_address_keeps_asterisk() {
+        let resp = build("PROGRAM p\nVAR sensor AT %I* : INT; END_VAR\nEND_PROGRAM");
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        let entry = resp.inputs.iter().find(|e| e.name == "p.sensor").unwrap();
+        assert_eq!(entry.address.as_deref(), Some("%I*"));
+    }
+
+    #[test]
     fn build_response_when_variable_has_output_address_then_in_outputs() {
         let resp = build("PROGRAM p\nVAR buzzer AT %QX0.0 : BOOL; END_VAR\nEND_PROGRAM");
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);

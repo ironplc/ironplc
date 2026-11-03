@@ -9,6 +9,10 @@ being assigned to. IronPLC allows implicit widening between integer types (for e
 a function returning ``SINT`` assigned to a ``DINT`` variable), but rejects other type
 mismatches such as real to integer or narrowing conversions.
 
+The target may be a variable, a structure field or an array element. A function
+returning ``REAL`` assigned to an ``INT`` field (``t.f := GET_VALUE(x)``) is this error
+too.
+
 For the full set of allowed implicit conversions, see
 :doc:`/explanation/type-conversions`.
 
