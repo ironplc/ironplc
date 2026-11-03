@@ -9,6 +9,7 @@ pub mod configuration;
 mod constant_display_tests;
 pub mod core;
 pub mod diagnostic;
+pub mod direct_address;
 pub mod extension;
 pub mod fold;
 pub mod member_qualifier;
