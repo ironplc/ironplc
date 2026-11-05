@@ -32,6 +32,7 @@ mod result;
 mod rule_abstract_not_instantiated;
 mod rule_array_index_range;
 mod rule_array_initializer_length;
+mod rule_array_initializer_type;
 mod rule_array_subscript_count;
 mod rule_array_subscript_operand;
 mod rule_array_subscript_type;

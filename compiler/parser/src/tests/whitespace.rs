@@ -288,6 +288,11 @@ END_CONFIGURATION"
     verbatim,
     CompilerOptions::default
 )]
+#[case::var_declaration_named_array_initializer(
+    "PROGRAM main VAR x·:·A3·:=·[1, 2]·; END_VAR x[1] := 2; END_PROGRAM",
+    verbatim,
+    CompilerOptions::default
+)]
 // `this_super.rs` also spells out THIS/space/comment before the caret, but
 // asserts the AST *shape* (that the head is a SelfRef). This row asserts
 // invariance instead. It is the one gap in the #1437 family that `self_ref`

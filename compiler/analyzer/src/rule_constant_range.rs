@@ -870,4 +870,7 @@ fn integer_constant(value: &SignedInteger) -> ConstantKind {
 mod method_argument_tests;
 
 #[cfg(test)]
+mod named_array_tests;
+
+#[cfg(test)]
 mod tests;
