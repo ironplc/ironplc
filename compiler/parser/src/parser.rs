@@ -890,6 +890,17 @@ parser! {
         initial_values: init.unwrap_or_default()
       }
     }
+    // A named array type with an initializer, `x : Triple := [1, 2, 3]`.
+    // Only an array takes a bracketed initializer, so the parser settles the
+    // kind here rather than leaving a placeholder for the type resolver
+    // (ADR-0050). Without `:=` the name is ambiguous and takes the
+    // late-resolved path like every other bare user type name.
+    / type_name:array_type_name() _ tok(TokenType::Assignment) _ a:array_initialization() {
+      ArrayInitialValueAssignment {
+        spec: SpecificationKind::Named(type_name),
+        initial_values: a
+      }
+    }
     rule array_specification() -> ArraySpecificationKind = subranges:array_subranges() { SpecificationKind::Inline(subranges) }
     rule array_subranges() -> ArraySubranges = tok(TokenType::Array) _ tok(TokenType::LeftBracket) _ ranges:subrange() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightBracket) _ tok(TokenType::Of) _ ref_to:ref_to_keyword()? _ type_name:array_element_type() {
       ArraySubranges { ranges, type_name, ref_to }
