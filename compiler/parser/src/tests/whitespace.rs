@@ -289,7 +289,7 @@ END_CONFIGURATION"
     CompilerOptions::default
 )]
 #[case::var_declaration_named_array_initializer(
-    "PROGRAM main VAR x·:·A3·:=·[1, 2]·; END_VAR x[1] := 2; END_PROGRAM",
+    "TYPE Triple : ARRAY[1..3] OF DINT; END_TYPE PROGRAM main VAR x·:·Triple·:=·[1, 2]·; END_VAR x[1] := 2; END_PROGRAM",
     verbatim,
     CompilerOptions::default
 )]

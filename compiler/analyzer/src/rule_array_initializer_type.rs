@@ -1,5 +1,5 @@
 //! Semantic rule that an array initializer written after a type name,
-//! `x : A3 := [1, 2, 3]`, names a declared array type.
+//! `x : Triple := [1, 2, 3]`, names a declared array type.
 //!
 //! Only an array takes a bracketed initializer, so the parser records such a
 //! declaration as an array of the named type before the type is known
@@ -12,7 +12,8 @@
 //!   initializer that does not fit the declared type.
 //!
 //! The rule checks a variable declaration, a structure field, a `VAR_CONFIG`
-//! entry and the default of an array type alias (`TYPE B3 : A3 := [...]`).
+//! entry and the default of an array type alias
+//! (`TYPE TripleDefault : Triple := [...]`).
 //! An alias whose base is not declared is reported when the type environment
 //! is built, so this rule does not report it again.
 //!
@@ -22,12 +23,12 @@
 //!
 //! ```ignore
 //! TYPE
-//!    A3 : ARRAY[1..3] OF DINT;
+//!    Triple : ARRAY[1..3] OF DINT;
 //! END_TYPE
 //!
 //! PROGRAM main
 //!    VAR
-//!       x : A3 := [1, 2, 3];
+//!       x : Triple := [1, 2, 3];
 //!    END_VAR
 //! END_PROGRAM
 //! ```
@@ -114,8 +115,9 @@ impl Visitor<Infallible> for RuleArrayInitializerType<'_> {
         &mut self,
         node: &ArrayInitialValueAssignment,
     ) -> Result<(), Infallible> {
-        // A bare `x : A3` reaches here only once the resolver has found `A3`
-        // to be an array, so only a declaration with values needs checking.
+        // A bare `x : Triple` reaches here only once the resolver has found
+        // `Triple` to be an array, so only a declaration with values needs
+        // checking.
         if let SpecificationKind::Named(name) = &node.spec {
             if !node.initial_values.is_empty() && !self.check_declared_type_is_array(name) {
                 self.diagnostics.push(
@@ -148,12 +150,12 @@ mod tests {
         apply_when_named_array_with_values_then_ok,
         "
 TYPE
-    A3 : ARRAY[1..3] OF DINT;
+    Triple : ARRAY[1..3] OF DINT;
 END_TYPE
 PROGRAM main
 VAR
-    x : A3 := [1, 2, 3];
-    y : A3;
+    x : Triple := [1, 2, 3];
+    y : Triple;
 END_VAR
 END_PROGRAM"
     );
@@ -162,14 +164,14 @@ END_PROGRAM"
         apply_when_alias_of_named_array_with_values_then_ok,
         "
 TYPE
-    A3 : ARRAY[1..3] OF DINT;
-    B3 : A3;
-    C3 : A3 := [7, 8, 9];
+    Triple : ARRAY[1..3] OF DINT;
+    TripleAlias : Triple;
+    TripleDefault : Triple := [7, 8, 9];
 END_TYPE
 PROGRAM main
 VAR
-    x : B3 := [1, 2, 3];
-    y : C3 := [4, 5, 6];
+    x : TripleAlias := [1, 2, 3];
+    y : TripleDefault := [4, 5, 6];
 END_VAR
 END_PROGRAM"
     );

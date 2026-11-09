@@ -1,6 +1,6 @@
 //! End-to-end tests for an array initializer written after the name of an
-//! array type: `TYPE A3 : ARRAY[1..3] OF DINT; END_TYPE` ... `x : A3 := [1, 2,
-//! 3];`.
+//! array type: `TYPE Triple : ARRAY[1..3] OF DINT; END_TYPE` ...
+//! `x : Triple := [1, 2, 3];`.
 //!
 //! Each test copies elements into scalar program variables and reads those
 //! after the first scan, so it checks the values the declaration starts
@@ -13,11 +13,11 @@ use crate::common::run_scans;
 e2e_i32!(
     end_to_end_when_local_of_named_array_with_values_then_elements_start_with_values,
     "
-TYPE A3 : ARRAY[1..3] OF DINT; END_TYPE
+TYPE Triple : ARRAY[1..3] OF DINT; END_TYPE
 
 PROGRAM main
   VAR
-    x : A3 := [1, 2, 3];
+    x : Triple := [1, 2, 3];
     first : DINT;
     second : DINT;
     third : DINT;
@@ -33,11 +33,11 @@ END_PROGRAM
 e2e_i32!(
     end_to_end_when_named_array_with_fewer_values_than_elements_then_rest_start_at_zero,
     "
-TYPE A3 : ARRAY[1..3] OF DINT; END_TYPE
+TYPE Triple : ARRAY[1..3] OF DINT; END_TYPE
 
 PROGRAM main
   VAR
-    x : A3 := [5];
+    x : Triple := [5];
     first : DINT;
     third : DINT;
   END_VAR
@@ -51,11 +51,11 @@ END_PROGRAM
 e2e_i32!(
     end_to_end_when_program_input_of_named_array_with_repeated_value_then_value_repeated,
     "
-TYPE A3 : ARRAY[1..3] OF DINT; END_TYPE
+TYPE Triple : ARRAY[1..3] OF DINT; END_TYPE
 
 PROGRAM main
   VAR_INPUT
-    i : A3 := [2(7), 1];
+    i : Triple := [2(7), 1];
   END_VAR
   VAR
     first : DINT;
@@ -73,11 +73,11 @@ END_PROGRAM
 e2e_i32!(
     end_to_end_when_configuration_global_of_named_array_with_values_then_program_reads_values,
     "
-TYPE A3 : ARRAY[1..3] OF DINT; END_TYPE
+TYPE Triple : ARRAY[1..3] OF DINT; END_TYPE
 
 CONFIGURATION config
   VAR_GLOBAL
-    g : A3 := [4, 5, 6];
+    g : Triple := [4, 5, 6];
   END_VAR
   RESOURCE resource1 ON PLC
     TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
@@ -87,7 +87,7 @@ END_CONFIGURATION
 
 PROGRAM main
   VAR_EXTERNAL
-    g : A3;
+    g : Triple;
   END_VAR
   VAR
     first : DINT;
@@ -103,11 +103,11 @@ END_PROGRAM
 e2e_i32!(
     end_to_end_when_located_named_array_with_values_then_elements_start_with_values,
     "
-TYPE A3 : ARRAY[1..3] OF DINT; END_TYPE
+TYPE Triple : ARRAY[1..3] OF DINT; END_TYPE
 
 PROGRAM main
   VAR
-    x AT %MD10 : A3 := [4, 5, 6];
+    x AT %MD10 : Triple := [4, 5, 6];
   END_VAR
   VAR
     third : DINT;
@@ -175,13 +175,13 @@ e2e_i32!(
     end_to_end_when_alias_of_named_array_with_values_then_elements_start_with_values,
     "
 TYPE
-  A3 : ARRAY[1..3] OF DINT;
-  B3 : A3;
+  Triple : ARRAY[1..3] OF DINT;
+  TripleAlias : Triple;
 END_TYPE
 
 PROGRAM main
   VAR
-    b : B3 := [7, 8, 9];
+    b : TripleAlias := [7, 8, 9];
     third : DINT;
   END_VAR
   third := b[3];
@@ -194,13 +194,13 @@ e2e_i32!(
     end_to_end_when_type_alias_of_named_array_has_values_then_variables_start_with_values,
     "
 TYPE
-  A3 : ARRAY[1..3] OF DINT;
-  B3 : A3 := [7, 8, 9];
+  Triple : ARRAY[1..3] OF DINT;
+  TripleDefault : Triple := [7, 8, 9];
 END_TYPE
 
 PROGRAM main
   VAR
-    b : B3;
+    b : TripleDefault;
     second : DINT;
   END_VAR
   second := b[2];
@@ -213,9 +213,9 @@ e2e_i32!(
     end_to_end_when_structure_field_of_named_array_has_values_then_field_starts_with_values,
     "
 TYPE
-  A3 : ARRAY[1..3] OF DINT;
+  Triple : ARRAY[1..3] OF DINT;
   S : STRUCT
-    f : A3 := [1, 2, 3];
+    f : Triple := [1, 2, 3];
   END_STRUCT;
 END_TYPE
 
@@ -235,7 +235,7 @@ END_PROGRAM
 #[test]
 fn end_to_end_when_named_array_with_values_written_then_written_value_persists_across_scans() {
     let source = "
-TYPE A3 : ARRAY[1..3] OF DINT; END_TYPE
+TYPE Triple : ARRAY[1..3] OF DINT; END_TYPE
 
 CONFIGURATION config
   RESOURCE resource1 ON PLC
@@ -246,7 +246,7 @@ END_CONFIGURATION
 
 PROGRAM main
   VAR
-    x : A3 := [1, 2, 3];
+    x : Triple := [1, 2, 3];
     seen : DINT;
   END_VAR
   x[2] := x[2] + 5;
