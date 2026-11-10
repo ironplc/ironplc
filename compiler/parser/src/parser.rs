@@ -2446,7 +2446,7 @@ parser! {
         span: SourceSpan::join(&start.span, &end.span),
       }
     }
-    rule control_variable() -> Id = identifier()
+    rule control_variable() -> Id = variable_identifier()
     rule for_list() -> (Expr, Expr, Option<Expr>) = from:expression() _ tok(TokenType::To) _ to:expression() _ step:(tok(TokenType::By) _ s:expression() { s })? { (from, to, step) }
     rule while_statement() -> While = start:tok(TokenType::While) _ condition:expression() _ tok(TokenType::Do) _ body:statement_list() _ end:tok(TokenType::EndWhile) {
       While {

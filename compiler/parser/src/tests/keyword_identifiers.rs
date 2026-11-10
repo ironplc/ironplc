@@ -76,3 +76,26 @@ fn parse_when_keyword_identifier_with_member_access_then_variable() {
     assert_eq!(Id::from("On"), record.name);
     assert_eq!(Id::from("x"), structured.field);
 }
+
+#[rstest]
+#[case::on("On")]
+#[case::step("Step")]
+#[case::r_edge("R_EDGE")]
+#[case::f_edge("F_EDGE")]
+fn parse_when_keyword_identifier_is_for_counter_then_ok(#[case] name: &str) {
+    let source = format!(
+        "PROGRAM main
+VAR
+    {name} : INT;
+    i : INT;
+END_VAR
+FOR {name} := 0 TO 1 DO
+    i := {name};
+END_FOR;
+END_PROGRAM"
+    );
+
+    let library = parse_program(&source, &FileId::default(), &CompilerOptions::default());
+
+    assert!(library.is_ok(), "Parse failed: {:?}", library.err());
+}
