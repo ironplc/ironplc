@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.251.0">
+<meta name="ironplc-version" content="0.253.0">
 </head>
   <body>
     
@@ -628,6 +628,8 @@
 <li class="toctree-l4"><a class="reference internal" href="P4093.html">P4093</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4094.html">P4094</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4095.html">P4095</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4096.html">P4096</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4097.html">P4097</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6003.html">P6003</a></li>
@@ -778,6 +780,9 @@
 being assigned to. IronPLC allows implicit widening between integer types (for example,
 a function returning <code class="docutils literal notranslate"><span class="pre">SINT</span></code> assigned to a <code class="docutils literal notranslate"><span class="pre">DINT</span></code> variable), but rejects other type
 mismatches such as real to integer or narrowing conversions.</p>
+<p>The target may be a variable, a structure field or an array element. A function
+returning <code class="docutils literal notranslate"><span class="pre">REAL</span></code> assigned to an <code class="docutils literal notranslate"><span class="pre">INT</span></code> field (<code class="docutils literal notranslate"><span class="pre">t.f</span> <span class="pre">:=</span> <span class="pre">GET_VALUE(x)</span></code>) is this error
+too.</p>
 <p>For the full set of allowed implicit conversions, see
 <a class="reference internal" href="../../../explanation/type-conversions.html"><span class="doc">Type Conversions</span></a>.</p>
 <section id="example">

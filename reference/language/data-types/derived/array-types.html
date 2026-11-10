@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.251.0">
+<meta name="ironplc-version" content="0.253.0">
 </head>
   <body>
     
@@ -628,6 +628,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4093.html">P4093</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4094.html">P4094</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4095.html">P4095</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4096.html">P4096</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4097.html">P4097</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6003.html">P6003</a></li>
@@ -821,6 +823,9 @@ specification.</p>
 <a class="reference internal" href="../../../compiler/problems/P4086.html"><span class="doc">P4086</span></a>, and a real literal
 subscript such as <code class="docutils literal notranslate"><span class="pre">values[1.5]</span></code> is error
 <a class="reference internal" href="../../../compiler/problems/P4094.html"><span class="doc">P4094</span></a>.</p>
+<p>Only an array can be subscripted. A subscript on anything else, such as a
+<code class="docutils literal notranslate"><span class="pre">DINT</span></code>, a <code class="docutils literal notranslate"><span class="pre">STRING</span></code> or a structure, is error
+<a class="reference internal" href="../../../compiler/problems/P4097.html"><span class="doc">P4097</span></a>.</p>
 </section>
 <section id="arrays-of-arrays">
 <h2>Arrays of Arrays<a class="headerlink" href="#arrays-of-arrays" title="Link to this heading">¶</a></h2>
@@ -884,6 +889,24 @@ flag. The constant must be declared in a
 </pre></div>
 </div>
 </div>
+</div>
+</section>
+<section id="radix-bounds-language-extension">
+<h2>Radix Bounds (Language Extension)<a class="headerlink" href="#radix-bounds-language-extension" title="Link to this heading">¶</a></h2>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This is an extension not part of the IEC 61131-3 standard.
+See <a class="reference internal" href="../../../../explanation/enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a> for how to enable it.</p>
+</div>
+<p>With the <code class="docutils literal notranslate"><span class="pre">--allow-radix-subrange-bounds</span></code> flag, a bound can be written in
+hex, binary, or octal. Without the flag, such a bound is reported as
+<a class="reference internal" href="../../../compiler/problems/P4096.html"><span class="doc">P4096</span></a>.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
+  <span class="n">VAR</span>
+    <span class="n">nibbles</span> <span class="p">:</span> <span class="n">ARRAY</span><span class="p">[</span><span class="mi">16</span><span class="c1">#0..16#F] OF BYTE;</span>
+  <span class="n">END_VAR</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
 </div>
 </section>
 <section id="see-also">
@@ -962,6 +985,7 @@ flag. The constant must be declared in a
 <li><a class="reference internal" href="#example">Example</a></li>
 <li><a class="reference internal" href="#arrays-of-arrays">Arrays of Arrays</a></li>
 <li><a class="reference internal" href="#constant-bounds-language-extension">Constant Bounds (Language Extension)</a></li>
+<li><a class="reference internal" href="#radix-bounds-language-extension">Radix Bounds (Language Extension)</a></li>
 <li><a class="reference internal" href="#see-also">See Also</a></li>
 </ul>
 </li>

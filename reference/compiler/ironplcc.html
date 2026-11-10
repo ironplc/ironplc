@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.251.0">
+<meta name="ironplc-version" content="0.253.0">
 </head>
   <body>
     
@@ -628,6 +628,8 @@
 <li class="toctree-l4"><a class="reference internal" href="problems/P4093.html">P4093</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P4094.html">P4094</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P4095.html">P4095</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P4096.html">P4096</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P4097.html">P4097</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P6003.html">P6003</a></li>
@@ -1007,9 +1009,10 @@ expression does not fully reduce to a constant, or
 <a class="reference internal" href="problems/P4022.html"><span class="doc">P4022</span></a> if a named constant’s
 type is not compatible with the variable’s.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-bit-string-case-labels</span></code></dt><dd><p>Allow a hex, binary, or octal bit-string literal (e.g. <code class="docutils literal notranslate"><span class="pre">16#D012</span></code>,
-<code class="docutils literal notranslate"><span class="pre">2#1010</span></code>) as a <code class="docutils literal notranslate"><span class="pre">CASE</span></code> label. The IEC 61131-3 standard permits only a
-subrange, decimal integer, or enumerated value here. Produces
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-radix-case-labels</span></code></dt><dd><p>Allow a hex, binary, or octal bit-string literal (e.g. <code class="docutils literal notranslate"><span class="pre">16#D012</span></code>,
+<code class="docutils literal notranslate"><span class="pre">2#1010</span></code>) as a <code class="docutils literal notranslate"><span class="pre">CASE</span></code> label or as a bound of a subrange label. The
+IEC 61131-3 standard permits only a subrange of decimal integers, a
+decimal integer, or an enumerated value here. Produces
 <a class="reference internal" href="problems/P4041.html"><span class="doc">P4041</span></a> when used without this
 flag.</p>
 </dd>
@@ -1018,6 +1021,12 @@ flag.</p>
 brackets. The IEC 61131-3 standard declares a string length only with
 brackets; the parenthesis form is an extension. Produces
 <a class="reference internal" href="problems/P4042.html"><span class="doc">P4042</span></a> when used without this
+flag.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-radix-subrange-bounds</span></code></dt><dd><p>Allow a hex, binary, or octal literal (e.g. <code class="docutils literal notranslate"><span class="pre">16#FF</span></code>, <code class="docutils literal notranslate"><span class="pre">2#1010</span></code>) as a
+bound of a subrange type or of an array dimension. The IEC 61131-3
+standard permits only decimal integers here. Produces
+<a class="reference internal" href="problems/P4096.html"><span class="doc">P4096</span></a> when used without this
 flag.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-struct-initializer-expressions</span></code></dt><dd><p>Allow a general (non-constant) expression — such as a pointer

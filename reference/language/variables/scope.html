@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.251.0">
+<meta name="ironplc-version" content="0.253.0">
 </head>
   <body>
     
@@ -628,6 +628,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4093.html">P4093</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4094.html">P4094</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4095.html">P4095</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4096.html">P4096</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4097.html">P4097</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -826,6 +828,10 @@ variables within program organization units.</p>
 <td><p>Reference to a global variable</p></td>
 <td><p>Supported</p></td>
 </tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">VAR_TEMP</span></code></p></td>
+<td><p>Temporary variable, initialized again on every execution</p></td>
+<td><p>Partial</p></td>
+</tr>
 </tbody>
 </table>
 </div>
@@ -852,6 +858,28 @@ variables within program organization units.</p>
 <span class="n">END_FUNCTION_BLOCK</span>
 </pre></div>
 </div>
+</section>
+<section id="temporary-variables">
+<h2>Temporary Variables<a class="headerlink" href="#temporary-variables" title="Link to this heading">¶</a></h2>
+<p>A <code class="code docutils literal notranslate"><span class="pre">PROGRAM</span></code>, <code class="code docutils literal notranslate"><span class="pre">FUNCTION_BLOCK</span></code> or <code class="code docutils literal notranslate"><span class="pre">FUNCTION</span></code> can declare
+temporary variables with <code class="code docutils literal notranslate"><span class="pre">VAR_TEMP</span></code>. A temporary variable does not keep
+its value between two executions of its POU: each execution starts it again
+from its initial value, or from its type’s default when it has none.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
+    <span class="n">VAR</span>
+        <span class="n">total</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+    <span class="n">VAR_TEMP</span>
+        <span class="n">delta</span> <span class="p">:</span> <span class="n">INT</span> <span class="o">:=</span> <span class="mi">1</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+
+    <span class="n">delta</span> <span class="o">:=</span> <span class="n">delta</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>   <span class="p">(</span><span class="o">*</span> <span class="n">delta</span> <span class="ow">is</span> <span class="mi">2</span> <span class="n">on</span> <span class="n">every</span> <span class="n">scan</span> <span class="o">*</span><span class="p">)</span>
+    <span class="n">total</span> <span class="o">:=</span> <span class="n">total</span> <span class="o">+</span> <span class="n">delta</span><span class="p">;</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+<p>Code generation does not support <code class="code docutils literal notranslate"><span class="pre">VAR_TEMP</span></code> in a
+<code class="code docutils literal notranslate"><span class="pre">FUNCTION_BLOCK</span></code> yet.</p>
 </section>
 <section id="global-variables">
 <h2>Global Variables<a class="headerlink" href="#global-variables" title="Link to this heading">¶</a></h2>
@@ -1015,6 +1043,7 @@ through <code class="code docutils literal notranslate"><span class="pre">VAR_EX
 <li><a class="reference internal" href="#">Variable Scope</a><ul>
 <li><a class="reference internal" href="#scope-keywords">Scope Keywords</a></li>
 <li><a class="reference internal" href="#example">Example</a></li>
+<li><a class="reference internal" href="#temporary-variables">Temporary Variables</a></li>
 <li><a class="reference internal" href="#global-variables">Global Variables</a></li>
 <li><a class="reference internal" href="#top-level-global-variables-language-extension">Top-Level Global Variables (Language Extension)</a></li>
 <li><a class="reference internal" href="#see-also">See Also</a></li>

@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/compiler/problems/P4041.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="Code, P4041,, Message, Hex/binary/octal bit-string literal as a CASE label requires choosing a dialect or –allow-bit-string-case-labels flag,. This error occurs when a hex, binary, or octal bit-str..." />
-<meta name="description" content="Code, P4041,, Message, Hex/binary/octal bit-string literal as a CASE label requires choosing a dialect or –allow-bit-string-case-labels flag,. This error occurs when a hex, binary, or octal bit-str..." />
+<meta property="og:description" content="Code, P4041,, Message, Hex/binary/octal literal as a CASE label requires choosing a dialect or –allow-radix-case-labels flag,. This error occurs when a hex, binary, or octal bit-string literal (e.g..." />
+<meta name="description" content="Code, P4041,, Message, Hex/binary/octal literal as a CASE label requires choosing a dialect or –allow-radix-case-labels flag,. This error occurs when a hex, binary, or octal bit-string literal (e.g..." />
 <link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="P4042" href="P4042.html"><link rel="prev" title="P4040" href="P4040.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/compiler/problems/P4041.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.251.0">
+<meta name="ironplc-version" content="0.253.0">
 </head>
   <body>
     
@@ -628,6 +628,8 @@
 <li class="toctree-l4"><a class="reference internal" href="P4093.html">P4093</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4094.html">P4094</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4095.html">P4095</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4096.html">P4096</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4097.html">P4097</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6003.html">P6003</a></li>
@@ -771,15 +773,18 @@
 <dl class="simple">
 <dt><strong>Code</strong></dt><dd><p>P4041</p>
 </dd>
-<dt><strong>Message</strong></dt><dd><p>Hex/binary/octal bit-string literal as a CASE label requires choosing a dialect or –allow-bit-string-case-labels flag</p>
+<dt><strong>Message</strong></dt><dd><p>Hex/binary/octal literal as a CASE label requires choosing a dialect or –allow-radix-case-labels flag</p>
 </dd>
 </dl>
 <p>This error occurs when a hex, binary, or octal bit-string literal (e.g.
-<code class="docutils literal notranslate"><span class="pre">16#D012</span></code>, <code class="docutils literal notranslate"><span class="pre">2#1010</span></code>, <code class="docutils literal notranslate"><span class="pre">8#17</span></code>) is used as a <code class="docutils literal notranslate"><span class="pre">CASE</span></code> label without the
-<code class="docutils literal notranslate"><span class="pre">--allow-bit-string-case-labels</span></code> compiler flag.</p>
+<code class="docutils literal notranslate"><span class="pre">16#D012</span></code>, <code class="docutils literal notranslate"><span class="pre">2#1010</span></code>, <code class="docutils literal notranslate"><span class="pre">8#17</span></code>) is used as a <code class="docutils literal notranslate"><span class="pre">CASE</span></code> label, or as a bound
+of a subrange label (<code class="docutils literal notranslate"><span class="pre">16#01..16#0F:</span></code>), without the
+<code class="docutils literal notranslate"><span class="pre">--allow-radix-case-labels</span></code> compiler flag.</p>
 <p>The IEC 61131-3 standard grammar for a case label (Annex B) is
 <code class="docutils literal notranslate"><span class="pre">case_list_element</span> <span class="pre">::=</span> <span class="pre">subrange</span> <span class="pre">|</span> <span class="pre">signed_integer</span> <span class="pre">|</span> <span class="pre">enumerated_value</span></code>,
-where <code class="docutils literal notranslate"><span class="pre">signed_integer</span></code> is a <em>decimal</em> digit sequence. Radix-prefixed
+where <code class="docutils literal notranslate"><span class="pre">signed_integer</span></code> is a <em>decimal</em> digit sequence, and a
+<code class="docutils literal notranslate"><span class="pre">subrange</span></code> is two of them (<code class="docutils literal notranslate"><span class="pre">signed_integer</span> <span class="pre">'..'</span> <span class="pre">signed_integer</span></code>).
+Radix-prefixed
 bit-string literals are separate productions that the standard does not
 include as case labels, so accepting them is an extension used by
 TwinCAT and CODESYS.</p>
@@ -811,7 +816,7 @@ TwinCAT and CODESYS.</p>
 </pre></div>
 </div>
 <p>Or enable the extension:</p>
-<p>Pass the <code class="docutils literal notranslate"><span class="pre">--allow-bit-string-case-labels</span></code> flag to enable it, or select a dialect that includes it. See
+<p>Pass the <code class="docutils literal notranslate"><span class="pre">--allow-radix-case-labels</span></code> flag to enable it, or select a dialect that includes it. See
 <a class="reference internal" href="../../../explanation/enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a> for the dialects and flags
 reference.</p>
 <div class="tip admonition">

@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.251.0">
+<meta name="ironplc-version" content="0.253.0">
 </head>
   <body>
     
@@ -628,6 +628,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4093.html">P4093</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4094.html">P4094</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4095.html">P4095</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4096.html">P4096</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4097.html">P4097</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -798,8 +800,9 @@ END_CASE ;
 </div>
 <p>Each <code class="docutils literal notranslate"><span class="pre">case_value</span></code> is an integer literal, a subrange (<code class="docutils literal notranslate"><span class="pre">low</span> <span class="pre">..</span> <span class="pre">high</span></code>), or an
 enumerated value. Multiple values can be listed separated by commas.</p>
-<p>A hex, binary or octal label such as <code class="docutils literal notranslate"><span class="pre">16#D012</span></code> is an extension; without the
-<code class="docutils literal notranslate"><span class="pre">--allow-bit-string-case-labels</span></code> flag it is reported as
+<p>A hex, binary or octal label such as <code class="docutils literal notranslate"><span class="pre">16#D012</span></code>, or a subrange label with
+such a bound (<code class="docutils literal notranslate"><span class="pre">16#01..16#0F</span></code>), is an extension; without the
+<code class="docutils literal notranslate"><span class="pre">--allow-radix-case-labels</span></code> flag it is reported as
 <a class="reference internal" href="../../compiler/problems/P4041.html"><span class="doc">P4041</span></a>.</p>
 <p>Every integer label, and each bound of a subrange label, must be a value the
 selector’s type can hold, whatever radix it is written in. A label outside

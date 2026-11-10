@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/language/data-types/derived/subrange-types.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="A subrange type restricts an integer type to a specified range of values.,, IEC 61131-3, Section 2.3.3.1,, Support, Partial (parsing only),,,, Syntax: The base type must be an integer type ( SINT, ..." />
-<meta name="description" content="A subrange type restricts an integer type to a specified range of values.,, IEC 61131-3, Section 2.3.3.1,, Support, Partial (parsing only),,,, Syntax: The base type must be an integer type ( SINT, ..." />
+<meta property="og:description" content="A subrange type restricts an integer type to a specified range of values.,, IEC 61131-3, Section 2.3.3.1,, Support, Parsed, analyzed, compiled and executed. The range is checked at compile time onl..." />
+<meta name="description" content="A subrange type restricts an integer type to a specified range of values.,, IEC 61131-3, Section 2.3.3.1,, Support, Parsed, analyzed, compiled and executed. The range is checked at compile time onl..." />
 <link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="Array Types" href="array-types.html"><link rel="prev" title="Enumerated Types" href="enumerated-types.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/language/data-types/derived/subrange-types.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.251.0">
+<meta name="ironplc-version" content="0.253.0">
 </head>
   <body>
     
@@ -628,6 +628,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4093.html">P4093</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4094.html">P4094</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4095.html">P4095</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4096.html">P4096</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4097.html">P4097</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6003.html">P6003</a></li>
@@ -780,7 +782,8 @@
 <td><p>Section 2.3.3.1</p></td>
 </tr>
 <tr class="row-even"><td><p><strong>Support</strong></p></td>
-<td><p>Partial (parsing only)</p></td>
+<td><p>Parsed, analyzed, compiled and executed. The range is checked at
+compile time only</p></td>
 </tr>
 </tbody>
 </table>
@@ -788,15 +791,21 @@
 <section id="syntax">
 <h2>Syntax<a class="headerlink" href="#syntax" title="Link to this heading">¶</a></h2>
 <div class="highlight-bnf notranslate"><div class="highlight"><pre><span></span>TYPE
-    type_name : base_type ( lower_bound .. upper_bound ) ;
+    type_name : base_type ( lower_bound .. upper_bound ) [ := initial_value ] ;
 END_TYPE
 </pre></div>
 </div>
 <p>The base type must be an integer type (<code class="docutils literal notranslate"><span class="pre">SINT</span></code>, <code class="docutils literal notranslate"><span class="pre">INT</span></code>, <code class="docutils literal notranslate"><span class="pre">DINT</span></code>,
 <code class="docutils literal notranslate"><span class="pre">LINT</span></code>, <code class="docutils literal notranslate"><span class="pre">USINT</span></code>, <code class="docutils literal notranslate"><span class="pre">UINT</span></code>, <code class="docutils literal notranslate"><span class="pre">UDINT</span></code>, or <code class="docutils literal notranslate"><span class="pre">ULINT</span></code>).</p>
+<p>A variable of a subrange type without an initial value starts at the type’s
+initial value, or else at the lower bound.</p>
 </section>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
+<div class="tab-set docutils">
+<input checked="True" class="tab-input" id="tab-set--0-input--1" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--1">Try it</label><div class="tab-content docutils">
+<iframe src="https://playground.ironplc.com/?embed=true&source=ironplc-docs&host=reference%2Flanguage%2Fdata-types%2Fderived%2Fsubrange-types&code=VFlQRQogICAgUGVyY2VudCA6IElOVCAoMCAuLiAxMDApOwogICAgQnl0ZV9SYW5nZSA6IFVTSU5UICgwIC4uIDI1NSk7CkVORF9UWVBFCgpQUk9HUkFNIG1haW4KICAgIFZBUgogICAgICAgIGxldmVsIDogUGVyY2VudCA6PSA1MDsKICAgIEVORF9WQVIKCiAgICBsZXZlbCA6PSBsZXZlbCArIDEwOwpFTkRfUFJPR1JBTQ%3D%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:473px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
+<input class="tab-input" id="tab-set--0-input--2" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--2">Source</label><div class="tab-content docutils">
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">TYPE</span>
     <span class="n">Percent</span> <span class="p">:</span> <span class="n">INT</span> <span class="p">(</span><span class="mi">0</span> <span class="o">..</span> <span class="mi">100</span><span class="p">);</span>
     <span class="n">Byte_Range</span> <span class="p">:</span> <span class="n">USINT</span> <span class="p">(</span><span class="mi">0</span> <span class="o">..</span> <span class="mi">255</span><span class="p">);</span>
@@ -810,6 +819,61 @@ END_TYPE
     <span class="n">level</span> <span class="o">:=</span> <span class="n">level</span> <span class="o">+</span> <span class="mi">10</span><span class="p">;</span>
 <span class="n">END_PROGRAM</span>
 </pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="inline-subrange">
+<h2>Inline Subrange<a class="headerlink" href="#inline-subrange" title="Link to this heading">¶</a></h2>
+<p>A variable can declare its subrange in place, without a named type, in
+<code class="docutils literal notranslate"><span class="pre">VAR</span></code>, <code class="docutils literal notranslate"><span class="pre">VAR_INPUT</span></code>, <code class="docutils literal notranslate"><span class="pre">VAR_OUTPUT</span></code>, <code class="docutils literal notranslate"><span class="pre">VAR_TEMP</span></code>, <code class="docutils literal notranslate"><span class="pre">VAR_GLOBAL</span></code> and
+<code class="docutils literal notranslate"><span class="pre">VAR_EXTERNAL</span></code> blocks, in a located declaration and in a structure field.
+An initial value is optional, except in <code class="docutils literal notranslate"><span class="pre">VAR_EXTERNAL</span></code> and
+<code class="docutils literal notranslate"><span class="pre">VAR_IN_OUT</span></code>, which take none:</p>
+<div class="tab-set docutils">
+<input checked="True" class="tab-input" id="tab-set--1-input--1" name="tab-set--1" type="radio" /><label class="tab-label" for="tab-set--1-input--1">Try it</label><div class="tab-content docutils">
+<iframe src="https://playground.ironplc.com/?embed=true&source=ironplc-docs&host=reference%2Flanguage%2Fdata-types%2Fderived%2Fsubrange-types&code=UFJPR1JBTSBtYWluCiAgICBWQVIKICAgICAgICBjaGFubmVsIDogSU5UICgwIC4uIDE1KTsgICAgICAgICAoKiBzdGFydHMgYXQgMCAqKQogICAgICAgIGxldmVsIDogSU5UICgxIC4uIDEwKSA6PSA1OwogICAgRU5EX1ZBUgoKICAgIGNoYW5uZWwgOj0gbGV2ZWwgKyAzOwpFTkRfUFJPR1JBTQ%3D%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:393px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
+<input class="tab-input" id="tab-set--1-input--2" name="tab-set--1" type="radio" /><label class="tab-label" for="tab-set--1-input--2">Source</label><div class="tab-content docutils">
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
+    <span class="n">VAR</span>
+        <span class="n">channel</span> <span class="p">:</span> <span class="n">INT</span> <span class="p">(</span><span class="mi">0</span> <span class="o">..</span> <span class="mi">15</span><span class="p">);</span>         <span class="p">(</span><span class="o">*</span> <span class="n">starts</span> <span class="n">at</span> <span class="mi">0</span> <span class="o">*</span><span class="p">)</span>
+        <span class="n">level</span> <span class="p">:</span> <span class="n">INT</span> <span class="p">(</span><span class="mi">1</span> <span class="o">..</span> <span class="mi">10</span><span class="p">)</span> <span class="o">:=</span> <span class="mi">5</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+
+    <span class="n">channel</span> <span class="o">:=</span> <span class="n">level</span> <span class="o">+</span> <span class="mi">3</span><span class="p">;</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+</div>
+</div>
+<p>A function’s <code class="docutils literal notranslate"><span class="pre">VAR_INPUT</span></code> with an inline subrange is not yet supported:
+a call to the function reports the argument as not matching any input.
+Declare a named subrange type for a function input.</p>
+<p>A <code class="docutils literal notranslate"><span class="pre">VAR_EXTERNAL</span></code> declaration with an inline subrange matches a
+<code class="docutils literal notranslate"><span class="pre">VAR_GLOBAL</span></code> declared with the same base type and bounds, and does not
+match one declared with a named subrange type.</p>
+</section>
+<section id="range-checking">
+<h2>Range Checking<a class="headerlink" href="#range-checking" title="Link to this heading">¶</a></h2>
+<p>The compiler checks every constant that it assigns to a subrange variable:
+an initial value, an assigned literal or a literal call argument outside the
+range is error <a class="reference internal" href="../../../compiler/problems/P2026.html"><span class="doc">P2026</span></a>.</p>
+<p>The range is not checked at run time. A value computed at run time is
+stored as the base type stores it, even when it is outside the range:</p>
+<div class="tab-set docutils">
+<input checked="True" class="tab-input" id="tab-set--2-input--1" name="tab-set--2" type="radio" /><label class="tab-label" for="tab-set--2-input--1">Try it</label><div class="tab-content docutils">
+<iframe src="https://playground.ironplc.com/?embed=true&source=ironplc-docs&host=reference%2Flanguage%2Fdata-types%2Fderived%2Fsubrange-types&code=UFJPR1JBTSBtYWluCiAgICBWQVIKICAgICAgICBsZXZlbCA6IElOVCAoMCAuLiAxMDApIDo9IDkwOwogICAgRU5EX1ZBUgoKICAgIGxldmVsIDo9IGxldmVsICsgMjA7ICAgKCogbGV2ZWwgPSAxMTAgKikKRU5EX1BST0dSQU0%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:373px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
+<input class="tab-input" id="tab-set--2-input--2" name="tab-set--2" type="radio" /><label class="tab-label" for="tab-set--2-input--2">Source</label><div class="tab-content docutils">
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
+    <span class="n">VAR</span>
+        <span class="n">level</span> <span class="p">:</span> <span class="n">INT</span> <span class="p">(</span><span class="mi">0</span> <span class="o">..</span> <span class="mi">100</span><span class="p">)</span> <span class="o">:=</span> <span class="mi">90</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+
+    <span class="n">level</span> <span class="o">:=</span> <span class="n">level</span> <span class="o">+</span> <span class="mi">20</span><span class="p">;</span>   <span class="p">(</span><span class="o">*</span> <span class="n">level</span> <span class="o">=</span> <span class="mi">110</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+</div>
 </div>
 </section>
 <section id="constant-bounds-language-extension">
@@ -832,10 +896,26 @@ use global constants for the subrange bounds:</p>
 </pre></div>
 </div>
 </section>
+<section id="radix-bounds-language-extension">
+<h2>Radix Bounds (Language Extension)<a class="headerlink" href="#radix-bounds-language-extension" title="Link to this heading">¶</a></h2>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This is an extension not part of the IEC 61131-3 standard.
+See <a class="reference internal" href="../../../../explanation/enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a> for how to enable it.</p>
+</div>
+<p>With the <code class="docutils literal notranslate"><span class="pre">--allow-radix-subrange-bounds</span></code> flag, a bound can be written in
+hex, binary, or octal:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">TYPE</span>
+    <span class="n">Byte_Range</span> <span class="p">:</span> <span class="n">INT</span> <span class="p">(</span><span class="mi">16</span><span class="c1">#00 .. 16#FF);</span>
+<span class="n">END_TYPE</span>
+</pre></div>
+</div>
+</section>
 <section id="related-problem-codes">
 <h2>Related Problem Codes<a class="headerlink" href="#related-problem-codes" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p><a class="reference internal" href="../../../compiler/problems/P2024.html"><span class="doc">P2024</span></a> — Subrange initial value out of bounds</p></li>
+<li><p><a class="reference internal" href="../../../compiler/problems/P2026.html"><span class="doc">P2026</span></a> — Constant outside the subrange</p></li>
+<li><p><a class="reference internal" href="../../../compiler/problems/P4096.html"><span class="doc">P4096</span></a> — Radix bound without the flag</p></li>
 </ul>
 </section>
 <section id="see-also">
@@ -913,7 +993,10 @@ use global constants for the subrange bounds:</p>
 <li><a class="reference internal" href="#">Subrange Types</a><ul>
 <li><a class="reference internal" href="#syntax">Syntax</a></li>
 <li><a class="reference internal" href="#example">Example</a></li>
+<li><a class="reference internal" href="#inline-subrange">Inline Subrange</a></li>
+<li><a class="reference internal" href="#range-checking">Range Checking</a></li>
 <li><a class="reference internal" href="#constant-bounds-language-extension">Constant Bounds (Language Extension)</a></li>
+<li><a class="reference internal" href="#radix-bounds-language-extension">Radix Bounds (Language Extension)</a></li>
 <li><a class="reference internal" href="#related-problem-codes">Related Problem Codes</a></li>
 <li><a class="reference internal" href="#see-also">See Also</a></li>
 </ul>

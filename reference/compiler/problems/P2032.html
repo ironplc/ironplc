@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/compiler/problems/P2032.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="Code, P2032,, Message, Reference type mismatch in assignment,. This error occurs when a reference assignment has incompatible types. The reference type and the target type must match exactly, and a..." />
-<meta name="description" content="Code, P2032,, Message, Reference type mismatch in assignment,. This error occurs when a reference assignment has incompatible types. The reference type and the target type must match exactly, and a..." />
+<meta property="og:description" content="Code, P2032,, Message, Reference type mismatch in assignment,. This error occurs when a reference assignment, or a reference’s initial value, has incompatible types. The reference type and the targ..." />
+<meta name="description" content="Code, P2032,, Message, Reference type mismatch in assignment,. This error occurs when a reference assignment, or a reference’s initial value, has incompatible types. The reference type and the targ..." />
 <link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="P2033" href="P2033.html"><link rel="prev" title="P2031" href="P2031.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/compiler/problems/P2032.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.251.0">
+<meta name="ironplc-version" content="0.253.0">
 </head>
   <body>
     
@@ -628,6 +628,8 @@
 <li class="toctree-l4"><a class="reference internal" href="P4093.html">P4093</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4094.html">P4094</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4095.html">P4095</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4096.html">P4096</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4097.html">P4097</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6003.html">P6003</a></li>
@@ -774,7 +776,7 @@
 <dt><strong>Message</strong></dt><dd><p>Reference type mismatch in assignment</p>
 </dd>
 </dl>
-<p>This error occurs when a reference assignment has incompatible types. The reference type and the target type must match exactly, and a reference takes only <code class="docutils literal notranslate"><span class="pre">REF()</span></code>, <code class="docutils literal notranslate"><span class="pre">NULL</span></code> or another reference.</p>
+<p>This error occurs when a reference assignment, or a reference’s initial value, has incompatible types. The reference type and the target type must match exactly, and a reference takes only <code class="docutils literal notranslate"><span class="pre">REF()</span></code>, <code class="docutils literal notranslate"><span class="pre">NULL</span></code> or another reference.</p>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
 <p>The following code will generate error P2032:</p>
@@ -826,6 +828,66 @@ or the reference to a variable:</p>
 
     <span class="n">r</span> <span class="o">:=</span> <span class="n">NULL</span><span class="p">;</span>    <span class="p">(</span><span class="o">*</span> <span class="n">Correct</span><span class="p">:</span> <span class="n">refers</span> <span class="n">to</span> <span class="n">nothing</span> <span class="o">*</span><span class="p">)</span>
     <span class="n">r</span> <span class="o">:=</span> <span class="n">REF</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Correct</span><span class="p">:</span> <span class="n">refers</span> <span class="n">to</span> <span class="n">x</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+</section>
+<section id="a-reference-to-a-reference">
+<h2>A reference to a reference<a class="headerlink" href="#a-reference-to-a-reference" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">REF()</span></code> of a reference variable is a reference to a reference, and a
+reference to a reference is not a reference to a value. Each level takes only
+a reference to the type at that level, so the following code will generate
+error P2032 twice:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">Main</span>
+    <span class="n">VAR</span>
+        <span class="n">x</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+        <span class="n">r</span> <span class="p">:</span> <span class="n">REF_TO</span> <span class="n">INT</span><span class="p">;</span>
+        <span class="n">rr</span> <span class="p">:</span> <span class="n">REF_TO</span> <span class="n">REF_TO</span> <span class="n">INT</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+
+    <span class="n">r</span> <span class="o">:=</span> <span class="n">REF</span><span class="p">(</span><span class="n">r</span><span class="p">);</span>   <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">REF</span><span class="p">(</span><span class="n">r</span><span class="p">)</span> <span class="ow">is</span> <span class="n">REF_TO</span> <span class="n">REF_TO</span> <span class="n">INT</span><span class="p">,</span> <span class="n">r</span> <span class="ow">is</span> <span class="n">REF_TO</span> <span class="n">INT</span> <span class="o">*</span><span class="p">)</span>
+    <span class="n">rr</span> <span class="o">:=</span> <span class="n">REF</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">REF</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="ow">is</span> <span class="n">REF_TO</span> <span class="n">INT</span><span class="p">,</span> <span class="n">rr</span> <span class="ow">is</span> <span class="n">REF_TO</span> <span class="n">REF_TO</span> <span class="n">INT</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+<p>Had the first assignment been accepted, <code class="docutils literal notranslate"><span class="pre">r</span></code> would hold the location of
+itself, and <code class="docutils literal notranslate"><span class="pre">r^</span> <span class="pre">:=</span> <span class="pre">5</span></code> would then make <code class="docutils literal notranslate"><span class="pre">r</span></code> refer to whatever variable is at
+location 5.</p>
+<p>To fix this error, take the reference at the level the target expects:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">Main</span>
+    <span class="n">VAR</span>
+        <span class="n">x</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+        <span class="n">r</span> <span class="p">:</span> <span class="n">REF_TO</span> <span class="n">INT</span><span class="p">;</span>
+        <span class="n">rr</span> <span class="p">:</span> <span class="n">REF_TO</span> <span class="n">REF_TO</span> <span class="n">INT</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+
+    <span class="n">r</span> <span class="o">:=</span> <span class="n">REF</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>   <span class="p">(</span><span class="o">*</span> <span class="n">Correct</span><span class="p">:</span> <span class="n">a</span> <span class="n">reference</span> <span class="n">to</span> <span class="n">the</span> <span class="n">INT</span> <span class="o">*</span><span class="p">)</span>
+    <span class="n">rr</span> <span class="o">:=</span> <span class="n">REF</span><span class="p">(</span><span class="n">r</span><span class="p">);</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Correct</span><span class="p">:</span> <span class="n">a</span> <span class="n">reference</span> <span class="n">to</span> <span class="n">the</span> <span class="n">reference</span> <span class="o">*</span><span class="p">)</span>
+    <span class="n">rr</span><span class="o">^</span> <span class="o">:=</span> <span class="n">REF</span><span class="p">(</span><span class="n">x</span><span class="p">);</span> <span class="p">(</span><span class="o">*</span> <span class="n">Correct</span><span class="p">:</span> <span class="n">stores</span> <span class="n">a</span> <span class="n">reference</span> <span class="n">to</span> <span class="n">an</span> <span class="n">INT</span> <span class="ow">in</span> <span class="n">r</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+</section>
+<section id="a-reference-s-initial-value">
+<h2>A reference’s initial value<a class="headerlink" href="#a-reference-s-initial-value" title="Link to this heading">¶</a></h2>
+<p>The compiler checks a <code class="docutils literal notranslate"><span class="pre">REF()</span></code> initial value in a declaration as it checks
+the same <code class="docutils literal notranslate"><span class="pre">REF()</span></code> assigned to the reference. The following code will
+generate error P2032:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">Main</span>
+    <span class="n">VAR</span>
+        <span class="n">x</span> <span class="p">:</span> <span class="n">DINT</span><span class="p">;</span>
+        <span class="n">r</span> <span class="p">:</span> <span class="n">REF_TO</span> <span class="n">INT</span> <span class="o">:=</span> <span class="n">REF</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">REF</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="ow">is</span> <span class="n">REF_TO</span> <span class="n">DINT</span> <span class="o">*</span><span class="p">)</span>
+    <span class="n">END_VAR</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+<p>To fix this error, declare the reference to the type of the variable it
+refers to:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">Main</span>
+    <span class="n">VAR</span>
+        <span class="n">x</span> <span class="p">:</span> <span class="n">DINT</span><span class="p">;</span>
+        <span class="n">r</span> <span class="p">:</span> <span class="n">REF_TO</span> <span class="n">DINT</span> <span class="o">:=</span> <span class="n">REF</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Correct</span><span class="p">:</span> <span class="n">REF_TO</span> <span class="n">DINT</span> <span class="n">matches</span> <span class="n">DINT</span> <span class="n">variable</span> <span class="o">*</span><span class="p">)</span>
+    <span class="n">END_VAR</span>
 <span class="n">END_PROGRAM</span>
 </pre></div>
 </div>
@@ -903,6 +965,8 @@ with a small sample that demonstrates the problem.</p>
 <li><a class="reference internal" href="#">P2032</a><ul>
 <li><a class="reference internal" href="#example">Example</a></li>
 <li><a class="reference internal" href="#a-value-that-is-not-a-reference">A value that is not a reference</a></li>
+<li><a class="reference internal" href="#a-reference-to-a-reference">A reference to a reference</a></li>
+<li><a class="reference internal" href="#a-reference-s-initial-value">A reference’s initial value</a></li>
 </ul>
 </li>
 </ul>

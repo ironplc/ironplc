@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.251.0">
+<meta name="ironplc-version" content="0.253.0">
 </head>
   <body>
     
@@ -628,6 +628,8 @@
 <li class="toctree-l4"><a class="reference internal" href="P4093.html">P4093</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4094.html">P4094</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4095.html">P4095</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4096.html">P4096</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4097.html">P4097</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6003.html">P6003</a></li>
@@ -782,6 +784,10 @@ mismatches such as real-to-integer, boolean-to-numeric, or narrowing conversions
 <p>A whole array, a structure or an enumeration is never assignable to a variable of an
 elementary type, so assigning one is this error too. An enumeration’s values are not
 integers.</p>
+<p>A structure field or an array element is checked against the type its declaration
+records, as a variable is. Assigning a <code class="docutils literal notranslate"><span class="pre">STRING</span></code> to an <code class="docutils literal notranslate"><span class="pre">INT</span></code> field (<code class="docutils literal notranslate"><span class="pre">t.f</span> <span class="pre">:=</span> <span class="pre">s</span></code>)
+or to an element of an <code class="docutils literal notranslate"><span class="pre">ARRAY</span> <span class="pre">OF</span> <span class="pre">INT</span></code> (<code class="docutils literal notranslate"><span class="pre">a[1]</span> <span class="pre">:=</span> <span class="pre">s</span></code>) is this error, as assigning
+it to an <code class="docutils literal notranslate"><span class="pre">INT</span></code> variable is.</p>
 <p>An assignment through a dereference (<code class="docutils literal notranslate"><span class="pre">p^</span> <span class="pre">:=</span> <span class="pre">value</span></code>) stores into the variable the
 reference refers to, so it is checked against that variable’s type. Assigning a
 <code class="docutils literal notranslate"><span class="pre">DINT</span></code> through a <code class="docutils literal notranslate"><span class="pre">REF_TO</span> <span class="pre">SINT</span></code> is this error, as assigning it to the <code class="docutils literal notranslate"><span class="pre">SINT</span></code>

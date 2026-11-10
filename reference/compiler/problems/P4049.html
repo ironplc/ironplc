@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.251.0">
+<meta name="ironplc-version" content="0.253.0">
 </head>
   <body>
     
@@ -628,6 +628,8 @@
 <li class="toctree-l4"><a class="reference internal" href="P4093.html">P4093</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4094.html">P4094</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4095.html">P4095</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4096.html">P4096</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4097.html">P4097</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6003.html">P6003</a></li>
@@ -788,9 +790,12 @@ two integer operands only. The function forms <code class="docutils literal notr
 <code class="docutils literal notranslate"><span class="pre">DIV</span></code> are checked the same way and report this error too, naming the two
 operand types of the step that fails; <code class="docutils literal notranslate"><span class="pre">MOD(a,</span> <span class="pre">b)</span></code> is checked against its
 signature and reports <a class="reference internal" href="P4026.html"><span class="doc">P4026</span></a> instead.</p>
-<p>Each arithmetic expression is reported once, naming both operand types. When
-an operand of an expression is itself an expression that failed, the
-enclosing expression may be reported as well.</p>
+<p>Each arithmetic expression is reported once, naming both operand types. An
+expression that fails has no type, so nothing that uses its value is reported
+because of it: not an enclosing expression or function call, and not the
+assignment of its value. <code class="docutils literal notranslate"><span class="pre">result</span> <span class="pre">:=</span> <span class="pre">(s1</span> <span class="pre">+</span> <span class="pre">s2)</span> <span class="pre">*</span> <span class="pre">2</span></code> with <code class="docutils literal notranslate"><span class="pre">STRING</span></code> operands
+reports only <code class="docutils literal notranslate"><span class="pre">s1</span> <span class="pre">+</span> <span class="pre">s2</span></code>. Fix that expression, and any error in what encloses
+it is reported on the next check.</p>
 <p>The selection functions <code class="docutils literal notranslate"><span class="pre">MIN</span></code>, <code class="docutils literal notranslate"><span class="pre">MAX</span></code>, <code class="docutils literal notranslate"><span class="pre">LIMIT</span></code>, <code class="docutils literal notranslate"><span class="pre">SEL</span></code> and <code class="docutils literal notranslate"><span class="pre">MUX</span></code>, and
 <code class="docutils literal notranslate"><span class="pre">ATAN2</span></code>, compute at one type too, and report this error when their inputs
 have no common type, naming the function and the type of each input.</p>

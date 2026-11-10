@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/runtime/problems/V9005.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="Code, V9005,, Message, Variable table index out of bounds,. The VM tried to access a variable table slot that does not exist. This is an internal error indicating the compiler allocated insufficien..." />
-<meta name="description" content="Code, V9005,, Message, Variable table index out of bounds,. The VM tried to access a variable table slot that does not exist. This is an internal error indicating the compiler allocated insufficien..." />
+<meta property="og:description" content="Code, V9005,, Message, Variable table index out of bounds,. The VM tried to access a variable table slot that does not exist, or followed a reference whose value is not the location of a variable. ..." />
+<meta name="description" content="Code, V9005,, Message, Variable table index out of bounds,. The VM tried to access a variable table slot that does not exist, or followed a reference whose value is not the location of a variable. ..." />
 <link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="V9006" href="V9006.html"><link rel="prev" title="V9004" href="V9004.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/runtime/problems/V9005.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.251.0">
+<meta name="ironplc-version" content="0.253.0">
 </head>
   <body>
     
@@ -628,6 +628,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4093.html">P4093</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4094.html">P4094</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4095.html">P4095</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4096.html">P4096</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4097.html">P4097</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -774,8 +776,15 @@
 <dt><strong>Message</strong></dt><dd><p>Variable table index out of bounds</p>
 </dd>
 </dl>
-<p>The VM tried to access a variable table slot that does not exist. This is an
-internal error indicating the compiler allocated insufficient variable slots.</p>
+<p>The VM tried to access a variable table slot that does not exist, or followed
+a reference whose value is not the location of a variable. This is an
+internal error: the compiler allocated too few variable slots, or let a
+program store a value that is not a reference in a reference.</p>
+<p>A program compiled with <code class="docutils literal notranslate"><span class="pre">--allow-ref-type-punning</span></code> can reach this error
+without a compiler bug. Type punning lets a reference reinterpret the storage
+of another reference, so a value written through the first is followed by the
+second as a variable location. Check what the program writes through a punned
+reference before reporting the error.</p>
 <p>This error should not occur during normal operation. It indicates a bug in the
 IronPLC compiler or VM.</p>
 <p>Report this as a bug at <a class="reference external" href="https://github.com/ironplc/ironplc/issues">https://github.com/ironplc/ironplc/issues</a> with the

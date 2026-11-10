@@ -22,8 +22,9 @@ Signature
    END_FUNCTION
 
 The return type matches the input type. ``MOVE`` accepts any type
-(``ANY``); IronPLC supports ``SINT``, ``INT``, ``DINT``, ``LINT``,
-``USINT``, ``UINT``, ``UDINT``, ``ULINT``, ``REAL``, ``LREAL``.
+(``ANY``): integers, reals, bit strings, ``BOOL``, times and dates,
+enumerations, subranges, strings, structures and arrays. A reference is not
+yet supported.
 
 .. rubric:: Inputs
 

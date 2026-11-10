@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.251.0">
+<meta name="ironplc-version" content="0.253.0">
 </head>
   <body>
     
@@ -628,6 +628,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4093.html">P4093</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4094.html">P4094</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4095.html">P4095</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4096.html">P4096</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4097.html">P4097</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6003.html">P6003</a></li>
@@ -819,11 +821,11 @@ names like <a class="reference internal" href="../reference/language/data-types/
 <code class="docutils literal notranslate"><span class="pre">--allow-short-circuit-operators</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-mixed-located-var-declarations</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-constant-initializer-expressions</span></code>,
-<code class="docutils literal notranslate"><span class="pre">--allow-bit-string-case-labels</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-paren-string-length</span></code>,
+<code class="docutils literal notranslate"><span class="pre">--allow-radix-case-labels</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-paren-string-length</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-struct-initializer-expressions</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-enum-explicit-values</span></code>,
-<code class="docutils literal notranslate"><span class="pre">--allow-enum-base-type</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-continue</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">--allow-keywords-as-names</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">--allow-enum-base-type</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-continue</span></code>,
+<code class="docutils literal notranslate"><span class="pre">--allow-keywords-as-names</span></code>, and <code class="docutils literal notranslate"><span class="pre">--allow-radix-subrange-bounds</span></code>.</p>
 <p><strong>Selects:</strong> <code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-non-numeric</span> <span class="pre">reject</span></code> and
 <code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-failure</span> <span class="pre">zero</span></code> — RuSTy rejects a string with
 trailing characters and never faults.</p>
@@ -852,11 +854,11 @@ runtime convention rather than a CODESYS feature.</p>
 <code class="docutils literal notranslate"><span class="pre">--allow-pragmas</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-short-circuit-operators</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-mixed-located-var-declarations</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-constant-initializer-expressions</span></code>,
-<code class="docutils literal notranslate"><span class="pre">--allow-bit-string-case-labels</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-paren-string-length</span></code>,
+<code class="docutils literal notranslate"><span class="pre">--allow-radix-case-labels</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-paren-string-length</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-struct-initializer-expressions</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-enum-explicit-values</span></code>,
-<code class="docutils literal notranslate"><span class="pre">--allow-enum-base-type</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-continue</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">--allow-keywords-as-names</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">--allow-enum-base-type</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-continue</span></code>,
+<code class="docutils literal notranslate"><span class="pre">--allow-keywords-as-names</span></code>, and <code class="docutils literal notranslate"><span class="pre">--allow-radix-subrange-bounds</span></code>.</p>
 <p><strong>Selects:</strong> <code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-non-numeric</span> <span class="pre">ignore-trailing</span></code> and
 <code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-failure</span> <span class="pre">zero</span></code> — CODESYS stops parsing at the
 first invalid character and returns 0 for a string that is not valid in
@@ -893,11 +895,11 @@ rather than a TwinCAT feature.</p>
 <code class="docutils literal notranslate"><span class="pre">--allow-short-circuit-operators</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-mixed-located-var-declarations</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-constant-initializer-expressions</span></code>,
-<code class="docutils literal notranslate"><span class="pre">--allow-bit-string-case-labels</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-paren-string-length</span></code>,
+<code class="docutils literal notranslate"><span class="pre">--allow-radix-case-labels</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-paren-string-length</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-struct-initializer-expressions</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-enum-explicit-values</span></code>,
-<code class="docutils literal notranslate"><span class="pre">--allow-enum-base-type</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-continue</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">--allow-keywords-as-names</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">--allow-enum-base-type</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-continue</span></code>,
+<code class="docutils literal notranslate"><span class="pre">--allow-keywords-as-names</span></code>, and <code class="docutils literal notranslate"><span class="pre">--allow-radix-subrange-bounds</span></code>.</p>
 <p><strong>Selects:</strong> <code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-non-numeric</span> <span class="pre">ignore-trailing</span></code> and
 <code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-failure</span> <span class="pre">zero</span></code>, as <code class="docutils literal notranslate"><span class="pre">codesys</span></code>.</p>
 </dd>
@@ -1125,14 +1127,15 @@ does not fully reduce to a constant (e.g. it references a
 non-<code class="docutils literal notranslate"><span class="pre">CONSTANT</span></code> variable), it produces
 <a class="reference internal" href="../reference/compiler/problems/P4038.html"><span class="doc">P4038</span></a>.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-bit-string-case-labels</span></code></dt><dd><p>Allow a hex, binary, or octal bit-string literal (e.g. <code class="docutils literal notranslate"><span class="pre">16#D012</span></code>,
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-radix-case-labels</span></code></dt><dd><p>Allow a hex, binary, or octal bit-string literal (e.g. <code class="docutils literal notranslate"><span class="pre">16#D012</span></code>,
 <code class="docutils literal notranslate"><span class="pre">2#1010</span></code>, <code class="docutils literal notranslate"><span class="pre">8#17</span></code>) as a <code class="docutils literal notranslate"><span class="pre">CASE</span></code> label. The IEC 61131-3 standard
 grammar for a case label permits only a subrange, a <em>decimal</em>
 <code class="docutils literal notranslate"><span class="pre">signed_integer</span></code>, or an enumerated value; radix-prefixed literals are
 separate productions the standard does not include here. Real
-TwinCAT/CODESYS code uses them. Without this flag, such a label produces
-<a class="reference internal" href="../reference/compiler/problems/P4041.html"><span class="doc">P4041</span></a>. A plain decimal label
-(<code class="docutils literal notranslate"><span class="pre">5:</span></code>) is standard syntax and is always allowed.</p>
+TwinCAT/CODESYS code uses them. The flag also allows them as the bounds
+of a subrange label (<code class="docutils literal notranslate"><span class="pre">16#01..16#0F:</span></code>). Without this flag, such a label
+produces <a class="reference internal" href="../reference/compiler/problems/P4041.html"><span class="doc">P4041</span></a>. A plain
+decimal label (<code class="docutils literal notranslate"><span class="pre">5:</span></code>) is standard syntax and is always allowed.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-paren-string-length</span></code></dt><dd><p>Allow a string type’s maximum length to be delimited with parentheses
 (<code class="docutils literal notranslate"><span class="pre">STRING(255)</span></code>, <code class="docutils literal notranslate"><span class="pre">WSTRING(100)</span></code>) in addition to the standard square
@@ -1146,6 +1149,15 @@ parenthesis form to brackets. The flag applies in every position a string
 type can appear, including as an array element type
 (<code class="docutils literal notranslate"><span class="pre">ARRAY[1..10]</span> <span class="pre">OF</span> <span class="pre">STRING(255)</span></code>), a function return type, and a
 <code class="docutils literal notranslate"><span class="pre">TYPE</span></code> alias.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-radix-subrange-bounds</span></code></dt><dd><p>Allow a hex, binary, or octal literal (e.g. <code class="docutils literal notranslate"><span class="pre">16#FF</span></code>, <code class="docutils literal notranslate"><span class="pre">2#1010</span></code>,
+<code class="docutils literal notranslate"><span class="pre">8#17</span></code>) as a bound of a subrange type (<code class="docutils literal notranslate"><span class="pre">INT</span> <span class="pre">(16#00..16#FF)</span></code>) or of an
+array dimension (<code class="docutils literal notranslate"><span class="pre">ARRAY[16#0..16#F]</span> <span class="pre">OF</span> <span class="pre">INT</span></code>). The IEC 61131-3 standard
+grammar defines a subrange’s bounds as <em>decimal</em> <code class="docutils literal notranslate"><span class="pre">signed_integer</span></code>s.
+Without this flag, such a bound produces
+<a class="reference internal" href="../reference/compiler/problems/P4096.html"><span class="doc">P4096</span></a>. The bounds of a
+<code class="docutils literal notranslate"><span class="pre">CASE</span></code> subrange label are allowed by <code class="docutils literal notranslate"><span class="pre">--allow-radix-case-labels</span></code>
+instead.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-struct-initializer-expressions</span></code></dt><dd><p>Allow a general (non-constant) expression — such as a pointer
 dereference plus member access (<code class="docutils literal notranslate"><span class="pre">pDevice^.Delta</span></code>) — as the value in a

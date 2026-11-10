@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.251.0">
+<meta name="ironplc-version" content="0.253.0">
 </head>
   <body>
     
@@ -628,6 +628,8 @@
 <li class="toctree-l4"><a class="reference internal" href="P4093.html">P4093</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4094.html">P4094</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4095.html">P4095</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4096.html">P4096</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4097.html">P4097</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6003.html">P6003</a></li>
@@ -800,6 +802,35 @@
 <span class="n">END_PROGRAM</span>
 </pre></div>
 </div>
+</section>
+<section id="a-dereference-of-a-value-that-is-not-a-reference">
+<h2>A dereference of a value that is not a reference<a class="headerlink" href="#a-dereference-of-a-value-that-is-not-a-reference" title="Link to this heading">¶</a></h2>
+<p>The operand of <code class="docutils literal notranslate"><span class="pre">^</span></code> may be any expression, and it is this error whenever
+that expression is not a reference. <code class="docutils literal notranslate"><span class="pre">r^</span></code> on a <code class="docutils literal notranslate"><span class="pre">REF_TO</span> <span class="pre">INT</span></code> is the
+<code class="docutils literal notranslate"><span class="pre">INT</span></code> the reference refers to, so a second <code class="docutils literal notranslate"><span class="pre">^</span></code> dereferences an <code class="docutils literal notranslate"><span class="pre">INT</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">Main</span>
+    <span class="n">VAR</span>
+        <span class="n">x</span> <span class="p">:</span> <span class="n">INT</span> <span class="o">:=</span> <span class="mi">42</span><span class="p">;</span>
+        <span class="n">y</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+        <span class="n">r</span> <span class="p">:</span> <span class="n">REF_TO</span> <span class="n">INT</span> <span class="o">:=</span> <span class="n">REF</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
+    <span class="n">END_VAR</span>
+
+    <span class="n">y</span> <span class="o">:=</span> <span class="n">r</span><span class="o">^^</span><span class="p">;</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">r</span><span class="o">^</span> <span class="ow">is</span> <span class="n">INT</span><span class="p">,</span> <span class="ow">not</span> <span class="n">REF_TO</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+<p>To fix this error, dereference once:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">Main</span>
+    <span class="n">VAR</span>
+        <span class="n">x</span> <span class="p">:</span> <span class="n">INT</span> <span class="o">:=</span> <span class="mi">42</span><span class="p">;</span>
+        <span class="n">y</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+        <span class="n">r</span> <span class="p">:</span> <span class="n">REF_TO</span> <span class="n">INT</span> <span class="o">:=</span> <span class="n">REF</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
+    <span class="n">END_VAR</span>
+
+    <span class="n">y</span> <span class="o">:=</span> <span class="n">r</span><span class="o">^</span><span class="p">;</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Correct</span><span class="p">:</span> <span class="n">r</span> <span class="ow">is</span> <span class="n">REF_TO</span> <span class="n">INT</span><span class="p">,</span> <span class="n">r</span><span class="o">^</span> <span class="ow">is</span> <span class="n">the</span> <span class="n">INT</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
 <div class="tip admonition">
 <p class="admonition-title">Think IronPLC is wrong about this?</p>
 <p>If you believe this diagnostic is incorrect, <a class="reference external" href="https://github.com/ironplc/ironplc/issues/new?template=compatibility_gap.md&amp;title=Diagnostic%20P2031%20appears%20incorrect&amp;labels=problem-code-feedback">open an issue on GitHub</a>
@@ -873,6 +904,7 @@ with a small sample that demonstrates the problem.</p>
             <ul>
 <li><a class="reference internal" href="#">P2031</a><ul>
 <li><a class="reference internal" href="#example">Example</a></li>
+<li><a class="reference internal" href="#a-dereference-of-a-value-that-is-not-a-reference">A dereference of a value that is not a reference</a></li>
 </ul>
 </li>
 </ul>

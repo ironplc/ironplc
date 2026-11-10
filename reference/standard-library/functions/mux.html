@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/standard-library/functions/mux.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="Multiplexer — selects one of several inputs by index. Signature: IEC 61131-3 declares each INn input as any type ( ANY). IronPLC supports SINT, INT, DINT, LINT, USINT, UINT, UDINT, ULINT, REAL, LRE..." />
-<meta name="description" content="Multiplexer — selects one of several inputs by index. Signature: IEC 61131-3 declares each INn input as any type ( ANY). IronPLC supports SINT, INT, DINT, LINT, USINT, UINT, UDINT, ULINT, REAL, LRE..." />
+<meta property="og:description" content="Multiplexer — selects one of several inputs by index. Signature: IEC 61131-3 declares each INn input as any type ( ANY). IronPLC selects between integers, reals, bit strings, BOOL, times and dates,..." />
+<meta name="description" content="Multiplexer — selects one of several inputs by index. Signature: IEC 61131-3 declares each INn input as any type ( ANY). IronPLC selects between integers, reals, bit strings, BOOL, times and dates,..." />
 <link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="AND" href="and.html"><link rel="prev" title="LIMIT" href="limit.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/standard-library/functions/mux.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.251.0">
+<meta name="ironplc-version" content="0.253.0">
 </head>
   <body>
     
@@ -628,6 +628,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4093.html">P4093</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4094.html">P4094</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4095.html">P4095</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4096.html">P4096</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4097.html">P4097</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -790,9 +792,14 @@ IN2 ─┤         │
 END_FUNCTION
 </pre></div>
 </div>
-<p>IEC 61131-3 declares each <code class="docutils literal notranslate"><span class="pre">INn</span></code> input as any type (<code class="docutils literal notranslate"><span class="pre">ANY</span></code>). IronPLC
-supports <code class="docutils literal notranslate"><span class="pre">SINT</span></code>, <code class="docutils literal notranslate"><span class="pre">INT</span></code>, <code class="docutils literal notranslate"><span class="pre">DINT</span></code>, <code class="docutils literal notranslate"><span class="pre">LINT</span></code>, <code class="docutils literal notranslate"><span class="pre">USINT</span></code>, <code class="docutils literal notranslate"><span class="pre">UINT</span></code>, <code class="docutils literal notranslate"><span class="pre">UDINT</span></code>,
-<code class="docutils literal notranslate"><span class="pre">ULINT</span></code>, <code class="docutils literal notranslate"><span class="pre">REAL</span></code>, <code class="docutils literal notranslate"><span class="pre">LREAL</span></code>.</p>
+<p>IEC 61131-3 declares each <code class="docutils literal notranslate"><span class="pre">INn</span></code> input as any type (<code class="docutils literal notranslate"><span class="pre">ANY</span></code>).</p>
+<p>IronPLC selects between integers, reals, bit strings, <code class="docutils literal notranslate"><span class="pre">BOOL</span></code>, times and
+dates, enumerations, subranges, strings, structures and arrays. Every input is
+evaluated, including the ones not selected. A selection of strings, structures
+or arrays is supported where it is the whole value assigned, and each input is
+a literal or a variable. Selecting inside an expression, such as an argument
+of <code class="docutils literal notranslate"><span class="pre">CONCAT</span></code>, or between inputs that call a function or use a computed array
+index, is not yet supported.</p>
 <p>The return type is the type that every compared or selected input widens to.
 The compiler converts a narrower input to that type first, so an <code class="docutils literal notranslate"><span class="pre">INT</span></code> and a
 <code class="docutils literal notranslate"><span class="pre">LINT</span></code> give a <code class="docutils literal notranslate"><span class="pre">LINT</span></code>. When no input’s type holds every other input, as with

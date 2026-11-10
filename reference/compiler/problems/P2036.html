@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/compiler/problems/P2036.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="Code, P2036,, Message, Nested REF_TO (multi-level indirection) is not supported,. This error occurs when a REF_TO type declaration or a variable declaration references another REF_TO type, creating..." />
-<meta name="description" content="Code, P2036,, Message, Nested REF_TO (multi-level indirection) is not supported,. This error occurs when a REF_TO type declaration or a variable declaration references another REF_TO type, creating..." />
+<meta property="og:description" content="Code, P2036,, Message, Nested REFERENCE TO (a reference to a reference) is not supported,. This error occurs when a TwinCAT REFERENCE TO is nested: a REFERENCE TO whose target is a reference or poi..." />
+<meta name="description" content="Code, P2036,, Message, Nested REFERENCE TO (a reference to a reference) is not supported,. This error occurs when a TwinCAT REFERENCE TO is nested: a REFERENCE TO whose target is a reference or poi..." />
 <link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="P2037" href="P2037.html"><link rel="prev" title="P2035" href="P2035.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/compiler/problems/P2036.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.251.0">
+<meta name="ironplc-version" content="0.253.0">
 </head>
   <body>
     
@@ -628,6 +628,8 @@
 <li class="toctree-l4"><a class="reference internal" href="P4093.html">P4093</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4094.html">P4094</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4095.html">P4095</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4096.html">P4096</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4097.html">P4097</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6003.html">P6003</a></li>
@@ -771,35 +773,51 @@
 <dl class="simple">
 <dt><strong>Code</strong></dt><dd><p>P2036</p>
 </dd>
-<dt><strong>Message</strong></dt><dd><p>Nested REF_TO (multi-level indirection) is not supported</p>
+<dt><strong>Message</strong></dt><dd><p>Nested REFERENCE TO (a reference to a reference) is not supported</p>
 </dd>
 </dl>
-<p>This error occurs when a <code class="docutils literal notranslate"><span class="pre">REF_TO</span></code> type declaration or a variable declaration references another <code class="docutils literal notranslate"><span class="pre">REF_TO</span></code> type, creating multi-level indirection. Nested references are not supported.</p>
+<p>This error occurs when a TwinCAT <code class="docutils literal notranslate"><span class="pre">REFERENCE</span> <span class="pre">TO</span></code> is nested: a <code class="docutils literal notranslate"><span class="pre">REFERENCE</span> <span class="pre">TO</span></code>
+whose target is a reference or pointer type, or a reference of any kind whose
+target is spelled <code class="docutils literal notranslate"><span class="pre">REFERENCE</span> <span class="pre">TO</span></code>. TwinCAT declares neither <code class="docutils literal notranslate"><span class="pre">REFERENCE</span> <span class="pre">TO</span>
+<span class="pre">REFERENCE</span></code> nor <code class="docutils literal notranslate"><span class="pre">POINTER</span> <span class="pre">TO</span> <span class="pre">REFERENCE</span></code>. IronPLC gives a <code class="docutils literal notranslate"><span class="pre">REFERENCE</span> <span class="pre">TO</span></code>
+variable its automatic dereference by its own declaration, which a reference
+reached through another reference does not have, and which does not reach
+through a pointer the variable refers to, so a <code class="docutils literal notranslate"><span class="pre">REFERENCE</span> <span class="pre">TO</span></code> a pointer is
+not supported either.</p>
+<p>The IEC 61131-3 <code class="docutils literal notranslate"><span class="pre">REF_TO</span></code> and the CODESYS <code class="docutils literal notranslate"><span class="pre">POINTER</span> <span class="pre">TO</span></code> nest:
+<code class="docutils literal notranslate"><span class="pre">REF_TO</span> <span class="pre">REF_TO</span> <span class="pre">INT</span></code> and <code class="docutils literal notranslate"><span class="pre">POINTER</span> <span class="pre">TO</span> <span class="pre">POINTER</span> <span class="pre">TO</span> <span class="pre">INT</span></code> are references to a
+reference, followed one level at a time with <code class="docutils literal notranslate"><span class="pre">^</span></code>. See
+<a class="reference internal" href="../../language/data-types/derived/reference-types.html#ref-nested-references"><span class="std std-ref">Nested references</span></a> on the reference types page.</p>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
 <p>The following code will generate error P2036:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">TYPE</span>
-    <span class="n">IntRef</span> <span class="p">:</span> <span class="n">REF_TO</span> <span class="n">INT</span><span class="p">;</span>
-    <span class="n">IntRefRef</span> <span class="p">:</span> <span class="n">REF_TO</span> <span class="n">IntRef</span><span class="p">;</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">nested</span> <span class="n">REF_TO</span> <span class="o">*</span><span class="p">)</span>
-<span class="n">END_TYPE</span>
-</pre></div>
-</div>
-<p>A variable declared as a reference to a reference type is the same nesting, and generates error P2036 too:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">TYPE</span>
     <span class="n">IntRef</span> <span class="p">:</span> <span class="n">REF_TO</span> <span class="n">INT</span><span class="p">;</span>
 <span class="n">END_TYPE</span>
 
 <span class="n">PROGRAM</span> <span class="n">Main</span>
     <span class="n">VAR</span>
-        <span class="n">rr</span> <span class="p">:</span> <span class="n">REF_TO</span> <span class="n">IntRef</span><span class="p">;</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">nested</span> <span class="n">REF_TO</span> <span class="o">*</span><span class="p">)</span>
+        <span class="n">rr</span> <span class="p">:</span> <span class="n">REFERENCE</span> <span class="n">TO</span> <span class="n">IntRef</span><span class="p">;</span>        <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">REFERENCE</span> <span class="n">TO</span> <span class="n">a</span> <span class="n">reference</span> <span class="o">*</span><span class="p">)</span>
+        <span class="n">pp</span> <span class="p">:</span> <span class="n">POINTER</span> <span class="n">TO</span> <span class="n">REFERENCE</span> <span class="n">TO</span> <span class="n">INT</span><span class="p">;</span> <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">a</span> <span class="n">reference</span> <span class="n">to</span> <span class="n">a</span> <span class="n">REFERENCE</span> <span class="n">TO</span> <span class="o">*</span><span class="p">)</span>
     <span class="n">END_VAR</span>
 <span class="n">END_PROGRAM</span>
 </pre></div>
 </div>
-<p>To fix this error, use only a single level of indirection:</p>
+<p>To fix this error, refer to the reference with <code class="docutils literal notranslate"><span class="pre">REF_TO</span></code> or <code class="docutils literal notranslate"><span class="pre">POINTER</span> <span class="pre">TO</span></code>,
+which nest, or to the value itself with <code class="docutils literal notranslate"><span class="pre">REFERENCE</span> <span class="pre">TO</span></code>:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">TYPE</span>
-    <span class="n">IntRef</span> <span class="p">:</span> <span class="n">REF_TO</span> <span class="n">INT</span><span class="p">;</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Correct</span><span class="p">:</span> <span class="n">single</span> <span class="n">level</span> <span class="n">of</span> <span class="n">REF_TO</span> <span class="o">*</span><span class="p">)</span>
+    <span class="n">IntRef</span> <span class="p">:</span> <span class="n">REF_TO</span> <span class="n">INT</span><span class="p">;</span>
 <span class="n">END_TYPE</span>
+
+<span class="n">PROGRAM</span> <span class="n">Main</span>
+    <span class="n">VAR</span>
+        <span class="n">x</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+        <span class="n">rr</span> <span class="p">:</span> <span class="n">REF_TO</span> <span class="n">IntRef</span><span class="p">;</span>       <span class="p">(</span><span class="o">*</span> <span class="n">Correct</span><span class="p">:</span> <span class="n">a</span> <span class="n">reference</span> <span class="n">to</span> <span class="n">a</span> <span class="n">reference</span> <span class="o">*</span><span class="p">)</span>
+        <span class="n">r</span> <span class="p">:</span> <span class="n">REFERENCE</span> <span class="n">TO</span> <span class="n">INT</span><span class="p">;</span>     <span class="p">(</span><span class="o">*</span> <span class="n">Correct</span><span class="p">:</span> <span class="n">a</span> <span class="n">reference</span> <span class="n">to</span> <span class="n">a</span> <span class="n">value</span> <span class="o">*</span><span class="p">)</span>
+    <span class="n">END_VAR</span>
+
+    <span class="n">r</span> <span class="n">REF</span><span class="o">=</span> <span class="n">x</span><span class="p">;</span>
+<span class="n">END_PROGRAM</span>
 </pre></div>
 </div>
 <div class="tip admonition">

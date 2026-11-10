@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/standard-library/functions/min.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="Returns the smaller of two inputs. Signature: MIN accepts SINT, INT, DINT, LINT, USINT, UINT, UDINT, ULINT, REAL, LREAL. The return type is the type that every compared or selected input widens to...." />
-<meta name="description" content="Returns the smaller of two inputs. Signature: MIN accepts SINT, INT, DINT, LINT, USINT, UINT, UDINT, ULINT, REAL, LREAL. The return type is the type that every compared or selected input widens to...." />
+<meta property="og:description" content="Returns the smallest of two or more inputs. Signature: MIN accepts SINT, INT, DINT, LINT, USINT, UINT, UDINT, ULINT, REAL, LREAL. The return type is the type that every compared or selected input w..." />
+<meta name="description" content="Returns the smallest of two or more inputs. Signature: MIN accepts SINT, INT, DINT, LINT, USINT, UINT, UDINT, ULINT, REAL, LREAL. The return type is the type that every compared or selected input w..." />
 <link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="LIMIT" href="limit.html"><link rel="prev" title="MAX" href="max.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/standard-library/functions/min.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.251.0">
+<meta name="ironplc-version" content="0.253.0">
 </head>
   <body>
     
@@ -628,6 +628,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4093.html">P4093</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4094.html">P4094</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4095.html">P4095</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4096.html">P4096</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4097.html">P4097</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -768,7 +770,7 @@
         <article role="main" id="furo-main-content">
           <section id="min">
 <h1>MIN<a class="headerlink" href="#min" title="Link to this heading">¶</a></h1>
-<p>Returns the smaller of two inputs.</p>
+<p>Returns the smallest of two or more inputs.</p>
 <section id="signature">
 <h2>Signature<a class="headerlink" href="#signature" title="Link to this heading">¶</a></h2>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>     ┌─────────┐
@@ -782,6 +784,7 @@ IN2 ─┤         │
   VAR_INPUT
     IN1 : ANY;
     IN2 : ANY;
+    (* ... INn ... *)
   END_VAR
 END_FUNCTION
 </pre></div>
@@ -816,6 +819,11 @@ a <code class="docutils literal notranslate"><span class="pre">DINT</span></code
 <td><p><code class="docutils literal notranslate"><span class="pre">ANY_MAGNITUDE</span></code></p></td>
 <td><p>The second value to compare.</p></td>
 </tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">IN3</span></code>, …, <code class="docutils literal notranslate"><span class="pre">INn</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ANY_MAGNITUDE</span></code></p></td>
+<td><p>Further values to compare; the function is extensible, so any number
+of inputs may follow <code class="docutils literal notranslate"><span class="pre">IN2</span></code>.</p></td>
+</tr>
 </tbody>
 </table>
 </div>
@@ -836,7 +844,7 @@ a <code class="docutils literal notranslate"><span class="pre">DINT</span></code
 <tbody>
 <tr class="row-even"><td><p>Return value</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">ANY_MAGNITUDE</span></code></p></td>
-<td><p>The smaller of IN1 and IN2. If both inputs are equal, returns that value.</p></td>
+<td><p>The smallest of the inputs. If inputs are equal, returns that value.</p></td>
 </tr>
 </tbody>
 </table>

@@ -64,12 +64,16 @@ Syntax
 
 .. code-block:: bnf
 
-   variable_name AT %prefix.address : type_name ;
+   variable_name AT address_prefix[size_prefix]integer{.integer} : type_name ;
+
+The address is one or more unsigned integers separated by periods, each of
+any number of digits: ``%IX0.0``, ``%MW10``, ``%QD100`` and ``%IX1.2.3``
+are all direct addresses.
 
 Example
 -------
 
-.. code-block::
+.. playground::
 
    PROGRAM main
        VAR
@@ -79,6 +83,37 @@ Example
        END_VAR
 
        motor_output := start_button;
+   END_PROGRAM
+
+Located Global Variables
+------------------------
+
+A :code:`VAR_GLOBAL` block of a :code:`CONFIGURATION` or a :code:`RESOURCE`
+can locate its variables the same way. Programs reach them through
+:code:`VAR_EXTERNAL`, which names the variable without its address:
+
+.. playground::
+
+   CONFIGURATION config
+     VAR_GLOBAL
+       start_button AT %IX0.0 : BOOL;
+       motor_output AT %QX0.0 : BOOL;
+       scan_count AT %MW2 : INT;
+     END_VAR
+     RESOURCE resource1 ON PLC
+       TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+       PROGRAM plc_task_instance WITH plc_task : main;
+     END_RESOURCE
+   END_CONFIGURATION
+
+   PROGRAM main
+     VAR_EXTERNAL
+       start_button : BOOL;
+       motor_output : BOOL;
+       scan_count : INT;
+     END_VAR
+     motor_output := start_button;
+     scan_count := scan_count + 1;
    END_PROGRAM
 
 See Also

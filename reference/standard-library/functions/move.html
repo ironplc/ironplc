@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/standard-library/functions/move.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="Copies the input value to the output (assignment). Signature: The return type matches the input type. MOVE accepts any type ( ANY); IronPLC supports SINT, INT, DINT, LINT, USINT, UINT, UDINT, ULINT..." />
-<meta name="description" content="Copies the input value to the output (assignment). Signature: The return type matches the input type. MOVE accepts any type ( ANY); IronPLC supports SINT, INT, DINT, LINT, USINT, UINT, UDINT, ULINT..." />
+<meta property="og:description" content="Copies the input value to the output (assignment). Signature: The return type matches the input type. MOVE accepts any type ( ANY): integers, reals, bit strings, BOOL, times and dates, enumerations..." />
+<meta name="description" content="Copies the input value to the output (assignment). Signature: The return type matches the input type. MOVE accepts any type ( ANY): integers, reals, bit strings, BOOL, times and dates, enumerations..." />
 <link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="GT" href="gt.html"><link rel="prev" title="MOD" href="mod.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/standard-library/functions/move.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.251.0">
+<meta name="ironplc-version" content="0.253.0">
 </head>
   <body>
     
@@ -628,6 +628,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4093.html">P4093</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4094.html">P4094</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4095.html">P4095</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4096.html">P4096</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4097.html">P4097</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -784,8 +786,9 @@ END_FUNCTION
 </pre></div>
 </div>
 <p>The return type matches the input type. <code class="docutils literal notranslate"><span class="pre">MOVE</span></code> accepts any type
-(<code class="docutils literal notranslate"><span class="pre">ANY</span></code>); IronPLC supports <code class="docutils literal notranslate"><span class="pre">SINT</span></code>, <code class="docutils literal notranslate"><span class="pre">INT</span></code>, <code class="docutils literal notranslate"><span class="pre">DINT</span></code>, <code class="docutils literal notranslate"><span class="pre">LINT</span></code>,
-<code class="docutils literal notranslate"><span class="pre">USINT</span></code>, <code class="docutils literal notranslate"><span class="pre">UINT</span></code>, <code class="docutils literal notranslate"><span class="pre">UDINT</span></code>, <code class="docutils literal notranslate"><span class="pre">ULINT</span></code>, <code class="docutils literal notranslate"><span class="pre">REAL</span></code>, <code class="docutils literal notranslate"><span class="pre">LREAL</span></code>.</p>
+(<code class="docutils literal notranslate"><span class="pre">ANY</span></code>): integers, reals, bit strings, <code class="docutils literal notranslate"><span class="pre">BOOL</span></code>, times and dates,
+enumerations, subranges, strings, structures and arrays. A reference is not
+yet supported.</p>
 <p class="rubric">Inputs</p>
 <div class="table-wrapper colwidths-given docutils container">
 <table class="docutils align-left">

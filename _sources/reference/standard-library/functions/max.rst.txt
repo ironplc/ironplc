@@ -2,7 +2,7 @@
 MAX
 ===
 
-Returns the larger of two inputs.
+Returns the largest of two or more inputs.
 
 Signature
 ---------
@@ -21,6 +21,7 @@ Signature
      VAR_INPUT
        IN1 : ANY;
        IN2 : ANY;
+       (* ... INn ... *)
      END_VAR
    END_FUNCTION
 
@@ -45,6 +46,10 @@ Signature
    * - ``IN2``
      - ``ANY_MAGNITUDE``
      - The second value to compare.
+   * - ``IN3``, ..., ``INn``
+     - ``ANY_MAGNITUDE``
+     - Further values to compare; the function is extensible, so any number
+       of inputs may follow ``IN2``.
 
 .. rubric:: Outputs
 
@@ -58,7 +63,7 @@ Signature
      - Description
    * - Return value
      - ``ANY_MAGNITUDE``
-     - The larger of IN1 and IN2. If both inputs are equal, returns that value.
+     - The largest of the inputs. If inputs are equal, returns that value.
 
 Description
 -----------
