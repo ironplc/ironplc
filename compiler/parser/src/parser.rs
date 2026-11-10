@@ -1223,7 +1223,7 @@ parser! {
     // block. Singular (one name), matching the existing dedicated-block
     // rules' shape — a shared address across multiple names wouldn't make
     // sense. See allow_mixed_located_var_declarations.
-    rule located_var1_init_decl() -> Vec<UntypedVarDecl> = name:variable_name() _ loc:(location() / incompl_location()) _ tok(TokenType::Colon) _ init:simple_or_enumerated_or_subrange_ambiguous_struct_spec_init() {
+    rule located_var1_init_decl() -> Vec<UntypedVarDecl> = name:variable_name() _ loc:(location() / incompl_location()) _ tok(TokenType::Colon) _ init:(arr:array_spec_init() { InitialValueAssignmentKind::Array(arr) } / simple_or_enumerated_or_subrange_ambiguous_struct_spec_init()) {
       vec![UntypedVarDecl {
         name,
         location: Some(loc),
