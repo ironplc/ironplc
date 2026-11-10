@@ -461,3 +461,95 @@ END_CONFIGURATION
     assert!(!names.contains(&"theirs"));
     assert_eq!(container.header.num_variables, 1);
 }
+
+e2e_i32!(
+    end_to_end_when_resource_global_structure_has_initial_value_then_external_reads_fields,
+    "
+TYPE POINT :
+  STRUCT
+    x : INT;
+    y : INT;
+  END_STRUCT;
+END_TYPE
+
+CONFIGURATION config
+  RESOURCE resource1 ON PLC
+    VAR_GLOBAL
+      origin : POINT := (x := 3, y := 4);
+    END_VAR
+    TASK t (INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM main_instance WITH t : main;
+  END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM main
+  VAR_EXTERNAL
+    origin : POINT;
+  END_VAR
+  VAR
+    sum : DINT;
+  END_VAR
+  sum := origin.x + origin.y;
+END_PROGRAM
+",
+    &[("sum", 7)],
+);
+
+e2e_i32!(
+    end_to_end_when_configuration_global_structure_has_initial_value_then_external_reads_fields,
+    "
+TYPE POINT :
+  STRUCT
+    x : INT;
+    y : INT;
+  END_STRUCT;
+END_TYPE
+
+CONFIGURATION config
+  VAR_GLOBAL
+    origin : POINT := (x := 3, y := 4);
+  END_VAR
+  RESOURCE resource1 ON PLC
+    TASK t (INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM main_instance WITH t : main;
+  END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM main
+  VAR_EXTERNAL
+    origin : POINT;
+  END_VAR
+  VAR
+    sum : DINT;
+  END_VAR
+  sum := origin.x + origin.y;
+END_PROGRAM
+",
+    &[("sum", 7)],
+);
+
+e2e_i32!(
+    end_to_end_when_configuration_global_sized_string_then_external_reads_length,
+    "
+CONFIGURATION config
+  VAR_GLOBAL
+    text : STRING[10] := 'abc';
+  END_VAR
+  RESOURCE resource1 ON PLC
+    TASK t (INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM main_instance WITH t : main;
+  END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM main
+  VAR_EXTERNAL
+    text : STRING[10];
+  END_VAR
+  VAR
+    n : DINT;
+  END_VAR
+  n := LEN(text);
+END_PROGRAM
+",
+    &[("n", 3)],
+);

@@ -1428,6 +1428,14 @@ parser! {
         spec,
         initial_values: vec![],
       })
+    } / width:(t:tok(TokenType::String) { (StringType::String, t) } / t:tok(TokenType::WString) { (StringType::WString, t) }) _ length:string_length_spec()? {
+      // Before simple_specification, which stops at the `[` of `STRING[10]`.
+      InitialValueAssignmentKind::String(StringInitializer {
+        length,
+        width: width.0,
+        initial_value: None,
+        keyword_span: width.1.span.clone(),
+      })
     } / type_name:simple_specification() {
       InitialValueAssignmentKind::Simple(SimpleInitializer {
         type_name,
@@ -1483,7 +1491,10 @@ parser! {
       }).collect()
      }
     // TODO this is completely fabricated - it isn't correct.
-    rule located_var_spec_init() -> InitialValueAssignmentKind = subrange_spec_init__inline() / arr:array_spec_init() { InitialValueAssignmentKind::Array(arr) } / simple:simple_spec_init() { simple }
+    // The string and structure alternatives come before simple_spec_init: it
+    // succeeds on a bare `STRING` or type name without consuming the `:=` or
+    // `[n]` that follows, which commits the choice and fails the declaration.
+    rule located_var_spec_init() -> InitialValueAssignmentKind = subrange_spec_init__inline() / arr:array_spec_init() { InitialValueAssignmentKind::Array(arr) } / string_spec__with_expression() / s:single_byte_string_spec() { InitialValueAssignmentKind::String(s) } / s:double_byte_string_spec() { InitialValueAssignmentKind::String(s) } / init:initialized_structure__without_ambiguous() { late_resolved_members(init) } / simple:simple_spec_init() { simple }
     rule location() -> AddressAssignment = tok(TokenType::At) _ v:direct_variable() { v }
     rule global_var_list() -> Vec<Id> = names:global_var_name() ++ (_ tok(TokenType::Comma) _) { names }
     rule string_var_declaration() -> Vec<UntypedVarDecl> = string_var_declaration__with_expression() / single_byte_string_var_declaration() / double_byte_string_var_declaration()
