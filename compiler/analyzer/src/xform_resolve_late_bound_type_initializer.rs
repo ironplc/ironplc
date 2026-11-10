@@ -5,10 +5,12 @@
 //! parsed into a placeholder. This transform replaces the placeholders
 //! with well-known types.
 use ironplc_dsl::common::*;
-use ironplc_dsl::core::{Located, SourceSpan};
+use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
-use ironplc_dsl::textual::{Expr, ExprKind, NamedVariable, SymbolicVariableKind, Variable};
+use ironplc_dsl::textual::{
+    Expr, ExprKind, NamedVariable, StructuredVariable, SymbolicVariableKind, Variable,
+};
 use ironplc_dsl::visitor::Visitor;
 use ironplc_problems::Problem;
 use log::trace;
@@ -240,9 +242,32 @@ impl TypeResolver<'_> {
                     initial_value: Some(EnumeratedValue {
                         type_name: None,
                         value,
+                        dotted: false,
                         explicit_value: None,
                     }),
                 })
+            }
+            // `Type.value`. An enumeration (or an alias of one, when the written
+            // type is an enumeration) takes it as a value; for any other type
+            // it is a constant reached through a name, such as `GVL.limit`.
+            (LateResolvedInitialValue::Dotted(value), kind) => {
+                let names_enumeration = matches!(kind, ResolvedKind::Enumeration)
+                    || value.type_name.as_ref().is_some_and(|written| {
+                        matches!(self.classify(written), Some(ResolvedKind::Enumeration))
+                    });
+                if names_enumeration {
+                    InitialValueAssignmentKind::EnumeratedType(EnumeratedInitialValueAssignment {
+                        type_name: name,
+                        initial_value: Some(value),
+                    })
+                } else {
+                    InitialValueAssignmentKind::SimpleExpr(SimpleExprInitializer {
+                        type_name: name,
+                        initial_value: Expr::new(ExprKind::Variable(Variable::Symbolic(
+                            dotted_variable(&value),
+                        ))),
+                    })
+                }
             }
             // A named constant for any other type: a constant expression,
             // which `xform_fold_initializer_expressions` evaluates or
@@ -257,6 +282,28 @@ impl TypeResolver<'_> {
             }
         })
     }
+}
+
+/// The variable reference `a.b` or `lib.a.b` that a dotted initial value
+/// names when it is not an enumerated value.
+fn dotted_variable(value: &EnumeratedValue) -> SymbolicVariableKind {
+    let mut segments: Vec<Id> = Vec::new();
+    if let Some(type_name) = &value.type_name {
+        segments.extend(type_name.qualifier.iter().cloned());
+        segments.push(type_name.id.clone());
+    }
+    let mut segments = segments.into_iter();
+    let head = segments
+        .next()
+        .expect("a dotted value always carries the name before the dot");
+    let mut variable = SymbolicVariableKind::Named(NamedVariable { name: head });
+    for field in segments.chain(std::iter::once(value.value.clone())) {
+        variable = SymbolicVariableKind::Structured(StructuredVariable {
+            record: Box::new(variable),
+            field,
+        });
+    }
+    variable
 }
 
 impl Fold<Diagnostic> for TypeResolver<'_> {
