@@ -451,20 +451,25 @@ parser! {
     // The keyword keeps its position like any other identifier, so a
     // diagnostic about the name points at it rather than at 1:1.
     rule variable_identifier() -> Id = identifier() / t:(tok(TokenType::Step) / tok(TokenType::On) / tok(TokenType::REdge) / tok(TokenType::FEdge)) { Id::from(t.text.as_str()).with_position(t.span.clone()) }
-    rule type_name() -> TypeName = i:identifier() { TypeName::from_id(&i) } / generic_type_name()
+    // A type name may carry a library or namespace prefix, as in
+    // `TcUnit.FB_TestSuite`. The prefix is kept for the source text but plays no
+    // part in resolution (see `TypeName::qualifier`).
+    rule type_name() -> TypeName = q:(i:identifier() _ tok(TokenType::Period) _ { i })* i:identifier() {
+      if q.is_empty() { TypeName::from_id(&i) } else { TypeName::qualified(q, i) }
+    } / generic_type_name()
 
     // B.1.3.2 Generic data types - used for polymorphic function signatures
     rule generic_type_name() -> TypeName =
-        t:tok(TokenType::Any) { TypeName { id: Id::from("ANY").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyDerived) { TypeName { id: Id::from("ANY_DERIVED").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyElementary) { TypeName { id: Id::from("ANY_ELEMENTARY").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyMagnitude) { TypeName { id: Id::from("ANY_MAGNITUDE").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyNum) { TypeName { id: Id::from("ANY_NUM").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyReal) { TypeName { id: Id::from("ANY_REAL").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyInt) { TypeName { id: Id::from("ANY_INT").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyBit) { TypeName { id: Id::from("ANY_BIT").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyString) { TypeName { id: Id::from("ANY_STRING").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyDate) { TypeName { id: Id::from("ANY_DATE").with_position(t.span.clone()) } }
+        t:tok(TokenType::Any) { TypeName::from_id(&Id::from("ANY").with_position(t.span.clone())) }
+        / t:tok(TokenType::AnyDerived) { TypeName::from_id(&Id::from("ANY_DERIVED").with_position(t.span.clone())) }
+        / t:tok(TokenType::AnyElementary) { TypeName::from_id(&Id::from("ANY_ELEMENTARY").with_position(t.span.clone())) }
+        / t:tok(TokenType::AnyMagnitude) { TypeName::from_id(&Id::from("ANY_MAGNITUDE").with_position(t.span.clone())) }
+        / t:tok(TokenType::AnyNum) { TypeName::from_id(&Id::from("ANY_NUM").with_position(t.span.clone())) }
+        / t:tok(TokenType::AnyReal) { TypeName::from_id(&Id::from("ANY_REAL").with_position(t.span.clone())) }
+        / t:tok(TokenType::AnyInt) { TypeName::from_id(&Id::from("ANY_INT").with_position(t.span.clone())) }
+        / t:tok(TokenType::AnyBit) { TypeName::from_id(&Id::from("ANY_BIT").with_position(t.span.clone())) }
+        / t:tok(TokenType::AnyString) { TypeName::from_id(&Id::from("ANY_STRING").with_position(t.span.clone())) }
+        / t:tok(TokenType::AnyDate) { TypeName::from_id(&Id::from("ANY_DATE").with_position(t.span.clone())) }
 
     // B.1.2 Constants
     // Every literal kind records the span of the tokens it matched. Recording
@@ -860,12 +865,21 @@ parser! {
     // F_EDGE) are also valid enum member names, matching the same
     // carve-out variable_identifier() already provides for VAR
     // declarations (see #300, "Feature/reserved variables").
-    rule enumerated_value() -> EnumeratedValue = type_name:(name:enumerated_type_name() tok(TokenType::Hash) { name })? value:variable_identifier() { EnumeratedValue {type_name, value, explicit_value: None} }
+    rule enumerated_value() -> EnumeratedValue = enumerated_value__dotted() / type_name:(name:enumerated_type_name() tok(TokenType::Hash) { name })? value:variable_identifier() { EnumeratedValue {type_name, value, dotted: false, explicit_value: None} }
+    // TwinCAT/CODESYS spell a qualified enumerated value `Type.value`, and with
+    // a library prefix `Lib.Type.value`. This is only tried where an enumerated
+    // value is expected (an initial value or a CASE label), where there is no
+    // variable reference for the dots to be confused with.
+    rule enumerated_value__dotted() -> EnumeratedValue = path:(i:identifier() _ tok(TokenType::Period) _ { i })+ value:variable_identifier() {
+      let mut path = path;
+      let ty = path.pop().expect("the repetition matched at least once");
+      EnumeratedValue { type_name: Some(TypeName::qualified(path, ty)), value, dotted: true, explicit_value: None }
+    }
     // The `Type#VALUE` spelling only. Unlike `enumerated_value()`, this
     // cannot match a bare identifier, so a caller in a position that also
     // accepts a variable reference can tell the unambiguous case apart from
     // the one that has to be resolved later.
-    rule enumerated_value__qualified() -> EnumeratedValue = name:enumerated_type_name() tok(TokenType::Hash) value:variable_identifier() { EnumeratedValue {type_name: Some(name), value, explicit_value: None} }
+    rule enumerated_value__qualified() -> EnumeratedValue = name:enumerated_type_name() tok(TokenType::Hash) value:variable_identifier() { EnumeratedValue {type_name: Some(name), value, dotted: false, explicit_value: None} }
     // CODESYS/TwinCAT (also standard as of IEC 61131-3:2013) explicit
     // per-member enum value, e.g. `Type_UNDEFINED := 0, Type_ANY,
     // Type_BOOL` -- only a member *declaration* can carry an explicit
@@ -1107,7 +1121,7 @@ parser! {
       / tok(TokenType::Period) _ pa:tok(TokenType::PartialAccessWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::Word, i)) }
       / tok(TokenType::Period) _ pa:tok(TokenType::PartialAccessDWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::DWord, i)) }
       / tok(TokenType::Period) _ pa:tok(TokenType::PartialAccessLWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::LWord, i)) }
-      / tok(TokenType::Period) _ id:identifier() { Element::Struct(id) }
+      / tok(TokenType::Period) _ id:variable_identifier() { Element::Struct(id) }
       / sub:subscript_list() { Element::Array(sub) }
       // A caret is only a dereference *within* the chain -- a trailing one is
       // the deref operator, handled by `unary_expression`.

@@ -65,9 +65,11 @@ impl Value {
             }
             Value::Enumerated(value) => Value::Enumerated(EnumeratedValue {
                 type_name: value.type_name.map(|type_name| TypeName {
+                    qualifier: type_name.qualifier,
                     id: type_name.id.with_position(SourceSpan::synthesized()),
                 }),
                 value: value.value.with_position(SourceSpan::synthesized()),
+                dotted: false,
                 explicit_value: None,
             }),
             Value::Reference(ReferenceInitialValue::Null(_)) => {

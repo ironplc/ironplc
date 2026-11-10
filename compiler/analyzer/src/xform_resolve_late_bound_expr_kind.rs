@@ -120,6 +120,7 @@ impl LateBoundResolver<'_> {
             ExprKind::EnumeratedValue(EnumeratedValue {
                 type_name: None,
                 value,
+                dotted: false,
                 explicit_value: None,
             })
         } else {

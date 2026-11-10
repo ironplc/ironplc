@@ -134,6 +134,7 @@ fn transform_enum_decl(
         .map(|v| EnumeratedValue {
             type_name: Some(type_name.clone()),
             value: make_id(&v.name, file_id),
+            dotted: false,
             explicit_value: None,
         })
         .collect();

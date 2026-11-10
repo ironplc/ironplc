@@ -103,6 +103,19 @@ impl<'a> LibraryRenderer<'a> {
         Ok(())
     }
 
+    /// Writes a type name as it was written in the source, including any
+    /// library or namespace prefix.
+    fn write_type_name(&mut self, name: &TypeName) {
+        let mut segments = name.qualifier.iter().chain(std::iter::once(&name.id));
+        if let Some(first) = segments.next() {
+            self.write_ws(first.original().as_str());
+        }
+        for segment in segments {
+            self.write(".");
+            self.write(segment.original().as_str());
+        }
+    }
+
     fn write_ws(&mut self, val: &str) {
         if self.buffer.ends_with('\n') {
             self.buffer.push_str("   ".repeat(self.indents).as_str());
@@ -553,6 +566,17 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         Ok(())
     }
 
+    fn visit_type_name(&mut self, node: &TypeName) -> Result<Self::Value, Diagnostic> {
+        if node.qualifier.is_empty() {
+            return self.visit_id(&node.id);
+        }
+        // A library or namespace prefix is part of the source text: `TcUnit.FB_X`
+        // must come back out as written. Raw writes after the first segment, since
+        // visit_id's write_ws would put a space after each dot.
+        self.write_type_name(node);
+        Ok(())
+    }
+
     fn visit_enumerated_value(
         &mut self,
         node: &EnumeratedValue,
@@ -563,8 +587,10 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         // "COLOR RED", found while adding explicit_value rendering below).
         match &node.type_name {
             Some(type_name) => {
-                self.write_ws(type_name.id.original().as_str());
-                self.write("#");
+                self.write_type_name(type_name);
+                // TwinCAT rejects `#` between an enumeration and its value, so the
+                // spelling the source used is the one written back.
+                self.write(if node.dotted { "." } else { "#" });
                 self.write(node.value.original().as_str());
             }
             None => self.visit_id(&node.value)?,
