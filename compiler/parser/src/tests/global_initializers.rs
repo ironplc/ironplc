@@ -87,3 +87,44 @@ fn parse_when_global_structure_without_value_then_no_members() {
         InitialValueAssignmentKind::String(_)
     ));
 }
+
+fn external_initializer(source_decl: &str) -> InitialValueAssignmentKind {
+    let source = format!(
+        "PROGRAM main
+  VAR_EXTERNAL
+    {source_decl}
+  END_VAR
+END_PROGRAM"
+    );
+    let library = parse_program(&source, &FileId::default(), &CompilerOptions::default()).unwrap();
+    let program = cast!(&library.elements[0], LibraryElementKind::ProgramDeclaration);
+    program.variables[0].initializer.clone()
+}
+
+#[test]
+fn parse_when_external_string_with_length_then_string_initializer() {
+    match external_initializer("s : STRING[10];") {
+        InitialValueAssignmentKind::String(init) => {
+            assert_eq!(init.width, StringType::String);
+            assert!(init.length.is_some());
+            assert!(init.initial_value.is_none());
+        }
+        other => panic!("expected a string initializer, found {other:?}"),
+    }
+}
+
+#[test]
+fn parse_when_external_wstring_with_length_then_wide_string_initializer() {
+    match external_initializer("w : WSTRING[10];") {
+        InitialValueAssignmentKind::String(init) => assert_eq!(init.width, StringType::WString),
+        other => panic!("expected a string initializer, found {other:?}"),
+    }
+}
+
+#[test]
+fn parse_when_external_string_without_length_then_string_initializer() {
+    match external_initializer("s : STRING;") {
+        InitialValueAssignmentKind::String(init) => assert!(init.length.is_none()),
+        other => panic!("expected a string initializer, found {other:?}"),
+    }
+}
