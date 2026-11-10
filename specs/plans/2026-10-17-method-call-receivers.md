@@ -27,7 +27,15 @@ r := pMotor^.Rate();       (* the same receivers in an expression *)
 The method is resolved statically, on the declared type of the receiver:
 `pMotor : POINTER TO FB_Motor` resolves `Start` on `FB_Motor` and its
 `EXTENDS` chain, as `motor.Start()` does. Dynamic dispatch through a pointer
-to a base type is out of scope and stays with the dispatch design.
+to a base type is out of scope and stays with the dispatch design. A call
+that would need it is rejected (see Analysis), so the compiler never picks a
+method the program might not mean.
+
+Not in scope: a call result as a receiver, such as
+`axis.drive.At(1).Start();`. That receiver is an expression, not a variable
+reference, so it needs a different receiver type. I have not checked that
+TwinCAT accepts it. It becomes an issue (see Cleanup), and the receiver type
+below does not rule it out.
 
 The corpus check in `~/code/brotlib` (218 TwinCAT files, one `ironplcc check`
 per file) gives 91 files that fail first with P0002. About 15 of them fail
@@ -84,29 +92,35 @@ block `FB_Axis` with `drive : FB_Motor`, and a program that declares
 
 ## Architecture
 
-### The receiver is a variable reference
+### The receiver is a restricted variable path
 
-`MethodReceiver` becomes a variable reference instead of an enum of two
-spellings of one. The issue suggests this and I agree: the type
-`SymbolicVariableKind` already says "a bare name" (`Named`), "`THIS^`/`SUPER^`"
-(`SelfRef`) and every longer chain.
+`MethodReceiver` stays, and becomes a head plus steps instead of an enum of two
+spellings of one:
 
 ```rust
-pub struct MethodCall {
-    pub receiver: SymbolicVariableKind,
-    pub method: Id,
-    pub params: Vec<ParamAssignmentKind>,
-    pub position: SourceSpan,
+pub struct MethodReceiver {
+    pub head: ReceiverHead,        // Named(Id) or SelfRef(SelfRefVariable)
+    pub steps: Vec<ReceiverStep>,  // Field(Id), Subscript(..), Deref
 }
 ```
 
-`MethodReceiver` goes away. A consumer that needs only a bare instance
-(`codegen`, today's `lowering`) matches `SymbolicVariableKind::Named`.
+A bare name is a head with no steps, and `THIS^` is a `SelfRef` head with no
+steps, so no meaning has two representations. Whether the steps can reuse the
+element type of `SymbolicVariableKind` is settled in the prefactor.
 
-Rejected: keeping `MethodReceiver` and adding a third variant
+A receiver converts to a `SymbolicVariableKind` without failing, because every
+receiver is a valid variable reference. `variable_type::type_id` and
+`Lowering::symbolic_place` take that form. The reverse conversion can fail
+and is done only by the parser.
+
+Rejected: replacing `MethodReceiver` with `SymbolicVariableKind` on
+`MethodCall`. `SymbolicVariableKind` has `BitAccess` and `PartialAccess`,
+which cannot be receivers, so every consumer would have to reject states the
+type should not allow.
+
+Rejected: keeping the two-variant `MethodReceiver` and adding a third variant
 `Variable(SymbolicVariableKind)`. Every consumer would then handle
-`Instance(a)` and `Variable(Named(a))` as the same thing, and each would
-need to convert one into the other.
+`Instance(a)` and `Variable(Named(a))` as the same thing.
 
 ### Grammar
 
@@ -143,13 +157,25 @@ therefore gets the new forms:
 - `write_collector`: marks the root variable of the receiver as invoked, the
   way `a.b := x` marks `a`.
 - `rule_pou_hierarchy`: reports a function that invokes a function block
-  instance through the root variable of the receiver. See open question 3.
+  instance through the root variable of the receiver. See open question 2.
 - `call_binding` and `MethodOwners` take the block name and are unchanged.
 
-The only receiver type accepted for dispatch is the declared type. A
-`POINTER TO FB_Base` that holds a derived instance calls `FB_Base`'s method.
-Whether that matches TwinCAT at run time is unverified; the dispatch design
-(#1870) records the XAE check as still open.
+The declared type of the receiver is always known. What is not known is the
+type of the instance at run time: a `POINTER TO FB_Base` can hold an
+`FB_Derived`. A static call then runs `FB_Base`'s method, and TwinCAT may run
+the override. That is not verified; the dispatch design (#1870) records the
+XAE check as still open.
+
+So a call whose static target may be wrong is rejected, in the analyzer, with
+a new problem code (documented in `P####.rst`; the number is taken in core
+change PR 1). The call is rejected when some function block in the program
+extends the receiver's block (directly or not) and declares a method of the
+called name. Then the pointer can hold an instance that overrides the method.
+When no function block overrides the method, the static call is exact and is
+accepted. This relies on the compiler seeing every function block type in the
+program, the same assumption as the dispatch design. An interface-typed
+receiver is always dynamic, so it gets the same rejection; I have not
+checked what it reports today.
 
 ### Code generation
 
@@ -159,35 +185,33 @@ Whether that matches TwinCAT at run time is unverified; the dispatch design
   carries the reference's nullability; a null pointer receiver should trap the
   way a null dereference does elsewhere. I have not confirmed this and the
   core change PR must test it.
-- **AST route** (`codegen/src/compile_method.rs`): a receiver that is not a
-  bare name reports a not-implemented diagnostic (P9999) at the receiver,
-  where it reports an internal error for `THIS^`/`SUPER^` today. Extending
-  this route is not planned, because the lowered route is replacing it
-  (#2347).
+
+The AST route (`codegen/src/compile_method.rs`) is not touched. The lowered
+route is replacing it (#2347).
 
 ### Gating
 
-No new `--allow-*` flag. Rationale, open to review (question 1): the call form
-`instance.M()` is already accepted without a flag of its own, and the
-`METHOD` declarations a call resolves to are gated by `allow_fb_inheritance`,
-so without that flag every such call is P4046 or P4012. The steering rule
-says syntax outside Edition 2 must be gated, and a method call is Edition 3,
-so the reviewer decides whether the existing precedent applies to the new
-receivers or whether a parse-time gate is wanted. I could not check the
-Edition 3 text for these receiver forms.
+No new `--allow-*` flag. The call form `instance.M()` is already accepted
+without a flag of its own, and the `METHOD` declarations a call resolves to
+are gated by `allow_fb_inheritance`, so without that flag every such call is
+P4046 or P4012. The new receivers add no syntax of their own, since the
+chains already parse as variables.
 
 ## Prefactoring
 
-One prefactor, behaviour-preserving: **replace `MethodReceiver` with a
-`SymbolicVariableKind` on `MethodCall`**, with the grammar still producing only
-a bare name or `THIS^`/`SUPER^`. After it, the core change touches the grammar
-and the analysis, and no consumer's shape.
+One prefactor, behaviour-preserving: **widen `MethodReceiver` from two
+spellings to a restricted path**, with the grammar still producing only a bare
+name or `THIS^`/`SUPER^`. After it, the core change touches the grammar and
+the analysis, and no consumer's shape.
 
-The risk is that visitors and folds now walk the receiver as a variable. Every
-pass that overrides a variable method (`visit_named_variable`,
-`visit_symbolic_variable_kind` and the fold equivalents) must be audited, and
-where one would change behavior (for example, report an undeclared receiver
-twice) the prefactor keeps it as it was. The prefactor PR states the audit.
+`SymbolicVariableKind` is the wrong type for the field, because it also
+allows `BitAccess` and `PartialAccess`, which cannot be a receiver. The
+restricted type keeps them unrepresentable.
+
+The risk is that consumers match `Instance` and `SelfRef` today. Each moves
+to the head of the path, and a bare name is a head with no steps. Every visitor
+and fold that walks the receiver must be audited, and where one would change
+behavior the prefactor keeps it as it was. The prefactor PR states the audit.
 The existing tests must pass unchanged apart from constructing the new type.
 
 ## Design doc reference
@@ -200,16 +224,15 @@ plan adds no dispatch behavior.
 
 | File | Change |
 |---|---|
-| `compiler/dsl/src/textual.rs` | prefactor: `MethodCall.receiver: SymbolicVariableKind`; remove `MethodReceiver` |
-| `compiler/dsl/src/fold.rs`, `visitor.rs` | prefactor: drop the `MethodReceiver` dispatch |
+| `compiler/dsl/src/textual.rs` | prefactor: `MethodReceiver` as a head plus steps; conversion to `SymbolicVariableKind` |
+| `compiler/dsl/src/fold.rs`, `visitor.rs` | prefactor: dispatch on the new `MethodReceiver` |
 | `compiler/parser/src/parser.rs` | prefactor: build the receiver; core 1: parse a chain and split it |
 | `compiler/parser/src/tests/method_call_expression.rs`, `this_super.rs` | prefactor: adjust; core 1: new receiver forms |
 | `compiler/analyzer/src/callee_resolution.rs` | `receiver_block` through `variable_type::type_id` |
-| `compiler/analyzer/src/rule_method_call_declared.rs` | use `receiver_block` for every receiver |
+| `compiler/analyzer/src/rule_method_call_declared.rs` | use `receiver_block` for every receiver; reject a call an override could change |
 | `compiler/analyzer/src/xform_resolve_expr_types.rs` | type calls and outputs from the receiver's block |
 | `compiler/analyzer/src/write_collector.rs`, `rule_pou_hierarchy.rs` | root variable of the receiver |
 | `compiler/plc2plc/src/renderer.rs` and its tests | render the receiver as a variable; round-trip tests |
-| `compiler/codegen/src/compile_method.rs` | core 1: P9999 for a receiver that is not a bare name |
 | `compiler/lowering/src/function.rs` | core 2: `symbolic_place` for the receiver |
 | `compiler/codegen/tests/it/compile_route_lowered_method.rs`, `end_to_end_methods.rs` | core 2: end-to-end tests |
 | `docs/reference/language/object-orientation/method.rst` | core 1: receivers; core 2: what compiles |
@@ -218,8 +241,8 @@ plan adds no dispatch behavior.
 
 ### Prefactor PR: the receiver is a variable reference
 
-- [ ] Change `MethodCall.receiver` to `SymbolicVariableKind`; remove
-      `MethodReceiver` and its `Display`, fold and visitor dispatch.
+- [ ] Change `MethodReceiver` to a head plus steps, with a conversion to
+      `SymbolicVariableKind`; update its `Display`, fold and visitor dispatch.
 - [ ] Update the parser, `plc2plc`, `callee_resolution`, `write_collector`,
       `rule_pou_hierarchy`, `xform_resolve_expr_types`, `codegen`, `lowering`.
 - [ ] Audit every visitor and fold that overrides a variable method; keep each
@@ -239,8 +262,10 @@ plan adds no dispatch behavior.
       (P4012); a method that is not declared on the receiver's block (P4046); a
       method without a result used in an expression (P4057); a `THIS^.axis.M()`
       inside a method; an inherited method through a field.
+- [ ] Reject a call through `POINTER TO FB_Base` (or an interface) when a
+      derived block overrides the method; new problem code with its
+      `P####.rst`; tests for the overridden and the not-overridden case.
 - [ ] `plc2plc` round-trip tests for each form.
-- [ ] AST route: P9999 at a receiver that is not a bare name, with a test.
 - [ ] Docs: `method.rst`.
 
 ### Core change PR 2: compile any receiver on the lowered route
@@ -256,25 +281,28 @@ plan adds no dispatch behavior.
 
 - [ ] Close #1422 when core 2 lands. Open an issue for anything this plan
       names and does not deliver: `SUPER^()` as a call of the base body,
-      `FB_X(THIS)` as an initializer argument, and dispatch through a pointer
-      to a base type.
+      `FB_X(THIS)` as an initializer argument, dispatch through a pointer
+      to a base type, and a call result as a receiver (`a.At(1).Start()`).
 - [ ] Update `specs/plans/twincat-status.md` on `twincat-dev` with the corpus
       change. Close this plan PR unmerged.
 
 ## Open questions
 
-1. **Gating.** Is the precedent of `instance.M()` (no flag; the `METHOD`
-   declarations are gated) enough, or should the new receivers be gated at
-   parse time? I could not check Edition 3 for these forms.
-2. **Pointer receiver at run time.** TwinCAT accepts `p^.M()` for
+1. **Pointer receiver at run time.** TwinCAT accepts `p^.M()` for
    `p : POINTER TO FB_X`. What it does when `p` holds an instance of a type that
    extends `FB_X` is unverified (the XAE check listed in the TwinCAT status
-   document). This plan calls the method on the declared type. Is that
-   acceptable until the dispatch design lands?
-3. **Functions.** `rule_pou_hierarchy` reports a function that invokes a
+   document). This plan rejects the call when an override exists and calls the
+   declared type otherwise. Is that acceptable until the dispatch design
+   lands?
+2. **Functions.** `rule_pou_hierarchy` reports a function that invokes a
    function block instance by its name. For `p^.M()` inside a function, where
    `p` is a pointer parameter or local, should the call also be reported? I
    propose yes, by the same rule, but I have not checked what TwinCAT does.
-4. **Prefactor risk.** The audit of variable-walking passes is the one step I
-   cannot size without doing it. If it turns up behavior that cannot be
-   preserved, the fallback is the rejected third-variant option.
+3. **Prefactor risk.** The audit of the passes that walk the receiver is the
+   one step I cannot size without doing it. If it turns up behavior that
+   cannot be preserved, the fallback is the rejected third-variant option.
+4. **Class hierarchy risk.** The override rule assumes that the whole set of
+   function block types is known when a call is analyzed. If that fails (for
+   example, with separately compiled libraries), the rule has to move to
+   lowering or become stricter. This is the place where the POU hierarchy
+   assumption is most likely to break.
