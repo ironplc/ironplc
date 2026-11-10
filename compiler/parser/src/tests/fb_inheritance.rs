@@ -248,3 +248,31 @@ fn parse_when_edition3_dialect_then_oop_syntax_parses(#[case] source: &str) {
         result.err()
     );
 }
+
+#[test]
+fn parse_when_semicolon_after_function_block_header_then_var_blocks_are_declarations() {
+    let program = "
+INTERFACE I_T
+END_INTERFACE
+
+FUNCTION_BLOCK FB_B
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB EXTENDS FB_B IMPLEMENTS I_T;
+VAR_INPUT
+    a : INT;
+END_VAR
+VAR_OUTPUT
+    b : INT;
+END_VAR
+END_FUNCTION_BLOCK
+";
+
+    let library = parse_program(program, &FileId::default(), &opts_with_fb_inheritance()).unwrap();
+
+    let fb = cast!(
+        &library.elements[2],
+        LibraryElementKind::FunctionBlockDeclaration
+    );
+    assert_eq!(2, fb.variables.len());
+}

@@ -1736,7 +1736,7 @@ parser! {
 
     rule function_block_member() -> FunctionBlockMember = m:method_declaration() { FunctionBlockMember::Method(Box::new(m)) } / p:property_declaration() { FunctionBlockMember::Property(Box::new(p)) }
 
-    rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ qualifiers:member_qualifiers() _ name:derived_function_block_name() _ extends:(e:tok(TokenType::Extends) _ t:type_name() {(e, t)})? _ implements:(i:tok(TokenType::Implements) _ names:type_name_list() {(i, names)})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_block_body() _ members:(_ m:function_block_member() {m}) ** _ _ end:tok(TokenType::EndFunctionBlock) {
+    rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ qualifiers:member_qualifiers() _ name:derived_function_block_name() _ extends:(e:tok(TokenType::Extends) _ t:type_name() {(e, t)})? _ implements:(i:tok(TokenType::Implements) _ names:type_name_list() {(i, names)})? _ tok(TokenType::Semicolon)? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_block_body() _ members:(_ m:function_block_member() {m}) ** _ _ end:tok(TokenType::EndFunctionBlock) {
       let mut methods = Vec::new();
       let mut properties = Vec::new();
       for member in members {
