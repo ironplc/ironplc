@@ -1428,6 +1428,14 @@ parser! {
         spec,
         initial_values: vec![],
       })
+    } / width:(t:tok(TokenType::String) { (StringType::String, t) } / t:tok(TokenType::WString) { (StringType::WString, t) }) _ length:string_length_spec()? {
+      // Before simple_specification, which stops at the `[` of `STRING[10]`.
+      InitialValueAssignmentKind::String(StringInitializer {
+        length,
+        width: width.0,
+        initial_value: None,
+        keyword_span: width.1.span.clone(),
+      })
     } / type_name:simple_specification() {
       InitialValueAssignmentKind::Simple(SimpleInitializer {
         type_name,
