@@ -2342,7 +2342,18 @@ parser! {
       }
 
     // B.3.2.2 Subprogram control statements
-    rule subprogram_control_statement() -> StmtKind = m:method_invocation() { m } / fb:fb_invocation() { fb } / tok(TokenType::Return) { StmtKind::Return }
+    rule subprogram_control_statement() -> StmtKind = m:method_invocation() { m } / fb:fb_invocation() { fb } / start:tok(TokenType::Return) _ tok(TokenType::LeftParen) _ expr:expression() _ end:tok(TokenType::RightParen) {
+      // TwinCAT: `RETURN(cond)` returns only when `cond` is TRUE. The
+      // argument is not a return value, so it is the same as an IF.
+      StmtKind::If(If {
+        expr,
+        body: vec![StmtKind::Return],
+        else_ifs: vec![],
+        else_body: vec![],
+        span: SourceSpan::join(&start.span, &end.span),
+      })
+    }
+    / tok(TokenType::Return) { StmtKind::Return }
     rule fb_invocation() -> StmtKind = name:fb_name() _ tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ end:tok(TokenType::RightParen) {
       let span = SourceSpan::join(&name.span, &end.span);
       StmtKind::FbCall(FbCall {
