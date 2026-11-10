@@ -263,6 +263,35 @@ END_FUNCTION_BLOCK",
     assert_eq!(fb.variables[0].qualifier, DeclarationQualifier::Persistent);
 }
 
+/// `PERSISTENT` on a `FUNCTION_BLOCK`'s `VAR_INPUT` / `VAR_OUTPUT` block.
+#[rstest]
+#[case::input("VAR_INPUT")]
+#[case::output("VAR_OUTPUT")]
+fn parse_when_function_block_io_block_persistent_and_flag_on_then_qualifier_kept(
+    #[case] keyword: &str,
+) {
+    let options = CompilerOptions {
+        allow_persistent_var: true,
+        ..CompilerOptions::default()
+    };
+    let source = format!(
+        "FUNCTION_BLOCK FB_Example
+{keyword} PERSISTENT
+    nCounter : DINT;
+END_VAR
+END_FUNCTION_BLOCK"
+    );
+
+    let lib = parse_program(&source, &FileId::default(), &options).unwrap();
+
+    let fb = cast!(
+        &lib.elements[0],
+        LibraryElementKind::FunctionBlockDeclaration
+    );
+    assert_eq!(fb.variables.len(), 1);
+    assert_eq!(fb.variables[0].qualifier, DeclarationQualifier::Persistent);
+}
+
 #[test]
 fn parse_when_program_motor_control_style_then_ok() {
     let lib = parse_text(
