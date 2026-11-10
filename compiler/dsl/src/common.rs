@@ -2572,6 +2572,11 @@ pub enum LateResolvedInitialValue {
     /// `Red`: an enumeration's value, or a named constant for any other
     /// type.
     Value(Id),
+    /// `Colors.Red` or `Lib.Colors.Red`: an enumeration's value written with
+    /// its type, or a constant reached through a name (`GVL.limit`). TwinCAT
+    /// allows the second for any type, so only the type resolver can tell
+    /// which this is.
+    Dotted(EnumeratedValue),
 }
 
 impl InitialValueAssignmentKind {

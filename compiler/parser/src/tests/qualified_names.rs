@@ -139,7 +139,7 @@ END_PROGRAM",
 }
 
 #[test]
-fn parse_when_enumerated_value_uses_dot_then_dotted_flag_set_and_equal_to_hash_spelling() {
+fn parse_when_enumerated_value_uses_dot_then_left_for_resolver_with_dotted_flag() {
     let lib = parse(
         "TYPE E_Blink : (off, slow); END_TYPE
 
@@ -154,15 +154,21 @@ END_PROGRAM",
     let LibraryElementKind::ProgramDeclaration(p) = &lib.elements[1] else {
         panic!("expected a program");
     };
-    let value_of = |v: &VarDecl| match &v.initializer {
-        InitialValueAssignmentKind::EnumeratedType(e) => e.initial_value.clone().unwrap(),
-        other => panic!("expected an enumerated initializer, got {other:?}"),
+    // `Type.value` may be a constant reached through a name, so the resolver
+    // decides; `Type#value` can only be an enumerated value.
+    let InitialValueAssignmentKind::LateResolvedType(late) = &p.variables[0].initializer else {
+        panic!("expected a late-resolved initializer");
     };
-    let dotted = value_of(&p.variables[0]);
-    let hashed = value_of(&p.variables[1]);
+    let Some(LateResolvedInitialValue::Dotted(dotted)) = &late.initial_value else {
+        panic!("expected a dotted initial value");
+    };
+    let InitialValueAssignmentKind::EnumeratedType(hashed) = &p.variables[1].initializer else {
+        panic!("expected an enumerated initializer");
+    };
+    let hashed = hashed.initial_value.clone().unwrap();
     assert!(dotted.dotted);
     assert!(!hashed.dotted);
-    assert_eq!(dotted, hashed);
+    assert_eq!(dotted, &hashed);
 }
 
 #[test]

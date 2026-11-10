@@ -483,6 +483,60 @@ END_PROGRAM",
 }
 
 #[test]
+fn apply_when_dotted_value_on_enumeration_type_then_enumerated_initializer() {
+    let (decl, diagnostics) = resolve_first_var(
+        "
+TYPE
+    Color : (Red, Green);
+END_TYPE
+PROGRAM main
+VAR
+    c : Color := Color.Green;
+END_VAR
+END_PROGRAM",
+    );
+    assert!(diagnostics.is_empty());
+    assert!(matches!(
+        &decl.initializer,
+        InitialValueAssignmentKind::EnumeratedType(init)
+            if init.type_name == TypeName::from("Color")
+                && init.initial_value.as_ref().is_some_and(|v| v.dotted
+                    && v.value == Id::from("Green"))
+    ));
+}
+
+#[test]
+fn apply_when_dotted_value_on_alias_type_then_constant_expression_initializer() {
+    // TwinCAT accepts `a : T := GVL.limit` for an alias `T` of INT: the dotted
+    // name is a variable reference, not an enumerated value.
+    let (decl, diagnostics) = resolve_first_var(
+        "
+TYPE
+    Count : INT := 0;
+END_TYPE
+PROGRAM main
+VAR
+    n : Count := GVL.limit;
+END_VAR
+END_PROGRAM",
+    );
+    assert!(diagnostics.is_empty());
+    assert!(matches!(
+        &decl.initializer,
+        InitialValueAssignmentKind::SimpleExpr(init)
+            if init.type_name == TypeName::from("Count")
+                && matches!(
+                    &init.initial_value.kind,
+                    ironplc_dsl::textual::ExprKind::Variable(
+                        ironplc_dsl::textual::Variable::Symbolic(
+                            ironplc_dsl::textual::SymbolicVariableKind::Structured(_)
+                        )
+                    )
+                )
+    ));
+}
+
+#[test]
 fn apply_when_members_on_undeclared_type_then_diagnosed_and_placeholder_kept() {
     let (decl, diagnostics) = resolve_first_var(
         "

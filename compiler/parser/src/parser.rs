@@ -100,6 +100,14 @@ fn late_resolved_or_enumerated(
     type_name: TypeName,
     value: EnumeratedValue,
 ) -> InitialValueAssignmentKind {
+    // `Type.value` may also be a constant reached through a name (`GVL.limit`),
+    // which only the resolver can tell from an enumerated value.
+    if value.dotted {
+        return InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+            type_name,
+            initial_value: Some(LateResolvedInitialValue::Dotted(value)),
+        });
+    }
     if value.type_name.is_some() {
         return InitialValueAssignmentKind::EnumeratedType(EnumeratedInitialValueAssignment {
             type_name,

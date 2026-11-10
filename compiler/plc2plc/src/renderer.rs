@@ -702,6 +702,10 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
                 self.write_ws(":=");
                 self.visit_id(value)?;
             }
+            Some(LateResolvedInitialValue::Dotted(value)) => {
+                self.write_ws(":=");
+                self.visit_enumerated_value(value)?;
+            }
         }
 
         Ok(())
