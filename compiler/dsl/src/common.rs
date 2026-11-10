@@ -690,8 +690,18 @@ impl fmt::Display for BitStringLiteral {
 /// Types are all identifiers but we use a separate structure
 /// because it is convenient to treat types and other identifiers
 /// separately.
-#[derive(Clone, Debug, PartialEq, Recurse, Located)]
+#[derive(Clone, Debug, Recurse, Located)]
 pub struct TypeName {
+    /// The library or namespace prefix as written in the source
+    /// (`TcUnit` in `TcUnit.FB_TestSuite`), outermost first. Empty for an
+    /// unqualified name.
+    ///
+    /// The qualifier is kept so that the source text is reproduced as written,
+    /// but it takes no part in equality, hashing or lookup: compatibility
+    /// library symbols are flat, so `BROTLib.E_Blink` names the same type as
+    /// `E_Blink`. A qualifier that names nothing is therefore not diagnosed.
+    #[recurse(ignore)]
+    pub qualifier: Vec<Id>,
     #[located(delegate)]
     pub id: Id,
 }
@@ -699,11 +709,28 @@ pub struct TypeName {
 impl TypeName {
     /// Converts a `&str` into an `Identifier`.
     pub fn from(str: &str) -> Self {
-        Self { id: Id::from(str) }
+        Self {
+            qualifier: Vec::new(),
+            id: Id::from(str),
+        }
     }
 
     pub fn from_id(id: &Id) -> Self {
-        Self { id: id.clone() }
+        Self {
+            qualifier: Vec::new(),
+            id: id.clone(),
+        }
+    }
+
+    /// A name written with a library or namespace prefix.
+    pub fn qualified(qualifier: Vec<Id>, id: Id) -> Self {
+        Self { qualifier, id }
+    }
+}
+
+impl PartialEq for TypeName {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
     }
 }
 
@@ -1590,6 +1617,7 @@ impl EnumeratedSpecificationKind {
             .map(|v| EnumeratedValue {
                 type_name: None,
                 value: Id::from(v),
+                dotted: false,
                 explicit_value: None,
             })
             .collect();
@@ -1646,10 +1674,17 @@ impl HasEnumeratedValues for EnumeratedSpecificationValues {
 /// ambiguous.)
 ///
 /// See section 2.3.3.1.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, Recurse)]
 pub struct EnumeratedValue {
     pub type_name: Option<TypeName>,
     pub value: Id,
+    /// The type name was separated from the value by a period (`Type.value`,
+    /// the TwinCAT/CODESYS spelling) rather than by `#` (`Type#value`). The two
+    /// name the same value; only the rendered text differs. TwinCAT rejects the
+    /// `#` spelling for enumerations, so a rendering must keep the one it was
+    /// given. Not part of equality.
+    #[recurse(ignore)]
+    pub dotted: bool,
     /// Present when this member's value was assigned explicitly
     /// (`member := 5`) in an enum *declaration's* value list -- a
     /// an extension (also standard as of IEC 61131-3:2013).
@@ -1660,11 +1695,20 @@ pub struct EnumeratedValue {
     pub explicit_value: Option<SignedInteger>,
 }
 
+impl PartialEq for EnumeratedValue {
+    fn eq(&self, other: &Self) -> bool {
+        self.type_name == other.type_name
+            && self.value == other.value
+            && self.explicit_value == other.explicit_value
+    }
+}
+
 impl EnumeratedValue {
     pub fn new(value: &str) -> Self {
         EnumeratedValue {
             type_name: None,
             value: Id::from(value),
+            dotted: false,
             explicit_value: None,
         }
     }
@@ -2133,6 +2177,7 @@ impl VarDecl {
                     initial_value: Some(EnumeratedValue {
                         type_name: None,
                         value: Id::from(initial_value),
+                        dotted: false,
                         explicit_value: None,
                     }),
                 },

@@ -35,6 +35,7 @@ mod persistent;
 mod pointer_to;
 mod pragmas;
 mod property;
+mod qualified_names;
 mod radix_subrange_bound;
 mod reference_to;
 mod set_reset_bind;

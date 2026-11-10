@@ -240,6 +240,7 @@ impl TypeResolver<'_> {
                     initial_value: Some(EnumeratedValue {
                         type_name: None,
                         value,
+                        dotted: false,
                         explicit_value: None,
                     }),
                 })
