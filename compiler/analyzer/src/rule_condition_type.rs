@@ -209,6 +209,7 @@ END_PROGRAM"
     #[case::elsif("IF b THEN y := 1; ELSIF c THEN y := 2; END_IF;")]
     #[case::while_("WHILE c DO y := 1; END_WHILE;")]
     #[case::repeat("REPEAT y := 1; UNTIL c END_REPEAT;")]
+    #[case::conditional_return("RETURN(c);")]
     fn apply_when_condition_is_dint_then_p4072(#[case] statement: &str) {
         assert_eq!(codes_for(&program_with("DINT", statement)), vec![p4072()]);
     }
