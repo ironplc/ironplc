@@ -974,7 +974,7 @@ parser! {
         }
     }
     rule structure_element_name() ->Id = identifier()
-    rule structure_initialization() -> Vec<StructureElementInit> = tok(TokenType::LeftParen) _ elems:structure_element_initialization() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { elems }
+    rule structure_initialization() -> Vec<StructureElementInit> = tok(TokenType::LeftParen) _ elems:structure_element_initialization() ** (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { elems }
     // `constant()` and a qualified `Type#VALUE` are grammatically a strict
     // subset of `expression()` (e.g. a bare identifier is a valid, but
     // truncated, match for `pDevice^.Delta`) -- the trailing lookahead
