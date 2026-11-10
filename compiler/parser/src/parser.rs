@@ -1190,7 +1190,7 @@ parser! {
     rule field_selector() -> Id = identifier()
 
     // B.1.4.3 Declarations and initialization
-    rule input_declarations() -> Vec<VarDeclarations> = tok(TokenType::VarInput) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep_or_empty(<input_declaration()>) _ tok(TokenType::EndVar) {
+    rule input_declarations() -> Vec<VarDeclarations> = tok(TokenType::VarInput) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain} / tok(TokenType::Persistent) {DeclarationQualifier::Persistent})? _ declarations:semisep_or_empty(<input_declaration()>) _ tok(TokenType::EndVar) {
       VarDeclarations::with(declarations, qualifier.unwrap_or(DeclarationQualifier::Unspecified))
     }
     rule input_declaration() -> VarDeclarations =
@@ -1348,7 +1348,7 @@ parser! {
       // TwinCAT/CODESYS `POINTER TO POINTER TO INT`, at any depth.
       / syntax:ref_to_keyword() _ target:ref_to_target() { ReferenceTarget::Reference(Box::new(ReferenceSpec { syntax, target })) }
       / tn:non_generic_type_name() { ReferenceTarget::Named(tn) }
-    pub rule output_declarations() -> Vec<VarDecl> = tok(TokenType::VarOutput) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep_or_empty(<var_init_decl()>) _ tok(TokenType::EndVar) {
+    pub rule output_declarations() -> Vec<VarDecl> = tok(TokenType::VarOutput) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain} / tok(TokenType::Persistent) {DeclarationQualifier::Persistent})? _ declarations:semisep_or_empty(<var_init_decl()>) _ tok(TokenType::EndVar) {
       VarDeclarations::flat_map(declarations, VariableType::Output, qualifier)
     }
     pub rule input_output_declarations() -> Vec<VarDecl> = tok(TokenType::VarInOut) _ declarations:semisep_or_empty(<var_declaration()>) _ tok(TokenType::EndVar) {
