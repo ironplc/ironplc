@@ -88,6 +88,37 @@ END_PROGRAM",
     ));
 }
 
+#[rstest]
+#[case::var_complete_address("VAR", "%QX0.0")]
+#[case::var_input_complete_address("VAR_INPUT", "%IX0.0")]
+#[case::var_output_complete_address("VAR_OUTPUT", "%QX0.0")]
+#[case::var_input_wildcard("VAR_INPUT", "%I*")]
+#[case::var_output_wildcard("VAR_OUTPUT", "%Q*")]
+fn parse_when_located_array_in_block_then_array_initializer(
+    #[case] keyword: &str,
+    #[case] address: &str,
+) {
+    let source = format!(
+        "FUNCTION_BLOCK FB
+{keyword}
+    a AT {address} : ARRAY[1..3] OF BOOL;
+END_VAR
+END_FUNCTION_BLOCK"
+    );
+
+    let lib = parse_program(&source, &FileId::default(), &CompilerOptions::default()).unwrap();
+
+    let fb = cast!(
+        &lib.elements[0],
+        LibraryElementKind::FunctionBlockDeclaration
+    );
+    assert_eq!(fb.variables.len(), 1);
+    assert!(matches!(
+        fb.variables[0].initializer,
+        InitialValueAssignmentKind::Array(_)
+    ));
+}
+
 #[test]
 fn parse_when_located_var_has_name_then_identifier_span_is_the_name() {
     let source = "PROGRAM main
