@@ -659,7 +659,8 @@ END_VAR
     t := ADD(t, t, r);
 END_PROGRAM",
         Problem::OperatorOperandTypeMismatch,
-        "ADD");
+        "ADD"
+    );
 
     rule_ok!(
         apply_when_add_call_on_times_then_ok,
