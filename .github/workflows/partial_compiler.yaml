@@ -43,22 +43,22 @@ jobs:
         working-directory: ./compiler
     steps:
       - name: Checkout branch or tag ${{ inputs.source-revision }}
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: ${{ inputs.source-revision }}
         with:
           ref: ${{ inputs.source-revision }}
       - name: Checkout HEAD
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: ${{ !inputs.source-revision }}
 
       - uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
         with:
           tool: just
-      - uses: actions-rust-lang/setup-rust-toolchain@a0b538fa0b742a6aa35d6e2c169b4bd06d225a98 # v1
+      - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v1
       # rust-cache caches ~/.cargo/bin, so the cargo-cyclonedx install below is
       # a near no-op on a warm cache. Every compiler-package leg waits on this
       # job, so its duration is a serial prefix of all the installer builds.
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: "compiler -> target"
           key: sbom-ubuntu-latest
@@ -69,7 +69,7 @@ jobs:
         run: just sbom ${{ inputs.version }}
 
       - name: Upload SBOM as build artifact (for matrix consumption)
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ironplc-compiler-sbom
           path: |
@@ -95,12 +95,12 @@ jobs:
     steps:
       # Checkout the repository/fetch input artifacts
       - name: Checkout branch or tag ${{ inputs.source-revision }}
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: ${{ inputs.source-revision }}
         with:
           ref: ${{ inputs.source-revision  }}
       - name: Checkout HEAD
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: ${{ !inputs.source-revision }}
 
       # Configure the execution environment. Only the tools `just ci` needs;
@@ -108,10 +108,10 @@ jobs:
       - uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
         with:
           tool: just
-      - uses: actions-rust-lang/setup-rust-toolchain@a0b538fa0b742a6aa35d6e2c169b4bd06d225a98 # v1
+      - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v1
         with:
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: "compiler -> target"
           key: quality-ubuntu-latest
@@ -147,12 +147,12 @@ jobs:
     steps:
       # Checkout the repository/fetch input artifacts
       - name: Checkout branch or tag ${{ inputs.source-revision }}
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: ${{ inputs.source-revision }}
         with:
           ref: ${{ inputs.source-revision }}
       - name: Checkout HEAD
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: ${{ !inputs.source-revision }}
 
       # Configure the execution environment. Only what `just test` needs: no
@@ -160,8 +160,8 @@ jobs:
       - uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
         with:
           tool: just
-      - uses: actions-rust-lang/setup-rust-toolchain@a0b538fa0b742a6aa35d6e2c169b4bd06d225a98 # v1
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v1
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: "compiler -> target"
           key: test-${{ matrix.os }}
@@ -209,12 +209,12 @@ jobs:
     steps:
       # Checkout the repository/fetch input artifacts
       - name: Checkout branch or tag ${{ inputs.source-revision }}
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: ${{ inputs.source-revision }}
         with:
           ref: ${{ inputs.source-revision  }}
       - name: Checkout HEAD
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: ${{ !inputs.source-revision }}
 
       # Configure the execution environment. Only the tools `just package`
@@ -222,10 +222,10 @@ jobs:
       - uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
         with:
           tool: just
-      - uses: actions-rust-lang/setup-rust-toolchain@a0b538fa0b742a6aa35d6e2c169b4bd06d225a98 # v1
+      - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v1
         with:
           target: ${{ matrix.rust_target }}
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: "compiler -> target"
           # Include target triple in cache key for cross-compilation
@@ -251,7 +251,7 @@ jobs:
       # Fetch the workspace SBOM produced by compiler-sbom so the
       # package step can embed it inside the tarball / NSIS installer.
       - name: Download SBOM for embedding
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ironplc-compiler-sbom
           path: compiler/
@@ -276,7 +276,7 @@ jobs:
       # publishing. Only the consolidated job's final attach step is gated on
       # a real (non-dry) release.
       - name: Upload Compiler Installer to Build Artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ matrix.artifact }}
           path: compiler/${{ matrix.artifact }}
@@ -284,7 +284,7 @@ jobs:
           retention-days: 5
 
       - name: Upload Compiler Installer SHA256 to Build Artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ matrix.artifact }}.sha256
           path: compiler/${{ matrix.artifact }}.sha256

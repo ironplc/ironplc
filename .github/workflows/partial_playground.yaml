@@ -21,12 +21,12 @@ jobs:
     steps:
       # Fetch input artifacts and code
       - name: Checkout branch or tag ${{ inputs.source-revision }}
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: ${{ inputs.source-revision }}
         with:
           ref: ${{ inputs.source-revision }}
       - name: Checkout HEAD
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: ${{ !inputs.source-revision }}
 
       # Configure the execution environment
@@ -36,7 +36,7 @@ jobs:
       # Installs the toolchain rust-toolchain.toml names. The action's cache and
       # `-D warnings` defaults are off: this job builds wasm through wasm-pack
       # and does not gate on warnings (the compiler quality checks do).
-      - uses: actions-rust-lang/setup-rust-toolchain@a0b538fa0b742a6aa35d6e2c169b4bd06d225a98 # v1
+      - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v1
         with:
           cache: false
           rustflags: ""
@@ -48,7 +48,7 @@ jobs:
 
       # Save artifacts
       - name: Upload playground artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ironplc-playground
           path: playground/_build
