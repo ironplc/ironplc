@@ -168,3 +168,4 @@ P4097,SubscriptNotArray,Subscripted variable is not an array
 P4098,ConditionalReturnNotAllowed,RETURN(condition) conditional return requires choosing a dialect or --allow-conditional-return flag
 P4099,PersistentVarInFunction,PERSISTENT variable is declared by a function
 P4100,PouHeaderSemicolonNotAllowed,Semicolon after a POU header requires choosing a dialect or --allow-pou-header-semicolon flag
+P2045,EnumValueTypeMismatch,Enumerated value names a type other than the enumeration it is used as
