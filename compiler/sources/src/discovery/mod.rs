@@ -93,6 +93,13 @@ pub struct DiscoveredProject {
     /// ([`crate::libraries::LibraryRegistry::resolve_references`]) to decide
     /// which libraries to activate.
     pub library_references: Vec<LibraryReference>,
+    /// The names of the projects this discovery found, taken from each
+    /// `.plcproj`'s `<Name>` (the file stem when it has none). A project
+    /// referencing a library of one of these names is satisfied by the
+    /// project's own sources when those are loaded alongside it, so the
+    /// reference needs no bundled library (`REQ-CL-sources-009`). Empty for
+    /// project types that have no project name.
+    pub project_names: Vec<String>,
     /// Problems found during discovery that should not abort discovery of
     /// the rest of the project -- currently just `.plcproj`
     /// `<Compile Include="...">` entries that don't resolve to a real
@@ -193,6 +200,7 @@ fn detect_beremiz(path: &Path) -> Detection {
         root_dir: plc_xml.parent().unwrap_or(path).to_path_buf(),
         files: vec![plc_xml],
         library_references: vec![],
+        project_names: vec![],
         errors: vec![],
     }))
 }
@@ -322,6 +330,7 @@ fn detect_fallback(path: &Path) -> DiscoveredProject {
         },
         files,
         library_references: vec![],
+        project_names: vec![],
         errors: vec![],
     }
 }

@@ -53,6 +53,7 @@ pub(super) fn merge_plcproj_projects(
     let mut merged_files = Vec::new();
     let mut merged_errors = Vec::new();
     let mut merged_library_references: Vec<LibraryReference> = Vec::new();
+    let mut merged_project_names: Vec<String> = Vec::new();
     let mut seen_files = HashSet::new();
     let mut seen_libraries: HashSet<LibraryName> = HashSet::new();
     let mut merged_root_dir = dir.to_path_buf();
@@ -73,6 +74,8 @@ pub(super) fn merge_plcproj_projects(
                 merged_library_references.push(reference);
             }
         }
+
+        merged_project_names.extend(project.project_names);
 
         for file in project.files {
             // A file referenced by more than one sub-project (a shared
@@ -105,6 +108,7 @@ pub(super) fn merge_plcproj_projects(
         root_dir: merged_root_dir,
         files: merged_files,
         library_references: merged_library_references,
+        project_names: merged_project_names,
         errors: merged_errors,
     })
 }
@@ -201,8 +205,27 @@ fn parse_plcproj(plcproj_path: &Path, root_dir: &Path) -> Result<DiscoveredProje
         root_dir: root_dir.to_path_buf(),
         files,
         library_references,
+        project_names: vec![project_name(&doc, plcproj_path)],
         errors,
     })
+}
+
+/// The name a `.plcproj` goes by: its `<Name>` element, else the file stem.
+///
+/// This is the name another project's `<PlaceholderReference Include="...">`
+/// uses to refer to it.
+fn project_name(doc: &roxmltree::Document, plcproj_path: &Path) -> String {
+    doc.descendants()
+        .find(|node| node.is_element() && node.tag_name().name() == "Name")
+        .and_then(|node| node.text())
+        .map(|text| text.trim().to_string())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| {
+            plcproj_path
+                .file_stem()
+                .map(|stem| stem.to_string_lossy().into_owned())
+                .unwrap_or_default()
+        })
 }
 
 /// Extract the compatibility-library references from a parsed `.plcproj`.
@@ -446,6 +469,32 @@ mod tests {
         assert_eq!(references[1].version.as_deref(), Some("3.3.7.0"));
         assert_eq!(references[2].name.as_str(), "Tc2_BuiltIns");
         assert_eq!(references[2].version, None);
+    }
+
+    #[test]
+    fn discover_when_plcproj_has_no_name_element_then_project_name_is_file_stem() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("Lib.plcproj"),
+            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003"></Project>"#,
+        )
+        .unwrap();
+        let result = discover(dir.path()).unwrap();
+        assert_eq!(result.project_names, ["Lib"]);
+    }
+
+    #[test]
+    fn discover_when_plcproj_has_name_element_then_project_name_is_it() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("file.plcproj"),
+            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup><Name>BROTLib</Name></PropertyGroup>
+</Project>"#,
+        )
+        .unwrap();
+        let result = discover(dir.path()).unwrap();
+        assert_eq!(result.project_names, ["BROTLib"]);
     }
 
     #[test]
