@@ -85,6 +85,14 @@ pub(crate) fn opts_with_paren_string_length() -> CompilerOptions {
     }
 }
 
+pub(crate) fn opts_with_call_argument_extensions() -> CompilerOptions {
+    CompilerOptions {
+        allow_omitted_call_argument: true,
+        allow_trailing_call_comma: true,
+        ..CompilerOptions::default()
+    }
+}
+
 pub(crate) fn opts_with_conditional_return() -> CompilerOptions {
     CompilerOptions {
         allow_conditional_return: true,

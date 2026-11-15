@@ -1,0 +1,45 @@
+=====
+P4101
+=====
+
+.. problem-summary:: P4101
+
+This error occurs when a call has an argument with no value (``b :=,`` for an
+input or ``Error=> ,`` for an output) without the
+``--allow-omitted-call-argument`` compiler flag.
+
+The IEC 61131-3 standard grammar (Annex B) gives every formal argument a value
+(``name := expression``) or a variable (``name => variable``). Writing the name
+and the operator with nothing after them, which TwinCAT uses for an
+unconnected parameter, is an extension. It is the same as leaving the argument
+out.
+
+Example
+-------
+
+The following code will generate error P4101:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       drive : FB_Drive;
+   END_VAR
+       drive(Enable := TRUE, Position :=, Error => );
+   END_PROGRAM
+
+To fix this error, either leave the arguments out:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       drive : FB_Drive;
+   END_VAR
+       drive(Enable := TRUE);
+   END_PROGRAM
+
+Or enable the extension:
+
+.. |flag| replace:: ``--allow-omitted-call-argument``
+.. include:: /includes/enabled-by-flag.rst

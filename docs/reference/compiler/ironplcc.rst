@@ -369,6 +369,19 @@ Options
    :doc:`P4100 </reference/compiler/problems/P4100>` when used without this
    flag.
 
+``--allow-omitted-call-argument``
+   Allow a call argument with no value (``b :=,`` or ``Error=> ,``), which is
+   the same as leaving the argument out. IEC 61131-3 gives every argument a
+   value, so this is an extension. Produces
+   :doc:`P4101 </reference/compiler/problems/P4101>` when used without this
+   flag.
+
+``--allow-trailing-call-comma``
+   Allow a trailing comma before the closing parenthesis of a call's argument
+   list. IEC 61131-3 has no comma after the last argument, so this is an
+   extension. Produces :doc:`P4102 </reference/compiler/problems/P4102>` when
+   used without this flag.
+
 ``--policy-string-to-num-non-numeric`` *ALTERNATIVE*
    Select what ``STRING_TO_<numeric>`` treats as convertible when the string
    has non-numeric characters: ``reject`` (the whole string must be a
