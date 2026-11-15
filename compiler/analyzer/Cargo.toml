@@ -18,9 +18,7 @@ ironplc-problems = { path = "../problems", version = "0.253.0" }
 # The execution model's types, for now; see `specs/design/execution-model.md`
 # and ADR-0065.
 ironplc-ir = { path = "../ir", version = "0.253.0" }
-ironplc-test = { path = "../test", version = "0.253.0" }
 log = "0.4.29"
-phf = { version = "0.14", features = ["macros"] }
 petgraph = { version = "0.8" }
 fixedbitset = { version = "0.5" }
 indexmap = "2"
@@ -30,6 +28,7 @@ ironplc-spec-requirements-gen = { path = "../spec_requirements_gen" }
 
 [dev-dependencies]
 ironplc-parser = { path = "../parser", version = "0.253.0" }
+ironplc-test = { path = "../test", version = "0.253.0" }
 ctor = "1.0"
 env_logger = "0.11"
 rstest = "0.28"

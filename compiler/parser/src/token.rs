@@ -71,14 +71,23 @@ pub enum TokenType {
     #[regex(r"[ \t]+")]
     Whitespace,
 
-    #[regex(r"\(\*(?:[^*]|\*[^\)])*\*\)", priority = 0)]
-    // The following are common but not valid IEC 61131-3. We want to recognize the
-    // tokens so that we can generate meaningful errors.
+    // The pattern's three alternatives are, in order:
+    // - `(* ... *)`, the IEC 61131-3 comment.
+    // - `// ...` and `/* ... */`, which are common but not valid IEC 61131-3.
+    //   We want to recognize the tokens so that we can generate meaningful
+    //   errors.
     // A line comment stops before its line terminator, which lexes as the
     // usual `Newline` token, so the comment's text and span cover only the
     // comment (the LSP token length and the P0004 span are taken from them).
-    #[regex(r"//[^\r\n]*", priority = 0, allow_greedy = true)]
-    #[regex(r"/\*(?:[^*]|\*[^/])*\*/", priority = 0)]
+    //
+    // The alternatives share one `#[regex]` because Clippy's
+    // `duplicated_attributes` lint reports `priority = 0` repeated across
+    // separate `#[regex]` attributes on one variant.
+    #[regex(
+        r"\(\*(?:[^*]|\*[^\)])*\*\)|//[^\r\n]*|/\*(?:[^*]|\*[^/])*\*/",
+        priority = 0,
+        allow_greedy = true
+    )]
     Comment,
 
     // Grouping and other markers
@@ -403,23 +412,28 @@ pub enum TokenType {
     #[token("POINTER", ignore(case))]
     Pointer,
 
+    // A date/time keyword with a short spelling (`TOD`, `DT`, `LTOD`, `LDT`)
+    // writes the short one as `#[regex]`, because Clippy's
+    // `duplicated_attributes` lint reports `ignore(case)` repeated across
+    // separate `#[token]` attributes on one variant. For a pattern of letters
+    // logos builds the same matcher, at the same priority, from either.
     #[token("DATE", ignore(case))]
     Date,
     #[token("TIME_OF_DAY", ignore(case))]
-    #[token("TOD", ignore(case))]
+    #[regex("TOD", ignore(case))]
     TimeOfDay,
     #[token("DATE_AND_TIME", ignore(case))]
-    #[token("DT", ignore(case))]
+    #[regex("DT", ignore(case))]
     DateAndTime,
 
     // IEC 61131-3 Edition 3 (2013) long date/time types
     #[token("LDATE", ignore(case))]
     Ldate,
     #[token("LTIME_OF_DAY", ignore(case))]
-    #[token("LTOD", ignore(case))]
+    #[regex("LTOD", ignore(case))]
     Ltod,
     #[token("LDATE_AND_TIME", ignore(case))]
-    #[token("LDT", ignore(case))]
+    #[regex("LDT", ignore(case))]
     Ldt,
 
     #[token("STRING", ignore(case))]

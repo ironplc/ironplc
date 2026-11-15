@@ -312,10 +312,8 @@ END_PROGRAM",
         /// An output stored in an element of an array of structures is
         /// checked as the element assigned from the output.
         apply_when_structure_output_stored_in_element_of_other_type_then_reports_mismatch,
-        &block_with_structure_output("f(x := 1, p => ws[1]);").replace(
-            "w : Wide;",
-            "w : Wide;\n  ws : ARRAY[1..2] OF Wide;"
-        ),
+        &block_with_structure_output("f(x := 1, p => ws[1]);")
+            .replace("w : Wide;", "w : Wide;\n  ws : ARRAY[1..2] OF Wide;"),
         [Problem::AggregateAssignmentTypeMismatch]
     );
 
@@ -691,7 +689,8 @@ END_PROGRAM
         apply_when_constant_assigned_to_array_then_reports_mismatch,
         &program_with("a : ARRAY[1..2] OF DINT;\n", "a := 5;\n"),
         Problem::AggregateAssignmentTypeMismatch,
-        "5");
+        "5"
+    );
 
     rule_ok!(
         /// An element of an elementary type is not an aggregate.

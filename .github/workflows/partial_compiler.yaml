@@ -111,7 +111,7 @@ jobs:
         with:
           workspaces: "compiler -> target"
           key: quality-ubuntu-latest
-      - uses: taiki-e/install-action@03e268b84870ac3cfa58a44d9b504511b732a857 # cargo-llvm-cov
+      - uses: taiki-e/install-action@9299c56f1fb893650f348425bb02c3acf492ebd2 # cargo-llvm-cov
       - name: Install cargo-dupes
         run: cargo install cargo-dupes
 
