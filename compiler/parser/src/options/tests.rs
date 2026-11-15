@@ -200,6 +200,7 @@ fn twincat_dialect_enables_exactly_these_flags() {
             "allow_continue",
             "allow_keywords_as_names",
             "allow_radix_subrange_bounds",
+            "allow_pou_header_semicolon",
         ],
     );
 }

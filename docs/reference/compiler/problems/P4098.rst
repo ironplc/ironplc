@@ -1,0 +1,44 @@
+=====
+P4098
+=====
+
+.. problem-summary:: P4098
+
+This error occurs when a semicolon closes the header of a ``PROGRAM``,
+``FUNCTION``, ``FUNCTION_BLOCK`` or ``METHOD`` before its first variable
+block, without the ``--allow-pou-header-semicolon`` compiler flag.
+
+The IEC 61131-3 standard grammar (Annex B) puts no terminator after a
+header: the variable blocks follow the name, return type, ``EXTENDS`` and
+``IMPLEMENTS`` directly. A semicolon there is an extension.
+
+A semicolon after the header that a variable block does not follow is the
+standard empty statement at the start of the body and is always allowed.
+
+Example
+-------
+
+The following code will generate error P4098:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Motor EXTENDS FB_Base;
+   VAR_INPUT
+       speed : INT;
+   END_VAR
+   END_FUNCTION_BLOCK
+
+To fix this error, remove the semicolon:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Motor EXTENDS FB_Base
+   VAR_INPUT
+       speed : INT;
+   END_VAR
+   END_FUNCTION_BLOCK
+
+Or enable the extension:
+
+.. |flag| replace:: ``--allow-pou-header-semicolon``
+.. include:: /includes/enabled-by-flag.rst

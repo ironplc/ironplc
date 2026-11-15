@@ -326,6 +326,14 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "PROGRAM main\nVAR\na : ARRAY[16#0..16#F] OF INT;\nEND_VAR\nEND_PROGRAM",
     },
+    // A `;` after the POU header, before the first VAR block. The grammar
+    // accepts it unconditionally; a token-stream rule rejects it (P4098)
+    // when the flag is off.
+    FlagFixture {
+        key: "allow_pou_header_semicolon",
+        prereqs: &[],
+        source: "PROGRAM main;\nVAR\na : INT;\nEND_VAR\nEND_PROGRAM",
+    },
 ];
 
 /// Builds an ed2 options object with the given flags enabled.

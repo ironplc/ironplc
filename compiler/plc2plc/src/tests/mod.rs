@@ -27,6 +27,7 @@ mod mixed_vars;
 mod partial_access;
 mod persistent_var;
 mod pointer_to;
+mod pou_header_semicolon;
 mod property;
 mod radix_subrange_bound;
 mod reference_to;

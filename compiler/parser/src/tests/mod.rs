@@ -31,6 +31,7 @@ mod method_call_expression;
 mod methods;
 mod partial_access;
 mod pointer_to;
+mod pou_header_semicolon;
 mod pragmas;
 mod property;
 mod radix_subrange_bound;

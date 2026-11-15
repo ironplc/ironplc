@@ -355,6 +355,14 @@ Options
    :doc:`P4095 </reference/compiler/problems/P4095>` when used without this
    flag.
 
+``--allow-pou-header-semicolon``
+   Allow a semicolon after a ``PROGRAM``, ``FUNCTION``, ``FUNCTION_BLOCK`` or
+   ``METHOD`` header, before its first variable block (e.g.
+   ``FUNCTION_BLOCK FB_Motor EXTENDS FB_Base;``). The IEC 61131-3 standard
+   puts no terminator after a header. Produces
+   :doc:`P4098 </reference/compiler/problems/P4098>` when used without this
+   flag.
+
 ``--policy-string-to-num-non-numeric`` *ALTERNATIVE*
    Select what ``STRING_TO_<numeric>`` treats as convertible when the string
    has non-numeric characters: ``reject`` (the whole string must be a
