@@ -30,6 +30,7 @@ mod located_globals;
 mod member_qualifiers;
 mod method_call_expression;
 mod methods;
+mod named_array_initializers;
 mod partial_access;
 mod persistent;
 mod pointer_to;

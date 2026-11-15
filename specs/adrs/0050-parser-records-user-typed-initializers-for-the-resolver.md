@@ -2,6 +2,7 @@
 
 status: accepted
 date: 2026-09-06
+amended: 2026-11-05 (a bracketed array initializer after a type name added to the unambiguous shapes the parser settles)
 
 ## Context
 
@@ -45,9 +46,13 @@ initializer shape to a concrete initializer kind:
 
 The parser still emits `EnumeratedType` for a qualified value (`T := T#Red`)
 and `EnumeratedValues` for an inline enumeration, because those are
-unambiguous. It never constructs `Structure`, or a named `EnumeratedType` from
-a bare identifier, so a downstream pass cannot meet a declaration the parser
-guessed about.
+unambiguous. For the same reason it emits `Array` with the named type for a
+bracketed list after a type name (`T := [1, 2]`): only an array takes one, so
+for a valid program the kind is never in doubt, and the analyzer reports a
+name that is not an array, or not declared, as it reports any other
+initializer that does not fit its type. It never constructs `Structure`, or a
+named `EnumeratedType` from a bare identifier, so a downstream pass cannot
+meet a declaration the parser guessed about.
 
 ## Consequences
 
