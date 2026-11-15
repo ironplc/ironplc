@@ -297,7 +297,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 };
                 let default = node.spec_init.default.as_ref().map(|value| &value.value);
                 let attributes = enumeration::alias_of(base, default);
-                self.insert_type(&node.type_name, attributes);
+                self.insert_alias_with(&node.type_name, base_type_name, attributes);
             }
             SpecificationKind::Inline(spec_values) => {
                 let attributes = enumeration::try_from_values(
