@@ -334,6 +334,19 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "PROGRAM main\nVAR\nb : BOOL;\nEND_VAR\nRETURN(b);\nEND_PROGRAM",
     },
+    // A library prefix on a type name: the grammar accepts it unconditionally;
+    // a semantic rule rejects it (P4103) when the flag is off.
+    FlagFixture {
+        key: "allow_qualified_type_names",
+        prereqs: &[],
+        source: "FUNCTION_BLOCK FB_Base\nEND_FUNCTION_BLOCK\nPROGRAM main\nVAR\nx : Lib.FB_Base;\nEND_VAR\nEND_PROGRAM",
+    },
+    // `Type.value`: rejected (P4104) when the flag is off.
+    FlagFixture {
+        key: "allow_dotted_enum_value",
+        prereqs: &[],
+        source: "TYPE E_Blink : (off, slow); END_TYPE\nPROGRAM main\nVAR\ns : E_Blink;\nEND_VAR\nCASE s OF\nE_Blink.slow: ;\nEND_CASE;\nEND_PROGRAM",
+    },
 ];
 
 /// Builds an ed2 options object with the given flags enabled.

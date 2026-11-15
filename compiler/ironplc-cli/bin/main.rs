@@ -275,6 +275,18 @@ struct FileArgs {
     #[arg(long)]
     allow_conditional_return: bool,
 
+    /// Allow a library or namespace prefix on a type name
+    /// (`TcUnit.FB_TestSuite`). This is an extension not part of the
+    /// IEC 61131-3 standard.
+    #[arg(long)]
+    allow_qualified_type_names: bool,
+
+    /// Allow `Type.value` as the spelling of a qualified enumerated value,
+    /// besides the standard `Type#value`. This is an extension not part of the
+    /// IEC 61131-3 standard.
+    #[arg(long)]
+    allow_dotted_enum_value: bool,
+
     /// Allow a general (non-constant) expression as the value in a
     /// structured/call-style initializer's `name := value` pairs (e.g.
     /// `tonDelta : TON := (PT := pDevice^.Delta);`). This is a dialect
@@ -370,6 +382,8 @@ impl FileArgs {
         options.allow_paren_string_length |= self.allow_paren_string_length;
         options.allow_radix_subrange_bounds |= self.allow_radix_subrange_bounds;
         options.allow_conditional_return |= self.allow_conditional_return;
+        options.allow_qualified_type_names |= self.allow_qualified_type_names;
+        options.allow_dotted_enum_value |= self.allow_dotted_enum_value;
         options.allow_struct_initializer_expressions |= self.allow_struct_initializer_expressions;
         options.allow_fb_inheritance |= self.allow_fb_inheritance;
         options.allow_enum_explicit_values |= self.allow_enum_explicit_values;

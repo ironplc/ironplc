@@ -1,0 +1,36 @@
+=====
+P4103
+=====
+
+.. problem-summary:: P4103
+
+This error occurs when a type name has a library or namespace prefix
+(``TcUnit.FB_TestSuite``) without the ``--allow-qualified-type-names``
+compiler flag.
+
+IEC 61131-3 Edition 2 names a type by its bare identifier. A prefix that names
+the library a type comes from is an extension. IronPLC compatibility libraries
+are flat, so the prefix is kept in the source text but does not take part in
+finding the type.
+
+Example
+-------
+
+The following code will generate error P4103:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Test EXTENDS TcUnit.FB_TestSuite
+   END_FUNCTION_BLOCK
+
+To fix this error, either drop the prefix:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Test EXTENDS FB_TestSuite
+   END_FUNCTION_BLOCK
+
+Or enable the extension:
+
+.. |flag| replace:: ``--allow-qualified-type-names``
+.. include:: /includes/enabled-by-flag.rst

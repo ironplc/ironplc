@@ -103,8 +103,9 @@ Supported Dialects
    ``--allow-struct-initializer-expressions``,
    ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``,
    ``--allow-enum-base-type``, ``--allow-continue``,
-   ``--allow-keywords-as-names``, ``--allow-radix-subrange-bounds``, and
-   ``--allow-conditional-return``.
+   ``--allow-keywords-as-names``, ``--allow-radix-subrange-bounds``,
+   ``--allow-conditional-return``, ``--allow-qualified-type-names``, and
+   ``--allow-dotted-enum-value``.
 
    **Selects:** ``--policy-string-to-num-non-numeric ignore-trailing`` and
    ``--policy-string-to-num-failure zero`` — CODESYS stops parsing at the
@@ -149,7 +150,8 @@ Supported Dialects
    ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``,
    ``--allow-enum-base-type``, ``--allow-continue``,
    ``--allow-keywords-as-names``, ``--allow-radix-subrange-bounds``, and
-   ``--allow-conditional-return``.
+   ``--allow-conditional-return``, ``--allow-qualified-type-names``, and
+   ``--allow-dotted-enum-value``.
 
    **Selects:** ``--policy-string-to-num-non-numeric ignore-trailing`` and
    ``--policy-string-to-num-failure zero``, as ``codesys``.
@@ -530,6 +532,18 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    ``RETURN`` with no operand. The condition is never the return value of a
    function. Without this flag it produces
    :doc:`P4098 </reference/compiler/problems/P4098>`.
+
+``--allow-qualified-type-names``
+   Allow a library or namespace prefix on a type name
+   (``TcUnit.FB_TestSuite``). IEC 61131-3 Edition 2 names a type by its bare
+   identifier. The prefix is kept in the source text but does not take part in
+   finding the type. Without this flag it produces
+   :doc:`P4103 </reference/compiler/problems/P4103>`.
+
+``--allow-dotted-enum-value``
+   Allow ``Type.value`` as the spelling of a qualified enumerated value,
+   besides the standard ``Type#value``. Without this flag it produces
+   :doc:`P4104 </reference/compiler/problems/P4104>`.
 
 Pass the flag when running :program:`ironplcc`:
 

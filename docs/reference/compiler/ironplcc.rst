@@ -361,6 +361,19 @@ Options
    :doc:`P4098 </reference/compiler/problems/P4098>` when used without this
    flag.
 
+``--allow-qualified-type-names``
+   Allow a library or namespace prefix on a type name
+   (``TcUnit.FB_TestSuite``). IEC 61131-3 Edition 2 names a type by its bare
+   identifier, so this is an extension. Produces
+   :doc:`P4103 </reference/compiler/problems/P4103>` when used without this
+   flag.
+
+``--allow-dotted-enum-value``
+   Allow ``Type.value`` as the spelling of a qualified enumerated value,
+   besides the standard ``Type#value``. Produces
+   :doc:`P4104 </reference/compiler/problems/P4104>` when used without this
+   flag.
+
 ``--policy-string-to-num-non-numeric`` *ALTERNATIVE*
    Select what ``STRING_TO_<numeric>`` treats as convertible when the string
    has non-numeric characters: ``reject`` (the whole string must be a

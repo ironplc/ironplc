@@ -167,3 +167,5 @@ P4096,RadixSubrangeBoundNotAllowed,Hex/binary/octal literal as a subrange or arr
 P4097,SubscriptNotArray,Subscripted variable is not an array
 P4098,ConditionalReturnNotAllowed,RETURN(condition) conditional return requires choosing a dialect or --allow-conditional-return flag
 P4099,PersistentVarInFunction,PERSISTENT variable is declared by a function
+P4103,QualifiedTypeNameNotAllowed,Library prefix on a type name requires choosing a dialect or --allow-qualified-type-names flag
+P4104,DottedEnumValueNotAllowed,Type.value enumerated value requires choosing a dialect or --allow-dotted-enum-value flag

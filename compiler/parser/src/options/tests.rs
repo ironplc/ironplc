@@ -150,6 +150,8 @@ fn codesys_dialect_enables_exactly_these_flags() {
             "allow_keywords_as_names",
             "allow_radix_subrange_bounds",
             "allow_conditional_return",
+            "allow_qualified_type_names",
+            "allow_dotted_enum_value",
         ],
     );
 }
@@ -202,6 +204,8 @@ fn twincat_dialect_enables_exactly_these_flags() {
             "allow_keywords_as_names",
             "allow_radix_subrange_bounds",
             "allow_conditional_return",
+            "allow_qualified_type_names",
+            "allow_dotted_enum_value",
         ],
     );
 }
