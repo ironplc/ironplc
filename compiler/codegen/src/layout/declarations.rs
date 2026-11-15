@@ -12,8 +12,10 @@
 //!    `VAR_IN_OUT`, then its other variables, then its result and the
 //!    result's scratch slot, if it takes one;
 //! 4. each user function block, in library order: one copy slot for each of
-//!    its own inputs, then outputs, then locals; then each method, laid out
-//!    as a function is, with a result slot whether it returns one or not.
+//!    its own inputs, then outputs, then locals; then one slot for each of
+//!    its `VAR_TEMP`, which a call copies to and from no instance; then each
+//!    method, laid out as a function is, with a result slot whether it
+//!    returns one or not.
 //!
 //! A structure whose fields hold strings in arrays, and an array of
 //! structures with a string field, take a scratch slot after their own.
@@ -314,20 +316,13 @@ impl Layout {
         for (function_id, block) in pous.blocks() {
             let field_var_off = next;
             let scope = ScopeId::Pou(block);
-            let block_type = instance_type(types, block)?;
-            for (idx, field) in copy_slots(lowering, block)? {
-                let name = named_field(block_type, idx, field);
-                layout.debug.local(
-                    types,
-                    next,
-                    function_id,
-                    field.section,
-                    &name.name,
-                    field.ty,
-                );
-                layout.insert_string(&mut storage, scope, name.stored, field.ty)?;
-                layout.insert_reference(&mut storage, scope, name.stored, field.ty, next)?;
-                layout.insert(scope, name.stored, next, slot_type(types, field.ty));
+            for (name, ty, section) in block_frame(lowering, block)? {
+                layout
+                    .debug
+                    .local(types, next, function_id, section, &name.name, ty);
+                layout.insert_string(&mut storage, scope, name.stored, ty)?;
+                layout.insert_reference(&mut storage, scope, name.stored, ty, next)?;
+                layout.insert(scope, name.stored, next, slot_type(types, ty));
                 next = layout.counter.after(next);
             }
             let mut body = BlockLayout {
@@ -923,6 +918,37 @@ pub(super) fn copy_slots(lowering: &Program, pou: PouId) -> Option<Vec<(FieldIdx
             own.iter()
                 .filter(|(_, field)| field.section == Some(section)),
         );
+    }
+    Some(slots)
+}
+
+/// The slots of the frame of the function block `pou`, in the order they
+/// run, each with the name it is recorded under, its type and its section:
+/// its copy slots ([`copy_slots`]), which a call copies the instance's
+/// fields into and back out of, then one for each of its `VAR_TEMP`, in
+/// declaration order, which a call copies to and from no instance. Every
+/// variable a block declares is a field of its instance but its
+/// `VAR_TEMP` (REQ-LOW-lowering-170).
+pub(super) fn block_frame(
+    lowering: &Program,
+    pou: PouId,
+) -> Option<Vec<(Named, TypeId, Option<Section>)>> {
+    let block_type = instance_type(lowering.types(), pou)?;
+    let mut slots = Vec::new();
+    for (idx, field) in copy_slots(lowering, pou)? {
+        slots.push((named_field(block_type, idx, field), field.ty, field.section));
+    }
+    for declaration in lowering.declarations(pou)? {
+        if let Declaration::Variable(var) = declaration {
+            let variable = lowering.variables().get(*var)?;
+            if variable.section() == Section::Temporary {
+                slots.push((
+                    named(lowering, *var)?,
+                    variable.ty(),
+                    Some(Section::Temporary),
+                ));
+            }
+        }
     }
     Some(slots)
 }

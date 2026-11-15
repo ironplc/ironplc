@@ -249,6 +249,8 @@ is, since it overwrites what the last call left.
 
 **REQ-IV-codegen-025** A function returning a subrange that assigns no result returns its lower bound.
 
+**REQ-IV-codegen-026** A function block's `VAR_TEMP` is reset to its initial value on every call of every instance, whatever the last call of that or another instance left in it.
+
 **REQ-IV-codegen-030** An array of strings initialized with an empty repetition holds empty strings in the elements it covers.
 
 **REQ-IV-codegen-031** An array initializer with fewer values than elements leaves the rest at the element type's default.
