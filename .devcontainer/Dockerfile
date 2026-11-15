@@ -1,6 +1,6 @@
 # Use the typescript image because Typescript is the most challenging to setup.
 # See https://github.com/devcontainers/images/tree/main/src/typescript-node for variants
-FROM mcr.microsoft.com/devcontainers/typescript-node:22
+FROM mcr.microsoft.com/devcontainers/typescript-node:24
 
 # Install Python tooling and other system packages. Sphinx itself and its
 # extensions are NOT installed here; the docs build creates an isolated venv
