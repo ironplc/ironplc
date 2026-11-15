@@ -384,7 +384,7 @@ define_compiler_options! {
     [Codesys, TwinCat],
     allow_adr,
 
-    "Allow the PERSISTENT variable qualifier (Beckhoff TwinCAT/CODESYS extension)",
+    "Allow the PERSISTENT variable qualifier, alone or combined with RETAIN",
     "--allow-persistent-var",
     [Codesys, TwinCat],
     allow_persistent_var,

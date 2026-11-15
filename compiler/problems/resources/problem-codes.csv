@@ -166,3 +166,4 @@ P4095,KeywordAsNameNotAllowed,Keyword used as a name requires choosing a dialect
 P4096,RadixSubrangeBoundNotAllowed,Hex/binary/octal literal as a subrange or array bound requires choosing a dialect or --allow-radix-subrange-bounds flag
 P4097,SubscriptNotArray,Subscripted variable is not an array
 P4098,ConditionalReturnNotAllowed,RETURN(condition) conditional return requires choosing a dialect or --allow-conditional-return flag
+P4099,PersistentVarInFunction,PERSISTENT variable is declared by a function
