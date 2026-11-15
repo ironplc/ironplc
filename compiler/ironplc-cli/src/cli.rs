@@ -27,6 +27,7 @@ use std::{
 
 use ironplc_parser::options::CompilerOptions;
 use ironplc_sources::discovery::DiscoveredProject;
+use ironplc_sources::libraries::LibraryReference;
 use ironplc_sources::LibraryName;
 
 use ironplc_project::tokenizer;
@@ -268,17 +269,29 @@ fn create_project(
     // precedence in ordering; discovered libraries are appended, deduplicated.
     let mut activated_libraries: Vec<LibraryName> = libraries.to_vec();
     let mut diagnostics: Vec<Diagnostic> = vec![];
+    // References are resolved once every path is known, because a project
+    // named on the command line satisfies another's reference to it
+    // (`REQ-CL-sources-009`).
+    let mut references: Vec<LibraryReference> = vec![];
+    let mut project_names: Vec<String> = vec![];
 
     for path in paths {
-        let (mut resolved, discovered_libraries, path_diagnostics) = enumerate_files(path);
-        files.append(&mut resolved);
-        for library in discovered_libraries {
-            if !activated_libraries.contains(&library) {
-                activated_libraries.push(library);
-            }
-        }
-        diagnostics.extend(path_diagnostics);
+        let mut found = enumerate_files(path);
+        files.append(&mut found.files);
+        references.append(&mut found.references);
+        project_names.append(&mut found.project_names);
+        diagnostics.extend(found.diagnostics);
     }
+
+    let (discovered_libraries, library_diagnostics) =
+        ironplc_sources::libraries::LibraryRegistry::bundled()
+            .resolve_references_with_siblings(&references, &project_names);
+    for library in discovered_libraries {
+        if !activated_libraries.contains(&library) {
+            activated_libraries.push(library);
+        }
+    }
+    diagnostics.extend(library_diagnostics);
 
     // Create the project
     let mut project = FileBackedProject::with_options(compiler_options);
@@ -307,20 +320,16 @@ fn create_project(
 /// files DID resolve, rather than aborting enumeration entirely -- but
 /// they are still genuine errors: the caller must still fail the overall
 /// command if this returns any diagnostics.
-fn enumerate_files(path: &PathBuf) -> (Vec<PathBuf>, Vec<LibraryName>, Vec<Diagnostic>) {
+fn enumerate_files(path: &PathBuf) -> Enumerated {
     // Get the canonical path so that error messages are unambiguous
     let path = match canonicalize(path) {
         Ok(path) => path,
         Err(e) => {
-            return (
-                vec![],
-                vec![],
-                diagnostic(
-                    Problem::CannotCanonicalizePath,
-                    path,
-                    format!("{}, {}", path.display(), e),
-                ),
-            );
+            return Enumerated::failed(diagnostic(
+                Problem::CannotCanonicalizePath,
+                path,
+                format!("{}, {}", path.display(), e),
+            ));
         }
     };
 
@@ -328,43 +337,59 @@ fn enumerate_files(path: &PathBuf) -> (Vec<PathBuf>, Vec<LibraryName>, Vec<Diagn
     let metadata = match metadata(&path) {
         Ok(metadata) => metadata,
         Err(e) => {
-            return (
-                vec![],
-                vec![],
-                diagnostic(Problem::CannotReadMetadata, &path, e.to_string()),
-            );
+            return Enumerated::failed(diagnostic(
+                Problem::CannotReadMetadata,
+                &path,
+                e.to_string(),
+            ));
         }
     };
     if metadata.is_symlink() {
-        return (
-            vec![],
-            vec![],
-            diagnostic(Problem::SymlinkUnsupported, &path, String::from("")),
-        );
+        return Enumerated::failed(diagnostic(
+            Problem::SymlinkUnsupported,
+            &path,
+            String::from(""),
+        ));
     }
 
     enumerate_project(ironplc_sources::discovery::discover(&path))
 }
 
-/// Flattens a discovered project into the files, libraries, and problems
-/// [`enumerate_files`] reports.
-///
-/// Auto-activates the libraries a discovered project file references,
-/// alongside any files it declares. Referenced but unshipped libraries
-/// contribute a diagnostic naming them.
-fn enumerate_project(
-    discovered: Result<DiscoveredProject, Diagnostic>,
-) -> (Vec<PathBuf>, Vec<LibraryName>, Vec<Diagnostic>) {
-    match discovered {
-        Ok(project) => {
-            let (libraries, library_diagnostics) =
-                ironplc_sources::libraries::LibraryRegistry::bundled()
-                    .resolve_references(&project.library_references);
-            let mut diagnostics = project.errors;
-            diagnostics.extend(library_diagnostics);
-            (project.files, libraries, diagnostics)
+/// What enumerating one path found.
+struct Enumerated {
+    files: Vec<PathBuf>,
+    /// The library references the path's project declares, unresolved.
+    references: Vec<LibraryReference>,
+    /// The names of the projects the path holds.
+    project_names: Vec<String>,
+    diagnostics: Vec<Diagnostic>,
+}
+
+impl Enumerated {
+    fn failed(diagnostics: Vec<Diagnostic>) -> Self {
+        Enumerated {
+            files: vec![],
+            references: vec![],
+            project_names: vec![],
+            diagnostics,
         }
-        Err(e) => (vec![], vec![], vec![e]),
+    }
+}
+
+/// Flattens a discovered project into the files, library references, and
+/// problems [`enumerate_files`] reports.
+///
+/// Resolving the references is left to the caller, which knows every project
+/// being loaded together.
+fn enumerate_project(discovered: Result<DiscoveredProject, Diagnostic>) -> Enumerated {
+    match discovered {
+        Ok(project) => Enumerated {
+            files: project.files,
+            references: project.library_references,
+            project_names: project.project_names,
+            diagnostics: project.errors,
+        },
+        Err(e) => Enumerated::failed(vec![e]),
     }
 }
 
@@ -714,6 +739,50 @@ mod tests {
             problem_count(&err) >= 2,
             "expected the P6011 discovery problem AND a semantic problem, got: {err}"
         );
+    }
+
+    fn write_project(dir: &std::path::Path, name: &str, body: &str, references: &str) {
+        std::fs::create_dir_all(dir).unwrap();
+        std::fs::write(dir.join("A.st"), body).unwrap();
+        std::fs::write(
+            dir.join(format!("{name}.plcproj")),
+            format!(
+                r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup><Name>{name}</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="A.st" />
+    {references}
+  </ItemGroup>
+</Project>"#
+            ),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn check_when_referenced_project_also_named_then_no_missing_library_and_types_resolve() {
+        let root = tempfile::TempDir::new().unwrap();
+        let lib = root.path().join("lib");
+        let app = root.path().join("app");
+        write_project(
+            &lib,
+            "SiblingLib",
+            "FUNCTION_BLOCK FB_Shared\nEND_FUNCTION_BLOCK",
+            "",
+        );
+        write_project(
+            &app,
+            "App",
+            "PROGRAM Main\nVAR\n    x : FB_Shared;\nEND_VAR\nEND_PROGRAM",
+            r#"<PlaceholderReference Include="SiblingLib" />"#,
+        );
+
+        let result = check(&[app.clone(), lib], CompilerOptions::default(), &[], true);
+        assert!(result.is_ok(), "{result:?}");
+
+        // Without the sibling, the reference is reported as unbundled.
+        let err = check(&[app], CompilerOptions::default(), &[], true).unwrap_err();
+        assert!(problem_count(&err) >= 1, "{err}");
     }
 
     #[test]
