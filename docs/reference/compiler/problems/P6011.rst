@@ -25,3 +25,7 @@ To fix this error:
 - Check the spelling and capitalization of the library name.
 - Confirm the library is installed where the compiler looks for libraries.
 - Remove the activation if the library is not required.
+- If the reference names another project (a user library) rather than a
+  bundled library, name that project on the command line as well, for example
+  ``ironplcc check app lib``. A project loaded alongside satisfies a reference
+  to its name, taken from the ``<Name>`` in its ``.plcproj``.

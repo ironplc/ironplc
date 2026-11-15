@@ -334,6 +334,31 @@ fn sources_spec_req_cl_004_diagnoses_unshipped_library() {
     );
 }
 
+/// REQ-CL-sources-009: A library reference whose name equals the name of a
+/// project loaded alongside it is satisfied by that project's sources.
+#[spec_test(REQ_CL_sources_009)]
+fn sources_spec_req_cl_009_reference_satisfied_by_loaded_project() {
+    let registry = LibraryRegistry::bundled();
+    let reference = |name: &str| LibraryReference {
+        name: LibraryName::from(name),
+        version: Some("*".to_string()),
+        namespace: None,
+        declared_in: FileId::from_string("proj.plcproj"),
+    };
+
+    // Named by a loaded project: nothing activated, nothing diagnosed.
+    let (activated, diagnostics) = registry
+        .resolve_references_with_siblings(&[reference("UserLib")], &["UserLib".to_string()]);
+    assert!(activated.is_empty());
+    assert!(diagnostics.is_empty());
+
+    // Not named by any loaded project: diagnosed as before.
+    let (_, diagnostics) = registry
+        .resolve_references_with_siblings(&[reference("UserLib")], &["OtherLib".to_string()]);
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].code, Problem::LibraryNotFound.code());
+}
+
 /// REQ-CL-sources-008: The bundled `Tc2_BuiltIns` library is activated
 /// automatically when a TwinCAT project (`.plcproj`) is discovered, without a
 /// project-file library reference; it is not activated for bare, context-free

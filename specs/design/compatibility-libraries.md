@@ -344,6 +344,24 @@ bundled one still resolves but emits a warning, since IronPLC ships one version
 per library — mismatched behavior, if any, is surfaced rather than silently
 accepted or hard-failed.
 
+### References to sibling projects
+
+A TwinCAT project can reference another *project* (a user library) rather than a
+bundled library, with the same `<PlaceholderReference Include="Name">` element.
+The `.plcproj` names no path to it, so IronPLC cannot locate its source itself,
+and guessing a location would break "never sniff, never guess". The user names
+the sibling project explicitly, as another path on the command line (e.g.
+`ironplcc check app lib`), the same way they name any other source.
+
+- **REQ-CL-sources-009** A library reference whose name equals the name of a
+  project loaded alongside it (case-sensitive, from the project's `<Name>`, else
+  its file stem) is satisfied by that project's sources: it activates no bundled
+  library and yields no missing-library diagnostic. A reference that no loaded
+  project satisfies is diagnosed as before (REQ-CL-sources-004).
+
+If a bundled library and a loaded project share a name, the loaded project wins,
+because activating both would declare every symbol twice.
+
 ### Round-trip fidelity
 
 - **REQ-CL-plc2plc-001** `plc2plc` emits the user's source unchanged; declarations
