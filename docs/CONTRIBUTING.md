@@ -34,7 +34,7 @@ for the rule and for the kinds of duplication that are acceptable.
 `just duplicates` runs [jscpd](https://jscpd.dev) over the `.rst` sources and
 fails when duplication rises above the `threshold` in `.jscpd.json`.
 
-**Read the threshold with care.** It is currently 22%, which is not a quality
+**Read the threshold with care.** It is currently 21%, which is not a quality
 target — it is roughly where the docs sit today. The figure also depends on the
 jscpd version: jscpd 5.4.0 changed how it counts duplicated lines, which moved
 the same docs from 18% to 21% without any new duplication, so recalibrate the

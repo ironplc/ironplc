@@ -69,30 +69,6 @@ Follow the steps below to install IronPLC.
    #. Run the installer and follow the prompts to complete
       installation of the CLI.
 
-   .. rubric:: Install IronPLC Extension
-
-   Run your development environment, then:
-
-   #. Go to the Extensions view by clicking on the Extensions icon in
-      :guilabel:`Activity Bar` on the side of the window or using the
-      View: Extensions command (:kbd:`Ctrl+Shift+X`).
-   #. Search for ``ironplc``.
-   #. Select :guilabel:`IronPLC IDE` in Visual Studio Code, or
-      :guilabel:`IronPLC` in editors that install from Open VSX, then select
-      :guilabel:`Install`.
-
-   .. rubric:: Install IronPLC Extension from a VSIX
-
-   If your development environment cannot reach either registry, install the
-   extension manually.
-
-   .. include:: /includes/download-extension-vsix.rst
-
-   Then, in the Extensions view:
-
-   #. Select the :menuselection:`... (View and More Actions) --> Install from VSIX...` button.
-   #. In the :guilabel:`Install from VSIX` dialog, select the VSIX file you downloaded earlier.
-
 .. tab:: macOS
 
    .. rubric:: Install IronPLC CLI
@@ -119,30 +95,6 @@ Follow the steps below to install IronPLC.
    This installs IronPLC into ``$HOME/.ironplc/bin`` and adds that
    directory to your ``PATH`` via your shell profile.
 
-   .. rubric:: Install IronPLC Extension
-
-   Run your development environment, then:
-
-   #. Go to the Extensions view by clicking on the Extensions icon in
-      :guilabel:`Activity Bar` on the side of the window or using the
-      View: Extensions command (:kbd:`⌘+Shift+X`).
-   #. Search for ``ironplc``.
-   #. Select :guilabel:`IronPLC IDE` in Visual Studio Code, or
-      :guilabel:`IronPLC` in editors that install from Open VSX, then select
-      :guilabel:`Install`.
-
-   .. rubric:: Install IronPLC Extension from a VSIX
-
-   If your development environment cannot reach either registry, install the
-   extension manually.
-
-   .. include:: /includes/download-extension-vsix.rst
-
-   Then, in the Extensions view:
-
-   #. Select the :menuselection:`... (View and More Actions) --> Install from VSIX...` button.
-   #. In the :guilabel:`Install from VSIX` dialog, select the VSIX file you downloaded earlier.
-
 .. tab:: Linux
 
    .. rubric:: Install IronPLC CLI
@@ -164,29 +116,26 @@ Follow the steps below to install IronPLC.
 
    Prebuilt binaries are currently provided for x86_64 Linux only.
 
-   .. rubric:: Install IronPLC Extension
+Then install the IronPLC extension, which is the same on every operating
+system.
 
-   Run your development environment, then:
+.. rubric:: Install IronPLC Extension
 
-   #. Go to the Extensions view by clicking on the Extensions icon in
-      :guilabel:`Activity Bar` on the side of the window or using the
-      View: Extensions command (:kbd:`Ctrl+Shift+X`).
-   #. Search for ``ironplc``.
-   #. Select :guilabel:`IronPLC IDE` in Visual Studio Code, or
-      :guilabel:`IronPLC` in editors that install from Open VSX, then select
-      :guilabel:`Install`.
+.. include:: /includes/open-extensions-view.rst
 
-   .. rubric:: Install IronPLC Extension from a VSIX
+#. Search for ``ironplc``.
+#. Select :guilabel:`IronPLC IDE` in Visual Studio Code, or
+   :guilabel:`IronPLC` in editors that install from Open VSX, then select
+   :guilabel:`Install`.
 
-   If your development environment cannot reach either registry, install the
-   extension manually.
+.. rubric:: Install IronPLC Extension from a VSIX
 
-   .. include:: /includes/download-extension-vsix.rst
+If your development environment cannot reach either registry, install the
+extension manually.
 
-   Then, in the Extensions view:
+.. include:: /includes/download-extension-vsix.rst
 
-   #. Select the :menuselection:`... (View and More Actions) --> Install from VSIX...` button.
-   #. In the :guilabel:`Install from VSIX` dialog, select the VSIX file you downloaded earlier.
+.. include:: /includes/install-extension-from-vsix.rst
 
 --------------------------------------
 Next Steps

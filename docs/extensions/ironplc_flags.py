@@ -3,7 +3,9 @@ Validates that all --allow-* compiler flags and every Dialect are documented.
 
 This extension reads the source of truth (compiler/parser/src/options.rs),
 extracts all allow_* CLI flags and every Dialect::cli_name(), and verifies each
-one appears in the relevant doc pages.
+one appears in the relevant doc pages. Each flag is described once, in
+includes/allow-flags.rst, which both the explanation page and the ironplcc
+reference include.
 
 It also verifies that each dialect's **Enables:** list in the explanation page
 matches exactly the flags that dialect turns on in options.rs. The per-dialect
@@ -37,6 +39,10 @@ DIALECT_IDENT_TO_CLI = {
 }
 
 EXPLANATION_DOC = 'explanation/enabling-dialects-and-features.rst'
+
+# The single description of every --allow-* flag, and the pages that show it.
+FLAGS_INCLUDE = 'includes/allow-flags.rst'
+FLAGS_PAGES = [EXPLANATION_DOC, 'reference/compiler/ironplcc.rst']
 
 
 def source_of_truth_dialect_flags(options_text):
@@ -101,18 +107,16 @@ def validate_flags(app, config):
               'source-of-truth format may have changed.')
         exit(1)
 
-    # Verify each flag appears in both doc files
-    doc_files = [
-        EXPLANATION_DOC,
-        'reference/compiler/ironplcc.rst',
-    ]
+    # Each flag's description is written once, as a definition-list entry in
+    # FLAGS_INCLUDE, and both pages that list the flags include that file.
     missing = []
-    for doc_rel in doc_files:
-        doc_path = srcdir / doc_rel
-        doc_text = doc_path.read_text()
-        for cli_flag in cli_flags:
-            if cli_flag not in doc_text:
-                missing.append(f'{cli_flag} missing in {doc_rel}')
+    flags_text = (srcdir / FLAGS_INCLUDE).read_text()
+    for cli_flag in cli_flags:
+        if f'\n``{cli_flag}``\n' not in f'\n{flags_text}':
+            missing.append(f'{cli_flag} missing in {FLAGS_INCLUDE}')
+    for doc_rel in FLAGS_PAGES:
+        if f'.. include:: /{FLAGS_INCLUDE}' not in (srcdir / doc_rel).read_text():
+            missing.append(f'{doc_rel} does not include /{FLAGS_INCLUDE}')
 
     # Verify each dialect's **Enables:** list matches the source of truth.
     truth = source_of_truth_dialect_flags(options_text)
