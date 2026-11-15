@@ -183,9 +183,7 @@ Options
    a variable for assignment to a ``POINTER TO`` variable.
 
 ``--allow-persistent-var``
-   Allow the Beckhoff TwinCAT / CODESYS ``PERSISTENT`` variable qualifier
-   (``VAR PERSISTENT`` / ``VAR_GLOBAL PERSISTENT``). This is an extension,
-   not part of the IEC 61131-3 standard.
+   .. include:: /includes/persistent-var-flag.rst
 
 ``--allow-ref-arithmetic``
    Allow arithmetic (``+``, ``-``) and ordering comparisons (``<``, ``>``,

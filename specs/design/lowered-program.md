@@ -683,7 +683,8 @@ carries that address.
 
 **REQ-LOW-lowering-024** A variable or field carries the retention qualifier
 of its declaration (`RETAIN`, `NON_RETAIN` or `PERSISTENT`), or none if its
-declaration has none.
+declaration has none. `RETAIN PERSISTENT` (in either order) carries
+`PERSISTENT`, the retention CODESYS documents the combination as having.
 
 Initial values are statements because that is how the bytecode VM applies
 them: an init function runs once (ADR-0045), and a function re-initializes its

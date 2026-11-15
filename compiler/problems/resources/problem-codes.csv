@@ -165,3 +165,4 @@ P4094,RealLiteralInIntegerPosition,FOR bound or step or array subscript is a rea
 P4095,KeywordAsNameNotAllowed,Keyword used as a name requires choosing a dialect or --allow-keywords-as-names flag
 P4096,RadixSubrangeBoundNotAllowed,Hex/binary/octal literal as a subrange or array bound requires choosing a dialect or --allow-radix-subrange-bounds flag
 P4097,SubscriptNotArray,Subscripted variable is not an array
+P4098,PersistentVarInFunction,PERSISTENT variable is declared by a function

@@ -287,9 +287,7 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    :doc:`/reference/extension-library/functions/adr`.
 
 ``--allow-persistent-var``
-   Allow the Beckhoff TwinCAT / CODESYS ``PERSISTENT`` variable qualifier
-   (``VAR PERSISTENT`` / ``VAR_GLOBAL PERSISTENT``). This is an extension,
-   not part of the IEC 61131-3 standard.
+   .. include:: /includes/persistent-var-flag.rst
 
 ``--allow-ref-arithmetic``
    Allow arithmetic (``+``, ``-``) and ordering comparisons (``<``, ``>``,

@@ -1,0 +1,48 @@
+=====
+P4098
+=====
+
+.. problem-summary:: P4098
+
+This error occurs when a function declares a ``PERSISTENT`` or
+``RETAIN PERSISTENT`` variable.
+
+A ``PERSISTENT`` variable keeps its value through a download, a reset and a
+power cycle, so it needs storage that lasts from one call to the next. A
+function keeps no values between calls, so it has nowhere to keep a
+persistent value. TwinCAT also rejects ``PERSISTENT`` on a function's
+inputs.
+
+Example
+-------
+
+The following code will generate error P4098:
+
+.. playground::
+   :allows: persistent-var
+
+   FUNCTION Twice : DINT
+   VAR_INPUT PERSISTENT
+       value : DINT;
+   END_VAR
+       Twice := value * 2;
+   END_FUNCTION
+
+The function ``Twice`` declares the persistent input ``value``, but a
+function keeps no values between calls.
+
+To fix this error, remove ``PERSISTENT`` from the function's block, or move
+the variable to a function block, whose instance keeps its values:
+
+.. playground::
+   :allows: persistent-var
+
+   FUNCTION_BLOCK Twice
+   VAR_INPUT PERSISTENT
+       value : DINT;
+   END_VAR
+   VAR_OUTPUT
+       result : DINT;
+   END_VAR
+       result := value * 2;
+   END_FUNCTION_BLOCK

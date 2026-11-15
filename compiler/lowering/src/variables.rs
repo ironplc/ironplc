@@ -529,7 +529,11 @@ pub(crate) fn retention(qualifier: &DeclarationQualifier) -> Retention {
     match qualifier {
         DeclarationQualifier::Retain => Retention::Retain,
         DeclarationQualifier::NonRetain => Retention::NonRetain,
-        DeclarationQualifier::Persistent => Retention::Persistent,
+        // CODESYS documents `RETAIN PERSISTENT` as having the same effect
+        // as `PERSISTENT`.
+        DeclarationQualifier::Persistent | DeclarationQualifier::RetainPersistent => {
+            Retention::Persistent
+        }
         DeclarationQualifier::Unspecified | DeclarationQualifier::Constant => Retention::None,
     }
 }

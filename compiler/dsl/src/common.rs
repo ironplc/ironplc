@@ -2436,8 +2436,13 @@ pub enum DeclarationQualifier {
     /// Stored so that the value is NOT retained through power loss.
     NonRetain,
     /// Stored so that the value survives a download, reset, or power loss
-    /// (Beckhoff TwinCAT/CODESYS extension, not part of the IEC standard).
+    /// (`--allow-persistent-var` extension, not part of the IEC standard).
     Persistent,
+    /// `RETAIN PERSISTENT` or `PERSISTENT RETAIN`: both keywords on one
+    /// block (`--allow-persistent-var` extension). The two orders mean the
+    /// same thing, and CODESYS documents the combination as having the same
+    /// effect as `PERSISTENT` alone.
+    RetainPersistent,
 }
 
 // Container for variable specifications.
