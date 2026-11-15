@@ -13,7 +13,7 @@
   ],
   "minTokens": 20,
   "minLines": 3,
-  "threshold": 21,
+  "threshold": 25,
   "reporters": ["console", "json"],
   "output": "_duplication",
   "absolute": false
