@@ -30,11 +30,11 @@ RUN export RUSTUP_HOME=/usr/local &&\
     export CARGO_HOME=/usr/local &&\
     curl https://sh.rustup.rs -sSf | sh -s -- -y
 
-# Install the Rust-based tools. This is a bit risky because we use stable, and
-# at the time of writing, stable updated every 6 weeks, so this doesn't
-# guarantee the same version, but it does mean that we stay recent when the
-# container is rebuilt (the same is generally true for most packages since we
-# don't specify versions).
+# Install the Rust-based tools. These build with the stable release current
+# when the container is built, so we stay recent when the container is rebuilt
+# (the same is generally true for most packages since we don't specify
+# versions). The project itself builds with the release rust-toolchain.toml
+# pins, which rustup installs on first use.
 RUN rustup default stable
 RUN cargo install --root /usr/local just
 RUN cargo install --root /usr/local cargo-release

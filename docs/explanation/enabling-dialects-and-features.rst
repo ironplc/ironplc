@@ -103,7 +103,8 @@ Supported Dialects
    ``--allow-struct-initializer-expressions``,
    ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``,
    ``--allow-enum-base-type``, ``--allow-continue``,
-   ``--allow-keywords-as-names``, and ``--allow-radix-subrange-bounds``.
+   ``--allow-keywords-as-names``, ``--allow-radix-subrange-bounds``, and
+   ``--allow-conditional-return``.
 
    **Selects:** ``--policy-string-to-num-non-numeric ignore-trailing`` and
    ``--policy-string-to-num-failure zero`` — CODESYS stops parsing at the
@@ -147,7 +148,9 @@ Supported Dialects
    ``--allow-struct-initializer-expressions``,
    ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``,
    ``--allow-enum-base-type``, ``--allow-continue``,
-   ``--allow-keywords-as-names``, and ``--allow-radix-subrange-bounds``.
+   ``--allow-keywords-as-names``, ``--allow-radix-subrange-bounds``,
+   ``--allow-conditional-return``, and
+   ``--allow-pou-header-semicolon``.
 
    **Selects:** ``--policy-string-to-num-non-numeric ignore-trailing`` and
    ``--policy-string-to-num-failure zero``, as ``codesys``.
@@ -287,9 +290,7 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    :doc:`/reference/extension-library/functions/adr`.
 
 ``--allow-persistent-var``
-   Allow the Beckhoff TwinCAT / CODESYS ``PERSISTENT`` variable qualifier
-   (``VAR PERSISTENT`` / ``VAR_GLOBAL PERSISTENT``). This is an extension,
-   not part of the IEC 61131-3 standard.
+   .. include:: /includes/persistent-var-flag.rst
 
 ``--allow-ref-arithmetic``
    Allow arithmetic (``+``, ``-``) and ordering comparisons (``<``, ``>``,
@@ -522,6 +523,24 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    Each keyword keeps its keyword role in the same program
    (``RESOURCE r ON PLC``, an ``R_EDGE`` input). Without this flag such a
    name produces :doc:`P4095 </reference/compiler/problems/P4095>`.
+
+``--allow-conditional-return``
+   Allow :doc:`RETURN(condition) </reference/language/structured-text/return>`,
+   a ``RETURN`` that happens only when the ``BOOL`` condition is ``TRUE``, as
+   if written ``IF condition THEN RETURN; END_IF;``. IEC 61131-3 defines
+   ``RETURN`` with no operand. The condition is never the return value of a
+   function. Without this flag it produces
+   :doc:`P4098 </reference/compiler/problems/P4098>`.
+
+``--allow-pou-header-semicolon``
+   Allow a semicolon after the header of a ``PROGRAM``, ``FUNCTION``,
+   ``FUNCTION_BLOCK`` or ``METHOD``, before its first variable block, as in
+   ``FUNCTION_BLOCK FB_Motor EXTENDS FB_Base;``. The IEC 61131-3 standard
+   grammar puts no terminator after a header. The semicolon has no meaning:
+   the declaration is the same as without it. Without this flag it produces
+   :doc:`P4100 </reference/compiler/problems/P4100>`. A semicolon that a
+   variable block does not follow is the standard empty statement at the start
+   of the body and is always allowed.
 
 Pass the flag when running :program:`ironplcc`:
 

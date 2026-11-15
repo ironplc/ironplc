@@ -34,7 +34,7 @@ pub(crate) fn lower(source: &str, pou: &str) -> Outcome {
 /// `Block.Method`. The source may use `AND_THEN`, `OR_ELSE`, `CONTINUE`,
 /// explicit enumeration values and base types, `REF_TO`, partial access
 /// (`x.%B1`), `SIZEOF`, methods, an integer literal where a bit string is
-/// expected and an expression in a member initializer.
+/// expected, an expression in a member initializer and `PERSISTENT`.
 pub(crate) fn lower_bodies(source: &str, pous: &[&str]) -> Outcome {
     let options = options();
     let library = ironplc_parser::parse_program(source, &FileId::from_string("test.st"), &options)
@@ -99,6 +99,7 @@ fn options() -> CompilerOptions {
         allow_fb_inheritance: true,
         allow_int_literal_to_bit_string: true,
         allow_struct_initializer_expressions: true,
+        allow_persistent_var: true,
         ..CompilerOptions::default()
     }
 }

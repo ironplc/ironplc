@@ -15,8 +15,10 @@ mod parser;
 mod preprocessor;
 mod rule_no_empty_var_blocks;
 mod rule_token_no_c_style_comment;
+mod rule_token_no_conditional_return;
 mod rule_token_no_paren_string_length;
 mod rule_token_no_partial_access_syntax;
+mod rule_token_no_pou_header_semicolon;
 mod rule_token_radix_subrange_bound;
 mod rule_token_string_escape;
 mod vars;
@@ -97,9 +99,11 @@ pub fn tokenize_program(
 fn check_tokens(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<Diagnostic>> {
     let rules: Vec<fn(&[Token], &CompilerOptions) -> Result<(), Vec<Diagnostic>>> = vec![
         rule_token_no_c_style_comment::apply,
+        rule_token_no_conditional_return::apply,
         rule_no_empty_var_blocks::apply,
         rule_token_no_partial_access_syntax::apply,
         rule_token_no_paren_string_length::apply,
+        rule_token_no_pou_header_semicolon::apply,
         rule_token_radix_subrange_bound::apply,
         rule_token_string_escape::apply,
     ];

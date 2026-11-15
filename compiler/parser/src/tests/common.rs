@@ -85,6 +85,13 @@ pub(crate) fn opts_with_paren_string_length() -> CompilerOptions {
     }
 }
 
+pub(crate) fn opts_with_conditional_return() -> CompilerOptions {
+    CompilerOptions {
+        allow_conditional_return: true,
+        ..CompilerOptions::default()
+    }
+}
+
 /// Parse with `allow_paren_string_length` enabled.
 pub(crate) fn parse_text_paren_string_length(source: &str) -> Library {
     let options = opts_with_paren_string_length();
@@ -211,6 +218,16 @@ pub(crate) fn opts_with_constant_initializer_expressions() -> CompilerOptions {
 
 pub(crate) fn opts_with_fb_inheritance() -> CompilerOptions {
     CompilerOptions {
+        allow_fb_inheritance: true,
+        ..CompilerOptions::default()
+    }
+}
+
+/// Options for a `;` after a POU header, with the OOP syntax a `METHOD` or
+/// `EXTENDS` header needs.
+pub(crate) fn opts_with_pou_header_semicolon() -> CompilerOptions {
+    CompilerOptions {
+        allow_pou_header_semicolon: true,
         allow_fb_inheritance: true,
         ..CompilerOptions::default()
     }

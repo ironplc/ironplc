@@ -5,7 +5,9 @@
 
 # All ecosystems run Saturday at 06:00 UTC, a few hours after the bulk
 # update workflow (update.yaml, Saturday 02:00 UTC) so Dependabot only
-# opens PRs for anything the bulk update could not handle.
+# opens PRs for anything the bulk update could not handle. The bulk update
+# covers the Cargo and npm lockfiles (not integrations/opencode) and the Rust
+# toolchain pin; everything else below is updated by Dependabot alone.
 
 version: 2
 updates:
@@ -41,6 +43,63 @@ updates:
       timezone: "Etc/UTC"
   - package-ecosystem: "pip" # See documentation for possible values
     directory: "/docs" # Location of package manifests
+    schedule:
+      interval: "weekly"
+      day: "saturday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+  - package-ecosystem: "npm"
+    directory: "/docs"
+    schedule:
+      interval: "weekly"
+      day: "saturday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+  - package-ecosystem: "npm"
+    directory: "/integrations/opencode"
+    schedule:
+      interval: "weekly"
+      day: "saturday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+  # The pin in rust-toolchain.toml. The bulk update normally moves it; this
+  # opens a PR when a new Rust release fails the bulk update's builds.
+  - package-ecosystem: "rust-toolchain"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "saturday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+  # Workflows pin actions by commit SHA with the release in a trailing
+  # comment. Grouped so the weekly bumps arrive as one PR.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "saturday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    groups:
+      actions:
+        patterns:
+          - "*"
+  - package-ecosystem: "docker"
+    directory: "/.devcontainer"
+    schedule:
+      interval: "weekly"
+      day: "saturday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+  - package-ecosystem: "devcontainers"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "saturday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+  - package-ecosystem: "terraform"
+    directory: "/infrastructure"
     schedule:
       interval: "weekly"
       day: "saturday"

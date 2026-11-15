@@ -188,6 +188,10 @@ impl<'a> LibraryRenderer<'a> {
             DeclarationQualifier::Retain => self.write_ws("RETAIN"),
             DeclarationQualifier::NonRetain => self.write_ws("NON_RETAIN"),
             DeclarationQualifier::Persistent => self.write_ws("PERSISTENT"),
+            DeclarationQualifier::RetainPersistent => {
+                self.write_ws("RETAIN");
+                self.write_ws("PERSISTENT");
+            }
         }
     }
 
@@ -1436,7 +1440,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
                 // Unreachable via the grammar: `program_configuration()`'s
                 // `storage` is only ever produced from RETAIN/NON_RETAIN.
                 // Exhaustive match still needs an arm.
-                DeclarationQualifier::Persistent => "",
+                DeclarationQualifier::Persistent | DeclarationQualifier::RetainPersistent => "",
             };
             self.write_ws(storage);
         }

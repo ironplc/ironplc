@@ -587,6 +587,8 @@ fn transform_var_list(
 ) -> Result<Vec<VarDecl>, Diagnostic> {
     let qualifier = if var_list.constant {
         DeclarationQualifier::Constant
+    } else if var_list.retain && var_list.persistent {
+        DeclarationQualifier::RetainPersistent
     } else if var_list.retain {
         DeclarationQualifier::Retain
     } else if var_list.nonretain {
@@ -2123,6 +2125,39 @@ END_IF;
         assert_eq!(
             prog_decl.variables[0].qualifier,
             DeclarationQualifier::Persistent
+        );
+    }
+
+    #[test]
+    fn transform_when_var_list_retain_and_persistent_then_qualifier_is_retain_persistent() {
+        let xml = format!(
+            r#"{}
+  <types>
+    <dataTypes/>
+    <pous>
+      <pou name="TestProg" pouType="program">
+        <interface>
+          <localVars retain="true" persistent="true">
+            <variable name="nCounter">
+              <type><DINT/></type>
+            </variable>
+          </localVars>
+        </interface>
+      </pou>
+    </pous>
+  </types>
+</project>"#,
+            minimal_project_header()
+        );
+
+        let project = parse_project(&xml);
+        let file_id = test_file_id();
+        let library = transform_project(&project, &file_id, &CompilerOptions::default()).unwrap();
+
+        let prog_decl = cast!(&library.elements[0], LibraryElementKind::ProgramDeclaration);
+        assert_eq!(
+            prog_decl.variables[0].qualifier,
+            DeclarationQualifier::RetainPersistent
         );
     }
 
