@@ -103,8 +103,9 @@ Supported Dialects
    ``--allow-struct-initializer-expressions``,
    ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``,
    ``--allow-enum-base-type``, ``--allow-continue``,
-   ``--allow-keywords-as-names``, ``--allow-radix-subrange-bounds``, and
-   ``--allow-conditional-return``.
+   ``--allow-keywords-as-names``, ``--allow-radix-subrange-bounds``,
+   ``--allow-conditional-return``, ``--allow-omitted-call-argument``, and
+   ``--allow-trailing-call-comma``.
 
    **Selects:** ``--policy-string-to-num-non-numeric ignore-trailing`` and
    ``--policy-string-to-num-failure zero`` — CODESYS stops parsing at the
@@ -149,8 +150,8 @@ Supported Dialects
    ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``,
    ``--allow-enum-base-type``, ``--allow-continue``,
    ``--allow-keywords-as-names``, ``--allow-radix-subrange-bounds``,
-   ``--allow-conditional-return``, and
-   ``--allow-pou-header-semicolon``.
+   ``--allow-conditional-return``, ``--allow-pou-header-semicolon``,
+   ``--allow-omitted-call-argument``, and ``--allow-trailing-call-comma``.
 
    **Selects:** ``--policy-string-to-num-non-numeric ignore-trailing`` and
    ``--policy-string-to-num-failure zero``, as ``codesys``.
@@ -541,6 +542,17 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    :doc:`P4100 </reference/compiler/problems/P4100>`. A semicolon that a
    variable block does not follow is the standard empty statement at the start
    of the body and is always allowed.
+
+``--allow-omitted-call-argument``
+   Allow a call argument with no value (``b :=,`` for an input, ``Error=> ,``
+   for an output). It is the same as leaving the argument out. IEC 61131-3
+   gives every argument a value. Without this flag it produces
+   :doc:`P4101 </reference/compiler/problems/P4101>`.
+
+``--allow-trailing-call-comma``
+   Allow a comma before the closing parenthesis of a call's argument list.
+   IEC 61131-3 has no comma after the last argument. Without this flag it
+   produces :doc:`P4102 </reference/compiler/problems/P4102>`.
 
 Pass the flag when running :program:`ironplcc`:
 

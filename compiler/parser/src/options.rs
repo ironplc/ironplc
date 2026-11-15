@@ -518,6 +518,16 @@ define_compiler_options! {
     [TwinCat],
     allow_pou_header_semicolon,
 
+    "Allow a call argument with no value (b :=, or Error=> ,), which is the same as leaving it out",
+    "--allow-omitted-call-argument",
+    [Codesys, TwinCat],
+    allow_omitted_call_argument,
+
+    "Allow a trailing comma before the closing parenthesis of a call's argument list",
+    "--allow-trailing-call-comma",
+    [Codesys, TwinCat],
+    allow_trailing_call_comma,
+
     policies {
         "What STRING_TO_<numeric> treats as convertible when the string has non-numeric characters",
         "--policy-string-to-num-non-numeric",
