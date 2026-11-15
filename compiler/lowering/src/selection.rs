@@ -237,15 +237,11 @@ impl Lowering<'_> {
                     .fields(ty)
                     .and_then(|fields| fields.get(field.index() as usize))
                     .map(|declared| declared.ty),
-                Projection::Index(subscripts) => {
-                    let constant = subscripts
-                        .iter()
-                        .all(|subscript| matches!(subscript.kind(), ExprKind::Const(_)));
-                    match types.kind(ty) {
-                        Some(TypeKind::Array { element, .. }) if constant => Some(*element),
-                        Some(_) | None => None,
-                    }
-                }
+                Projection::Index(index) => index
+                    .subscripts()
+                    .iter()
+                    .all(|subscript| matches!(subscript.kind(), ExprKind::Const(_)))
+                    .then_some(index.element()),
                 Projection::Deref => match types.reference(ty) {
                     Some((target, Nullability::NonNull)) => Some(target),
                     Some((_, Nullability::Nullable)) | None => None,

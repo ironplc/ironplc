@@ -31,6 +31,22 @@ fn index_when_one_subscript_per_dimension_then_element_place() {
     assert_eq!(place.to_string(), "v8[(const i32s 2), (read i32s v0)]");
 }
 
+/// REQ-LOW-ir-207: an `Index` keeps the element type and the bounds of the
+/// array it was checked against.
+#[test]
+fn index_when_place_is_array_then_projection_records_array_shape() {
+    let (f, a) = with_array();
+    let place =
+        f.b.index(f.place(a), vec![int(2), int(0)], &span())
+            .unwrap();
+    let element = f.ty(f.dint);
+    assert!(matches!(
+        place.path(),
+        [Projection::Index(index)]
+            if index.element() == element && index.dimensions() == [(1, 5), (0, 3)]
+    ));
+}
+
 /// REQ-LOW-lowering-031: the number of subscripts is the number of
 /// dimensions.
 #[test]
