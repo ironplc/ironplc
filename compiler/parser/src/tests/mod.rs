@@ -34,6 +34,7 @@ mod named_array_initializers;
 mod partial_access;
 mod persistent;
 mod pointer_to;
+mod pou_header_semicolon;
 mod pragmas;
 mod property;
 mod radix_subrange_bound;

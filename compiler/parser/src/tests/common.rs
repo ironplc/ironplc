@@ -223,6 +223,16 @@ pub(crate) fn opts_with_fb_inheritance() -> CompilerOptions {
     }
 }
 
+/// Options for a `;` after a POU header, with the OOP syntax a `METHOD` or
+/// `EXTENDS` header needs.
+pub(crate) fn opts_with_pou_header_semicolon() -> CompilerOptions {
+    CompilerOptions {
+        allow_pou_header_semicolon: true,
+        allow_fb_inheritance: true,
+        ..CompilerOptions::default()
+    }
+}
+
 pub(crate) fn extract_fb(library: &Library) -> &FunctionBlockDeclaration {
     let element = library
         .elements

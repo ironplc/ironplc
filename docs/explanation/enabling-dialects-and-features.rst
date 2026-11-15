@@ -148,8 +148,9 @@ Supported Dialects
    ``--allow-struct-initializer-expressions``,
    ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``,
    ``--allow-enum-base-type``, ``--allow-continue``,
-   ``--allow-keywords-as-names``, ``--allow-radix-subrange-bounds``, and
-   ``--allow-conditional-return``.
+   ``--allow-keywords-as-names``, ``--allow-radix-subrange-bounds``,
+   ``--allow-conditional-return``, and
+   ``--allow-pou-header-semicolon``.
 
    **Selects:** ``--policy-string-to-num-non-numeric ignore-trailing`` and
    ``--policy-string-to-num-failure zero``, as ``codesys``.
@@ -530,6 +531,16 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    ``RETURN`` with no operand. The condition is never the return value of a
    function. Without this flag it produces
    :doc:`P4098 </reference/compiler/problems/P4098>`.
+
+``--allow-pou-header-semicolon``
+   Allow a semicolon after the header of a ``PROGRAM``, ``FUNCTION``,
+   ``FUNCTION_BLOCK`` or ``METHOD``, before its first variable block, as in
+   ``FUNCTION_BLOCK FB_Motor EXTENDS FB_Base;``. The IEC 61131-3 standard
+   grammar puts no terminator after a header. The semicolon has no meaning:
+   the declaration is the same as without it. Without this flag it produces
+   :doc:`P4100 </reference/compiler/problems/P4100>`. A semicolon that a
+   variable block does not follow is the standard empty statement at the start
+   of the body and is always allowed.
 
 Pass the flag when running :program:`ironplcc`:
 

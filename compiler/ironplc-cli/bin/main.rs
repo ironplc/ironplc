@@ -274,6 +274,11 @@ struct FileArgs {
     /// standard.
     #[arg(long)]
     allow_conditional_return: bool,
+    /// Allow a semicolon after a PROGRAM, FUNCTION, FUNCTION_BLOCK or
+    /// METHOD header (e.g. `FUNCTION_BLOCK FB EXTENDS FB_Base;`). This is a
+    /// dialect extension not part of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_pou_header_semicolon: bool,
 
     /// Allow a general (non-constant) expression as the value in a
     /// structured/call-style initializer's `name := value` pairs (e.g.
@@ -370,6 +375,7 @@ impl FileArgs {
         options.allow_paren_string_length |= self.allow_paren_string_length;
         options.allow_radix_subrange_bounds |= self.allow_radix_subrange_bounds;
         options.allow_conditional_return |= self.allow_conditional_return;
+        options.allow_pou_header_semicolon |= self.allow_pou_header_semicolon;
         options.allow_struct_initializer_expressions |= self.allow_struct_initializer_expressions;
         options.allow_fb_inheritance |= self.allow_fb_inheritance;
         options.allow_enum_explicit_values |= self.allow_enum_explicit_values;

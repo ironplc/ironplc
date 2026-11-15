@@ -513,6 +513,10 @@ define_compiler_options! {
     "--allow-conditional-return",
     [Codesys, TwinCat],
     allow_conditional_return,
+    "Allow a semicolon after a PROGRAM, FUNCTION, FUNCTION_BLOCK or METHOD header, e.g. FUNCTION_BLOCK FB EXTENDS FB_Base;",
+    "--allow-pou-header-semicolon",
+    [TwinCat],
+    allow_pou_header_semicolon,
 
     policies {
         "What STRING_TO_<numeric> treats as convertible when the string has non-numeric characters",
