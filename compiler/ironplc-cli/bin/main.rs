@@ -267,6 +267,11 @@ struct FileArgs {
     #[arg(long)]
     allow_radix_subrange_bounds: bool,
 
+    /// Allow RETURN(condition), a RETURN that happens only when the BOOL
+    /// condition is TRUE. This is an extension not part of the IEC 61131-3
+    /// standard.
+    #[arg(long)]
+    allow_conditional_return: bool,
     /// Allow a semicolon after a PROGRAM, FUNCTION, FUNCTION_BLOCK or
     /// METHOD header (e.g. `FUNCTION_BLOCK FB EXTENDS FB_Base;`). This is a
     /// dialect extension not part of the IEC 61131-3 standard.
@@ -367,6 +372,7 @@ impl FileArgs {
         options.allow_radix_case_labels |= self.allow_radix_case_labels;
         options.allow_paren_string_length |= self.allow_paren_string_length;
         options.allow_radix_subrange_bounds |= self.allow_radix_subrange_bounds;
+        options.allow_conditional_return |= self.allow_conditional_return;
         options.allow_pou_header_semicolon |= self.allow_pou_header_semicolon;
         options.allow_struct_initializer_expressions |= self.allow_struct_initializer_expressions;
         options.allow_fb_inheritance |= self.allow_fb_inheritance;

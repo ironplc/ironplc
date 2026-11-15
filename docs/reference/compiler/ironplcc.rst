@@ -355,12 +355,20 @@ Options
    :doc:`P4095 </reference/compiler/problems/P4095>` when used without this
    flag.
 
+``--allow-conditional-return``
+   Allow ``RETURN(condition)``, a ``RETURN`` that happens only when the
+   ``BOOL`` condition is ``TRUE``. IEC 61131-3 defines ``RETURN`` with no
+   operand, so this is an extension. The condition is never the return value
+   of a function. Produces
+   :doc:`P4098 </reference/compiler/problems/P4098>` when used without this
+   flag.
+
 ``--allow-pou-header-semicolon``
    Allow a semicolon after a ``PROGRAM``, ``FUNCTION``, ``FUNCTION_BLOCK`` or
    ``METHOD`` header, before its first variable block (e.g.
    ``FUNCTION_BLOCK FB_Motor EXTENDS FB_Base;``). The IEC 61131-3 standard
    puts no terminator after a header. Produces
-   :doc:`P4098 </reference/compiler/problems/P4098>` when used without this
+   :doc:`P4100 </reference/compiler/problems/P4100>` when used without this
    flag.
 
 ``--policy-string-to-num-non-numeric`` *ALTERNATIVE*

@@ -326,8 +326,16 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "PROGRAM main\nVAR\na : ARRAY[16#0..16#F] OF INT;\nEND_VAR\nEND_PROGRAM",
     },
+    // `RETURN(cond)`: the grammar accepts it unconditionally; a token-stream
+    // rule rejects it (P4098) when the flag is off. A plain `RETURN;` is
+    // always accepted.
+    FlagFixture {
+        key: "allow_conditional_return",
+        prereqs: &[],
+        source: "PROGRAM main\nVAR\nb : BOOL;\nEND_VAR\nRETURN(b);\nEND_PROGRAM",
+    },
     // A `;` after the POU header, before the first VAR block. The grammar
-    // accepts it unconditionally; a token-stream rule rejects it (P4098)
+    // accepts it unconditionally; a token-stream rule rejects it (P4100)
     // when the flag is off.
     FlagFixture {
         key: "allow_pou_header_semicolon",

@@ -509,6 +509,10 @@ define_compiler_options! {
     [Rusty, Codesys, TwinCat],
     allow_radix_subrange_bounds,
 
+    "Allow RETURN(condition), a RETURN that happens only when the BOOL condition is TRUE",
+    "--allow-conditional-return",
+    [Codesys, TwinCat],
+    allow_conditional_return,
     "Allow a semicolon after a PROGRAM, FUNCTION, FUNCTION_BLOCK or METHOD header, e.g. FUNCTION_BLOCK FB EXTENDS FB_Base;",
     "--allow-pou-header-semicolon",
     [TwinCat],

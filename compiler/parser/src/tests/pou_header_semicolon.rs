@@ -140,12 +140,12 @@ fn parse_when_header_semicolon_then_same_ast_as_without(#[case] source: &str) {
 #[case::program(PROGRAM_SOURCE)]
 #[case::function(FUNCTION_SOURCE)]
 #[case::method(METHOD_SOURCE)]
-fn parse_when_header_semicolon_and_flag_off_then_p4098(#[case] source: &str) {
+fn parse_when_header_semicolon_and_flag_off_then_p4100(#[case] source: &str) {
     let options = CompilerOptions {
         allow_fb_inheritance: true,
         ..CompilerOptions::default()
     };
-    assert_eq!(problem_codes(source, &options), vec!["P4098"]);
+    assert_eq!(problem_codes(source, &options), vec!["P4100"]);
 }
 
 /// A `;` that a VAR block does not follow is the standard empty statement

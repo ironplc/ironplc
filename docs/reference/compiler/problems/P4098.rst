@@ -4,16 +4,15 @@ P4098
 
 .. problem-summary:: P4098
 
-This error occurs when a semicolon closes the header of a ``PROGRAM``,
-``FUNCTION``, ``FUNCTION_BLOCK`` or ``METHOD`` before its first variable
-block, without the ``--allow-pou-header-semicolon`` compiler flag.
+This error occurs when a ``RETURN`` statement has a parenthesized condition
+(``RETURN(condition)``) without the ``--allow-conditional-return`` compiler
+flag.
 
-The IEC 61131-3 standard grammar (Annex B) puts no terminator after a
-header: the variable blocks follow the name, return type, ``EXTENDS`` and
-``IMPLEMENTS`` directly. A semicolon there is an extension.
+The IEC 61131-3 standard grammar (Annex B) defines ``RETURN`` with no
+operand. The conditional form, which returns only when the condition is
+``TRUE``, is an extension.
 
-A semicolon after the header that a variable block does not follow is the
-standard empty statement at the start of the body and is always allowed.
+A plain ``RETURN;`` is standard syntax and is always allowed.
 
 Example
 -------
@@ -22,23 +21,27 @@ The following code will generate error P4098:
 
 .. code-block::
 
-   FUNCTION_BLOCK FB_Motor EXTENDS FB_Base;
-   VAR_INPUT
-       speed : INT;
+   FUNCTION_BLOCK FB_Brake
+   VAR
+       closed : BOOL;
    END_VAR
+       RETURN(closed);
    END_FUNCTION_BLOCK
 
-To fix this error, remove the semicolon:
+To fix this error, either write the condition as an ``IF``:
 
 .. code-block::
 
-   FUNCTION_BLOCK FB_Motor EXTENDS FB_Base
-   VAR_INPUT
-       speed : INT;
+   FUNCTION_BLOCK FB_Brake
+   VAR
+       closed : BOOL;
    END_VAR
+       IF closed THEN
+           RETURN;
+       END_IF;
    END_FUNCTION_BLOCK
 
 Or enable the extension:
 
-.. |flag| replace:: ``--allow-pou-header-semicolon``
+.. |flag| replace:: ``--allow-conditional-return``
 .. include:: /includes/enabled-by-flag.rst

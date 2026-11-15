@@ -243,6 +243,7 @@ END_CONFIGURATION"
     in_program,
     CompilerOptions::default
 )]
+#[case::conditional_return("RETURN·(·r·)·;", in_program, opts_with_conditional_return)]
 #[case::for_statement(
     "FOR v·:=·0· TO 3· DO b := 1;· END_FOR;",
     in_program,

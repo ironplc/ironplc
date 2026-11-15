@@ -986,7 +986,7 @@ parser! {
         }
     }
     rule structure_element_name() ->Id = identifier()
-    rule structure_initialization() -> Vec<StructureElementInit> = tok(TokenType::LeftParen) _ elems:structure_element_initialization() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { elems }
+    rule structure_initialization() -> Vec<StructureElementInit> = tok(TokenType::LeftParen) _ elems:structure_element_initialization() ** (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { elems }
     // `constant()` and a qualified `Type#VALUE` are grammatically a strict
     // subset of `expression()` (e.g. a bare identifier is a valid, but
     // truncated, match for `pDevice^.Delta`) -- the trailing lookahead
@@ -2354,7 +2354,18 @@ parser! {
       }
 
     // B.3.2.2 Subprogram control statements
-    rule subprogram_control_statement() -> StmtKind = m:method_invocation() { m } / fb:fb_invocation() { fb } / tok(TokenType::Return) { StmtKind::Return }
+    rule subprogram_control_statement() -> StmtKind = m:method_invocation() { m } / fb:fb_invocation() { fb } / start:tok(TokenType::Return) _ tok(TokenType::LeftParen) _ expr:expression() _ end:tok(TokenType::RightParen) {
+      // TwinCAT: `RETURN(cond)` returns only when `cond` is TRUE. The
+      // argument is not a return value, so it is the same as an IF.
+      StmtKind::If(If {
+        expr,
+        body: vec![StmtKind::Return],
+        else_ifs: vec![],
+        else_body: vec![],
+        span: SourceSpan::join(&start.span, &end.span),
+      })
+    }
+    / tok(TokenType::Return) { StmtKind::Return }
     rule fb_invocation() -> StmtKind = name:fb_name() _ tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ end:tok(TokenType::RightParen) {
       let span = SourceSpan::join(&name.span, &end.span);
       StmtKind::FbCall(FbCall {
@@ -2458,7 +2469,7 @@ parser! {
         span: SourceSpan::join(&start.span, &end.span),
       }
     }
-    rule control_variable() -> Id = identifier()
+    rule control_variable() -> Id = variable_identifier()
     rule for_list() -> (Expr, Expr, Option<Expr>) = from:expression() _ tok(TokenType::To) _ to:expression() _ step:(tok(TokenType::By) _ s:expression() { s })? { (from, to, step) }
     rule while_statement() -> While = start:tok(TokenType::While) _ condition:expression() _ tok(TokenType::Do) _ body:statement_list() _ end:tok(TokenType::EndWhile) {
       While {

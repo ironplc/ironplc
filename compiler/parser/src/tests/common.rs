@@ -85,6 +85,13 @@ pub(crate) fn opts_with_paren_string_length() -> CompilerOptions {
     }
 }
 
+pub(crate) fn opts_with_conditional_return() -> CompilerOptions {
+    CompilerOptions {
+        allow_conditional_return: true,
+        ..CompilerOptions::default()
+    }
+}
+
 /// Parse with `allow_paren_string_length` enabled.
 pub(crate) fn parse_text_paren_string_length(source: &str) -> Library {
     let options = opts_with_paren_string_length();
