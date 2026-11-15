@@ -355,6 +355,14 @@ Options
    :doc:`P4095 </reference/compiler/problems/P4095>` when used without this
    flag.
 
+``--allow-conditional-return``
+   Allow ``RETURN(condition)``, a ``RETURN`` that happens only when the
+   ``BOOL`` condition is ``TRUE``. IEC 61131-3 defines ``RETURN`` with no
+   operand, so this is an extension. The condition is never the return value
+   of a function. Produces
+   :doc:`P4098 </reference/compiler/problems/P4098>` when used without this
+   flag.
+
 ``--policy-string-to-num-non-numeric`` *ALTERNATIVE*
    Select what ``STRING_TO_<numeric>`` treats as convertible when the string
    has non-numeric characters: ``reject`` (the whole string must be a

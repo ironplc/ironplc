@@ -1,5 +1,6 @@
-//! `RETURN(condition)` (TwinCAT): a return that only happens when the
-//! condition is TRUE. The argument is not a return value.
+//! `RETURN(condition)`: a return that only happens when the condition is
+//! TRUE. The argument is not a return value. Gated by
+//! `allow_conditional_return`.
 
 use super::common::*;
 
@@ -16,7 +17,8 @@ PROGRAM main
 VAR b : BOOL; END_VAR
 RETURN(b);
 END_PROGRAM";
-    let library = parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
+    let library =
+        parse_program(source, &FileId::default(), &opts_with_conditional_return()).unwrap();
     let if_stmt = cast!(&program_body(&library)[0], StmtKind::If);
     assert_eq!(1, if_stmt.body.len());
     assert!(matches!(if_stmt.body[0], StmtKind::Return));
@@ -41,7 +43,8 @@ PROGRAM main
 VAR x : INT; END_VAR
 RETURN (x > 5);
 END_PROGRAM";
-    let library = parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
+    let library =
+        parse_program(source, &FileId::default(), &opts_with_conditional_return()).unwrap();
     assert!(matches!(program_body(&library)[0], StmtKind::If(_)));
 }
 
@@ -53,5 +56,19 @@ VAR b, c : BOOL; END_VAR
 RETURN(b)
 c := TRUE;
 END_PROGRAM";
-    assert!(parse_program(source, &FileId::default(), &CompilerOptions::default()).is_err());
+    assert!(parse_program(source, &FileId::default(), &opts_with_conditional_return()).is_err());
+}
+
+#[test]
+fn parse_when_return_has_condition_and_flag_off_then_p4098() {
+    let source = "
+PROGRAM main
+VAR b : BOOL; END_VAR
+RETURN(b);
+END_PROGRAM";
+    let err = parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap_err();
+    assert_eq!(
+        ironplc_problems::Problem::ConditionalReturnNotAllowed.code(),
+        err.code
+    );
 }
