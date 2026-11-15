@@ -163,3 +163,38 @@ fn parse_when_call_argument_extension_and_flag_off_then_problem_code(
 
     assert!(error.contains(code), "{error}");
 }
+
+fn parse_declaration_initializer(initializer: &str) -> Result<(), String> {
+    let source = format!("PROGRAM main\nVAR\n    t : FB_X{initializer};\nEND_VAR\nEND_PROGRAM");
+    parse_program(
+        &source,
+        &FileId::default(),
+        &opts_with_call_argument_extensions(),
+    )
+    .map(|_| ())
+    .map_err(|d| format!("{d:?}"))
+}
+
+// TwinCAT 4024.66 rejects an argument with no value, and a trailing comma, in a
+// declaration initializer, in both the call-style form `x : FB(...)` and the
+// structure-initializer form `x : FB := (...)`. The extension that drops them
+// from a call must not reach a declaration.
+#[rstest]
+#[case::call_style_omitted_input("(PT := , IN := FALSE)")]
+#[case::call_style_trailing_comma("(PT := T#1S, )")]
+#[case::call_style_omitted_last_input("(PT := T#1S, IN := )")]
+#[case::structure_omitted_input(" := (PT := , IN := FALSE)")]
+#[case::structure_trailing_comma(" := (PT := T#1S, )")]
+#[case::structure_omitted_last_input(" := (PT := T#1S, IN := )")]
+fn parse_when_declaration_initializer_has_no_value_then_err(#[case] initializer: &str) {
+    assert!(parse_declaration_initializer(initializer).is_err());
+}
+
+#[rstest]
+#[case::call_style("(PT := T#1S, IN := FALSE)")]
+#[case::structure(" := (PT := T#1S, IN := FALSE)")]
+fn parse_when_declaration_initializer_has_all_values_then_ok(#[case] initializer: &str) {
+    let result = parse_declaration_initializer(initializer);
+
+    assert!(result.is_ok(), "{result:?}");
+}
