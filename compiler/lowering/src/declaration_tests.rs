@@ -188,3 +188,28 @@ fn lower_statement_when_block_variable_retained_then_block_field_keeps_it() {
         Some(TypeKind::FunctionBlock { .. })
     ));
 }
+
+/// REQ-LOW-lowering-024: a function block's `PERSISTENT` input and its
+/// `RETAIN PERSISTENT` output, in either order, are fields that carry
+/// `Persistent`.
+#[test]
+fn lower_statement_when_block_io_persistent_then_block_field_is_persistent() {
+    let outcome = lower(
+        "FUNCTION_BLOCK Counter
+         VAR_INPUT PERSISTENT start : DINT; END_VAR
+         VAR_OUTPUT RETAIN PERSISTENT count : DINT; END_VAR
+         VAR PERSISTENT RETAIN total : DINT; END_VAR
+            count := start;
+            total := count;
+         END_FUNCTION_BLOCK",
+        "Counter",
+    );
+
+    for name in ["start", "count", "total"] {
+        assert_eq!(
+            instance_field(&outcome, name).retention,
+            Retention::Persistent,
+            "{name}"
+        );
+    }
+}

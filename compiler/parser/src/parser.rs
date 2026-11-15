@@ -1202,7 +1202,7 @@ parser! {
     rule field_selector() -> Id = identifier()
 
     // B.1.4.3 Declarations and initialization
-    rule input_declarations() -> Vec<VarDeclarations> = tok(TokenType::VarInput) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep_or_empty(<input_declaration()>) _ tok(TokenType::EndVar) {
+    rule input_declarations() -> Vec<VarDeclarations> = tok(TokenType::VarInput) _ qualifier:retention_qualifier()? _ declarations:semisep_or_empty(<input_declaration()>) _ tok(TokenType::EndVar) {
       VarDeclarations::with(declarations, qualifier.unwrap_or(DeclarationQualifier::Unspecified))
     }
     rule input_declaration() -> VarDeclarations =
@@ -1360,7 +1360,7 @@ parser! {
       // TwinCAT/CODESYS `POINTER TO POINTER TO INT`, at any depth.
       / syntax:ref_to_keyword() _ target:ref_to_target() { ReferenceTarget::Reference(Box::new(ReferenceSpec { syntax, target })) }
       / tn:non_generic_type_name() { ReferenceTarget::Named(tn) }
-    pub rule output_declarations() -> Vec<VarDecl> = tok(TokenType::VarOutput) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep_or_empty(<var_init_decl()>) _ tok(TokenType::EndVar) {
+    pub rule output_declarations() -> Vec<VarDecl> = tok(TokenType::VarOutput) _ qualifier:retention_qualifier()? _ declarations:semisep_or_empty(<var_init_decl()>) _ tok(TokenType::EndVar) {
       VarDeclarations::flat_map(declarations, VariableType::Output, qualifier)
     }
     pub rule input_output_declarations() -> Vec<VarDecl> = tok(TokenType::VarInOut) _ declarations:semisep_or_empty(<var_declaration()>) _ tok(TokenType::EndVar) {
@@ -1407,10 +1407,21 @@ parser! {
       let qualifier = Option::Some(DeclarationQualifier::Retain);
       VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, qualifier))
     }
-    rule persistent_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ tok(TokenType::Persistent) _ declarations:semisep_or_empty(<var_init_decl()>) _ tok(TokenType::EndVar) {
-      let qualifier = Option::Some(DeclarationQualifier::Persistent);
-      VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, qualifier))
+    rule persistent_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ qualifier:persistent_qualifier() _ declarations:semisep_or_empty(<var_init_decl()>) _ tok(TokenType::EndVar) {
+      VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, Some(qualifier)))
     }
+    // The storage qualifier of a variable block: IEC 61131-3 `RETAIN` and
+    // `NON_RETAIN`, or one of the `PERSISTENT` forms.
+    rule retention_qualifier() -> DeclarationQualifier = persistent_qualifier() / tok(TokenType::Retain) { DeclarationQualifier::Retain } / tok(TokenType::NonRetain) { DeclarationQualifier::NonRetain }
+    // `--allow-persistent-var` extension, not part of IEC 61131-3:
+    // `PERSISTENT`, or `PERSISTENT` combined with `RETAIN` in either order
+    // (CODESYS and TwinCAT accept both orders and give them one meaning).
+    // With the flag off, `PERSISTENT` is demoted to an identifier, so none
+    // of these alternatives can match.
+    rule persistent_qualifier() -> DeclarationQualifier =
+      tok(TokenType::Retain) _ tok(TokenType::Persistent) { DeclarationQualifier::RetainPersistent }
+      / tok(TokenType::Persistent) _ tok(TokenType::Retain) { DeclarationQualifier::RetainPersistent }
+      / tok(TokenType::Persistent) { DeclarationQualifier::Persistent }
     rule located_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ qualifier:(tok(TokenType::Constant) { DeclarationQualifier::Constant } / tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep_or_empty(<located_var_decl()>) _ tok(TokenType::EndVar) {
       let qualifier = qualifier.unwrap_or(DeclarationQualifier::Unspecified);
       VarDeclarations::Located(VarDeclarations::map(declarations, &qualifier))
@@ -1458,7 +1469,7 @@ parser! {
       }
     }
     rule global_var_name() -> Id = i:identifier() { i }
-    rule global_var_declarations__qualifier() -> DeclarationQualifier = tok(TokenType::Constant) { DeclarationQualifier::Constant } / tok(TokenType::Retain) { DeclarationQualifier::Retain } / tok(TokenType::Persistent) { DeclarationQualifier::Persistent }
+    rule global_var_declarations__qualifier() -> DeclarationQualifier = tok(TokenType::Constant) { DeclarationQualifier::Constant } / persistent_qualifier() / tok(TokenType::Retain) { DeclarationQualifier::Retain }
     pub rule global_var_declarations() -> Vec<VarDecl> = tok(TokenType::VarGlobal) _ qualifier:global_var_declarations__qualifier()? _ declarations:semisep_or_empty(<global_var_decl()>) _ tok(TokenType::EndVar) {
       // TODO set the options - this is pretty similar to VarInit - maybe it should be the same
       let declarations = declarations.into_iter().flatten();
@@ -1878,7 +1889,7 @@ parser! {
 
     // A VAR block in a program that may contain both located and non-located
     // declarations (e.g. `Motor : FB; xStart AT %IX0.0 : BOOL;`).
-    rule program_var_declarations() -> Vec<VarDeclarations> = tok(TokenType::Var) _ qualifier:(tok(TokenType::Constant) { DeclarationQualifier::Constant } / tok(TokenType::Retain) { DeclarationQualifier::Retain } / tok(TokenType::NonRetain) { DeclarationQualifier::NonRetain } / tok(TokenType::Persistent) { DeclarationQualifier::Persistent })? _ declarations:semisep_or_empty(<program_var_decl()>) _ tok(TokenType::EndVar) {
+    rule program_var_declarations() -> Vec<VarDeclarations> = tok(TokenType::Var) _ qualifier:(tok(TokenType::Constant) { DeclarationQualifier::Constant } / retention_qualifier())? _ declarations:semisep_or_empty(<program_var_decl()>) _ tok(TokenType::EndVar) {
       let qualifier = qualifier.unwrap_or(DeclarationQualifier::Unspecified);
       let mut located = Vec::new();
       let mut regular = Vec::new();

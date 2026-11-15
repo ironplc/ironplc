@@ -161,7 +161,9 @@ struct FileArgs {
     #[arg(long)]
     allow_adr: bool,
 
-    /// Allow the Beckhoff TwinCAT/CODESYS `PERSISTENT` variable qualifier.
+    /// Allow the `PERSISTENT` variable qualifier, alone or combined with
+    /// `RETAIN` in either order, on `VAR`, `VAR_GLOBAL`, `VAR_INPUT` and
+    /// `VAR_OUTPUT` blocks.
     /// This is an extension, not part of the IEC 61131-3 standard; the
     /// `twincat` and `codesys` dialects enable it.
     #[arg(long)]
