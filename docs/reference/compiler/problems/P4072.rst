@@ -5,7 +5,8 @@ P4072
 .. problem-summary:: P4072
 
 This error occurs when the condition of an ``IF``, ``ELSIF``, ``WHILE`` or
-``REPEAT ... UNTIL`` statement is not a ``BOOL``.
+``REPEAT ... UNTIL`` statement, or of a conditional ``RETURN(condition)``, is
+not a ``BOOL``.
 
 IEC 61131-3 defines each of these statements over a Boolean expression. A
 condition of another type, such as an integer that counts as true when it is

@@ -103,7 +103,8 @@ Supported Dialects
    ``--allow-struct-initializer-expressions``,
    ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``,
    ``--allow-enum-base-type``, ``--allow-continue``,
-   ``--allow-keywords-as-names``, and ``--allow-radix-subrange-bounds``.
+   ``--allow-keywords-as-names``, ``--allow-radix-subrange-bounds``, and
+   ``--allow-conditional-return``.
 
    **Selects:** ``--policy-string-to-num-non-numeric ignore-trailing`` and
    ``--policy-string-to-num-failure zero`` — CODESYS stops parsing at the
@@ -147,7 +148,8 @@ Supported Dialects
    ``--allow-struct-initializer-expressions``,
    ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``,
    ``--allow-enum-base-type``, ``--allow-continue``,
-   ``--allow-keywords-as-names``, and ``--allow-radix-subrange-bounds``.
+   ``--allow-keywords-as-names``, ``--allow-radix-subrange-bounds``, and
+   ``--allow-conditional-return``.
 
    **Selects:** ``--policy-string-to-num-non-numeric ignore-trailing`` and
    ``--policy-string-to-num-failure zero``, as ``codesys``.
@@ -520,6 +522,14 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    Each keyword keeps its keyword role in the same program
    (``RESOURCE r ON PLC``, an ``R_EDGE`` input). Without this flag such a
    name produces :doc:`P4095 </reference/compiler/problems/P4095>`.
+
+``--allow-conditional-return``
+   Allow :doc:`RETURN(condition) </reference/language/structured-text/return>`,
+   a ``RETURN`` that happens only when the ``BOOL`` condition is ``TRUE``, as
+   if written ``IF condition THEN RETURN; END_IF;``. IEC 61131-3 defines
+   ``RETURN`` with no operand. The condition is never the return value of a
+   function. Without this flag it produces
+   :doc:`P4098 </reference/compiler/problems/P4098>`.
 
 Pass the flag when running :program:`ironplcc`:
 

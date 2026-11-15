@@ -74,7 +74,7 @@ enable it.
 A ``PERSISTENT`` qualifier may follow ``VAR`` and ``VAR_GLOBAL``, and the
 ``VAR_INPUT`` and ``VAR_OUTPUT`` of a function block or program. A function
 keeps no values between calls, so a function that declares a ``PERSISTENT``
-variable is an error (:doc:`/reference/compiler/problems/P4098`).
+variable is an error (:doc:`/reference/compiler/problems/P4099`).
 
 .. playground::
    :allows: persistent-var

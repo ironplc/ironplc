@@ -23,7 +23,7 @@
 //! ```ignore
 //! FUNCTION Twice : DINT
 //! VAR_INPUT PERSISTENT
-//!     value : DINT;    (* P4098: a function has no instance *)
+//!     value : DINT;    (* P4099: a function has no instance *)
 //! END_VAR
 //!     Twice := value * 2;
 //! END_FUNCTION
@@ -130,7 +130,7 @@ END_FUNCTION",
     );
 
     rule_err_at!(
-        apply_when_function_has_persistent_input_then_p4098,
+        apply_when_function_has_persistent_input_then_p4099,
         "
 FUNCTION Twice : DINT
 VAR_INPUT PERSISTENT
@@ -145,7 +145,7 @@ END_FUNCTION",
 
     rule_err!(
         /// Each persistent variable is reported, in either kind of block.
-        apply_when_function_has_persistent_output_and_retain_persistent_input_then_p4098_for_each,
+        apply_when_function_has_persistent_output_and_retain_persistent_input_then_p4099_for_each,
         "
 FUNCTION Twice : DINT
 VAR_INPUT PERSISTENT RETAIN
