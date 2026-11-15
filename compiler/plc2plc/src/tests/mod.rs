@@ -7,6 +7,7 @@ mod common;
 
 mod adr;
 mod case;
+mod conditional_return;
 mod configuration_globals;
 mod constant_initializers;
 mod constant_name_initializers;

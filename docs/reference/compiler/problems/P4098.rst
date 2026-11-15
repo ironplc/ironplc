@@ -1,0 +1,47 @@
+=====
+P4098
+=====
+
+.. problem-summary:: P4098
+
+This error occurs when a ``RETURN`` statement has a parenthesized condition
+(``RETURN(condition)``) without the ``--allow-conditional-return`` compiler
+flag.
+
+The IEC 61131-3 standard grammar (Annex B) defines ``RETURN`` with no
+operand. The conditional form, which returns only when the condition is
+``TRUE``, is an extension.
+
+A plain ``RETURN;`` is standard syntax and is always allowed.
+
+Example
+-------
+
+The following code will generate error P4098:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Brake
+   VAR
+       closed : BOOL;
+   END_VAR
+       RETURN(closed);
+   END_FUNCTION_BLOCK
+
+To fix this error, either write the condition as an ``IF``:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Brake
+   VAR
+       closed : BOOL;
+   END_VAR
+       IF closed THEN
+           RETURN;
+       END_IF;
+   END_FUNCTION_BLOCK
+
+Or enable the extension:
+
+.. |flag| replace:: ``--allow-conditional-return``
+.. include:: /includes/enabled-by-flag.rst

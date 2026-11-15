@@ -1,5 +1,7 @@
 //! Semantic rule that the condition of an `IF`, `ELSIF`, `WHILE` or
-//! `REPEAT ... UNTIL` statement is a `BOOL`.
+//! `REPEAT ... UNTIL` statement is a `BOOL`. The conditional
+//! `RETURN(condition)` extension is parsed as an `IF`, so this rule checks
+//! its condition too.
 //!
 //! IEC 61131-3 defines each of these statements over a Boolean expression
 //! (see 3.3.2.3 and 3.3.2.4). A condition of another type is a C idiom --
@@ -211,6 +213,16 @@ END_PROGRAM"
     #[case::repeat("REPEAT y := 1; UNTIL c END_REPEAT;")]
     fn apply_when_condition_is_dint_then_p4072(#[case] statement: &str) {
         assert_eq!(codes_for(&program_with("DINT", statement)), vec![p4072()]);
+    }
+
+    #[test]
+    fn apply_when_conditional_return_condition_is_dint_then_p4072() {
+        let options = CompilerOptions {
+            allow_conditional_return: true,
+            ..CompilerOptions::default()
+        };
+        let program = program_with("DINT", "RETURN(c);");
+        assert_eq!(rule_codes(apply, &program, &options), vec![p4072()]);
     }
 
     #[rstest]

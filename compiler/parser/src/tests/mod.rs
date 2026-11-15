@@ -8,6 +8,7 @@ mod common;
 mod arrays;
 mod case;
 mod comments_and_errors;
+mod conditional_return;
 mod constant_initializers;
 mod constant_name_initializers;
 mod continue_statement;
