@@ -84,3 +84,21 @@ END_FUNCTION_BLOCK",
         Some(value) if value.value == Id::from("Idle") && value.type_name.is_some()
     ));
 }
+
+#[test]
+fn parse_when_user_type_with_empty_member_list_then_late_resolved_empty_members() {
+    let init = first_var_initializer(
+        "
+FUNCTION_BLOCK fb
+VAR
+    inst : SomeType := ();
+END_VAR
+END_FUNCTION_BLOCK",
+    );
+    let late = cast!(&init, InitialValueAssignmentKind::LateResolvedType);
+    assert_eq!(TypeName::from("SomeType"), late.type_name);
+    assert!(matches!(
+        &late.initial_value,
+        Some(LateResolvedInitialValue::Members(elements)) if elements.is_empty()
+    ));
+}
