@@ -28,6 +28,10 @@ test: compile
 # Build everything (CI entry point)
 ci: setup test
 
+# Updates dependencies to latest version (or at least tries to)
+update:
+  npm update
+
 # Serve locally for development
 serve: compile
   cd _build && python3 -m http.server 8080

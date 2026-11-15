@@ -129,9 +129,21 @@ commit-version authorname authoremail version:
   git tag -a "v{{version}}" -m "Create tagged release v{{version}}"
 
 # Updates dependencies to latest versions
-update:
+update: update-rust-toolchain
   cd compiler && just update
   cd integrations/vscode && just update
+  cd playground && just update
+  cd docs && just update
+
+# Moves the pin in rust-toolchain.toml to the latest stable Rust release.
+update-rust-toolchain:
+  #! /bin/bash
+  set -euo pipefail
+  rustup toolchain install stable --profile minimal --no-self-update
+  latest="$(rustc +stable --version | cut -d' ' -f2)"
+  sed -i.bak "s/^channel = .*/channel = \"${latest}\"/" rust-toolchain.toml
+  rm rust-toolchain.toml.bak
+  grep '^channel' rust-toolchain.toml
 
 # This is only valid for Windows hosts
 e2e_fspath := env_var_or_default('USERPROFILE', '') + "\\.vscode\\extensions\\"
