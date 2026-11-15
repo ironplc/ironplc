@@ -34,8 +34,11 @@ for the rule and for the kinds of duplication that are acceptable.
 `just duplicates` runs [jscpd](https://jscpd.dev) over the `.rst` sources and
 fails when duplication rises above the `threshold` in `.jscpd.json`.
 
-**Read the threshold with care.** It is currently 19%, which is not a quality
-target — it is roughly where the docs sit today. jscpd has no reStructuredText
+**Read the threshold with care.** It is currently 22%, which is not a quality
+target — it is roughly where the docs sit today. The figure also depends on the
+jscpd version: jscpd 5.4.0 changed how it counts duplicated lines, which moved
+the same docs from 18% to 21% without any new duplication, so recalibrate the
+threshold when a jscpd upgrade alone moves the figure. jscpd has no reStructuredText
 tokenizer: it registers a `rest` format with no extension mapping and no
 grammar, so RST falls through to a generic lexer that treats `//` and `/* */`
 as comments. The result is that most of what it reports is section underlines
