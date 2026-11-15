@@ -163,3 +163,26 @@ fn parse_when_call_argument_extension_and_flag_off_then_problem_code(
 
     assert!(error.contains(code), "{error}");
 }
+
+// The extensions cover call argument lists only. A call-style function block
+// initializer in a declaration (`t1 : TON(PT := T#1S);`) still needs a value
+// for every name and no trailing comma, even with both flags on.
+#[rstest]
+#[case::omitted_value("PT := , IN := FALSE")]
+#[case::trailing_comma("PT := T#1S, ")]
+fn parse_when_fb_call_style_init_has_call_argument_extension_then_err(#[case] arguments: &str) {
+    let source = format!(
+        "PROGRAM main
+VAR
+    t1 : TON({arguments});
+END_VAR
+END_PROGRAM"
+    );
+
+    assert!(parse_program(
+        &source,
+        &FileId::default(),
+        &opts_with_call_argument_extensions()
+    )
+    .is_err());
+}
