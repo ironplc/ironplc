@@ -104,8 +104,9 @@ Where nothing says which enumeration is meant, such as an assignment to a
 Values Written with Their Type
 ------------------------------
 
-An initial value, the default of a ``TYPE`` declaration and a ``CASE`` label
-can name the enumeration a value belongs to, as ``Color#Green``:
+An initial value, the default of a ``TYPE`` declaration, a value in a
+structure or array initializer and a ``CASE`` label can name the enumeration a
+value belongs to, as ``Color#Green``:
 
 .. playground::
 
