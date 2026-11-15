@@ -30,8 +30,16 @@ jobs:
         if: ${{ !inputs.source-revision }}
 
       # Configure the execution environment
-      - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
-      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+      - uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
+        with:
+          tool: just
+      # Installs the toolchain rust-toolchain.toml names. The action's cache and
+      # `-D warnings` defaults are off: this job builds wasm through wasm-pack
+      # and does not gate on warnings (the compiler quality checks do).
+      - uses: actions-rust-lang/setup-rust-toolchain@a0b538fa0b742a6aa35d6e2c169b4bd06d225a98 # v1
+        with:
+          cache: false
+          rustflags: ""
 
       # Execute build recipes
       - name: Build wasm and playground
