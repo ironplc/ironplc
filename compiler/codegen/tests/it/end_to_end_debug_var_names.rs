@@ -121,6 +121,36 @@ END_PROGRAM
 }
 
 #[test]
+fn var_names_when_user_function_block_has_var_temp_then_entry_after_copy_slots() {
+    let source = "
+FUNCTION_BLOCK doubler
+  VAR_INPUT x : DINT; END_VAR
+  VAR_OUTPUT y : DINT; END_VAR
+  VAR_TEMP twice : DINT; END_VAR
+  twice := x * 2;
+  y := twice;
+END_FUNCTION_BLOCK
+PROGRAM main
+  VAR
+    inst : doubler;
+    result : DINT;
+  END_VAR
+  inst(x := 7, y => result);
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let fb_id = function_id_of(&container, "doubler");
+    let entries = vars_for(&container, fb_id);
+
+    let output = only_in_section(&entries, var_section::VAR_OUTPUT);
+    let temp = only_in_section(&entries, var_section::VAR_TEMP);
+    assert!(temp.name.eq_ignore_ascii_case("twice"));
+    assert_eq!(temp.iec_type_tag, iec_type_tag::DINT);
+    // The `VAR_TEMP` slot follows the block's copy slots, the output's last.
+    assert_eq!(temp.var_index.raw(), output.var_index.raw() + 1);
+}
+
+#[test]
 fn var_names_when_global_and_function_locals_then_globals_keep_global_scope() {
     let source = "
 FUNCTION inc : DINT

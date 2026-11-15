@@ -29,15 +29,16 @@ pub(crate) struct FunctionLayout {
     pub(crate) return_string_info: Option<StringReturnInfo>,
 }
 
-/// Where a user function block's copy slots and its methods' variables
-/// are, which their bodies are compiled against.
+/// Where a user function block's copy slots, its `VAR_TEMP` and its
+/// methods' variables are, which their bodies are compiled against.
 pub(crate) struct BlockLayout {
     /// The block body's id in the container.
     pub(crate) function_id: FunctionId,
-    /// The scope the block's copy slots are recorded under, which its body
-    /// is compiled in.
+    /// The scope the block's copy slots and `VAR_TEMP` are recorded under,
+    /// which its body is compiled in.
     pub(crate) scope: ScopeId,
-    /// How many copy slots the block takes, one for each field.
+    /// How many slots the VM's frame for the block's body spans: a copy
+    /// slot for each field, then a slot for each `VAR_TEMP`.
     pub(crate) num_locals: u16,
     /// The layout of each of the block's methods, in declaration order.
     pub(crate) methods: Vec<MethodLayout>,
@@ -52,7 +53,8 @@ pub(crate) struct MethodLayout {
     pub(crate) scope: ScopeId,
     /// The slots the VM's frame for the method spans, from the first of
     /// its block's copy slots through the method's result: the copy slots,
-    /// the earlier methods' slots and the method's own.
+    /// the block's `VAR_TEMP`, the earlier methods' slots and the method's
+    /// own.
     pub(crate) num_locals: u16,
     /// How many input parameters the method takes.
     pub(crate) num_params: u16,

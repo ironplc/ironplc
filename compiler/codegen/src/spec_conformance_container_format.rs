@@ -167,3 +167,38 @@ fn container_spec_req_cf_035_when_method_result_slot_past_table_then_p9997() {
         Some("P9997")
     );
 }
+
+/// A program whose functions take `slots` variable-table slots, after
+/// `main`'s `y` and `inst`, then the copy slot of the block `Fb`'s one
+/// field, then the slot of its `VAR_TEMP`.
+fn program_with_temporary_after(slots: usize) -> String {
+    let (functions, calls) = functions_taking(slots);
+    format!(
+        "{functions}
+         FUNCTION_BLOCK Fb
+           VAR a : INT; END_VAR
+           VAR_TEMP t : INT; END_VAR
+           t := a + 1;
+           a := t;
+         END_FUNCTION_BLOCK
+         PROGRAM main VAR y : INT; inst : Fb; END_VAR {calls} inst(); y := inst.a; END_PROGRAM"
+    )
+}
+
+/// REQ-CF-codegen-035: the slot of a function block's `VAR_TEMP`, after its
+/// copy slots, counts toward the table: one past the last slot of the table
+/// is P9997, and one at the last compiles.
+#[spec_test(REQ_CF_codegen_035)]
+fn container_spec_req_cf_035_when_block_var_temp_slot_past_table_then_p9997() {
+    let options = CompilerOptions::default();
+
+    // `a` takes slot 65,533 and `t` slot 65,534, the last.
+    assert!(try_compiled(&program_with_temporary_after(65_531), &options).is_ok());
+    // `a` takes slot 65,534, the last, and `t` has none.
+    assert_eq!(
+        try_compiled(&program_with_temporary_after(65_532), &options)
+            .err()
+            .as_deref(),
+        Some("P9997")
+    );
+}
