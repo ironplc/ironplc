@@ -107,7 +107,11 @@ pub fn apply(
 
 /// Returns true if a `CASE` may select on a value of this type: `ANY_INT`,
 /// a subrange of one, or an enumeration.
-fn is_selectable(representation: &SemanticType) -> bool {
+///
+/// `rule_case_label_type` asks the same question to find the selectors
+/// whose labels are integers, so that a selector this rule reports does not
+/// have its labels reported as well.
+pub(crate) fn is_selectable(representation: &SemanticType) -> bool {
     matches!(
         representation,
         SemanticType::Int { .. }

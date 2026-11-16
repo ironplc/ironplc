@@ -169,3 +169,4 @@ P4098,ConditionalReturnNotAllowed,RETURN(condition) conditional return requires 
 P4099,PersistentVarInFunction,PERSISTENT variable is declared by a function
 P4100,PouHeaderSemicolonNotAllowed,Semicolon after a POU header requires choosing a dialect or --allow-pou-header-semicolon flag
 P2045,EnumValueTypeMismatch,Enumerated value names a type other than the enumeration it is used as
+P4101,CaseLabelTypeMismatch,CASE label is not a value of the selector type
