@@ -342,6 +342,21 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "PROGRAM main;\nVAR\na : INT;\nEND_VAR\nEND_PROGRAM",
     },
+    // A call argument with no value (`b :=,`): the grammar accepts it
+    // unconditionally; a token-stream rule rejects it (P4102) when the flag is
+    // off.
+    FlagFixture {
+        key: "allow_omitted_call_argument",
+        prereqs: &[],
+        source: "FUNCTION_BLOCK FB_X\nVAR_INPUT\nb : INT;\nc : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nPROGRAM main\nVAR\nf : FB_X;\nEND_VAR\nf(b :=, c := 1);\nEND_PROGRAM",
+    },
+    // A trailing comma in an argument list: rejected (P4103) when the flag is
+    // off.
+    FlagFixture {
+        key: "allow_trailing_call_comma",
+        prereqs: &[],
+        source: "FUNCTION_BLOCK FB_X\nVAR_INPUT\nb : INT;\nc : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nPROGRAM main\nVAR\nf : FB_X;\nEND_VAR\nf(c := 1, );\nEND_PROGRAM",
+    },
 ];
 
 /// Builds an ed2 options object with the given flags enabled.

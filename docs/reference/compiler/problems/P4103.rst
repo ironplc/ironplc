@@ -1,0 +1,41 @@
+=====
+P4103
+=====
+
+.. problem-summary:: P4103
+
+This error occurs when a call's argument list has a comma before the closing
+parenthesis without the ``--allow-trailing-call-comma`` compiler flag.
+
+The IEC 61131-3 standard grammar (Annex B) separates arguments with commas and
+has none after the last one. A trailing comma is an extension.
+
+Example
+-------
+
+The following code will generate error P4103:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       drive : FB_Drive;
+   END_VAR
+       drive(Enable := TRUE, );
+   END_PROGRAM
+
+To fix this error, either remove the comma:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       drive : FB_Drive;
+   END_VAR
+       drive(Enable := TRUE);
+   END_PROGRAM
+
+Or enable the extension:
+
+.. |flag| replace:: ``--allow-trailing-call-comma``
+.. include:: /includes/enabled-by-flag.rst

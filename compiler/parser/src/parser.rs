@@ -2301,7 +2301,7 @@ parser! {
       / lp:tok(TokenType::LeftParen) _ expression:expression() _ rp:tok(TokenType::RightParen) {
         expression.with_span(SourceSpan::join(&lp.span, &rp.span))
       }
-    rule function_expression() -> Expr = name:function_name() _ tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ end:tok(TokenType::RightParen) {
+    rule function_expression() -> Expr = name:function_name() _ tok(TokenType::LeftParen) _ params:param_assignments() _ end:tok(TokenType::RightParen) {
       let span = SourceSpan::join(&name.span, &end.span);
       Expr::new(ExprKind::Function(Function {
         name,
@@ -2399,7 +2399,7 @@ parser! {
       })
     }
     / tok(TokenType::Return) { StmtKind::Return }
-    rule fb_invocation() -> StmtKind = name:fb_name() _ tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ end:tok(TokenType::RightParen) {
+    rule fb_invocation() -> StmtKind = name:fb_name() _ tok(TokenType::LeftParen) _ params:param_assignments() _ end:tok(TokenType::RightParen) {
       let span = SourceSpan::join(&name.span, &end.span);
       StmtKind::FbCall(FbCall {
         var_name: name,
@@ -2419,7 +2419,7 @@ parser! {
     // `receiver.Method(args)`, shared by the statement form below and the
     // expression form in `primary_expression`, so the receiver grammar is
     // in one place.
-    rule method_call() -> MethodCall = receiver:method_receiver() _ period() _ method:identifier() _ tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ end:tok(TokenType::RightParen) {
+    rule method_call() -> MethodCall = receiver:method_receiver() _ period() _ method:identifier() _ tok(TokenType::LeftParen) _ params:param_assignments() _ end:tok(TokenType::RightParen) {
       let span = SourceSpan::join(&receiver.span(), &end.span);
       MethodCall {
         receiver,
@@ -2430,6 +2430,19 @@ parser! {
     }
     rule method_invocation() -> StmtKind = call:method_call() { StmtKind::MethodCall(call) }
     // TODO this needs much more
+    // The argument list of a call. TwinCAT writes an argument with no value
+    // (`b :=,` for an input, `Error=> ,` for an output) when it is left
+    // unconnected, and may leave a comma before the closing parenthesis. Such
+    // an argument is the same as one that is not written, so it is dropped here.
+    rule param_assignments() -> Vec<ParamAssignmentKind> = items:param_assignment_or_omitted() ** (_ tok(TokenType::Comma) _) trailing:(_ c:tok(TokenType::Comma) { c })? {?
+      if trailing.is_some() && items.is_empty() {
+        return Err("argument before ','");
+      }
+      Ok(items.into_iter().flatten().collect())
+    }
+    rule param_assignment_or_omitted() -> Option<ParamAssignmentKind> =
+      variable_name() _ (tok(TokenType::Assignment) / tok(TokenType::RightArrow)) &(_ (tok(TokenType::Comma) / tok(TokenType::RightParen))) { None }
+      / p:param_assignment() { Some(p) }
     rule param_assignment() -> ParamAssignmentKind = not:(tok(TokenType::Not) {})? _ src:variable_name() _ tok(TokenType::RightArrow) _ tgt:variable() {
       ParamAssignmentKind::Output (
         Output{

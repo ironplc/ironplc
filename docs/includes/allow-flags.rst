@@ -332,3 +332,14 @@
    :doc:`P4100 </reference/compiler/problems/P4100>`. A semicolon that a
    variable block does not follow is the standard empty statement at the start
    of the body and is always allowed.
+
+``--allow-omitted-call-argument``
+   Allow a call argument with no value (``b :=,`` for an input, ``Error=> ,``
+   for an output). It is the same as leaving the argument out. The IEC 61131-3
+   standard grammar gives every argument a value. Without this flag it produces
+   :doc:`P4102 </reference/compiler/problems/P4102>`.
+
+``--allow-trailing-call-comma``
+   Allow a comma before the closing parenthesis of a call's argument list. The
+   IEC 61131-3 standard grammar has no comma after the last argument. Without
+   this flag it produces :doc:`P4103 </reference/compiler/problems/P4103>`.

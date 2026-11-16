@@ -103,8 +103,9 @@ Supported Dialects
    ``--allow-struct-initializer-expressions``,
    ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``,
    ``--allow-enum-base-type``, ``--allow-continue``,
-   ``--allow-keywords-as-names``, ``--allow-radix-subrange-bounds``, and
-   ``--allow-conditional-return``.
+   ``--allow-keywords-as-names``, ``--allow-radix-subrange-bounds``,
+   ``--allow-conditional-return``, ``--allow-omitted-call-argument``, and
+   ``--allow-trailing-call-comma``.
 
    **Selects:** ``--policy-string-to-num-non-numeric ignore-trailing`` and
    ``--policy-string-to-num-failure zero`` — CODESYS stops parsing at the
@@ -149,8 +150,9 @@ Supported Dialects
    ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``,
    ``--allow-enum-base-type``, ``--allow-continue``,
    ``--allow-keywords-as-names``, ``--allow-radix-subrange-bounds``,
-   ``--allow-conditional-return``, and
-   ``--allow-pou-header-semicolon``.
+   ``--allow-conditional-return``, ``--allow-pou-header-semicolon``,
+   ``--allow-omitted-call-argument``, and
+   ``--allow-trailing-call-comma``.
 
    **Selects:** ``--policy-string-to-num-non-numeric ignore-trailing`` and
    ``--policy-string-to-num-failure zero``, as ``codesys``.
