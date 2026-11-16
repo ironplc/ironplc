@@ -901,13 +901,23 @@ pub struct Place { pub root: VarId, pub path: Vec<Projection>, pub ty: TypeId }
 
 pub enum Projection {
     Field(FieldIdx),      // structure, function block or program field
-    Index(Vec<Expr>),     // one subscript per dimension
+    Index(ArrayIndex),    // one subscript per dimension
     Deref,                // through a reference
+}
+
+pub struct ArrayIndex {
+    pub subscripts: Vec<Expr>,
+    pub element: TypeId,              // the array's element type
+    pub dimensions: Vec<(i32, i32)>,  // the array's bounds, per dimension
 }
 ```
 
 `ty` is the type of the located value, so a backend never walks the path to
-learn what it is loading.
+learn what it is loading. An `Index` also carries the shape of the array it
+selects from, which a backend needs to address the element: the shape is
+read from the projection, not looked up from the type of the place it
+applies to, so a backend has no case for an index of something that is not
+an array.
 
 Inside a program, function block or method body, the instance's own variables
 are fields reached through the body's instance parameter, a variable of
@@ -925,6 +935,10 @@ type's field list.
 
 **REQ-LOW-lowering-031** An `Index` projection applies only to a place whose
 type is an array, and carries exactly one subscript per dimension.
+
+**REQ-LOW-ir-207** An `Index` projection carries the element type and the
+bounds of each dimension of the array it applies to, as that array's type
+states them.
 
 **REQ-LOW-lowering-032** A `Deref` projection applies only to a place whose
 type is a reference.

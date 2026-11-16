@@ -355,14 +355,12 @@ fn access<'l>(
                     field: Id::from(&declared.name.to_string()),
                 })
             }
-            Projection::Index(exprs) => {
-                let Some(TypeKind::Array { element, .. }) = types.kind(ty) else {
-                    return None;
-                };
-                ty = *element;
+            Projection::Index(index) => {
+                ty = index.element();
                 Access::Index(Index {
                     array: Box::new(access),
-                    subscripts: exprs
+                    subscripts: index
+                        .subscripts()
                         .iter()
                         .map(|expr| LoweredSubscript { lowering, expr })
                         .collect(),

@@ -17,9 +17,44 @@ pub enum Projection {
     Field(FieldIdx),
     /// An element of an array, by one `DINT` subscript per dimension,
     /// evaluated in order.
-    Index(Vec<Expr>),
+    Index(ArrayIndex),
     /// Through a reference to what it refers to.
     Deref,
+}
+
+/// The subscripts of an `Index` projection, with the shape of the array
+/// they select an element of (REQ-LOW-ir-207).
+///
+/// [`Place::index`] builds one only after checking that the place is an
+/// array with a dimension for each subscript, and keeps what it found. So a
+/// reader of the path has the element type and the bounds of the array
+/// without looking the array's type up again, and has no case for an index
+/// of something that is not an array. The fields are private for the same
+/// reason as a place's: nothing else can build one that disagrees with its
+/// array.
+#[derive(Clone, Debug)]
+pub struct ArrayIndex {
+    subscripts: Vec<Expr>,
+    element: TypeId,
+    dimensions: Vec<(i32, i32)>,
+}
+
+impl ArrayIndex {
+    /// The subscripts, one for each dimension, in order.
+    pub fn subscripts(&self) -> &[Expr] {
+        &self.subscripts
+    }
+
+    /// The type of each element of the array.
+    pub fn element(&self) -> TypeId {
+        self.element
+    }
+
+    /// The bounds of each dimension of the array, `(lower, upper)`, in the
+    /// order its subscripts are given.
+    pub fn dimensions(&self) -> &[(i32, i32)] {
+        &self.dimensions
+    }
 }
 
 /// Where a value lives: a variable, a path into it, and the type of the value
@@ -120,7 +155,11 @@ impl Place {
             return refuse("a subscript reads places of another program".to_string());
         }
         self.ty = *element;
-        self.path.push(Projection::Index(subscripts));
+        self.path.push(Projection::Index(ArrayIndex {
+            subscripts,
+            element: *element,
+            dimensions: dimensions.clone(),
+        }));
         Ok(self)
     }
 
