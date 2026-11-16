@@ -1,5 +1,6 @@
 //! `SEL` and `MUX` of strings, arrays, structures and function block
-//! instances, stored at a place (REQ-LOW-lowering-204).
+//! instances, and `MIN`, `MAX` and `LIMIT` of strings, stored at a place
+//! (REQ-LOW-lowering-204, REQ-LOW-lowering-208).
 //!
 //! A string is a `StrExpr` and an aggregate a place, and neither has an
 //! expression that selects, so a selection of one lowers where it is stored:
@@ -9,12 +10,20 @@
 //! `MUX` of a number do: an input that is not selected still runs its calls,
 //! and still traps on a subscript out of range.
 //!
+//! `MIN`, `MAX` and `LIMIT` of strings select one of their inputs too, by the
+//! order of the inputs rather than by a selector: they lower to the chain of
+//! `If`s whose conditions compare the inputs, as a comparison of strings
+//! does, and whose arms store the input each selects. Every condition is
+//! evaluated before any arm stores, so the target may be one of the inputs.
+//!
 //! When every input is a literal, or a variable reached through fields and
 //! constant subscripts only, evaluating an input has no effect and cannot
 //! trap, and its value is the one it had when the selector was evaluated. So
-//! each arm stores its input directly. Otherwise the selector, unless it is a
-//! constant, and then each input but a literal are stored in temporaries of
-//! their own types, in order, and each arm stores its temporary.
+//! each arm stores its input directly, and each condition compares the
+//! inputs themselves. Otherwise the selector, unless it is a constant, and
+//! then each input but a literal are stored in temporaries of their own
+//! types, in order, and each arm stores, and each condition compares, its
+//! temporary.
 //!
 //! A selection used inside an expression, such as an argument of `CONCAT` or
 //! of a function, is not lowered yet, and neither is an input that is a call
@@ -26,40 +35,69 @@ use ironplc_dsl::textual::{
     Expr as AstExpr, ExprKind as AstExprKind, Function, SymbolicVariableKind, Variable,
 };
 use ironplc_ir::lowered::{
-    CaseArm, CaseLabel, Const, ExprKind, Nullability, Place, Projection, Stmt, TypeKind,
+    Arg, BinaryOp, CaseArm, CaseLabel, CompareOp, Const, Expr, ExprKind, Nullability, Place,
+    Projection, Stmt, StrExpr, TypeKind,
 };
 
+use crate::string::{compared_order, order_intrinsic};
 use crate::variables::BodyFrame;
 use crate::{Lowered, Lowering, Unlowered};
 
 /// The selection function a call is.
 #[derive(Clone, Copy)]
 enum Selection {
+    /// `SEL` or `MUX`, which select by the value of their first input.
+    By(Selector),
+    /// `MIN`, `MAX` or `LIMIT`, which select by the order of their inputs.
+    Ordered(Ordered),
+}
+
+/// A selection function that selects by the value of its first input.
+#[derive(Clone, Copy)]
+enum Selector {
     /// `SEL(G, IN0, IN1)`, which selects by a `BOOL`.
     Sel,
     /// `MUX(K, IN0, ...)`, which selects by an integer, clamped to its inputs.
     Mux,
 }
 
-impl Selection {
+/// A selection function that selects by the order of its inputs.
+#[derive(Clone, Copy)]
+enum Ordered {
+    /// `MIN(IN1, IN2, ...)`, which selects its least input.
+    Min,
+    /// `MAX(IN1, IN2, ...)`, which selects its greatest input.
+    Max,
+    /// `LIMIT(MN, IN, MX)`, which selects `IN` limited to `MN` and `MX`.
+    Limit,
+}
+
+impl Selector {
     /// The name of the parameter that selects.
-    fn selector(self) -> &'static str {
+    fn name(self) -> &'static str {
         match self {
-            Selection::Sel => "G",
-            Selection::Mux => "K",
+            Selector::Sel => "G",
+            Selector::Mux => "K",
         }
     }
+}
 
+impl Selection {
     /// The name of the parameter of the input at `index` among the inputs
     /// the function selects between.
     fn input(self, index: usize) -> String {
         match self {
-            Selection::Sel | Selection::Mux => format!("IN{index}"),
+            Selection::By(Selector::Sel | Selector::Mux) => format!("IN{index}"),
+            Selection::Ordered(Ordered::Min | Ordered::Max) => format!("IN{}", index + 1),
+            Selection::Ordered(Ordered::Limit) => ["MN", "IN", "MX"]
+                .get(index)
+                .map_or_else(|| format!("IN{index}"), |name| (*name).to_string()),
         }
     }
 }
 
 /// Where an arm of a selection stores its input from.
+#[derive(Clone)]
 enum Source<'e> {
     /// The input itself, evaluated in the arm.
     Input(&'e AstExpr),
@@ -68,34 +106,41 @@ enum Source<'e> {
 }
 
 impl Lowering<'_> {
-    /// Whether `value` is a call of `SEL` or `MUX`, through parentheses and
-    /// `MOVE`.
+    /// Whether `value` is a call of `SEL`, `MUX`, `MIN`, `MAX` or `LIMIT`,
+    /// through parentheses and `MOVE`.
     pub(crate) fn is_selection(&self, value: &AstExpr) -> bool {
         self.selection_call(value).is_some()
     }
 
-    /// The call of `SEL` or `MUX` that `value` is, through parentheses and
-    /// `MOVE`, and which of the two; `None` for any other value.
+    /// The call of a selection function that `value` is, through parentheses
+    /// and `MOVE`, and which one; `None` for any other value.
     fn selection_call<'e>(&self, value: &'e AstExpr) -> Option<(Selection, &'e Function)> {
         let AstExprKind::Function(func) = &self.unwrapped(value).kind else {
             return None;
         };
         let signature = self.analysis.context().functions().get(&func.name)?;
-        if matches!(
-            signature.builtin_function,
-            Some(BuiltinFunction::Numeric(NumericFunction::Sel))
-        ) {
-            Some((Selection::Sel, func))
-        } else if matches!(signature.builtin_function, Some(BuiltinFunction::Mux)) {
-            Some((Selection::Mux, func))
-        } else {
-            None
-        }
+        let selection = match signature.builtin_function.as_ref()? {
+            BuiltinFunction::Mux => Selection::By(Selector::Mux),
+            BuiltinFunction::Numeric(function) => numeric_selection(*function)?,
+            BuiltinFunction::Operator(_)
+            | BuiltinFunction::BitShift(_)
+            | BuiltinFunction::Move
+            | BuiltinFunction::Trunc
+            | BuiltinFunction::BcdToInt
+            | BuiltinFunction::IntToBcd
+            | BuiltinFunction::Sizeof
+            | BuiltinFunction::String(_)
+            | BuiltinFunction::Conversion { .. }
+            | BuiltinFunction::Time { .. }
+            | BuiltinFunction::DtToDate
+            | BuiltinFunction::DtToTod => return None,
+        };
+        Some((selection, func))
     }
 
     /// Stores at `place`, a string or an aggregate, the input the selection
-    /// `value` selects, after evaluating its selector and every input in order
-    /// (REQ-LOW-lowering-204).
+    /// `value` selects, after evaluating its selector, if it has one, and
+    /// every input in order (REQ-LOW-lowering-204, REQ-LOW-lowering-208).
     pub(crate) fn store_selection(
         &mut self,
         frame: &BodyFrame,
@@ -104,38 +149,60 @@ impl Lowering<'_> {
         span: SourceSpan,
     ) -> Lowered<Vec<Stmt>> {
         let (selection, func) = self.selection_call(value).ok_or(Unlowered::NotYet)?;
-        // The analyzer wrote the call in normal form: its selector, then its
-        // inputs, in the order of its parameters.
+        // The analyzer wrote the call in normal form: its inputs in the order
+        // of its parameters, the selector of `SEL` and `MUX` first.
         let args: Vec<&AstExpr> = func.inputs().collect();
+        let name = func.name.original();
+        match selection {
+            Selection::By(selector) => {
+                self.store_selected_by(frame, place, selector, name, &args, span)
+            }
+            Selection::Ordered(ordered) => {
+                self.store_ordered(frame, place, ordered, name, &args, span)
+            }
+        }
+    }
+
+    /// Stores at `place` the input `SEL` or `MUX` of `args` selects by its
+    /// selector, the first of `args` (REQ-LOW-lowering-204).
+    fn store_selected_by(
+        &mut self,
+        frame: &BodyFrame,
+        place: Place,
+        function: Selector,
+        name: &str,
+        args: &[&AstExpr],
+        span: SourceSpan,
+    ) -> Lowered<Vec<Stmt>> {
         let (selector, inputs) = args.split_first().ok_or(Unlowered::NotYet)?;
         if inputs.len() < 2 {
             return Err(Unlowered::NotYet);
         }
-        let name = func.name.original();
         let mut stmts = Vec::new();
         let mut selected_by = self.expr(frame, selector)?;
         let settled = inputs.iter().all(|input| self.is_settled(frame, input));
         if !settled && !matches!(selected_by.kind(), ExprKind::Const(_)) {
             let ty = self.typed(selector)?.ty;
-            let label = format!("{name}.{}", selection.selector());
+            let label = format!("{name}.{}", function.name());
             let temporary = self.temporary(frame, label, ty, &span)?;
             stmts.push(self.assign_value(temporary.clone(), selected_by, span.clone())?);
             selected_by = self.program.read(temporary, span.clone())?;
         }
-        let (stored, sources) = self.sources(frame, selection, name, inputs, settled, &span)?;
+        let by = Selection::By(function);
+        let (stored, sources) = self.sources(frame, by, name, inputs, settled, &span)?;
         stmts.extend(stored);
         let mut arms = Vec::with_capacity(sources.len());
         for source in sources {
             arms.push(self.store_source(frame, &place, source, &span)?);
         }
-        stmts.push(match selection {
-            Selection::Sel => {
+        stmts.push(match function {
+            Selector::Sel => {
                 let [in0, in1]: [Vec<Stmt>; 2] = arms.try_into().map_err(|_| Unlowered::NotYet)?;
                 Stmt::if_(selected_by, in1, in0, span)?
             }
             // The selector is clamped to the inputs: one below the first
             // selects the first, and one past the last the last.
-            Selection::Mux => {
+            Selector::Mux => {
                 let ty = selected_by.ty();
                 let (lowest, _) = ty.integer_range().ok_or(Unlowered::NotYet)?;
                 let constant = |value: i128| Const::integer(value, ty).ok_or(Unlowered::NotYet);
@@ -153,6 +220,122 @@ impl Lowering<'_> {
             }
         });
         Ok(stmts)
+    }
+
+    /// Stores at `place`, a string, the input `MIN`, `MAX` or `LIMIT` of
+    /// strings selects by the order of its `inputs` (REQ-LOW-lowering-208):
+    /// the chain of `If`s on the conditions [`Self::ordered_arms`] gives,
+    /// each of whose arms stores the input it selects, after the stores of
+    /// the inputs that need them in temporaries.
+    fn store_ordered(
+        &mut self,
+        frame: &BodyFrame,
+        place: Place,
+        ordered: Ordered,
+        name: &str,
+        inputs: &[&AstExpr],
+        span: SourceSpan,
+    ) -> Lowered<Vec<Stmt>> {
+        if inputs.len() < 2 {
+            return Err(Unlowered::NotYet);
+        }
+        let settled = inputs.iter().all(|input| self.is_settled(frame, input));
+        let selection = Selection::Ordered(ordered);
+        let (mut stmts, sources) = self.sources(frame, selection, name, inputs, settled, &span)?;
+        let (arms, otherwise) = self.ordered_arms(frame, ordered, sources, &span)?;
+        let mut chain = self.store_source(frame, &place, otherwise, &span)?;
+        for (condition, source) in arms.into_iter().rev() {
+            let selected = self.store_source(frame, &place, source, &span)?;
+            chain = vec![Stmt::if_(condition, selected, chain, span.clone())?];
+        }
+        stmts.extend(chain);
+        Ok(stmts)
+    }
+
+    /// Each condition on which `ordered` selects one of `sources`, in order,
+    /// with the input it selects, and the input it selects when none holds.
+    ///
+    /// `MIN` selects the first input that is at most every later one, and
+    /// `MAX` the first that is at least every later one; else the last. An
+    /// earlier input is not selected only when a later one is less (or
+    /// greater), so the input selected is the least (or greatest) of all,
+    /// as the two-input function folded from the left is.
+    ///
+    /// `LIMIT(MN, IN, MX)`, which is `MIN(MAX(IN, MN), MX)`, selects `MX`
+    /// when it is less than `IN` or than `MN`, else `MN` when `IN` is less
+    /// than it, else `IN`: `MX` when `MN` is above it, as for a number.
+    fn ordered_arms<'e>(
+        &mut self,
+        frame: &BodyFrame,
+        ordered: Ordered,
+        mut sources: Vec<Source<'e>>,
+        span: &SourceSpan,
+    ) -> Lowered<(Vec<(Expr, Source<'e>)>, Source<'e>)> {
+        let op = match ordered {
+            Ordered::Min => CompareOp::Le,
+            Ordered::Max => CompareOp::Ge,
+            Ordered::Limit => {
+                let [mn, input, mx]: [Source<'e>; 3] =
+                    sources.try_into().map_err(|_| Unlowered::NotYet)?;
+                let mx_below_input =
+                    self.compare_sources(frame, CompareOp::Lt, &mx, &input, span)?;
+                let mx_below_mn = self.compare_sources(frame, CompareOp::Lt, &mx, &mn, span)?;
+                let limited =
+                    Expr::binary(BinaryOp::BoolOr, mx_below_input, mx_below_mn, span.clone())?;
+                let input_below_mn =
+                    self.compare_sources(frame, CompareOp::Lt, &input, &mn, span)?;
+                return Ok((vec![(limited, mx), (input_below_mn, mn)], input));
+            }
+        };
+        let last = sources.pop().ok_or(Unlowered::NotYet)?;
+        let mut arms = Vec::with_capacity(sources.len());
+        for (index, source) in sources.iter().enumerate() {
+            let mut later = sources[index + 1..].iter().chain(std::iter::once(&last));
+            let first = later.next().ok_or(Unlowered::NotYet)?;
+            let mut condition = self.compare_sources(frame, op, source, first, span)?;
+            for other in later {
+                let compared = self.compare_sources(frame, op, source, other, span)?;
+                condition = Expr::binary(BinaryOp::BoolAnd, condition, compared, span.clone())?;
+            }
+            arms.push((condition, source.clone()));
+        }
+        Ok((arms, last))
+    }
+
+    /// The comparison `op` of the strings `left` and `right` hold, as a
+    /// comparison of strings is lowered (REQ-LOW-lowering-169).
+    fn compare_sources(
+        &mut self,
+        frame: &BodyFrame,
+        op: CompareOp,
+        left: &Source<'_>,
+        right: &Source<'_>,
+        span: &SourceSpan,
+    ) -> Lowered<Expr> {
+        let left = self.source_string(frame, left, span)?;
+        let right = self.source_string(frame, right, span)?;
+        let intrinsic = order_intrinsic(left.shape().encoding);
+        compared_order(
+            intrinsic,
+            op,
+            vec![Arg::Str(left), Arg::Str(right)],
+            span.clone(),
+        )
+    }
+
+    /// The string `source` holds: its input, or a read of its temporary.
+    fn source_string(
+        &mut self,
+        frame: &BodyFrame,
+        source: &Source<'_>,
+        span: &SourceSpan,
+    ) -> Lowered<StrExpr> {
+        match source {
+            Source::Input(input) => self.str_expr(frame, input),
+            Source::Temporary(temporary) => {
+                Ok(self.program.read_str(temporary.clone(), span.clone())?)
+            }
+        }
     }
 
     /// Where the arms of the selection `name` store each of `inputs` from,
@@ -279,6 +462,32 @@ impl Lowering<'_> {
             ty = next;
         }
         true
+    }
+}
+
+/// The selection function the numeric function `function` is; `None` for one
+/// that computes rather than selects.
+fn numeric_selection(function: NumericFunction) -> Option<Selection> {
+    match function {
+        NumericFunction::Sel => Some(Selection::By(Selector::Sel)),
+        NumericFunction::Min => Some(Selection::Ordered(Ordered::Min)),
+        NumericFunction::Max => Some(Selection::Ordered(Ordered::Max)),
+        NumericFunction::Limit => Some(Selection::Ordered(Ordered::Limit)),
+        NumericFunction::Abs
+        | NumericFunction::Sqrt
+        | NumericFunction::Ln
+        | NumericFunction::Log
+        | NumericFunction::Exp
+        | NumericFunction::Sin
+        | NumericFunction::Cos
+        | NumericFunction::Tan
+        | NumericFunction::Asin
+        | NumericFunction::Acos
+        | NumericFunction::Atan
+        | NumericFunction::Atan2
+        | NumericFunction::TruncReal
+        | NumericFunction::ModReal
+        | NumericFunction::Expt => None,
     }
 }
 

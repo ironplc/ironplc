@@ -615,6 +615,67 @@ fn lower_statement_when_selection_of_bit_string_temporal_or_enumeration_then_int
     );
 }
 
+/// REQ-LOW-lowering-147: `MIN`, `MAX` and `LIMIT` of a bit string, a time or
+/// a date are the intrinsic at the type it is operated at, as of a number: a
+/// `WORD` and a `DATE` at the unsigned 32-bit integer and a `TIME` at the
+/// signed one, folded from the left past two inputs.
+#[test]
+fn lower_statement_when_min_max_or_limit_of_bit_string_or_temporal_then_intrinsic_at_operation_type(
+) {
+    let outcome = lower(
+        "PROGRAM main VAR w : WORD; t : TIME; d : DATE; END_VAR
+            w := MAX(w, w);
+            t := MIN(t, t, T#1s);
+            d := LIMIT(d, d, d);
+         END_PROGRAM",
+        "main",
+    );
+    let (w, t, d) = (
+        "(read i32u v0^.f0)",
+        "(read i32s v0^.f1)",
+        "(read i32u v0^.f2)",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            format!("assign v0^.f0 (truncate 16 (call max_u32 i32u {w} {w}))"),
+            format!(
+                "assign v0^.f1 (call min_i32 i32s (call min_i32 i32s {t} {t}) (const i32s 1000))"
+            ),
+            format!("assign v0^.f2 (call limit_u32 i32u {d} {d} {d})"),
+        ]
+    );
+}
+
+/// REQ-LOW-lowering-207: `MIN`, `MAX` and `LIMIT` of `BOOL`s are their inputs
+/// joined from the left by `AND` and `OR`, as `FALSE` is less than `TRUE`:
+/// `MIN` the `AND` of every input, `MAX` the `OR`, and `LIMIT(MN, IN, MX)`
+/// `(MN OR IN) AND MX`. No `Intrinsic` is called.
+#[test]
+fn lower_statement_when_min_max_or_limit_of_bools_then_and_or_folded_from_the_left() {
+    let outcome = lower(
+        "PROGRAM main VAR a : BOOL; b : BOOL; c : BOOL; END_VAR
+            a := MIN(a, b, c);
+            a := MAX(a, b);
+            a := LIMIT(a, b, TRUE);
+         END_PROGRAM",
+        "main",
+    );
+    let (a, b, c) = (
+        "(read bool v0^.f0)",
+        "(read bool v0^.f1)",
+        "(read bool v0^.f2)",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            format!("assign v0^.f0 (bool_and bool (bool_and bool {a} {b}) {c})"),
+            format!("assign v0^.f0 (bool_or bool {a} {b})"),
+            format!("assign v0^.f0 (bool_and bool (bool_or bool {a} {b}) (const bool true))"),
+        ]
+    );
+}
+
 /// REQ-LOW-lowering-203: `MOVE` of a string, a structure or an array is its
 /// operand, through any number of `MOVE`s, where it is assigned, passed to a
 /// function and stored in a function block input.

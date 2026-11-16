@@ -2412,7 +2412,9 @@ implements it.
 | Enumerated value | `Const` |
 | `MOVE(x)`, parenthesised expression | The operand, whatever its type: the operand's `Expr`, `StrExpr` or `Place` (REQ-LOW-lowering-203) |
 | `SEL` and `MUX` of `BOOL`s | The selection at the signed 32-bit integer of each `BOOL` converted to it, compared with zero (REQ-LOW-lowering-202) |
+| `MIN`, `MAX` and `LIMIT` of `BOOL`s | The inputs joined from the left by `BoolAnd` for `MIN` and `BoolOr` for `MAX`, and `(MN OR IN) AND MX` for `LIMIT`, as `FALSE` is less than `TRUE` (REQ-LOW-lowering-207) |
 | `x := SEL(g, a, b)` and `x := MUX(k, a, b, ...)` of strings, arrays or structures | The `If` or `Case` whose arms store the input each selects at `x`, after the stores of the selector and each input in temporaries where the inputs need them (REQ-LOW-lowering-204) |
+| `x := MIN(a, b, ...)`, `x := MAX(a, b, ...)` and `x := LIMIT(mn, in, mx)` of strings | The chain of `If`s whose conditions compare the inputs as a comparison of strings does, and whose arms store the input each selects at `x`, after the stores of each input in temporaries where the inputs need them (REQ-LOW-lowering-208) |
 | Comparison of strings, such as `s < t` | A `Compare` with zero of the `Call` of the `Intrinsic` that orders two strings of their encoding (REQ-LOW-lowering-169) |
 | Conversion from a `STRING`, such as `STRING_TO_DINT(s)` | `Call` of the `Intrinsic` that reads a number of the call's type, a bit string as the unsigned integer of its width, carrying the parse policy (REQ-LOW-lowering-073) |
 | Conversion to a `STRING`, such as `DINT_TO_STRING(n)` | A `StrExpr` `Call` of the `Intrinsic` that writes a number of its operation type, of the default capacity (REQ-LOW-lowering-168) |
@@ -2478,6 +2480,18 @@ signed 32-bit integer, its selector as it is, compared with zero: `x := SEL(g,
 a, b)` on `BOOL`s lowers to `(ne (call sel_i32 i32s g (convert i32s a)
 (convert i32s b)) (const i32s 0))`.
 
+`FALSE` is less than `TRUE`, so the least of `BOOL`s is their `AND` and the
+greatest their `OR`, and `LIMIT(MN, IN, MX)`, which is `MIN(MAX(IN, MN), MX)`,
+is `(MN OR IN) AND MX`. These need no `Intrinsic`, and the logical operators
+of `BOOL`s evaluate both operands, as a call evaluates every input.
+
+**REQ-LOW-lowering-207** `MIN`, `MAX` and `LIMIT` of `BOOL`s lower to their
+inputs joined from the left by `BoolAnd` for `MIN` and `BoolOr` for `MAX`, in
+the order of their parameters, and `LIMIT(mn, in, mx)` to `BoolAnd` of
+`BoolOr` of `mn` and `in`, and `mx`: `x := MIN(a, b, c)` on `BOOL`s lowers to
+`(bool_and bool (bool_and bool a b) c)`, and `x := LIMIT(a, b, TRUE)` to
+`(bool_and bool (bool_or bool a b) (const bool true))`.
+
 A string is a `StrExpr` and an array, a structure or a function block instance
 a `Place`, not an `Expr`, so `MOVE` of one is the operand where the operand is
 read: the `StrExpr` a string assignment or argument reads, and the place a
@@ -2514,6 +2528,30 @@ and `names[i]` in temporaries, then stores `'none'` or the temporary. A
 selection inside an expression, such as an argument of `CONCAT` or of a
 function, and an input that is a call of a function whose result is a
 structure, are not lowered yet (P9999).
+
+`MIN`, `MAX` and `LIMIT` of strings select one of their inputs too, by the
+order of their inputs rather than by a selector, so they lower where their
+value is stored as `SEL` and `MUX` of strings do. Their inputs are stored in
+temporaries, or not, as a selection's are. Every condition is evaluated
+before an arm stores, so the value stored may be an input:
+`a := MIN(b, a)` compares `b` with `a` and then stores one of them at `a`.
+
+**REQ-LOW-lowering-208** `x := MIN(a, b, ...)`, `x := MAX(a, b, ...)` and
+`x := LIMIT(mn, in, mx)` of strings lower to the chain of `If`s whose
+conditions compare the inputs as a comparison of strings does
+(REQ-LOW-lowering-169), each of whose arms stores at `x` the input it
+selects, and whose last `else` stores the input selected when no condition
+holds. `MIN` stores the first input that is at most every later one, and
+`MAX` the first that is at least every later one, else the last: `s :=
+MAX(a, b, c)` lowers to the `If` on `a >= b AND a >= c` storing `a`, whose
+`else` is the `If` on `b >= c` storing `b` or `c`. `LIMIT(mn, in, mx)` stores
+`mx` when `mx < in OR mx < mn`, else `mn` when `in < mn`, else `in`, as
+`MIN(MAX(in, mn), mx)` selects. When an input calls, computes a subscript or
+goes through a reference that may be null, the chain follows the store of
+each input but a literal in a temporary of its type, in order, and its
+conditions and arms read the temporaries, as REQ-LOW-lowering-204 says of a
+selection. One inside an expression, such as an argument of `CONCAT`, is not
+lowered yet (P9999).
 
 The bytecode backend gives a compiler-provided temporary no storage of its
 own (see [In-place calls](#in-place-calls)), so it compiles a selection whose

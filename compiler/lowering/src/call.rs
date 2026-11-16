@@ -266,8 +266,13 @@ impl Lowering<'_> {
         // A numeric function computes at the type the analyzer converted its
         // inputs to.
         let operated = self.typed(expr)?.scalar()?;
-        if function == NumericFunction::Sel && operated == ScalarType::Bool {
-            return self.bool_selection(frame, expr, Intrinsic::SelI32, args);
+        if operated == ScalarType::Bool {
+            if function == NumericFunction::Sel {
+                return self.bool_selection(frame, expr, Intrinsic::SelI32, args);
+            }
+            if let Some(steps) = bool_extreme_steps(function, args.len()) {
+                return self.bool_fold(frame, expr, &steps, args);
+            }
         }
         let intrinsic = numeric_intrinsic(function, operated).ok_or(Unlowered::NotYet)?;
         if matches!(function, NumericFunction::Min | NumericFunction::Max) && args.len() > 2 {
@@ -301,6 +306,31 @@ impl Lowering<'_> {
         let mut folded = Expr::call(intrinsic, vec![first, second], span.clone())?;
         for value in values {
             folded = Expr::call(intrinsic, vec![Arg::Value(folded), value], span.clone())?;
+        }
+        Ok(folded)
+    }
+
+    /// `MIN`, `MAX` or `LIMIT` of `BOOL`s, the call `expr` of `args`: the
+    /// first input, then each later one joined to the result by the logical
+    /// operator of its step (`bool_extreme_steps`, REQ-LOW-lowering-207).
+    /// Every input is evaluated once, in the order of its parameter, as a
+    /// call's inputs are: `BoolAnd` and `BoolOr` do not short-circuit.
+    fn bool_fold(
+        &mut self,
+        frame: &BodyFrame,
+        expr: &AstExpr,
+        steps: &[BinaryOp],
+        args: &[&AstExpr],
+    ) -> Lowered<Expr> {
+        let span = expr.span();
+        let (first, rest) = args.split_first().ok_or(Unlowered::NotYet)?;
+        if rest.len() != steps.len() {
+            return Err(Unlowered::NotYet);
+        }
+        let mut folded = self.expr(frame, first)?;
+        for (op, arg) in steps.iter().zip(rest) {
+            let value = self.expr(frame, arg)?;
+            folded = Expr::binary(*op, folded, value, span.clone())?;
         }
         Ok(folded)
     }
@@ -656,6 +686,37 @@ fn byte_size(types: &TypeTable, ty: TypeId) -> Option<i128> {
         | TypeKind::FunctionBlock { .. }
         | TypeKind::Program { .. }
         | TypeKind::Reference { .. } => None,
+    }
+}
+
+/// The logical operator of each step of the left fold that `MIN`, `MAX` or
+/// `LIMIT` of `inputs` `BOOL`s is (REQ-LOW-lowering-207); `None` for any
+/// other function. `FALSE` is less than `TRUE`, so the least of `BOOL`s is
+/// their `AND`, the greatest their `OR`, and `LIMIT(MN, IN, MX)`, which is
+/// `MIN(MAX(IN, MN), MX)`, is `(MN OR IN) AND MX`. No `Intrinsic` takes a
+/// `BOOL`, and these need none.
+fn bool_extreme_steps(function: NumericFunction, inputs: usize) -> Option<Vec<BinaryOp>> {
+    let steps = inputs.checked_sub(1)?;
+    match function {
+        NumericFunction::Min => Some(vec![BinaryOp::BoolAnd; steps]),
+        NumericFunction::Max => Some(vec![BinaryOp::BoolOr; steps]),
+        NumericFunction::Limit => Some(vec![BinaryOp::BoolOr, BinaryOp::BoolAnd]),
+        NumericFunction::Abs
+        | NumericFunction::Sqrt
+        | NumericFunction::Ln
+        | NumericFunction::Log
+        | NumericFunction::Exp
+        | NumericFunction::Sin
+        | NumericFunction::Cos
+        | NumericFunction::Tan
+        | NumericFunction::Asin
+        | NumericFunction::Acos
+        | NumericFunction::Atan
+        | NumericFunction::Atan2
+        | NumericFunction::TruncReal
+        | NumericFunction::ModReal
+        | NumericFunction::Expt
+        | NumericFunction::Sel => None,
     }
 }
 

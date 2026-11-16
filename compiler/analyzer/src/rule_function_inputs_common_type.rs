@@ -305,6 +305,7 @@ mod tests {
             "
 TYPE
     Small : DINT (0..100);
+    Color : (Red, Green);
 END_TYPE
 
 PROGRAM main
@@ -322,6 +323,7 @@ VAR
     m : Small;
     w : WORD;
     t : TIME;
+    c : Color;
 END_VAR
     x := {value};
 END_PROGRAM"
@@ -384,6 +386,9 @@ END_PROGRAM"
     #[case::reported_once_in_an_outer_call("MAX(MIN(d, u), l)")]
     #[case::sel_of_a_duration_and_an_integer("SEL(g, t, d)")]
     #[case::mux_of_integers_and_a_string("MUX(k, d, d, d, s)")]
+    #[case::max_of_an_integer_and_a_string("MAX(d, s)")]
+    #[case::min_of_a_duration_and_an_integer("MIN(t, d)")]
+    #[case::limit_of_a_bool_and_bit_strings("LIMIT(g, w, w)")]
     fn apply_when_no_input_type_holds_every_other_then_p4049(#[case] value: &str) {
         assert_eq!(codes_for(value, &CompilerOptions::default()), vec![p4049()]);
     }
@@ -416,6 +421,10 @@ END_PROGRAM"
     #[case::sel_of_strings("SEL(g, s, s)")]
     #[case::sel_of_bools("SEL(g, g, g)")]
     #[case::mux_of_durations("MUX(k, t, t)")]
+    #[case::max_of_durations("MAX(t, t)")]
+    #[case::min_of_strings("MIN(s, s, s)")]
+    #[case::limit_of_bools("LIMIT(g, g, g)")]
+    #[case::max_of_bit_strings("MAX(w, w)")]
     fn apply_when_every_input_widens_to_one_then_ok(#[case] value: &str) {
         assert!(codes_for(value, &CompilerOptions::default()).is_empty());
     }
@@ -424,7 +433,7 @@ END_PROGRAM"
     #[rstest]
     #[case::sel_selector_takes_no_part("SEL(g, d, d)")]
     #[case::mux_selector_takes_no_part("MUX(l, d, d)")]
-    #[case::input_its_parameter_rejects_is_p4026("MAX(d, s)")]
+    #[case::input_its_parameter_rejects_is_p4026("MAX(d, c)")]
     #[case::integer_input_of_atan2_is_p4026("ATAN2(d, r)")]
     #[case::expt_is_typed_by_its_base("EXPT(d, u)")]
     #[case::bitwise_function_form_is_the_operator_rule("AND(g, w)")]
