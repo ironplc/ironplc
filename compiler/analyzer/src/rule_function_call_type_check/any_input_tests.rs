@@ -1,8 +1,10 @@
 //! Tests for a call to `MOVE`, `SEL` or `MUX`, whose inputs IEC 61131-3
 //! declares as any type (`ANY`): an input of every type but a reference is
-//! accepted, as it is for every parameter of `ANY`. Whether the inputs `SEL`
-//! and `MUX` select between have one type to compute at is
-//! `rule_function_inputs_common_type`'s.
+//! accepted, as it is for every parameter of `ANY`. And for a call to `MIN`,
+//! `MAX` or `LIMIT`, whose inputs it declares as any elementary type
+//! (`ANY_ELEMENTARY`): an input of every elementary type is accepted, and one
+//! of a derived type is not. Whether the inputs a function selects between
+//! have one type to compute at is `rule_function_inputs_common_type`'s.
 
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use ironplc_problems::Problem;
@@ -54,6 +56,49 @@ fn apply_when_move_sel_or_mux_of_any_type_then_ok(#[case] result_type: &str, #[c
         &CompilerOptions::default(),
     );
     assert!(codes.is_empty(), "{value}: {codes:?}");
+}
+
+#[spec_test(REQ_IC_analyzer_137)]
+#[rstest]
+#[case::min_bool("BOOL", "MIN(b, b)")]
+#[case::max_bit_string("WORD", "MAX(w, w)")]
+#[case::limit_duration("TIME", "LIMIT(t, t, t)")]
+#[case::min_date("DATE", "MIN(d, d)")]
+#[case::max_time_of_day("TOD", "MAX(tod1, tod1, tod1)")]
+#[case::limit_date_and_time("DT", "LIMIT(dt1, dt1, dt1)")]
+#[case::min_string("STRING", "MIN(s, s)")]
+#[case::max_wide_string("WSTRING", "MAX(ws, ws)")]
+fn apply_when_min_max_or_limit_of_elementary_type_then_ok(
+    #[case] result_type: &str,
+    #[case] value: &str,
+) {
+    let codes = rule_codes(
+        super::apply,
+        &program(result_type, value),
+        &CompilerOptions::default(),
+    );
+    assert!(codes.is_empty(), "{value}: {codes:?}");
+}
+
+/// An enumeration, a structure and an array are derived types, which
+/// `ANY_ELEMENTARY` does not hold: each input of one is reported.
+#[spec_test(REQ_IC_analyzer_137)]
+#[rstest]
+#[case::min_enumeration("Color", "MIN(c, c)", 2)]
+#[case::max_structure("Point", "MAX(p, p)", 2)]
+#[case::limit_array("ARRAY[1..2] OF DINT", "LIMIT(a, a, a)", 3)]
+fn apply_when_min_max_or_limit_of_derived_type_then_p4026(
+    #[case] result_type: &str,
+    #[case] value: &str,
+    #[case] inputs: usize,
+) {
+    let codes = rule_codes(
+        super::apply,
+        &program(result_type, value),
+        &CompilerOptions::default(),
+    );
+    let p4026 = Problem::FunctionCallArgTypeMismatch.code().to_string();
+    assert_eq!(codes, vec![p4026; inputs], "{value}");
 }
 
 // An input of an extensible call past the ones the function declares is
