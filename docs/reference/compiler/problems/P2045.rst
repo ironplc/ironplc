@@ -9,8 +9,10 @@ This error occurs when an enumerated value is written with a type, such as
 
 A value written as ``type#value`` is a value of the type it names. The
 initial value of a variable is a value of the variable's type, the default of
-a ``TYPE`` declaration is a value of the type it declares, and the label of a
-``CASE`` is a value of the selector's type. The type written before the value
+a ``TYPE`` declaration is a value of the type it declares, a value in a
+structure or array initializer, such as ``(c := Color#Red)`` or
+``[Color#Red, Green]``, is a value of the field's or element's type, and the
+label of a ``CASE`` is a value of the selector's type. The type written before the value
 must be that enumeration or an alias of it. Two enumerations that list the
 same values are still two types. An inline enumeration such as
 ``(Idle, Busy)`` has no name, so no value can be written with its type.

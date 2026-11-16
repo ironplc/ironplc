@@ -14,13 +14,14 @@
 //! to be written with.
 //!
 //! The values checked are the initial value of a variable or a structure
-//! field, the default a `TYPE` declaration gives an enumeration, and the
-//! labels of a `CASE`, which are values of the selector's type. A label
-//! written without its type is checked only when the selector is an
-//! enumeration; one written with its type is checked against any selector
-//! whose type is known, so `CASE count OF COLOR#RED:` is reported when
-//! `count` is an `INT`. A selector whose type the analyzer did not resolve
-//! is skipped.
+//! field, the default a `TYPE` declaration gives an enumeration, the values
+//! a structure or array initializer gives a field or an element of an
+//! enumerated type, and the labels of a `CASE`, which are values of the
+//! selector's type. A label written without its type is checked only when
+//! the selector is an enumeration; one written with its type is checked
+//! against any selector whose type is known, so `CASE count OF COLOR#RED:`
+//! is reported when `count` is an `INT`. A selector whose type the analyzer
+//! did not resolve is skipped.
 //!
 //! ## Passes
 //!
@@ -75,6 +76,7 @@ use crate::{
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    semantic_type::SemanticType,
     value_type,
 };
 use ironplc_parser::options::CompilerOptions;
@@ -193,6 +195,102 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
         );
         false
     }
+
+    /// Checks `value`, which a structure or array initializer gives a field
+    /// or an element of the type `place`. A place that is not an
+    /// enumeration is not this rule's to check.
+    fn check_place_value(&mut self, value: &EnumeratedValue, place: TypeId) {
+        let types = self.context.types();
+        let Some(members) = types
+            .get_by_id(place)
+            .and_then(|attributes| attributes.representation.enumeration_members())
+        else {
+            return;
+        };
+        // A field declared `e : (A, B)` has an enumeration of no name.
+        let used_as = match types.name_of(place) {
+            Some(_) => UsedAs::Type(place),
+            None => UsedAs::Inline,
+        };
+        self.check_value(value, used_as, members.contains(&value.value));
+    }
+
+    /// Checks the values `elements` give the fields of the structure or
+    /// function block type `record`, each against the type the environment
+    /// records for its field. A field the type does not declare is another
+    /// rule's to report.
+    fn check_fields(&mut self, record: TypeId, elements: &[StructureElementInit]) {
+        for element in elements {
+            let Some(field) = self.context.types().field_type(record, &element.name) else {
+                continue;
+            };
+            match &element.init {
+                StructInitialValueAssignmentKind::EnumeratedValue(value) => {
+                    self.check_place_value(value, field)
+                }
+                StructInitialValueAssignmentKind::Structure(fields) => {
+                    self.check_fields(field, fields)
+                }
+                StructInitialValueAssignmentKind::Array(elements) => {
+                    self.check_array(field, elements)
+                }
+                // A bare name is resolved to an enumerated value or an
+                // expression before any rule runs, and neither a constant
+                // nor an expression is an enumerated value.
+                StructInitialValueAssignmentKind::Constant(_)
+                | StructInitialValueAssignmentKind::Expression(_)
+                | StructInitialValueAssignmentKind::LateBound(_) => {}
+            }
+        }
+    }
+
+    /// Checks the values `elements` give the elements of the array type
+    /// `array`. A type that is not an array is another rule's to report.
+    fn check_array(&mut self, array: TypeId, elements: &[ArrayInitialElementKind]) {
+        let is_array = self
+            .context
+            .types()
+            .get_by_id(array)
+            .is_some_and(|attributes| attributes.representation.is_array());
+        if let Some(element) = is_array.then(|| self.innermost(array)).flatten() {
+            self.check_elements(element, elements);
+        }
+    }
+
+    /// Checks the values `elements` give array elements of the type
+    /// `element`.
+    fn check_elements(&mut self, element: TypeId, elements: &[ArrayInitialElementKind]) {
+        for value in elements {
+            match value {
+                ArrayInitialElementKind::EnumValue(value) => self.check_place_value(value, element),
+                ArrayInitialElementKind::Repeated(repeated) => {
+                    if let Some(inner) = repeated.init.as_ref() {
+                        self.check_elements(element, std::slice::from_ref(inner));
+                    }
+                }
+                ArrayInitialElementKind::Structure(fields) => self.check_fields(element, fields),
+                ArrayInitialElementKind::Constant(_) | ArrayInitialElementKind::Expression(_) => {}
+            }
+        }
+    }
+
+    /// The type of the values an array initializer lists for a place of the
+    /// type `id`: `id` itself when it is not an array, else the type of its
+    /// innermost elements, since an initializer lists them flat whatever the
+    /// array's shape. `None` when an element type is not known.
+    ///
+    /// The walk follows the array's representation, which is finite, and the
+    /// id of each element type alongside it.
+    fn innermost(&self, id: TypeId) -> Option<TypeId> {
+        let types = self.context.types();
+        let mut id = id;
+        let mut representation = &types.get_by_id(id)?.representation;
+        while let SemanticType::Array { element_type, .. } = representation {
+            id = types.element_type(id)?;
+            representation = element_type;
+        }
+        Some(id)
+    }
 }
 
 impl DiagnosticVisitor for RuleDeclaredEnumeratedValues<'_> {
@@ -295,7 +393,72 @@ impl Visitor<Infallible> for RuleDeclaredEnumeratedValues<'_> {
         }
         node.recurse_visit(self)
     }
+
+    /// A structure initializer, of a variable, a field or a `TYPE`
+    /// declaration. A nested structure or array is a value of the
+    /// initializer, which [`Self::check_fields`] walks, so the visitor never
+    /// reaches one on its own.
+    fn visit_structure_initialization_declaration(
+        &mut self,
+        node: &StructureInitializationDeclaration,
+    ) -> Result<Self::Value, Infallible> {
+        if let Some(record) = self.context.types().id_of(&node.type_name) {
+            self.check_fields(record, &node.elements_init);
+        }
+        node.recurse_visit(self)
+    }
+
+    fn visit_function_block_initial_value_assignment(
+        &mut self,
+        node: &FunctionBlockInitialValueAssignment,
+    ) -> Result<Self::Value, Infallible> {
+        if let Some(block) = self.context.types().id_of(&node.type_name) {
+            self.check_fields(block, &node.init);
+        }
+        node.recurse_visit(self)
+    }
+
+    /// An array initializer of a variable or a field. The element type of an
+    /// array spelled in place is the type it names; a reference element
+    /// holds no enumerated value.
+    fn visit_array_initial_value_assignment(
+        &mut self,
+        node: &ArrayInitialValueAssignment,
+    ) -> Result<Self::Value, Infallible> {
+        let types = self.context.types();
+        match &node.spec {
+            SpecificationKind::Named(name) => {
+                if let Some(array) = types.id_of(name) {
+                    self.check_array(array, &node.initial_values);
+                }
+            }
+            SpecificationKind::Inline(subranges) if subranges.ref_to.is_none() => {
+                if let Some(element) = types
+                    .id_of(&subranges.type_name.to_type_name())
+                    .and_then(|element| self.innermost(element))
+                {
+                    self.check_elements(element, &node.initial_values);
+                }
+            }
+            SpecificationKind::Inline(_) => {}
+        }
+        node.recurse_visit(self)
+    }
+
+    /// The default an array `TYPE` declaration gives its elements.
+    fn visit_array_declaration(
+        &mut self,
+        node: &ArrayDeclaration,
+    ) -> Result<Self::Value, Infallible> {
+        if let Some(array) = self.context.types().id_of(&node.type_name) {
+            self.check_array(array, &node.init);
+        }
+        node.recurse_visit(self)
+    }
 }
+
+#[cfg(test)]
+mod initializer_tests;
 
 #[cfg(test)]
 mod tests {
