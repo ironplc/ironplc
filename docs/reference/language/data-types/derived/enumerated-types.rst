@@ -101,6 +101,37 @@ Where nothing says which enumeration is meant, such as an assignment to a
 ``DINT``, the value is ambiguous and the compiler reports
 :doc:`/reference/compiler/problems/P2043`.
 
+Values Written with Their Type
+------------------------------
+
+An initial value, the default of a ``TYPE`` declaration and a ``CASE`` label
+can name the enumeration a value belongs to, as ``Color#Green``:
+
+.. playground::
+
+   TYPE
+       Color : (Red, Green) := Color#Green;
+       Light : (Off, Green);
+   END_TYPE
+
+   PROGRAM main
+       VAR
+           shade : Color := Color#Red;
+           lamp : Light := Light#Green;
+           count : INT;
+       END_VAR
+
+       CASE lamp OF
+           Light#Off: count := 0;
+           Light#Green: count := 1;
+       END_CASE;
+   END_PROGRAM
+
+The type written before the value must be the enumeration the value is used
+as, or an alias of it. A value written with another enumeration is
+:doc:`/reference/compiler/problems/P2045`, even when that enumeration declares
+a value of the same name.
+
 Explicit Values
 ---------------
 
@@ -171,6 +202,8 @@ Related Problem Codes
 - :doc:`/reference/compiler/problems/P2043` — Enumerated value is ambiguous
 - :doc:`/reference/compiler/problems/P2044` — Enumeration value is outside
   the range of ``DINT``
+- :doc:`/reference/compiler/problems/P2045` — Enumerated value is written
+  with another enumeration's type
 - :doc:`/reference/compiler/problems/P4055` — Explicit enumeration member
   value requires a dialect or flag
 - :doc:`/reference/compiler/problems/P4056` — Enumeration base-type suffix

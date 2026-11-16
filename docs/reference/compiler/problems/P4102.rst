@@ -4,11 +4,15 @@ P4102
 
 .. problem-summary:: P4102
 
-This error occurs when a call's argument list has a comma before the closing
-parenthesis without the ``--allow-trailing-call-comma`` compiler flag.
+This error occurs when a call has an argument with no value (``b :=,`` for an
+input or ``Error=> ,`` for an output) without the
+``--allow-omitted-call-argument`` compiler flag.
 
-The IEC 61131-3 standard grammar (Annex B) separates arguments with commas and
-has none after the last one. A trailing comma is an extension.
+The IEC 61131-3 standard grammar (Annex B) gives every formal argument a value
+(``name := expression``) or a variable (``name => variable``). Writing the name
+and the operator with nothing after them, which TwinCAT uses for an
+unconnected parameter, is an extension. It is the same as leaving the argument
+out.
 
 Example
 -------
@@ -21,10 +25,10 @@ The following code will generate error P4102:
    VAR
        drive : FB_Drive;
    END_VAR
-       drive(Enable := TRUE, );
+       drive(Enable := TRUE, Position :=, Error => );
    END_PROGRAM
 
-To fix this error, either remove the comma:
+To fix this error, either leave the arguments out:
 
 .. code-block::
 
@@ -37,5 +41,5 @@ To fix this error, either remove the comma:
 
 Or enable the extension:
 
-.. |flag| replace:: ``--allow-trailing-call-comma``
+.. |flag| replace:: ``--allow-omitted-call-argument``
 .. include:: /includes/enabled-by-flag.rst

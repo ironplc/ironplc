@@ -152,9 +152,9 @@ fn parse_when_call_argument_list_has_stray_comma_then_err(#[case] arguments: &st
 }
 
 #[rstest]
-#[case::omitted_input("a := v, b :=, c := w", "P4101")]
-#[case::omitted_output("a := v, Error=> ", "P4101")]
-#[case::trailing_comma("a := v, ", "P4102")]
+#[case::omitted_input("a := v, b :=, c := w", "P4102")]
+#[case::omitted_output("a := v, Error=> ", "P4102")]
+#[case::trailing_comma("a := v, ", "P4103")]
 fn parse_when_call_argument_extension_and_flag_off_then_problem_code(
     #[case] arguments: &str,
     #[case] code: &str,

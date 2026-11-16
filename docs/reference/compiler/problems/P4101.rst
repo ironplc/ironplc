@@ -4,42 +4,72 @@ P4101
 
 .. problem-summary:: P4101
 
-This error occurs when a call has an argument with no value (``b :=,`` for an
-input or ``Error=> ,`` for an output) without the
-``--allow-omitted-call-argument`` compiler flag.
+This error occurs when a ``CASE`` statement selects on an integer and one of
+its labels is a name, such as an enumerated value.
 
-The IEC 61131-3 standard grammar (Annex B) gives every formal argument a value
-(``name := expression``) or a variable (``name => variable``). Writing the name
-and the operator with nothing after them, which TwinCAT uses for an
-unconnected parameter, is an extension. It is the same as leaving the argument
-out.
+A ``CASE`` compares the selector with each label, so each label must be a
+value of the selector's type. When the selector is an integer (``INT``,
+``DINT``, a subrange of an integer type, or an integer literal), its labels
+are integers and integer ranges. An enumerated value such as ``Fill`` is a
+value of its enumeration, not an integer. A name that nothing declares is not
+a value of any type.
 
 Example
 -------
 
-The following code will generate error P4101:
+The following code will generate error P4101 twice:
 
-.. code-block::
+.. playground::
 
-   PROGRAM main
-   VAR
-       drive : FB_Drive;
-   END_VAR
-       drive(Enable := TRUE, Position :=, Error => );
-   END_PROGRAM
-
-To fix this error, either leave the arguments out:
-
-.. code-block::
+   TYPE
+       Mode : (Idle, Fill);
+   END_TYPE
 
    PROGRAM main
-   VAR
-       drive : FB_Drive;
-   END_VAR
-       drive(Enable := TRUE);
+       VAR
+           step : INT;
+           alarm : BOOL;
+       END_VAR
+       CASE step OF
+           Fill: alarm := TRUE;    (* Error: Fill is a Mode, not an INT *)
+           Drain: alarm := FALSE;  (* Error: nothing declares Drain *)
+       END_CASE;
    END_PROGRAM
 
-Or enable the extension:
+``step`` is an ``INT``, so the labels of a ``CASE`` that selects on it are
+integers. ``Fill`` is a value of ``Mode``, and ``Drain`` is not declared.
 
-.. |flag| replace:: ``--allow-omitted-call-argument``
-.. include:: /includes/enabled-by-flag.rst
+To fix this error, label an integer selector with integers. Where the labels
+are the values of an enumeration, select on a variable of that enumeration:
+
+.. playground::
+
+   TYPE
+       Mode : (Idle, Fill);
+   END_TYPE
+
+   PROGRAM main
+       VAR
+           step : INT;
+           mode : Mode;
+           alarm : BOOL;
+       END_VAR
+       CASE step OF
+           1: alarm := TRUE;
+           2: alarm := FALSE;
+       END_CASE;
+       CASE mode OF
+           Fill: alarm := TRUE;
+           Idle: alarm := FALSE;
+       END_CASE;
+   END_PROGRAM
+
+See Also
+--------
+
+- :doc:`/reference/language/structured-text/case` — the ``CASE`` statement
+- :doc:`P2006` — a label of a ``CASE`` on an enumeration is not one of its
+  values
+- :doc:`P2045` — a label is written with an enumeration other than the
+  selector's type
+- :doc:`P4053` — the selector is not an integer or an enumeration

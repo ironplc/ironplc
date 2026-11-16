@@ -306,14 +306,9 @@ impl Lowering<'_> {
         (left, right): (&AstExpr, &AstExpr),
         span: SourceSpan,
     ) -> Lowered<Expr> {
-        let intrinsic = match encoding {
-            Encoding::Narrow => Intrinsic::CompareString,
-            Encoding::Wide => Intrinsic::CompareWString,
-        };
+        let intrinsic = order_intrinsic(encoding);
         let args = self.intrinsic_args(frame, intrinsic, &[left, right])?;
-        let order = Expr::call(intrinsic, args, span.clone())?;
-        let zero = Expr::integer(0, order.ty(), span.clone())?;
-        Ok(Expr::compare(op, order, zero, span)?)
+        compared_order(intrinsic, op, args, span)
     }
 
     /// The intrinsic of the string function `function` for the encoding the
@@ -395,4 +390,25 @@ impl Lowering<'_> {
             | AstExprKind::Null(_) => Err(Unlowered::NotYet),
         }
     }
+}
+
+/// The intrinsic that orders two strings of `encoding`.
+pub(crate) fn order_intrinsic(encoding: Encoding) -> Intrinsic {
+    match encoding {
+        Encoding::Narrow => Intrinsic::CompareString,
+        Encoding::Wide => Intrinsic::CompareWString,
+    }
+}
+
+/// The comparison `op` of two strings, `args`: the order `intrinsic` gives
+/// them, compared with zero (REQ-LOW-lowering-169).
+pub(crate) fn compared_order(
+    intrinsic: Intrinsic,
+    op: CompareOp,
+    args: Vec<Arg>,
+    span: SourceSpan,
+) -> Lowered<Expr> {
+    let order = Expr::call(intrinsic, args, span.clone())?;
+    let zero = Expr::integer(0, order.ty(), span.clone())?;
+    Ok(Expr::compare(op, order, zero, span)?)
 }

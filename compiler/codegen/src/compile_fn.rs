@@ -116,8 +116,8 @@ pub(crate) fn compile_user_function_block(
     ctx.current_function_id = Some(function_id);
 
     let mut fb_emitter = Emitter::new();
-    // A `VAR_TEMP` starts again on every call, from the lowered program; the
-    // AST gives a function block's none.
+    // A `VAR_TEMP` starts again on every call, from the lowered program, in
+    // the slots the layout gives it after the block's copy slots.
     if crate::body::restarts(ctx)? {
         crate::body::emit_prologue(&mut fb_emitter, ctx)?;
     }

@@ -49,6 +49,14 @@ impl Selection {
             Selection::Mux => "K",
         }
     }
+
+    /// The name of the parameter of the input at `index` among the inputs
+    /// the function selects between.
+    fn input(self, index: usize) -> String {
+        match self {
+            Selection::Sel | Selection::Mux => format!("IN{index}"),
+        }
+    }
 }
 
 /// Where an arm of a selection stores its input from.
@@ -106,35 +114,16 @@ impl Lowering<'_> {
         let name = func.name.original();
         let mut stmts = Vec::new();
         let mut selected_by = self.expr(frame, selector)?;
-        let mut sources = Vec::with_capacity(inputs.len());
-        if inputs.iter().all(|input| self.is_settled(frame, input)) {
-            sources.extend(inputs.iter().map(|input| Source::Input(input)));
-        } else {
-            if !matches!(selected_by.kind(), ExprKind::Const(_)) {
-                let ty = self.typed(selector)?.ty;
-                let label = format!("{name}.{}", selection.selector());
-                let temporary = self.temporary(frame, label, ty, &span)?;
-                stmts.push(self.assign_value(temporary.clone(), selected_by, span.clone())?);
-                selected_by = self.program.read(temporary, span.clone())?;
-            }
-            for (index, input) in inputs.iter().enumerate() {
-                if matches!(self.unwrapped(input).kind, AstExprKind::Const(_)) {
-                    sources.push(Source::Input(input));
-                    continue;
-                }
-                let ty = self.typed(input)?.ty;
-                // A function block instance is no temporary of a body.
-                if matches!(
-                    self.program.types().kind(ty),
-                    Some(TypeKind::FunctionBlock { .. })
-                ) {
-                    return Err(Unlowered::NotYet);
-                }
-                let temporary = self.temporary(frame, format!("{name}.IN{index}"), ty, &span)?;
-                stmts.extend(self.store_at(frame, temporary.clone(), input, span.clone())?);
-                sources.push(Source::Temporary(temporary));
-            }
+        let settled = inputs.iter().all(|input| self.is_settled(frame, input));
+        if !settled && !matches!(selected_by.kind(), ExprKind::Const(_)) {
+            let ty = self.typed(selector)?.ty;
+            let label = format!("{name}.{}", selection.selector());
+            let temporary = self.temporary(frame, label, ty, &span)?;
+            stmts.push(self.assign_value(temporary.clone(), selected_by, span.clone())?);
+            selected_by = self.program.read(temporary, span.clone())?;
         }
+        let (stored, sources) = self.sources(frame, selection, name, inputs, settled, &span)?;
+        stmts.extend(stored);
         let mut arms = Vec::with_capacity(sources.len());
         for source in sources {
             arms.push(self.store_source(frame, &place, source, &span)?);
@@ -164,6 +153,43 @@ impl Lowering<'_> {
             }
         });
         Ok(stmts)
+    }
+
+    /// Where the arms of the selection `name` store each of `inputs` from,
+    /// and the statements to run before them. When every input is
+    /// `settled`, each arm stores its input itself, and nothing runs first.
+    /// Otherwise each input but a literal is stored, in order, in a
+    /// temporary of its type, and its arm stores the temporary.
+    fn sources<'e>(
+        &mut self,
+        frame: &BodyFrame,
+        selection: Selection,
+        name: &str,
+        inputs: &[&'e AstExpr],
+        settled: bool,
+        span: &SourceSpan,
+    ) -> Lowered<(Vec<Stmt>, Vec<Source<'e>>)> {
+        let mut stmts = Vec::new();
+        let mut sources = Vec::with_capacity(inputs.len());
+        for (index, input) in inputs.iter().enumerate() {
+            if settled || matches!(self.unwrapped(input).kind, AstExprKind::Const(_)) {
+                sources.push(Source::Input(input));
+                continue;
+            }
+            let ty = self.typed(input)?.ty;
+            // A function block instance is no temporary of a body.
+            if matches!(
+                self.program.types().kind(ty),
+                Some(TypeKind::FunctionBlock { .. })
+            ) {
+                return Err(Unlowered::NotYet);
+            }
+            let label = format!("{name}.{}", selection.input(index));
+            let temporary = self.temporary(frame, label, ty, span)?;
+            stmts.extend(self.store_at(frame, temporary.clone(), input, span.clone())?);
+            sources.push(Source::Temporary(temporary));
+        }
+        Ok((stmts, sources))
     }
 
     /// The statements of the arm that stores `source` at `place`.

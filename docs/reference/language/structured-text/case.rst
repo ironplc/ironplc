@@ -41,6 +41,12 @@ The selector expression must be of an integer type, a subrange of one, or an
 enumeration type. A selector of any other type, such as ``REAL`` or ``WORD``,
 is reported as :doc:`P4053 </reference/compiler/problems/P4053>`.
 
+Each label must be a value of the selector's type. An enumerated value that
+labels a ``CASE`` on an integer is reported as
+:doc:`P4101 </reference/compiler/problems/P4101>`, and one that is not a
+value of the selector's enumeration is reported as
+:doc:`P2006 </reference/compiler/problems/P2006>`.
+
 Description
 -----------
 

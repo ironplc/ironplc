@@ -163,6 +163,31 @@ END_PROGRAM");
     assert_eq!(snapshot.read("second"), 101);
 }
 
+#[spec_test(REQ_IV_codegen_026)]
+fn end_to_end_when_function_block_var_temp_then_reset_on_every_call() {
+    let snapshot = run("
+FUNCTION_BLOCK fb
+VAR_INPUT a : DINT; END_VAR
+VAR_OUTPUT o : DINT; END_VAR
+VAR_TEMP t : DINT := 100; END_VAR
+t := t + a;
+o := t;
+END_FUNCTION_BLOCK
+PROGRAM main
+VAR x : fb; y : fb; first : DINT; other : DINT; second : DINT; END_VAR
+x(a := 1);
+first := x.o;
+y(a := 2);
+other := y.o;
+x(a := 1);
+second := x.o;
+END_PROGRAM");
+
+    assert_eq!(snapshot.read("first"), 101);
+    assert_eq!(snapshot.read("other"), 102);
+    assert_eq!(snapshot.read("second"), 101);
+}
+
 #[spec_test(REQ_IV_codegen_024)]
 fn end_to_end_when_function_returning_enumeration_assigns_nothing_then_default() {
     let snapshot = run("

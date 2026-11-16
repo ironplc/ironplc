@@ -527,7 +527,22 @@ impl TypeEnvironment {
             .with_secondary(Label::span(base_type_name.span(), "Base type"))
         })?;
 
-        self.insert_type(type_name, base_semantic_type.clone());
+        self.insert_alias_with(type_name, base_type_name, base_semantic_type.clone());
+        Ok(())
+    }
+
+    /// Adds `type_name`, declared as an alias of `base_type_name`, with the
+    /// attributes `attributes`: the base's, but for what the alias declares
+    /// of its own, such as the default an enumeration alias
+    /// (`PAINT : COLOR := BLUE`) gives. A repeated name is recorded as for
+    /// [`Self::insert_type`].
+    pub fn insert_alias_with(
+        &mut self,
+        type_name: &TypeName,
+        base_type_name: &TypeName,
+        attributes: crate::type_attributes::TypeAttributes,
+    ) {
+        self.insert_type(type_name, attributes);
         let element = self
             .id_of(base_type_name)
             .and_then(|base| self.array_elements.get(&base).copied());
@@ -539,7 +554,6 @@ impl TypeEnvironment {
                 self.alias_bases.entry(alias).or_insert(base);
             }
         }
-        Ok(())
     }
 
     /// The type the alias `alias` names (`BYTE` for `TYPE MyByte : BYTE`),
