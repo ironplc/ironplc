@@ -28,9 +28,9 @@ impl fmt::Display for Place {
         for projection in self.path() {
             match projection {
                 Projection::Field(field) => write!(f, ".{field}")?,
-                Projection::Index(subscripts) => {
+                Projection::Index(index) => {
                     let subscripts: Vec<String> =
-                        subscripts.iter().map(ToString::to_string).collect();
+                        index.subscripts().iter().map(ToString::to_string).collect();
                     write!(f, "[{}]", subscripts.join(", "))?
                 }
                 Projection::Deref => f.write_str("^")?,

@@ -274,6 +274,23 @@ struct FileArgs {
     /// standard.
     #[arg(long)]
     allow_conditional_return: bool,
+    /// Allow a semicolon after a PROGRAM, FUNCTION, FUNCTION_BLOCK or
+    /// METHOD header (e.g. `FUNCTION_BLOCK FB EXTENDS FB_Base;`). This is a
+    /// dialect extension not part of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_pou_header_semicolon: bool,
+
+    /// Allow a call argument with no value (`b :=,` or `Error=> ,`), which is
+    /// the same as leaving the argument out. This is an extension not part of
+    /// the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_omitted_call_argument: bool,
+
+    /// Allow a trailing comma before the closing parenthesis of a call's
+    /// argument list. This is an extension not part of the IEC 61131-3
+    /// standard.
+    #[arg(long)]
+    allow_trailing_call_comma: bool,
 
     /// Allow a library or namespace prefix on a type name
     /// (`TcUnit.FB_TestSuite`). This is an extension not part of the
@@ -382,6 +399,9 @@ impl FileArgs {
         options.allow_paren_string_length |= self.allow_paren_string_length;
         options.allow_radix_subrange_bounds |= self.allow_radix_subrange_bounds;
         options.allow_conditional_return |= self.allow_conditional_return;
+        options.allow_pou_header_semicolon |= self.allow_pou_header_semicolon;
+        options.allow_omitted_call_argument |= self.allow_omitted_call_argument;
+        options.allow_trailing_call_comma |= self.allow_trailing_call_comma;
         options.allow_qualified_type_names |= self.allow_qualified_type_names;
         options.allow_dotted_enum_value |= self.allow_dotted_enum_value;
         options.allow_struct_initializer_expressions |= self.allow_struct_initializer_expressions;

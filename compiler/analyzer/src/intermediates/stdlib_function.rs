@@ -57,7 +57,7 @@ pub(crate) fn stdlib_parameter_type(name: &str) -> ParameterType {
 /// Returns standard numeric function definitions.
 ///
 /// These functions are defined in IEC 61131-3 as operating on generic
-/// type categories (ANY_NUM, ANY_REAL). Parameter and return types use
+/// type categories (ANY_NUM, ANY_REAL, ANY_ELEMENTARY). Parameter and return types use
 /// the generic type names so that future type validation can check
 /// compatibility via `GenericTypeName::is_compatible_with()`.
 fn get_numeric_functions() -> Vec<FunctionSignature> {
@@ -76,33 +76,44 @@ fn get_numeric_functions() -> Vec<FunctionSignature> {
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
-        // MIN: minimum of two or more values (ANY_NUM, ANY_NUM, ... -> ANY_NUM).
+        // MIN, MAX and LIMIT are selection functions of any elementary type,
+        // as IEC 61131-3 declares them: durations, dates, bit strings,
+        // `BOOL`s and strings are ordered as numbers are
+        // (REQ-IC-analyzer-137).
+        //
+        // MIN: minimum of two or more values (ANY_ELEMENTARY, ... -> ANY_ELEMENTARY).
         // Extensible, as IEC 61131-3 table 31 declares it (REQ-CB-analyzer-054).
         FunctionSignature::stdlib_extensible(
             "MIN",
             BuiltinFunction::Numeric(NumericFunction::Min),
-            TypeName::from("ANY_NUM"),
-            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+            TypeName::from("ANY_ELEMENTARY"),
+            vec![
+                input_param("IN1", "ANY_ELEMENTARY"),
+                input_param("IN2", "ANY_ELEMENTARY"),
+            ],
             None,
         ),
-        // MAX: maximum of two or more values (ANY_NUM, ANY_NUM, ... -> ANY_NUM).
+        // MAX: maximum of two or more values (ANY_ELEMENTARY, ... -> ANY_ELEMENTARY).
         // Extensible, as IEC 61131-3 table 31 declares it (REQ-CB-analyzer-054).
         FunctionSignature::stdlib_extensible(
             "MAX",
             BuiltinFunction::Numeric(NumericFunction::Max),
-            TypeName::from("ANY_NUM"),
-            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+            TypeName::from("ANY_ELEMENTARY"),
+            vec![
+                input_param("IN1", "ANY_ELEMENTARY"),
+                input_param("IN2", "ANY_ELEMENTARY"),
+            ],
             None,
         ),
-        // LIMIT: clamp value to range (ANY_NUM, ANY_NUM, ANY_NUM -> ANY_NUM)
+        // LIMIT: clamp value to range (ANY_ELEMENTARY x3 -> ANY_ELEMENTARY)
         FunctionSignature::stdlib(
             "LIMIT",
             BuiltinFunction::Numeric(NumericFunction::Limit),
-            TypeName::from("ANY_NUM"),
+            TypeName::from("ANY_ELEMENTARY"),
             vec![
-                input_param("MN", "ANY_NUM"),
-                input_param("IN", "ANY_NUM"),
-                input_param("MX", "ANY_NUM"),
+                input_param("MN", "ANY_ELEMENTARY"),
+                input_param("IN", "ANY_ELEMENTARY"),
+                input_param("MX", "ANY_ELEMENTARY"),
             ],
         ),
         // SEL: binary selection (BOOL, ANY, ANY -> ANY)

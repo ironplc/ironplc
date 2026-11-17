@@ -101,3 +101,88 @@ END_VAR
 END_FUNCTION_BLOCK",
     );
 }
+
+fn parse_fb_call_params_with(
+    arguments: &str,
+    options: &CompilerOptions,
+) -> Result<Vec<ParamAssignmentKind>, String> {
+    let source = format!(
+        "PROGRAM main
+VAR
+    f : FB_X;
+    v : BOOL;
+    w : BOOL;
+END_VAR
+f({arguments});
+END_PROGRAM"
+    );
+    let library =
+        parse_program(&source, &FileId::default(), options).map_err(|d| format!("{d:?}"))?;
+    let program = cast!(&library.elements[0], LibraryElementKind::ProgramDeclaration);
+    let stmts = cast!(&program.body, FunctionBlockBodyKind::Statements);
+    let call = cast!(&stmts.body[0], StmtKind::FbCall);
+    Ok(call.params.clone())
+}
+
+fn parse_fb_call_params(arguments: &str) -> Result<Vec<ParamAssignmentKind>, String> {
+    parse_fb_call_params_with(arguments, &opts_with_call_argument_extensions())
+}
+
+#[rstest]
+#[case::omitted_input_then_trailing_comma("a := v, b :=,\n", 1)]
+#[case::omitted_input_between("a := v, b :=, c := w", 2)]
+#[case::omitted_output("a := v, Error=> ,\n", 1)]
+#[case::omitted_output_last("a := v, Error=>", 1)]
+#[case::trailing_comma("a := v, ", 1)]
+fn parse_when_call_argument_has_no_value_then_it_is_dropped(
+    #[case] arguments: &str,
+    #[case] expected: usize,
+) {
+    let params = parse_fb_call_params(arguments).unwrap();
+
+    assert_eq!(expected, params.len());
+}
+
+#[rstest]
+#[case::only_comma(",")]
+#[case::leading_comma(", a := v")]
+#[case::double_comma("a := v,, b := w")]
+fn parse_when_call_argument_list_has_stray_comma_then_err(#[case] arguments: &str) {
+    assert!(parse_fb_call_params(arguments).is_err());
+}
+
+#[rstest]
+#[case::omitted_input("a := v, b :=, c := w", "P4102")]
+#[case::omitted_output("a := v, Error=> ", "P4102")]
+#[case::trailing_comma("a := v, ", "P4103")]
+fn parse_when_call_argument_extension_and_flag_off_then_problem_code(
+    #[case] arguments: &str,
+    #[case] code: &str,
+) {
+    let error = parse_fb_call_params_with(arguments, &CompilerOptions::default()).unwrap_err();
+
+    assert!(error.contains(code), "{error}");
+}
+
+// The extensions cover call argument lists only. A call-style function block
+// initializer in a declaration (`t1 : TON(PT := T#1S);`) still needs a value
+// for every name and no trailing comma, even with both flags on.
+#[rstest]
+#[case::omitted_value("PT := , IN := FALSE")]
+#[case::trailing_comma("PT := T#1S, ")]
+fn parse_when_fb_call_style_init_has_call_argument_extension_then_err(#[case] arguments: &str) {
+    let source = format!(
+        "PROGRAM main
+VAR
+    t1 : TON({arguments});
+END_VAR
+END_PROGRAM"
+    );
+
+    assert!(parse_program(
+        &source,
+        &FileId::default(),
+        &opts_with_call_argument_extensions()
+    )
+    .is_err());
+}

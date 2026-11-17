@@ -1,0 +1,73 @@
+=====
+P2045
+=====
+
+.. problem-summary:: P2045
+
+This error occurs when an enumerated value is written with a type, such as
+``Size#Small``, and that type is not the enumeration the value is used as.
+
+A value written as ``type#value`` is a value of the type it names. The
+initial value of a variable is a value of the variable's type, the default of
+a ``TYPE`` declaration is a value of the type it declares, a value in a
+structure or array initializer, such as ``(c := Color#Red)`` or
+``[Color#Red, Green]``, is a value of the field's or element's type, and the
+label of a ``CASE`` is a value of the selector's type. The type written before the value
+must be that enumeration or an alias of it. Two enumerations that list the
+same values are still two types. An inline enumeration such as
+``(Idle, Busy)`` has no name, so no value can be written with its type.
+
+Example
+-------
+
+The following code will generate error P2045 twice:
+
+.. playground::
+
+   TYPE
+       Color : (Red, Green);
+       Size : (Small, Large);
+   END_TYPE
+
+   PROGRAM main
+       VAR
+           shade : Color := Size#Small;  (* Error: Size is not Color *)
+           count : INT;
+       END_VAR
+       CASE shade OF
+           Size#Large: count := 1;       (* Error: Size is not Color *)
+       END_CASE;
+   END_PROGRAM
+
+``shade`` is a ``Color``, so its initial value and the labels of a ``CASE``
+that selects on it are values of ``Color``. ``Size#Small`` and ``Size#Large``
+are values of ``Size``.
+
+To fix this error, write the value with the enumeration it is used as, with an
+alias of that enumeration, or without a type:
+
+.. playground::
+
+   TYPE
+       Color : (Red, Green);
+       Size : (Small, Large);
+       Paint : Color;
+   END_TYPE
+
+   PROGRAM main
+       VAR
+           shade : Color := Color#Green;
+           count : INT;
+       END_VAR
+       CASE shade OF
+           Paint#Red: count := 1;  (* Correct: Paint is an alias of Color *)
+           Green: count := 2;      (* Correct: the Green of Color *)
+       END_CASE;
+   END_PROGRAM
+
+See Also
+--------
+
+- :doc:`/reference/language/data-types/derived/enumerated-types` — enumerated types
+- :doc:`P2004` — the type written before the value is not an enumeration
+- :doc:`P2006` — the enumeration does not declare the value

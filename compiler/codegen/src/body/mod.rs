@@ -298,7 +298,8 @@ fn reads(lowering: &Program, ctx: &CompileContext, place: &LoweredPlace, ty: Sca
 /// Whether this backend emits every subscript on the way to `place`.
 fn subscripts_can_emit(lowering: &Program, ctx: &CompileContext, place: &LoweredPlace) -> bool {
     place.path().iter().all(|projection| match projection {
-        Projection::Index(subscripts) => subscripts
+        Projection::Index(index) => index
+            .subscripts()
             .iter()
             .all(|subscript| expr_can_emit(lowering, ctx, subscript)),
         Projection::Field(_) | Projection::Deref => true,

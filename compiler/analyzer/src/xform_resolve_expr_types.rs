@@ -59,22 +59,6 @@ pub fn apply(
     Ok((library, diagnostics))
 }
 
-/// Returns true if the type name is an IEC 61131-3 generic type category.
-///
-/// These are abstract types used in stdlib function signatures that must be
-/// resolved to concrete types based on the actual arguments.
-fn is_generic_type(tn: &TypeName) -> bool {
-    const GENERIC_TYPES: &[&str] = &[
-        "ANY",
-        "ANY_NUM",
-        "ANY_REAL",
-        "ANY_INT",
-        "ANY_BIT",
-        "ANY_STRING",
-    ];
-    GENERIC_TYPES.iter().any(|name| TypeName::from(name) == *tn)
-}
-
 /// The inputs of `f` when every argument is an input, in the order the call
 /// lists them: the order of the parameters, for a call the binding pass wrote
 /// in normal form.
@@ -212,9 +196,11 @@ impl ExprTypeResolver<'_> {
                 }
                 let sig = self.function_environment.get(&f.name)?;
                 let return_type = sig.return_type.as_ref()?.to_type_name();
-                if !is_generic_type(&return_type) {
+                // A generic category, such as the ANY_ELEMENTARY of MIN,
+                // is resolved to a concrete type from the arguments.
+                let Ok(generic) = GenericTypeName::try_from(&return_type.id) else {
                     return self.expr_type_named(return_type);
-                }
+                };
                 match &sig.builtin_function {
                     // An integer of whichever type its context stores it
                     // at, which the literal pass gives it (ADR-0028).
@@ -239,8 +225,7 @@ impl ExprTypeResolver<'_> {
                 // the return type (e.g., BOOL for SEL, ANY_INT for MUX). When any
                 // such argument has the error type, so does the call: the type
                 // binds to it as much as to the first.
-                let generic =
-                    ParameterType::Generic(GenericTypeName::try_from(&return_type.id).ok()?);
+                let generic = ParameterType::Generic(generic);
                 let mut bound = sig
                     .inputs_of(&f.param_assignment)
                     .filter(|(param, _)| param.param_type == generic)

@@ -334,14 +334,37 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "PROGRAM main\nVAR\nb : BOOL;\nEND_VAR\nRETURN(b);\nEND_PROGRAM",
     },
+    // A `;` after the POU header, before the first VAR block. The grammar
+    // accepts it unconditionally; a token-stream rule rejects it (P4100)
+    // when the flag is off.
+    FlagFixture {
+        key: "allow_pou_header_semicolon",
+        prereqs: &[],
+        source: "PROGRAM main;\nVAR\na : INT;\nEND_VAR\nEND_PROGRAM",
+    },
+    // A call argument with no value (`b :=,`): the grammar accepts it
+    // unconditionally; a token-stream rule rejects it (P4102) when the flag is
+    // off.
+    FlagFixture {
+        key: "allow_omitted_call_argument",
+        prereqs: &[],
+        source: "FUNCTION_BLOCK FB_X\nVAR_INPUT\nb : INT;\nc : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nPROGRAM main\nVAR\nf : FB_X;\nEND_VAR\nf(b :=, c := 1);\nEND_PROGRAM",
+    },
+    // A trailing comma in an argument list: rejected (P4103) when the flag is
+    // off.
+    FlagFixture {
+        key: "allow_trailing_call_comma",
+        prereqs: &[],
+        source: "FUNCTION_BLOCK FB_X\nVAR_INPUT\nb : INT;\nc : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nPROGRAM main\nVAR\nf : FB_X;\nEND_VAR\nf(c := 1, );\nEND_PROGRAM",
+    },
     // A library prefix on a type name: the grammar accepts it unconditionally;
-    // a semantic rule rejects it (P4103) when the flag is off.
+    // a semantic rule rejects it (P4104) when the flag is off.
     FlagFixture {
         key: "allow_qualified_type_names",
         prereqs: &[],
         source: "FUNCTION_BLOCK FB_Base\nEND_FUNCTION_BLOCK\nPROGRAM main\nVAR\nx : Lib.FB_Base;\nEND_VAR\nEND_PROGRAM",
     },
-    // `Type.value`: rejected (P4104) when the flag is off.
+    // `Type.value`: rejected (P4105) when the flag is off.
     FlagFixture {
         key: "allow_dotted_enum_value",
         prereqs: &[],

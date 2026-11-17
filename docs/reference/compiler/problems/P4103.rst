@@ -4,14 +4,11 @@ P4103
 
 .. problem-summary:: P4103
 
-This error occurs when a type name has a library or namespace prefix
-(``TcUnit.FB_TestSuite``) without the ``--allow-qualified-type-names``
-compiler flag.
+This error occurs when a call's argument list has a comma before the closing
+parenthesis without the ``--allow-trailing-call-comma`` compiler flag.
 
-IEC 61131-3 Edition 2 names a type by its bare identifier. A prefix that names
-the library a type comes from is an extension. IronPLC compatibility libraries
-are flat, so the prefix is kept in the source text but does not take part in
-finding the type.
+The IEC 61131-3 standard grammar (Annex B) separates arguments with commas and
+has none after the last one. A trailing comma is an extension.
 
 Example
 -------
@@ -20,17 +17,25 @@ The following code will generate error P4103:
 
 .. code-block::
 
-   FUNCTION_BLOCK FB_Test EXTENDS TcUnit.FB_TestSuite
-   END_FUNCTION_BLOCK
+   PROGRAM main
+   VAR
+       drive : FB_Drive;
+   END_VAR
+       drive(Enable := TRUE, );
+   END_PROGRAM
 
-To fix this error, either drop the prefix:
+To fix this error, either remove the comma:
 
 .. code-block::
 
-   FUNCTION_BLOCK FB_Test EXTENDS FB_TestSuite
-   END_FUNCTION_BLOCK
+   PROGRAM main
+   VAR
+       drive : FB_Drive;
+   END_VAR
+       drive(Enable := TRUE);
+   END_PROGRAM
 
 Or enable the extension:
 
-.. |flag| replace:: ``--allow-qualified-type-names``
+.. |flag| replace:: ``--allow-trailing-call-comma``
 .. include:: /includes/enabled-by-flag.rst

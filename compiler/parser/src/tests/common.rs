@@ -85,6 +85,14 @@ pub(crate) fn opts_with_paren_string_length() -> CompilerOptions {
     }
 }
 
+pub(crate) fn opts_with_call_argument_extensions() -> CompilerOptions {
+    CompilerOptions {
+        allow_omitted_call_argument: true,
+        allow_trailing_call_comma: true,
+        ..CompilerOptions::default()
+    }
+}
+
 pub(crate) fn opts_with_conditional_return() -> CompilerOptions {
     CompilerOptions {
         allow_conditional_return: true,
@@ -218,6 +226,16 @@ pub(crate) fn opts_with_constant_initializer_expressions() -> CompilerOptions {
 
 pub(crate) fn opts_with_fb_inheritance() -> CompilerOptions {
     CompilerOptions {
+        allow_fb_inheritance: true,
+        ..CompilerOptions::default()
+    }
+}
+
+/// Options for a `;` after a POU header, with the OOP syntax a `METHOD` or
+/// `EXTENDS` header needs.
+pub(crate) fn opts_with_pou_header_semicolon() -> CompilerOptions {
+    CompilerOptions {
+        allow_pou_header_semicolon: true,
         allow_fb_inheritance: true,
         ..CompilerOptions::default()
     }

@@ -1,4 +1,5 @@
-//! Whether two type ids are the same type.
+//! Whether two type ids are the same type, and the type an alias chain
+//! ends at.
 
 use ironplc_dsl::type_id::TypeId;
 
@@ -46,11 +47,32 @@ impl TypeEnvironment {
     fn is_named(&self, id: TypeId) -> bool {
         self.name_of(id).and_then(|name| self.id_of(name)) == Some(id)
     }
+
+    /// The type the alias chain that starts at `id` ends at: `COLOR` for
+    /// `SHADE` in `COLOR : (RED, GREEN); PAINT : COLOR; SHADE : PAINT`, and
+    /// `id` itself when it is not an alias. An enumeration and its aliases
+    /// end at one enumeration, which two declarations that list the same
+    /// members do not.
+    pub(crate) fn alias_root(&self, id: TypeId) -> TypeId {
+        let mut root = id;
+        // A chain is as long as the aliases that make it; a repeated name
+        // can make a cycle, which another rule reports, so the bound only
+        // keeps the walk finite.
+        for _ in 0..self.alias_bases.len() {
+            match self.alias_base(root) {
+                Some(base) => root = base,
+                None => break,
+            }
+        }
+        root
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
+
+    use ironplc_dsl::common::TypeName;
 
     use crate::test_helpers::{declared_ids, parse_and_resolve_types_with_context};
 
@@ -95,5 +117,31 @@ END_PROGRAM"
     #[case::sized_and_unsized_string("STRING[10]", "STRING")]
     fn same_type_when_different_type_then_false(#[case] a: &str, #[case] b: &str) {
         assert!(!same_type(a, b));
+    }
+
+    #[rstest]
+    #[case::enumeration("COLOR", "COLOR")]
+    #[case::enumeration_alias("PAINT", "COLOR")]
+    #[case::enumeration_alias_of_alias("SHADE", "COLOR")]
+    #[case::enumeration_with_same_members("TWIN", "TWIN")]
+    #[case::elementary_alias("Speed", "INT")]
+    fn alias_root_when_type_then_type_its_alias_chain_ends_at(
+        #[case] type_name: &str,
+        #[case] root: &str,
+    ) {
+        let (_, context) = parse_and_resolve_types_with_context(
+            "
+TYPE
+  COLOR : (RED, GREEN);
+  PAINT : COLOR;
+  SHADE : PAINT;
+  TWIN : (RED, GREEN);
+  Speed : INT;
+END_TYPE",
+        );
+        let types = context.types();
+        let id = |name: &str| types.id_of(&TypeName::from(name));
+
+        assert_eq!(id(type_name).map(|id| types.alias_root(id)), id(root));
     }
 }

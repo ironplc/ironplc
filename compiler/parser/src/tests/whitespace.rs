@@ -289,6 +289,11 @@ END_CONFIGURATION"
     verbatim,
     CompilerOptions::default
 )]
+#[case::var_declaration_named_array_initializer(
+    "TYPE Triple : ARRAY[1..3] OF DINT; END_TYPE PROGRAM main VAR x·:·Triple·:=·[1, 2]·; END_VAR x[1] := 2; END_PROGRAM",
+    verbatim,
+    CompilerOptions::default
+)]
 // `this_super.rs` also spells out THIS/space/comment before the caret, but
 // asserts the AST *shape* (that the head is a SelfRef). This row asserts
 // invariance instead. It is the one gap in the #1437 family that `self_ref`
@@ -368,6 +373,30 @@ END_CONFIGURATION"
     "CONFIGURATION config VAR_GLOBAL lamp AT·%QX0.0·:·BOOL·:=·TRUE·; END_VAR RESOURCE r1 ON PLC PROGRAM a : p; END_RESOURCE END_CONFIGURATION",
     verbatim,
     CompilerOptions::default
+)]
+// ---------------------------------------------------------------------
+// The `;` after a POU header (`--allow-pou-header-semicolon`), on each side
+// of the `;` and inside the VAR lookahead.
+// ---------------------------------------------------------------------
+#[case::program_header_semicolon(
+    "PROGRAM main·;·VAR v : INT; END_VAR v := 1; END_PROGRAM",
+    verbatim,
+    opts_with_pou_header_semicolon
+)]
+#[case::function_header_semicolon(
+    "FUNCTION F : INT·;·VAR_INPUT a : INT; END_VAR F := a; END_FUNCTION",
+    verbatim,
+    opts_with_pou_header_semicolon
+)]
+#[case::function_block_header_semicolon(
+    "FUNCTION_BLOCK FB_B END_FUNCTION_BLOCK FUNCTION_BLOCK FB EXTENDS FB_B·;·VAR_INPUT a : INT; END_VAR END_FUNCTION_BLOCK",
+    verbatim,
+    opts_with_pou_header_semicolon
+)]
+#[case::method_header_semicolon(
+    "FUNCTION_BLOCK FB METHOD M : INT·;·VAR_INPUT a : INT; END_VAR M := a; END_METHOD END_FUNCTION_BLOCK",
+    verbatim,
+    opts_with_pou_header_semicolon
 )]
 fn parse_when_gap_filled_then_same_ast(
     #[case] template: &'static str,

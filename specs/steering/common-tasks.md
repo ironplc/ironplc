@@ -150,7 +150,7 @@ From the repository root:
 ```bash
 just devenv-smoke              # Quick smoke test of all components
 just ci-commit-workflow        # Simulate GitHub commit workflow locally
-just update                    # Update dependencies across all components
+just update                    # Update dependencies and the pinned Rust toolchain
 ```
 
 ## Before Suggesting Commands

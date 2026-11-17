@@ -1,0 +1,11 @@
+# The Rust toolchain every build uses: CI, the development container and local
+# checkouts. rustup reads this file from any directory below the repository
+# root, and the CI Rust setup action installs what it names.
+#
+# Pinning a release keeps a new Rust from changing lints, formatting or build
+# behaviour without a commit. `just update` moves the pin to the latest stable
+# release, so the weekly update workflow validates each new Rust before it
+# reaches main.
+[toolchain]
+channel = "1.100.0"
+components = ["rustfmt", "clippy"]

@@ -250,10 +250,32 @@ impl LibraryRegistry {
         &self,
         references: &[LibraryReference],
     ) -> (Vec<LibraryName>, Vec<Diagnostic>) {
+        self.resolve_references_with_siblings(references, &[])
+    }
+
+    /// Like [`Self::resolve_references`], for references that other projects
+    /// loaded alongside this one may satisfy (`REQ-CL-sources-009`).
+    ///
+    /// A reference whose name equals one of `sibling_projects` (case-sensitive,
+    /// as `REQ-CL-sources-003`) is satisfied by that project's own sources, so
+    /// it activates no bundled library and yields no diagnostic. The sibling
+    /// takes precedence over a bundled library of the same name: loading both
+    /// would declare every symbol twice.
+    pub fn resolve_references_with_siblings(
+        &self,
+        references: &[LibraryReference],
+        sibling_projects: &[String],
+    ) -> (Vec<LibraryName>, Vec<Diagnostic>) {
         let mut activated: Vec<LibraryName> = Vec::new();
         let mut diagnostics: Vec<Diagnostic> = Vec::new();
 
         for reference in references {
+            if sibling_projects
+                .iter()
+                .any(|name| name == reference.name.as_str())
+            {
+                continue;
+            }
             if self.contains(&reference.name) {
                 if !activated.contains(&reference.name) {
                     activated.push(reference.name.clone());
@@ -547,6 +569,34 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, Problem::LibraryNotFound.code());
         assert!(diagnostics[0].primary.message.contains("Nonexistent"));
+    }
+
+    #[test]
+    fn resolve_references_with_siblings_when_sibling_named_then_no_diagnostic() {
+        let registry = LibraryRegistry::bundled();
+        let (activated, diagnostics) = registry
+            .resolve_references_with_siblings(&[reference("BROTLib")], &["BROTLib".to_string()]);
+        assert!(activated.is_empty());
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn resolve_references_with_siblings_when_case_differs_then_diagnoses() {
+        let registry = LibraryRegistry::bundled();
+        let (_, diagnostics) = registry
+            .resolve_references_with_siblings(&[reference("BROTLib")], &["BrotLib".to_string()]);
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn resolve_references_with_siblings_when_sibling_shadows_bundled_then_not_activated() {
+        let registry = LibraryRegistry::bundled();
+        let (activated, diagnostics) = registry.resolve_references_with_siblings(
+            &[reference("Tc2_System")],
+            &["Tc2_System".to_string()],
+        );
+        assert!(activated.is_empty());
+        assert!(diagnostics.is_empty());
     }
 
     #[test]

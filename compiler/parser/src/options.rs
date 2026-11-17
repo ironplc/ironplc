@@ -513,6 +513,20 @@ define_compiler_options! {
     "--allow-conditional-return",
     [Codesys, TwinCat],
     allow_conditional_return,
+    "Allow a semicolon after a PROGRAM, FUNCTION, FUNCTION_BLOCK or METHOD header, e.g. FUNCTION_BLOCK FB EXTENDS FB_Base;",
+    "--allow-pou-header-semicolon",
+    [TwinCat],
+    allow_pou_header_semicolon,
+
+    "Allow a call argument with no value (b :=, or Error=> ,), which is the same as leaving it out",
+    "--allow-omitted-call-argument",
+    [Codesys, TwinCat],
+    allow_omitted_call_argument,
+
+    "Allow a trailing comma before the closing parenthesis of a call's argument list",
+    "--allow-trailing-call-comma",
+    [Codesys, TwinCat],
+    allow_trailing_call_comma,
 
     "Allow a library or namespace prefix on a type name (TcUnit.FB_TestSuite)",
     "--allow-qualified-type-names",

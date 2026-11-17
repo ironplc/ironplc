@@ -17,16 +17,15 @@ Signature
 
 .. code-block:: text
 
-   FUNCTION MIN : ANY
+   FUNCTION MIN : ANY_ELEMENTARY
      VAR_INPUT
-       IN1 : ANY;
-       IN2 : ANY;
+       IN1 : ANY_ELEMENTARY;
+       IN2 : ANY_ELEMENTARY;
        (* ... INn ... *)
      END_VAR
    END_FUNCTION
 
-``MIN`` accepts ``SINT``, ``INT``, ``DINT``, ``LINT``, ``USINT``,
-``UINT``, ``UDINT``, ``ULINT``, ``REAL``, ``LREAL``.
+.. include:: ../../../includes/ordered-selection-input-types.rst
 
 .. include:: ../../../includes/widest-input-return-type.rst
 
@@ -41,13 +40,13 @@ Signature
      - Type
      - Description
    * - ``IN1``
-     - ``ANY_MAGNITUDE``
+     - ``ANY_ELEMENTARY``
      - The first value to compare.
    * - ``IN2``
-     - ``ANY_MAGNITUDE``
+     - ``ANY_ELEMENTARY``
      - The second value to compare.
    * - ``IN3``, ..., ``INn``
-     - ``ANY_MAGNITUDE``
+     - ``ANY_ELEMENTARY``
      - Further values to compare; the function is extensible, so any number
        of inputs may follow ``IN2``.
 
@@ -62,7 +61,7 @@ Signature
      - Type
      - Description
    * - Return value
-     - ``ANY_MAGNITUDE``
+     - ``ANY_ELEMENTARY``
      - The smallest of the inputs. If inputs are equal, returns that value.
 
 Description
@@ -79,6 +78,13 @@ Example
 
    result := MIN(10, 20);    (* result = 10 *)
    result := MIN(-5, 3);     (* result = -5 *)
+
+The shorter of two durations:
+
+.. playground-with-program::
+   :vars: shortest : TIME;
+
+   shortest := MIN(T#2s, T#500ms);    (* shortest = T#500ms *)
 
 See Also
 --------
