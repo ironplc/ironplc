@@ -885,11 +885,15 @@ parser! {
     // F_EDGE) are also valid enum member names, matching the same
     // carve-out variable_identifier() already provides for VAR
     // declarations (see #300, "Feature/reserved variables").
-    rule enumerated_value() -> EnumeratedValue = enumerated_value__dotted() / type_name:(name:enumerated_type_name() tok(TokenType::Hash) { name })? value:variable_identifier() { EnumeratedValue {type_name, value, dotted: false, explicit_value: None} }
+    rule enumerated_value() -> EnumeratedValue = enumerated_value__dotted() / enumerated_value__undotted()
+    // `Type#value` or a bare `value`.
+    rule enumerated_value__undotted() -> EnumeratedValue = type_name:(name:enumerated_type_name() tok(TokenType::Hash) { name })? value:variable_identifier() { EnumeratedValue {type_name, value, dotted: false, explicit_value: None} }
     // TwinCAT/CODESYS spell a qualified enumerated value `Type.value`, and with
     // a library prefix `Lib.Type.value`. This is only tried where an enumerated
-    // value is expected (an initial value or a CASE label), where there is no
-    // variable reference for the dots to be confused with.
+    // value is referenced (an initial value, a TYPE default, an array
+    // initializer, a CASE label), where there is no variable reference for the
+    // dots to be confused with. A member declaration names a value, so it
+    // never takes this form.
     rule enumerated_value__dotted() -> EnumeratedValue = path:(i:identifier() _ tok(TokenType::Period) _ { i })+ value:variable_identifier() {
       let mut path = path;
       let ty = path.pop().expect("the repetition matched at least once");
@@ -905,7 +909,7 @@ parser! {
     // Type_BOOL` -- only a member *declaration* can carry an explicit
     // value; `enumerated_value()` itself (used for references: defaults,
     // case labels, expressions) is unchanged.
-    rule enumerated_value_decl() -> EnumeratedValue = ev:enumerated_value() explicit:(_ tok(TokenType::Assignment) _ si:signed_integer() { si })? {
+    rule enumerated_value_decl() -> EnumeratedValue = ev:enumerated_value__undotted() explicit:(_ tok(TokenType::Assignment) _ si:signed_integer() { si })? {
       EnumeratedValue { explicit_value: explicit, ..ev }
     }
     // CODESYS/TwinCAT enum base-type suffix, e.g. `(A, B) BYTE;` --

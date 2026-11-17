@@ -123,6 +123,18 @@ END_FUNCTION_BLOCK",
     assert!(result.is_err());
 }
 
+// A member declaration names a value, so it has no type to write before it.
+#[test]
+fn parse_when_enumeration_member_is_dotted_then_err() {
+    let result = parse_program(
+        "TYPE E_Blink : (Lib.off, slow); END_TYPE",
+        &FileId::default(),
+        &twincat(),
+    );
+
+    assert!(result.is_err());
+}
+
 #[test]
 fn parse_when_initial_value_is_dotted_enumerated_value_with_library_prefix_then_prefix_on_value_type(
 ) {
