@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/standard-library/functions/limit.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="Clamps a value to a specified range. Signature: LIMIT accepts SINT, INT, DINT, LINT, USINT, UINT, UDINT, ULINT, REAL, LREAL. The return type is the type that every compared or selected input widens..." />
-<meta name="description" content="Clamps a value to a specified range. Signature: LIMIT accepts SINT, INT, DINT, LINT, USINT, UINT, UDINT, ULINT, REAL, LREAL. The return type is the type that every compared or selected input widens..." />
+<meta property="og:description" content="Clamps a value to a specified range. Signature: IEC 61131-3 declares the inputs as any elementary type ( ANY_ELEMENTARY). IronPLC compares integers, reals, bit strings, BOOL, times and dates, and s..." />
+<meta name="description" content="Clamps a value to a specified range. Signature: IEC 61131-3 declares the inputs as any elementary type ( ANY_ELEMENTARY). IronPLC compares integers, reals, bit strings, BOOL, times and dates, and s..." />
 <link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="MUX" href="mux.html"><link rel="prev" title="MIN" href="min.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/standard-library/functions/limit.html">
 
@@ -18,7 +18,7 @@
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../_static/tabs.css?v=4c969af8" />
     <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
-    <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=6a604523" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
     <link rel="stylesheet" type="text/css" href="../../../_static/overrides.css?v=5d031554" />
     
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.253.0">
+<meta name="ironplc-version" content="0.254.0">
 </head>
   <body>
     
@@ -538,6 +538,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2042.html">P2042</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2043.html">P2043</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2044.html">P2044</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2045.html">P2045</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4003.html">P4003</a></li>
@@ -630,6 +631,12 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4095.html">P4095</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4096.html">P4096</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4097.html">P4097</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4098.html">P4098</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4099.html">P4099</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4100.html">P4100</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4101.html">P4101</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4102.html">P4102</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4103.html">P4103</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -780,17 +787,25 @@ MX ─┤         │
     └─────────┘
 </pre></div>
 </div>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>FUNCTION LIMIT : ANY
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>FUNCTION LIMIT : ANY_ELEMENTARY
   VAR_INPUT
-    MN : ANY;
-    IN : ANY;
-    MX : ANY;
+    MN : ANY_ELEMENTARY;
+    IN : ANY_ELEMENTARY;
+    MX : ANY_ELEMENTARY;
   END_VAR
 END_FUNCTION
 </pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">LIMIT</span></code> accepts <code class="docutils literal notranslate"><span class="pre">SINT</span></code>, <code class="docutils literal notranslate"><span class="pre">INT</span></code>, <code class="docutils literal notranslate"><span class="pre">DINT</span></code>, <code class="docutils literal notranslate"><span class="pre">LINT</span></code>, <code class="docutils literal notranslate"><span class="pre">USINT</span></code>,
-<code class="docutils literal notranslate"><span class="pre">UINT</span></code>, <code class="docutils literal notranslate"><span class="pre">UDINT</span></code>, <code class="docutils literal notranslate"><span class="pre">ULINT</span></code>, <code class="docutils literal notranslate"><span class="pre">REAL</span></code>, <code class="docutils literal notranslate"><span class="pre">LREAL</span></code>.</p>
+<p>IEC 61131-3 declares the inputs as any elementary type (<code class="docutils literal notranslate"><span class="pre">ANY_ELEMENTARY</span></code>).
+IronPLC compares integers, reals, bit strings, <code class="docutils literal notranslate"><span class="pre">BOOL</span></code>, times and dates, and
+strings: <code class="docutils literal notranslate"><span class="pre">FALSE</span></code> is less than <code class="docutils literal notranslate"><span class="pre">TRUE</span></code>, a time or date is ordered by the
+duration or instant it stands for, and strings are ordered as <code class="docutils literal notranslate"><span class="pre">&lt;</span></code> orders
+them. An enumeration, a structure or an array is not elementary, and is an
+error (<a class="reference internal" href="../../compiler/problems/P4026.html"><span class="doc">P4026</span></a>). Every input is
+evaluated. Of strings, the function is supported where it is the whole value
+assigned, and each input is a literal or a variable. Using it inside an
+expression, such as an argument of <code class="docutils literal notranslate"><span class="pre">CONCAT</span></code>, or with inputs that call a
+function or use a computed array index, is not yet supported.</p>
 <p>The return type is the type that every compared or selected input widens to.
 The compiler converts a narrower input to that type first, so an <code class="docutils literal notranslate"><span class="pre">INT</span></code> and a
 <code class="docutils literal notranslate"><span class="pre">LINT</span></code> give a <code class="docutils literal notranslate"><span class="pre">LINT</span></code>. When no input’s type holds every other input, as with
@@ -812,15 +827,15 @@ a <code class="docutils literal notranslate"><span class="pre">DINT</span></code
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">MN</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">ANY_MAGNITUDE</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ANY_ELEMENTARY</span></code></p></td>
 <td><p>Lower bound of the range.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">IN</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">ANY_MAGNITUDE</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ANY_ELEMENTARY</span></code></p></td>
 <td><p>Value to clamp.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">MX</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">ANY_MAGNITUDE</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ANY_ELEMENTARY</span></code></p></td>
 <td><p>Upper bound of the range.</p></td>
 </tr>
 </tbody>
@@ -842,7 +857,7 @@ a <code class="docutils literal notranslate"><span class="pre">DINT</span></code
 </thead>
 <tbody>
 <tr class="row-even"><td><p>Return value</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">ANY_MAGNITUDE</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ANY_ELEMENTARY</span></code></p></td>
 <td><p>IN clamped to [MN, MX].</p></td>
 </tr>
 </tbody>
@@ -870,6 +885,16 @@ result is <em>MX</em>.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">:=</span> <span class="n">LIMIT</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">);</span>    <span class="p">(</span><span class="o">*</span> <span class="n">result</span> <span class="o">=</span> <span class="mi">50</span> <span class="o">*</span><span class="p">)</span>
 <span class="n">result</span> <span class="o">:=</span> <span class="n">LIMIT</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">10</span><span class="p">,</span> <span class="mi">100</span><span class="p">);</span>   <span class="p">(</span><span class="o">*</span> <span class="n">result</span> <span class="o">=</span> <span class="mi">0</span> <span class="o">*</span><span class="p">)</span>
 <span class="n">result</span> <span class="o">:=</span> <span class="n">LIMIT</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">200</span><span class="p">,</span> <span class="mi">100</span><span class="p">);</span>   <span class="p">(</span><span class="o">*</span> <span class="n">result</span> <span class="o">=</span> <span class="mi">100</span> <span class="o">*</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+<p>A period kept within its range:</p>
+<div class="tab-set docutils">
+<input checked="True" class="tab-input" id="tab-set--1-input--1" name="tab-set--1" type="radio" /><label class="tab-label" for="tab-set--1-input--1">Try it</label><div class="tab-content docutils">
+<iframe src="https://playground.ironplc.com/?embed=true&scaffold=true&source=ironplc-docs&host=reference%2Fstandard-library%2Ffunctions%2Flimit&code=cGVyaW9kIDo9IExJTUlUKFQjMTAwbXMsIFQjMTBzLCBUIzVzKTsgICAgKCogcGVyaW9kID0gVCM1cyAqKQ%3D%3D&vars=cGVyaW9kIDogVElNRTs%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:383px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
+<input class="tab-input" id="tab-set--1-input--2" name="tab-set--1" type="radio" /><label class="tab-label" for="tab-set--1-input--2">Source</label><div class="tab-content docutils">
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">period</span> <span class="o">:=</span> <span class="n">LIMIT</span><span class="p">(</span><span class="n">T</span><span class="c1">#100ms, T#10s, T#5s);    (* period = T#5s *)</span>
 </pre></div>
 </div>
 </div>
@@ -981,7 +1006,7 @@ result is <em>MX</em>.</p>
     <script src="../../../_static/tabs.js?v=3ee01567"></script>
     <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
     <script src="../../../_static/copybutton.js?v=f281be69"></script>
-    <script src="../../../_static/design-tabs.js?v=f930bc37"></script>
+    <script data-sd-tabs-storage-prefix="sphinx-design-tab-id-" src="../../../_static/design-tabs.js?v=fcb327ea"></script>
     <script src="../../../_static/version-check.js?v=735d477a"></script>
     <script src="../../../_static/posthog-init.js?v=8ec94b21"></script>
     </body>

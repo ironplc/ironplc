@@ -18,7 +18,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/tabs.css?v=4c969af8" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
-    <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=6a604523" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
     <link rel="stylesheet" type="text/css" href="../_static/overrides.css?v=5d031554" />
     
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.253.0">
+<meta name="ironplc-version" content="0.254.0">
 </head>
   <body>
     
@@ -538,6 +538,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P2042.html">P2042</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P2043.html">P2043</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P2044.html">P2044</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P2045.html">P2045</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4003.html">P4003</a></li>
@@ -630,6 +631,12 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4095.html">P4095</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4096.html">P4096</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4097.html">P4097</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4098.html">P4098</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4099.html">P4099</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4100.html">P4100</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4101.html">P4101</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4102.html">P4102</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4103.html">P4103</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6003.html">P6003</a></li>
@@ -858,7 +865,9 @@ runtime convention rather than a CODESYS feature.</p>
 <code class="docutils literal notranslate"><span class="pre">--allow-struct-initializer-expressions</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-enum-explicit-values</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-enum-base-type</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-continue</span></code>,
-<code class="docutils literal notranslate"><span class="pre">--allow-keywords-as-names</span></code>, and <code class="docutils literal notranslate"><span class="pre">--allow-radix-subrange-bounds</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">--allow-keywords-as-names</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-radix-subrange-bounds</span></code>,
+<code class="docutils literal notranslate"><span class="pre">--allow-conditional-return</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-omitted-call-argument</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">--allow-trailing-call-comma</span></code>.</p>
 <p><strong>Selects:</strong> <code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-non-numeric</span> <span class="pre">ignore-trailing</span></code> and
 <code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-failure</span> <span class="pre">zero</span></code> — CODESYS stops parsing at the
 first invalid character and returns 0 for a string that is not valid in
@@ -899,7 +908,10 @@ rather than a TwinCAT feature.</p>
 <code class="docutils literal notranslate"><span class="pre">--allow-struct-initializer-expressions</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-enum-explicit-values</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-enum-base-type</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-continue</span></code>,
-<code class="docutils literal notranslate"><span class="pre">--allow-keywords-as-names</span></code>, and <code class="docutils literal notranslate"><span class="pre">--allow-radix-subrange-bounds</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">--allow-keywords-as-names</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-radix-subrange-bounds</span></code>,
+<code class="docutils literal notranslate"><span class="pre">--allow-conditional-return</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-pou-header-semicolon</span></code>,
+<code class="docutils literal notranslate"><span class="pre">--allow-omitted-call-argument</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">--allow-trailing-call-comma</span></code>.</p>
 <p><strong>Selects:</strong> <code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-non-numeric</span> <span class="pre">ignore-trailing</span></code> and
 <code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-failure</span> <span class="pre">zero</span></code>, as <code class="docutils literal notranslate"><span class="pre">codesys</span></code>.</p>
 </dd>
@@ -957,25 +969,28 @@ These are not part of the IEC 61131-3 standard but are supported by many
 PLC environments.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-missing-semicolon</span></code></dt><dd><p>Allow missing semicolons after keyword statements like <code class="docutils literal notranslate"><span class="pre">END_IF</span></code> and
-<code class="docutils literal notranslate"><span class="pre">END_STRUCT</span></code>. Also allows a <code class="docutils literal notranslate"><span class="pre">CASE</span></code> branch with no statements at
+<code class="docutils literal notranslate"><span class="pre">END_STRUCT</span></code>. This is an extension, not part of the IEC 61131-3
+standard. It also allows a <code class="docutils literal notranslate"><span class="pre">CASE</span></code> branch with no statements at
 all (a label that falls straight through to the next label, <code class="docutils literal notranslate"><span class="pre">ELSE</span></code>,
 or <code class="docutils literal notranslate"><span class="pre">END_CASE</span></code>) – strict IEC 61131-3 only allows this via an
 explicit empty statement (<code class="docutils literal notranslate"><span class="pre">5:</span> <span class="pre">;</span></code>); this fills in the dropped <code class="docutils literal notranslate"><span class="pre">;</span></code>.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-top-level-var-global</span></code></dt><dd><p>Allow <code class="code docutils literal notranslate"><span class="pre">VAR_GLOBAL</span></code> declarations at the top level of a file,
 outside of a <code class="code docutils literal notranslate"><span class="pre">CONFIGURATION</span></code> block. See
-<a class="reference internal" href="../reference/language/variables/scope.html"><span class="doc">Variable Scope</span></a>.</p>
+<a class="reference internal" href="../reference/language/variables/scope.html"><span class="doc">Variable Scope</span></a>. This is an extension, not part of the IEC 61131-3 standard.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-constant-type-params</span></code></dt><dd><p>Allow constant references in type parameters such as array bounds and
 string lengths (e.g., <code class="docutils literal notranslate"><span class="pre">ARRAY[1..MY_CONST]</span> <span class="pre">OF</span> <span class="pre">INT</span></code> or
-<code class="docutils literal notranslate"><span class="pre">STRING[MY_CONST]</span></code>). See <a class="reference internal" href="../reference/language/data-types/derived/array-types.html"><span class="doc">Array Types</span></a>.</p>
+<code class="docutils literal notranslate"><span class="pre">STRING[MY_CONST]</span></code>). See <a class="reference internal" href="../reference/language/data-types/derived/array-types.html"><span class="doc">Array Types</span></a>.
+This is an extension, not part of the IEC 61131-3 standard.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-empty-var-blocks</span></code></dt><dd><p>Allow empty variable blocks (<code class="docutils literal notranslate"><span class="pre">VAR</span> <span class="pre">END_VAR</span></code>, <code class="docutils literal notranslate"><span class="pre">VAR_INPUT</span> <span class="pre">END_VAR</span></code>, etc.).
-Some PLC environments permit variable blocks with no declarations.</p>
+Some PLC environments permit variable blocks with no declarations.
+This is an extension, not part of the IEC 61131-3 standard.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-time-as-function-name</span></code></dt><dd><p>Allow <code class="docutils literal notranslate"><span class="pre">TIME</span></code> to be used as a function name (e.g., <code class="docutils literal notranslate"><span class="pre">TIME()</span></code>).
 Required for OSCAT compatibility where <code class="docutils literal notranslate"><span class="pre">TIME()</span></code> reads the PLC system
-clock.</p>
+clock. This is an extension, not part of the IEC 61131-3 standard.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-long-time-types</span></code></dt><dd><p>Allow the IEC 61131-3:2013 long-time-type keywords
 <a class="reference internal" href="../reference/language/data-types/elementary/ltime.html"><span class="doc">LTIME</span></a>,
@@ -1016,9 +1031,11 @@ sub-objects (array elements, structure fields) and pointer arithmetic are
 not supported and are rejected with a diagnostic. See
 <a class="reference internal" href="../reference/extension-library/functions/adr.html"><span class="doc">ADR</span></a>.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-persistent-var</span></code></dt><dd><p>Allow the Beckhoff TwinCAT / CODESYS <code class="docutils literal notranslate"><span class="pre">PERSISTENT</span></code> variable qualifier
-(<code class="docutils literal notranslate"><span class="pre">VAR</span> <span class="pre">PERSISTENT</span></code> / <code class="docutils literal notranslate"><span class="pre">VAR_GLOBAL</span> <span class="pre">PERSISTENT</span></code>). This is an extension,
-not part of the IEC 61131-3 standard.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-persistent-var</span></code></dt><dd><p>Allow the <code class="docutils literal notranslate"><span class="pre">PERSISTENT</span></code> variable qualifier, alone or combined with
+<code class="docutils literal notranslate"><span class="pre">RETAIN</span></code> in either order (<code class="docutils literal notranslate"><span class="pre">RETAIN</span> <span class="pre">PERSISTENT</span></code> or
+<code class="docutils literal notranslate"><span class="pre">PERSISTENT</span> <span class="pre">RETAIN</span></code>), on <code class="docutils literal notranslate"><span class="pre">VAR</span></code>, <code class="docutils literal notranslate"><span class="pre">VAR_GLOBAL</span></code>, <code class="docutils literal notranslate"><span class="pre">VAR_INPUT</span></code> and
+<code class="docutils literal notranslate"><span class="pre">VAR_OUTPUT</span></code> blocks. See <a class="reference internal" href="../reference/language/variables/retention.html"><span class="doc">Retention</span></a>.
+This is an extension, not part of the IEC 61131-3 standard.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-ref-arithmetic</span></code></dt><dd><p>Allow arithmetic (<code class="docutils literal notranslate"><span class="pre">+</span></code>, <code class="docutils literal notranslate"><span class="pre">-</span></code>) and ordering comparisons (<code class="docutils literal notranslate"><span class="pre">&lt;</span></code>, <code class="docutils literal notranslate"><span class="pre">&gt;</span></code>,
 <code class="docutils literal notranslate"><span class="pre">&lt;=</span></code>, <code class="docutils literal notranslate"><span class="pre">&gt;=</span></code>) on <code class="docutils literal notranslate"><span class="pre">REF_TO</span></code> types. By default, only <code class="docutils literal notranslate"><span class="pre">=</span></code> and <code class="docutils literal notranslate"><span class="pre">&lt;&gt;</span></code>
@@ -1026,11 +1043,11 @@ are permitted on references.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-ref-stack-variables</span></code></dt><dd><p>Allow <code class="docutils literal notranslate"><span class="pre">REF()</span></code> on stack-allocated variables (<code class="docutils literal notranslate"><span class="pre">VAR_TEMP</span></code> and function
 <code class="docutils literal notranslate"><span class="pre">VAR_INPUT</span></code>/<code class="docutils literal notranslate"><span class="pre">VAR_OUTPUT</span></code>). Required for OSCAT patterns where the
-reference does not escape the call.</p>
+reference does not escape the call. This is an extension, not part of the IEC 61131-3 standard.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-ref-type-punning</span></code></dt><dd><p>Allow assigning between <code class="docutils literal notranslate"><span class="pre">REF_TO</span></code> types of different base types (type
 punning), such as reinterpreting the bits of a <code class="docutils literal notranslate"><span class="pre">REAL</span></code> through a
-<code class="docutils literal notranslate"><span class="pre">REF_TO</span> <span class="pre">DWORD</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">REF_TO</span> <span class="pre">DWORD</span></code>. This is an extension, not part of the IEC 61131-3 standard.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-int-to-bool-initializer</span></code></dt><dd><p>Allow integer literals <code class="docutils literal notranslate"><span class="pre">0</span></code> and <code class="docutils literal notranslate"><span class="pre">1</span></code> as <code class="docutils literal notranslate"><span class="pre">BOOL</span></code> variable initializers
 (e.g., <code class="docutils literal notranslate"><span class="pre">debug</span> <span class="pre">:</span> <span class="pre">BOOL</span> <span class="pre">:=</span> <span class="pre">0;</span></code>). The compiler rewrites <code class="docutils literal notranslate"><span class="pre">0</span></code> to <code class="docutils literal notranslate"><span class="pre">FALSE</span></code>
@@ -1125,7 +1142,9 @@ to a literal at compile time. Using this form without the flag produces
 <a class="reference internal" href="../reference/compiler/problems/P4037.html"><span class="doc">P4037</span></a>; if the expression
 does not fully reduce to a constant (e.g. it references a
 non-<code class="docutils literal notranslate"><span class="pre">CONSTANT</span></code> variable), it produces
-<a class="reference internal" href="../reference/compiler/problems/P4038.html"><span class="doc">P4038</span></a>.</p>
+<a class="reference internal" href="../reference/compiler/problems/P4038.html"><span class="doc">P4038</span></a>; if a named constant’s
+type is not compatible with the variable’s, it produces
+<a class="reference internal" href="../reference/compiler/problems/P4022.html"><span class="doc">P4022</span></a>.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-radix-case-labels</span></code></dt><dd><p>Allow a hex, binary, or octal bit-string literal (e.g. <code class="docutils literal notranslate"><span class="pre">16#D012</span></code>,
 <code class="docutils literal notranslate"><span class="pre">2#1010</span></code>, <code class="docutils literal notranslate"><span class="pre">8#17</span></code>) as a <code class="docutils literal notranslate"><span class="pre">CASE</span></code> label. The IEC 61131-3 standard
@@ -1171,9 +1190,8 @@ TwinCAT/CODESYS. Without this flag, such a value produces
 standard syntax and is always allowed. The <code class="docutils literal notranslate"><span class="pre">pDevice^.Delta</span></code> example
 spells its pointer with <code class="docutils literal notranslate"><span class="pre">REF_TO</span></code>, which is a separate extension needing
 <code class="docutils literal notranslate"><span class="pre">--allow-ref-to</span></code>; not every dialect that enables one enables the other,
-and some spell the same declaration <code class="docutils literal notranslate"><span class="pre">POINTER</span> <span class="pre">TO</span> <span class="pre">FB_Device</span></code>. The
-per-dialect lists above are the reference for which flags a dialect
-enables.</p>
+and some spell the same declaration <code class="docutils literal notranslate"><span class="pre">POINTER</span> <span class="pre">TO</span> <span class="pre">FB_Device</span></code>.
+<strong class="program">ironplcc dialects</strong> lists the flags each dialect enables.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code></dt><dd><p>Allow the IEC 61131-3:2013 <a class="reference internal" href="../reference/language/object-orientation/index.html"><span class="doc">object-oriented syntax</span></a>:
 <code class="docutils literal notranslate"><span class="pre">EXTENDS</span></code>/<code class="docutils literal notranslate"><span class="pre">IMPLEMENTS</span></code> and qualifiers (<code class="docutils literal notranslate"><span class="pre">ABSTRACT</span></code>, <code class="docutils literal notranslate"><span class="pre">FINAL</span></code>,
@@ -1184,7 +1202,9 @@ declarations, <code class="docutils literal notranslate"><span class="pre">METHO
 analyzes and executes today; the parts that are parsed but not yet
 analyzed produce problem
 <a class="reference internal" href="../reference/compiler/problems/P9999.html"><span class="doc">P9999</span></a> rather than a parse
-error. Enabled by <code class="docutils literal notranslate"><span class="pre">--dialect=iec61131-3-ed3</span></code>, <code class="docutils literal notranslate"><span class="pre">--dialect=rusty</span></code>,
+error. A function block qualifier produces
+<a class="reference internal" href="../reference/compiler/problems/P4062.html"><span class="doc">P4062</span></a> when used without this
+flag. Enabled by <code class="docutils literal notranslate"><span class="pre">--dialect=iec61131-3-ed3</span></code>, <code class="docutils literal notranslate"><span class="pre">--dialect=rusty</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--dialect=codesys</span></code>, and <code class="docutils literal notranslate"><span class="pre">--dialect=twincat</span></code>.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-enum-explicit-values</span></code></dt><dd><p>Allow a member of an <a class="reference internal" href="../reference/language/data-types/derived/enumerated-types.html"><span class="doc">enumeration</span></a> declaration to
@@ -1210,7 +1230,8 @@ Without this flag it produces
 the type from the members instead.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-continue</span></code></dt><dd><p>Allow the <a class="reference internal" href="../reference/language/structured-text/continue.html"><span class="doc">CONTINUE</span></a>
-statement, which goes on with the next iteration of the innermost loop.
+statement, which goes on with the next iteration of the innermost <code class="docutils literal notranslate"><span class="pre">FOR</span></code>,
+<code class="docutils literal notranslate"><span class="pre">WHILE</span></code>, or <code class="docutils literal notranslate"><span class="pre">REPEAT</span></code> loop.
 <code class="docutils literal notranslate"><span class="pre">CONTINUE</span></code> was added in Edition 3. Without this flag, <code class="docutils literal notranslate"><span class="pre">CONTINUE</span></code> is an
 ordinary identifier, so a <code class="docutils literal notranslate"><span class="pre">CONTINUE;</span></code> statement is a syntax error and a
 variable may be named <code class="docutils literal notranslate"><span class="pre">continue</span></code>.</p>
@@ -1222,6 +1243,31 @@ for their own use, while other toolchains do not reserve these four.
 Each keyword keeps its keyword role in the same program
 (<code class="docutils literal notranslate"><span class="pre">RESOURCE</span> <span class="pre">r</span> <span class="pre">ON</span> <span class="pre">PLC</span></code>, an <code class="docutils literal notranslate"><span class="pre">R_EDGE</span></code> input). Without this flag such a
 name produces <a class="reference internal" href="../reference/compiler/problems/P4095.html"><span class="doc">P4095</span></a>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-conditional-return</span></code></dt><dd><p>Allow <a class="reference internal" href="../reference/language/structured-text/return.html"><span class="doc">RETURN(condition)</span></a>,
+a <code class="docutils literal notranslate"><span class="pre">RETURN</span></code> that happens only when the <code class="docutils literal notranslate"><span class="pre">BOOL</span></code> condition is <code class="docutils literal notranslate"><span class="pre">TRUE</span></code>, as
+if written <code class="docutils literal notranslate"><span class="pre">IF</span> <span class="pre">condition</span> <span class="pre">THEN</span> <span class="pre">RETURN;</span> <span class="pre">END_IF;</span></code>. IEC 61131-3 defines
+<code class="docutils literal notranslate"><span class="pre">RETURN</span></code> with no operand. The condition is never the return value of a
+function. Without this flag it produces
+<a class="reference internal" href="../reference/compiler/problems/P4098.html"><span class="doc">P4098</span></a>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-pou-header-semicolon</span></code></dt><dd><p>Allow a semicolon after the header of a <code class="docutils literal notranslate"><span class="pre">PROGRAM</span></code>, <code class="docutils literal notranslate"><span class="pre">FUNCTION</span></code>,
+<code class="docutils literal notranslate"><span class="pre">FUNCTION_BLOCK</span></code> or <code class="docutils literal notranslate"><span class="pre">METHOD</span></code>, before its first variable block, as in
+<code class="docutils literal notranslate"><span class="pre">FUNCTION_BLOCK</span> <span class="pre">FB_Motor</span> <span class="pre">EXTENDS</span> <span class="pre">FB_Base;</span></code>. The IEC 61131-3 standard
+grammar puts no terminator after a header. The semicolon has no meaning:
+the declaration is the same as without it. Without this flag it produces
+<a class="reference internal" href="../reference/compiler/problems/P4100.html"><span class="doc">P4100</span></a>. A semicolon that a
+variable block does not follow is the standard empty statement at the start
+of the body and is always allowed.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-omitted-call-argument</span></code></dt><dd><p>Allow a call argument with no value (<code class="docutils literal notranslate"><span class="pre">b</span> <span class="pre">:=,</span></code> for an input, <code class="docutils literal notranslate"><span class="pre">Error=&gt;</span> <span class="pre">,</span></code>
+for an output). It is the same as leaving the argument out. The IEC 61131-3
+standard grammar gives every argument a value. Without this flag it produces
+<a class="reference internal" href="../reference/compiler/problems/P4102.html"><span class="doc">P4102</span></a>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-trailing-call-comma</span></code></dt><dd><p>Allow a comma before the closing parenthesis of a call’s argument list. The
+IEC 61131-3 standard grammar has no comma after the last argument. Without
+this flag it produces <a class="reference internal" href="../reference/compiler/problems/P4103.html"><span class="doc">P4103</span></a>.</p>
 </dd>
 </dl>
 <p>Pass the flag when running <strong class="program">ironplcc</strong>:</p>
@@ -1355,7 +1401,7 @@ CODESYS program with the strict failure behavior:</p>
     <script src="../_static/tabs.js?v=3ee01567"></script>
     <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
     <script src="../_static/copybutton.js?v=f281be69"></script>
-    <script src="../_static/design-tabs.js?v=f930bc37"></script>
+    <script data-sd-tabs-storage-prefix="sphinx-design-tab-id-" src="../_static/design-tabs.js?v=fcb327ea"></script>
     <script src="../_static/version-check.js?v=735d477a"></script>
     <script src="../_static/posthog-init.js?v=8ec94b21"></script>
     </body>

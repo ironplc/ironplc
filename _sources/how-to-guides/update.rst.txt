@@ -27,19 +27,6 @@ Follow the steps below to update IronPLC.
    #. Run the installer and follow the prompts to complete
       installation of the CLI.
 
-   .. rubric:: Update IronPLC Extension
-
-   .. include:: /includes/download-extension-vsix.rst
-
-   Run your development environment, then:
-
-   #. Go to the Extensions view by clicking on the Extensions icon in
-      :guilabel:`Activity Bar` on the side of the window or using the
-      View: Extensions command (:kbd:`Ctrl+Shift+X`).
-   #. In the Extensions view, select :menuselection:`... (View and More Actions) --> Install from VSIX...` button.
-   #. In the :guilabel:`Install from VSIX` dialog, select the VSIX file you downloaded earlier.
-
-
 .. tab:: macOS
 
    .. rubric:: Update IronPLC CLI
@@ -58,19 +45,6 @@ Follow the steps below to update IronPLC.
 
       curl -fsSL https://www.ironplc.com/install.sh | sh
 
-   .. rubric:: Update IronPLC Extension
-
-   .. include:: /includes/download-extension-vsix.rst
-
-   Run your development environment, then:
-
-   #. Go to the Extensions view by clicking on the Extensions icon in
-      :guilabel:`Activity Bar` on the side of the window or using the
-      View: Extensions command (:kbd:`⌘+Shift+X`).
-   #. In the Extensions view, select :menuselection:`... (View and More Actions) --> Install from VSIX...` button.
-   #. In the dialog, select the VSIX file you downloaded earlier.
-
-
 .. tab:: Linux
 
    .. rubric:: Update IronPLC CLI
@@ -82,17 +56,12 @@ Follow the steps below to update IronPLC.
 
       curl -fsSL https://www.ironplc.com/install.sh | sh
 
-   .. rubric:: Update IronPLC Extension
+.. rubric:: Update IronPLC Extension
 
-   .. include:: /includes/download-extension-vsix.rst
+Updating the extension is the same on every operating system.
 
-   Run your development environment, then:
+.. include:: /includes/download-extension-vsix.rst
 
-   #. Go to the Extensions view by clicking on the Extensions icon in
-      :guilabel:`Activity Bar` on the side of the window or using the
-      View: Extensions command (:kbd:`Ctrl+Shift+X`).
-   #. In the Extensions view, select :menuselection:`... (View and More Actions) --> Install from VSIX...` button.
-   #. In the dialog, select the VSIX file you downloaded earlier.
-
+.. include:: /includes/install-extension-from-vsix.rst
 
 .. _IronPLC GitHub releases: https://github.com/ironplc/ironplc/releases/

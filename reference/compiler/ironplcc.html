@@ -18,7 +18,7 @@
     <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../_static/tabs.css?v=4c969af8" />
     <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
-    <link rel="stylesheet" type="text/css" href="../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../_static/sphinx-design.min.css?v=6a604523" />
     <link rel="stylesheet" type="text/css" href="../../_static/styles/furo-extensions.css?v=8dab3a3b" />
     <link rel="stylesheet" type="text/css" href="../../_static/overrides.css?v=5d031554" />
     
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.253.0">
+<meta name="ironplc-version" content="0.254.0">
 </head>
   <body>
     
@@ -538,6 +538,7 @@
 <li class="toctree-l4"><a class="reference internal" href="problems/P2042.html">P2042</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P2043.html">P2043</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P2044.html">P2044</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P2045.html">P2045</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P4003.html">P4003</a></li>
@@ -630,6 +631,12 @@
 <li class="toctree-l4"><a class="reference internal" href="problems/P4095.html">P4095</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P4096.html">P4096</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P4097.html">P4097</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P4098.html">P4098</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P4099.html">P4099</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P4100.html">P4100</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P4101.html">P4101</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P4102.html">P4102</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P4103.html">P4103</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P6003.html">P6003</a></li>
@@ -878,6 +885,8 @@ such as Visual Studio Code. Communication uses standard input/output.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">-l</span></code> <em>FILE</em>, <code class="docutils literal notranslate"><span class="pre">--log-file</span></code> <em>FILE</em></dt><dd><p>Write log output to the specified file instead of the terminal.</p>
 </dd>
+</dl>
+<dl class="simple">
 <dt><code class="docutils literal notranslate"><span class="pre">--dialect</span></code> <em>DIALECT</em></dt><dd><p>Select the language dialect. A dialect sets the IEC 61131-3 edition and a
 default set of extensions. Individual <code class="docutils literal notranslate"><span class="pre">--allow-*</span></code> flags can
 override the dialect’s defaults. Available values: <code class="docutils literal notranslate"><span class="pre">iec61131-3-ed2</span></code>
@@ -890,196 +899,315 @@ activate several libraries. Applies to the <code class="docutils literal notrans
 commands, and to <code class="docutils literal notranslate"><span class="pre">echo</span></code> with <code class="docutils literal notranslate"><span class="pre">--types</span></code>. Libraries referenced by a discovered project file are
 activated automatically and do not need this option.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-c-style-comments</span></code></dt><dd><p>Allow C-style comments (<code class="docutils literal notranslate"><span class="pre">//</span></code> line comments and <code class="docutils literal notranslate"><span class="pre">/*</span> <span class="pre">*/</span></code> block
-comments). This is an extension not part of the IEC 61131-3
-standard.</p>
+</dl>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-c-style-comments</span></code></dt><dd><p>Allow C-style comments (<code class="docutils literal notranslate"><span class="pre">//</span></code> line comments and <code class="docutils literal notranslate"><span class="pre">/*</span> <span class="pre">*/</span></code> block comments).
+These are not part of the IEC 61131-3 standard but are supported by many
+PLC environments.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-missing-semicolon</span></code></dt><dd><p>Allow missing semicolons after keyword statements like <code class="docutils literal notranslate"><span class="pre">END_IF</span></code> and
-<code class="docutils literal notranslate"><span class="pre">END_STRUCT</span></code>. This is an extension not part of the IEC 61131-3
-standard.</p>
+<code class="docutils literal notranslate"><span class="pre">END_STRUCT</span></code>. This is an extension, not part of the IEC 61131-3
+standard. It also allows a <code class="docutils literal notranslate"><span class="pre">CASE</span></code> branch with no statements at
+all (a label that falls straight through to the next label, <code class="docutils literal notranslate"><span class="pre">ELSE</span></code>,
+or <code class="docutils literal notranslate"><span class="pre">END_CASE</span></code>) – strict IEC 61131-3 only allows this via an
+explicit empty statement (<code class="docutils literal notranslate"><span class="pre">5:</span> <span class="pre">;</span></code>); this fills in the dropped <code class="docutils literal notranslate"><span class="pre">;</span></code>.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-top-level-var-global</span></code></dt><dd><p>Allow <code class="docutils literal notranslate"><span class="pre">VAR_GLOBAL</span></code> declarations at the top level of a file, outside of
-a <code class="docutils literal notranslate"><span class="pre">CONFIGURATION</span></code> block. This is an extension not part of the
-IEC 61131-3 standard.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-top-level-var-global</span></code></dt><dd><p>Allow <code class="code docutils literal notranslate"><span class="pre">VAR_GLOBAL</span></code> declarations at the top level of a file,
+outside of a <code class="code docutils literal notranslate"><span class="pre">CONFIGURATION</span></code> block. See
+<a class="reference internal" href="../language/variables/scope.html"><span class="doc">Variable Scope</span></a>. This is an extension, not part of the IEC 61131-3 standard.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-constant-type-params</span></code></dt><dd><p>Allow constant references in type parameters (e.g., <code class="docutils literal notranslate"><span class="pre">STRING[MY_CONST]</span></code>
-or <code class="docutils literal notranslate"><span class="pre">ARRAY[1..MY_CONST]</span> <span class="pre">OF</span> <span class="pre">INT</span></code>). This is an extension not part
-of the IEC 61131-3 standard.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-constant-type-params</span></code></dt><dd><p>Allow constant references in type parameters such as array bounds and
+string lengths (e.g., <code class="docutils literal notranslate"><span class="pre">ARRAY[1..MY_CONST]</span> <span class="pre">OF</span> <span class="pre">INT</span></code> or
+<code class="docutils literal notranslate"><span class="pre">STRING[MY_CONST]</span></code>). See <a class="reference internal" href="../language/data-types/derived/array-types.html"><span class="doc">Array Types</span></a>.
+This is an extension, not part of the IEC 61131-3 standard.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-empty-var-blocks</span></code></dt><dd><p>Allow empty variable blocks (<code class="docutils literal notranslate"><span class="pre">VAR</span> <span class="pre">END_VAR</span></code>, <code class="docutils literal notranslate"><span class="pre">VAR_INPUT</span> <span class="pre">END_VAR</span></code>,
-etc.). This is an extension not part of the IEC 61131-3 standard.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-empty-var-blocks</span></code></dt><dd><p>Allow empty variable blocks (<code class="docutils literal notranslate"><span class="pre">VAR</span> <span class="pre">END_VAR</span></code>, <code class="docutils literal notranslate"><span class="pre">VAR_INPUT</span> <span class="pre">END_VAR</span></code>, etc.).
+Some PLC environments permit variable blocks with no declarations.
+This is an extension, not part of the IEC 61131-3 standard.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-time-as-function-name</span></code></dt><dd><p>Allow <code class="docutils literal notranslate"><span class="pre">TIME</span></code> to be used as a function name (e.g., <code class="docutils literal notranslate"><span class="pre">TIME()</span></code>).
-Required for OSCAT compatibility. This is an extension not part
-of the IEC 61131-3 standard.</p>
+Required for OSCAT compatibility where <code class="docutils literal notranslate"><span class="pre">TIME()</span></code> reads the PLC system
+clock. This is an extension, not part of the IEC 61131-3 standard.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-long-time-types</span></code></dt><dd><p>Allow the IEC 61131-3:2013 long-time-type keywords <code class="docutils literal notranslate"><span class="pre">LTIME</span></code>, <code class="docutils literal notranslate"><span class="pre">LDATE</span></code>,
-<code class="docutils literal notranslate"><span class="pre">LTIME_OF_DAY</span></code> (<code class="docutils literal notranslate"><span class="pre">LTOD</span></code>), and <code class="docutils literal notranslate"><span class="pre">LDATE_AND_TIME</span></code> (<code class="docutils literal notranslate"><span class="pre">LDT</span></code>). Without this
-flag those words remain available as ordinary identifiers.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-long-time-types</span></code></dt><dd><p>Allow the IEC 61131-3:2013 long-time-type keywords
+<a class="reference internal" href="../language/data-types/elementary/ltime.html"><span class="doc">LTIME</span></a>,
+<a class="reference internal" href="../language/data-types/elementary/ldate.html"><span class="doc">LDATE</span></a>,
+<a class="reference internal" href="../language/data-types/elementary/ltime-of-day.html"><span class="doc">LTIME_OF_DAY</span></a>
+(<code class="docutils literal notranslate"><span class="pre">LTOD</span></code>), and
+<a class="reference internal" href="../language/data-types/elementary/ldate-and-time.html"><span class="doc">LDATE_AND_TIME</span></a>
+(<code class="docutils literal notranslate"><span class="pre">LDT</span></code>). Without this flag those words remain available as ordinary
+identifiers, so Edition 2 code may use them as names.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-ref-to</span></code></dt><dd><p>Allow <code class="docutils literal notranslate"><span class="pre">REF_TO</span></code>, <code class="docutils literal notranslate"><span class="pre">REF()</span></code>, and <code class="docutils literal notranslate"><span class="pre">NULL</span></code> syntax (standardized in
 IEC 61131-3:2013) without enabling the rest of Edition 3. This is useful
 when you need references but want to keep Edition 2 keyword handling for the
-rest of your code.</p>
+rest of your code. See
+<a class="reference internal" href="../language/data-types/derived/reference-types.html"><span class="doc">Reference Types</span></a>.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-reference-to</span></code></dt><dd><p>Allow the Beckhoff TwinCAT / CODESYS <code class="docutils literal notranslate"><span class="pre">REFERENCE</span> <span class="pre">TO</span></code> reference type and the
-<code class="docutils literal notranslate"><span class="pre">REF=</span></code> binding operator — the TwinCAT/CODESYS-facing alternative to
-<code class="docutils literal notranslate"><span class="pre">--allow-ref-to</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">REF=</span></code> binding operator. This is the TwinCAT/CODESYS-facing alternative to
+<code class="docutils literal notranslate"><span class="pre">--allow-ref-to</span></code>: the two describe the same underlying reference but with
+different surface syntax. The compiler does not restrict flag combinations, so
+<code class="docutils literal notranslate"><span class="pre">--allow-ref-to</span></code> and <code class="docutils literal notranslate"><span class="pre">--allow-reference-to</span></code> may be set at once. See
+<a class="reference internal" href="../language/data-types/derived/reference-types.html"><span class="doc">Reference Types</span></a>.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-pointer-to</span></code></dt><dd><p>Allow the Beckhoff TwinCAT / CODESYS <code class="docutils literal notranslate"><span class="pre">POINTER</span> <span class="pre">TO</span></code> pointer type with
-explicit dereference (<code class="docutils literal notranslate"><span class="pre">^</span></code>).</p>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-pointer-to</span></code></dt><dd><p>Allow the Beckhoff TwinCAT / CODESYS <code class="docutils literal notranslate"><span class="pre">POINTER</span> <span class="pre">TO</span></code> pointer type. A
+<code class="docutils literal notranslate"><span class="pre">POINTER</span> <span class="pre">TO</span></code> variable behaves like a <code class="docutils literal notranslate"><span class="pre">REF_TO</span></code> reference: reading or
+writing the target requires the explicit dereference operator (<code class="docutils literal notranslate"><span class="pre">^</span></code>),
+unlike <code class="docutils literal notranslate"><span class="pre">REFERENCE</span> <span class="pre">TO</span></code>, which dereferences implicitly. Pointers are
+bound with the <code class="docutils literal notranslate"><span class="pre">ADR()</span></code> operator (<code class="docutils literal notranslate"><span class="pre">--allow-adr</span></code>) or the
+<code class="docutils literal notranslate"><span class="pre">REF()</span></code>/<code class="docutils literal notranslate"><span class="pre">NULL</span></code> forms from <code class="docutils literal notranslate"><span class="pre">--allow-ref-to</span></code>. See
+<a class="reference internal" href="../language/data-types/derived/reference-types.html"><span class="doc">Reference Types</span></a>.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-adr</span></code></dt><dd><p>Allow the <code class="docutils literal notranslate"><span class="pre">ADR()</span></code> address-of operator, which returns a typed pointer to
-a variable for assignment to a <code class="docutils literal notranslate"><span class="pre">POINTER</span> <span class="pre">TO</span></code> variable.</p>
+a variable for assignment to a <code class="docutils literal notranslate"><span class="pre">POINTER</span> <span class="pre">TO</span></code> variable
+(<code class="docutils literal notranslate"><span class="pre">--allow-pointer-to</span></code>). Unlike TwinCAT’s untyped <code class="docutils literal notranslate"><span class="pre">PVOID</span></code> result,
+<code class="docutils literal notranslate"><span class="pre">ADR(x)</span></code> in IronPLC has the type <code class="docutils literal notranslate"><span class="pre">POINTER</span> <span class="pre">TO</span></code> <em>typeof(x)</em> and is
+type-checked against the destination pointer’s target type. Addresses of
+sub-objects (array elements, structure fields) and pointer arithmetic are
+not supported and are rejected with a diagnostic. See
+<a class="reference internal" href="../extension-library/functions/adr.html"><span class="doc">ADR</span></a>.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-persistent-var</span></code></dt><dd><p>Allow the Beckhoff TwinCAT / CODESYS <code class="docutils literal notranslate"><span class="pre">PERSISTENT</span></code> variable qualifier
-(<code class="docutils literal notranslate"><span class="pre">VAR</span> <span class="pre">PERSISTENT</span></code> / <code class="docutils literal notranslate"><span class="pre">VAR_GLOBAL</span> <span class="pre">PERSISTENT</span></code>). This is an extension,
-not part of the IEC 61131-3 standard.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-persistent-var</span></code></dt><dd><p>Allow the <code class="docutils literal notranslate"><span class="pre">PERSISTENT</span></code> variable qualifier, alone or combined with
+<code class="docutils literal notranslate"><span class="pre">RETAIN</span></code> in either order (<code class="docutils literal notranslate"><span class="pre">RETAIN</span> <span class="pre">PERSISTENT</span></code> or
+<code class="docutils literal notranslate"><span class="pre">PERSISTENT</span> <span class="pre">RETAIN</span></code>), on <code class="docutils literal notranslate"><span class="pre">VAR</span></code>, <code class="docutils literal notranslate"><span class="pre">VAR_GLOBAL</span></code>, <code class="docutils literal notranslate"><span class="pre">VAR_INPUT</span></code> and
+<code class="docutils literal notranslate"><span class="pre">VAR_OUTPUT</span></code> blocks. See <a class="reference internal" href="../language/variables/retention.html"><span class="doc">Retention</span></a>.
+This is an extension, not part of the IEC 61131-3 standard.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-ref-arithmetic</span></code></dt><dd><p>Allow arithmetic (<code class="docutils literal notranslate"><span class="pre">+</span></code>, <code class="docutils literal notranslate"><span class="pre">-</span></code>) and ordering comparisons (<code class="docutils literal notranslate"><span class="pre">&lt;</span></code>, <code class="docutils literal notranslate"><span class="pre">&gt;</span></code>,
 <code class="docutils literal notranslate"><span class="pre">&lt;=</span></code>, <code class="docutils literal notranslate"><span class="pre">&gt;=</span></code>) on <code class="docutils literal notranslate"><span class="pre">REF_TO</span></code> types. By default, only <code class="docutils literal notranslate"><span class="pre">=</span></code> and <code class="docutils literal notranslate"><span class="pre">&lt;&gt;</span></code>
 are permitted on references.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-ref-stack-variables</span></code></dt><dd><p>Allow <code class="docutils literal notranslate"><span class="pre">REF()</span></code> on stack-allocated variables (<code class="docutils literal notranslate"><span class="pre">VAR_TEMP</span></code> and function
-<code class="docutils literal notranslate"><span class="pre">VAR_INPUT</span></code>/<code class="docutils literal notranslate"><span class="pre">VAR_OUTPUT</span></code>). This is an extension not part of the
-IEC 61131-3 standard.</p>
+<code class="docutils literal notranslate"><span class="pre">VAR_INPUT</span></code>/<code class="docutils literal notranslate"><span class="pre">VAR_OUTPUT</span></code>). Required for OSCAT patterns where the
+reference does not escape the call. This is an extension, not part of the IEC 61131-3 standard.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-ref-type-punning</span></code></dt><dd><p>Allow assigning between <code class="docutils literal notranslate"><span class="pre">REF_TO</span></code> types of different base types (type
-punning). This is an extension not part of the IEC 61131-3 standard.</p>
+punning), such as reinterpreting the bits of a <code class="docutils literal notranslate"><span class="pre">REAL</span></code> through a
+<code class="docutils literal notranslate"><span class="pre">REF_TO</span> <span class="pre">DWORD</span></code>. This is an extension, not part of the IEC 61131-3 standard.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-int-to-bool-initializer</span></code></dt><dd><p>Allow integer literals <code class="docutils literal notranslate"><span class="pre">0</span></code> and <code class="docutils literal notranslate"><span class="pre">1</span></code> as <code class="docutils literal notranslate"><span class="pre">BOOL</span></code> variable initializers,
-treating <code class="docutils literal notranslate"><span class="pre">0</span></code> as <code class="docutils literal notranslate"><span class="pre">FALSE</span></code> and <code class="docutils literal notranslate"><span class="pre">1</span></code> as <code class="docutils literal notranslate"><span class="pre">TRUE</span></code>. This is a dialect
-extension supported by CoDeSys, TwinCAT, RuSTy, and virtually every
-PLC runtime.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-int-to-bool-initializer</span></code></dt><dd><p>Allow integer literals <code class="docutils literal notranslate"><span class="pre">0</span></code> and <code class="docutils literal notranslate"><span class="pre">1</span></code> as <code class="docutils literal notranslate"><span class="pre">BOOL</span></code> variable initializers
+(e.g., <code class="docutils literal notranslate"><span class="pre">debug</span> <span class="pre">:</span> <span class="pre">BOOL</span> <span class="pre">:=</span> <span class="pre">0;</span></code>). The compiler rewrites <code class="docutils literal notranslate"><span class="pre">0</span></code> to <code class="docutils literal notranslate"><span class="pre">FALSE</span></code>
+and <code class="docutils literal notranslate"><span class="pre">1</span></code> to <code class="docutils literal notranslate"><span class="pre">TRUE</span></code>. This is a universal extension supported by
+CoDeSys, TwinCAT, RuSTy, and virtually every PLC runtime.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-sizeof</span></code></dt><dd><p>Allow the <code class="docutils literal notranslate"><span class="pre">SIZEOF()</span></code> operator that returns the size in bytes of a
 variable or type. This is an extension supported by CODESYS,
-TwinCAT, and RuSTy.</p>
+TwinCAT, and RuSTy. See
+<a class="reference internal" href="../extension-library/functions/sizeof.html"><span class="doc">SIZEOF</span></a>.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-system-uptime-global</span></code></dt><dd><p>Expose <code class="docutils literal notranslate"><span class="pre">__SYSTEM_UP_TIME</span></code> (<code class="docutils literal notranslate"><span class="pre">TIME</span></code>) and <code class="docutils literal notranslate"><span class="pre">__SYSTEM_UP_LTIME</span></code>
 (<code class="docutils literal notranslate"><span class="pre">LTIME</span></code>) as implicit <code class="docutils literal notranslate"><span class="pre">VAR_GLOBAL</span></code> values holding the VM’s monotonic
 uptime. This is an IronPLC runtime convention.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-cross-family-widening</span></code></dt><dd><p>Allow implicit widening from a bit-string type to a strictly wider
-integer type (e.g. <code class="docutils literal notranslate"><span class="pre">BYTE</span></code> to <code class="docutils literal notranslate"><span class="pre">INT</span></code>). This is a dialect extension
-supported by CODESYS, TwinCAT, and RuSTy.</p>
-</dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-cross-family-conversion</span></code></dt><dd><p>Allow implicit conversion between <code class="docutils literal notranslate"><span class="pre">UDINT</span></code> and <code class="docutils literal notranslate"><span class="pre">DWORD</span></code> in both
-directions, at equal width — see <a class="reference internal" href="../../explanation/type-conversions.html"><span class="doc">Type Conversions</span></a>.
-This is a dialect extension supported by CODESYS, TwinCAT, and RuSTy.</p>
-</dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-int-literal-to-bit-string</span></code></dt><dd><p>Allow a bare integer literal where a bit-string type is expected (e.g.
-<code class="docutils literal notranslate"><span class="pre">0</span></code> to <code class="docutils literal notranslate"><span class="pre">BYTE</span></code>). This is a dialect extension supported by CODESYS,
+integer type. For example, passing a <code class="docutils literal notranslate"><span class="pre">BYTE</span></code> variable where an <code class="docutils literal notranslate"><span class="pre">INT</span></code>
+parameter is expected. This is an extension supported by CODESYS,
 TwinCAT, and RuSTy.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-bit-string-arithmetic</span></code></dt><dd><p>Allow arithmetic on bit-string operands (e.g. <code class="docutils literal notranslate"><span class="pre">b</span> <span class="pre">+</span> <span class="pre">1</span></code> where <code class="docutils literal notranslate"><span class="pre">b</span></code> is a
-<code class="docutils literal notranslate"><span class="pre">BYTE</span></code>), treating a bit string as the unsigned integer of its width.
-This is a dialect extension supported by CODESYS, TwinCAT, and RuSTy.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-cross-family-conversion</span></code></dt><dd><p>Allow implicit conversion between <code class="docutils literal notranslate"><span class="pre">UDINT</span></code> and <code class="docutils literal notranslate"><span class="pre">DWORD</span></code>, in both
+directions. The two types share a 32-bit slot, so this converts rather
+than widens, and it is the one case where an integer converts implicitly
+to a bit-string. See <a class="reference internal" href="../../explanation/type-conversions.html"><span class="doc">Type Conversions</span></a>. This is an
+extension supported by CODESYS, TwinCAT, and RuSTy.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-partial-access-syntax</span></code></dt><dd><p>Allow IEC 61131-3:2013 partial-access syntax: the bit form <code class="docutils literal notranslate"><span class="pre">.%Xn</span></code> (an
-alias for the short form <code class="docutils literal notranslate"><span class="pre">.n</span></code>) and the byte, word, double word, and
-long word forms <code class="docutils literal notranslate"><span class="pre">.%Bn</span></code>, <code class="docutils literal notranslate"><span class="pre">.%Wn</span></code>, <code class="docutils literal notranslate"><span class="pre">.%Dn</span></code>, and <code class="docutils literal notranslate"><span class="pre">.%Ln</span></code>.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-int-literal-to-bit-string</span></code></dt><dd><p>Allow a bare integer literal where a bit-string type is expected. For
+example, passing <code class="docutils literal notranslate"><span class="pre">0</span></code> where a <code class="docutils literal notranslate"><span class="pre">BYTE</span></code> parameter is expected. This is
+an extension supported by CODESYS, TwinCAT, and RuSTy.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-pragmas</span></code></dt><dd><p>Allow curly-brace pragmas such as <code class="docutils literal notranslate"><span class="pre">{attribute</span> <span class="pre">'qualified_only'}</span></code>. This
-is CODESYS-core syntax, inherited by TwinCAT and other CODESYS-based
-IDEs. A pragma is parsed and discarded like a comment; its contents are
-not interpreted.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-bit-string-arithmetic</span></code></dt><dd><p>Allow the arithmetic operators <code class="docutils literal notranslate"><span class="pre">+</span></code>, <code class="docutils literal notranslate"><span class="pre">-</span></code>, <code class="docutils literal notranslate"><span class="pre">*</span></code> and <code class="docutils literal notranslate"><span class="pre">/</span></code> (and
+<code class="docutils literal notranslate"><span class="pre">ADD</span></code>, <code class="docutils literal notranslate"><span class="pre">SUB</span></code>, <code class="docutils literal notranslate"><span class="pre">MUL</span></code> and <code class="docutils literal notranslate"><span class="pre">DIV</span></code>) on bit-string operands. For
+example, <code class="docutils literal notranslate"><span class="pre">counter</span> <span class="pre">:=</span> <span class="pre">counter</span> <span class="pre">+</span> <span class="pre">1</span></code> where <code class="docutils literal notranslate"><span class="pre">counter</span></code> is a <code class="docutils literal notranslate"><span class="pre">BYTE</span></code>. A
+<code class="docutils literal notranslate"><span class="pre">BYTE</span></code>, <code class="docutils literal notranslate"><span class="pre">WORD</span></code>, <code class="docutils literal notranslate"><span class="pre">DWORD</span></code> or <code class="docutils literal notranslate"><span class="pre">LWORD</span></code> operand is treated as the
+unsigned integer of its width, and the result keeps the bit-string type:
+<code class="docutils literal notranslate"><span class="pre">BYTE#255</span> <span class="pre">+</span> <span class="pre">1</span></code> is <code class="docutils literal notranslate"><span class="pre">BYTE#0</span></code>. <code class="docutils literal notranslate"><span class="pre">BOOL</span></code> and <code class="docutils literal notranslate"><span class="pre">MOD</span></code> are not included.
+See <a class="reference internal" href="../../explanation/type-conversions.html"><span class="doc">Type Conversions</span></a>. This is an extension supported
+by CODESYS, TwinCAT, and RuSTy.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-short-circuit-operators</span></code></dt><dd><p>Allow the <code class="docutils literal notranslate"><span class="pre">AND_THEN</span></code> and <code class="docutils literal notranslate"><span class="pre">OR_ELSE</span></code> short-circuit boolean operators, a
-Beckhoff/CODESYS extension. <code class="docutils literal notranslate"><span class="pre">AND_THEN</span></code> evaluates its right operand only
-when the left operand is <code class="docutils literal notranslate"><span class="pre">TRUE</span></code>; <code class="docutils literal notranslate"><span class="pre">OR_ELSE</span></code> only when the left operand
-is <code class="docutils literal notranslate"><span class="pre">FALSE</span></code>. Bit-string operands have nothing to short-circuit on and
-evaluate both operands, matching <code class="docutils literal notranslate"><span class="pre">AND</span></code> and <code class="docutils literal notranslate"><span class="pre">OR</span></code>.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-partial-access-syntax</span></code></dt><dd><p>Allow IEC 61131-3:2013 partial-access syntax: the bit form <code class="docutils literal notranslate"><span class="pre">.%Xn</span></code>
+(e.g., <code class="docutils literal notranslate"><span class="pre">myByte.%X3</span></code> to access bit 3 of a <code class="docutils literal notranslate"><span class="pre">BYTE</span></code>, equivalent to the
+short form <code class="docutils literal notranslate"><span class="pre">.n</span></code>) and the byte, word, double word, and long word forms
+<code class="docutils literal notranslate"><span class="pre">.%Bn</span></code>, <code class="docutils literal notranslate"><span class="pre">.%Wn</span></code>, <code class="docutils literal notranslate"><span class="pre">.%Dn</span></code>, and <code class="docutils literal notranslate"><span class="pre">.%Ln</span></code> (e.g., <code class="docutils literal notranslate"><span class="pre">myDword.%B2</span></code> to
+access byte 2 of a <code class="docutils literal notranslate"><span class="pre">DWORD</span></code>). See
+<a class="reference internal" href="../language/structured-text/bit-access.html"><span class="doc">Bit Access</span></a>.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-mixed-located-var-declarations</span></code></dt><dd><p>Allow an <code class="docutils literal notranslate"><span class="pre">AT</span></code>-located variable (e.g. <code class="docutils literal notranslate"><span class="pre">AT</span> <span class="pre">%I*</span></code>) inside an otherwise
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-pragmas</span></code></dt><dd><p>Allow curly-brace pragmas such as <code class="docutils literal notranslate"><span class="pre">{attribute</span> <span class="pre">'qualified_only'}</span></code> and
+<code class="docutils literal notranslate"><span class="pre">{attribute</span> <span class="pre">'strict'}</span></code>. These are CODESYS-core syntax (documented by
+CODESYS itself, and inherited by any IDE built on the CODESYS V3 runtime,
+including Beckhoff TwinCAT and Schneider Electric Machine Expert). A
+pragma is parsed and discarded like a comment — its contents are not yet
+interpreted. Pragmas do not nest; an unclosed <code class="docutils literal notranslate"><span class="pre">{</span></code> still produces a parse
+error.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-short-circuit-operators</span></code></dt><dd><p>Allow the <code class="docutils literal notranslate"><span class="pre">AND_THEN</span></code> and <code class="docutils literal notranslate"><span class="pre">OR_ELSE</span></code> short-circuit boolean
+operators, a Beckhoff/CODESYS extension. Unlike plain <code class="docutils literal notranslate"><span class="pre">AND</span></code> and
+<code class="docutils literal notranslate"><span class="pre">OR</span></code> (which always evaluate both operands), <code class="docutils literal notranslate"><span class="pre">AND_THEN</span></code> only
+evaluates its right operand when the left operand is <code class="docutils literal notranslate"><span class="pre">TRUE</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">OR_ELSE</span></code> only when the left operand is <code class="docutils literal notranslate"><span class="pre">FALSE</span></code> — commonly used
+to guard a dereference (<code class="docutils literal notranslate"><span class="pre">ptr</span> <span class="pre">&lt;&gt;</span> <span class="pre">0</span> <span class="pre">AND_THEN</span> <span class="pre">ptr^</span> <span class="pre">=</span> <span class="pre">99</span></code>). The
+spelling is preserved end to end: the operators are <em>not</em> normalized
+to <code class="docutils literal notranslate"><span class="pre">AND</span></code>/<code class="docutils literal notranslate"><span class="pre">OR</span></code>, since the short-circuit behavior is a real,
+externally-visible difference in TwinCAT/CODESYS. Compiled code
+branches around the right operand, so the guarded expression above
+never dereferences a null pointer.</p>
+<p>Short-circuiting applies to <code class="docutils literal notranslate"><span class="pre">BOOL</span></code> operands. <code class="docutils literal notranslate"><span class="pre">AND</span></code> and <code class="docutils literal notranslate"><span class="pre">OR</span></code> are
+also the bit-string operators, and skipping an operand has no meaning
+for a bit-string result, so <code class="docutils literal notranslate"><span class="pre">AND_THEN</span></code>/<code class="docutils literal notranslate"><span class="pre">OR_ELSE</span></code> on bit-string
+operands evaluate both operands and produce the same value <code class="docutils literal notranslate"><span class="pre">AND</span></code>
+and <code class="docutils literal notranslate"><span class="pre">OR</span></code> produce. Like <code class="docutils literal notranslate"><span class="pre">AND</span></code> and <code class="docutils literal notranslate"><span class="pre">OR</span></code>, they accept only <code class="docutils literal notranslate"><span class="pre">BOOL</span></code>
+and bit-string operands: an integer operand is <a class="reference internal" href="problems/P4049.html"><span class="doc">P4049</span></a>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-mixed-located-var-declarations</span></code></dt><dd><p>Allow an <code class="docutils literal notranslate"><span class="pre">AT</span></code>-located variable (complete address like <code class="docutils literal notranslate"><span class="pre">AT</span> <span class="pre">%IX0.0</span></code>,
+or incomplete/wildcard address like <code class="docutils literal notranslate"><span class="pre">AT</span> <span class="pre">%I*</span></code>) inside an otherwise
 plain <code class="docutils literal notranslate"><span class="pre">VAR</span></code>/<code class="docutils literal notranslate"><span class="pre">VAR_INPUT</span></code>/<code class="docutils literal notranslate"><span class="pre">VAR_OUTPUT</span></code> block, instead of requiring
-its own dedicated block. Produces
-<a class="reference internal" href="problems/P4036.html"><span class="doc">P4036</span></a> when mixed without
-this flag.</p>
+located variables to live in their own dedicated block. The IEC 61131-3
+standard requires located and plain variables to be declared in
+separate blocks; real CODESYS/TwinCAT code commonly mixes them. Without
+this flag, mixing produces problem
+<a class="reference internal" href="problems/P4036.html"><span class="doc">P4036</span></a>. A block containing
+<em>only</em> located variables is unaffected by this flag — it is standard
+syntax and always allowed.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-constant-initializer-expressions</span></code></dt><dd><p>Allow a <code class="docutils literal notranslate"><span class="pre">VAR</span></code> initializer or a <code class="docutils literal notranslate"><span class="pre">TYPE</span></code> default to be a constant
-expression: the name of a <code class="docutils literal notranslate"><span class="pre">CONSTANT</span></code> variable (e.g.
-<code class="docutils literal notranslate"><span class="pre">level</span> <span class="pre">:</span> <span class="pre">UDINT</span> <span class="pre">:=</span> <span class="pre">DEFAULT_LEVEL;</span></code>) or
-arithmetic over literals and constants (e.g.
-<code class="docutils literal notranslate"><span class="pre">scaled</span> <span class="pre">:</span> <span class="pre">LREAL</span> <span class="pre">:=</span> <span class="pre">SCALE*4.0;</span></code>), rather than only a bare literal.
-Folded to a literal at compile time; produces
-<a class="reference internal" href="problems/P4037.html"><span class="doc">P4037</span></a> when used without this
-flag, <a class="reference internal" href="problems/P4038.html"><span class="doc">P4038</span></a> if the
-expression does not fully reduce to a constant, or
-<a class="reference internal" href="problems/P4022.html"><span class="doc">P4022</span></a> if a named constant’s
-type is not compatible with the variable’s.</p>
+<em>expression</em> — the name of a declared <code class="docutils literal notranslate"><span class="pre">CONSTANT</span></code> variable
+(e.g. <code class="docutils literal notranslate"><span class="pre">level</span> <span class="pre">:</span> <span class="pre">UDINT</span> <span class="pre">:=</span> <span class="pre">DEFAULT_LEVEL;</span></code>)
+or arithmetic between literals and such names
+(e.g. <code class="docutils literal notranslate"><span class="pre">scaled</span> <span class="pre">:</span> <span class="pre">LREAL</span> <span class="pre">:=</span> <span class="pre">SCALE*4.0;</span></code>) — rather than only a bare
+literal. The IEC 61131-3 standard’s initializer grammar permits only
+literals in this position; this extension folds the expression
+to a literal at compile time. Using this form without the flag produces
+<a class="reference internal" href="problems/P4037.html"><span class="doc">P4037</span></a>; if the expression
+does not fully reduce to a constant (e.g. it references a
+non-<code class="docutils literal notranslate"><span class="pre">CONSTANT</span></code> variable), it produces
+<a class="reference internal" href="problems/P4038.html"><span class="doc">P4038</span></a>; if a named constant’s
+type is not compatible with the variable’s, it produces
+<a class="reference internal" href="problems/P4022.html"><span class="doc">P4022</span></a>.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-radix-case-labels</span></code></dt><dd><p>Allow a hex, binary, or octal bit-string literal (e.g. <code class="docutils literal notranslate"><span class="pre">16#D012</span></code>,
-<code class="docutils literal notranslate"><span class="pre">2#1010</span></code>) as a <code class="docutils literal notranslate"><span class="pre">CASE</span></code> label or as a bound of a subrange label. The
-IEC 61131-3 standard permits only a subrange of decimal integers, a
-decimal integer, or an enumerated value here. Produces
-<a class="reference internal" href="problems/P4041.html"><span class="doc">P4041</span></a> when used without this
-flag.</p>
+<code class="docutils literal notranslate"><span class="pre">2#1010</span></code>, <code class="docutils literal notranslate"><span class="pre">8#17</span></code>) as a <code class="docutils literal notranslate"><span class="pre">CASE</span></code> label. The IEC 61131-3 standard
+grammar for a case label permits only a subrange, a <em>decimal</em>
+<code class="docutils literal notranslate"><span class="pre">signed_integer</span></code>, or an enumerated value; radix-prefixed literals are
+separate productions the standard does not include here. Real
+TwinCAT/CODESYS code uses them. The flag also allows them as the bounds
+of a subrange label (<code class="docutils literal notranslate"><span class="pre">16#01..16#0F:</span></code>). Without this flag, such a label
+produces <a class="reference internal" href="problems/P4041.html"><span class="doc">P4041</span></a>. A plain
+decimal label (<code class="docutils literal notranslate"><span class="pre">5:</span></code>) is standard syntax and is always allowed.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-paren-string-length</span></code></dt><dd><p>Allow a string type’s maximum length to be delimited with parentheses
 (<code class="docutils literal notranslate"><span class="pre">STRING(255)</span></code>, <code class="docutils literal notranslate"><span class="pre">WSTRING(100)</span></code>) in addition to the standard square
-brackets. The IEC 61131-3 standard declares a string length only with
-brackets; the parenthesis form is an extension. Produces
-<a class="reference internal" href="problems/P4042.html"><span class="doc">P4042</span></a> when used without this
-flag.</p>
+brackets (<code class="docutils literal notranslate"><span class="pre">STRING[255]</span></code>). The IEC 61131-3 standard grammar declares a
+string length only with brackets; the parenthesis form is a dialect
+extension. Without this flag, the parenthesis form produces
+<a class="reference internal" href="problems/P4042.html"><span class="doc">P4042</span></a>. The bracket form is
+standard syntax and is always allowed, and the delimiters must match
+(<code class="docutils literal notranslate"><span class="pre">STRING[255)</span></code> is always a syntax error). The renderer normalizes the
+parenthesis form to brackets. The flag applies in every position a string
+type can appear, including as an array element type
+(<code class="docutils literal notranslate"><span class="pre">ARRAY[1..10]</span> <span class="pre">OF</span> <span class="pre">STRING(255)</span></code>), a function return type, and a
+<code class="docutils literal notranslate"><span class="pre">TYPE</span></code> alias.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-radix-subrange-bounds</span></code></dt><dd><p>Allow a hex, binary, or octal literal (e.g. <code class="docutils literal notranslate"><span class="pre">16#FF</span></code>, <code class="docutils literal notranslate"><span class="pre">2#1010</span></code>) as a
-bound of a subrange type or of an array dimension. The IEC 61131-3
-standard permits only decimal integers here. Produces
-<a class="reference internal" href="problems/P4096.html"><span class="doc">P4096</span></a> when used without this
-flag.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-radix-subrange-bounds</span></code></dt><dd><p>Allow a hex, binary, or octal literal (e.g. <code class="docutils literal notranslate"><span class="pre">16#FF</span></code>, <code class="docutils literal notranslate"><span class="pre">2#1010</span></code>,
+<code class="docutils literal notranslate"><span class="pre">8#17</span></code>) as a bound of a subrange type (<code class="docutils literal notranslate"><span class="pre">INT</span> <span class="pre">(16#00..16#FF)</span></code>) or of an
+array dimension (<code class="docutils literal notranslate"><span class="pre">ARRAY[16#0..16#F]</span> <span class="pre">OF</span> <span class="pre">INT</span></code>). The IEC 61131-3 standard
+grammar defines a subrange’s bounds as <em>decimal</em> <code class="docutils literal notranslate"><span class="pre">signed_integer</span></code>s.
+Without this flag, such a bound produces
+<a class="reference internal" href="problems/P4096.html"><span class="doc">P4096</span></a>. The bounds of a
+<code class="docutils literal notranslate"><span class="pre">CASE</span></code> subrange label are allowed by <code class="docutils literal notranslate"><span class="pre">--allow-radix-case-labels</span></code>
+instead.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-struct-initializer-expressions</span></code></dt><dd><p>Allow a general (non-constant) expression — such as a pointer
 dereference plus member access (<code class="docutils literal notranslate"><span class="pre">pDevice^.Delta</span></code>) — as the value in a
 structured or call-style initializer’s <code class="docutils literal notranslate"><span class="pre">name</span> <span class="pre">:=</span> <span class="pre">value</span></code> pairs (e.g.
 <code class="docutils literal notranslate"><span class="pre">tonDelta</span> <span class="pre">:</span> <span class="pre">TON</span> <span class="pre">:=</span> <span class="pre">(PT</span> <span class="pre">:=</span> <span class="pre">pDevice^.Delta);</span></code>). The IEC 61131-3 standard
-permits only a constant, enumerated value, array initializer, or nested
-structure initializer here; this extension accepts a value
-computed at instantiation time. Produces
-<a class="reference internal" href="problems/P4043.html"><span class="doc">P4043</span></a> when used without this
-flag. The <code class="docutils literal notranslate"><span class="pre">REF_TO</span></code> in that example is a separate extension needing
-<code class="docutils literal notranslate"><span class="pre">--allow-ref-to</span></code>; some dialects enable one without the other, and some
-spell the declaration <code class="docutils literal notranslate"><span class="pre">POINTER</span> <span class="pre">TO</span> <span class="pre">FB_Device</span></code> instead.</p>
+grammar for a structured initializer value permits only a constant,
+enumerated value, array initializer, or nested structure initializer;
+a value computed at instantiation time is an extension used by
+TwinCAT/CODESYS. Without this flag, such a value produces
+<a class="reference internal" href="problems/P4043.html"><span class="doc">P4043</span></a>. A constant value is
+standard syntax and is always allowed. The <code class="docutils literal notranslate"><span class="pre">pDevice^.Delta</span></code> example
+spells its pointer with <code class="docutils literal notranslate"><span class="pre">REF_TO</span></code>, which is a separate extension needing
+<code class="docutils literal notranslate"><span class="pre">--allow-ref-to</span></code>; not every dialect that enables one enables the other,
+and some spell the same declaration <code class="docutils literal notranslate"><span class="pre">POINTER</span> <span class="pre">TO</span> <span class="pre">FB_Device</span></code>.
+<strong class="program">ironplcc dialects</strong> lists the flags each dialect enables.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code></dt><dd><p>Allow the IEC 61131-3:2013 object-oriented syntax:
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code></dt><dd><p>Allow the IEC 61131-3:2013 <a class="reference internal" href="../language/object-orientation/index.html"><span class="doc">object-oriented syntax</span></a>:
 <code class="docutils literal notranslate"><span class="pre">EXTENDS</span></code>/<code class="docutils literal notranslate"><span class="pre">IMPLEMENTS</span></code> and qualifiers (<code class="docutils literal notranslate"><span class="pre">ABSTRACT</span></code>, <code class="docutils literal notranslate"><span class="pre">FINAL</span></code>,
 <code class="docutils literal notranslate"><span class="pre">PUBLIC</span></code>, …) on <code class="docutils literal notranslate"><span class="pre">FUNCTION_BLOCK</span></code> declarations, <code class="docutils literal notranslate"><span class="pre">INTERFACE</span></code>
 declarations, <code class="docutils literal notranslate"><span class="pre">METHOD</span></code> and <code class="docutils literal notranslate"><span class="pre">PROPERTY</span></code> declarations, and
 <code class="docutils literal notranslate"><span class="pre">THIS</span></code>/<code class="docutils literal notranslate"><span class="pre">SUPER</span></code>. Support beyond parsing varies by keyword — see
-<a class="reference internal" href="../language/object-orientation/index.html"><span class="doc">Object Oriented Programming</span></a>; the parts that are
-parsed but not yet analyzed produce
-<a class="reference internal" href="problems/P9999.html"><span class="doc">P9999</span></a>. A function block
-qualifier produces <a class="reference internal" href="problems/P4062.html"><span class="doc">P4062</span></a>
-when used without this flag. Enabled by
-<code class="docutils literal notranslate"><span class="pre">--dialect=iec61131-3-ed3</span></code>, <code class="docutils literal notranslate"><span class="pre">--dialect=rusty</span></code>, <code class="docutils literal notranslate"><span class="pre">--dialect=codesys</span></code>,
-and <code class="docutils literal notranslate"><span class="pre">--dialect=twincat</span></code>.</p>
+<a class="reference internal" href="../language/object-orientation/index.html"><span class="doc">Object Oriented Programming</span></a> for what each one
+analyzes and executes today; the parts that are parsed but not yet
+analyzed produce problem
+<a class="reference internal" href="problems/P9999.html"><span class="doc">P9999</span></a> rather than a parse
+error. A function block qualifier produces
+<a class="reference internal" href="problems/P4062.html"><span class="doc">P4062</span></a> when used without this
+flag. Enabled by <code class="docutils literal notranslate"><span class="pre">--dialect=iec61131-3-ed3</span></code>, <code class="docutils literal notranslate"><span class="pre">--dialect=rusty</span></code>,
+<code class="docutils literal notranslate"><span class="pre">--dialect=codesys</span></code>, and <code class="docutils literal notranslate"><span class="pre">--dialect=twincat</span></code>.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-enum-explicit-values</span></code></dt><dd><p>Allow a member of an enumeration declaration to be given an explicit value
-(e.g. <code class="docutils literal notranslate"><span class="pre">(Deutsch</span> <span class="pre">:=</span> <span class="pre">1,</span> <span class="pre">English</span> <span class="pre">:=</span> <span class="pre">2)</span></code>). The IEC 61131-3:2003 (Edition 2)
-grammar lets an enumeration list only bare member names, which take
-consecutive values from zero; explicit values were added in Edition 3.
-Produces <a class="reference internal" href="problems/P4055.html"><span class="doc">P4055</span></a> when used
-without this flag.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-enum-explicit-values</span></code></dt><dd><p>Allow a member of an <a class="reference internal" href="../language/data-types/derived/enumerated-types.html"><span class="doc">enumeration</span></a> declaration to
+be given an explicit value (e.g. <code class="docutils literal notranslate"><span class="pre">(Deutsch</span> <span class="pre">:=</span> <span class="pre">1,</span> <span class="pre">English</span> <span class="pre">:=</span> <span class="pre">2)</span></code>). The
+IEC 61131-3:2003 (Edition 2) grammar lets an enumeration list only bare
+member names, which take consecutive values starting at zero; explicit
+values were added in Edition 3. Without this flag, an explicit value
+produces
+<a class="reference internal" href="problems/P4055.html"><span class="doc">P4055</span></a>. A list of bare member
+names is standard syntax and is always allowed, as is a default value
+(<code class="docutils literal notranslate"><span class="pre">(RED,</span> <span class="pre">GREEN,</span> <span class="pre">BLUE)</span> <span class="pre">:=</span> <span class="pre">GREEN</span></code>), which selects the initial member rather
+than renumbering one.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-enum-base-type</span></code></dt><dd><p>Allow the base-type suffix on an enumeration declaration (e.g.
-<code class="docutils literal notranslate"><span class="pre">(A,</span> <span class="pre">B)</span> <span class="pre">WORD</span></code>), naming a base type; IronPLC stores every enumeration as
-a <code class="docutils literal notranslate"><span class="pre">DINT</span></code> whatever it names. IEC 61131-3 has no such form — nothing may
-follow an enumerated specification — so the suffix is an extension, and
-not an Edition 3 addition as explicit member values are. Produces
-<a class="reference internal" href="problems/P4056.html"><span class="doc">P4056</span></a> when used without this
-flag.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-enum-base-type</span></code></dt><dd><p>Allow the base-type suffix on an <a class="reference internal" href="../language/data-types/derived/enumerated-types.html"><span class="doc">enumeration</span></a> declaration
+(e.g. <code class="docutils literal notranslate"><span class="pre">(A,</span> <span class="pre">B)</span> <span class="pre">WORD</span></code>), naming a base type; IronPLC stores every
+enumeration as a <code class="docutils literal notranslate"><span class="pre">DINT</span></code> whatever it names. IEC 61131-3 has no such form — an enumerated specification is a list
+of member names or another enumerated type’s name, and nothing may follow
+it — so the suffix is an extension. Unlike
+<code class="docutils literal notranslate"><span class="pre">--allow-enum-explicit-values</span></code> above it is not an Edition 3 addition;
+the two constructs often appear together but are separate questions.
+Without this flag it produces
+<a class="reference internal" href="problems/P4056.html"><span class="doc">P4056</span></a>, and the compiler sizes
+the type from the members instead.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-continue</span></code></dt><dd><p>Allow the <code class="docutils literal notranslate"><span class="pre">CONTINUE</span></code> statement, which goes on with the next iteration of
-the innermost <code class="docutils literal notranslate"><span class="pre">FOR</span></code>, <code class="docutils literal notranslate"><span class="pre">WHILE</span></code>, or <code class="docutils literal notranslate"><span class="pre">REPEAT</span></code> loop. <code class="docutils literal notranslate"><span class="pre">CONTINUE</span></code> was added
-in IEC 61131-3:2013 (Edition 3); without this flag it is an ordinary
-identifier.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-continue</span></code></dt><dd><p>Allow the <a class="reference internal" href="../language/structured-text/continue.html"><span class="doc">CONTINUE</span></a>
+statement, which goes on with the next iteration of the innermost <code class="docutils literal notranslate"><span class="pre">FOR</span></code>,
+<code class="docutils literal notranslate"><span class="pre">WHILE</span></code>, or <code class="docutils literal notranslate"><span class="pre">REPEAT</span></code> loop.
+<code class="docutils literal notranslate"><span class="pre">CONTINUE</span></code> was added in Edition 3. Without this flag, <code class="docutils literal notranslate"><span class="pre">CONTINUE</span></code> is an
+ordinary identifier, so a <code class="docutils literal notranslate"><span class="pre">CONTINUE;</span></code> statement is a syntax error and a
+variable may be named <code class="docutils literal notranslate"><span class="pre">continue</span></code>.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-keywords-as-names</span></code></dt><dd><p>Allow the keywords <code class="docutils literal notranslate"><span class="pre">ON</span></code>, <code class="docutils literal notranslate"><span class="pre">STEP</span></code>, <code class="docutils literal notranslate"><span class="pre">R_EDGE</span></code> and <code class="docutils literal notranslate"><span class="pre">F_EDGE</span></code> as names of
-variables and enumeration members (e.g. <code class="docutils literal notranslate"><span class="pre">(Off,</span> <span class="pre">On)</span></code>). IEC 61131-3
-reserves its keywords, so this is an extension. Produces
-<a class="reference internal" href="problems/P4095.html"><span class="doc">P4095</span></a> when used without this
-flag.</p>
+variables and enumeration members, as in <code class="docutils literal notranslate"><span class="pre">TYPE</span> <span class="pre">M</span> <span class="pre">:</span> <span class="pre">(Off,</span> <span class="pre">On);</span> <span class="pre">END_TYPE</span></code>
+or <code class="docutils literal notranslate"><span class="pre">VAR_INPUT</span> <span class="pre">step</span> <span class="pre">:</span> <span class="pre">DINT;</span> <span class="pre">END_VAR</span></code>. IEC 61131-3 reserves its keywords
+for their own use, while other toolchains do not reserve these four.
+Each keyword keeps its keyword role in the same program
+(<code class="docutils literal notranslate"><span class="pre">RESOURCE</span> <span class="pre">r</span> <span class="pre">ON</span> <span class="pre">PLC</span></code>, an <code class="docutils literal notranslate"><span class="pre">R_EDGE</span></code> input). Without this flag such a
+name produces <a class="reference internal" href="problems/P4095.html"><span class="doc">P4095</span></a>.</p>
 </dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-conditional-return</span></code></dt><dd><p>Allow <a class="reference internal" href="../language/structured-text/return.html"><span class="doc">RETURN(condition)</span></a>,
+a <code class="docutils literal notranslate"><span class="pre">RETURN</span></code> that happens only when the <code class="docutils literal notranslate"><span class="pre">BOOL</span></code> condition is <code class="docutils literal notranslate"><span class="pre">TRUE</span></code>, as
+if written <code class="docutils literal notranslate"><span class="pre">IF</span> <span class="pre">condition</span> <span class="pre">THEN</span> <span class="pre">RETURN;</span> <span class="pre">END_IF;</span></code>. IEC 61131-3 defines
+<code class="docutils literal notranslate"><span class="pre">RETURN</span></code> with no operand. The condition is never the return value of a
+function. Without this flag it produces
+<a class="reference internal" href="problems/P4098.html"><span class="doc">P4098</span></a>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-pou-header-semicolon</span></code></dt><dd><p>Allow a semicolon after the header of a <code class="docutils literal notranslate"><span class="pre">PROGRAM</span></code>, <code class="docutils literal notranslate"><span class="pre">FUNCTION</span></code>,
+<code class="docutils literal notranslate"><span class="pre">FUNCTION_BLOCK</span></code> or <code class="docutils literal notranslate"><span class="pre">METHOD</span></code>, before its first variable block, as in
+<code class="docutils literal notranslate"><span class="pre">FUNCTION_BLOCK</span> <span class="pre">FB_Motor</span> <span class="pre">EXTENDS</span> <span class="pre">FB_Base;</span></code>. The IEC 61131-3 standard
+grammar puts no terminator after a header. The semicolon has no meaning:
+the declaration is the same as without it. Without this flag it produces
+<a class="reference internal" href="problems/P4100.html"><span class="doc">P4100</span></a>. A semicolon that a
+variable block does not follow is the standard empty statement at the start
+of the body and is always allowed.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-omitted-call-argument</span></code></dt><dd><p>Allow a call argument with no value (<code class="docutils literal notranslate"><span class="pre">b</span> <span class="pre">:=,</span></code> for an input, <code class="docutils literal notranslate"><span class="pre">Error=&gt;</span> <span class="pre">,</span></code>
+for an output). It is the same as leaving the argument out. The IEC 61131-3
+standard grammar gives every argument a value. Without this flag it produces
+<a class="reference internal" href="problems/P4102.html"><span class="doc">P4102</span></a>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-trailing-call-comma</span></code></dt><dd><p>Allow a comma before the closing parenthesis of a call’s argument list. The
+IEC 61131-3 standard grammar has no comma after the last argument. Without
+this flag it produces <a class="reference internal" href="problems/P4103.html"><span class="doc">P4103</span></a>.</p>
+</dd>
+</dl>
+<dl class="simple">
 <dt><code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-non-numeric</span></code> <em>ALTERNATIVE</em></dt><dd><p>Select what <code class="docutils literal notranslate"><span class="pre">STRING_TO_&lt;numeric&gt;</span></code> treats as convertible when the string
 has non-numeric characters: <code class="docutils literal notranslate"><span class="pre">reject</span></code> (the whole string must be a
 literal; the default), <code class="docutils literal notranslate"><span class="pre">ignore-trailing</span></code> (convert the leading literal
@@ -1248,7 +1376,7 @@ alternative and this flag replaces it. See
     <script src="../../_static/tabs.js?v=3ee01567"></script>
     <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
     <script src="../../_static/copybutton.js?v=f281be69"></script>
-    <script src="../../_static/design-tabs.js?v=f930bc37"></script>
+    <script data-sd-tabs-storage-prefix="sphinx-design-tab-id-" src="../../_static/design-tabs.js?v=fcb327ea"></script>
     <script src="../../_static/version-check.js?v=735d477a"></script>
     <script src="../../_static/posthog-init.js?v=8ec94b21"></script>
     </body>

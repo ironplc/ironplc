@@ -18,7 +18,7 @@
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../_static/tabs.css?v=4c969af8" />
     <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
-    <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=6a604523" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
     <link rel="stylesheet" type="text/css" href="../../../_static/overrides.css?v=5d031554" />
     
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.253.0">
+<meta name="ironplc-version" content="0.254.0">
 </head>
   <body>
     
@@ -538,6 +538,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2042.html">P2042</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2043.html">P2043</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2044.html">P2044</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2045.html">P2045</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4003.html">P4003</a></li>
@@ -630,6 +631,12 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4095.html">P4095</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4096.html">P4096</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4097.html">P4097</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4098.html">P4098</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4099.html">P4099</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4100.html">P4100</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4101.html">P4101</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4102.html">P4102</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4103.html">P4103</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -835,6 +842,61 @@ execution resumes at the caller.</p>
 </div>
 </div>
 </section>
+<section id="conditional-return-language-extension">
+<h2>Conditional Return (Language Extension)<a class="headerlink" href="#conditional-return-language-extension" title="Link to this heading">¶</a></h2>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This is an extension not part of the IEC 61131-3 standard.
+See <a class="reference internal" href="../../../explanation/enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a> for how to enable it.</p>
+</div>
+<p>Pass the <code class="docutils literal notranslate"><span class="pre">--allow-conditional-return</span></code> flag to enable it, or select a dialect that includes it. See
+<a class="reference internal" href="../../../explanation/enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a> for the dialects and flags
+reference.</p>
+<div class="highlight-bnf notranslate"><div class="highlight"><pre><span></span>RETURN ( expression ) ;
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">RETURN(condition)</span></code> returns only when <code class="docutils literal notranslate"><span class="pre">condition</span></code> is <code class="docutils literal notranslate"><span class="pre">TRUE</span></code>. When it is
+<code class="docutils literal notranslate"><span class="pre">FALSE</span></code>, execution goes on with the next statement. It means the same as:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">IF</span> <span class="n">condition</span> <span class="n">THEN</span>
+    <span class="n">RETURN</span><span class="p">;</span>
+<span class="n">END_IF</span><span class="p">;</span>
+</pre></div>
+</div>
+<p>The condition must be a <code class="docutils literal notranslate"><span class="pre">BOOL</span></code>; another type is an error
+(<a class="reference internal" href="../../compiler/problems/P4072.html"><span class="doc">P4072</span></a>). The condition is never
+the return value of a function, even a <code class="docutils literal notranslate"><span class="pre">BOOL</span></code> function: the function
+returns the last value assigned to its name, as with a plain <code class="docutils literal notranslate"><span class="pre">RETURN</span></code>.</p>
+<p>Without the flag, <code class="docutils literal notranslate"><span class="pre">RETURN(condition)</span></code> is an error
+(<a class="reference internal" href="../../compiler/problems/P4098.html"><span class="doc">P4098</span></a>).</p>
+<div class="tab-set docutils">
+<input checked="True" class="tab-input" id="tab-set--1-input--1" name="tab-set--1" type="radio" /><label class="tab-label" for="tab-set--1-input--1">Try it</label><div class="tab-content docutils">
+<iframe src="https://playground.ironplc.com/?embed=true&dialect=twincat&source=ironplc-docs&host=reference%2Flanguage%2Fstructured-text%2Freturn&code=RlVOQ1RJT04gRGl2aWRlIDogRElOVAogICAgVkFSX0lOUFVUCiAgICAgICAgbnVtZXJhdG9yIDogRElOVDsKICAgICAgICBkZW5vbWluYXRvciA6IERJTlQ7CiAgICBFTkRfVkFSCgogICAgRGl2aWRlIDo9IDA7CiAgICBSRVRVUk4oZGVub21pbmF0b3IgPSAwKTsKICAgIERpdmlkZSA6PSBudW1lcmF0b3IgLyBkZW5vbWluYXRvcjsKRU5EX0ZVTkNUSU9OCgpQUk9HUkFNIG1haW4KICAgIFZBUgogICAgICAgIHNhZmVfcmVzdWx0IDogRElOVDsKICAgICAgICBub3JtYWxfcmVzdWx0IDogRElOVDsKICAgIEVORF9WQVIKCiAgICBzYWZlX3Jlc3VsdCA6PSBEaXZpZGUoMTAsIDApOwogICAgbm9ybWFsX3Jlc3VsdCA6PSBEaXZpZGUoMTAsIDMpOwpFTkRfUFJPR1JBTQ%3D%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:533px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
+<input class="tab-input" id="tab-set--1-input--2" name="tab-set--1" type="radio" /><label class="tab-label" for="tab-set--1-input--2">Source</label><div class="tab-content docutils">
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">FUNCTION</span> <span class="n">Divide</span> <span class="p">:</span> <span class="n">DINT</span>
+    <span class="n">VAR_INPUT</span>
+        <span class="n">numerator</span> <span class="p">:</span> <span class="n">DINT</span><span class="p">;</span>
+        <span class="n">denominator</span> <span class="p">:</span> <span class="n">DINT</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+
+    <span class="n">Divide</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="n">RETURN</span><span class="p">(</span><span class="n">denominator</span> <span class="o">=</span> <span class="mi">0</span><span class="p">);</span>
+    <span class="n">Divide</span> <span class="o">:=</span> <span class="n">numerator</span> <span class="o">/</span> <span class="n">denominator</span><span class="p">;</span>
+<span class="n">END_FUNCTION</span>
+
+<span class="n">PROGRAM</span> <span class="n">main</span>
+    <span class="n">VAR</span>
+        <span class="n">safe_result</span> <span class="p">:</span> <span class="n">DINT</span><span class="p">;</span>
+        <span class="n">normal_result</span> <span class="p">:</span> <span class="n">DINT</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+
+    <span class="n">safe_result</span> <span class="o">:=</span> <span class="n">Divide</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+    <span class="n">normal_result</span> <span class="o">:=</span> <span class="n">Divide</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">3</span><span class="p">);</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+</div>
+</div>
+</section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <ul class="simple">
@@ -912,6 +974,7 @@ execution resumes at the caller.</p>
 <li><a class="reference internal" href="#syntax">Syntax</a></li>
 <li><a class="reference internal" href="#description">Description</a></li>
 <li><a class="reference internal" href="#example">Example</a></li>
+<li><a class="reference internal" href="#conditional-return-language-extension">Conditional Return (Language Extension)</a></li>
 <li><a class="reference internal" href="#see-also">See Also</a></li>
 </ul>
 </li>
@@ -931,7 +994,7 @@ execution resumes at the caller.</p>
     <script src="../../../_static/tabs.js?v=3ee01567"></script>
     <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
     <script src="../../../_static/copybutton.js?v=f281be69"></script>
-    <script src="../../../_static/design-tabs.js?v=f930bc37"></script>
+    <script data-sd-tabs-storage-prefix="sphinx-design-tab-id-" src="../../../_static/design-tabs.js?v=fcb327ea"></script>
     <script src="../../../_static/version-check.js?v=735d477a"></script>
     <script src="../../../_static/posthog-init.js?v=8ec94b21"></script>
     </body>

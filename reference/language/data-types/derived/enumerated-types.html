@@ -18,7 +18,7 @@
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/tabs.css?v=4c969af8" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/copybutton.css?v=76b2166b" />
-    <link rel="stylesheet" type="text/css" href="../../../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/sphinx-design.min.css?v=6a604523" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/overrides.css?v=5d031554" />
     
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.253.0">
+<meta name="ironplc-version" content="0.254.0">
 </head>
   <body>
     
@@ -538,6 +538,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2042.html">P2042</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2043.html">P2043</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2044.html">P2044</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2045.html">P2045</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4003.html">P4003</a></li>
@@ -630,6 +631,12 @@
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4095.html">P4095</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4096.html">P4096</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4097.html">P4097</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4098.html">P4098</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4099.html">P4099</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4100.html">P4100</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4101.html">P4101</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4102.html">P4102</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4103.html">P4103</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6003.html">P6003</a></li>
@@ -885,6 +892,41 @@ function block it is passed to, or the variable it initializes:</p>
 <code class="docutils literal notranslate"><span class="pre">DINT</span></code>, the value is ambiguous and the compiler reports
 <a class="reference internal" href="../../../compiler/problems/P2043.html"><span class="doc">P2043</span></a>.</p>
 </section>
+<section id="values-written-with-their-type">
+<h2>Values Written with Their Type<a class="headerlink" href="#values-written-with-their-type" title="Link to this heading">¶</a></h2>
+<p>An initial value, the default of a <code class="docutils literal notranslate"><span class="pre">TYPE</span></code> declaration, a value in a
+structure or array initializer and a <code class="docutils literal notranslate"><span class="pre">CASE</span></code> label can name the enumeration a
+value belongs to, as <code class="docutils literal notranslate"><span class="pre">Color#Green</span></code>:</p>
+<div class="tab-set docutils">
+<input checked="True" class="tab-input" id="tab-set--3-input--1" name="tab-set--3" type="radio" /><label class="tab-label" for="tab-set--3-input--1">Try it</label><div class="tab-content docutils">
+<iframe src="https://playground.ironplc.com/?embed=true&source=ironplc-docs&host=reference%2Flanguage%2Fdata-types%2Fderived%2Fenumerated-types&code=VFlQRQogICAgQ29sb3IgOiAoUmVkLCBHcmVlbikgOj0gQ29sb3IjR3JlZW47CiAgICBMaWdodCA6IChPZmYsIEdyZWVuKTsKRU5EX1RZUEUKClBST0dSQU0gbWFpbgogICAgVkFSCiAgICAgICAgc2hhZGUgOiBDb2xvciA6PSBDb2xvciNSZWQ7CiAgICAgICAgbGFtcCA6IExpZ2h0IDo9IExpZ2h0I0dyZWVuOwogICAgICAgIGNvdW50IDogSU5UOwogICAgRU5EX1ZBUgoKICAgIENBU0UgbGFtcCBPRgogICAgICAgIExpZ2h0I09mZjogY291bnQgOj0gMDsKICAgICAgICBMaWdodCNHcmVlbjogY291bnQgOj0gMTsKICAgIEVORF9DQVNFOwpFTkRfUFJPR1JBTQ%3D%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:533px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
+<input class="tab-input" id="tab-set--3-input--2" name="tab-set--3" type="radio" /><label class="tab-label" for="tab-set--3-input--2">Source</label><div class="tab-content docutils">
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">TYPE</span>
+    <span class="n">Color</span> <span class="p">:</span> <span class="p">(</span><span class="n">Red</span><span class="p">,</span> <span class="n">Green</span><span class="p">)</span> <span class="o">:=</span> <span class="n">Color</span><span class="c1">#Green;</span>
+    <span class="n">Light</span> <span class="p">:</span> <span class="p">(</span><span class="n">Off</span><span class="p">,</span> <span class="n">Green</span><span class="p">);</span>
+<span class="n">END_TYPE</span>
+
+<span class="n">PROGRAM</span> <span class="n">main</span>
+    <span class="n">VAR</span>
+        <span class="n">shade</span> <span class="p">:</span> <span class="n">Color</span> <span class="o">:=</span> <span class="n">Color</span><span class="c1">#Red;</span>
+        <span class="n">lamp</span> <span class="p">:</span> <span class="n">Light</span> <span class="o">:=</span> <span class="n">Light</span><span class="c1">#Green;</span>
+        <span class="n">count</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+
+    <span class="n">CASE</span> <span class="n">lamp</span> <span class="n">OF</span>
+        <span class="n">Light</span><span class="c1">#Off: count := 0;</span>
+        <span class="n">Light</span><span class="c1">#Green: count := 1;</span>
+    <span class="n">END_CASE</span><span class="p">;</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+</div>
+</div>
+<p>The type written before the value must be the enumeration the value is used
+as, or an alias of it. A value written with another enumeration is
+<a class="reference internal" href="../../../compiler/problems/P2045.html"><span class="doc">P2045</span></a>, even when that enumeration declares
+a value of the same name.</p>
+</section>
 <section id="explicit-values">
 <h2>Explicit Values<a class="headerlink" href="#explicit-values" title="Link to this heading">¶</a></h2>
 <div class="admonition note">
@@ -897,9 +939,9 @@ function block it is passed to, or the variable it initializes:</p>
 Members that follow continue from the value before them, so <code class="docutils literal notranslate"><span class="pre">Type_ANY</span></code> below
 is 1 and <code class="docutils literal notranslate"><span class="pre">Type_BOOL</span></code> is 2:</p>
 <div class="tab-set docutils">
-<input checked="True" class="tab-input" id="tab-set--3-input--1" name="tab-set--3" type="radio" /><label class="tab-label" for="tab-set--3-input--1">Try it</label><div class="tab-content docutils">
+<input checked="True" class="tab-input" id="tab-set--4-input--1" name="tab-set--4" type="radio" /><label class="tab-label" for="tab-set--4-input--1">Try it</label><div class="tab-content docutils">
 <iframe src="https://playground.ironplc.com/?embed=true&allows=enum-explicit-values&source=ironplc-docs&host=reference%2Flanguage%2Fdata-types%2Fderived%2Fenumerated-types&code=VFlQRQogICAgRV9Bc3NlcnRpb25UeXBlIDogKFR5cGVfVU5ERUZJTkVEIDo9IDAsIFR5cGVfQU5ZLCBUeXBlX0JPT0wpOwpFTkRfVFlQRQoKUFJPR1JBTSBtYWluCiAgICBWQVIKICAgICAgICBraW5kIDogRV9Bc3NlcnRpb25UeXBlIDo9IFR5cGVfQU5ZOwogICAgRU5EX1ZBUgoKICAgIElGIGtpbmQgPSBUeXBlX0FOWSBUSEVOCiAgICAgICAga2luZCA6PSBUeXBlX0JPT0w7CiAgICBFTkRfSUY7CkVORF9QUk9HUkFN" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:493px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
-<input class="tab-input" id="tab-set--3-input--2" name="tab-set--3" type="radio" /><label class="tab-label" for="tab-set--3-input--2">Source</label><div class="tab-content docutils">
+<input class="tab-input" id="tab-set--4-input--2" name="tab-set--4" type="radio" /><label class="tab-label" for="tab-set--4-input--2">Source</label><div class="tab-content docutils">
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">TYPE</span>
     <span class="n">E_AssertionType</span> <span class="p">:</span> <span class="p">(</span><span class="n">Type_UNDEFINED</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">Type_ANY</span><span class="p">,</span> <span class="n">Type_BOOL</span><span class="p">);</span>
 <span class="n">END_TYPE</span>
@@ -933,9 +975,9 @@ See <a class="reference internal" href="../../../../explanation/enabling-dialect
 </div>
 <p>A declaration can name a base type after its members:</p>
 <div class="tab-set docutils">
-<input checked="True" class="tab-input" id="tab-set--4-input--1" name="tab-set--4" type="radio" /><label class="tab-label" for="tab-set--4-input--1">Try it</label><div class="tab-content docutils">
+<input checked="True" class="tab-input" id="tab-set--5-input--1" name="tab-set--5" type="radio" /><label class="tab-label" for="tab-set--5-input--1">Try it</label><div class="tab-content docutils">
 <iframe src="https://playground.ironplc.com/?embed=true&allows=enum-base-type&source=ironplc-docs&host=reference%2Flanguage%2Fdata-types%2Fderived%2Fenumerated-types&code=VFlQRQogICAgQ29sb3IgOiAoUmVkLCBHcmVlbiwgQmx1ZSkgSU5UOwpFTkRfVFlQRQoKUFJPR1JBTSBtYWluCiAgICBWQVIKICAgICAgICBzaGFkZSA6IENvbG9yIDo9IEJsdWU7CiAgICBFTkRfVkFSCgogICAgSUYgc2hhZGUgPSBCbHVlIFRIRU4KICAgICAgICBzaGFkZSA6PSBSZWQ7CiAgICBFTkRfSUY7CkVORF9QUk9HUkFN" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:493px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
-<input class="tab-input" id="tab-set--4-input--2" name="tab-set--4" type="radio" /><label class="tab-label" for="tab-set--4-input--2">Source</label><div class="tab-content docutils">
+<input class="tab-input" id="tab-set--5-input--2" name="tab-set--5" type="radio" /><label class="tab-label" for="tab-set--5-input--2">Source</label><div class="tab-content docutils">
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">TYPE</span>
     <span class="n">Color</span> <span class="p">:</span> <span class="p">(</span><span class="n">Red</span><span class="p">,</span> <span class="n">Green</span><span class="p">,</span> <span class="n">Blue</span><span class="p">)</span> <span class="n">INT</span><span class="p">;</span>
 <span class="n">END_TYPE</span>
@@ -965,6 +1007,8 @@ enumeration</p></li>
 <li><p><a class="reference internal" href="../../../compiler/problems/P2043.html"><span class="doc">P2043</span></a> — Enumerated value is ambiguous</p></li>
 <li><p><a class="reference internal" href="../../../compiler/problems/P2044.html"><span class="doc">P2044</span></a> — Enumeration value is outside
 the range of <code class="docutils literal notranslate"><span class="pre">DINT</span></code></p></li>
+<li><p><a class="reference internal" href="../../../compiler/problems/P2045.html"><span class="doc">P2045</span></a> — Enumerated value is written
+with another enumeration’s type</p></li>
 <li><p><a class="reference internal" href="../../../compiler/problems/P4055.html"><span class="doc">P4055</span></a> — Explicit enumeration member
 value requires a dialect or flag</p></li>
 <li><p><a class="reference internal" href="../../../compiler/problems/P4056.html"><span class="doc">P4056</span></a> — Enumeration base-type suffix
@@ -1047,6 +1091,7 @@ requires a dialect or flag</p></li>
 <li><a class="reference internal" href="#example">Example</a></li>
 <li><a class="reference internal" href="#inline-enumerations">Inline Enumerations</a></li>
 <li><a class="reference internal" href="#values-shared-by-two-enumerations">Values Shared by Two Enumerations</a></li>
+<li><a class="reference internal" href="#values-written-with-their-type">Values Written with Their Type</a></li>
 <li><a class="reference internal" href="#explicit-values">Explicit Values</a></li>
 <li><a class="reference internal" href="#base-type-language-extension">Base Type (Language Extension)</a></li>
 <li><a class="reference internal" href="#related-problem-codes">Related Problem Codes</a></li>
@@ -1069,7 +1114,7 @@ requires a dialect or flag</p></li>
     <script src="../../../../_static/tabs.js?v=3ee01567"></script>
     <script src="../../../../_static/clipboard.min.js?v=a7894cd8"></script>
     <script src="../../../../_static/copybutton.js?v=f281be69"></script>
-    <script src="../../../../_static/design-tabs.js?v=f930bc37"></script>
+    <script data-sd-tabs-storage-prefix="sphinx-design-tab-id-" src="../../../../_static/design-tabs.js?v=fcb327ea"></script>
     <script src="../../../../_static/version-check.js?v=735d477a"></script>
     <script src="../../../../_static/posthog-init.js?v=8ec94b21"></script>
     </body>

@@ -18,7 +18,7 @@
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../_static/tabs.css?v=4c969af8" />
     <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
-    <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=6a604523" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
     <link rel="stylesheet" type="text/css" href="../../../_static/overrides.css?v=5d031554" />
     
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.253.0">
+<meta name="ironplc-version" content="0.254.0">
 </head>
   <body>
     
@@ -538,6 +538,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2042.html">P2042</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2043.html">P2043</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2044.html">P2044</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2045.html">P2045</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4003.html">P4003</a></li>
@@ -630,6 +631,12 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4095.html">P4095</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4096.html">P4096</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4097.html">P4097</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4098.html">P4098</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4099.html">P4099</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4100.html">P4100</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4101.html">P4101</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4102.html">P4102</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4103.html">P4103</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -833,6 +840,74 @@ across power cycles and program restarts.</p>
 </pre></div>
 </div>
 </section>
+<section id="persistent">
+<h2>PERSISTENT<a class="headerlink" href="#persistent" title="Link to this heading">¶</a></h2>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This is an extension not part of the IEC 61131-3 standard.
+See <a class="reference internal" href="../../../explanation/enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a> for how to enable it.</p>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">PERSISTENT</span></code> qualifier marks variables whose values survive a
+download and a reset as well as a power cycle. Enable it with the
+<code class="docutils literal notranslate"><span class="pre">--allow-persistent-var</span></code> flag; the <code class="docutils literal notranslate"><span class="pre">codesys</span></code> and <code class="docutils literal notranslate"><span class="pre">twincat</span></code> dialects
+enable it.</p>
+<div class="table-wrapper colwidths-given docutils container">
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 35.0%" />
+<col style="width: 65.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Qualifier</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">PERSISTENT</span></code></p></td>
+<td><p>Value is preserved across downloads, resets and power cycles</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">RETAIN</span> <span class="pre">PERSISTENT</span></code></p></td>
+<td><p>Same as <code class="docutils literal notranslate"><span class="pre">PERSISTENT</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">PERSISTENT</span> <span class="pre">RETAIN</span></code></p></td>
+<td><p>Same as <code class="docutils literal notranslate"><span class="pre">RETAIN</span> <span class="pre">PERSISTENT</span></code>: the two orders mean the same thing</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>A <code class="docutils literal notranslate"><span class="pre">PERSISTENT</span></code> qualifier may follow <code class="docutils literal notranslate"><span class="pre">VAR</span></code> and <code class="docutils literal notranslate"><span class="pre">VAR_GLOBAL</span></code>, and the
+<code class="docutils literal notranslate"><span class="pre">VAR_INPUT</span></code> and <code class="docutils literal notranslate"><span class="pre">VAR_OUTPUT</span></code> of a function block or program. A function
+keeps no values between calls, so a function that declares a <code class="docutils literal notranslate"><span class="pre">PERSISTENT</span></code>
+variable is an error (<a class="reference internal" href="../../compiler/problems/P4099.html"><span class="doc">P4099</span></a>).</p>
+<div class="tab-set docutils">
+<input checked="True" class="tab-input" id="tab-set--0-input--1" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--1">Try it</label><div class="tab-content docutils">
+<iframe src="https://playground.ironplc.com/?embed=true&allows=persistent-var&source=ironplc-docs&host=reference%2Flanguage%2Fvariables%2Fretention&code=RlVOQ1RJT05fQkxPQ0sgQ291bnRlcgogICAgVkFSX0lOUFVUIFBFUlNJU1RFTlQKICAgICAgICBzdGFydCA6IERJTlQgOj0gMDsKICAgIEVORF9WQVIKICAgIFZBUl9PVVRQVVQgUkVUQUlOIFBFUlNJU1RFTlQKICAgICAgICBjb3VudCA6IERJTlQ7CiAgICBFTkRfVkFSCiAgICBjb3VudCA6PSBjb3VudCArIDE7CkVORF9GVU5DVElPTl9CTE9DSwoKUFJPR1JBTSBtYWluCiAgICBWQVIgUEVSU0lTVEVOVAogICAgICAgIHJ1bl9ob3VycyA6IERJTlQgOj0gMDsKICAgIEVORF9WQVIKICAgIFZBUgogICAgICAgIGNvdW50ZXIgOiBDb3VudGVyOwogICAgRU5EX1ZBUgogICAgY291bnRlcigpOwogICAgcnVuX2hvdXJzIDo9IGNvdW50ZXIuY291bnQ7CkVORF9QUk9HUkFN" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:533px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
+<input class="tab-input" id="tab-set--0-input--2" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--2">Source</label><div class="tab-content docutils">
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">FUNCTION_BLOCK</span> <span class="n">Counter</span>
+    <span class="n">VAR_INPUT</span> <span class="n">PERSISTENT</span>
+        <span class="n">start</span> <span class="p">:</span> <span class="n">DINT</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+    <span class="n">VAR_OUTPUT</span> <span class="n">RETAIN</span> <span class="n">PERSISTENT</span>
+        <span class="n">count</span> <span class="p">:</span> <span class="n">DINT</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+    <span class="n">count</span> <span class="o">:=</span> <span class="n">count</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>
+<span class="n">END_FUNCTION_BLOCK</span>
+
+<span class="n">PROGRAM</span> <span class="n">main</span>
+    <span class="n">VAR</span> <span class="n">PERSISTENT</span>
+        <span class="n">run_hours</span> <span class="p">:</span> <span class="n">DINT</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+    <span class="n">VAR</span>
+        <span class="n">counter</span> <span class="p">:</span> <span class="n">Counter</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+    <span class="n">counter</span><span class="p">();</span>
+    <span class="n">run_hours</span> <span class="o">:=</span> <span class="n">counter</span><span class="o">.</span><span class="n">count</span><span class="p">;</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+</div>
+</div>
+</section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <ul class="simple">
@@ -908,6 +983,7 @@ across power cycles and program restarts.</p>
 <li><a class="reference internal" href="#">Retention</a><ul>
 <li><a class="reference internal" href="#qualifiers">Qualifiers</a></li>
 <li><a class="reference internal" href="#example">Example</a></li>
+<li><a class="reference internal" href="#persistent">PERSISTENT</a></li>
 <li><a class="reference internal" href="#see-also">See Also</a></li>
 </ul>
 </li>
@@ -927,7 +1003,7 @@ across power cycles and program restarts.</p>
     <script src="../../../_static/tabs.js?v=3ee01567"></script>
     <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
     <script src="../../../_static/copybutton.js?v=f281be69"></script>
-    <script src="../../../_static/design-tabs.js?v=f930bc37"></script>
+    <script data-sd-tabs-storage-prefix="sphinx-design-tab-id-" src="../../../_static/design-tabs.js?v=fcb327ea"></script>
     <script src="../../../_static/version-check.js?v=735d477a"></script>
     <script src="../../../_static/posthog-init.js?v=8ec94b21"></script>
     </body>

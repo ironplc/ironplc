@@ -91,8 +91,10 @@ from its initial value, or from its type's default when it has none.
        total := total + delta;
    END_PROGRAM
 
-Code generation does not support :code:`VAR_TEMP` in a
-:code:`FUNCTION_BLOCK` yet.
+In a :code:`FUNCTION_BLOCK` or a :code:`FUNCTION`, code generation does not
+yet support reading or writing an element or a field of an array or a
+structure declared in :code:`VAR_TEMP`; that is reported as
+:doc:`P9999 </reference/compiler/problems/P9999>`.
 
 Global Variables
 ----------------
