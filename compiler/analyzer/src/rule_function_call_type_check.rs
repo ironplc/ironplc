@@ -65,8 +65,7 @@ use crate::{
     semantic_context::SemanticContext,
     semantic_type::{ParameterType, SemanticType},
     symbol_environment::ScopeTracker,
-    value_type,
-    variable_type,
+    value_type, variable_type,
 };
 use ironplc_parser::options::CompilerOptions;
 pub fn apply(
