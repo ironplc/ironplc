@@ -461,6 +461,9 @@ impl Visitor<Infallible> for RuleDeclaredEnumeratedValues<'_> {
 mod initializer_tests;
 
 #[cfg(test)]
+mod dotted_tests;
+
+#[cfg(test)]
 mod tests {
     use crate::test_helpers::diagnostic_codes;
     use crate::test_helpers::{rule_codes, rule_diagnostics};

@@ -133,6 +133,38 @@ as, or an alias of it. A value written with another enumeration is
 :doc:`/reference/compiler/problems/P2045`, even when that enumeration declares
 a value of the same name.
 
+Values Written with a Period (Language Extension)
+-------------------------------------------------
+
+.. include:: ../../../../includes/requires-dialect-extension.rst
+
+Where a value can be written with its type, it can also be written with a
+period in place of ``#``, as ``Color.Green``. A library or namespace prefix
+can come before the type, as ``Lib.Color.Green``; the prefix does not take part
+in finding the type. The value is checked as ``Color#Green`` is:
+
+.. playground::
+   :allows: dotted-enum-value,qualified-type-names
+
+   TYPE
+       Color : (Red, Green);
+   END_TYPE
+
+   PROGRAM main
+       VAR
+           shade : Color := Color.Green;
+           count : INT;
+       END_VAR
+
+       CASE shade OF
+           Color.Red: count := 0;
+           Lib.Color.Green: count := 1;
+       END_CASE;
+   END_PROGRAM
+
+In a structure initializer and in an expression, a name written with a period
+is read as a variable reference, so write the value there without its type.
+
 Explicit Values
 ---------------
 
@@ -208,6 +240,8 @@ Related Problem Codes
 - :doc:`/reference/compiler/problems/P4055` — Explicit enumeration member
   value requires a dialect or flag
 - :doc:`/reference/compiler/problems/P4056` — Enumeration base-type suffix
+  requires a dialect or flag
+- :doc:`/reference/compiler/problems/P4105` — ``Type.value`` enumerated value
   requires a dialect or flag
 
 See Also

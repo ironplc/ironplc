@@ -398,6 +398,26 @@ END_CONFIGURATION"
     verbatim,
     opts_with_pou_header_semicolon
 )]
+// ---------------------------------------------------------------------
+// A library or namespace prefix on a type name
+// (`--allow-qualified-type-names`) and an enumerated value written
+// `Type.value` (`--allow-dotted-enum-value`), on each side of each `.`.
+// ---------------------------------------------------------------------
+#[case::qualified_type_name(
+    "PROGRAM main VAR x : Outer·.·Inner·.·FB_B; END_VAR END_PROGRAM",
+    verbatim,
+    CompilerOptions::default
+)]
+#[case::dotted_enumerated_value_initial_value(
+    "TYPE E : (a, b); END_TYPE PROGRAM main VAR e : E := Lib·.·E·.·b; END_VAR END_PROGRAM",
+    verbatim,
+    CompilerOptions::default
+)]
+#[case::dotted_enumerated_value_case_label(
+    "TYPE E : (a, b); END_TYPE PROGRAM main VAR e : E; x : INT; END_VAR CASE e OF Lib·.·E·.·b: x := 1; END_CASE; END_PROGRAM",
+    verbatim,
+    CompilerOptions::default
+)]
 fn parse_when_gap_filled_then_same_ast(
     #[case] template: &'static str,
     #[case] wrap: fn(&str) -> String,
