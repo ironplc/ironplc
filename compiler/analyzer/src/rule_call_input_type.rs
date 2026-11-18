@@ -70,8 +70,7 @@ use crate::{
     semantic_context::SemanticContext,
     semantic_type::{ParameterType, SemanticType},
     symbol_environment::ScopeTracker,
-    type_compat::is_checkable_type,
-    value_type::{self, Mismatch, ValueType},
+    value_type::{self, StoredMismatch},
     variable_type::declared_type_id,
 };
 use ironplc_dsl::common::VariableType;
@@ -130,7 +129,7 @@ impl RuleCallInputType<'_> {
     /// whose variable has the type `variable_type`, is of a type the variable
     /// does not accept.
     fn check_input(&mut self, callee: &Callee, input: &Id, variable_type: TypeId, value: &Expr) {
-        let Some((expected, Err(mismatch))) = self.judge(variable_type, value) else {
+        let Err(mismatch) = self.judge(variable_type, value) else {
             return;
         };
         self.diagnostics.push(
@@ -140,20 +139,23 @@ impl RuleCallInputType<'_> {
             )
             .with_context(callee.kind, &callee.name.original().to_string())
             .with_context("parameter", &input.original().to_string())
-            .with_context("expected", &expected)
+            .with_context("expected", &mismatch.expected)
             .with_context("actual", &mismatch.actual),
         );
     }
 
-    /// The type `value` is expected to have when stored in a variable of
-    /// type `variable_type`, as the diagnostic names it, and whether the
-    /// value has it. `None` when the relation cannot judge the variable's
-    /// type or the value's.
+    /// Whether `value` may be stored in a variable of type `variable_type`:
+    /// `Err` naming the type the value is expected to have, as the
+    /// diagnostic names it, when it may not. Every input but a reference is
+    /// judged as an assignment to a variable of its type is
+    /// ([`value_type::check_stored`]), which leaves alone a variable's type
+    /// or a value's that the relation cannot judge.
     ///
     /// A reference given a reference (`REF(d)`, a reference variable) is
     /// judged as a function's reference parameter is (REQ-IC-analyzer-086).
     /// Its type, an inline `REF_TO INT`, has no name, so the name lookup
-    /// below used to leave every reference input unchecked.
+    /// an assignment's check makes would leave every reference input
+    /// unchecked.
     ///
     /// A reference given a value that is not a reference (`b(r := x)`) is
     /// left alone. On a TwinCAT `REFERENCE TO` input that call may bind the
@@ -161,45 +163,27 @@ impl RuleCallInputType<'_> {
     /// it, P9999), and the input's type does not say whether it was
     /// declared `REFERENCE TO` or `REF_TO`, so it cannot be told from a
     /// mistake here.
-    fn judge(&self, variable_type: TypeId, value: &Expr) -> Option<(String, Result<(), Mismatch>)> {
+    fn judge(&self, variable_type: TypeId, value: &Expr) -> Result<(), StoredMismatch> {
         let types = self.context.types();
-        if types
-            .get_by_id(variable_type)?
-            .representation
-            .is_reference()
-        {
-            if !types
-                .representation_of_expr(value)
-                .is_some_and(SemanticType::is_reference)
-            {
-                return None;
-            }
-            let parameter = ParameterType::Type(variable_type);
-            return Some((
-                value_type::describe_parameter(types, &parameter),
-                value_type::check_parameter(types, &parameter, value, self.options),
-            ));
-        }
-        let declared = types.name_of(variable_type)?;
-        // An alias or a subrange is checked as the elementary type it names,
-        // as the value's type is.
-        let expected = types
-            .resolve_elementary_type_name(declared)
-            .unwrap_or_else(|| declared.clone());
-        if !is_checkable_type(&expected) {
-            return None;
-        }
-        let checkable = match value_type::of(types, value)? {
-            ValueType::Scalar(value_type) => is_checkable_type(&value_type),
-            ValueType::Composite(_) => true,
+        let Some(attributes) = types.get_by_id(variable_type) else {
+            return Ok(());
         };
-        if !checkable {
-            return None;
+        if !attributes.representation.is_reference() {
+            return value_type::check_stored(types, variable_type, value, self.options);
         }
-        Some((
-            expected.to_string(),
-            value_type::check(types, &expected, value, self.options),
-        ))
+        if !types
+            .representation_of_expr(value)
+            .is_some_and(SemanticType::is_reference)
+        {
+            return Ok(());
+        }
+        let parameter = ParameterType::Type(variable_type);
+        value_type::check_parameter(types, &parameter, value, self.options).map_err(|mismatch| {
+            StoredMismatch {
+                expected: value_type::describe_parameter(types, &parameter),
+                actual: mismatch.actual,
+            }
+        })
     }
 }
 

@@ -23,7 +23,7 @@ use ironplc_dsl::type_id::TypeId;
 use ironplc_parser::options::CompilerOptions;
 
 use crate::semantic_type::{ParameterType, SemanticType};
-use crate::type_compat::are_types_compatible;
+use crate::type_compat::{are_types_compatible, is_checkable_type};
 use crate::type_environment::TypeEnvironment;
 use crate::type_id::elementary_debug_tag;
 
@@ -42,6 +42,15 @@ pub(crate) enum ValueType {
 /// A value used where its type is not accepted.
 #[derive(Debug, PartialEq)]
 pub(crate) struct Mismatch {
+    /// The value's type as a diagnostic shows it.
+    pub(crate) actual: String,
+}
+
+/// A value stored in a variable whose type does not accept it.
+#[derive(Debug, PartialEq)]
+pub(crate) struct StoredMismatch {
+    /// The type the variable takes the value at, as a diagnostic shows it.
+    pub(crate) expected: String,
     /// The value's type as a diagnostic shows it.
     pub(crate) actual: String,
 }
@@ -313,6 +322,53 @@ pub(crate) fn check(
             }
         }
     }
+}
+
+/// Checks that the value of `expr` may be stored in a variable of type
+/// `variable`, as an assignment (`v := expr`), an output assignment
+/// (`f(q => v)`) and an input of a function block or method call
+/// (`f(i := expr)`) store it.
+///
+/// One function answers all three, so an input and an assignment to a
+/// variable of the same type cannot be judged differently.
+///
+/// The variable's type is checked by [`check`] at the elementary type it
+/// names, so an alias or a subrange is checked as its elementary type, as
+/// the value's type is. A variable of any other type (an enumeration, a
+/// structure, an array, a function block) is not judged: the compatibility
+/// relation judges elementary types only, and
+/// `rule_assignment_aggregate_type_compat` judges an aggregate. Nor is a
+/// scalar value the relation cannot judge (a reference, a sized string); a
+/// composite one is judged, since it is never accepted for an elementary
+/// type. `Ok` for every pair not judged, and when the analyzer resolved no
+/// type for the value.
+pub(crate) fn check_stored(
+    types: &TypeEnvironment,
+    variable: TypeId,
+    expr: &Expr,
+    options: &CompilerOptions,
+) -> Result<(), StoredMismatch> {
+    let Some(declared) = types.name_of(variable) else {
+        return Ok(());
+    };
+    let expected = types
+        .resolve_elementary_type_name(declared)
+        .unwrap_or_else(|| declared.clone());
+    if !is_checkable_type(&expected) {
+        return Ok(());
+    }
+    let judged = match of(types, expr) {
+        None => false,
+        Some(ValueType::Scalar(actual)) => is_checkable_type(&actual),
+        Some(ValueType::Composite(_)) => true,
+    };
+    if !judged {
+        return Ok(());
+    }
+    check(types, &expected, expr, options).map_err(|mismatch| StoredMismatch {
+        expected: expected.to_string(),
+        actual: mismatch.actual,
+    })
 }
 
 /// Whether a composite value of type `id` is accepted where `expected` is
