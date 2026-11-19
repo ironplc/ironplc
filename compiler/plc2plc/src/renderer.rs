@@ -568,7 +568,9 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         match &node.type_name {
             Some(type_name) => {
                 self.write_ws(type_name.id.original().as_str());
-                self.write("#");
+                // TwinCAT rejects `#` between an enumeration and its value, so the
+                // spelling the source used is the one written back.
+                self.write(if node.dotted { "." } else { "#" });
                 self.write(node.value.original().as_str());
             }
             None => self.visit_id(&node.value)?,
@@ -679,6 +681,10 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
             Some(LateResolvedInitialValue::Value(value)) => {
                 self.write_ws(":=");
                 self.visit_id(value)?;
+            }
+            Some(LateResolvedInitialValue::Dotted(value)) => {
+                self.write_ws(":=");
+                self.visit_enumerated_value(value)?;
             }
         }
 

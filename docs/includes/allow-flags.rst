@@ -343,3 +343,8 @@
    Allow a comma before the closing parenthesis of a call's argument list. The
    IEC 61131-3 standard grammar has no comma after the last argument. Without
    this flag it produces :doc:`P4103 </reference/compiler/problems/P4103>`.
+
+``--allow-dotted-enum-value``
+   Allow ``Type.value`` as the spelling of a qualified enumerated value,
+   besides the standard ``Type#value``. Without this flag it produces
+   :doc:`P4104 </reference/compiler/problems/P4104>`.

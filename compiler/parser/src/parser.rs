@@ -100,6 +100,14 @@ fn late_resolved_or_enumerated(
     type_name: TypeName,
     value: EnumeratedValue,
 ) -> InitialValueAssignmentKind {
+    // `Type.value` may also be a constant reached through a name (`GVL.limit`),
+    // which only the resolver can tell from an enumerated value.
+    if value.dotted {
+        return InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+            type_name,
+            initial_value: Some(LateResolvedInitialValue::Dotted(value)),
+        });
+    }
     if value.type_name.is_some() {
         return InitialValueAssignmentKind::EnumeratedType(EnumeratedInitialValueAssignment {
             type_name,
@@ -872,18 +880,29 @@ parser! {
     // F_EDGE) are also valid enum member names, matching the same
     // carve-out variable_identifier() already provides for VAR
     // declarations (see #300, "Feature/reserved variables").
-    rule enumerated_value() -> EnumeratedValue = type_name:(name:enumerated_type_name() tok(TokenType::Hash) { name })? value:variable_identifier() { EnumeratedValue {type_name, value, explicit_value: None} }
+    rule enumerated_value() -> EnumeratedValue = enumerated_value__dotted() / enumerated_value__undotted()
+    // `Type#value` or a bare `value`.
+    rule enumerated_value__undotted() -> EnumeratedValue = type_name:(name:enumerated_type_name() tok(TokenType::Hash) { name })? value:variable_identifier() { EnumeratedValue {type_name, value, dotted: false, explicit_value: None} }
+    // TwinCAT/CODESYS spell a qualified enumerated value `Type.value`. This is
+    // only tried where an enumerated value is referenced (an initial value, a
+    // TYPE default, an array initializer, a CASE label), where there is no
+    // variable reference for the dot to be confused with. A member
+    // declaration names a value, so it never takes this form. A library
+    // prefix before the type (`Lib.Type.value`) is not accepted.
+    rule enumerated_value__dotted() -> EnumeratedValue = name:enumerated_type_name() _ tok(TokenType::Period) _ value:variable_identifier() {
+      EnumeratedValue { type_name: Some(name), value, dotted: true, explicit_value: None }
+    }
     // The `Type#VALUE` spelling only. Unlike `enumerated_value()`, this
     // cannot match a bare identifier, so a caller in a position that also
     // accepts a variable reference can tell the unambiguous case apart from
     // the one that has to be resolved later.
-    rule enumerated_value__qualified() -> EnumeratedValue = name:enumerated_type_name() tok(TokenType::Hash) value:variable_identifier() { EnumeratedValue {type_name: Some(name), value, explicit_value: None} }
+    rule enumerated_value__qualified() -> EnumeratedValue = name:enumerated_type_name() tok(TokenType::Hash) value:variable_identifier() { EnumeratedValue {type_name: Some(name), value, dotted: false, explicit_value: None} }
     // CODESYS/TwinCAT (also standard as of IEC 61131-3:2013) explicit
     // per-member enum value, e.g. `Type_UNDEFINED := 0, Type_ANY,
     // Type_BOOL` -- only a member *declaration* can carry an explicit
     // value; `enumerated_value()` itself (used for references: defaults,
     // case labels, expressions) is unchanged.
-    rule enumerated_value_decl() -> EnumeratedValue = ev:enumerated_value() explicit:(_ tok(TokenType::Assignment) _ si:signed_integer() { si })? {
+    rule enumerated_value_decl() -> EnumeratedValue = ev:enumerated_value__undotted() explicit:(_ tok(TokenType::Assignment) _ si:signed_integer() { si })? {
       EnumeratedValue { explicit_value: explicit, ..ev }
     }
     // CODESYS/TwinCAT enum base-type suffix, e.g. `(A, B) BYTE;` --
@@ -1130,7 +1149,7 @@ parser! {
       / tok(TokenType::Period) _ pa:tok(TokenType::PartialAccessWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::Word, i)) }
       / tok(TokenType::Period) _ pa:tok(TokenType::PartialAccessDWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::DWord, i)) }
       / tok(TokenType::Period) _ pa:tok(TokenType::PartialAccessLWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::LWord, i)) }
-      / tok(TokenType::Period) _ id:identifier() { Element::Struct(id) }
+      / tok(TokenType::Period) _ id:variable_identifier() { Element::Struct(id) }
       / sub:subscript_list() { Element::Array(sub) }
       // A caret is only a dereference *within* the chain -- a trailing one is
       // the deref operator, handled by `unary_expression`.

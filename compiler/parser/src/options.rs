@@ -528,6 +528,11 @@ define_compiler_options! {
     [Codesys, TwinCat],
     allow_trailing_call_comma,
 
+    "Allow Type.value as the spelling of a qualified enumerated value, besides Type#value",
+    "--allow-dotted-enum-value",
+    [Codesys, TwinCat],
+    allow_dotted_enum_value,
+
     policies {
         "What STRING_TO_<numeric> treats as convertible when the string has non-numeric characters",
         "--policy-string-to-num-non-numeric",

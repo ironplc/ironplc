@@ -15,6 +15,7 @@ mod continue_statement;
 mod corpus;
 mod declarations;
 mod direct_address;
+mod dotted_enum_value;
 mod enums;
 mod exit_return;
 mod expression_types;

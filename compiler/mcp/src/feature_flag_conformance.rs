@@ -357,6 +357,12 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "FUNCTION_BLOCK FB_X\nVAR_INPUT\nb : INT;\nc : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nPROGRAM main\nVAR\nf : FB_X;\nEND_VAR\nf(c := 1, );\nEND_PROGRAM",
     },
+    // `Type.value`: rejected (P4104) when the flag is off.
+    FlagFixture {
+        key: "allow_dotted_enum_value",
+        prereqs: &[],
+        source: "TYPE E_Blink : (off, slow); END_TYPE\nPROGRAM main\nVAR\ns : E_Blink;\nEND_VAR\nCASE s OF\nE_Blink.slow: ;\nEND_CASE;\nEND_PROGRAM",
+    },
 ];
 
 /// Builds an ed2 options object with the given flags enabled.

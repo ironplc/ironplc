@@ -125,6 +125,7 @@ mod end_to_end_delete;
 mod end_to_end_dialect;
 mod end_to_end_direct_address;
 mod end_to_end_div;
+mod end_to_end_dotted_enum_value;
 mod end_to_end_dup;
 mod end_to_end_duration_fraction;
 mod end_to_end_enum;

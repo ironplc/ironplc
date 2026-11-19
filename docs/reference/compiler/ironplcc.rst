@@ -126,6 +126,7 @@ Options
 
 .. include:: /includes/allow-flags.rst
 
+
 ``--policy-string-to-num-non-numeric`` *ALTERNATIVE*
    Select what ``STRING_TO_<numeric>`` treats as convertible when the string
    has non-numeric characters: ``reject`` (the whole string must be a

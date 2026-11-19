@@ -172,3 +172,4 @@ P2045,EnumValueTypeMismatch,Enumerated value names a type other than the enumera
 P4101,CaseLabelTypeMismatch,CASE label is not a value of the selector type
 P4102,OmittedCallArgumentNotAllowed,Call argument with no value requires choosing a dialect or --allow-omitted-call-argument flag
 P4103,TrailingCallCommaNotAllowed,Trailing comma in a call's argument list requires choosing a dialect or --allow-trailing-call-comma flag
+P4104,DottedEnumValueNotAllowed,Type.value enumerated value requires choosing a dialect or --allow-dotted-enum-value flag

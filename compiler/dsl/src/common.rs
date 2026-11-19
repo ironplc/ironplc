@@ -1590,6 +1590,7 @@ impl EnumeratedSpecificationKind {
             .map(|v| EnumeratedValue {
                 type_name: None,
                 value: Id::from(v),
+                dotted: false,
                 explicit_value: None,
             })
             .collect();
@@ -1646,10 +1647,17 @@ impl HasEnumeratedValues for EnumeratedSpecificationValues {
 /// ambiguous.)
 ///
 /// See section 2.3.3.1.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, Recurse)]
 pub struct EnumeratedValue {
     pub type_name: Option<TypeName>,
     pub value: Id,
+    /// The type name was separated from the value by a period (`Type.value`,
+    /// the TwinCAT/CODESYS spelling) rather than by `#` (`Type#value`). The two
+    /// name the same value; only the rendered text differs. TwinCAT rejects the
+    /// `#` spelling for enumerations, so a rendering must keep the one it was
+    /// given. Not part of equality.
+    #[recurse(ignore)]
+    pub dotted: bool,
     /// Present when this member's value was assigned explicitly
     /// (`member := 5`) in an enum *declaration's* value list -- a
     /// an extension (also standard as of IEC 61131-3:2013).
@@ -1660,11 +1668,20 @@ pub struct EnumeratedValue {
     pub explicit_value: Option<SignedInteger>,
 }
 
+impl PartialEq for EnumeratedValue {
+    fn eq(&self, other: &Self) -> bool {
+        self.type_name == other.type_name
+            && self.value == other.value
+            && self.explicit_value == other.explicit_value
+    }
+}
+
 impl EnumeratedValue {
     pub fn new(value: &str) -> Self {
         EnumeratedValue {
             type_name: None,
             value: Id::from(value),
+            dotted: false,
             explicit_value: None,
         }
     }
@@ -2133,6 +2150,7 @@ impl VarDecl {
                     initial_value: Some(EnumeratedValue {
                         type_name: None,
                         value: Id::from(initial_value),
+                        dotted: false,
                         explicit_value: None,
                     }),
                 },
@@ -2532,6 +2550,10 @@ pub enum LateResolvedInitialValue {
     /// `Red`: an enumeration's value, or a named constant for any other
     /// type.
     Value(Id),
+    /// `Colors.Red`: an enumeration's value written with its type, or a
+    /// constant reached through a name (`GVL.limit`). TwinCAT allows the
+    /// second for any type, so only the type resolver can tell which this is.
+    Dotted(EnumeratedValue),
 }
 
 impl InitialValueAssignmentKind {

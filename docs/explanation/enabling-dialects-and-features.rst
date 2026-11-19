@@ -104,8 +104,8 @@ Supported Dialects
    ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``,
    ``--allow-enum-base-type``, ``--allow-continue``,
    ``--allow-keywords-as-names``, ``--allow-radix-subrange-bounds``,
-   ``--allow-conditional-return``, ``--allow-omitted-call-argument``, and
-   ``--allow-trailing-call-comma``.
+   ``--allow-conditional-return``, ``--allow-omitted-call-argument``,
+   ``--allow-trailing-call-comma``, and ``--allow-dotted-enum-value``.
 
    **Selects:** ``--policy-string-to-num-non-numeric ignore-trailing`` and
    ``--policy-string-to-num-failure zero`` — CODESYS stops parsing at the
@@ -151,8 +151,8 @@ Supported Dialects
    ``--allow-enum-base-type``, ``--allow-continue``,
    ``--allow-keywords-as-names``, ``--allow-radix-subrange-bounds``,
    ``--allow-conditional-return``, ``--allow-pou-header-semicolon``,
-   ``--allow-omitted-call-argument``, and
-   ``--allow-trailing-call-comma``.
+   ``--allow-omitted-call-argument``, ``--allow-trailing-call-comma``, and
+   ``--allow-dotted-enum-value``.
 
    **Selects:** ``--policy-string-to-num-non-numeric ignore-trailing`` and
    ``--policy-string-to-num-failure zero``, as ``codesys``.
@@ -217,6 +217,7 @@ features — they never disable features that a dialect already includes. To see
 which flags a dialect already enables by default, see `Supported Dialects`_.
 
 .. include:: /includes/allow-flags.rst
+
 
 Pass the flag when running :program:`ironplcc`:
 
