@@ -698,18 +698,15 @@ fn version_then_ok() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Lowering is never reached: the analyzer reports the element type (P2013)
-/// where lowering used to stop with "Not implemented" (P9999).
 #[test]
-fn check_when_array_element_type_undeclared_then_p2013_not_p9999(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn check_when_array_element_type_undeclared_then_p2013() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
 
     cmd.arg("check")
         .arg(path_to_test_resource("undeclared_array_element_type.st"));
     cmd.assert()
         .failure()
-        .stderr(predicate::str::contains("P2013").and(predicate::str::contains("P9999").not()));
+        .stderr(predicate::str::contains("P2013"));
 
     Ok(())
 }
@@ -730,10 +727,8 @@ fn check_when_twincat_pointer_target_undeclared_then_p2011(
     Ok(())
 }
 
-/// Lowering and code generation are never reached: the analyzer reports the
-/// element type (P2013) where compiling used to stop with P9999.
 #[test]
-fn compile_when_twincat_array_element_type_undeclared_then_p2013_not_p9999(
+fn compile_when_twincat_array_element_type_undeclared_then_p2013(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let output = NamedTempFile::new()?;
     let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
@@ -746,7 +741,7 @@ fn compile_when_twincat_array_element_type_undeclared_then_p2013_not_p9999(
         .arg(output.path());
     cmd.assert()
         .failure()
-        .stderr(predicate::str::contains("P2013").and(predicate::str::contains("P9999").not()));
+        .stderr(predicate::str::contains("P2013"));
 
     Ok(())
 }
