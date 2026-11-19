@@ -28,6 +28,7 @@ mod constant_folding;
 mod enumerated_value_type;
 pub mod enumeration_members;
 mod function_environment;
+mod library_files;
 mod result;
 mod rule_abstract_not_instantiated;
 mod rule_array_index_range;
@@ -162,6 +163,7 @@ pub use intermediates::arithmetic_overload::{
 };
 pub use intermediates::operator_function_form::FormOf;
 pub use ironplc_parser::options::CompilerOptions;
+pub use library_files::LibraryFiles;
 pub use semantic_context::{SemanticContext, SemanticContextBuilder};
 pub use semantic_type::SemanticType;
 pub use standard_function_block::{CounterWidth, StandardFunctionBlock};

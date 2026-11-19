@@ -409,10 +409,18 @@ const librariesParam = (params.get("libraries") || "")
   .map((s) => s.trim())
   .filter((s) => s.length > 0);
 
-// The served library sources, once fetched: a JSON array of `.st` file
-// contents ready to hand to the WASM compile path. Empty until fetched (and
-// when no library is activated), which the compiler treats as "no library".
-let activatedLibrarySources: string[] = [];
+// One served library file, once fetched: the library it belongs to, the path
+// it is served at (which names the file in the compiler), and its text.
+interface LibraryFile {
+  name: string;
+  path: string;
+  source: string;
+}
+
+// The served library files, once fetched, ready to hand to the WASM compile
+// path. Empty until fetched (and when no library is activated), which the
+// compiler treats as "no library".
+let activatedLibraryFiles: LibraryFile[] = [];
 
 // Index of the served compatibility libraries, generated at build time and
 // served at `libs/index.json`: library name -> the paths of its `.st` files
@@ -438,7 +446,7 @@ async function loadActivatedLibraries(): Promise<void> {
     return;
   }
 
-  const sources: string[] = [];
+  const loaded: LibraryFile[] = [];
   for (const name of librariesParam) {
     const files = index[name];
     if (!files) {
@@ -448,21 +456,21 @@ async function loadActivatedLibraries(): Promise<void> {
       try {
         const response = await fetch(path);
         if (response.ok) {
-          sources.push(await response.text());
+          loaded.push({ name, path, source: await response.text() });
         }
       } catch {
         // Skip a file that fails to load; its symbols stay undefined.
       }
     }
   }
-  activatedLibrarySources = sources;
+  activatedLibraryFiles = loaded;
 }
 
-// The activated library sources as the WASM compile path expects them: a JSON
-// array of `.st` file contents, or "" when none are active.
+// The activated library files as the WASM compile path expects them: a JSON
+// array of `{name, path, source}` objects, or "" when none are active.
 function getLibraries(): string {
-  return activatedLibrarySources.length > 0
-    ? JSON.stringify(activatedLibrarySources)
+  return activatedLibraryFiles.length > 0
+    ? JSON.stringify(activatedLibraryFiles)
     : "";
 }
 

@@ -93,13 +93,12 @@ pub struct DiscoveredProject {
     /// ([`crate::libraries::LibraryRegistry::resolve_references`]) to decide
     /// which libraries to activate.
     pub library_references: Vec<LibraryReference>,
-    /// The names of the projects this discovery found, taken from each
-    /// `.plcproj`'s `<Name>` (the file stem when it has none). A project
-    /// referencing a library of one of these names is satisfied by the
-    /// project's own sources when those are loaded alongside it, so the
-    /// reference needs no bundled library (`REQ-CL-sources-009`). Empty for
-    /// project types that have no project name.
-    pub project_names: Vec<String>,
+    /// The projects this discovery found, each with its name and the files
+    /// it brought. A project referencing a library of one of these names is
+    /// satisfied by the project's own sources when those are loaded alongside
+    /// it, so the reference needs no bundled library (`REQ-CL-sources-009`).
+    /// Empty for project types that have no project name.
+    pub projects: Vec<NamedProject>,
     /// Problems found during discovery that should not abort discovery of
     /// the rest of the project -- currently just `.plcproj`
     /// `<Compile Include="...">` entries that don't resolve to a real
@@ -109,6 +108,16 @@ pub struct DiscoveredProject {
     /// as failed (matching the "keep going, but still fail the build"
     /// behavior of e.g. MSBuild's `CS2001`).
     pub errors: Vec<Diagnostic>,
+}
+
+/// A project a discovery found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NamedProject {
+    /// The `.plcproj`'s `<Name>`, else its file stem.
+    pub name: String,
+    /// The files of [`DiscoveredProject::files`] the project brought, in the
+    /// same order. A file two projects list is the first one's.
+    pub files: Vec<PathBuf>,
 }
 
 /// The outcome of running one detector against a directory.
@@ -200,7 +209,7 @@ fn detect_beremiz(path: &Path) -> Detection {
         root_dir: plc_xml.parent().unwrap_or(path).to_path_buf(),
         files: vec![plc_xml],
         library_references: vec![],
-        project_names: vec![],
+        projects: vec![],
         errors: vec![],
     }))
 }
@@ -330,7 +339,7 @@ fn detect_fallback(path: &Path) -> DiscoveredProject {
         },
         files,
         library_references: vec![],
-        project_names: vec![],
+        projects: vec![],
         errors: vec![],
     }
 }

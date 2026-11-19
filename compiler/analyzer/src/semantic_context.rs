@@ -13,6 +13,7 @@
 use std::collections::HashSet;
 
 use crate::function_environment::{FunctionEnvironment, FunctionEnvironmentBuilder};
+use crate::library_files::LibraryFiles;
 use crate::symbol_environment::SymbolEnvironment;
 use crate::type_environment::{TypeEnvironment, TypeEnvironmentBuilder};
 use crate::xform_resolve_initial_values::TypeDefaults;
@@ -48,6 +49,8 @@ pub struct SemanticContext {
     /// The default of every declared type, from which the starting value
     /// of each declaration is resolved.
     type_defaults: TypeDefaults,
+    /// The library each source file belongs to.
+    library_files: LibraryFiles,
 }
 
 impl SemanticContext {
@@ -67,7 +70,22 @@ impl SemanticContext {
             reachable,
             compiler_options,
             type_defaults: TypeDefaults::default(),
+            library_files: LibraryFiles::default(),
         }
+    }
+
+    /// This context with `library_files` as the library each source file
+    /// belongs to.
+    pub(crate) fn with_library_files(self, library_files: LibraryFiles) -> Self {
+        Self {
+            library_files,
+            ..self
+        }
+    }
+
+    /// The library each source file belongs to.
+    pub fn library_files(&self) -> &LibraryFiles {
+        &self.library_files
     }
 
     /// This context with `type_defaults` as the defaults of the declared

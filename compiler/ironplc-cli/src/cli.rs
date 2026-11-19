@@ -26,7 +26,7 @@ use std::{
 };
 
 use ironplc_parser::options::CompilerOptions;
-use ironplc_sources::discovery::DiscoveredProject;
+use ironplc_sources::discovery::{DiscoveredProject, NamedProject};
 use ironplc_sources::libraries::LibraryReference;
 use ironplc_sources::LibraryName;
 
@@ -273,15 +273,16 @@ fn create_project(
     // named on the command line satisfies another's reference to it
     // (`REQ-CL-sources-009`).
     let mut references: Vec<LibraryReference> = vec![];
-    let mut project_names: Vec<String> = vec![];
+    let mut projects: Vec<NamedProject> = vec![];
 
     for path in paths {
         let mut found = enumerate_files(path);
         files.append(&mut found.files);
         references.append(&mut found.references);
-        project_names.append(&mut found.project_names);
+        projects.append(&mut found.projects);
         diagnostics.extend(found.diagnostics);
     }
+    let project_names: Vec<String> = projects.iter().map(|p| p.name.clone()).collect();
 
     let (discovered_libraries, library_diagnostics) =
         ironplc_sources::libraries::LibraryRegistry::bundled()
@@ -300,6 +301,11 @@ fn create_project(
     for file_path in files {
         if let Err(err) = project.push(FileId::from_path(&file_path)) {
             diagnostics.push(err);
+        }
+    }
+    for named in &projects {
+        for file_path in &named.files {
+            project.set_file_project(FileId::from_path(file_path), &named.name);
         }
     }
 
@@ -360,8 +366,8 @@ struct Enumerated {
     files: Vec<PathBuf>,
     /// The library references the path's project declares, unresolved.
     references: Vec<LibraryReference>,
-    /// The names of the projects the path holds.
-    project_names: Vec<String>,
+    /// The projects the path holds, each with the files it brought.
+    projects: Vec<NamedProject>,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -370,7 +376,7 @@ impl Enumerated {
         Enumerated {
             files: vec![],
             references: vec![],
-            project_names: vec![],
+            projects: vec![],
             diagnostics,
         }
     }
@@ -386,7 +392,7 @@ fn enumerate_project(discovered: Result<DiscoveredProject, Diagnostic>) -> Enume
         Ok(project) => Enumerated {
             files: project.files,
             references: project.library_references,
-            project_names: project.project_names,
+            projects: project.projects,
             diagnostics: project.errors,
         },
         Err(e) => Enumerated::failed(vec![e]),
@@ -783,6 +789,40 @@ mod tests {
         // Without the sibling, the reference is reported as unbundled.
         let err = check(&[app], CompilerOptions::default(), &[], true).unwrap_err();
         assert!(problem_count(&err) >= 1, "{err}");
+    }
+
+    #[test]
+    fn create_project_when_two_projects_then_analysis_knows_each_files_project() {
+        use ironplc_dsl::core::{FileId, Id};
+        use ironplc_project::project::Project;
+
+        let root = tempfile::TempDir::new().unwrap();
+        let lib = root.path().join("lib");
+        let app = root.path().join("app");
+        write_project(
+            &lib,
+            "SiblingLib",
+            "FUNCTION_BLOCK FB_Shared\nEND_FUNCTION_BLOCK",
+            "",
+        );
+        write_project(
+            &app,
+            "App",
+            "PROGRAM Main\nVAR\n    x : FB_Shared;\nEND_VAR\nEND_PROGRAM",
+            r#"<PlaceholderReference Include="SiblingLib" />"#,
+        );
+
+        let (mut project, _) =
+            super::create_project(&[app.clone(), lib.clone()], CompilerOptions::default(), &[]);
+        project.semantic();
+
+        let files = project.semantic_context().unwrap().library_files();
+        let library_of = |dir: &std::path::Path| {
+            let path = std::fs::canonicalize(dir.join("A.st")).unwrap();
+            files.library_of(&FileId::from_path(&path)).cloned()
+        };
+        assert_eq!(library_of(&lib), Some(Id::from("SiblingLib")));
+        assert_eq!(library_of(&app), Some(Id::from("App")));
     }
 
     #[test]

@@ -15,12 +15,11 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use ironplc_container::debug_format::VariableRenderer;
 use ironplc_container::{Container, InstanceId, TaskId};
-use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::{Diagnostic, LineColumn, DOCS_SECTIONS};
 use ironplc_parser::options::{CompilerOptions, Dialect, FeatureDescriptor};
-use ironplc_project::MemoryBackedProject;
-use ironplc_sources::{parse_source, FileType};
+use ironplc_project::{MemoryBackedProject, PreparsedLibrary};
+use ironplc_sources::{parse_source, FileType, LibraryName};
 use ironplc_vm::error::Trap;
 use ironplc_vm::{Clock, Slot, VariableView, Vm, VmBuffers};
 use serde::{Deserialize, Serialize};
@@ -409,23 +408,35 @@ pub fn compile(source: &str, dialect: &str, allows: &str, libraries: &str) -> St
     })
 }
 
+/// One served compatibility-library file, as the browser fetched it.
+#[derive(Debug, Deserialize)]
+struct LibraryFile {
+    /// The library the file belongs to (`Tc2_System`).
+    name: String,
+    /// The path the file is served at. It names the file, so analysis can
+    /// tell the library's declarations from the user's.
+    path: String,
+    /// The file's text.
+    source: String,
+}
+
 /// Parse the activated compatibility libraries from their served plain-text
 /// sources (`REQ-CL-playground-001`).
 ///
-/// `libraries` is a JSON array of ST source strings — the plain-text library
-/// files the browser fetched from the app's served assets. Each is parsed into
-/// a [`Library`] to be injected ahead of user source in analysis, so its
-/// symbols (e.g. `Tc2_System`'s `PI`) resolve under their exact vendor names.
-/// An empty or blank string activates no library.
+/// `libraries` is a JSON array of `{"name", "path", "source"}` objects, one
+/// per plain-text library file the browser fetched from the app's served
+/// assets. Each is parsed to be injected ahead of user source in analysis, so
+/// its symbols (e.g. `Tc2_System`'s `PI`) resolve under their exact vendor
+/// names. An empty or blank string activates no library.
 fn parse_activated_libraries(
     libraries: &str,
     options: &CompilerOptions,
-) -> Result<Vec<Library>, CompileResult> {
+) -> Result<Vec<PreparsedLibrary>, CompileResult> {
     if libraries.trim().is_empty() {
         return Ok(Vec::new());
     }
 
-    let sources: Vec<String> = serde_json::from_str(libraries).map_err(|e| CompileResult {
+    let files: Vec<LibraryFile> = serde_json::from_str(libraries).map_err(|e| CompileResult {
         ok: false,
         bytecode: None,
         diagnostics: vec![internal_diagnostic(format!(
@@ -433,16 +444,21 @@ fn parse_activated_libraries(
         ))],
     })?;
 
-    let mut parsed = Vec::with_capacity(sources.len());
-    for source in &sources {
-        let file_type = FileType::from_content(source);
-        match parse_source(file_type, source, &FileId::default(), options) {
-            Ok(lib) => parsed.push(lib),
+    let mut parsed = Vec::with_capacity(files.len());
+    for file in files {
+        let file_type = FileType::from_content(&file.source);
+        let file_id = FileId::from_string(&file.path);
+        match parse_source(file_type, &file.source, &file_id, options) {
+            Ok(library) => parsed.push(PreparsedLibrary {
+                name: LibraryName::from(file.name.as_str()),
+                file_id,
+                library,
+            }),
             Err(diag) => {
                 return Err(CompileResult {
                     ok: false,
                     bytecode: None,
-                    diagnostics: vec![diagnostic_info(&diag, source)],
+                    diagnostics: vec![diagnostic_info(&diag, &file.source)],
                 });
             }
         }
@@ -951,6 +967,8 @@ pub fn reset_session() -> String {
 mod spec_requirements {
     include!(concat!(env!("OUT_DIR"), "/spec_requirements.rs"));
 }
+#[cfg(test)]
+mod library_files_tests;
 #[cfg(test)]
 mod spec_conformance;
 
