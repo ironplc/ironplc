@@ -40,12 +40,26 @@ Alternatively, use a built-in type:
 
 The same applies to an array written directly in a variable declaration:
 
-.. code-block::
+.. playground::
 
    PROGRAM main
-   VAR
-       data : ARRAY[1..10] OF UndeclaredElementType;  (* Error: Element type not declared *)
-   END_VAR
+       VAR
+           data : ARRAY[1..10] OF UndeclaredElementType;  (* Error: Element type not declared *)
+       END_VAR
+   END_PROGRAM
+
+To fix this error, declare the element type:
+
+.. playground::
+
+   TYPE
+       ElementType : INT;
+   END_TYPE
+
+   PROGRAM main
+       VAR
+           data : ARRAY[1..10] OF ElementType;  (* Correct: Element type declared *)
+       END_VAR
    END_PROGRAM
 
 See Also

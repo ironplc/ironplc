@@ -32,29 +32,34 @@ To fix this error, declare the parent type before creating the alias:
    END_TYPE
 
 The following code will also generate error P2011, because the referenced type
-``E_Missing`` has not been declared:
+``E_Mode`` has not been declared:
 
-.. code-block::
+.. playground::
+   :dialect: iec61131-3-ed3
 
    PROGRAM main
-   VAR
-       mode : REF_TO E_Missing;  (* Error: E_Missing is not declared *)
-   END_VAR
+       VAR
+           mode : REF_TO E_Mode;  (* Error: E_Mode is not declared *)
+       END_VAR
    END_PROGRAM
 
 To fix this error, declare the referenced type:
 
-.. code-block::
+.. playground::
+   :dialect: iec61131-3-ed3
 
    TYPE
-       E_Missing : (Idle, Running);
+       E_Mode : (Idle, Running);
    END_TYPE
 
    PROGRAM main
-   VAR
-       mode : REF_TO E_Missing;  (* Correct: E_Missing is declared *)
-   END_VAR
+       VAR
+           mode : REF_TO E_Mode;  (* Correct: E_Mode is declared *)
+       END_VAR
    END_PROGRAM
+
+``REF_TO`` requires IEC 61131-3 Edition 3. See
+:doc:`/reference/language/edition-support`.
 
 See Also
 --------
