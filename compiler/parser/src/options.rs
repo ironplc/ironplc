@@ -528,11 +528,6 @@ define_compiler_options! {
     [Codesys, TwinCat],
     allow_trailing_call_comma,
 
-    "Allow a library or namespace prefix on a type name (TcUnit.FB_TestSuite)",
-    "--allow-qualified-type-names",
-    [Codesys, TwinCat],
-    allow_qualified_type_names,
-
     "Allow Type.value as the spelling of a qualified enumerated value, besides Type#value",
     "--allow-dotted-enum-value",
     [Codesys, TwinCat],

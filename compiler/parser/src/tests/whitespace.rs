@@ -399,15 +399,9 @@ END_CONFIGURATION"
     opts_with_pou_header_semicolon
 )]
 // ---------------------------------------------------------------------
-// A library or namespace prefix on a type name
-// (`--allow-qualified-type-names`) and an enumerated value written
-// `Type.value` (`--allow-dotted-enum-value`), on each side of each `.`.
+// An enumerated value written `Type.value` (`--allow-dotted-enum-value`),
+// on each side of the `.`.
 // ---------------------------------------------------------------------
-#[case::qualified_type_name(
-    "PROGRAM main VAR x : Tc2_Standard·.·TON; END_VAR END_PROGRAM",
-    verbatim,
-    CompilerOptions::default
-)]
 #[case::dotted_enumerated_value_initial_value(
     "TYPE E : (a, b); END_TYPE PROGRAM main VAR e : E := E·.·b; END_VAR END_PROGRAM",
     verbatim,

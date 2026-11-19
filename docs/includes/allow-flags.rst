@@ -344,14 +344,7 @@
    IEC 61131-3 standard grammar has no comma after the last argument. Without
    this flag it produces :doc:`P4103 </reference/compiler/problems/P4103>`.
 
-``--allow-qualified-type-names``
-   Allow a library or namespace prefix on a type name
-   (``TcUnit.FB_TestSuite``). IEC 61131-3 Edition 2 names a type by its bare
-   identifier. The prefix is kept in the source text but does not take part in
-   finding the type. Without this flag it produces
-   :doc:`P4104 </reference/compiler/problems/P4104>`.
-
 ``--allow-dotted-enum-value``
    Allow ``Type.value`` as the spelling of a qualified enumerated value,
    besides the standard ``Type#value``. Without this flag it produces
-   :doc:`P4105 </reference/compiler/problems/P4105>`.
+   :doc:`P4104 </reference/compiler/problems/P4104>`.

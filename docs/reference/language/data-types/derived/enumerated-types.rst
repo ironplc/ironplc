@@ -240,7 +240,7 @@ Related Problem Codes
   value requires a dialect or flag
 - :doc:`/reference/compiler/problems/P4056` — Enumeration base-type suffix
   requires a dialect or flag
-- :doc:`/reference/compiler/problems/P4105` — ``Type.value`` enumerated value
+- :doc:`/reference/compiler/problems/P4104` — ``Type.value`` enumerated value
   requires a dialect or flag
 
 See Also

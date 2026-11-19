@@ -690,18 +690,8 @@ impl fmt::Display for BitStringLiteral {
 /// Types are all identifiers but we use a separate structure
 /// because it is convenient to treat types and other identifiers
 /// separately.
-#[derive(Clone, Debug, Recurse, Located)]
+#[derive(Clone, Debug, PartialEq, Recurse, Located)]
 pub struct TypeName {
-    /// The library or namespace prefix as written in the source
-    /// (`TcUnit` in `TcUnit.FB_TestSuite`), outermost first. Empty for an
-    /// unqualified name.
-    ///
-    /// The qualifier is kept so that the source text is reproduced as written,
-    /// but it takes no part in equality, hashing or lookup: compatibility
-    /// library symbols are flat, so `BROTLib.E_Blink` names the same type as
-    /// `E_Blink`. A qualifier that names nothing is therefore not diagnosed.
-    #[recurse(ignore)]
-    pub qualifier: Vec<Id>,
     #[located(delegate)]
     pub id: Id,
 }
@@ -709,28 +699,11 @@ pub struct TypeName {
 impl TypeName {
     /// Converts a `&str` into an `Identifier`.
     pub fn from(str: &str) -> Self {
-        Self {
-            qualifier: Vec::new(),
-            id: Id::from(str),
-        }
+        Self { id: Id::from(str) }
     }
 
     pub fn from_id(id: &Id) -> Self {
-        Self {
-            qualifier: Vec::new(),
-            id: id.clone(),
-        }
-    }
-
-    /// A name written with a library or namespace prefix.
-    pub fn qualified(qualifier: Vec<Id>, id: Id) -> Self {
-        Self { qualifier, id }
-    }
-}
-
-impl PartialEq for TypeName {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
+        Self { id: id.clone() }
     }
 }
 
@@ -2577,10 +2550,9 @@ pub enum LateResolvedInitialValue {
     /// `Red`: an enumeration's value, or a named constant for any other
     /// type.
     Value(Id),
-    /// `Colors.Red`, with or without a library prefix before the type: an
-    /// enumeration's value written with its type, or a constant reached
-    /// through a name (`GVL.limit`). TwinCAT allows the second for any type,
-    /// so only the type resolver can tell which this is.
+    /// `Colors.Red`: an enumeration's value written with its type, or a
+    /// constant reached through a name (`GVL.limit`). TwinCAT allows the
+    /// second for any type, so only the type resolver can tell which this is.
     Dotted(EnumeratedValue),
 }
 

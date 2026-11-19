@@ -357,14 +357,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "FUNCTION_BLOCK FB_X\nVAR_INPUT\nb : INT;\nc : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nPROGRAM main\nVAR\nf : FB_X;\nEND_VAR\nf(c := 1, );\nEND_PROGRAM",
     },
-    // A library prefix on a type name: the grammar accepts it unconditionally;
-    // a semantic rule rejects it (P4104) when the flag is off.
-    FlagFixture {
-        key: "allow_qualified_type_names",
-        prereqs: &[],
-        source: "PROGRAM main\nVAR\nx : Tc2_Standard.TON;\nEND_VAR\nEND_PROGRAM",
-    },
-    // `Type.value`: rejected (P4105) when the flag is off.
+    // `Type.value`: rejected (P4104) when the flag is off.
     FlagFixture {
         key: "allow_dotted_enum_value",
         prereqs: &[],

@@ -5,7 +5,7 @@
 //! parsed into a placeholder. This transform replaces the placeholders
 //! with well-known types.
 use ironplc_dsl::common::*;
-use ironplc_dsl::core::{Id, Located, SourceSpan};
+use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::textual::{
@@ -284,26 +284,19 @@ impl TypeResolver<'_> {
     }
 }
 
-/// The variable reference `a.b` or `lib.a.b` that a dotted initial value
-/// names when it is not an enumerated value.
+/// The variable reference `a.b` that a dotted initial value names when it
+/// is not an enumerated value.
 fn dotted_variable(value: &EnumeratedValue) -> SymbolicVariableKind {
-    let mut segments: Vec<Id> = Vec::new();
-    if let Some(type_name) = &value.type_name {
-        segments.extend(type_name.qualifier.iter().cloned());
-        segments.push(type_name.id.clone());
-    }
-    let mut segments = segments.into_iter();
-    let head = segments
-        .next()
+    let head = value
+        .type_name
+        .as_ref()
         .expect("a dotted value always carries the name before the dot");
-    let mut variable = SymbolicVariableKind::Named(NamedVariable { name: head });
-    for field in segments.chain(std::iter::once(value.value.clone())) {
-        variable = SymbolicVariableKind::Structured(StructuredVariable {
-            record: Box::new(variable),
-            field,
-        });
-    }
-    variable
+    SymbolicVariableKind::Structured(StructuredVariable {
+        record: Box::new(SymbolicVariableKind::Named(NamedVariable {
+            name: head.id.clone(),
+        })),
+        field: value.value.clone(),
+    })
 }
 
 impl Fold<Diagnostic> for TypeResolver<'_> {

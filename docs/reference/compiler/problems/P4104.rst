@@ -4,14 +4,12 @@ P4104
 
 .. problem-summary:: P4104
 
-This error occurs when a type name has a library or namespace prefix
-(``TcUnit.FB_TestSuite``) without the ``--allow-qualified-type-names``
-compiler flag.
+This error occurs when an enumerated value is written ``Type.value`` without
+the ``--allow-dotted-enum-value`` compiler flag.
 
-IEC 61131-3 Edition 2 names a type by its bare identifier. A prefix that names
-the library a type comes from is an extension. IronPLC compatibility libraries
-are flat, so the prefix is kept in the source text but does not take part in
-finding the type.
+IEC 61131-3 writes a qualified enumerated value with a number sign,
+``Type#value``. Writing it with a period, as TwinCAT and CODESYS do, is an
+extension.
 
 Example
 -------
@@ -20,17 +18,26 @@ The following code will generate error P4104:
 
 .. code-block::
 
-   FUNCTION_BLOCK FB_Test EXTENDS TcUnit.FB_TestSuite
-   END_FUNCTION_BLOCK
+   TYPE E_Blink : (off, slow, fast); END_TYPE
 
-To fix this error, either drop the prefix:
+   PROGRAM main
+   VAR
+       state : E_Blink;
+   END_VAR
+       CASE state OF
+           E_Blink.slow: ;
+       END_CASE;
+   END_PROGRAM
+
+To fix this error, either use the standard spelling:
 
 .. code-block::
 
-   FUNCTION_BLOCK FB_Test EXTENDS FB_TestSuite
-   END_FUNCTION_BLOCK
+   CASE state OF
+       E_Blink#slow: ;
+   END_CASE;
 
 Or enable the extension:
 
-.. |flag| replace:: ``--allow-qualified-type-names``
+.. |flag| replace:: ``--allow-dotted-enum-value``
 .. include:: /includes/enabled-by-flag.rst
