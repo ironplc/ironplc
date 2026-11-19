@@ -20,9 +20,7 @@ reference/compiler/problems/P2007
 reference/compiler/problems/P2008
 reference/compiler/problems/P2009
 reference/compiler/problems/P2010
-reference/compiler/problems/P2011
 reference/compiler/problems/P2012
-reference/compiler/problems/P2013
 reference/compiler/problems/P2014
 reference/compiler/problems/P2015
 reference/compiler/problems/P2016
