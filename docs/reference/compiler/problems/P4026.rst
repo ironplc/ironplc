@@ -20,6 +20,12 @@ same way, against the declared type of the input or parameter that receives them
 ``F(u)`` is for a function's ``DINT`` parameter, because a ``UDINT`` does not fit a
 ``DINT``.
 
+A ``REF_TO`` parameter or input takes a reference to the type it names, written as a
+reference variable or as ``REF()`` of a variable of that type, or ``NULL``. A reference
+to another type is this error: ``counter(rr := REF(d))`` with ``rr : REF_TO INT`` and
+``d : DINT`` is, as ``F(rd)`` is with ``rd : REF_TO DINT`` for a function's ``REF_TO INT``
+parameter, because a ``REF_TO DINT`` is not a ``REF_TO INT``.
+
 A whole array, a structure, an enumeration or a function block instance is only ever
 its own type, and no conversion applies to it. Passing one for a parameter of any other
 type, including a generic category such as ``ANY_NUM`` or ``ANY_STRING``, is this error.
