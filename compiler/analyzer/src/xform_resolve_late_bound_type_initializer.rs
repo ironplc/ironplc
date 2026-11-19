@@ -19,6 +19,8 @@ use crate::scoped_table::{ScopedTable, Value};
 use crate::semantic_type::SemanticType;
 use crate::type_environment::TypeEnvironment;
 
+mod nested_type;
+
 /// Derived data types declared.
 ///
 /// See section 2.3.3.
@@ -300,6 +302,18 @@ fn dotted_variable(value: &EnumeratedValue) -> SymbolicVariableKind {
 }
 
 impl Fold<Diagnostic> for TypeResolver<'_> {
+    /// Resolves the element or referenced type written inside the variable's
+    /// type (`ARRAY ... OF T`, `REF_TO T`), then the declaration itself. An
+    /// undeclared one is diagnosed and the declaration kept as written, as
+    /// for an undeclared variable type.
+    fn fold_var_decl(&mut self, node: VarDecl) -> Result<VarDecl, Diagnostic> {
+        let declared = |name: &TypeName| self.types.find(name).is_some();
+        if let Err(diagnostic) = nested_type::resolve(self.type_environment, &declared, &node) {
+            self.diagnostics.push(diagnostic);
+        }
+        VarDecl::recurse_fold(node, self)
+    }
+
     fn fold_initial_value_assignment_kind(
         &mut self,
         node: InitialValueAssignmentKind,
