@@ -267,7 +267,8 @@ impl Fold<Diagnostic> for TypeResolver<'_> {
     /// undeclared one is diagnosed and the declaration kept as written, as
     /// for an undeclared variable type.
     fn fold_var_decl(&mut self, node: VarDecl) -> Result<VarDecl, Diagnostic> {
-        if let Err(diagnostic) = nested_type::resolve(self.type_environment, &node) {
+        let declared = |name: &TypeName| self.types.find(name).is_some();
+        if let Err(diagnostic) = nested_type::resolve(self.type_environment, &declared, &node) {
             self.diagnostics.push(diagnostic);
         }
         VarDecl::recurse_fold(node, self)
