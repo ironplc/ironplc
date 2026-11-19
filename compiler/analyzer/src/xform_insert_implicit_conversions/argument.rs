@@ -127,7 +127,7 @@ impl ImplicitConversions<'_> {
                     wrap(arg, target);
                 }
             }
-            Some(ExprType::Null) | None => {}
+            Some(ExprType::Null | ExprType::Error) | None => {}
         }
     }
 

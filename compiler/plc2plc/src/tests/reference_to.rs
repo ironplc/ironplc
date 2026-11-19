@@ -76,6 +76,35 @@ END_VAR
 END_PROGRAM",
     "myRef^"
 )]
+// A reference to a reference: the target spelled in place, a store
+// through both levels and a read through both.
+#[case::ref_to_ref_to_var_decl(
+    "PROGRAM main
+VAR
+    rr : REF_TO REF_TO INT;
+END_VAR
+END_PROGRAM",
+    "REF_TO REF_TO INT"
+)]
+#[case::double_deref_assign(
+    "PROGRAM main
+VAR
+    rr : REF_TO REF_TO INT;
+END_VAR
+    rr^^ := 42;
+END_PROGRAM",
+    "rr^^ :="
+)]
+#[case::double_deref_expression(
+    "PROGRAM main
+VAR
+    rr : REF_TO REF_TO INT;
+    value : INT;
+END_VAR
+    value := rr^^;
+END_PROGRAM",
+    "rr^^"
+)]
 #[case::ref_expression(
     "PROGRAM main
 VAR

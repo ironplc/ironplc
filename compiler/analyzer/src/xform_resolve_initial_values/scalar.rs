@@ -64,6 +64,7 @@ pub(super) fn implicit_default(representation: &SemanticType) -> Option<Value> {
             return Some(Value::Enumerated(EnumeratedValue {
                 type_name: None,
                 value: member.name.clone().with_position(span),
+                dotted: false,
                 explicit_value: None,
             }));
         }

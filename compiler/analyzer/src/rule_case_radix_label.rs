@@ -1,6 +1,6 @@
 //! Semantic rule that gates hex/binary/octal bit-string literals used as
 //! `CASE` labels (e.g. `16#D012:`, `2#1010:`) behind
-//! `--allow-bit-string-case-labels`.
+//! `--allow-radix-case-labels`.
 //!
 //! The IEC 61131-3 standard grammar for a case label (Annex B) is
 //! `case_list_element ::= subrange | signed_integer | enumerated_value`,
@@ -44,7 +44,7 @@ pub fn apply(
     _context: &SemanticContext,
     options: &CompilerOptions,
 ) -> SemanticResult {
-    if options.allow_bit_string_case_labels {
+    if options.allow_radix_case_labels {
         return Ok(());
     }
 
@@ -74,7 +74,7 @@ impl Visitor<Infallible> for RuleCaseBitStringLabel {
             for selector in &group.selectors {
                 if let CaseSelectionKind::BitStringLiteral(lit) = selector {
                     self.diagnostics.push(Diagnostic::problem(
-                        Problem::BitStringCaseLabelNotAllowed,
+                        Problem::RadixCaseLabelNotAllowed,
                         Label::span(lit.value.span(), "Bit-string literal CASE label"),
                     ));
                 }
@@ -92,7 +92,7 @@ mod tests {
 
     fn opts_with_flag() -> CompilerOptions {
         CompilerOptions {
-            allow_bit_string_case_labels: true,
+            allow_radix_case_labels: true,
             ..CompilerOptions::default()
         }
     }
@@ -109,7 +109,7 @@ CASE x OF
     16#D012: y := 1;
 END_CASE;
 END_FUNCTION_BLOCK",
-        Problem::BitStringCaseLabelNotAllowed,
+        Problem::RadixCaseLabelNotAllowed,
         "16#D012"
     );
 

@@ -63,6 +63,13 @@ jobs:
       source-revision: ${{ needs.update-dependencies.outputs.source-revision }}
       gh-release-tag: ""
 
+  build-playground:
+    name: Build Playground
+    needs: [update-dependencies]
+    uses: ./.github/workflows/partial_playground.yaml
+    with:
+      source-revision: ${{ needs.update-dependencies.outputs.source-revision }}
+
   build-docs:
     name: Build Website
     needs: [update-dependencies]
@@ -75,14 +82,14 @@ jobs:
 
   merge-changes:
     name: Merge Changes
-    needs: [update-dependencies, build-vscode-extension, build-platform-package, build-docs]
+    needs: [update-dependencies, build-vscode-extension, build-platform-package, build-playground, build-docs]
     runs-on: ubuntu-latest
     # Scopes IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN to deployments from main.
     # See specs/adrs/0032-ci-gating-and-secret-scoping.md.
     environment: production
     steps:
       - name: Checkout branch ${{ needs.update-dependencies.outputs.branch-name }}
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: ${{ needs.update-dependencies.outputs.branch-name }}
         with:
           ref: ${{ needs.update-dependencies.outputs.branch-name }}

@@ -268,7 +268,7 @@ impl ImplicitConversions<'_> {
                 .as_ref()
                 .and_then(numeric_operation_type)
                 .is_some_and(|own| own != at),
-            Some(ExprType::Null) | None => false,
+            Some(ExprType::Null | ExprType::Error) | None => false,
         };
         if differs {
             self.convert(operand, target);

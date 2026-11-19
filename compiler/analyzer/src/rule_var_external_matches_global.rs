@@ -90,8 +90,8 @@ impl RuleVarExternalMatchesGlobal<'_> {
             return;
         };
         let types = self.context.types();
-        // An array is the only type a `VAR_GLOBAL` or a `VAR_EXTERNAL` can
-        // spell in place.
+        // An array and a subrange are the types a `VAR_GLOBAL` or a
+        // `VAR_EXTERNAL` can spell in place.
         if types.same_type(external, declared) {
             return;
         }
@@ -178,6 +178,7 @@ TYPE
   Speed : INT;
   Color : (RED, GREEN);
   Triple : ARRAY[1..3] OF INT;
+  Nibble : INT(0..15);
 END_TYPE
 ";
 
@@ -189,6 +190,9 @@ END_TYPE
     #[case::enumeration("g : Color;", "g : Color;")]
     #[case::named_array("g : Triple;", "g : Triple;")]
     #[case::array_in_place("g : ARRAY[1..3] OF INT;", "g : ARRAY[1..3] OF INT;")]
+    #[case::subrange_in_place("g : INT(0..15);", "g : INT(0..15);")]
+    #[case::named_subrange("g : Nibble;", "g : Nibble;")]
+    #[case::subrange_in_place_initialized_global("g : INT(0..15) := 3;", "g : INT(0..15);")]
     #[case::function_block("g : TON;", "g : TON;")]
     #[case::initialized_global("g : INT := 5;", "g : INT;")]
     #[case::one_of_several("a : INT; g : DINT; b : BOOL;", "g : DINT;")]
@@ -210,6 +214,10 @@ END_TYPE
     #[case::alias_and_its_base("g : Speed;", "g : INT;")]
     #[case::named_array_and_same_shape_in_place("g : Triple;", "g : ARRAY[1..3] OF INT;")]
     #[case::array_extent("g : ARRAY[1..3] OF INT;", "g : ARRAY[1..4] OF INT;")]
+    #[case::subrange_bounds("g : INT(0..15);", "g : INT(0..20);")]
+    #[case::subrange_base("g : INT(0..15);", "g : DINT(0..15);")]
+    #[case::subrange_and_its_base("g : INT(0..15);", "g : INT;")]
+    #[case::named_subrange_and_same_range_in_place("g : Nibble;", "g : INT(0..15);")]
     #[case::array_element("g : ARRAY[1..3] OF INT;", "g : ARRAY[1..3] OF DINT;")]
     #[case::array_dimensions("g : ARRAY[1..6] OF INT;", "g : ARRAY[1..2, 1..3] OF INT;")]
     #[case::function_block("g : TON;", "g : TOF;")]

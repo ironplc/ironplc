@@ -384,7 +384,7 @@ define_compiler_options! {
     [Codesys, TwinCat],
     allow_adr,
 
-    "Allow the PERSISTENT variable qualifier (Beckhoff TwinCAT/CODESYS extension)",
+    "Allow the PERSISTENT variable qualifier, alone or combined with RETAIN",
     "--allow-persistent-var",
     [Codesys, TwinCat],
     allow_persistent_var,
@@ -464,10 +464,10 @@ define_compiler_options! {
     [Rusty, Codesys, TwinCat],
     allow_constant_initializer_expressions,
 
-    "Allow hex/binary/octal bit-string literals (16#D012, 2#1010) as CASE labels",
-    "--allow-bit-string-case-labels",
+    "Allow hex/binary/octal literals (16#D012, 2#1010) as CASE labels and as the bounds of a CASE subrange label",
+    "--allow-radix-case-labels",
     [Rusty, Codesys, TwinCat],
-    allow_bit_string_case_labels,
+    allow_radix_case_labels,
 
     "Allow STRING(n)/WSTRING(n) parenthesis length delimiter in addition to the standard STRING[n]/WSTRING[n] brackets",
     "--allow-paren-string-length",
@@ -503,6 +503,35 @@ define_compiler_options! {
     "--allow-keywords-as-names",
     [Rusty, Codesys, TwinCat],
     allow_keywords_as_names,
+
+    "Allow hex/binary/octal literals (16#FF, 2#1010) as the bounds of a subrange type or an array dimension",
+    "--allow-radix-subrange-bounds",
+    [Rusty, Codesys, TwinCat],
+    allow_radix_subrange_bounds,
+
+    "Allow RETURN(condition), a RETURN that happens only when the BOOL condition is TRUE",
+    "--allow-conditional-return",
+    [Codesys, TwinCat],
+    allow_conditional_return,
+    "Allow a semicolon after a PROGRAM, FUNCTION, FUNCTION_BLOCK or METHOD header, e.g. FUNCTION_BLOCK FB EXTENDS FB_Base;",
+    "--allow-pou-header-semicolon",
+    [TwinCat],
+    allow_pou_header_semicolon,
+
+    "Allow a call argument with no value (b :=, or Error=> ,), which is the same as leaving it out",
+    "--allow-omitted-call-argument",
+    [Codesys, TwinCat],
+    allow_omitted_call_argument,
+
+    "Allow a trailing comma before the closing parenthesis of a call's argument list",
+    "--allow-trailing-call-comma",
+    [Codesys, TwinCat],
+    allow_trailing_call_comma,
+
+    "Allow Type.value as the spelling of a qualified enumerated value, besides Type#value",
+    "--allow-dotted-enum-value",
+    [Codesys, TwinCat],
+    allow_dotted_enum_value,
 
     policies {
         "What STRING_TO_<numeric> treats as convertible when the string has non-numeric characters",

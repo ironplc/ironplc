@@ -57,7 +57,7 @@ pub(crate) fn stdlib_parameter_type(name: &str) -> ParameterType {
 /// Returns standard numeric function definitions.
 ///
 /// These functions are defined in IEC 61131-3 as operating on generic
-/// type categories (ANY_NUM, ANY_REAL). Parameter and return types use
+/// type categories (ANY_NUM, ANY_REAL, ANY_ELEMENTARY). Parameter and return types use
 /// the generic type names so that future type validation can check
 /// compatibility via `GenericTypeName::is_compatible_with()`.
 fn get_numeric_functions() -> Vec<FunctionSignature> {
@@ -76,40 +76,55 @@ fn get_numeric_functions() -> Vec<FunctionSignature> {
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
-        // MIN: minimum of two values (ANY_NUM, ANY_NUM -> ANY_NUM)
-        FunctionSignature::stdlib(
+        // MIN, MAX and LIMIT are selection functions of any elementary type,
+        // as IEC 61131-3 declares them: durations, dates, bit strings,
+        // `BOOL`s and strings are ordered as numbers are
+        // (REQ-IC-analyzer-137).
+        //
+        // MIN: minimum of two or more values (ANY_ELEMENTARY, ... -> ANY_ELEMENTARY).
+        // Extensible, as IEC 61131-3 table 31 declares it (REQ-CB-analyzer-054).
+        FunctionSignature::stdlib_extensible(
             "MIN",
             BuiltinFunction::Numeric(NumericFunction::Min),
-            TypeName::from("ANY_NUM"),
-            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+            TypeName::from("ANY_ELEMENTARY"),
+            vec![
+                input_param("IN1", "ANY_ELEMENTARY"),
+                input_param("IN2", "ANY_ELEMENTARY"),
+            ],
+            None,
         ),
-        // MAX: maximum of two values (ANY_NUM, ANY_NUM -> ANY_NUM)
-        FunctionSignature::stdlib(
+        // MAX: maximum of two or more values (ANY_ELEMENTARY, ... -> ANY_ELEMENTARY).
+        // Extensible, as IEC 61131-3 table 31 declares it (REQ-CB-analyzer-054).
+        FunctionSignature::stdlib_extensible(
             "MAX",
             BuiltinFunction::Numeric(NumericFunction::Max),
-            TypeName::from("ANY_NUM"),
-            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+            TypeName::from("ANY_ELEMENTARY"),
+            vec![
+                input_param("IN1", "ANY_ELEMENTARY"),
+                input_param("IN2", "ANY_ELEMENTARY"),
+            ],
+            None,
         ),
-        // LIMIT: clamp value to range (ANY_NUM, ANY_NUM, ANY_NUM -> ANY_NUM)
+        // LIMIT: clamp value to range (ANY_ELEMENTARY x3 -> ANY_ELEMENTARY)
         FunctionSignature::stdlib(
             "LIMIT",
             BuiltinFunction::Numeric(NumericFunction::Limit),
-            TypeName::from("ANY_NUM"),
+            TypeName::from("ANY_ELEMENTARY"),
             vec![
-                input_param("MN", "ANY_NUM"),
-                input_param("IN", "ANY_NUM"),
-                input_param("MX", "ANY_NUM"),
+                input_param("MN", "ANY_ELEMENTARY"),
+                input_param("IN", "ANY_ELEMENTARY"),
+                input_param("MX", "ANY_ELEMENTARY"),
             ],
         ),
-        // SEL: binary selection (BOOL, ANY_NUM, ANY_NUM -> ANY_NUM)
+        // SEL: binary selection (BOOL, ANY, ANY -> ANY)
         FunctionSignature::stdlib(
             "SEL",
             BuiltinFunction::Numeric(NumericFunction::Sel),
-            TypeName::from("ANY_NUM"),
+            TypeName::from("ANY"),
             vec![
                 input_param("G", "BOOL"),
-                input_param("IN0", "ANY_NUM"),
-                input_param("IN1", "ANY_NUM"),
+                input_param("IN0", "ANY"),
+                input_param("IN1", "ANY"),
             ],
         ),
         // LN: natural logarithm (ANY_REAL -> ANY_REAL)
@@ -203,22 +218,23 @@ fn get_numeric_functions() -> Vec<FunctionSignature> {
 ///
 /// MUX is an extensible multiplexer that selects one of N inputs based on
 /// an integer selector K. Unlike SEL (which uses a BOOL selector and exactly
-/// 2 inputs), MUX uses an ANY_INT selector and supports 2..16 inputs.
+/// 2 inputs), MUX uses an ANY_INT selector and supports 2..16 inputs. Its
+/// inputs are of any type (`ANY`), as SEL's are.
 ///
 /// The declared parameters define the minimum (K + 2 IN values = 3 args).
 /// Additional IN arguments are accepted because the signature is extensible.
 fn get_selection_functions() -> Vec<FunctionSignature> {
     vec![
-        // MUX: multiplexer (ANY_INT, ANY_NUM, ANY_NUM, ... -> ANY_NUM)
+        // MUX: multiplexer (ANY_INT, ANY, ANY, ... -> ANY)
         // MUX supports K + 2..16 IN values = 3..17 total input arguments
         FunctionSignature::stdlib_extensible(
             "MUX",
             BuiltinFunction::Mux,
-            TypeName::from("ANY_NUM"),
+            TypeName::from("ANY"),
             vec![
                 input_param("K", "ANY_INT"),
-                input_param("IN0", "ANY_NUM"),
-                input_param("IN1", "ANY_NUM"),
+                input_param("IN0", "ANY"),
+                input_param("IN1", "ANY"),
             ],
             Some(17),
         ),
@@ -231,17 +247,16 @@ fn get_selection_functions() -> Vec<FunctionSignature> {
 
 /// Returns the MOVE standard function definition.
 ///
-/// MOVE copies the input value to the output, equivalent to assignment.
-/// IEC 61131-3 defines MOVE as operating on ANY type, but since the codegen
-/// currently supports numeric types we use ANY_NUM here.
+/// MOVE copies the input value to the output, equivalent to assignment, and
+/// IEC 61131-3 declares it on any type (`ANY`).
 fn get_assignment_functions() -> Vec<FunctionSignature> {
     vec![
-        // MOVE: assignment (ANY_NUM -> ANY_NUM)
+        // MOVE: assignment (ANY -> ANY)
         FunctionSignature::stdlib(
             "MOVE",
             BuiltinFunction::Move,
-            TypeName::from("ANY_NUM"),
-            vec![input_param("IN", "ANY_NUM")],
+            TypeName::from("ANY"),
+            vec![input_param("IN", "ANY")],
         ),
     ]
 }
@@ -554,6 +569,7 @@ mod tests {
     use ironplc_dsl::common::{ElementaryTypeName, FunctionReturnType};
     use ironplc_dsl::textual::Operator;
     use rstest::rstest;
+    use spec_test_macro::spec_test;
 
     #[test]
     fn get_numeric_functions_when_called_then_contains_all_functions() {
@@ -632,6 +648,25 @@ mod tests {
         assert_eq!(max.parameters[0].name.original(), "IN1");
         assert_eq!(max.parameters[1].name.original(), "IN2");
         assert!(max.is_stdlib());
+    }
+
+    #[spec_test(REQ_CB_analyzer_054)]
+    fn get_numeric_functions_when_min_or_max_then_extensible_past_in2() {
+        let functions = get_numeric_functions();
+        for name in ["MIN", "MAX"] {
+            let function = functions
+                .iter()
+                .find(|f| f.name.original() == name)
+                .unwrap();
+            assert!(function.is_extensible, "{name}");
+            assert_eq!(function.max_inputs, None, "{name}");
+            let names: Vec<String> = function
+                .input_parameters()
+                .take(4)
+                .map(|p| p.name.original().to_string())
+                .collect();
+            assert_eq!(names, ["IN1", "IN2", "IN3", "IN4"], "{name}");
+        }
     }
 
     #[test]

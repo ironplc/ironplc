@@ -827,10 +827,11 @@ END_VAR
 VAR
     inferred : INT := 5;
     written : INT := 9;
+    greeting : STRING := 'Hello';
     n : INT;
 END_VAR
     written := written + 1;
-    n := declared + inferred + limit + written;
+    n := declared + inferred + limit + written + LEN(greeting);
 END_PROGRAM";
     let options = CompilerOptions::default();
     let library = parse_program(program, &FileId::default(), &options).unwrap();
@@ -846,5 +847,51 @@ END_PROGRAM";
     assert_eq!(value_of("declared").as_deref(), Some("3"));
     assert_eq!(value_of("inferred").as_deref(), Some("5"));
     assert_eq!(value_of("limit").as_deref(), Some("7"));
+    assert_eq!(value_of("greeting").as_deref(), Some("'Hello'"));
     assert_eq!(value_of("written"), None);
+}
+
+/// REQ-CVI-analyzer-061: a declared constant that an instance initializer
+/// sets, or whose address is taken, has no value there; one nothing writes
+/// keeps its value.
+#[spec_test(REQ_CVI_analyzer_061)]
+fn analyzer_spec_req_cvi_061_environment_records_no_value_for_a_written_constant() {
+    let program = "
+FUNCTION_BLOCK Block
+VAR CONSTANT
+    initialized : INT := 5;
+    referenced : STRING := 'abc';
+    kept : STRING := 'xyz';
+END_VAR
+VAR
+    r : REF_TO STRING;
+END_VAR
+    r := REF(referenced);
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+    instance : Block := (initialized := 7);
+END_VAR
+    instance();
+END_PROGRAM";
+    let options = ref_to_options();
+    let library = parse_program(program, &FileId::default(), &options).unwrap();
+    let (_, context) = analyze(&[&library], &options).unwrap();
+    assert!(
+        context.diagnostics().is_empty(),
+        "{:?}",
+        context.diagnostics()
+    );
+    let block = ScopeKind::Named(ScopePath::from(Id::from("Block")));
+    let value_of = |name: &str| {
+        context
+            .symbols()
+            .constant_value(&Id::from(name), &block)
+            .map(ToString::to_string)
+    };
+
+    assert_eq!(value_of("initialized"), None);
+    assert_eq!(value_of("referenced"), None);
+    assert_eq!(value_of("kept").as_deref(), Some("'xyz'"));
 }

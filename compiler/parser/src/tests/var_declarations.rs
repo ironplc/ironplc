@@ -42,15 +42,23 @@ END_FUNCTION_BLOCK",
 }
 
 #[test]
-fn parse_when_program_with_var_temp_then_fails() {
-    let source = "PROGRAM main
+fn parse_when_program_with_var_temp_then_succeeds() {
+    let lib = parse_text(
+        "PROGRAM main
+VAR
+    q : INT;
+END_VAR
 VAR_TEMP
     t : INT;
 END_VAR
     t := 42;
-END_PROGRAM";
-    let result = parse_program(source, &FileId::default(), &CompilerOptions::default());
-    assert!(result.is_err());
+    q := t;
+END_PROGRAM",
+    );
+    let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+    assert_eq!(prog.variables.len(), 2);
+    assert_eq!(prog.variables[0].var_type, VariableType::Var);
+    assert_eq!(prog.variables[1].var_type, VariableType::VarTemp);
 }
 
 #[test]
@@ -77,6 +85,37 @@ END_PROGRAM",
     assert!(matches!(
         &prog.variables[2].identifier,
         VariableIdentifier::Direct(_)
+    ));
+}
+
+#[rstest]
+#[case::var_complete_address("VAR", "%QX0.0")]
+#[case::var_input_complete_address("VAR_INPUT", "%IX0.0")]
+#[case::var_output_complete_address("VAR_OUTPUT", "%QX0.0")]
+#[case::var_input_wildcard("VAR_INPUT", "%I*")]
+#[case::var_output_wildcard("VAR_OUTPUT", "%Q*")]
+fn parse_when_located_array_in_block_then_array_initializer(
+    #[case] keyword: &str,
+    #[case] address: &str,
+) {
+    let source = format!(
+        "FUNCTION_BLOCK FB
+{keyword}
+    a AT {address} : ARRAY[1..3] OF BOOL;
+END_VAR
+END_FUNCTION_BLOCK"
+    );
+
+    let lib = parse_program(&source, &FileId::default(), &CompilerOptions::default()).unwrap();
+
+    let fb = cast!(
+        &lib.elements[0],
+        LibraryElementKind::FunctionBlockDeclaration
+    );
+    assert_eq!(fb.variables.len(), 1);
+    assert!(matches!(
+        fb.variables[0].initializer,
+        InitialValueAssignmentKind::Array(_)
     ));
 }
 

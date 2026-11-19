@@ -121,7 +121,7 @@ impl ImplicitConversions<'_> {
                 let default: TypeName = literal_default_type(generic)?.into();
                 self.context.types().id_of(&default)
             }
-            Some(ExprType::Null) | None => None,
+            Some(ExprType::Null | ExprType::Error) | None => None,
         }
     }
 

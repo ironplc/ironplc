@@ -57,39 +57,13 @@ pub fn apply(
     context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let symbols = context.symbols();
-    let mut diagnostics = Vec::new();
-
-    // A located CONSTANT declaration (`AT %QW0 : INT`) is not handled yet.
-    // Record that and keep going, so the rule still reports on every other
-    // declaration.
-    for (_, info) in symbols.get_variables_in_scope(&ScopeKind::Global) {
-        if is_global_constant(info) && info.address.is_some() {
-            diagnostics.push(Diagnostic::not_implemented(Label::span(
-                info.span.clone(),
-                "Located CONSTANT declaration",
-            )));
-        }
-    }
-
-    // Check that externals naming a global constant are constants. This runs
-    // even when a located constant was reported: stopping there would hide
-    // every violation behind one unhandled declaration.
-    if let Err(errs) = run_rule(
+    run_rule(
         RuleExternalGlobalConst {
-            symbols,
+            symbols: context.symbols(),
             diagnostics: Vec::new(),
         },
         lib,
-    ) {
-        diagnostics.extend(errs);
-    }
-
-    if diagnostics.is_empty() {
-        Ok(())
-    } else {
-        Err(diagnostics)
-    }
+    )
 }
 
 /// Whether `info` is a `VAR_GLOBAL` declared `CONSTANT`.
@@ -122,11 +96,13 @@ impl Visitor<Infallible> for RuleExternalGlobalConst<'_> {
             && node.qualifier != DeclarationQualifier::Constant
         {
             if let Some(name) = node.identifier.symbolic_id() {
-                // A located global is reported as not implemented above.
+                // A located global constant (`Limit AT %MW8 : INT := 3`) is
+                // found by its name like any other. One with no name
+                // (`AT %MW8 : INT := 3`) has none for an external to name.
                 let global = self
                     .symbols
                     .find(name, &ScopeKind::Global)
-                    .filter(|info| is_global_constant(info) && info.address.is_none());
+                    .filter(|info| is_global_constant(info));
                 if let Some(global) = global {
                     self.diagnostics.push(
                         Diagnostic::problem(
@@ -221,6 +197,61 @@ FUNCTION_BLOCK func
     END_VAR
 
 END_FUNCTION_BLOCK"
+    );
+
+    rule_err!(
+        apply_when_located_global_const_external_not_const_then_error,
+        "
+CONFIGURATION config
+    VAR_GLOBAL CONSTANT
+        Limit AT %MW8 : INT := 3;
+    END_VAR
+    RESOURCE resource1 ON PLC
+        PROGRAM plc_task_instance : plc_prg;
+    END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM plc_prg
+    VAR_EXTERNAL
+        Limit : INT;
+    END_VAR
+END_PROGRAM",
+        [Problem::VariableMustBeConst]
+    );
+
+    rule_ok!(
+        apply_when_located_global_const_external_const_then_ok,
+        "
+CONFIGURATION config
+    VAR_GLOBAL CONSTANT
+        Limit AT %MW8 : INT := 3;
+    END_VAR
+    RESOURCE resource1 ON PLC
+        PROGRAM plc_task_instance : plc_prg;
+    END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM plc_prg
+    VAR_EXTERNAL CONSTANT
+        Limit : INT;
+    END_VAR
+END_PROGRAM"
+    );
+
+    rule_ok!(
+        apply_when_unnamed_located_global_const_then_ok,
+        "
+CONFIGURATION config
+    VAR_GLOBAL CONSTANT
+        AT %MW8 : INT := 3;
+    END_VAR
+    RESOURCE resource1 ON PLC
+        PROGRAM plc_task_instance : plc_prg;
+    END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM plc_prg
+END_PROGRAM"
     );
 
     rule_err!(

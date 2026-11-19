@@ -28,6 +28,12 @@ duplicates:
 version version:
   echo "{{version}}" > VERSION
 
+# Updates the Node.js tooling to latest version (or at least tries to). The
+# Python packages in requirements.txt carry no versions, so every `just setup`
+# already installs the latest.
+update:
+  npm update
+
 # Removes built files
 clean:
   rm -rf _build _duplication

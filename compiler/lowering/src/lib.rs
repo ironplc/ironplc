@@ -42,6 +42,7 @@ pub mod initial_value;
 mod interface;
 mod place;
 mod program;
+mod selection;
 mod statement;
 mod string;
 mod string_result;
@@ -76,6 +77,8 @@ mod place_tests;
 mod program_tests;
 #[cfg(test)]
 mod prologue_tests;
+#[cfg(test)]
+mod selection_tests;
 #[cfg(test)]
 mod string_result_tests;
 #[cfg(test)]

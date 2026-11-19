@@ -127,8 +127,26 @@ pub enum ActionQualifier {
 }
 
 impl fmt::Display for ActionQualifier {
+    /// The qualifier as the source spells it: the keyword, then for a timed
+    /// qualifier `, ` and its action time.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{self:?}")
+        let (keyword, time) = match self {
+            ActionQualifier::N => ("N", None),
+            ActionQualifier::R => ("R", None),
+            ActionQualifier::S => ("S", None),
+            ActionQualifier::L => ("L", None),
+            ActionQualifier::D => ("D", None),
+            ActionQualifier::P => ("P", None),
+            ActionQualifier::SD(time) => ("SD", Some(time)),
+            ActionQualifier::DS(time) => ("DS", Some(time)),
+            ActionQualifier::SL(time) => ("SL", Some(time)),
+            ActionQualifier::PR(time) => ("P1", Some(time)),
+            ActionQualifier::PF(time) => ("P0", Some(time)),
+        };
+        match time {
+            Some(time) => write!(f, "{keyword}, {time}"),
+            None => write!(f, "{keyword}"),
+        }
     }
 }
 
@@ -170,6 +188,15 @@ impl ActionQualifier {
 pub enum ActionTimeKind {
     Duration(DurationLiteral),
     VariableName(Id),
+}
+
+impl fmt::Display for ActionTimeKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ActionTimeKind::Duration(duration) => write!(f, "{duration}"),
+            ActionTimeKind::VariableName(id) => write!(f, "{id}"),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]

@@ -108,7 +108,6 @@ fn declared_type_id(
         // (see `TypeEnvironment::reference_to`).
         InitialValueAssignmentKind::Reference(r) => {
             let target = match &r.target {
-                ReferenceTarget::Named(target) => env.id_of(target)?,
                 ReferenceTarget::Array(subranges) => {
                     let spec = SpecificationKind::Inline(subranges.clone());
                     match array::try_from(name, &spec, env).ok()? {
@@ -119,6 +118,11 @@ fn declared_type_id(
                         }
                         TypeResolution::Alias(alias) => env.id_of(&alias)?,
                     }
+                }
+                // A named type, or a reference spelled in place
+                // (`REF_TO REF_TO INT`), which is itself one type.
+                ReferenceTarget::Named(_) | ReferenceTarget::Reference(_) => {
+                    type_environment.reference_target_id(&r.target)?
                 }
             };
             return type_environment.reference_to(target);

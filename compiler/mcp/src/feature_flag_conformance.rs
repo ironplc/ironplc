@@ -245,7 +245,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
     // accepts it unconditionally; the flag gates a semantic rule (P4041 when
     // off).
     FlagFixture {
-        key: "allow_bit_string_case_labels",
+        key: "allow_radix_case_labels",
         prereqs: &[],
         source: "PROGRAM main\nVAR\nx : DINT;\ny : DINT;\nEND_VAR\nCASE x OF\n16#D012: y := 1;\nEND_CASE;\nEND_PROGRAM",
     },
@@ -317,6 +317,51 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_continue",
         prereqs: &[],
         source: "PROGRAM main\nVAR i : INT; END_VAR\nFOR i := 1 TO 3 DO\nCONTINUE;\nEND_FOR;\nEND_PROGRAM",
+    },
+    // A hex bound on an array dimension. The grammar accepts it
+    // unconditionally; a token-stream rule rejects it (P4096) when the flag
+    // is off. A decimal bound is always accepted.
+    FlagFixture {
+        key: "allow_radix_subrange_bounds",
+        prereqs: &[],
+        source: "PROGRAM main\nVAR\na : ARRAY[16#0..16#F] OF INT;\nEND_VAR\nEND_PROGRAM",
+    },
+    // `RETURN(cond)`: the grammar accepts it unconditionally; a token-stream
+    // rule rejects it (P4098) when the flag is off. A plain `RETURN;` is
+    // always accepted.
+    FlagFixture {
+        key: "allow_conditional_return",
+        prereqs: &[],
+        source: "PROGRAM main\nVAR\nb : BOOL;\nEND_VAR\nRETURN(b);\nEND_PROGRAM",
+    },
+    // A `;` after the POU header, before the first VAR block. The grammar
+    // accepts it unconditionally; a token-stream rule rejects it (P4100)
+    // when the flag is off.
+    FlagFixture {
+        key: "allow_pou_header_semicolon",
+        prereqs: &[],
+        source: "PROGRAM main;\nVAR\na : INT;\nEND_VAR\nEND_PROGRAM",
+    },
+    // A call argument with no value (`b :=,`): the grammar accepts it
+    // unconditionally; a token-stream rule rejects it (P4102) when the flag is
+    // off.
+    FlagFixture {
+        key: "allow_omitted_call_argument",
+        prereqs: &[],
+        source: "FUNCTION_BLOCK FB_X\nVAR_INPUT\nb : INT;\nc : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nPROGRAM main\nVAR\nf : FB_X;\nEND_VAR\nf(b :=, c := 1);\nEND_PROGRAM",
+    },
+    // A trailing comma in an argument list: rejected (P4103) when the flag is
+    // off.
+    FlagFixture {
+        key: "allow_trailing_call_comma",
+        prereqs: &[],
+        source: "FUNCTION_BLOCK FB_X\nVAR_INPUT\nb : INT;\nc : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nPROGRAM main\nVAR\nf : FB_X;\nEND_VAR\nf(c := 1, );\nEND_PROGRAM",
+    },
+    // `Type.value`: rejected (P4104) when the flag is off.
+    FlagFixture {
+        key: "allow_dotted_enum_value",
+        prereqs: &[],
+        source: "TYPE E_Blink : (off, slow); END_TYPE\nPROGRAM main\nVAR\ns : E_Blink;\nEND_VAR\nCASE s OF\nE_Blink.slow: ;\nEND_CASE;\nEND_PROGRAM",
     },
 ];
 

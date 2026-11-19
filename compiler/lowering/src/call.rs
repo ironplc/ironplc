@@ -78,6 +78,10 @@ impl Lowering<'_> {
             BuiltinFunction::Mux => {
                 // `MUX` computes at the type the analyzer converted its
                 // inputs to.
+                let operated = self.typed(expr)?.scalar()?;
+                if operated == ScalarType::Bool {
+                    return self.bool_selection(frame, expr, Intrinsic::MuxI32, &args);
+                }
                 let mux = AtTypes::every([
                     Intrinsic::MuxI32,
                     Intrinsic::MuxI64,
@@ -86,7 +90,6 @@ impl Lowering<'_> {
                     Intrinsic::MuxF32,
                     Intrinsic::MuxF64,
                 ]);
-                let operated = self.typed(expr)?.scalar()?;
                 let intrinsic = mux.at(operated).ok_or(Unlowered::NotYet)?;
                 self.intrinsic_call(frame, expr, intrinsic, &args)
             }
@@ -263,8 +266,107 @@ impl Lowering<'_> {
         // A numeric function computes at the type the analyzer converted its
         // inputs to.
         let operated = self.typed(expr)?.scalar()?;
+        if operated == ScalarType::Bool {
+            if function == NumericFunction::Sel {
+                return self.bool_selection(frame, expr, Intrinsic::SelI32, args);
+            }
+            if let Some(steps) = bool_extreme_steps(function, args.len()) {
+                return self.bool_fold(frame, expr, &steps, args);
+            }
+        }
         let intrinsic = numeric_intrinsic(function, operated).ok_or(Unlowered::NotYet)?;
+        if matches!(function, NumericFunction::Min | NumericFunction::Max) && args.len() > 2 {
+            return self.fold_intrinsic(frame, expr, intrinsic, args);
+        }
         self.intrinsic_call(frame, expr, intrinsic, args)
+    }
+
+    /// The call `expr` of the extensible `MIN` or `MAX` with three or more
+    /// `args`: the two-input `intrinsic` folded from the left, as the
+    /// function forms of the operators fold (REQ-LOW-lowering-206).
+    fn fold_intrinsic(
+        &mut self,
+        frame: &BodyFrame,
+        expr: &AstExpr,
+        intrinsic: Intrinsic,
+        args: &[&AstExpr],
+    ) -> Lowered<Expr> {
+        let signature = intrinsic.signature();
+        let span = expr.span();
+        let mut lowered = Vec::with_capacity(args.len());
+        for (index, arg) in args.iter().enumerate() {
+            // every input is of the operated type, as the first two are
+            let param = signature.param(index.min(1)).ok_or(Unlowered::NotYet)?;
+            lowered.push(self.arg(frame, param, arg)?);
+        }
+        let mut values = lowered.into_iter();
+        let (Some(first), Some(second)) = (values.next(), values.next()) else {
+            return Err(Unlowered::NotYet);
+        };
+        let mut folded = Expr::call(intrinsic, vec![first, second], span.clone())?;
+        for value in values {
+            folded = Expr::call(intrinsic, vec![Arg::Value(folded), value], span.clone())?;
+        }
+        Ok(folded)
+    }
+
+    /// `MIN`, `MAX` or `LIMIT` of `BOOL`s, the call `expr` of `args`: the
+    /// first input, then each later one joined to the result by the logical
+    /// operator of its step (`bool_extreme_steps`, REQ-LOW-lowering-207).
+    /// Every input is evaluated once, in the order of its parameter, as a
+    /// call's inputs are: `BoolAnd` and `BoolOr` do not short-circuit.
+    fn bool_fold(
+        &mut self,
+        frame: &BodyFrame,
+        expr: &AstExpr,
+        steps: &[BinaryOp],
+        args: &[&AstExpr],
+    ) -> Lowered<Expr> {
+        let span = expr.span();
+        let (first, rest) = args.split_first().ok_or(Unlowered::NotYet)?;
+        if rest.len() != steps.len() {
+            return Err(Unlowered::NotYet);
+        }
+        let mut folded = self.expr(frame, first)?;
+        for (op, arg) in steps.iter().zip(rest) {
+            let value = self.expr(frame, arg)?;
+            folded = Expr::binary(*op, folded, value, span.clone())?;
+        }
+        Ok(folded)
+    }
+
+    /// `SEL` or `MUX` of `BOOL`s, the call `expr`: the selection `intrinsic`
+    /// at the signed 32-bit integer, of each `BOOL` it selects between
+    /// converted to that integer as `BOOL_TO_DINT` converts it, compared with
+    /// zero as `DINT_TO_BOOL` converts the integer back (REQ-LOW-lowering-202).
+    /// No `Intrinsic` selects between `BOOL`s, and the integers of `TRUE` and
+    /// `FALSE` select as the `BOOL`s do. The selector is lowered as it is.
+    fn bool_selection(
+        &mut self,
+        frame: &BodyFrame,
+        expr: &AstExpr,
+        intrinsic: Intrinsic,
+        args: &[&AstExpr],
+    ) -> Lowered<Expr> {
+        let span = expr.span();
+        let integer = ScalarType::I32(Signedness::Signed);
+        let (selector, inputs) = args.split_first().ok_or(Unlowered::NotYet)?;
+        let mut lowered = Vec::with_capacity(args.len());
+        lowered.push(Arg::Value(self.expr(frame, selector)?));
+        for input in inputs {
+            let value = self.expr(frame, input)?;
+            if value.ty() != ScalarType::Bool {
+                return Err(Unlowered::NotYet);
+            }
+            lowered.push(Arg::Value(Expr::convert(value, integer, input.span())?));
+        }
+        let passed: Vec<Param> = lowered.iter().map(Arg::param).collect();
+        if !intrinsic.signature().takes(&passed) {
+            return Err(Unlowered::NotYet);
+        }
+        let selected = Expr::call(intrinsic, lowered, span.clone())?;
+        let zero = Expr::integer(0, integer, span.clone())?;
+        Ok(Expr::compare(LoweredCompareOp::Ne, selected, zero, span)?)
     }
 
     /// The call `expr` of `intrinsic` with `args`.
@@ -316,12 +418,48 @@ impl Lowering<'_> {
                 Ok(Arg::Ref(self.variable_place(frame, variable)?))
             }
             Param::Copy(_) => {
-                let AstExprKind::Variable(variable) = &expr.kind else {
+                let AstExprKind::Variable(variable) = &self.unwrapped(expr).kind else {
                     return Err(Unlowered::NotYet);
                 };
                 Ok(Arg::Copy(self.variable_place(frame, variable)?))
             }
         }
+    }
+
+    /// The value `MOVE(x)` and `(x)` are: `x`, through any number of `MOVE`s
+    /// and parentheses, and `expr` itself when it is neither
+    /// (REQ-LOW-lowering-203). An array, a structure or a function block
+    /// instance is copied from a place rather than lowered as an expression,
+    /// so where one is copied lowering reads through them to the place it
+    /// copies.
+    pub(crate) fn unwrapped<'e>(&self, mut expr: &'e AstExpr) -> &'e AstExpr {
+        loop {
+            if let AstExprKind::Expression(inner) = &expr.kind {
+                expr = inner;
+                continue;
+            }
+            if let AstExprKind::Function(func) = &expr.kind {
+                let mut inputs = func.inputs();
+                if let (true, Some(value), None) =
+                    (self.is_move(func), inputs.next(), inputs.next())
+                {
+                    expr = value;
+                    continue;
+                }
+            }
+            return expr;
+        }
+    }
+
+    /// Whether `func` is a call of `MOVE`.
+    fn is_move(&self, func: &Function) -> bool {
+        self.analysis
+            .context()
+            .functions()
+            .get(&func.name)
+            .is_some_and(|signature| {
+                matches!(signature.builtin_function, Some(BuiltinFunction::Move))
+            })
     }
 
     /// The function form of an operator, `expr`: the expression the
@@ -548,6 +686,37 @@ fn byte_size(types: &TypeTable, ty: TypeId) -> Option<i128> {
         | TypeKind::FunctionBlock { .. }
         | TypeKind::Program { .. }
         | TypeKind::Reference { .. } => None,
+    }
+}
+
+/// The logical operator of each step of the left fold that `MIN`, `MAX` or
+/// `LIMIT` of `inputs` `BOOL`s is (REQ-LOW-lowering-207); `None` for any
+/// other function. `FALSE` is less than `TRUE`, so the least of `BOOL`s is
+/// their `AND`, the greatest their `OR`, and `LIMIT(MN, IN, MX)`, which is
+/// `MIN(MAX(IN, MN), MX)`, is `(MN OR IN) AND MX`. No `Intrinsic` takes a
+/// `BOOL`, and these need none.
+fn bool_extreme_steps(function: NumericFunction, inputs: usize) -> Option<Vec<BinaryOp>> {
+    let steps = inputs.checked_sub(1)?;
+    match function {
+        NumericFunction::Min => Some(vec![BinaryOp::BoolAnd; steps]),
+        NumericFunction::Max => Some(vec![BinaryOp::BoolOr; steps]),
+        NumericFunction::Limit => Some(vec![BinaryOp::BoolOr, BinaryOp::BoolAnd]),
+        NumericFunction::Abs
+        | NumericFunction::Sqrt
+        | NumericFunction::Ln
+        | NumericFunction::Log
+        | NumericFunction::Exp
+        | NumericFunction::Sin
+        | NumericFunction::Cos
+        | NumericFunction::Tan
+        | NumericFunction::Asin
+        | NumericFunction::Acos
+        | NumericFunction::Atan
+        | NumericFunction::Atan2
+        | NumericFunction::TruncReal
+        | NumericFunction::ModReal
+        | NumericFunction::Expt
+        | NumericFunction::Sel => None,
     }
 }
 

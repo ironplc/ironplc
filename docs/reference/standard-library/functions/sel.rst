@@ -25,9 +25,9 @@ Signature
      END_VAR
    END_FUNCTION
 
-IEC 61131-3 declares *IN0* and *IN1* as any type (``ANY``). IronPLC supports
-``SINT``, ``INT``, ``DINT``, ``LINT``, ``USINT``, ``UINT``, ``UDINT``,
-``ULINT``, ``REAL``, ``LREAL``.
+IEC 61131-3 declares *IN0* and *IN1* as any type (``ANY``).
+
+.. include:: ../../../includes/selection-input-types.rst
 
 .. include:: ../../../includes/widest-input-return-type.rst
 
@@ -79,6 +79,13 @@ Example
 
    result := SEL(TRUE, 10, 20);     (* result = 20 *)
    result := SEL(FALSE, 10, 20);    (* result = 10 *)
+
+The inputs can be of any of the supported types, such as durations:
+
+.. playground-with-program::
+   :vars: fast : BOOL; delay : TIME;
+
+   delay := SEL(fast, T#5s, T#1s);  (* delay = T#5s *)
 
 See Also
 --------

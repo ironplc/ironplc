@@ -36,15 +36,17 @@ jobs:
     steps:
       # Fetch input artifacts and code
       - name: Checkout HEAD
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Configure the execution environment
-      - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
+        with:
+          tool: just
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
       - name: Set up Ollama
-        uses: ai-action/setup-ollama@d0eb66d576e0880178be72b68b77b2dbbf5a884f # v2.0.53
+        uses: ai-action/setup-ollama@4d24ba3341d7b8e6ed2f80aa4ee53be6ee8e29fc # v2.1.19
 
       # Install the published compiler and run the OpenCode end-to-end test.
       - name: OpenCode end-to-end test

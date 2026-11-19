@@ -20,7 +20,7 @@ When adding new syntax, ensure every applicable item is complete:
 - [ ] **Whitespace invariance**: Every `_` a new grammar rule introduces earns a row in `parser/src/tests/whitespace.rs`, so a rule that later loses its `_` fails there (see [Which leg asserts what](#which-leg-asserts-what-avoid-duplicate-tests))
 - [ ] **Non-standard gating**: If not standard IEC 61131-3, gate behind `--allow-x` flag
 - [ ] **LSP integration**: If a new `--allow-x` flag, add to LSP `extract_compiler_options`
-- [ ] **Documentation**: If a new `--allow-x` flag, update `docs/explanation/enabling-dialects-and-features.rst`, `docs/reference/compiler/ironplcc.rst`, and the flag table in this file
+- [ ] **Documentation**: If a new `--allow-x` flag, add its entry to `docs/includes/allow-flags.rst` and add it to each dialect's `**Enables:**` list in `docs/explanation/enabling-dialects-and-features.rst` that turns it on
 
 Not every syntax change requires all items. A new operator might not need new tokens. A token-level fix might not need codegen changes. Use judgment, but **always** include both round-trip and execution tests when the syntax produces executable code.
 
@@ -263,8 +263,10 @@ mirrored table drifts out of date. Consult these instead:
   `compiler/parser/src/options.rs`, exposed at runtime via
   `CompilerOptions::FEATURE_DESCRIPTORS` and the `ironplcc dialects` command.
 - **Reader-friendly (docs):**
+  [`docs/includes/allow-flags.rst`](../../docs/includes/allow-flags.rst)
+  describes every `--allow-*` flag once and is included in both
   [`docs/reference/compiler/ironplcc.rst`](../../docs/reference/compiler/ironplcc.rst)
-  documents every `--allow-*` flag with a description, and
+  and the explanation page, and
   [`docs/explanation/enabling-dialects-and-features.rst`](../../docs/explanation/enabling-dialects-and-features.rst)
   explains which dialects enable each flag.
 
@@ -379,9 +381,8 @@ Use either the token demotion pattern, validation rule pattern, or analyzer-leve
 #### 6. Documentation
 
 Update these files to document the new flag:
-- `docs/explanation/enabling-dialects-and-features.rst` — add to the Language Extensions section
-- `docs/reference/compiler/ironplcc.rst` — add to the Options section
-- Update the flag table in this file (syntax-support-guide.md)
+- `docs/includes/allow-flags.rst` — add the flag's entry. Both `docs/reference/compiler/ironplcc.rst` and `docs/explanation/enabling-dialects-and-features.rst` include this file, so do not describe the flag on either page directly
+- `docs/explanation/enabling-dialects-and-features.rst` — add the flag to the `**Enables:**` list of each dialect that turns it on
 
 ## plc2plc Round-Trip Testing
 

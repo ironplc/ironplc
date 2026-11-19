@@ -163,3 +163,25 @@ END_PROGRAM";
         Some(dsl::common::ReferenceInitialValue::Null(_))
     ));
 }
+
+/// `POINTER TO POINTER TO INT` nests with the inner keyword kept, so the
+/// renderer reproduces it.
+#[test]
+fn pointer_to_when_pointer_to_pointer_then_nested_target_tagged_pointer_to() {
+    let lib = parse_text_pointer_to(
+        "PROGRAM main
+VAR
+    pp : POINTER TO POINTER TO INT;
+END_VAR
+END_PROGRAM",
+    );
+    let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+    let init = cast!(
+        &prog.variables[0].initializer,
+        InitialValueAssignmentKind::Reference
+    );
+    assert_eq!(init.syntax, dsl::common::RefSyntax::PointerTo);
+    let spec = cast!(&init.target, dsl::common::ReferenceTarget::Reference);
+    assert_eq!(spec.syntax, dsl::common::RefSyntax::PointerTo);
+    assert_eq!(spec.target.type_name().unwrap().to_string(), "INT");
+}

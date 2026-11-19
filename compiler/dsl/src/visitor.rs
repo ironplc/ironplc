@@ -229,6 +229,7 @@ pub trait Visitor<E> {
     dispatch!(StringDeclaration);
 
     dispatch!(ReferenceTarget);
+    dispatch!(ReferenceSpec);
     dispatch!(ReferenceDeclaration);
     dispatch!(ReferenceInitializer);
     dispatch!(ReferenceInitialValue);

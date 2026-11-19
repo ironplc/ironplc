@@ -394,3 +394,47 @@ END_PROGRAM",
     let n = cast!(d.variable.as_ref(), SymbolicVariableKind::Named);
     assert_eq!(n.name.to_string(), "PT");
 }
+
+// --- Nested references ----------------------------------------------------
+
+/// `REF_TO REF_TO INT` is a reference target that is itself a reference
+/// spelled in place, ending in the named type.
+#[test]
+fn parse_when_ref_to_ref_to_var_decl_then_nested_target() {
+    let lib = parse_text_edition3(
+        "PROGRAM main
+VAR
+    rr : REF_TO REF_TO INT;
+END_VAR
+END_PROGRAM",
+    );
+    let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+    let init = cast!(
+        &prog.variables[0].initializer,
+        InitialValueAssignmentKind::Reference
+    );
+    assert_eq!(init.syntax, dsl::common::RefSyntax::RefTo);
+    let spec = cast!(&init.target, dsl::common::ReferenceTarget::Reference);
+    assert_eq!(spec.syntax, dsl::common::RefSyntax::RefTo);
+    assert_eq!(spec.target.type_name().unwrap().to_string(), "INT");
+    assert_eq!(init.target.innermost_type_name().to_string(), "INT");
+}
+
+/// `rr^^ := v` stores through the reference `rr^` refers to: the target is
+/// the dereferenced variable `rr^`, and the last caret is the store.
+#[test]
+fn parse_when_double_deref_assignment_then_deref_variable_target() {
+    let lib = parse_text_edition3(
+        "PROGRAM main
+VAR
+    rr : REF_TO REF_TO INT;
+END_VAR
+    rr^^ := 5;
+END_PROGRAM",
+    );
+    let assignment = cast!(only_statement(&lib), StmtKind::Assignment);
+    assert!(assignment.deref);
+    assert_eq!(assignment.target.to_string(), "rr^");
+    let target = cast!(&assignment.target, Variable::Symbolic);
+    cast!(target, SymbolicVariableKind::Deref);
+}

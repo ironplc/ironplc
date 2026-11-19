@@ -18,7 +18,8 @@
 
 use ironplc_dsl::{
     common::{
-        FunctionReturnType, InitialValueAssignmentKind, Library, TypeReference, VariableType,
+        FunctionReturnType, InitialValueAssignmentKind, Library, ReferenceTarget, TypeName,
+        TypeReference, VariableType,
     },
     core::{Id, Located},
     diagnostic::Diagnostic,
@@ -254,14 +255,9 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
             let (written, is_reference) = match var_decl.type_name() {
                 TypeReference::Named(type_name) => (type_name, false),
                 TypeReference::Inline => match &var_decl.initializer {
-                    InitialValueAssignmentKind::Reference(ref_init) => match &ref_init.target {
-                        crate::ironplc_dsl::common::ReferenceTarget::Named(tn) => {
-                            (tn.clone(), true)
-                        }
-                        crate::ironplc_dsl::common::ReferenceTarget::Array(subranges) => {
-                            (subranges.type_name.to_type_name(), true)
-                        }
-                    },
+                    InitialValueAssignmentKind::Reference(ref_init) => {
+                        (written_reference_target(&ref_init.target), true)
+                    }
                     _ => continue,
                 },
                 _ => continue,
@@ -480,3 +476,16 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
 
 #[cfg(test)]
 mod tests;
+
+/// The name a reference parameter's target is written with, for a
+/// parameter whose type did not resolve: the named type, the element type
+/// of an inline array, and for a reference spelled in place
+/// (`REF_TO REF_TO INT`) the reference name of its own target, so that the
+/// parameter is known as `REF_TO REF_TO INT`.
+fn written_reference_target(target: &ReferenceTarget) -> TypeName {
+    match target {
+        ReferenceTarget::Named(type_name) => type_name.clone(),
+        ReferenceTarget::Array(subranges) => subranges.type_name.to_type_name(),
+        ReferenceTarget::Reference(spec) => reference_name(&written_reference_target(&spec.target)),
+    }
+}

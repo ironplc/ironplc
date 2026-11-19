@@ -3,7 +3,7 @@ use crate::test_helpers::{
     codes, edition3_options, rule_codes_after_conversions, rule_diagnostics_after_conversions,
 };
 use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_parser::options::CompilerOptions;
+use ironplc_parser::options::{CompilerOptions, Dialect};
 use ironplc_problems::Problem;
 use rstest::rstest;
 
@@ -190,6 +190,43 @@ END_CASE;
 END_PROGRAM"
         )),
         codes(OVERFLOW)
+    );
+}
+
+/// A subrange written with radix bounds (a dialect extension) is checked
+/// the same way: each bound is a value. A subrange type with radix bounds
+/// gives a selector the range those values state.
+#[rstest]
+#[case::bounds_fill_unsigned("USINT", "16#00..16#FF", OK)]
+#[case::end_above_signed("SINT", "16#00..16#FF", OVERFLOW)]
+#[case::binary_in_range("SINT", "2#0..2#1111111", OK)]
+#[case::octal_end_above("USINT", "8#0..8#400", OVERFLOW)]
+#[case::radix_selector_type("INT(16#0..16#A)", "16#14", OVERFLOW)]
+fn apply_when_case_label_has_radix_bounds_then_checked_against_selector_type(
+    #[case] selector_type: &str,
+    #[case] label: &str,
+    #[case] expected: &[Problem],
+) {
+    let program = format!(
+        "TYPE
+Sel : {selector_type};
+END_TYPE
+
+PROGRAM main
+VAR
+    x : Sel;
+    y : DINT;
+END_VAR
+CASE x OF
+{label}: y := 1;
+END_CASE;
+END_PROGRAM"
+    );
+    let options = CompilerOptions::from_dialect(Dialect::TwinCat);
+
+    assert_eq!(
+        rule_codes_after_conversions(super::apply, &program, &options),
+        codes(expected)
     );
 }
 
@@ -938,6 +975,54 @@ fn apply_when_subrange_value_then_checked_against_subrange(
     #[case] expected: &[Problem],
 ) {
     let program = format!("{types}\nPROGRAM main\nVAR x : INT; END_VAR\nx := 1;\nEND_PROGRAM\n");
+
+    assert_eq!(problems_of(&program), codes(expected));
+}
+
+#[rstest]
+#[case::inside("VAR x : INT (0..15) := 15; END_VAR", OK)]
+#[case::above("VAR x : INT (0..15) := 16; END_VAR", OVERFLOW)]
+#[case::below("VAR x : INT (-5..15) := -6; END_VAR", OVERFLOW)]
+#[case::input_above("VAR_INPUT x : INT (0..15) := 16; END_VAR", OVERFLOW)]
+#[case::output_above("VAR_OUTPUT x : INT (0..15) := 16; END_VAR", OVERFLOW)]
+#[case::located_above("VAR x AT %MW0 : INT (0..15) := 16; END_VAR", OVERFLOW)]
+#[case::constant_above("VAR CONSTANT x : INT (0..15) := 16; END_VAR", OVERFLOW)]
+#[case::unsigned_inside("VAR x : USINT (2..200) := 200; END_VAR", OK)]
+#[case::no_value("VAR x : INT (5..15); END_VAR", OK)]
+fn apply_when_variable_inline_subrange_value_then_checked_against_subrange(
+    #[case] declarations: &str,
+    #[case] expected: &[Problem],
+) {
+    let program = format!("FUNCTION_BLOCK FB\n{declarations}\nEND_FUNCTION_BLOCK\n");
+
+    assert_eq!(problems_of(&program), codes(expected));
+}
+
+#[rstest]
+#[case::inside("g : INT (0..15) := 15;", OK)]
+#[case::above("g : INT (0..15) := 16;", OVERFLOW)]
+fn apply_when_global_inline_subrange_value_then_checked_against_subrange(
+    #[case] declaration: &str,
+    #[case] expected: &[Problem],
+) {
+    let program = format!(
+        "PROGRAM main\nVAR x : INT; END_VAR\nx := 1;\nEND_PROGRAM\n\
+CONFIGURATION config\nVAR_GLOBAL {declaration} END_VAR\n\
+RESOURCE res ON PLC PROGRAM p : main; END_RESOURCE\nEND_CONFIGURATION\n"
+    );
+
+    assert_eq!(problems_of(&program), codes(expected));
+}
+
+#[rstest]
+#[case::inside("x := 15;", OK)]
+#[case::above("x := 16;", OVERFLOW)]
+#[case::below("x := -1;", OVERFLOW)]
+fn apply_when_assign_to_inline_subrange_variable_then_checked_against_subrange(
+    #[case] statement: &str,
+    #[case] expected: &[Problem],
+) {
+    let program = format!("PROGRAM main\nVAR x : INT (0..15); END_VAR\n{statement}\nEND_PROGRAM\n");
 
     assert_eq!(problems_of(&program), codes(expected));
 }

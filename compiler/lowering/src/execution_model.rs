@@ -136,10 +136,7 @@ impl<'a> Walk<'a> {
 
         let mut top_level_scope = Scope::new();
         for decl in top_level.into_iter().flatten() {
-            let id = self.add_global(decl, GlobalScope::TopLevel);
-            if let Some(name) = decl.identifier.symbolic_id() {
-                top_level_scope.insert(name.clone(), id);
-            }
+            self.add_global(decl, GlobalScope::TopLevel, &mut top_level_scope);
         }
         self.outer_scopes = vec![top_level_scope, system];
 
@@ -192,10 +189,7 @@ impl<'a> Walk<'a> {
     fn resolve_configuration(&mut self, config: &'a ConfigurationDeclaration) -> Configuration {
         let mut configuration_scope = Scope::new();
         for decl in &config.global_var {
-            let id = self.add_global(decl, GlobalScope::Configuration);
-            if let Some(name) = decl.identifier.symbolic_id() {
-                configuration_scope.insert(name.clone(), id);
-            }
+            self.add_global(decl, GlobalScope::Configuration, &mut configuration_scope);
         }
 
         let mut resource_scopes = Vec::new();
@@ -203,11 +197,7 @@ impl<'a> Walk<'a> {
             let mut scope = Scope::new();
             let mut globals = Vec::new();
             for decl in &resource.global_vars {
-                let id = self.add_global(decl, GlobalScope::Resource);
-                if let Some(name) = decl.identifier.symbolic_id() {
-                    scope.insert(name.clone(), id);
-                }
-                globals.push(id);
+                globals.extend(self.add_global(decl, GlobalScope::Resource, &mut scope));
             }
             resource_scopes.push((scope, globals));
         }
@@ -310,14 +300,27 @@ impl<'a> Walk<'a> {
         }
     }
 
-    /// Adds a declared global and records its declaration.
-    fn add_global(&mut self, decl: &'a VarDecl, scope: GlobalScope) -> GlobalId {
+    /// Adds the global `decl` declares in `kind` of scope, records its
+    /// declaration, and names it in `scope`.
+    ///
+    /// A located declaration with no name (`AT %MW4 : INT`) is no global of
+    /// the model, as a program's is no field of its instance
+    /// (REQ-LOW-lowering-170): no statement and no `SINGLE` can name it
+    /// (REQ-EM-lowering-043). `None` for one.
+    fn add_global(
+        &mut self,
+        decl: &'a VarDecl,
+        kind: GlobalScope,
+        scope: &mut Scope,
+    ) -> Option<GlobalId> {
+        let name = decl.identifier.symbolic_id()?;
         let id = self.builder.add_global(Global {
-            name: DebugName::new(decl.identifier.to_string(), decl.identifier.span()),
-            kind: GlobalKind::Declared(scope),
+            name: debug_name(name),
+            kind: GlobalKind::Declared(kind),
         });
         self.declarations.globals.insert(id, decl);
-        id
+        scope.insert(name.clone(), id);
+        Some(id)
     }
 
     /// The id of the declared `PROGRAM` named `name`.

@@ -65,8 +65,8 @@ fn lower_statement_when_len_or_find_then_intrinsic_of_encoding() {
         "PROGRAM main VAR s : STRING[5]; w : WSTRING; n : DINT; END_VAR
             n := LEN(s);
             n := FIND(s, 'ab');
-            n := LEN(\"xyz\");
-            n := FIND(w, w);
+            n := LEN(w);
+            n := FIND(w, \"xyz\");
          END_PROGRAM",
         "main",
     );
@@ -75,9 +75,153 @@ fn lower_statement_when_len_or_find_then_intrinsic_of_encoding() {
         [
             "assign v0^.f2 (call len_string i32s (read string[5] v0^.f0))",
             "assign v0^.f2 (call find_string i32s (read string[5] v0^.f0) (literal string[2] \"ab\"))",
-            "assign v0^.f2 (call len_wstring i32s (literal wstring[3] \"xyz\"))",
-            "assign v0^.f2 (call find_wstring i32s (read wstring[254] v0^.f1) (read wstring[254] v0^.f1))",
+            "assign v0^.f2 (call len_wstring i32s (read wstring[254] v0^.f1))",
+            "assign v0^.f2 (call find_wstring i32s (read wstring[254] v0^.f1) (literal wstring[3] \"xyz\"))",
         ]
+    );
+}
+
+/// REQ-LOW-lowering-205: `LEN` of a literal, in either encoding, is a
+/// constant of its length in code units, the type `LEN` yields; so is `LEN`
+/// of a parenthesized literal, of `MOVE` of one and of `CONCAT` of two,
+/// nested or not.
+#[test]
+fn lower_statement_when_len_of_literal_then_constant_length() {
+    let outcome = lower(
+        "PROGRAM main VAR n : DINT; END_VAR
+            n := LEN('Hello');
+            n := LEN('');
+            n := LEN(\"$00E9t$\"\");
+            n := LEN(('abc'));
+            n := LEN(MOVE('abcd'));
+            n := LEN(CONCAT('ab', 'cde'));
+            n := LEN(CONCAT(CONCAT('a', 'bc'), 'def'));
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f0 (const i32s 5)",
+            "assign v0^.f0 (const i32s 0)",
+            "assign v0^.f0 (const i32s 3)",
+            "assign v0^.f0 (const i32s 3)",
+            "assign v0^.f0 (const i32s 4)",
+            "assign v0^.f0 (const i32s 5)",
+            "assign v0^.f0 (const i32s 6)",
+        ]
+    );
+}
+
+/// REQ-LOW-lowering-205: `LEN` of a constant string, declared or one the
+/// program never writes, is a constant of its initial value's length, as
+/// much of it as the string's capacity holds. A global reached through its
+/// `VAR_EXTERNAL` is one too, and so is a `CONCAT` of a constant and a
+/// literal.
+#[test]
+fn lower_statement_when_len_of_constant_variable_then_constant_length() {
+    let outcome = lower(
+        "CONFIGURATION config
+            VAR_GLOBAL CONSTANT g : WSTRING := \"héllo\"; END_VAR
+            RESOURCE res ON PLC
+              TASK t (INTERVAL := T#100ms, PRIORITY := 1);
+              PROGRAM p1 WITH t : main;
+            END_RESOURCE
+         END_CONFIGURATION
+         PROGRAM main
+         VAR_EXTERNAL CONSTANT g : WSTRING; END_VAR
+         VAR CONSTANT declared : STRING := 'Hello'; capped : STRING[2] := 'Hello'; END_VAR
+         VAR inferred : STRING[20] := 'abc'; n : DINT; END_VAR
+            n := LEN(declared);
+            n := LEN(capped);
+            n := LEN(inferred);
+            n := LEN(g);
+            n := LEN(CONCAT(inferred, '!'));
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f3 (const i32s 5)",
+            "assign v0^.f3 (const i32s 2)",
+            "assign v0^.f3 (const i32s 3)",
+            "assign v0^.f3 (const i32s 5)",
+            "assign v0^.f3 (const i32s 4)",
+        ]
+    );
+}
+
+/// REQ-LOW-lowering-205: `LEN` of a string a run can change is the call
+/// that reads its length when it runs: a variable the program writes, one
+/// without an initial value, an element of an array of strings, and the
+/// string another string function yields, or `CONCAT` yields of one such
+/// string.
+#[test]
+fn lower_statement_when_len_of_changing_string_then_call() {
+    let outcome = lower(
+        "PROGRAM main
+         VAR written : STRING[5] := 'abc'; unset : STRING[5];
+             a : ARRAY[1..2] OF STRING[3] := ['ab', 'cd']; n : DINT; END_VAR
+            written := 'x';
+            n := LEN(written);
+            n := LEN(unset);
+            n := LEN(a[1]);
+            n := LEN(LEFT('abc', 2));
+            n := LEN(CONCAT('ab', written));
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign-str v0^.f0 (literal string[1] \"x\")",
+            "assign v0^.f3 (call len_string i32s (read string[5] v0^.f0))",
+            "assign v0^.f3 (call len_string i32s (read string[5] v0^.f1))",
+            "assign v0^.f3 (call len_string i32s (read string[3] v0^.f2[(const i32s 1)]))",
+            "assign v0^.f3 (call len_string i32s (call left_string string[3] (literal string[3] \"abc\") (const i32s 2)))",
+            "assign v0^.f3 (call len_string i32s (call concat_string string[7] (literal string[2] \"ab\") (read string[5] v0^.f0)))",
+        ]
+    );
+}
+
+/// REQ-LOW-lowering-205: a constant string of a function and of a function
+/// block, read in its body, has the length of its initial value.
+#[test]
+fn lower_statement_when_len_of_constant_in_function_or_block_then_constant_length() {
+    let source = "FUNCTION f : INT VAR CONSTANT s : STRING := 'abcd'; END_VAR
+            f := LEN(s);
+         END_FUNCTION
+         FUNCTION_BLOCK fb VAR_OUTPUT n : INT; END_VAR VAR CONSTANT s : STRING := 'abcde'; END_VAR
+            n := LEN(s);
+         END_FUNCTION_BLOCK
+         PROGRAM main VAR i : fb; n : INT; END_VAR
+            n := f();
+            i();
+         END_PROGRAM";
+    let function = lower(source, "f");
+    let block = lower(source, "fb");
+    assert_eq!(function.statements, ["assign v0 (const i32s 4)"]);
+    assert_eq!(block.statements, ["assign v0^.f0 (const i32s 5)"]);
+}
+
+/// REQ-LOW-lowering-205: a constant member of a function block that an
+/// instance initializer sets holds another value in that instance, so `LEN`
+/// of it reads its length when it runs.
+#[test]
+fn lower_statement_when_len_of_constant_an_initializer_sets_then_call() {
+    let outcome = lower(
+        "FUNCTION_BLOCK fb VAR_OUTPUT n : INT; END_VAR VAR CONSTANT s : STRING := 'abcde'; END_VAR
+            n := LEN(s);
+         END_FUNCTION_BLOCK
+         PROGRAM main VAR i : fb := (s := 'xy'); END_VAR
+            i();
+         END_PROGRAM",
+        "fb",
+    );
+    assert_eq!(
+        outcome.statements,
+        ["assign v0^.f0 (truncate 16 (call len_string i32s (read string[254] v0^.f1)))"]
     );
 }
 

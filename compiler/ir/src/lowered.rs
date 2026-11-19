@@ -38,7 +38,7 @@ pub use expr::{BinaryOp, CompareOp, Const, Expr, ExprKind, ShortCircuitOp, Unary
 pub use ids::{FieldIdx, LoopId, PouId, TypeId, VarId};
 pub use in_place::InPlaceCall;
 pub use loops::{counts_down, is_loop_control, ForParts, LoopScope};
-pub use place::{Place, Projection};
+pub use place::{ArrayIndex, Place, Projection};
 pub use policy::{NonNumeric, ParseFailure, ParsePolicy};
 pub use program::ProgramBuilder;
 pub use scalar::{ScalarType, Signedness};

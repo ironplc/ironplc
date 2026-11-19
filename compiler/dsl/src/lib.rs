@@ -1,10 +1,15 @@
 //! Provides definitions of objects from the IEC 61131-3 language elements
 //! and base implementations of common patterns for working with libraries.
 
+#[cfg(test)]
+mod address_assignment_tests;
 pub mod common;
 pub mod configuration;
+#[cfg(test)]
+mod constant_display_tests;
 pub mod core;
 pub mod diagnostic;
+pub mod direct_address;
 pub mod extension;
 pub mod fold;
 pub mod member_qualifier;

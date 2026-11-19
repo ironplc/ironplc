@@ -68,6 +68,7 @@ impl Value {
                     id: type_name.id.with_position(SourceSpan::synthesized()),
                 }),
                 value: value.value.with_position(SourceSpan::synthesized()),
+                dotted: false,
                 explicit_value: None,
             }),
             Value::Reference(ReferenceInitialValue::Null(_)) => {

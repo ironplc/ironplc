@@ -86,7 +86,7 @@ const COMPARISONS: [Operation; 12] = [
 
 /// What the integer types compute. An operator and the standard function
 /// that names it share an oracle, and so does a function at every width.
-const INTEGER_ARITHMETIC: [Operation; 22] = [
+const INTEGER_ARITHMETIC: [Operation; 24] = [
     same("a + b", |_, [a, b, ..]| a + b),
     same("a - b", |_, [a, b, ..]| a - b),
     same("a * b", |_, [a, b, ..]| a.wrapping_mul(b)),
@@ -106,6 +106,9 @@ const INTEGER_ARITHMETIC: [Operation; 22] = [
     same("ABS(a)", |_, [a, ..]| a.abs()),
     same("MIN(a, b)", |_, [a, b, ..]| a.min(b)),
     same("MAX(a, b)", |_, [a, b, ..]| a.max(b)),
+    // MIN and MAX are extensible: three inputs fold from the left.
+    same("MIN(a, b, c)", |_, [a, b, c, _]| a.min(b).min(c)),
+    same("MAX(a, b, c)", |_, [a, b, c, _]| a.max(b).max(c)),
     // LIMIT(MN, IN, MX) raises IN to MN, then lowers it to MX.
     same("LIMIT(a, b, c)", |_, [a, b, c, _]| b.max(a).min(c)),
     same(

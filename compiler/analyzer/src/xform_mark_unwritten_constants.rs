@@ -18,10 +18,11 @@
 //!
 //! The transform also records, in the symbol environment, the value each
 //! constant holds for the whole run: the literal of its initializer, for a
-//! declared and an inferred constant alike
+//! declared and an inferred constant alike, when nothing writes it
 //! ([`SymbolEnvironment::constant_value`]). A rule that judges a value the
 //! program fixes before it runs reads it there, rather than finding the
-//! declaration itself.
+//! declaration itself, and so does lowering, which folds `LEN` of a constant
+//! string.
 //!
 //! See `specs/design/constant-variable-inference.md`.
 //!
@@ -86,10 +87,16 @@ pub fn apply(
 }
 
 /// The literal `init` initializes a variable with, when it is one literal
-/// of an elementary type: the value a constant with that initializer holds.
-fn literal_initial_value(init: &InitialValueAssignmentKind) -> Option<&ConstantKind> {
+/// of an elementary type or a string: the value a constant with that
+/// initializer holds. A string holds as many of the literal's code units as
+/// its capacity has room for.
+fn literal_initial_value(init: &InitialValueAssignmentKind) -> Option<ConstantKind> {
     match init {
-        InitialValueAssignmentKind::Simple(simple) => simple.initial_value.as_ref(),
+        InitialValueAssignmentKind::Simple(simple) => simple.initial_value.clone(),
+        InitialValueAssignmentKind::String(string) => string
+            .initial_value
+            .clone()
+            .map(ConstantKind::CharacterString),
         _ => None,
     }
 }
@@ -126,8 +133,13 @@ impl<'a> Marker<'a> {
     }
 
     /// Records the value `decl` holds for the whole run: its initial value,
-    /// when `decl` is `CONSTANT`, declared or just marked, and that value
-    /// is one literal.
+    /// when `decl` is `CONSTANT`, declared or just marked, that value is one
+    /// literal, and nothing writes `decl`.
+    ///
+    /// A declared constant can still be written by the constructs the rules
+    /// allow on one (REQ-CVI-analyzer-052): an instance initializer or
+    /// `VAR_CONFIG` that sets it gives it another value, and so may a
+    /// reference to it. Its initial value is then not the one it holds.
     fn record_value(&mut self, decl: &VarDecl) {
         if decl.qualifier != DeclarationQualifier::Constant {
             return;
@@ -135,9 +147,12 @@ impl<'a> Marker<'a> {
         let VariableIdentifier::Symbol(name) = &decl.identifier else {
             return;
         };
+        let scope = self.scope.current();
+        if self.written.contains(&scope, name) {
+            return;
+        }
         if let Some(value) = literal_initial_value(&decl.initializer) {
-            self.symbols
-                .record_constant_value(name, &self.scope.current(), value.clone());
+            self.symbols.record_constant_value(name, &scope, value);
         }
     }
 

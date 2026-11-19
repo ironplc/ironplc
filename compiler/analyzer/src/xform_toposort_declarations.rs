@@ -263,12 +263,10 @@ impl RuleGraphReferenceableElements {
 }
 
 /// The declared type a reference target depends on: the named type itself,
-/// or the element type of an inline array target.
+/// the element type of an inline array target, or the named type a
+/// reference spelled in place ends in.
 fn reference_target_type_name(target: &ReferenceTarget) -> Id {
-    match target {
-        ReferenceTarget::Named(type_name) => type_name.id.clone(),
-        ReferenceTarget::Array(subranges) => subranges.type_name.to_type_name().id,
-    }
+    target.innermost_type_name().id
 }
 
 impl Visitor<Diagnostic> for RuleGraphReferenceableElements {

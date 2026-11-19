@@ -302,6 +302,33 @@ fn lower_statement_when_selection_function_then_intrinsic_at_its_type() {
     }
 }
 
+/// REQ-LOW-lowering-206: `MIN` and `MAX` of three or more inputs are their
+/// two-input intrinsic folded from the left, at the type the call computes
+/// at.
+#[test]
+fn lower_statement_when_min_max_of_three_inputs_then_folded_from_the_left() {
+    let outcome = lower(
+        "PROGRAM main VAR a : DINT; b : DINT; c : DINT; d : DINT; END_VAR
+            a := MAX(a, b, c);
+            a := MIN(a, b, c, d);
+         END_PROGRAM",
+        "main",
+    );
+    let (a, b, c, d) = (
+        "(read i32s v0^.f0)",
+        "(read i32s v0^.f1)",
+        "(read i32s v0^.f2)",
+        "(read i32s v0^.f3)",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            format!("assign v0^.f0 (call max_i32 i32s (call max_i32 i32s {a} {b}) {c})"),
+            format!("assign v0^.f0 (call min_i32 i32s (call min_i32 i32s (call min_i32 i32s {a} {b}) {c}) {d})"),
+        ]
+    );
+}
+
 /// REQ-LOW-lowering-147: `MUX` is the intrinsic for the type it computes at,
 /// taking its `DINT` selector and then each of its inputs. A selector of
 /// another integer type is the `DINT` the analyzer converted it to.
@@ -525,4 +552,160 @@ fn lower_statement_when_sizeof_of_layout_then_unsupported() {
         "main",
     );
     assert_eq!(outcome.statements, ["unsupported"; 2]);
+}
+
+/// REQ-LOW-lowering-202: `SEL` and `MUX` of `BOOL`s select between the
+/// signed 32-bit integers the `BOOL`s convert to, and the integer selected
+/// is compared with zero. The selector is lowered as it is.
+#[test]
+fn lower_statement_when_selection_of_bools_then_integer_selection_compared_with_zero() {
+    let outcome = lower(
+        "PROGRAM main VAR g : BOOL; x : BOOL; y : BOOL; k : DINT; END_VAR
+            x := SEL(g, x, y);
+            x := MUX(k, x, y, TRUE);
+         END_PROGRAM",
+        "main",
+    );
+    let (x, y) = (
+        "(convert i32s (read bool v0^.f1))",
+        "(convert i32s (read bool v0^.f2))",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            format!(
+                "assign v0^.f1 (ne (call sel_i32 i32s (read bool v0^.f0) {x} {y}) (const i32s 0))"
+            ),
+            format!(
+                "assign v0^.f1 (ne (call mux_i32 i32s (read i32s v0^.f3) {x} {y} \
+                 (convert i32s (const bool true))) (const i32s 0))"
+            ),
+        ]
+    );
+}
+
+/// REQ-LOW-lowering-147: a selection function of a bit string, a time or a
+/// date, or an enumeration is the intrinsic at the type it is operated at:
+/// a `WORD` and a `DATE` at the unsigned 32-bit integer, a `TIME` and an
+/// enumeration at the signed one.
+#[test]
+fn lower_statement_when_selection_of_bit_string_temporal_or_enumeration_then_intrinsic_at_operation_type(
+) {
+    let outcome = lower(
+        "TYPE Color : (Red, Green); END_TYPE
+         PROGRAM main VAR g : BOOL; w : WORD; t : TIME; d : DATE; c : Color; END_VAR
+            w := SEL(g, w, w);
+            t := SEL(g, t, t);
+            d := MOVE(d);
+            c := MUX(1, c, c);
+         END_PROGRAM",
+        "main",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            "assign v0^.f1 (truncate 16 (call sel_u32 i32u (read bool v0^.f0) (read i32u v0^.f1) \
+             (read i32u v0^.f1)))",
+            "assign v0^.f2 (call sel_i32 i32s (read bool v0^.f0) (read i32s v0^.f2) \
+             (read i32s v0^.f2))",
+            "assign v0^.f3 (read i32u v0^.f3)",
+            "assign v0^.f4 (call mux_i32 i32s (const i32s 1) (read i32s v0^.f4) \
+             (read i32s v0^.f4))",
+        ]
+    );
+}
+
+/// REQ-LOW-lowering-147: `MIN`, `MAX` and `LIMIT` of a bit string, a time or
+/// a date are the intrinsic at the type it is operated at, as of a number: a
+/// `WORD` and a `DATE` at the unsigned 32-bit integer and a `TIME` at the
+/// signed one, folded from the left past two inputs.
+#[test]
+fn lower_statement_when_min_max_or_limit_of_bit_string_or_temporal_then_intrinsic_at_operation_type(
+) {
+    let outcome = lower(
+        "PROGRAM main VAR w : WORD; t : TIME; d : DATE; END_VAR
+            w := MAX(w, w);
+            t := MIN(t, t, T#1s);
+            d := LIMIT(d, d, d);
+         END_PROGRAM",
+        "main",
+    );
+    let (w, t, d) = (
+        "(read i32u v0^.f0)",
+        "(read i32s v0^.f1)",
+        "(read i32u v0^.f2)",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            format!("assign v0^.f0 (truncate 16 (call max_u32 i32u {w} {w}))"),
+            format!(
+                "assign v0^.f1 (call min_i32 i32s (call min_i32 i32s {t} {t}) (const i32s 1000))"
+            ),
+            format!("assign v0^.f2 (call limit_u32 i32u {d} {d} {d})"),
+        ]
+    );
+}
+
+/// REQ-LOW-lowering-207: `MIN`, `MAX` and `LIMIT` of `BOOL`s are their inputs
+/// joined from the left by `AND` and `OR`, as `FALSE` is less than `TRUE`:
+/// `MIN` the `AND` of every input, `MAX` the `OR`, and `LIMIT(MN, IN, MX)`
+/// `(MN OR IN) AND MX`. No `Intrinsic` is called.
+#[test]
+fn lower_statement_when_min_max_or_limit_of_bools_then_and_or_folded_from_the_left() {
+    let outcome = lower(
+        "PROGRAM main VAR a : BOOL; b : BOOL; c : BOOL; END_VAR
+            a := MIN(a, b, c);
+            a := MAX(a, b);
+            a := LIMIT(a, b, TRUE);
+         END_PROGRAM",
+        "main",
+    );
+    let (a, b, c) = (
+        "(read bool v0^.f0)",
+        "(read bool v0^.f1)",
+        "(read bool v0^.f2)",
+    );
+    assert_eq!(
+        outcome.statements,
+        [
+            format!("assign v0^.f0 (bool_and bool (bool_and bool {a} {b}) {c})"),
+            format!("assign v0^.f0 (bool_or bool {a} {b})"),
+            format!("assign v0^.f0 (bool_and bool (bool_or bool {a} {b}) (const bool true))"),
+        ]
+    );
+}
+
+/// REQ-LOW-lowering-203: `MOVE` of a string, a structure or an array is its
+/// operand, through any number of `MOVE`s, where it is assigned, passed to a
+/// function and stored in a function block input.
+#[test]
+fn lower_statement_when_move_of_string_or_aggregate_then_same_as_operand() {
+    let pairs = [
+        ("s := MOVE(t);", "s := t;"),
+        ("s := MOVE(MOVE(t));", "s := t;"),
+        ("s := CONCAT(MOVE(t), t);", "s := CONCAT(t, t);"),
+        ("p := MOVE(q);", "p := q;"),
+        ("a := MOVE(b);", "a := b;"),
+        ("n := width(MOVE(q));", "n := width(q);"),
+        ("keep(v := MOVE(q));", "keep(v := q);"),
+    ];
+    for (form, operand) in pairs {
+        let outcome = lower(
+            &format!(
+                "TYPE Point : STRUCT x : DINT; y : DINT; END_STRUCT; END_TYPE
+                 FUNCTION width : DINT VAR_INPUT v : Point; END_VAR width := v.x; END_FUNCTION
+                 FUNCTION_BLOCK Keep VAR_INPUT v : Point; END_VAR END_FUNCTION_BLOCK
+                 PROGRAM main VAR s : STRING; t : STRING; p : Point; q : Point;
+                     a : ARRAY[1..2] OF DINT; b : ARRAY[1..2] OF DINT; n : DINT; keep : Keep;
+                     END_VAR
+                    {form}
+                    {operand}
+                 END_PROGRAM"
+            ),
+            "main",
+        );
+        assert_ne!(outcome.statements[0], "unsupported", "{form}");
+        assert_eq!(outcome.statements[0], outcome.statements[1], "{form}");
+    }
 }

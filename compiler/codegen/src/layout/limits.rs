@@ -11,7 +11,7 @@ use ironplc_ir::lowered::{TypeId, TypeKind, TypeTable};
 use ironplc_ir::SourceSpan;
 use ironplc_ir::{Diagnostic, Label};
 
-use super::declarations::{copy_slots, frame, globals, instance_type, Pous};
+use super::declarations::{block_frame, copy_slots, frame, globals, instance_type, Pous};
 use super::region::{elements, slots};
 use crate::compile::MAX_DATA_REGION_SLOTS;
 
@@ -63,9 +63,9 @@ pub(super) fn check(lowering: &Program, pous: &Pous) -> Option<Result<(), Diagno
             .with_context("fields", &fields.len().to_string())));
         }
         declared.extend(
-            fields
-                .iter()
-                .map(|(_, field)| (field.ty, field.name.span())),
+            block_frame(lowering, *block)?
+                .into_iter()
+                .map(|(name, ty, _)| (ty, name.span())),
         );
     }
     Some(

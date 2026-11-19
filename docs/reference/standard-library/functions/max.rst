@@ -2,7 +2,7 @@
 MAX
 ===
 
-Returns the larger of two inputs.
+Returns the largest of two or more inputs.
 
 Signature
 ---------
@@ -17,15 +17,15 @@ Signature
 
 .. code-block:: text
 
-   FUNCTION MAX : ANY
+   FUNCTION MAX : ANY_ELEMENTARY
      VAR_INPUT
-       IN1 : ANY;
-       IN2 : ANY;
+       IN1 : ANY_ELEMENTARY;
+       IN2 : ANY_ELEMENTARY;
+       (* ... INn ... *)
      END_VAR
    END_FUNCTION
 
-``MAX`` accepts ``SINT``, ``INT``, ``DINT``, ``LINT``, ``USINT``,
-``UINT``, ``UDINT``, ``ULINT``, ``REAL``, ``LREAL``.
+.. include:: ../../../includes/ordered-selection-input-types.rst
 
 .. include:: ../../../includes/widest-input-return-type.rst
 
@@ -40,11 +40,15 @@ Signature
      - Type
      - Description
    * - ``IN1``
-     - ``ANY_MAGNITUDE``
+     - ``ANY_ELEMENTARY``
      - The first value to compare.
    * - ``IN2``
-     - ``ANY_MAGNITUDE``
+     - ``ANY_ELEMENTARY``
      - The second value to compare.
+   * - ``IN3``, ..., ``INn``
+     - ``ANY_ELEMENTARY``
+     - Further values to compare; the function is extensible, so any number
+       of inputs may follow ``IN2``.
 
 .. rubric:: Outputs
 
@@ -57,8 +61,8 @@ Signature
      - Type
      - Description
    * - Return value
-     - ``ANY_MAGNITUDE``
-     - The larger of IN1 and IN2. If both inputs are equal, returns that value.
+     - ``ANY_ELEMENTARY``
+     - The largest of the inputs. If inputs are equal, returns that value.
 
 Description
 -----------
@@ -74,6 +78,13 @@ Example
 
    result := MAX(10, 20);    (* result = 20 *)
    result := MAX(-5, 3);     (* result = 3 *)
+
+A duration that is never negative:
+
+.. playground-with-program::
+   :vars: elapsed : TIME;
+
+   elapsed := MAX(T#-1s, T#0s);    (* elapsed = T#0s *)
 
 See Also
 --------

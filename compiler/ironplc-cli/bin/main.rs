@@ -161,7 +161,9 @@ struct FileArgs {
     #[arg(long)]
     allow_adr: bool,
 
-    /// Allow the Beckhoff TwinCAT/CODESYS `PERSISTENT` variable qualifier.
+    /// Allow the `PERSISTENT` variable qualifier, alone or combined with
+    /// `RETAIN` in either order, on `VAR`, `VAR_GLOBAL`, `VAR_INPUT` and
+    /// `VAR_OUTPUT` blocks.
     /// This is an extension, not part of the IEC 61131-3 standard; the
     /// `twincat` and `codesys` dialects enable it.
     #[arg(long)]
@@ -249,17 +251,52 @@ struct FileArgs {
     #[arg(long)]
     allow_constant_initializer_expressions: bool,
 
-    /// Allow hex/binary/octal bit-string literals (e.g. 16#D012, 2#1010) as
-    /// CASE labels. This is an extension not part of the IEC 61131-3
-    /// standard.
+    /// Allow hex/binary/octal literals (e.g. 16#D012, 2#1010) as CASE labels
+    /// and as the bounds of a CASE subrange label. This is an extension not
+    /// part of the IEC 61131-3 standard.
     #[arg(long)]
-    allow_bit_string_case_labels: bool,
+    allow_radix_case_labels: bool,
 
     /// Allow the STRING(n)/WSTRING(n) parenthesis length delimiter in addition
     /// to the standard STRING[n]/WSTRING[n] brackets. This is a dialect
     /// extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_paren_string_length: bool,
+
+    /// Allow hex/binary/octal literals (e.g. 16#FF, 2#1010) as the bounds
+    /// of a subrange type or an array dimension. This is an extension not
+    /// part of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_radix_subrange_bounds: bool,
+
+    /// Allow RETURN(condition), a RETURN that happens only when the BOOL
+    /// condition is TRUE. This is an extension not part of the IEC 61131-3
+    /// standard.
+    #[arg(long)]
+    allow_conditional_return: bool,
+    /// Allow a semicolon after a PROGRAM, FUNCTION, FUNCTION_BLOCK or
+    /// METHOD header (e.g. `FUNCTION_BLOCK FB EXTENDS FB_Base;`). This is a
+    /// dialect extension not part of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_pou_header_semicolon: bool,
+
+    /// Allow a call argument with no value (`b :=,` or `Error=> ,`), which is
+    /// the same as leaving the argument out. This is an extension not part of
+    /// the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_omitted_call_argument: bool,
+
+    /// Allow a trailing comma before the closing parenthesis of a call's
+    /// argument list. This is an extension not part of the IEC 61131-3
+    /// standard.
+    #[arg(long)]
+    allow_trailing_call_comma: bool,
+
+    /// Allow `Type.value` as the spelling of a qualified enumerated value,
+    /// besides the standard `Type#value`. This is an extension not part of the
+    /// IEC 61131-3 standard.
+    #[arg(long)]
+    allow_dotted_enum_value: bool,
 
     /// Allow a general (non-constant) expression as the value in a
     /// structured/call-style initializer's `name := value` pairs (e.g.
@@ -352,8 +389,14 @@ impl FileArgs {
         options.allow_mixed_located_var_declarations |= self.allow_mixed_located_var_declarations;
         options.allow_constant_initializer_expressions |=
             self.allow_constant_initializer_expressions;
-        options.allow_bit_string_case_labels |= self.allow_bit_string_case_labels;
+        options.allow_radix_case_labels |= self.allow_radix_case_labels;
         options.allow_paren_string_length |= self.allow_paren_string_length;
+        options.allow_radix_subrange_bounds |= self.allow_radix_subrange_bounds;
+        options.allow_conditional_return |= self.allow_conditional_return;
+        options.allow_pou_header_semicolon |= self.allow_pou_header_semicolon;
+        options.allow_omitted_call_argument |= self.allow_omitted_call_argument;
+        options.allow_trailing_call_comma |= self.allow_trailing_call_comma;
+        options.allow_dotted_enum_value |= self.allow_dotted_enum_value;
         options.allow_struct_initializer_expressions |= self.allow_struct_initializer_expressions;
         options.allow_fb_inheritance |= self.allow_fb_inheritance;
         options.allow_enum_explicit_values |= self.allow_enum_explicit_values;

@@ -61,7 +61,7 @@ impl Lowering<'_> {
                 ParamAssignmentKind::Output(_) => continue,
             };
             let field = self.block_field(&instance, &input.name, Section::Input)?;
-            stmts.push(self.store_at(frame, field, &input.expr, span.clone())?);
+            stmts.extend(self.store_at(frame, field, &input.expr, span.clone())?);
         }
         stmts.push(self.program.fb_call(instance.clone(), span.clone())?);
         stmts.extend(self.outputs(frame, CallOutputs::Instance(instance), &call.params, &span)?);
@@ -92,7 +92,7 @@ impl Lowering<'_> {
                     "Output of a call the analyzer did not bind",
                 ))
             })?;
-            stmts.push(self.store(&storing, &output.tgt, false, value, span.clone())?);
+            stmts.extend(self.store(&storing, &output.tgt, false, value, span.clone())?);
         }
         Ok(stmts)
     }

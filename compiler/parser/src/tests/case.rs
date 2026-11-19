@@ -90,8 +90,8 @@ END_FUNCTION_BLOCK";
 // Hex/binary/octal bit-string literals as CASE labels. Parsing is
 // dialect-agnostic: the parser always produces a
 // CaseSelectionKind::BitStringLiteral for these; the
-// --allow-bit-string-case-labels flag is enforced later, by the
-// analyzer (see rule_case_bit_string_label).
+// --allow-radix-case-labels flag is enforced later, by the
+// analyzer (see rule_case_radix_label).
 // -----------------------------------------------------------------
 
 #[test]

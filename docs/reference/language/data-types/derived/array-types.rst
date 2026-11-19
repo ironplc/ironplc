@@ -48,6 +48,10 @@ Each subscript is an integer. A ``BOOL`` subscript is error
 subscript such as ``values[1.5]`` is error
 :doc:`P4094 </reference/compiler/problems/P4094>`.
 
+Only an array can be subscripted. A subscript on anything else, such as a
+``DINT``, a ``STRING`` or a structure, is error
+:doc:`P4097 </reference/compiler/problems/P4097>`.
+
 Arrays of Arrays
 ----------------
 
@@ -77,6 +81,41 @@ subscript for each dimension:
 ``rows[2, 3]`` and ``matrix[2][3]`` give the wrong number of subscripts for
 their arrays, which is error :doc:`P4085 </reference/compiler/problems/P4085>`.
 
+Initial Values
+--------------
+
+An array takes its initial values as a list in brackets. The list gives the
+element values in order, and for a multi-dimensional array it gives them row
+by row. A count before a value in parentheses repeats the value: ``3(0)``
+gives three zeros. The list may give fewer values than the array has
+elements. Each remaining element starts at its type's default value.
+
+The list follows the array's type, whether the type is an ``ARRAY`` written in
+place or the name of an array type. The declaration of an array type and a
+structure field of an array type take a list the same way.
+
+.. playground::
+
+   TYPE
+       Triple : ARRAY [1..3] OF DINT;
+   END_TYPE
+
+   PROGRAM main
+       VAR
+           limits : ARRAY [1..3] OF DINT := [10, 20, 30];
+           offsets : Triple := [2(0), 5];
+           grid : ARRAY [1..2, 1..2] OF INT := [11, 12, 21, 22];
+           total : DINT;
+       END_VAR
+
+       total := limits[2] + offsets[3] + grid[2, 1];  (* 20 + 5 + 21 *)
+   END_PROGRAM
+
+More values than the array has elements is error
+:doc:`P4077 </reference/compiler/problems/P4077>`. A list after the name of a
+type that is not an array, such as a structure, is error
+:doc:`P4022 </reference/compiler/problems/P4022>`.
+
 Constant Bounds (Language Extension)
 ------------------------------------
 
@@ -105,6 +144,23 @@ flag. The constant must be declared in a
    PROGRAM main
      VAR
        instance : fb1;
+     END_VAR
+   END_PROGRAM
+
+Radix Bounds (Language Extension)
+---------------------------------
+
+.. include:: ../../../../includes/requires-dialect-extension.rst
+
+With the ``--allow-radix-subrange-bounds`` flag, a bound can be written in
+hex, binary, or octal. Without the flag, such a bound is reported as
+:doc:`P4096 </reference/compiler/problems/P4096>`.
+
+.. code-block::
+
+   PROGRAM main
+     VAR
+       nibbles : ARRAY[16#0..16#F] OF BYTE;
      END_VAR
    END_PROGRAM
 

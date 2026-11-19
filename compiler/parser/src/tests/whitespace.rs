@@ -243,6 +243,7 @@ END_CONFIGURATION"
     in_program,
     CompilerOptions::default
 )]
+#[case::conditional_return("RETURN·(·r·)·;", in_program, opts_with_conditional_return)]
 #[case::for_statement(
     "FOR v·:=·0· TO 3· DO b := 1;· END_FOR;",
     in_program,
@@ -258,6 +259,21 @@ END_CONFIGURATION"
     verbatim,
     CompilerOptions::default
 )]
+#[case::var_declaration_inline_subrange(
+    "PROGRAM main VAR x·:·INT·(·0·..·15·)·:=·3·; END_VAR x := 2; END_PROGRAM",
+    verbatim,
+    CompilerOptions::default
+)]
+#[case::global_declaration_inline_subrange(
+    "CONFIGURATION config VAR_GLOBAL g·:·INT·(·0·..·15·)·:=·3·; END_VAR RESOURCE res ON PLC PROGRAM p : main; END_RESOURCE END_CONFIGURATION",
+    verbatim,
+    CompilerOptions::default
+)]
+#[case::external_declaration_inline_subrange(
+    "PROGRAM main VAR_EXTERNAL g·:·INT·(·0·..·15·)·; END_VAR g := 2; END_PROGRAM",
+    verbatim,
+    CompilerOptions::default
+)]
 #[case::var_declaration_named_constant(
     "PROGRAM main VAR x·:·INT·:=·C·; END_VAR x := 2; END_PROGRAM",
     verbatim,
@@ -270,6 +286,11 @@ END_CONFIGURATION"
 )]
 #[case::type_default_named_constant(
     "TYPE A : INT·:=·C; END_TYPE",
+    verbatim,
+    CompilerOptions::default
+)]
+#[case::var_declaration_named_array_initializer(
+    "TYPE Triple : ARRAY[1..3] OF DINT; END_TYPE PROGRAM main VAR x·:·Triple·:=·[1, 2]·; END_VAR x[1] := 2; END_PROGRAM",
     verbatim,
     CompilerOptions::default
 )]
@@ -341,6 +362,54 @@ END_CONFIGURATION"
 #[case::step_association(
     "INITIAL_STEP Start: END_STEP STEP Idle·:·DoIt(N)·;·END_STEP",
     in_sfc,
+    CompilerOptions::default
+)]
+// ---------------------------------------------------------------------
+// Issue #1913: a located `VAR_GLOBAL` declaration was a syntax error. The
+// gap between the name and `AT` is required, not optional, so it is not
+// marked; the gaps after it are.
+// ---------------------------------------------------------------------
+#[case::global_var_located(
+    "CONFIGURATION config VAR_GLOBAL lamp AT·%QX0.0·:·BOOL·:=·TRUE·; END_VAR RESOURCE r1 ON PLC PROGRAM a : p; END_RESOURCE END_CONFIGURATION",
+    verbatim,
+    CompilerOptions::default
+)]
+// ---------------------------------------------------------------------
+// The `;` after a POU header (`--allow-pou-header-semicolon`), on each side
+// of the `;` and inside the VAR lookahead.
+// ---------------------------------------------------------------------
+#[case::program_header_semicolon(
+    "PROGRAM main·;·VAR v : INT; END_VAR v := 1; END_PROGRAM",
+    verbatim,
+    opts_with_pou_header_semicolon
+)]
+#[case::function_header_semicolon(
+    "FUNCTION F : INT·;·VAR_INPUT a : INT; END_VAR F := a; END_FUNCTION",
+    verbatim,
+    opts_with_pou_header_semicolon
+)]
+#[case::function_block_header_semicolon(
+    "FUNCTION_BLOCK FB_B END_FUNCTION_BLOCK FUNCTION_BLOCK FB EXTENDS FB_B·;·VAR_INPUT a : INT; END_VAR END_FUNCTION_BLOCK",
+    verbatim,
+    opts_with_pou_header_semicolon
+)]
+#[case::method_header_semicolon(
+    "FUNCTION_BLOCK FB METHOD M : INT·;·VAR_INPUT a : INT; END_VAR M := a; END_METHOD END_FUNCTION_BLOCK",
+    verbatim,
+    opts_with_pou_header_semicolon
+)]
+// ---------------------------------------------------------------------
+// An enumerated value written `Type.value` (`--allow-dotted-enum-value`),
+// on each side of the `.`.
+// ---------------------------------------------------------------------
+#[case::dotted_enumerated_value_initial_value(
+    "TYPE E : (a, b); END_TYPE PROGRAM main VAR e : E := E·.·b; END_VAR END_PROGRAM",
+    verbatim,
+    CompilerOptions::default
+)]
+#[case::dotted_enumerated_value_case_label(
+    "TYPE E : (a, b); END_TYPE PROGRAM main VAR e : E; x : INT; END_VAR CASE e OF E·.·b: x := 1; END_CASE; END_PROGRAM",
+    verbatim,
     CompilerOptions::default
 )]
 fn parse_when_gap_filled_then_same_ast(

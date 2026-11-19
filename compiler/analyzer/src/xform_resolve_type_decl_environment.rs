@@ -297,7 +297,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 };
                 let default = node.spec_init.default.as_ref().map(|value| &value.value);
                 let attributes = enumeration::alias_of(base, default);
-                self.insert_type(&node.type_name, attributes);
+                self.insert_alias_with(&node.type_name, base_type_name, attributes);
             }
             SpecificationKind::Inline(spec_values) => {
                 let attributes = enumeration::try_from_values(
@@ -378,6 +378,12 @@ impl Fold<Diagnostic> for TypeEnvironment {
             target_type: Box::new(target_type),
         });
         self.insert_type(&node.type_name, attrs);
+        // The target by id, for a target the representation does not
+        // identify: a reference type (`TYPE RR : REF_TO IntRef`) or one
+        // spelled in place (`TYPE RR : REF_TO REF_TO INT`).
+        if let Some(target) = self.reference_target_id(&node.target) {
+            self.record_declared_reference_target(&node.type_name, target);
+        }
         Ok(node)
     }
 

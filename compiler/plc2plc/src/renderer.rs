@@ -66,16 +66,6 @@ struct LibraryRenderer<'a> {
     type_name: Option<TypeNamer<'a>>,
 }
 
-/// The spelling of a character string: its characters, `$`-escaped where
-/// they cannot appear as themselves, inside the delimiter `width` selects.
-fn character_string_text(width: &StringType, value: &[char]) -> String {
-    let delimiter = width.delimiter();
-    let mut val = String::from(delimiter);
-    val.push_str(&ironplc_dsl::string_escape::encode(value, width));
-    val.push(delimiter);
-    val
-}
-
 impl<'a> LibraryRenderer<'a> {
     fn new(type_name: Option<TypeNamer<'a>>) -> Self {
         Self {
@@ -187,6 +177,68 @@ impl<'a> LibraryRenderer<'a> {
                     self.write_ws("]");
                 }
             }
+        }
+        Ok(())
+    }
+
+    fn write_declaration_qualifier(&mut self, qualifier: &DeclarationQualifier) {
+        match qualifier {
+            DeclarationQualifier::Unspecified => {}
+            DeclarationQualifier::Constant => self.write_ws("CONSTANT"),
+            DeclarationQualifier::Retain => self.write_ws("RETAIN"),
+            DeclarationQualifier::NonRetain => self.write_ws("NON_RETAIN"),
+            DeclarationQualifier::Persistent => self.write_ws("PERSISTENT"),
+            DeclarationQualifier::RetainPersistent => {
+                self.write_ws("RETAIN");
+                self.write_ws("PERSISTENT");
+            }
+        }
+    }
+
+    /// Writes one `name : initializer;` line, without the enclosing block.
+    fn write_var_decl_line(&mut self, node: &VarDecl) -> Result<(), Diagnostic> {
+        match &node.identifier {
+            VariableIdentifier::Symbol(id) => {
+                self.visit_id(id)?;
+            }
+            VariableIdentifier::Direct(direct) => {
+                self.visit_direct_variable_identifier(direct)?;
+            }
+        }
+
+        self.write_ws(":");
+        self.visit_initial_value_assignment_kind(&node.initializer)?;
+
+        self.write(";");
+        self.newline();
+        Ok(())
+    }
+
+    /// Writes the `VAR_GLOBAL` block of a `CONFIGURATION` or a `RESOURCE`.
+    ///
+    /// The grammar allows one block there, and the parser copies the block's
+    /// qualifier onto each declaration, so parsed text renders as one block.
+    /// Declarations from PLCopen XML can mix qualifiers, which one block
+    /// cannot say: each run of a qualifier gets its own block rather than a
+    /// qualifier it did not have. Writes nothing when there are none.
+    fn write_global_var_blocks(&mut self, vars: &[VarDecl]) -> Result<(), Diagnostic> {
+        for block in vars.chunk_by(|a, b| a.qualifier == b.qualifier) {
+            let Some(first) = block.first() else {
+                continue;
+            };
+
+            self.write_ws("VAR_GLOBAL");
+            self.write_declaration_qualifier(&first.qualifier);
+            self.newline();
+
+            self.indent();
+            for var in block {
+                self.write_var_decl_line(var)?;
+            }
+            self.outdent();
+
+            self.write_ws("END_VAR");
+            self.newline();
         }
         Ok(())
     }
@@ -357,20 +409,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
     }
 
     fn visit_real_literal(&mut self, node: &RealLiteral) -> Result<Self::Value, Diagnostic> {
-        let mut val = String::new();
-        if let Some(data_type) = &node.data_type {
-            val.push_str(data_type.as_id().original());
-            val.push('#');
-        }
-        // A real literal always carries a decimal point; `f64::to_string`
-        // drops it for whole values.
-        let mut value = node.value.to_string();
-        if node.value.is_finite() && !value.contains(['.', 'e', 'E']) {
-            value.push_str(".0");
-        }
-        val.push_str(value.as_str());
-
-        self.write_ws(val.as_str());
+        self.write_ws(&node.to_string());
         Ok(())
     }
 
@@ -383,34 +422,26 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         Ok(())
     }
 
+    // Each literal's `Display` is its source spelling: `$`-escaped strings in
+    // the delimiter of their width, and every temporal literal with the prefix
+    // of the type it names. Writing the 32-bit prefix for all of them narrowed
+    // the type on round trip -- `LTIME#30d` came back as `TIME#2592000000ms`,
+    // which is a different type and, since that count does not fit a `TIME`,
+    // no longer compiles.
+
     fn visit_character_string_literal(
         &mut self,
         node: &CharacterStringLiteral,
     ) -> Result<Self::Value, Diagnostic> {
-        // Single quotes delimit a STRING, double quotes a WSTRING, per
-        // IEC 61131-3 section 2.2.2. `node.value` holds the decoded
-        // characters, so they are escaped on the way out.
-        self.write_ws(&character_string_text(&node.width, &node.value));
+        self.write_ws(&node.to_string());
         Ok(())
     }
-
-    // Every temporal literal is written with the prefix of the type it names,
-    // taken from the literal itself. Writing the 32-bit prefix for all of them
-    // narrowed the type on round trip -- `LTIME#30d` came back as
-    // `TIME#2592000000ms`, which is a different type and, since that count does
-    // not fit a `TIME`, no longer compiles.
 
     fn visit_duration_literal(
         &mut self,
         node: &DurationLiteral,
     ) -> Result<Self::Value, Diagnostic> {
-        // Always write out as milliseconds. The largest unit is allowed to be "out of range"
-        let val = format!(
-            "{}#{}ms",
-            node.type_name(),
-            node.interval.whole_milliseconds()
-        );
-        self.write_ws(val.as_str());
+        self.write_ws(&node.to_string());
         Ok(())
     }
 
@@ -418,13 +449,12 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         &mut self,
         node: &TimeOfDayLiteral,
     ) -> Result<Self::Value, Diagnostic> {
-        self.write_ws(format!("{}#{}", node.type_name(), node.daytime_text()).as_str());
+        self.write_ws(&node.to_string());
         Ok(())
     }
 
     fn visit_date_literal(&mut self, node: &DateLiteral) -> Result<Self::Value, Diagnostic> {
-        let (year, month, day) = node.ymd();
-        self.write_ws(format!("{}#{year:0>4}-{month:0>2}-{day:0>2}", node.type_name()).as_str());
+        self.write_ws(&node.to_string());
         Ok(())
     }
 
@@ -432,15 +462,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         &mut self,
         node: &DateAndTimeLiteral,
     ) -> Result<Self::Value, Diagnostic> {
-        let (year, month, day) = node.ymd();
-        self.write_ws(
-            format!(
-                "{}#{year:0>4}-{month:0>2}-{day:0>2}-{}",
-                node.type_name(),
-                node.daytime_text()
-            )
-            .as_str(),
-        );
+        self.write_ws(&node.to_string());
         Ok(())
     }
 
@@ -448,14 +470,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         &mut self,
         node: &BitStringLiteral,
     ) -> Result<Self::Value, Diagnostic> {
-        let mut s = String::new();
-        if let Some(data_type) = &node.data_type {
-            s.push_str(data_type.as_id().to_string().as_str());
-            s.push('#');
-        }
-        s.push_str(&node.value.value.to_string());
-
-        self.write_ws(&s);
+        self.write_ws(&node.to_string());
         Ok(())
     }
 
@@ -553,7 +568,9 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         match &node.type_name {
             Some(type_name) => {
                 self.write_ws(type_name.id.original().as_str());
-                self.write("#");
+                // TwinCAT rejects `#` between an enumeration and its value, so the
+                // spelling the source used is the one written back.
+                self.write(if node.dotted { "." } else { "#" });
                 self.write(node.value.original().as_str());
             }
             None => self.visit_id(&node.value)?,
@@ -665,6 +682,10 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
                 self.write_ws(":=");
                 self.visit_id(value)?;
             }
+            Some(LateResolvedInitialValue::Dotted(value)) => {
+                self.write_ws(":=");
+                self.visit_enumerated_value(value)?;
+            }
         }
 
         Ok(())
@@ -712,7 +733,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
 
         if let Some(init) = &node.init {
             self.write_ws(":=");
-            self.write(&character_string_text(&init.width, &init.value));
+            self.write(&init.to_string());
         }
 
         Ok(())
@@ -817,32 +838,11 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
             VariableType::Access => "VAR_ACCESS",
         };
         self.write_ws(var_type);
-
-        match node.qualifier {
-            DeclarationQualifier::Unspecified => {}
-            DeclarationQualifier::Constant => self.write_ws("CONSTANT"),
-            DeclarationQualifier::Retain => self.write_ws("RETAIN"),
-            DeclarationQualifier::NonRetain => self.write_ws("NON_RETAIN"),
-            DeclarationQualifier::Persistent => self.write_ws("PERSISTENT"),
-        }
-
+        self.write_declaration_qualifier(&node.qualifier);
         self.newline();
 
         self.indent();
-        match &node.identifier {
-            VariableIdentifier::Symbol(id) => {
-                self.visit_id(id)?;
-            }
-            VariableIdentifier::Direct(direct) => {
-                self.visit_direct_variable_identifier(direct)?;
-            }
-        }
-
-        self.write_ws(":");
-        self.visit_initial_value_assignment_kind(&node.initializer)?;
-
-        self.write(";");
-        self.newline();
+        self.write_var_decl_line(node)?;
         self.outdent();
 
         self.write_ws("END_VAR");
@@ -855,15 +855,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         self.newline();
 
         self.write_ws("VAR_INPUT");
-
-        match node.qualifier {
-            DeclarationQualifier::Unspecified => {}
-            DeclarationQualifier::Constant => self.write_ws("CONSTANT"),
-            DeclarationQualifier::Retain => self.write_ws("RETAIN"),
-            DeclarationQualifier::NonRetain => self.write_ws("NON_RETAIN"),
-            DeclarationQualifier::Persistent => self.write_ws("PERSISTENT"),
-        }
-
+        self.write_declaration_qualifier(&node.qualifier);
         self.newline();
 
         self.indent();
@@ -892,35 +884,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         &mut self,
         node: &AddressAssignment,
     ) -> Result<Self::Value, Diagnostic> {
-        let mut address = String::from("%");
-
-        let loc = match &node.location {
-            LocationPrefix::I => 'I',
-            LocationPrefix::Q => 'Q',
-            LocationPrefix::M => 'M',
-        };
-        address.push(loc);
-
-        let size = match &node.size {
-            SizePrefix::Unspecified => "*",
-            SizePrefix::Nil => "",
-            SizePrefix::X => "X",
-            SizePrefix::B => "B",
-            SizePrefix::W => "W",
-            SizePrefix::D => "D",
-            SizePrefix::L => "L",
-        };
-        address.push_str(size);
-
-        let location: String = node
-            .address
-            .iter()
-            .map(|&id| id.to_string() + ".")
-            .collect();
-        address.push_str(location.trim_end_matches('.'));
-
-        self.write_ws(address.as_str());
-
+        self.write_ws(&node.to_string());
         Ok(())
     }
 
@@ -976,7 +940,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
 
         if let Some(init) = &node.initial_value {
             self.write_ws(":=");
-            self.write(&character_string_text(&init.width, &init.value));
+            self.write(&init.to_string());
         }
 
         Ok(())
@@ -1447,16 +1411,16 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         self.newline();
 
         self.indent();
+        // The grammar puts the resource's globals before its tasks and
+        // programs.
+        self.write_global_var_blocks(&node.global_vars)?;
+
         for task in node.tasks.iter() {
             self.visit_task_configuration(task)?;
         }
 
         for program in node.programs.iter() {
             self.visit_program_configuration(program)?;
-        }
-
-        for var in node.global_vars.iter() {
-            self.visit_var_decl(var)?;
         }
 
         self.outdent();
@@ -1482,7 +1446,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
                 // Unreachable via the grammar: `program_configuration()`'s
                 // `storage` is only ever produced from RETAIN/NON_RETAIN.
                 // Exhaustive match still needs an arm.
-                DeclarationQualifier::Persistent => "",
+                DeclarationQualifier::Persistent | DeclarationQualifier::RetainPersistent => "",
             };
             self.write_ws(storage);
         }
@@ -1513,6 +1477,9 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         self.newline();
 
         self.indent();
+        // The grammar puts the configuration's globals before its resources.
+        self.write_global_var_blocks(&node.global_var)?;
+
         for res in node.resource_decl.iter() {
             self.visit_resource_declaration(res)?;
         }
@@ -2061,6 +2028,10 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         match node {
             ReferenceTarget::Named(type_name) => self.visit_type_name(type_name),
             ReferenceTarget::Array(subranges) => self.visit_array_subranges(subranges),
+            ReferenceTarget::Reference(spec) => {
+                self.write_ref_keyword(&spec.syntax);
+                self.visit_reference_target(&spec.target)
+            }
         }
     }
 

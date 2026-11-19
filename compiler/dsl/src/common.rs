@@ -2,8 +2,6 @@
 //!
 //! See section 2.
 use core::str::FromStr;
-use lazy_static::lazy_static;
-use regex::Regex;
 use std::fmt::{self, Display};
 use std::hash::{Hash, Hasher};
 
@@ -19,6 +17,7 @@ use crate::time::*;
 use crate::type_id::TypeId;
 use crate::visitor::Visitor;
 
+pub use crate::direct_address::{AddressAssignment, LocationPrefix, SizePrefix};
 pub use crate::oop::*;
 
 /// Container for elementary constants.
@@ -116,19 +115,15 @@ impl Located for ConstantKind {
 impl fmt::Display for ConstantKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ConstantKind::IntegerLiteral(lit) => write!(f, "{}", lit.value),
-            ConstantKind::RealLiteral(lit) => write!(f, "{}", lit.value),
-            ConstantKind::Boolean(lit) => write!(f, "{}", lit.value),
-            ConstantKind::CharacterString(lit) => {
-                let delimiter = lit.width.delimiter();
-                let text = crate::string_escape::encode(&lit.value, &lit.width);
-                write!(f, "{delimiter}{text}{delimiter}")
-            }
-            ConstantKind::Duration(lit) => write!(f, "{:?}", lit),
-            ConstantKind::TimeOfDay(lit) => write!(f, "{:?}", lit),
-            ConstantKind::Date(lit) => write!(f, "{:?}", lit),
-            ConstantKind::DateAndTime(lit) => write!(f, "{:?}", lit),
-            ConstantKind::BitStringLiteral(lit) => write!(f, "{:?}", lit),
+            ConstantKind::IntegerLiteral(lit) => write!(f, "{lit}"),
+            ConstantKind::RealLiteral(lit) => write!(f, "{lit}"),
+            ConstantKind::Boolean(lit) => write!(f, "{lit}"),
+            ConstantKind::CharacterString(lit) => write!(f, "{lit}"),
+            ConstantKind::Duration(lit) => write!(f, "{lit}"),
+            ConstantKind::TimeOfDay(lit) => write!(f, "{lit}"),
+            ConstantKind::Date(lit) => write!(f, "{lit}"),
+            ConstantKind::DateAndTime(lit) => write!(f, "{lit}"),
+            ConstantKind::BitStringLiteral(lit) => write!(f, "{lit}"),
         }
     }
 }
@@ -593,9 +588,16 @@ impl RealLiteral {
 
 impl fmt::Display for RealLiteral {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.data_type {
-            Some(dt) => write!(f, "{}#{}", dt, self.value),
-            None => write!(f, "{}", self.value),
+        if let Some(dt) = &self.data_type {
+            write!(f, "{dt}#")?;
+        }
+        // A real literal always carries a decimal point; `f64::to_string`
+        // drops it for whole values.
+        let value = self.value.to_string();
+        if self.value.is_finite() && !value.contains(['.', 'e', 'E']) {
+            write!(f, "{value}.0")
+        } else {
+            write!(f, "{value}")
         }
     }
 }
@@ -658,10 +660,12 @@ impl CharacterStringLiteral {
 }
 
 impl fmt::Display for CharacterStringLiteral {
+    /// The literal's spelling: its characters, `$`-escaped where they cannot
+    /// appear as themselves, inside the delimiter its width selects.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s: String = self.value.iter().collect();
         let delimiter = self.width.delimiter();
-        write!(f, "{delimiter}{s}{delimiter}")
+        let text = crate::string_escape::encode(&self.value, &self.width);
+        write!(f, "{delimiter}{text}{delimiter}")
     }
 }
 
@@ -1450,8 +1454,9 @@ impl Located for LateBoundDeclaration {
 
 /// The target of a REF_TO declaration.
 ///
-/// A reference can point to either a named type (e.g., `REF_TO INT`) or an
-/// inline array type (e.g., `REF_TO ARRAY[1..10] OF INT`).
+/// A reference can point to a named type (`REF_TO INT`), an inline array
+/// type (`REF_TO ARRAY[1..10] OF INT`), or a reference type spelled in
+/// place (`REF_TO REF_TO INT`).
 ///
 /// See IEC 61131-3 Edition 3, section 2.3.3.1.
 #[derive(Clone, Debug, PartialEq, Recurse)]
@@ -1460,16 +1465,44 @@ pub enum ReferenceTarget {
     Named(TypeName),
     /// Reference to an inline array type: `REF_TO ARRAY[1..10] OF INT`
     Array(ArraySubranges),
+    /// Reference to a reference type spelled in place: the `REF_TO INT` of
+    /// `REF_TO REF_TO INT`, or the `POINTER TO INT` of
+    /// `POINTER TO POINTER TO INT`.
+    Reference(Box<ReferenceSpec>),
 }
 
 impl ReferenceTarget {
-    /// Returns the type name for named targets, or `None` for inline array targets.
+    /// Returns the type name for named targets, or `None` for inline array
+    /// and reference targets.
     pub fn type_name(&self) -> Option<&TypeName> {
         match self {
             ReferenceTarget::Named(tn) => Some(tn),
-            ReferenceTarget::Array(_) => None,
+            ReferenceTarget::Array(_) | ReferenceTarget::Reference(_) => None,
         }
     }
+
+    /// The named type the target is spelled from: the type itself, the
+    /// element type of an inline array, or the named type a reference
+    /// spelled in place ends in (`INT` for `REF_TO REF_TO INT`).
+    pub fn innermost_type_name(&self) -> TypeName {
+        match self {
+            ReferenceTarget::Named(tn) => tn.clone(),
+            ReferenceTarget::Array(subranges) => subranges.type_name.to_type_name(),
+            ReferenceTarget::Reference(spec) => spec.target.innermost_type_name(),
+        }
+    }
+}
+
+/// A reference type spelled in place as what another reference refers to:
+/// the `ref_spec` of IEC 61131-3 Edition 3, section 2.3.3.1, with the
+/// keyword that spelled it. `REF_TO REF_TO INT` is a `ReferenceTarget`
+/// holding the spec `REF_TO INT`.
+#[derive(Clone, Debug, PartialEq, Recurse)]
+pub struct ReferenceSpec {
+    /// The surface keyword that produced this level.
+    #[recurse(ignore)]
+    pub syntax: RefSyntax,
+    pub target: ReferenceTarget,
 }
 
 /// The surface syntax that produced a reference declaration or initializer.
@@ -1557,6 +1590,7 @@ impl EnumeratedSpecificationKind {
             .map(|v| EnumeratedValue {
                 type_name: None,
                 value: Id::from(v),
+                dotted: false,
                 explicit_value: None,
             })
             .collect();
@@ -1613,10 +1647,17 @@ impl HasEnumeratedValues for EnumeratedSpecificationValues {
 /// ambiguous.)
 ///
 /// See section 2.3.3.1.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, Recurse)]
 pub struct EnumeratedValue {
     pub type_name: Option<TypeName>,
     pub value: Id,
+    /// The type name was separated from the value by a period (`Type.value`,
+    /// the TwinCAT/CODESYS spelling) rather than by `#` (`Type#value`). The two
+    /// name the same value; only the rendered text differs. TwinCAT rejects the
+    /// `#` spelling for enumerations, so a rendering must keep the one it was
+    /// given. Not part of equality.
+    #[recurse(ignore)]
+    pub dotted: bool,
     /// Present when this member's value was assigned explicitly
     /// (`member := 5`) in an enum *declaration's* value list -- a
     /// an extension (also standard as of IEC 61131-3:2013).
@@ -1627,11 +1668,20 @@ pub struct EnumeratedValue {
     pub explicit_value: Option<SignedInteger>,
 }
 
+impl PartialEq for EnumeratedValue {
+    fn eq(&self, other: &Self) -> bool {
+        self.type_name == other.type_name
+            && self.value == other.value
+            && self.explicit_value == other.explicit_value
+    }
+}
+
 impl EnumeratedValue {
     pub fn new(value: &str) -> Self {
         EnumeratedValue {
             type_name: None,
             value: Id::from(value),
+            dotted: false,
             explicit_value: None,
         }
     }
@@ -1860,89 +1910,6 @@ pub struct StringDeclaration {
     /// decides), and it keeps its own span so a check on the literal can
     /// point at it.
     pub init: Option<CharacterStringLiteral>,
-}
-
-/// Location prefix for directly represented variables.
-///
-/// See section 2.4.1.1.
-#[derive(Clone, Debug, PartialEq)]
-pub enum LocationPrefix {
-    /// Input location
-    I,
-    /// Output location
-    Q,
-    /// Memory location
-    M,
-}
-
-impl TryFrom<Option<char>> for LocationPrefix {
-    type Error = &'static str;
-
-    fn try_from(value: Option<char>) -> Result<Self, Self::Error> {
-        match value {
-            Some('I') => Ok(LocationPrefix::I),
-            Some('Q') => Ok(LocationPrefix::Q),
-            Some('M') => Ok(LocationPrefix::M),
-            _ => Err("Value must be one of I, Q, M"),
-        }
-    }
-}
-
-impl TryFrom<&str> for LocationPrefix {
-    type Error = &'static str;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        let c = value.chars().nth(0);
-        LocationPrefix::try_from(c)
-    }
-}
-
-/// Size prefix for directly represented variables. Defines how many bits
-/// are associated with the variable.
-///
-/// See section 2.4.1.1.
-#[derive(Clone, Debug, PartialEq)]
-pub enum SizePrefix {
-    /// Unspecified (indicated by asterisk)
-    Unspecified,
-    /// Single bit size
-    Nil,
-    /// Single bit size
-    X,
-    /// 8-bit size
-    B,
-    /// 16-bit size
-    W,
-    /// 32-bit size
-    D,
-    /// 64-bit size
-    L,
-}
-
-impl TryFrom<Option<char>> for SizePrefix {
-    type Error = &'static str;
-
-    fn try_from(value: Option<char>) -> Result<Self, Self::Error> {
-        match value {
-            Some('*') => Ok(SizePrefix::Unspecified),
-            Some('X') => Ok(SizePrefix::X),
-            Some('B') => Ok(SizePrefix::B),
-            Some('W') => Ok(SizePrefix::W),
-            Some('D') => Ok(SizePrefix::D),
-            Some('L') => Ok(SizePrefix::L),
-            None => Ok(SizePrefix::Nil),
-            _ => Err("Value must be one of *, X, B, W, D, L, NIL"),
-        }
-    }
-}
-
-impl TryFrom<&str> for SizePrefix {
-    type Error = &'static str;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        let c = value.chars().nth(0);
-        SizePrefix::try_from(c)
-    }
 }
 
 /// Array specification: either a reference to a named array type
@@ -2183,6 +2150,7 @@ impl VarDecl {
                     initial_value: Some(EnumeratedValue {
                         type_name: None,
                         value: Id::from(initial_value),
+                        dotted: false,
                         explicit_value: None,
                     }),
                 },
@@ -2486,96 +2454,13 @@ pub enum DeclarationQualifier {
     /// Stored so that the value is NOT retained through power loss.
     NonRetain,
     /// Stored so that the value survives a download, reset, or power loss
-    /// (Beckhoff TwinCAT/CODESYS extension, not part of the IEC standard).
+    /// (`--allow-persistent-var` extension, not part of the IEC standard).
     Persistent,
-}
-
-/// Location assignment for a variable.
-///
-/// See section 2.4.3.1.
-#[derive(Clone, PartialEq, Recurse)]
-pub struct AddressAssignment {
-    #[recurse(ignore)]
-    pub location: LocationPrefix,
-    #[recurse(ignore)]
-    pub size: SizePrefix,
-    #[recurse(ignore)]
-    pub address: Vec<u32>,
-    pub position: SourceSpan,
-}
-
-impl AddressAssignment {
-    /// Returns this address with `position` as its source position.
-    ///
-    /// [`AddressAssignment::try_from`] parses the address out of the token
-    /// text alone, which carries no position, so the caller puts the token's
-    /// span back.
-    pub fn with_position(mut self, position: SourceSpan) -> Self {
-        self.position = position;
-        self
-    }
-}
-
-lazy_static! {
-    static ref DIRECT_ADDRESS_UNASSIGNED: Regex = Regex::new(r"%([IQM])\*").unwrap();
-    // Accepts what the `DirectAddress` token accepts, so `[0-9]` rather than
-    // the Unicode-aware `\d`.
-    static ref DIRECT_ADDRESS: Regex =
-        Regex::new(r"%([IQM])([XBWDL])?([0-9](\.[0-9])*)").unwrap();
-}
-
-impl TryFrom<&str> for AddressAssignment {
-    type Error = &'static str;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        if let Some(cap) = DIRECT_ADDRESS_UNASSIGNED.captures(value) {
-            let location_prefix = LocationPrefix::try_from(&cap[1])?;
-            return Ok(AddressAssignment {
-                location: location_prefix,
-                size: SizePrefix::Unspecified,
-                address: vec![],
-                position: SourceSpan::default(),
-            });
-        }
-
-        if let Some(cap) = DIRECT_ADDRESS.captures(value) {
-            let location_prefix = LocationPrefix::try_from(&cap[1])?;
-            // The size letter is optional (`%I1`); without it the size is `Nil`.
-            let size_prefix = SizePrefix::try_from(cap.get(2).map_or("", |m| m.as_str()))?;
-            let pos = cap[3]
-                .split('.')
-                .map(|v| v.parse::<u32>())
-                .collect::<Result<Vec<u32>, _>>()
-                .map_err(|_| "Address field is not a number")?;
-
-            return Ok(AddressAssignment {
-                location: location_prefix,
-                size: size_prefix,
-                address: pos,
-                position: SourceSpan::default(),
-            });
-        }
-
-        Err("Value not convertible to direct variable")
-    }
-}
-
-impl fmt::Debug for AddressAssignment {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("AddressAssignment")
-            .field("location", &self.location)
-            .field("size", &self.size)
-            .finish()
-    }
-}
-
-impl fmt::Display for AddressAssignment {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("AddressAssignment")
-            .field("location", &self.location)
-            .field("size", &self.size)
-            .finish()
-    }
+    /// `RETAIN PERSISTENT` or `PERSISTENT RETAIN`: both keywords on one
+    /// block (`--allow-persistent-var` extension). The two orders mean the
+    /// same thing, and CODESYS documents the combination as having the same
+    /// effect as `PERSISTENT` alone.
+    RetainPersistent,
 }
 
 // Container for variable specifications.
@@ -2665,6 +2550,10 @@ pub enum LateResolvedInitialValue {
     /// `Red`: an enumeration's value, or a named constant for any other
     /// type.
     Value(Id),
+    /// `Colors.Red`: an enumeration's value written with its type, or a
+    /// constant reached through a name (`GVL.limit`). TwinCAT allows the
+    /// second for any type, so only the type resolver can tell which this is.
+    Dotted(EnumeratedValue),
 }
 
 impl InitialValueAssignmentKind {
@@ -3331,19 +3220,6 @@ mod tests {
         let span = identifier.span();
         assert_eq!(span.start, 50);
         assert_eq!(span.end, 56);
-    }
-
-    #[test]
-    fn try_from_when_no_size_prefix_then_size_is_nil() {
-        let address = AddressAssignment::try_from("%I1").unwrap();
-        assert_eq!(address.location, LocationPrefix::I);
-        assert_eq!(address.size, SizePrefix::Nil);
-        assert_eq!(address.address, vec![1]);
-    }
-
-    #[test]
-    fn try_from_when_non_ascii_digit_then_err() {
-        assert!(AddressAssignment::try_from("%IX\u{0663}").is_err());
     }
 
     #[test]

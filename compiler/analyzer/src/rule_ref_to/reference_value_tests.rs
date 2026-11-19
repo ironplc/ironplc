@@ -46,7 +46,7 @@ fn apply_when_reference_assigned_where_it_does_not_fit_then_p2032(#[case] body: 
 #[rstest]
 #[case::to_a_reference_to_its_type("ri2 := ri;")]
 #[case::through_a_dereference("i := ri^;")]
-#[case::to_a_field_not_looked_up("h.r := ri;")]
+#[case::to_a_reference_field("h.r := ri;")]
 fn apply_when_reference_assigned_where_it_fits_then_ok(#[case] body: &str) {
     let codes = rule_codes(super::apply, &program(body), &edition3_options());
     assert!(codes.is_empty(), "{codes:?}");

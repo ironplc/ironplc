@@ -12,7 +12,7 @@
 //! (`BYTE`, `WORD`, `DWORD`, `LWORD`) is a pattern rather than a magnitude,
 //! and the standard does not list it; a program that selects on one compiled
 //! before this rule existed, but should not have. The bit-string *label*
-//! extension (`--allow-bit-string-case-labels`) is unaffected: it pairs a
+//! extension (`--allow-radix-case-labels`) is unaffected: it pairs a
 //! radix-prefixed label with an integer selector.
 //!
 //! An untyped literal has no type of its own until the place it is used
@@ -107,7 +107,11 @@ pub fn apply(
 
 /// Returns true if a `CASE` may select on a value of this type: `ANY_INT`,
 /// a subrange of one, or an enumeration.
-fn is_selectable(representation: &SemanticType) -> bool {
+///
+/// `rule_case_label_type` asks the same question to find the selectors
+/// whose labels are integers, so that a selector this rule reports does not
+/// have its labels reported as well.
+pub(crate) fn is_selectable(representation: &SemanticType) -> bool {
     matches!(
         representation,
         SemanticType::Int { .. }
@@ -148,7 +152,7 @@ impl RuleCaseSelectorType<'_> {
             }
             // An untyped integer literal is `ANY_INT`, which a `CASE`
             // selects on; the other categories are not a literal's.
-            ExprType::Literal(_) | ExprType::Null => None,
+            ExprType::Literal(_) | ExprType::Null | ExprType::Error => None,
         }
     }
 }

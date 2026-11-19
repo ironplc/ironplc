@@ -45,7 +45,7 @@ P2032,ReferenceTypeMismatch,Reference type mismatch in assignment
 P2033,ArithmeticOnReference,Arithmetic operations are not allowed on reference types
 P2034,NullRequiresReferenceType,NULL can only be assigned to a REF_TO type
 P2035,OrderingOnReference,Ordering comparison on reference types (only = and <> are allowed)
-P2036,NestedRefToNotSupported,Nested REF_TO (multi-level indirection) is not supported
+P2036,NestedRefToNotSupported,Nested REFERENCE TO (a reference to a reference) is not supported
 P4001,FunctionCallMixedArgTypes,Function call mixes named (formal) and positional (non-format) input arguments
 P4002,FunctionInvocationMissingInput,Function invocation assigns named (formal) input that is not defined
 P4003,FunctionInvocationRequiresFormal,Function invocation requires non-formal inputs but the invocation has formal inputs
@@ -86,7 +86,7 @@ P4037,ConstantInitializerExpressionNotAllowed,Constant expression in VAR initial
 P4038,InitializerNotConstantExpression,Variable initializer expression does not reduce to a constant value
 P4039,ConstantExpressionDivisionByZero,Constant expression divides or takes the modulo of a value by zero
 P4040,ConstantExpressionOverflow,Constant expression result cannot be represented
-P4041,BitStringCaseLabelNotAllowed,Hex/binary/octal bit-string literal as a CASE label requires choosing a dialect or --allow-bit-string-case-labels flag
+P4041,RadixCaseLabelNotAllowed,Hex/binary/octal literal as a CASE label requires choosing a dialect or --allow-radix-case-labels flag
 P4042,ParenStringLengthNotAllowed,STRING(n)/WSTRING(n) parenthesis length delimiter requires choosing a dialect or --allow-paren-string-length flag
 P4043,StructInitializerExpressionNotAllowed,General expression as a struct/FB-instance initializer value requires choosing a dialect or --allow-struct-initializer-expressions flag
 P4044,ExtendsFieldNameDuplicated,Function block field name is already declared in a base function block via EXTENDS
@@ -163,3 +163,13 @@ P4092,EdgeInputNotAllowed,R_EDGE or F_EDGE input is declared by a function or me
 P4093,ForStepZero,FOR step is zero
 P4094,RealLiteralInIntegerPosition,FOR bound or step or array subscript is a real literal rather than an integer
 P4095,KeywordAsNameNotAllowed,Keyword used as a name requires choosing a dialect or --allow-keywords-as-names flag
+P4096,RadixSubrangeBoundNotAllowed,Hex/binary/octal literal as a subrange or array bound requires choosing a dialect or --allow-radix-subrange-bounds flag
+P4097,SubscriptNotArray,Subscripted variable is not an array
+P4098,ConditionalReturnNotAllowed,RETURN(condition) conditional return requires choosing a dialect or --allow-conditional-return flag
+P4099,PersistentVarInFunction,PERSISTENT variable is declared by a function
+P4100,PouHeaderSemicolonNotAllowed,Semicolon after a POU header requires choosing a dialect or --allow-pou-header-semicolon flag
+P2045,EnumValueTypeMismatch,Enumerated value names a type other than the enumeration it is used as
+P4101,CaseLabelTypeMismatch,CASE label is not a value of the selector type
+P4102,OmittedCallArgumentNotAllowed,Call argument with no value requires choosing a dialect or --allow-omitted-call-argument flag
+P4103,TrailingCallCommaNotAllowed,Trailing comma in a call's argument list requires choosing a dialect or --allow-trailing-call-comma flag
+P4104,DottedEnumValueNotAllowed,Type.value enumerated value requires choosing a dialect or --allow-dotted-enum-value flag

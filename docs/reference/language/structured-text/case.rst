@@ -28,8 +28,9 @@ Syntax
 Each ``case_value`` is an integer literal, a subrange (``low .. high``), or an
 enumerated value. Multiple values can be listed separated by commas.
 
-A hex, binary or octal label such as ``16#D012`` is an extension; without the
-``--allow-bit-string-case-labels`` flag it is reported as
+A hex, binary or octal label such as ``16#D012``, or a subrange label with
+such a bound (``16#01..16#0F``), is an extension; without the
+``--allow-radix-case-labels`` flag it is reported as
 :doc:`P4041 </reference/compiler/problems/P4041>`.
 
 Every integer label, and each bound of a subrange label, must be a value the
@@ -39,6 +40,12 @@ that range is reported as :doc:`P2026 </reference/compiler/problems/P2026>`.
 The selector expression must be of an integer type, a subrange of one, or an
 enumeration type. A selector of any other type, such as ``REAL`` or ``WORD``,
 is reported as :doc:`P4053 </reference/compiler/problems/P4053>`.
+
+Each label must be a value of the selector's type. An enumerated value that
+labels a ``CASE`` on an integer is reported as
+:doc:`P4101 </reference/compiler/problems/P4101>`, and one that is not a
+value of the selector's enumeration is reported as
+:doc:`P2006 </reference/compiler/problems/P2006>`.
 
 Description
 -----------

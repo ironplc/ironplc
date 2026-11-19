@@ -1291,7 +1291,13 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
             // not the current frame's: a reference (a VAR_IN_OUT argument,
             // or a REF_TO passed down) names a variable in a caller's frame,
             // which the callee's own scope does not cover. Another program
-            // instance's partition is still out of reach.
+            // instance's partition is still out of reach. `as_var_index`
+            // rejects any value that is not a variable index (a data-region
+            // reference, or bits a punned program wrote), so a forged
+            // reference traps instead of naming the variable at
+            // `value & 0xFFFF`. Every path that follows a reference applies
+            // these same checks: `LOAD_ARRAY_DEREF`, `STORE_ARRAY_DEREF` and
+            // `referenced_data_offset` below.
             opcode::LOAD_INDIRECT => {
                 let ref_slot = stack.pop()?;
                 if ref_slot.is_null_ref() {
@@ -2357,7 +2363,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let ref_var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
                 let desc_index = read_u16_le(bytecode, &mut pc)?;
                 let index = stack.pop()?.as_i64();
-                let base = referenced_data_offset(&scope, variables, ref_var_index)?;
+                let base = referenced_data_offset(&scope, entry_scope, variables, ref_var_index)?;
                 let desc = array_descriptor(container, desc_index, ref_var_index)?;
                 let elem_offset = string_array::element_offset(desc, ref_var_index, base, index)?;
                 let buf_idx = string_array::load(
@@ -2406,7 +2412,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let desc_index = read_u16_le(bytecode, &mut pc)?;
                 let index = stack.pop()?.as_i64();
                 let buf_idx = stack.pop()?.as_i32() as usize;
-                let base = referenced_data_offset(&scope, variables, ref_var_index)?;
+                let base = referenced_data_offset(&scope, entry_scope, variables, ref_var_index)?;
                 let desc = array_descriptor(container, desc_index, ref_var_index)?;
                 let elem_offset = string_array::element_offset(desc, ref_var_index, base, index)?;
                 string_array::store(
@@ -2758,7 +2764,8 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let src_offset_slot = stack.pop()?;
                 let count = region::size(container, dst_desc_index, src_desc_index, ref_var_index)?;
 
-                let dst_offset = referenced_data_offset(&scope, variables, ref_var_index)?;
+                let dst_offset =
+                    referenced_data_offset(&scope, entry_scope, variables, ref_var_index)?;
                 let src_offset = src_offset_slot.as_i32() as u32 as usize;
                 region::copy(data_region, dst_offset, src_offset, count)?;
             }
@@ -2768,14 +2775,19 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let index_slot = stack.pop()?;
                 let index_i64 = index_slot.as_i64();
 
-                // Resolve the reference: load the target variable index.
+                // Resolve the reference to the target array's variable with
+                // the checks `LOAD_INDIRECT` applies: null, a value that is
+                // not a variable index, and the program instance's scope
+                // (not the frame's: the array lives in a caller's frame).
                 scope.check_access(ref_var_index)?;
                 let target_slot = variables.load(ref_var_index)?;
-                let target_raw = target_slot.as_i64() as u64;
-                if target_raw == u64::MAX {
+                if target_slot.is_null_ref() {
                     return Err(Trap::NullDereference);
                 }
-                let target_var_index = VarIndex::new(target_raw as u16);
+                let target_var_index = target_slot
+                    .as_var_index()
+                    .ok_or(Trap::InvalidVariableIndex(VarIndex::new(u16::MAX)))?;
+                entry_scope.check_access(target_var_index)?;
 
                 // Bounds check via descriptor.
                 let total_elements = container
@@ -2794,9 +2806,8 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 }
                 let index = index_i64 as u32;
 
-                // Double indirection: load data_offset from target array variable.
-                // No scope check on target — it lives in the caller's scope,
-                // matching LOAD_INDIRECT/STORE_INDIRECT behavior.
+                // Double indirection: the target array's slot holds its
+                // data offset. The target passed the scope check above.
                 let data_offset = variables.load(target_var_index)?.as_i32() as u32 as usize;
                 let byte_offset = data_offset + index as usize * 8;
 
@@ -2816,14 +2827,19 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let value_slot = stack.pop()?;
                 let index_i64 = index_slot.as_i64();
 
-                // Resolve the reference: load the target variable index.
+                // Resolve the reference to the target array's variable with
+                // the checks `LOAD_INDIRECT` applies: null, a value that is
+                // not a variable index, and the program instance's scope
+                // (not the frame's: the array lives in a caller's frame).
                 scope.check_access(ref_var_index)?;
                 let target_slot = variables.load(ref_var_index)?;
-                let target_raw = target_slot.as_i64() as u64;
-                if target_raw == u64::MAX {
+                if target_slot.is_null_ref() {
                     return Err(Trap::NullDereference);
                 }
-                let target_var_index = VarIndex::new(target_raw as u16);
+                let target_var_index = target_slot
+                    .as_var_index()
+                    .ok_or(Trap::InvalidVariableIndex(VarIndex::new(u16::MAX)))?;
+                entry_scope.check_access(target_var_index)?;
 
                 // Bounds check via descriptor.
                 let total_elements = container
@@ -2842,9 +2858,8 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 }
                 let index = index_i64 as u32;
 
-                // Double indirection: load data_offset from target array variable.
-                // No scope check on target — it lives in the caller's scope,
-                // matching LOAD_INDIRECT/STORE_INDIRECT behavior.
+                // Double indirection: the target array's slot holds its
+                // data offset. The target passed the scope check above.
                 let data_offset = variables.load(target_var_index)?.as_i32() as u32 as usize;
                 let byte_offset = data_offset + index as usize * 8;
 
@@ -2959,9 +2974,18 @@ fn intrinsic_instance(
 /// The data offset of what the reference in `ref_var_index`'s slot refers
 /// to: the offset a data-region reference names, or the offset the slot of
 /// the variable a variable reference names holds, as `LOAD_ARRAY_DEREF`
-/// follows one. The null reference traps.
+/// follows one. The null reference traps, and so does a value of neither
+/// form.
+///
+/// `scope` is the current frame's, which must cover `ref_var_index`;
+/// `entry_scope` is the program instance's, which must cover the variable
+/// a variable reference names. The target is checked against the instance's
+/// scope rather than the frame's for the reason `LOAD_INDIRECT` gives: the
+/// reference names a variable in a caller's frame, while another instance's
+/// partition stays out of reach.
 fn referenced_data_offset(
     scope: &VariableScope,
+    entry_scope: &VariableScope,
     variables: &VariableTable,
     ref_var_index: VarIndex,
 ) -> Result<usize, Trap> {
@@ -2973,11 +2997,10 @@ fn referenced_data_offset(
     if let Some(offset) = reference::data_region_offset(reference.as_u64()) {
         return Ok(offset as usize);
     }
-    // No scope check on the target: it lives in the caller's scope, as for
-    // `LOAD_ARRAY_DEREF`.
     let target = reference
         .as_var_index()
         .ok_or(Trap::InvalidVariableIndex(VarIndex::new(u16::MAX)))?;
+    entry_scope.check_access(target)?;
     Ok(variables.load(target)?.as_i32() as u32 as usize)
 }
 

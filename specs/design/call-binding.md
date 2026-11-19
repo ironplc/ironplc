@@ -208,6 +208,11 @@ and `VAR_IN_OUT` declarations.
 counting on from its last declared input, and binds in number order after the
 declared ones; one numbered past the inputs the call supplies is P4023.
 
+**REQ-CB-analyzer-054** `MIN` and `MAX` are extensible, as IEC 61131-3 table
+31 declares them and as `ADD`, `MUL` and `MUX` are here: their declared inputs
+`IN1` and `IN2` continue as `IN3`, `IN4`, ... with no upper bound, so
+`MAX(a, b, c)` binds and is not P4018.
+
 **REQ-CB-analyzer-034** A named input of a function call that names no
 parameter of the function is P4023.
 

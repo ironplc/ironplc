@@ -198,6 +198,47 @@ END_PROGRAM
     &[("result", 600)],
 );
 
+// The program writes g[2] and the function block reads it back through its
+// own VAR_EXTERNAL, so the function block body sees the global's elements.
+e2e_i32!(
+    end_to_end_when_function_block_reads_global_array_through_external_then_reads_element,
+    "
+CONFIGURATION config
+  VAR_GLOBAL
+    g : ARRAY[1..3] OF DINT;
+  END_VAR
+  RESOURCE resource1 ON PLC
+    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM plc_task_instance WITH plc_task : main;
+  END_RESOURCE
+END_CONFIGURATION
+
+FUNCTION_BLOCK reader
+  VAR_EXTERNAL
+    g : ARRAY[1..3] OF DINT;
+  END_VAR
+  VAR_OUTPUT
+    value : DINT;
+  END_VAR
+  value := g[2];
+END_FUNCTION_BLOCK
+
+PROGRAM main
+  VAR_EXTERNAL
+    g : ARRAY[1..3] OF DINT;
+  END_VAR
+  VAR
+    r : reader;
+    result : DINT;
+  END_VAR
+  g[2] := 17;
+  r();
+  result := r.value;
+END_PROGRAM
+",
+    &[("result", 17)],
+);
+
 e2e_i32!(
     end_to_end_when_no_configuration_then_program_still_works,
     "

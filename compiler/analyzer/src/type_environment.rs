@@ -527,7 +527,22 @@ impl TypeEnvironment {
             .with_secondary(Label::span(base_type_name.span(), "Base type"))
         })?;
 
-        self.insert_type(type_name, base_semantic_type.clone());
+        self.insert_alias_with(type_name, base_type_name, base_semantic_type.clone());
+        Ok(())
+    }
+
+    /// Adds `type_name`, declared as an alias of `base_type_name`, with the
+    /// attributes `attributes`: the base's, but for what the alias declares
+    /// of its own, such as the default an enumeration alias
+    /// (`PAINT : COLOR := BLUE`) gives. A repeated name is recorded as for
+    /// [`Self::insert_type`].
+    pub fn insert_alias_with(
+        &mut self,
+        type_name: &TypeName,
+        base_type_name: &TypeName,
+        attributes: crate::type_attributes::TypeAttributes,
+    ) {
+        self.insert_type(type_name, attributes);
         let element = self
             .id_of(base_type_name)
             .and_then(|base| self.array_elements.get(&base).copied());
@@ -539,7 +554,6 @@ impl TypeEnvironment {
                 self.alias_bases.entry(alias).or_insert(base);
             }
         }
-        Ok(())
     }
 
     /// The type the alias `alias` names (`BYTE` for `TYPE MyByte : BYTE`),
@@ -667,20 +681,53 @@ impl TypeEnvironment {
                         .clone()),
                 }
             }
+            // A reference spelled in place: REF_TO REF_TO INT
+            ReferenceTarget::Reference(spec) => Ok(SemanticType::Reference {
+                target_type: Box::new(self.resolve_reference_target(declaring, &spec.target)?),
+            }),
+        }
+    }
+
+    /// The id of the type the reference target `target` names, entering a
+    /// reference spelled in place (`REF_TO REF_TO INT`) as the one
+    /// reference type to its target (see [`Self::reference_to`]). `None`
+    /// for a named type this environment does not have, and for an inline
+    /// array, which has no id until the declaration that spells it enters
+    /// it.
+    pub fn reference_target_id(&mut self, target: &ReferenceTarget) -> Option<TypeId> {
+        match target {
+            ReferenceTarget::Named(type_name) => self.id_of(type_name),
+            ReferenceTarget::Array(_) => None,
+            ReferenceTarget::Reference(spec) => {
+                let referenced = self.reference_target_id(&spec.target)?;
+                self.reference_to(referenced)
+            }
+        }
+    }
+
+    /// Records that the named reference type `reference` refers to the type
+    /// `target`, so that [`Self::referenced_type`] answers for it by id, as
+    /// it does for a reference type from [`Self::reference_to`]. A named
+    /// reference type's representation holds its target's structure but not
+    /// its id, which a target that is itself a reference, or an array, needs.
+    pub fn record_declared_reference_target(&mut self, reference: &TypeName, target: TypeId) {
+        if let Some(reference) = self.id_of(reference) {
+            self.referenced.insert(reference, target);
         }
     }
 
     /// The representation of the type of an expression's value, when the
     /// analyzer gave it a concrete one.
     ///
-    /// An untyped literal is of a generic category (`ANY_INT`) and `NULL` of
-    /// no one type, so both answer `None` rather than a representation.
+    /// An untyped literal is of a generic category (`ANY_INT`), `NULL` of
+    /// no one type and the error type of none, so each answers `None`
+    /// rather than a representation.
     pub fn representation_of_expr(&self, expr: &Expr) -> Option<&SemanticType> {
         match expr.expr_type.as_ref()? {
             ExprType::Concrete(id) | ExprType::Inferred(id) => {
                 Some(&self.get_by_id(*id)?.representation)
             }
-            ExprType::Literal(_) | ExprType::Null => None,
+            ExprType::Literal(_) | ExprType::Null | ExprType::Error => None,
         }
     }
 

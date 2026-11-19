@@ -125,6 +125,21 @@ impl Located for Variable {
 }
 
 impl Variable {
+    /// The variable this variable refers to, `self^`, as a variable: the
+    /// dereference the parser spells within a chain (`p^.f`, `p^[i]`) and
+    /// as the variable of `pp^^ := v`. A directly represented variable is
+    /// not a reference; it is returned unchanged for a rule to reject.
+    pub fn dereferenced(self) -> Variable {
+        match self {
+            Variable::Symbolic(kind) => {
+                Variable::Symbolic(SymbolicVariableKind::Deref(DerefVariable {
+                    variable: Box::new(kind),
+                }))
+            }
+            Variable::Direct(_) => self,
+        }
+    }
+
     pub fn named(name: &str) -> Variable {
         Variable::Symbolic(SymbolicVariableKind::Named(NamedVariable {
             name: Id::from(name),
@@ -535,15 +550,21 @@ pub enum ExprType {
     /// `NULL`: a reference to no variable, of whichever reference type it
     /// is used as.
     Null,
+    /// No valid type: the analyzer reported the expression, or an operand
+    /// its type is computed from, as ill-typed. A check that judges a
+    /// value's type skips this one, so the problem is reported once rather
+    /// than again at every expression that encloses it. See *Type
+    /// resolution* in `specs/design/arithmetic-operator-overloads.md`.
+    Error,
 }
 
 impl ExprType {
     /// The type of the value, whether the program stated it or analysis
-    /// inferred it; `None` for a category or `NULL`.
+    /// inferred it; `None` for a category, `NULL` or the error type.
     pub fn type_id(&self) -> Option<TypeId> {
         match self {
             ExprType::Concrete(id) | ExprType::Inferred(id) => Some(*id),
-            ExprType::Literal(_) | ExprType::Null => None,
+            ExprType::Literal(_) | ExprType::Null | ExprType::Error => None,
         }
     }
 }

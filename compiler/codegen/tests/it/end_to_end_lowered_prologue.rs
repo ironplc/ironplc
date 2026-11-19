@@ -8,10 +8,9 @@ use ironplc_sources::parsers::xml_parser;
 
 use crate::common::{compile_to_run, run_compiled_scans};
 
-/// A PLCopen XML program, which may declare a `VAR_TEMP`, unlike one written
-/// in Structured Text: each scan reads an integer and a string `VAR_TEMP`,
-/// then writes it. PLCopen XML gives a variable no initial value yet, so
-/// each starts at its type's default.
+/// A PLCopen XML program that declares a `VAR_TEMP`: each scan reads an
+/// integer and a string `VAR_TEMP`, then writes it. PLCopen XML gives a
+/// variable no initial value yet, so each starts at its type's default.
 const PLCOPEN_VAR_TEMP: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://www.plcopen.org/xml/tc6_0201">
   <fileHeader companyName="Test" productName="Test" productVersion="1.0" creationDateTime="2024-01-01T00:00:00"/>

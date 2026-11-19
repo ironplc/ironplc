@@ -48,16 +48,31 @@ Two consequences follow, and both are deliberate:
 
 **REQ-CVI-analyzer-060** After the transform runs, the symbol environment
 records, for a variable that is `CONSTANT` (declared or inferred) and whose
-initializer is one literal, that literal as the value the variable holds for
-the whole run (`SymbolInfo::constant_value`), and
-`SymbolEnvironment::constant_value` answers it for a name reached from a
+initializer is one literal, of an elementary type or a string, that literal as
+the value the variable holds for the whole run (`SymbolInfo::constant_value`),
+and `SymbolEnvironment::constant_value` answers it for a name reached from a
 scope, through a `VAR_EXTERNAL` to its global; a variable that may change
 and a constant whose initializer is not one literal have no value there.
+
+A string holds the first code units of its literal that its capacity has
+room for, as the store of any longer value keeps them, so a reader of a
+string's value caps the literal at the capacity of the string's type.
+
+The rules accept a declared constant that some constructs write
+(REQ-CVI-analyzer-052): an instance initializer that sets it gives that
+instance's constant another value, and a write through a reference to it
+changes it. Such a constant does not hold its initial value for the whole
+run.
+
+**REQ-CVI-analyzer-061** A `CONSTANT` variable that a write of
+REQ-CVI-analyzer-010 to 019 reaches has no value in the symbol environment.
 
 A rule that judges a value the program fixes before it runs reads it there,
 as the rules read every other fact about a declaration, rather than finding
 the declaration itself. `rule_for_step_nonzero` (P4093) is the first: a
 `FOR` step that names a zero constant is as wrong as one written `BY 0`.
+Lowering reads it too, to fold `LEN` of a constant string
+([Lowered Program](lowered-program.md#5-desugaring), REQ-LOW-lowering-205).
 
 ## What counts as a write
 
@@ -205,8 +220,9 @@ assumed. The transform is infallible; there is no fallback to revert to.
 
 ## Out of scope
 
-- Folding reads of constant variables in code generation (the `LEN` fold
-  of #1612 and any other). This document only establishes the qualifier.
+- Folding reads of constant variables. This document establishes the
+  qualifier and the value a constant holds; the `LEN` fold of #1612 is
+  lowering's (REQ-LOW-lowering-205).
 - Resolving a member reached through an array element or a nested field
   to its declaration (see REQ-CVI-analyzer-021); such a write blocks every
   declaration of the name.

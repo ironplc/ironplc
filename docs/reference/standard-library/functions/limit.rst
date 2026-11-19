@@ -17,16 +17,15 @@ Signature
 
 .. code-block:: text
 
-   FUNCTION LIMIT : ANY
+   FUNCTION LIMIT : ANY_ELEMENTARY
      VAR_INPUT
-       MN : ANY;
-       IN : ANY;
-       MX : ANY;
+       MN : ANY_ELEMENTARY;
+       IN : ANY_ELEMENTARY;
+       MX : ANY_ELEMENTARY;
      END_VAR
    END_FUNCTION
 
-``LIMIT`` accepts ``SINT``, ``INT``, ``DINT``, ``LINT``, ``USINT``,
-``UINT``, ``UDINT``, ``ULINT``, ``REAL``, ``LREAL``.
+.. include:: ../../../includes/ordered-selection-input-types.rst
 
 .. include:: ../../../includes/widest-input-return-type.rst
 
@@ -41,13 +40,13 @@ Signature
      - Type
      - Description
    * - ``MN``
-     - ``ANY_MAGNITUDE``
+     - ``ANY_ELEMENTARY``
      - Lower bound of the range.
    * - ``IN``
-     - ``ANY_MAGNITUDE``
+     - ``ANY_ELEMENTARY``
      - Value to clamp.
    * - ``MX``
-     - ``ANY_MAGNITUDE``
+     - ``ANY_ELEMENTARY``
      - Upper bound of the range.
 
 .. rubric:: Outputs
@@ -61,7 +60,7 @@ Signature
      - Type
      - Description
    * - Return value
-     - ``ANY_MAGNITUDE``
+     - ``ANY_ELEMENTARY``
      - IN clamped to [MN, MX].
 
 Description
@@ -86,6 +85,13 @@ Example
    result := LIMIT(0, 50, 100);    (* result = 50 *)
    result := LIMIT(0, -10, 100);   (* result = 0 *)
    result := LIMIT(0, 200, 100);   (* result = 100 *)
+
+A period kept within its range:
+
+.. playground-with-program::
+   :vars: period : TIME;
+
+   period := LIMIT(T#100ms, T#10s, T#5s);    (* period = T#5s *)
 
 See Also
 --------

@@ -41,6 +41,9 @@ Scope Keywords
    * - ``VAR_EXTERNAL``
      - Reference to a global variable
      - Supported
+   * - ``VAR_TEMP``
+     - Temporary variable, initialized again on every execution
+     - Partial
 
 Example
 -------
@@ -65,6 +68,33 @@ Example
            running := FALSE;
        END_IF;
    END_FUNCTION_BLOCK
+
+Temporary Variables
+-------------------
+
+A :code:`PROGRAM`, :code:`FUNCTION_BLOCK` or :code:`FUNCTION` can declare
+temporary variables with :code:`VAR_TEMP`. A temporary variable does not keep
+its value between two executions of its POU: each execution starts it again
+from its initial value, or from its type's default when it has none.
+
+.. code-block::
+
+   PROGRAM main
+       VAR
+           total : INT;
+       END_VAR
+       VAR_TEMP
+           delta : INT := 1;
+       END_VAR
+
+       delta := delta + 1;   (* delta is 2 on every scan *)
+       total := total + delta;
+   END_PROGRAM
+
+In a :code:`FUNCTION_BLOCK` or a :code:`FUNCTION`, code generation does not
+yet support reading or writing an element or a field of an array or a
+structure declared in :code:`VAR_TEMP`; that is reported as
+:doc:`P9999 </reference/compiler/problems/P9999>`.
 
 Global Variables
 ----------------

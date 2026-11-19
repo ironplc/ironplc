@@ -214,7 +214,6 @@ mod tests {
     use crate::tools::test_support::{
         ed2_options, source, unnamed_source, SEMANTIC_ERROR_PROGRAM, VALID_PROGRAM,
     };
-    use ironplc_dsl::common::AddressAssignment;
     use spec_test_macro::spec_test;
 
     fn build(src: &str) -> ProjectIoResponse {
@@ -245,27 +244,6 @@ mod tests {
              END_CONFIGURATION\n\
              PROGRAM p\n{program_body}\nEND_PROGRAM"
         )
-    }
-
-    /// Classifies a global declared at `address`: located globals do not
-    /// parse in any `VAR_GLOBAL` block yet (#1913), so the symbol is built
-    /// the way the analyzer records one.
-    fn classify_global_at(address: &str) -> (Vec<IoEntry>, Vec<IoEntry>) {
-        let info = SymbolInfo::new(
-            SymbolKind::Variable,
-            ScopeKind::Global,
-            ironplc_dsl::core::SourceSpan::default(),
-        )
-        .with_variable_type(VariableType::Global)
-        .with_address(AddressAssignment::try_from(address).expect("a direct address"));
-        let (mut inputs, mut outputs) = (vec![], vec![]);
-        let entry = IoEntry {
-            name: "g".to_string(),
-            type_name: String::new(),
-            address: info.address_text(),
-        };
-        classify(entry, &info, IoScope::Global, &mut inputs, &mut outputs);
-        (inputs, outputs)
     }
 
     #[test]
@@ -304,6 +282,14 @@ mod tests {
     }
 
     #[test]
+    fn build_response_when_variable_has_incomplete_address_then_address_keeps_asterisk() {
+        let resp = build("PROGRAM p\nVAR sensor AT %I* : INT; END_VAR\nEND_PROGRAM");
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        let entry = resp.inputs.iter().find(|e| e.name == "p.sensor").unwrap();
+        assert_eq!(entry.address.as_deref(), Some("%I*"));
+    }
+
+    #[test]
     fn build_response_when_variable_has_output_address_then_in_outputs() {
         let resp = build("PROGRAM p\nVAR buzzer AT %QX0.0 : BOOL; END_VAR\nEND_PROGRAM");
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
@@ -311,6 +297,17 @@ mod tests {
             .outputs
             .iter()
             .find(|e| e.address.as_deref() == Some("%QX0.0"));
+        assert!(entry.is_some(), "outputs: {:?}", resp.outputs);
+    }
+
+    #[test]
+    fn build_response_when_address_has_multi_digit_fields_then_address_spelled_in_full() {
+        let resp = build("PROGRAM p\nVAR level AT %QW12 : WORD; END_VAR\nEND_PROGRAM");
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        let entry = resp
+            .outputs
+            .iter()
+            .find(|e| e.address.as_deref() == Some("%QW12"));
         assert!(entry.is_some(), "outputs: {:?}", resp.outputs);
     }
 
@@ -411,26 +408,29 @@ mod tests {
     }
 
     #[spec_test(REQ_TOL_mcp_210)]
-    fn classify_when_global_at_input_address_then_inputs_only() {
-        let (inputs, outputs) = classify_global_at("%IX0.0");
-        assert_eq!(names(&inputs), vec!["g"]);
-        assert_eq!(inputs[0].address.as_deref(), Some("%IX0.0"));
-        assert!(outputs.is_empty(), "outputs: {outputs:?}");
+    fn build_response_when_configuration_global_at_input_address_then_inputs_only() {
+        let resp = build(&configuration("g AT %IX0.0 : BOOL;", ""));
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        assert_eq!(names(&resp.inputs), vec!["g"]);
+        assert_eq!(resp.inputs[0].address.as_deref(), Some("%IX0.0"));
+        assert!(resp.outputs.is_empty(), "outputs: {:?}", resp.outputs);
     }
 
     #[spec_test(REQ_TOL_mcp_211)]
-    fn classify_when_global_at_output_address_then_outputs_only() {
-        let (inputs, outputs) = classify_global_at("%QX0.0");
-        assert!(inputs.is_empty(), "inputs: {inputs:?}");
-        assert_eq!(names(&outputs), vec!["g"]);
-        assert_eq!(outputs[0].address.as_deref(), Some("%QX0.0"));
+    fn build_response_when_configuration_global_at_output_address_then_outputs_only() {
+        let resp = build(&configuration("g AT %QX0.0 : BOOL;", ""));
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        assert!(resp.inputs.is_empty(), "inputs: {:?}", resp.inputs);
+        assert_eq!(names(&resp.outputs), vec!["g"]);
+        assert_eq!(resp.outputs[0].address.as_deref(), Some("%QX0.0"));
     }
 
     #[spec_test(REQ_TOL_mcp_211)]
-    fn classify_when_global_at_memory_address_then_in_neither() {
-        let (inputs, outputs) = classify_global_at("%MW2");
-        assert!(inputs.is_empty(), "inputs: {inputs:?}");
-        assert!(outputs.is_empty(), "outputs: {outputs:?}");
+    fn build_response_when_configuration_global_at_memory_address_then_in_neither() {
+        let resp = build(&configuration("g AT %MW2 : INT;", ""));
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        assert!(resp.inputs.is_empty(), "inputs: {:?}", resp.inputs);
+        assert!(resp.outputs.is_empty(), "outputs: {:?}", resp.outputs);
     }
 
     #[spec_test(REQ_TOL_mcp_213)]
