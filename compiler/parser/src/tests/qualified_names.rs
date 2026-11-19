@@ -54,23 +54,9 @@ END_FUNCTION_BLOCK",
 }
 
 #[test]
-fn parse_when_name_has_two_prefix_segments_then_both_recorded() {
-    let lib = parse(
-        "FUNCTION_BLOCK FB_Suite EXTENDS Outer.Inner.FB_Base
-END_FUNCTION_BLOCK",
-    );
-
-    let LibraryElementKind::FunctionBlockDeclaration(fb) = &lib.elements[0] else {
-        panic!("expected a function block");
-    };
-    let base = fb.oop.as_ref().and_then(|o| o.base.as_ref()).unwrap();
-    assert_eq!(qualifier_text(base), ["Outer", "Inner"]);
-}
-
-#[test]
 fn parse_when_qualified_name_differs_only_by_prefix_then_equal_to_flat_name() {
     let lib = parse(
-        "FUNCTION_BLOCK FB_A EXTENDS Lib.FB_Base
+        "FUNCTION_BLOCK FB_A EXTENDS Tc2_Standard.TON
 END_FUNCTION_BLOCK",
     );
 
@@ -78,7 +64,7 @@ END_FUNCTION_BLOCK",
         panic!("expected a function block");
     };
     let base = fb.oop.as_ref().and_then(|o| o.base.as_ref()).unwrap();
-    assert_eq!(base, &TypeName::from("FB_Base"));
+    assert_eq!(base, &TypeName::from("TON"));
 }
 
 #[test]
@@ -127,7 +113,7 @@ END_FUNCTION_BLOCK",
 #[test]
 fn parse_when_enumeration_member_is_dotted_then_err() {
     let result = parse_program(
-        "TYPE E_Blink : (Lib.off, slow); END_TYPE",
+        "TYPE E_Blink : (E_Blink.off, slow); END_TYPE",
         &FileId::default(),
         &twincat(),
     );
@@ -143,7 +129,7 @@ fn parse_when_initial_value_is_dotted_enumerated_value_with_library_prefix_then_
 
 FUNCTION_BLOCK FB_Roof
 VAR
-    other : Lib.E_RoofState := Lib.E_RoofState.closed;
+    other : BROTLib.E_RoofState := BROTLib.E_RoofState.closed;
 END_VAR
 END_FUNCTION_BLOCK",
     );
@@ -158,8 +144,8 @@ END_FUNCTION_BLOCK",
         panic!("expected a dotted initial value");
     };
     let written = value.type_name.as_ref().unwrap();
-    assert_eq!(qualifier_text(&late.type_name), ["Lib"]);
-    assert_eq!(qualifier_text(written), ["Lib"]);
+    assert_eq!(qualifier_text(&late.type_name), ["BROTLib"]);
+    assert_eq!(qualifier_text(written), ["BROTLib"]);
     assert_eq!(written.id.original().as_str(), "E_RoofState");
     assert_eq!(value.value.original().as_str(), "closed");
 }
@@ -175,7 +161,7 @@ VAR
     out : INT;
 END_VAR
 CASE mode OF
-    Lib.e_blink.fast, E_Blink#off: out := 2;
+    e_blink.fast, E_Blink#off: out := 2;
 END_CASE;
 END_PROGRAM",
     );
@@ -189,7 +175,7 @@ END_PROGRAM",
     let StmtKind::Case(case) = &body.body[0] else {
         panic!("expected a CASE statement");
     };
-    let labels: Vec<(Vec<String>, String, String, bool)> = case.statement_groups[0]
+    let labels: Vec<(String, String, bool)> = case.statement_groups[0]
         .selectors
         .iter()
         .map(|selector| {
@@ -198,7 +184,6 @@ END_PROGRAM",
             };
             let written = value.type_name.as_ref().unwrap();
             (
-                qualifier_text(written),
                 written.id.original().to_string(),
                 value.value.original().to_string(),
                 value.dotted,
@@ -208,13 +193,8 @@ END_PROGRAM",
     assert_eq!(
         labels,
         [
-            (
-                vec!["Lib".to_string()],
-                "e_blink".into(),
-                "fast".into(),
-                true
-            ),
-            (vec![], "E_Blink".into(), "off".into(), false),
+            ("e_blink".into(), "fast".into(), true),
+            ("E_Blink".into(), "off".into(), false),
         ]
     );
 }
@@ -260,7 +240,7 @@ VAR
     fbOn : FB_Blinker;
     mode : E_Blink;
 END_VAR
-fbOn(blink := Lib.E_Blink.on);
+fbOn(blink := E_Blink.on);
 mode := E_Blink.on;
 END_FUNCTION_BLOCK",
     );

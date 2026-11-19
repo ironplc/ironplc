@@ -889,7 +889,7 @@ parser! {
     // `Type#value` or a bare `value`.
     rule enumerated_value__undotted() -> EnumeratedValue = type_name:(name:enumerated_type_name() tok(TokenType::Hash) { name })? value:variable_identifier() { EnumeratedValue {type_name, value, dotted: false, explicit_value: None} }
     // TwinCAT/CODESYS spell a qualified enumerated value `Type.value`, and with
-    // a library prefix `Lib.Type.value`. This is only tried where an enumerated
+    // a library prefix before the type. This is only tried where an enumerated
     // value is referenced (an initial value, a TYPE default, an array
     // initializer, a CASE label), where there is no variable reference for the
     // dots to be confused with. A member declaration names a value, so it

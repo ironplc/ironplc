@@ -362,7 +362,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
     FlagFixture {
         key: "allow_qualified_type_names",
         prereqs: &[],
-        source: "FUNCTION_BLOCK FB_Base\nEND_FUNCTION_BLOCK\nPROGRAM main\nVAR\nx : Lib.FB_Base;\nEND_VAR\nEND_PROGRAM",
+        source: "PROGRAM main\nVAR\nx : Tc2_Standard.TON;\nEND_VAR\nEND_PROGRAM",
     },
     // `Type.value`: rejected (P4105) when the flag is off.
     FlagFixture {

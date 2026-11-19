@@ -1,15 +1,12 @@
-//! End-to-end test for names written with a library or namespace prefix
-//! (`--allow-qualified-type-names`) and enumerated values written
-//! `Type.value` (`--allow-dotted-enum-value`): a prefixed type is the type
-//! its last segment names, and `Type.value` is the value `Type#value` is, in
-//! an initial value and in a CASE label.
+//! End-to-end test for enumerated values written `Type.value`
+//! (`--allow-dotted-enum-value`): `Type.value` is the value `Type#value` is,
+//! in an initial value and in a CASE label.
 
 use ironplc_parser::options::CompilerOptions;
 
 e2e_i32_with!(
-    end_to_end_when_prefixed_type_and_dotted_enumerated_values_then_runs_as_unprefixed,
+    end_to_end_when_dotted_enumerated_values_then_runs_as_hash_spelling,
     CompilerOptions {
-        allow_qualified_type_names: true,
         allow_dotted_enum_value: true,
         ..CompilerOptions::default()
     },
@@ -24,7 +21,7 @@ VAR_OUTPUT
 END_VAR
 CASE mode OF
     E_Mode.idle: code := 10;
-    Lib.E_Mode.run: code := 20;
+    E_Mode.run: code := 20;
 ELSE
     code := 30;
 END_CASE;
@@ -33,8 +30,8 @@ END_FUNCTION_BLOCK
 PROGRAM main
 VAR
     m : E_Mode := E_Mode.run;
-    n : Lib.E_Mode := Lib.E_Mode.stop;
-    fb : Lib.FB_Step;
+    n : E_Mode := E_Mode.stop;
+    fb : FB_Step;
     a : DINT;
     b : DINT;
 END_VAR

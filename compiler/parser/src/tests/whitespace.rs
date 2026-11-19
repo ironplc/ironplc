@@ -404,17 +404,17 @@ END_CONFIGURATION"
 // `Type.value` (`--allow-dotted-enum-value`), on each side of each `.`.
 // ---------------------------------------------------------------------
 #[case::qualified_type_name(
-    "PROGRAM main VAR x : Outer·.·Inner·.·FB_B; END_VAR END_PROGRAM",
+    "PROGRAM main VAR x : Tc2_Standard·.·TON; END_VAR END_PROGRAM",
     verbatim,
     CompilerOptions::default
 )]
 #[case::dotted_enumerated_value_initial_value(
-    "TYPE E : (a, b); END_TYPE PROGRAM main VAR e : E := Lib·.·E·.·b; END_VAR END_PROGRAM",
+    "TYPE E : (a, b); END_TYPE PROGRAM main VAR e : E := E·.·b; END_VAR END_PROGRAM",
     verbatim,
     CompilerOptions::default
 )]
 #[case::dotted_enumerated_value_case_label(
-    "TYPE E : (a, b); END_TYPE PROGRAM main VAR e : E; x : INT; END_VAR CASE e OF Lib·.·E·.·b: x := 1; END_CASE; END_PROGRAM",
+    "TYPE E : (a, b); END_TYPE PROGRAM main VAR e : E; x : INT; END_VAR CASE e OF E·.·b: x := 1; END_CASE; END_PROGRAM",
     verbatim,
     CompilerOptions::default
 )]

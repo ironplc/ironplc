@@ -139,12 +139,11 @@ Values Written with a Period (Language Extension)
 .. include:: ../../../../includes/requires-dialect-extension.rst
 
 Where a value can be written with its type, it can also be written with a
-period in place of ``#``, as ``Color.Green``. A library or namespace prefix
-can come before the type, as ``Lib.Color.Green``; the prefix does not take part
-in finding the type. The value is checked as ``Color#Green`` is:
+period in place of ``#``, as ``Color.Green``. The value is checked as
+``Color#Green`` is:
 
 .. playground::
-   :allows: dotted-enum-value,qualified-type-names
+   :allows: dotted-enum-value
 
    TYPE
        Color : (Red, Green);
@@ -158,7 +157,7 @@ in finding the type. The value is checked as ``Color#Green`` is:
 
        CASE shade OF
            Color.Red: count := 0;
-           Lib.Color.Green: count := 1;
+           Color.Green: count := 1;
        END_CASE;
    END_PROGRAM
 
