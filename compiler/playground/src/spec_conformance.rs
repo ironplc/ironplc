@@ -47,10 +47,15 @@ fn playground_spec_req_cl_001_activates_library_from_served_files() {
         "PI must be undefined when no library is loaded"
     );
 
-    // Loading the served library file (as the browser would, passing its text
-    // as a JSON array of sources) activates the library: `PI` resolves, folds
-    // at compile time, and the same source compiles.
-    let libraries = serde_json::to_string(&[TC2_SYSTEM_ST]).unwrap();
+    // Loading the served library file (as the browser would, passing its
+    // name, path and text) activates the library: `PI` resolves, folds at
+    // compile time, and the same source compiles.
+    let libraries = serde_json::json!([{
+        "name": "Tc2_System",
+        "path": "libs/Tc2_System/1.0.0/Tc2_System.st",
+        "source": TC2_SYSTEM_ST,
+    }])
+    .to_string();
     assert!(
         compile_ok(PI_PROGRAM, &libraries),
         "loading the served library file must make PI resolve"

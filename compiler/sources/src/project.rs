@@ -2,12 +2,12 @@
 
 use std::{collections::HashMap, path::Path};
 
-use ironplc_dsl::{common::Library, core::FileId, diagnostic::Diagnostic};
+use ironplc_dsl::{core::FileId, diagnostic::Diagnostic};
 use ironplc_parser::options::CompilerOptions;
 use log::{debug, info, trace};
 
 use crate::file_type::FileType;
-use crate::libraries::{LibraryName, LibraryRegistry};
+use crate::libraries::{CompatLibrary, LibraryName, LibraryRegistry};
 use crate::source::Source;
 
 /// A project consisting of one or more source files
@@ -22,6 +22,10 @@ pub struct SourceProject {
     /// reference or an explicit CLI/playground request) and is never inferred
     /// from source content (`REQ-CL-sources-005`).
     activated_libraries: Vec<LibraryName>,
+    /// The project each source file came from, by the name the project goes
+    /// by (see [`crate::discovery::NamedProject`]). A file that came from no
+    /// project is not recorded.
+    file_projects: HashMap<FileId, String>,
 }
 
 impl Default for SourceProject {
@@ -37,6 +41,7 @@ impl SourceProject {
             sources: HashMap::new(),
             compiler_options: CompilerOptions::default(),
             activated_libraries: Vec::new(),
+            file_projects: HashMap::new(),
         }
     }
 
@@ -46,6 +51,7 @@ impl SourceProject {
             sources: HashMap::new(),
             compiler_options,
             activated_libraries: Vec::new(),
+            file_projects: HashMap::new(),
         }
     }
 
@@ -63,21 +69,35 @@ impl SourceProject {
         &self.activated_libraries
     }
 
+    /// Records that the source file `file` came from the project named
+    /// `project`. A file recorded again keeps the project it was recorded
+    /// with first.
+    pub fn set_file_project(&mut self, file: FileId, project: &str) {
+        self.file_projects
+            .entry(file)
+            .or_insert_with(|| project.to_string());
+    }
+
+    /// The project each recorded source file came from.
+    pub fn file_projects(&self) -> &HashMap<FileId, String> {
+        &self.file_projects
+    }
+
     /// Load the activated compatibility libraries from the bundled registry.
     ///
-    /// Returns the parsed [`Library`] for each activated library that resolves,
+    /// Returns each activated library that resolves, its declarations parsed,
     /// plus one diagnostic per library that could not be loaded (unshipped name
     /// or malformed manifest). The libraries are returned in activation order,
     /// which callers inject ahead of user source; once merged they are ordinary
     /// declarations, so a user declaration of the same name in the same scope
     /// is a duplicate (`REQ-CL-analyzer-007`).
-    pub fn load_activated_libraries(&self) -> (Vec<Library>, Vec<Diagnostic>) {
+    pub fn load_activated_libraries(&self) -> (Vec<CompatLibrary>, Vec<Diagnostic>) {
         let registry = LibraryRegistry::bundled();
         let mut libraries = Vec::new();
         let mut diagnostics = Vec::new();
         for name in &self.activated_libraries {
             match registry.load(name) {
-                Ok(loaded) => libraries.push(loaded.library),
+                Ok(loaded) => libraries.push(loaded),
                 Err(diagnostic) => diagnostics.push(diagnostic),
             }
         }
@@ -146,6 +166,7 @@ impl SourceProject {
     pub fn initialize_from_directory(&mut self, dir: &Path) -> Vec<Diagnostic> {
         self.sources.clear();
         self.activated_libraries.clear();
+        self.file_projects.clear();
         self.discover_and_add(dir)
     }
 
@@ -161,6 +182,7 @@ impl SourceProject {
     pub fn initialize_from_directories(&mut self, dirs: &[&Path]) -> Vec<Diagnostic> {
         self.sources.clear();
         self.activated_libraries.clear();
+        self.file_projects.clear();
         let mut errors = vec![];
         for dir in dirs {
             errors.extend(self.discover_and_add(dir));
@@ -209,17 +231,24 @@ impl SourceProject {
                 errors.push(err);
             }
         }
+        for project in &discovered.projects {
+            for file_path in &project.files {
+                self.set_file_project(FileId::from_path(file_path), &project.name);
+            }
+        }
         errors
     }
 
     /// Remove a source file from the project
     pub fn remove_source(&mut self, file_id: &FileId) -> Option<Source> {
+        self.file_projects.remove(file_id);
         self.sources.remove(file_id)
     }
 
     /// Clear all sources from the project
     pub fn clear(&mut self) {
         self.sources.clear();
+        self.file_projects.clear();
     }
 
     /// Get the number of sources in the project
@@ -415,6 +444,47 @@ mod tests {
 
         assert!(errors.is_empty(), "Expected no errors, got: {:?}", errors);
         assert_eq!(project.len(), 1);
+    }
+
+    #[test]
+    fn initialize_from_directory_when_twincat_solution_then_records_project_of_each_file() {
+        let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources/test/discovery/two_plcproj_directories");
+
+        let mut project = SourceProject::new();
+        project.initialize_from_directory(&dir);
+
+        let mut projects: Vec<(String, String)> = project
+            .file_projects()
+            .iter()
+            .map(|(file, name)| {
+                let path = file.to_string();
+                let file_name = Path::new(&path).file_name().unwrap().to_string_lossy();
+                (file_name.into_owned(), name.clone())
+            })
+            .collect();
+        projects.sort();
+        assert_eq!(
+            projects,
+            [
+                ("FB_Shared.TcPOU".to_string(), "SharedLib".to_string()),
+                ("MAIN.TcPOU".to_string(), "Main".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn set_file_project_when_file_recorded_twice_then_first_project_kept() {
+        let mut project = SourceProject::new();
+        project.set_file_project(FileId::from_string("shared.st"), "ProjectA");
+        project.set_file_project(FileId::from_string("shared.st"), "ProjectB");
+
+        assert_eq!(
+            project
+                .file_projects()
+                .get(&FileId::from_string("shared.st")),
+            Some(&"ProjectA".to_string())
+        );
     }
 
     #[test]

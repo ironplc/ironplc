@@ -9,7 +9,7 @@ pub mod project;
 pub mod tokenizer;
 
 pub use compile::{compile, CompileOutput};
-pub use project::{FileBackedProject, MemoryBackedProject, Project};
+pub use project::{FileBackedProject, MemoryBackedProject, PreparsedLibrary, Project};
 
 #[cfg(test)]
 #[ctor::ctor(unsafe)]

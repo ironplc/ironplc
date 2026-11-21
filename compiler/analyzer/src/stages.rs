@@ -14,6 +14,7 @@ use log::debug;
 use crate::{
     function_environment::FunctionEnvironmentBuilder,
     ironplc_dsl::common::Library,
+    library_files::LibraryFiles,
     result::SemanticResult,
     rule_abstract_not_instantiated, rule_array_index_range, rule_array_initializer_length,
     rule_array_initializer_type, rule_array_subscript_count, rule_array_subscript_operand,
@@ -66,6 +67,18 @@ pub fn analyze(
     sources: &[&Library],
     options: &CompilerOptions,
 ) -> Result<(Library, SemanticContext), Vec<Diagnostic>> {
+    analyze_with_library_files(sources, &LibraryFiles::default(), options)
+}
+
+/// As [`analyze`], for sources some of which belong to a library: a
+/// compatibility library or a project loaded alongside. `library_files` says
+/// which library each such source file belongs to, and the returned context
+/// keeps it ([`SemanticContext::library_files`]).
+pub fn analyze_with_library_files(
+    sources: &[&Library],
+    library_files: &LibraryFiles,
+    options: &CompilerOptions,
+) -> Result<(Library, SemanticContext), Vec<Diagnostic>> {
     if sources.is_empty() {
         let span = SourceSpan::range(0, 0).with_file_id(&FileId::default());
         return Err(vec![Diagnostic::problem(
@@ -73,7 +86,8 @@ pub fn analyze(
             Label::span(span, "First location"),
         )]);
     }
-    let (library, mut context) = resolve_types(sources, options)?;
+    let (library, context) = resolve_types(sources, options)?;
+    let mut context = context.with_library_files(library_files.clone());
 
     if let Err(diagnostics) = semantic(&library, &context, options) {
         context.add_diagnostics(diagnostics);

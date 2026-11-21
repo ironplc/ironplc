@@ -5,7 +5,9 @@
 
 use std::path::Path;
 
-use ironplc_analyzer::{stages::analyze, CleanAnalysis, SemanticContext};
+use ironplc_analyzer::{
+    stages::analyze_with_library_files, CleanAnalysis, LibraryFiles, SemanticContext,
+};
 use ironplc_dsl::{
     common::Library,
     core::{FileId, SourceSpan},
@@ -14,8 +16,20 @@ use ironplc_dsl::{
 use ironplc_ir::lowered::Program;
 use ironplc_parser::{options::CompilerOptions, token::Token, tokenize_program};
 use ironplc_problems::Problem;
-use ironplc_sources::{FileType, LibraryName, Source, SourceProject};
+use ironplc_sources::{libraries::CompatLibrary, FileType, LibraryName, Source, SourceProject};
 use log::{debug, trace};
+
+/// A compatibility library whose text the caller fetched and parsed itself,
+/// one file at a time (the playground, see `REQ-CL-playground-001`).
+#[derive(Clone, Debug)]
+pub struct PreparsedLibrary {
+    /// The library's name, as the bundled registry knows it (`Tc2_System`).
+    pub name: LibraryName,
+    /// The file the declarations were parsed from. Their spans name it.
+    pub file_id: FileId,
+    /// The declarations.
+    pub library: Library,
+}
 
 /// What one semantic analysis of a project made.
 struct Analyzed {
@@ -29,6 +43,29 @@ struct Analyzed {
     /// The lowered program, when analysis reported nothing and lowering
     /// expressed every construct.
     program: Option<Program>,
+}
+
+/// The library each source file of an analysis belongs to: the files of each
+/// compatibility library, bundled or pre-parsed, and the files each project
+/// brought.
+fn library_files(
+    source_project: &SourceProject,
+    loaded_libraries: &[CompatLibrary],
+    preparsed_libraries: &[PreparsedLibrary],
+) -> LibraryFiles {
+    let mut files = LibraryFiles::new();
+    for loaded in loaded_libraries {
+        for file in &loaded.files {
+            files.insert(file.clone(), &loaded.manifest.name);
+        }
+    }
+    for preparsed in preparsed_libraries {
+        files.insert(preparsed.file_id.clone(), preparsed.name.as_str());
+    }
+    for (file, project) in source_project.file_projects() {
+        files.insert(file.clone(), project);
+    }
+    files
 }
 
 /// Runs semantic analysis on the given source project and compiler options,
@@ -47,7 +84,7 @@ struct Analyzed {
 fn run_semantic_analysis(
     source_project: &mut SourceProject,
     compiler_options: &CompilerOptions,
-    preparsed_libraries: &[Library],
+    preparsed_libraries: &[PreparsedLibrary],
 ) -> Analyzed {
     let mut all_libraries = vec![];
     let mut all_diagnostics: Vec<Diagnostic> = vec![];
@@ -58,9 +95,14 @@ fn run_semantic_analysis(
     // of user source (base stdlib -> library -> user) and merge as ordinary
     // source: a user declaration of the same name in the same scope is a
     // duplicate, not an override (`REQ-CL-analyzer-007`).
-    let (mut compat_libraries, compat_diagnostics) = source_project.load_activated_libraries();
-    compat_libraries.extend(preparsed_libraries.iter().cloned());
+    let (loaded_libraries, compat_diagnostics) = source_project.load_activated_libraries();
     all_diagnostics.extend(compat_diagnostics);
+    let library_files = library_files(source_project, &loaded_libraries, preparsed_libraries);
+    let compat_libraries: Vec<Library> = loaded_libraries
+        .into_iter()
+        .map(|loaded| loaded.library)
+        .chain(preparsed_libraries.iter().map(|pre| pre.library.clone()))
+        .collect();
 
     // Sources are backed by a HashMap, so iteration order is randomized
     // per-process by its hasher's random seed. Merging them in that order
@@ -110,7 +152,7 @@ fn run_semantic_analysis(
         .chain(all_libraries.iter().copied())
         .collect();
 
-    match analyze(&analyze_input, compiler_options) {
+    match analyze_with_library_files(&analyze_input, &library_files, compiler_options) {
         Ok((library, context)) => {
             debug!("Semantic analysis completed {context:?}");
             all_diagnostics.extend(context.diagnostics().iter().cloned());
@@ -297,10 +339,16 @@ impl FileBackedProject {
 
     /// Load the activated compatibility libraries from the bundled registry.
     ///
-    /// Returns the parsed declarations to inject ahead of user source, plus one
-    /// diagnostic per library that could not be loaded.
-    pub fn load_activated_libraries(&self) -> (Vec<Library>, Vec<Diagnostic>) {
+    /// Returns each library's declarations to inject ahead of user source,
+    /// plus one diagnostic per library that could not be loaded.
+    pub fn load_activated_libraries(&self) -> (Vec<CompatLibrary>, Vec<Diagnostic>) {
         self.source_project.load_activated_libraries()
+    }
+
+    /// Records that the source file `file_id` came from the project named
+    /// `project`, a project loaded alongside the others (`REQ-CL-sources-009`).
+    pub fn set_file_project(&mut self, file_id: FileId, project: &str) {
+        self.source_project.set_file_project(file_id, project);
     }
 }
 
@@ -398,7 +446,7 @@ pub struct MemoryBackedProject {
     lowered_program: Option<Program>,
     /// Compatibility libraries the caller parsed itself, injected ahead of
     /// user source alongside any the bundled registry loads.
-    preparsed_libraries: Vec<Library>,
+    preparsed_libraries: Vec<PreparsedLibrary>,
 }
 
 impl MemoryBackedProject {
@@ -451,7 +499,7 @@ impl MemoryBackedProject {
     /// The playground fetches that text over HTTP and parses it itself
     /// (`REQ-CL-playground-001`); the result arrives here. Both sets are
     /// injected ahead of user source, registry-loaded first.
-    pub fn set_preparsed_libraries(&mut self, libraries: Vec<Library>) {
+    pub fn set_preparsed_libraries(&mut self, libraries: Vec<PreparsedLibrary>) {
         self.preparsed_libraries = libraries;
     }
 }
@@ -773,14 +821,20 @@ mod test {
     const CALLS_LIB_FUNCTION: &str =
         "PROGRAM main VAR a : LREAL; END_VAR a := LIB_DOUBLE(2.0); END_PROGRAM";
 
-    fn parse_library(source: &str) -> ironplc_dsl::common::Library {
-        ironplc_sources::parse_source(
+    fn parse_library(source: &str) -> super::PreparsedLibrary {
+        let file_id = FileId::from_string("lib.st");
+        let library = ironplc_sources::parse_source(
             ironplc_sources::FileType::StructuredText,
             source,
-            &FileId::from_string("lib.st"),
+            &file_id,
             &CompilerOptions::default(),
         )
-        .expect("fixture library must parse")
+        .expect("fixture library must parse");
+        super::PreparsedLibrary {
+            name: LibraryName::from("Lib"),
+            file_id,
+            library,
+        }
     }
 
     #[test]
@@ -1261,3 +1315,6 @@ END_CONFIGURATION
         assert!(project.analyzed_library().is_some());
     }
 }
+
+#[cfg(test)]
+mod library_files_tests;

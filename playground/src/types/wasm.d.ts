@@ -13,8 +13,9 @@ declare module "*/pkg/ironplc_playground.js" {
   /**
    * Returns a JSON-encoded compilation result (diagnostics + bytecode).
    *
-   * `libraries` is a JSON array of plain-text compatibility-library sources
-   * (the served `.st` files the browser fetched) to activate, or `""` for none.
+   * `libraries` is a JSON array of `{name, path, source}` objects, one per
+   * served compatibility-library `.st` file the browser fetched: the library
+   * it belongs to, the path it is served at, and its text. `""` for none.
    */
   export function compile(
     source: string,
@@ -27,8 +28,8 @@ declare module "*/pkg/ironplc_playground.js" {
   export function run(bytecodeBase64: string, scans: number): string;
 
   /**
-   * Compiles and runs source in one step. Returns JSON. `libraries` is a JSON
-   * array of compatibility-library sources to activate, or `""` for none.
+   * Compiles and runs source in one step. Returns JSON. `libraries` is as for
+   * `compile`.
    */
   export function run_source(
     source: string,
@@ -39,8 +40,8 @@ declare module "*/pkg/ironplc_playground.js" {
   ): string;
 
   /**
-   * Loads a program into the persistent session. Returns JSON. `libraries` is a
-   * JSON array of compatibility-library sources to activate, or `""` for none.
+   * Loads a program into the persistent session. Returns JSON. `libraries` is
+   * as for `compile`.
    */
   export function load_program(
     source: string,

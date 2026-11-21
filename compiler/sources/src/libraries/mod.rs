@@ -107,6 +107,10 @@ pub struct CompatLibrary {
     pub manifest: LibraryManifest,
     /// The merged declarations parsed from the selected version's `.st` files.
     pub library: Library,
+    /// The `.st` files the declarations were parsed from, in load order. A
+    /// declaration's span names one of these, which is how analysis tells a
+    /// library's declarations from the user's.
+    pub files: Vec<FileId>,
 }
 
 /// A registry of compatibility libraries rooted at a directory.
@@ -229,9 +233,13 @@ impl LibraryRegistry {
             .root
             .join(name.as_str())
             .join(&manifest.default_version);
-        let library = load_version_library(&version_dir, &manifest_file_id)?;
+        let (library, files) = load_version_library(&version_dir, &manifest_file_id)?;
 
-        Ok(CompatLibrary { manifest, library })
+        Ok(CompatLibrary {
+            manifest,
+            library,
+            files,
+        })
     }
 
     /// Resolve project-declared library references to the set of bundled library
@@ -316,7 +324,8 @@ fn installed_libraries_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/libs")
 }
 
-/// Parse and merge every `.st` file in a version subdirectory into one Library.
+/// Parse and merge every `.st` file in a version subdirectory into one Library,
+/// returning it with the files it was parsed from.
 ///
 /// Files are parsed with permissive options so a bundled library's declarations
 /// always produce an AST; policy rules (e.g. the top-level `VAR_GLOBAL` gate)
@@ -324,7 +333,7 @@ fn installed_libraries_root() -> PathBuf {
 fn load_version_library(
     version_dir: &Path,
     manifest_file_id: &FileId,
-) -> Result<Library, Diagnostic> {
+) -> Result<(Library, Vec<FileId>), Diagnostic> {
     let read_dir = fs::read_dir(version_dir).map_err(|e| {
         Diagnostic::problem(
             Problem::LibraryManifestInvalid,
@@ -343,6 +352,7 @@ fn load_version_library(
 
     let options = CompilerOptions::default();
     let mut library = Library::new();
+    let mut files = Vec::new();
     for path in paths {
         let is_st = path
             .extension()
@@ -359,8 +369,9 @@ fn load_version_library(
         })?;
         let parsed = parse_program(&content, &file_id, &options)?;
         library = library.extend(parsed);
+        files.push(file_id);
     }
-    Ok(library)
+    Ok((library, files))
 }
 
 #[cfg(test)]
@@ -455,6 +466,20 @@ mod tests {
             library_declares_pi(&loaded.library),
             "Tc2_System must declare the global constant PI"
         );
+    }
+
+    #[test]
+    fn load_when_tc2_system_then_files_are_those_its_declarations_name() {
+        let registry = LibraryRegistry::bundled();
+        let loaded = registry.load(&LibraryName::from("Tc2_System")).unwrap();
+
+        assert_eq!(loaded.files.len(), 1);
+        assert!(loaded.files[0].to_string().ends_with("Tc2_System.st"));
+        let LibraryElementKind::GlobalVarDeclarations(globals) = &loaded.library.elements[0] else {
+            panic!("Tc2_System must start with its globals");
+        };
+        let name = globals[0].identifier.symbolic_id().unwrap();
+        assert_eq!(name.span.file_id, loaded.files[0]);
     }
 
     #[test]

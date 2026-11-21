@@ -14,7 +14,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use super::{DiscoveredProject, ProjectType};
+use super::{DiscoveredProject, NamedProject, ProjectType};
 use crate::libraries::{LibraryName, LibraryReference};
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -53,7 +53,7 @@ pub(super) fn merge_plcproj_projects(
     let mut merged_files = Vec::new();
     let mut merged_errors = Vec::new();
     let mut merged_library_references: Vec<LibraryReference> = Vec::new();
-    let mut merged_project_names: Vec<String> = Vec::new();
+    let mut merged_projects: Vec<NamedProject> = Vec::new();
     let mut seen_files = HashSet::new();
     let mut seen_libraries: HashSet<LibraryName> = HashSet::new();
     let mut merged_root_dir = dir.to_path_buf();
@@ -75,8 +75,7 @@ pub(super) fn merge_plcproj_projects(
             }
         }
 
-        merged_project_names.extend(project.project_names);
-
+        let mut contributed = Vec::new();
         for file in project.files {
             // A file referenced by more than one sub-project (a shared
             // dependency) must only be loaded/declared once. Dedup by
@@ -86,8 +85,16 @@ pub(super) fn merge_plcproj_projects(
             // non-canonicalized paths that still name the same file.
             let key = fs::canonicalize(&file).unwrap_or_else(|_| file.clone());
             if seen_files.insert(key) {
-                merged_files.push(file);
+                merged_files.push(file.clone());
+                contributed.push(file);
             }
+        }
+        // A file is the first project's that lists it, as it is loaded once.
+        for named in project.projects {
+            merged_projects.push(NamedProject {
+                name: named.name,
+                files: contributed.clone(),
+            });
         }
         merged_errors.extend(project.errors);
     }
@@ -108,7 +115,7 @@ pub(super) fn merge_plcproj_projects(
         root_dir: merged_root_dir,
         files: merged_files,
         library_references: merged_library_references,
-        project_names: merged_project_names,
+        projects: merged_projects,
         errors: merged_errors,
     })
 }
@@ -203,9 +210,12 @@ fn parse_plcproj(plcproj_path: &Path, root_dir: &Path) -> Result<DiscoveredProje
     Ok(DiscoveredProject {
         project_type: ProjectType::TwinCat,
         root_dir: root_dir.to_path_buf(),
+        projects: vec![NamedProject {
+            name: project_name(&doc, plcproj_path),
+            files: files.clone(),
+        }],
         files,
         library_references,
-        project_names: vec![project_name(&doc, plcproj_path)],
         errors,
     })
 }
@@ -480,7 +490,7 @@ mod tests {
         )
         .unwrap();
         let result = discover(dir.path()).unwrap();
-        assert_eq!(result.project_names, ["Lib"]);
+        assert_eq!(project_names(&result), ["Lib"]);
     }
 
     #[test]
@@ -494,7 +504,7 @@ mod tests {
         )
         .unwrap();
         let result = discover(dir.path()).unwrap();
-        assert_eq!(result.project_names, ["BROTLib"]);
+        assert_eq!(project_names(&result), ["BROTLib"]);
     }
 
     #[test]
@@ -586,5 +596,43 @@ mod tests {
             .filter(|f| f.ends_with("GVL_Shared.TcGVL"))
             .collect();
         assert_eq!(matches.len(), 1);
+    }
+
+    #[test]
+    fn discover_when_same_file_referenced_by_two_plcproj_then_file_is_first_projects() {
+        let result = discover(&tree("shared_file_two_plcproj")).unwrap();
+
+        let projects: Vec<(&str, usize)> = result
+            .projects
+            .iter()
+            .map(|project| (project.name.as_str(), project.files.len()))
+            .collect();
+        assert_eq!(projects, [("ProjectA", 1), ("ProjectB", 0)]);
+        assert!(result.projects[0].files[0].ends_with("GVL_Shared.TcGVL"));
+    }
+
+    #[test]
+    fn discover_when_two_plcproj_then_each_project_lists_its_files() {
+        let result = discover(&tree("two_plcproj_directories")).unwrap();
+
+        let mut listed: Vec<PathBuf> = result
+            .projects
+            .iter()
+            .flat_map(|project| project.files.iter().cloned())
+            .collect();
+        listed.sort();
+        let mut files = result.files.clone();
+        files.sort();
+        assert_eq!(result.projects.len(), 2);
+        assert_eq!(listed, files);
+    }
+
+    /// The names of the projects `result` found, in order.
+    fn project_names(result: &DiscoveredProject) -> Vec<&str> {
+        result
+            .projects
+            .iter()
+            .map(|project| project.name.as_str())
+            .collect()
     }
 }
