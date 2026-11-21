@@ -11,6 +11,6 @@
     "e2e": "npm run smoke && npm run mock-e2e && npm run agent-e2e"
   },
   "devDependencies": {
-    "opencode-ai": "1.17.3"
+    "opencode-ai": "1.19.6"
   }
 }
