@@ -90,6 +90,7 @@ The `vm/tests/cli.rs` already does this with `--dump-vars`. Expand to a pattern:
 - **Cost:** Low (subprocess invocation, but fast since each program is tiny)
 - **What it validates:** Full binary-level behavior including CLI argument handling, file I/O, container format serialization
 - **Can be automated:** Yes, fully.
+- **Where the cases could come from:** [External IEC 61131-3 Test Corpora](external-test-corpora.md) catalogs third-party suites that already carry expected results, and the rules for using them.
 
 **Idea 1.3: Property-based / fuzz testing for the VM**
 
