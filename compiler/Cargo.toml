@@ -53,6 +53,11 @@ deprecated = "deny"
 # warnings non-fatal while iterating: `RUSTFLAGS=--cap-lints=warn cargo build`.
 warnings = "deny"
 
+# Verus sets `cfg(verus_only)` while it verifies, so ghost-only `use` items can
+# be guarded with it. Declaring it here keeps `warnings = "deny"` from
+# rejecting the cfg in a normal build.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(verus_only)'] }
+
 # Reduce per-binary debug-info size. `line-tables-only` retains the file/line
 # tables that `cargo llvm-cov` needs to map coverage hits to source, but drops
 # the type-, variable-, and inline-scope DWARF sections that dominate target/

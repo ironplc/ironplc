@@ -38,6 +38,13 @@ jobs:
       gh-release-tag: ""
       version: "0.0.0"
 
+  verus:
+    name: Verify with Verus
+    needs: approve
+    uses: ./.github/workflows/partial_verus.yaml
+    with:
+      source-revision: ""
+
   vscode-extension:
     name: Build Visual Studio Code Extension
     needs: approve
