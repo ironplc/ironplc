@@ -70,6 +70,22 @@ END_METHOD
 END_FUNCTION_BLOCK
 "
 )]
+#[case::base_body_call_in_body(
+    "
+FUNCTION_BLOCK FB_Motor EXTENDS FB_Base
+    SUPER^();
+END_FUNCTION_BLOCK
+"
+)]
+#[case::base_body_call_in_method(
+    "
+FUNCTION_BLOCK FB_Motor EXTENDS FB_Base
+METHOD Run
+    SUPER^();
+END_METHOD
+END_FUNCTION_BLOCK
+"
+)]
 // Subscript after `THIS^.field`: every element of the chain renders tight.
 #[case::this_field_subscript(
     "

@@ -423,6 +423,24 @@ pub struct MethodCall {
     pub position: SourceSpan,
 }
 
+/// A call of the body of the function block the enclosing block extends:
+/// `SUPER^();` (OOP extension). It runs the base block's body on the
+/// instance the enclosing block is running on, as `SUPER^.M()` runs the
+/// base block's method `M` on it.
+///
+/// The argument list is always empty: an argument passed this way is not
+/// known to be accepted by any target, so it is not parsed. `THIS^()` is not
+/// parsed either.
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
+pub struct BaseBodyCall {
+    /// The `SUPER^` the body is called through. Its kind is always
+    /// [`SelfRefKind::Super`]. Holding the reference itself means every
+    /// pass that checks `SUPER^` has a base checks this call too.
+    pub base: SelfRefVariable,
+    /// Spans `SUPER` through the closing parenthesis.
+    pub position: SourceSpan,
+}
+
 /// A binary expression that produces a Boolean result by comparing operands.
 ///
 /// See section 3.3.1.
@@ -973,6 +991,7 @@ pub enum StmtKind {
     // Function and function block control
     FbCall(FbCall),
     MethodCall(MethodCall),
+    BaseBodyCall(BaseBodyCall),
     // Selection statements
     If(If),
     Case(Case),
@@ -996,6 +1015,7 @@ impl Located for StmtKind {
             StmtKind::Assignment(a) => a.span(),
             StmtKind::FbCall(f) => f.span(),
             StmtKind::MethodCall(m) => m.span(),
+            StmtKind::BaseBodyCall(b) => b.span(),
             StmtKind::If(i) => i.span(),
             StmtKind::Case(c) => c.span(),
             StmtKind::For(f) => f.span(),

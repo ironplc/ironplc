@@ -305,6 +305,9 @@ END_CONFIGURATION"
     in_method,
     opts_with_fb_inheritance
 )]
+// Issue #2579: `base_body_call` reuses `super_ref`, so the gap before the
+// caret comes from the same rule as in `super_ref_chain`.
+#[case::base_body_call("SUPER·^·(·)·;", in_method, opts_with_fb_inheritance)]
 #[case::property_declaration(
     "FUNCTION_BLOCK FB VAR v : INT; END_VAR PROPERTY P·:·INT GET P := v;·END_GET SET v := P;·END_SET END_PROPERTY END_FUNCTION_BLOCK",
     verbatim,

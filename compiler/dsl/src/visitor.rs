@@ -402,6 +402,7 @@ pub trait Visitor<E> {
     // 3.2.3
     dispatch!(FbCall);
     dispatch!(MethodCall);
+    dispatch!(BaseBodyCall);
 
     dispatch!(MethodReceiver);
 

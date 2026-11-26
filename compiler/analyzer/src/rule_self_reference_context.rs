@@ -173,6 +173,12 @@ END_FUNCTION_BLOCK
     #[case::super_in_derived_method(
         "FUNCTION_BLOCK FB_A EXTENDS FB_Base\nMETHOD N\n    SUPER^.x := 1;\n    SUPER^.M();\nEND_METHOD\nEND_FUNCTION_BLOCK"
     )]
+    #[case::base_body_call_in_derived_body(
+        "FUNCTION_BLOCK FB_A EXTENDS FB_Base\n    SUPER^();\nEND_FUNCTION_BLOCK"
+    )]
+    #[case::base_body_call_in_derived_method(
+        "FUNCTION_BLOCK FB_A EXTENDS FB_Base\nMETHOD N\n    SUPER^();\nEND_METHOD\nEND_FUNCTION_BLOCK"
+    )]
     #[case::this_in_property_accessor(
         "FUNCTION_BLOCK FB_A\nVAR y : INT; END_VAR\nPROPERTY P : INT\nGET\n    P := THIS^.y;\nEND_GET\nEND_PROPERTY\nEND_FUNCTION_BLOCK"
     )]
@@ -198,6 +204,8 @@ END_FUNCTION_BLOCK
     #[case::super_call_without_base(
         "FUNCTION_BLOCK FB_A\nMETHOD N\n    SUPER^.M();\nEND_METHOD\nEND_FUNCTION_BLOCK"
     )]
+    #[case::base_body_call_without_base("FUNCTION_BLOCK FB_A\n    SUPER^();\nEND_FUNCTION_BLOCK")]
+    #[case::base_body_call_in_program("PROGRAM main\n    SUPER^();\nEND_PROGRAM")]
     fn apply_when_self_reference_has_no_target_then_error(#[case] source: &str) {
         assert_eq!(
             vec![Problem::SelfReferenceWithoutTarget.code().to_string()],
