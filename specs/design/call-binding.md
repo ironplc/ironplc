@@ -213,6 +213,11 @@ declared ones; one numbered past the inputs the call supplies is P4023.
 `IN1` and `IN2` continue as `IN3`, `IN4`, ... with no upper bound, so
 `MAX(a, b, c)` binds and is not P4018.
 
+**REQ-CB-analyzer-055** `CONCAT` is extensible, as IEC 61131-3 declares it in
+its table of character string functions: its declared inputs `IN1` and `IN2`
+continue as `IN3`, `IN4`, ... with no upper bound, so `CONCAT(a, b, c)` binds
+and is not P4018.
+
 **REQ-CB-analyzer-034** A named input of a function call that names no
 parameter of the function is P4023.
 

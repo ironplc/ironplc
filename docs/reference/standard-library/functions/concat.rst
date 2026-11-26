@@ -2,7 +2,7 @@
 CONCAT
 ======
 
-Concatenates two strings.
+Concatenates two or more strings.
 
 Signature
 ---------
@@ -21,11 +21,12 @@ Signature
      VAR_INPUT
        IN1 : ANY_STRING;
        IN2 : ANY_STRING;
+       (* ... INn ... *)
      END_VAR
    END_FUNCTION
 
 The return type matches the input type. ``CONCAT`` accepts ``STRING``.
-Both inputs must share the same type.
+All inputs must share the same type.
 
 .. rubric:: Inputs
 
@@ -43,6 +44,10 @@ Both inputs must share the same type.
    * - ``IN2``
      - ``ANY_STRING``
      - The string to append to IN1.
+   * - ``IN3``, ..., ``INn``
+     - ``ANY_STRING``
+     - Further strings to append, in order; the function is extensible, so
+       any number of inputs may follow ``IN2``.
 
 .. rubric:: Outputs
 
@@ -56,12 +61,14 @@ Both inputs must share the same type.
      - Description
    * - Return value
      - ``ANY_STRING``
-     - IN1 followed by IN2. Same type as the inputs.
+     - The inputs joined in order. Same type as the inputs.
 
 Description
 -----------
 
-Returns a new string formed by appending *IN2* to the end of *IN1*.
+Returns a new string formed by appending *IN2* to the end of *IN1*, then
+each further input in order. ``CONCAT(a, b, c)`` is the same string as
+``CONCAT(CONCAT(a, b), c)``.
 
 Example
 -------
@@ -71,6 +78,7 @@ Example
 
    result := CONCAT('Hello', ' World');    (* result = 'Hello World' *)
    result := CONCAT('A', 'B');             (* result = 'AB' *)
+   result := CONCAT('A', 'B', 'C', 'D');   (* result = 'ABCD' *)
 
 See Also
 --------

@@ -1959,6 +1959,12 @@ more inputs lowers to its two-input `Intrinsic` folded from the left, each
 input at the type the call computes at, so `MAX(a, b, c)` is
 `max(max(a, b), c)`, as the function form of an operator folds.
 
+**REQ-LOW-lowering-209** A call of the extensible `CONCAT` with three or more
+inputs lowers to its two-input `Intrinsic` for the encoding of its strings,
+folded from the left, so `CONCAT(a, b, c)` is `concat(concat(a, b), c)`. Each
+call has room for every code unit of the strings it joins
+(REQ-LOW-lowering-167).
+
 **REQ-LOW-lowering-071** A call's arguments correspond one to one, in order, to
 the callee's parameters: its instance parameter, its result parameter and its
 declared parameters, each where it has one.
@@ -2419,6 +2425,7 @@ implements it.
 | Conversion from a `STRING`, such as `STRING_TO_DINT(s)` | `Call` of the `Intrinsic` that reads a number of the call's type, a bit string as the unsigned integer of its width, carrying the parse policy (REQ-LOW-lowering-073) |
 | Conversion to a `STRING`, such as `DINT_TO_STRING(n)` | A `StrExpr` `Call` of the `Intrinsic` that writes a number of its operation type, of the default capacity (REQ-LOW-lowering-168) |
 | Standard string function, such as `LEN(s)` or `CONCAT(s, t)` | `Call` of its `Intrinsic` for the encoding of its strings: an `Expr` for `LEN` and `FIND`, and a `StrExpr` with room for every code unit of its strings for one that yields a string (REQ-LOW-lowering-167) |
+| `CONCAT(a, b, c, ...)` | The two-input `CONCAT` `Intrinsic` folded from the left, `concat(concat(a, b), c)` (REQ-LOW-lowering-209) |
 | `LEN(s)` of a string no run can change: a literal, a constant string variable, or `MOVE` or `CONCAT` of such strings | A `Const` of its length in code units (REQ-LOW-lowering-205) |
 | Named argument | Positional `Arg` |
 | `SIZEOF(x)` | A `Const`: the bytes of `x`'s storage width, or the element bytes times the element count for an array |
@@ -2448,8 +2455,8 @@ lowers to a `Const` of that length in code units, at the type `LEN` yields:
 of a string literal; of a variable the analyzer records a value for
 ([Constant Variable Inference](constant-variable-inference.md),
 REQ-CVI-analyzer-060), as many code units of the value as the variable's
-capacity holds; and of `MOVE` of such a string or `CONCAT` of two. `LEN` of
-any other string is the `Call` of its `Intrinsic`.
+capacity holds; and of `MOVE` of such a string or `CONCAT` of two or more.
+`LEN` of any other string is the `Call` of its `Intrinsic`.
 
 Evaluating such a string has no effect and cannot trap, so `LEN` computes the
 same without evaluating it, and no backend computes a string only to measure

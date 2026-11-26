@@ -428,9 +428,10 @@ fn get_string_functions() -> Vec<FunctionSignature> {
                 input_param("P", "ANY_INT"),
             ],
         ),
-        // CONCAT: concatenate IN1 and IN2
-        // (ANY_STRING, ANY_STRING -> ANY_STRING)
-        FunctionSignature::stdlib(
+        // CONCAT: concatenate IN1, IN2, ... in order
+        // (ANY_STRING, ANY_STRING, ... -> ANY_STRING).
+        // Extensible, as IEC 61131-3 declares it (REQ-CB-analyzer-055).
+        FunctionSignature::stdlib_extensible(
             "CONCAT",
             BuiltinFunction::String(StringFunction::Concat),
             TypeName::from("ANY_STRING"),
@@ -438,6 +439,7 @@ fn get_string_functions() -> Vec<FunctionSignature> {
                 input_param("IN1", "ANY_STRING"),
                 input_param("IN2", "ANY_STRING"),
             ],
+            None,
         ),
     ]
 }
@@ -825,6 +827,24 @@ mod tests {
             fmod.return_type,
             Some(FunctionReturnType::Named(TypeName::from("ANY_REAL")))
         );
+    }
+
+    #[spec_test(REQ_CB_analyzer_055)]
+    fn get_string_functions_when_concat_then_extensible_past_in2() {
+        let functions = get_string_functions();
+        let concat = functions
+            .iter()
+            .find(|f| f.name.original() == "CONCAT")
+            .unwrap();
+
+        assert!(concat.is_extensible);
+        assert_eq!(concat.max_inputs, None);
+        let names: Vec<String> = concat
+            .input_parameters()
+            .take(4)
+            .map(|p| p.name.original().to_string())
+            .collect();
+        assert_eq!(names, ["IN1", "IN2", "IN3", "IN4"]);
     }
 
     #[test]

@@ -83,8 +83,8 @@ fn lower_statement_when_len_or_find_then_intrinsic_of_encoding() {
 
 /// REQ-LOW-lowering-205: `LEN` of a literal, in either encoding, is a
 /// constant of its length in code units, the type `LEN` yields; so is `LEN`
-/// of a parenthesized literal, of `MOVE` of one and of `CONCAT` of two,
-/// nested or not.
+/// of a parenthesized literal, of `MOVE` of one and of `CONCAT` of two or
+/// more, nested or not.
 #[test]
 fn lower_statement_when_len_of_literal_then_constant_length() {
     let outcome = lower(
@@ -96,6 +96,7 @@ fn lower_statement_when_len_of_literal_then_constant_length() {
             n := LEN(MOVE('abcd'));
             n := LEN(CONCAT('ab', 'cde'));
             n := LEN(CONCAT(CONCAT('a', 'bc'), 'def'));
+            n := LEN(CONCAT('a', 'bc', 'def'));
          END_PROGRAM",
         "main",
     );
@@ -108,6 +109,7 @@ fn lower_statement_when_len_of_literal_then_constant_length() {
             "assign v0^.f0 (const i32s 3)",
             "assign v0^.f0 (const i32s 4)",
             "assign v0^.f0 (const i32s 5)",
+            "assign v0^.f0 (const i32s 6)",
             "assign v0^.f0 (const i32s 6)",
         ]
     );
@@ -248,6 +250,41 @@ fn lower_statement_when_string_function_yields_string_then_call_of_capacity() {
             "assign v0^.f3 (call len_string i32s (call left_string string[5] (read string[5] v0^.f0) (const i32s 2)))",
             "assign-str v0^.f2 (call insert_wstring wstring[6] (read wstring[4] v0^.f2) (literal wstring[2] \"xy\") (const i32s 1))",
             "assign-str v0^.f1 (call concat_string string[11] (call concat_string string[10] (read string[5] v0^.f0) (read string[5] v0^.f0)) (literal string[1] \"c\"))",
+        ]
+    );
+}
+
+/// REQ-LOW-lowering-209: `CONCAT` of three or more strings is the two-input
+/// intrinsic of their encoding folded from the left, each call with room for
+/// every code unit of the strings it joins.
+#[test]
+fn lower_statement_when_concat_of_three_or_more_then_folded_from_the_left() {
+    let outcome = lower(
+        "PROGRAM main VAR s : STRING[5]; t : STRING; w : WSTRING[4]; END_VAR
+            t := CONCAT(s, 'ab', s);
+            t := CONCAT(s, 'ab', s, 'c');
+            w := CONCAT(w, \"x\", w);
+         END_PROGRAM",
+        "main",
+    );
+    let (s, w) = ("(read string[5] v0^.f0)", "(read wstring[4] v0^.f2)");
+    assert_eq!(
+        outcome.statements,
+        [
+            format!(
+                "assign-str v0^.f1 (call concat_string string[12] \
+                 (call concat_string string[7] {s} (literal string[2] \"ab\")) {s})"
+            ),
+            format!(
+                "assign-str v0^.f1 (call concat_string string[13] \
+                 (call concat_string string[12] \
+                 (call concat_string string[7] {s} (literal string[2] \"ab\")) {s}) \
+                 (literal string[1] \"c\"))"
+            ),
+            format!(
+                "assign-str v0^.f2 (call concat_wstring wstring[9] \
+                 (call concat_wstring wstring[5] {w} (literal wstring[1] \"x\")) {w})"
+            ),
         ]
     );
 }

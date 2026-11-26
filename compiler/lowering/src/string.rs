@@ -81,8 +81,8 @@ impl Lowering<'_> {
     /// literal; a variable the analyzer recorded the value of, which it holds
     /// for the whole run (`SymbolEnvironment::constant_value`), as many code
     /// units of it as the variable's capacity holds; and `MOVE` of one, or
-    /// `CONCAT` of two, whose result has room for both. `None` for any other
-    /// string, whose length `LEN` reads when it runs.
+    /// `CONCAT` of two or more, whose result has room for them all. `None`
+    /// for any other string, whose length `LEN` reads when it runs.
     ///
     /// Evaluating such a string has no effect and cannot trap, so `LEN`
     /// computes the same without evaluating it.
@@ -116,12 +116,18 @@ impl Lowering<'_> {
                 let args: Vec<&AstExpr> = func.inputs().collect();
                 return match (builtin, args.as_slice()) {
                     (Some(BuiltinFunction::Move), [value]) => self.constant_length(frame, value),
-                    (Some(BuiltinFunction::String(StringFunction::Concat)), [first, second]) => {
-                        let first = self.constant_length(frame, first)?;
-                        let second = self.constant_length(frame, second)?;
-                        Ok(first
-                            .zip(second)
-                            .map(|(first, second)| first.saturating_add(second)))
+                    (
+                        Some(BuiltinFunction::String(StringFunction::Concat)),
+                        strings @ [_, _, ..],
+                    ) => {
+                        let mut total = Some(0u32);
+                        for value in strings {
+                            let length = self.constant_length(frame, value)?;
+                            total = total
+                                .zip(length)
+                                .map(|(total, length)| total.saturating_add(length));
+                        }
+                        Ok(total)
                     }
                     _ => Ok(None),
                 };
@@ -204,6 +210,10 @@ impl Lowering<'_> {
     /// strings' (REQ-LOW-lowering-167): room for every code unit `CONCAT`,
     /// `INSERT` and `REPLACE` join, and for all `LEFT`, `RIGHT`, `MID` and
     /// `DELETE` can keep of their one string.
+    ///
+    /// `CONCAT` is extensible: a call of three or more inputs is the
+    /// two-input intrinsic folded from the left, so `CONCAT(a, b, c)` is
+    /// `CONCAT(CONCAT(a, b), c)` (REQ-LOW-lowering-209).
     fn string_function_string(
         &mut self,
         frame: &BodyFrame,
@@ -215,12 +225,19 @@ impl Lowering<'_> {
         let Param::Str(_) = intrinsic.signature().result() else {
             return Err(Unlowered::NotYet);
         };
+        let (args, rest) = if matches!(function, StringFunction::Concat) && args.len() > 2 {
+            args.split_at(2)
+        } else {
+            (args, &[][..])
+        };
         let args = self.intrinsic_args(frame, intrinsic, args)?;
-        let capacity = args.iter().fold(0u32, |sum, arg| match arg {
-            Arg::Str(value) => sum.saturating_add(value.shape().capacity),
-            Arg::Value(_) | Arg::Ref(_) | Arg::Copy(_) => sum,
-        });
-        Ok(StrExpr::call(intrinsic, args, capacity, expr.span())?)
+        let mut joined = sized_string_call(intrinsic, args, expr.span())?;
+        for arg in rest {
+            let next = self.str_expr(frame, arg)?;
+            let args = vec![Arg::Str(joined), Arg::Str(next)];
+            joined = sized_string_call(intrinsic, args, expr.span())?;
+        }
+        Ok(joined)
     }
 
     /// The conversion of `args`, one number, to a `STRING`, the expression
@@ -390,6 +407,16 @@ impl Lowering<'_> {
             | AstExprKind::Null(_) => Err(Unlowered::NotYet),
         }
     }
+}
+
+/// The call of the string function `intrinsic` with `args`, with room for
+/// every code unit of its strings (REQ-LOW-lowering-167).
+fn sized_string_call(intrinsic: Intrinsic, args: Vec<Arg>, span: SourceSpan) -> Lowered<StrExpr> {
+    let capacity = args.iter().fold(0u32, |sum, arg| match arg {
+        Arg::Str(value) => sum.saturating_add(value.shape().capacity),
+        Arg::Value(_) | Arg::Ref(_) | Arg::Copy(_) => sum,
+    });
+    Ok(StrExpr::call(intrinsic, args, capacity, span)?)
 }
 
 /// The intrinsic that orders two strings of `encoding`.

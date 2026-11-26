@@ -52,6 +52,48 @@ END_PROGRAM
     assert_eq!(snapshot.read("result"), "Hello World");
 }
 
+#[test]
+fn end_to_end_when_concat_three_or_four_strings_then_joins_in_order() {
+    // CONCAT is extensible: further inputs append in order, as the nested
+    // two-input form does.
+    let source = "
+PROGRAM main
+  VAR
+    a : STRING := 'ab';
+    b : STRING := 'CD';
+    c : STRING := 'ef';
+    d : STRING := 'GH';
+    joined3 : STRING;
+    joined4 : STRING;
+    nested : STRING;
+  END_VAR
+  joined3 := CONCAT(a, b, c);
+  joined4 := CONCAT(a, b, c, d);
+  nested := CONCAT(CONCAT(a, b), c);
+END_PROGRAM
+";
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+
+    assert_eq!(snapshot.read("joined3"), "abCDef");
+    assert_eq!(snapshot.read("joined4"), "abCDefGH");
+    assert_eq!(snapshot.read("nested"), "abCDef");
+}
+
+#[test]
+fn end_to_end_when_concat_named_extended_inputs_then_joins_in_number_order() {
+    let source = "
+PROGRAM main
+  VAR
+    result : STRING;
+  END_VAR
+  result := CONCAT(IN3 := 'c', IN1 := 'a', IN2 := 'b');
+END_PROGRAM
+";
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+
+    assert_eq!(snapshot.read("result"), "abc");
+}
+
 // --- Property test: CONCAT(s1, s2) == s1 followed by s2 ---
 // The result is declared STRING[508] so no destination truncates it. Oracle
 // is pure Rust. The literal-argument lowering path is pinned by the anchor above.
