@@ -58,6 +58,22 @@ Bundled Libraries
    Tc2_Utilities <tc2-utilities>
    Tc2_BuiltIns <tc2-builtins>
 
+Library Prefixes
+----------------
+
+Source written for TwinCAT or CODESYS may put the library a type comes from
+before the type's name, as in ``BROTLib.E_Blink``. IronPLC finds the type by
+its name and checks that the prefix names the library that declares it: an
+activated compatibility library, or a project loaded alongside the one being
+compiled. Names compare ignoring case. A prefix needs
+``--allow-qualified-type-names``, which the ``codesys`` and ``twincat``
+dialects enable; a prefix that names another library, or none, is
+:doc:`P2046 </reference/compiler/problems/P2046>`.
+
+The bundled libraries declare no types, so a prefix that names one of them
+never resolves a type. A type IronPLC provides itself, such as ``TON``,
+belongs to no library: ``Tc2_Standard.TON`` is reported.
+
 Independence
 ------------
 

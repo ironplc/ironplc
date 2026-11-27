@@ -2,11 +2,12 @@
 //!
 //! Runs parse and full semantic analysis, returning structured diagnostics.
 
-use ironplc_dsl::core::FileId;
 use ironplc_project::project::{MemoryBackedProject, Project};
 use serde::Serialize;
 
-use super::common::{parse_options, serialize_diagnostics, validate_sources, SourceInput};
+use super::common::{
+    load_sources, parse_options, serialize_diagnostics, validate_sources, SourceInput,
+};
 
 /// Response returned by the `check` tool.
 #[derive(Debug, Serialize)]
@@ -41,10 +42,7 @@ pub fn build_response(sources: &[SourceInput], options_value: &serde_json::Value
     let mut project = MemoryBackedProject::new(options);
 
     // Load sources (REQ-ARC-mcp-011)
-    for src in sources {
-        let file_id = FileId::from_string(&src.name);
-        project.add_source(file_id, src.content.clone());
-    }
+    load_sources(&mut project, sources);
 
     // Run parse + full semantic analysis
     let diagnostics = serialize_diagnostics(&project.semantic());
@@ -109,10 +107,12 @@ mod tests {
             SourceInput {
                 name: "good.st".into(),
                 content: "PROGRAM good\nEND_PROGRAM".into(),
+                project: None,
             },
             SourceInput {
                 name: "bad.st".into(),
                 content: "PROGRAM".into(),
+                project: None,
             },
         ];
         let resp = build_response(&sources, &ed2_options());

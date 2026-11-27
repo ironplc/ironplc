@@ -28,6 +28,27 @@ pub struct SourceInput {
     pub name: String,
     /// The full source text of the file.
     pub content: String,
+    /// The project the file belongs to, by its project name (e.g.
+    /// `"BROTLib"`). A library prefix on a type name (`BROTLib.E_Blink`) may
+    /// name the project whose files declare the type. Omit for a file that
+    /// belongs to no project. Validated like `name`.
+    #[serde(default)]
+    pub project: Option<String>,
+}
+
+/// Loads `sources` into `project`, recording the project each belongs to
+/// (REQ-ARC-mcp-011, REQ-ARC-mcp-013).
+pub fn load_sources(
+    project: &mut ironplc_project::project::MemoryBackedProject,
+    sources: &[SourceInput],
+) {
+    for src in sources {
+        let file_id = ironplc_dsl::core::FileId::from_string(&src.name);
+        project.add_source(file_id.clone(), src.content.clone());
+        if let Some(name) = &src.project {
+            project.set_file_project(file_id, name);
+        }
+    }
 }
 
 /// Combined input accepted by `parse` and `check`.
@@ -108,6 +129,14 @@ pub fn validate_sources(sources: &[SourceInput]) -> Vec<Diagnostic> {
                 "Duplicate source name '{}'.",
                 src.name
             )));
+        }
+        if let Some(project) = &src.project {
+            if project.is_empty() || project.len() > 256 || !is_printable_ascii(project) {
+                errors.push(validation_diagnostic(&format!(
+                    "Project of source '{}' must be non-empty printable ASCII of at most 256 bytes.",
+                    src.name
+                )));
+            }
         }
     }
     errors
@@ -274,6 +303,7 @@ mod tests {
         let sources = vec![SourceInput {
             name: String::new(),
             content: "PROGRAM p END_PROGRAM".into(),
+            project: None,
         }];
         let errs = validate_sources(&sources);
         assert_eq!(errs.len(), 1);
@@ -284,6 +314,7 @@ mod tests {
         let sources = vec![SourceInput {
             name: "a".repeat(257),
             content: String::new(),
+            project: None,
         }];
         let errs = validate_sources(&sources);
         assert_eq!(errs.len(), 1);
@@ -295,6 +326,7 @@ mod tests {
         let sources = vec![SourceInput {
             name: "file\0.st".into(),
             content: String::new(),
+            project: None,
         }];
         let errs = validate_sources(&sources);
         assert_eq!(errs.len(), 1);
@@ -305,6 +337,7 @@ mod tests {
         let sources = vec![SourceInput {
             name: "path/file.st".into(),
             content: String::new(),
+            project: None,
         }];
         // A name is an opaque key, not a filesystem path, so a separator in
         // it means nothing to the server. '/' is 0x2F, inside the printable
@@ -318,6 +351,7 @@ mod tests {
         let sources = vec![SourceInput {
             name: "file\t.st".into(),
             content: String::new(),
+            project: None,
         }];
         let errs = validate_sources(&sources);
         assert_eq!(errs.len(), 1);
@@ -328,6 +362,7 @@ mod tests {
         let sources = vec![SourceInput {
             name: "file\x07.st".into(),
             content: String::new(),
+            project: None,
         }];
         let errs = validate_sources(&sources);
         assert_eq!(errs.len(), 1);
@@ -339,6 +374,7 @@ mod tests {
         let sources = vec![SourceInput {
             name: "file\x7F.st".into(),
             content: String::new(),
+            project: None,
         }];
         let errs = validate_sources(&sources);
         assert_eq!(errs.len(), 1);
@@ -350,10 +386,12 @@ mod tests {
             SourceInput {
                 name: "main.st".into(),
                 content: String::new(),
+                project: None,
             },
             SourceInput {
                 name: "main.st".into(),
                 content: String::new(),
+                project: None,
             },
         ];
         let errs = validate_sources(&sources);
@@ -366,10 +404,12 @@ mod tests {
             SourceInput {
                 name: "main.st".into(),
                 content: "PROGRAM p END_PROGRAM".into(),
+                project: None,
             },
             SourceInput {
                 name: "lib.st".into(),
                 content: "FUNCTION f : INT END_FUNCTION".into(),
+                project: None,
             },
         ];
         let errs = validate_sources(&sources);
@@ -381,6 +421,7 @@ mod tests {
         let sources = vec![SourceInput {
             name: String::new(),
             content: String::new(),
+            project: None,
         }];
         let errs = validate_sources(&sources);
         assert_eq!(errs[0].code, "P8001");

@@ -533,6 +533,11 @@ define_compiler_options! {
     [Codesys, TwinCat],
     allow_dotted_enum_value,
 
+    "Allow a library prefix on a type name (TcUnit.FB_TestSuite)",
+    "--allow-qualified-type-names",
+    [Codesys, TwinCat],
+    allow_qualified_type_names,
+
     policies {
         "What STRING_TO_<numeric> treats as convertible when the string has non-numeric characters",
         "--policy-string-to-num-non-numeric",

@@ -39,6 +39,7 @@ mod pointer_to;
 mod pou_header_semicolon;
 mod pragmas;
 mod property;
+mod qualified_type_names;
 mod radix_subrange_bound;
 mod reference_to;
 mod set_reset_bind;

@@ -153,6 +153,7 @@ fn codesys_dialect_enables_exactly_these_flags() {
             "allow_omitted_call_argument",
             "allow_trailing_call_comma",
             "allow_dotted_enum_value",
+            "allow_qualified_type_names",
         ],
     );
 }
@@ -209,6 +210,7 @@ fn twincat_dialect_enables_exactly_these_flags() {
             "allow_omitted_call_argument",
             "allow_trailing_call_comma",
             "allow_dotted_enum_value",
+            "allow_qualified_type_names",
         ],
     );
 }

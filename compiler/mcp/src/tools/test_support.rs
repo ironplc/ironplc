@@ -32,6 +32,7 @@ pub fn source(content: &str) -> Vec<SourceInput> {
     vec![SourceInput {
         name: "main.st".into(),
         content: content.into(),
+        project: None,
     }]
 }
 
@@ -41,5 +42,6 @@ pub fn unnamed_source() -> Vec<SourceInput> {
     vec![SourceInput {
         name: String::new(),
         content: VALID_PROGRAM.into(),
+        project: None,
     }]
 }

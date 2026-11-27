@@ -1,0 +1,36 @@
+=====
+P4105
+=====
+
+.. problem-summary:: P4105
+
+This error occurs when a type name has a library prefix, such as
+``TcUnit.FB_TestSuite`` or ``BROTLib.E_Blink.slow``, without the
+``--allow-qualified-type-names`` compiler flag.
+
+IEC 61131-3 Edition 2 names a type by its bare identifier. Writing the
+library a type comes from before its name, as TwinCAT and CODESYS do, is an
+extension. With the extension enabled, the prefix must name the library that
+declares the type (:doc:`P2046 </reference/compiler/problems/P2046>`).
+
+Example
+-------
+
+The following code will generate error P4105:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Test EXTENDS TcUnit.FB_TestSuite
+   END_FUNCTION_BLOCK
+
+To fix this error, either drop the prefix:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Test EXTENDS FB_TestSuite
+   END_FUNCTION_BLOCK
+
+Or enable the extension:
+
+.. |flag| replace:: ``--allow-qualified-type-names``
+.. include:: /includes/enabled-by-flag.rst

@@ -502,6 +502,12 @@ impl MemoryBackedProject {
     pub fn set_preparsed_libraries(&mut self, libraries: Vec<PreparsedLibrary>) {
         self.preparsed_libraries = libraries;
     }
+
+    /// Records that the source `file_id` belongs to the project named
+    /// `project`, so a library prefix on a type name may name it.
+    pub fn set_file_project(&mut self, file_id: FileId, project: &str) {
+        self.source_project.set_file_project(file_id, project);
+    }
 }
 
 impl Project for MemoryBackedProject {

@@ -286,17 +286,27 @@ impl TypeResolver<'_> {
     }
 }
 
-/// The variable reference `a.b` that a dotted initial value names when it
+/// The variable reference `a.b`, or `a.b.c`, that a dotted initial value names when it
 /// is not an enumerated value.
 fn dotted_variable(value: &EnumeratedValue) -> SymbolicVariableKind {
-    let head = value
+    let written = value
         .type_name
         .as_ref()
         .expect("a dotted value always carries the name before the dot");
+    // `a.b.c`, read as `Lib.Type.value`, names the variable `a.b.c`.
+    let record = match &written.qualifier {
+        Some(qualifier) => SymbolicVariableKind::Structured(StructuredVariable {
+            record: Box::new(SymbolicVariableKind::Named(NamedVariable {
+                name: qualifier.clone(),
+            })),
+            field: written.id.clone(),
+        }),
+        None => SymbolicVariableKind::Named(NamedVariable {
+            name: written.id.clone(),
+        }),
+    };
     SymbolicVariableKind::Structured(StructuredVariable {
-        record: Box::new(SymbolicVariableKind::Named(NamedVariable {
-            name: head.id.clone(),
-        })),
+        record: Box::new(record),
         field: value.value.clone(),
     })
 }

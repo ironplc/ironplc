@@ -471,20 +471,34 @@ parser! {
     // The keyword keeps its position like any other identifier, so a
     // diagnostic about the name points at it rather than at 1:1.
     rule variable_identifier() -> Id = identifier() / t:(tok(TokenType::Step) / tok(TokenType::On) / tok(TokenType::REdge) / tok(TokenType::FEdge)) { Id::from(t.text.as_str()).with_position(t.span.clone()) }
-    rule type_name() -> TypeName = i:identifier() { TypeName::from_id(&i) } / generic_type_name()
+    // A type name may carry a library prefix, as in `BROTLib.E_Blink`. The
+    // prefix is kept for the source text; the analyzer checks that it names
+    // the library that declares the type. A declaration names the type it
+    // declares without one (see `declared_type_name`).
+    rule type_name() -> TypeName = q:(q:identifier() _ tok(TokenType::Period) _ { q })? i:identifier() {
+      match q {
+        Some(q) => TypeName::qualified(q, i),
+        None => TypeName::from_id(&i),
+      }
+    } / generic_type_name()
+    // The name a declaration gives the type it declares, which takes no
+    // library prefix.
+    rule declared_type_name() -> TypeName = n:type_name() {?
+      if n.qualifier.is_none() { Ok(n) } else { Err("a type name without a library prefix") }
+    }
 
     // B.1.3.2 Generic data types - used for polymorphic function signatures
     rule generic_type_name() -> TypeName =
-        t:tok(TokenType::Any) { TypeName { id: Id::from("ANY").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyDerived) { TypeName { id: Id::from("ANY_DERIVED").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyElementary) { TypeName { id: Id::from("ANY_ELEMENTARY").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyMagnitude) { TypeName { id: Id::from("ANY_MAGNITUDE").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyNum) { TypeName { id: Id::from("ANY_NUM").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyReal) { TypeName { id: Id::from("ANY_REAL").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyInt) { TypeName { id: Id::from("ANY_INT").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyBit) { TypeName { id: Id::from("ANY_BIT").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyString) { TypeName { id: Id::from("ANY_STRING").with_position(t.span.clone()) } }
-        / t:tok(TokenType::AnyDate) { TypeName { id: Id::from("ANY_DATE").with_position(t.span.clone()) } }
+        t:tok(TokenType::Any) { TypeName { qualifier: None, id: Id::from("ANY").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyDerived) { TypeName { qualifier: None, id: Id::from("ANY_DERIVED").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyElementary) { TypeName { qualifier: None, id: Id::from("ANY_ELEMENTARY").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyMagnitude) { TypeName { qualifier: None, id: Id::from("ANY_MAGNITUDE").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyNum) { TypeName { qualifier: None, id: Id::from("ANY_NUM").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyReal) { TypeName { qualifier: None, id: Id::from("ANY_REAL").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyInt) { TypeName { qualifier: None, id: Id::from("ANY_INT").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyBit) { TypeName { qualifier: None, id: Id::from("ANY_BIT").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyString) { TypeName { qualifier: None, id: Id::from("ANY_STRING").with_position(t.span.clone()) } }
+        / t:tok(TokenType::AnyDate) { TypeName { qualifier: None, id: Id::from("ANY_DATE").with_position(t.span.clone()) } }
 
     // B.1.2 Constants
     // Every literal kind records the span of the tokens it matched. Recording
@@ -726,7 +740,7 @@ parser! {
       / structure_type_declaration__with_constant()
       / enumerated:enumerated_type_declaration__with_value() { DataTypeDeclarationKind::Enumeration(enumerated) }
       / simple:simple_type_declaration__with_constant() { DataTypeDeclarationKind::Simple(simple )}
-      / type_name:type_name() _ tok(TokenType::Colon) _ syntax:ref_to_keyword() _ ref_target:ref_to_target() {
+      / type_name:declared_type_name() _ tok(TokenType::Colon) _ syntax:ref_to_keyword() _ ref_target:ref_to_target() {
         DataTypeDeclarationKind::Reference(ReferenceDeclaration {
           type_name,
           target: ref_target,
@@ -745,7 +759,7 @@ parser! {
     // Union of structure_type_declaration, enumerated_type_declaration and
     // simple_type_declaration all without any initializer. These types all
     // look the same
-    rule structure_or_enumerated_or_simple_type_declaration__without_value() -> LateBoundDeclaration = data_type_name:type_name() _ tok(TokenType::Colon) _ base_type_name:type_name() {
+    rule structure_or_enumerated_or_simple_type_declaration__without_value() -> LateBoundDeclaration = data_type_name:declared_type_name() _ tok(TokenType::Colon) _ base_type_name:type_name() {
       LateBoundDeclaration {
         data_type_name,
         base_type_name,
@@ -755,13 +769,13 @@ parser! {
     // MyInt : UDINT := C;`), as a variable initializer is. After a user type
     // name only a literal: `MyInt : Other := Value` is an enumeration
     // declaration to the alternative before this one.
-    rule simple_type_declaration__with_constant() -> SimpleDeclaration = type_name:simple_type_name() _ tok(TokenType::Colon) _ spec_and_init:(simple_spec_init__elementary_with_expression() / simple_spec_init__with_constant()) {
+    rule simple_type_declaration__with_constant() -> SimpleDeclaration = type_name:declared_type_name() _ tok(TokenType::Colon) _ spec_and_init:(simple_spec_init__elementary_with_expression() / simple_spec_init__with_constant()) {
       SimpleDeclaration {
         type_name,
         spec_and_init,
       }
     }
-    rule simple_type_declaration__without_value() -> SimpleDeclaration = type_name:simple_type_name() _ tok(TokenType::Colon) _ base:elementary_type_name() {
+    rule simple_type_declaration__without_value() -> SimpleDeclaration = type_name:declared_type_name() _ tok(TokenType::Colon) _ base:elementary_type_name() {
       SimpleDeclaration {
         type_name,
         spec_and_init: InitialValueAssignmentKind::Simple(SimpleInitializer {
@@ -813,7 +827,7 @@ parser! {
       })
     }
     rule simple_specification() -> TypeName = et:elementary_type_name() { et.into() } / simple_type_name()
-    rule subrange_type_declaration__with_range() -> SubrangeDeclaration = type_name:subrange_type_name() _ tok(TokenType::Colon) _ spec:subrange_spec_init__with_range() {
+    rule subrange_type_declaration__with_range() -> SubrangeDeclaration = type_name:declared_type_name() _ tok(TokenType::Colon) _ spec:subrange_spec_init__with_range() {
       SubrangeDeclaration {
         type_name,
         spec: spec.0,
@@ -840,7 +854,7 @@ parser! {
     rule subrange() -> Subrange = start:subrange_bound() _ tok(TokenType::Range) _ end:subrange_bound() { Subrange{start, end} }
 
     rule enumerated_type_declaration__with_value() -> EnumerationDeclaration =
-      type_name:enumerated_type_name() _ tok(TokenType::Colon) _ spec:enumerated_specification() _ underlying_type:enum_underlying_type()? _ tok(TokenType::Assignment) _ def:enumerated_value() {
+      type_name:declared_type_name() _ tok(TokenType::Colon) _ spec:enumerated_specification() _ underlying_type:enum_underlying_type()? _ tok(TokenType::Assignment) _ def:enumerated_value() {
         EnumerationDeclaration {
           type_name,
           spec_init: EnumeratedSpecificationInit {
@@ -850,7 +864,7 @@ parser! {
           },
         }
       }
-      / type_name:enumerated_type_name() _ tok(TokenType::Colon) _ values:enumerated_specification__only_values() _ underlying_type:enum_underlying_type()? _ default:(tok(TokenType::Assignment) _ d:enumerated_value() { d })? {
+      / type_name:declared_type_name() _ tok(TokenType::Colon) _ values:enumerated_specification__only_values() _ underlying_type:enum_underlying_type()? _ default:(tok(TokenType::Assignment) _ d:enumerated_value() { d })? {
         EnumerationDeclaration {
           type_name,
           spec_init: EnumeratedSpecificationInit {
@@ -887,11 +901,17 @@ parser! {
     // only tried where an enumerated value is referenced (an initial value, a
     // TYPE default, an array initializer, a CASE label), where there is no
     // variable reference for the dot to be confused with. A member
-    // declaration names a value, so it never takes this form. A library
-    // prefix before the type (`Lib.Type.value`) is not accepted.
-    rule enumerated_value__dotted() -> EnumeratedValue = name:enumerated_type_name() _ tok(TokenType::Period) _ value:variable_identifier() {
-      EnumeratedValue { type_name: Some(name), value, dotted: true, explicit_value: None }
-    }
+    // declaration names a value, so it never takes this form. The type may
+    // carry a library prefix (`Lib.Type.value`). Each spelling is its own
+    // alternative because a prefixed `type_name()` would take `Type.value`
+    // for `Lib.Type` and leave no value.
+    rule enumerated_value__dotted() -> EnumeratedValue =
+      lib:identifier() _ tok(TokenType::Period) _ ty:identifier() _ tok(TokenType::Period) _ value:variable_identifier() {
+        EnumeratedValue { type_name: Some(TypeName::qualified(lib, ty)), value, dotted: true, explicit_value: None }
+      }
+      / ty:identifier() _ tok(TokenType::Period) _ value:variable_identifier() {
+        EnumeratedValue { type_name: Some(TypeName::from_id(&ty)), value, dotted: true, explicit_value: None }
+      }
     // The `Type#VALUE` spelling only. Unlike `enumerated_value()`, this
     // cannot match a bare identifier, so a caller in a position that also
     // accepts a variable reference can tell the unambiguous case apart from
@@ -908,7 +928,7 @@ parser! {
     // CODESYS/TwinCAT enum base-type suffix, e.g. `(A, B) BYTE;` --
     // overrides the automatic count/value-based sizing.
     rule enum_underlying_type() -> ElementaryTypeName = integer_type_name() / bit_string_type_name()
-    rule array_type_declaration() -> ArrayDeclaration = type_name:array_type_name() _ tok(TokenType::Colon) _ spec_and_init:array_spec_init() {
+    rule array_type_declaration() -> ArrayDeclaration = type_name:declared_type_name() _ tok(TokenType::Colon) _ spec_and_init:array_spec_init() {
       ArrayDeclaration {
         type_name,
         spec: spec_and_init.spec,
@@ -949,13 +969,13 @@ parser! {
     // TODO array_initial_element requires structure_initialization | array_initialization
     rule array_initial_element() -> ArrayInitialElementKind = c:constant() { ArrayInitialElementKind::Constant(c) } / e:enumerated_value() { ArrayInitialElementKind::EnumValue(e) }
     rule structure_type_declaration__with_constant() -> DataTypeDeclarationKind =
-      type_name:structure_type_name() _ tok(TokenType::Colon) _ decl:structure_declaration() {
+      type_name:declared_type_name() _ tok(TokenType::Colon) _ decl:structure_declaration() {
         DataTypeDeclarationKind::Structure(StructureDeclaration {
           type_name,
           elements: decl.elements,
         })
       }
-      / type_name:structure_type_name() _ tok(TokenType::Colon) _ init:initialized_structure__without_ambiguous() {
+      / type_name:declared_type_name() _ tok(TokenType::Colon) _ init:initialized_structure__without_ambiguous() {
         DataTypeDeclarationKind::StructureInitialization(StructureInitializationDeclaration {
           // TODO there is something off with having two type names
           type_name,
@@ -1101,7 +1121,7 @@ parser! {
     // The standard's grammar accepts either delimiter for a string type
     // declaration's default, and the declared width governs, so the literal
     // takes the declared width rather than the one its delimiter spelled.
-    rule string_type_declaration() -> StringDeclaration = type_name:string_type_name() _ tok(TokenType::Colon) _ width:(tok(TokenType::String) { StringType::String } / tok(TokenType::WString) { StringType::WString }) _ tok(TokenType::LeftBracket) _ length:integer_ref() _ tok(TokenType::RightBracket) _ init:(tok(TokenType::Assignment) _ str:character_string_literal() {str})? {
+    rule string_type_declaration() -> StringDeclaration = type_name:declared_type_name() _ tok(TokenType::Colon) _ width:(tok(TokenType::String) { StringType::String } / tok(TokenType::WString) { StringType::WString }) _ tok(TokenType::LeftBracket) _ length:integer_ref() _ tok(TokenType::RightBracket) _ init:(tok(TokenType::Assignment) _ str:character_string_literal() {str})? {
       StringDeclaration {
         type_name,
         length,
@@ -1109,7 +1129,7 @@ parser! {
         width,
       }
     }
-    rule string_type_declaration__parenthesis() -> StringDeclaration = type_name:string_type_name() _ tok(TokenType::Colon) _ width:(tok(TokenType::String) { StringType::String } / tok(TokenType::WString) { StringType::WString }) _ tok(TokenType::LeftParen) _ length:integer_ref() _ tok(TokenType::RightParen) _ init:(tok(TokenType::Assignment) _ str:character_string_literal() {str})? {
+    rule string_type_declaration__parenthesis() -> StringDeclaration = type_name:declared_type_name() _ tok(TokenType::Colon) _ width:(tok(TokenType::String) { StringType::String } / tok(TokenType::WString) { StringType::WString }) _ tok(TokenType::LeftParen) _ length:integer_ref() _ tok(TokenType::RightParen) _ init:(tok(TokenType::Assignment) _ str:character_string_literal() {str})? {
       StringDeclaration {
         type_name,
         length,
@@ -1696,7 +1716,7 @@ parser! {
     // IEC 61131 defines separate standard and derived function block names,
     // but we don't need that distinction here.
     rule function_block_type_name() -> TypeName = type_name()
-    rule derived_function_block_name() -> TypeName = type_name()
+    rule derived_function_block_name() -> TypeName = declared_type_name()
     // OOP extension: comma-separated list of type names,
     // e.g. `IMPLEMENTS I_Hydraulics, I_Brake`. Only produced when EXTENDS
     // or IMPLEMENTS tokens are recognized (allow_fb_inheritance), since

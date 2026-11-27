@@ -12,7 +12,6 @@ use ironplc_dsl::common::{
     FunctionBlockCallInitializer, FunctionBlockDeclaration, FunctionBlockInitialValueAssignment,
     FunctionDeclaration, Library, LibraryElementKind, ProgramDeclaration, VarDecl,
 };
-use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{FbCall, Function};
 use ironplc_dsl::visitor::Visitor;
@@ -20,7 +19,9 @@ use ironplc_project::project::{MemoryBackedProject, Project};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::common::{parse_options, serialize_diagnostics, validate_sources, SourceInput};
+use super::common::{
+    load_sources, parse_options, serialize_diagnostics, validate_sources, SourceInput,
+};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct PouLineageInput {
@@ -103,9 +104,7 @@ pub fn build_response(
     };
 
     let mut project = MemoryBackedProject::new(options);
-    for src in sources {
-        project.add_source(FileId::from_string(&src.name), src.content.clone());
-    }
+    load_sources(&mut project, sources);
 
     let mut diagnostics_json = serialize_diagnostics(&project.semantic());
 
@@ -440,6 +439,7 @@ mod tests {
         let sources = vec![SourceInput {
             name: "main.st".into(),
             content: src.into(),
+            project: None,
         }];
         build_response(&sources, &ed2_options(), pou)
     }

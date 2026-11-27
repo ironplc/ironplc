@@ -103,6 +103,19 @@ impl<'a> LibraryRenderer<'a> {
         Ok(())
     }
 
+    /// Writes a type name as the source wrote it, with its library prefix.
+    /// Raw writes around the `.`, since `write_ws` would put a space after it.
+    fn write_type_name(&mut self, name: &TypeName) {
+        match &name.qualifier {
+            Some(qualifier) => {
+                self.write_ws(qualifier.original().as_str());
+                self.write(".");
+                self.write(name.id.original().as_str());
+            }
+            None => self.write_ws(name.id.original().as_str()),
+        }
+    }
+
     fn write_ws(&mut self, val: &str) {
         if self.buffer.ends_with('\n') {
             self.buffer.push_str("   ".repeat(self.indents).as_str());
@@ -557,6 +570,14 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         Ok(())
     }
 
+    fn visit_type_name(&mut self, node: &TypeName) -> Result<Self::Value, Diagnostic> {
+        if node.qualifier.is_none() {
+            return self.visit_id(&node.id);
+        }
+        self.write_type_name(node);
+        Ok(())
+    }
+
     fn visit_enumerated_value(
         &mut self,
         node: &EnumeratedValue,
@@ -567,7 +588,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         // "COLOR RED", found while adding explicit_value rendering below).
         match &node.type_name {
             Some(type_name) => {
-                self.write_ws(type_name.id.original().as_str());
+                self.write_type_name(type_name);
                 // TwinCAT rejects `#` between an enumeration and its value, so the
                 // spelling the source used is the one written back.
                 self.write(if node.dotted { "." } else { "#" });

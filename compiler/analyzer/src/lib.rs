@@ -79,6 +79,8 @@ mod rule_persistent_var_owner;
 mod rule_pou_hierarchy;
 mod rule_program_task_definition_exists;
 mod rule_program_var_hides_global;
+mod rule_qualified_type_name_allowed;
+mod rule_qualified_type_name_library;
 mod rule_range_limits;
 mod rule_real_literal_integer_position;
 mod rule_real_literal_range;
