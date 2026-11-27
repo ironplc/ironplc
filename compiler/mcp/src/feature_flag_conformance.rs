@@ -363,6 +363,14 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "TYPE E_Blink : (off, slow); END_TYPE\nPROGRAM main\nVAR\ns : E_Blink;\nEND_VAR\nCASE s OF\nE_Blink.slow: ;\nEND_CASE;\nEND_PROGRAM",
     },
+    // `CONCAT` of three strings: P4018 when the flag is off, as CODESYS and
+    // TwinCAT declare `CONCAT` with two inputs. The ed2 preset turns this
+    // flag on, so the off run turns it off explicitly.
+    FlagFixture {
+        key: "allow_extensible_concat",
+        prereqs: &[],
+        source: "PROGRAM main\nVAR\ns : STRING;\nEND_VAR\ns := CONCAT('a', 'b', 'c');\nEND_PROGRAM",
+    },
 ];
 
 /// Builds an ed2 options object with the given flags enabled.
@@ -430,7 +438,10 @@ fn each_feature_flag_gates_its_example_source_off_then_on() {
         let mut on_flags = fx.prereqs.to_vec();
         on_flags.push(fx.key);
 
-        let off = tools::check::build_response(&source(fx.source), &ed2_with(fx.prereqs));
+        // The flag is off even where the ed2 preset turns it on.
+        let mut off_options = ed2_with(fx.prereqs);
+        off_options[fx.key] = serde_json::Value::Bool(false);
+        let off = tools::check::build_response(&source(fx.source), &off_options);
         assert!(
             !off.ok,
             "flag `{}`: source expected to be REJECTED with the flag off (prereqs {:?}) but it \

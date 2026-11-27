@@ -211,10 +211,21 @@ macro_rules! define_compiler_options {
             ),* $(,)?
         }
     ) => {
-        #[derive(Debug, Default, Clone, Copy)]
+        #[derive(Debug, Clone, Copy)]
         pub struct CompilerOptions {
             $(pub $flag_field: bool,)*
             $(pub $policy_field: $policy_type,)*
+        }
+
+        /// The options of the default dialect, strict Edition 2. They are
+        /// its preset rather than every flag off: a flag that names a
+        /// standard feature, such as `allow_extensible_concat`, is on in
+        /// Edition 2 so that a vendor dialect lacking the feature can
+        /// leave it off.
+        impl Default for CompilerOptions {
+            fn default() -> Self {
+                Self::from_dialect(Dialect::default())
+            }
         }
 
         impl CompilerOptions {
@@ -224,7 +235,10 @@ macro_rules! define_compiler_options {
             /// additional extensions on top of the dialect, and individual
             /// policies can be reassigned.
             pub fn from_dialect(dialect: Dialect) -> Self {
-                let mut opts = Self::default();
+                let mut opts = Self {
+                    $($flag_field: false,)*
+                    $($policy_field: $policy_type::default(),)*
+                };
                 $(
                     if [$(Dialect::$dialect),*].contains(&dialect) {
                         opts.$flag_field = true;
@@ -532,6 +546,11 @@ define_compiler_options! {
     "--allow-dotted-enum-value",
     [Codesys, TwinCat],
     allow_dotted_enum_value,
+
+    "Allow CONCAT of more than two strings, as IEC 61131-3 declares it extensible (CODESYS and TwinCAT declare it with two inputs)",
+    "--allow-extensible-concat",
+    [Iec61131_3Ed2, Iec61131_3Ed3, Rusty],
+    allow_extensible_concat,
 
     policies {
         "What STRING_TO_<numeric> treats as convertible when the string has non-numeric characters",

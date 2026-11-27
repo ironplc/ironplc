@@ -218,6 +218,11 @@ its table of character string functions: its declared inputs `IN1` and `IN2`
 continue as `IN3`, `IN4`, ... with no upper bound, so `CONCAT(a, b, c)` binds
 and is not P4018.
 
+**REQ-CB-analyzer-056** With `allow_extensible_concat` off, as the CODESYS and
+TwinCAT dialects have it, `CONCAT` takes exactly `IN1` and `IN2`, as those
+toolchains declare it, so `CONCAT(a, b, c)` is P4018. The IEC 61131-3 dialects
+and RuSTy turn the option on.
+
 **REQ-CB-analyzer-034** A named input of a function call that names no
 parameter of the function is P4023.
 

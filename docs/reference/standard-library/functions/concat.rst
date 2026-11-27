@@ -70,6 +70,12 @@ Returns a new string formed by appending *IN2* to the end of *IN1*, then
 each further input in order. ``CONCAT(a, b, c)`` is the same string as
 ``CONCAT(CONCAT(a, b), c)``.
 
+IEC 61131-3 and RuSTy declare ``CONCAT`` extensible. CODESYS and TwinCAT
+declare it with exactly two inputs, so under the ``codesys`` and ``twincat``
+dialects a third input is
+:doc:`P4018 </reference/compiler/problems/P4018>`; nest the calls instead.
+The ``--allow-extensible-concat`` flag selects the extensible form.
+
 Example
 -------
 

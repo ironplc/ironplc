@@ -50,12 +50,16 @@ pub fn build_response() -> ListOptionsResponse {
         CompilerOptions::FEATURE_DESCRIPTORS.len() + CompilerOptions::POLICY_DESCRIPTORS.len(),
     );
 
-    // All dialect-extension flags from the macro-generated descriptors.
+    // All dialect-extension flags from the macro-generated descriptors, each
+    // with its value in the default dialect: off, but for a flag naming a
+    // standard feature, such as `allow_extensible_concat`.
+    let defaults = CompilerOptions::default();
     for fd in CompilerOptions::FEATURE_DESCRIPTORS {
+        let default = defaults.get_flag_by_key(fd.option_key).unwrap_or(false);
         flags.push(FlagInfo {
             id: fd.option_key.to_string(),
             flag_type: "bool".into(),
-            default: serde_json::Value::Bool(false),
+            default: serde_json::Value::Bool(default),
             description: fd.description.to_string(),
             allowed_values: None,
         });
@@ -111,14 +115,32 @@ mod tests {
     }
 
     #[test]
-    fn build_response_when_called_then_feature_flags_are_bool_with_false_default() {
+    fn build_response_when_called_then_feature_flags_are_bool_with_ed2_default() {
         let resp = build_response();
+        let ed2 = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed2);
         for fd in CompilerOptions::FEATURE_DESCRIPTORS {
             let flag = resp.flags.iter().find(|f| f.id == fd.option_key).unwrap();
             assert_eq!(flag.flag_type, "bool");
-            assert_eq!(flag.default, serde_json::Value::Bool(false));
+            let expected = ed2.get_flag_by_key(fd.option_key).unwrap();
+            assert_eq!(
+                flag.default,
+                serde_json::Value::Bool(expected),
+                "{}",
+                fd.option_key
+            );
             assert!(flag.allowed_values.is_none());
         }
+    }
+
+    #[test]
+    fn build_response_when_extensible_concat_then_default_on() {
+        let resp = build_response();
+        let flag = resp
+            .flags
+            .iter()
+            .find(|f| f.id == "allow_extensible_concat")
+            .unwrap();
+        assert_eq!(flag.default, serde_json::Value::Bool(true));
     }
 
     #[test]

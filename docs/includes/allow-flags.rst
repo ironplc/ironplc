@@ -348,3 +348,12 @@
    Allow ``Type.value`` as the spelling of a qualified enumerated value,
    besides the standard ``Type#value``. Without this flag it produces
    :doc:`P4104 </reference/compiler/problems/P4104>`.
+
+``--allow-extensible-concat``
+   Allow :doc:`CONCAT </reference/standard-library/functions/concat>` of more
+   than two strings, as in ``CONCAT(a, b, c)``. IEC 61131-3 declares
+   ``CONCAT`` extensible, so the ``iec61131-3-ed2``, ``iec61131-3-ed3`` and
+   ``rusty`` dialects turn this flag on. CODESYS and TwinCAT declare
+   ``CONCAT`` with two inputs, so the ``codesys`` and ``twincat`` dialects
+   leave it off. Without this flag a third input produces
+   :doc:`P4018 </reference/compiler/problems/P4018>`.
