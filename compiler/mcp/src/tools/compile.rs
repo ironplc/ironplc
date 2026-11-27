@@ -11,14 +11,15 @@ use ironplc_dsl::common::Library;
 use ironplc_dsl::configuration::{
     ConfigurationDeclaration, ProgramConfiguration, TaskConfiguration,
 };
-use ironplc_dsl::core::{FileId, SourceSpan};
+use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_project::project::{MemoryBackedProject, Project};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::common::{
-    parse_options, serialize_diagnostic, serialize_diagnostics, validate_sources, SourceInput,
+    load_sources, parse_options, serialize_diagnostic, serialize_diagnostics, validate_sources,
+    SourceInput,
 };
 use crate::cache::{CachedContainer, ContainerCache, InsertError, ProgramMeta, TaskKind, TaskMeta};
 
@@ -101,9 +102,7 @@ pub fn build_response(
     let mut project = MemoryBackedProject::new(compiler_options);
 
     // Load sources (REQ-ARC-mcp-011)
-    for src in sources {
-        project.add_source(FileId::from_string(&src.name), src.content.clone());
-    }
+    load_sources(&mut project, sources);
 
     // Run the pipeline (parse, analysis, codegen) that `ironplc-project` owns.
     // No sources come from disk here, so codegen gets no source bytes to hash

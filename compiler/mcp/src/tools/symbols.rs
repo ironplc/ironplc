@@ -6,12 +6,14 @@ use ironplc_analyzer::semantic_type::{ParameterType, SemanticFunctionParameter};
 use ironplc_analyzer::value_type::spelling;
 use ironplc_analyzer::SemanticContext;
 use ironplc_dsl::common::{GenericTypeName, LocationPrefix};
-use ironplc_dsl::core::{FileId, Id};
+use ironplc_dsl::core::Id;
 use ironplc_project::project::{MemoryBackedProject, Project};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::common::{parse_options, serialize_diagnostics, validate_sources, SourceInput};
+use super::common::{
+    load_sources, parse_options, serialize_diagnostics, validate_sources, SourceInput,
+};
 
 const MAX_RESPONSE_BYTES: usize = 256 * 1024;
 
@@ -91,9 +93,7 @@ pub fn build_response(
     };
 
     let mut project = MemoryBackedProject::new(options);
-    for src in sources {
-        project.add_source(FileId::from_string(&src.name), src.content.clone());
-    }
+    load_sources(&mut project, sources);
 
     let diagnostics_json = serialize_diagnostics(&project.semantic());
 
@@ -420,6 +420,7 @@ mod tests {
             content:
                 "FUNCTION_BLOCK fb\nVAR_INPUT x : INT; END_VAR\nEND_FUNCTION_BLOCK\nPROGRAM p\nVAR inst : fb; END_VAR\nEND_PROGRAM"
                     .into(),
+            project: None,
         }];
         let resp = build_response(&sources, &ed2_options(), None);
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
@@ -449,6 +450,7 @@ mod tests {
             content:
                 "FUNCTION f : INT\nVAR_INPUT a : INT; END_VAR\nf := a;\nEND_FUNCTION\nPROGRAM p\nVAR r : INT; END_VAR\nr := f(a := 1);\nEND_PROGRAM"
                     .into(),
+            project: None,
         }];
         let resp = build_response(&sources, &ed2_options(), None);
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
@@ -473,6 +475,7 @@ mod tests {
         let sources = vec![SourceInput {
             name: "main.st".into(),
             content: "PROGRAM a\nEND_PROGRAM\nPROGRAM b\nVAR x : INT; END_VAR\nEND_PROGRAM".into(),
+            project: None,
         }];
         let resp = build_response(&sources, &ed2_options(), Some("b"));
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);

@@ -580,6 +580,8 @@ The server uses [`rmcp`](https://crates.io/crates/rmcp) (the official Rust SDK f
 
 **REQ-ARC-mcp-011** Each `{ name, content }` pair is mapped to a `FileId::from_string(name)` and loaded via `change_text_document` against the per-call `Project` instance. File names are validated against REQ-STL-mcp-004 before any compiler code runs.
 
+**REQ-ARC-mcp-013** A `sources` entry may carry `project`, the name of the project the file belongs to. The server records it against the file, so a library prefix on a type name (`BROTLib.E_Blink`) may name the project whose files declare the type (REQ-CL-analyzer-008 in [Compatibility Libraries](compatibility-libraries.md)). A `project` is validated like a `name` (REQ-STL-mcp-004) except that several files may share one. An entry without `project` belongs to no project.
+
 **REQ-ARC-mcp-012** The server does not accept raw filesystem paths as arguments in any tool, does not read files from the on-disk project directory, and does not write compilation or analysis artifacts to disk. This is the same requirement as REQ-STL-mcp-006; it is repeated here so that an implementer browsing the Architecture section cannot miss it.
 
 ### Container Cache

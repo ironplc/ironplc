@@ -29,6 +29,7 @@ fn scenario_agent_self_heals_syntax_error() {
     let broken = vec![SourceInput {
         name: "main.st".into(),
         content: "PROGRAM p\nVAR x : INT END_VAR\nEND_PROGRAM".into(),
+        project: None,
     }];
     let r1 = check::build_response(&broken, &ed2_options());
     assert!(!r1.ok, "broken code should fail check");
@@ -60,6 +61,7 @@ fn scenario_agent_self_heals_syntax_error() {
     let fixed = vec![SourceInput {
         name: "main.st".into(),
         content: PROGRAM_WITH_VAR.into(),
+        project: None,
     }];
     let r2 = check::build_response(&fixed, &ed2_options());
     assert!(
@@ -94,6 +96,7 @@ fn scenario_options_discovery_then_check_accepts_dialect() {
     let sources = vec![SourceInput {
         name: "main.st".into(),
         content: VALID_PROGRAM.into(),
+        project: None,
     }];
     let opts = serde_json::json!({"dialect": dialect_id});
     let resp = check::build_response(&sources, &opts);
@@ -158,6 +161,7 @@ fn scenario_project_io_global_then_run_traces_it() {
     let sources = vec![SourceInput {
         name: "main.st".into(),
         content: CONFIGURATION_GLOBAL_COUNTER.into(),
+        project: None,
     }];
 
     // Step 1: the global is an observable output.

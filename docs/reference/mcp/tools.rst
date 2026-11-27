@@ -12,7 +12,11 @@ Every tool that takes source files shares two input fields:
    One or more source files. Each entry has a ``name`` (logical file
    name — non-empty, at most 256 bytes of printable ASCII, unique
    within the array) and a ``content`` string with the full source
-   text.
+   text. An entry may also have a ``project``: the name of the project
+   the file belongs to, with the same limits as ``name``. A library
+   prefix on a type name, such as ``BROTLib.E_Blink``, may name the
+   project whose files declare the type
+   (:doc:`P2046 </reference/compiler/problems/P2046>`).
 
 ``options`` (object, required)
    Compiler options. Must include a ``dialect`` field set to one of the

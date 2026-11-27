@@ -105,7 +105,8 @@ Supported Dialects
    ``--allow-enum-base-type``, ``--allow-continue``,
    ``--allow-keywords-as-names``, ``--allow-radix-subrange-bounds``,
    ``--allow-conditional-return``, ``--allow-omitted-call-argument``,
-   ``--allow-trailing-call-comma``, and ``--allow-dotted-enum-value``.
+   ``--allow-trailing-call-comma``, ``--allow-dotted-enum-value``, and
+   ``--allow-qualified-type-names``.
 
    **Selects:** ``--policy-string-to-num-non-numeric ignore-trailing`` and
    ``--policy-string-to-num-failure zero`` — CODESYS stops parsing at the
@@ -151,8 +152,8 @@ Supported Dialects
    ``--allow-enum-base-type``, ``--allow-continue``,
    ``--allow-keywords-as-names``, ``--allow-radix-subrange-bounds``,
    ``--allow-conditional-return``, ``--allow-pou-header-semicolon``,
-   ``--allow-omitted-call-argument``, ``--allow-trailing-call-comma``, and
-   ``--allow-dotted-enum-value``.
+   ``--allow-omitted-call-argument``, ``--allow-trailing-call-comma``,
+   ``--allow-dotted-enum-value``, and ``--allow-qualified-type-names``.
 
    **Selects:** ``--policy-string-to-num-non-numeric ignore-trailing`` and
    ``--policy-string-to-num-failure zero``, as ``codesys``.

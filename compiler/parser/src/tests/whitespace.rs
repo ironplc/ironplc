@@ -412,6 +412,20 @@ END_CONFIGURATION"
     verbatim,
     CompilerOptions::default
 )]
+// ---------------------------------------------------------------------
+// A library prefix on a type name (`--allow-qualified-type-names`), on each
+// side of its `.`, in a variable type and before a `Type.value`.
+// ---------------------------------------------------------------------
+#[case::qualified_type_name(
+    "PROGRAM main VAR x : Lib·.·FB_B; END_VAR END_PROGRAM",
+    verbatim,
+    CompilerOptions::default
+)]
+#[case::qualified_dotted_enumerated_value(
+    "TYPE E : (a, b); END_TYPE PROGRAM main VAR e : E := Lib·.·E·.·b; END_VAR END_PROGRAM",
+    verbatim,
+    CompilerOptions::default
+)]
 fn parse_when_gap_filled_then_same_ast(
     #[case] template: &'static str,
     #[case] wrap: fn(&str) -> String,

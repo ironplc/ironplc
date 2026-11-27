@@ -690,8 +690,18 @@ impl fmt::Display for BitStringLiteral {
 /// Types are all identifiers but we use a separate structure
 /// because it is convenient to treat types and other identifiers
 /// separately.
-#[derive(Clone, Debug, PartialEq, Recurse, Located)]
+#[derive(Clone, Debug, Recurse, Located)]
 pub struct TypeName {
+    /// The library prefix written before the name (`BROTLib` in
+    /// `BROTLib.E_Blink`), or `None` for a name written without one.
+    ///
+    /// The prefix is kept so the source text is reproduced as written. It
+    /// takes no part in equality, hashing or lookup: a library's names are
+    /// flat (`specs/design/compatibility-libraries.md`), so `BROTLib.E_Blink`
+    /// finds the type `E_Blink` names. That the prefix names the library
+    /// that declares the type is a rule of the analyzer.
+    #[recurse(ignore)]
+    pub qualifier: Option<Id>,
     #[located(delegate)]
     pub id: Id,
 }
@@ -699,11 +709,31 @@ pub struct TypeName {
 impl TypeName {
     /// Converts a `&str` into an `Identifier`.
     pub fn from(str: &str) -> Self {
-        Self { id: Id::from(str) }
+        Self {
+            qualifier: None,
+            id: Id::from(str),
+        }
     }
 
     pub fn from_id(id: &Id) -> Self {
-        Self { id: id.clone() }
+        Self {
+            qualifier: None,
+            id: id.clone(),
+        }
+    }
+
+    /// A name written with the library prefix `qualifier`.
+    pub fn qualified(qualifier: Id, id: Id) -> Self {
+        Self {
+            qualifier: Some(qualifier),
+            id,
+        }
+    }
+}
+
+impl PartialEq for TypeName {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
     }
 }
 
@@ -2553,7 +2583,7 @@ pub enum LateResolvedInitialValue {
     /// `Colors.Red`: an enumeration's value written with its type, or a
     /// constant reached through a name (`GVL.limit`). TwinCAT allows the
     /// second for any type, so only the type resolver can tell which this is.
-    Dotted(EnumeratedValue),
+    Dotted(Box<EnumeratedValue>),
 }
 
 impl InitialValueAssignmentKind {

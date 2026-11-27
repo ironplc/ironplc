@@ -1,5 +1,4 @@
-//! Enumerated values written `Type.value`, and the library prefix a type
-//! name does not take.
+//! Enumerated values written `Type.value`.
 
 use crate::options::{CompilerOptions, Dialect};
 use crate::parse_program;
@@ -7,7 +6,6 @@ use dsl::common::*;
 use dsl::core::FileId;
 use dsl::diagnostic::Diagnostic;
 use dsl::textual::{CaseSelectionKind, StmtKind};
-use rstest::rstest;
 
 fn twincat() -> CompilerOptions {
     CompilerOptions::from_dialect(Dialect::TwinCat)
@@ -21,29 +19,6 @@ fn parse(source: &str) -> Library {
 /// The diagnostic a parse of `source` fails with.
 fn parse_err(source: &str) -> Diagnostic {
     parse_program(source, &FileId::default(), &twincat()).expect_err("the source must be rejected")
-}
-
-// A library prefix is not accepted before a type name, in a declaration or in
-// a `Type.value`. TwinCAT rejects a prefix that names no library, and the
-// parser has no library names to tell a known one from `Nonsense`.
-#[rstest]
-#[case::variable_type("PROGRAM main VAR x : Nonsense.TON; END_VAR END_PROGRAM")]
-#[case::call_style_initializer(
-    "PROGRAM main VAR t : Nonsense.TON(PT := T#1S); END_VAR END_PROGRAM"
-)]
-#[case::extends("FUNCTION_BLOCK FB_A EXTENDS Nonsense.FB_Base END_FUNCTION_BLOCK")]
-#[case::implements("FUNCTION_BLOCK FB_A IMPLEMENTS Nonsense.I_Comm END_FUNCTION_BLOCK")]
-#[case::dotted_initial_value(
-    "TYPE E : (a, b); END_TYPE PROGRAM main VAR e : E := Nonsense.E.b; END_VAR END_PROGRAM"
-)]
-#[case::dotted_case_label(
-    "TYPE E : (a, b); END_TYPE PROGRAM main VAR e : E; x : INT; END_VAR CASE e OF Nonsense.E.b: x := 1; END_CASE; END_PROGRAM"
-)]
-fn parse_when_type_name_has_library_prefix_then_syntax_error(#[case] source: &str) {
-    // Without the prefix the source parses, so the error is about the prefix.
-    parse(&source.replace("Nonsense.", ""));
-
-    assert_eq!(parse_err(source).code, "P0002");
 }
 
 // A member declaration names a value, so it has no type to write before it.
@@ -134,7 +109,7 @@ END_PROGRAM",
     let hashed = hashed.initial_value.clone().unwrap();
     assert!(dotted.dotted);
     assert!(!hashed.dotted);
-    assert_eq!(dotted, &hashed);
+    assert_eq!(dotted.as_ref(), &hashed);
 }
 
 #[test]

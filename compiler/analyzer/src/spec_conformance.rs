@@ -415,3 +415,42 @@ fn analyzer_spec_req_cl_006_dialect_does_not_activate_library() {
         "selecting a dialect must not activate the library"
     );
 }
+
+/// REQ-CL-analyzer-008: A library prefix on a type name is accepted only when
+/// it names, ignoring case, the library whose source files declare the type;
+/// any other prefix is reported.
+#[spec_test(REQ_CL_analyzer_008)]
+fn analyzer_spec_req_cl_008_type_prefix_names_declaring_library() {
+    let options = CompilerOptions::from_dialect(Dialect::TwinCat);
+    let library_file = FileId::from_string("BROTLib/POUs.st");
+    let library = parse_program(
+        "FUNCTION_BLOCK FB_Blinker END_FUNCTION_BLOCK",
+        &library_file,
+        &options,
+    )
+    .unwrap();
+    let mut files = crate::LibraryFiles::new();
+    files.insert(library_file, "BROTLib");
+    let codes_for = |prefix: &str| {
+        let user = parse_program(
+            &format!("PROGRAM main VAR b : {prefix}.FB_Blinker; END_VAR END_PROGRAM"),
+            &FileId::from_string("main.st"),
+            &options,
+        )
+        .unwrap();
+        let (_lib, ctx) =
+            crate::stages::analyze_with_library_files(&[&library, &user], &files, &options)
+                .unwrap();
+        ctx.diagnostics()
+            .iter()
+            .map(|d| d.code.clone())
+            .collect::<Vec<_>>()
+    };
+
+    assert!(codes_for("BROTLib").is_empty());
+    assert!(codes_for("brotlib").is_empty());
+    assert_eq!(
+        codes_for("Tc2_System"),
+        [Problem::QualifiedTypeNameLibraryMismatch.code()]
+    );
+}

@@ -348,3 +348,10 @@
    Allow ``Type.value`` as the spelling of a qualified enumerated value,
    besides the standard ``Type#value``. Without this flag it produces
    :doc:`P4104 </reference/compiler/problems/P4104>`.
+
+``--allow-qualified-type-names``
+   Allow a library prefix on a type name, as in ``TcUnit.FB_TestSuite`` or
+   ``BROTLib.E_Blink.slow``. IEC 61131-3 Edition 2 names a type by its bare
+   identifier. The prefix must name the library or project that declares the
+   type (:doc:`P2046 </reference/compiler/problems/P2046>`). Without this flag
+   it produces :doc:`P4105 </reference/compiler/problems/P4105>`.

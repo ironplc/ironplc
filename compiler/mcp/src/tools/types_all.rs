@@ -6,11 +6,12 @@
 use ironplc_analyzer::semantic_type::{ByteSized, SemanticType};
 use ironplc_analyzer::SemanticContext;
 use ironplc_dsl::common::TypeName;
-use ironplc_dsl::core::FileId;
 use ironplc_project::project::{MemoryBackedProject, Project};
 use serde::Serialize;
 
-use super::common::{parse_options, serialize_diagnostics, validate_sources, SourceInput};
+use super::common::{
+    load_sources, parse_options, serialize_diagnostics, validate_sources, SourceInput,
+};
 
 /// A single entry in the `types` array.
 #[derive(Debug, Clone, Serialize)]
@@ -92,9 +93,7 @@ pub fn build_response(
     };
 
     let mut project = MemoryBackedProject::new(options);
-    for src in sources {
-        project.add_source(FileId::from_string(&src.name), src.content.clone());
-    }
+    load_sources(&mut project, sources);
 
     let diagnostics_json = serialize_diagnostics(&project.semantic());
 
@@ -296,6 +295,7 @@ mod tests {
         let sources = vec![SourceInput {
             name: "main.st".into(),
             content: src.into(),
+            project: None,
         }];
         build_response(&sources, &ed2_options())
     }

@@ -14,6 +14,8 @@
 use ironplc_problems::Problem;
 use spec_test_macro::spec_test;
 
+mod source_projects;
+
 use crate::tools;
 use crate::tools::test_support::{
     ed2_options, source, with_program, COUNTER_PROGRAM, COUNTER_PROGRAM_WITH_TASK,
@@ -84,6 +86,7 @@ fn mcp_spec_req_stl_004_source_name_validation() {
     let errs = validate_sources(&[SourceInput {
         name: String::new(),
         content: String::new(),
+        project: None,
     }]);
     assert!(!errs.is_empty());
 
@@ -91,6 +94,7 @@ fn mcp_spec_req_stl_004_source_name_validation() {
     let errs = validate_sources(&[SourceInput {
         name: "a".repeat(257),
         content: String::new(),
+        project: None,
     }]);
     assert!(!errs.is_empty());
 
@@ -98,6 +102,7 @@ fn mcp_spec_req_stl_004_source_name_validation() {
     let errs = validate_sources(&[SourceInput {
         name: "f\0.st".into(),
         content: String::new(),
+        project: None,
     }]);
     assert!(!errs.is_empty());
 
@@ -105,6 +110,7 @@ fn mcp_spec_req_stl_004_source_name_validation() {
     let errs = validate_sources(&[SourceInput {
         name: "a\tb".into(),
         content: String::new(),
+        project: None,
     }]);
     assert!(!errs.is_empty());
 
@@ -113,10 +119,12 @@ fn mcp_spec_req_stl_004_source_name_validation() {
         SourceInput {
             name: "f.st".into(),
             content: String::new(),
+            project: None,
         },
         SourceInput {
             name: "f.st".into(),
             content: String::new(),
+            project: None,
         },
     ]);
     assert!(!errs.is_empty());
@@ -484,6 +492,7 @@ fn mcp_spec_req_tol_036_cached_container_is_immutable_snapshot() {
     let other_sources = vec![SourceInput {
         name: "other.st".into(),
         content: "PROGRAM Other\nVAR\n  y : INT;\nEND_VAR\n  y := 2;\nEND_PROGRAM".into(),
+        project: None,
     }];
     let _resp2 = tools::compile::build_response(&other_sources, &options, false, &cache);
 
@@ -607,6 +616,7 @@ fn mcp_spec_req_tol_050_symbols_returns_declarations() {
     let sources = vec![SourceInput {
         name: "main.st".into(),
         content: "TYPE\nMyEnum : (A, B);\nEND_TYPE\nFUNCTION_BLOCK fb\nEND_FUNCTION_BLOCK\nFUNCTION f : INT\nVAR_INPUT a : INT; END_VAR\nf := a;\nEND_FUNCTION\nPROGRAM p\nVAR inst : fb; END_VAR\nEND_PROGRAM".into(),
+        project: None,
     }];
     let options = ed2_options();
     let resp = tools::symbols::build_response(&sources, &options, None);
@@ -638,6 +648,7 @@ fn mcp_spec_req_tol_052_function_entry_details() {
     let sources = vec![SourceInput {
         name: "main.st".into(),
         content: "FUNCTION f : INT\nVAR_INPUT a : INT; END_VAR\nf := a;\nEND_FUNCTION\nPROGRAM p\nVAR r : INT; END_VAR\nr := f(a := 1);\nEND_PROGRAM".into(),
+        project: None,
     }];
     let options = ed2_options();
     let resp = tools::symbols::build_response(&sources, &options, None);
@@ -666,6 +677,7 @@ fn mcp_spec_req_tol_054_symbols_pou_filter() {
     let sources = vec![SourceInput {
         name: "main.st".into(),
         content: "PROGRAM a\nEND_PROGRAM\nPROGRAM b\nVAR x : INT; END_VAR\nEND_PROGRAM".into(),
+        project: None,
     }];
     let options = ed2_options();
 
@@ -865,6 +877,7 @@ fn mcp_spec_req_tol_200_project_manifest_returns_declarations() {
                   FUNCTION_BLOCK fb\nEND_FUNCTION_BLOCK\n\
                   PROGRAM p\nVAR inst : fb; END_VAR\nEND_PROGRAM"
             .into(),
+        project: None,
     }];
     let options = ed2_options();
 
@@ -951,6 +964,7 @@ fn mcp_spec_req_tol_210_project_io_returns_inputs() {
                   VAR button AT %IX0.0 : BOOL; END_VAR\n\
                   END_PROGRAM"
             .into(),
+        project: None,
     }];
     let options = ed2_options();
 
@@ -981,6 +995,7 @@ fn mcp_spec_req_tol_211_project_io_returns_outputs() {
                   VAR marker AT %MX0.0 : BOOL; END_VAR\n\
                   END_PROGRAM"
             .into(),
+        project: None,
     }];
     let options = ed2_options();
 
@@ -1059,6 +1074,7 @@ fn mcp_spec_req_tol_221_pou_scope_unknown_pou() {
     let sources = vec![SourceInput {
         name: "main.st".into(),
         content: "FUNCTION_BLOCK Motor\nVAR fb_var : INT; END_VAR\nEND_FUNCTION_BLOCK\nPROGRAM Motor\nVAR prog_var : INT; END_VAR\nEND_PROGRAM".into(),
+        project: None,
     }];
     let options = ed2_options();
 
@@ -1151,6 +1167,7 @@ fn mcp_spec_req_tol_231_pou_lineage_unknown_pou() {
     let sources = vec![SourceInput {
         name: "main.st".into(),
         content: "PROGRAM Main\nEND_PROGRAM".into(),
+        project: None,
     }];
     let options = ed2_options();
 
@@ -1235,7 +1252,8 @@ fn mcp_spec_req_arc_011_file_id_from_string() {
     // Diagnostic file field should match the source name we provided
     let sources = vec![SourceInput {
         name: "my_file.st".into(),
-        content: "PROGRAM".into(), // parse error
+        content: "PROGRAM".into(), // parse error,
+        project: None,
     }];
     let options = ed2_options();
 

@@ -265,6 +265,34 @@ Two rules govern qualifiers:
   The initial increment assumes an activated library provides names that do not
   collide with each other or with the base set.
 
+#### A prefix on a type name
+
+A type name may carry the library it comes from, as TwinCAT and CODESYS let it
+(`BROTLib.E_Blink`, `TcUnit.FB_TestSuite`, and before an enumerated value,
+`BROTLib.E_Blink.slow`), behind `--allow-qualified-type-names`. Names stay flat:
+the prefix takes no part in finding the type. It is checked instead.
+
+- **REQ-CL-analyzer-008** A library prefix on a type name is accepted only when
+  it names, ignoring case, the library whose source files declare the type: an
+  activated compatibility library, by its manifest `name`, or a project loaded
+  alongside, by its project name (`REQ-CL-sources-009`). Any other prefix is
+  reported, including one before a type no library declares.
+
+Decided by Garret Fick:
+
+- The prefix must name the *declaring* library, not merely an activated one,
+  because TwinCAT rejects a prefix that names a library which does not declare
+  the type (`Tc2_Standard.T_AmsNetId`: the type is in `Tc2_System`).
+- A project loaded alongside counts as a library. No bundled library declares a
+  type, so with library names alone no prefixed type name could resolve, while
+  real projects write the names of their sibling projects (`BROTLib.`).
+- A type IronPLC provides itself, such as `TON`, belongs to no library, so
+  `Tc2_Standard.TON` is reported even though TwinCAT accepts it, until a library
+  of that name exists.
+
+A declaration names the type it declares without a prefix, and a prefix is one
+name: `A.B.T` is not a library prefix.
+
 ### What a library is on disk
 
 The on-disk package layout (a directory named for the library, a `library.toml`
@@ -430,9 +458,12 @@ distribution mechanism, out of scope here.
   a POU to a **VM intrinsic** or **declare-only**, plus the fail-if-unimplemented
   rule (a call to a declare-only POU is a compile error). Omitted from the first
   increment, which ships only fully-defined ST.
-- **Accept source-written namespace qualifiers** (`Tc2_Standard.TON`), mapping the
-  qualifier to its library. Needed only if some library requires the qualified
-  form; no known Tier A/B library does.
+- **Accept source-written namespace qualifiers beyond type names.** A prefix on a
+  type name is accepted (*A prefix on a type name*). Still deferred: a prefix on
+  a function call or a global (`Tc2_Math.FRAC(x)`, `Tc2_System.PI`), where
+  `a.b` already reads as a method call or a structured variable; the
+  `Tc2_Standard` name for the POUs IronPLC provides itself; and a project's
+  `<Namespace>` when it differs from the library's name.
 - **In-source pragmas** to express flag/library intent, if ever needed.
 
 ## Alternatives Considered
@@ -467,9 +498,10 @@ Prior open questions are now decided:
   mechanism — it is a separate distribution mechanism (see *Non-Goals*).
 - **Dialects never auto-activate libraries** — dialect and vendor are independent
   axes (**REQ-CL-analyzer-006**).
-- **Qualified access** — the first increment injects **flat names only**;
-  accepting a source-written `Namespace.Symbol` qualifier is deferred until a
-  library requires it (see *Future Goals*). None known do.
+- **Qualified access** — names inject **flat**. A prefix the source writes on a
+  type name is accepted when it names the library that declares the type
+  (*A prefix on a type name*); prefixes elsewhere are deferred (see *Future
+  Goals*).
 - **Version matching** and the **`.plcproj` shape** — *Reference matching* and the
   *Appendix*.
 

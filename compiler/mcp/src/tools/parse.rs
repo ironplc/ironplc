@@ -123,6 +123,7 @@ mod tests {
         let sources = vec![SourceInput {
             name: "main.st".into(),
             content: "FUNCTION_BLOCK fb\nEND_FUNCTION_BLOCK".into(),
+            project: None,
         }];
         let resp = build_response(&sources, &ed2_options());
         assert_eq!(resp.structure.len(), 1);
@@ -135,6 +136,7 @@ mod tests {
         let sources = vec![SourceInput {
             name: "main.st".into(),
             content: "TYPE\nMyEnum : (A, B, C);\nEND_TYPE".into(),
+            project: None,
         }];
         let resp = build_response(&sources, &ed2_options());
         assert!(resp.ok, "expected ok, diagnostics: {:?}", resp.diagnostics);
@@ -162,10 +164,12 @@ mod tests {
             SourceInput {
                 name: "a.st".into(),
                 content: "PROGRAM a\nEND_PROGRAM".into(),
+                project: None,
             },
             SourceInput {
                 name: "b.st".into(),
                 content: "PROGRAM b\nEND_PROGRAM".into(),
+                project: None,
             },
         ];
         let resp = build_response(&sources, &ed2_options());

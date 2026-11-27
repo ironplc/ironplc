@@ -298,6 +298,12 @@ struct FileArgs {
     #[arg(long)]
     allow_dotted_enum_value: bool,
 
+    /// Allow a library prefix on a type name (`TcUnit.FB_TestSuite`). The
+    /// prefix must name the library or project that declares the type. This
+    /// is an extension not part of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_qualified_type_names: bool,
+
     /// Allow a general (non-constant) expression as the value in a
     /// structured/call-style initializer's `name := value` pairs (e.g.
     /// `tonDelta : TON := (PT := pDevice^.Delta);`). This is a dialect
@@ -397,6 +403,7 @@ impl FileArgs {
         options.allow_omitted_call_argument |= self.allow_omitted_call_argument;
         options.allow_trailing_call_comma |= self.allow_trailing_call_comma;
         options.allow_dotted_enum_value |= self.allow_dotted_enum_value;
+        options.allow_qualified_type_names |= self.allow_qualified_type_names;
         options.allow_struct_initializer_expressions |= self.allow_struct_initializer_expressions;
         options.allow_fb_inheritance |= self.allow_fb_inheritance;
         options.allow_enum_explicit_values |= self.allow_enum_explicit_values;

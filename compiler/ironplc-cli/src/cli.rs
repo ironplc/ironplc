@@ -826,6 +826,43 @@ mod tests {
     }
 
     #[test]
+    fn check_when_type_prefix_names_project_loaded_alongside_then_ok_else_error() {
+        use ironplc_parser::options::Dialect;
+
+        let root = tempfile::TempDir::new().unwrap();
+        let lib = root.path().join("lib");
+        write_project(
+            &lib,
+            "SiblingLib",
+            "FUNCTION_BLOCK FB_Shared\nEND_FUNCTION_BLOCK",
+            "",
+        );
+        let app_with = |name: &str, prefix: &str| {
+            let app = root.path().join(name);
+            write_project(
+                &app,
+                "App",
+                &format!("PROGRAM Main\nVAR\n    x : {prefix}.FB_Shared;\nEND_VAR\nEND_PROGRAM"),
+                r#"<PlaceholderReference Include="SiblingLib" />"#,
+            );
+            app
+        };
+        let options = CompilerOptions::from_dialect(Dialect::TwinCat);
+
+        let named = app_with("named", "SiblingLib");
+        let result = check(&[named, lib.clone()], options, &[], true);
+        assert!(result.is_ok(), "{result:?}");
+
+        let unknown = app_with("unknown", "Nonsense");
+        let (mut project, _) = super::create_project(&[unknown, lib], options, &[]);
+        let codes: Vec<String> = ironplc_project::project::Project::semantic(&mut project)
+            .into_iter()
+            .map(|diagnostic| diagnostic.code)
+            .collect();
+        assert_eq!(codes, ["P2046"]);
+    }
+
+    #[test]
     fn tokenize_xml_when_valid_syntax_then_ok() {
         let paths = vec![resource_path("simple.xml")];
         let result = tokenize(&paths, CompilerOptions::default(), true);

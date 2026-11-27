@@ -37,6 +37,7 @@
 use ironplc_parser::options::CompilerOptions;
 
 use crate::tools;
+use crate::tools::common::SourceInput;
 use crate::tools::test_support::source;
 
 /// A source snippet that isolates a single feature flag's effect.
@@ -50,6 +51,17 @@ struct FlagFixture {
     prereqs: &'static [&'static str],
     /// Source rejected with `key` off (prereqs on) and accepted with `key` on.
     source: &'static str,
+    /// Further sources, each in the project it names, checked alongside
+    /// `source`: for a flag whose syntax only a project makes valid, such as a
+    /// library prefix naming the project that declares a type.
+    project_files: &'static [ProjectFile],
+}
+
+/// A source that belongs to a project, checked alongside a fixture's source.
+struct ProjectFile {
+    project: &'static str,
+    name: &'static str,
+    content: &'static str,
 }
 
 /// One fixture per dialect-extension flag. Order mirrors
@@ -62,18 +74,21 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_c_style_comments",
         prereqs: &[],
         source: "PROGRAM main\nVAR\nx : INT; // a comment\nEND_VAR\nx := 1;\nEND_PROGRAM",
+        project_files: &[],
     },
     // The missing `;` after END_IF is inserted only when the flag is on.
     FlagFixture {
         key: "allow_missing_semicolon",
         prereqs: &[],
         source: "PROGRAM main\nVAR\nx : BOOL;\nEND_VAR\nIF x THEN\nx := FALSE;\nEND_IF\nEND_PROGRAM",
+        project_files: &[],
     },
     // An empty VAR block is rejected unless the flag is on.
     FlagFixture {
         key: "allow_empty_var_blocks",
         prereqs: &[],
         source: "PROGRAM main\nVAR\nEND_VAR\nEND_PROGRAM",
+        project_files: &[],
     },
     // A VAR_GLOBAL block at the top level (outside CONFIGURATION) is rejected
     // with P4028 unless the flag is on.
@@ -81,6 +96,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_top_level_var_global",
         prereqs: &[],
         source: "VAR_GLOBAL CONSTANT\nX : INT := 250;\nEND_VAR\nPROGRAM p\nEND_PROGRAM",
+        project_files: &[],
     },
     // A constant reference in a type parameter (STRING length) is rejected with
     // P4029 unless the flag is on, which resolves it to the constant's value. A
@@ -90,12 +106,14 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_constant_type_params",
         prereqs: &[],
         source: "FUNCTION_BLOCK fb1\nVAR CONSTANT\nSTRING_LENGTH : INT := 250;\nEND_VAR\nVAR_INPUT\nSTR : STRING[STRING_LENGTH];\nEND_VAR\nEND_FUNCTION_BLOCK\nPROGRAM p\nEND_PROGRAM",
+        project_files: &[],
     },
     // TIME is a type keyword; using it as a function name needs the flag.
     FlagFixture {
         key: "allow_time_as_function_name",
         prereqs: &[],
         source: "FUNCTION TIME : INT\nVAR_INPUT x : INT; END_VAR\nTIME := x;\nEND_FUNCTION\nPROGRAM p\nEND_PROGRAM",
+        project_files: &[],
     },
     // The IEC 61131-3:2013 long-time type LTIME and its literal. With the flag
     // off, LTIME is demoted to an identifier, so the `LTIME#...` duration
@@ -105,6 +123,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_long_time_types",
         prereqs: &[],
         source: "PROGRAM main\nVAR\nt : LTIME;\nEND_VAR\nt := LTIME#1000ms;\nEND_PROGRAM",
+        project_files: &[],
     },
     // REF_TO / REF() without full Edition 3. With the flag off, REF_TO is
     // demoted to an identifier and the declaration fails to parse.
@@ -112,6 +131,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_ref_to",
         prereqs: &[],
         source: "PROGRAM main\nVAR\nx : REF_TO INT;\nEND_VAR\nEND_PROGRAM",
+        project_files: &[],
     },
     // TwinCAT REFERENCE TO: without the flag, REFERENCE is a demoted identifier
     // and the declaration is a parse error; with it, the type parses.
@@ -119,6 +139,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_reference_to",
         prereqs: &[],
         source: "PROGRAM main\nVAR\nx : REFERENCE TO INT;\nEND_VAR\nEND_PROGRAM",
+        project_files: &[],
     },
     // TwinCAT/CODESYS POINTER TO: without the flag, POINTER is a demoted
     // identifier and the declaration is a parse error; with it, the type
@@ -127,6 +148,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_pointer_to",
         prereqs: &[],
         source: "PROGRAM main\nVAR\np : POINTER TO INT;\nEND_VAR\nEND_PROGRAM",
+        project_files: &[],
     },
     // The ADR() address-of operator. With the flag off, ADR is an ordinary
     // identifier and the call is an undeclared function (P4017); with it on,
@@ -136,6 +158,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_adr",
         prereqs: &["allow_pointer_to"],
         source: "PROGRAM main\nVAR\nx : INT;\np : POINTER TO INT;\nEND_VAR\np := ADR(x);\nEND_PROGRAM",
+        project_files: &[],
     },
     // Arithmetic on a REF_TO type (P2033). Needs REF_TO to parse at all.
     // Lowering does not lower it yet, so it is in a block no program
@@ -145,36 +168,42 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_ref_arithmetic",
         prereqs: &["allow_ref_to"],
         source: "FUNCTION_BLOCK Unused\nVAR\nx : INT;\nr : REF_TO INT := REF(x);\ny : INT;\nEND_VAR\ny := r + 1;\nEND_FUNCTION_BLOCK\nPROGRAM Main\nEND_PROGRAM",
+        project_files: &[],
     },
     // REF() on a stack-allocated (function VAR_INPUT) variable (P2029).
     FlagFixture {
         key: "allow_ref_stack_variables",
         prereqs: &["allow_ref_to"],
         source: "FUNCTION MyFunc : INT\nVAR_INPUT\ninVal : INT;\nEND_VAR\nVAR\nr : REF_TO INT;\nEND_VAR\nr := REF(inVal);\nMyFunc := 0;\nEND_FUNCTION\nPROGRAM p\nEND_PROGRAM",
+        project_files: &[],
     },
     // Assigning between REF_TO of different base types (P2032, type punning).
     FlagFixture {
         key: "allow_ref_type_punning",
         prereqs: &["allow_ref_to"],
         source: "PROGRAM Main\nVAR\nx : REAL;\nr : REF_TO INT;\nEND_VAR\nr := REF(x);\nEND_PROGRAM",
+        project_files: &[],
     },
     // Integer literal as a BOOL initializer.
     FlagFixture {
         key: "allow_int_to_bool_initializer",
         prereqs: &[],
         source: "PROGRAM main\nVAR\nx : BOOL := 1;\nEND_VAR\nEND_PROGRAM",
+        project_files: &[],
     },
     // SIZEOF() operator — registered as a builtin only when the flag is on.
     FlagFixture {
         key: "allow_sizeof",
         prereqs: &[],
         source: "PROGRAM main\nVAR\nx : INT;\ns : DINT;\nEND_VAR\ns := SIZEOF(x);\nEND_PROGRAM",
+        project_files: &[],
     },
     // Implicit __SYSTEM_UP_TIME global, seeded only when the flag is on (P4007).
     FlagFixture {
         key: "allow_system_uptime_global",
         prereqs: &[],
         source: "PROGRAM main\nVAR\nt : TIME;\nEND_VAR\nt := __SYSTEM_UP_TIME;\nEND_PROGRAM",
+        project_files: &[],
     },
     // Cross-family widening: a BYTE arg to a strictly wider INT parameter
     // (P4026) is only allowed when the flag is on.
@@ -182,6 +211,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_cross_family_widening",
         prereqs: &[],
         source: "FUNCTION TAKES_INT : INT\nVAR_INPUT\nx : INT;\nEND_VAR\nTAKES_INT := x;\nEND_FUNCTION\nPROGRAM main\nVAR\nresult : INT;\nb : BYTE;\nEND_VAR\nresult := TAKES_INT(b);\nEND_PROGRAM",
+        project_files: &[],
     },
     // Cross-family conversion at equal width: a UDINT arg to a DWORD
     // parameter (P4026) is only allowed when the flag is on. This widens
@@ -190,6 +220,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_cross_family_conversion",
         prereqs: &[],
         source: "FUNCTION TAKES_DWORD : DWORD\nVAR_INPUT\nx : DWORD;\nEND_VAR\nTAKES_DWORD := x;\nEND_FUNCTION\nPROGRAM main\nVAR\nresult : DWORD;\nu : UDINT;\nEND_VAR\nresult := TAKES_DWORD(u);\nEND_PROGRAM",
+        project_files: &[],
     },
     // A bare integer literal where a bit-string is expected: literal 0 ->
     // BYTE arg (P4026) is only allowed when the flag is on. Literal typing,
@@ -198,6 +229,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_int_literal_to_bit_string",
         prereqs: &[],
         source: "FUNCTION TAKES_BYTE : BYTE\nVAR_INPUT\nx : BYTE;\nEND_VAR\nTAKES_BYTE := x;\nEND_FUNCTION\nPROGRAM main\nVAR\nresult : BYTE;\nEND_VAR\nresult := TAKES_BYTE(0);\nEND_PROGRAM",
+        project_files: &[],
     },
     // Arithmetic on a bit-string operand: `b + 1` on BYTE (P4049) is only
     // allowed when the flag is on. It judges the bit string as the unsigned
@@ -206,18 +238,21 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_bit_string_arithmetic",
         prereqs: &[],
         source: "PROGRAM main\nVAR\nb : BYTE;\nEND_VAR\nb := b + 1;\nEND_PROGRAM",
+        project_files: &[],
     },
     // Partial-access bit syntax `.%Xn` as an alias for `.n` (P4033).
     FlagFixture {
         key: "allow_partial_access_syntax",
         prereqs: &[],
         source: "PROGRAM main\nVAR\nb : BYTE;\nr : BOOL;\nEND_VAR\nr := b.%X0;\nEND_PROGRAM",
+        project_files: &[],
     },
     // Curly-brace pragma skipped as trivia.
     FlagFixture {
         key: "allow_pragmas",
         prereqs: &[],
         source: "{attribute 'qualified_only'}\nPROGRAM p\nEND_PROGRAM",
+        project_files: &[],
     },
     // AND_THEN short-circuit operator. With the flag off, AND_THEN is demoted
     // to an identifier and the expression fails to parse.
@@ -225,12 +260,14 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_short_circuit_operators",
         prereqs: &[],
         source: "FUNCTION_BLOCK FB_Example\nVAR\na : BOOL;\nb : BOOL;\nresult : BOOL;\nEND_VAR\nresult := a AND_THEN b;\nEND_FUNCTION_BLOCK\nPROGRAM p\nEND_PROGRAM",
+        project_files: &[],
     },
     // AT-located variable mixed with a plain variable in one VAR block (P4036).
     FlagFixture {
         key: "allow_mixed_located_var_declarations",
         prereqs: &[],
         source: "FUNCTION_BLOCK FB_Example\nVAR\ntempSensor AT%I* : INT;\nfbComm : BOOL;\nEND_VAR\nEND_FUNCTION_BLOCK\nPROGRAM p\nEND_PROGRAM",
+        project_files: &[],
     },
     // A VAR initializer that is a constant expression (not a bare literal).
     // The parser accepts this unconditionally; the flag gates a later
@@ -240,6 +277,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_constant_initializer_expressions",
         prereqs: &[],
         source: "PROGRAM main\nVAR\nd2r : LREAL := 4.25/180.0;\nEND_VAR\nEND_PROGRAM",
+        project_files: &[],
     },
     // A hex/binary/octal bit-string literal used as a CASE label. The parser
     // accepts it unconditionally; the flag gates a semantic rule (P4041 when
@@ -248,6 +286,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_radix_case_labels",
         prereqs: &[],
         source: "PROGRAM main\nVAR\nx : DINT;\ny : DINT;\nEND_VAR\nCASE x OF\n16#D012: y := 1;\nEND_CASE;\nEND_PROGRAM",
+        project_files: &[],
     },
     // The STRING(n) parenthesis length delimiter. The grammar accepts it
     // unconditionally; a token-stream rule rejects it (P4042) when the flag
@@ -256,6 +295,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_paren_string_length",
         prereqs: &[],
         source: "PROGRAM main\nVAR\nhostName : STRING(255);\nEND_VAR\nEND_PROGRAM",
+        project_files: &[],
     },
     // A general expression (pointer deref + member access) as a struct/FB
     // initializer value. The parser accepts it unconditionally; a semantic
@@ -266,6 +306,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_struct_initializer_expressions",
         prereqs: &["allow_ref_to"],
         source: "FUNCTION_BLOCK FB_Device\nVAR_INPUT\nDelta : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nTYPE MyStruct :\nSTRUCT\nx : INT;\nEND_STRUCT;\nEND_TYPE\nFUNCTION_BLOCK Unused\nVAR\npDevice : REF_TO FB_Device;\ns : MyStruct := (x := pDevice^.Delta);\nEND_VAR\nEND_FUNCTION_BLOCK\nPROGRAM main\nEND_PROGRAM",
+        project_files: &[],
     },
     // The IEC 61131-3:2013 EXTENDS clause on a FUNCTION_BLOCK header. With the
     // flag off, EXTENDS demotes to a plain identifier, so two consecutive
@@ -275,6 +316,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_fb_inheritance",
         prereqs: &[],
         source: "FUNCTION_BLOCK FB_Base\nVAR\nx : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nFUNCTION_BLOCK FB_Derived EXTENDS FB_Base\nEND_FUNCTION_BLOCK",
+        project_files: &[],
     },
     // An explicit per-member value in an enum declaration. The parser accepts
     // it unconditionally; a semantic rule rejects it (P4055) when the flag is
@@ -284,6 +326,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_enum_explicit_values",
         prereqs: &[],
         source: "TYPE\nE_ModeLanguage : (Deutsch := 1, English := 2);\nEND_TYPE\nPROGRAM main\nEND_PROGRAM",
+        project_files: &[],
     },
     // The base-type suffix on an enum declaration. The parser accepts it
     // unconditionally; a semantic rule rejects it (P4056) when the flag is
@@ -293,6 +336,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_enum_base_type",
         prereqs: &[],
         source: "TYPE\nE_Small : (A, B) WORD;\nEND_TYPE\nPROGRAM main\nEND_PROGRAM",
+        project_files: &[],
     },
     // A keyword (ON, STEP, R_EDGE, F_EDGE) as a name. The parser accepts it
     // unconditionally; a semantic rule rejects it (P4095) when the flag is
@@ -301,6 +345,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_keywords_as_names",
         prereqs: &[],
         source: "TYPE\nM : (Off, On);\nEND_TYPE\nPROGRAM main\nEND_PROGRAM",
+        project_files: &[],
     },
     // The Beckhoff TwinCAT/CODESYS PERSISTENT variable qualifier. With the
     // flag off, PERSISTENT demotes to a plain identifier, so it collides with
@@ -310,6 +355,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_persistent_var",
         prereqs: &["allow_top_level_var_global"],
         source: "VAR_GLOBAL PERSISTENT\nnCounter : DINT;\nEND_VAR",
+        project_files: &[],
     },
     // The Edition 3 CONTINUE statement. With the flag off, CONTINUE demotes
     // to a plain identifier, and an identifier alone is not a statement.
@@ -317,6 +363,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_continue",
         prereqs: &[],
         source: "PROGRAM main\nVAR i : INT; END_VAR\nFOR i := 1 TO 3 DO\nCONTINUE;\nEND_FOR;\nEND_PROGRAM",
+        project_files: &[],
     },
     // A hex bound on an array dimension. The grammar accepts it
     // unconditionally; a token-stream rule rejects it (P4096) when the flag
@@ -325,6 +372,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_radix_subrange_bounds",
         prereqs: &[],
         source: "PROGRAM main\nVAR\na : ARRAY[16#0..16#F] OF INT;\nEND_VAR\nEND_PROGRAM",
+        project_files: &[],
     },
     // `RETURN(cond)`: the grammar accepts it unconditionally; a token-stream
     // rule rejects it (P4098) when the flag is off. A plain `RETURN;` is
@@ -333,6 +381,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_conditional_return",
         prereqs: &[],
         source: "PROGRAM main\nVAR\nb : BOOL;\nEND_VAR\nRETURN(b);\nEND_PROGRAM",
+        project_files: &[],
     },
     // A `;` after the POU header, before the first VAR block. The grammar
     // accepts it unconditionally; a token-stream rule rejects it (P4100)
@@ -341,6 +390,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_pou_header_semicolon",
         prereqs: &[],
         source: "PROGRAM main;\nVAR\na : INT;\nEND_VAR\nEND_PROGRAM",
+        project_files: &[],
     },
     // A call argument with no value (`b :=,`): the grammar accepts it
     // unconditionally; a token-stream rule rejects it (P4102) when the flag is
@@ -349,6 +399,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_omitted_call_argument",
         prereqs: &[],
         source: "FUNCTION_BLOCK FB_X\nVAR_INPUT\nb : INT;\nc : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nPROGRAM main\nVAR\nf : FB_X;\nEND_VAR\nf(b :=, c := 1);\nEND_PROGRAM",
+        project_files: &[],
     },
     // A trailing comma in an argument list: rejected (P4103) when the flag is
     // off.
@@ -356,14 +407,40 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_trailing_call_comma",
         prereqs: &[],
         source: "FUNCTION_BLOCK FB_X\nVAR_INPUT\nb : INT;\nc : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nPROGRAM main\nVAR\nf : FB_X;\nEND_VAR\nf(c := 1, );\nEND_PROGRAM",
+        project_files: &[],
+    },
+    // A library prefix on a type name: rejected (P4105) when the flag is off.
+    // The prefix must name the project that declares the type, so the
+    // fixture checks that project's source alongside.
+    FlagFixture {
+        key: "allow_qualified_type_names",
+        prereqs: &[],
+        source: "PROGRAM main\nVAR\nb : BROTLib.FB_Blinker;\nEND_VAR\nEND_PROGRAM",
+        project_files: &[ProjectFile {
+            project: "BROTLib",
+            name: "brot.st",
+            content: "FUNCTION_BLOCK FB_Blinker\nEND_FUNCTION_BLOCK",
+        }],
     },
     // `Type.value`: rejected (P4104) when the flag is off.
     FlagFixture {
         key: "allow_dotted_enum_value",
         prereqs: &[],
         source: "TYPE E_Blink : (off, slow); END_TYPE\nPROGRAM main\nVAR\ns : E_Blink;\nEND_VAR\nCASE s OF\nE_Blink.slow: ;\nEND_CASE;\nEND_PROGRAM",
+        project_files: &[],
     },
 ];
+
+/// The sources a fixture checks: its own, then its project files.
+fn fixture_sources(fx: &FlagFixture) -> Vec<SourceInput> {
+    let mut sources = source(fx.source);
+    sources.extend(fx.project_files.iter().map(|file| SourceInput {
+        name: file.name.into(),
+        content: file.content.into(),
+        project: Some(file.project.into()),
+    }));
+    sources
+}
 
 /// Builds an ed2 options object with the given flags enabled.
 fn ed2_with(flags: &[&str]) -> serde_json::Value {
@@ -430,7 +507,8 @@ fn each_feature_flag_gates_its_example_source_off_then_on() {
         let mut on_flags = fx.prereqs.to_vec();
         on_flags.push(fx.key);
 
-        let off = tools::check::build_response(&source(fx.source), &ed2_with(fx.prereqs));
+        let sources = fixture_sources(fx);
+        let off = tools::check::build_response(&sources, &ed2_with(fx.prereqs));
         assert!(
             !off.ok,
             "flag `{}`: source expected to be REJECTED with the flag off (prereqs {:?}) but it \
@@ -438,7 +516,7 @@ fn each_feature_flag_gates_its_example_source_off_then_on() {
             fx.key, fx.prereqs, fx.source
         );
 
-        let on = tools::check::build_response(&source(fx.source), &ed2_with(&on_flags));
+        let on = tools::check::build_response(&sources, &ed2_with(&on_flags));
         assert!(
             on.ok,
             "flag `{}`: source expected to be ACCEPTED with the flag on but got diagnostics: \

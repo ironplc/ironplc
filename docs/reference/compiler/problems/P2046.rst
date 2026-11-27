@@ -1,0 +1,54 @@
+=====
+P2046
+=====
+
+.. problem-summary:: P2046
+
+This error occurs when a type name has a library prefix, such as
+``BROTLib.E_Blink``, and the prefix does not name the library that declares
+the type.
+
+A prefix names the library a type comes from. IronPLC finds the type by its
+name alone, then checks that the prefix names the library whose source files
+declare it, ignoring case. A library is either an activated
+:doc:`compatibility library </reference/compatibility-libraries/index>`, named
+as its manifest names it (``Tc2_System``), or a project loaded alongside the
+one being compiled, named by its project name. The prefix is reported when:
+
+- it names no library the build knows (``Nonsense.E_Blink``)
+- it names a library that does not declare the type (``Tc2_Math.E_Blink``
+  when ``E_Blink`` is in ``BROTLib``)
+- no library declares the type: a type IronPLC provides itself, such as
+  ``TON`` in ``Tc2_Standard.TON``, or one declared in a source that belongs
+  to no project
+
+A prefix needs the ``--allow-qualified-type-names`` flag, which the
+``codesys`` and ``twincat`` dialects enable
+(:doc:`P4105 </reference/compiler/problems/P4105>`).
+
+Example
+-------
+
+The project ``BROTLib`` declares ``E_Blink``. Compiled together with it,
+the following code generates error P2046 twice:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       mode : Nonsense.E_Blink;  (* Error: no library named Nonsense *)
+       t : Tc2_Standard.TON;     (* Error: no library declares TON *)
+   END_VAR
+   END_PROGRAM
+
+To fix this error, write the library that declares the type, or drop the
+prefix:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       mode : BROTLib.E_Blink;
+       t : TON;
+   END_VAR
+   END_PROGRAM
