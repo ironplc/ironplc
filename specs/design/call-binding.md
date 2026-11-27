@@ -284,9 +284,23 @@ call does not supply keeps the value it had: from the previous call, or its
 initial value on the first. The normal form records that by leaving the input
 out. A method has no such state: its inputs are fresh on every call, and an
 initial value on one is not a default, so a method call supplies every input
-and `VAR_IN_OUT` (P4018). A function is the same: its call supplies every
-input and `VAR_IN_OUT`, and one that does not has the wrong number of
-arguments (P4018).
+and `VAR_IN_OUT` (P4018).
+
+A formal call of a user-defined function may omit a `VAR_INPUT`, which then
+starts from its initial value: the one its declaration gives, or its type's
+(IEC 61131-3 ed.3 6.6.1.7.1). A call with no inputs is a formal call that
+omits them all. The normal form records
+an omitted input by leaving it out, as for a function block, and lowering
+passes the value the input's completed initializer gives
+([Lowered Program](lowered-program.md), REQ-LOW-lowering-209). A `VAR_IN_OUT`
+names the caller's variable, so it has no initial value to take: a call that
+omits one is P4018. A positional call supplies every input and `VAR_IN_OUT`
+(P4018).
+
+The standard's rule is the same for a standard function, but a call of one
+here still supplies every input it declares, so `LIMIT(IN := b, MX := 5)` is
+P4018: lowering passes a standard function's inputs by position, and an input
+of a generic type has no initial value until the call's type is known.
 
 **REQ-CB-analyzer-050** An input a function block call omits is absent from
 its normal form.
@@ -294,11 +308,19 @@ its normal form.
 **REQ-CB-analyzer-051** An input or `VAR_IN_OUT` a method call omits is P4018,
 one for each, and nothing is reported for a call whose arguments do not bind.
 
-**REQ-CB-analyzer-052** A function call that omits an input or `VAR_IN_OUT` is
+**REQ-CB-analyzer-055** A formal call of a user-defined function that omits a `VAR_INPUT` binds, with the input absent from its normal form, and is not P4018: with inputs `x`, `k` and `off`, `SCALE(off := 1, x := 4)` binds as `SCALE(x := 4, off := 1)`, and `SCALE()` binds with no inputs.
+
+**REQ-CB-analyzer-056** A formal call of a user-defined function that omits a
+`VAR_IN_OUT` is P4018, one for each.
+
+**REQ-CB-analyzer-057** A positional call of a function, and a call of a
+standard function, that supplies fewer inputs than the function declares is
 P4018.
 
 **REQ-CB-codegen-050** An input a function block call omits keeps the value
 the previous call gave it.
+
+**REQ-CB-codegen-051** An input a function call omits starts from its initial value: with `x : INT; k : INT := 3; off : INT := -1`, `SCALE := x * k + off` is 11 for `SCALE(x := 4)`, -1 for `SCALE(k := 5)`, whose `x` starts from `INT`'s 0, and -1 for `SCALE()`.
 
 ### Outputs
 

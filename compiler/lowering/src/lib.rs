@@ -103,6 +103,7 @@ mod spec_requirements {
 mod spec_conformance;
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use ironplc_analyzer::symbol_environment::DeclRef;
 use ironplc_analyzer::{CleanAnalysis, MethodOwners};
@@ -196,6 +197,9 @@ pub struct Lowering<'a> {
     /// The variable of the body of each method whose result is an array or
     /// a structure, which holds the result (REQ-LOW-lowering-187).
     aggregate_results: HashMap<PouId, VarId>,
+    /// What reading a completed initializer needs: for `init`, the
+    /// prologues, and an input a function call omits (REQ-LOW-lowering-209).
+    values: Rc<init::Values>,
 }
 
 impl<'a> Lowering<'a> {
@@ -213,6 +217,7 @@ impl<'a> Lowering<'a> {
             bodies: HashMap::new(),
             method_owners: MethodOwners::of_library(analysis.library(), analysis.context().types()),
             aggregate_results: HashMap::new(),
+            values: Rc::new(init::Values::of(analysis.context().types())),
         }
     }
 

@@ -19,8 +19,9 @@
 //! then its output assignments in the order the callee declares those. That
 //! order is the order the arguments are evaluated in. A parameter the call
 //! does not supply is absent: an omitted function block input keeps its value
-//! from the previous call, and a function or method call must supply every
-//! input ([`Binding::omitted`]).
+//! from the previous call, an omitted input of a user-defined function starts
+//! from its initial value, and a method call must supply every input
+//! ([`Binding::omitted`]).
 
 use ironplc_dsl::core::Id;
 use ironplc_dsl::textual::{NamedInput, Output, ParamAssignmentKind};

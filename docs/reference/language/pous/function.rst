@@ -121,12 +121,40 @@ Functions can be called using positional or named (formal) arguments:
    result := Square(x := 42);
 
 Positional arguments go to the ``VAR_INPUT`` and ``VAR_IN_OUT`` parameters in
-the order the function declares them. A call supplies every one of them
-(:doc:`P4018 </reference/compiler/problems/P4018>`), even one that declares an
-initial value: a function keeps nothing between calls. Named arguments may be
-written in any order, each parameter at most once
+the order the function declares them. A positional call supplies every one of
+them (:doc:`P4018 </reference/compiler/problems/P4018>`). Named arguments may
+be written in any order, each parameter at most once
 (:doc:`P4024 </reference/compiler/problems/P4024>`), and the call evaluates
 them in the order the function declares its parameters.
+
+A named call may leave out a ``VAR_INPUT``. The input then starts from its
+initial value: the one it declares, or its type's initial value when it
+declares none. A named call always supplies each ``VAR_IN_OUT``
+(:doc:`P4018 </reference/compiler/problems/P4018>`), because the parameter
+refers to the caller's variable.
+
+.. playground::
+
+   FUNCTION SCALE : INT
+     VAR_INPUT
+       x : INT;
+       k : INT := 3;
+       off : INT := -1;
+     END_VAR
+     SCALE := x * k + off;
+   END_FUNCTION
+
+   PROGRAM main
+     VAR
+       a : INT;
+       b : INT;
+     END_VAR
+     a := SCALE(x := 4);   (* k is 3 and off is -1, so a is 11 *)
+     b := SCALE(k := 5);   (* x is 0, the initial value of an INT, so b is -1 *)
+   END_PROGRAM
+
+A call of a standard function supplies every input the function declares
+(:doc:`P4018 </reference/compiler/problems/P4018>`).
 
 Related Problem Codes
 ---------------------
