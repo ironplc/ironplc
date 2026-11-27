@@ -109,7 +109,7 @@ END_PROGRAM",
     let hashed = hashed.initial_value.clone().unwrap();
     assert!(dotted.dotted);
     assert!(!hashed.dotted);
-    assert_eq!(dotted, &hashed);
+    assert_eq!(dotted.as_ref(), &hashed);
 }
 
 #[test]

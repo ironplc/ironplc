@@ -105,7 +105,7 @@ fn late_resolved_or_enumerated(
     if value.dotted {
         return InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
             type_name,
-            initial_value: Some(LateResolvedInitialValue::Dotted(value)),
+            initial_value: Some(LateResolvedInitialValue::Dotted(Box::new(value))),
         });
     }
     if value.type_name.is_some() {

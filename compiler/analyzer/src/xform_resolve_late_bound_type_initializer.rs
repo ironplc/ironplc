@@ -260,7 +260,7 @@ impl TypeResolver<'_> {
                 if names_enumeration {
                     InitialValueAssignmentKind::EnumeratedType(EnumeratedInitialValueAssignment {
                         type_name: name,
-                        initial_value: Some(value),
+                        initial_value: Some(*value),
                     })
                 } else {
                     InitialValueAssignmentKind::SimpleExpr(SimpleExprInitializer {
