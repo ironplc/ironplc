@@ -317,7 +317,7 @@ impl<'a> Lowering<'a> {
     /// An input of an array, a structure or a function block, and a
     /// reference to a variable, is not lowered yet.
     pub(crate) fn initial_arg(
-        &mut self,
+        &self,
         decl: &VarDecl,
         param: Param,
         span: &SourceSpan,
