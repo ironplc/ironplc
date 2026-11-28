@@ -31,7 +31,7 @@ ironplc-parser = { path = "../parser", version = "0.255.0" }
 ironplc-test = { path = "../test", version = "0.255.0" }
 ctor = "1.0"
 env_logger = "0.11"
-rstest = "0.28"
+rstest = "0.29"
 spec_test_macro = { path = "../spec_test_macro" }
 time = "0.3.47"
 
