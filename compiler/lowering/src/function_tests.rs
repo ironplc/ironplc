@@ -3,7 +3,7 @@
 //! Each test that checks a requirement of `specs/design/lowered-program.md`
 //! names it.
 
-use crate::test_support::{lower, lower_bodies};
+use crate::test_support::{lower, lower_bodies, lower_whole};
 
 /// REQ-LOW-lowering-071, REQ-LOW-lowering-072: a call of a function passes
 /// one value for each parameter, in the order the function declares them,
@@ -396,4 +396,83 @@ fn lower_statement_when_instance_input_then_copy_of_argument() {
             "assign v0^.f4 (call pou6 i32s (ref v0^.f2) (copy v0^.f3))",
         ]
     );
+}
+
+/// One task running the instance `inst` of the program `main`.
+const CONFIGURATION: &str = "
+CONFIGURATION config
+  RESOURCE res ON PLC
+    TASK t(INTERVAL := T#10ms, PRIORITY := 1);
+    PROGRAM inst WITH t : main;
+  END_RESOURCE
+END_CONFIGURATION
+";
+
+/// What each top-level statement of `main` lowers to in the whole of
+/// `source`, with every initializer completed: its text, or `unsupported`
+/// for a P9999, as [`lower_bodies`] gives.
+fn main_statements(source: &str) -> Vec<String> {
+    let program = lower_whole(&format!("{source}{CONFIGURATION}"));
+    let pous = program.pous();
+    let main = pous
+        .ids()
+        .find(|pou| pous.name(*pou).is_some_and(|n| n.to_string() == "main"))
+        .expect("the program declares main");
+    (0..)
+        .map_while(|index| program.statement(main, index))
+        .map(|lowered| match lowered {
+            Ok(stmts) => stmts
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("\n"),
+            Err(diagnostic) => {
+                assert_eq!(diagnostic.code, "P9999");
+                "unsupported".to_string()
+            }
+        })
+        .collect()
+}
+
+/// REQ-LOW-lowering-210: a call that omits a function's input passes the
+/// constant its declaration starts with, the declared value or its type's:
+/// `a` is 7, `b` is 0 and `s` is `'hi'` where the call omits them.
+#[test]
+fn lower_program_when_function_input_omitted_then_passes_its_initial_value() {
+    let statements = main_statements(
+        "FUNCTION F : DINT
+           VAR_INPUT a : DINT := 7; b : DINT; s : STRING := 'hi'; END_VAR
+           F := a + b;
+         END_FUNCTION
+         PROGRAM main VAR x : DINT; r : DINT; END_VAR
+            r := F(b := x);
+            r := F();
+         END_PROGRAM",
+    );
+    assert_eq!(
+        statements,
+        [
+            "assign v4^.f1 (call pou0 i32s (const i32s 7) (read i32s v4^.f0) \
+             (literal string[2] \"hi\"))",
+            "assign v4^.f1 (call pou0 i32s (const i32s 7) (const i32s 0) \
+             (literal string[2] \"hi\"))",
+        ]
+    );
+}
+
+/// An omitted input of a structure type would need a copy of its starting
+/// value to pass, which lowering does not make yet (P9999).
+#[test]
+fn lower_program_when_function_structure_input_omitted_then_unsupported() {
+    let statements = main_statements(
+        "TYPE Point : STRUCT x : DINT := 1; END_STRUCT; END_TYPE
+         FUNCTION F : DINT
+           VAR_INPUT p : Point; n : DINT; END_VAR
+           F := n;
+         END_FUNCTION
+         PROGRAM main VAR r : DINT; END_VAR
+            r := F(n := 2);
+         END_PROGRAM",
+    );
+    assert_eq!(statements, ["unsupported"]);
 }

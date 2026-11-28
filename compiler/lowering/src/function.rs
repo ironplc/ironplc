@@ -345,23 +345,36 @@ impl<'a> Lowering<'a> {
             args.push(Arg::Ref(temporary.clone()));
             result = Some(temporary);
         }
-        // One named input for each input and in-out, in order, then the
-        // outputs the call assigns: an `EN` or an `ENO` is not lowered yet.
+        // One named input for each input and in-out the call supplies, in
+        // order, then the outputs the call assigns: an `EN` or an `ENO` is not
+        // lowered yet.
         let mut inputs = call
             .params()
             .iter()
-            .filter(|assignment| !matches!(assignment, ParamAssignmentKind::Output(_)));
+            .filter(|assignment| !matches!(assignment, ParamAssignmentKind::Output(_)))
+            .peekable();
         let mut temporaries = Vec::new();
         for ((name, section), param) in parameters.iter().zip(declared) {
             match (section, param) {
                 (Section::Input | Section::InOut, _) => {
-                    let Some(ParamAssignmentKind::NamedInput(input)) = inputs.next() else {
-                        return Err(Unlowered::NotYet);
+                    let supplied = match inputs.peek() {
+                        Some(ParamAssignmentKind::NamedInput(input)) if input.name == **name => {
+                            inputs.next();
+                            Some(input)
+                        }
+                        _ => None,
                     };
-                    if input.name != **name {
-                        return Err(Unlowered::NotYet);
-                    }
-                    args.push(self.arg(frame, *param, &input.expr)?);
+                    let arg = match (supplied, section) {
+                        (Some(input), _) => self.arg(frame, *param, &input.expr)?,
+                        // A function's input the call omits starts from its
+                        // initial value (REQ-LOW-lowering-210).
+                        (None, Section::Input) => {
+                            let decl = omitted_input(call, name).ok_or(Unlowered::NotYet)?;
+                            self.initial_arg(decl, *param, span)?
+                        }
+                        (None, Section::InOut | Section::Output) => return Err(Unlowered::NotYet),
+                    };
+                    args.push(arg);
                 }
                 (Section::Output, Param::Ref(ty)) => {
                     let label = format!("{}.{}", call.callee(), name);
@@ -588,6 +601,18 @@ fn parameters(variables: &[VarDecl]) -> Option<Vec<(&Id, Section)>> {
         parameters.push((decl.identifier.symbolic_id()?, section));
     }
     Some(parameters)
+}
+
+/// The declaration of the `VAR_INPUT` `name` of the function `call` calls,
+/// for an input the call omits; `None` for a method, whose call supplies
+/// every input (P4018).
+fn omitted_input<'a>(call: UserCall<'_, 'a>, name: &Id) -> Option<&'a VarDecl> {
+    let UserCall::Function { function, .. } = call else {
+        return None;
+    };
+    function.variables.iter().find(|decl| {
+        decl.var_type == VariableType::Input && decl.identifier.symbolic_id() == Some(name)
+    })
 }
 
 /// Whether one of `parameters` is a `VAR_OUTPUT`.

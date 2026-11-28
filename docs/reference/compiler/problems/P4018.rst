@@ -4,9 +4,19 @@ P4018
 
 .. problem-summary:: P4018
 
-This error occurs when calling a function with the wrong number of arguments,
-or when a method call does not supply every ``VAR_INPUT`` and ``VAR_IN_OUT``
-of the method.
+This error occurs when a call has the wrong number of arguments:
+
+- a positional function call that supplies more or fewer arguments than the
+  function declares;
+- a named function call that leaves out a ``VAR_IN_OUT``;
+- a call of a standard function that leaves out an input the function
+  declares;
+- a method call that does not supply every ``VAR_INPUT`` and ``VAR_IN_OUT``
+  of the method.
+
+A named call of a user-defined function may leave out a ``VAR_INPUT``, which
+then starts from its initial value (see
+:doc:`/reference/language/pous/function`).
 
 Example
 -------
@@ -50,6 +60,33 @@ To fix this error, provide the correct number of arguments:
    END_VAR
        result := ADD_INTS(1, 2);  (* Now valid: 2 arguments provided *)
    END_FUNCTION_BLOCK
+
+A named call supplies every ``VAR_IN_OUT``, because the parameter refers to
+the caller's variable and has no initial value to start from:
+
+.. playground::
+
+   FUNCTION ADD_TO : INT
+   VAR_INPUT
+       AMOUNT : INT := 1;
+   END_VAR
+   VAR_IN_OUT
+       TOTAL : INT;
+   END_VAR
+       TOTAL := TOTAL + AMOUNT;
+       ADD_TO := TOTAL;
+   END_FUNCTION
+
+   PROGRAM main
+   VAR
+       sum : INT;
+       result : INT;
+   END_VAR
+       result := ADD_TO(AMOUNT := 2);  (* Error: TOTAL is not supplied *)
+   END_PROGRAM
+
+To fix this error, supply the variable: ``ADD_TO(AMOUNT := 2, TOTAL := sum)``.
+``ADD_TO(TOTAL := sum)`` is valid too: ``AMOUNT`` starts from 1.
 
 A method call names every input of the method, because a method keeps
 nothing between calls. An initial value on an input is not a default:

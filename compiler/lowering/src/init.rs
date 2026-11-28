@@ -37,7 +37,8 @@ use ironplc_dsl::textual::{SymbolicVariableKind, Variable};
 use ironplc_dsl::type_id::TypeId as AstTypeId;
 use ironplc_ir::execution::{ExecutionModel, InstanceOf};
 use ironplc_ir::lowered::{
-    ExecutionBindings, Expr, Owner, Place, ScalarType, Signedness, Stmt, StrExpr, TypeKind, VarId,
+    Arg, ExecutionBindings, Expr, Owner, Param, Place, ScalarType, Signedness, Stmt, StrExpr,
+    TypeKind, VarId,
 };
 
 use crate::execution_model::Declarations;
@@ -308,6 +309,42 @@ impl<'a> Lowering<'a> {
             }
         }
         Ok(())
+    }
+
+    /// The argument, for the parameter `param`, of the value `decl`, a
+    /// `VAR_INPUT` a function call omits, starts with, at `span`, the call
+    /// (REQ-LOW-lowering-210): a constant of a scalar, a string or `NULL`.
+    /// An input of an array, a structure or a function block, and a
+    /// reference to a variable, is not lowered yet.
+    pub(crate) fn initial_arg(
+        &self,
+        decl: &VarDecl,
+        param: Param,
+        span: &SourceSpan,
+    ) -> Lowered<Arg> {
+        let value = initial_value::read(decl, &self.values.types, &self.values.blocks)?;
+        match (value, param) {
+            (InitialValue::Scalar(scalar), Param::Value(operated)) => {
+                Ok(Arg::Value(scalar_expr(scalar.value, operated, span)?))
+            }
+            (InitialValue::String(string), Param::Str(encoding)) => Ok(Arg::Str(StrExpr::literal(
+                string.chars,
+                encoding,
+                span.clone(),
+            )?)),
+            (InitialValue::Reference(ReferenceValue::Null), Param::Value(_)) => {
+                Ok(Arg::Value(Expr::null(span.clone())))
+            }
+            (
+                InitialValue::Scalar(_)
+                | InitialValue::String(_)
+                | InitialValue::Reference(_)
+                | InitialValue::Array(_)
+                | InitialValue::Structure(_)
+                | InitialValue::Expression(_),
+                _,
+            ) => Err(Unlowered::NotYet),
+        }
     }
 
     /// The place `REF(variable)` refers to, reached as `reach` says: a

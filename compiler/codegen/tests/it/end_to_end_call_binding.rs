@@ -223,6 +223,28 @@ END_PROGRAM"
     assert_run_with(&source, &CompilerOptions::default(), &[("r", 15i64)]);
 }
 
+#[spec_test(REQ_CB_codegen_051)]
+fn end_to_end_when_function_input_omitted_then_starts_from_initial_value() {
+    let source = "
+FUNCTION SCALE : INT
+VAR_INPUT x : INT; k : INT := 3; off : INT := -1; END_VAR
+SCALE := x * k + off;
+END_FUNCTION
+
+PROGRAM main
+VAR y : INT; z : INT; w : INT; END_VAR
+y := SCALE(x := 4);
+z := SCALE(k := 5);
+w := SCALE();
+END_PROGRAM
+";
+    assert_run_with(
+        source,
+        &CompilerOptions::default(),
+        &[("y", 11i64), ("z", -1i64), ("w", -1i64)],
+    );
+}
+
 /// A block whose method joins its two inputs as tens and ones.
 const JOINER: &str = "
 FUNCTION_BLOCK Joiner

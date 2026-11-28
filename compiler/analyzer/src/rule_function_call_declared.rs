@@ -1,6 +1,11 @@
 //! Semantic rule that validates function calls reference declared functions
 //! and have the correct number of arguments.
 //!
+//! A positional call supplies every input and `VAR_IN_OUT`. A formal call of
+//! a user-defined function may omit a `VAR_INPUT`, which starts from its
+//! initial value, but not a `VAR_IN_OUT`. A call of a standard function
+//! supplies every input it declares (see `specs/design/call-binding.md`).
+//!
 //! ## Passes
 //!
 //! ```ignore
@@ -37,6 +42,8 @@ use std::convert::Infallible;
 
 use crate::{
     builtin_function::{BuiltinFunction, StringFunction},
+    call_binding::bind,
+    callee_resolution::{CallParameters, ParameterSection},
     function_environment::FunctionSignature,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
@@ -61,6 +68,38 @@ pub fn apply(
 struct RuleFunctionCallDeclared<'a> {
     context: &'a SemanticContext,
     diagnostics: Vec<Diagnostic>,
+}
+
+impl RuleFunctionCallDeclared<'_> {
+    /// Reports each `VAR_IN_OUT` the formal call `node` of the function
+    /// `signature` does not supply (P4018): it names the caller's variable,
+    /// so it has no initial value to take. Nothing is reported for a call
+    /// whose arguments do not bind, as the binding pass reported why.
+    fn check_omitted_in_outs(&mut self, node: &Function, signature: &FunctionSignature) {
+        let inputs = node
+            .param_assignment
+            .iter()
+            .filter(|arg| arg.input_expr().is_some())
+            .count();
+        let parameters = CallParameters::of_function(signature, inputs);
+        let Ok(binding) = bind(&parameters, &node.param_assignment) else {
+            return;
+        };
+        let missing = binding
+            .omitted(&parameters)
+            .into_iter()
+            .filter(|parameter| parameter.section == ParameterSection::InOut);
+        for parameter in missing {
+            self.diagnostics.push(
+                Diagnostic::problem(
+                    Problem::FunctionCallWrongArgCount,
+                    Label::span(node.name.span(), "Function call"),
+                )
+                .with_context("function", &node.name.original().to_string())
+                .with_context_id("missing in-out", &parameter.name),
+            );
+        }
+    }
 }
 
 impl DiagnosticVisitor for RuleFunctionCallDeclared<'_> {
@@ -115,6 +154,15 @@ impl Visitor<Infallible> for RuleFunctionCallDeclared<'_> {
                         )
                         .with_context("function", &node.name.original().to_string()),
                     );
+                    return node.recurse_visit(self);
+                }
+
+                // A formal call of a user-defined function may omit a
+                // `VAR_INPUT`, which then takes its initial value (IEC
+                // 61131-3:2003 2.5.1.1, table 19 a); ed.3 6.6.1.7.1), so only
+                // an omitted `VAR_IN_OUT` is a missing argument.
+                if call_input_count == 0 && !signature.is_stdlib() {
+                    self.check_omitted_in_outs(node, signature);
                     return node.recurse_visit(self);
                 }
 
@@ -246,26 +294,81 @@ END_FUNCTION_BLOCK",
         [Problem::FunctionCallWrongArgCount]
     );
 
-    rule_err!(
-        /// The binding pass writes the call in normal form, which leaves the
-        /// omitted input out, so the call has one input too few.
-        #[spec_test(REQ_CB_analyzer_052)]
-        apply_when_named_input_omitted_then_wrong_arg_count,
-        "
-FUNCTION ADD_INTS : INT
-VAR_INPUT
-    A : INT;
-    B : INT := 2;
-END_VAR
-    ADD_INTS := A + B;
+    /// A formal call may omit any `VAR_INPUT`, which starts from its initial
+    /// value, the declared one or its type's; a call with no inputs omits
+    /// them all (#2552).
+    #[spec_test(REQ_CB_analyzer_057)]
+    #[rstest]
+    #[case::omits_one_with_initial_value("SCALE(x := 4)")]
+    #[case::omits_one_without_initial_value("SCALE(k := 5)")]
+    #[case::omits_several_out_of_order("SCALE(off := 1, x := 4)")]
+    #[case::omits_all("SCALE()")]
+    #[case::omits_all_but_assigns_output("SCALE(q => o)")]
+    fn apply_when_user_function_formal_call_omits_input_then_ok(#[case] call: &str) {
+        let program = format!(
+            "
+FUNCTION SCALE : INT
+VAR_INPUT x : INT; k : INT := 3; off : INT := -1; END_VAR
+VAR_OUTPUT q : INT; END_VAR
+    q := x;
+    SCALE := x * k + off;
 END_FUNCTION
 
-FUNCTION_BLOCK CALLER
-VAR
-    result : INT;
-END_VAR
-    result := ADD_INTS(A := 1);
-END_FUNCTION_BLOCK",
+PROGRAM main
+VAR y : INT; o : INT; END_VAR
+    y := {call};
+END_PROGRAM"
+        );
+        let diagnostics = rule_diagnostics(apply, &program, &CompilerOptions::default());
+        assert!(diagnostics.is_empty(), "{call}: {diagnostics:?}");
+    }
+
+    /// A `VAR_IN_OUT` names the caller's variable, so a formal call that
+    /// omits one has no value to take: one P4018 for each.
+    #[spec_test(REQ_CB_analyzer_058)]
+    #[test]
+    fn apply_when_user_function_formal_call_omits_in_outs_then_error_for_each() {
+        let program = "
+FUNCTION SWAP : BOOL
+VAR_INPUT go : BOOL := TRUE; END_VAR
+VAR_IN_OUT a : DINT; b : DINT; END_VAR
+VAR t : DINT; END_VAR
+    t := a;
+    a := b;
+    b := t;
+    SWAP := go;
+END_FUNCTION
+
+PROGRAM main
+VAR r : BOOL; END_VAR
+    r := SWAP(go := FALSE);
+END_PROGRAM";
+        let diagnostics = rule_diagnostics(apply, program, &CompilerOptions::default());
+        let missing: Vec<_> = diagnostics
+            .iter()
+            .map(|diagnostic| {
+                assert_eq!(Problem::FunctionCallWrongArgCount.code(), diagnostic.code);
+                diagnostic
+                    .described
+                    .iter()
+                    .find(|context| context.starts_with("missing in-out"))
+                    .cloned()
+                    .unwrap_or_default()
+            })
+            .collect();
+        assert_eq!(vec!["missing in-out=a", "missing in-out=b"], missing);
+    }
+
+    rule_err!(
+        /// A standard function's inputs are passed by position, so a formal
+        /// call of one still supplies every input it declares.
+        #[spec_test(REQ_CB_analyzer_059)]
+        apply_when_standard_function_formal_call_omits_input_then_wrong_arg_count,
+        "
+PROGRAM main
+VAR r : INT; b : INT; END_VAR
+    r := LIMIT(IN := b, MX := 5);
+END_PROGRAM",
         [Problem::FunctionCallWrongArgCount]
     );
 
@@ -458,12 +561,15 @@ END_FUNCTION_BLOCK",
     );
 
     rule_err!(
+        /// A positional call supplies every input, even one that declares an
+        /// initial value.
+        #[spec_test(REQ_CB_analyzer_059)]
         apply_when_too_few_args_then_error,
         "
 FUNCTION ADD_INTS : INT
 VAR_INPUT
     A : INT;
-    B : INT;
+    B : INT := 2;
 END_VAR
     ADD_INTS := A + B;
 END_FUNCTION

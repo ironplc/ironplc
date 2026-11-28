@@ -1980,6 +1980,16 @@ the reverse.
 structure or function block type is a `Copy`, and an argument for a
 `VAR_IN_OUT` parameter is a `Ref`.
 
+A formal call of a function may omit a `VAR_INPUT`, which starts from its
+initial value ([Call Binding](call-binding.md), "Omitted inputs"). The
+analyzer's normal form leaves the input out, and the call still passes an
+argument for every parameter: the constant the input's completed
+initializer gives, as the prologue reads a local's. An omitted input of an
+array or structure type, or a reference initialized to a variable, is not
+lowered yet (P9999).
+
+**REQ-LOW-lowering-210** The argument for a `VAR_INPUT` a function call omits is a constant of the value its declaration starts with: `F(b := x)` of a function declaring `a : DINT := 7` and `b : DINT` passes `(const i32s 7)` for `a`, and one declaring `s : STRING := 'hi'` passes the string `'hi'` for `s`.
+
 **REQ-LOW-lowering-073** A behaviour policy
 ([ADR-0049](../adrs/0049-behavior-policies-selected-at-compile-time.md))
 selects among `Intrinsic` variants during lowering; a backend receives no

@@ -34,6 +34,7 @@
 //! whole program once every one is lowered, and otherwise every P9999.
 
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 use ironplc_dsl::common::TypeName;
 use ironplc_dsl::common::{FunctionBlockBodyKind, LibraryElementKind, VarDecl, VariableType};
@@ -413,7 +414,7 @@ impl<'a> Lowering<'a> {
             .iter()
             .map(|(var, _)| var)
             .collect();
-        let values = Values::of(self.analysis.context().types());
+        let values = Rc::clone(&self.values);
         let init = self.lower_init(&execution, &declarations, &bindings, &values)?;
         let mut lowered = Vec::with_capacity(bodies.len());
         for (body, frame) in bodies.into_iter().zip(frames) {
