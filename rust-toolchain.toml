@@ -7,5 +7,5 @@
 # release, so the weekly update workflow validates each new Rust before it
 # reaches main.
 [toolchain]
-channel = "1.100.0"
+channel = "1.100.1"
 components = ["rustfmt", "clippy"]
