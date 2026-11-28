@@ -12,6 +12,7 @@ use rstest::rstest;
 #[case::inherited_field_through_super("    count := SUPER^.level;")]
 #[case::method_call("    THIS^.Start();")]
 #[case::super_method_call("    SUPER^.Stop();")]
+#[case::base_body_call("    SUPER^();")]
 fn compile_when_self_reference_then_diagnostic_not_panic(#[case] body: &str) {
     let source = format!(
         "

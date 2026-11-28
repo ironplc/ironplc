@@ -37,6 +37,8 @@ impl Lowering<'_> {
             AstStmtKind::Return => Ok(vec![Stmt::return_(SourceSpan::default())]),
             AstStmtKind::FbCall(call) => self.fb_call(frame, call),
             AstStmtKind::MethodCall(call) => self.method_call_statement(frame, call),
+            // Like a method call through `SUPER^`, not lowered yet.
+            AstStmtKind::BaseBodyCall(_) => Err(Unlowered::NotYet),
         }
     }
 

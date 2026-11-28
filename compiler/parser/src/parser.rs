@@ -1136,9 +1136,10 @@ parser! {
       t:tok(TokenType::This) _ c:tok(TokenType::Caret) {
         SelfRefVariable { kind: SelfRefKind::This, position: SourceSpan::join(&t.span, &c.span) }
       }
-      / t:tok(TokenType::Super) _ c:tok(TokenType::Caret) {
-        SelfRefVariable { kind: SelfRefKind::Super, position: SourceSpan::join(&t.span, &c.span) }
-      }
+      / super_ref()
+    rule super_ref() -> SelfRefVariable = t:tok(TokenType::Super) _ c:tok(TokenType::Caret) {
+      SelfRefVariable { kind: SelfRefKind::Super, position: SourceSpan::join(&t.span, &c.span) }
+    }
     rule symbolic_variable_head() -> SymbolicVariableKind =
       s:self_ref() { SymbolicVariableKind::SelfRef(s) }
       / name:variable_identifier() { SymbolicVariableKind::Named(NamedVariable { name }) }
@@ -2406,7 +2407,7 @@ parser! {
       }
 
     // B.3.2.2 Subprogram control statements
-    rule subprogram_control_statement() -> StmtKind = m:method_invocation() { m } / fb:fb_invocation() { fb } / start:tok(TokenType::Return) _ tok(TokenType::LeftParen) _ expr:expression() _ end:tok(TokenType::RightParen) {
+    rule subprogram_control_statement() -> StmtKind = m:method_invocation() { m } / fb:fb_invocation() { fb } / b:base_body_call() { b } / start:tok(TokenType::Return) _ tok(TokenType::LeftParen) _ expr:expression() _ end:tok(TokenType::RightParen) {
       // TwinCAT: `RETURN(cond)` returns only when `cond` is TRUE. The
       // argument is not a return value, so it is the same as an IF.
       StmtKind::If(If {
@@ -2448,6 +2449,14 @@ parser! {
       }
     }
     rule method_invocation() -> StmtKind = call:method_call() { StmtKind::MethodCall(call) }
+    // OOP extension: `SUPER^();` calls the body of the block the enclosing
+    // block extends. Gated at the token level, as `self_ref` is. Only the
+    // empty argument list is accepted: an argument passed this way is not
+    // known to be accepted by any target (ADR-0036).
+    rule base_body_call() -> StmtKind = base:super_ref() _ tok(TokenType::LeftParen) _ end:tok(TokenType::RightParen) {
+      let position = SourceSpan::join(&base.position, &end.span);
+      StmtKind::BaseBodyCall(BaseBodyCall { base, position })
+    }
     // TODO this needs much more
     // The argument list of a call. TwinCAT writes an argument with no value
     // (`b :=,` for an input, `Error=> ,` for an output) when it is left

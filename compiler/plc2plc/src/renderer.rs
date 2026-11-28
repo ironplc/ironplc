@@ -1632,6 +1632,19 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         Ok(())
     }
 
+    // OOP extension: `SUPER^();`, a call of the base block's body.
+    fn visit_base_body_call(
+        &mut self,
+        node: &dsl::textual::BaseBodyCall,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_self_ref_variable(&node.base)?;
+        self.write_ws("(");
+        self.write_ws(")");
+        self.write_ws(";");
+        self.newline();
+        Ok(())
+    }
+
     // A method call is rendered by `visit_method_call` in both positions;
     // only the statement form ends with `;`. `RETURN`, `EXIT` and `CONTINUE` have no
     // node to visit, so they are written here.

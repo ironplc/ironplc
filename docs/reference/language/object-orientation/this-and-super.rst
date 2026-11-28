@@ -7,8 +7,8 @@ on. ``THIS^`` is that instance itself, which is how a method reaches a
 variable of the function block that one of its own parameters or locals
 hides. ``SUPER^`` is the same instance seen as its
 :doc:`base type <extends>`, which is how a derived type calls the method it
-overrode. Both are pointers, so both are written with the dereference
-operator ``^``.
+overrode, or runs the body of its base type. Both are pointers, so both are
+written with the dereference operator ``^``.
 
 Neither is a way to reach a second variable of an inherited name: a derived
 type cannot redeclare a variable it inherits
@@ -25,7 +25,8 @@ type cannot redeclare a variable it inherits
      - Edition 3 (object-oriented programming)
    * - **Support**
      - Analyzed when followed by a member or a method call
-       (``THIS^.speed``, ``SUPER^.Stop()``); not yet compiled, and not
+       (``THIS^.speed``, ``SUPER^.Stop()``), and in a call of the base
+       type's body (``SUPER^()``); not yet compiled, and not
        yet supported as a value on its own
        (:doc:`P9999 </reference/compiler/problems/P9999>`). Enable with
        ``--allow-fb-inheritance``; see
@@ -42,9 +43,13 @@ the keyword and the ``^`` is accepted:
 
    THIS ^ . member
    SUPER ^ . member
+   SUPER ^ ( ) ;
 
 A dereferenced reference is used wherever a variable is: read from, assigned
 to, subscripted, or called.
+
+``SUPER^();`` is a statement that runs the body of the base type on the same
+instance. Its argument list is always empty. ``THIS^()`` is not valid.
 
 Example
 -------
@@ -70,6 +75,19 @@ Example
 ``FB_LoggingMotor`` declares its own ``Stop``, which overrides the one it
 inherits. ``SUPER^.Stop()`` calls the overridden base implementation;
 writing ``Stop()`` there would call itself.
+
+``SUPER^()`` runs the body of the base type from the body of a derived type,
+here before the derived type's own statements:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_CountingMotor EXTENDS FB_Motor
+       VAR
+           runs : INT;
+       END_VAR
+       SUPER^();
+       runs := runs + 1;
+   END_FUNCTION_BLOCK
 
 ``THIS^`` is most useful when a local name hides a member of the instance —
 for example a method parameter named after a variable of the function block.

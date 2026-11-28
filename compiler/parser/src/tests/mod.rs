@@ -6,6 +6,7 @@
 mod common;
 
 mod arrays;
+mod base_body_call;
 mod case;
 mod comments_and_errors;
 mod conditional_return;

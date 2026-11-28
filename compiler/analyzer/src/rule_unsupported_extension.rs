@@ -116,6 +116,14 @@ impl Visitor<Infallible> for RuleUnsupportedExtension {
         node.recurse_visit(self)
     }
 
+    /// `SUPER^()` is analyzed, so its `SUPER^` is not flagged.
+    fn visit_base_body_call(
+        &mut self,
+        _node: &ironplc_dsl::textual::BaseBodyCall,
+    ) -> Result<Self::Value, Infallible> {
+        Ok(())
+    }
+
     fn visit_self_ref_variable(
         &mut self,
         node: &ironplc_dsl::textual::SelfRefVariable,
@@ -185,6 +193,7 @@ END_FUNCTION_BLOCK",
     #[case::this("    THIS^.count := 1;")]
     #[case::super_("    count := SUPER^.count;")]
     #[case::this_method_call("    THIS^.Start();")]
+    #[case::base_body_call("    SUPER^();")]
     fn apply_when_self_ref_member_then_ok(#[case] body: &str) {
         let errors = rule_diagnostics(apply, &motor_with(body), &fb_inheritance_options());
         assert!(errors.is_empty());
