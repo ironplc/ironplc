@@ -695,7 +695,7 @@ END_PROGRAM"
         );
     }
 
-    #[spec_test(REQ_CB_analyzer_055)]
+    #[spec_test(REQ_CB_analyzer_057)]
     fn apply_when_function_formal_call_omits_input_then_absent() {
         assert_eq!(
             vec!["f: io := t, b := 2", "f: "],

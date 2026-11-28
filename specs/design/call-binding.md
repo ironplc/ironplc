@@ -213,6 +213,16 @@ declared ones; one numbered past the inputs the call supplies is P4023.
 `IN1` and `IN2` continue as `IN3`, `IN4`, ... with no upper bound, so
 `MAX(a, b, c)` binds and is not P4018.
 
+**REQ-CB-analyzer-055** `CONCAT` is extensible, as IEC 61131-3 declares it in
+its table of character string functions: its declared inputs `IN1` and `IN2`
+continue as `IN3`, `IN4`, ... with no upper bound, so `CONCAT(a, b, c)` binds
+and is not P4018.
+
+**REQ-CB-analyzer-056** With `allow_extensible_concat` off, as the CODESYS and
+TwinCAT dialects have it, `CONCAT` takes exactly `IN1` and `IN2`, as those
+toolchains declare it, so `CONCAT(a, b, c)` is P4018. The IEC 61131-3 dialects
+and RuSTy turn the option on.
+
 **REQ-CB-analyzer-034** A named input of a function call that names no
 parameter of the function is P4023.
 
@@ -292,7 +302,7 @@ starts from its initial value: the one its declaration gives, or its type's
 omits them all. The normal form records
 an omitted input by leaving it out, as for a function block, and lowering
 passes the value the input's completed initializer gives
-([Lowered Program](lowered-program.md), REQ-LOW-lowering-209). A `VAR_IN_OUT`
+([Lowered Program](lowered-program.md), REQ-LOW-lowering-210). A `VAR_IN_OUT`
 names the caller's variable, so it has no initial value to take: a call that
 omits one is P4018. A positional call supplies every input and `VAR_IN_OUT`
 (P4018).
@@ -308,12 +318,12 @@ its normal form.
 **REQ-CB-analyzer-051** An input or `VAR_IN_OUT` a method call omits is P4018,
 one for each, and nothing is reported for a call whose arguments do not bind.
 
-**REQ-CB-analyzer-055** A formal call of a user-defined function that omits a `VAR_INPUT` binds, with the input absent from its normal form, and is not P4018: with inputs `x`, `k` and `off`, `SCALE(off := 1, x := 4)` binds as `SCALE(x := 4, off := 1)`, and `SCALE()` binds with no inputs.
+**REQ-CB-analyzer-057** A formal call of a user-defined function that omits a `VAR_INPUT` binds, with the input absent from its normal form, and is not P4018: with inputs `x`, `k` and `off`, `SCALE(off := 1, x := 4)` binds as `SCALE(x := 4, off := 1)`, and `SCALE()` binds with no inputs.
 
-**REQ-CB-analyzer-056** A formal call of a user-defined function that omits a
+**REQ-CB-analyzer-058** A formal call of a user-defined function that omits a
 `VAR_IN_OUT` is P4018, one for each.
 
-**REQ-CB-analyzer-057** A positional call of a function, and a call of a
+**REQ-CB-analyzer-059** A positional call of a function, and a call of a
 standard function, that supplies fewer inputs than the function declares is
 P4018.
 

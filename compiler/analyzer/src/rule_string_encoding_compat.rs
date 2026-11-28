@@ -15,7 +15,7 @@
 //!
 //! * the two sides of a comparison;
 //! * the string arguments of one call, those bound to `ANY_STRING` inputs
-//!   such as the two of `CONCAT` or `FIND`, which share one encoding;
+//!   such as those of `CONCAT` or `FIND`, which share one encoding;
 //! * a value stored into a string variable, element or field, by an
 //!   assignment or by an output assignment of a call, which stores the
 //!   output the call leaves (`f(s => w)` as `w := f.s`).
@@ -354,6 +354,8 @@ END_PROGRAM"
     #[case::insert("wides[1] := INSERT(w, 'x', 1);", MIXED)]
     #[case::replace("wides[1] := REPLACE(w, 'x', 1, 1);", MIXED)]
     #[case::nested_call("wides[1] := CONCAT(CONCAT(w, w), s);", MIXED)]
+    #[case::concat_extended_input("wides[1] := CONCAT(w, w, s);", MIXED)]
+    #[case::concat_extended_same_encoding("wides[1] := CONCAT(w, \"x\", w);", OK)]
     #[case::concat_same_encoding("wides[1] := CONCAT(w, \"x\");", OK)]
     #[case::find_same_encoding("found := FIND(s, 'a');", OK)]
     #[case::one_string_argument("found := LEN(w);", OK)]

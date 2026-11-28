@@ -198,7 +198,7 @@ pub struct Lowering<'a> {
     /// a structure, which holds the result (REQ-LOW-lowering-187).
     aggregate_results: HashMap<PouId, VarId>,
     /// What reading a completed initializer needs: for `init`, the
-    /// prologues, and an input a function call omits (REQ-LOW-lowering-209).
+    /// prologues, and an input a function call omits (REQ-LOW-lowering-210).
     values: Rc<init::Values>,
 }
 

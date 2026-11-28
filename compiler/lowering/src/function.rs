@@ -367,7 +367,7 @@ impl<'a> Lowering<'a> {
                     let arg = match (supplied, section) {
                         (Some(input), _) => self.arg(frame, *param, &input.expr)?,
                         // A function's input the call omits starts from its
-                        // initial value (REQ-LOW-lowering-209).
+                        // initial value (REQ-LOW-lowering-210).
                         (None, Section::Input) => {
                             let decl = omitted_input(call, name).ok_or(Unlowered::NotYet)?;
                             self.initial_arg(decl, *param, span)?

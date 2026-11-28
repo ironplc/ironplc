@@ -434,7 +434,7 @@ fn main_statements(source: &str) -> Vec<String> {
         .collect()
 }
 
-/// REQ-LOW-lowering-209: a call that omits a function's input passes the
+/// REQ-LOW-lowering-210: a call that omits a function's input passes the
 /// constant its declaration starts with, the declared value or its type's:
 /// `a` is 7, `b` is 0 and `s` is `'hi'` where the call omits them.
 #[test]

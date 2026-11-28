@@ -313,7 +313,7 @@ impl<'a> Lowering<'a> {
 
     /// The argument, for the parameter `param`, of the value `decl`, a
     /// `VAR_INPUT` a function call omits, starts with, at `span`, the call
-    /// (REQ-LOW-lowering-209): a constant of a scalar, a string or `NULL`.
+    /// (REQ-LOW-lowering-210): a constant of a scalar, a string or `NULL`.
     /// An input of an array, a structure or a function block, and a
     /// reference to a variable, is not lowered yet.
     pub(crate) fn initial_arg(

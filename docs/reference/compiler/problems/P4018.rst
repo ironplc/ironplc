@@ -112,3 +112,14 @@ nothing between calls. An initial value on an input is not a default:
    END_PROGRAM
 
 To fix this error, supply every input: ``s.SCALE(V := 3, K := 2)``.
+
+``CONCAT`` takes two or more inputs in the IEC 61131-3 dialects and in
+``rusty``, and exactly two in ``codesys`` and ``twincat``, as those toolchains
+declare it. In those dialects, nest the calls:
+
+.. code-block::
+
+   s := CONCAT(a, b, c);          (* Error in codesys and twincat *)
+   s := CONCAT(CONCAT(a, b), c);  (* Valid in every dialect *)
+
+See ``--allow-extensible-concat`` in :doc:`/explanation/enabling-dialects-and-features`.

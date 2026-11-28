@@ -17,7 +17,9 @@ Supported Dialects
    Strict IEC 61131-3:2003 (Edition 2). No extensions are enabled.
    This is the default when no dialect is specified.
 
-   **Enables:** nothing beyond strict IEC 61131-3 (no extensions).
+   **Enables:** nothing beyond strict IEC 61131-3 (no extensions). Its one
+   flag, ``--allow-extensible-concat``, names a standard feature that the
+   ``codesys`` and ``twincat`` dialects leave off.
 
    **Selects:** the default of every behavior policy
    (``--policy-string-to-num-non-numeric reject``,
@@ -38,8 +40,8 @@ Supported Dialects
 
    **Enables:** ``--allow-long-time-types``, ``--allow-ref-to`` (the
    Edition 3 keywords), ``--allow-partial-access-syntax``,
-   ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``, and
-   ``--allow-continue``.
+   ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``,
+   ``--allow-continue``, and, as in Edition 2, ``--allow-extensible-concat``.
 
    **Selects:** the default of every behavior policy
    (``--policy-string-to-num-non-numeric reject``,
@@ -67,7 +69,8 @@ Supported Dialects
    ``--allow-struct-initializer-expressions``,
    ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``,
    ``--allow-enum-base-type``, ``--allow-continue``,
-   ``--allow-keywords-as-names``, and ``--allow-radix-subrange-bounds``.
+   ``--allow-keywords-as-names``, ``--allow-radix-subrange-bounds``, and
+   ``--allow-extensible-concat``.
 
    **Selects:** ``--policy-string-to-num-non-numeric reject`` and
    ``--policy-string-to-num-failure zero`` — RuSTy rejects a string with
