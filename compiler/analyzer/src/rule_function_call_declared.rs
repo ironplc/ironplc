@@ -36,6 +36,8 @@ use ironplc_problems::Problem;
 use std::convert::Infallible;
 
 use crate::{
+    builtin_function::{BuiltinFunction, StringFunction},
+    function_environment::FunctionSignature,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
@@ -131,15 +133,17 @@ impl Visitor<Infallible> for RuleFunctionCallDeclared<'_> {
                 };
 
                 if !args_valid {
-                    self.diagnostics.push(
-                        Diagnostic::problem(
-                            Problem::FunctionCallWrongArgCount,
-                            Label::span(node.name.span(), "Function call"),
-                        )
-                        .with_context("function", &node.name.original().to_string())
-                        .with_context("expected", &expected_inputs.to_string())
-                        .with_context("actual", &total_inputs.to_string()),
-                    );
+                    let mut diagnostic = Diagnostic::problem(
+                        Problem::FunctionCallWrongArgCount,
+                        Label::span(node.name.span(), "Function call"),
+                    )
+                    .with_context("function", &node.name.original().to_string())
+                    .with_context("expected", &expected_inputs.to_string())
+                    .with_context("actual", &total_inputs.to_string());
+                    if is_two_input_concat(signature) && total_inputs > expected_inputs {
+                        diagnostic = diagnostic.with_help(TWO_INPUT_CONCAT_HELP);
+                    }
+                    self.diagnostics.push(diagnostic);
                 }
             }
         }
@@ -149,10 +153,27 @@ impl Visitor<Infallible> for RuleFunctionCallDeclared<'_> {
     }
 }
 
+/// The help for a call of the two-input `CONCAT` with more inputs: how to
+/// write the call in this dialect, and the dialects that take it as written
+/// (REQ-CB-analyzer-056).
+const TWO_INPUT_CONCAT_HELP: &str = "This dialect's CONCAT takes two inputs, as CODESYS \
+and TwinCAT declare it. Nest the calls, as in CONCAT(CONCAT(a, b), c). IEC 61131-3 and \
+RuSTy declare CONCAT extensible (--allow-extensible-concat).";
+
+/// Whether `signature` is the standard `CONCAT` narrowed to two inputs, as
+/// the analyzer registers it when `allow_extensible_concat` is off.
+fn is_two_input_concat(signature: &FunctionSignature) -> bool {
+    !signature.is_extensible
+        && matches!(
+            signature.builtin_function,
+            Some(BuiltinFunction::String(StringFunction::Concat))
+        )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::rule_diagnostics;
+    use crate::test_helpers::{codes, diagnostic_codes, rule_diagnostics};
     use rstest::rstest;
     use spec_test_macro::spec_test;
 
@@ -641,4 +662,68 @@ END_VAR
 END_PROGRAM",
         [Problem::FunctionCallWrongArgCount]
     );
+
+    /// A program that stores the call `call` in a `STRING`.
+    fn concat_program(call: &str) -> String {
+        format!(
+            "
+PROGRAM main
+VAR
+    s : STRING;
+END_VAR
+    s := {call};
+END_PROGRAM"
+        )
+    }
+
+    /// CODESYS and TwinCAT declare `CONCAT` with two inputs, so a third is
+    /// P4018, with help on writing the call in the dialect; the IEC 61131-3
+    /// dialects and RuSTy declare it extensible.
+    #[spec_test(REQ_CB_analyzer_056)]
+    fn apply_when_concat_of_three_then_p4018_where_concat_takes_two() {
+        use ironplc_parser::options::Dialect;
+
+        let program = concat_program("CONCAT('a', 'b', 'c')");
+        for dialect in Dialect::ALL {
+            let options = CompilerOptions::from_dialect(*dialect);
+            let diagnostics = rule_diagnostics(apply, &program, &options);
+            if matches!(dialect, Dialect::Codesys | Dialect::TwinCat) {
+                assert_eq!(
+                    diagnostic_codes(&diagnostics),
+                    codes(&[Problem::FunctionCallWrongArgCount]),
+                    "{dialect}"
+                );
+                assert!(
+                    diagnostics[0]
+                        .help()
+                        .iter()
+                        .any(|help| help.contains("CONCAT(CONCAT(a, b), c)")),
+                    "{dialect}: {diagnostics:?}"
+                );
+            } else {
+                assert_eq!(diagnostic_codes(&diagnostics), codes(&[]), "{dialect}");
+            }
+        }
+    }
+
+    #[rstest]
+    #[case::two_inputs("CONCAT('a', 'b')", &[])]
+    #[case::one_input("CONCAT('a')", &[Problem::FunctionCallWrongArgCount])]
+    fn apply_when_two_input_concat_then_counts_as_two_input_function(
+        #[case] call: &str,
+        #[case] expected: &[Problem],
+    ) {
+        let options = CompilerOptions {
+            allow_extensible_concat: false,
+            ..CompilerOptions::default()
+        };
+        let diagnostics = rule_diagnostics(apply, &concat_program(call), &options);
+
+        assert_eq!(diagnostic_codes(&diagnostics), codes(expected));
+        // Too few inputs is no call the extensible CONCAT would take either.
+        assert!(
+            diagnostics.iter().all(|d| d.help().is_empty()),
+            "{diagnostics:?}"
+        );
+    }
 }

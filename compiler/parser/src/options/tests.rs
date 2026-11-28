@@ -32,10 +32,29 @@ fn assert_enabled_flags(dialect: Dialect, expected: &[&str]) {
     );
 }
 
-/// IEC 61131-3 Ed. 2 (the default) enables no extensions at all.
+/// IEC 61131-3 Ed. 2 (the default) enables no extensions at all. Its one
+/// flag names a standard feature that vendor dialects leave off: the
+/// extensible `CONCAT`.
 #[test]
-fn ed2_dialect_enables_no_flags() {
-    assert_enabled_flags(Dialect::Iec61131_3Ed2, &[]);
+fn ed2_dialect_enables_only_standard_feature_flags() {
+    assert_enabled_flags(Dialect::Iec61131_3Ed2, &["allow_extensible_concat"]);
+}
+
+/// The default options are the default dialect's preset, so code that builds
+/// options without naming a dialect gets strict Edition 2, standard features
+/// included.
+#[test]
+fn default_when_called_then_ed2_preset() {
+    let defaults = CompilerOptions::default();
+    let ed2 = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed2);
+    for fd in CompilerOptions::FEATURE_DESCRIPTORS {
+        assert_eq!(
+            defaults.get_flag_by_key(fd.option_key),
+            ed2.get_flag_by_key(fd.option_key),
+            "{}",
+            fd.option_key
+        );
+    }
 }
 
 /// IEC 61131-3 Ed. 3 is a preset assembled from the descriptors tagged with
@@ -43,7 +62,7 @@ fn ed2_dialect_enables_no_flags() {
 /// reference keywords, partial-access syntax, explicit enumeration member
 /// values, the `CONTINUE` statement, and the object-oriented syntax
 /// (`allow_fb_inheritance`) that is the headline addition of the 2013
-/// edition.
+/// edition; and, as in Edition 2, the extensible `CONCAT`.
 #[test]
 fn ed3_dialect_enables_edition3_descriptors() {
     assert_enabled_flags(
@@ -55,6 +74,7 @@ fn ed3_dialect_enables_edition3_descriptors() {
             "allow_fb_inheritance",
             "allow_enum_explicit_values",
             "allow_continue",
+            "allow_extensible_concat",
         ],
     );
 }
@@ -98,6 +118,7 @@ fn rusty_dialect_enables_exactly_these_flags() {
             "allow_continue",
             "allow_keywords_as_names",
             "allow_radix_subrange_bounds",
+            "allow_extensible_concat",
         ],
     );
 }

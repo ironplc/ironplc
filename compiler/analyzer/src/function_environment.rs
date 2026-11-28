@@ -249,6 +249,18 @@ impl FunctionEnvironment {
         Ok(())
     }
 
+    /// Replaces the signature of the function `signature` names with
+    /// `signature`, returning the one it replaces, or inserts it where there
+    /// is none. The analyzer narrows a standard function to the signature
+    /// the selected dialect declares this way, before any program is
+    /// analyzed.
+    ///
+    /// Uses case-insensitive lookup (stores lowercase key).
+    pub fn replace(&mut self, signature: FunctionSignature) -> Option<FunctionSignature> {
+        let key = signature.name.lower_case().to_string();
+        self.table.insert(key, signature)
+    }
+
     /// Gets a function signature by name.
     ///
     /// Uses case-insensitive lookup.
@@ -378,6 +390,25 @@ mod tests {
 
         // Should still only have one entry
         assert_eq!(env.iter().count(), 1);
+    }
+
+    #[test]
+    fn function_environment_replace_when_exists_then_returns_replaced_signature() {
+        let mut env = FunctionEnvironment::new();
+        env.insert(create_test_signature("INT_TO_REAL", "REAL"))
+            .unwrap();
+
+        let replaced = env.replace(create_test_signature("int_to_real", "LREAL"));
+
+        assert_eq!(
+            replaced.and_then(|sig| sig.return_type),
+            create_test_signature("INT_TO_REAL", "REAL").return_type
+        );
+        assert_eq!(env.iter().count(), 1);
+        assert_eq!(
+            env.get(&Id::from("INT_TO_REAL")).unwrap().return_type,
+            create_test_signature("INT_TO_REAL", "LREAL").return_type
+        );
     }
 
     #[test]

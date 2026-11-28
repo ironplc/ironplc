@@ -157,6 +157,23 @@ END_PROGRAM
 }
 
 #[test]
+fn wstring_when_concat_three_inputs_then_joins_code_units_in_order() {
+    let source = "
+PROGRAM main
+  VAR
+    a : WSTRING[10] := \"foo\";
+    b : WSTRING[10] := \"bar\";
+    out : WSTRING[30];
+  END_VAR
+  out := CONCAT(a, \"€\", b);
+END_PROGRAM
+";
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+
+    assert_eq!(snapshot.read("out"), "foo€bar");
+}
+
+#[test]
 fn wstring_when_concat_with_literal_then_keeps_wide_characters() {
     // The literal is encoded at the width the source spells, so it stores into
     // a wide destination without an encoding mismatch (ADR-0034).

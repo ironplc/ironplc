@@ -201,6 +201,13 @@ pub fn resolve_types(
             .expect("SIZEOF should not conflict with stdlib");
     }
 
+    // CODESYS and TwinCAT declare CONCAT with two inputs, where IEC 61131-3
+    // declares it extensible (REQ-CB-analyzer-056).
+    if !options.allow_extensible_concat {
+        use crate::intermediates::stdlib_function::get_two_input_concat_function;
+        function_environment.replace(get_two_input_concat_function());
+    }
+
     let mut symbol_environment =
         SymbolEnvironment::new().with_bare_globals(options.allow_top_level_var_global);
 

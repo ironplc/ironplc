@@ -298,6 +298,13 @@ struct FileArgs {
     #[arg(long)]
     allow_dotted_enum_value: bool,
 
+    /// Allow CONCAT of more than two strings (e.g. `CONCAT(a, b, c)`), as
+    /// IEC 61131-3 declares it extensible. Enabled by the IEC 61131-3
+    /// dialects and by `--dialect=rusty`; CODESYS and TwinCAT declare
+    /// CONCAT with two inputs.
+    #[arg(long)]
+    allow_extensible_concat: bool,
+
     /// Allow a general (non-constant) expression as the value in a
     /// structured/call-style initializer's `name := value` pairs (e.g.
     /// `tonDelta : TON := (PT := pDevice^.Delta);`). This is a dialect
@@ -397,6 +404,7 @@ impl FileArgs {
         options.allow_omitted_call_argument |= self.allow_omitted_call_argument;
         options.allow_trailing_call_comma |= self.allow_trailing_call_comma;
         options.allow_dotted_enum_value |= self.allow_dotted_enum_value;
+        options.allow_extensible_concat |= self.allow_extensible_concat;
         options.allow_struct_initializer_expressions |= self.allow_struct_initializer_expressions;
         options.allow_fb_inheritance |= self.allow_fb_inheritance;
         options.allow_enum_explicit_values |= self.allow_enum_explicit_values;

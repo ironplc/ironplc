@@ -428,18 +428,35 @@ fn get_string_functions() -> Vec<FunctionSignature> {
                 input_param("P", "ANY_INT"),
             ],
         ),
-        // CONCAT: concatenate IN1 and IN2
-        // (ANY_STRING, ANY_STRING -> ANY_STRING)
-        FunctionSignature::stdlib(
-            "CONCAT",
-            BuiltinFunction::String(StringFunction::Concat),
-            TypeName::from("ANY_STRING"),
-            vec![
-                input_param("IN1", "ANY_STRING"),
-                input_param("IN2", "ANY_STRING"),
-            ],
-        ),
+        get_concat_function(),
     ]
+}
+
+/// Returns `CONCAT`, which concatenates `IN1`, `IN2`, ... in order
+/// (ANY_STRING, ANY_STRING, ... -> ANY_STRING). It is extensible, as
+/// IEC 61131-3 declares it (REQ-CB-analyzer-055).
+fn get_concat_function() -> FunctionSignature {
+    FunctionSignature::stdlib_extensible(
+        "CONCAT",
+        BuiltinFunction::String(StringFunction::Concat),
+        TypeName::from("ANY_STRING"),
+        vec![
+            input_param("IN1", "ANY_STRING"),
+            input_param("IN2", "ANY_STRING"),
+        ],
+        None,
+    )
+}
+
+/// Returns `CONCAT` as CODESYS and TwinCAT declare it: exactly `IN1` and
+/// `IN2`. The analyzer registers it in place of the extensible `CONCAT`
+/// when the `allow_extensible_concat` compiler option is off
+/// (REQ-CB-analyzer-056).
+pub fn get_two_input_concat_function() -> FunctionSignature {
+    FunctionSignature {
+        is_extensible: false,
+        ..get_concat_function()
+    }
 }
 
 // =============================================================================
@@ -824,6 +841,40 @@ mod tests {
         assert_eq!(
             fmod.return_type,
             Some(FunctionReturnType::Named(TypeName::from("ANY_REAL")))
+        );
+    }
+
+    #[spec_test(REQ_CB_analyzer_055)]
+    fn get_string_functions_when_concat_then_extensible_past_in2() {
+        let functions = get_string_functions();
+        let concat = functions
+            .iter()
+            .find(|f| f.name.original() == "CONCAT")
+            .unwrap();
+
+        assert!(concat.is_extensible);
+        assert_eq!(concat.max_inputs, None);
+        let names: Vec<String> = concat
+            .input_parameters()
+            .take(4)
+            .map(|p| p.name.original().to_string())
+            .collect();
+        assert_eq!(names, ["IN1", "IN2", "IN3", "IN4"]);
+    }
+
+    #[test]
+    fn get_two_input_concat_function_when_called_then_takes_in1_and_in2_only() {
+        let concat = get_two_input_concat_function();
+
+        assert!(!concat.is_extensible);
+        let names: Vec<String> = concat
+            .input_parameters()
+            .map(|p| p.name.original().to_string())
+            .collect();
+        assert_eq!(names, ["IN1", "IN2"]);
+        assert_eq!(
+            concat.builtin_function,
+            Some(BuiltinFunction::String(StringFunction::Concat))
         );
     }
 
