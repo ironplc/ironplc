@@ -1241,23 +1241,6 @@ END_VAR
 END_PROGRAM",
         ACCEPTED
     )]
-    #[case::literal_zero_to_byte_param_ok(
-        "
-FUNCTION TAKES_BYTE : BYTE
-VAR_INPUT
-    x : BYTE;
-END_VAR
-    TAKES_BYTE := x;
-END_FUNCTION
-
-PROGRAM main
-VAR
-    result : BYTE;
-END_VAR
-    result := TAKES_BYTE(0);
-END_PROGRAM",
-        ACCEPTED
-    )]
     #[case::byte_return_to_int_var_ok(
         "
 FUNCTION GET_BYTE : BYTE
@@ -1322,15 +1305,14 @@ END_PROGRAM",
         let opts = CompilerOptions {
             allow_cross_family_widening: true,
             allow_cross_family_conversion: true,
-            allow_int_literal_to_bit_string: true,
             ..CompilerOptions::default()
         };
         assert_eq!(rule_codes(apply, program, &opts), codes(expected));
     }
 
     /// One program per cross-family rule. Each is accepted under exactly one
-    /// of the three flags, which is what makes them three flags rather than
-    /// one: enabling any other flag leaves the program rejected.
+    /// of the two flags, which is what makes them two flags rather than
+    /// one: enabling the other flag leaves the program rejected.
     const WIDENING_PROGRAM: &str = "
 FUNCTION TAKES_INT : INT
 VAR_INPUT
@@ -1363,21 +1345,6 @@ END_VAR
     result := TAKES_DWORD(u);
 END_PROGRAM";
 
-    const LITERAL_PROGRAM: &str = "
-FUNCTION TAKES_BYTE : BYTE
-VAR_INPUT
-    x : BYTE;
-END_VAR
-    TAKES_BYTE := x;
-END_FUNCTION
-
-PROGRAM main
-VAR
-    result : BYTE;
-END_VAR
-    result := TAKES_BYTE(0);
-END_PROGRAM";
-
     const ACCEPTED: &[Problem] = &[];
     const ARG_MISMATCH: &[Problem] = &[Problem::FunctionCallArgTypeMismatch];
     const ASSIGNMENT_MISMATCH: &[Problem] = &[Problem::AssignmentTypeMismatch];
@@ -1387,7 +1354,6 @@ END_PROGRAM";
         match flag {
             "widening" => opts.allow_cross_family_widening = true,
             "conversion" => opts.allow_cross_family_conversion = true,
-            "literal" => opts.allow_int_literal_to_bit_string = true,
             "none" => {}
             other => panic!("unknown cross-family flag {other}"),
         }
@@ -1397,16 +1363,10 @@ END_PROGRAM";
     #[rstest]
     #[case::widening_under_widening(WIDENING_PROGRAM, "widening", ACCEPTED)]
     #[case::widening_under_conversion(WIDENING_PROGRAM, "conversion", ARG_MISMATCH)]
-    #[case::widening_under_literal(WIDENING_PROGRAM, "literal", ARG_MISMATCH)]
     #[case::conversion_under_widening(CONVERSION_PROGRAM, "widening", ARG_MISMATCH)]
     #[case::conversion_under_conversion(CONVERSION_PROGRAM, "conversion", ACCEPTED)]
-    #[case::conversion_under_literal(CONVERSION_PROGRAM, "literal", ARG_MISMATCH)]
-    #[case::literal_under_widening(LITERAL_PROGRAM, "widening", ARG_MISMATCH)]
-    #[case::literal_under_conversion(LITERAL_PROGRAM, "conversion", ARG_MISMATCH)]
-    #[case::literal_under_literal(LITERAL_PROGRAM, "literal", ACCEPTED)]
     #[case::widening_under_none(WIDENING_PROGRAM, "none", ARG_MISMATCH)]
     #[case::conversion_under_none(CONVERSION_PROGRAM, "none", ARG_MISMATCH)]
-    #[case::literal_under_none(LITERAL_PROGRAM, "none", ARG_MISMATCH)]
     fn apply_when_one_cross_family_flag_on_then_only_its_rule_is_accepted(
         #[case] program: &str,
         #[case] flag: &str,
@@ -1415,8 +1375,10 @@ END_PROGRAM";
         assert_eq!(rule_codes(apply, program, &only(flag)), codes(expected));
     }
 
-    rule_err!(
-        apply_when_literal_zero_to_byte_param_without_flag_then_error,
+    // An untyped integer literal is a bit-string literal where a bit string
+    // is expected (ADR-0067), so no flag is needed.
+    rule_ok!(
+        apply_when_literal_zero_to_byte_param_then_ok,
         "
 FUNCTION TAKES_BYTE : BYTE
 VAR_INPUT
@@ -1430,8 +1392,7 @@ VAR
     result : BYTE;
 END_VAR
     result := TAKES_BYTE(0);
-END_PROGRAM",
-        [Problem::FunctionCallArgTypeMismatch]
+END_PROGRAM"
     );
 
     rule_err!(
@@ -1768,7 +1729,6 @@ END_PROGRAM",
         let opts = CompilerOptions {
             allow_cross_family_widening: true,
             allow_cross_family_conversion: true,
-            allow_int_literal_to_bit_string: true,
             ..CompilerOptions::default()
         };
         assert_eq!(rule_codes(apply, program, &opts), codes(expected));

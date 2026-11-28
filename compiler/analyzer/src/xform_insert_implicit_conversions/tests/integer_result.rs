@@ -87,7 +87,6 @@ fn apply_when_int_to_bcd_then_bit_string_as_wide_as_input(
 #[case::decimal("18")]
 fn apply_when_bcd_to_int_of_integer_literal_then_literal_is_dword(#[case] literal: &str) {
     let options = CompilerOptions {
-        allow_int_literal_to_bit_string: true,
         ..CompilerOptions::default()
     };
     let source =

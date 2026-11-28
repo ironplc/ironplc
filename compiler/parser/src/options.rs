@@ -443,11 +443,6 @@ define_compiler_options! {
     [Rusty, Codesys, TwinCat],
     allow_cross_family_conversion,
 
-    "Allow a bare integer literal where a bit-string type is expected (0 -> BYTE)",
-    "--allow-int-literal-to-bit-string",
-    [Rusty, Codesys, TwinCat],
-    allow_int_literal_to_bit_string,
-
     "Allow arithmetic on bit-string operands (BYTE + 1), treating a bit string as the unsigned integer of its width",
     "--allow-bit-string-arithmetic",
     [Rusty, Codesys, TwinCat],

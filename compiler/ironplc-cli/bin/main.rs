@@ -211,11 +211,6 @@ struct FileArgs {
     #[arg(long)]
     allow_cross_family_conversion: bool,
 
-    /// Allow a bare integer literal where a bit-string type is expected
-    /// (e.g. 0 where BYTE is expected). This is an extension.
-    #[arg(long)]
-    allow_int_literal_to_bit_string: bool,
-
     /// Allow arithmetic on bit-string operands (e.g. BYTE + 1), treating a
     /// bit string as the unsigned integer of its width. This is an
     /// extension.
@@ -388,7 +383,6 @@ impl FileArgs {
         options.allow_system_uptime_global |= self.allow_system_uptime_global;
         options.allow_cross_family_widening |= self.allow_cross_family_widening;
         options.allow_cross_family_conversion |= self.allow_cross_family_conversion;
-        options.allow_int_literal_to_bit_string |= self.allow_int_literal_to_bit_string;
         options.allow_bit_string_arithmetic |= self.allow_bit_string_arithmetic;
         options.allow_partial_access_syntax |= self.allow_partial_access_syntax;
         options.allow_pragmas |= self.allow_pragmas;

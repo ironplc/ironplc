@@ -97,7 +97,6 @@ fn options() -> CompilerOptions {
         allow_partial_access_syntax: true,
         allow_sizeof: true,
         allow_fb_inheritance: true,
-        allow_int_literal_to_bit_string: true,
         allow_struct_initializer_expressions: true,
         allow_persistent_var: true,
         ..CompilerOptions::default()

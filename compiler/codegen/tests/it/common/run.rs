@@ -21,7 +21,6 @@ use super::value::Value;
 /// rejects both.
 pub fn bit_string_options() -> CompilerOptions {
     CompilerOptions {
-        allow_int_literal_to_bit_string: true,
         allow_bit_string_arithmetic: true,
         ..CompilerOptions::default()
     }

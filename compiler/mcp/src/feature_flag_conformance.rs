@@ -191,14 +191,6 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "FUNCTION TAKES_DWORD : DWORD\nVAR_INPUT\nx : DWORD;\nEND_VAR\nTAKES_DWORD := x;\nEND_FUNCTION\nPROGRAM main\nVAR\nresult : DWORD;\nu : UDINT;\nEND_VAR\nresult := TAKES_DWORD(u);\nEND_PROGRAM",
     },
-    // A bare integer literal where a bit-string is expected: literal 0 ->
-    // BYTE arg (P4026) is only allowed when the flag is on. Literal typing,
-    // not widening.
-    FlagFixture {
-        key: "allow_int_literal_to_bit_string",
-        prereqs: &[],
-        source: "FUNCTION TAKES_BYTE : BYTE\nVAR_INPUT\nx : BYTE;\nEND_VAR\nTAKES_BYTE := x;\nEND_FUNCTION\nPROGRAM main\nVAR\nresult : BYTE;\nEND_VAR\nresult := TAKES_BYTE(0);\nEND_PROGRAM",
-    },
     // Arithmetic on a bit-string operand: `b + 1` on BYTE (P4049) is only
     // allowed when the flag is on. It judges the bit string as the unsigned
     // integer of its width; it widens nothing.

@@ -11,8 +11,8 @@
 //! The relation is exact type matching plus the implicit conversions the
 //! project has decided to allow: the generic categories (`ANY_INT`,
 //! `ANY_NUM`, ...) that standard-library signatures use, untyped-literal
-//! inference (ADR-0028), lossless widening (ADR-0029), and the flag-gated
-//! cross-family widening (ADR-0031).
+//! inference (ADR-0028 and ADR-0067), lossless widening (ADR-0029), and the
+//! flag-gated cross-family widening (ADR-0031).
 
 use ironplc_dsl::common::*;
 use ironplc_dsl::time::TemporalWidth;
@@ -25,8 +25,9 @@ use ironplc_parser::options::CompilerOptions;
 /// to `GenericTypeName::is_compatible_with`.
 ///
 /// Bare integer literals (ANY_INT) are also accepted where REAL or LREAL
-/// is expected. This is type inference for untyped literals, not implicit
-/// widening of typed expressions (see ADR-0028).
+/// is expected, and where BYTE, WORD, DWORD or LWORD is. This is type
+/// inference for untyped literals, not implicit widening of typed
+/// expressions (see ADR-0028 and ADR-0067).
 pub(crate) fn are_types_compatible(
     expected: &TypeName,
     actual: &TypeName,
@@ -39,7 +40,7 @@ pub(crate) fn are_types_compatible(
     // ANY_NUM, or ANY_ELEMENTARY). The concrete or generic actual type must fall
     // within the generic category. See `is_compatible_with_generic_param`.
     if let Ok(expected_generic) = GenericTypeName::try_from(&expected.id) {
-        return is_compatible_with_generic_param(&expected_generic, actual, options);
+        return is_compatible_with_generic_param(&expected_generic, actual);
     }
     if let Ok(generic) = GenericTypeName::try_from(&actual.id) {
         if let Ok(elementary) = ElementaryTypeName::try_from(&expected.id) {
@@ -56,11 +57,11 @@ pub(crate) fn are_types_compatible(
             {
                 return true;
             }
-            // Bare integer literals (ANY_INT) to ANY_BIT types (BYTE, WORD, etc.)
-            // requires --allow-int-literal-to-bit-string. This is literal
-            // typing, not widening. See ADR-0031.
-            if options.allow_int_literal_to_bit_string
-                && generic == GenericTypeName::AnyInt
+            // Bare integer literals (ANY_INT) can be inferred as a bit string
+            // (BYTE, WORD, DWORD, LWORD): IEC 61131-3 defines an integer
+            // literal as representing a value of these types. BOOL, which the
+            // same definition lists, is not part of this rule. See ADR-0067.
+            if generic == GenericTypeName::AnyInt
                 && matches!(
                     elementary,
                     ElementaryTypeName::BYTE
@@ -175,16 +176,12 @@ fn widens_within_temporal_family(
 /// untyped literals — an untyped integer literal is `ANY_INT`, an untyped real
 /// literal is `ANY_REAL`) is checked against the parameter category with
 /// [`generic_actual_satisfies`].
-fn is_compatible_with_generic_param(
-    expected: &GenericTypeName,
-    actual: &TypeName,
-    options: &CompilerOptions,
-) -> bool {
+fn is_compatible_with_generic_param(expected: &GenericTypeName, actual: &TypeName) -> bool {
     if let Ok(actual_elem) = ElementaryTypeName::try_from(&actual.id) {
         return expected.is_compatible_with(&actual_elem);
     }
     if let Ok(actual_generic) = GenericTypeName::try_from(&actual.id) {
-        return generic_actual_satisfies(&actual_generic, expected, options);
+        return generic_actual_satisfies(&actual_generic, expected);
     }
     false
 }
@@ -195,13 +192,9 @@ fn is_compatible_with_generic_param(
 /// In practice `actual` originates from an untyped literal (`ANY_INT` for integer
 /// literals, `ANY_REAL` for real literals) or an unresolved generic function
 /// return. The relation models the IEC 61131-3 generic-type hierarchy plus the
-/// integer-literal-to-real inference from ADR-0028 and the flag-gated
-/// integer-literal-to-bit-string case from ADR-0031.
-fn generic_actual_satisfies(
-    actual: &GenericTypeName,
-    expected: &GenericTypeName,
-    options: &CompilerOptions,
-) -> bool {
+/// integer-literal-to-real inference from ADR-0028 and the
+/// integer-literal-to-bit-string inference from ADR-0067.
+fn generic_actual_satisfies(actual: &GenericTypeName, expected: &GenericTypeName) -> bool {
     use GenericTypeName::*;
     if actual == expected {
         return true;
@@ -213,11 +206,8 @@ fn generic_actual_satisfies(
         // Integer literals infer as real (ADR-0028).
         AnyReal => matches!(actual, AnyReal | AnyInt),
         AnyInt => matches!(actual, AnyInt),
-        // Integer literals to bit-string require their own flag (ADR-0031).
-        AnyBit => {
-            matches!(actual, AnyBit)
-                || (options.allow_int_literal_to_bit_string && *actual == AnyInt)
-        }
+        // Integer literals infer as bit strings (ADR-0067).
+        AnyBit => matches!(actual, AnyBit | AnyInt),
         AnyString => matches!(actual, AnyString),
         AnyDate => matches!(actual, AnyDate),
         AnyDerived => false,
