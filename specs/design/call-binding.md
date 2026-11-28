@@ -297,20 +297,30 @@ initial value on one is not a default, so a method call supplies every input
 and `VAR_IN_OUT` (P4018).
 
 A formal call of a user-defined function may omit a `VAR_INPUT`, which then
-starts from its initial value: the one its declaration gives, or its type's
-(IEC 61131-3 ed.3 6.6.1.7.1). A call with no inputs is a formal call that
-omits them all. The normal form records
-an omitted input by leaving it out, as for a function block, and lowering
-passes the value the input's completed initializer gives
-([Lowered Program](lowered-program.md), REQ-LOW-lowering-210). A `VAR_IN_OUT`
-names the caller's variable, so it has no initial value to take: a call that
-omits one is P4018. A positional call supplies every input and `VAR_IN_OUT`
-(P4018).
+starts from its initial value: the one its declaration gives, or its type's.
+IEC 61131-3:2003 2.5.1.1 says, of feature 1 of table 19 a), that "any
+variable not assigned a value in the list shall have the default value, if
+any, assigned in the function specification, or the default value for the
+associated data type", and ed.3 6.6.1.7.1 keeps the rule, so it needs no
+edition or dialect flag. A call with no inputs is a formal call that omits
+them all, as the table allows a formal call any number of variables. The normal form records an omitted input by leaving it out, as
+for a function block, and lowering passes the value the input's completed
+initializer gives ([Lowered Program](lowered-program.md),
+REQ-LOW-lowering-210).
 
-The standard's rule is the same for a standard function, but a call of one
-here still supplies every input it declares, so `LIMIT(IN := b, MX := 5)` is
-P4018: lowering passes a standard function's inputs by position, and an input
-of a generic type has no initial value until the call's type is known.
+A `VAR_IN_OUT` names the caller's variable, so it has no initial value to
+take: a call that omits one is P4018. 2.5.1.1 rule 16 makes it an error for a
+`VAR_IN_OUT` of a function invocation not to be "properly mapped" to a
+variable.
+A positional call supplies every input and `VAR_IN_OUT` (P4018): table 19 a)
+gives it "exactly the same number of arguments" as the function declares.
+
+The rule is the same for a standard function: the table's own example,
+`LIMIT(EN := COND, IN := B, MX := 5, ENO => TEMPL)`, gives the omitted `MN` its
+default of 0. A call of one here still supplies every input it declares, so
+`LIMIT(IN := b, MX := 5)` is P4018, though the standard accepts it: lowering
+passes a standard function's inputs by position, and an input of a generic
+type has no initial value until the call's type is known.
 
 **REQ-CB-analyzer-050** An input a function block call omits is absent from
 its normal form.

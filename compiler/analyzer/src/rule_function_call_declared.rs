@@ -159,8 +159,8 @@ impl Visitor<Infallible> for RuleFunctionCallDeclared<'_> {
 
                 // A formal call of a user-defined function may omit a
                 // `VAR_INPUT`, which then takes its initial value (IEC
-                // 61131-3 ed.3 6.6.1.7.1), so only an omitted `VAR_IN_OUT`
-                // is a missing argument.
+                // 61131-3:2003 2.5.1.1, table 19 a); ed.3 6.6.1.7.1), so only
+                // an omitted `VAR_IN_OUT` is a missing argument.
                 if call_input_count == 0 && !signature.is_stdlib() {
                     self.check_omitted_in_outs(node, signature);
                     return node.recurse_visit(self);

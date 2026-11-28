@@ -153,8 +153,9 @@ refers to the caller's variable.
      b := SCALE(k := 5);   (* x is 0, the initial value of an INT, so b is -1 *)
    END_PROGRAM
 
-A call of a standard function supplies every input the function declares
-(:doc:`P4018 </reference/compiler/problems/P4018>`).
+Leaving out an input of a standard function, such as ``MN`` in
+``LIMIT(IN := b, MX := 5)``, is not supported yet: the call reports
+:doc:`P4018 </reference/compiler/problems/P4018>`.
 
 Related Problem Codes
 ---------------------
