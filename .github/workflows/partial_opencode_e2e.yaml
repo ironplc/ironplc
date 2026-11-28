@@ -39,14 +39,14 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Configure the execution environment
-      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
         with:
           tool: just
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
       - name: Set up Ollama
-        uses: ai-action/setup-ollama@4d24ba3341d7b8e6ed2f80aa4ee53be6ee8e29fc # v2.1.19
+        uses: ai-action/setup-ollama@9865531c375e54c1dd1dd467c207c0ae3e98ab77 # v2.1.21
 
       # Install the published compiler and run the OpenCode end-to-end test.
       - name: OpenCode end-to-end test
